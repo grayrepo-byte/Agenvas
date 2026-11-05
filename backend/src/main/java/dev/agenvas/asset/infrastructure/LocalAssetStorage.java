@@ -52,6 +52,9 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
     private static final int MAX_VIDEO_DURATION_MS = 600_000;
     /** 图片与视频允许解码的最大像素面积。 */
     private static final long MAX_IMAGE_PIXELS = 40_000_000L;
+    /** Bound every GIF frame and its logical canvas before allocating decoded buffers. */
+    private static final int MAX_GIF_FRAMES = 256;
+    private static final long MAX_GIF_DECODED_PIXELS = 160_000_000L;
     /** 缩略图最长边，短边按比例缩放。 */
     private static final int THUMBNAIL_EDGE = 480;
     /** 规范化后的私有归档根目录。 */
@@ -427,25 +430,25 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
     /** 从任务固定路径重建崩溃前已安装的图片元数据；冲突文件或孤立缩略图会报错。 */
     public Optional<StoredImage> recoverImage(UUID projectId, UUID assetId) {
         String prefix = projectId + "/" + assetId;
-        Path png = checkedPath(prefix + ".png");
-        Path jpeg = checkedPath(prefix + ".jpg");
-        boolean hasPng = Files.isRegularFile(png, LinkOption.NOFOLLOW_LINKS);
-        boolean hasJpeg = Files.isRegularFile(jpeg, LinkOption.NOFOLLOW_LINKS);
-        Path thumbnail = checkedPath(prefix + ".thumb.png");
-        if ((Files.exists(png, LinkOption.NOFOLLOW_LINKS) && !hasPng)
-                || (Files.exists(jpeg, LinkOption.NOFOLLOW_LINKS) && !hasJpeg)) {
-            throw new IllegalStateException("Task image path is not a regular file");
+        Path original = null;
+        for (String suffix : PREPARED_IMAGE_ORIGINAL_SUFFIXES) {
+            Path candidate = checkedPath(prefix + suffix);
+            if (!Files.exists(candidate, LinkOption.NOFOLLOW_LINKS)) continue;
+            if (!Files.isRegularFile(candidate, LinkOption.NOFOLLOW_LINKS)) {
+                throw new IllegalStateException("Task image path is not a regular file");
+            }
+            if (original != null) {
+                throw new IllegalStateException("Conflicting task image files require investigation");
+            }
+            original = candidate;
         }
-        if (hasPng && hasJpeg) {
-            throw new IllegalStateException("Conflicting task image files require investigation");
-        }
-        if (!hasPng && !hasJpeg) {
+        Path thumbnail = checkedPath(prefix + PREPARED_IMAGE_THUMBNAIL_SUFFIX);
+        if (original == null) {
             if (Files.exists(thumbnail, LinkOption.NOFOLLOW_LINKS)) {
                 throw new IllegalStateException("Task image thumbnail has no original file");
             }
             return Optional.empty();
         }
-        Path original = hasPng ? png : jpeg;
         Path temporary = null;
         try {
             long size = Files.size(original);
@@ -598,7 +601,7 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
         return Files.newOutputStream(target);
     }
 
-    /** 依据实际解码器识别 PNG/JPEG/WebP，限制像素数并完整解码首帧。 */
+    /** Identify actual raster encoding; GIF validates every frame and retains the animation bytes. */
     private ImageDetails inspectImage(Path file) throws IOException {
         try (ImageInputStream input = ImageIO.createImageInputStream(file.toFile())) {
             if (input == null) {
@@ -610,8 +613,17 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
             }
             ImageReader reader = readers.next();
             try {
-                reader.setInput(input, true, true);
                 String format = reader.getFormatName().toLowerCase(java.util.Locale.ROOT);
+                if (format.equals("gif")) {
+                    try (var channel = Files.newByteChannel(file)) {
+                        channel.position(Files.size(file) - 1);
+                        var trailer = java.nio.ByteBuffer.allocate(1);
+                        if (channel.read(trailer) != 1 || trailer.array()[0] != 0x3b)
+                            throw invalid(ApiMessage.of("api.local-asset-storage.image-decoding-failed"), "ASSET_INVALID_IMAGE");
+                    }
+                }
+                reader.setInput(input, !format.equals("gif"), !format.equals("gif"));
+                if (format.equals("gif")) return inspectGif(reader);
                 String contentType;
                 String extension;
                 if (format.equals("png")) {
@@ -643,6 +655,39 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
                 reader.dispose();
             }
         }
+    }
+
+    /** Decode all frames for validation, while preserving the original animation bytes for storage. */
+    private ImageDetails inspectGif(ImageReader reader) throws IOException {
+        var metadata = (javax.imageio.metadata.IIOMetadataNode) reader.getStreamMetadata().getAsTree("javax_imageio_gif_stream_1.0");
+        var screen = (javax.imageio.metadata.IIOMetadataNode) metadata.getElementsByTagName("LogicalScreenDescriptor").item(0);
+        int width = Integer.parseInt(screen.getAttribute("logicalScreenWidth"));
+        int height = Integer.parseInt(screen.getAttribute("logicalScreenHeight"));
+        int frames = reader.getNumImages(true);
+        long pixels = (long) width * height;
+        if (width < 1 || height < 1 || pixels > MAX_IMAGE_PIXELS || frames < 1 || frames > MAX_GIF_FRAMES
+                || pixels * frames > MAX_GIF_DECODED_PIXELS) throw invalid(ApiMessage.of("api.asset.gif-limit"), "ASSET_TOO_MANY_PIXELS");
+        BufferedImage preview = null;
+        for (int index = 0; index < frames; index++) {
+            var frame = (javax.imageio.metadata.IIOMetadataNode) reader.getImageMetadata(index).getAsTree("javax_imageio_gif_image_1.0");
+            var descriptor = (javax.imageio.metadata.IIOMetadataNode) frame.getElementsByTagName("ImageDescriptor").item(0);
+            int left = Integer.parseInt(descriptor.getAttribute("imageLeftPosition"));
+            int top = Integer.parseInt(descriptor.getAttribute("imageTopPosition"));
+            int frameWidth = reader.getWidth(index), frameHeight = reader.getHeight(index);
+            if (frameWidth < 1 || frameHeight < 1 || left < 0 || top < 0
+                    || (long) left + frameWidth > width || (long) top + frameHeight > height)
+                throw invalid(ApiMessage.of("api.asset.gif-limit"), "ASSET_INVALID_IMAGE");
+            BufferedImage decoded = reader.read(index);
+            if (decoded == null || decoded.getWidth() != frameWidth || decoded.getHeight() != frameHeight)
+                throw invalid(ApiMessage.of("api.local-asset-storage.image-decoding-failed"), "ASSET_INVALID_IMAGE");
+            if (index == 0) {
+                preview = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+                Graphics2D graphics = preview.createGraphics();
+                try { graphics.drawImage(decoded, left, top, null); } finally { graphics.dispose(); }
+            }
+            decoded.flush();
+        }
+        return new ImageDetails("image/gif", ".gif", width, height, preview);
     }
 
     /** 将不可解码、超限或不支持的媒体映射为稳定 422 错误。 */

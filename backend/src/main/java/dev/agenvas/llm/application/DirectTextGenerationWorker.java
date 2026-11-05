@@ -6,7 +6,6 @@ import dev.agenvas.task.application.TaskProperties;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
 import jakarta.annotation.PreDestroy;
-import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
@@ -27,7 +26,6 @@ import tools.jackson.databind.node.ObjectNode;
 public class DirectTextGenerationWorker {
     private static final Logger LOGGER = LoggerFactory.getLogger(DirectTextGenerationWorker.class);
     private static final int MAX_OUTPUT_LENGTH = 20_000;
-    private static final Duration MODEL_TIMEOUT = LlmCallTimeouts.REQUEST;
 
     private final TaskService tasks;
     private final ChatGateway gateway;
@@ -92,10 +90,7 @@ public class DirectTextGenerationWorker {
             } else tasks.succeedWithTextArtifact(lease, workerId, content);
         } catch (LeasedModelExecutor.Stopped stopped) {
             throw stopped;
-        } catch (ExecutionException | TimeoutException failure) {
-            execution.checkActive();
-            tasks.fail(lease, workerId, "MODEL_CALL_FAILED");
-        } catch (RuntimeException failure) {
+        } catch (ExecutionException | TimeoutException | RuntimeException failure) {
             execution.checkActive();
             tasks.fail(lease, workerId, errorCode(failure));
         }
@@ -137,6 +132,8 @@ public class DirectTextGenerationWorker {
         ChatGateway.ConfigIdentity pinned = new ChatGateway.ConfigIdentity(
                 lease.input().path("modelConfigSource").asText(""),
                 lease.input().path("modelConfigVersion").asInt(-1));
+        LlmRequestBudget budget = codec.requestBudget(lease.input());
+        if (budget != null) budget.requireInput(messages, List.of());
         ChatGateway.ModelDetails model = gateway.modelDetailsFor(pinned);
         if (!model.available()) throw new IllegalStateException("Pinned text model unavailable");
         ChatGateway.Exchange exchange = execution.call(() -> callLogs.record(
@@ -144,22 +141,31 @@ public class DirectTextGenerationWorker {
                         CallLog.Kind.LLM, CallLog.Operation.CHAT,
                         "mock".equals(pinned.source()) ? "mock" : model.providerAdapter(),
                         model.modelId(), "mock".equals(pinned.source())),
-                () -> gateway.call(lease.isImagePrompt() ? images.hydrate(lease, messages) : messages,
-                        List.of(), Map.of(), pinned),
-                ignored -> CallLogService.CallOutcome.succeeded(null)), MODEL_TIMEOUT);
+                () -> budget == null ? gateway.call(lease.isImagePrompt() ? images.hydrate(lease, messages) : messages,
+                        List.of(), Map.of(), pinned) : gateway.call(lease.isImagePrompt() ? images.hydrate(lease, messages) : messages,
+                        List.of(), Map.of(), pinned, budget),
+                ignored -> CallLogService.CallOutcome.succeeded(null)), LlmCallTimeouts.REQUEST);
         execution.checkActive();
         if (exchange.configVersion() != pinned.version()) {
             throw new IllegalStateException("Text model configuration changed during call");
         }
         ObjectNode checkpoint = mapper.createObjectNode();
         checkpoint.put("schemaVersion", 1);
-        checkpoint.set("request", codec.request(messages, List.of()));
+        checkpoint.set("request", codec.withBudget(codec.request(messages, List.of()), budget));
         checkpoint.set("response", codec.response(exchange.response()));
         execution.checkActive();
         return tasks.checkpointTextResponse(lease, workerId, checkpoint);
     }
 
-    private String errorCode(RuntimeException failure) {
+    private String errorCode(Throwable failure) {
+        if (LlmStreamIncompleteException.matches(failure)) return LlmStreamIncompleteException.ERROR_CODE;
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof java.io.UncheckedIOException) return "LLM_CONNECTION_FAILED";
+            if (cause instanceof LlmRequestBudget.Failure budget) return budget.getMessage();
+            if (cause instanceof LlmProtocolCodec.OutputTruncated) return LlmProtocolCodec.OUTPUT_TRUNCATED;
+            if (cause instanceof dev.agenvas.shared.error.ApiProblemException problem
+                    && LlmStreamIncompleteException.ERROR_CODE.equals(problem.code())) return problem.code();
+        }
         return failure instanceof IllegalArgumentException
                 ? "MODEL_OUTPUT_INVALID" : "MODEL_CALL_FAILED";
     }

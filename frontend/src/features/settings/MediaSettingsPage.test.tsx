@@ -5,6 +5,7 @@ import { http,HttpResponse } from "msw";
 import { MemoryRouter } from "react-router";
 import { beforeEach,describe,expect,it } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
+import { setLocale, t } from "../../shared/i18n";
 import type { KlingProfile,MediaCapability,MediaConnection,MediaSettings } from "../../shared/api/client";
 import { clickControl,selectValue } from "../../test/controls";
 import { server } from "../../test/server";
@@ -53,6 +54,30 @@ function settingsFixture(connectionChanges: Partial<MediaConnection> = {}, capab
 }
 
 describe("MediaSettingsPage", () => {
+  it("localizes the exact installed local-processor name while retaining renamed services", async () => {
+    setLocale("en");
+    const fixture = settingsFixture({ id: "00000000-0000-4000-8000-000000000201", platform: "LOCAL", name: "本地图片处理" },
+      { id: "00000000-0000-4000-8000-000000000202", adapterId: "LOCAL_IMAGE_PROCESSOR", name: "本地图片处理" });
+    fixture.connections[0]!.capabilities.push({ ...fixture.connections[0]!.capabilities[0]!,
+      id: "00000000-0000-4000-8000-000000000206", adapterId: "LOCAL_AUDIO_TRIMMER", name: "本地音频裁剪", kind: "AUDIO_GENERATION" });
+    fixture.connections.push({ ...fixture.connections[0]!, id: "custom-local", name: "我命名的处理服务", capabilities: [] });
+    server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)));
+    mount();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "Media connections" }));
+    const connections = within(screen.getByRole("tabpanel", { name: "Media connections" }));
+    expect(connections.getByText("Local image processing")).toBeInTheDocument();
+    expect(connections.getByText("我命名的处理服务")).toBeInTheDocument();
+    expect(connections.queryByText("本地图片处理")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "Published capabilities" }));
+    const capabilities = within(screen.getByRole("tabpanel", { name: "Published capabilities" }));
+    expect(capabilities.getAllByText("Local image processing")).toHaveLength(3);
+    expect(capabilities.queryByText("本地图片处理")).not.toBeInTheDocument();
+    expect(capabilities.getByText("Local audio trimming")).toBeInTheDocument();
+    expect(capabilities.queryByText("本地音频裁剪")).not.toBeInTheDocument();
+  });
+
   beforeEach(() => server.use(http.get("/api/v1/settings/kling/profiles", () => HttpResponse.json({ profiles: klingProfiles }))));
   it.each(["https://api-singapore.klingai.com", "https://api-beijing.klingai.com"])("creates a Kling connection at %s and keeps its draft after a failed save", async (origin) => {
     const writes: { body: unknown; key: string | null }[] = [];
@@ -374,7 +399,7 @@ describe("MediaSettingsPage", () => {
     await user.click(await screen.findByRole("button", { name: "添加连接" }));
     const dialog = screen.getByRole("dialog");
     const platforms = [
-      ["COMFYUI", "代理路径和其中的 Key 直接填入地址", "ComfyUI 地址"],
+      ["COMFYUI", "ComfyUI HTTP 或 HTTPS 基地址", "ComfyUI 地址"],
       ["OPENAI", "系统不会自动补 /v1", "API Base URL（留空使用官方地址）"],
       ["GOOGLE", "服务商要求 /v1beta 时需显式填写", "API Base URL（留空使用官方地址）"],
       ["RUNNINGHUB", "不要添加 /v1、/openapi/v2", "RunningHub API 地址"],
@@ -388,6 +413,8 @@ describe("MediaSettingsPage", () => {
       const help = within(dialog).getByRole("button", { name: "地址填写说明" });
       await user.hover(help);
       expect(await screen.findByRole("tooltip")).toHaveTextContent(hint);
+      if (["COMFYUI", "OPENAI", "GOOGLE", "RUNNINGHUB"].includes(platform))
+        expect(screen.getByRole("tooltip")).toHaveTextContent("明文传输");
       await user.keyboard("{Escape}");
       await waitFor(() => expect(screen.queryByRole("tooltip")).not.toBeInTheDocument());
     }
@@ -417,6 +444,8 @@ describe("MediaSettingsPage", () => {
     const dialog = screen.getByRole("dialog");
     await user.type(within(dialog).getByRole("textbox", { name: "连接名称" }), "Remote Comfy");
     await selectValue(within(dialog).getByRole("combobox", { name: "平台" }), "COMFYUI");
+    expect(within(dialog).getByRole("textbox", { name: "ComfyUI 地址" })).toHaveAttribute("placeholder", "服务器可访问的 ComfyUI 地址");
+    expect(within(dialog).getByText("Docker 内的 127.0.0.1 指向容器自身。可使用下方本机发现，或填写服务器可访问的 ComfyUI 地址。")).toBeVisible();
     await user.type(within(dialog).getByRole("textbox", { name: "ComfyUI 地址" }), endpoint);
     expect(within(dialog).queryByLabelText("API Key")).not.toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "添加连接" }));
@@ -1374,7 +1403,116 @@ describe("MediaSettingsPage", () => {
     }]);
   });
 
-  it("publishes only the fixed GPT Image 2 mapping with an allowed quality", async () => {
+  it.each((["zh", "en", "ja", "ru"] as const).flatMap((locale) =>
+    ["gpt-image-2.5-flare", "gpt-image-2.5-sunburst"].map((model) => [locale, model] as const)))("publishes the 2.5 shortcut in %s: %s", async (locale, model) => {
+    setLocale(locale);
+    const fixture = settingsFixture(); fixture.connections[0]!.capabilities = [];
+    let submitted: unknown;
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.post("/api/v1/settings/media-connections/openai-1/capabilities", async ({ request }) => {
+        submitted = await request.json(); return HttpResponse.json(fixture);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: t("settings.mediaSettings.connections") }));
+    await user.click(await screen.findByRole("button", { name: t("settings.mediaSettings.publishCapability") }));
+    const dialog = within(screen.getByRole("dialog"));
+    await user.type(dialog.getByRole("textbox", { name: t("settings.mediaSettings.newCapabilityName") }), "2.5 shortcut");
+    const choice = dialog.getByRole("combobox", { name: t("settings.mediaSettings.modelOptions") });
+    await selectValue(choice, model);
+    expect(choice).toHaveTextContent(model.endsWith("flare") ? "GPT Image 2.5 Flare" : "GPT Image 2.5 Sunburst");
+    await selectValue(dialog.getByRole("combobox", { name: t("settings.mediaSettings.imageQuality") }), "max");
+    expect(dialog.getByRole("combobox", { name: t("settings.openAi.moderation") })).toHaveValue("auto");
+    expect(dialog.getByText(t("settings.openAi.moderationHint"))).toBeInTheDocument();
+    expect(dialog.queryByRole("combobox", { name: t("settings.openAi.outputFormat") })).not.toBeInTheDocument();
+    await user.click(dialog.getByRole("button", { name: t("settings.mediaSettings.publishCapability") }));
+    await waitFor(() => expect(submitted).toMatchObject({ adapterId: "OPENAI_GPT_IMAGE_2", settings: { model, quality: "max",
+      tokenPricing: { currency: "USD", textInputPerMillion: "5", imageInputPerMillion: "8", imageOutputPerMillion: "30" } } }));
+  });
+
+  it.each(["gpt-image-2.5-flare-2026-09-08", "gpt-image-2.5-sunburst-2026-09-08", "my-compatible-image"])("preserves saved custom model %s and its administrator rates", async (model) => {
+    const tokenPricing = { currency: "CNY" as const, textInputPerMillion: "1", imageInputPerMillion: "2", imageOutputPerMillion: "3" };
+    const quality = model.startsWith("gpt-image-2.5-") ? "max" : "high";
+    const fixture = settingsFixture({}, { settings: { model, quality, tokenPricing } });
+    let submitted: unknown;
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.put("/api/v1/settings/media-connections/openai-1/capabilities/portrait", async ({ request }) => {
+        submitted = await request.json(); return HttpResponse.json(fixture);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "编辑能力参数" }));
+    expect(screen.getByRole("combobox", { name: "模型选项" })).toHaveValue("custom");
+    expect(screen.getByRole("textbox", { name: t("settings.mediaSettings.modelName") })).toHaveValue(model);
+    await user.click(screen.getByRole("button", { name: "保存能力" }));
+    await waitFor(() => expect(submitted).toMatchObject({ settings: { model, quality, tokenPricing } }));
+  });
+
+  it.each(["auto", "low"] as const)("saves and reloads explicit OpenAI moderation %s", async (moderation) => {
+    let fixture = settingsFixture({}, { settings: { model: "gpt-image-2.5-sunburst", quality: "high" } });
+    let submitted: Record<string, unknown> | undefined;
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.put("/api/v1/settings/media-connections/openai-1/capabilities/portrait", async ({ request }) => {
+        submitted = await request.json() as Record<string, unknown>;
+        fixture = settingsFixture({}, { version: 5, capabilityVersion: 3,
+          settings: submitted.settings as MediaCapability["settings"] });
+        return HttpResponse.json(fixture);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "编辑能力参数" }));
+    expect(screen.getByRole("combobox", { name: "内容审核" })).toHaveValue("auto");
+    expect(screen.getByText("auto 使用标准内容审核；low 的过滤较宽松，但内容审核仍然生效。")).toBeInTheDocument();
+    await selectValue(screen.getByRole("combobox", { name: "内容审核" }), "low");
+    if (moderation === "auto") await selectValue(screen.getByRole("combobox", { name: "内容审核" }), "auto");
+    await user.click(screen.getByRole("button", { name: "保存能力" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(submitted).toMatchObject({ expectedVersion: 4, settings: { model: "gpt-image-2.5-sunburst", moderation } });
+    await user.click(screen.getByRole("button", { name: "编辑能力参数" }));
+    expect(screen.getByRole("combobox", { name: "内容审核" })).toHaveValue(moderation);
+    expect(screen.getByRole("combobox", { name: "模型选项" })).toHaveValue("gpt-image-2.5-sunburst");
+    expect(screen.getByRole("textbox", { name: t("settings.mediaSettings.modelName") })).toHaveValue("gpt-image-2.5-sunburst");
+  });
+
+  it.each(["gpt-image-2.6-flare", "gpt-image-2.6-sunburst"])("publishes %s with GIF controls and official token rates", async (model) => {
+    let submitted: unknown;
+    const fixture = settingsFixture(); fixture.connections[0]!.capabilities = [];
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.post("/api/v1/settings/media-connections/openai-1/capabilities", async ({ request }) => {
+        submitted = await request.json(); return HttpResponse.json(fixture);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
+    await user.click(await screen.findByRole("button", { name: "发布能力" }));
+    const dialog = within(screen.getByRole("dialog"));
+    await user.type(dialog.getByRole("textbox", { name: "新能力名称" }), "Looping illustration");
+    await selectValue(dialog.getByRole("combobox", { name: "模型选项" }), model);
+    await selectValue(dialog.getByRole("combobox", { name: "GPT Image 2 质量" }), "xhigh");
+    await selectValue(dialog.getByRole("combobox", { name: "输出格式" }), "gif");
+    await selectValue(dialog.getByRole("combobox", { name: "图像复杂度" }), "medium");
+    await user.clear(dialog.getByRole("spinbutton", { name: "GIF 帧数" }));
+    await user.type(dialog.getByRole("spinbutton", { name: "GIF 帧数" }), "4");
+    await user.click(dialog.getByRole("button", { name: "发布能力" }));
+    await waitFor(() => expect(submitted).toEqual({ name: "Looping illustration", adapterId: "OPENAI_GPT_IMAGE_2",
+      settings: { model, quality: "xhigh", outputFormat: "gif", frameCount: 4, frameDurationMs: 200, complexity: "medium",
+        maxReferenceImages: 0, defaultParameters: { aspectRatio: "AUTO", resolution: "1K", transparentBackground: false },
+        tokenPricing: { currency: "USD", textInputPerMillion: "5", imageInputPerMillion: "8", imageOutputPerMillion: "30" } } }));
+  });
+
+  it("publishes GPT Image 2 with editable official Standard token defaults and an allowed quality", async () => {
     let submitted: unknown;
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
@@ -1400,7 +1538,9 @@ describe("MediaSettingsPage", () => {
     await selectValue(screen.getByRole("combobox", { name: "GPT Image 2 质量" }), "high");
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "发布能力" }));
     await waitFor(() => expect(submitted).toEqual({ name: "Portrait image",
-      adapterId: "OPENAI_GPT_IMAGE_2", settings: { model: "", quality: "high" } }));
+      adapterId: "OPENAI_GPT_IMAGE_2", settings: { model: "", quality: "high", tokenPricing: {
+        currency: "USD", textInputPerMillion: "5", imageInputPerMillion: "8", imageOutputPerMillion: "30",
+      } } }));
   });
 
   it("saves a Google API address without clearing the existing credential", async () => {
@@ -1441,6 +1581,68 @@ describe("MediaSettingsPage", () => {
     await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
     await user.click(screen.getByRole("button", { name: "编辑能力参数" }));
     expect(within(screen.getByRole("dialog")).getByText(/与模型名分开配置/)).toBeInTheDocument();
+  });
+
+  it("clears untouched official defaults after canceling publication and changing the connection to a proxy", async () => {
+    let settings = settingsFixture();
+    settings.connections[0]!.capabilities = [];
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(settings)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.put("/api/v1/settings/media-connections/openai-1", () => {
+        settings = { ...settings, connections: [{ ...settings.connections[0]!, version: 2, connectionVersion: 2, origin: "https://proxy.example.com/v1" }] };
+        return HttpResponse.json(settings);
+      }),
+    );
+    mount();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
+    await user.click(await screen.findByRole("button", { name: "发布能力" }));
+    await user.click(screen.getByRole("tab", { name: "估算价格" }));
+    expect(within(screen.getByRole("dialog")).getByRole("spinbutton", { name: "图片输出 / 百万 Token" })).toHaveValue(30);
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "取消" }));
+    await user.click(screen.getByRole("button", { name: "编辑连接" }));
+    const connectionDialog = within(screen.getByRole("dialog"));
+    await user.type(connectionDialog.getByRole("textbox", { name: "API Base URL（留空使用官方地址）" }), "https://proxy.example.com/v1");
+    await user.click(connectionDialog.getByRole("button", { name: "保存连接" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "发布能力" }));
+    await user.click(screen.getByRole("tab", { name: "估算价格" }));
+    expect(within(screen.getByRole("dialog")).getByRole("spinbutton", { name: "图片输出 / 百万 Token" })).toHaveValue(null);
+    expect(within(screen.getByRole("dialog")).queryByRole("link", { name: "OpenAI 官方价格来源" })).not.toBeInTheDocument();
+  });
+
+  it("switches OpenAI pricing to separate token rates and persists the selected mode", async () => {
+    const settings = settingsFixture({}, { settings: { model: "gpt-image-2", pricing: { amount: "1", currency: "USD", unit: "IMAGE" } } });
+    let submitted: unknown;
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(settings)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.put("/api/v1/settings/media-connections/openai-1/capabilities/portrait", async ({ request }) => {
+        submitted = await request.json(); return HttpResponse.json(settings);
+      }),
+    );
+    mount();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
+    await user.click(await screen.findByText("编辑能力参数"));
+    await user.click(screen.getByRole("tab", { name: "估算价格" }));
+    const dialog = within(screen.getByRole("dialog"));
+    await selectValue(dialog.getByRole("combobox", { name: "计费方式" }), "TOKEN");
+    expect(dialog.queryByRole("spinbutton", { name: "单位价格" })).not.toBeInTheDocument();
+    expect(dialog.getByRole("spinbutton", { name: "文本输入 / 百万 Token" })).toHaveValue(5);
+    expect(dialog.getByRole("spinbutton", { name: "图片输入 / 百万 Token" })).toHaveValue(8);
+    expect(dialog.getByRole("spinbutton", { name: "图片输出 / 百万 Token" })).toHaveValue(30);
+    expect(dialog.getByRole("link", { name: "OpenAI 官方价格来源" })).toHaveAttribute("href", expect.stringContaining("developers.openai.com"));
+    await user.clear(dialog.getByRole("spinbutton", { name: "图片输出 / 百万 Token" }));
+    await user.type(dialog.getByRole("spinbutton", { name: "图片输出 / 百万 Token" }), "31");
+    await user.click(dialog.getByRole("button", { name: "保存能力" }));
+    await waitFor(() => expect(submitted).toMatchObject({ settings: { model: "gpt-image-2", tokenPricing: {
+      currency: "USD", textInputPerMillion: "5", imageInputPerMillion: "8", imageOutputPerMillion: "31",
+    } } }));
+    expect((submitted as { settings: MediaCapability["settings"] }).settings.pricing).toBeUndefined();
   });
 
   it("persists defaults, price and reference limits while preserving the configured model", async () => {
@@ -1916,4 +2118,106 @@ it("retains unparsed RunningHub JSON when closing and reopening a publishing ses
   await user.click(screen.getByRole("button", { name: "发布能力" }));
   await user.click(screen.getByText("导入 / 已保存的 JSON"));
   expect(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" })).toHaveValue("unfinished JSON draft");
+});
+
+
+it.each([false, true])("fills ComfyUI explicitly without saving or losing the draft (editing=%s)", async (editing) => {
+  const writes: unknown[] = [];
+  const fixture = settingsFixture({ platform: "COMFYUI", origin: "http://192.168.1.2:8188", capabilities: [] });
+  server.use(
+    http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+    http.get("/api/v1/settings/media-connections", () => HttpResponse.json(editing ? fixture : { connections: [], defaults: mockDefault })),
+    http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+    http.post("/api/v1/settings/local-services/discover", async ({ request }) => {
+      expect(await request.json()).toEqual({ service: "COMFYUI" });
+      return HttpResponse.json({ service: "COMFYUI", runtime: "CONTAINER", status: "FOUND", endpoint: "http://192.168.65.254:8188", policyAllowed: true });
+    }),
+    http.post("/api/v1/settings/media-connections", async ({ request }) => { writes.push(await request.json()); return new HttpResponse(null, { status: 500 }); }),
+    http.put("/api/v1/settings/media-connections/openai-1", async ({ request }) => { writes.push(await request.json()); return new HttpResponse(null, { status: 500 }); }),
+  );
+  mount(); const user = userEvent.setup();
+  if (editing) {
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
+    await user.click(await screen.findByRole("button", { name: "编辑连接" }));
+  } else { await user.click(await screen.findByRole("button", { name: "添加连接" })); }
+  const dialog = screen.getByRole("dialog"); const name = within(dialog).getByRole("textbox", { name: "连接名称" });
+  await user.clear(name); await user.type(name, "Draft Comfy");
+  const origin = within(dialog).getByRole("textbox", { name: "ComfyUI 地址" });
+  expect(origin).toHaveAccessibleDescription("Docker 内的 127.0.0.1 指向容器自身。可使用下方本机发现，或填写服务器可访问的 ComfyUI 地址。");
+  await user.clear(origin); await user.type(origin, "http://192.168.1.3:8188");
+  await user.click(within(dialog).getByRole("button", { name: "查找本机 ComfyUI" }));
+  expect(within(dialog).getByRole("button", { name: editing ? "保存连接" : "添加连接" })).toBeInTheDocument();
+  const fill = await within(dialog).findByRole("button", { name: "填入地址" });
+  expect(origin).toHaveValue("http://192.168.1.3:8188"); await user.click(fill);
+  expect(origin).toHaveValue("http://192.168.65.254:8188"); expect(name).toHaveValue("Draft Comfy"); expect(writes).toEqual([]);
+});
+
+it("keeps the current ComfyUI graph when an old output type's preview finishes", async () => {
+  const fixture = settingsFixture({ id: "comfy-1", name: "ComfyUI", platform: "COMFYUI", origin: "http://127.0.0.1:8188" });
+  fixture.connections[0]!.capabilities = [];
+  let previews = 0, releaseFirst = () => {};
+  const first = new Promise<void>((resolve) => { releaseFirst = resolve; });
+  server.use(
+    http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+    http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+    http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+    http.post("/api/v1/settings/media-connections/comfy-1/comfyui/preview", async () => {
+      if (++previews === 1) await first;
+      return HttpResponse.json(comfyGraph);
+    }),
+  );
+  const client = mount(), user = userEvent.setup();
+  await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
+  await user.click(await screen.findByRole("button", { name: "发布能力" }));
+  await selectValue(screen.getByRole("combobox", { name: "主输出类型" }), "COMFY_IMAGE_V1");
+  await user.upload(screen.getByLabelText("选择 API JSON 文件"), new File([JSON.stringify(comfyGraph)], "old.json", { type: "application/json" }));
+  await user.click(screen.getByRole("button", { name: "解析工作流" }));
+  await waitFor(() => expect(previews).toBe(1));
+  try {
+    await selectValue(screen.getByRole("combobox", { name: "主输出类型" }), "COMFY_VIDEO_V1");
+    await user.upload(screen.getByLabelText("选择 API JSON 文件"), new File([JSON.stringify(comfyGraph)], "current.json", { type: "application/json" }));
+    await user.click(screen.getByRole("button", { name: "解析工作流" }));
+    await user.click(await screen.findByRole("button", { name: /#14.*CustomGenerator/ }));
+    fireEvent.change(screen.getByLabelText("steps 的固定值"), { target: { value: "77" } });
+    expect(screen.getByLabelText("steps 的固定值")).toHaveValue(77);
+  } finally { await act(async () => releaseFirst()); }
+  await waitFor(() => expect(client.isMutating()).toBe(0));
+  expect(screen.getByRole("combobox", { name: "主输出类型" })).toHaveValue("COMFY_VIDEO_V1");
+  expect(screen.getByLabelText("steps 的固定值")).toHaveValue(77);
+  expect(previews).toBe(2);
+});
+
+it("keeps an explicitly reloaded ComfyUI baseline when its previous preview finishes", async () => {
+  const fixture = settingsFixture({ platform: "COMFYUI", name: "ComfyUI", origin: "http://127.0.0.1:8188" }, {
+    adapterId: "COMFY_VIDEO_V1", kind: "VIDEO_GENERATION", settings: { comfyWorkflow: comfyDefinition },
+  });
+  const latest = structuredClone(fixture), capability = latest.connections[0]!.capabilities[0]!;
+  capability.version = 5;
+  capability.settings.comfyWorkflow!.graph["14"]!.inputs.steps = 32;
+  let reads = 0, previews = 0, release = () => {};
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  server.use(
+    http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+    http.get("/api/v1/settings/media-connections", () => HttpResponse.json(++reads === 1 ? fixture : latest)),
+    http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+    http.post("/api/v1/settings/media-connections/openai-1/comfyui/preview", async () => {
+      previews++; await pending; return HttpResponse.json(comfyGraph);
+    }),
+  );
+  const client = mount(), user = userEvent.setup();
+  await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
+  await user.click(await screen.findByRole("button", { name: "编辑能力参数" }));
+  await user.click(screen.getByRole("button", { name: "1. 导入工作流" }));
+  await user.click(screen.getByRole("button", { name: "替换工作流并重新映射" }));
+  await waitFor(() => expect(previews).toBe(1));
+  try {
+    await act(async () => { await client.refetchQueries({ queryKey: ["settings", "media"], exact: true }); });
+    await user.click(await screen.findByRole("button", { name: "载入最新版本" }));
+  } finally { await act(async () => release()); }
+  await waitFor(() => expect(client.isMutating()).toBe(0));
+  await user.click(screen.getByRole("button", { name: "2. 节点与参数映射" }));
+  await user.click(screen.getByRole("button", { name: /#14.*CustomGenerator/ }));
+  expect(screen.getByLabelText("steps 的固定值")).toHaveValue(32);
+  await user.click(screen.getByRole("button", { name: "1. 导入工作流" }));
+  expect(JSON.parse((screen.getByLabelText("API JSON 内容") as HTMLTextAreaElement).value)["14"].inputs.steps).toBe(32);
 });

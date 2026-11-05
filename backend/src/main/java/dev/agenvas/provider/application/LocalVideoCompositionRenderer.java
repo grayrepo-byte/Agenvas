@@ -79,7 +79,10 @@ public class LocalVideoCompositionRenderer {
                     + ",fade=t=out:st=" + decimal(shot.frames() / (double) VideoCompositionPlanner.FPS - fadeMs / 1000.0)
                     + ":d=" + seconds(fadeMs);
             graph.add("[" + videoIndex + ":v:0]trim=start=" + seconds(shot.sourceStartMs()) + ":duration=" + seconds(shot.sourceDurationMs())
-                    + ",setpts=(PTS-STARTPTS)/" + decimal(shot.speed()) + ",fps=30,scale=" + outputSettings.width() + ":" + outputSettings.height()
+                    // FPS conversion can round a shot upward. Bound each shot before concat,
+                    // otherwise the final total-frame limit trims later shots and shifts cuts.
+                    + ",setpts=(PTS-STARTPTS)/" + decimal(shot.speed()) + ",fps=30,trim=end_frame=" + shot.frames()
+                    + ",setpts=PTS-STARTPTS,scale=" + outputSettings.width() + ":" + outputSettings.height()
                     + ":force_original_aspect_ratio=decrease:force_divisible_by=2,pad=" + outputSettings.width() + ":" + outputSettings.height()
                     + ":(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p" + fade + "[v" + shotIndex + "]");
             if (keepOriginal && sourceHasAudio.get(shotIndex)) {

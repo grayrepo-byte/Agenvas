@@ -7,6 +7,7 @@ import { MemoryRouter,Route,Routes } from "react-router";
 import { beforeEach,describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { Agent,CanvasCommand,CanvasEditRequest,CanvasItem,CreateRunRequest,ProjectSnapshot } from "../../shared/api/client";
+import { setLocale, t } from "../../shared/i18n";
 import { changeControl } from "../../test/controls";
 import { imageFunctionSettings } from "../../test/imageFunctionsFixture";
 import { server } from "../../test/server";
@@ -49,6 +50,27 @@ async function openLocalUpload(user: ReturnType<typeof userEvent.setup>) {
 }
 
 const imageVersionId = "11111111-1111-4111-8111-111111111111";
+
+let projectName = "Workspace snapshot";
+let readCanvasItems: () => CanvasItem[] = () => [];
+let readConnections: () => ProjectSnapshot["connections"] = () => [];
+const fixtureProject = (id: string): ProjectSnapshot["project"] => ({ id, name: projectName,
+  status: "ACTIVE", aspectRatio: "LANDSCAPE_16_9", version: 0,
+  createdAt: "2026-09-23T00:00:00Z", updatedAt: "2026-09-23T00:00:00Z" });
+
+/** The initial snapshot and subsequent GETs describe the same synthetic server state. */
+function projectProjection(name: string) {
+  projectName = name;
+  return http.get("/api/v1/projects/:projectId", ({ params }) => HttpResponse.json(fixtureProject(String(params.projectId))));
+}
+function canvasProjection(readItems: () => CanvasItem[]) {
+  readCanvasItems = readItems;
+  return http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: readItems() }));
+}
+function connectionsProjection(readItems: () => ProjectSnapshot["connections"]) {
+  readConnections = readItems;
+  return http.get("/api/v1/projects/:projectId/canvas/connections", () => HttpResponse.json({ items: readItems() }));
+}
 
 /** One persisted image artifact with an archived UPLOAD version. */
 function imageCard(): CanvasItem {
@@ -94,6 +116,9 @@ function measureCreationCanvas() {
 
 describe("ProjectWorkspacePage", () => {
   beforeEach(() => {
+    projectName = "Workspace snapshot";
+    readCanvasItems = () => [];
+    readConnections = () => [];
     viewportProbe.center.mockClear();
     viewportProbe.instance = null;
     useCanvasStore.setState({ selectedIds: [], selectionMode: CANVAS_SELECTION_MODE.SINGLE,
@@ -141,17 +166,9 @@ describe("ProjectWorkspacePage", () => {
       http.get("/api/v1/projects/:projectId/usage", () => HttpResponse.json([])),
       http.get("/api/v1/projects/:projectId/snapshot", ({ params }) =>
         HttpResponse.json({
-        project: {
-          id: params.projectId,
-          name: "Workspace snapshot",
-          aspectRatio: "LANDSCAPE_16_9",
-          status: "ACTIVE",
-          version: 0,
-          createdAt: "2026-09-23T00:00:00Z",
-          updatedAt: "2026-09-23T00:00:00Z",
-          archivedAt: null,
-        },
-        canvas: { items: [] },
+        project: fixtureProject(String(params.projectId)),
+        canvas: { items: readCanvasItems() },
+        connections: readConnections(),
         director: null,
         activeRun: null,
         activeTasks: [],
@@ -168,8 +185,8 @@ describe("ProjectWorkspacePage", () => {
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
-      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Creation project", status: "ACTIVE" })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
+      projectProjection("Creation project"),
+      canvasProjection(() => []),
       http.post("/api/v1/projects/:projectId/artifacts", async ({ request }) => {
         creates(await request.json());
         return HttpResponse.json({ id: "created-artifact" }, { status: 201 });
@@ -210,8 +227,8 @@ describe("ProjectWorkspacePage", () => {
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
-      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Director project", status: "ACTIVE" })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: placed ? [placed] : [] })),
+      projectProjection("Director project"),
+      canvasProjection(() => placed ? [placed] : []),
       http.post("/api/v1/projects/:projectId/artifacts", async ({ request }) => {
         expect(await request.json()).toEqual({ kind: "IMAGE", title: "3D 导演台", content: null });
         return HttpResponse.json({ id: "director-artifact" }, { status: 201 });
@@ -252,8 +269,8 @@ describe("ProjectWorkspacePage", () => {
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
-      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Creation project", status: "ACTIVE" })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
+      projectProjection("Creation project"),
+      canvasProjection(() => []),
       http.post("/api/v1/projects/:projectId/artifacts", async ({ request }) => {
         creates(await request.json());
         return HttpResponse.json({ id: "created-artifact" }, { status: 201 });
@@ -286,8 +303,8 @@ describe("ProjectWorkspacePage", () => {
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
-      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Creation project", status: "ACTIVE" })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
+      projectProjection("Creation project"),
+      canvasProjection(() => []),
       http.post("/api/v1/projects/:projectId/artifacts", async ({ request }) => {
         writes(await request.json());
         return HttpResponse.json({ id: "created-artifact" }, { status: 201 });
@@ -326,8 +343,8 @@ describe("ProjectWorkspacePage", () => {
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
-      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Feedback project", status: "ACTIVE" })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
+      projectProjection("Feedback project"),
+      canvasProjection(() => []),
       http.post("/api/v1/projects/:projectId/artifacts", () => {
         attempts++;
         return HttpResponse.json({ code: "ARTIFACT_CREATE_FAILED", title: "合成创建错误", detail: "合成创建错误", retryable: false }, { status: 422, headers: { "Content-Type": "application/problem+json" } });
@@ -355,8 +372,8 @@ describe("ProjectWorkspacePage", () => {
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
-      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Feedback project", status: "ACTIVE" })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [audio] })),
+      projectProjection("Feedback project"),
+      canvasProjection(() => [audio]),
       http.get("/api/v1/projects/project-1/assets/asset-id/content", () => HttpResponse.error()),
       http.put("/api/v1/projects/:projectId/director", () => HttpResponse.json({ code: "AGENT_CREATE_FAILED", title: "合成对话错误", detail: "合成对话错误", retryable: false }, { status: 422, headers: { "Content-Type": "application/problem+json" } })),
     );
@@ -393,12 +410,12 @@ describe("ProjectWorkspacePage", () => {
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
-      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Composition project", status: "ACTIVE" })),
+      projectProjection("Composition project"),
       http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({
         project: { id: "project-1", name: "Composition project", status: "ACTIVE" }, canvas: { items },
         connections: [], director: null, activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0,
       })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items })),
+      canvasProjection(() => items),
       http.put("/api/v1/projects/:projectId/director", () => { creates(); return HttpResponse.json(agent); }),
       http.post("/api/v1/projects/:projectId/runs/preflight", () => HttpResponse.json({
         agentId: agent.id, agentVersion: agent.version, agentName: agent.name, agentInstruction: agent.instruction,
@@ -439,13 +456,13 @@ describe("ProjectWorkspacePage", () => {
     useCanvasStore.setState({ selectedIds: items.map((item) => item.id), selectionMode: CANVAS_SELECTION_MODE.MULTIPLE });
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
-      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Composition project", status: "ACTIVE" })),
+      projectProjection("Composition project"),
       http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({
         project: { id: "project-1", name: "Composition project", status: "ACTIVE" }, canvas: { items },
         connections: [], director: null, activeRun: state === "busy" ? { id: "busy-run", status: "RUNNING" } : null,
         activeTasks: [], unknownTasks: [], snapshotSeq: 0,
       })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items })),
+      canvasProjection(() => items),
     );
     render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1"]}>
       <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
@@ -464,12 +481,12 @@ describe("ProjectWorkspacePage", () => {
     const creates = vi.fn(); const commands = vi.fn(); const runs = vi.fn();
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
-      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Audio project", status: "ACTIVE" })),
+      projectProjection("Audio project"),
       http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({
         project: { id: "project-1", name: "Audio project", status: "ACTIVE" }, canvas: { items: [audio] },
         connections: [], director: agent, activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0,
       })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [audio] })),
+      canvasProjection(() => [audio]),
       http.get("/api/v1/projects/project-1/assets/asset-id/content", () => HttpResponse.error()),
       http.put("/api/v1/projects/:projectId/director", () => { creates(); return HttpResponse.json(agent); }),
       http.post("/api/v1/projects/:projectId/canvas/commands", () => { commands(); return HttpResponse.json({ items: [audio] }); }),
@@ -495,8 +512,8 @@ describe("ProjectWorkspacePage", () => {
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
-      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Director project", status: "ACTIVE" })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
+      projectProjection("Director project"),
+      canvasProjection(() => []),
       http.put("/api/v1/projects/:projectId/director", async ({ request }) => {
         requests.push(await request.text());
         if (requests.length === 1) return HttpResponse.error();
@@ -535,13 +552,13 @@ describe("ProjectWorkspacePage", () => {
     useCanvasStore.setState({ selectedIds: [image.id] });
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
-      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Legacy project", status: "ACTIVE" })),
+      projectProjection("Legacy project"),
       http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({
         project: { id: "project-1", name: "Legacy project", status: "ACTIVE" }, canvas: { items: [image] },
         director: directorExists ? agent : null, activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0,
       })),
       http.put("/api/v1/projects/:projectId/director", () => { ensures(); return HttpResponse.json(agent); }),
-      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [image] })),
+      canvasProjection(() => [image]),
       http.get("/api/v1/settings/media-functions", () => HttpResponse.json(imageFunctionSettings("image-model"))),
     );
     render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1?skillId=skill-1&skillVersionId=version-1"]}>
@@ -570,12 +587,12 @@ describe("ProjectWorkspacePage", () => {
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
-      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Director history project", status: "ACTIVE" })),
+      projectProjection("Director history project"),
       http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({
         project: { id: "project-1", name: "Director history project", status: "ACTIVE" }, canvas: { items: [] },
         director, activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0,
       })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
+      canvasProjection(() => []),
       http.put("/api/v1/projects/:projectId/director", () => { creates(); return HttpResponse.json(director); }),
       http.get("/api/v1/projects/:projectId/agents/:agentId/conversations", ({ params }) => {
         sessionReads(params.agentId);
@@ -612,12 +629,12 @@ describe("ProjectWorkspacePage", () => {
       profileKey: "creator", profileVersion: 1, version: 0, createdAt: now, updatedAt: now };
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
-      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Managed canvas", status: "ACTIVE" })),
+      projectProjection("Managed canvas"),
       http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({
         project: { id: "project-1", name: "Managed canvas", status: "ACTIVE" }, canvas: { items: [] },
         connections: [], director, activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0,
       })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
+      canvasProjection(() => []),
     );
     const requests = vi.spyOn(globalThis, "fetch");
     try {
@@ -644,9 +661,8 @@ describe("ProjectWorkspacePage", () => {
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({
         id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" })),
-      http.get("/api/v1/projects/:projectId", () =>
-        HttpResponse.json({ id: "project-1", name: "Text project", status: "ACTIVE" })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items })),
+      projectProjection("Text project"),
+      canvasProjection(() => items),
       http.get("/api/v1/auth/csrf", () =>
         HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
       http.post("/api/v1/projects/:projectId/artifacts", async ({ request }) => {
@@ -719,11 +735,8 @@ describe("ProjectWorkspacePage", () => {
       http.get("/api/v1/auth/me", () => HttpResponse.json({
         id: crypto.randomUUID(), loginName: "admin", role: "ADMIN",
       })),
-      http.get("/api/v1/projects/:projectId", ({ params }) => HttpResponse.json({
-        id: params.projectId, name: "Draft project", status: "ACTIVE",
-      })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () =>
-        HttpResponse.json({ items: [] })),
+      projectProjection("Draft project"),
+      canvasProjection(() => []),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({
         headerName: "X-XSRF-TOKEN", token: "test-token",
       })),
@@ -815,11 +828,12 @@ describe("ProjectWorkspacePage", () => {
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
-      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Arrange project", status: "ACTIVE" })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: reverseResponse ? [...items].reverse() : items })),
-      http.get("/api/v1/projects/:projectId/canvas/connections", () => HttpResponse.json({ items:
+      projectProjection("Arrange project"),
+      canvasProjection(() => reverseResponse ? [...items].reverse() : items),
+      connectionsProjection(() =>
         items.slice(1).map((item, index) => ({ id: `edge-${index}`, sourceCanvasItemId: `card-${index}`,
-          targetCanvasItemId: item.id, sourceArtifactVersionId: "text-v2", relationType: "MEDIA_DERIVATION" })) })),
+          targetCanvasItemId: item.id, sourceArtifactVersionId: "text-v2", relationType: "MEDIA_DERIVATION",
+          projectId: "project-1", version: 0, createdAt: "2026-09-23T00:00:00Z", updatedAt: "2026-09-23T00:00:00Z" }))),
       http.post("/api/v1/projects/:projectId/canvas/edits", async ({ request }) => {
         const input = await request.json() as CanvasEditRequest;
         expect(input).toMatchObject({ operation: "DISPLAY", commandId: expect.any(String) });
@@ -918,11 +932,8 @@ describe("ProjectWorkspacePage", () => {
       http.get("/api/v1/auth/me", () => HttpResponse.json({
         id: crypto.randomUUID(), loginName: "admin", role: "ADMIN",
       })),
-      http.get("/api/v1/projects/:projectId", ({ params }) => HttpResponse.json({
-        id: params.projectId, name: "Menu project", status: "ACTIVE",
-      })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () =>
-        HttpResponse.json({ items: [] })),
+      projectProjection("Menu project"),
+      canvasProjection(() => []),
     );
     const user = userEvent.setup();
     render(<QueryClientProvider client={createQueryClient()}>
@@ -947,8 +958,8 @@ describe("ProjectWorkspacePage", () => {
     server.use(
       http.get("/api/v1/settings/media-functions", () => HttpResponse.json(imageFunctionSettings("image-model"))),
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
-      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Smart edit project", status: "ACTIVE" })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [imageCard()] })),
+      projectProjection("Smart edit project"),
+      canvasProjection(() => [imageCard()]),
       http.get("/api/v1/settings/media-connections", () => HttpResponse.json({ connections: [{
         id: "image-provider", name: "Image provider", platform: "OPENAI", enabled: true, version: 0,
         capabilities: [{ id: "image-model", name: "Image model", enabled: true, version: 0,
@@ -983,11 +994,8 @@ describe("ProjectWorkspacePage", () => {
       http.get("/api/v1/auth/me", () => HttpResponse.json({
         id: crypto.randomUUID(), loginName: "admin", role: "ADMIN",
       })),
-      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({
-        id: "project-1", name: "Close project", status: "ACTIVE",
-      })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () =>
-        HttpResponse.json({ items: [textCard()] })),
+      projectProjection("Close project"),
+      canvasProjection(() => [textCard()]),
       http.get("/api/v1/projects/:projectId/artifacts/:artifactId/text-generations", () =>
         HttpResponse.json([])),
     );
@@ -1018,11 +1026,8 @@ describe("ProjectWorkspacePage", () => {
       http.get("/api/v1/auth/me", () => HttpResponse.json({
         id: crypto.randomUUID(), loginName: "admin", role: "ADMIN",
       })),
-      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({
-        id: "project-1", name: "Text project", status: "ACTIVE",
-      })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () =>
-        HttpResponse.json({ items: [textCard()] })),
+      projectProjection("Text project"),
+      canvasProjection(() => [textCard()]),
       http.get("/api/v1/settings/llm", () => HttpResponse.json({ configured: true,
         version: 2, endpoint: "https://model.example/v1", modelId: "text-model",
         keyMask: "****", toolCallingVerified: false, updatedAt: "2026-09-27T00:00:00Z" })),
@@ -1072,10 +1077,8 @@ describe("ProjectWorkspacePage", () => {
       server.use(
         http.get("/api/v1/auth/me", () =>
           HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" })),
-        http.get("/api/v1/projects/:projectId", ({ params }) =>
-          HttpResponse.json({ id: params.projectId, name: "SSE project", status: "ACTIVE" })),
-        http.get("/api/v1/projects/:projectId/canvas/items", () =>
-          HttpResponse.json({ items: [] })),
+        projectProjection("SSE project"),
+        canvasProjection(() => []),
         http.get("/api/v1/projects/:projectId/snapshot", ({ params }) => {
           snapshotReads++;
           return HttpResponse.json({
@@ -1190,10 +1193,8 @@ describe("ProjectWorkspacePage", () => {
     server.use(
       http.get("/api/v1/auth/me", () =>
         HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" })),
-      http.get("/api/v1/projects/:projectId", ({ params }) =>
-        HttpResponse.json({ id: params.projectId, name: "Reference project", status: "ACTIVE" })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () =>
-        HttpResponse.json({ items: [] })),
+      projectProjection("Reference project"),
+      canvasProjection(() => []),
       http.get("/api/v1/auth/csrf", () =>
         HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
       http.post("/api/v1/projects/:projectId/artifacts", async ({ request }) => {
@@ -1268,10 +1269,8 @@ describe("ProjectWorkspacePage", () => {
     server.use(
       http.get("/api/v1/auth/me", () =>
         HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" })),
-      http.get("/api/v1/projects/:projectId", ({ params }) =>
-        HttpResponse.json({ id: params.projectId, name: "Reference project", status: "ACTIVE" })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () =>
-        HttpResponse.json({ items: [] })),
+      projectProjection("Reference project"),
+      canvasProjection(() => []),
       http.get("/api/v1/auth/csrf", () =>
         HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
       http.post("/api/v1/projects/:projectId/artifacts", async ({ request }) => {
@@ -1339,10 +1338,8 @@ describe("ProjectWorkspacePage", () => {
     server.use(
       http.get("/api/v1/auth/me", () =>
         HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" })),
-      http.get("/api/v1/projects/:projectId", ({ params }) =>
-        HttpResponse.json({ id: params.projectId, name: "Reference project", status: "ACTIVE" })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () =>
-        HttpResponse.json({ items: [] })),
+      projectProjection("Reference project"),
+      canvasProjection(() => []),
       http.get("/api/v1/auth/csrf", () =>
         HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
       http.post("/api/v1/projects/:projectId/artifacts", () => {
@@ -1386,9 +1383,8 @@ describe("ProjectWorkspacePage", () => {
     server.use(
       http.get("/api/v1/auth/me", () =>
         HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" })),
-      http.get("/api/v1/projects/:projectId", ({ params }) =>
-        HttpResponse.json({ id: params.projectId, name: "Reference project", status: "ACTIVE" })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
+      projectProjection("Reference project"),
+      canvasProjection(() => []),
       http.get("/api/v1/auth/csrf", () =>
         HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
       http.post("/api/v1/projects/:projectId/artifacts", ({ request }) => {
@@ -1448,18 +1444,19 @@ describe("ProjectWorkspacePage", () => {
   it.each(["artifact", "placement"])("reuses the text creation intent after an uncertain %s response", async (stage) => {
     const artifactId = crypto.randomUUID();
     const keys: string[] = [];
+    const requests: unknown[] = [];
     const placements: unknown[] = [];
     let placedItemId: string | undefined;
     server.use(
       http.get("/api/v1/auth/me", () =>
         HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" })),
-      http.get("/api/v1/projects/:projectId", ({ params }) =>
-        HttpResponse.json({ id: params.projectId, name: "Text project", status: "ACTIVE" })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
+      projectProjection("Text project"),
+      canvasProjection(() => []),
       http.get("/api/v1/auth/csrf", () =>
         HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
-      http.post("/api/v1/projects/:projectId/artifacts", ({ request }) => {
+      http.post("/api/v1/projects/:projectId/artifacts", async ({ request }) => {
         keys.push(request.headers.get("Idempotency-Key") ?? "");
+        requests.push(await request.json());
         if (stage === "artifact" && keys.length === 1) return HttpResponse.error();
         return HttpResponse.json({ id: artifactId }, { status: 201 });
       }),
@@ -1484,13 +1481,45 @@ describe("ProjectWorkspacePage", () => {
     await user.click(screen.getByRole("option", { name: "文字" }));
     await screen.findByRole("alert");
     expect(screen.queryByRole("complementary", { name: "创作工具" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "重试创建文字节点" }));
+    act(() => { setLocale("en"); });
+    await user.click(screen.getByRole("button", { name: t("canvas.workspace.retryCreateText") }));
     await waitFor(() => expect(placedItemId).toBeTruthy());
     expect(keys).toHaveLength(stage === "artifact" ? 2 : 1);
     expect(keys[0]).toBeTruthy();
-    if (stage === "artifact") expect(keys[1]).toBe(keys[0]);
+    if (stage === "artifact") {
+      expect(keys[1]).toBe(keys[0]);
+      expect(requests[1]).toEqual(requests[0]);
+    }
     if (stage === "placement") expect(placements[1]).toEqual(placements[0]);
     expect(placedItemId).toBeTruthy();
+  });
+
+  it.each(["图片", "视频", "音频"])("retries blank %s creation with its original title after changing language", async (label) => {
+    const requests: { key: string | null; body: unknown }[] = [];
+    let placements = 0;
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+      projectProjection("Creation project"),
+      canvasProjection(() => []),
+      http.post("/api/v1/projects/:projectId/artifacts", async ({ request }) => {
+        requests.push({ key: request.headers.get("Idempotency-Key"), body: await request.json() });
+        return requests.length === 1 ? HttpResponse.error() : HttpResponse.json({ id: "created-artifact" }, { status: 201 });
+      }),
+      http.post("/api/v1/projects/:projectId/canvas/commands", () => { placements++; return HttpResponse.json({ items: [] }); }),
+    );
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1"]}>
+      <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+    </MemoryRouter></QueryClientProvider>);
+    const types = await screen.findByRole("group", { name: "添加卡片" });
+    await user.click(within(types).getByRole("button", { name: label }));
+    await screen.findByRole("alert");
+    act(() => { setLocale("ja"); });
+    await user.click(screen.getByRole("button", { name: t("common.retry") }));
+    await waitFor(() => expect(placements).toBe(1));
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toEqual(requests[0]);
   });
 
   it("keeps the card while Delete edits a focused text input", async () => {
@@ -1498,21 +1527,8 @@ describe("ProjectWorkspacePage", () => {
       http.get("/api/v1/auth/me", () =>
         HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" }),
       ),
-      http.get("/api/v1/projects/:projectId", ({ params }) =>
-        HttpResponse.json({
-          id: params.projectId,
-          name: "Canvas test",
-          aspectRatio: "LANDSCAPE_16_9",
-          status: "ACTIVE",
-          version: 0,
-          createdAt: "2026-09-23T00:00:00Z",
-          updatedAt: "2026-09-23T00:00:00Z",
-          archivedAt: null,
-        }),
-      ),
-      http.get("/api/v1/projects/:projectId/canvas/items", () =>
-        HttpResponse.json({
-          items: [
+      projectProjection("Canvas test"),
+      canvasProjection(() => [
             {
               id: crypto.randomUUID(),
               subjectType: "ARTIFACT",
@@ -1547,9 +1563,7 @@ describe("ProjectWorkspacePage", () => {
                 },
               },
                       },
-          ],
-        }),
-      ),
+          ]),
     );
     const user = userEvent.setup();
     render(
@@ -1593,9 +1607,8 @@ describe("ProjectWorkspacePage", () => {
           updatedAt: "2026-09-23T00:00:00Z", input: { privatePrompt: "not for UI" } }],
         snapshotSeq: 1,
       })),
-      http.get("/api/v1/projects/:projectId", ({ params }) =>
-        HttpResponse.json({ id: params.projectId, name: "Unknown test" })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
+      projectProjection("Unknown test"),
+      canvasProjection(() => []),
       http.get("/api/v1/projects/:projectId/tasks/:taskId/attempts", () => {
         attemptReads += 1;
         return HttpResponse.json([]);
@@ -1632,10 +1645,8 @@ describe("ProjectWorkspacePage", () => {
           activeRun: { id: "run-1", agentInstanceId: "hidden-agent", status },
           activeTasks: [], unknownTasks: [], snapshotSeq: 1,
         })),
-        http.get("/api/v1/projects/:projectId", () => HttpResponse.json({
-          id: "project-1", name: "Hidden Agent", status: "ACTIVE",
-        })),
-        http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
+        projectProjection("Hidden Agent"),
+        canvasProjection(() => []),
         http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () => {
           detailReads++;
           return HttpResponse.json([]);
@@ -1675,8 +1686,8 @@ describe("ProjectWorkspacePage", () => {
         project: { id: "project-1", name: "Original project", status: "ACTIVE" }, canvas: { items: [] },
         connections: [], director: agent, activeRun, activeTasks: [], unknownTasks: [], snapshotSeq: 1,
       })),
-      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Original project", status: "ACTIVE" })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
+      projectProjection("Original project"),
+      canvasProjection(() => []),
       http.put("/api/v1/projects/:projectId/director", () => { creates(); return HttpResponse.json(agent); }),
       http.post("/api/v1/projects/:projectId/canvas/commands", () => { commands(); return HttpResponse.json({ items: [] }); }),
     );
@@ -1707,18 +1718,7 @@ describe("ProjectWorkspacePage", () => {
       http.get("/api/v1/auth/me", () =>
         HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" }),
       ),
-      http.get("/api/v1/projects/:projectId", ({ params }) =>
-        HttpResponse.json({
-          id: params.projectId,
-          name: "Agent canvas",
-          aspectRatio: "LANDSCAPE_16_9",
-          status: "ACTIVE",
-          version: 0,
-          createdAt: "2026-09-23T00:00:00Z",
-          updatedAt: "2026-09-23T00:00:00Z",
-          archivedAt: null,
-        }),
-      ),
+      projectProjection("Agent canvas"),
       http.get("/api/v1/auth/csrf", () =>
         HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" }),
       ),
@@ -1785,7 +1785,7 @@ describe("ProjectWorkspacePage", () => {
         updated = body.name === "Agent Beta" && body.instruction === "Updated instruction";
         return HttpResponse.json(agent(updated));
       }),
-      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
+      canvasProjection(() => []),
     );
     function agent(isUpdated: boolean) {
       return {
@@ -1860,23 +1860,20 @@ describe("ProjectWorkspacePage", () => {
     const assetId = crypto.randomUUID();
     const artifactId = crypto.randomUUID();
     const versionId = crypto.randomUUID();
-    const selectedVersion = {
+    const selectedVersion: NonNullable<CanvasItem["selectedVersion"]> = {
       id: versionId, versionNo: 1, schemaVersion: 1,
       content: { assetId, prompt: "Ridge sunrise",
         workflowVersion: "mock-image-v1", sourceTaskId: crypto.randomUUID(),
         parameters: { mock: true, displayLabel: "演示素材" } },
       inputReferences: [], createdByKind: "TASK", runId: crypto.randomUUID(),
       createdAt: "2026-09-23T00:00:00Z",
-    } as const;
+    };
     server.use(
       http.get("/api/v1/auth/me", () =>
         HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" }),
       ),
-      http.get("/api/v1/projects/:projectId", ({ params }) =>
-        HttpResponse.json({ id: params.projectId, name: "Image canvas", status: "ACTIVE" }),
-      ),
-      http.get("/api/v1/projects/:projectId/canvas/items", () =>
-        HttpResponse.json({ items: [{
+      projectProjection("Image canvas"),
+      canvasProjection(() => [{
           id: crypto.randomUUID(), subjectType: "ARTIFACT", subjectId: artifactId,
           title: "Demo still",
           x: 10, y: 10, width: 300, height: 300, zIndex: 0, groupId: crypto.randomUUID(),
@@ -1887,8 +1884,7 @@ describe("ProjectWorkspacePage", () => {
             createdAt: "2026-09-23T00:00:00Z", updatedAt: "2026-09-23T00:00:00Z",
             resourceDefaultVersion: selectedVersion,
           },
-        }] }),
-      ),
+        }]),
     );
     render(
       <QueryClientProvider client={createQueryClient()}>
@@ -1914,23 +1910,20 @@ describe("ProjectWorkspacePage", () => {
     const assetId = crypto.randomUUID();
     const artifactId = crypto.randomUUID();
     const versionId = crypto.randomUUID();
-    const selectedVersion = {
+    const selectedVersion: NonNullable<CanvasItem["selectedVersion"]> = {
       id: versionId, versionNo: 1, schemaVersion: 1,
       content: { assetId, prompt: "Coffee",
         workflowVersion: "mock-video-v1", sourceTaskId: crypto.randomUUID(),
         parameters: { mock: true } },
       inputReferences: [], createdByKind: "TASK", runId: crypto.randomUUID(),
       createdAt: "2026-09-23T00:00:00Z",
-    } as const;
+    };
     server.use(
       http.get("/api/v1/auth/me", () =>
         HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" }),
       ),
-      http.get("/api/v1/projects/:projectId", ({ params }) =>
-        HttpResponse.json({ id: params.projectId, name: "Video canvas", status: "ACTIVE" }),
-      ),
-      http.get("/api/v1/projects/:projectId/canvas/items", () =>
-        HttpResponse.json({ items: [{
+      projectProjection("Video canvas"),
+      canvasProjection(() => [{
           id: crypto.randomUUID(), subjectType: "ARTIFACT", subjectId: artifactId,
           title: "Demo clip",
           x: 10, y: 10, width: 300, height: 300, zIndex: 0, groupId: null,
@@ -1941,8 +1934,7 @@ describe("ProjectWorkspacePage", () => {
             createdAt: "2026-09-23T00:00:00Z", updatedAt: "2026-09-23T00:00:00Z",
             resourceDefaultVersion: selectedVersion,
           },
-        }] }),
-      ),
+        }]),
     );
     render(
       <QueryClientProvider client={createQueryClient()}>

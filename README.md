@@ -72,7 +72,7 @@ These integrations are implemented in Agenvas. Available models, parameters, and
 | Alibaba Cloud OSS | Media archiving and media relay |
 | Tencent Cloud COS | Media archiving and media relay |
 | Amazon S3 / S3-compatible object storage | Media archiving and media relay through configurable S3 endpoints |
-| SMB2/3 / HTTPS WebDAV | Remote media archiving; media relay uses an object store |
+| SMB2/3 / HTTP(S) WebDAV | Remote media archiving; media relay uses an object store |
 | MCP-compatible clients | External agents connect to Agenvas through Streamable HTTP and user tokens to use canvas, text, and media tools |
 
 ## Quick start
@@ -136,9 +136,15 @@ Open **<http://127.0.0.1:8088/setup>** locally, or `http://<server-ip>:8088/setu
 - **Images, video, and audio**: Create connections, publish capabilities, and choose default models in media settings. The default deployment requires real model configuration before generating media.
 - **External agents / MCP**: Create a user token under system settings → account security. Connect a Streamable HTTP client to your site’s `/mcp` endpoint (locally, `http://127.0.0.1:8088/mcp`) and configure `Authorization: Bearer <token>` in the client.
 
+For **Ollama and other local OpenAI-compatible servers**, follow the [local model connection guide](docs/ollama-local.md). Public and private HTTP endpoints are allowed by default; see the [address and plaintext-credential policy](docs/http-endpoints.md). HTTP can expose API keys and content in transit; `127.0.0.1` inside Docker refers to the container. Use a placeholder of at least eight characters, such as `ollama-local`, for a server that ignores API keys. Set both the serving model's context and the [Director Settings budget](docs/agent-context-safety.md) to compatible values; passing the tool diagnostic does not prove that a full Agent request fits.
+
+In the existing model connection settings, choose a metadata provider and **Read model list** to fill available limits, or confirm them manually. Missing capacity stays unknown; OpenAI-compatible lists often supply names only. Ollama automatic mode uses loaded context rather than its theoretical maximum and never downloads or loads weights. The default application ceiling is 32,768 tokens, with a 4,096 response reserve; confirmed connection limits can reduce it. Existing installations must confirm capacity before new model work; saved custom settings and frozen requests are retained. See [capacity and upgrade guidance](docs/agent-context-safety.md).
+
+Use the host-service discovery control in model or ComfyUI settings to check a standard service and explicitly fill its permitted address; manual configuration remains available. See [host-service discovery](docs/local-service-discovery.md) for its fixed scope and platform limits.
+
 Create a project and use the canvas context menu to add cards or upload media. Select a model, enter a prompt and references, check the estimated cost, and run. Preview, select, or regenerate results. Open director chat in the bottom-right corner to use a project assistant that reads and works with the current canvas on demand. Select nodes to highlight the focus of your request. Map required Skill inputs to exact versions of canvas content, then approve or reject media proposals as a batch in the conversation. No Agent canvas node or persistent material binding is needed.
 
-The media relay can be enabled separately for OpenAI-compatible LLM image inputs and OpenAI Images references/masks; when disabled, the original transfer method is retained. Local video references for Seedance and MiniMax H3 require a publicly accessible relay. In storage settings, add an OSS, COS, or S3 connection with a publicly reachable HTTPS endpoint, then select it for media relay. Permanent media archiving can remain local.
+The media relay can be enabled separately for OpenAI-compatible LLM image inputs and OpenAI Images references/masks; when disabled, the original transfer method is retained. Local video references for Seedance and MiniMax H3 require a publicly accessible relay. In storage settings, add an OSS, COS, or S3 connection with a publicly reachable HTTP or HTTPS endpoint (the receiving provider may require HTTPS), then select it for media relay. Permanent media archiving can remain local.
 
 > UNKNOWN results require an explicit retry, which may incur duplicate costs. Cancellation does not guarantee that an external service stops or refunds charges. Project manifests contain data and media metadata; they do not replace database and media file backups.
 
@@ -155,10 +161,12 @@ Run the following commands from the directory containing `docker-compose.yml` (c
 
 > Back up the database, media, configuration, and encryption secrets before updating. **Do not run `docker compose down -v`**: it deletes data and secrets.
 
+Third-party prompt synchronization is **off by default** for both new and upgraded installations. In third-party template source management, enable automatic synchronization and save to refresh enabled sources every 24 hours. Sources fetch public content from `raw.githubusercontent.com` and `imagepromptgallery.com`. Disabling stops new scheduled source claims; a download already accepted may finish. Existing source settings and cached prompts are retained, and explicit manual synchronization remains available. The operator can additionally disable scheduling with `AGENVAS_PROMPT_SYNC_ENABLED: "false"` in the server Compose environment. See [prompt sources and network access](docs/prompt-sources.md).
+
 <details>
 <summary><strong>Ports, image versions, and public deployment</strong></summary>
 
-- The default `docker-compose.yml` publishes only Web `8088` on `0.0.0.0`, allowing access through the server IP. API `8080` and PostgreSQL `5432` use the internal container network and are not published to the host. Source and Mock Compose files retain all three ports on loopback for development. If the Web port is in use, change the host port in `ports`.
+- The default `docker-compose.yml` publishes only Web `8088` on `0.0.0.0`, allowing access through the server IP. API `8080` and PostgreSQL `5432` use the internal container network and are not published to the host. `docker-compose.local.yml` publishes all three ports on all IPv4 interfaces and needs a controlled network. `deploy/compose.yaml` and `deploy/compose.dev.yaml` bind the three development ports to loopback. If the Web port is in use, change the host port in `ports`.
 - The default file pulls `docker.io/grayrepo/agenvas-server:latest`, `docker.io/grayrepo/agenvas-web:latest`, and the official `postgres:17.11-alpine` image. Application images support amd64 / arm64; no local compilation is required.
 - Application images are pulled on every `up`. To pin a version, replace `latest` with a published version, commit tag, or digest.
 - Each Compose file includes environment settings, ports, volumes, health checks, and resource limits; edit it directly without additional configuration files.

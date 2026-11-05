@@ -5,10 +5,10 @@ import { getLocale, setLocale, SUPPORTED_LOCALES } from "../../shared/i18n";
 describe("taskErrorMessages", () => {
   it("explains image safety blocks with the public code, category and moderation stage in every locale", () => {
     const expected = {
-      en: { reason: "safety check", input: "Input safety check", output: "Generated output safety check", category: "sexual content" },
-      zh: { reason: "安全检查", input: "输入内容安全检查", output: "生成结果安全检查", category: "性内容" },
-      ru: { reason: "проверкой безопасности", input: "Проверка входных данных", output: "Проверка результата генерации", category: "сексуальное содержимое" },
-      ja: { reason: "安全性チェック", input: "入力の安全性チェック", output: "生成結果の安全性チェック", category: "性的な内容" },
+      en: { reason: "safety check", input: "Input safety check", output: "Generated output safety check", category: "Sexual content" },
+      zh: { reason: "安全检查", input: "输入内容安全检查", output: "生成结果安全检查", category: "性内容（sexual）" },
+      ru: { reason: "проверкой безопасности", input: "Проверка входных данных", output: "Проверка результата генерации", category: "сексуальное содержимое (sexual)" },
+      ja: { reason: "安全性チェック", input: "入力の安全性チェック", output: "生成結果の安全性チェック", category: "性的な内容（sexual）" },
     };
     const previous = getLocale();
     try {
@@ -21,7 +21,6 @@ describe("taskErrorMessages", () => {
           expect(message, `${locale}: ${stage}`).toContain(expected[locale].reason);
           expect(message).toContain(expected[locale][stage]);
           expect(message).toContain("moderation_blocked");
-          expect(message).toContain("sexual");
           expect(message).toContain(expected[locale].category);
           expect(message).not.toContain("PRIVATE_UPSTREAM_MESSAGE");
           expect(message).not.toContain("RunningHub");
@@ -30,6 +29,8 @@ describe("taskErrorMessages", () => {
           expect(detail).toContain(expected[locale][stage]);
           expect(detail).toContain("moderation_blocked");
           expect(detail).toContain(expected[locale].category);
+          expect(detail).not.toContain("PRIVATE_UPSTREAM_MESSAGE");
+          expect(detail).not.toContain("RunningHub");
           expect(detail).not.toContain("OPENAI_IMAGE_MODERATION_BLOCKED");
         }
       }
@@ -103,6 +104,11 @@ describe("taskErrorMessages", () => {
     expect(taskErrorMessage(null)).toBeNull();
     expect(taskErrorMessage(undefined)).toBeNull();
     expect(taskErrorMessage("SOME_UNREGISTERED_CODE")).toBeNull();
+  });
+
+  it("maps incomplete model streams to a readable explicit retry explanation", () => {
+    expect(taskErrorMessage("LLM_STREAM_INCOMPLETE")).toContain("完成信号");
+    expect(taskErrorMessage("LLM_STREAM_INCOMPLETE")).toContain("不会自动重试");
   });
 
   /** 连接超时也走这个码，那时请求可能根本没发出去，措辞不能断言「已提交」。 */

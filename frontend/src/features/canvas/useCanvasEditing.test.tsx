@@ -4,6 +4,7 @@ import { http, HttpResponse } from "msw";
 import type { PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Canvas, CanvasEditReplayRequest, CanvasEditRequest, CanvasEditResponse, CanvasItem } from "../../shared/api/client";
+import { t } from "../../shared/i18n";
 import { server } from "../../test/server";
 import { useCanvasStore } from "./canvasStore";
 import { canvasItemPresentation, useCanvasEditing } from "./useCanvasEditing";
@@ -38,6 +39,34 @@ beforeEach(() => {
 });
 
 describe("canvas editing receipts over HTTP", () => {
+  it.each([false, true])("checks layout drafts only in the current project before undo/redo (current draft: %s)", async (currentProject) => {
+    const directions: string[] = [];
+    server.use(
+      http.post(URL, async ({ request }) => HttpResponse.json(response(await request.json() as CanvasEditRequest))),
+      http.post(`${URL}/:receiptId/replay`, async ({ params, request }) => {
+        const input = await request.json() as CanvasEditReplayRequest;
+        directions.push(input.direction);
+        return HttpResponse.json({ items: [item], groups: [], receipt: { id: params.receiptId, operation: "DISPLAY",
+          revision: directions.length, state: input.direction === "UNDO" ? "UNDONE" : "APPLIED" } });
+      }),
+    );
+    const { wrapper } = setup();
+    const { result } = renderHook(() => useCanvasEditing(PROJECT), { wrapper });
+    await act(async () => { await result.current.execute(display()); });
+    const draftId = currentProject ? item.id : "item-in-another-project";
+    act(() => useCanvasStore.getState().updateDraft(draftId, { x: 500 }));
+    const draft = useCanvasStore.getState().drafts[draftId];
+    if (currentProject) {
+      await act(async () => { await expect(result.current.replay("UNDO")).rejects.toThrow(t("canvas.edit.draftsPending")); });
+      expect(directions).toEqual([]);
+    } else {
+      await act(async () => { await result.current.replay("UNDO"); });
+      expect(result.current.canRedo).toBe(true);
+      await act(async () => { await result.current.replay("REDO"); });
+      expect(directions).toEqual(["UNDO", "REDO"]);
+    }
+    expect(useCanvasStore.getState().drafts[draftId]).toBe(draft);
+  });
   it("keeps pending feedback for a title edit and its undo", async () => {
     const pendingEdit = gate();
     const pendingUndo = gate();

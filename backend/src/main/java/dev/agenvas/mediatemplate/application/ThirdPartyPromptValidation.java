@@ -81,12 +81,12 @@ public final class ThirdPartyPromptValidation {
         urls.forEach(ThirdPartyPromptValidation::url);
     }
     private static void optionalUrl(String value) { if (value == null) throw invalid(); if (!value.isEmpty()) url(value); }
-    /** Only public HTTPS destinations can be used; the transport also pins checked DNS answers. */
+    /** Only public HTTP(S) destinations can be used; the transport also pins checked DNS answers. */
     public static URI url(String value) {
         try {
             URI uri = URI.create(value);
-            if (value.length() > 4096 || !"https".equals(uri.getScheme()) || uri.getHost() == null
-                    || uri.getUserInfo() != null || uri.getPort() != -1 && uri.getPort() != 443) throw invalid();
+            if (value.length() > 4096 || !("https".equals(uri.getScheme()) || "http".equals(uri.getScheme())) || uri.getHost() == null
+                    || uri.getUserInfo() != null || uri.getPort() == 0 || uri.getPort() > 65535) throw invalid();
             return uri;
         } catch (IllegalArgumentException | NullPointerException e) { throw invalid(); }
     }

@@ -200,11 +200,13 @@ public class StorageSettingsService {
     static String normalizeEndpoint(String requested) {
         try {
             URI uri = URI.create(requested == null ? "" : requested.trim());
-            if (!"https".equals(uri.getScheme()) || uri.getHost() == null
+            if (!("https".equals(uri.getScheme()) || "http".equals(uri.getScheme())) || uri.getHost() == null
+                    || uri.getHost().contains("%")
                     || uri.getUserInfo() != null || uri.getQuery() != null || uri.getFragment() != null
                     || !(uri.getPath().isEmpty() || uri.getPath().equals("/"))) throw invalid(ApiMessage.of("api.storage-settings-service.the-endpoint-must-be-an-https-address-without-path-credentials"));
+            dev.agenvas.shared.security.ServiceEndpointPolicy.dns(uri, okhttp3.Dns.SYSTEM, false);
             return uri.toString().replaceAll("/+$", "");
-        } catch (IllegalArgumentException failure) { throw invalid(ApiMessage.of("api.storage-settings-service.endpoint-format-is-invalid")); }
+        } catch (IllegalArgumentException | java.net.UnknownHostException failure) { throw invalid(ApiMessage.of("api.storage-settings-service.endpoint-format-is-invalid")); }
     }
 
     private String credentials(StorageProfile.Provider provider, String id, String secret) {

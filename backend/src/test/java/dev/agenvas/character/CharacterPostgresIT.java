@@ -7,6 +7,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup;
@@ -32,6 +33,9 @@ import dev.agenvas.task.application.DirectMediaTaskService;
 import dev.agenvas.testing.ImageAssetFixture;
 import java.math.BigDecimal;
 import java.nio.file.Path;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -40,6 +44,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.annotation.DirtiesContext;
@@ -54,9 +61,17 @@ import tools.jackson.databind.ObjectMapper;
 /** Real PostgreSQL verifies HTTP ownership, command replay, CAS and explicit shot review. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class, properties = {
+@SpringBootTest(classes = {AgenvasApplication.class, CharacterPostgresIT.NanosecondClockConfig.class}, properties = {
         "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class CharacterPostgresIT {
+    @TestConfiguration
+    static class NanosecondClockConfig {
+        @Bean @Primary Clock nanosecondClock() {
+            // Exercise database rounding on every platform, including millisecond-resolution clocks.
+            return Clock.offset(Clock.tickMillis(ZoneOffset.UTC), Duration.ofNanos(123));
+        }
+    }
+
     @TempDir static Path storage;
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     @DynamicPropertySource static void properties(DynamicPropertyRegistry registry) {
@@ -190,6 +205,102 @@ class CharacterPostgresIT {
                 .isInstanceOfSatisfying(ApiProblemException.class, error -> assertThat(error.code()).isEqualTo("CANVAS_ITEM_BUSY"));
         archiveRaceRejectsEveryNewMutation(ownerId);
         releaseOwnedSourceThenDisconnect(ownerId);
+        confirmationCommandsReplayWithoutDuplicateRevisions(ownerId);
+        applicationCommandsReplayWithoutOverwritingNewerDrafts(ownerId);
+    }
+
+    private void applicationCommandsReplayWithoutOverwritingNewerDrafts(UUID owner) throws Exception {
+        var project = projects.create(owner, "Synthetic application replay", Project.AspectRatio.SQUARE_1_1);
+        var portrait = image(owner, project.id(), "Synthetic portrait");
+        var shot = image(owner, project.id(), "Synthetic result");
+        UUID item = UUID.randomUUID(), character = UUID.randomUUID(), look = UUID.randomUUID();
+        canvas.apply(owner, project.id(), List.of(new CanvasService.PlaceArtifact(item, shot.artifact().id(),
+                BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("320"), new BigDecimal("240"), 0, null, false)));
+        var content = new CharacterContent("Replay character", "Synthetic identity", List.of(new CharacterLook(look,
+                "Main", "Blue coat", "Calm", "", List.of(new CharacterView(portrait.resourceDefaultVersion().id(), "Front", "")))), null);
+        characters.save(owner, project.id(), character, new SaveCharacter(UUID.randomUUID(), 0, content));
+        var before = drafts.save(owner, project.id(), item, 0, "Synthetic base", mapper.createObjectNode(), null,
+                null, null, List.of(), List.of(), null);
+        var selections = List.of(new CharacterBindingSelection(character, 1, look, true, false));
+        var preview = characters.preview(owner, project.id(), item,
+                new PreviewCharacterBindings(0, before.version(), selections, ClearMode.REMOVE_OWNED));
+        var command = new ApplyCharacterBindings(UUID.randomUUID(), 0, before.version(), selections,
+                ClearMode.REMOVE_OWNED, preview.previewHash());
+        long cursor = events.replayWindow(owner, project.id()).latestSequence();
+        var receipts = concurrentReplays(() -> characters.apply(owner, project.id(), item, command));
+        var applied = receipts.getFirst();
+        assertThat(applied).isEqualTo(receipts.getLast());
+        assertThat(applied.draft().version()).isEqualTo(before.version() + 1);
+        assertThat(applied.binding().version()).isEqualTo(1);
+        assertThat(events.listAfter(owner, project.id(), cursor, 10)).extracting(event -> event.type())
+                .containsExactly("media.draft.changed", "character.bindings.changed");
+        var clearPreview = characters.preview(owner, project.id(), item, new PreviewCharacterBindings(
+                applied.binding().version(), applied.draft().version(), List.of(), ClearMode.KEEP_INPUTS));
+        var cleared = characters.apply(owner, project.id(), item, new ApplyCharacterBindings(UUID.randomUUID(),
+                applied.binding().version(), applied.draft().version(), List.of(), ClearMode.KEEP_INPUTS, clearPreview.previewHash()));
+        drafts.save(owner, project.id(), item, cleared.draft().version(), "Later explicit draft edit",
+                mapper.createObjectNode(), null, null, null, commands(cleared.draft()), List.of(), null);
+        // Compare database snapshots across replay; Java receipts retain finer timestamp precision.
+        var newer = drafts.get(owner, project.id(), item);
+        assertThat(newer.prompt()).isEqualTo("Later explicit draft edit");
+        assertThat(newer.version()).isEqualTo(cleared.draft().version() + 1);
+        long after = events.replayWindow(owner, project.id()).latestSequence();
+        var mvc = webAppContextSetup(context).apply(springSecurity()).build();
+        var auth = authentication(new UsernamePasswordAuthenticationToken(new AdminPrincipal(owner, "synthetic-replay"), null, List.of()));
+        String path = "/api/v1/projects/" + project.id() + "/canvas-items/" + item + "/character-bindings/apply";
+        var response = mvc.perform(post(path).with(auth).with(csrf()).contentType("application/json")
+                .content(mapper.writeValueAsString(command))).andExpect(status().isOk()).andReturn();
+        assertThat(mapper.readValue(response.getResponse().getContentAsString(), CharacterBindingApplied.class)).isEqualTo(applied);
+        assertThat(drafts.get(owner, project.id(), item)).isEqualTo(newer);
+        assertThat(characters.list(owner, project.id()).bindings().getFirst().version()).isEqualTo(cleared.binding().version());
+        mvc.perform(post(path).with(auth).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(
+                new ApplyCharacterBindings(command.commandId(), 0, before.version(), List.of(), ClearMode.KEEP_INPUTS, preview.previewHash()))))
+                .andExpect(status().isConflict());
+        assertThat(events.listAfter(owner, project.id(), after, 10)).isEmpty();
+    }
+
+    private void confirmationCommandsReplayWithoutDuplicateRevisions(UUID owner) throws Exception {
+        var project = projects.create(owner, "Synthetic confirmation replay", Project.AspectRatio.SQUARE_1_1);
+        UUID character = UUID.randomUUID();
+        var content = new CharacterContent("Replay character", "Synthetic identity", List.of(), null);
+        var save = new SaveCharacter(UUID.randomUUID(), 0, content);
+        long cursor = events.replayWindow(owner, project.id()).latestSequence();
+        var saves = concurrentReplays(() -> characters.save(owner, project.id(), character, save));
+        assertThat(saves.getFirst()).isEqualTo(saves.getLast());
+        assertThat(saves.getFirst().version()).isEqualTo(1);
+        var mvc = webAppContextSetup(context).apply(springSecurity()).build();
+        var auth = authentication(new UsernamePasswordAuthenticationToken(new AdminPrincipal(owner, "synthetic-replay"), null, List.of()));
+        String path = "/api/v1/projects/" + project.id() + "/characters/" + character;
+        // The caller can lose both responses; HTTP replay still resolves the original CAS-0 command.
+        mvc.perform(put(path).with(auth).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(save)))
+                .andExpect(status().isOk());
+        var archive = new ArchiveCharacter(UUID.randomUUID(), 1);
+        var archives = concurrentReplays(() -> characters.archive(owner, project.id(), character, archive));
+        assertThat(archives.getFirst()).isEqualTo(archives.getLast());
+        assertThat(archives.getFirst().archived()).isTrue();
+        assertThat(archives.getFirst().version()).isEqualTo(2);
+        var archivedRow = characters.list(owner, project.id()).characters().getFirst();
+        assertThat(archivedRow.version()).isEqualTo(2);
+        mvc.perform(post(path + "/archive").with(auth).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(archive)))
+                .andExpect(status().isOk());
+        assertThat(characters.save(owner, project.id(), character, save)).isEqualTo(saves.getFirst());
+        assertThat(characters.list(owner, project.id()).characters().getFirst()).isEqualTo(archivedRow);
+        mvc.perform(put(path).with(auth).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(
+                new SaveCharacter(save.commandId(), 0, new CharacterContent("Different intent", "", List.of(), null)))))
+                .andExpect(status().isConflict());
+        assertThat(jdbc.sql("select count(*) from project_character_revision where character_id=:id")
+                .param("id", character).query(Long.class).single()).isEqualTo(2);
+        assertThat(events.listAfter(owner, project.id(), cursor, 10)).extracting(event -> event.type())
+                .containsExactly("character.profile.changed", "character.profile.changed");
+    }
+
+    private <T> List<T> concurrentReplays(Callable<T> command) throws Exception {
+        var ready = new java.util.concurrent.CyclicBarrier(2);
+        Callable<T> replay = () -> { ready.await(10, java.util.concurrent.TimeUnit.SECONDS); return command.call(); };
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(replay); var second = executor.submit(replay);
+            return List.of(first.get(10, java.util.concurrent.TimeUnit.SECONDS), second.get(10, java.util.concurrent.TimeUnit.SECONDS));
+        }
     }
 
     private void releaseOwnedSourceThenDisconnect(UUID owner) {

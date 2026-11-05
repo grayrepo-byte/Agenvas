@@ -2,7 +2,7 @@ import { Check, PaintBrush } from "@/shared/ui/icons";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { t, useLocale } from "../../shared/i18n";
-import { mediaStylesQueryOptions } from "../../shared/mediaStyles";
+import { getMediaStyleLabels, mediaStylesQueryOptions } from "../../shared/mediaStyles";
 import { Dialog } from "../../shared/ui/Dialog";
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { MediaStylePreview } from "../../shared/ui/MediaStylePreview";
@@ -19,10 +19,10 @@ export function MediaStylePicker({ selected, onSelect, onClose }: {
   const styles = useQuery(mediaStylesQueryOptions());
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
-  const available = styles.data?.filter((style) => style.enabled) ?? [];
-  const categories = [...new Set(available.map((style) => style.category))];
+  const available = styles.data?.filter((style) => style.enabled).map((style) => ({ ...style, ...getMediaStyleLabels(style) })) ?? [];
+  const categories = [...new Map(available.map((style) => [style.categoryKey, style.category])).entries()];
   const needle = search.trim().toLocaleLowerCase();
-  const filtered = available.filter((style) => (!category || style.category === category)
+  const filtered = available.filter((style) => (!category || style.categoryKey === category)
     && `${style.name} ${style.category}`.toLocaleLowerCase().includes(needle));
   const choose = (styleId: string | null) => { onSelect(styleId); onClose(); };
   return <Dialog title={t("styles.choose")} description={t("styles.pickerHint")} className="media-style-picker"
@@ -32,7 +32,7 @@ export function MediaStylePicker({ selected, onSelect, onClose }: {
         type="search" value={search} placeholder={t("styles.searchPlaceholder")} onChange={(event) => setSearch(event.target.value)} /></Field>
       <Field className="media-style-category-filter"><FieldLabel htmlFor="media-style-category">{t("styles.category")}</FieldLabel>
         <Select id="media-style-category" value={category} onChange={(event) => setCategory(event.target.value)}>
-          <option value="">{t("styles.allCategories")}</option>{categories.map((value) => <option key={value} value={value}>{value}</option>)}
+          <option value="">{t("styles.allCategories")}</option>{categories.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
         </Select></Field>
     </div>
     <Button type="button" variant={selected ? "outline" : "secondary"} className="media-style-none" aria-pressed={!selected}

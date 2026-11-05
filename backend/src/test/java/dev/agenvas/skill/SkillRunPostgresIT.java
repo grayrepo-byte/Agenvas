@@ -157,7 +157,7 @@ class SkillRunPostgresIT {
                 "read_skill_resource", mapper.writeValueAsString(Map.of("skillVersionId", version,
                         "path", guide.path(), "offset", offset, "limit", pageSize))));
         responses.add(new AssistantMessage("The H3 prompt structure has been read."));
-        gateway.prepare(run.id(), responses);
+        prepareWithToolsets(run.id(), List.of("SKILLS"), responses);
         assertThat(worker.runOnce(WORKER)).isEqualTo(1);
         assertThat(mapper.writeValueAsString(gateway.lastMessages)).doesNotContain(guide.content(), "references/base-en.txt");
         var combined = new StringBuilder();
@@ -195,7 +195,7 @@ class SkillRunPostgresIT {
         AgentRun run = runs.create(owner.userId(), scenario.project().id(), scenario.agent().id(),
                 "Read the guide and its required checks", "progressive-resource-run", scenario.agent().version(), List.of(),
                 null, null, null, null, null, selection).run();
-        gateway.prepare(run.id(), List.of(
+        prepareWithToolsets(run.id(), List.of("SKILLS"), List.of(
                 toolCall("paged-main", "read_skill", mapper.writeValueAsString(Map.of("skillVersionId", version))),
                 toolCall("paged-first", "read_skill_resource", mapper.writeValueAsString(Map.of(
                         "skillVersionId", version, "path", "references/nested/guide.md", "offset", 0, "limit", 4_000))),
@@ -216,7 +216,7 @@ class SkillRunPostgresIT {
         assertThat(skills.getOperation(owner.userId(), republish.id()).status()).isEqualTo(SkillContent.OperationStatus.SUCCEEDED);
 
         assertThat(worker.runOnce(WORKER)).isEqualTo(1);
-        JsonNode main = lastResourceReply();
+        JsonNode main = lastResourceReply("read_skill");
         assertThat(main.path("resourceManifest").path(0).path("total").asInt()).isEqualTo(guide.codePointCount(0, guide.length()));
         assertThat(main.toString()).doesNotContain("TAIL_SENTINEL", "NESTED_SENTINEL", "UNUSED_SENTINEL", "NEW_VERSION");
         assertThat(worker.runOnce(WORKER)).isEqualTo(1);
@@ -233,14 +233,34 @@ class SkillRunPostgresIT {
         assertThat(mapper.writeValueAsString(gateway.lastMessages)).doesNotContain("UNUSED_SENTINEL", "NEW_VERSION");
         assertThat(runs.get(owner.userId(), scenario.project().id(), run.id()).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
         assertSameJson(toolExecutions.execute(new TrustedToolContext(owner.userId(), scenario.project().id(), run.id()),
-                2, "paged-tail").path("data"), lastPage);
+                3, "paged-tail").path("data"), lastPage);
         assertThat(jdbc.sql("select count(*) from tool_execution where run_id=:run")
-                .param("run", run.id()).query(Long.class).single()).isEqualTo(4);
+                .param("run", run.id()).query(Long.class).single()).isEqualTo(5);
     }
 
     private JsonNode lastResourceReply() {
-        var reply = (ToolResponseMessage) gateway.lastMessages.getLast();
-        return mapper.readTree(reply.getResponses().getFirst().responseData()).path("data");
+        return lastResourceReply("read_skill_resource");
+    }
+
+    private JsonNode lastResourceReply(String toolName) {
+        var reply = gateway.lastMessages.stream().filter(ToolResponseMessage.class::isInstance)
+                .map(ToolResponseMessage.class::cast).reduce((before, after) -> after).orElseThrow();
+        assertThat(reply.getResponses()).singleElement().satisfies(response -> assertThat(response.name()).isEqualTo(toolName));
+        JsonNode result = mapper.readTree(reply.getResponses().getFirst().responseData());
+        assertThat(result.path("status").asText()).isEqualTo("SUCCEEDED");
+        return result.path("data");
+    }
+
+    /** Discover through a committed worker turn before counting the scenario's business turns. */
+    private void prepareWithToolsets(UUID runId, List<String> toolsets, List<AssistantMessage> planned) {
+        var responses = new java.util.ArrayList<AssistantMessage>();
+        responses.add(toolCall("discover-tools", "load_toolset", mapper.writeValueAsString(Map.of("toolsets", toolsets))));
+        responses.addAll(planned);
+        gateway.prepare(runId, responses);
+        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        assertThat(gateway.lastTools).extracting(tool -> tool.getToolDefinition().name()).containsExactly("load_toolset");
+        assertThat(jdbc.sql("select count(*) from tool_execution where run_id=:run and tool_name='load_toolset'")
+                .param("run", runId).query(Long.class).single()).isEqualTo(1);
     }
 
     @Test void multipleSelectionsFreezeTogetherAndOnlyActivatedSkillsEnterApprovalProvenance() throws Exception {
@@ -269,7 +289,7 @@ class SkillRunPostgresIT {
         assertThat(initialContext.assemble(owner.userId(), scenario.project().id(), run.id()))
                 .allSatisfy(message -> assertThat(message.getText()).doesNotContain(first.body(), first.resourceText()));
         String proposal = mapper.writeValueAsString(Map.of("outputs", List.of(Map.of("kind", "IMAGE", "title", "Combined catalogue result", "prompt", "Synthetic poster", "parameters", Map.of()))));
-        gateway.prepare(run.id(), List.of(toolCall("load-first", "read_skill", "{\"skillVersionId\":\"" + first.versionId() + "\"}"),
+        prepareWithToolsets(run.id(), List.of("SKILLS", "MEDIA"), List.of(toolCall("load-first", "read_skill", "{\"skillVersionId\":\"" + first.versionId() + "\"}"),
                 toolCall("read-first", "read_skill_resource", "{\"skillVersionId\":\"" + first.versionId() + "\",\"path\":\"references/style-guide.md\",\"limit\":10}"),
                 toolCall("propose-combined", "propose_media_generation", proposal)));
         assertThat(worker.runOnce(WORKER)).isEqualTo(1);
@@ -294,7 +314,7 @@ class SkillRunPostgresIT {
         var batch = AssistantMessage.builder().content("").toolCalls(List.of(
                 new AssistantMessage.ToolCall("rollback-main", "function", "read_skill", main),
                 new AssistantMessage.ToolCall("rollback-missing", "function", "read_skill_resource", resource.replace("style-guide.md", "missing.md")))).build();
-        gateway.prepare(run.id(), List.of(batch, toolCall("committed-main", "read_skill", main), new AssistantMessage("The selected method is loaded.")));
+        prepareWithToolsets(run.id(), List.of("SKILLS"), List.of(batch, toolCall("committed-main", "read_skill", main), new AssistantMessage("The selected method is loaded.")));
         assertThat(worker.runOnce(WORKER)).isEqualTo(1);
         assertProblem("TOOL_ARGUMENT_INVALID", () -> reader.skillResource(runs.get(owner.userId(), scenario.project().id(), run.id()), UUID.randomUUID(), resource));
         assertThat(worker.runOnce(WORKER)).isEqualTo(1);
@@ -320,7 +340,7 @@ class SkillRunPostgresIT {
         assertThat(initialContext.assemble(owner.userId(), scenario.project().id(), run.id()))
                 .allSatisfy(message -> assertThat(message.getText()).doesNotContain(version.skillMd(), "Agenvas 创作卡片工作流"));
         var resource = version.resources().getFirst();
-        gateway.prepare(run.id(), List.of(
+        prepareWithToolsets(run.id(), List.of("SKILLS"), List.of(
                 toolCall("load-builtin", "read_skill", mapper.writeValueAsString(Map.of("skillVersionId", version.id()))),
                 toolCall("read-builtin-template", "read_skill_resource", mapper.writeValueAsString(Map.of("skillVersionId", version.id(), "path", resource.path()))),
                 new AssistantMessage("Synthetic screenplay prepared without external calls.")));
@@ -355,7 +375,7 @@ class SkillRunPostgresIT {
         assertThat(skills.getBindings(owner.userId(), scenario.project().id(), scenario.agent().id())).hasSize(2);
         assertThat(exports.build(owner.userId(), scenario.project().id()).creativeSkills()).hasSize(2);
         assertSameJson(runs.get(owner.userId(), scenario.project().id(), frozen.id()).contextSnapshot(), frozen.contextSnapshot());
-        gateway.prepare(frozen.id(), List.of(
+        prepareWithToolsets(frozen.id(), List.of("SKILLS"), List.of(
                 toolCall("load-retired", "read_skill", mapper.writeValueAsString(Map.of("skillVersionId", retired.versionId()))),
                 toolCall("read-retired", "read_skill_resource", mapper.writeValueAsString(Map.of("skillVersionId", retired.versionId(), "path", "references/style-guide.md"))),
                 new AssistantMessage("Synthetic historical creative work completed.")));
@@ -386,7 +406,7 @@ class SkillRunPostgresIT {
                 agent.version(), List.of(), null, null, null, null, null, selection).run();
         String indexText = "# 原著章节索引\n范围：仅提供两章\n源 artifactId：" + source.artifact().id() + "\n源 versionId：" + sourceVersion
                 + "\n| sequence | 标题 | 行范围 |\n| 1 | 第一章 旧钥匙 | 1–2 |\n| 2 | 第二章 门后的信 | 3–4 |";
-        gateway.prepare(run.id(), List.of(
+        prepareWithToolsets(run.id(), List.of("SKILLS", "CANVAS", "TEXT"), List.of(
                 toolCall("native-load-main", "read_skill", mapper.writeValueAsString(Map.of("skillVersionId", skill.currentVersionId()))),
                 toolCall("native-read-guide", "read_skill_resource", mapper.writeValueAsString(Map.of("skillVersionId", skill.currentVersionId(), "path", "references/agenvas-cards.md"))),
                 toolCall("native-read-templates", "read_skill_resource", mapper.writeValueAsString(Map.of("skillVersionId", skill.currentVersionId(), "path", "assets/card-templates.md"))),
@@ -552,16 +572,15 @@ class SkillRunPostgresIT {
                 "{\"skillVersionId\":\"" + skill.versionId() + "\",\"path\":\"references/style-guide.md\"}"));
         assertThat(reader.skill(restored, UUID.randomUUID(), "{\"skillVersionId\":\"" + skill.versionId() + "\"}")
                 .path("data").path("content").asText()).isEqualTo(skill.body());
-        gateway.prepare(run.id(), List.of(toolCall("load-main", "read_skill", "{\"skillVersionId\":\"" + skill.versionId() + "\"}"), toolCall("read-style", "read_skill_resource",
+        prepareWithToolsets(run.id(), List.of("SKILLS"), List.of(toolCall("load-main", "read_skill", "{\"skillVersionId\":\"" + skill.versionId() + "\"}"), toolCall("read-style", "read_skill_resource",
                         "{\"skillVersionId\":\"" + skill.versionId() + "\",\"path\":\"references/style-guide.md\",\"offset\":21,\"limit\":2}"),
                 new AssistantMessage("The fixed style guide is read.")));
         assertThat(worker.runOnce(WORKER)).isEqualTo(1);
         assertThat(worker.runOnce(WORKER)).isEqualTo(1);
         assertThat(gateway.lastTools).anySatisfy(tool -> assertThat(tool.getToolDefinition().name()).isEqualTo("read_skill_resource"));
-        assertThat(gateway.lastMessages.getLast()).isInstanceOf(ToolResponseMessage.class);
+        assertThat(lastResourceReply("read_skill").path("content").asText()).isEqualTo(skill.body());
         assertThat(worker.runOnce(WORKER)).isEqualTo(1);
-        var reply = (ToolResponseMessage) gateway.lastMessages.getLast();
-        assertThat(mapper.readTree(reply.getResponses().getFirst().responseData()).path("data").path("content").asText()).isEqualTo("; ");
+        assertThat(lastResourceReply().path("content").asText()).isEqualTo("; ");
         assertThat(runs.get(owner.userId(), scenario.project().id(), run.id()).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
     }
 
@@ -662,7 +681,7 @@ class SkillRunPostgresIT {
                 new AssistantMessage.ToolCall("rolled-back-image", "function", "read_skill_asset", image),
                 new AssistantMessage.ToolCall("missing-style", "function", "read_skill_resource", mapper.writeValueAsString(Map.of(
                         "skillVersionId", skill.versionId(), "path", "references/missing.md"))))).build();
-        gateway.prepare(run.id(), List.of(toolCall("image-main", "read_skill", main), rejected,
+        prepareWithToolsets(run.id(), List.of("SKILLS"), List.of(toolCall("image-main", "read_skill", main), rejected,
                 toolCall("committed-image", "read_skill_asset", image),
                 toolCall("context-resource", "read_skill_resource", mapper.writeValueAsString(Map.of(
                         "skillVersionId", skill.versionId(), "path", "references/style-guide.md"))),
@@ -697,7 +716,7 @@ class SkillRunPostgresIT {
         assertThat(worker.runOnce(WORKER)).isEqualTo(1);
         assertModelImages(1, expectedImage);
         assertSameJson(runs.get(owner.userId(), scenario.project().id(), run.id()).contextSnapshot().path("creativeSkills").path(0), frozen);
-        String checkpoint = jdbc.sql("select request_json::text from llm_turn where run_id=:run and step_index=3")
+        String checkpoint = jdbc.sql("select request_json::text from llm_turn where run_id=:run and step_index=4")
                 .param("run", run.id()).query(String.class).single();
         assertThat(checkpoint).contains("agentSkillImageInputs", skill.versionId().toString(), "style-reference")
                 .doesNotContain("data:image", java.util.Base64.getEncoder().encodeToString(expectedImage));
@@ -730,7 +749,7 @@ class SkillRunPostgresIT {
         String proposal = mapper.writeValueAsString(Map.of("outputs", List.of(Map.of(
                 "kind", "IMAGE", "title", "Warm subject result", "prompt", "Warm synthetic subject", "parameters", Map.of(),
                 "mediaInputs", List.of(Map.of("versionId", scenario.subject().resourceDefaultVersion().id(), "role", "REFERENCE"))))));
-        gateway.prepare(run.id(), List.of(toolCall("load-main", "read_skill", "{\"skillVersionId\":\"" + skill.versionId() + "\"}"), toolCall("read-before-media", "read_skill_resource",
+        prepareWithToolsets(run.id(), List.of("SKILLS", "MEDIA"), List.of(toolCall("load-main", "read_skill", "{\"skillVersionId\":\"" + skill.versionId() + "\"}"), toolCall("read-before-media", "read_skill_resource",
                         "{\"skillVersionId\":\"" + skill.versionId() + "\",\"path\":\"references/style-guide.md\",\"offset\":0,\"limit\":21}"),
                 toolCall("read-style-image", "read_skill_asset", mapper.writeValueAsString(Map.of("skillVersionId", skill.versionId(), "alias", "style-reference"))),
                 toolCall("propose-style-image", "propose_media_generation", proposal),
@@ -801,7 +820,7 @@ class SkillRunPostgresIT {
             String proposal = mapper.writeValueAsString(Map.of("outputs", List.of(Map.of(
                     "kind", "IMAGE", "title", "Llm style reference " + usage, "prompt", "Warm subject", "parameters", Map.of(),
                     "mediaInputs", List.of(Map.of("versionId", scenario.subject().resourceDefaultVersion().id(), "role", "REFERENCE"))))));
-            gateway.prepare(run.id(), List.of(toolCall("context-main", "read_skill", mapper.writeValueAsString(Map.of("skillVersionId", skill.versionId()))),
+            prepareWithToolsets(run.id(), List.of("SKILLS", "MEDIA"), List.of(toolCall("context-main", "read_skill", mapper.writeValueAsString(Map.of("skillVersionId", skill.versionId()))),
                     toolCall("context-image", "read_skill_asset", mapper.writeValueAsString(Map.of("skillVersionId", skill.versionId(), "alias", "style-reference"))),
                     toolCall("context-proposal", "propose_media_generation", proposal)));
             for (int turn = 0; turn < 3; turn++) assertThat(worker.runOnce(WORKER)).isEqualTo(1);

@@ -12,6 +12,7 @@ import { Field, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field"
 import { Textarea } from "../../shared/ui/primitives/textarea";
 import { isMediaTaskRunning, MEDIA_TASK_REFRESH_INTERVAL_MS } from "./mediaTaskState";
 import { taskErrorMessage } from "./taskErrorMessages";
+import { acknowledgePromptTask } from "./promptTaskHistory";
 
 type Props = {
   projectId: string; artifactId: string; title: string; assetId: string;
@@ -32,12 +33,12 @@ export function ImageReversePromptDialog({ projectId, artifactId, title, assetId
   const latest = history.data?.find((task) => task.input.sourceVersionId === request.sourceVersionId);
   const active = history.data?.find(isMediaTaskRunning);
   function updateTask(task: Task) {
-    client.setQueryData<Task[]>(queryKey, (old) => [task, ...(old ?? []).filter((entry) => entry.id !== task.id)]);
+    return acknowledgePromptTask(client, queryKey, task);
   }
   const run = useMutation({ mutationFn: () => {
     command.current ??= { key: crypto.randomUUID(), request };
     return runImagePrompt(projectId, artifactId, command.current.request, command.current.key);
-  }, onSuccess: (task) => { command.current = null; updateTask(task); },
+  }, onSuccess: (task) => { command.current = null; return updateTask(task); },
   onError: (error) => {
     if (error instanceof ApiError && error.status < 500 && error.status !== 408) command.current = null;
     if (error instanceof ApiError && error.code === "IMAGE_PROMPT_IN_PROGRESS") void history.refetch();

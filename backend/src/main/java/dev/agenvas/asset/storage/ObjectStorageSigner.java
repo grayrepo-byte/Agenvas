@@ -101,7 +101,8 @@ final class ObjectStorageSigner {
     }
 
     private static String host(HttpUrl url) {
-        return url.host() + (url.port() == 443 || url.port() == 80 ? "" : ":" + url.port());
+        String hostname = url.host().contains(":") ? "[" + url.host() + "]" : url.host();
+        return hostname + (url.port() == HttpUrl.defaultPort(url.scheme()) ? "" : ":" + url.port());
     }
     static String hash(byte[] bytes) {
         try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)); }

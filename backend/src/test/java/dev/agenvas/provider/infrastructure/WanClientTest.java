@@ -86,7 +86,7 @@ class WanClientTest {
     @Test void videoReferencesAreTypedAndAutomaticDurationSerializesMinusOne() {
         var values = values(video).put("image_10", UUID.randomUUID().toString()).put("video_5", UUID.randomUUID().toString())
                 .put("audio_3", UUID.randomUUID().toString()).put("smart_duration", true).put("seed", -1);
-        var body = client.build(video, values, Map.of("image_10", "data:image/png;base64,AQID", "video_5", "https://relay.example/video.mp4?signature=synthetic",
+        var body = client.build(video, values, Map.of("image_10", "data:image/png;base64,AQID", "video_5", "http://relay.example:9000/video.mp4?signature=synthetic",
                 "audio_3", "https://relay.example/audio.wav?signature=synthetic"));
         assertThat(body.path("parameters").path("duration").asInt()).isEqualTo(-1);
         assertThat(body.path("parameters").has("smart_duration")).isFalse();
@@ -128,12 +128,14 @@ class WanClientTest {
         assertThat(methods).containsExactly("GET", "GET", "GET");
     }
     @Test void officialWorkspaceRootsAreRegionAndProfileBound() {
+        WanClient.validateOrigin(image, "http://llm-synthetic.cn-beijing.maas.aliyuncs.com:8080");
+        assertThat(WanClient.validatedOrigin("http://llm-synthetic.cn-beijing.maas.aliyuncs.com")).startsWith("http://");
         assertThat(WanClient.validatedOrigin(ORIGIN + "/")).isEqualTo(ORIGIN);
         for (String region : List.of("cn-beijing", "ap-southeast-1", "ap-northeast-1", "eu-central-1", "us-east-1", "cn-hongkong"))
             WanClient.validateOrigin(video, "https://llm-synthetic." + region + ".maas.aliyuncs.com");
         assertThatThrownBy(() -> WanClient.validateOrigin(image, "https://llm-synthetic.us-east-1.maas.aliyuncs.com")).isInstanceOf(ApiProblemException.class);
         for (String invalid : List.of("https://dashscope.aliyuncs.com", "https://dashscope-intl.aliyuncs.com", "https://trial.cn-beijing.maas.aliyuncs.com",
-                ORIGIN + "/api/v1", ORIGIN + "?apiKey=synthetic", "http://llm-synthetic.cn-beijing.maas.aliyuncs.com", "https://user@llm-synthetic.cn-beijing.maas.aliyuncs.com",
+                ORIGIN + "/api/v1", ORIGIN + "?apiKey=synthetic", "https://user@llm-synthetic.cn-beijing.maas.aliyuncs.com",
                 "https://llm-synthetic.cn-beijing.maas.aliyuncs.com.untrusted.example", "https://127.0.0.1"))
             assertThatThrownBy(() -> WanClient.validatedOrigin(invalid)).isInstanceOf(ApiProblemException.class);
     }

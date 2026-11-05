@@ -55,4 +55,34 @@ class SystemLogCaptureTest {
         assertThat(logs.snapshot(null, null, 10).entries()).extracting(SystemLogBuffer.Entry::stream)
                 .containsExactly(SystemLogBuffer.Stream.STDOUT, SystemLogBuffer.Stream.STDERR);
     }
+
+    @Test void boundedHyphenatedOutputDoesNotBreakCaptureOrFollowingLines() {
+        var logs = new SystemLogBuffer(Clock.systemUTC());
+        var original = new ByteArrayOutputStream();
+        var output = new SystemLogCapture.LineOutput(new PrintStream(original), logs, SystemLogBuffer.Stream.STDOUT);
+        String line = "a-".repeat(SystemLogBuffer.MAX_LINE_BYTES / 2);
+        byte[] bytes = (line + "\nhealthy\n").getBytes(StandardCharsets.UTF_8);
+        output.write(bytes, 0, bytes.length);
+        assertThat(original.toByteArray()).isEqualTo(bytes);
+        assertThat(logs.snapshot(null, null, 10).entries()).extracting(SystemLogBuffer.Entry::message)
+                .containsExactly(line, "healthy");
+    }
+
+    @Test void oversizedPrefixedCredentialsStayMaskedAndFollowingLinesRecover() {
+        for (String separator : new String[]{"_", "-"}) {
+            var logs = new SystemLogBuffer(Clock.systemUTC());
+            var original = new ByteArrayOutputStream();
+            var output = new SystemLogCapture.LineOutput(new PrintStream(original), logs, SystemLogBuffer.Stream.STDERR);
+            String field = ("a" + separator).repeat(4000) + "MASTER_KEY=";
+            byte[] bytes = (field + "synthetic-sensitive-value".repeat(20) + "\nhealthy\n").getBytes(StandardCharsets.UTF_8);
+            output.write(bytes, 0, bytes.length);
+            var entries = logs.snapshot(null, null, 10).entries();
+            assertThat(entries).hasSize(2);
+            assertThat(entries.getFirst().message()).isEqualTo(field + "[REDACTED]");
+            assertThat(entries.getFirst().truncated()).isTrue();
+            assertThat(entries.getLast().message()).isEqualTo("healthy");
+            assertThat(entries.getLast().truncated()).isFalse();
+            assertThat(original.toByteArray()).isEqualTo(bytes);
+        }
+    }
 }

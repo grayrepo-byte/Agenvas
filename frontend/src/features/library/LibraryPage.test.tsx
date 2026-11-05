@@ -80,7 +80,12 @@ it("shows audio with a placeholder and hides only text in both asset-page lists"
   expect(requests.every((request) => request.searchParams.get("mediaOnly") === "true")).toBe(true);
 });
 
-it("accepts audio uploads and submits their media kind", async () => {
+it.each([
+  { filename: "music.wav", type: "audio/wav", kind: "AUDIO" },
+  { filename: "clip.mp4", type: "video/mp4", kind: "VIDEO" },
+  { filename: "CLIP.MP4", type: "", kind: "VIDEO" },
+  { filename: "clip.mp4", type: "application/octet-stream", kind: "VIDEO" },
+])("submits $filename ($type) as $kind when saving an uploaded asset", async ({ filename, type, kind }) => {
   const kinds: FormDataEntryValue[] = [];
   server.use(
     http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
@@ -94,21 +99,22 @@ it("accepts audio uploads and submits their media kind", async () => {
     if (input === "/api/v1/library/uploads") {
       expect(init?.body).toBeInstanceOf(FormData);
       const form = init?.body as FormData; const kind = form.get("kind"); if (kind) kinds.push(kind);
-      expect(form.get("file")).toHaveProperty("name", "music.wav");
+      expect(form.get("file")).toHaveProperty("name", filename);
       return HttpResponse.json({ id: "audio-command", status: "SUCCEEDED", result: { entryId: "audio" } }, { status: 202 });
     }
     return interceptedFetch(input, init);
   });
   render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><LibraryPage /></MemoryRouter></QueryClientProvider>);
-  const user = userEvent.setup();
+  // A file chooser's accept list is a hint; browsers can provide absent or generic MIME metadata.
+  const user = userEvent.setup({ applyAccept: false });
   await user.click(await screen.findByRole("button", { name: "上传资产" }));
   const file = screen.getByLabelText("资源文件");
   expect(file).toHaveAttribute("accept", expect.stringContaining("audio/wav"));
-  await user.upload(file, new File(["synthetic audio"], "music.wav", { type: "audio/wav" }));
+  await user.upload(file, new File(["synthetic media"], filename, { type }));
   const submit = screen.getByRole("button", { name: "上传并保存" });
   expect(submit).toBeEnabled();
   const form = submit.closest("form"); if (!form) throw new Error("Upload form is missing");
   // jsdom does not connect user-event's FileList to native required validation.
   fireEvent.submit(form);
-  await waitFor(() => expect(kinds).toEqual(["AUDIO"]));
+  await waitFor(() => expect(kinds).toEqual([kind]));
 });

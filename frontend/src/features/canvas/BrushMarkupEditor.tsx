@@ -134,6 +134,9 @@ export function BrushMarkupEditor(props: {
   function pointerMove(event: ReactPointerEvent<HTMLCanvasElement>) {
     const stroke = activeStroke.current; const next = point(event);
     if (!stroke || !next) return;
+    const previous = stroke.points.at(-1)!;
+    // Repeated release coordinates must keep a tap as a single visible dot.
+    if (previous.x === next.x && previous.y === next.y) return;
     if (stroke.tool === "BRUSH" || stroke.tool === "ERASER") stroke.points.push(next);
     else stroke.points = [stroke.points[0]!, next];
     renderMarkup(event.currentTarget, [...strokes.slice(0, cursor), stroke]);

@@ -25,6 +25,6 @@ public class StoredLlmDiagnosticGateway implements LlmDiagnosticGateway {
      */
     @Override
     public ChatGateway open(LlmProviderConfig config) {
-        return factory.create(config);
+        return factory.create(config, factory.requestBudget(config));
     }
 }

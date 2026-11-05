@@ -9,6 +9,29 @@ import {
 
 type Settings = MediaCapability["settings"];
 const price = (amount: string): NonNullable<Settings["pricing"]> => ({ amount, currency: "CNY", unit: "SECOND" });
+
+it("keeps saved custom model IDs and administrator rates without applying an official preset", () => {
+  const tokenPricing = { currency: "CNY" as const, textInputPerMillion: "0", imageInputPerMillion: "0.75", imageOutputPerMillion: "1.25" };
+  for (const model of ["custom-compatible-image", "gpt-image-1.5", "gpt-image-1-mini"]) {
+    const saved = buildMediaCapabilitySettings("OPENAI_GPT_IMAGE_2", { model, tokenPricing });
+    expect(saved.model).toBe(model);
+    expect(saved.tokenPricing).toEqual(tokenPricing);
+  }
+});
+
+it("publishes OpenAI token rates without a competing per-image price and preserves explicit zero", () => {
+  const tokenPricing = { currency: "USD" as const, textInputPerMillion: "0", imageInputPerMillion: "8",
+    imageOutputPerMillion: "30", cachedTextInputPerMillion: "", cachedImageInputPerMillion: "2" };
+  const saved = buildMediaCapabilitySettings("OPENAI_GPT_IMAGE_2", {
+    tokenPricing, pricing: { amount: "1", currency: "USD", unit: "IMAGE" },
+  });
+  expect(saved.tokenPricing).toEqual({ currency: "USD", textInputPerMillion: "0", imageInputPerMillion: "8",
+    imageOutputPerMillion: "30", cachedImageInputPerMillion: "2" });
+  expect(saved.pricing).toBeUndefined();
+  expect(buildMediaCapabilitySettings("OPENAI_GPT_IMAGE_2", { tokenPricing, openAiPricePresetModel: "gpt-image-2" }))
+    .not.toHaveProperty("openAiPricePresetModel");
+  expect(buildMediaCapabilitySettings("GOOGLE_NANO_BANANA_2", { tokenPricing }).tokenPricing).toBeUndefined();
+});
 const definition: NonNullable<Settings["workflowDefinition"]> = {
   schemaVersion: 1, id: "synthetic_video_v1", label: "Synthetic video", minimumSeconds: 1, maximumSeconds: 20,
   promptLimit: 10000, mode: "TEXT", imageFields: [], audioFields: [], minimumImages: 0, minimumAudios: 0,
@@ -180,4 +203,12 @@ describe("AutoDL administrator draft changes", () => {
     expect(selectAutoDlDraftTiers(draft, [], ["720p", "2160p"])).toBeNull();
     expect(draft).toEqual(before);
   });
+});
+
+
+it.each(["auto", "low"] as const)("publishes explicit OpenAI moderation %s without leaking it to other adapters", (moderation) => {
+  expect(buildMediaCapabilitySettings("OPENAI_GPT_IMAGE_2", { model: "gpt-image-2.5-flare", moderation }))
+    .toEqual({ model: "gpt-image-2.5-flare", quality: "medium", moderation });
+  expect(buildMediaCapabilitySettings("GOOGLE_NANO_BANANA_2", { moderation })).not.toHaveProperty("moderation");
+  expect(buildMediaCapabilitySettings("MOCK_IMAGE", { moderation })).not.toHaveProperty("moderation");
 });

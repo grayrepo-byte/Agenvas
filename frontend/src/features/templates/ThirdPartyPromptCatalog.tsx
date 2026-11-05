@@ -3,7 +3,7 @@ import { useId, useRef, useState } from "react";
 import { createThirdPartyPromptSource, importThirdPartyPrompt, listThirdPartyPrompts, listThirdPartyPromptSources,
   setThirdPartyPromptSource, syncThirdPartyPromptSource, type MediaTemplateKind, type ThirdPartyPromptEntry,
   type ThirdPartyPromptSource } from "../../shared/api/client";
-import { formatDate, t, useLocale } from "../../shared/i18n";
+import { formatDate, t, useLocale, type MessageKey } from "../../shared/i18n";
 import { Dialog } from "../../shared/ui/Dialog";
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { EmptyState, Notice, Panel } from "../../shared/ui/PagePrimitives";
@@ -14,7 +14,15 @@ import { Input } from "../../shared/ui/primitives/input";
 import { workflowFieldLabel } from "../canvas/workflowFieldPresentation";
 import type { TemplatePickerContext } from "./MediaTemplatePicker";
 import { templateImageSlots } from "./templateApplication";
+import { ThirdPartyPromptSyncControls } from "./ThirdPartyPromptSyncControls";
 import { thirdPartyApplicationError, thirdPartyReferences, thirdPartyVideoMode } from "./thirdPartyApplication";
+
+const SYNC_FAILURE_MESSAGES = new Map<string, MessageKey>([
+  ["THIRD_PARTY_SOURCE_HTTP_ERROR", "thirdParty.syncHttpError"],
+  ["THIRD_PARTY_SOURCE_DOWNLOAD_FAILED", "thirdParty.syncDownloadFailed"],
+  ["THIRD_PARTY_SOURCE_TOO_LARGE", "thirdParty.syncTooLarge"],
+  ["THIRD_PARTY_SOURCE_INVALID_DATA", "thirdParty.syncInvalidData"],
+]);
 
 export function ThirdPartyPromptCatalog({ kind, context, system = false }: {
   kind: MediaTemplateKind; context?: TemplatePickerContext; system?: boolean;
@@ -135,12 +143,15 @@ function ThirdPartyPromptSources({ kind }: { kind: MediaTemplateKind }) {
     finally { setBusy(false); }
   }
   return <Panel title={t("thirdParty.manageSources")} description={t("thirdParty.dailyHint")}>
+    <ThirdPartyPromptSyncControls />
     {query.data?.items.filter((source) => source.targetKind === kind).map((source) => <div key={source.id} className="third-party-source">
       <div><strong>{source.name}</strong><p>{t("thirdParty.count", { "0": source.promptCount })} · {source.lastSyncedAt ? formatDate(source.lastSyncedAt) : t("thirdParty.neverSynced")}</p>
-        {source.lastError ? <p>{t("thirdParty.syncFailed")}</p> : null}</div>
+        {source.lastError ? <p>{t(SYNC_FAILURE_MESSAGES.get(source.lastError) ?? "thirdParty.syncFailed")}</p> : null}</div>
       <div className="ui-form-actions"><Button type="button" variant="outline" disabled={busy || !source.enabled || source.syncing} onClick={() => void mutate(source, true)}>{source.syncing ? t("thirdParty.syncing") : t("thirdParty.sync")}</Button>
         <Button type="button" variant="outline" disabled={busy} onClick={() => void mutate(source, false)}>{source.enabled ? t("thirdParty.disable") : t("thirdParty.enable")}</Button></div>
     </div>)}
+    {query.data?.items.some((source) => source.targetKind === kind && source.lastError)
+      ? <Notice tone="info">{t("thirdParty.syncRetryHint")}</Notice> : null}
     <Button type="button" variant="outline" disabled={busy} onClick={() => { setCreating(true); setError(null); }}>{t("thirdParty.addSource")}</Button>
     {error && !creating ? <Notice tone="danger">{error.message}</Notice> : null}
     {creating ? <Dialog title={t("thirdParty.addSource")} description={t("thirdParty.nativeHint")} busy={busy} compact onClose={() => setCreating(false)} onSubmit={(event) => { event.preventDefault(); void create(); }}

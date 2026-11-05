@@ -17,6 +17,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
@@ -219,6 +221,74 @@ class LocalVideoCompositionRendererTest {
         tools.ffmpeg(List.of("-v", "error", "-i", result.path().toString(), "-frames:v", "1", "-y", frame.toString()));
         var image = javax.imageio.ImageIO.read(frame.toFile());
         assertThat(image.getRGB(image.getWidth() / 2, image.getHeight() / 2) & 0xffffff).isLessThan(0x050505);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"24,0,1033,1,30,1000", "30,100,1050,1,31,1033", "24,125,1049,0.5,62,2066",
+            "30,300,1033,2,15,500", "30,150,1300,1.15,33,1100"})
+    void fractionalShotDurationsCutAtThePlannedFrameBoundary(int sourceFps, int startMs, int durationMs,
+            double speed, int firstBlueFrame, int secondShotStartMs) throws Exception {
+        Path red = temp.resolve("red.mp4"), blue = temp.resolve("blue.mp4");
+        for (var entry : Map.of(red, "red", blue, "blue").entrySet()) {
+            tools.ffmpeg(List.of("-v", "error", "-f", "lavfi", "-i",
+                    "color=c=" + entry.getValue() + ":s=160x90:r=" + sourceFps + ":d=2",
+                    "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-y", entry.getKey().toString()));
+        }
+        UUID redId = UUID.randomUUID(), blueId = UUID.randomUUID();
+        ObjectNode request = request("MUTE");
+        addShot(request, redId, durationMs).put("sourceStartMs", startMs).put("speed", speed);
+        addShot(request, blueId, durationMs).put("sourceStartMs", startMs).put("speed", speed);
+        var result = renderer.render(request, Map.of(redId, source(red, 2000), blueId, source(blue, 2000)),
+                scratch("fractional-render"), () -> false, () -> {});
+        assertThat(result.schedule().at("/shots/1/timelineStartMs").asInt()).isEqualTo(secondShotStartMs);
+        Path pixels = temp.resolve("frames.rgb");
+        tools.ffmpeg(List.of("-v", "error", "-i", result.path().toString(), "-vf", "scale=1:1", "-pix_fmt", "rgb24",
+                "-f", "rawvideo", "-y", pixels.toString()));
+        byte[] rgb = Files.readAllBytes(pixels);
+        assertThat(rgb).hasSize(firstBlueFrame * 2 * 3);
+        for (int frame = 0; frame < firstBlueFrame * 2; frame++) {
+            int redChannel = rgb[frame * 3] & 255, blueChannel = rgb[frame * 3 + 2] & 255;
+            assertThat(frame < firstBlueFrame ? redChannel : blueChannel).as("dominant color at frame %s", frame).isGreaterThan(200);
+            assertThat(frame < firstBlueFrame ? blueChannel : redChannel).as("opposite color at frame %s", frame).isLessThan(20);
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource({"KEEP", "BACKGROUND"})
+    void fractionalCutsKeepOriginalAudioOnTheSameTimeline(String mode) throws Exception {
+        Path red = temp.resolve("red-sound.mp4"), blue = temp.resolve("blue-sound.mp4");
+        for (var entry : Map.of(red, "red", blue, "blue").entrySet()) {
+            String frequency = entry.getKey().equals(red) ? "440" : "880";
+            tools.ffmpeg(List.of("-v", "error", "-f", "lavfi", "-i",
+                    "color=c=" + entry.getValue() + ":s=160x90:r=30:d=2", "-f", "lavfi", "-i",
+                    "sine=frequency=" + frequency + ":sample_rate=48000:duration=2", "-t", "2",
+                    "-c:a", "aac", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-y", entry.getKey().toString()));
+        }
+        UUID redId = UUID.randomUUID(), blueId = UUID.randomUUID();
+        ObjectNode request = request(mode);
+        addShot(request, redId, 1050).put("sourceStartMs", 137);
+        addShot(request, blueId, 1050).put("sourceStartMs", 137);
+        var result = renderer.render(request, Map.of(redId, source(red, 2000), blueId, source(blue, 2000)),
+                scratch("fractional-sound"), () -> false, () -> {});
+        assertThat(result.schedule().at("/shots/1/timelineStartMs").asInt()).isEqualTo(1033);
+        Path frame = temp.resolve("first-blue-with-sound.png");
+        tools.ffmpeg(List.of("-v", "error", "-i", result.path().toString(), "-vf", "select=eq(n\\,31)",
+                "-frames:v", "1", "-y", frame.toString()));
+        var image = javax.imageio.ImageIO.read(frame.toFile());
+        assertThat(image.getRGB(image.getWidth() / 2, image.getHeight() / 2) & 255).isGreaterThan(200);
+        byte[] pcm = decodeAudio(result.path(), "cut-sound.pcm");
+        assertThat(positiveCrossings(pcm, 850, 950)).as("440Hz before the cut").isBetween(42, 46);
+        assertThat(positiveCrossings(pcm, 1130, 1230)).as("880Hz after the cut").isBetween(86, 90);
+    }
+
+    private int positiveCrossings(byte[] pcm, int startMs, int endMs) {
+        int crossings = 0;
+        for (int sample = startMs * 8 + 1; sample < endMs * 8; sample++) {
+            short previous = (short) ((pcm[2 * sample - 2] & 255) | pcm[2 * sample - 1] << 8);
+            short current = (short) ((pcm[2 * sample] & 255) | pcm[2 * sample + 1] << 8);
+            if (previous <= 0 && current > 0) crossings++;
+        }
+        return crossings;
     }
 
     private Path video(String name, String duration, boolean sound, String volume) {

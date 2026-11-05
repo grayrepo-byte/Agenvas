@@ -89,9 +89,10 @@ class ObjectStoragePostgresIT {
             var client = new OkHttpClient.Builder().followRedirects(false).retryOnConnectionFailure(false)
                     .addInterceptor(chain -> {
                         if (TransactionSynchronizationManager.isActualTransactionActive()) STORE.networkInsideTransaction.set(true);
-                        // Explicit test-only rewrite. Production keeps HTTPS, real DNS validation and no redirects.
+                        // Explicit test-only transport. Production keeps the chosen scheme, checked DNS and no redirects.
                         var target = chain.request().url().newBuilder().scheme("http").host("127.0.0.1").port(STORE.server.getAddress().getPort()).build();
-                        return chain.proceed(chain.request().newBuilder().url(target).build());
+                        return new OkHttpClient.Builder().followRedirects(false).retryOnConnectionFailure(false).build()
+                                .newCall(chain.request().newBuilder().url(target).build()).execute();
                     }).build();
             return new ObjectStorageClient(settings, clock, client);
         }
@@ -107,7 +108,7 @@ class ObjectStoragePostgresIT {
         assertThat(original.objectKey()).startsWith(project.toString());
         for (StorageProfile.Provider provider : java.util.List.of(StorageProfile.Provider.ALIYUN_OSS, StorageProfile.Provider.TENCENT_COS, StorageProfile.Provider.S3)) {
             int beforeCreate = settings.status().version();
-            var saved = settings.create(beforeCreate, provider.name(), provider, "https://storage.example.com", "us-east-1",
+            var saved = settings.create(beforeCreate, provider.name(), provider, provider == StorageProfile.Provider.S3 ? "http://storage.example.com" : "https://storage.example.com", "us-east-1",
                     "test-bucket", "agenvas", provider == StorageProfile.Provider.S3, "test-access-id", "test-access-secret");
             assertThat(saved.activeProfileId()).isNull();
             UUID destination = saved.profiles().getLast().id();

@@ -104,24 +104,30 @@ class AgentMediaSamplesPostgresIT {
         var agent = configureDirector(agents, owner.userId(), project.id(), "Sample reader", "Inspect the exact requested samples");
         var run = runs.create(owner.userId(), project.id(), agent.id(), "Inspect this selected clip", "synthetic-sample-run").run();
         assertThat(worker.runOnce("sample-worker")).isEqualTo(1);
-        assertThat(toolCount(run.id())).isZero(); // Two inspection reads roll back the complete batch.
+        assertThat(jdbc.sql("select count(*) from tool_execution where run_id=:run and tool_name='load_toolset'")
+                .param("run", run.id()).query(Long.class).single()).isEqualTo(1);
         assertThat(worker.runOnce("sample-worker")).isEqualTo(1);
-        assertThat(toolCount(run.id())).isEqualTo(1);
+        assertThat(toolCount(run.id())).isEqualTo(1); // Only discovery remains after two inspection reads roll back.
+        assertThat(worker.runOnce("sample-worker")).isEqualTo(1);
+        assertThat(toolCount(run.id())).isEqualTo(2);
         assertThat(worker.runOnce("sample-worker")).isEqualTo(1);
         var completed = runs.get(owner.userId(), project.id(), run.id());
         assertThat(completed.status()).isEqualTo(AgentRun.Status.SUCCEEDED);
         assertThat(gateway.calls).hasValue(3);
         var checkpoints = jdbc.sql("select request_json::text from llm_turn where run_id=:run order by step_index")
                 .param("run", run.id()).query(String.class).list();
-        assertThat(checkpoints).hasSize(3);
+        assertThat(checkpoints).hasSize(4);
+        assertThat(mapper.readTree(checkpoints.getFirst()).path("tools")).hasSize(1);
+        assertThat(mapper.readTree(checkpoints.getFirst()).path("tools").get(0).path("name").asText()).isEqualTo("load_toolset");
+        assertThat(checkpoints.subList(0, 3)).allSatisfy(value -> assertThat(value).doesNotContain(AgentMediaSampleService.METADATA_KEY));
         assertThat(checkpoints.getLast()).contains(AgentMediaSampleService.METADATA_KEY, gateway.version.toString(), "timestampsMs", "audioDurationMs");
         String audioBase64 = Base64.getEncoder().encodeToString(gateway.audio);
         assertThat(checkpoints).allSatisfy(value -> assertThat(value).doesNotContain(audioBase64, "agenvas-agent-sample-", STORAGE.toString()));
         var toolResults = jdbc.sql("select result_json::text from tool_execution where run_id=:run")
                 .param("run", run.id()).query(String.class).list();
-        assertThat(toolResults).hasSize(1);
-        assertThat(toolResults.getFirst()).contains("sampleRequested", gateway.version.toString())
-                .doesNotContain(audioBase64, "agenvas-agent-sample-", STORAGE.toString());
+        assertThat(toolResults).hasSize(2).anySatisfy(value -> assertThat(value).contains("sampleRequested", gateway.version.toString()));
+        assertThat(toolResults).allSatisfy(value -> assertThat(value)
+                .doesNotContain(audioBase64, "agenvas-agent-sample-", STORAGE.toString()));
 
         var savedMessages = codec.requestMessages(mapper.readTree(checkpoints.getLast()));
         var replay = inputs.hydrate(owner.userId(), project.id(), run.id(), completed.contextSnapshot(), savedMessages);
@@ -132,7 +138,7 @@ class AgentMediaSamplesPostgresIT {
         canvas.apply(owner.userId(), project.id(), List.of(new CanvasService.Remove(item, current.version())));
         assertThatThrownBy(() -> inputs.hydrate(owner.userId(), project.id(), run.id(), completed.contextSnapshot(), savedMessages))
                 .isInstanceOf(ApiProblemException.class).satisfies(failure -> assertThat(((ApiProblemException) failure).code()).isEqualTo("INPUT_SCOPE_DENIED"));
-        assertThat(toolCount(run.id())).isEqualTo(1);
+        assertThat(toolCount(run.id())).isEqualTo(2);
     }
 
     private long toolCount(UUID run) {
@@ -150,10 +156,17 @@ class AgentMediaSamplesPostgresIT {
         @Override public Capabilities capabilities() { return new Capabilities(true, false, false); }
         @Override public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context) {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
-            int step = calls.incrementAndGet();
             var media = messages.stream().filter(UserMessage.class::isInstance).map(UserMessage.class::cast)
                     .flatMap(message -> message.getMedia().stream()).toList();
             assertThat(messages).allSatisfy(message -> assertThat(message.getMetadata()).doesNotContainKey(AgentMediaSampleService.METADATA_KEY));
+            if (tools.size() == 1 && "load_toolset".equals(tools.getFirst().getToolDefinition().name())) {
+                assertThat(calls).hasValue(0);
+                assertThat(media).isEmpty();
+                var load = AssistantMessage.builder().content("").toolCalls(List.of(new AssistantMessage.ToolCall(
+                        "load-inspection-tools", "function", "load_toolset", "{\"toolsets\":[\"INSPECTION\"]}"))).build();
+                return new Exchange(1, new ChatResponse(List.of(new Generation(load))));
+            }
+            int step = calls.incrementAndGet();
             assertThat(tools.stream().map(tool -> tool.getToolDefinition().name())).contains("read_media_sample");
             if (step < 3) assertThat(media).isEmpty();
             else {

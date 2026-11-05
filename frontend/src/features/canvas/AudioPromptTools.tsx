@@ -43,17 +43,24 @@ function PromptToolDialog({ mode, projectId, canvasItemId, prompt, hasMentions, 
   useLocale();
   const [text, setText] = useState(prompt);
   const basis = useRef(prompt).current;
-  const [language, setLanguage] = useState("英文");
+  const [language, setLanguage] = useState("en");
   const generated = mode === "assist" || mode === "translate";
-  const progress = useRef<{ key: string; itemId: string; artifact?: Artifact; placed?: boolean } | null>(null);
+  const progress = useRef<{ key: string; itemId: string; title: string; prompt: string; artifact?: Artifact; placed?: boolean } | null>(null);
   const [target, setTarget] = useState<Artifact | null>(null);
   const client = useQueryClient();
   const settings = useQuery({ queryKey: ["settings", "llm"], queryFn: getLlmSettings, enabled: generated });
   const diagnostics = useQuery({ queryKey: ["settings", "diagnostics"], queryFn: getSystemDiagnostics, enabled: generated });
   const run = useMutation({ mutationFn: async () => {
-    progress.current ??= { key: crypto.randomUUID(), itemId: crypto.randomUUID() };
+    if (!progress.current) {
+      const instruction = mode === "translate"
+        ? t("audio.promptTools.translateInstruction", { language: t(language === "en" ? "locale.language.en" : "locale.language.zh") })
+        : t("audio.promptTools.assistInstruction");
+      // Retrying an unacknowledged request keeps its original content as well as its key.
+      progress.current = { key: crypto.randomUUID(), itemId: crypto.randomUUID(), title: LABELS[mode],
+        prompt: `${instruction} ${t("audio.promptTools.outputInstruction")}\n\n${text}` };
+    }
     const pending = progress.current;
-    pending.artifact ??= await createArtifact(projectId, { kind: "TEXT", title: LABELS[mode],
+    pending.artifact ??= await createArtifact(projectId, { kind: "TEXT", title: pending.title,
       content: { format: "PLAIN_TEXT", text: "" } }, pending.key);
     if (!pending.placed) {
       const canvas = await listCanvasItems(projectId);
@@ -64,10 +71,7 @@ function PromptToolDialog({ mode, projectId, canvasItemId, prompt, hasMentions, 
       pending.placed = true;
     }
     if (!pending.artifact.resourceDefaultVersionId) throw new Error(t("audio.promptTools.initialVersionMissing"));
-    const instruction = mode === "translate"
-      ? `把下列音频生成提示词翻译为${language}，保留对白、声音、情绪与音效细节。`
-      : "将下列意图改写为清晰的 Seed Audio 声音生成提示词，保留原意，补充声音、对白、情绪、节奏与环境音描述。";
-    await runDirectTextGeneration(projectId, pending.artifact.id, { prompt: `${instruction}只输出提示词，最多 3000 字符。你只处理文字，不分析或声称听过音频。\n\n${text}`,
+    await runDirectTextGeneration(projectId, pending.artifact.id, { prompt: pending.prompt,
       expectedArtifactVersion: pending.artifact.version, expectedCurrentVersionId: pending.artifact.resourceDefaultVersionId }, pending.key);
     setTarget(pending.artifact);
     await client.invalidateQueries({ queryKey: ["canvas", projectId] });
@@ -89,7 +93,7 @@ function PromptToolDialog({ mode, projectId, canvasItemId, prompt, hasMentions, 
       {generated ? <Button variant="outline" type="button"  disabled={!text.trim() || !available || Boolean(target) || run.isPending || hasMentions}
         onClick={() => run.mutate()}>{run.isPending ? t("audio.promptTools.submitting") : run.error ? t("audio.promptTools.retry") : t("audio.promptTools.generate")}</Button> : null}
       <Button variant="default" type="submit"  disabled={hasMentions || prompt !== basis || !applyText?.trim() || applyText.length > MAX_AUDIO_PROMPT_LENGTH}>{t("audio.promptTools.apply")}</Button></>}>
-    {mode === "translate" ? <label>{t("audio.promptTools.targetLanguage")}<Select variant="ghost" value={language} onChange={(event) => setLanguage(event.target.value)} disabled={Boolean(target) || run.isPending}><option value="英文">{t("audio.promptTools.english")}</option><option value="中文">{t("common.chinese")}</option></Select></label> : null}
+    {mode === "translate" ? <label>{t("audio.promptTools.targetLanguage")}<Select variant="ghost" value={language} onChange={(event) => setLanguage(event.target.value)} disabled={Boolean(target) || run.isPending}><option value="en">{t("audio.promptTools.english")}</option><option value="zh">{t("common.chinese")}</option></Select></label> : null}
     <label>{t("audio.promptTools.prompt")}<Textarea className="audio-prompt-expanded" aria-label={t("audio.promptTools.fullPrompt")} maxLength={MAX_AUDIO_PROMPT_LENGTH}
       value={text} disabled={Boolean(target) || run.isPending || hasMentions} onChange={(event) => { if (!run.isPending) { progress.current = null; run.reset(); setText(event.target.value); } }} /></label>
     {prompt !== basis ? <p role="alert">{t("audio.promptTools.conflict")}</p> : null}

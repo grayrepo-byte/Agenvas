@@ -12,6 +12,9 @@ type AutoDlDefinition = NonNullable<Settings["workflowDefinition"]>;
 
 // Publishing projects these choices into the contract; they never become API settings.
 export type MediaCapabilityDraft = Settings & {
+  /** Local provenance only: manual changes clear it; never published to the API. */
+  openAiPricePresetModel?: string;
+  openAiPricePresetOrigin?: string | null;
   runningHubSourceDraft?: string;
   runningHubSelectedNodeIds?: string[];
   runningHubSelectedFieldKeys?: string[];
@@ -56,7 +59,11 @@ function providerSettings(adapterId: string, draft: Settings): Settings {
   };
   switch (adapterId) {
     case AUTODL_ADAPTER: return autoDlSettings(draft);
-    case "OPENAI_GPT_IMAGE_2": return { model: draft.model?.toString().trim() ?? "", quality: draft.quality ?? "medium" };
+    case "OPENAI_GPT_IMAGE_2": return { model: draft.model?.toString().trim() ?? "", quality: draft.quality ?? "medium",
+      ...(draft.moderation !== undefined ? { moderation: draft.moderation } : {}),
+      ...(draft.outputFormat ? { outputFormat: draft.outputFormat } : {}),
+      ...(draft.complexity ? { complexity: draft.complexity } : {}),
+      ...(draft.outputFormat === "gif" ? { frameCount: draft.frameCount ?? 9, frameDurationMs: draft.frameDurationMs ?? 200 } : {}) };
     case "GOOGLE_NANO_BANANA_2": return { model: draft.model?.toString().trim() ?? "" };
     case KLING_VIDEO_ADAPTER:
     case MINIMAX_H3_ADAPTER: return draft.pricingByResolution
@@ -76,7 +83,15 @@ export function buildMediaCapabilitySettings(adapterId: string, draft: MediaCapa
     // RunningHub has its own contract and does not publish ordinary-model defaults or limits.
     return { runningHub, ...(draft.pricing?.amount.trim() ? { pricing: draft.pricing } : {}) };
   }
-  return { ...providerSettings(adapterId, draft), ...commonSettings(draft) };
+  const settings = { ...providerSettings(adapterId, draft), ...commonSettings(draft) };
+  if (adapterId === "OPENAI_GPT_IMAGE_2" && draft.tokenPricing) {
+    const { cachedTextInputPerMillion, cachedImageInputPerMillion, ...required } = draft.tokenPricing;
+    settings.tokenPricing = { ...required,
+      ...(cachedTextInputPerMillion?.trim() ? { cachedTextInputPerMillion } : {}),
+      ...(cachedImageInputPerMillion?.trim() ? { cachedImageInputPerMillion } : {}) };
+    delete settings.pricing;
+  }
+  return settings;
 }
 
 /** Administrator drafts offer all supported tiers when unset; published legacy capabilities remain single-tier. */

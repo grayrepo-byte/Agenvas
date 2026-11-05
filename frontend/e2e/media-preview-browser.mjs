@@ -160,6 +160,23 @@ async function screenshot(name) {
 
 async function respondToSyntheticFailure({ requestId, request }) {
   const pathname = new URL(request.url).pathname;
+  if (pathname === "/api/v1/projects/review/video-compositions/preview") {
+    const requestBody = JSON.parse(request.postData);
+    // Voice-free analysis uses fixed, normal-speed prefixes; this fixture never simulates speech planning.
+    assert.ok(requestBody.shots.every((shot) => shot.speed === 1 && shot.fadeMs === 0 && shot.lines.length === 0));
+    let durationMs = 0;
+    const shots = requestBody.shots.map((shot) => {
+      const preview = { videoVersionId: shot.videoVersionId, timelineStartMs: durationMs,
+        durationMs: shot.durationMs, lines: [] };
+      durationMs += shot.durationMs;
+      return preview;
+    });
+    await cdp("Fetch.fulfillRequest", { requestId, responseCode: 200,
+      body: Buffer.from(JSON.stringify({ durationMs, frames: Math.round(durationMs * 30 / 1000),
+        fontFamily: "sans-serif", shots })).toString("base64"),
+      responseHeaders: [{ name: "Content-Type", value: "application/json" }] });
+    return;
+  }
   if (pathname === "/api/v1/auth/csrf" || pathname === "/api/v1/projects/review/video-compositions") {
     if (request.postData) compositions.push(JSON.parse(request.postData));
     const value = pathname.endsWith("csrf") ? { headerName: "X-XSRF-TOKEN", token: "synthetic" } : { id: "synthetic-edit", status: "READY" };
@@ -245,6 +262,7 @@ try {
   await cdp("Fetch.enable", { patterns: [{ urlPattern: "*/e2e/retry-*", requestStage: "Request" },
     { urlPattern: "*/api/v1/projects/review/assets/*", requestStage: "Request" },
     { urlPattern: "*/api/v1/projects/review/video-compositions", requestStage: "Request" },
+    { urlPattern: "*/api/v1/projects/review/video-compositions/preview", requestStage: "Request" },
     { urlPattern: "*/api/v1/auth/csrf", requestStage: "Request" }] });
   const baseUrl = server.resolvedUrls.local[0];
   for (const viewport of viewports) {
@@ -287,13 +305,46 @@ try {
     await clickAt({ x: 8, y: viewport.height / 2 });
     await closed("#image-open");
 
+    await open("#gif-open", "image");
+    await waitFor((selector) => document.querySelector(selector)?.src.startsWith("data:image/gif"), image);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const colors = [];
+    for (let sample = 0; sample < 10; sample++) {
+      const clip = await page((selector) => {
+        const bounds = document.querySelector(selector).getBoundingClientRect();
+        return { x: Math.floor(bounds.x + bounds.width / 2), y: Math.floor(bounds.y + bounds.height / 2), width: 1, height: 1, scale: 1 };
+      }, image);
+      const captured = await cdp("Page.captureScreenshot", { format: "png", clip });
+      colors.push(await page(async (png) => {
+        const pixel = new Image(); pixel.src = `data:image/png;base64,${png}`; await pixel.decode();
+        const canvas = document.createElement("canvas"); canvas.width = canvas.height = 1;
+        const context = canvas.getContext("2d"); context.drawImage(pixel, 0, 0);
+        return [...context.getImageData(0, 0, 1, 1).data];
+      }, captured.data));
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    }
+    assert.ok(colors.some(([red, green]) => red > 200 && green < 50), "GIF preview must render its red frame");
+    assert.ok(colors.some(([red, green]) => green > 200 && red < 50), "GIF preview must render its green frame, retaining animation");
+    await pointerClick(close);
+    await closed("#gif-open");
+
     await open("#video-open", "video");
     await layout(viewport, "video", 16 / 9);
     assert.ok(await page((selector) => document.querySelector(selector).paused, video), "Video must initially be paused");
     await screenshot(`video-${viewport.width}x${viewport.height}`);
     await keyboardIsolation();
-    // Space on the focused native player exercises a genuine user playback gesture.
-    await page((selector) => document.querySelector(selector).focus(), video);
+    const interruptedPlayback = await page(async (selector) => {
+      const root = document.querySelector(selector);
+      const button = root.querySelector("button[aria-label='播放']");
+      // pause() can abort play() before its promise or queued native events settle.
+      button.click(); button.click();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return { paused: root.querySelector("video").paused, failed: Boolean(root.querySelector("[role='alert']")) };
+    }, dialog);
+    assert.ok(interruptedPlayback.paused && !interruptedPlayback.failed,
+      "An intentionally interrupted native play must remain paused without a playback failure");
+    // Space activates the visible shared Play button; the native player has no controls.
+    await page((selector) => document.querySelector(selector).focus(), `${dialog} button[aria-label="播放"]`);
     await key(" ", "Space", 32);
     await waitFor((selector) => !document.querySelector(selector).paused && document.querySelector(selector).currentTime > 0,
       video);
@@ -332,17 +383,17 @@ try {
     await waitFor(() => !document.querySelector(".video-comparison-dialog"));
     assert.ok(await page(() => window.closedComparisonVideos.every((element) => !element.isConnected && element.paused)), "Closing comparison stops both videos");
     await pointerClick("#edit-open");
-    await waitFor(() => document.querySelectorAll(".video-edit-dialog video").length === 2
-      && [...document.querySelectorAll(".video-edit-dialog video")].every((element) => element.readyState >= 2));
+    await waitFor(() => document.querySelectorAll(".video-edit-dialog video").length === 1
+      && document.querySelector(".video-edit-dialog video").readyState >= 2);
     await page(() => {
-      const input = document.querySelector(".video-edit-shot input[type='number']");
+      const input = document.querySelector(".video-edit-inspector section[aria-label='片段 1'] input[type='number']");
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, "0.2");
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    await pointerClick(".video-edit-shot .video-range-actions button:last-child");
+    await pointerClick(".video-edit-range-buttons button:last-child");
     await waitFor(() => document.querySelector(".video-edit-dialog video").currentTime >= 0.2);
-    await pointerClick(".video-edit-shot[aria-label='片段 2'] .video-edit-row button:first-of-type");
-    assert.ok(await page(() => document.querySelector(".video-edit-shot [role='combobox']").textContent.includes("Synthetic 2")), "Clip ordering must update the precise source");
+    await pointerClick(".video-edit-clip[aria-label='片段 2'] button[aria-label='上移']");
+    assert.ok(await page(() => document.querySelector(".video-edit-clip[aria-label='片段 1'] .video-edit-clip-select").textContent.includes("Synthetic 2")), "Clip ordering must update the precise source");
     const { data: editScreenshot } = await cdp("Page.captureScreenshot", { format: "png" });
     await writeFile(join(screenshots, `edit-${viewport.width}x${viewport.height}.png`), Buffer.from(editScreenshot, "base64"), { mode: 0o600 });
     assert.ok(await page(() => {
@@ -372,7 +423,7 @@ try {
     await pointerClick(close);
     await closed(`#retry-${kind}-open`);
   }
-  console.log(`Media preview browser checks passed (3 viewports, image/portrait/video, zoom, fullscreen, keyboard, playback and retry). Private screenshots: ${screenshots}`);
+  console.log(`Media preview browser checks passed (3 viewports, image/portrait/animated GIF/video, zoom, fullscreen, keyboard, playback and retry). Private screenshots: ${screenshots}`);
 } finally {
   socket?.close();
   if (chrome && chrome.exitCode == null) {
@@ -382,5 +433,5 @@ try {
   }
   if (server?.close) await server.close();
   else if (server) await new Promise((resolve, reject) => server.httpServer.close((error) => error ? reject(error) : resolve()));
-  await rm(profile, { recursive: true, force: true });
+  await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }

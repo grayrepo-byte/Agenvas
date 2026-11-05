@@ -12,6 +12,50 @@ afterEach(() => {
 });
 
 describe("structured prompt editing", () => {
+  it.each(["Enter", "ArrowDown", "ArrowUp", "Escape"])("leaves composing %s to the input method while a mention menu is open", (key) => {
+    const changed = vi.fn();
+    const { container } = render(<PromptMentionEditor id="prompt" label="Prompt" placeholder="Enter prompt" maxLength={100}
+      prompt="@" mentions={[]} references={[REFERENCE]} onChange={changed} />);
+    const editor = screen.getByRole("textbox", { name: "Prompt" });
+    const range = document.createRange();
+    range.setStart(editor.firstChild!, 1);
+    range.collapse(true);
+    window.getSelection()!.addRange(range);
+    fireEvent.input(editor);
+    changed.mockClear();
+
+    const accepted = fireEvent.keyDown(editor, { key, isComposing: true });
+
+    expect(accepted).toBe(true);
+    expect(changed).not.toHaveBeenCalled();
+    expect(editor).toHaveTextContent("@");
+    expect(container.querySelector(".media-draft-mention-menu")).toBeVisible();
+  });
+
+  it("keeps the mention choice through IME navigation and accepts ordinary Enter after composition", () => {
+    const changed = vi.fn();
+    const audio = { versionId: "synthetic-audio-version", role: "AUDIO_REFERENCE", color: "#F15CAF", label: "Audio 1" } as const;
+    render(<PromptMentionEditor id="prompt" label="Prompt" placeholder="Enter prompt" maxLength={100}
+      prompt="@" mentions={[]} references={[REFERENCE, audio]} onChange={changed} />);
+    const editor = screen.getByRole("textbox", { name: "Prompt" });
+    const range = document.createRange();
+    range.setStart(editor.firstChild!, 1);
+    range.collapse(true);
+    window.getSelection()!.addRange(range);
+    fireEvent.input(editor);
+    changed.mockClear();
+
+    fireEvent.keyDown(editor, { key: "ArrowDown" });
+    expect(screen.getByRole("option", { name: "Audio 1 synthetic-audio-version" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(editor, { key: "ArrowUp", isComposing: true });
+    expect(screen.getByRole("option", { name: "Audio 1 synthetic-audio-version" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.compositionEnd(editor);
+    expect(fireEvent.keyDown(editor, { key: "Enter" })).toBe(false);
+
+    expect(changed).toHaveBeenCalledExactlyOnceWith("\uFFFC", [{ versionId: audio.versionId, role: audio.role }]);
+    expect(screen.queryByRole("option")).not.toBeInTheDocument();
+  });
+
   it.each([
     { context: "workspace overlay", workspace: true },
     { context: "standalone editor", workspace: false },

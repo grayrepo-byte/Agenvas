@@ -89,6 +89,7 @@ import dev.agenvas.db.tables.TaskProviderPollRetry;
 import dev.agenvas.db.tables.ThirdPartyPrompt;
 import dev.agenvas.db.tables.ThirdPartyPromptImport;
 import dev.agenvas.db.tables.ThirdPartyPromptSource;
+import dev.agenvas.db.tables.ThirdPartyPromptSyncSettings;
 import dev.agenvas.db.tables.ToolExecution;
 import dev.agenvas.db.tables.UsageLedger;
 
@@ -533,6 +534,11 @@ public class Tables {
      * 第三方提示词源；每日同步租约与失败状态独立持久化
      */
     public static final ThirdPartyPromptSource THIRD_PARTY_PROMPT_SOURCE = ThirdPartyPromptSource.THIRD_PARTY_PROMPT_SOURCE;
+
+    /**
+     * Administrator opt-in for scheduled third-party prompt downloads
+     */
+    public static final ThirdPartyPromptSyncSettings THIRD_PARTY_PROMPT_SYNC_SETTINGS = ThirdPartyPromptSyncSettings.THIRD_PARTY_PROMPT_SYNC_SETTINGS;
 
     /**
      * 按 Run、回合及 tool_call_id 去重的工具执行账本

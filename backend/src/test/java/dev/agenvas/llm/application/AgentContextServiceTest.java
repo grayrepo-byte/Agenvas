@@ -65,7 +65,7 @@ class AgentContextServiceTest {
     }
 
     @Test void resourceMessageGuardStillCompactsBelowTheTokenTriggerAndKeepsPreviousHandoffs() {
-        var large = new AgentContextService(source(DirectorSettings.defaults()), mapper, codec);
+        var large = new AgentContextService(source(new DirectorSettings(1_000_000, 50, 8192, 2048, 4, 1440, 288, 300, 4, 1)), mapper, codec);
         var history = history(LlmProtocolCodec.MAX_MESSAGES / 2, "Small public fact");
         history.add(2, UserMessage.builder().text("Earlier summary: keep the blue coat")
                 .metadata(Map.of(AgentContextService.SUMMARY, 1)).build());
@@ -115,8 +115,8 @@ class AgentContextServiceTest {
                 .hasMessageContaining("AGENT_CONTEXT_BUDGET_EXCEEDED");
     }
 
-    @Test void oneMillionWindowTriggersAtHalfTheWindowBeforeTheHardInputBudget() {
-        var defaults = DirectorSettings.defaults();
+    @Test void explicitlyConfiguredMillionWindowTriggersAtHalfBeforeTheHardInputBudget() {
+        var defaults = new DirectorSettings(1_000_000, 50, 8192, 2048, 4, 1440, 288, 300, 4, 1);
         assertThat(defaults.contextWindowTokens()).isEqualTo(1_000_000);
         assertThat(defaults.compactionThresholdPercent()).isEqualTo(50);
         assertThat(defaults.compactionTriggerTokens()).isEqualTo(500_000);
@@ -139,6 +139,24 @@ class AgentContextServiceTest {
         List<Message> fixed = List.of(new SystemMessage("word ".repeat(4000)), new UserMessage("Task"));
         assertThat(context.estimate(fixed, List.of())).isBetween(properties.compactionTriggerTokens(), properties.inputBudget());
         assertThat(context.prepare(fixed, List.of())).isEqualTo(codec.request(fixed, List.of()));
+    }
+    @Test void confirmedBudgetSurvivesChunkedCompactionRepairAndContinuation() {
+        var policy = dev.agenvas.settings.application.LlmModelPolicy.manual(
+                dev.agenvas.settings.application.ModelCatalog.Provider.COMPATIBLE, 8192, null, 1024,
+                dev.agenvas.settings.application.LlmModelPolicy.OutputParameter.MAX_COMPLETION_TOKENS);
+        var budget = LlmRequestBudget.resolve(properties, policy);
+        JsonNode next = context.prepare(history(12, "public fact ".repeat(1000)), List.of(), budget);
+        assertThat(AgentContextService.isCompaction(next)).isTrue();
+        assertThat(codec.requestBudget(next)).isEqualTo(budget.summaryBudget());
+        assertThat(codec.requestBudget(context.repair(next))).isEqualTo(budget.summaryBudget());
+        int chunks = 0;
+        while (AgentContextService.isCompaction(next)) {
+            assertThat(++chunks).isLessThan(30);
+            next = context.afterCompaction(next, response(HANDOFF));
+        }
+        assertThat(chunks).isGreaterThan(1);
+        assertThat(codec.requestBudget(next)).isEqualTo(budget);
+        assertThat(codec.requestMessages(next)).anySatisfy(message -> assertThat(message.getText()).contains("Current Run request: Finish all 100 shots"));
     }
 
     private ArrayList<Message> history(int rounds, String result) {

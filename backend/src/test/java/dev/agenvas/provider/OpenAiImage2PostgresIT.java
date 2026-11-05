@@ -68,6 +68,10 @@ class OpenAiImage2PostgresIT {
     private static final AtomicBoolean REJECT_NEXT_GENERATION = new AtomicBoolean();
     /** 中转站只回结果 URL 的形态；官方 API 不走这条分支。 */
     private static final AtomicBoolean URL_RESULT = new AtomicBoolean();
+    private static final java.util.concurrent.atomic.AtomicReference<byte[]> RESULT_BYTES = new java.util.concurrent.atomic.AtomicReference<>();
+    private static final java.util.concurrent.atomic.AtomicReference<tools.jackson.databind.JsonNode> LAST_GENERATION = new java.util.concurrent.atomic.AtomicReference<>();
+    private static final java.util.concurrent.atomic.AtomicReference<String> TOKEN_USAGE = new java.util.concurrent.atomic.AtomicReference<>();
+    private static final java.util.concurrent.atomic.AtomicReference<Runnable> RESPONSE_ACTION = new java.util.concurrent.atomic.AtomicReference<>();
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
@@ -96,6 +100,8 @@ class OpenAiImage2PostgresIT {
     @Autowired private TaskService tasks;
     @Autowired private JdbcClient jdbc;
     @Autowired private ObjectMapper mapper;
+    @Autowired private dev.agenvas.usage.application.UsageService usage;
+    @Autowired private org.springframework.transaction.PlatformTransactionManager transactions;
     @Autowired private org.springframework.web.context.WebApplicationContext webContext;
 
     @Test
@@ -308,6 +314,193 @@ class OpenAiImage2PostgresIT {
         assertThat(jdbc.sql("select count(*) from usage_ledger where task_id=:task and entry_type='RELEASE'")
                 .param("task", privateEndpointTask.id()).query(Integer.class).single()).isEqualTo(1);
         assertThat(EDITS).hasValue(editsBeforeFailure);
+
+        verifyTokenBilling(owner.userId(), connection.id(), ability);
+        verifyGifGeneration(owner, connection.id());
+        verifyFrozenModerationAcrossTransports(owner.userId(), connection.id());
+    }
+
+    private void verifyFrozenModerationAcrossTransports(UUID owner, UUID connectionId) {
+        // Restore the synthetic relay after the earlier failure-path scenarios.
+        org.mockito.Mockito.doNothing().when(objectStorage).requirePublic(org.mockito.ArgumentMatchers.any());
+        org.mockito.Mockito.doNothing().when(objectStorage).put(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyString());
+        UUID relayProfile = storageSettings.status().profiles().getFirst().id();
+        for (String transport : List.of("GENERATE", "MULTIPART", "URL")) {
+            storageSettings.activateRelay(storageSettings.status().version(), relayProfile, false, "URL".equals(transport));
+            var low = mapper.createObjectNode().put("model", "gpt-image-2.5-sunburst").put("moderation", "low");
+            var ability = catalog.publishCapability(connectionId, "Synthetic moderation " + transport, "OPENAI_GPT_IMAGE_2", low);
+            catalog.setDefault(Task.Kind.IMAGE_GENERATION, catalog.defaultVersion(Task.Kind.IMAGE_GENERATION), ability.id());
+            int references = "GENERATE".equals(transport) ? 0 : 2;
+            Fixture queued = fixture(owner, "Frozen moderation " + transport, references);
+            var updated = new java.util.concurrent.atomic.AtomicReference<dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Capability>();
+            RESPONSE_ACTION.set(() -> updated.set(catalog.updateCapability(connectionId, ability.id(), ability.version(),
+                    "Changed moderation " + transport, true, "OPENAI_GPT_IMAGE_2", low.deepCopy().put("moderation", "auto"))));
+            assertThat(worker.submitOnce("moderation-low-" + transport)).isEqualTo(1);
+            var queuedResult = tasks.get(owner, queued.project().id(), queued.task().id());
+            assertThat(queuedResult.status()).as("%s low moderation, error %s", transport, queuedResult.errorCode()).isEqualTo(Task.Status.SUCCEEDED);
+            assertModerationRequest(transport, "low");
+            Fixture current = fixture(owner, "Current moderation " + transport, references);
+            assertThat(worker.submitOnce("moderation-auto-" + transport)).isEqualTo(1);
+            assertThat(tasks.get(owner, current.project().id(), current.task().id()).status()).isEqualTo(Task.Status.SUCCEEDED);
+            assertModerationRequest(transport, "auto");
+            Fixture stale = fixture(owner, "Queued moderation " + transport, references);
+            catalog.updateCapability(connectionId, ability.id(), updated.get().version(), "Queued setting changed " + transport,
+                    true, "OPENAI_GPT_IMAGE_2", low);
+            int submitted = GENERATIONS.get() + EDITS.get();
+            assertThat(worker.submitOnce("moderation-stale-" + transport)).isEqualTo(1);
+            Task blocked = tasks.get(owner, stale.project().id(), stale.task().id());
+            assertThat(blocked.status()).isEqualTo(Task.Status.BLOCKED);
+            assertThat(blocked.errorCode()).isEqualTo("MEDIA_CAPABILITY_CHANGED");
+            assertThat(blocked.input().path("workflowVersion").asText()).isEqualTo(stale.task().input().path("workflowVersion").asText());
+            assertThat(blocked.input().at("/mediaInput/capabilityVersion").asInt()).isEqualTo(stale.task().input().at("/mediaInput/capabilityVersion").asInt());
+            assertThat(GENERATIONS.get() + EDITS.get()).isEqualTo(submitted);
+        }
+        assertThat(worker.submitOnce("moderation-no-duplicate")).isZero();
+    }
+
+    private void assertModerationRequest(String transport, String moderation) {
+        if ("GENERATE".equals(transport)) assertThat(LAST_GENERATION.get().path("moderation").asText()).isEqualTo(moderation);
+        else if ("URL".equals(transport)) assertThat(mapper.readTree(LAST_EDIT.get()).path("moderation").asText()).isEqualTo(moderation);
+        else assertThat(LAST_EDIT.get()).contains("name=\"moderation\"", "\r\n\r\n" + moderation + "\r\n");
+    }
+
+    private void verifyGifGeneration(AdminPrincipal owner, UUID connectionId) throws Exception {
+        byte[] animation = dev.agenvas.testing.GifFixture.animation(4);
+        var mvc = webAppContextSetup(webContext).apply(springSecurity()).build();
+        var auth = authentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                owner, null, List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN"))));
+        for (String model : List.of("gpt-image-2.6-flare", "gpt-image-2.6-sunburst")) {
+            var settings = mapper.createObjectNode().put("model", model).put("outputFormat", "gif")
+                    .put("frameCount", 4).put("frameDurationMs", 200).put("complexity", "medium").put("quality", "xhigh");
+            settings.putObject("tokenPricing").put("currency", "USD").put("textInputPerMillion", "5")
+                    .put("imageInputPerMillion", "8").put("imageOutputPerMillion", "30");
+            var ability = catalog.publishCapability(connectionId, "Synthetic GIF " + model, "OPENAI_GPT_IMAGE_2", settings);
+            catalog.setDefault(Task.Kind.IMAGE_GENERATION, catalog.defaultVersion(Task.Kind.IMAGE_GENERATION), ability.id());
+            assertThat(catalog.inputPolicy(catalog.defaultFor(Task.Kind.IMAGE_GENERATION)).maxReferenceImages()).isZero();
+            RESULT_BYTES.set(animation);
+            TOKEN_USAGE.set("{\"input_tokens\":100,\"output_tokens\":400,\"input_tokens_details\":{\"text_tokens\":100,\"image_tokens\":0}}");
+            try {
+                Fixture fixture = fixture(owner.userId(), "Synthetic animation", 0);
+                int submissions = GENERATIONS.get();
+                assertThat(worker.submitOnce("gif-worker")).isEqualTo(1);
+                Task done = tasks.get(owner.userId(), fixture.project().id(), fixture.task().id());
+                assertThat(done.status()).isEqualTo(Task.Status.SUCCEEDED);
+                assertThat(GENERATIONS.get()).isEqualTo(submissions + 1);
+                assertThat(LAST_GENERATION.get().path("model").asText()).isEqualTo(model);
+                assertThat(LAST_GENERATION.get().path("output_format").asText()).isEqualTo("gif");
+                assertThat(LAST_GENERATION.get().path("frame_count").asInt()).isEqualTo(4);
+                assertThat(LAST_GENERATION.get().path("frame_duration_ms").asInt()).isEqualTo(200);
+                assertThat(LAST_GENERATION.get().path("size").asText()).isEqualTo("auto");
+                UUID versionId = UUID.fromString(done.output().path("artifactVersionId").asText());
+                var version = artifacts.requireVersion(owner.userId(), fixture.project().id(), fixture.card().artifact().id(), versionId);
+                UUID assetId = UUID.fromString(version.content().path("assetId").asText());
+                var file = assets.get(owner.userId(), fixture.project().id(), assetId);
+                assertThat(file.asset().contentType()).isEqualTo("image/gif");
+                assertThat(java.nio.file.Files.readAllBytes(file.path())).isEqualTo(animation);
+                var result = mvc.perform(get("/api/v1/projects/" + fixture.project().id() + "/assets/" + assetId + "/content").with(auth))
+                        .andExpect(status().isOk()).andReturn().getResponse();
+                assertThat(result.getContentType()).isEqualTo("image/gif");
+                assertThat(result.getContentAsByteArray()).isEqualTo(animation);
+                var settlement = usage.listProject(owner.userId(), fixture.project().id()).stream()
+                        .filter(entry -> entry.entryType() == dev.agenvas.usage.domain.UsageEntry.EntryType.SETTLEMENT).findFirst().orElseThrow();
+                assertThat(settlement.estimatedCost()).isEqualByComparingTo("0.012500");
+                assertThat(settlement.actualCost()).isNull();
+                var item = canvas.list(owner.userId(), fixture.project().id()).stream()
+                        .filter(entry -> entry.item().subjectId().equals(fixture.card().artifact().id())).findFirst().orElseThrow().item();
+                org.assertj.core.api.Assertions.assertThatThrownBy(() -> directMedia.runImageOperation(owner.userId(), fixture.project().id(),
+                        fixture.card().artifact().id(), item.id(), versionId, item.version(),
+                        dev.agenvas.task.domain.ImageOperation.RESIZE, "", 0, 1, List.of(), null,
+                        mapper.createObjectNode().put("resizeMode", "PERCENTAGE").put("percentage", 50), "gif-static-tool-" + model))
+                        .isInstanceOfSatisfying(dev.agenvas.shared.error.ApiProblemException.class,
+                                error -> assertThat(error.detail().key()).isEqualTo("api.asset.gif-static-operation"));
+                var staticAbility = catalog.publishCapability(connectionId, "Synthetic static reference " + model,
+                        "OPENAI_GPT_IMAGE_2", mapper.createObjectNode().put("model", model));
+                var target = artifacts.create(owner.userId(), fixture.project().id(), Artifact.Kind.IMAGE, "Static target", null);
+                UUID targetItem = dev.agenvas.support.CanvasMediaFixture.place(canvas, owner.userId(), fixture.project().id(), target.artifact().id());
+                long draftVersion = drafts.save(owner.userId(), fixture.project().id(), targetItem, 0, "Synthetic reference", mapper.createObjectNode(),
+                        null, staticAbility.id(), null, List.of(new MediaDraftService.SaveMediaInput(versionId,
+                                dev.agenvas.artifact.domain.MediaDraft.InputRole.REFERENCE, "#7C3AED")), List.of(), null).version();
+                org.assertj.core.api.Assertions.assertThatThrownBy(() -> directMedia.run(owner.userId(), fixture.project().id(), target.artifact().id(),
+                        targetItem, draftVersion, "gif-reference-" + model))
+                        .isInstanceOfSatisfying(dev.agenvas.shared.error.ApiProblemException.class,
+                                error -> assertThat(error.detail().key()).isEqualTo("api.asset.gif-static-operation"));
+                assertThat(worker.submitOnce("gif-no-resubmission")).isZero();
+            } finally { RESULT_BYTES.set(null); TOKEN_USAGE.set(null); }
+        }
+    }
+
+    private void verifyTokenBilling(UUID owner, UUID connectionId, dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Capability original) {
+        storageSettings.activateRelay(storageSettings.status().version(), storageSettings.status().profiles().getFirst().id(), false, false);
+        var pricing = mapper.readTree("""
+                {"model":"gpt-image-2","tokenPricing":{"currency":"USD","textInputPerMillion":"5",
+                "imageInputPerMillion":"8","imageOutputPerMillion":"30"}}
+                """);
+        var priced = catalog.updateCapability(connectionId, original.id(), original.version(), "Token priced", true,
+                "OPENAI_GPT_IMAGE_2", pricing);
+        TOKEN_USAGE.set("""
+                {"input_tokens":300,"output_tokens":400,"total_tokens":700,
+                "input_tokens_details":{"text_tokens":100,"image_tokens":200},"private":"discard"}
+                """);
+        Fixture generated = fixture(owner, "Synthetic token generation", 0);
+        Task accepted = generated.task();
+        assertThat(accepted.input().at("/mediaTokenPricing/textInputPerMillion").asText()).isEqualTo("5");
+        assertThat(usage.listProject(owner, generated.project().id()).getFirst().estimatedCost()).isNull();
+        // Repricing after submission cannot change the frozen rate used by an in-flight request.
+        RESPONSE_ACTION.set(() -> catalog.updateCapability(connectionId, priced.id(), priced.version(), "New rates", true,
+                "OPENAI_GPT_IMAGE_2", mapper.readTree(pricing.toString().replace("\"5\"", "\"50\""))));
+        assertThat(worker.submitOnce("token-generation-worker")).isEqualTo(1);
+        Task done = tasks.get(owner, generated.project().id(), accepted.id());
+        assertThat(done.status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(done.output().at("/providerUsage/textInputTokens").asInt()).isEqualTo(100);
+        assertThat(done.output().toString()).doesNotContain("private", "discard");
+        assertThat(artifacts.requireVersion(owner, generated.project().id(), generated.card().artifact().id(),
+                UUID.fromString(done.output().path("artifactVersionId").asText())).content()
+                .at("/parameters/providerUsage/outputTokens").asInt()).isEqualTo(400);
+        var settlement = usage.listProject(owner, generated.project().id()).stream()
+                .filter(entry -> entry.entryType() == dev.agenvas.usage.domain.UsageEntry.EntryType.SETTLEMENT).findFirst().orElseThrow();
+        assertThat(settlement.estimatedCost()).isEqualByComparingTo("0.014100");
+        assertThat(settlement.actualCost()).isNull();
+        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status -> usage.settleMediaTask(owner, done));
+        assertThat(usage.listProject(owner, generated.project().id())).hasSize(2);
+        assertThat(worker.submitOnce("token-no-duplicate-worker")).isZero();
+
+        Fixture edited = fixture(owner, "Synthetic token edit", 2);
+        assertThat(worker.submitOnce("token-edit-worker")).isEqualTo(1);
+        assertThat(usage.listProject(owner, edited.project().id()).stream().filter(entry -> entry.entryType()
+                == dev.agenvas.usage.domain.UsageEntry.EntryType.SETTLEMENT).findFirst().orElseThrow().estimatedCost())
+                .isEqualByComparingTo("0.018600");
+
+        Fixture canceled = fixture(owner, "Synthetic late canceled result", 0);
+        RESPONSE_ACTION.set(() -> jdbc.sql("update task set cancel_requested=true where id=:id").param("id", canceled.task().id()).update());
+        assertThat(worker.submitOnce("token-canceled-worker")).isEqualTo(1);
+        assertThat(tasks.get(owner, canceled.project().id(), canceled.task().id()).status()).isEqualTo(Task.Status.CANCELED);
+        assertThat(usage.listProject(owner, canceled.project().id()).stream().filter(entry -> entry.entryType()
+                == dev.agenvas.usage.domain.UsageEntry.EntryType.SETTLEMENT).findFirst().orElseThrow().estimatedCost())
+                .isEqualByComparingTo("0.018600");
+
+        TOKEN_USAGE.set(null);
+        Fixture missing = fixture(owner, "Synthetic missing usage", 0);
+        assertThat(worker.submitOnce("token-missing-worker")).isEqualTo(1);
+        assertThat(tasks.get(owner, missing.project().id(), missing.task().id()).status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(usage.listProject(owner, missing.project().id())).hasSize(2).allSatisfy(entry -> {
+            assertThat(entry.estimatedCost()).isNull(); assertThat(entry.actualCost()).isNull();
+            assertThat(entry.costStatus()).isEqualTo(dev.agenvas.usage.domain.UsageEntry.CostStatus.UNKNOWN);
+        });
+        TOKEN_USAGE.set("""
+                {"input_tokens":300,"output_tokens":400,"total_tokens":700,
+                "input_tokens_details":{"text_tokens":100,"image_tokens":200},"output_tokens_details":"invalid"}
+                """);
+        Fixture malformed = fixture(owner, "Synthetic malformed usage", 0);
+        assertThat(worker.submitOnce("token-malformed-worker")).isEqualTo(1);
+        Task malformedResult = tasks.get(owner, malformed.project().id(), malformed.task().id());
+        assertThat(malformedResult.status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(malformedResult.output().at("/providerUsage/valid").asBoolean()).isFalse();
+        assertThat(usage.listProject(owner, malformed.project().id())).hasSize(2).allSatisfy(entry -> {
+            assertThat(entry.estimatedCost()).isNull(); assertThat(entry.actualCost()).isNull();
+            assertThat(entry.costStatus()).isEqualTo(dev.agenvas.usage.domain.UsageEntry.CostStatus.UNKNOWN);
+        });
+        TOKEN_USAGE.set(null);
     }
 
     /** 一张空图片卡片、其草稿和直连受理结果；参考图按传入顺序固定。 */
@@ -398,7 +591,9 @@ class OpenAiImage2PostgresIT {
                     exchange.close();
                     return;
                 }
-                respond(exchange, exchange.getRequestBody().readAllBytes());
+                byte[] request = exchange.getRequestBody().readAllBytes();
+                LAST_GENERATION.set(new ObjectMapper().readTree(request));
+                respond(exchange, request);
             });
             server.createContext("/v1/images/edits", exchange -> {
                 EDITS.incrementAndGet();
@@ -438,7 +633,10 @@ class OpenAiImage2PostgresIT {
                 ? "{\"data\":[{\"url\":\"http://127.0.0.1:"
                         + SERVER.getAddress().getPort() + "/cdn/result.png\"}]}"
                 : "{\"data\":[{\"b64_json\":\""
-                        + Base64.getEncoder().encodeToString(pngBytes()) + "\"}]}";
+                        + Base64.getEncoder().encodeToString(RESULT_BYTES.get() == null ? pngBytes() : RESULT_BYTES.get()) + "\"}]}";
+        Runnable action = RESPONSE_ACTION.getAndSet(null);
+        if (action != null) action.run();
+        if (TOKEN_USAGE.get() != null) payload = payload.substring(0, payload.length() - 1) + ",\"usage\":" + TOKEN_USAGE.get() + "}";
         byte[] response = payload.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json");
         exchange.sendResponseHeaders(200, response.length);

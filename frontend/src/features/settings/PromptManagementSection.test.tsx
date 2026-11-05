@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router";
@@ -7,6 +7,8 @@ import { describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import { selectValue } from "../../test/controls";
 import { server } from "../../test/server";
+import { seededPrompts } from "../../test/seededCatalogs";
+import { setLocale } from "../../shared/i18n";
 import { PromptManagementSection } from "./PromptManagementSection";
 
 const defaults = { id: "director", key: "agent.director", kind: "AGENT", name: "导演 Agent", description: "Synthetic purpose", content: "Synthetic workflow", builtIn: true, version: 1, createdAt: "2026-10-03T00:00:00Z", updatedAt: "2026-10-03T00:00:00Z" };
@@ -18,6 +20,60 @@ function show(enabled = true) {
   return view;
 }
 describe("PromptManagementSection", () => {
+  it("shows all seeded metadata in English and searches the displayed names", async () => {
+    setLocale("en");
+    expect(seededPrompts).toHaveLength(8);
+    server.use(http.get("/api/v1/settings/prompts", () => HttpResponse.json({ items: seededPrompts })));
+    const { container } = show();
+    await screen.findByDisplayValue("Existing creative instructions.");
+    const user = userEvent.setup();
+    for (const prompt of seededPrompts) {
+      await user.click(screen.getByRole("button", { name: new RegExp(prompt.key.replaceAll(".", "\\.")) }));
+      expect(screen.getByLabelText("Name")).not.toHaveValue(prompt.name);
+      expect(screen.getByLabelText("Purpose description")).not.toHaveValue(prompt.description);
+      for (const field of container.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input, textarea")) {
+        expect(field.value).not.toMatch(/\p{Script=Han}/u);
+      }
+      expect(container.textContent).not.toMatch(/\p{Script=Han}/u);
+    }
+    fireEvent.change(screen.getByLabelText("Search name, key or description"), { target: { value: "Text card generation" } });
+    expect(screen.getByRole("button", { name: /text\.generate/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /agent\.director/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps raw seeded metadata when editing content and changing locale", async () => {
+    setLocale("en");
+    const prompt = { ...seededPrompts[0]!, content: "保留已有中文创作指令" };
+    const writes = vi.fn();
+    server.use(http.get("/api/v1/settings/prompts", () => HttpResponse.json({ items: [prompt] })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ token: "synthetic", headerName: "X-CSRF-TOKEN" })),
+      http.put(`/api/v1/settings/prompts/${prompt.id}`, async ({ request }) => {
+        const input = await request.json(); writes(input);
+        return HttpResponse.json({ ...prompt, content: "保留已有中文创作指令，再补充要求", version: 2 });
+      }));
+    show(); await screen.findByDisplayValue(prompt.content);
+    fireEvent.change(screen.getByLabelText("Prompt content"), { target: { value: "保留已有中文创作指令，再补充要求" } });
+    act(() => setLocale("ja"));
+    expect(screen.getByDisplayValue("保留已有中文创作指令，再补充要求")).toBeInTheDocument();
+    act(() => setLocale("en"));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Save configuration" }));
+    await waitFor(() => expect(writes).toHaveBeenCalledWith({ name: prompt.name, description: prompt.description,
+      content: "保留已有中文创作指令，再补充要求", expectedVersion: prompt.version }));
+  });
+
+  it("preserves customized Chinese metadata and unrecognized identities", async () => {
+    setLocale("en");
+    const prompts = [
+      { ...seededPrompts[0]!, name: "我的中文导演", description: "自定义中文用途说明" },
+      { ...seededPrompts[1]!, id: "custom", key: "feature.custom", builtIn: false },
+      { ...seededPrompts[2]!, id: "unknown", key: "feature.unknown" },
+    ];
+    server.use(http.get("/api/v1/settings/prompts", () => HttpResponse.json({ items: prompts })));
+    show(); await screen.findByDisplayValue("我的中文导演");
+    expect(screen.getByLabelText("Purpose description")).toHaveValue("自定义中文用途说明");
+    for (const prompt of prompts) expect(screen.getByRole("button", { name: new RegExp(prompt.name) })).toBeInTheDocument();
+  });
+
   it("does not load while its category is inactive", () => {
     const reads = vi.fn();
     server.use(http.get("/api/v1/settings/prompts", () => { reads(); return HttpResponse.json({ items: [defaults] }); }));

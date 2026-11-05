@@ -17,6 +17,71 @@ class MediaCapabilityConfigurationTest {
     private final MediaAdapterRegistry registry = new MediaAdapterRegistry(List.of());
 
     @Test
+    void nativeVideoPricesUseTheSameCanonicalTierAsTaskAcceptance() {
+        for (String tier : List.of("720p", "720P")) {
+            var settings = normalize("WAN_VIDEO", "{\"pricingByResolution\":{\"" + tier
+                    + "\":{\"amount\":\"0.2\",\"currency\":\"CNY\",\"unit\":\"SECOND\"}}}");
+            assertThat(settings.path("pricingByResolution").propertyNames()).containsExactly("720p");
+            assertThat(MediaCapabilityConfiguration.price(settings, "720p").path("amount").asText()).isEqualTo("0.2");
+        }
+        var google = normalize("GOOGLE_VEO", """
+                {"pricingByResolution":{"4k":{"amount":"0.4","currency":"USD","unit":"SECOND"}}}
+                """);
+        assertThat(google.path("pricingByResolution").propertyNames()).containsExactly("2160p");
+        assertThat(MediaCapabilityConfiguration.price(google, "2160p").path("amount").asText()).isEqualTo("0.4");
+        assertThatThrownBy(() -> normalize("WAN_VIDEO", """
+                {"pricingByResolution":{"720p":{"amount":"0.2","currency":"CNY","unit":"SECOND"},
+                "720P":{"amount":"0.3","currency":"CNY","unit":"SECOND"}}}
+                """)).isInstanceOf(ApiProblemException.class);
+    }
+
+    @Test
+    void readsHistoricalNativeTierAliasesWithoutChangingTheirSnapshotsOrUniformPrices() {
+        var legacy = mapper.readTree("""
+                {"nativeInputs":[{"key":"resolution"}],
+                "pricing":{"amount":"0.1","currency":"CNY","unit":"SECOND"},
+                "pricingByResolution":{"720P":{"amount":"0.2","currency":"CNY","unit":"SECOND"},
+                "4k":{"amount":"0.4","currency":"USD","unit":"VIDEO"}}}
+                """);
+        JsonNode original = legacy.deepCopy();
+        assertThat(MediaCapabilityConfiguration.price(legacy, "720p").path("amount").asText()).isEqualTo("0.2");
+        assertThat(MediaCapabilityConfiguration.price(legacy, "2160p").path("amount").asText()).isEqualTo("0.4");
+        assertThat(MediaCapabilityConfiguration.price(legacy, "480p").path("amount").asText()).isEqualTo("0.1");
+        assertThat(legacy).isEqualTo(original);
+        var withCanonical = (ObjectNode) legacy.deepCopy();
+        ((ObjectNode) withCanonical.path("pricingByResolution")).putObject("720p")
+                .put("amount", "0.3").put("currency", "CNY").put("unit", "SECOND");
+        assertThat(MediaCapabilityConfiguration.price(withCanonical, "720p").path("amount").asText()).isEqualTo("0.3");
+        assertThat(MediaCapabilityConfiguration.canonicalNativeResolutionPrices((ObjectNode) withCanonical.path("pricingByResolution"))
+                .path("720p").path("amount").asText()).isEqualTo("0.3");
+        var ordinary = (ObjectNode) legacy.deepCopy(); ordinary.remove("nativeInputs");
+        assertThat(MediaCapabilityConfiguration.price(ordinary, "720p").path("amount").asText()).isEqualTo("0.1");
+    }
+
+    @Test
+    void openAiAcceptsSeparateTokenRatesAndRejectsAmbiguousOrUnsupportedPricing() {
+        String rates = """
+                {"currency":"USD","textInputPerMillion":"5","imageInputPerMillion":"8",
+                 "imageOutputPerMillion":"30","cachedTextInputPerMillion":"1.25",
+                 "cachedImageInputPerMillion":"2"}
+                """;
+        assertThat(normalize("OPENAI_GPT_IMAGE_2", "{\"tokenPricing\":" + rates + "}")
+                .path("tokenPricing")).isEqualTo(mapper.readTree(rates));
+        for (String adapter : List.of("GOOGLE_NANO_BANANA_2", "MOCK_IMAGE", "ARK_SEEDANCE_2_I2V"))
+            assertThatThrownBy(() -> normalize(adapter, "{\"tokenPricing\":" + rates + "}"))
+                    .isInstanceOf(ApiProblemException.class);
+        for (String invalid : List.of(rates.replace("\"5\"", "\"-5\""),
+                rates.replace("\"5\"", "5"), rates.replace("\"5\"", "\"0.1234567\""),
+                rates.replace("\"currency\":\"USD\"", "\"currency\":\"EUR\""),
+                "{\"currency\":\"USD\",\"imageOutputPerMillion\":\"30\"}"))
+            assertThatThrownBy(() -> normalize("OPENAI_GPT_IMAGE_2", "{\"tokenPricing\":" + invalid + "}"))
+                    .isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> normalize("OPENAI_GPT_IMAGE_2", "{\"tokenPricing\":" + rates
+                + ",\"pricing\":{\"amount\":\"1\",\"currency\":\"USD\",\"unit\":\"IMAGE\"}}"))
+                .isInstanceOf(ApiProblemException.class);
+    }
+
+    @Test
     void acceptsImageDefaultsNarrowerReferencesAndDecimalPrice() {
         ObjectNode settings = normalize("GOOGLE_NANO_BANANA_2", """
                 {"maxReferenceImages":3,"defaultParameters":{"aspectRatio":"16:9",
@@ -151,7 +216,8 @@ class MediaCapabilityConfigurationTest {
 
     private ObjectNode normalize(String adapter, String json) {
         JsonNode source = mapper.readTree(json);
-        ObjectNode target = mapper.createObjectNode();
+        ObjectNode target = dev.agenvas.provider.domain.NativeMediaProfiles.supports(adapter)
+                ? dev.agenvas.provider.domain.NativeMediaProfiles.normalizeSettings(adapter, source, mapper) : mapper.createObjectNode();
         MediaCapabilityConfiguration.normalize(mapper, registry.declaration(adapter), source, target);
         return target;
     }

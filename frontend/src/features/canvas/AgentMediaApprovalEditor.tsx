@@ -6,6 +6,7 @@ import { AUTODL_ADAPTER, publishedAutoDlResolutions } from "../../shared/autodlW
 import { MINIMAX_H3_ADAPTER, MINIMAX_H3_RESOLUTIONS, minimaxResolutionLabel } from "../../shared/minimaxH3";
 import { KLING_VIDEO_ADAPTER, KLING_VIDEO_RESOLUTIONS, klingVideoResolutionLabel } from "../../shared/kling";
 import { t } from "../../shared/i18n";
+import { mediaDisplayName } from "../../shared/mediaDisplayNames";
 import { Dialog } from "../../shared/ui/Dialog";
 import { Select } from "../../shared/ui/Select";
 import { Button } from "../../shared/ui/primitives/button";
@@ -41,7 +42,7 @@ function ApprovalVideoForm({ settings, draft, ...props }: ApprovalEditorProps & 
   const [switchError, setSwitchError] = useState("");
   const options = settings.connections.filter((connection) => connection.enabled)
     .flatMap((connection) => connection.capabilities.filter((capability) => capability.enabled && capability.kind === "VIDEO_GENERATION")
-      .map((capability) => ({ capability, label: `${connection.name} · ${capability.name}` })));
+      .map((capability) => ({ capability, label: `${mediaDisplayName(connection)} · ${mediaDisplayName(capability)}` })));
   const capability = options.find((option) => option.capability.id === fields.capabilityId)?.capability;
   const definition = workflowDefinition(capability);
   const values = workflowDraftValues(capability, fields);

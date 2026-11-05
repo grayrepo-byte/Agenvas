@@ -102,6 +102,8 @@ public class LlmRoundService {
         if (turn.status() == LlmTurn.Status.RESPONDED) {
             return turn.response();
         }
+        LlmRequestBudget budget = codec.requestBudget(request);
+        if (budget != null) budget.requireInput(messages, tools);
         List<Message> dispatched = images.hydrate(ownerId, projectId, runId, run.contextSnapshot(), messages);
         ChatGateway.ModelDetails model = gateway.modelDetailsFor(selected);
         boolean mock = "mock".equals(selected.source());
@@ -113,8 +115,9 @@ public class LlmRoundService {
         Map<String, Object> callContext = new java.util.HashMap<>(trustedContext);
         if (compacting) callContext.put(AgentContextService.CALL_PURPOSE, true);
         ChatGateway.Exchange exchange = callLogs.recordStream(descriptor,
-                (captureContent, log) -> modelCall(() -> gateway.callStreaming(
-                        dispatched, tools, callContext, selected, compacting ? ignored -> {} : stream, captureContent, log)),
+                (captureContent, log) -> modelCall(() -> budget == null
+                        ? gateway.callStreaming(dispatched, tools, callContext, selected, compacting ? ignored -> {} : stream, captureContent, log)
+                        : gateway.callStreaming(dispatched, tools, callContext, selected, budget, compacting ? ignored -> {} : stream, captureContent, log)),
                 value -> CallLogService.CallOutcome.succeeded(value.response().getMetadata().getId()));
         if (exchange.configVersion() != turn.modelConfigVersion()) {
             throw new IllegalStateException("ChatGateway configuration changed during model call");

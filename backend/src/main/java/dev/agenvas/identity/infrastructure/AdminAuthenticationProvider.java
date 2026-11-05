@@ -39,7 +39,8 @@ public class AdminAuthenticationProvider implements AuthenticationProvider {
         String loginName = IdentityService.normalizeLoginName(authentication.getName());
         String password = String.valueOf(authentication.getCredentials());
         return accounts.findActiveByLoginName(loginName)
-                .filter(account -> passwordEncoder.matches(password, account.passwordHash()))
+                .filter(account -> IdentityService.canVerifyPassword(password, account.passwordHash())
+                        && passwordEncoder.matches(password, account.passwordHash()))
                 .<Authentication>map(account -> UsernamePasswordAuthenticationToken.authenticated(
                         new AdminPrincipal(account.id(), account.loginName()), null, ADMIN_AUTHORITIES))
                 .orElseThrow(() -> new BadCredentialsException("Invalid credentials"));

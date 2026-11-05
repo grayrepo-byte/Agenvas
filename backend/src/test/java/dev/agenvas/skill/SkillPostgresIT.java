@@ -262,6 +262,113 @@ class SkillPostgresIT {
         }
     }
 
+    @Test void localizedBuiltinSearchMatchesVisibleTitlesAndDescriptionsWithoutChangingStoredContent() throws Exception {
+        UUID account = searchAccount("localized");
+        var builtin = skills.list(account, "short-drama-assets", false, null).items().getFirst();
+        var original = skills.getBundle(account, builtin.id(), builtin.currentVersionId());
+        var accountAuth = authentication(new UsernamePasswordAuthenticationToken(
+                new AdminPrincipal(account, "synthetic-search-user"), null, List.of()));
+        for (var sample : List.of(
+                List.of("en-GB", "VISUAL ASSET DESIGN", "period details"),
+                List.of("ru-RU", "ВИЗУАЛЬНЫЕ МАТЕРИАЛЫ", "исторических деталей"),
+                List.of("en;q=0,ja-JP;q=0.9", "ビジュアル素材設計", "時代設定"))) {
+            for (String query : sample.subList(1, sample.size())) {
+                var result = mapper.readTree(mvc.perform(get("/api/v1/skills").with(accountAuth)
+                                .header("Accept-Language", sample.getFirst()).param("query", query).param("category", "STORY"))
+                        .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+                assertThat(result.path("total").asInt()).as("%s / %s", sample.getFirst(), query).isEqualTo(1);
+                assertThat(result.path("items")).hasSize(1);
+                assertThat(result.at("/items/0/id").asText()).isEqualTo(builtin.id().toString());
+                // Localized matching is presentation-only; response and immutable instructions remain original.
+                assertThat(result.at("/items/0/title").asText()).isEqualTo(builtin.title());
+                assertThat(result.at("/items/0/description").asText()).isEqualTo(builtin.description());
+            }
+        }
+        assertThat(skills.get(account, builtin.id())).isEqualTo(builtin);
+        assertThat(skills.getBundle(account, builtin.id(), builtin.currentVersionId())).isEqualTo(original);
+        assertThat(skills.list(account, "视觉资产设定", false, null).items()).extracting(SkillService.SkillResponse::id)
+                .containsExactly(builtin.id());
+    }
+
+    @Test void localizedSearchSharesRawPersonalFiltersTotalsAndCursorPagination() throws Exception {
+        withEnglishSearchRequest(() -> {
+            UUID account = searchAccount("pages");
+            var builtin = skills.list(account, "short-drama-assets", false, null).items().getFirst();
+            var personalIds = new java.util.ArrayList<UUID>();
+            for (int index = 0; index < 45; index++) {
+                var personal = index % 2 == 0
+                        ? skills.create(account, "Visual asset design custom " + index, "User-authored description")
+                        : skills.create(account, "Custom " + index, "Visual asset design from my own notes");
+                personalIds.add(personal.id());
+            }
+            var trashed = skills.create(account, "Visual asset design trash", "Keep this user text");
+            skills.updateMetadata(account, trashed.id(), trashed.version(), trashed.title(), trashed.description(), true);
+            var first = skills.list(account, "visual asset design", false, null);
+            assertThat(first.total()).isEqualTo(46);
+            assertThat(first.items()).hasSize(SkillService.PAGE_SIZE);
+            assertThat(first.nextCursor()).isNotNull();
+            var second = skills.list(account, "visual asset design", false, first.nextCursor());
+            assertThat(second.total()).isEqualTo(46);
+            assertThat(second.items()).hasSize(6);
+            assertThat(second.nextCursor()).isNull();
+            assertThat(java.util.stream.Stream.concat(first.items().stream(), second.items().stream())
+                    .map(SkillService.SkillResponse::id)).doesNotHaveDuplicates()
+                    .containsExactlyInAnyOrderElementsOf(java.util.stream.Stream.concat(personalIds.stream(), java.util.stream.Stream.of(builtin.id())).toList());
+            var story = skills.list(account, "visual asset design", false, null, dev.agenvas.skill.application.BuiltinSkillCatalogue.Category.STORY);
+            assertThat(story.total()).isEqualTo(1);
+            assertThat(story.items()).extracting(SkillService.SkillResponse::id).containsExactly(builtin.id());
+            assertThat(story.nextCursor()).isNull();
+            assertThat(skills.list(account, "visual asset design", false, null,
+                    dev.agenvas.skill.application.BuiltinSkillCatalogue.Category.ADVERTISING).total()).isZero();
+            assertThat(skills.list(account, "visual asset design", true, null).items())
+                    .extracting(SkillService.SkillResponse::id).containsExactly(trashed.id());
+            assertThat(skills.list(account, "User-authored", false, null).total()).isEqualTo(23);
+            assertThat(skills.get(account, personalIds.getFirst()).description()).isEqualTo("User-authored description");
+            assertThat(skills.list(owner.userId(), "visual asset design custom", false, null).total()).isZero();
+        });
+    }
+
+    @Test void localizedSearchDoesNotTranslateChangedBuiltinMetadataOrPersonalCopies() {
+        withEnglishSearchRequest(() -> {
+            UUID account = searchAccount("guards");
+            var builtin = skills.list(account, "short-drama-assets", false, null).items().getFirst();
+            var personal = skills.create(account, builtin.title(), builtin.description());
+            // Public editing rejects built-ins. Simulate legacy/customized metadata to retain the display guard anyway.
+            jdbc.sql("update creative_skill set description='Custom builtin description' where id=:id").param("id", builtin.id()).update();
+            assertThat(skills.list(account, "visual asset design", false, null).items())
+                    .extracting(SkillService.SkillResponse::id).containsExactly(builtin.id());
+            assertThat(skills.list(account, "period details", false, null).total()).isZero();
+            jdbc.sql("update creative_skill set title='Custom builtin title' where id=:id").param("id", builtin.id()).update();
+            assertThat(skills.list(account, "visual asset design", false, null).total()).isZero();
+            assertThat(skills.list(account, "Custom builtin", false, null).items())
+                    .extracting(SkillService.SkillResponse::id).containsExactly(builtin.id());
+            assertThat(skills.list(account, "视觉资产设定", false, null).items())
+                    .extracting(SkillService.SkillResponse::id).containsExactly(personal.id());
+            assertThat(skills.get(account, personal.id()).description()).isEqualTo(builtin.description());
+            assertThat(skills.get(account, builtin.id()).title()).isEqualTo("Custom builtin title");
+        });
+    }
+
+    private void withEnglishSearchRequest(Runnable assertions) {
+        var previous = org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+        var request = new org.springframework.mock.web.MockHttpServletRequest();
+        request.addHeader("Accept-Language", "en");
+        org.springframework.web.context.request.RequestContextHolder.setRequestAttributes(
+                new org.springframework.web.context.request.ServletRequestAttributes(request));
+        try {
+            assertions.run();
+        } finally {
+            org.springframework.web.context.request.RequestContextHolder.setRequestAttributes(previous);
+        }
+    }
+
+    private UUID searchAccount(String suffix) {
+        UUID account = UUID.randomUUID();
+        jdbc.sql("insert into app_user(id,login_name,password_hash,status,created_at) values (:id,:login,'synthetic-hash','DISABLED',now())")
+                .param("id", account).param("login", "search-" + suffix + "-" + account).update();
+        return account;
+    }
+
     @Test void missingVersionsAndRequiredInputFlagsCannotBecomeDefaultValues() throws Exception {
         var skill = skills.create(owner.userId(), "Required fields", "");
         var body = mapper.createObjectNode().put("skillMd", BODY);

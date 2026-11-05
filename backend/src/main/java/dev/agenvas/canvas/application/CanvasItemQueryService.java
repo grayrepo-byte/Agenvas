@@ -18,21 +18,17 @@ public class CanvasItemQueryService {
         this.canvasItems = canvasItems;
     }
 
-    /** Resolves one owned Artifact card while hiding the canvas persistence boundary. */
+    /** Resolves one owned card; the persisted canvas subject is always an Artifact. */
     @Transactional(readOnly = true)
     public CanvasItem requireArtifactItem(UUID ownerId, UUID projectId, UUID canvasItemId) {
-        CanvasItem item = canvasItems.find(ownerId, projectId, canvasItemId)
-                .orElseThrow(this::notFound);
-        if (item.subjectType() != CanvasItem.SubjectType.ARTIFACT) throw notFound();
-        return item;
+        return canvasItems.find(ownerId, projectId, canvasItemId).orElseThrow(this::notFound);
     }
 
     /** Current display identities only, without loading Artifact bodies or media drafts. */
     @Transactional(readOnly = true)
     public List<CanvasItem> artifactItems(UUID ownerId, UUID projectId, UUID artifactId) {
         return canvasItems.list(ownerId, projectId).stream()
-                .filter(item -> item.subjectType() == CanvasItem.SubjectType.ARTIFACT
-                        && item.subjectId().equals(artifactId)).toList();
+                .filter(item -> item.subjectId().equals(artifactId)).toList();
     }
 
     /** Content revisions deliberately exclude layout/title CAS so presentation undo composes. */

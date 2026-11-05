@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router";
@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { CreateMediaStyleRequest, MediaStyle, UpdateMediaStyleRequest } from "../../shared/api/client";
 import { server } from "../../test/server";
+import { seededStyles } from "../../test/seededCatalogs";
+import { setLocale } from "../../shared/i18n";
 import { MediaStyleSettingsSection } from "./MediaStyleSettingsSection";
 import { SystemSettingsPage } from "./SystemSettingsPage";
 
@@ -28,6 +30,56 @@ describe("MediaStyleSettingsSection", () => {
     server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "token" })));
   });
   afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+  it("renders seeded settings and editable labels in English while saving raw metadata", async () => {
+    setLocale("en");
+    const preset = seededStyles[0]!;
+    const writes = vi.fn();
+    server.use(http.get(endpoint, () => HttpResponse.json(seededStyles)),
+      http.put(`${endpoint}/${preset.id}`, async ({ request }) => {
+        const input = await request.json() as UpdateMediaStyleRequest; writes(input);
+        return HttpResponse.json({ ...preset, ...input, version: 1 });
+      }));
+    renderSettings();
+    const article = await screen.findByRole("article", { name: "Photorealistic photography" });
+    expect(screen.getAllByRole("article")).toHaveLength(8);
+    expect(document.body.textContent).not.toMatch(/\p{Script=Han}/u);
+    for (const image of screen.getAllByRole("img")) expect(image.getAttribute("alt")).not.toMatch(/\p{Script=Han}/u);
+    const user = userEvent.setup();
+    await user.click(within(article).getByRole("button", { name: "Edit style" }));
+    const modal = screen.getByRole("dialog");
+    expect(within(modal).getByLabelText("Style name")).toHaveValue("Photorealistic photography");
+    expect(within(modal).getByLabelText("Category")).toHaveValue("Realistic");
+    fireEvent.change(within(modal).getByLabelText("Style prompt"), { target: { value: "Preserve my edited creative instructions." } });
+    act(() => setLocale("ja"));
+    expect(screen.getByDisplayValue("Preserve my edited creative instructions.")).toBeInTheDocument();
+    act(() => setLocale("en"));
+    await user.click(within(modal).getByRole("button", { name: "Save style" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(writes).toHaveBeenCalledWith({ name: preset.name, category: preset.category,
+      promptSuffix: "Preserve my edited creative instructions.", enabled: true, expectedVersion: 0 });
+    await user.click(within(article).getByRole("button", { name: "Disable" }));
+    await waitFor(() => expect(writes).toHaveBeenLastCalledWith({ name: preset.name, category: preset.category,
+      promptSuffix: "Preserve my edited creative instructions.", enabled: false, expectedVersion: 1 }));
+  });
+
+  it("keeps customized Chinese settings fields and custom seed-like names unchanged", async () => {
+    setLocale("en");
+    const styles = [
+      { ...seededStyles[0]!, name: "我的中文摄影", category: "我的中文分类", promptSuffix: "保留我的中文提示词" },
+      { ...seededStyles[1]!, id: "custom", builtIn: false },
+      { ...seededStyles[2]!, id: "unknown" },
+    ];
+    server.use(http.get(endpoint, () => HttpResponse.json(styles)));
+    renderSettings();
+    const article = await screen.findByRole("article", { name: "我的中文摄影" });
+    for (const style of styles) expect(screen.getByRole("article", { name: style.name })).toHaveTextContent(style.category);
+    await userEvent.setup().click(within(article).getByRole("button", { name: "Edit style" }));
+    const modal = screen.getByRole("dialog");
+    expect(within(modal).getByLabelText("Style name")).toHaveValue("我的中文摄影");
+    expect(within(modal).getByLabelText("Category")).toHaveValue("我的中文分类");
+    expect(within(modal).getByLabelText("Style prompt")).toHaveValue("保留我的中文提示词");
+  });
 
   it("supports the styles deep link and loads this category on demand", async () => {
     const reads = vi.fn();

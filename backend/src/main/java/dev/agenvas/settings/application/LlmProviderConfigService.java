@@ -8,6 +8,7 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /** 管理员维护的 LLM 配置；每次修改生成加密新版本，并通过 CAS 防止并发覆盖。 */
 @Service
@@ -21,14 +22,21 @@ public class LlmProviderConfigService {
     private final LlmEndpointPolicy endpoints;
     /** 为新配置版本提供创建时间。 */
     private final Clock clock;
+    private final LlmModelDiscoveryService discovery;
 
     /** 注入加密、端点策略与版本化配置仓储。 */
     public LlmProviderConfigService(LlmProviderConfigRepository configs,
             CredentialCipher cipher, LlmEndpointPolicy endpoints, Clock clock) {
+        this(configs, cipher, endpoints, clock, null);
+    }
+    @Autowired
+    public LlmProviderConfigService(LlmProviderConfigRepository configs,
+            CredentialCipher cipher, LlmEndpointPolicy endpoints, Clock clock, LlmModelDiscoveryService discovery) {
         this.configs = configs;
         this.cipher = cipher;
         this.endpoints = endpoints;
         this.clock = clock;
+        this.discovery = discovery;
     }
 
     /** 返回安全状态字段，不包含密文、完整密钥、nonce 或内部文件路径。 */
@@ -42,10 +50,23 @@ public class LlmProviderConfigService {
     @Transactional
     public Status replace(int expectedVersion, String requestedEndpoint,
             String requestedModelId, String requestedApiKey) {
+        return replace(expectedVersion, requestedEndpoint, requestedModelId, requestedApiKey, null);
+    }
+    @Transactional
+    public Status replace(int expectedVersion, String requestedEndpoint,
+            String requestedModelId, String requestedApiKey, LlmModelDiscoveryService.Selection selection) {
         if (expectedVersion < 0) throw invalid(ApiMessage.of("api.llm-provider-config-service.configuration-version-must-be-non-negative"));
         String endpoint = endpoints.normalize(requestedEndpoint);
         String modelId = validateModelId(requestedModelId);
         String apiKey = validateApiKey(requestedApiKey);
+        LlmModelPolicy modelPolicy;
+        try { modelPolicy = selection == null ? null : discovery.resolve(expectedVersion, endpoint, modelId, apiKey, selection); }
+        catch (IllegalArgumentException rejected) {
+            String code = java.util.Set.of("MODEL_PREVIEW_EXPIRED", "MODEL_PREVIEW_INVALID", "MODEL_POLICY_INVALID", "MODEL_CAPACITY_UNKNOWN")
+                    .contains(rejected.getMessage()) ? rejected.getMessage() : "MODEL_POLICY_INVALID";
+            throw new ApiProblemException("MODEL_PREVIEW_EXPIRED".equals(code) ? HttpStatus.CONFLICT : HttpStatus.BAD_REQUEST,
+                    code, ApiMessage.of("api.model-metadata.title"), ApiMessage.of("api.model-metadata.refresh"), false);
+        }
         int currentVersion = configs.lockVersion();
         if (currentVersion != expectedVersion) {
             throw new ApiProblemException(HttpStatus.CONFLICT,
@@ -58,7 +79,7 @@ public class LlmProviderConfigService {
         LlmProviderConfig config = new LlmProviderConfig(id, next, endpoint, modelId,
                 encrypted.ciphertext(), encrypted.nonce(), encrypted.keyVersion(),
                 "••••" + apiKey.substring(apiKey.length() - 4), false, true,
-                clock.instant());
+                clock.instant(), modelPolicy);
         configs.publish(currentVersion, config);
         return publicStatus(config);
     }
@@ -66,7 +87,7 @@ public class LlmProviderConfigService {
     /** 将内部配置投影为可公开状态，丢弃所有加密材料。 */
     private Status publicStatus(LlmProviderConfig config) {
         return new Status(true, config.version(), config.endpoint(), config.modelId(),
-                config.keyMask(), config.toolCallingVerified(), config.createdAt());
+                config.keyMask(), config.toolCallingVerified(), config.createdAt(), config.modelPolicy());
     }
 
     /** 限制模型 ID 为允许的 ASCII 名称字符及长度。 */
@@ -102,5 +123,10 @@ public class LlmProviderConfigService {
      * @param updatedAt 当前配置创建时间
      */
     public record Status(boolean configured, int version, String endpoint, String modelId,
-            String keyMask, boolean toolCallingVerified, Instant updatedAt) {}
+            String keyMask, boolean toolCallingVerified, Instant updatedAt, LlmModelPolicy modelPolicy) {
+        public Status(boolean configured, int version, String endpoint, String modelId,
+                String keyMask, boolean toolCallingVerified, Instant updatedAt) {
+            this(configured, version, endpoint, modelId, keyMask, toolCallingVerified, updatedAt, null);
+        }
+    }
 }

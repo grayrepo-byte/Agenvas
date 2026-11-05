@@ -1,28 +1,42 @@
 import { WarningCircle } from "@/shared/ui/icons";
 import { useMutation,useQueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
-import { createManualUnknownAttempt,type Task } from "../../shared/api/client";
+import { ApiError,createManualUnknownAttempt,type ManualUnknownAttemptRequest,type Task } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";
 import "./AgentChatPanels.css";
 import { taskErrorDetail, type ProviderFailureDiagnostic } from "./taskErrorMessages";
 import { EditorFeedbackRow } from "./EditorFeedbackRow";
 
-/** Offers one explicit retry for a task whose external result could not be confirmed. */
-export function UnknownTaskRetryPanel({ projectId, taskId, taskVersion, errorCode, taskStatus = "UNKNOWN", providerFailure, onChanged, compact = false }: {
+type Props = {
   projectId: string; taskId: string; taskVersion: number;
   errorCode?: Task["errorCode"]; taskStatus?: "UNKNOWN" | "BLOCKED"; onChanged?: () => void | Promise<void>;
   compact?: boolean; providerFailure?: ProviderFailureDiagnostic | null;
-}) {
+};
+const REQUEST_TIMEOUT_STATUS = 408;
+
+/** A card can replace one unknown task with another without unmounting its retry slot. */
+export function UnknownTaskRetryPanel(props: Props) {
+  return <TaskRetryAttempt key={JSON.stringify([props.projectId, props.taskId])} {...props} />;
+}
+
+/** Offers one explicit retry for a task whose external result could not be confirmed. */
+function TaskRetryAttempt({ projectId, taskId, taskVersion, errorCode, taskStatus = "UNKNOWN", providerFailure, onChanged, compact = false }: Props) {
   useLocale();
-  const retryKey = useRef<string | null>(null);
+  const command = useRef<{ key: string; request: ManualUnknownAttemptRequest } | null>(null);
   const queryClient = useQueryClient();
   const reason = taskErrorDetail(errorCode, providerFailure).replace(/^ · /, "");
   const retry = useMutation({
-    mutationFn: () => {
-      retryKey.current ??= crypto.randomUUID();
-      return createManualUnknownAttempt(projectId, taskId, retryKey.current,
-        { expectedTaskVersion: taskVersion });
+    mutationFn: async () => {
+      // Keep both key and payload when acknowledgement is lost, even if SSE advances the task.
+      command.current ??= { key: crypto.randomUUID(), request: { expectedTaskVersion: taskVersion } };
+      try {
+        return await createManualUnknownAttempt(projectId, taskId, command.current.key, command.current.request);
+      } catch (error) {
+        // Only a rejected creation releases the command; a later refresh can fail after acceptance.
+        if (error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== REQUEST_TIMEOUT_STATUS) command.current = null;
+        throw error;
+      }
     },
     onSuccess: async () => {
       await Promise.all([
@@ -42,7 +56,7 @@ export function UnknownTaskRetryPanel({ projectId, taskId, taskVersion, errorCod
         onClick={() => retry.mutate()} type="button">
         {retry.isPending ? t("common.retrying") : t("common.retry")}
       </Button>
-    }>{reason ?? errorCode}</EditorFeedbackRow>
+    }>{reason}</EditorFeedbackRow>
     {retry.data ? <EditorFeedbackRow tone="success">{t("tasks.retry.newTask", { "0": retry.data.id })}</EditorFeedbackRow> : null}
     {retry.error ? <EditorFeedbackRow tone="danger">{t("tasks.retry.retryFailed")}</EditorFeedbackRow> : null}
   </>;

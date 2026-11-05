@@ -194,7 +194,7 @@ public class AssetController {
             return end - start + 1;
         }
 
-        /** 解析单个 RFC 字节范围；拒绝多段、不满足或超出文件边界的请求。 */
+        /** 单段字节范围的可满足尾端按 EOF 截止；拒绝多段、非法数字和不可满足的起点。 */
         static ByteRange parse(String header, long size) {
             if (header == null || header.isBlank()) {
                 return new ByteRange(0, size - 1, false);
@@ -211,16 +211,16 @@ public class AssetController {
                 long start;
                 long end;
                 if (dash == 0) {
-                    long suffix = Long.parseLong(value.substring(1));
+                    long suffix = decimal(value.substring(1));
                     if (suffix < 1) {
                         throw new InvalidRange(size);
                     }
                     start = Math.max(0, size - suffix);
                     end = size - 1;
                 } else {
-                    start = Long.parseLong(value.substring(0, dash));
+                    start = decimal(value.substring(0, dash));
                     end = dash == value.length() - 1
-                            ? size - 1 : Long.parseLong(value.substring(dash + 1));
+                            ? size - 1 : Math.min(decimal(value.substring(dash + 1)), size - 1);
                 }
                 if (start < 0 || start >= size || end < start || end >= size) {
                     throw new InvalidRange(size);
@@ -229,6 +229,19 @@ public class AssetController {
             } catch (NumberFormatException exception) {
                 throw new InvalidRange(size);
             }
+        }
+
+        /** Saturate large decimal values so valid open-ended requests cannot overflow parsing. */
+        private static long decimal(String value) {
+            if (value.isEmpty()) throw new NumberFormatException();
+            long result = 0;
+            for (int index = 0; index < value.length(); index++) {
+                char digit = value.charAt(index);
+                if (digit < '0' || digit > '9') throw new NumberFormatException();
+                int number = digit - '0';
+                result = result > (Long.MAX_VALUE - number) / 10 ? Long.MAX_VALUE : result * 10 + number;
+            }
+            return result;
         }
     }
 

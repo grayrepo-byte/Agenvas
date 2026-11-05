@@ -170,6 +170,7 @@ public class SmbStorageClient implements RemoteStorageClient {
             };
         } catch (IOException | RuntimeException failure) {
             try { if (file != null) file.close(); }
+            catch (RuntimeException ignored) { /* Preserve the sanitized failure even if file cleanup fails. */ }
             finally { try { if (handle != null) handle.close(); } catch (IOException | RuntimeException ignored) { /* sanitized failure below */ } }
             throw RemoteFileSupport.unavailable();
         }

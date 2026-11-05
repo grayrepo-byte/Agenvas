@@ -97,7 +97,7 @@ export function ProjectResourceBrowser({ projectId,position,zIndex,onPlaced,onPl
     {list.isSuccess && !resources.length ? <Empty><EmptyHeader><EmptyMedia variant="icon"><Images /></EmptyMedia>
       <EmptyTitle>{query ? t("resources.emptySearch") : t("resources.empty")}</EmptyTitle>
       <EmptyDescription>{t("canvas.resources.emptyHint")}</EmptyDescription></EmptyHeader></Empty> : null}
-    {list.hasNextPage ? <Button variant="outline" type="button" disabled={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>
+    {list.hasNextPage ? <Button variant="outline" type="button" disabled={list.isFetching} onClick={() => void list.fetchNextPage()}>
       {list.isFetchingNextPage ? t("common.loading") : t("resources.loadMore")}</Button> : null}
     {placementError}
     {preview && (preview.kind === "IMAGE" || preview.kind === "VIDEO") ? <MediaPreviewDialog

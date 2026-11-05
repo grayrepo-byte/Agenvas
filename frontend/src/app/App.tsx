@@ -1,8 +1,9 @@
 import { t, useLocale } from "../shared/i18n";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { lazy, Suspense, useState } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router";
+import { BrowserRouter, Navigate, Route, Routes, matchRoutes, useLocation } from "react-router";
 import { createQueryClient } from "./queryClient";
+import { PageErrorBoundary } from "./PageErrorBoundary";
 import { LoadingState } from "../shared/ui/LoadingState";
 import "../shared/ui/PageTheme.css";
 
@@ -36,12 +37,26 @@ const SystemLogsPage = lazy(() => import("../features/settings/SystemLogsPage")
   .then((module) => ({ default: module.SystemLogsPage })));
 
 export function App() {
-  useLocale();
-  const [queryClient] = useState(createQueryClient);
+  return <BrowserRouter><RouteQueryScope /></BrowserRouter>;
+}
 
-  return (
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+/** Crossings into or out of authentication pages get a fresh cache. Ordinary
+ * workspace navigation keeps its client; late callbacks retain their old one. */
+function RouteQueryScope() {
+  const location = useLocation();
+  const authentication = matchRoutes([{ path: "/login" }, { path: "/setup" }], location) !== null;
+  return <QueryScopedRoutes key={authentication ? "auth" : "workspace"} />;
+}
+
+function QueryScopedRoutes() {
+  const [queryClient] = useState(createQueryClient);
+  return <QueryClientProvider client={queryClient}><AppRoutes /></QueryClientProvider>;
+}
+
+function AppRoutes() {
+  useLocale();
+  const location = useLocation();
+  return <PageErrorBoundary resetKey={location.pathname}>
         <Suspense fallback={<main className="app-page flex items-center justify-center"><LoadingState label={t("app.pageLoading")} /></main>}>
           <Routes>
           <Route path="/setup" element={<SetupPage />} />
@@ -63,7 +78,5 @@ export function App() {
           <Route path="*" element={<Navigate to="/setup" replace />} />
           </Routes>
         </Suspense>
-      </BrowserRouter>
-    </QueryClientProvider>
-  );
+  </PageErrorBoundary>;
 }

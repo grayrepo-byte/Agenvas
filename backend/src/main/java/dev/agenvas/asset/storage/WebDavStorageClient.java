@@ -37,8 +37,10 @@ public class WebDavStorageClient implements RemoteStorageClient {
         return HttpUrl.get(profile.endpoint()).newBuilder().addPathSegments(key).build();
     }
     private Response execute(StorageProfile p, Request.Builder request) throws IOException {
+        OkHttpClient selected = client.newBuilder().dns(dev.agenvas.shared.security.ServiceEndpointPolicy.dns(
+                request.build().url().uri(), client.dns(), false)).build();
         String[] credentials = settings.credentials(p);
-        return client.newCall(request.header("Authorization", Credentials.basic(credentials[0], credentials[1], StandardCharsets.UTF_8))
+        return selected.newCall(request.header("Authorization", Credentials.basic(credentials[0], credentials[1], StandardCharsets.UTF_8))
                 .header("Accept-Encoding", "identity").build()).execute();
     }
     private long size(StorageProfile p, String key) {

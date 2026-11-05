@@ -5,14 +5,13 @@ import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.util.ArrayDeque;
-import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 
-/** 严格校验三类版本化产物正文，拒绝未知/越权字段并提取类型化精确版本引用。 */
+/** 严格校验文字与媒体产物正文，拒绝未知字段和受保护字段。 */
 @Component
 public class ArtifactContentValidator {
 
@@ -36,14 +35,13 @@ public class ArtifactContentValidator {
             "endpoint");
 
     /**
-     * 校验完整正文，不接受部分更新；按类型分派 Schema 并提取版本引用。
+     * 校验完整正文，不接受部分更新；按类型分派 Schema。
      * 字节大小和所有嵌套字段先经过统一限制，避免正文携带身份、审批或端点数据。
      *
      * @param kind 正文所属产物类型
      * @param content 用户、Agent 或任务提交的完整 JSON 正文
-     * @return 按角色和顺序记录的精确输入版本引用
      */
-    public List<ArtifactVersion.InputReference> validate(
+    public void validate(
             Artifact.Kind kind, JsonNode content) {
         requireObject(content, "content");
         if (content.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length
@@ -51,28 +49,27 @@ public class ArtifactContentValidator {
             throw invalid(ApiMessage.of("api.artifact-content-validator.content-cannot-exceed-256-kib"));
         }
         rejectProtectedFields(content);
-        return switch (kind) {
+        switch (kind) {
             case TEXT -> validateText(content);
             case IMAGE, VIDEO, AUDIO -> validateMedia(content);
-        };
+        }
     }
 
     /** 文本只允许 PLAIN_TEXT/MARKDOWN 格式和正文，不存在语义版本引用。 */
-    private List<ArtifactVersion.InputReference> validateText(JsonNode content) {
+    private void validateText(JsonNode content) {
         allowOnly(content, "format", "text");
         requireEnum(content, "format", "PLAIN_TEXT", "MARKDOWN");
         requireText(content, "text", MIN_TEXT_LENGTH, MAX_TEXT_LENGTH);
-        return List.of();
     }
 
     /** 区分用户图片上传和任务生成媒体；生成结果必须保留提示、固定工作流与来源任务。 */
-    private List<ArtifactVersion.InputReference> validateMedia(JsonNode content) {
+    private void validateMedia(JsonNode content) {
         if (java.util.Set.of(ArtifactVersion.MediaSourceType.UPLOAD.name(),
                 ArtifactVersion.MediaSourceType.LIBRARY_IMPORT.name(),
                 ArtifactVersion.MediaSourceType.SKILL_IMPORT.name()).contains(content.path("sourceType").asText())) {
             allowOnly(content, "sourceType", "assetId");
             requireUuid(content, "assetId");
-            return List.of();
+            return;
         }
         allowOnly(content, "assetId", "prompt", "negativePrompt",
                 "workflowVersion", "parameters", "sourceTaskId");
@@ -84,7 +81,6 @@ public class ArtifactContentValidator {
         requireText(content, "workflowVersion", 1, 120);
         requireObject(content.get("parameters"), "parameters");
         requireUuid(content, "sourceTaskId");
-        return List.of();
     }
 
     /** 对当前对象执行白名单校验，防止应用忽略的字段被误当作已接受内容。 */

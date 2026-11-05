@@ -7,9 +7,63 @@ info:
     部署者设置 AGENVAS_RECOVERY_MODE=true 后，/api/v1/projects、/api/v1/settings 与 /api/v1/media-templates 下的非 GET/HEAD/OPTIONS 请求统一返回 HTTP 503 ProblemDetail，code=RECOVERY_MODE_READ_ONLY；身份登录与只读核对仍可用。恢复模式同时关闭后台调度，不能把 503 当作业务版本冲突重试。
     服务端为每次 HTTP 请求生成 X-Request-Id 响应头；ProblemDetail.traceId 与它相同。客户端同名请求头不会被信任或回显。
     所有 API 接受 Accept-Language 语言协商（en、zh、ru、ja，地区变体按基础语言匹配；不支持、缺失或无效时回退 zh，q=0 不选用）。响应携带 Content-Language 与 Vary: Accept-Language，包括认证和 CSRF 错误。Problem 的 title、detail、fieldErrors.message 使用协商语言；code、状态、字段路径、ID 和用户内容不随语言变化。语言偏好仅由浏览器保存，无账号配置 API 或数据库迁移。
+    请求 Content-Type 不受支持时返回 HTTP 415（UNSUPPORTED_MEDIA_TYPE），Accept 无法匹配接口的响应格式时返回 HTTP 406（NOT_ACCEPTABLE）；两者使用 application/problem+json、retryable=false，并保留支持的格式响应头，不能作为临时服务端故障重试。
 servers:
   - url: /
 paths:
+  /api/v1/settings/local-services/discover:
+    post:
+      operationId: discoverLocalService
+      summary: Actively check one standard host service without credentials or generation
+      description: >-
+        Administrator-only, CSRF-protected and uncached. Accepts only a service kind.
+        Checks one server-selected host address and fixed port/path, without redirects,
+        proxies, credentials, generation, or network scanning. Finding a service does not
+        grant provider endpoint access, save configuration, or verify model/tool support.
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LocalServiceDiscoveryRequest'
+      responses:
+        '200':
+          description: Bounded result; source bodies and system metadata are never returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocalServiceDiscoveryResult'
+        '400':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /mcp/uploads:
     post:
       operationId: uploadMcpMedia
@@ -186,6 +240,99 @@ paths:
           minimum: 1
           maximum: 100
           default: 50
+  /api/v1/settings/media-template-sync:
+    get:
+      operationId: getThirdPartyPromptSyncSettings
+      summary: Read administrator consent for scheduled third-party prompt downloads
+      tags: [MediaTemplates]
+      responses:
+        '200':
+          description: Current settings; deploymentEnabled is an independent operator limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThirdPartyPromptSyncSettings'
+        '400':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+    put:
+      operationId: updateThirdPartyPromptSyncSettings
+      summary: Explicitly enable or disable scheduled third-party prompt downloads
+      description: >-
+        Administrator-only and CSRF-protected. New and upgraded installations start disabled.
+        Disabling prevents new scheduled sources from starting; an already running download may finish.
+        Cached prompts, per-source settings and explicit manual synchronization remain available.
+      tags: [MediaTemplates]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateThirdPartyPromptSyncSettings'
+      responses:
+        '200':
+          description: Saved settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThirdPartyPromptSyncSettings'
+        '400':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/v1/settings/media-template-sources:
     post:
       operationId: createThirdPartyPromptSource
@@ -394,6 +541,7 @@ paths:
           description: 预置 WebP 或实际解码后重新编码的 PNG；Cache-Control no-store
           content:
             image/webp: {schema: {type: string, format: binary}}
+            image/gif: {schema: {type: string, format: binary}}
             image/png: {schema: {type: string, format: binary}}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -816,6 +964,10 @@ paths:
               "schema":
                 "type": "string"
                 "format": "binary"
+            "image/gif":
+              "schema":
+                "type": "string"
+                "format": "binary"
         "400":
           "$ref": "#/components/responses/ValidationError"
         "401":
@@ -977,9 +1129,9 @@ paths:
       - {$ref: "#/components/parameters/AcceptLanguage"}
     get:
       operationId: listCallLogs
-      summary: 分页读取管理员本人项目的调用审计元数据
+      summary: 分页读取本人项目与系统诊断的调用审计元数据
       description: |
-        按 startedAt、id 倒序稳定排序。仅返回当前管理员自己的项目，不包含请求或响应正文、密钥和 endpoint。
+        按 startedAt、id 倒序稳定排序。返回当前管理员自己的项目调用，以及仅活动管理员可见的全局模型诊断；不包含请求或响应正文、密钥和 endpoint。
         UNKNOWN 筛选同时匹配调用结果未知及当前 Task 状态 UNKNOWN，便于核对历史请求。
         historical=true 是旧检查点投影，startedAt 为原检查点时间；traceId、respondedAt、durationMs 不可追溯时为 null，不据此推算响应时间。
       tags: [Audit]
@@ -1262,7 +1414,7 @@ paths:
       - {$ref: "#/components/parameters/AcceptLanguage"}
     get:
       operationId: getCallDebug
-      summary: 查看本人项目的 debug 调用详情
+      summary: 查看本人项目或活动管理员系统诊断的 debug 调用详情
       description: 单独按需读取正文；Cache-Control 为 no-store。captured=false 表示调用开始时 debug 未启用。captured=true 且 exchanges 为空表示没有已采集的 HTTP 交换（例如 Mock、尚未开始网络调用或采集写入失败）。不伪造 Mock 的 HTTP 请求。仅提取固定白名单响应关联 ID，其他 header（含 Authorization、Cookie、Set-Cookie）均省略；LLM 正文不做凭据替换，保留实际请求与响应内容及推理字段，流式响应只保存一份于 llmStream.content.response，exchanges 只保留请求、HTTP 状态和响应关联 ID，媒体调用继续过滤凭据与私有推理。每个正文至多 64 MiB，超限或未读完标记 truncated，无法解析的 JSON 正文或 SSE data 事件省略，旧内容不补录。UTF8 为正文文本（LLM JSON 仅将结构化 image_url 中的图片 data URI 整值替换为 [image bytes omitted] 占位符后序列化，工具 Schema、参数、数值和普通文本保留，同时隐藏本次服务端登记的中继 URL 查询签名及其正文回显；非 LLM JSON 沿用凭据过滤），BASE64 为二进制正文，MULTIPART_JSON 为字段与文件内容，OMITTED 表示无法安全采集。请求已发送但无响应时响应字段为 null。旧历史投影无此详情，不补录。
       tags: [Audit]
       parameters:
@@ -1700,12 +1852,47 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/SystemDiagnostics"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
+  /api/v1/settings/llm/models:
+    post:
+      operationId: previewLlmModels
+      summary: 管理员读取模型列表和容量元数据，不运行推理或保存配置
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LlmModelPreviewRequest'}
+      responses:
+        '200':
+          description: 有界模型列表；未知容量为 null，预览十分钟有效且绑定原连接和凭据
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LlmModelPreview'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '429':
+          description: 元数据读取正在进行
+          content:
+            application/problem+json:
+              schema: {$ref: '#/components/schemas/Problem'}
+        '502':
+          description: 元数据不可用，保留手动配置
+          content:
+            application/problem+json:
+              schema: {$ref: '#/components/schemas/Problem'}
+        '504':
+          description: 元数据读取超时，保留草稿
+          content:
+            application/problem+json:
+              schema: {$ref: '#/components/schemas/Problem'}
   /api/v1/settings/llm/diagnose:
     parameters:
       - {$ref: "#/components/parameters/AcceptLanguage"}
     post:
       operationId: diagnoseLlmSettings
       summary: 管理员显式发起最多两次可能计费的工具协议诊断
+      description: 每次实际调用记录为无项目的 DIAGNOSTIC 日志，默认仅记录安全元数据；开启系统 debug 后按现有权限采集正文。第一轮必须返回唯一且 nonce 精确匹配的探针调用，第二轮必须仅返回工具结果的 proof（允许首尾空白）。失败详情说明具体阶段，显式 Token 截断不验证工具能力。不自动重试，已验证且未变更的配置不重复调用。
       tags: [Settings]
       requestBody:
         required: true
@@ -2450,6 +2637,8 @@ paths:
             image/jpeg:
               schema: {type: string, format: binary}
             image/webp:
+              schema: {type: string, format: binary}
+            image/gif:
               schema: {type: string, format: binary}
             video/mp4:
               schema: {type: string, format: binary}
@@ -4820,6 +5009,8 @@ paths:
               schema: {$ref: "#/components/schemas/SkillMediaBytes"}
             image/webp:
               schema: {$ref: "#/components/schemas/SkillMediaBytes"}
+            image/gif:
+              schema: {$ref: "#/components/schemas/SkillMediaBytes"}
         "400": {$ref: "#/components/responses/ValidationError"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -5070,6 +5261,36 @@ components:
       scheme: bearer
       description: 用户级 MCP 访问令牌，仅用于明确列出的 MCP 接口。
   schemas:
+    LocalServiceKind:
+      type: string
+      enum: [OLLAMA, COMFYUI]
+    LocalServiceDiscoveryRequest:
+      type: object
+      additionalProperties: false
+      required: [service]
+      properties:
+        service:
+          $ref: '#/components/schemas/LocalServiceKind'
+    LocalServiceDiscoveryResult:
+      type: object
+      additionalProperties: false
+      required: [service, runtime, status, endpoint, policyAllowed]
+      properties:
+        service:
+          $ref: '#/components/schemas/LocalServiceKind'
+        runtime:
+          type: string
+          enum: [CONTAINER, NATIVE, UNKNOWN]
+        status:
+          type: string
+          enum: [FOUND, NOT_FOUND, UNRESOLVED, BLOCKED_ADDRESS, TIMEOUT, UNEXPECTED_RESPONSE, AUTH_REQUIRED, UNSUPPORTED_RUNTIME]
+        endpoint:
+          type: [string, 'null']
+          maxLength: 500
+          description: Server-generated candidate; present only for FOUND, never credential-bearing
+        policyAllowed:
+          type: boolean
+          description: Existing endpoint policy permits the candidate; discovery never changes policy
     McpMediaUploadMetadata:
       type: object
       additionalProperties: false
@@ -6222,10 +6443,10 @@ components:
       additionalProperties: false
       required: [contextWindowTokens, compactionThresholdPercent, responseReserveTokens, summaryTokens, recentToolRounds, recoveryWindowMinutes, maxModelRetries, retryMaxDelaySeconds, maxRepairAttempts, version]
       properties:
-        contextWindowTokens: {type: integer, minimum: 8192, maximum: 2000000, default: 1000000}
+        contextWindowTokens: {type: integer, minimum: 8192, maximum: 2000000, default: 32768}
         compactionThresholdPercent: {type: integer, minimum: 1, maximum: 100, default: 50}
-        responseReserveTokens: {type: integer, minimum: 1024, default: 8192}
-        summaryTokens: {type: integer, minimum: 256, default: 2048}
+        responseReserveTokens: {type: integer, minimum: 1024, default: 4096}
+        summaryTokens: {type: integer, minimum: 256, default: 1024}
         recentToolRounds: {type: integer, minimum: 0, maximum: 16, default: 4}
         recoveryWindowMinutes: {type: integer, minimum: 1, maximum: 10080, default: 1440}
         maxModelRetries: {type: integer, minimum: 1, maximum: 10000, default: 288}
@@ -6237,10 +6458,10 @@ components:
       additionalProperties: false
       required: [contextWindowTokens, compactionThresholdPercent, responseReserveTokens, summaryTokens, recentToolRounds, recoveryWindowMinutes, maxModelRetries, retryMaxDelaySeconds, maxRepairAttempts, expectedVersion]
       properties:
-        contextWindowTokens: {type: integer, minimum: 8192, maximum: 2000000, default: 1000000}
+        contextWindowTokens: {type: integer, minimum: 8192, maximum: 2000000, default: 32768}
         compactionThresholdPercent: {type: integer, minimum: 1, maximum: 100, default: 50}
-        responseReserveTokens: {type: integer, minimum: 1024, default: 8192}
-        summaryTokens: {type: integer, minimum: 256, default: 2048}
+        responseReserveTokens: {type: integer, minimum: 1024, default: 4096}
+        summaryTokens: {type: integer, minimum: 256, default: 1024}
         recentToolRounds: {type: integer, minimum: 0, maximum: 16, default: 4}
         recoveryWindowMinutes: {type: integer, minimum: 1, maximum: 10080, default: 1440}
         maxModelRetries: {type: integer, minimum: 1, maximum: 10000, default: 288}
@@ -6349,12 +6570,12 @@ components:
       required: [id, projectId, projectTitle, taskId, runId, kind, operation, status, taskStatus, provider, model, traceId, providerRequestId, errorCode, startedAt, respondedAt, durationMs, historical, mock]
       properties:
         id: {type: string, format: uuid}
-        projectId: {type: string, format: uuid}
-        projectTitle: {type: string}
+        projectId: {type: [string, "null"], format: uuid, description: "Null only for global administrator model diagnostics."}
+        projectTitle: {type: [string, "null"]}
         taskId: {type: [string, "null"], format: uuid}
         runId: {type: [string, "null"], format: uuid}
         kind: {type: string, enum: [LLM, IMAGE, VIDEO, AUDIO]}
-        operation: {type: string, enum: [CHAT, SUBMIT, POLL, LEGACY]}
+        operation: {type: string, enum: [CHAT, SUBMIT, POLL, DIAGNOSTIC, LEGACY]}
         status:
           type: string
           enum: [RUNNING, SUCCEEDED, FAILED, UNKNOWN]
@@ -6405,7 +6626,7 @@ components:
         enabled: {type: boolean}
         version: {type: integer, format: int64, minimum: 0}
         connectionVersion: {type: integer, minimum: 1}
-        origin: {type: [string, "null"], description: "COMFYUI base URL with its entire path redacted as /[configured-path], RUNNINGHUB HTTPS root without a domain allowlist, or WAN official WorkspaceId.region.maas.aliyuncs.com HTTPS root, or optional OPENAI/GOOGLE HTTPS API base URL; Google video requires the official Gemini host. null uses the platform official endpoint."}
+        origin: {type: [string, "null"], description: "COMFYUI base URL with its entire path redacted as /[configured-path], RUNNINGHUB HTTP or HTTPS root without a domain allowlist, or WAN official WorkspaceId.region.maas.aliyuncs.com HTTP/HTTPS root, or optional OPENAI/GOOGLE HTTP or HTTPS API base URL; Google video requires the official Gemini host. null uses the platform official endpoint."}
         keyMask: {type: [string, "null"]}
         connectivityStatus: {type: string, enum: [NOT_CHECKED]}
         realGenerationTested: {type: boolean}
@@ -6454,7 +6675,7 @@ components:
         supportedImageQualities:
           type: array
           uniqueItems: true
-          items: {type: string, enum: [low, medium, high]}
+          items: {type: string, enum: [low, medium, high, xhigh, max]}
         supportsTransparentBackground: {type: boolean}
         supportsImageMask: {type: boolean}
         mappingSha256: {type: string, pattern: "^[0-9a-f]{64}$"}
@@ -6508,7 +6729,12 @@ components:
         textEncoder: {type: string, maxLength: 160}
         vae: {type: string, maxLength: 160}
         clipVision: {type: string, maxLength: 160}
-        quality: {type: string, enum: [low, medium, high]}
+        quality: {type: string, enum: [low, medium, high, xhigh, max]}
+        moderation: {type: string, enum: [auto, low], description: "OpenAI Images only. auto uses standard moderation; low is less restrictive and moderation still applies. Frozen in the capability version. Historical configurations without this field preserve omission and OpenAI's auto default."}
+        outputFormat: {type: string, enum: [png, gif], description: "OpenAI Images output. GIF requires an exact GPT Image 2.6 model, no references/masks/transparency, and automatic dimensions. Omitted keeps PNG."}
+        complexity: {type: string, enum: [low, medium, high], description: "GPT Image 2.6 planning complexity, independent of quality. Omitted uses the model default."}
+        frameCount: {type: integer, minimum: 2, maximum: 16, description: "GIF only; defaults to 9. Conservative intersection of the official guide and API reference."}
+        frameDurationMs: {type: integer, minimum: 20, maximum: 2000, multipleOf: 10, description: "GIF only; milliseconds per frame, defaults to 200."}
         model: {type: string, maxLength: 120, pattern: "^([A-Za-z0-9][A-Za-z0-9._:/-]{0,119})?$", description: "OPENAI/GOOGLE accept provider model names; KLING_IMAGE/KLING_VIDEO use the compiled Kling profile catalog. Empty uses the compiled default. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1."}
         defaultParameters:
           $ref: "#/components/schemas/ImageGenerationParameters"
@@ -6520,12 +6746,25 @@ components:
         maxReferenceAudios: {type: integer, minimum: 0, maximum: 14}
         maxReferenceVideos: {type: integer, minimum: 0, maximum: 14}
         pricing: {$ref: "#/components/schemas/MediaCapabilityPricing"}
+        tokenPricing: {$ref: "#/components/schemas/ImageTokenPricing"}
         pricingByResolution:
           type: object
           maxProperties: 16
           propertyNames: {pattern: '^[1-9][0-9]{2,3}p$'}
           additionalProperties: {$ref: '#/components/schemas/MediaCapabilityPricing'}
           description: AutoDL published tiers, MINIMAX_H3 768p/1440p, or the declared KLING video model 720p/1080p/2160p tiers (2160p maps to native 4k). Matching tier overrides pricing; otherwise pricing is the fallback. Missing both means unknown cost.
+    ImageTokenPricing:
+      type: object
+      additionalProperties: false
+      description: OpenAI Images API only. Administrator rates in currency per million tokens, mutually exclusive with pricing/pricingByResolution. Frozen on task acceptance. Missing usage keeps cost unknown. Missing cache counts stay unknown; the estimate uses undiscounted input rates. Positive cache usage needs both modality counts and applicable rates. Never an actual provider invoice.
+      required: [currency, textInputPerMillion, imageInputPerMillion, imageOutputPerMillion]
+      properties:
+        currency: {type: string, enum: [CNY, USD]}
+        textInputPerMillion: {type: string, pattern: '^[0-9]{1,10}(\.[0-9]{1,6})?$'}
+        imageInputPerMillion: {type: string, pattern: '^[0-9]{1,10}(\.[0-9]{1,6})?$'}
+        imageOutputPerMillion: {type: string, pattern: '^[0-9]{1,10}(\.[0-9]{1,6})?$'}
+        cachedTextInputPerMillion: {type: string, pattern: '^[0-9]{1,10}(\.[0-9]{1,6})?$'}
+        cachedImageInputPerMillion: {type: string, pattern: '^[0-9]{1,10}(\.[0-9]{1,6})?$'}
     ComfyUiGraph:
       type: object
       minProperties: 1
@@ -6908,7 +7147,7 @@ components:
       properties:
         name: {type: string, minLength: 1, maxLength: 160}
         platform: {type: string, enum: [MOCK, COMFYUI, OPENAI, ARK, GOOGLE, VOLCENGINE, AUTODL, RUNNINGHUB, MINIMAX, KLING, WAN]}
-        origin: {type: [string, "null"], maxLength: 500, description: "Required full COMFYUI base URL (remote HTTPS or exact local HTTP IP and port), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. KLING selects only https://api-singapore.klingai.com or https://api-beijing.klingai.com with an API Key (AK/SK JWT is not supported). MINIMAX selects only https://api.minimax.cn (default) or https://api.minimax.io, without a path. Optional RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image."}
+        origin: {type: [string, "null"], maxLength: 500, description: "Required full COMFYUI base URL (HTTP or HTTPS host/IP and port; literal IPv4 loopback is also supported), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. KLING selects only https://api-singapore.klingai.com or https://api-beijing.klingai.com with an API Key (AK/SK JWT is not supported). MINIMAX selects only https://api.minimax.cn (default) or https://api.minimax.io, without a path. Optional RUNNINGHUB HTTP or HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTP or HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image."}
         apiKey: {type: [string, "null"], maxLength: 4096, writeOnly: true, description: "Cloud API Key; KLING requires the official API Key, not an AK/SK-generated JWT. Empty on update preserves the pinned credential."}
     UpdateMediaConnectionRequest:
       type: object
@@ -6918,7 +7157,7 @@ components:
         expectedVersion: {type: integer, format: int64, minimum: 0}
         name: {type: string, minLength: 1, maxLength: 160}
         enabled: {type: boolean}
-        origin: {type: [string, "null"], maxLength: 500, description: "Required full COMFYUI base URL (remote HTTPS or exact local HTTP IP and port), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. KLING selects only https://api-singapore.klingai.com or https://api-beijing.klingai.com with an API Key (AK/SK JWT is not supported). MINIMAX selects only https://api.minimax.cn (default) or https://api.minimax.io, without a path. Optional RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image."}
+        origin: {type: [string, "null"], maxLength: 500, description: "Required full COMFYUI base URL (HTTP or HTTPS host/IP and port; literal IPv4 loopback is also supported), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. KLING selects only https://api-singapore.klingai.com or https://api-beijing.klingai.com with an API Key (AK/SK JWT is not supported). MINIMAX selects only https://api.minimax.cn (default) or https://api.minimax.io, without a path. Optional RUNNINGHUB HTTP or HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTP or HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image."}
         apiKey: {type: [string, "null"], maxLength: 4096, writeOnly: true, description: "Cloud API Key; KLING requires the official API Key, not an AK/SK-generated JWT. Empty on update preserves the pinned credential."}
     CreateMediaCapabilityRequest:
       type: object
@@ -7051,7 +7290,7 @@ components:
         expectedVersion: { type: integer, minimum: 0 }
         name: { type: string, minLength: 1, maxLength: 120 }
         provider: { $ref: '#/components/schemas/StorageProvider' }
-        endpoint: { type: string, format: uri, description: 'Object service HTTPS origin, WebDAV HTTPS base collection, or smb://host[:port]/share[/directory]. No embedded credentials, query, or fragment' }
+        endpoint: { type: string, format: uri, description: 'Object service HTTP/HTTPS origin, WebDAV HTTP/HTTPS base collection, or smb://host[:port]/share[/directory]. No embedded credentials, query, or fragment' }
         region: { type: string, maxLength: 80, description: 'Object-store region; empty for SMB and WebDAV' }
         bucket: { type: string, maxLength: 63, description: 'Object-store bucket; empty for SMB and WebDAV' }
         keyPrefix: { type: string, maxLength: 120 }
@@ -7066,7 +7305,7 @@ components:
         expectedVersion: { type: integer, minimum: 0 }
         name: { type: string, minLength: 1, maxLength: 120 }
         provider: { $ref: '#/components/schemas/StorageProvider' }
-        endpoint: { type: string, format: uri, description: 'Object service HTTPS origin, WebDAV HTTPS base collection, or smb://host[:port]/share[/directory]. No embedded credentials, query, or fragment' }
+        endpoint: { type: string, format: uri, description: 'Object service HTTP/HTTPS origin, WebDAV HTTP/HTTPS base collection, or smb://host[:port]/share[/directory]. No embedded credentials, query, or fragment' }
         region: { type: string, maxLength: 80, description: 'Object-store region (OSS without oss- prefix); empty for SMB and WebDAV' }
         bucket: { type: string, maxLength: 63, description: 'Object-store bucket; empty for SMB and WebDAV' }
         keyPrefix: { type: string, maxLength: 120 }
@@ -7099,6 +7338,10 @@ components:
         keyMask: {type: [string, "null"], maxLength: 16}
         toolCallingVerified: {type: boolean}
         updatedAt: {type: [string, "null"], format: date-time}
+        modelPolicy:
+          anyOf:
+            - {$ref: '#/components/schemas/LlmModelPolicy'}
+            - {type: 'null'}
     ReplaceLlmSettingsRequest:
       type: object
       additionalProperties: false
@@ -7108,6 +7351,77 @@ components:
         endpoint: {type: string, minLength: 1, maxLength: 500, format: uri}
         modelId: {type: string, minLength: 1, maxLength: 160}
         apiKey: {type: string, minLength: 8, maxLength: 4096, writeOnly: true}
+        modelSelection: {$ref: '#/components/schemas/LlmModelSelection'}
+    LlmModelProvider:
+      type: string
+      enum: [COMPATIBLE, OPENAI, OPENROUTER, GEMINI, ANTHROPIC, OLLAMA]
+    LlmOutputParameter:
+      type: string
+      enum: [MAX_TOKENS, MAX_COMPLETION_TOKENS]
+    LlmModelSelection:
+      type: object
+      additionalProperties: false
+      required: [provider, mode, maxOutputTokens, outputParameter]
+      properties:
+        provider: {$ref: '#/components/schemas/LlmModelProvider'}
+        mode: {type: string, enum: [AUTO, MANUAL]}
+        previewId: {type: [string, 'null'], format: uuid}
+        contextWindowTokens: {type: [integer, 'null'], minimum: 1, maximum: 16000000}
+        inputLimitTokens: {type: [integer, 'null'], minimum: 1, maximum: 16000000}
+        maxOutputTokens: {type: integer, minimum: 1, maximum: 2000000}
+        outputParameter: {$ref: '#/components/schemas/LlmOutputParameter'}
+    LlmModelPolicy:
+      type: object
+      additionalProperties: false
+      required: [provider, source, contextWindowTokens, inputLimitTokens, maxOutputTokens, outputParameter,
+        theoreticalContextTokens, reportedOutputTokens, runtimeContextTokens, modelDigest, checkedAt]
+      properties:
+        provider: {$ref: '#/components/schemas/LlmModelProvider'}
+        source: {type: string, enum: [MANUAL, PROVIDER_REPORTED, OLLAMA_RUNTIME]}
+        contextWindowTokens: {type: [integer, 'null'], minimum: 1, maximum: 16000000}
+        inputLimitTokens: {type: [integer, 'null'], minimum: 1, maximum: 16000000}
+        maxOutputTokens: {type: integer, minimum: 1, maximum: 2000000}
+        outputParameter: {$ref: '#/components/schemas/LlmOutputParameter'}
+        theoreticalContextTokens: {type: [integer, 'null'], minimum: 1}
+        reportedOutputTokens: {type: [integer, 'null'], minimum: 1}
+        runtimeContextTokens: {type: [integer, 'null'], minimum: 1}
+        modelDigest: {type: [string, 'null'], maxLength: 160}
+        checkedAt: {type: [string, 'null'], format: date-time}
+    LlmModelMetadata:
+      type: object
+      additionalProperties: false
+      required: [id, contextWindowTokens, inputLimitTokens, outputLimitTokens, runtimeContextTokens, digest, deploymentContextTokens]
+      properties:
+        id: {type: string, minLength: 1, maxLength: 160}
+        contextWindowTokens: {type: [integer, 'null'], minimum: 1}
+        inputLimitTokens: {type: [integer, 'null'], minimum: 1}
+        outputLimitTokens: {type: [integer, 'null'], minimum: 1}
+        runtimeContextTokens: {type: [integer, 'null'], minimum: 1}
+        deploymentContextTokens: {type: [integer, 'null'], minimum: 1}
+        digest: {type: [string, 'null'], maxLength: 160}
+    LlmModelPreviewRequest:
+      type: object
+      additionalProperties: false
+      required: [provider, credentialMode, expectedVersion]
+      properties:
+        provider: {$ref: '#/components/schemas/LlmModelProvider'}
+        credentialMode: {type: string, enum: [DRAFT, SAVED]}
+        expectedVersion: {type: integer, minimum: 0}
+        endpoint: {type: [string, 'null'], maxLength: 500}
+        apiKey: {type: [string, 'null'], minLength: 8, maxLength: 4096, writeOnly: true}
+        modelId: {type: [string, 'null'], maxLength: 160}
+    LlmModelPreview:
+      type: object
+      additionalProperties: false
+      required: [id, models, partial, checkedAt]
+      properties:
+        id: {type: string, format: uuid}
+        models:
+          type: array
+          maxItems: 2000
+          items: {$ref: '#/components/schemas/LlmModelMetadata'}
+        partial: {type: boolean}
+        checkedAt: {type: string, format: date-time}
     DiagnoseLlmRequest:
       type: object
       additionalProperties: false
@@ -7139,6 +7453,14 @@ components:
             llmRequestCount: {type: integer, minimum: 0}
             inputTokens: {type: [integer, "null"], minimum: 0}
             outputTokens: {type: [integer, "null"], minimum: 0}
+            totalTokens: {type: [integer, "null"], minimum: 0}
+            textInputTokens: {type: [integer, "null"], minimum: 0}
+            imageInputTokens: {type: [integer, "null"], minimum: 0}
+            imageOutputTokens: {type: [integer, "null"], minimum: 0}
+            textOutputTokens: {type: [integer, "null"], minimum: 0}
+            cachedInputTokens: {type: [integer, "null"], minimum: 0}
+            cachedTextInputTokens: {type: [integer, "null"], minimum: 0}
+            cachedImageInputTokens: {type: [integer, "null"], minimum: 0}
         estimatedCost: {type: [string, "null"], pattern: "^[0-9]+(\\.[0-9]+)?$"}
         actualCost: {type: [string, "null"], pattern: "^[0-9]+(\\.[0-9]+)?$"}
         currency: {type: [string, "null"], pattern: "^[A-Z]{3}$"}
@@ -7453,21 +7775,21 @@ components:
           minLength: 3
           maxLength: 64
           pattern: "^[A-Za-z0-9._-]+$"
-        password: {type: string, minLength: 12, maxLength: 128}
+        password: {type: string, minLength: 12, maxLength: 128, description: UTF-8 编码不得超过 72 字节。}
     LoginRequest:
       type: object
       additionalProperties: false
       required: [loginName, password]
       properties:
         loginName: {type: string, minLength: 3, maxLength: 64}
-        password: {type: string, minLength: 1, maxLength: 128}
+        password: {type: string, minLength: 1, maxLength: 128, description: BCrypt 账号的 UTF-8 编码超过 72 字节时按凭据错误拒绝，不截断后比对；已有其他受支持哈希仍完整校验。}
     ChangePasswordRequest:
       type: object
       additionalProperties: false
       required: [currentPassword, newPassword]
       properties:
-        currentPassword: {type: string, minLength: 1, maxLength: 128}
-        newPassword: {type: string, minLength: 12, maxLength: 128}
+        currentPassword: {type: string, minLength: 1, maxLength: 128, description: BCrypt 账号的 UTF-8 编码超过 72 字节时按当前密码错误拒绝，不截断后比对；已有其他受支持哈希仍完整校验。}
+        newPassword: {type: string, minLength: 12, maxLength: 128, description: UTF-8 编码不得超过 72 字节。}
     McpTokenScope:
       type: string
       enum: [READ, CONTENT_WRITE, MEDIA_GENERATE]
@@ -7925,7 +8247,7 @@ components:
         aspectRatio: {type: string, enum: [AUTO, "1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"]}
         videoResolution: {type: string, pattern: '^[1-9][0-9]{2,3}p$', description: "AutoDL published resolution tier, MINIMAX_H3 768p/1440p (official 768P/2K), or KLING_VIDEO_3 720p/1080p/2160p (official 720p/1080p/4k). Omitted uses the capability default. Frozen into accepted tasks."}
         resolution: {type: string, enum: [1K, 2K, 4K]}
-        quality: {type: string, enum: [low, medium, high]}
+        quality: {type: string, enum: [low, medium, high, xhigh, max]}
         transparentBackground: {type: boolean}
         generationCount: {type: integer, enum: [1, 2, 4]}
     VideoInputMode:
@@ -9636,6 +9958,30 @@ components:
         promptCount:
           type: integer
         syncing: *id012
+    ThirdPartyPromptSyncSettings:
+      type: object
+      required: [enabled, deploymentEnabled, version]
+      properties:
+        enabled:
+          type: boolean
+          description: Persistent administrator opt-in; false on first adoption, including upgrades
+        deploymentEnabled:
+          type: boolean
+          description: False when the operator disabled scheduling independently of administrator consent
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+    UpdateThirdPartyPromptSyncSettings:
+      type: object
+      required: [enabled, expectedVersion]
+      properties:
+        enabled:
+          type: boolean
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
     ThirdPartyPromptSources:
       type: object
       required:

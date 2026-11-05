@@ -17,8 +17,10 @@ final class RemoteFileSupport {
     static String endpoint(StorageProfile.Provider provider, String requested) {
         try {
             URI uri = URI.create(requested == null ? "" : requested.trim());
-            String scheme = provider == StorageProfile.Provider.SMB ? "smb" : "https";
-            if (!scheme.equals(uri.getScheme()) || uri.getHost() == null || uri.getUserInfo() != null
+            boolean web = provider == StorageProfile.Provider.WEBDAV;
+            boolean schemeAllowed = web ? ("http".equals(uri.getScheme()) || "https".equals(uri.getScheme()))
+                    : "smb".equals(uri.getScheme());
+            if (!schemeAllowed || uri.getHost() == null || uri.getHost().contains("%") || uri.getUserInfo() != null
                     || uri.getQuery() != null || uri.getFragment() != null || uri.getPort() == 0 || uri.getPort() > 65535
                     || uri.toASCIIString().length() > 512) throw new IllegalArgumentException();
             String path = uri.getPath();
@@ -31,8 +33,9 @@ final class RemoteFileSupport {
             }
             if (path.contains("//") || provider == StorageProfile.Provider.SMB && (path.isEmpty() || path.equals("/")))
                 throw new IllegalArgumentException();
+            if (web) dev.agenvas.shared.security.ServiceEndpointPolicy.dns(uri, okhttp3.Dns.SYSTEM, false);
             return uri.toASCIIString().replaceAll("/+$", "");
-        } catch (IllegalArgumentException failure) {
+        } catch (IllegalArgumentException | java.net.UnknownHostException failure) {
             throw StorageSettingsService.invalid(ApiMessage.of("api.remote-storage.invalid-endpoint"));
         }
     }

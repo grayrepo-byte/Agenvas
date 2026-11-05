@@ -139,7 +139,7 @@ export function RelightPanel({ sourceUrl, capabilities, busy, error, extraContro
     <footer className="relight-dialog-footer">
       {!configuredMethod ? <label className="relight-capability-select">
         <span>{t("image.relight.imageCapability")}</span>
-        <Select variant="ghost" density="compact" value={capabilityId} disabled={configuredMethod} aria-label={t("image.relight.imageCapability")}
+        <Select variant="ghost" density="compact" value={capabilityId} aria-label={t("image.relight.imageCapability")}
           onChange={(event) => setCapabilityId(event.target.value)}>
           {capabilities.length ? capabilities.map((capability) => <option key={capability.id}
             value={capability.id}>{capability.name}</option>)

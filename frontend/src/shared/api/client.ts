@@ -5,6 +5,8 @@ export const HTTP_STATUS = {
   UNAUTHORIZED: 401,
   FORBIDDEN: 403,
   CONFLICT: 409,
+  TOO_MANY_REQUESTS: 429,
+  SERVICE_UNAVAILABLE: 503,
   INTERNAL_SERVER_ERROR: 500,
 } as const;
 
@@ -40,6 +42,7 @@ export type CharacterBindingPreview = components["schemas"]["CharacterBindingPre
 export type CharacterChangePreview = components["schemas"]["CharacterChangePreview"];
 export type SaveCharacter = components["schemas"]["SaveCharacter"];
 export type PreviewCharacterBindings = components["schemas"]["PreviewCharacterBindings"];
+export type ApplyCharacterBindings = components["schemas"]["ApplyCharacterBindings"];
 export const CHARACTER_CLEAR_MODES = { KEEP_INPUTS: "KEEP_INPUTS", REMOVE_OWNED: "REMOVE_OWNED" } as const;
 
 export function listCharacters(projectId: string): Promise<CharacterIndex> {
@@ -57,7 +60,7 @@ export function archiveCharacter(projectId: string, characterId: string, request
 export function previewCharacterBindings(projectId: string, itemId: string, request: PreviewCharacterBindings): Promise<CharacterBindingPreview> {
   return writeJson(`/api/v1/projects/${projectId}/canvas-items/${itemId}/character-bindings/preview`, { method: "POST", body: JSON.stringify(request) }, t("character.previewFailed"));
 }
-export function applyCharacterBindings(projectId: string, itemId: string, request: components["schemas"]["ApplyCharacterBindings"]): Promise<components["schemas"]["CharacterBindingApplied"]> {
+export function applyCharacterBindings(projectId: string, itemId: string, request: ApplyCharacterBindings): Promise<components["schemas"]["CharacterBindingApplied"]> {
   return writeJson(`/api/v1/projects/${projectId}/canvas-items/${itemId}/character-bindings/apply`, { method: "POST", body: JSON.stringify(request) }, t("character.applyFailed"));
 }
 export function reviewCharacterBindings(projectId: string, itemId: string, request: components["schemas"]["ReviewCharacterBindings"]): Promise<CharacterBinding> {
@@ -415,6 +418,25 @@ export async function getCurrentUser(): Promise<CurrentUser> {
 /** Reads only masked administrator LLM configuration metadata. */
 export async function getLlmSettings(): Promise<LlmSettings> {
   return readJson<LlmSettings>("/api/v1/settings/llm", t("api.errors.modelSettingsUnavailable"));
+}
+export type LlmModelProvider = components["schemas"]["LlmModelProvider"];
+export type LlmModelPolicy = components["schemas"]["LlmModelPolicy"];
+export type LlmModelSelection = components["schemas"]["LlmModelSelection"];
+export type LlmModelPreview = components["schemas"]["LlmModelPreview"];
+export type LlmModelMetadata = components["schemas"]["LlmModelMetadata"];
+export type LlmModelPreviewRequest = components["schemas"]["LlmModelPreviewRequest"];
+export function previewLlmModels(input: LlmModelPreviewRequest, signal?: AbortSignal): Promise<LlmModelPreview> {
+  return writeJson<LlmModelPreview>("/api/v1/settings/llm/models", { method: "POST", body: JSON.stringify(input), signal });
+}
+
+export type LocalServiceKind = components["schemas"]["LocalServiceKind"];
+export type LocalServiceDiscoveryResult = components["schemas"]["LocalServiceDiscoveryResult"];
+
+/** Checks only the server-selected local status endpoint; callers cannot supply a target address. */
+export function discoverLocalService(service: LocalServiceKind, signal?: AbortSignal): Promise<LocalServiceDiscoveryResult> {
+  return writeJson("/api/v1/settings/local-services/discover", {
+    method: "POST", body: JSON.stringify({ service }), signal,
+  });
 }
 
 /** Media settings expose only public connection and capability metadata. */
@@ -1136,6 +1158,13 @@ export type WriteMediaTemplateRequest = components["schemas"]["CreateMediaTempla
 export type MediaTemplateImport = components["schemas"]["MediaTemplateImport"];
 export type MediaTemplateKind = MediaTemplate["targetKind"];
 export type MediaTemplateScope = MediaTemplate["scope"];
+export type ThirdPartyPromptSyncSettings = components["schemas"]["ThirdPartyPromptSyncSettings"];
+export function getThirdPartyPromptSyncSettings(): Promise<ThirdPartyPromptSyncSettings> {
+  return readJson("/api/v1/settings/media-template-sync", t("templates.loadFailed"));
+}
+export function updateThirdPartyPromptSyncSettings(input: components["schemas"]["UpdateThirdPartyPromptSyncSettings"]): Promise<ThirdPartyPromptSyncSettings> {
+  return writeJson("/api/v1/settings/media-template-sync", { method: "PUT", body: JSON.stringify(input) });
+}
 export type ThirdPartyPromptEntry = components["schemas"]["ThirdPartyPromptEntry"];
 export type ThirdPartyPromptSource = components["schemas"]["ThirdPartyPromptSource"];
 export type ThirdPartyPromptPage = components["schemas"]["ThirdPartyPromptPage"];

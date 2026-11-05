@@ -51,10 +51,11 @@ public class SecurityConfiguration {
                                 "/actuator/health/liveness",
                                 "/actuator/health/readiness")
                         .permitAll()
-                        .requestMatchers("/api/v1/settings/media-connections/**",
+                        .requestMatchers("/api/v1/settings/llm/models", "/api/v1/settings/media-connections/**",
                                 "/api/v1/settings/media-connections",
                                 "/api/v1/settings/media-templates", "/api/v1/settings/media-templates/**",
                                 "/api/v1/settings/media-template-sources", "/api/v1/settings/media-template-sources/**",
+                                "/api/v1/settings/media-template-sync",
                                 "/api/v1/settings/autodl-workflows", "/api/v1/settings/autodl-workflows/**",
                                 "/api/v1/settings/kling/**", "/api/v1/settings/media-profiles",
                                 "/api/v1/settings/media-defaults/**", "/api/v1/call-logs",
@@ -62,6 +63,7 @@ public class SecurityConfiguration {
                                 "/api/v1/settings/director", "/api/v1/settings/prompts",
                                 "/api/v1/settings/prompts/**",
                                 "/api/v1/settings/system-logs", "/api/v1/settings/storage/**",
+                                "/api/v1/settings/local-services/discover",
                                 "/api/v1/call-logs/**", "/api/v1/settings/debug", "/api/v1/settings/call-log-retention", "/api/v1/settings/call-log-retention/**")
                         .hasRole("ADMIN")
                         .anyRequest()

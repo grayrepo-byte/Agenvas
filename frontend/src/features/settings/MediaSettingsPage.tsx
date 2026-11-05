@@ -1,3 +1,6 @@
+import { OpenAiImageFields } from "./OpenAiImageFields";
+import { OPENAI_IMAGE_QUICK_MODELS, changeOpenAiImageModel, openAiImageQualities } from "./openAiImageOptions";
+import { mediaDisplayName } from "../../shared/mediaDisplayNames";
 import { Field, FieldLabel, FieldGroup, FieldSet } from "../../shared/ui/primitives/field";
 import { ArrowLeft,ArrowRight,CheckCircle,DotsThree,HardDrives,ImageSquare,MagnifyingGlass,MusicNotes,PlugsConnected,Plus,Sparkle,VideoCamera } from "@/shared/ui/icons";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
@@ -30,6 +33,7 @@ import { Select } from "../../shared/ui/Select";
 import { AutoDlWorkflowFields } from "./AutoDlWorkflowFields";
 import { CapabilityConfigurationFields } from "./CapabilityConfigurationFields";
 import { GoogleImageConnectionHelp,googleImageApiLabel } from "./GoogleImageConnectionHelp";
+import { LocalServiceDiscovery } from "./LocalServiceDiscovery";
 import { MediaConnectionAddressField } from "./MediaConnectionAddressField";
 import { KlingModelFields } from "./KlingModelFields";
 import { NativeModelFields } from "./NativeModelFields";
@@ -39,6 +43,7 @@ import { ComfyWorkflowEditor } from "./ComfyWorkflowEditor";
 import { isComfyAdapter } from "./comfyWorkflow";
 import { RunningHubDefinitionEditor } from "./RunningHubDefinitionEditor";
 import { buildMediaCapabilitySettings, CapabilityDraftError, type MediaCapabilityDraft } from "./mediaCapabilityDraft";
+import { applyOpenAiImageTokenPreset, openAiImagePricePreset, updateOpenAiImagePricingDraft } from "./openAiImagePricingPresets";
 import { mediaConnectionAddresses, mediaConnectionOrigin } from "./mediaConnectionConfiguration";
 import { MediaDefaultsSection } from "./MediaDefaultsSection";
 
@@ -57,22 +62,14 @@ function matchesCatalog(text: string, enabled: boolean, query: string, status: C
     && (status === "all" || enabled === (status === "enabled"));
 }
 function capabilityMatches(connection: MediaConnection, capability: MediaCapability, query: string, status: CatalogStatus, kind: CatalogKind = "all") {
-  return matchesCatalog(`${connection.name} ${connection.platform} ${capability.name} ${adapterLabel(capability.adapterId)} ${capability.settings.model ?? ""}`,
+  return matchesCatalog(`${mediaDisplayName(connection)} ${connection.platform} ${mediaDisplayName(capability)} ${adapterLabel(capability.adapterId)} ${capability.settings.model ?? ""}`,
     connection.enabled && capability.enabled, query, status)
     && (kind === "all" || (kind === "local" ? connection.platform === "LOCAL" : capability.kind === kind && connection.platform !== "LOCAL"));
 }
-const cloudImageFields = [{ key: "model", get label() { return t("settings.mediaSettings.modelName"); } }] as const;
-
-function fixedModelFields(adapterId: string) {
-  return adapterId === "OPENAI_GPT_IMAGE_2" || adapterId === "GOOGLE_NANO_BANANA_2"
-      ? cloudImageFields : [];
-}
-
-function QualityChoice({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function QualityChoice({ value, model, onChange }: { value: string; model?: string; onChange: (value: string) => void }) {
   useLocale();
   return <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.imageQuality")}<Select value={value} onChange={(event) => onChange(event.target.value)}>
-      <option value="low">low</option><option value="medium">medium</option>
-      <option value="high">high</option>
+      {openAiImageQualities(model).map((quality) => <option key={quality} value={quality}>{quality}</option>)}
     </Select>
   </FieldLabel></Field>;
 }
@@ -85,25 +82,27 @@ function FixedModelFields({ adapterId, values, onChange }: {
   useLocale();
   return <>
     {adapterId === AUTODL_ADAPTER ? <AutoDlWorkflowFields values={values} onChange={onChange} /> : null}
-    {adapterModel(adapterId) && !isKlingAdapter(adapterId) && !["ARK_SEEDANCE_2_I2V", "VOLC_SEED_AUDIO_1", MINIMAX_H3_ADAPTER].includes(adapterId) ? <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.modelOptions")}<Select value={values.model ? "custom" : "builtin"} onChange={(event) => onChange({ ...values,
-        model: event.target.value === "builtin" ? "" : adapterModel(adapterId) })}>
+    {adapterModel(adapterId) && !isKlingAdapter(adapterId) && !["ARK_SEEDANCE_2_I2V", "VOLC_SEED_AUDIO_1", MINIMAX_H3_ADAPTER].includes(adapterId) ? <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.modelOptions")}<Select value={adapterId === "OPENAI_GPT_IMAGE_2" && OPENAI_IMAGE_QUICK_MODELS.some((model) => model.id === values.model) ? values.model : values.model ? "custom" : "builtin"}
+        onChange={(event) => { const model = event.target.value === "builtin" ? "" : event.target.value === "custom" ? adapterModel(adapterId) ?? "" : event.target.value;
+          onChange(adapterId === "OPENAI_GPT_IMAGE_2" ? changeOpenAiImageModel(values, model) : { ...values, model }); }}>
         <option value="builtin">{t("settings.mediaSettings.builtinModel", { "0": adapterModel(adapterId) })}</option>
+        {adapterId === "OPENAI_GPT_IMAGE_2" ? OPENAI_IMAGE_QUICK_MODELS.map((model) => <option key={model.id} value={model.id}>{model.label}</option>) : null}
         <option value="custom">{t("settings.mediaSettings.customModel")}</option>
       </Select>
     </FieldLabel></Field> : null}
     {isKlingAdapter(adapterId) || ["ARK_SEEDANCE_2_I2V", "VOLC_SEED_AUDIO_1", MINIMAX_H3_ADAPTER].includes(adapterId) ? <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.fixedModel")}<Input value={adapterModel(adapterId)} readOnly />
     </FieldLabel></Field> : null}
-    {fixedModelFields(adapterId).map(({ key, label }) => <Field key={key}><FieldLabel className="ui-field block">{label}
-      <Input value={String(values[key as keyof AdapterSettings] ?? "")} onChange={(event) => onChange({ ...values, [key]: event.target.value })}
-        required={key !== "model"} maxLength={key === "model" ? MODEL_LIMIT : NAME_LIMIT}
-        placeholder={key === "model" ? adapterModel(adapterId) ?? t("settings.mediaSettings.builtinDefaultPlaceholder") : "model.safetensors"} />
-    </FieldLabel></Field>)}
+    {adapterId === "OPENAI_GPT_IMAGE_2" || adapterId === "GOOGLE_NANO_BANANA_2" ? <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.modelName")}
+      <Input value={values.model ?? ""} onChange={(event) => onChange(adapterId === "OPENAI_GPT_IMAGE_2" ? changeOpenAiImageModel(values, event.target.value) : { ...values, model: event.target.value })}
+        maxLength={MODEL_LIMIT} placeholder={adapterModel(adapterId) ?? t("settings.mediaSettings.builtinDefaultPlaceholder")} />
+    </FieldLabel></Field> : null}
     {adapterId === "GOOGLE_NANO_BANANA_2" ? <p className="ui-muted media-model-help">
       {t("settings.mediaSettings.googleModelHint")}</p> : null}
     {isKlingAdapter(adapterId) ? <p className="ui-muted media-model-help">{t("settings.mediaSettings.klingModelHint")}</p> : null}
-    {adapterId === "OPENAI_GPT_IMAGE_2" ? <QualityChoice value={values.quality ?? "medium"}
+    {adapterId === "OPENAI_GPT_IMAGE_2" ? <QualityChoice value={values.quality ?? "medium"} model={values.model}
       onChange={(quality) => onChange({ ...values, quality: quality as AdapterSettings["quality"],
         ...(values.defaultParameters ? { defaultParameters: { ...values.defaultParameters, quality: quality as AdapterSettings["quality"] } } : {}) })} /> : null}
+    {adapterId === "OPENAI_GPT_IMAGE_2" ? <OpenAiImageFields values={values} onChange={onChange} /> : null}
   </>;
 }
 
@@ -113,9 +112,10 @@ const EDITOR_TABS = [
 ] as const;
 type EditorTab = typeof EDITOR_TABS[number]["id"];
 
-function CapabilityEditorFields({ connectionId, name, onNameChange, adapterId, onAdapterChange, availableAdapters,
-  values, onChange, onWorkflowReady, onBusyChange, discoveryBusy = false, resetKey = 0, creating = false, disabled }: {
+function CapabilityEditorFields({ connectionId, connectionOrigin, name, onNameChange, adapterId, onAdapterChange, availableAdapters,
+  values, onChange: onSettingsChange, onWorkflowReady, onBusyChange, discoveryBusy = false, resetKey = 0, creating = false, disabled }: {
   connectionId: string; name: string; onNameChange: (value: string) => void;
+  connectionOrigin?: string | null;
   adapterId: string; onAdapterChange: (value: string) => void; availableAdapters: string[];
   values: AdapterSettings; onChange: (value: AdapterSettings) => void;
   creating?: boolean; disabled: boolean; onWorkflowReady: (ready: boolean) => void;
@@ -124,6 +124,21 @@ function CapabilityEditorFields({ connectionId, name, onNameChange, adapterId, o
   const locale = useLocale();
   const fieldId = useId();
   const [tab, setTab] = useState<EditorTab>("model");
+  const initializedPreset = useRef<string | null>(null);
+  function onChange(next: AdapterSettings) {
+    onSettingsChange(adapterId === "OPENAI_GPT_IMAGE_2" ? updateOpenAiImagePricingDraft(values, next, connectionOrigin) : next);
+  }
+  useEffect(() => {
+    if (adapterId === "OPENAI_GPT_IMAGE_2" && values.openAiPricePresetModel && values.openAiPricePresetOrigin !== connectionOrigin) {
+      onSettingsChange(updateOpenAiImagePricingDraft(values, values, connectionOrigin));
+      return;
+    }
+    if (!creating || initializedPreset.current === adapterId) return;
+    initializedPreset.current = adapterId;
+    if (adapterId === "OPENAI_GPT_IMAGE_2" && !values.pricing && !values.tokenPricing
+        && openAiImagePricePreset(values.model, connectionOrigin))
+      onSettingsChange(applyOpenAiImageTokenPreset(values, connectionOrigin));
+  }, [creating, adapterId, values, connectionOrigin, onSettingsChange]);
   const nativeKling = isKlingNativeAdapter(adapterId);
   const nativeMedia = isNativeMediaAdapter(adapterId);
   const nativeCatalog = useQuery({ queryKey: ["settings", "media", "profiles", locale], queryFn: getNativeMediaProfiles,
@@ -171,7 +186,7 @@ function CapabilityEditorFields({ connectionId, name, onNameChange, adapterId, o
         {availableAdapters.map((id) => <option key={id} value={id}>{adapterLabel(id)}</option>)}
       </Select></Field>
     </FieldGroup>
-    <ComfyWorkflowEditor key={adapterId} connectionId={connectionId} adapterId={adapterId} values={values} onChange={onChange} onReadyChange={onWorkflowReady} />
+    <ComfyWorkflowEditor key={`${adapterId}:${resetKey}`} connectionId={connectionId} adapterId={adapterId} values={values} onChange={onChange} onReadyChange={onWorkflowReady} />
   </fieldset>;
   if (adapterId.startsWith("RUNNINGHUB_")) return <fieldset disabled={disabled} className="media-settings-fieldset runninghub-editor-fieldset">
     <RunningHubDefinitionEditor connectionId={connectionId} adapterId={adapterId} value={values.runningHub}
@@ -237,7 +252,7 @@ function CapabilityEditorFields({ connectionId, name, onNameChange, adapterId, o
               {klingCatalog.error ? <Button type="button" variant="outline" onClick={() => void klingCatalog.refetch()}>{t("common.retry")}</Button> : null}
             </div>
             : <FixedModelFields adapterId={adapterId} values={values} onChange={onChange} />}
-        </> : <CapabilityConfigurationFields section={item.id} adapterId={adapterId} values={values} onChange={onChange}
+        </> : <CapabilityConfigurationFields section={item.id} adapterId={adapterId} values={values} onChange={onChange} connectionOrigin={connectionOrigin}
           nativeInputLimits={nativeProfile?.inputLimits ?? klingProfile?.inputLimits} />}
       </FieldGroup></FieldSet>
       <div className="capability-editor-paging">
@@ -249,19 +264,21 @@ function CapabilityEditorFields({ connectionId, name, onNameChange, adapterId, o
   </div>;
 }
 
-function ConnectionCredentials({ platform, origin, apiKey, onOriginChange, onApiKeyChange, creating = false }: {
+function ConnectionCredentials({ platform, origin, apiKey, onOriginChange, onApiKeyChange, creating = false, disabled = false }: {
   platform: MediaConnection["platform"];
   origin: string;
   apiKey: string;
   onOriginChange: (value: string) => void;
   onApiKeyChange: (value: string) => void;
   creating?: boolean;
+  disabled?: boolean;
 }) {
   useLocale();
   const helpId = useId();
   return <>
     <MediaConnectionAddressField key={platform} platform={platform} origin={origin} onChange={onOriginChange}
       describedBy={platform === "GOOGLE" ? helpId : undefined} />
+    {platform === "COMFYUI" ? <LocalServiceDiscovery service="COMFYUI" disabled={disabled} onSelect={onOriginChange} /> : null}
     {platform === "GOOGLE" ? <GoogleImageConnectionHelp id={helpId} origin={origin} /> : null}
     {platform === "AUTODL" ? <p className="ui-muted">{t("settings.mediaSettings.comfyTokenHint")}</p> : null}
     {mediaConnectionAddresses[platform]?.requiresApiKey ? <Field><FieldLabel className="ui-field block">
@@ -298,10 +315,11 @@ function ConfigurationUpdatedNotice({ scope, disabled, onReload }: {
   </Notice>;
 }
 
-function CapabilityRow({ connectionId, connectionName, capability, isDefault, connectionEnabled,
+function CapabilityRow({ connectionId, connectionName, connectionOrigin, capability, isDefault, connectionEnabled,
   availableAdapters, busy, hidden = false, apply, act }: {
   connectionId: string;
   connectionName: string;
+  connectionOrigin: string | null;
   capability: MediaCapability;
   isDefault: boolean;
   connectionEnabled: boolean;
@@ -386,7 +404,7 @@ function CapabilityRow({ connectionId, connectionName, capability, isDefault, co
       <TableCell data-label={t("settings.mediaSettings.inputRange")}><span className="media-cell-text" title={t("settings.mediaSettings.referenceImageLimit", { "0": capability.maxReferenceImages })}>{capability.kind === "VIDEO_GENERATION"
         ? t("settings.mediaWorkspace.compactVideoInput", { "0": capability.minimumSeconds, "1": capability.maximumSeconds, "2": capability.maxReferenceImages })
         : t("settings.mediaSettings.referenceImageLimit", { "0": capability.maxReferenceImages })}</span></TableCell>
-      <TableCell data-label={t("settings.mediaSettings.price")} title={t("settings.mediaWorkspace.estimateOnly")}>{capability.settings.pricing ? <>{capability.settings.pricing.amount} {capability.settings.pricing.currency}
+      <TableCell data-label={t("settings.mediaSettings.price")} title={t("settings.mediaWorkspace.estimateOnly")}>{capability.settings.tokenPricing ? <>{t("media.pricing.perMillionTokens")} · {capability.settings.tokenPricing.currency}</> : capability.settings.pricing ? <>{capability.settings.pricing.amount} {capability.settings.pricing.currency}
         <span className="media-price-unit"> / {capability.settings.pricing.unit === "SECOND" ? t("settings.mediaSettings.seconds") : capability.settings.pricing.unit === "VIDEO" ? t("settings.mediaSettings.videoUnit") : capability.settings.pricing.unit === "AUDIO" ? t("settings.editor.audioUnit") : t("settings.mediaSettings.imageUnit")}</span></> : <span className="ui-muted">{t("settings.mediaWorkspace.unknownPrice")}</span>}</TableCell>
       <TableCell><div className="media-table-badges">
         <StatusBadge tone={capability.enabled && connectionEnabled ? "success" : "warning"}>{capability.enabled && connectionEnabled ? t("settings.mediaSettings.enabled") : t("settings.mediaSettings.disabled")}</StatusBadge>
@@ -427,7 +445,7 @@ function CapabilityRow({ connectionId, connectionName, capability, isDefault, co
       </>}>
       <div className="ui-stack">
         {isStale ? <ConfigurationUpdatedNotice scope={t("settings.mediaSettings.capabilityParameters")} disabled={rowBusy} onReload={loadLatest} /> : null}
-        <CapabilityEditorFields connectionId={connectionId} name={name} onNameChange={setName} adapterId={adapterId}
+        <CapabilityEditorFields connectionId={connectionId} connectionOrigin={connectionOrigin} name={name} onNameChange={setName} adapterId={adapterId}
           onAdapterChange={(value) => { setAdapterId(value); setModelNames({}); }} availableAdapters={sameKindAdapters}
           values={modelNames} onChange={setModelNames} onWorkflowReady={setWorkflowReady} onBusyChange={setImportBusy} discoveryBusy={importBusy} resetKey={editorResetKey} disabled={busy || save.isPending || remove.isPending} />
         {error ? <Notice tone="danger">{error}</Notice> : null}
@@ -479,13 +497,13 @@ function ConnectionCapabilities({ connection, settings, apply, query, status, ki
   const availableAdapters = platformAdapters[connection.platform];
   return <>
     {connection.capabilities.map((capability) => systemManaged ? <TableRow key={capability.id} hidden={!capabilityMatches(connection, capability, query, status, kind)}>
-      <TableCell><div className="media-table-name"><HardDrives size={19} aria-hidden /><strong title={capability.name}>{capability.name}</strong></div></TableCell>
-      <TableCell data-label={t("settings.mediaWorkspace.serviceColumn")}><span className="media-cell-text" title={connection.name}>{connection.name}</span></TableCell>
+      <TableCell><div className="media-table-name"><HardDrives size={19} aria-hidden /><strong title={mediaDisplayName(capability)}>{mediaDisplayName(capability)}</strong></div></TableCell>
+      <TableCell data-label={t("settings.mediaWorkspace.serviceColumn")}><span className="media-cell-text" title={systemManaged ? mediaDisplayName(connection) : connection.name}>{systemManaged ? mediaDisplayName(connection) : connection.name}</span></TableCell>
       <TableCell data-label={t("common.model")}><span className="media-cell-text" title={adapterLabel(capability.adapterId)}>{t("settings.mediaSettings.builtin")}</span></TableCell>
-      <TableCell data-label={t("settings.mediaWorkspace.kindColumn")}>{capability.kind === "IMAGE_GENERATION" ? t("common.image") : t("common.video")}</TableCell>
+      <TableCell data-label={t("settings.mediaWorkspace.kindColumn")}>{capability.kind === "IMAGE_GENERATION" ? t("common.image") : capability.kind === "AUDIO_GENERATION" ? t("common.audio") : t("common.video")}</TableCell>
       <TableCell data-label={t("settings.mediaSettings.inputRange")}><span className="media-cell-text">{capability.kind === "IMAGE_GENERATION" ? t("settings.mediaSettings.referenceImageLimit", { "0": capability.maxReferenceImages }) : t("media.functions.videoTools")}</span></TableCell>
       <TableCell data-label={t("settings.mediaSettings.price")}>{t("settings.mediaSettings.localExecution")}</TableCell><TableCell><StatusBadge tone="success">{t("settings.mediaSettings.enabled")}</StatusBadge></TableCell><TableCell className="ui-muted">{t("settings.mediaSettings.administration")}</TableCell>
-    </TableRow> : <CapabilityRow key={capability.id} connectionId={connection.id} connectionName={connection.name}
+    </TableRow> : <CapabilityRow key={capability.id} connectionId={connection.id} connectionName={connection.name} connectionOrigin={connection.origin}
       capability={capability} isDefault={settings.defaults.some((item) => item.kind === capability.kind && item.capabilityId === capability.id)}
       connectionEnabled={connection.enabled} availableAdapters={availableAdapters} busy={mutate.isPending} hidden={!capabilityMatches(connection, capability, query, status, kind)} apply={apply}
       act={(type, selected) => mutate.mutate({ type, capability: selected })} />)}
@@ -593,7 +611,7 @@ function ConnectionRow({ connection, settings, apply, hidden, publishOpen, onPub
 
   return <>
     <TableRow hidden={hidden} data-disabled={!connection.enabled}>
-      <TableCell><div className="media-table-name">{systemManaged ? <HardDrives size={18} aria-hidden /> : <PlugsConnected size={18} aria-hidden />}<strong title={connection.name}>{connection.name}</strong></div></TableCell>
+      <TableCell><div className="media-table-name">{systemManaged ? <HardDrives size={18} aria-hidden /> : <PlugsConnected size={18} aria-hidden />}<strong title={systemManaged ? mediaDisplayName(connection) : connection.name}>{systemManaged ? mediaDisplayName(connection) : connection.name}</strong></div></TableCell>
       <TableCell data-label={t("settings.mediaSettings.platform")}>{connection.platform}</TableCell>
       <TableCell data-label={t("settings.mediaWorkspace.capabilityCountColumn")}>{connection.capabilities.length}</TableCell>
       <TableCell data-label={t("settings.mediaWorkspace.addressColumn")}><span className="media-table-endpoint" title={`${endpoint}${connection.platform === "GOOGLE" ? ` · ${googleImageApiLabel(connection.origin)}` : ""}`}>{endpoint}</span></TableCell>
@@ -618,7 +636,7 @@ function ConnectionRow({ connection, settings, apply, hidden, publishOpen, onPub
         {isStale ? <ConfigurationUpdatedNotice scope={t("settings.mediaSettings.connectionConfiguration")} disabled={busy} onReload={loadLatest} /> : null}
         <FieldSet className="media-settings-fieldset" disabled={busy}><FieldGroup className="ui-form-grid">
           <Field><FieldLabel className="ui-field block">{t("settings.shared.connectionName")}<Input value={name} onChange={(event) => setName(event.target.value)} required maxLength={NAME_LIMIT} /></FieldLabel></Field>
-          <ConnectionCredentials platform={connection.platform} origin={origin} apiKey={apiKey} onOriginChange={setOrigin} onApiKeyChange={setApiKey} />
+          <ConnectionCredentials platform={connection.platform} origin={origin} apiKey={apiKey} onOriginChange={setOrigin} onApiKeyChange={setApiKey} disabled={busy} />
         </FieldGroup></FieldSet>
         {error ? <Notice tone="danger">{error}</Notice> : null}
       </div>
@@ -631,7 +649,7 @@ function ConnectionRow({ connection, settings, apply, hidden, publishOpen, onPub
         <Button variant="default"  type="submit" disabled={busy || !connection.enabled || (isComfyAdapter(adapterId) || isKlingNativeAdapter(adapterId) || isNativeMediaAdapter(adapterId)) && !workflowReady}>{addCapability.isPending ? t("settings.mediaSettings.publishing") : t("settings.mediaSettings.publishCapability")}</Button>
       </>}>
       <div className="ui-stack">
-        <CapabilityEditorFields connectionId={connection.id} name={capabilityName} onNameChange={setCapabilityName} adapterId={adapterId}
+        <CapabilityEditorFields connectionId={connection.id} connectionOrigin={connection.origin} name={capabilityName} onNameChange={setCapabilityName} adapterId={adapterId}
           onAdapterChange={(value) => { setAdapterId(value); setNewModelNames({}); }} availableAdapters={availableAdapters}
           values={newModelNames} onChange={setNewModelNames} onWorkflowReady={setWorkflowReady} onBusyChange={setImportBusy} discoveryBusy={importBusy} creating disabled={save.isPending || addCapability.isPending || mutate.isPending || !connection.enabled} />
         {!connection.enabled ? <Notice tone="warning">{t("settings.mediaSettings.enableBeforePublish")}</Notice> : null}
@@ -683,7 +701,7 @@ export function MediaSettingsPage() {
   const availableCount = settings.data?.connections.filter((connection) => connection.enabled)
     .flatMap((connection) => connection.capabilities).filter((capability) => capability.enabled).length ?? 0;
   const visibleCount = settings.data?.connections.reduce((count, connection) => count + (selectedTab === "connections"
-    ? Number(matchesCatalog(`${connection.name} ${connection.platform} ${connection.origin ?? ""}`, connection.enabled, catalogQuery, catalogStatus))
+    ? Number(matchesCatalog(`${mediaDisplayName(connection)} ${connection.platform} ${connection.origin ?? ""}`, connection.enabled, catalogQuery, catalogStatus))
     : connection.capabilities.filter((capability) => capabilityMatches(connection, capability, catalogQuery, catalogStatus, catalogKind)).length), 0) ?? 0;
   const hasFilters = Boolean(catalogQuery || catalogStatus !== "all" || selectedTab === "capabilities" && catalogKind !== "all");
   function resetFilters() { setCatalogQuery(""); setCatalogStatus("all"); setCatalogKind("all"); }
@@ -731,7 +749,7 @@ export function MediaSettingsPage() {
               <TableHead scope="col">{t("settings.shared.connectionName")}</TableHead><TableHead scope="col">{t("settings.mediaSettings.platform")}</TableHead><TableHead scope="col">{t("settings.mediaWorkspace.capabilityCountColumn")}</TableHead><TableHead scope="col">{t("settings.mediaWorkspace.addressColumn")}</TableHead><TableHead scope="col">{t("settings.mediaWorkspace.credentialsColumn")}</TableHead><TableHead scope="col">{t("settings.mediaSettings.status")}</TableHead><TableHead scope="col">{t("settings.mediaSettings.operations")}</TableHead>
             </TableRow></TableHeader><TableBody>{settings.data.connections.map((connection) => <ConnectionRow key={connection.id}
               connection={connection} settings={settings.data} apply={(result) => queryClient.setQueryData(settingsKey, result)}
-              hidden={!matchesCatalog(`${connection.name} ${connection.platform} ${connection.origin ?? ""}`, connection.enabled, catalogQuery, catalogStatus)}
+              hidden={!matchesCatalog(`${mediaDisplayName(connection)} ${connection.platform} ${connection.origin ?? ""}`, connection.enabled, catalogQuery, catalogStatus)}
               publishOpen={publishingConnectionId === connection.id} onPublish={() => setPublishingConnectionId(connection.id)} onPublishClose={() => setPublishingConnectionId(null)} />)}
               {visibleCount === 0 && selectedTab === "connections" ? <TableRow><TableCell colSpan={7}><EmptyState title={t("settings.catalog.noResults")} description={t("settings.catalog.tryAnotherSearch")} action={<Button variant="outline" type="button" onClick={resetFilters}>{t("settings.mediaWorkspace.resetFilters")}</Button>} /></TableCell></TableRow> : null}
               </TableBody></Table>
@@ -777,7 +795,7 @@ export function MediaSettingsPage() {
                 </Select>
               </FieldLabel></Field>
               <ConnectionCredentials platform={platform} origin={origin} apiKey={apiKey}
-                onOriginChange={setOrigin} onApiKeyChange={setApiKey} creating />
+                onOriginChange={setOrigin} onApiKeyChange={setApiKey} creating disabled={create.isPending} />
             </FieldGroup></FieldSet>
             {error ? <Notice tone="danger">{error}</Notice> : null}
           </div>

@@ -143,6 +143,16 @@ class RunningHubDefinitionTest {
         var definition = RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION);
         assertThat(definition.values(mapper, mapper.createObjectNode(), "", null, true).has("person")).isFalse();
     }
+    @Test void directValidationRejectsNullOutputEntriesBeforeReadingTheirProperties() {
+        var valid = RunningHubDefinition.parse(mapper, schema(), Task.Kind.IMAGE_GENERATION);
+        var invalid = new RunningHubDefinition(valid.schemaVersion(), valid.protocolVersion(), valid.targetType(),
+                valid.targetId(), valid.fields(), valid.fixedBindings(), java.util.Arrays.asList((RunningHubDefinition.Output) null),
+                valid.instanceType(), valid.usePersonalQueue(), valid.addMetadata(), valid.retainSeconds(),
+                valid.sourceSha256(), valid.nodeOptions(), valid.importSource());
+        assertThatThrownBy(() -> invalid.validate(Task.Kind.IMAGE_GENERATION))
+                .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class).hasMessageContaining("输出映射");
+    }
+
     @Test void outputKindAndMissingPrimaryCannotBePublished() {
         assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema(), Task.Kind.VIDEO_GENERATION)).hasMessageContaining("主输出");
         var schema = schema(); ((ObjectNode) schema.path("outputs").get(0)).put("primary", false);

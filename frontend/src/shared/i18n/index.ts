@@ -8,7 +8,7 @@ export const SUPPORTED_LOCALES = ["en", "zh", "ru", "ja"] as const;
 export type Locale = typeof SUPPORTED_LOCALES[number];
 export const DEFAULT_LOCALE: Locale = "zh";
 export const LOCALE_STORAGE_KEY = "agenvas.locale.v1";
-export const LOCALE_NAMES: Record<Locale, string> = { en: "English", zh: "中文", ru: "Русский", ja: "日本語" };
+const LANGUAGE_NAME_KEYS = { en: "locale.language.en", zh: "locale.language.zh", ru: "locale.language.ru", ja: "locale.language.ja" } as const;
 const FORMAT_LOCALES: Record<Locale, string> = { en: "en-US", zh: "zh-CN", ru: "ru-RU", ja: "ja-JP" };
 /** Stable UI identities are independent of the wording in any locale. */
 export type MessageKey = keyof typeof zh;
@@ -81,6 +81,9 @@ export function translate(locale: Locale, message: MessageKey, parameters: Reado
 export function t(message: MessageKey, parameters?: Readonly<Record<string, Parameter>>): string {
   return translate(currentLocale, message, parameters);
 }
+
+/** The picker uses the current interface language, including when English is selected. */
+export function localeName(locale: Locale): string { return t(LANGUAGE_NAME_KEYS[locale]); }
 
 export function formatDate(value: string | Date, options?: Intl.DateTimeFormatOptions): string {
   return new Intl.DateTimeFormat(getFormatLocale(), options).format(new Date(value));

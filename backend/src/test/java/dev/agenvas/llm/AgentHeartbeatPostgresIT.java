@@ -1,6 +1,9 @@
 package dev.agenvas.llm;
 
 import static dev.agenvas.testing.AgentFixture.configureDirector;
+import static dev.agenvas.testing.OnDemandToolsetFixture.load;
+import static dev.agenvas.testing.OnDemandToolsetFixture.onlyLoader;
+import static dev.agenvas.testing.OnDemandToolsetFixture.prepare;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -106,6 +109,7 @@ class AgentHeartbeatPostgresIT {
     private AdminPrincipal owner;
     private Project project;
     private AgentRun run;
+    private int gatedStepIndex;
     private ExecutorService caller;
     private Future<Integer> invocation;
 
@@ -118,7 +122,9 @@ class AgentHeartbeatPostgresIT {
     void createRun() {
         clock.now = Instant.now().truncatedTo(ChronoUnit.MICROS);
         invocation = null;
+        gatedStepIndex = 0;
         gateway.calls.set(0);
+        gateway.prepareTools = false;
         gateway.control = new CallControl();
         project = projects.create(owner.userId(), "Synthetic heartbeat project",
                 Project.AspectRatio.LANDSCAPE_16_9);
@@ -188,6 +194,9 @@ class AgentHeartbeatPostgresIT {
 
     @Test
     void unconfirmedSqlRenewalStopsLocallyButAValidLateCheckpointIsReplayedOnce() throws Exception {
+        gateway.prepareTools = true;
+        prepare(worker, jdbc, run.id());
+        gatedStepIndex = 1;
         gateway.control.ignoreInterrupt = true;
         invocation = caller.submit(() -> worker.runOnce(WORKER));
         assertThat(gateway.control.entered.await(5, TimeUnit.SECONDS)).isTrue();
@@ -231,15 +240,15 @@ class AgentHeartbeatPostgresIT {
         assertThat(responded.output().at("/assistantStream/status").asText()).isEqualTo("COMPLETED");
         assertThat(runCount("tool_execution")).isZero();
         assertThat(projectArtifactCount()).isZero();
-        assertThat(tasks.listByRun(owner.userId(), project.id(), run.id())).hasSize(1);
-        assertThat(runs.get(owner.userId(), project.id(), run.id()).nextStepIndex()).isZero();
+        assertThat(gatedTurns()).hasSize(1);
+        assertThat(runs.get(owner.userId(), project.id(), run.id()).nextStepIndex()).isEqualTo(gatedStepIndex);
         assertThat(usageTypes()).containsExactlyInAnyOrder("RESERVATION", "SETTLEMENT");
         assertThat(gateway.calls).hasValue(1);
 
         // Actual claim/start/leased recovery consumes that durable response, not a new model call.
         clock.now = responded.leaseUntil().plus(1, ChronoUnit.MICROS);
         assertThat(worker.runOnce("checkpoint-recovery-worker")).isEqualTo(1);
-        List<Task> turns = tasks.listByRun(owner.userId(), project.id(), run.id());
+        List<Task> turns = gatedTurns();
         assertThat(turns).hasSize(2);
         Task completed = turns.stream().filter(turn -> turn.id().equals(lease.id())).findFirst().orElseThrow();
         Task successor = turns.stream().filter(turn -> !turn.id().equals(lease.id())).findFirst().orElseThrow();
@@ -248,49 +257,61 @@ class AgentHeartbeatPostgresIT {
         assertThat(completed.output().path("decision").asText()).isEqualTo("CONTINUE");
         assertThat(completed.output().has("modelRetry")).isFalse();
         assertThat(successor.status()).isEqualTo(Task.Status.READY);
-        assertThat(successor.input().path("stepIndex").asInt()).isEqualTo(1);
-        assertThat(runs.get(owner.userId(), project.id(), run.id()).nextStepIndex()).isEqualTo(1);
+        assertThat(successor.input().path("stepIndex").asInt()).isEqualTo(gatedStepIndex + 1);
+        assertThat(runs.get(owner.userId(), project.id(), run.id()).nextStepIndex()).isEqualTo(gatedStepIndex + 1);
         assertThat(runs.get(owner.userId(), project.id(), run.id()).status()).isEqualTo(AgentRun.Status.RUNNING);
         assertThat(runCount("llm_turn")).isEqualTo(1);
         assertThat(runCount("tool_execution")).isEqualTo(1);
         assertThat(projectArtifactCount()).isEqualTo(1);
         assertThat(usageTypes()).containsExactlyInAnyOrder("RESERVATION", "SETTLEMENT");
         assertThat(jdbc.sql("select quantity_json->>'inputTokens' from usage_ledger "
-                        + "where run_id=:run and entry_type='SETTLEMENT'")
-                .param("run", run.id()).query(String.class).single()).isEqualTo("17");
+                        + "where run_id=:run and operation_key=:operation")
+                .param("run", run.id()).param("operation", usageKey("settle")).query(String.class).single()).isEqualTo("17");
         assertThat(jdbc.sql("select count(*) from project_event where project_id=:project "
-                        + "and type='llm.turn.recorded'")
-                .param("project", project.id()).query(Long.class).single()).isEqualTo(1);
+                        + "and type='llm.turn.recorded' and aggregate_id=:run and (payload_json->>'stepIndex')::int=:step")
+                .param("project", project.id()).param("run", run.id()).param("step", gatedStepIndex)
+                .query(Long.class).single()).isEqualTo(1);
         assertThat(gateway.calls).hasValue(1);
     }
 
     private Task task() {
-        return tasks.listByRun(owner.userId(), project.id(), run.id()).getFirst();
+        return gatedTurns().stream().filter(turn -> turn.input().path("stepIndex").asInt() == gatedStepIndex)
+                .findFirst().orElseThrow();
+    }
+
+    private List<Task> gatedTurns() {
+        return tasks.listByRun(owner.userId(), project.id(), run.id()).stream()
+                .filter(turn -> turn.input().path("stepIndex").asInt() >= gatedStepIndex).toList();
     }
 
     private String checkpointStatus() {
-        return jdbc.sql("select status from llm_turn where run_id=:run")
-                .param("run", run.id()).query(String.class).single();
+        return jdbc.sql("select status from llm_turn where run_id=:run and step_index=:step")
+                .param("run", run.id()).param("step", gatedStepIndex).query(String.class).single();
     }
 
     private void assertRequestedWithoutEffects() {
         assertThat(checkpointStatus()).isEqualTo("REQUESTED");
-        assertThat(jdbc.sql("select response_json is null from llm_turn where run_id=:run")
-                .param("run", run.id()).query(Boolean.class).single()).isTrue();
+        assertThat(jdbc.sql("select response_json is null from llm_turn where run_id=:run and step_index=:step")
+                .param("run", run.id()).param("step", gatedStepIndex).query(Boolean.class).single()).isTrue();
         assertThat(usageTypes()).containsExactly("RESERVATION");
         assertThat(runCount("tool_execution")).isZero();
         assertThat(projectArtifactCount()).isZero();
-        assertThat(tasks.listByRun(owner.userId(), project.id(), run.id())).hasSize(1);
+        assertThat(gatedTurns()).hasSize(1);
     }
 
     private List<String> usageTypes() {
-        return jdbc.sql("select entry_type from usage_ledger where run_id=:run")
-                .param("run", run.id()).query(String.class).list();
+        return jdbc.sql("select entry_type from usage_ledger where run_id=:run and operation_key like :prefix")
+                .param("run", run.id()).param("prefix", usageKey("%"))
+                .query(String.class).list();
+    }
+
+    private String usageKey(String stage) {
+        return "llm:" + run.id() + ":" + gatedStepIndex + ":" + stage;
     }
 
     private long runCount(String table) {
-        return jdbc.sql("select count(*) from " + table + " where run_id=:run")
-                .param("run", run.id()).query(Long.class).single();
+        return jdbc.sql("select count(*) from " + table + " where run_id=:run and step_index>=:step")
+                .param("run", run.id()).param("step", gatedStepIndex).query(Long.class).single();
     }
 
     private long projectArtifactCount() {
@@ -347,6 +368,7 @@ class AgentHeartbeatPostgresIT {
 
     static class FakeGateway implements ChatGateway {
         final AtomicInteger calls = new AtomicInteger();
+        volatile boolean prepareTools;
         volatile CallControl control = new CallControl();
 
         @Override public String configSource() { return "test-heartbeat"; }
@@ -357,7 +379,7 @@ class AgentHeartbeatPostgresIT {
         public Exchange callStreaming(List<Message> messages, List<ToolCallback> definitions,
                 Map<String, Object> context, ConfigIdentity expected, Consumer<String> publicDelta,
                 boolean captureContent, Consumer<LlmStreamLog> streamLog) {
-            if (calls.get() == 0) {
+            if (!(prepareTools && onlyLoader(definitions)) && calls.get() == 0) {
                 control.sink = publicDelta;
                 publicDelta.accept(PREFIX);
             }
@@ -368,6 +390,8 @@ class AgentHeartbeatPostgresIT {
         @Override
         public Exchange call(List<Message> messages, List<ToolCallback> definitions, Map<String, Object> context) {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+            if (prepareTools && onlyLoader(definitions)) return load("TEXT");
+            if (prepareTools) assertThat(definitions).extracting(tool -> tool.getToolDefinition().name()).contains("create_text");
             if (calls.incrementAndGet() != 1) {
                 return new Exchange(1, new ChatResponse(List.of(new Generation(new AssistantMessage("Finished.")))));
             }

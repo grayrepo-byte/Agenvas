@@ -3,8 +3,9 @@ import { Question } from "@/shared/ui/icons";
 import { useId,useState } from "react";
 import type { MediaConnection } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
+import { cn } from "../../shared/lib/utils";
 import { Button } from "../../shared/ui/primitives/button";
-import { Field,FieldLabel } from "../../shared/ui/primitives/field";
+import { Field,FieldDescription,FieldLabel } from "../../shared/ui/primitives/field";
 import { Input } from "../../shared/ui/primitives/input";
 import { Tooltip,TooltipContent,TooltipProvider,TooltipTrigger } from "../../shared/ui/primitives/tooltip";
 import { KLING_API_ORIGIN, KLING_API_ORIGINS } from "../../shared/kling";
@@ -22,7 +23,9 @@ export function MediaConnectionAddressField({ platform, origin, onChange, descri
   const config = mediaConnectionAddresses[platform];
   if (!config) return null;
   const hint = t(config.hint);
-  return <Field className="gap-2">
+  const hintId = `${id}-hint`;
+  const descriptionIds = platform === "COMFYUI" ? [describedBy, hintId].filter(Boolean).join(" ") : describedBy ?? hintId;
+  return <Field className={cn("gap-2", platform === "COMFYUI" && "col-span-full")}>
     <div className="flex items-center gap-1">
       <FieldLabel className="ui-field" htmlFor={id}>{t(config.label)}</FieldLabel>
       <TooltipProvider><Tooltip key={platform} open={open} onOpenChange={setOpen}>
@@ -32,14 +35,15 @@ export function MediaConnectionAddressField({ platform, origin, onChange, descri
         <TooltipContent className="media-connection-address-tooltip" side="top"><p>{hint}</p></TooltipContent>
       </Tooltip></TooltipProvider>
     </div>
-    {platform === "KLING" ? <Select id={id} value={origin || KLING_API_ORIGIN} aria-describedby={describedBy ?? `${id}-hint`} onChange={(event) => onChange(event.target.value)}>
+    {platform === "KLING" ? <Select id={id} value={origin || KLING_API_ORIGIN} aria-describedby={descriptionIds} onChange={(event) => onChange(event.target.value)}>
       {KLING_API_ORIGINS.map((address) => <option key={address} value={address}>{address}</option>)}
-    </Select> : platform === "MINIMAX" ? <Select id={id} value={origin || "https://api.minimax.cn"} aria-describedby={describedBy ?? `${id}-hint`} onChange={(event) => onChange(event.target.value)}>
+    </Select> : platform === "MINIMAX" ? <Select id={id} value={origin || "https://api.minimax.cn"} aria-describedby={descriptionIds} onChange={(event) => onChange(event.target.value)}>
       <option value="https://api.minimax.cn">https://api.minimax.cn</option>
       <option value="https://api.minimax.io">https://api.minimax.io</option>
     </Select> : <Input id={id} type="url" value={config.fixed ?? origin} readOnly={Boolean(config.fixed)} required={config.required}
-      maxLength={ORIGIN_LIMIT} placeholder={config.placeholder} aria-describedby={describedBy ?? `${id}-hint`}
+      maxLength={ORIGIN_LIMIT} placeholder={platform === "COMFYUI" ? t("settings.mediaSettings.comfyAddressPlaceholder") : config.placeholder} aria-describedby={descriptionIds}
       onChange={(event) => onChange(event.target.value)} />}
-    {!describedBy ? <span id={`${id}-hint`} className="sr-only">{hint}</span> : null}
+    {platform === "COMFYUI" ? <FieldDescription id={hintId}>{t("settings.mediaSettings.comfyHostHint")}</FieldDescription>
+      : !describedBy ? <span id={hintId} className="sr-only">{hint}</span> : null}
   </Field>;
 }

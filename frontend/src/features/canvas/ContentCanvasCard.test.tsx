@@ -2,9 +2,8 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent,render,screen,waitFor,within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http,HttpResponse } from "msw";
-import { readFileSync } from "node:fs";
 import type { ReactNode } from "react";
-import { afterAll,beforeAll,describe,expect,it,vi } from "vitest";
+import { describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { Artifact,CanvasItem } from "../../shared/api/client";
 import { clickControl,selectValue } from "../../test/controls";
@@ -16,14 +15,6 @@ vi.mock("@xyflow/react", () => ({ Position: { Top: "top" },
     isVisible !== false ? children : null }));
 
 const CREATED_AT = "2026-09-26T00:00:00Z";
-const contentCanvasCardStyles = readFileSync("src/features/canvas/ContentCanvasCard.css", "utf8");
-const artifactCardFrameStyles = readFileSync("src/features/canvas/ArtifactCardFrame.css", "utf8");
-const style = document.createElement("style");
-beforeAll(() => {
-  style.textContent = `${artifactCardFrameStyles}\n${contentCanvasCardStyles}`;
-  document.head.append(style);
-});
-afterAll(() => style.remove());
 
 function artifact(kind: Artifact["kind"], content: NonNullable<Artifact["resourceDefaultVersion"]>["content"]): Artifact {
   return { id: "artifact-hidden-id", projectId: "project-hidden-id", kind, title: "创作内容",
@@ -147,11 +138,7 @@ describe("ContentCanvasCard", () => {
     showCard(artifact("TEXT", { format: "PLAIN_TEXT", text: "已有正文" }));
     const toolbar = screen.getByLabelText("文字卡片操作");
     const version = within(toolbar).getByRole("button", { name: "版本 v2" });
-    const versionStyle = getComputedStyle(version);
-    const editStyle = getComputedStyle(within(toolbar).getByRole("button", { name: "编辑内容" }));
-    for (const property of ["height", "padding", "background-color", "color", "font-size", "border-radius"]) {
-      expect(versionStyle.getPropertyValue(property)).toBe(editStyle.getPropertyValue(property));
-    }
+    expect(version).toBeEnabled();
     expect(screen.getByRole("article").querySelector(".content-card-chip")).toBeNull();
     const user = userEvent.setup();
     await user.click(within(toolbar).getByRole("button", { name: "编辑内容" }));

@@ -182,6 +182,7 @@ export function VideoEditDialog({ projectId, items, initialIds, onClose }: {
           <DialogDescription className="sr-only">{t("video.edit.description")}</DialogDescription>
         </header>
 
+        <div className="video-edit-body">
         <div className="video-edit-workspace">
           <aside className="video-edit-sources" aria-label={t("video.edit.sequence")}>
             <div className="video-edit-panel-heading"><h3><FilmStrip aria-hidden="true" />{t("video.edit.sequence")}</h3><Badge variant="secondary">{shots.length} / 12</Badge></div>
@@ -332,6 +333,7 @@ export function VideoEditDialog({ projectId, items, initialIds, onClose }: {
         <VideoCompositionTimeline timeline={timeline} controller={playback} onTrimmingChange={setTrimming} activeId={activeShot?.id} onSelect={showShot} onTrim={(id, range) => patch(id, range)} onReorder={reorder}
           captions={captions} music={previewMusic} musicTitle={musicItem?.title} voiceCount={voiceCount} onAudio={() => openInspector("audio")} onCaptions={() => openInspector("captions")} disabled={submit.isPending} />
 
+        </div>
         <DialogFooter className="video-edit-footer">
           <div className="video-edit-status" role="status" aria-live="polite">
             {metadataPending || submit.isPending ? <CircleNotch className="video-edit-spinner" aria-hidden="true" /> : invalid || metadataError || submit.error ? <Info aria-hidden="true" /> : <CheckCircle aria-hidden="true" />}

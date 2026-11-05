@@ -47,7 +47,7 @@ public record ImageGenerationParameters(
         int count = integer(input, "generationCount", 1);
         if (!ASPECT_RATIOS.contains(aspectRatio)) throw invalid(ApiMessage.of("api.image-generation-parameters.unsupported-image-ratio"));
         if (!RESOLUTIONS.contains(resolution)) throw invalid(ApiMessage.of("api.image-generation-parameters.unsupported-image-resolution"));
-        if (!QUALITIES.contains(quality)) throw invalid(ApiMessage.of("api.image-generation-parameters.image-quality-must-be-low-medium-or-high"));
+        if (!Set.of("low", "medium", "high", "xhigh", "max").contains(quality)) throw invalid(ApiMessage.of("api.image-generation-parameters.image-quality-must-be-low-medium-or-high"));
         if (!GENERATION_COUNTS.contains(count)) throw invalid(ApiMessage.of("api.image-generation-parameters.the-number-of-image-generation-can-only-be-1-2"));
         return new ImageGenerationParameters(aspectRatio, resolution, quality, transparent,
                 count);

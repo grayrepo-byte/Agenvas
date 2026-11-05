@@ -103,8 +103,12 @@ class AgentImageInputsPostgresIT {
         try (var input = assets.open(preview, 0, preview.size())) { gateway.expectedImage = input.readAllBytes(); }
         var run = runs.create(owner.userId(), project.id(), agent.id(), "Describe this image", "synthetic-image-run").run();
         assertThat(run.policySnapshot().path("allowedTools").toString()).doesNotContain("read_skill_resource");
+        // Discovery is a committed turn before any read is exposed to the model.
         assertThat(worker.runOnce("image-worker")).isEqualTo(1);
-        assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :id")
+        assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :id and tool_name='load_toolset'")
+                .param("id", run.id()).query(Long.class).single()).isEqualTo(1);
+        assertThat(worker.runOnce("image-worker")).isEqualTo(1);
+        assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :id and tool_name<>'load_toolset'")
                 .param("id", run.id()).query(Long.class).single()).isZero();
         assertThat(worker.runOnce("image-worker")).isEqualTo(1);
         assertThat(worker.runOnce("image-worker")).isEqualTo(1);
@@ -112,13 +116,15 @@ class AgentImageInputsPostgresIT {
         assertThat(runs.get(owner.userId(), project.id(), run.id()).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
         assertThat(gateway.calls).hasValue(4);
         assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :id")
-                .param("id", run.id()).query(Long.class).single()).isEqualTo(3);
+                .param("id", run.id()).query(Long.class).single()).isEqualTo(4);
         var requests = jdbc.sql("select request_json::text from llm_turn where run_id = :id order by step_index")
                 .param("id", run.id()).query(String.class).list();
-        assertThat(requests).hasSize(4);
-        assertThat(requests.subList(0, 2)).allSatisfy(request -> assertThat(request)
+        assertThat(requests).hasSize(5);
+        assertThat(mapper.readTree(requests.getFirst()).path("tools")).hasSize(1);
+        assertThat(mapper.readTree(requests.getFirst()).path("tools").get(0).path("name").asText()).isEqualTo("load_toolset");
+        assertThat(requests.subList(0, 3)).allSatisfy(request -> assertThat(request)
                 .doesNotContain(AgentImageInputService.METADATA_KEY));
-        for (String request : requests.subList(2, requests.size())) {
+        for (String request : requests.subList(3, requests.size())) {
             assertThat(request).contains(AgentImageInputService.METADATA_KEY, gateway.versionId.toString())
                     .doesNotContain("base64", "image_url");
         }
@@ -140,6 +146,13 @@ class AgentImageInputsPostgresIT {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
             var images = messages.stream().filter(UserMessage.class::isInstance).map(UserMessage.class::cast)
                     .flatMap(message -> message.getMedia().stream()).toList();
+            if (tools.size() == 1 && "load_toolset".equals(tools.getFirst().getToolDefinition().name())) {
+                assertThat(calls).hasValue(0);
+                assertThat(images).isEmpty();
+                var load = AssistantMessage.builder().content("").toolCalls(List.of(new AssistantMessage.ToolCall(
+                        "load-image-tools", "function", "load_toolset", "{\"toolsets\":[\"CANVAS\"]}"))).build();
+                return new Exchange(1, new ChatResponse(List.of(new Generation(load))));
+            }
             int step = calls.incrementAndGet();
             if (step <= 2) assertThat(images).isEmpty();
             else {

@@ -60,6 +60,17 @@ public class ApiExceptionHandler {
                 dev.agenvas.shared.i18n.ApiMessage.of("api.native-media.invalid-title"),
                 dev.agenvas.shared.i18n.ApiMessage.of("api.native-media.invalid"), false, request, null);
     }
+    @ExceptionHandler(dev.agenvas.llm.application.LlmRequestBudget.Failure.class)
+    ResponseEntity<ProblemDetail> handleModelBudget(dev.agenvas.llm.application.LlmRequestBudget.Failure exception, HttpServletRequest request) {
+        String key = switch (exception.getMessage()) {
+            case "MODEL_CAPACITY_UNKNOWN" -> "api.model-budget.unknown";
+            case "MODEL_RUNTIME_CONTEXT_CHANGED" -> "api.model-budget.changed";
+            case "AGENT_CONTEXT_BUDGET_EXCEEDED" -> "api.model-budget.too-large";
+            default -> "api.model-budget.invalid";
+        };
+        return build(HttpStatus.UNPROCESSABLE_ENTITY, exception.getMessage(), ApiMessage.of("api.model-budget.title"),
+                ApiMessage.of(key), false, request, null);
+    }
 
     /** 映射请求体校验错误，不回显被拒绝的字段值。 */
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -131,6 +142,27 @@ public class ApiExceptionHandler {
         ApiMessage message = ApiMessage.of("api.api-exception-handler.method-not-allowed");
         var response = build(HttpStatus.METHOD_NOT_ALLOWED, "METHOD_NOT_ALLOWED", message, message, false, request, null);
         return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).headers(exception.getHeaders()).body(response.getBody());
+    }
+
+    /** Keep request media negotiation failures out of the retryable unexpected-error path. */
+    @ExceptionHandler(org.springframework.web.HttpMediaTypeNotSupportedException.class)
+    ResponseEntity<ProblemDetail> handleUnsupportedMediaType(
+            org.springframework.web.HttpMediaTypeNotSupportedException exception, HttpServletRequest request) {
+        ApiMessage message = ApiMessage.of("api.api-exception-handler.unsupported-media-type");
+        var response = build(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "UNSUPPORTED_MEDIA_TYPE", message, message,
+                false, request, null);
+        return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE).headers(exception.getHeaders())
+                .contentType(org.springframework.http.MediaType.APPLICATION_PROBLEM_JSON).body(response.getBody());
+    }
+
+    /** Errors retain the public Problem JSON shape even when Accept rejects the normal resource format. */
+    @ExceptionHandler(org.springframework.web.HttpMediaTypeNotAcceptableException.class)
+    ResponseEntity<ProblemDetail> handleNotAcceptable(
+            org.springframework.web.HttpMediaTypeNotAcceptableException exception, HttpServletRequest request) {
+        ApiMessage message = ApiMessage.of("api.api-exception-handler.not-acceptable");
+        var response = build(HttpStatus.NOT_ACCEPTABLE, "NOT_ACCEPTABLE", message, message, false, request, null);
+        return ResponseEntity.status(HttpStatus.NOT_ACCEPTABLE).headers(exception.getHeaders())
+                .contentType(org.springframework.http.MediaType.APPLICATION_PROBLEM_JSON).body(response.getBody());
     }
 
     /** 隐藏未预期的实现细节，并在日志中保留追踪标识。 */

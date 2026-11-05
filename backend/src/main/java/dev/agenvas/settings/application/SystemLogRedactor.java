@@ -8,8 +8,10 @@ final class SystemLogRedactor {
     private static final Pattern ANSI = Pattern.compile("\u001B\\[[0-?]*[ -/]*[@-~]");
     private static final Pattern HEADER = Pattern.compile(
             "(?i)\\b(authorization|proxy-authorization|cookie|set-cookie)\\s*[\\\\\"']*\\s*[:=]\\s*[^\\r\\n]*");
+    // Match the sensitive suffix after a field separator, without recursively
+    // consuming arbitrary prefixes: even one bounded console line can exhaust that stack.
     private static final Pattern CREDENTIAL = Pattern.compile(
-            "(?i)(\\b(?:[a-z0-9]+[_-])*(?:api[_-]?key|password|passwd|(?:client[_-]?)?secret|"
+            "(?i)((?<![a-z0-9])(?:api[_-]?key|password|passwd|(?:client[_-]?)?secret|"
                     + "(?:access[_-]?|refresh[_-]?)?token|master[_-]?key(?:[_-]?base64)?|previous[_-]?keys)"
                     + "[\\\\\"']*\\s*[:=]\\s*)[^\\r\\n]*");
     private static final Pattern BEARER = Pattern.compile("(?i)\\bBearer\\s+[^\\s\\\"'\\\\,;}]+");

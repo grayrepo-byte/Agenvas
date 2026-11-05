@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/api/v1/settings/local-services/discover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Actively check one standard host service without credentials or generation
+         * @description Administrator-only, CSRF-protected and uncached. Accepts only a service kind. Checks one server-selected host address and fixed port/path, without redirects, proxies, credentials, generation, or network scanning. Finding a service does not grant provider endpoint access, save configuration, or verify model/tool support.
+         */
+        post: operations["discoverLocalService"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/mcp/uploads": {
         parameters: {
             query?: never;
@@ -49,6 +69,27 @@ export interface paths {
         };
         get: operations["listThirdPartyPrompts"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/media-template-sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read administrator consent for scheduled third-party prompt downloads */
+        get: operations["getThirdPartyPromptSyncSettings"];
+        /**
+         * Explicitly enable or disable scheduled third-party prompt downloads
+         * @description Administrator-only and CSRF-protected. New and upgraded installations start disabled. Disabling prevents new scheduled sources from starting; an already running download may finish. Cached prompts, per-source settings and explicit manual synchronization remain available.
+         */
+        put: operations["updateThirdPartyPromptSyncSettings"];
         post?: never;
         delete?: never;
         options?: never;
@@ -527,8 +568,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 分页读取管理员本人项目的调用审计元数据
-         * @description 按 startedAt、id 倒序稳定排序。仅返回当前管理员自己的项目，不包含请求或响应正文、密钥和 endpoint。
+         * 分页读取本人项目与系统诊断的调用审计元数据
+         * @description 按 startedAt、id 倒序稳定排序。返回当前管理员自己的项目调用，以及仅活动管理员可见的全局模型诊断；不包含请求或响应正文、密钥和 endpoint。
          *     UNKNOWN 筛选同时匹配调用结果未知及当前 Task 状态 UNKNOWN，便于核对历史请求。
          *     historical=true 是旧检查点投影，startedAt 为原检查点时间；traceId、respondedAt、durationMs 不可追溯时为 null，不据此推算响应时间。
          */
@@ -722,7 +763,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 查看本人项目的 debug 调用详情
+         * 查看本人项目或活动管理员系统诊断的 debug 调用详情
          * @description 单独按需读取正文；Cache-Control 为 no-store。captured=false 表示调用开始时 debug 未启用。captured=true 且 exchanges 为空表示没有已采集的 HTTP 交换（例如 Mock、尚未开始网络调用或采集写入失败）。不伪造 Mock 的 HTTP 请求。仅提取固定白名单响应关联 ID，其他 header（含 Authorization、Cookie、Set-Cookie）均省略；LLM 正文不做凭据替换，保留实际请求与响应内容及推理字段，流式响应只保存一份于 llmStream.content.response，exchanges 只保留请求、HTTP 状态和响应关联 ID，媒体调用继续过滤凭据与私有推理。每个正文至多 64 MiB，超限或未读完标记 truncated，无法解析的 JSON 正文或 SSE data 事件省略，旧内容不补录。UTF8 为正文文本（LLM JSON 仅将结构化 image_url 中的图片 data URI 整值替换为 [image bytes omitted] 占位符后序列化，工具 Schema、参数、数值和普通文本保留，同时隐藏本次服务端登记的中继 URL 查询签名及其正文回显；非 LLM JSON 沿用凭据过滤），BASE64 为二进制正文，MULTIPART_JSON 为字段与文件内容，OMITTED 表示无法安全采集。请求已发送但无响应时响应字段为 null。旧历史投影无此详情，不补录。
          */
         get: operations["getCallDebug"];
@@ -1146,6 +1187,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/llm/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 管理员读取模型列表和容量元数据，不运行推理或保存配置 */
+        post: operations["previewLlmModels"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/llm/diagnose": {
         parameters: {
             query?: never;
@@ -1161,7 +1219,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 管理员显式发起最多两次可能计费的工具协议诊断 */
+        /**
+         * 管理员显式发起最多两次可能计费的工具协议诊断
+         * @description 每次实际调用记录为无项目的 DIAGNOSTIC 日志，默认仅记录安全元数据；开启系统 debug 后按现有权限采集正文。第一轮必须返回唯一且 nonce 精确匹配的探针调用，第二轮必须仅返回工具结果的 proof（允许首尾空白）。失败详情说明具体阶段，显式 Token 截断不验证工具能力。不自动重试，已验证且未变更的配置不重复调用。
+         */
         post: operations["diagnoseLlmSettings"];
         delete?: never;
         options?: never;
@@ -3984,6 +4045,22 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @enum {string} */
+        LocalServiceKind: "OLLAMA" | "COMFYUI";
+        LocalServiceDiscoveryRequest: {
+            service: components["schemas"]["LocalServiceKind"];
+        };
+        LocalServiceDiscoveryResult: {
+            service: components["schemas"]["LocalServiceKind"];
+            /** @enum {string} */
+            runtime: "CONTAINER" | "NATIVE" | "UNKNOWN";
+            /** @enum {string} */
+            status: "FOUND" | "NOT_FOUND" | "UNRESOLVED" | "BLOCKED_ADDRESS" | "TIMEOUT" | "UNEXPECTED_RESPONSE" | "AUTH_REQUIRED" | "UNSUPPORTED_RUNTIME";
+            /** @description Server-generated candidate; present only for FOUND, never credential-bearing */
+            endpoint: string | null;
+            /** @description Existing endpoint policy permits the candidate; discovery never changes policy */
+            policyAllowed: boolean;
+        };
         McpMediaUploadMetadata: {
             commandId: string;
             /** Format: uuid */
@@ -4508,13 +4585,13 @@ export interface components {
             version: number;
         };
         DirectorSettings: {
-            /** @default 1000000 */
+            /** @default 32768 */
             contextWindowTokens: number;
             /** @default 50 */
             compactionThresholdPercent: number;
-            /** @default 8192 */
+            /** @default 4096 */
             responseReserveTokens: number;
-            /** @default 2048 */
+            /** @default 1024 */
             summaryTokens: number;
             /** @default 4 */
             recentToolRounds: number;
@@ -4530,13 +4607,13 @@ export interface components {
             version: number;
         };
         UpdateDirectorSettingsRequest: {
-            /** @default 1000000 */
+            /** @default 32768 */
             contextWindowTokens: number;
             /** @default 50 */
             compactionThresholdPercent: number;
-            /** @default 8192 */
+            /** @default 4096 */
             responseReserveTokens: number;
-            /** @default 2048 */
+            /** @default 1024 */
             summaryTokens: number;
             /** @default 4 */
             recentToolRounds: number;
@@ -4632,9 +4709,12 @@ export interface components {
         CallLog: {
             /** Format: uuid */
             id: string;
-            /** Format: uuid */
-            projectId: string;
-            projectTitle: string;
+            /**
+             * Format: uuid
+             * @description Null only for global administrator model diagnostics.
+             */
+            projectId: string | null;
+            projectTitle: string | null;
             /** Format: uuid */
             taskId: string | null;
             /** Format: uuid */
@@ -4642,7 +4722,7 @@ export interface components {
             /** @enum {string} */
             kind: "LLM" | "IMAGE" | "VIDEO" | "AUDIO";
             /** @enum {string} */
-            operation: "CHAT" | "SUBMIT" | "POLL" | "LEGACY";
+            operation: "CHAT" | "SUBMIT" | "POLL" | "DIAGNOSTIC" | "LEGACY";
             /**
              * @description 单次调用结果；异步受理或轮询返回等待也表示本次调用成功，不表示任务已生成完成。
              * @enum {string}
@@ -4685,7 +4765,7 @@ export interface components {
             /** Format: int64 */
             version: number;
             connectionVersion: number;
-            /** @description COMFYUI base URL with its entire path redacted as /[configured-path], RUNNINGHUB HTTPS root without a domain allowlist, or WAN official WorkspaceId.region.maas.aliyuncs.com HTTPS root, or optional OPENAI/GOOGLE HTTPS API base URL; Google video requires the official Gemini host. null uses the platform official endpoint. */
+            /** @description COMFYUI base URL with its entire path redacted as /[configured-path], RUNNINGHUB HTTP or HTTPS root without a domain allowlist, or WAN official WorkspaceId.region.maas.aliyuncs.com HTTP/HTTPS root, or optional OPENAI/GOOGLE HTTP or HTTPS API base URL; Google video requires the official Gemini host. null uses the platform official endpoint. */
             origin: string | null;
             keyMask: string | null;
             /** @enum {string} */
@@ -4714,7 +4794,7 @@ export interface components {
             supportsEndFrame: boolean;
             supportedImageAspectRatios: ("AUTO" | "1:1" | "2:3" | "3:2" | "9:16" | "16:9" | "3:4" | "4:3" | "21:9")[];
             supportedImageResolutions: ("1K" | "2K" | "4K")[];
-            supportedImageQualities: ("low" | "medium" | "high")[];
+            supportedImageQualities: ("low" | "medium" | "high" | "xhigh" | "max")[];
             supportsTransparentBackground: boolean;
             supportsImageMask: boolean;
             mappingSha256: string;
@@ -4755,7 +4835,26 @@ export interface components {
             vae?: string;
             clipVision?: string;
             /** @enum {string} */
-            quality?: "low" | "medium" | "high";
+            quality?: "low" | "medium" | "high" | "xhigh" | "max";
+            /**
+             * @description OpenAI Images only. auto uses standard moderation; low is less restrictive and moderation still applies. Frozen in the capability version. Historical configurations without this field preserve omission and OpenAI's auto default.
+             * @enum {string}
+             */
+            moderation?: "auto" | "low";
+            /**
+             * @description OpenAI Images output. GIF requires an exact GPT Image 2.6 model, no references/masks/transparency, and automatic dimensions. Omitted keeps PNG.
+             * @enum {string}
+             */
+            outputFormat?: "png" | "gif";
+            /**
+             * @description GPT Image 2.6 planning complexity, independent of quality. Omitted uses the model default.
+             * @enum {string}
+             */
+            complexity?: "low" | "medium" | "high";
+            /** @description GIF only; defaults to 9. Conservative intersection of the official guide and API reference. */
+            frameCount?: number;
+            /** @description GIF only; milliseconds per frame, defaults to 200. */
+            frameDurationMs?: number;
             /** @description OPENAI/GOOGLE accept provider model names; KLING_IMAGE/KLING_VIDEO use the compiled Kling profile catalog. Empty uses the compiled default. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. */
             model?: string;
             /** @description Image defaults; fixed video adapters accept their declared parameters. Native media adapters use dynamicValues derived from nativeInputs or klingInputs. Unsupported parameters are rejected. */
@@ -4767,10 +4866,21 @@ export interface components {
             maxReferenceAudios?: number;
             maxReferenceVideos?: number;
             pricing?: components["schemas"]["MediaCapabilityPricing"];
+            tokenPricing?: components["schemas"]["ImageTokenPricing"];
             /** @description AutoDL published tiers, MINIMAX_H3 768p/1440p, or the declared KLING video model 720p/1080p/2160p tiers (2160p maps to native 4k). Matching tier overrides pricing; otherwise pricing is the fallback. Missing both means unknown cost. */
             pricingByResolution?: {
                 [key: string]: components["schemas"]["MediaCapabilityPricing"];
             };
+        };
+        /** @description OpenAI Images API only. Administrator rates in currency per million tokens, mutually exclusive with pricing/pricingByResolution. Frozen on task acceptance. Missing usage keeps cost unknown. Missing cache counts stay unknown; the estimate uses undiscounted input rates. Positive cache usage needs both modality counts and applicable rates. Never an actual provider invoice. */
+        ImageTokenPricing: {
+            /** @enum {string} */
+            currency: "CNY" | "USD";
+            textInputPerMillion: string;
+            imageInputPerMillion: string;
+            imageOutputPerMillion: string;
+            cachedTextInputPerMillion?: string;
+            cachedImageInputPerMillion?: string;
         };
         /** @description Administrator-imported ComfyUI API-format DAG, at most 256 KiB. Node links and fixed literals are retained; no UI graph, installation commands, transport endpoints or headers are accepted. */
         ComfyUiGraph: {
@@ -5036,7 +5146,7 @@ export interface components {
             name: string;
             /** @enum {string} */
             platform: "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE" | "AUTODL" | "RUNNINGHUB" | "MINIMAX" | "KLING" | "WAN";
-            /** @description Required full COMFYUI base URL (remote HTTPS or exact local HTTP IP and port), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. KLING selects only https://api-singapore.klingai.com or https://api-beijing.klingai.com with an API Key (AK/SK JWT is not supported). MINIMAX selects only https://api.minimax.cn (default) or https://api.minimax.io, without a path. Optional RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
+            /** @description Required full COMFYUI base URL (HTTP or HTTPS host/IP and port; literal IPv4 loopback is also supported), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. KLING selects only https://api-singapore.klingai.com or https://api-beijing.klingai.com with an API Key (AK/SK JWT is not supported). MINIMAX selects only https://api.minimax.cn (default) or https://api.minimax.io, without a path. Optional RUNNINGHUB HTTP or HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTP or HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
             origin?: string | null;
             /** @description Cloud API Key; KLING requires the official API Key, not an AK/SK-generated JWT. Empty on update preserves the pinned credential. */
             apiKey?: string | null;
@@ -5046,7 +5156,7 @@ export interface components {
             expectedVersion: number;
             name: string;
             enabled: boolean;
-            /** @description Required full COMFYUI base URL (remote HTTPS or exact local HTTP IP and port), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. KLING selects only https://api-singapore.klingai.com or https://api-beijing.klingai.com with an API Key (AK/SK JWT is not supported). MINIMAX selects only https://api.minimax.cn (default) or https://api.minimax.io, without a path. Optional RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
+            /** @description Required full COMFYUI base URL (HTTP or HTTPS host/IP and port; literal IPv4 loopback is also supported), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. KLING selects only https://api-singapore.klingai.com or https://api-beijing.klingai.com with an API Key (AK/SK JWT is not supported). MINIMAX selects only https://api.minimax.cn (default) or https://api.minimax.io, without a path. Optional RUNNINGHUB HTTP or HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTP or HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
             origin?: string | null;
             /** @description Cloud API Key; KLING requires the official API Key, not an AK/SK-generated JWT. Empty on update preserves the pinned credential. */
             apiKey?: string | null;
@@ -5174,7 +5284,7 @@ export interface components {
             provider: components["schemas"]["StorageProvider"];
             /**
              * Format: uri
-             * @description Object service HTTPS origin, WebDAV HTTPS base collection, or smb://host[:port]/share[/directory]. No embedded credentials, query, or fragment
+             * @description Object service HTTP/HTTPS origin, WebDAV HTTP/HTTPS base collection, or smb://host[:port]/share[/directory]. No embedded credentials, query, or fragment
              */
             endpoint: string;
             /** @description Object-store region; empty for SMB and WebDAV */
@@ -5195,7 +5305,7 @@ export interface components {
             provider: components["schemas"]["StorageProvider"];
             /**
              * Format: uri
-             * @description Object service HTTPS origin, WebDAV HTTPS base collection, or smb://host[:port]/share[/directory]. No embedded credentials, query, or fragment
+             * @description Object service HTTP/HTTPS origin, WebDAV HTTP/HTTPS base collection, or smb://host[:port]/share[/directory]. No embedded credentials, query, or fragment
              */
             endpoint: string;
             /** @description Object-store region (OSS without oss- prefix); empty for SMB and WebDAV */
@@ -5230,6 +5340,7 @@ export interface components {
             toolCallingVerified: boolean;
             /** Format: date-time */
             updatedAt: string | null;
+            modelPolicy?: components["schemas"]["LlmModelPolicy"] | null;
         };
         ReplaceLlmSettingsRequest: {
             expectedVersion: number;
@@ -5237,6 +5348,63 @@ export interface components {
             endpoint: string;
             modelId: string;
             apiKey: string;
+            modelSelection?: components["schemas"]["LlmModelSelection"];
+        };
+        /** @enum {string} */
+        LlmModelProvider: "COMPATIBLE" | "OPENAI" | "OPENROUTER" | "GEMINI" | "ANTHROPIC" | "OLLAMA";
+        /** @enum {string} */
+        LlmOutputParameter: "MAX_TOKENS" | "MAX_COMPLETION_TOKENS";
+        LlmModelSelection: {
+            provider: components["schemas"]["LlmModelProvider"];
+            /** @enum {string} */
+            mode: "AUTO" | "MANUAL";
+            /** Format: uuid */
+            previewId?: string | null;
+            contextWindowTokens?: number | null;
+            inputLimitTokens?: number | null;
+            maxOutputTokens: number;
+            outputParameter: components["schemas"]["LlmOutputParameter"];
+        };
+        LlmModelPolicy: {
+            provider: components["schemas"]["LlmModelProvider"];
+            /** @enum {string} */
+            source: "MANUAL" | "PROVIDER_REPORTED" | "OLLAMA_RUNTIME";
+            contextWindowTokens: number | null;
+            inputLimitTokens: number | null;
+            maxOutputTokens: number;
+            outputParameter: components["schemas"]["LlmOutputParameter"];
+            theoreticalContextTokens: number | null;
+            reportedOutputTokens: number | null;
+            runtimeContextTokens: number | null;
+            modelDigest: string | null;
+            /** Format: date-time */
+            checkedAt: string | null;
+        };
+        LlmModelMetadata: {
+            id: string;
+            contextWindowTokens: number | null;
+            inputLimitTokens: number | null;
+            outputLimitTokens: number | null;
+            runtimeContextTokens: number | null;
+            deploymentContextTokens: number | null;
+            digest: string | null;
+        };
+        LlmModelPreviewRequest: {
+            provider: components["schemas"]["LlmModelProvider"];
+            /** @enum {string} */
+            credentialMode: "DRAFT" | "SAVED";
+            expectedVersion: number;
+            endpoint?: string | null;
+            apiKey?: string | null;
+            modelId?: string | null;
+        };
+        LlmModelPreview: {
+            /** Format: uuid */
+            id: string;
+            models: components["schemas"]["LlmModelMetadata"][];
+            partial: boolean;
+            /** Format: date-time */
+            checkedAt: string;
         };
         DiagnoseLlmRequest: {
             expectedVersion: number;
@@ -5261,6 +5429,14 @@ export interface components {
                 llmRequestCount: number;
                 inputTokens: number | null;
                 outputTokens: number | null;
+                totalTokens?: number | null;
+                textInputTokens?: number | null;
+                imageInputTokens?: number | null;
+                imageOutputTokens?: number | null;
+                textOutputTokens?: number | null;
+                cachedInputTokens?: number | null;
+                cachedTextInputTokens?: number | null;
+                cachedImageInputTokens?: number | null;
             };
             estimatedCost: string | null;
             actualCost: string | null;
@@ -5518,14 +5694,18 @@ export interface components {
         };
         SetupRequest: {
             loginName: string;
+            /** @description UTF-8 编码不得超过 72 字节。 */
             password: string;
         };
         LoginRequest: {
             loginName: string;
+            /** @description BCrypt 账号的 UTF-8 编码超过 72 字节时按凭据错误拒绝，不截断后比对；已有其他受支持哈希仍完整校验。 */
             password: string;
         };
         ChangePasswordRequest: {
+            /** @description BCrypt 账号的 UTF-8 编码超过 72 字节时按当前密码错误拒绝，不截断后比对；已有其他受支持哈希仍完整校验。 */
             currentPassword: string;
+            /** @description UTF-8 编码不得超过 72 字节。 */
             newPassword: string;
         };
         /** @enum {string} */
@@ -5916,7 +6096,7 @@ export interface components {
             /** @enum {string} */
             resolution?: "1K" | "2K" | "4K";
             /** @enum {string} */
-            quality?: "low" | "medium" | "high";
+            quality?: "low" | "medium" | "high" | "xhigh" | "max";
             transparentBackground?: boolean;
             /** @enum {integer} */
             generationCount?: 1 | 2 | 4;
@@ -7308,6 +7488,19 @@ export interface components {
             promptCount: number;
             syncing: boolean;
         };
+        ThirdPartyPromptSyncSettings: {
+            /** @description Persistent administrator opt-in; false on first adoption, including upgrades */
+            enabled: boolean;
+            /** @description False when the operator disabled scheduling independently of administrator consent */
+            deploymentEnabled: boolean;
+            /** Format: int64 */
+            version: number;
+        };
+        UpdateThirdPartyPromptSyncSettings: {
+            enabled: boolean;
+            /** Format: int64 */
+            expectedVersion: number;
+        };
         ThirdPartyPromptSources: {
             items: components["schemas"]["ThirdPartyPromptSource"][];
         };
@@ -7527,6 +7720,75 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    discoverLocalService: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalServiceDiscoveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded result; source bodies and system metadata are never returned */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalServiceDiscoveryResult"];
+                };
+            };
+            /** @description Request rejected */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     uploadMcpMedia: {
         parameters: {
             query?: never;
@@ -7702,6 +7964,140 @@ export interface operations {
             };
             /** @description Request rejected */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getThirdPartyPromptSyncSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current settings; deploymentEnabled is an independent operator limit */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThirdPartyPromptSyncSettings"];
+                };
+            };
+            /** @description Request rejected */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    updateThirdPartyPromptSyncSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateThirdPartyPromptSyncSettings"];
+            };
+        };
+        responses: {
+            /** @description Saved settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThirdPartyPromptSyncSettings"];
+                };
+            };
+            /** @description Request rejected */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7992,6 +8388,7 @@ export interface operations {
                 };
                 content: {
                     "image/webp": string;
+                    "image/gif": string;
                     "image/png": string;
                 };
             };
@@ -8533,6 +8930,7 @@ export interface operations {
                     "image/png": string;
                     "image/jpeg": string;
                     "image/webp": string;
+                    "image/gif": string;
                 };
             };
             400: components["responses"]["ValidationError"];
@@ -9827,6 +10225,60 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
         };
     };
+    previewLlmModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LlmModelPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description 有界模型列表；未知容量为 null，预览十分钟有效且绑定原连接和凭据 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmModelPreview"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description 元数据读取正在进行 */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description 元数据不可用，保留手动配置 */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description 元数据读取超时，保留草稿 */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     diagnoseLlmSettings: {
         parameters: {
             query?: never;
@@ -11006,6 +11458,7 @@ export interface operations {
                     "image/png": string;
                     "image/jpeg": string;
                     "image/webp": string;
+                    "image/gif": string;
                     "video/mp4": string;
                 };
             };
@@ -14471,6 +14924,7 @@ export interface operations {
                     "image/png": components["schemas"]["SkillMediaBytes"];
                     "image/jpeg": components["schemas"]["SkillMediaBytes"];
                     "image/webp": components["schemas"]["SkillMediaBytes"];
+                    "image/gif": components["schemas"]["SkillMediaBytes"];
                 };
             };
             400: components["responses"]["ValidationError"];

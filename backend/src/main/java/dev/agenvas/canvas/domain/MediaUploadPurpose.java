@@ -1,14 +1,16 @@
 package dev.agenvas.canvas.domain;
 
+import dev.agenvas.shared.i18n.ApiMessage;
+
 /** User-edited bytes are archived directly, without a model or generation task. */
 public enum MediaUploadPurpose {
-    UPLOAD("上传"),
-    BRUSH_MARKUP("画笔标注"),
-    DIRECTOR_3D("3D 导演台");
+    UPLOAD("creation.upload.file"),
+    BRUSH_MARKUP("creation.upload.brush-markup"),
+    DIRECTOR_3D("creation.upload.director-3d");
 
-    private final String resultLabel;
+    private final String resultLabelKey;
 
-    MediaUploadPurpose(String resultLabel) { this.resultLabel = resultLabel; }
+    MediaUploadPurpose(String resultLabelKey) { this.resultLabelKey = resultLabelKey; }
 
-    public String resultLabel() { return resultLabel; }
+    public ApiMessage resultLabel() { return ApiMessage.of(resultLabelKey); }
 }

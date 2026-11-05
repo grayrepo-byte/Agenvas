@@ -12,6 +12,21 @@ class ObjectStorageClientTest {
     private StorageProfile profile(StorageProfile.Provider provider, boolean path) {
         return new StorageProfile(UUID.randomUUID(), "test", provider, "https://s3.example.com", "us-east-1", "my-bucket", "", path, 1, null, "masked", Instant.EPOCH);
     }
+    @Test void httpAndIpv6SignaturesIncludeTheActualAuthority() {
+        var p = profile(StorageProfile.Provider.S3, true);
+        String[][] cases = {
+            {"http://store.example.com:443/bucket/key", "17567f2993e4d535020c61089060c5bda186a3858afebb47644d8f7e56dbb6d5"},
+            {"http://[fd12::1]:9000/bucket/key", "345cdc480b3810673a049ca7c973499d52a8785b7c32b44e7279e77eeab99e4b"}
+        };
+        // Independently calculated with Python hmac/hashlib and the literal HTTP Host authority.
+        for (String[] item : cases) {
+            var signed = ObjectStorageSigner.sign(new Request.Builder().url(item[0]).get().build(), p,
+                    "access-id", "synthetic-secret", "key", ObjectStorageSigner.EMPTY_HASH,
+                    Instant.parse("2026-01-01T00:00:00Z"));
+            assertThat(signed.header("Authorization")).endsWith("Signature=" + item[1]);
+        }
+    }
+
     @Test void privateS3AddressingAndCosVirtualHostsUseExactlyConfiguredDestination() {
         assertThat(ObjectStorageClient.url(profile(StorageProfile.Provider.S3, true), "project/file.png").toString())
                 .isEqualTo("https://s3.example.com/my-bucket/project/file.png");

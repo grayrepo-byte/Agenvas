@@ -5,6 +5,7 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { createQueryClient } from "../../app/queryClient";
+import { setLocale } from "../../shared/i18n";
 import { server } from "../../test/server";
 import { SetupPage } from "./SetupPage";
 
@@ -20,6 +21,36 @@ describe("SetupPage", () => {
     expect(await screen.findByRole("button", { name: "创建管理员" })).toBeInTheDocument();
     expect(screen.queryByLabelText(/初始化密钥/)).not.toBeInTheDocument();
     expect(screen.getByLabelText(/管理员密码/)).toBeInTheDocument();
+    expect(screen.getByText("在受控网络完成初始化")).toBeInTheDocument();
+    expect(screen.getByText("首个完成此页面的人将成为管理员。请先在受控网络完成初始化，再开放公网访问。")).toBeInTheDocument();
+    expect(document.querySelectorAll("form input")).toHaveLength(2);
+  });
+
+  it("explains first-administrator access in English without adding setup fields", async () => {
+    setLocale("en");
+    showPage();
+    expect(await screen.findByRole("button", { name: "Create administrator" })).toBeInTheDocument();
+    expect(screen.getByText("Complete setup on a controlled network")).toBeInTheDocument();
+    expect(screen.getByText("The first person to complete this page becomes the administrator. Complete setup on a controlled network before allowing public internet access.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Administrator username")).toBeInTheDocument();
+    expect(screen.getByLabelText(/Administrator password/)).toBeInTheDocument();
+    expect(document.querySelectorAll("form input")).toHaveLength(2);
+  });
+
+  it("waits for confirmed setup status before showing the first-administrator warning", async () => {
+    let finish: (() => void) | undefined;
+    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    server.use(http.get("/api/v1/auth/setup-status", async () => {
+      await pending;
+      return HttpResponse.json({ setupRequired: false });
+    }));
+    showPage();
+    expect(screen.getByText("正在读取初始化状态…")).toBeInTheDocument();
+    expect(screen.queryByText("在受控网络完成初始化")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "创建管理员" })).not.toBeInTheDocument();
+    finish?.();
+    expect(await screen.findByRole("link", { name: "前往登录" })).toHaveAttribute("href", "/login");
+    expect(screen.queryByText("在受控网络完成初始化")).not.toBeInTheDocument();
   });
 
   it("retries unavailable setup status and presents login when already initialized", async () => {
@@ -27,9 +58,11 @@ describe("SetupPage", () => {
     server.use(http.get("/api/v1/auth/setup-status", () => { calls += 1; return calls === 1 ? new HttpResponse(null, { status: 503 }) : HttpResponse.json({ setupRequired: false }); }));
     showPage(); const user = userEvent.setup();
     expect(await screen.findByRole("alert")).toHaveTextContent("服务端暂不可用");
+    expect(screen.queryByText("在受控网络完成初始化")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "重新连接" }));
     expect(await screen.findByRole("link", { name: "前往登录" })).toHaveAttribute("href", "/login");
     expect(screen.queryByRole("button", { name: "创建管理员" })).not.toBeInTheDocument();
+    expect(screen.queryByText("在受控网络完成初始化")).not.toBeInTheDocument();
   });
 
   it("keeps account fields on rejection and disables duplicate submissions", async () => {

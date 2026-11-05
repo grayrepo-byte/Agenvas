@@ -1,6 +1,8 @@
 package dev.agenvas.llm;
 
 import static dev.agenvas.testing.AgentFixture.configureDirector;
+import static dev.agenvas.testing.OnDemandToolsetFixture.onlyLoader;
+import static dev.agenvas.testing.OnDemandToolsetFixture.load;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -103,6 +105,7 @@ class AgentTurnSchedulerPostgresIT {
         AgentInstance agent = configureDirector(agents, owner.userId(), project.id(), "Creator",
                 "Inspect the project");
         int callsBefore = gateway.calls.get();
+        int preparationsBefore = gateway.preparations.get();
         gateway.keepRequestingTools.set(true);
         try {
             AgentRun queued = runs.create(owner.userId(), project.id(), agent.id(),
@@ -116,6 +119,7 @@ class AgentTurnSchedulerPostgresIT {
                 current = runs.get(owner.userId(), project.id(), queued.id());
             }
             assertThat(gateway.calls.get() - callsBefore).isGreaterThanOrEqualTo(13);
+            assertThat(gateway.preparations.get() - preparationsBefore).isEqualTo(1);
             assertThat(runs.cancel(owner.userId(), project.id(), queued.id()).status()).isEqualTo(AgentRun.Status.CANCELED);
             // Allow an already in-flight fake response to observe cancellation before
             // checking that no subsequent model request is dispatched.
@@ -134,7 +138,13 @@ class AgentTurnSchedulerPostgresIT {
         AdminPrincipal owner = owner();
         Project project = projects.create(owner.userId(), "Long synthetic run", Project.AspectRatio.LANDSCAPE_16_9);
         AgentInstance agent = configureDirector(agents, owner.userId(), project.id(), "Reader", "Keep concise public observations");
+        // This stress case verifies retained history, so explicitly choose a window that
+        // fits all ninety rounds. Default-window compaction has its own protocol tests.
+        int previousWindow = jdbc.sql("select context_window_tokens from director_settings where id=1")
+                .query(Integer.class).single();
+        jdbc.sql("update director_settings set context_window_tokens=1000000 where id=1").update();
         int before = gateway.calls.get();
+        int preparationsBefore = gateway.preparations.get();
         gateway.stopAfter.set(before + 90);
         try {
             AgentRun queued = runs.create(owner.userId(), project.id(), agent.id(), "Synthetic long reading sequence", "long-run").run();
@@ -148,18 +158,25 @@ class AgentTurnSchedulerPostgresIT {
             }
             assertThat(current.status()).isEqualTo(AgentRun.Status.SUCCEEDED);
             assertThat(gateway.calls.get() - before).isEqualTo(91);
-            assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :id").param("id", queued.id())
+            assertThat(gateway.preparations.get() - preparationsBefore).isEqualTo(1);
+            assertThat(jdbc.sql("select count(*) from tool_execution where run_id=:run and tool_name='load_toolset'")
+                    .param("run", queued.id()).query(Long.class).single()).isEqualTo(1);
+            assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :id and tool_name <> 'load_toolset'").param("id", queued.id())
                     .query(Long.class).single()).isEqualTo(90);
             assertThat(jdbc.sql("select max(jsonb_array_length(request_json->'messages')) from llm_turn where run_id = :id")
                     .param("id", queued.id()).query(Integer.class).single())
                     .isBetween(180, LlmProtocolCodec.MAX_MESSAGES);
-            // This short transcript fits the default 1M window: retain its first and latest
+            // This short transcript fits the configured window: retain its first and latest
             // observations instead of applying the retired 80-message clipping policy.
-            assertThat(jdbc.sql("select request_json::text from llm_turn where run_id = :id and step_index = 90")
+            assertThat(jdbc.sql("select request_json::text from llm_turn where run_id = :id and step_index = 91")
                     .param("id", queued.id()).query(String.class).single())
                     .contains("Public observation for call " + (before + 1),
                             "Public observation for call " + (before + 90));
-        } finally { gateway.stopAfter.set(0); }
+        } finally {
+            gateway.stopAfter.set(0);
+            jdbc.sql("update director_settings set context_window_tokens=:window where id=1")
+                    .param("window", previousWindow).update();
+        }
     }
 
     /** Both tests share one PostgreSQL installation with a one-time administrator setup. */
@@ -194,10 +211,19 @@ class AgentTurnSchedulerPostgresIT {
         private final AtomicInteger calls = new AtomicInteger();
         private final AtomicBoolean keepRequestingTools = new AtomicBoolean();
         private final AtomicInteger stopAfter = new AtomicInteger();
+        private final AtomicInteger preparations = new AtomicInteger();
 
         @Override
         public Exchange call(List<Message> messages, List<ToolCallback> tools,
                 Map<String, Object> toolContext) {
+            if (onlyLoader(tools) && (keepRequestingTools.get() || calls.get() < stopAfter.get())) {
+                preparations.incrementAndGet();
+                return load("CANVAS");
+            }
+            if (keepRequestingTools.get() || calls.get() < stopAfter.get()) {
+                assertThat(tools.stream().map(tool -> tool.getToolDefinition().name()))
+                        .contains("read_project_summary");
+            }
             int call = calls.incrementAndGet();
             AssistantMessage response = (keepRequestingTools.get() || call <= stopAfter.get())
                     ? AssistantMessage.builder().content("Public observation for call " + call).toolCalls(List.of(

@@ -1,6 +1,9 @@
 package dev.agenvas.llm;
 
 import static dev.agenvas.testing.AgentFixture.configureDirector;
+import static dev.agenvas.testing.OnDemandToolsetFixture.onlyLoader;
+import static dev.agenvas.testing.OnDemandToolsetFixture.load;
+import static dev.agenvas.testing.OnDemandToolsetFixture.prepare;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -94,6 +97,7 @@ class AgentRevisionPostgresIT {
         AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
                 "Create then revise", "revision-run").run();
 
+        prepare(worker, jdbc, run.id());
         assertThat(worker.runOnce("revision-worker")).isEqualTo(1);
         assertThat(worker.runOnce("revision-worker")).isEqualTo(1);
         UUID createdId = gateway.createdId;
@@ -158,7 +162,7 @@ class AgentRevisionPostgresIT {
                 unbound.artifact().id())).hasSize(1);
         assertThat(artifacts.get(owner.userId(), project.id(), unbound.artifact().id())
                 .resourceDefaultVersion().content().path("text").asText()).isEqualTo("User private note");
-        assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :runId")
+        assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :runId and tool_name <> 'load_toolset'")
                 .param("runId", run.id()).query(Long.class).single()).isEqualTo(2);
         assertThat(gateway.calls.get()).isEqualTo(3);
 
@@ -231,6 +235,7 @@ class AgentRevisionPostgresIT {
         @Override
         public Exchange call(List<Message> messages, List<ToolCallback> tools,
                 Map<String, Object> toolContext) {
+            if (onlyLoader(tools)) return load("TEXT");
             assertThat(tools.stream().map(tool -> tool.getToolDefinition().name()))
                     .contains("revise_artifact");
             int turn = calls.incrementAndGet();

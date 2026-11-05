@@ -24,6 +24,7 @@ import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.application.TaskService;
+import dev.agenvas.task.domain.Task;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
@@ -141,21 +142,25 @@ class ReadToolsPostgresIT {
                 .isInstanceOf(ApiProblemException.class)
                 .extracting(error -> ((ApiProblemException) error).code())
                 .isEqualTo("VALIDATION_ERROR");
-        gateway.taskId = tasks.listByRun(owner.userId(), project.id(), run.id()).getFirst().id();
+        // Discovery is a real persisted turn; the read must inspect the following live task.
+        assertThat(worker.runOnce("reader-worker")).isEqualTo(1);
+        assertToolExecutions(run.id(), 0);
+        var ready = tasks.listByRun(owner.userId(), project.id(), run.id()).stream()
+                .filter(task -> task.status() == Task.Status.READY).toList();
+        assertThat(ready).singleElement();
+        gateway.taskId = ready.getFirst().id();
 
         assertThat(worker.runOnce("reader-worker")).isEqualTo(1);
         assertThat(runs.get(owner.userId(), project.id(), run.id()).status())
                 .isEqualTo(AgentRun.Status.RUNNING);
-        assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :runId")
-                .param("runId", run.id()).query(Long.class).single()).isEqualTo(4);
+        assertToolExecutions(run.id(), 4);
         assertThat(jdbc.sql("select count(*) from artifact where project_id = :projectId")
                 .param("projectId", project.id()).query(Long.class).single()).isEqualTo(3);
         TrustedToolContext trusted = new TrustedToolContext(owner.userId(), project.id(), run.id());
-        JsonNode firstRead = toolExecutions.execute(trusted, 0, "read-bound");
+        JsonNode firstRead = toolExecutions.execute(trusted, 1, "read-bound");
         assertThat(firstRead.at("/data/1/content/text").asText()).isEqualTo(longBrief);
-        assertThat(toolExecutions.execute(trusted, 0, "read-bound")).isEqualTo(firstRead);
-        assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :runId")
-                .param("runId", run.id()).query(Long.class).single()).isEqualTo(4);
+        assertThat(toolExecutions.execute(trusted, 1, "read-bound")).isEqualTo(firstRead);
+        assertToolExecutions(run.id(), 4);
         assertThat(canvas.list(owner.userId(), project.id()).stream()
                 .filter(entry -> entry.item().subjectId().equals(largeBound.artifact().id()))
                 .count()).isEqualTo(1);
@@ -163,8 +168,7 @@ class ReadToolsPostgresIT {
         assertThat(worker.runOnce("reader-worker")).isEqualTo(1);
         assertThat(runs.get(owner.userId(), project.id(), run.id()).status())
                 .isEqualTo(AgentRun.Status.RUNNING);
-        assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :runId")
-                .param("runId", run.id()).query(Long.class).single()).isEqualTo(6);
+        assertToolExecutions(run.id(), 6);
         var arranged = canvas.list(owner.userId(), project.id()).stream()
                 .map(CanvasService.CanvasEntry::item)
                 .filter(item -> item.id().equals(gateway.placedItemId))
@@ -207,9 +211,18 @@ class ReadToolsPostgresIT {
         assertThat(failed.completedAt()).isNotNull();
         assertThat(jdbc.sql("select active_run_id is null from project where id = :projectId")
                 .param("projectId", project.id()).query(Boolean.class).single()).isTrue();
-        assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :runId")
-                .param("runId", run.id()).query(Long.class).single()).isEqualTo(6);
+        assertToolExecutions(run.id(), 6);
         assertThat(gateway.calls.get()).isEqualTo(3);
+        assertThat(gateway.discoveryCalls.get()).isEqualTo(1);
+    }
+
+    private void assertToolExecutions(UUID runId, long businessCount) {
+        assertThat(jdbc.sql("select count(*) from tool_execution where run_id=:run and tool_name='load_toolset'")
+                .param("run", runId).query(Long.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("select count(*) from tool_execution where run_id=:run and tool_name<>'load_toolset'")
+                .param("run", runId).query(Long.class).single()).isEqualTo(businessCount);
+        assertThat(jdbc.sql("select count(*) from tool_execution where run_id=:run")
+                .param("run", runId).query(Long.class).single()).isEqualTo(businessCount + 1);
     }
 
     @TestConfiguration
@@ -225,6 +238,7 @@ class ReadToolsPostgresIT {
     static class FakeGateway implements ChatGateway {
         private final ObjectMapper mapper;
         private final AtomicInteger calls = new AtomicInteger();
+        private final AtomicInteger discoveryCalls = new AtomicInteger();
         private volatile UUID boundVersionId;
         private volatile UUID largeVersionId;
         private volatile UUID unboundVersionId;
@@ -250,6 +264,13 @@ class ReadToolsPostgresIT {
         @Override
         public Exchange call(List<Message> messages, List<ToolCallback> tools,
                 Map<String, Object> toolContext) {
+            if (tools.size() == 1 && "load_toolset".equals(tools.getFirst().getToolDefinition().name())) {
+                discoveryCalls.incrementAndGet();
+                AssistantMessage discovery = AssistantMessage.builder().content("").toolCalls(List.of(
+                        new AssistantMessage.ToolCall("load-read-tools", "function", "load_toolset",
+                                "{\"toolsets\":[\"CANVAS\",\"LAYOUT\",\"MEDIA\"]}"))).build();
+                return new Exchange(1, new ChatResponse(List.of(new Generation(discovery))));
+            }
             assertThat(tools.stream().map(tool -> tool.getToolDefinition().name()))
                     .contains("read_project_summary", "read_selection",
                             "read_artifacts", "read_task_status",

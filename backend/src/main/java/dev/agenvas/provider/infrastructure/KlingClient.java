@@ -219,11 +219,11 @@ public class KlingClient {
 
     private static void validatePrepared(String value, boolean video, boolean videoGeneration) {
         if (value == null || value.isBlank()) throw KlingProtocol.invalid();
-        if (value.startsWith("https://")) {
+        if (value.startsWith("https://") || value.startsWith("http://")) {
             URI uri;
             try { uri = URI.create(value); } catch (IllegalArgumentException invalid) { throw KlingProtocol.invalid(); }
             if (uri.getHost() == null || uri.getRawUserInfo() != null || uri.getRawFragment() != null
-                    || uri.getPort() != -1 && uri.getPort() != 443 || value.length() > 8192) throw KlingProtocol.invalid();
+                    || uri.getPort() == 0 || uri.getPort() > 65535 || value.length() > 8192) throw KlingProtocol.invalid();
         } else {
             if (video) throw KlingProtocol.invalid();
             requireBase64(new Reference("REFERENCE", value), videoGeneration);

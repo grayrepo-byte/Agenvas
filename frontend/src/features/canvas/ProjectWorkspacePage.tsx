@@ -45,6 +45,7 @@ uploadVideoAsset,
 type Agent,
 type Artifact,
 type Canvas,
+type CanvasConnection,
 type CanvasItem,
 type ProjectSnapshot,
 } from "../../shared/api/client";
@@ -81,9 +82,8 @@ import { displayCanvasRelations } from "./canvasEdgeDisplay";
 import { CANVAS_POINTER_THRESHOLD,useCanvasInteraction } from "./canvasInteraction";
 import { arrangeCanvas,CANVAS_ARRANGE_GAP } from "./arrangeCanvas";
 import {
-canvasRelationRemoval,
+canvasConnectionForEdge,
 isCanvasConnectionValid,mediaInputConnection,mediaInputSource,projectCanvasRelations,
-type CanvasRelationRemoval
 } from "./canvasRelations";
 import { CANVAS_SELECTION_MODE,useCanvasStore } from "./canvasStore";
 import { CANVAS_MAX_SIZE,imageNodeResizeBounds,projectImageNodeSize } from "./imageNodeLayout";
@@ -109,7 +109,6 @@ import { fieldsFromMediaDraft } from "./useMediaDraftSession";
 
 type LayoutPatch = Pick<ResizeParams, "x" | "y" | "width" | "height"> & { groupId?: string | null };
 type CreationKind = "TEXT" | "IMAGE" | "VIDEO" | "AUDIO";
-type DrawerKind = "ALIGN";
 type CreationPoint = { x: number; y: number; groupId?: string };
 type UploadIntent = { file: File; point: CreationPoint; title: string; createKey: string; itemId: string;
   zIndex: number; assetId?: string; artifactId?: string };
@@ -202,7 +201,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const uploadPoint = useRef<CreationPoint | null>(null);
   const uploadProgress = useRef<UploadIntent | null>(null);
   const textProgress = useRef<{ fingerprint: string; createKey: string;
-    itemId: string; zIndex: number; artifactId?: string } | null>(null);
+    itemId: string; zIndex: number; title: string; artifactId?: string } | null>(null);
   const [eventStatus, setEventStatus] = useState<EventSyncStatus>("connecting");
   const flow = useRef<ReactFlowInstance<WorkspaceNode> | null>(null);
   const groupDragOrigins = useRef(new Map<string, { x: number; y: number;
@@ -267,7 +266,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [creationMenu, setCreationMenu] = useState<CreationMenu | null>(null);
   const [paneMenu, setPaneMenu] = useState<Omit<CreationMenu, "centerAtPoint"> | null>(null);
   const [directorItem, setDirectorItem] = useState<CanvasItem | null>(null);
-  const [toolsKind, setToolsKind] = useState<DrawerKind | null>(null);
   const [storyboardOpen, setStoryboardOpen] = useState(false);
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const [charactersOpen, setCharactersOpen] = useState(false);
@@ -277,7 +275,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [videoEditIds, setVideoEditIds] = useState<string[] | null>(null);
   const [agentRunRequest, setAgentRunRequest] = useState<AgentChatRunRequest | null>(null);
   const mediaProgress = useRef<{ fingerprint: string; createKey: string;
-    itemId: string; artifactId?: string } | null>(null);
+    itemId: string; title: string; artifactId?: string } | null>(null);
   const drafts = useCanvasStore((state) => state.drafts);
   const [draggingIds, setDraggingIds] = useState<string[]>([]);
   const [groupDropTargetId, setGroupDropTargetId] = useState<string | null>(null);
@@ -311,16 +309,23 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const project = useQuery({
     queryKey: ["projects", projectId],
     queryFn: () => getProject(projectId),
+    // Seed missing projections only; preserve existing data and the snapshot's actual freshness.
+    initialData: () => snapshot.data?.project,
+    initialDataUpdatedAt: () => snapshot.dataUpdatedAt,
     enabled: snapshot.isSuccess,
   });
   const canvas = useQuery({
     queryKey: ["canvas", projectId],
     queryFn: () => listCanvasItems(projectId),
+    initialData: () => snapshot.data?.canvas,
+    initialDataUpdatedAt: () => snapshot.dataUpdatedAt,
     enabled: snapshot.isSuccess,
   });
   const canvasConnections = useQuery({
     queryKey: ["canvas-connections", projectId],
     queryFn: () => listCanvasConnections(projectId),
+    initialData: () => snapshot.data ? { items: snapshot.data.connections } : undefined,
+    initialDataUpdatedAt: () => snapshot.dataUpdatedAt,
     enabled: snapshot.isSuccess,
   });
   const mediaRatios = useMediaNodeRatios(canvas.data?.items);
@@ -382,12 +387,12 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       const fingerprint = JSON.stringify({ projectId, point });
       if (textProgress.current?.fingerprint !== fingerprint) {
         textProgress.current = { fingerprint, createKey: crypto.randomUUID(),
-          itemId: crypto.randomUUID(), zIndex: canvas.data?.items.length ?? 0 };
+          itemId: crypto.randomUUID(), zIndex: canvas.data?.items.length ?? 0, title: t(DEFAULT_TEXT_CARD_TITLE) };
       }
       const pending = textProgress.current;
       if (!pending.artifactId) {
         const artifact = await createArtifact(projectId, {
-          kind: "TEXT", title: t(DEFAULT_TEXT_CARD_TITLE),
+          kind: "TEXT", title: pending.title,
           content: { format: "PLAIN_TEXT", text: "" },
         }, pending.createKey);
         pending.artifactId = artifact.id;
@@ -453,7 +458,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       const fingerprint = JSON.stringify({ projectId, kind, point, director, connectionSource });
       if (mediaProgress.current?.fingerprint !== fingerprint) {
         mediaProgress.current = { fingerprint, createKey: crypto.randomUUID(),
-          itemId: crypto.randomUUID() };
+          itemId: crypto.randomUUID(),
+          title: director ? t("director.title") : t("canvas.workspace.newMediaTitle", { "0": ARTIFACT_LABELS[kind] }) };
       }
       const pending = mediaProgress.current;
       let initialModel: ConnectedMediaModel | undefined;
@@ -466,8 +472,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         initialModel = model;
       }
       if (!pending.artifactId) {
-        const artifact = await createArtifact(projectId, { kind,
-          title: director ? t("director.title") : t("canvas.workspace.newMediaTitle", { "0": ARTIFACT_LABELS[kind] }), content: null }, pending.createKey);
+        const artifact = await createArtifact(projectId, { kind, title: pending.title, content: null }, pending.createKey);
         pending.artifactId = artifact.id;
       }
       const index = canvas.data?.items.length ?? 0;
@@ -501,7 +506,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     const progress = mvProgress.current.get(source.id) ?? { createKey: crypto.randomUUID(), itemId: crypto.randomUUID() };
     mvProgress.current.set(source.id, progress);
     const prepared = await prepareMediaNode(projectId, source.id, "VIDEO", `${source.title} · MV`, {
-      prompt: "根据参考音频的节奏和情绪制作视频。", parameters: { aspectRatio: "AUTO" },
+      prompt: t("canvas.workspace.musicVideoPrompt"), parameters: { aspectRatio: "AUTO" },
       durationSeconds: 5, capabilityId: null, videoInputMode: "GENERAL_REFERENCE",
       mediaInputs: [{ versionId: source.selectedVersionId, role: "AUDIO_REFERENCE", color: "#67C7F3" }], mentions: [],
     }, progress);
@@ -589,7 +594,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     },
   });
   const removeMediaConnection = useMutation({
-    mutationFn: async ({ connection }: Extract<CanvasRelationRemoval, { kind: "mediaConnection" }>) => {
+    mutationFn: async (connection: CanvasConnection) => {
       if (connection.relationType === "MEDIA_DERIVATION") {
         return disconnectCanvasConnection(projectId, connection.id, {});
       }
@@ -688,8 +693,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       const removals: Promise<unknown>[] = deletedNodes.flatMap((node) =>
         node.type === "canvasGroup" ? [] : [removeItemMutateAsync(node.data.item)]);
       for (const edge of relations) {
-        const removal = canvasRelationRemoval(canvasConnections.data?.items ?? [], edge);
-        if (removal?.kind === "mediaConnection") removals.push(removeMediaConnectionMutateAsync(removal));
+        const connection = canvasConnectionForEdge(canvasConnections.data?.items ?? [], edge);
+        if (connection) removals.push(removeMediaConnectionMutateAsync(connection));
       }
       // Keep the keyboard gesture pending until every server request settles. Errors
       // remain on their mutation notices, and React Flow never removes entities locally.
@@ -1111,7 +1116,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     setResourcesOpen(false);
     const create = () => {
       if (kind === "TEXT") {
-        setToolsKind(null);
         if (!addTextCard.isPending) addTextCard.mutate({ point: origin });
       } else if (!addBlankMedia.isPending) addBlankMedia.mutate({ kind, point: origin, connectionSource: source });
     };
@@ -1189,7 +1193,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         <div className="workspace-header-actions">
           <Button variant="ghost" size="sm" onClick={() => setCharactersOpen(true)} type="button">{t("character.title")}</Button>
           <Button variant="ghost" size="sm" onClick={() => {
-            setToolsKind(null); setResourcesOpen(true);
+            setResourcesOpen(true);
           }} type="button"><FolderSimple data-icon="inline-start" />{t("canvas.workspace.resources")}</Button>
           <Button variant="ghost" size="sm" disabled={!canvas.isSuccess} onClick={() => setStoryboardOpen(true)} type="button"><VideoCamera data-icon="inline-start" />{t("storyboard.title")}</Button>
           {/* 导出清单只含项目的非密钥配置、产物历史与媒体元数据，用于备份与迁移。 */}
@@ -1207,14 +1211,13 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         </div>
       </header>
 
-      {(toolsKind || resourcesOpen) ? <aside className="workspace-drawer" aria-label={resourcesOpen ? t("canvas.workspace.resourceTitle") : t("canvas.workspace.creationTools")}>
+      {resourcesOpen ? <aside className="workspace-drawer" aria-label={t("canvas.workspace.resourceTitle")}>
         <div className="workspace-drawer-heading">
-          <h2 className="font-semibold">{resourcesOpen ? t("canvas.workspace.resourceTitle") : t("canvas.workspace.creationTools")}</h2>
+          <h2 className="font-semibold">{t("canvas.workspace.resourceTitle")}</h2>
           <Button variant="ghost" aria-label={t("canvas.workspace.closeDrawer")} className="node-action" onClick={() => {
-            setToolsKind(null); setResourcesOpen(false);
+            setResourcesOpen(false);
           }} type="button">{t("common.close")}</Button>
         </div>
-        {resourcesOpen ? <>
           <Tabs defaultValue="PROJECT">
             <TabsList aria-label={t("canvas.workspace.resourceTitle")}>
               <TabsTrigger value="PROJECT">{t("canvas.workspace.resourceTitle")}</TabsTrigger>
@@ -1228,16 +1231,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               }} /></TabsContent>
             <TabsContent value="LIBRARY"><LibraryCanvasPicker projectId={projectId} position={canvasCenter} /></TabsContent>
           </Tabs>
-        </> : null}
         {editAgent.error ? <WorkspaceError error={editAgent.error} /> : null}
-        {toolsKind === "ALIGN" ? <div className="mt-6 border-t border-[var(--line)] pt-5">
-          <h2 className="text-sm font-semibold">{t("canvas.workspace.selectionTools")}</h2>
-          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{t("canvas.workspace.multiSelectHint")}</p>
-          <p className="mt-2 text-xs leading-5 text-[var(--muted)]">{t("canvas.workspace.connectionHint")}</p>
-          <p className="mt-2 text-xs leading-5 text-[var(--muted)]">{t("canvas.workspace.deleteHint")}</p>
-          <Button variant="outline" className="mt-3 w-full" disabled={selectedIds.length < 2 || alignSelected.isPending} onClick={() => alignSelected.mutate()} type="button">{t("canvas.workspace.alignSelection")}</Button>
-          {alignSelected.error ? <WorkspaceError error={alignSelected.error} /> : null}
-          </div> : null}
       </aside> : null}
 
       <section className={`workspace-canvas${selecting ? " is-select-tool" : " is-hand-tool"}${multiSelecting ? " is-multi-select" : ""}`} aria-label={t("canvas.workspace.canvasTitle")} ref={canvasElement}

@@ -9,15 +9,12 @@ import dev.agenvas.canvas.domain.CanvasItem;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.shared.error.ApiProblemException;
+import dev.agenvas.shared.crypto.Sha256;
 import dev.agenvas.shared.i18n.ApiMessage;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -343,8 +340,7 @@ public class CanvasEditService {
     private static Map<UUID, GroupState> groupMap(List<GroupState> values) { Map<UUID, GroupState> result = new LinkedHashMap<>(); values.forEach(value -> result.put(value.group().id(), value)); return result; }
     private static <T> List<T> list(List<T> values) { return values == null ? List.of() : values; }
     private String hash(Object value) {
-        try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(mapper.writeValueAsString(value).getBytes(StandardCharsets.UTF_8))); }
-        catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
+        return Sha256.hex(mapper.writeValueAsString(value));
     }
     private ApiProblemException conflict() { return new ApiProblemException(HttpStatus.CONFLICT, "CANVAS_EDIT_CONFLICT", ApiMessage.of("api.canvas-service.canvas-card-updated"), ApiMessage.of("api.canvas-edit.conflict"), false); }
     private ApiProblemException locked() { return new ApiProblemException(HttpStatus.CONFLICT, "CANVAS_ITEM_LOCKED", ApiMessage.of("api.creative-artifact-tool-service.card-locked"), ApiMessage.of("api.canvas-edit.locked"), false); }

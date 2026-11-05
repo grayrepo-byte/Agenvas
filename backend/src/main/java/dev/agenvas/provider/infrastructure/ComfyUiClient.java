@@ -1,5 +1,7 @@
 package dev.agenvas.provider.infrastructure;
 
+import dev.agenvas.shared.security.EndpointAddressRules;
+import dev.agenvas.shared.security.ServiceEndpointPolicy;
 import dev.agenvas.shared.http.DebugHttpCapture;
 import dev.agenvas.shared.http.PinnedHttpClients;
 import java.io.FilterInputStream;
@@ -51,14 +53,6 @@ public class ComfyUiClient {
     private static final int MAX_REDIRECTS = 3;
     private static final int MAX_REDIRECT_LOCATION_CHARACTERS = 8192;
     private static final int DEFAULT_HTTPS_PORT = 443;
-    private static final int DEFAULT_HTTP_PORT = 80;
-    private static final int IPV6_BYTES = 16;
-    private static final int IPV6_GLOBAL_UNICAST_MASK = 0xe0;
-    private static final int IPV6_GLOBAL_UNICAST_PREFIX = 0x20;
-    private static final int IPV6_TRANSITION_FIRST_BYTE = 0x20;
-    private static final int IPV6_TEREDO_SECOND_BYTE = 0x01;
-    private static final int IPV6_SIX_TO_FOUR_SECOND_BYTE = 0x02;
-    private static final String AZURE_METADATA_ADDRESS = "168.63.129.16";
     private static final Pattern NUMERIC_HOST = Pattern.compile("[0-9.]+");
     private static final String HTTP_GET = "GET";
     private static final String HTTP_HEAD = "HEAD";
@@ -85,10 +79,15 @@ public class ComfyUiClient {
     public ComfyUiClient(ComfyUiProperties properties, ObjectMapper mapper) {
         this.origin = checkedOrigin(properties.endpoint());
         this.mapper = mapper;
-        this.client = PinnedHttpClients.pinned(FixedCloudDns.checked(Dns.SYSTEM, true),
+        this.client = PinnedHttpClients.pinned(serviceDns(origin),
                 CONNECT_TIMEOUT, REQUEST_TIMEOUT, REQUEST_TIMEOUT);
         this.redirectClient = PinnedHttpClients.pinned(checkedRedirectDns(Dns.SYSTEM),
                 CONNECT_TIMEOUT, REQUEST_TIMEOUT, REQUEST_TIMEOUT);
+    }
+
+    private static Dns serviceDns(URI origin) {
+        try { return ServiceEndpointPolicy.dns(origin, Dns.SYSTEM, true); }
+        catch (UnknownHostException blocked) { throw new IllegalArgumentException("Invalid ComfyUI service address"); }
     }
 
     /** 对管理员固定的规范化 origin 计算摘要，供轮询校验；不接收浏览器 URL。 */
@@ -363,6 +362,7 @@ public class ComfyUiClient {
             } else {
                 target = current.resolve(reference);
             }
+            ServiceEndpointPolicy.requireNoDowngrade(current, target);
             if (target.getHost() == null || target.getRawUserInfo() != null || target.getRawFragment() != null)
                 throw new IllegalArgumentException();
             if (sameOrigin(origin, target)) {
@@ -399,9 +399,8 @@ public class ComfyUiClient {
         return hostname -> {
             List<InetAddress> addresses = checked.lookup(hostname);
             for (InetAddress address : addresses) {
-                byte[] bytes = address.getAddress();
-                if (address.isSiteLocalAddress() || bytes.length == IPV6_BYTES && !publicIpv6(bytes)
-                        || AZURE_METADATA_ADDRESS.equals(address.getHostAddress())) {
+                // Preserve the existing HTTPS fake-IP proxy compatibility; real private addresses stay blocked.
+                if (EndpointAddressRules.isPrivateNetwork(address)) {
                     throw new UnknownHostException("ComfyUI redirect DNS returned blocked address");
                 }
             }
@@ -409,24 +408,11 @@ public class ComfyUiClient {
         };
     }
 
-    private static boolean publicIpv6(byte[] bytes) {
-        // Only global unicast may leave the administrator's origin. NAT64 is outside this range;
-        // Teredo and 6to4 can translate an apparently public IPv6 address to private IPv4.
-        return (bytes[0] & IPV6_GLOBAL_UNICAST_MASK) == IPV6_GLOBAL_UNICAST_PREFIX
-                && !(bytes[0] == IPV6_TRANSITION_FIRST_BYTE && bytes[1] == IPV6_TEREDO_SECOND_BYTE
-                        && bytes[2] == 0 && bytes[3] == 0)
-                && !(bytes[0] == IPV6_TRANSITION_FIRST_BYTE && bytes[1] == IPV6_SIX_TO_FOUR_SECOND_BYTE);
-    }
-
     private static boolean sameOrigin(URI origin, URI target) {
-        return origin.getScheme().equals(target.getScheme()) && origin.getHost().equalsIgnoreCase(target.getHost())
-                && effectivePort(origin) == effectivePort(target);
+        return ServiceEndpointPolicy.sameOrigin(origin, target);
     }
 
-    private static int effectivePort(URI uri) {
-        if (uri.getPort() != -1) return uri.getPort();
-        return "https".equals(uri.getScheme()) ? DEFAULT_HTTPS_PORT : DEFAULT_HTTP_PORT;
-    }
+
 
     /** 有界读取 JSON 响应；格式错误映射为不含原始上游正文的协议失败。 */
     private JsonNode readJson(TransportResponse response, int maximum) {

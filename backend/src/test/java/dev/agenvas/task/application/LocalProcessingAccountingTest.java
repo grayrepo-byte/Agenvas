@@ -1,5 +1,7 @@
 package dev.agenvas.task.application;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -14,6 +16,7 @@ import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.shared.lifecycle.ShutdownGate;
+import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.usage.application.UsageService;
 import java.time.Clock;
@@ -26,6 +29,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.EmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.ObjectMapper;
 
@@ -47,6 +52,17 @@ class LocalProcessingAccountingTest {
             var change = (ProjectEventService.Change<?>) mutation.get();
             return new ProjectEventService.RecordedChange<>(change.value(), null);
         });
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @EmptySource
+    @ValueSource(strings = {"UNKNOWN_FAILURE", "task_input_stale", " TASK_INPUT_STALE", "TASK_INPUT_STALE "})
+    void unsupportedPreSubmissionReasonsFailBeforeAnyStateOrAccountingRead(String code) {
+        assertThatThrownBy(() -> service.blockPreSubmission(task("audioTrim", Task.Status.READY, null), "worker", code))
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        problem -> assertThat(problem.code()).isEqualTo("VALIDATION_ERROR"));
+        verifyNoInteractions(repository, events, usage);
     }
 
     @ParameterizedTest

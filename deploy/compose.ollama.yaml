@@ -1,0 +1,8 @@
+# Legacy optional Ollama host mapping and exact-origin entry; ordinary HTTP is allowed by default.
+# Use together with docker-compose.yml; see docs/ollama-local.md.
+services:
+  server:
+    environment:
+      AGENVAS_LLM_TRUSTED_HTTP_ORIGINS: "http://host.docker.internal:11434"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

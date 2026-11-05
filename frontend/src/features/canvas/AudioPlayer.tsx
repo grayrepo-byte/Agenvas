@@ -25,6 +25,7 @@ export function AudioPlayer({ src, title, description = title, selected = true, 
   useLocale();
   const audio = useRef<HTMLAudioElement>(null);
   const playbackIntent = useRef(0);
+  const playbackWanted = useRef(false);
   const bindAudio = useCallback((element: HTMLAudioElement | null) => {
     audio.current = element; onElement?.(element);
   }, [onElement]);
@@ -56,14 +57,21 @@ export function AudioPlayer({ src, title, description = title, selected = true, 
         return amplitudes.map((value) => value / peak);
       } finally { await context.close(); }
     } });
-  useEffect(() => { const element = audio.current; return () => { playbackIntent.current++; element?.pause(); }; }, [src, playbackResetKey]);
+  useEffect(() => { const element = audio.current; return () => {
+    playbackIntent.current++; playbackWanted.current = false; element?.pause();
+  }; }, [src, playbackResetKey]);
   async function toggle() {
     const element = audio.current;
     if (!element) return;
-    if (!element.paused) { playbackIntent.current++; element.pause(); return; }
+    if (!element.paused) { playbackIntent.current++; playbackWanted.current = false; element.pause(); return; }
     const intent = ++playbackIntent.current;
+    playbackWanted.current = true;
     setError(null);
-    try { await element.play(); if (intent !== playbackIntent.current) element.pause(); }
+    try {
+      await element.play();
+      // An old completion may stop a closed/reset player, but must not stop a newer playback.
+      if (intent !== playbackIntent.current && (!playbackWanted.current || audio.current !== element)) element.pause();
+    }
     catch { if (intent === playbackIntent.current) setError(t("audio.player.playbackFailed")); }
   }
   // Only playback controls exclude node gestures; the surrounding surface selects and drags the card.
@@ -71,7 +79,13 @@ export function AudioPlayer({ src, title, description = title, selected = true, 
     <audio ref={bindAudio} src={src} preload="metadata" aria-label={t("audio.player.audioLabel", { "0": title })}
       onLoadedMetadata={(event) => { setDuration(event.currentTarget.duration); onLoadedMetadata?.(event.currentTarget); }}
       onTimeUpdate={(event) => { onTimeUpdate?.(event.currentTarget); setPosition(event.currentTarget.currentTime); }}
-      onPlay={() => setPlaying(true)} onPause={(event) => { setPlaying(false); onPlaybackEvent?.("pause", event.currentTarget); }} onEnded={() => setPlaying(false)}
+      onPlay={(event) => { if (!event.currentTarget.paused) { playbackWanted.current = true; setPlaying(true); } }}
+      onPause={(event) => {
+        // Native events may belong to an earlier pause even though this element is playing again.
+        if (event.currentTarget.paused) { playbackIntent.current++; playbackWanted.current = false; setPlaying(false); }
+        onPlaybackEvent?.("pause", event.currentTarget);
+      }}
+      onEnded={() => { playbackIntent.current++; playbackWanted.current = false; setPlaying(false); }}
       onPlaying={(event) => onPlaybackEvent?.("playing", event.currentTarget)}
       onSeeking={(event) => onPlaybackEvent?.("seeking", event.currentTarget)}
       onSeeked={(event) => onPlaybackEvent?.("seeked", event.currentTarget)}

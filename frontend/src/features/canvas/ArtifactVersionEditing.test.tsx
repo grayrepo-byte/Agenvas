@@ -5,6 +5,7 @@ import { http,HttpResponse } from "msw";
 import type { ReactNode } from "react";
 import { describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
+import type { ReviseArtifactRequest } from "../../shared/api/client";
 import { selectValue } from "../../test/controls";
 import { server } from "../../test/server";
 import { TextCanvasEditor } from "./TextCanvasEditor";
@@ -54,6 +55,28 @@ function conflict(message = "旧版本已变化。") {
 }
 
 describe("Artifact version editing", () => {
+  it.each([["PLAIN_TEXT", "save"], ["MARKDOWN", "save"], ["PLAIN_TEXT", "exit"], ["MARKDOWN", "exit"]] as const)("preserves meaningful whitespace in %s content on %s", async (format, action) => {
+    const text = "\n    first line  \n\tsecond line  \n\n";
+    let posted: ReviseArtifactRequest | undefined;
+    server.use(csrf(), http.post(REVISIONS_URL, async ({ request }) => {
+      posted = await request.json() as ReviseArtifactRequest;
+      if (!("text" in posted.content)) throw new Error("Expected a text revision");
+      return HttpResponse.json(updatedArtifact(artifact(), posted.content.text, posted.content.format), { status: 201 });
+    }));
+    const onDone = vi.fn();
+    renderEditor(textEditor(artifact(), onDone));
+    if (format === "MARKDOWN") await selectValue(screen.getByLabelText("文字格式"), format);
+    fireEvent.change(screen.getByLabelText("内容"), { target: { value: text } });
+    if (action === "exit") {
+      await userEvent.click(screen.getByRole("button", { name: "退出内容编辑" }));
+      await userEvent.click(screen.getByRole("button", { name: "保存并退出" }));
+    } else await userEvent.click(screen.getByRole("button", { name: "保存新版本" }));
+    await screen.findByText("新版本已保存");
+    expect(posted).toEqual({ expectedVersion: 4, title: "Draft", content: { format, text } });
+    expect(screen.getByLabelText("内容")).toHaveValue(text);
+    expect(onDone).toHaveBeenCalledTimes(action === "exit" ? 1 : 0);
+  });
+
   it("opens the text fields directly and exposes a focusable canvas editing target", () => {
     renderEditor(textEditor(artifact()));
     const field = screen.getByLabelText("内容");

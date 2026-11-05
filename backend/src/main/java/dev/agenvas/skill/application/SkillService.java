@@ -36,15 +36,16 @@ public final class SkillService {
     private final SkillRepository repository;
     private final SkillFormat format;
     private final BuiltinSkillCatalogue builtins;
+    private final BuiltinSkillSearch builtinSearch;
     private final ObjectProvider<LibraryService> library;
     private final SkillAssetArchiveService archive;
     private final ObjectMapper mapper;
     private final Clock clock;
     private final TransactionTemplate tx;
     private final TransactionTemplate reads;
-    public SkillService(SkillRepository repository, SkillFormat format, BuiltinSkillCatalogue builtins, ObjectProvider<LibraryService> library,
+    public SkillService(SkillRepository repository, SkillFormat format, BuiltinSkillCatalogue builtins, BuiltinSkillSearch builtinSearch, ObjectProvider<LibraryService> library,
             SkillAssetArchiveService archive, ObjectMapper mapper, Clock clock, PlatformTransactionManager manager) {
-        this.repository = repository; this.format = format; this.builtins = builtins; this.library = library; this.archive = archive;
+        this.repository = repository; this.format = format; this.builtins = builtins; this.builtinSearch = builtinSearch; this.library = library; this.archive = archive;
         this.mapper = mapper; this.clock = clock; tx = new TransactionTemplate(manager);
         reads = new TransactionTemplate(manager); reads.setReadOnly(true);
         reads.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
@@ -73,11 +74,12 @@ public final class SkillService {
         ensureBuiltins(owner);
         // Apply categories before count and cursor pagination, including when personal entries fill an earlier page.
         var keys = category == null ? builtins.keys() : builtins.keys(category);
+        var localizedMatches = builtinSearch.matching(query);
         return reads.execute(status -> {
-            var rows = repository.list(owner, query, trash, parsed, PAGE_SIZE + 1, keys, category == null);
+            var rows = repository.list(owner, query, trash, parsed, PAGE_SIZE + 1, keys, category == null, localizedMatches);
             var items = rows.stream().limit(PAGE_SIZE).toList();
             String next = rows.size() > PAGE_SIZE ? cursor(items.getLast()) : null;
-            return new Page(items.stream().map(this::response).toList(), next, repository.count(owner, query, trash, keys, category == null));
+            return new Page(items.stream().map(this::response).toList(), next, repository.count(owner, query, trash, keys, category == null, localizedMatches));
         });
     }
     public SkillResponse create(UUID owner, String title, String description) {

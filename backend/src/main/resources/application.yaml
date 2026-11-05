@@ -89,8 +89,13 @@ agenvas:
     key-version: ${AGENVAS_CREDENTIAL_KEY_VERSION:1}
     previous-keys: ${AGENVAS_CREDENTIAL_PREVIOUS_KEYS:}
   settings:
+    local-services:
+      enabled: ${AGENVAS_LOCAL_SERVICE_DISCOVERY_ENABLED:true}
+      runtime: ${AGENVAS_LOCAL_SERVICE_RUNTIME:AUTO}
     llm:
       allow-loopback-http: ${AGENVAS_LLM_ALLOW_LOOPBACK_HTTP:false}
+      allow-http: ${AGENVAS_LLM_ALLOW_HTTP:true}
+      trusted-http-origins: ${AGENVAS_LLM_TRUSTED_HTTP_ORIGINS:}
   llm:
     mode: ${AGENVAS_LLM_MODE:mock}
     config-version: ${AGENVAS_LLM_CONFIG_VERSION:1}

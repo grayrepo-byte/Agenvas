@@ -1,5 +1,6 @@
 package dev.agenvas.provider.infrastructure;
 
+import dev.agenvas.shared.security.ServiceEndpointPolicy;
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.provider.domain.MediaPayload;
 import dev.agenvas.provider.domain.ProviderFailure;
@@ -50,15 +51,14 @@ public final class RunningHubClient {
         http = PinnedHttpClients.pinned(FixedCloudDns.checked(Dns.SYSTEM, true), CONNECT_TIMEOUT, READ_TIMEOUT, CALL_TIMEOUT);
     }
 
-    /** Admin-configured HTTPS API origin; request paths stay compiled and redirects stay disabled. */
+    /** Admin-configured API origin; request paths stay compiled and redirects stay disabled. */
     public static String validatedOrigin(String origin) {
         URI uri;
         try { uri = URI.create(origin == null || origin.isBlank() ? "https://www.runninghub.ai" : origin); }
         catch (IllegalArgumentException invalid) { throw RunningHubDefinition.invalid(ApiMessage.of("api.running-hub-client.runninghub-site-is-invalid")); }
-        boolean local = local(uri);
-        if (!(local || "https".equals(uri.getScheme()) && uri.getHost() != null && (uri.getPort() == -1 || uri.getPort() == 443))
-                || uri.getRawUserInfo() != null || uri.getRawQuery() != null || uri.getRawFragment() != null
-                || !(uri.getRawPath().isEmpty() || "/".equals(uri.getRawPath())))
+        try { ServiceEndpointPolicy.validate(uri, true); }
+        catch (IllegalArgumentException invalid) { throw RunningHubDefinition.invalid(ApiMessage.of("api.running-hub-client.please-enter-the-https-api-root-address-without-paths-credentials")); }
+        if (!(uri.getRawPath().isEmpty() || "/".equals(uri.getRawPath())))
             throw RunningHubDefinition.invalid(ApiMessage.of("api.running-hub-client.please-enter-the-https-api-root-address-without-paths-credentials"));
         return uri.toString().replaceAll("/+$", "");
     }
@@ -181,7 +181,9 @@ public final class RunningHubClient {
     public MediaPayload download(String origin, String url) {
         validateDownload(origin, url);
         try {
-            Response response = http.newCall(new Request.Builder().url(url).get().build()).execute();
+            Response response = http.newBuilder().dns(ServiceEndpointPolicy.downloadDns(
+                    URI.create(validatedOrigin(origin)), URI.create(url), Dns.SYSTEM, true)).build()
+                    .newCall(new Request.Builder().url(url).get().build()).execute();
             if (!response.isSuccessful() || response.body() == null) {
                 int status = response.code();
                 response.close();
@@ -204,7 +206,7 @@ public final class RunningHubClient {
         catch (IllegalArgumentException invalid) { throw new ProtocolFailure(); }
         String host = uri.getHost();
         URI api = URI.create(validatedOrigin(origin));
-        boolean local = local(api) && local(uri) && api.getPort() == uri.getPort();
+        boolean local = ServiceEndpointPolicy.sameOrigin(api, uri);
         if (!(local || "https".equals(uri.getScheme()) && host != null && (uri.getPort() == -1 || uri.getPort() == 443))
                 || uri.getRawUserInfo() != null || uri.getRawFragment() != null || url.length() > 4096)
             throw new ProtocolFailure();
@@ -224,7 +226,10 @@ public final class RunningHubClient {
     }
 
     private JsonNode json(Request request, boolean submission, Duration timeout) {
-        var call = http.newCall(request);
+        okhttp3.Call call;
+        try { call = http.newBuilder().dns(ServiceEndpointPolicy.dns(
+                request.url().uri(), Dns.SYSTEM, true)).build().newCall(request); }
+        catch (IOException blocked) { throw new ProtocolFailure(); }
         call.timeout().timeout(timeout.toMillis(), TimeUnit.MILLISECONDS);
         Stage stage = stage(request);
         try (Response response = call.execute()) {
@@ -348,7 +353,6 @@ public final class RunningHubClient {
                 .header("Authorization", "Bearer " + key).build());
     }
 
-    private static boolean local(URI uri) { return "http".equals(uri.getScheme()) && "127.0.0.1".equals(uri.getHost()) && uri.getPort() > 0; }
     private static String extension(String mime) {
         return switch (mime) {
             case "image/png" -> "png"; case "image/jpeg" -> "jpg"; case "image/webp" -> "webp";

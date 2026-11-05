@@ -1,12 +1,15 @@
 package dev.agenvas.artifact.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -18,9 +21,9 @@ class ArtifactContentValidatorTest {
 
     @Test
     void acceptsEmptyStartingTextButStillRequiresAStringField() {
-        assertThat(validate(Artifact.Kind.TEXT, """
+        assertThatCode(() -> validate(Artifact.Kind.TEXT, """
                 {"format":"PLAIN_TEXT","text":""}
-                """)).isEmpty();
+                """)).doesNotThrowAnyException();
         assertThatThrownBy(() -> validate(Artifact.Kind.TEXT,
                 "{\"format\":\"PLAIN_TEXT\",\"text\":null}"))
                 .isInstanceOf(ApiProblemException.class);
@@ -31,21 +34,22 @@ class ArtifactContentValidatorTest {
 
     @Test
     void acceptsTextImageAndVideoSchemaFamilies() {
-        assertThat(validate(Artifact.Kind.TEXT, """
+        assertThatCode(() -> validate(Artifact.Kind.TEXT, """
                 {"format":"MARKDOWN","text":"# Brief"}
                 """))
-                .isEmpty();
-        assertThat(validate(Artifact.Kind.IMAGE, mediaContent())).isEmpty();
-        assertThat(validate(Artifact.Kind.IMAGE,
+                .doesNotThrowAnyException();
+        assertThatCode(() -> validate(Artifact.Kind.IMAGE, mediaContent())).doesNotThrowAnyException();
+        assertThatCode(() -> validate(Artifact.Kind.IMAGE,
                 "{\"sourceType\":\"UPLOAD\",\"assetId\":\"" + UUID.randomUUID() + "\"}"))
-                .isEmpty();
-        assertThat(validate(Artifact.Kind.VIDEO, mediaContent())).isEmpty();
+                .doesNotThrowAnyException();
+        assertThatCode(() -> validate(Artifact.Kind.VIDEO, mediaContent())).doesNotThrowAnyException();
     }
 
-    @Test
-    void acceptsPromptlessGeneratedMediaWhenTheCapabilityHasNoPromptField() {
-        for (Artifact.Kind kind : new Artifact.Kind[]{Artifact.Kind.IMAGE, Artifact.Kind.VIDEO, Artifact.Kind.AUDIO})
-            assertThat(validate(kind, mediaContent().replace("Coffee commercial", ""))).isEmpty();
+    @ParameterizedTest
+    @EnumSource(value = Artifact.Kind.class, names = {"IMAGE", "VIDEO", "AUDIO"})
+    void acceptsPromptlessGeneratedMediaWhenTheCapabilityHasNoPromptField(Artifact.Kind kind) {
+        assertThatCode(() -> validate(kind, mediaContent().replace("Coffee commercial", "")))
+                .doesNotThrowAnyException();
     }
 
     @Test
@@ -78,10 +82,9 @@ class ArtifactContentValidatorTest {
                 .isInstanceOf(ApiProblemException.class);
     }
 
-    private java.util.List<dev.agenvas.artifact.domain.ArtifactVersion.InputReference> validate(
-            Artifact.Kind kind, String json) {
+    private void validate(Artifact.Kind kind, String json) {
         JsonNode content = objectMapper.readTree(json);
-        return validator.validate(kind, content);
+        validator.validate(kind, content);
     }
 
     private String mediaContent() {

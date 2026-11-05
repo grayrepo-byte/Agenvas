@@ -54,6 +54,72 @@ function showCard(shownArtifact: Artifact = artifact, onCardClick = vi.fn()) {
 }
 
 describe("MediaCanvasCard", () => {
+  it.each([
+    ["IMAGE", "RESULT"], ["VIDEO", "RESULT"], ["AUDIO", "RESULT"],
+    ["IMAGE", "DRAFT"], ["VIDEO", "DRAFT"], ["AUDIO", "DRAFT"],
+  ] as const)("reads %s history on toolbar demand while displaying %s and refreshes after invalidation", async (kind, displayMode) => {
+    const result: NonNullable<Artifact["resourceDefaultVersion"]> = { id: "saved-version", versionNo: 8, schemaVersion: 1,
+      content: { sourceType: "UPLOAD", assetId: "saved-asset" }, inputReferences: [],
+      createdByKind: "USER" as const, runId: null, createdAt: artifact.createdAt };
+    const shown = { ...artifact, kind, resourceDefaultVersionId: result.id, resourceDefaultVersion: result };
+    let versions = [result];
+    const readHistory = vi.fn(() => HttpResponse.json({ items: versions }));
+    server.use(
+      http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({ displayMode, version: 0 })),
+      http.get("/api/v1/projects/project-1/artifacts/image-1/run", () => HttpResponse.json([])),
+      http.get("/api/v1/projects/project-1/canvas/items/item-1/media-versions", readHistory),
+    );
+    const client = createQueryClient();
+    const card = (selected: boolean, toolbarVisible = true) => <QueryClientProvider client={client}>
+      <MemoryRouter><MediaCanvasCard artifact={shown} item={itemFor(shown)} selected={selected}
+        toolbarVisible={toolbarVisible} locked={false} onEdit={vi.fn()}>{null}</MediaCanvasCard></MemoryRouter>
+    </QueryClientProvider>;
+    const view = render(card(false));
+    await waitFor(() => expect(client.isFetching()).toBe(0));
+    expect(readHistory).not.toHaveBeenCalled();
+    view.rerender(card(true, false));
+    await waitFor(() => expect(client.isFetching()).toBe(0));
+    expect(readHistory).not.toHaveBeenCalled();
+    view.rerender(card(true));
+    expect(await screen.findByRole("button", { name: "版本 v1" })).toBeVisible();
+    expect(readHistory).toHaveBeenCalledTimes(1);
+    view.rerender(card(false));
+    versions = [...versions, { ...result, id: "later-version", versionNo: 12 }];
+    await act(async () => { await client.invalidateQueries({ queryKey: ["canvas-media-versions", "project-1"] }); });
+    expect(readHistory).toHaveBeenCalledTimes(1);
+    view.rerender(card(true));
+    await waitFor(() => expect(readHistory).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(client.isFetching()).toBe(0));
+    await clickControl(screen.getByRole("button", { name: "版本 v1" }));
+    expect(await screen.findByRole("menuitem", { name: "v2 选用此版本" })).toBeVisible();
+    expect(screen.getByRole("menuitem", { name: "v1 当前选用" })).toBeVisible();
+  });
+
+  it.each(["IMAGE", "VIDEO", "AUDIO"] as const)("discovers unselected %s results before its toolbar is shown", async (kind) => {
+    const result: NonNullable<Artifact["resourceDefaultVersion"]> = { id: "saved-version", versionNo: 8, schemaVersion: 1,
+      content: { sourceType: "UPLOAD", assetId: "saved-asset" }, inputReferences: [],
+      createdByKind: "USER" as const, runId: null, createdAt: artifact.createdAt };
+    const shown = { ...artifact, kind };
+    const readHistory = vi.fn(() => HttpResponse.json({ items: [result] }));
+    server.use(
+      http.get("/api/v1/projects/project-1/artifacts/image-1/run", () => HttpResponse.json([])),
+      http.get("/api/v1/projects/project-1/canvas/items/item-1/media-versions", readHistory),
+    );
+    const client = createQueryClient();
+    const card = (selected: boolean) => <QueryClientProvider client={client}>
+      <MemoryRouter><MediaCanvasCard artifact={shown} item={itemFor(shown)} selected={selected}
+        locked={false} onEdit={vi.fn()}>{null}</MediaCanvasCard></MemoryRouter>
+    </QueryClientProvider>;
+    const view = render(card(false));
+    await waitFor(() => expect(readHistory).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(client.isFetching()).toBe(0));
+    expect(screen.queryByRole("button", { name: /^上传/ })).not.toBeInTheDocument();
+    view.rerender(card(true));
+    await clickControl(await screen.findByRole("button", { name: "版本" }));
+    expect(await screen.findByRole("menuitem", { name: "v1 选用此版本" })).toBeVisible();
+    expect(readHistory).toHaveBeenCalledTimes(1);
+  });
+
   describe("audio trimming", () => {
     beforeEach(() => {
       vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
@@ -563,6 +629,47 @@ describe("MediaCanvasCard", () => {
     await waitFor(() => expect(request).toEqual(expect.objectContaining({
       canvasItemId: "item-1", sourceVersionId: "image-version", operation: "CROP",
       parameters: { x: 0.22, y: 0.08, width: 0.56, height: 0.84 },
+    })));
+  });
+
+  it("crops at the selected ratio when asset dimensions arrive after opening", async () => {
+    let release = () => {};
+    const metadata = new Promise<void>((resolve) => { release = resolve; });
+    let request: unknown;
+    server.use(
+      http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () =>
+        HttpResponse.json({ displayMode: "RESULT", version: 0 })),
+      http.get("/api/v1/projects/project-1/assets/image-asset", async () => {
+        await metadata;
+        return HttpResponse.json({ id: "image-asset", width: 1600, height: 800 });
+      }),
+      http.get("/api/v1/settings/media-functions", () => HttpResponse.json(imageFunctionSettings())),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(imageFunctionsFixture())),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.post("/api/v1/projects/project-1/artifacts/image-1/image-operations", async ({ request: incoming }) => {
+        request = await incoming.json();
+        return HttpResponse.json({ id: "crop-task", status: "READY" });
+      }),
+    );
+    const view = showCard({ ...artifact, resourceDefaultVersionId: "image-version", resourceDefaultVersion: {
+      id: "image-version", versionNo: 1, schemaVersion: 1,
+      content: { sourceType: "UPLOAD", assetId: "image-asset" }, inputReferences: [],
+      createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
+    } });
+    await clickControl(screen.getByRole("button", { name: "扩展" }));
+    await clickControl(screen.getByRole("menuitem", { name: /裁剪.*本地/ }));
+    const dialog = await screen.findByRole("dialog", { name: "裁剪图片" });
+    await act(async () => release());
+    await waitFor(() => expect(view.client.getQueryData(["asset-metadata", "project-1", "image-asset"]))
+      .toEqual(expect.objectContaining({ width: 1600, height: 800 })));
+    const image = within(dialog).getByRole("img");
+    Object.defineProperties(image, { naturalWidth: { value: 1600 }, naturalHeight: { value: 800 } });
+    fireEvent.load(image);
+    await changeControl(within(dialog).getByRole("combobox", { name: "裁剪比例" }), { target: { value: "1:1" } });
+    await clickControl(within(dialog).getByRole("button", { name: "确定" }));
+    await waitFor(() => expect(request).toEqual(expect.objectContaining({
+      canvasItemId: "item-1", sourceVersionId: "image-version", expectedCanvasItemVersion: 0,
+      operation: "CROP", parameters: { x: 0.29, y: 0.08, width: 0.42, height: 0.84 },
     })));
   });
 

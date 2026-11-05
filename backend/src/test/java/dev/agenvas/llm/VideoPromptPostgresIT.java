@@ -180,6 +180,16 @@ class VideoPromptPostgresIT {
         assertThatThrownBy(() -> tasks.checkpointTextResponse(old, "late-worker", checkpoint)).isInstanceOf(ApiProblemException.class);
         tasks.succeed(old, "late-worker", checkpoint);
         assertThat(TaskController.TaskResponse.from(tasks.get(owner.userId(), source.project(), next.id())).output()).isNull();
+        var queued = run(source, request(), "third-queued");
+        assertThat(prompts.cancel(owner.userId(), source.project(), source.item(), queued.id()).status()).isEqualTo(Task.Status.CANCELED);
+        var replay = run(source, request(), "recover");
+        assertThat(replay.id()).isEqualTo(accepted.id());
+        assertThat(replay.status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(replay.version()).isGreaterThan(accepted.version());
+        assertThat(prompts.cancel(owner.userId(), source.project(), source.item(), next.id()).id()).isEqualTo(next.id());
+        assertThat(prompts.list(owner.userId(), source.project(), source.item())).extracting(Task::id)
+                .containsExactly(queued.id(), next.id(), accepted.id());
+        assertThat(gateway.calls).isZero();
     }
     @Test void rejectsModelOutputThatDropsAReference() {
         var source = source();

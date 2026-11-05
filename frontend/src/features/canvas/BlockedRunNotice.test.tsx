@@ -3,10 +3,37 @@ import { render, screen } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
+import { setLocale } from "../../shared/i18n";
 import { server } from "../../test/server";
 import { BlockedRunNotice } from "./BlockedRunNotice";
 
 describe("BlockedRunNotice", () => {
+  it("explains incomplete transport without treating it as detected input truncation", async () => {
+    setLocale("en");
+    server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () => HttpResponse.json([
+      { id: "incomplete-stream", kind: "AGENT_TURN", status: "FAILED", errorCode: "LLM_STREAM_INCOMPLETE" },
+    ])));
+    render(<QueryClientProvider client={createQueryClient()}>
+      <BlockedRunNotice projectId="project-1" runId="stream-run" status="FAILED" />
+    </QueryClientProvider>);
+    expect(await screen.findByText(/model stream ended without a completion signal/)).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("not retried automatically");
+    expect(screen.getByRole("alert")).not.toHaveTextContent("input was truncated");
+  });
+
+  it("explains an explicitly truncated model response without claiming to detect silent input truncation", async () => {
+    setLocale("en");
+    server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () => HttpResponse.json([
+      { id: "length-response", kind: "AGENT_TURN", status: "FAILED", errorCode: "LLM_OUTPUT_TRUNCATED" },
+    ])));
+    render(<QueryClientProvider client={createQueryClient()}>
+      <BlockedRunNotice projectId="project-1" runId="length-run" status="FAILED" />
+    </QueryClientProvider>);
+    expect(await screen.findByText(/No tools from this turn were executed/)).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Existing results have been kept.");
+    expect(screen.getByRole("alert")).not.toHaveTextContent("unknown status");
+  });
+
   it("explains a fixed context budget failure without publishing task inputs", async () => {
     server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () => HttpResponse.json([
       { id: "context-budget", kind: "AGENT_TURN", status: "FAILED", errorCode: "AGENT_CONTEXT_BUDGET_EXCEEDED",
@@ -15,7 +42,8 @@ describe("BlockedRunNotice", () => {
     render(<QueryClientProvider client={createQueryClient()}>
       <BlockedRunNotice projectId="project-1" runId="context-run" status="FAILED" />
     </QueryClientProvider>);
-    expect(await screen.findByText(/固定创作指令或已激活 Skill 超出配置的模型上下文预算/)).toBeInTheDocument();
+    expect(await screen.findByText(/固定指令、当前输入或附件无法放入已确认的上下文预算/)).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("减少附件、切换实际上下文更大的模型，或调整响应预留");
     expect(screen.getByRole("alert")).not.toHaveTextContent("private-context-input");
   });
   it("explains an unselected archived video conflict instead of a model outage", async () => {

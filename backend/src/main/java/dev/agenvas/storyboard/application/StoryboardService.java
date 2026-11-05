@@ -103,7 +103,7 @@ public class StoryboardService {
         if (request.shots() == null || request.shots().size() > MAX_SHOTS || request.shots().stream().anyMatch(Objects::isNull)) throw invalid("shots");
         Map<UUID, Shot> oldShots = new HashMap<>();
         prior.shots().forEach(shot -> oldShots.put(shot.id(), shot));
-        Set<UUID> reintroduced = request.shots().stream().filter(Objects::nonNull).map(ShotInput::id)
+        Set<UUID> reintroduced = request.shots().stream().map(ShotInput::id)
                 .filter(Objects::nonNull).filter(id -> !oldShots.containsKey(id)).collect(java.util.stream.Collectors.toSet());
         Map<UUID, Integer> historicalRevisions = boards.maxShotRevisions(projectId, reintroduced);
         Set<UUID> ids = new HashSet<>();
@@ -112,7 +112,7 @@ public class StoryboardService {
         boolean compositionChanged = !prior.shots().stream().map(Shot::id).toList()
                 .equals(request.shots().stream().map(ShotInput::id).toList());
         for (ShotInput input : request.shots()) {
-            if (input == null || input.id() == null || !ids.add(input.id())) throw invalid("shot.id");
+            if (input.id() == null || !ids.add(input.id())) throw invalid("shot.id");
             validateInput(ownerId, projectId, input);
             if (input.code().isBlank() || !input.code().equals(input.code().trim()) || !codes.add(input.code())) throw invalid("code");
             Shot old = oldShots.get(input.id());
@@ -139,7 +139,7 @@ public class StoryboardService {
             shots.add(new Shot(input.id(), input.code(), input.scene(), input.title(), input.description(),
                     input.dialogue(), input.durationSeconds(), input.sourceVersionId(), List.copyOf(input.referenceVersionIds()),
                     revision, List.copyOf(productions)));
-            if (creativeChanged || old == null || !productionChoices(old.productions()).equals(productionChoices(productions))) compositionChanged = true;
+            if (creativeChanged || !productionChoices(old.productions()).equals(productionChoices(productions))) compositionChanged = true;
         }
         Composition composition = null;
         if (request.composition() != null) {

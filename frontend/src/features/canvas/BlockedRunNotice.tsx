@@ -63,8 +63,15 @@ function switchOnFailure(code: string | null | undefined): string {
       return t("agent.blocked.keyVersionMissing");
     case "MODEL_OUTPUT_INVALID":
       return t("agent.blocked.validationFailed");
+    case "LLM_OUTPUT_TRUNCATED":
+      return t("agent.failure.outputTruncated");
+    case "LLM_STREAM_INCOMPLETE":
+      return t("agent.failure.streamIncomplete");
     case "AGENT_CONTEXT_BUDGET_EXCEEDED":
       return t("agent.blocked.contextBudget");
+    case "MODEL_CAPACITY_UNKNOWN": return t("agent.failure.capacityUnknown");
+    case "MODEL_RUNTIME_CONTEXT_CHANGED": return t("agent.failure.runtimeContextChanged");
+    case "MODEL_POLICY_INVALID": return t("modelConnection.capacityInvalid");
     case "AGENT_TURN_FAILED":
       return t("agent.blocked.modelFailed");
     default:

@@ -69,10 +69,11 @@ public class CallLog extends TableImpl<CallLogRecord> {
     public final TableField<CallLogRecord, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "记录身份");
 
     /**
-     * The column <code>public.call_log.project_id</code>.
-     * 原所属项目的历史标识；不设外键，查询仍须校验项目权限
+     * The column <code>public.call_log.project_id</code>. Project ownership
+     * scope for business calls; null only for global administrator LLM
+     * diagnostics.
      */
-    public final TableField<CallLogRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "原所属项目的历史标识；不设外键，查询仍须校验项目权限");
+    public final TableField<CallLogRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID, this, "Project ownership scope for business calls; null only for global administrator LLM diagnostics.");
 
     /**
      * The column <code>public.call_log.task_id</code>. 原持久任务的历史标识；允许任务清理后保留
@@ -259,10 +260,10 @@ public class CallLog extends TableImpl<CallLogRecord> {
             Internal.createCheck(this, DSL.name("call_log_duration_ms_check"), "((duration_ms >= 0))", true),
             Internal.createCheck(this, DSL.name("call_log_kind_check"), "(((kind)::text = ANY ((ARRAY['LLM'::character varying, 'IMAGE'::character varying, 'VIDEO'::character varying, 'AUDIO'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("call_log_llm_stream_metrics_check"), "(((llm_stream_metrics_json IS NULL) OR ((jsonb_typeof(llm_stream_metrics_json) = 'object'::text) AND (llm_stream_metrics_json ? 'schemaVersion'::text) AND ((llm_stream_metrics_json ->> 'schemaVersion'::text) = '2'::text))))", true),
-            Internal.createCheck(this, DSL.name("call_log_operation_check"), "(((operation)::text = ANY ((ARRAY['CHAT'::character varying, 'SUBMIT'::character varying, 'POLL'::character varying])::text[])))", true),
+            Internal.createCheck(this, DSL.name("call_log_operation_check"), "(((operation)::text = ANY ((ARRAY['CHAT'::character varying, 'SUBMIT'::character varying, 'POLL'::character varying, 'DIAGNOSTIC'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("call_log_status_check"), "(((status)::text = ANY ((ARRAY['RUNNING'::character varying, 'SUCCEEDED'::character varying, 'FAILED'::character varying, 'UNKNOWN'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("call_log_trace_id_check"), "((trace_id ~ '^[0-9a-f]{32}$'::text))", true),
-            Internal.createCheck(this, DSL.name("ck_call_log_operation_scope"), "(((((operation)::text = 'CHAT'::text) AND ((kind)::text = 'LLM'::text) AND (((run_id IS NOT NULL) AND (step_index IS NOT NULL) AND (step_index >= 0)) OR ((task_id IS NOT NULL) AND (run_id IS NULL) AND (step_index IS NULL)))) OR (((operation)::text = ANY ((ARRAY['SUBMIT'::character varying, 'POLL'::character varying])::text[])) AND ((kind)::text = ANY ((ARRAY['IMAGE'::character varying, 'VIDEO'::character varying, 'AUDIO'::character varying])::text[])) AND (task_id IS NOT NULL) AND (step_index IS NULL))))", true)
+            Internal.createCheck(this, DSL.name("ck_call_log_operation_scope"), "(((((operation)::text = 'DIAGNOSTIC'::text) AND ((kind)::text = 'LLM'::text) AND (project_id IS NULL) AND (run_id IS NULL) AND (task_id IS NULL) AND (step_index IS NULL)) OR ((project_id IS NOT NULL) AND ((((operation)::text = 'CHAT'::text) AND ((kind)::text = 'LLM'::text) AND (((run_id IS NOT NULL) AND (step_index IS NOT NULL) AND (step_index >= 0)) OR ((task_id IS NOT NULL) AND (run_id IS NULL) AND (step_index IS NULL)))) OR (((operation)::text = ANY ((ARRAY['SUBMIT'::character varying, 'POLL'::character varying])::text[])) AND ((kind)::text = ANY ((ARRAY['IMAGE'::character varying, 'VIDEO'::character varying, 'AUDIO'::character varying])::text[])) AND (task_id IS NOT NULL) AND (step_index IS NULL))))))", true)
         );
     }
 

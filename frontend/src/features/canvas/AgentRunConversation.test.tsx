@@ -3,6 +3,7 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
+import { setLocale } from "../../shared/i18n";
 import type { AgentRun, RunAction, Task } from "../../shared/api/client";
 import { server } from "../../test/server";
 import { AgentRunConversation } from "./AgentRunConversation";
@@ -54,6 +55,44 @@ function taskSummary(label: string, index = 0) {
 }
 
 describe("AgentRunConversation", () => {
+  it("localizes completed and failed local-tool outcomes while keeping custom summaries literal", async () => {
+    setLocale("en");
+    mockConversation([], [
+      action({ id: "done", toolName: "trim_audio", summary: "本地媒体处理已完成，结果已归档" }),
+      action({ id: "failed", toolName: "compose_video", summary: "本地媒体处理已结束，状态：FAILED" }),
+      action({ id: "authored", toolName: "compose_video", summary: "保留用户的中文说明" }),
+    ]);
+    mountConversation();
+    expect(await screen.findByText("Local media processing completed; results archived")).toBeInTheDocument();
+    expect(screen.getByText("Local media processing ended. Status: FAILED")).toBeInTheDocument();
+    expect(screen.getByText("保留用户的中文说明")).toBeInTheDocument();
+    expect(screen.queryByText("本地媒体处理已完成，结果已归档")).not.toBeInTheDocument();
+  });
+  it("shows context compression and partial tool reads without changing the current instruction", async () => {
+    setLocale("en");
+    mockConversation([task({ output: { contextCompacted: true } })],
+      [action({ toolName: "read_artifacts", summary: "已读取产物的部分内容；原始版本保留，可继续分页读取" })]);
+    mountConversation();
+    expect(await screen.findByText("Read partial artifact content; original versions remain available for paging")).toBeInTheDocument();
+    expect(screen.getByText(/Earlier steps were summarized/)).toBeInTheDocument();
+    expect(screen.getByText(USER_INSTRUCTION)).toBeInTheDocument();
+  });
+  it("localizes recognized server action summaries and step labels while retaining authored content", async () => {
+    setLocale("en");
+    mockConversation([], [action({ summary: "已创建文本产物" }),
+      action({ id: "custom-action", summary: "保留这份创作记录" })]);
+    mountConversation();
+    expect(await screen.findByText("Created a text artifact")).toBeInTheDocument();
+    expect(screen.getByText("Step 1")).toBeInTheDocument();
+    expect(screen.getByText(USER_INSTRUCTION)).toBeInTheDocument();
+    expect(screen.getByText("保留这份创作记录")).toBeInTheDocument();
+    expect(screen.queryByText("已创建文本产物")).not.toBeInTheDocument();
+    act(() => { setLocale("zh"); });
+    expect(screen.getByText("已创建文本产物")).toBeInTheDocument();
+    expect(screen.getByText("第 1 步")).toBeInTheDocument();
+    expect(screen.getByText("保留这份创作记录")).toBeInTheDocument();
+  });
+
   it("shows the safe image moderation diagnosis in the persisted task trace", async () => {
     mockConversation([task({ kind: "IMAGE_GENERATION", status: "FAILED", errorCode: "OPENAI_IMAGE_MODERATION_BLOCKED",
       output: { providerFailure: { stage: "SUBMIT", category: "MODERATION", httpStatus: 400, upstreamCode: null, nodeId: null, fieldName: null,
@@ -239,7 +278,7 @@ describe("AgentRunConversation", () => {
     await waitFor(() => expect(screen.queryByRole("status", { name: "正在读取任务消息…" })).not.toBeInTheDocument());
     expect(screen.getByRole("article", { name: "你" })).toHaveTextContent(USER_INSTRUCTION);
     expect(screen.queryByRole("article", { name: "Agent" })).not.toBeInTheDocument();
-    expect(screen.getByText("任务完成")).toBeInTheDocument();
+    expect(screen.getByText("执行完成")).toBeInTheDocument();
   });
 
   it("keeps retry attempts, model failures, and cancellation details visible", async () => {
@@ -280,13 +319,15 @@ describe("AgentRunConversation", () => {
     expect(screen.getByRole("region", { name: "任务对话" })).not.toHaveTextContent("PRIVATE_TOOL_RESULT");
   });
 
-  it("names storyboard tool actions without exposing their saved shot payloads", async () => {
+  it("names preparation and storyboard actions without exposing their saved payloads", async () => {
     mockConversation([], [
+      action({ id: "load-tools", toolName: "load_toolset", summary: "已准备所需能力" }),
       action({ id: "read-board", toolName: "read_storyboard", summary: "已读取镜头目录" }),
       action({ id: "write-board", stepIndex: 1, toolName: "write_storyboard_shots", summary: "已保存第 3 镜的台词" }),
     ]);
     mountConversation();
     expect(await screen.findByText("已保存第 3 镜的台词")).toBeInTheDocument();
+    expect(taskSummary("已准备所需能力").getByText("准备所需能力")).toBeInTheDocument();
     expect(taskSummary("已读取镜头目录").getByText("读取分镜制作台")).toBeInTheDocument();
     expect(taskSummary("已保存第 3 镜的台词").getByText("写入分镜镜头")).toBeInTheDocument();
     expect(taskSummary("已保存第 3 镜的台词").getByText("已完成")).toBeInTheDocument();

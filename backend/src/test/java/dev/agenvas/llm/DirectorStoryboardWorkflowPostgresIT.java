@@ -105,7 +105,7 @@ class DirectorStoryboardWorkflowPostgresIT {
                 new BigDecimal("420"), 0, null, false)));
         // Use the installation's actual editable default, without substituting test instructions.
         var director = agents.ensureDirector(owner.userId(), project.id());
-        assertThat(director.instruction()).contains("剧本拆解", "SHOT-", "连续性");
+        assertThat(director.instruction()).contains("Script breakdown", "SHOT-", "continuity");
         var none = new SkillRunService.Selection(SkillRunService.SelectionMode.NONE, List.of());
         var run = runs.create(owner.userId(), project.id(), director.id(),
                 "对当前合成剧本完成拆解、视觉设定、分镜、关键帧和视频提示词、审校与进度卡；只保存文字，修订镜头轴线表述。",
@@ -115,15 +115,18 @@ class DirectorStoryboardWorkflowPostgresIT {
         var messages = initial.assemble(owner.userId(), project.id(), run.id());
         var systems = messages.stream().filter(SystemMessage.class::isInstance).map(Message::getText).toList();
         assertThat(systems).hasSize(2);
-        assertThat(systems.getFirst()).contains("read_canvas").doesNotContain("剧本拆解", "SHOT-", "连续性");
-        assertThat(systems.getLast()).isEqualTo(director.instruction()).contains("剧本拆解", "SHOT-", "连续性");
+        assertThat(systems.getFirst()).contains("load_toolset", "NEXT model turn")
+                .doesNotContain("read_canvas", "Script breakdown", "SHOT-");
+        assertThat(systems.getLast()).isEqualTo(director.instruction()).contains("Script breakdown", "SHOT-", "continuity");
         assertThat(messages).noneSatisfy(message -> assertThat(message.getText()).contains(SOURCE_TEXT));
 
-        for (int turn = 0; turn < 13; turn++) assertThat(worker.runOnce("storyboard-workflow-worker"))
+        for (int turn = 0; turn < 14; turn++) assertThat(worker.runOnce("storyboard-workflow-worker"))
                 .as("synthetic workflow turn %s", turn + 1).isEqualTo(1);
 
         assertThat(runs.get(owner.userId(), project.id(), run.id()).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
         assertThat(gateway.calls.get()).isEqualTo(13);
+        assertThat(jdbc.sql("select count(*) from tool_execution where run_id=:run and tool_name='load_toolset'")
+                .param("run", run.id()).query(Integer.class).single()).isEqualTo(1);
         assertThat(gateway.saved.keySet()).containsExactly(BREAKDOWN, VISUAL, STORYBOARD, KEYFRAMES, MOTION, REVIEW, PROGRESS);
         var entries = canvas.list(owner.userId(), project.id());
         assertThat(entries).hasSize(8);
@@ -190,6 +193,10 @@ class DirectorStoryboardWorkflowPostgresIT {
 
         @Override
         public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> toolContext) {
+            if (tools.size() == 1 && "load_toolset".equals(tools.getFirst().getToolDefinition().name())) {
+                assertThat(calls).hasValue(0);
+                return tool(0, "load_toolset", (ObjectNode) mapper.readTree("{\"toolsets\":[\"CANVAS\",\"TEXT\"]}"));
+            }
             assertThat(tools).extracting(tool -> tool.getToolDefinition().name())
                     .contains("read_canvas", "read_artifacts", "create_text", "revise_artifact");
             int turn = calls.incrementAndGet();

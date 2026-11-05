@@ -260,6 +260,36 @@ class MediaCapabilitySettingsPostgresIT {
                                 "origin":"https://untrusted.example.com","apiKey":"synthetic-key"}
                                 """))
                 .andExpect(status().isUnprocessableEntity());
+        // Private service configuration is saved without a generation call or DNS inside this transaction.
+        for (String platform : List.of("OPENAI", "GOOGLE", "RUNNINGHUB", "COMFYUI")) {
+            String origin = "http://192.168.1.50:8188" + (platform.equals("RUNNINGHUB") ? "" : "/v1");
+            var payload = mapper.createObjectNode().put("name", "Private " + platform)
+                    .put("platform", platform).put("origin", origin);
+            if (!platform.equals("COMFYUI")) payload.put("apiKey", "synthetic-private-key");
+            String saved = mvc.perform(post("/api/v1/settings/media-connections").with(adminAuth).with(csrf())
+                            .header("Idempotency-Key", "private-" + platform).contentType("application/json")
+                            .content(payload.toString())).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            JsonNode createdPrivate = null;
+            for (JsonNode entry : mapper.readTree(saved).path("connections"))
+                if (entry.path("name").asText().equals("Private " + platform)) createdPrivate = entry;
+            assertThat(createdPrivate).isNotNull();
+            assertThat(createdPrivate.path("origin").asText()).isEqualTo(platform.equals("COMFYUI")
+                    ? "http://192.168.1.50:8188/[configured-path]" : origin);
+            assertThat(saved).doesNotContain("synthetic-private-key");
+            payload.put("origin", "http://169.254.169.254:8188");
+            mvc.perform(post("/api/v1/settings/media-connections").with(adminAuth).with(csrf())
+                            .header("Idempotency-Key", "metadata-" + platform).contentType("application/json")
+                            .content(payload.toString())).andExpect(status().isUnprocessableEntity());
+        }
+        for (String platform : List.of("OPENAI", "GOOGLE", "RUNNINGHUB", "COMFYUI")) {
+            var payload = mapper.createObjectNode().put("name", "Public HTTP " + platform)
+                    .put("platform", platform).put("origin", "http://8.8.8.8:8188");
+            if (!platform.equals("COMFYUI")) payload.put("apiKey", "synthetic-public-key");
+            String saved = mvc.perform(post("/api/v1/settings/media-connections").with(adminAuth).with(csrf())
+                    .header("Idempotency-Key", "public-http-" + platform).contentType("application/json")
+                    .content(payload.toString())).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            assertThat(saved).contains("http://8.8.8.8:8188").doesNotContain("synthetic-public-key");
+        }
     }
     private JsonNode connection(String response, String platform) {
         for (JsonNode connection : mapper.readTree(response).path("connections")) {

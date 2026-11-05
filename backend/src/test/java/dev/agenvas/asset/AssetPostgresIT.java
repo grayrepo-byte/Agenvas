@@ -141,6 +141,19 @@ class AssetPostgresIT {
                 .containsExactly(png[1], png[2], png[3], png[4]);
         assertThat(ranged.getResponse().getHeader(HttpHeaders.CONTENT_RANGE))
                 .isEqualTo("bytes 1-4/" + png.length);
+        for (String range : List.of("bytes=1-999999", "bytes=1-999999999999999999999999999999")) {
+            MvcResult bounded = mvc.perform(get(content).header(HttpHeaders.RANGE, range)
+                            .with(authentication(asUser(owner))))
+                    .andExpect(status().isPartialContent()).andReturn();
+            assertThat(bounded.getResponse().getContentAsByteArray())
+                    .containsExactly(java.util.Arrays.copyOfRange(png, 1, png.length));
+            assertThat(bounded.getResponse().getHeader(HttpHeaders.CONTENT_RANGE))
+                    .isEqualTo("bytes 1-" + (png.length - 1) + "/" + png.length);
+        }
+        for (String range : List.of("bytes=+1-4", "bytes=1-+4", "bytes=-+4", "bytes=-0", "bytes=4-1", "bytes=1-a")) {
+            mvc.perform(get(content).header(HttpHeaders.RANGE, range).with(authentication(asUser(owner))))
+                    .andExpect(status().isRequestedRangeNotSatisfiable());
+        }
         mvc.perform(request(HttpMethod.HEAD, content).with(authentication(asUser(owner))))
                 .andExpect(status().isOk());
         mvc.perform(get(content).header(HttpHeaders.RANGE, "bytes=999999-")
@@ -215,6 +228,7 @@ class AssetPostgresIT {
         assertThat(jdbc.sql("select count(*) from asset where project_id = :projectId")
                 .param("projectId", project.id()).query(Integer.class).single()).isEqualTo(2);
         verifyWebpUpload(mvc, owner, project);
+        verifyGifUpload(mvc, owner, project);
         verifyVideoAsset(mvc, owner, project);
         verifyTaskImageCrashRecovery(owner, project, png);
         verifyDatabaseFailureAfterImageInstall(owner, project, png);
@@ -282,6 +296,25 @@ class AssetPostgresIT {
                         + "where project_id = :projectId and type = 'asset.ready'")
                 .param("projectId", project.id()).query(Long.class).single())
                 .isEqualTo(eventsBefore + 1);
+    }
+
+    private void verifyGifUpload(MockMvc mvc, AdminPrincipal owner, Project project) throws Exception {
+        byte[] gif = dev.agenvas.testing.GifFixture.animation(2);
+        String path = "/api/v1/projects/" + project.id() + "/assets";
+        var uploaded = mvc.perform(multipart(path).file(new MockMultipartFile("file", "misleading.png", "image/png", gif))
+                .with(authentication(asUser(owner))).with(csrf())).andExpect(status().isCreated()).andReturn();
+        UUID id = UUID.fromString(mapper.readTree(uploaded.getResponse().getContentAsString()).path("id").asText());
+        var file = assets.get(owner.userId(), project.id(), id);
+        assertThat(file.asset().contentType()).isEqualTo("image/gif");
+        assertThat(file.path().getFileName().toString()).endsWith(".gif");
+        var content = mvc.perform(get(path + "/" + id + "/content").with(authentication(asUser(owner))))
+                .andExpect(status().isOk()).andReturn().getResponse();
+        assertThat(content.getContentType()).isEqualTo("image/gif");
+        assertThat(content.getContentAsByteArray()).isEqualTo(gif);
+        var range = mvc.perform(get(path + "/" + id + "/content").header(HttpHeaders.RANGE, "bytes=0-12")
+                .with(authentication(asUser(owner)))).andExpect(status().isPartialContent()).andReturn().getResponse();
+        assertThat(range.getContentAsByteArray()).isEqualTo(java.util.Arrays.copyOf(gif, 13));
+        mvc.perform(get(path + "/" + id + "/content")).andExpect(status().isUnauthorized());
     }
 
     /** A real WebP payload is accepted by decoded bytes, not its filename or claimed MIME. */

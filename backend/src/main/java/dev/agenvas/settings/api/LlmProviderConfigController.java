@@ -3,6 +3,8 @@ package dev.agenvas.settings.api;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.settings.application.LlmProviderConfigService;
 import dev.agenvas.settings.application.LlmDiagnosticService;
+import dev.agenvas.settings.application.LlmModelPolicy;
+import dev.agenvas.settings.application.LlmModelDiscoveryService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -63,7 +65,7 @@ public class LlmProviderConfigController {
         Objects.requireNonNull(administrator, "Authenticated administrator required");
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .body(LlmSettingsResponse.from(configs.replace(request.expectedVersion(),
-                        request.endpoint(), request.modelId(), request.apiKey())));
+                        request.endpoint(), request.modelId(), request.apiKey(), request.modelSelection())));
     }
 
     /** 执行需要用户明确确认费用风险的两轮诊断，不会调用应用工具。
@@ -97,7 +99,8 @@ public class LlmProviderConfigController {
     public record ReplaceLlmSettingsRequest(@Min(0) int expectedVersion,
             @NotBlank @Size(max = 500) String endpoint,
             @NotBlank @Size(max = 160) String modelId,
-            @NotBlank @Size(min = 8, max = 4096) String apiKey) {}
+            @NotBlank @Size(min = 8, max = 4096) String apiKey,
+            LlmModelDiscoveryService.Selection modelSelection) {}
 
     /** 可安全展示给 UI 的配置状态。
      * @param configured 当前是否已配置 Provider
@@ -109,7 +112,7 @@ public class LlmProviderConfigController {
      * @param updatedAt 最近更新时间
      */
     public record LlmSettingsResponse(boolean configured, int version, String endpoint,
-            String modelId, String keyMask, boolean toolCallingVerified, Instant updatedAt) {
+            String modelId, String keyMask, boolean toolCallingVerified, Instant updatedAt, LlmModelPolicy modelPolicy) {
         /** 映射服务状态到不含密钥材料的响应 DTO。
          * @param value 配置服务生成的安全状态视图
          * @return UI 可用的配置状态
@@ -117,7 +120,7 @@ public class LlmProviderConfigController {
         static LlmSettingsResponse from(LlmProviderConfigService.Status value) {
             return new LlmSettingsResponse(value.configured(), value.version(),
                     value.endpoint(), value.modelId(), value.keyMask(),
-                    value.toolCallingVerified(), value.updatedAt());
+                    value.toolCallingVerified(), value.updatedAt(), value.modelPolicy());
         }
     }
 }

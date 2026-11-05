@@ -36,13 +36,13 @@ public final class ImageOperationSpec {
             "OVERCAST_SOFT", "soft overcast daylight", "MOONLIGHT", "cool moonlight",
             "SOFT_STUDIO", "soft studio", "NEON_NIGHT", "colorful neon-night");
     private static final Map<String, String> LAYER_RESULT_LABELS = Map.of(
-            DEFAULT_LAYER_TARGET, "主体图层", "BACKGROUND", "背景图层");
-    private record ThreeViewDefinition(String resultLabel, String promptKey) {}
+            DEFAULT_LAYER_TARGET, "creation.image.foreground-layer", "BACKGROUND", "creation.image.background-layer");
+    private record ThreeViewDefinition(String resultLabelKey, String promptKey) {}
     private static final Map<String, ThreeViewDefinition> THREE_VIEW_DEFINITIONS = Map.of(
-            "CHARACTER", new ThreeViewDefinition("角色三视图", "image.three-view.character"),
-            "FACE", new ThreeViewDefinition("脸部三视图", "image.three-view.face"),
-            "PROP", new ThreeViewDefinition("道具三视图", "image.three-view.prop"),
-            "SCENE_GRID", new ThreeViewDefinition("场景宫格图", "image.three-view.scene-grid"));
+            "CHARACTER", new ThreeViewDefinition("creation.image.character-three-view", "image.three-view.character"),
+            "FACE", new ThreeViewDefinition("creation.image.face-three-view", "image.three-view.face"),
+            "PROP", new ThreeViewDefinition("creation.image.prop-three-view", "image.three-view.prop"),
+            "SCENE_GRID", new ThreeViewDefinition("creation.image.scene-grid", "image.three-view.scene-grid"));
     private static final Map<String, String> VIEW_ANGLES = Map.of(
             DEFAULT_VIEW_ANGLE, "a straight-on front view",
             "LEFT_THREE_QUARTER", "a left three-quarter view",
@@ -160,10 +160,10 @@ public final class ImageOperationSpec {
     }
 
     /** Parameters have already been normalized and validated before naming the result node. */
-    public String resultLabel() {
+    public ApiMessage resultLabel() {
         return switch (operation) {
-            case THREE_VIEW -> THREE_VIEW_DEFINITIONS.get(parameters.path("threeViewType").asText()).resultLabel();
-            case LAYER_SPLIT -> LAYER_RESULT_LABELS.get(parameters.path("layerTarget").asText());
+            case THREE_VIEW -> ApiMessage.of(THREE_VIEW_DEFINITIONS.get(parameters.path("threeViewType").asText()).resultLabelKey());
+            case LAYER_SPLIT -> ApiMessage.of(LAYER_RESULT_LABELS.get(parameters.path("layerTarget").asText()));
             default -> operation.resultLabel();
         };
     }

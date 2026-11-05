@@ -63,8 +63,8 @@ class DirectorSettingsPostgresIT {
 
     @BeforeEach void reset() {
         jdbc.sql("""
-                update director_settings set context_window_tokens=1000000, compaction_threshold_percent=50,
-                response_reserve_tokens=8192, summary_tokens=2048, recent_tool_rounds=4,
+                update director_settings set context_window_tokens=32768, compaction_threshold_percent=50,
+                response_reserve_tokens=4096, summary_tokens=1024, recent_tool_rounds=4,
                 recovery_window_minutes=1440, max_model_retries=288, retry_max_delay_seconds=300,
                 max_repair_attempts=4, version=1
                 """).update();

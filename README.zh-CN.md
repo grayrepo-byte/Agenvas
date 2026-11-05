@@ -136,6 +136,10 @@ mkdir agenvas && cd agenvas && curl.exe -fL https://raw.githubusercontent.com/gr
 - **图片、视频与音频**：在“媒体配置”中创建连接、发布能力并设置默认模型。默认部署需完成真实模型配置后才能生成媒体。
 - **外部 Agent / MCP**：在“系统设置 → 账户安全”创建用户令牌。客户端使用 Streamable HTTP 连接站点的 `/mcp`（本机为 `http://127.0.0.1:8088/mcp`），并配置 `Authorization: Bearer <token>` 请求头。
 
+使用 **Ollama 等本地 OpenAI 兼容服务**时，请按[本地模型连接指南](docs/ollama-local.md)配置。HTTP 需要部署者明确允许指定主机和端口；Docker 中的 `127.0.0.1` 指向容器自身。忽略 API Key 的服务可填写至少八个字符的占位值，如 `ollama-local`。模型服务实际分配的上下文与[导演设置中的预算](docs/agent-context-safety.md)须分别配置并匹配；工具诊断通过不代表完整 Agent 请求一定放得下。
+
+模型及 ComfyUI 设置提供本机服务发现入口：主动检查标准服务后，明确选择才填入允许的地址，手动配置保留。固定探测范围与平台限制见[本机服务发现](docs/local-service-discovery.md)。
+
 创建项目，通过画布右键菜单添加卡片或上传素材。选择模型、填写提示词和参考输入，检查预计费用后运行；完成后可预览、选用结果或重新生成。打开右下角导演聊天即可使用项目助手，按需读取并操作当前画布；选中节点可突出本次任务重点。Skill 的必需输入从画布内容中明确选择并固定精确版本，媒体提案在对话中统一批准或拒绝；无需添加 Agent 节点或绑定素材。
 
 媒体中继可按功能独立控制 OpenAI 兼容 LLM 图片输入与 OpenAI Images 参考图/蒙版；未启用时保持原传输。Seedance 和 MiniMax H3 本地视频参考需要可公网访问的中继。在存储设置中添加可从公网通过 HTTPS 访问的 OSS、COS 或 S3 连接，再将其选为媒体中继；永久媒体归档仍可使用本地存储。
@@ -155,10 +159,12 @@ mkdir agenvas && cd agenvas && curl.exe -fL https://raw.githubusercontent.com/gr
 
 > 更新前备份数据库、媒体、配置与加密密钥。**不要执行 `docker compose down -v`**，它会删除数据和密钥。
 
+第三方提示词同步在新安装和升级后都**默认关闭**。在第三方模板的来源管理中开启自动同步并保存后，启用的来源每 24 小时从 `raw.githubusercontent.com` 和 `imagepromptgallery.com` 下载公开内容。关闭后不再领取新的定时同步来源，已经受理的下载可能完成；现有来源配置和缓存保留，仍可明确手动同步。部署者也可在 server 的 Compose 环境中用 `AGENVAS_PROMPT_SYNC_ENABLED: "false"` 停止定时同步。说明见[提示词来源与网络访问](docs/prompt-sources.md)。
+
 <details>
 <summary><strong>端口、镜像版本与公网部署</strong></summary>
 
-- 默认 `docker-compose.yml` 仅将 Web `8088` 映射到 `0.0.0.0`，通过服务器 IP 访问；API `8080` 和 PostgreSQL `5432` 仅在容器内部网络使用，不映射到宿主机。源码和 Mock Compose 仍保留仅绑定本机的三个端口，方便开发排查。Web 端口被占用时，修改 `ports` 中的宿主机端口。
+- 默认 `docker-compose.yml` 仅将 Web `8088` 映射到 `0.0.0.0`，通过服务器 IP 访问；API `8080` 和 PostgreSQL `5432` 仅在容器内部网络使用，不映射到宿主机。源码构建用的 `docker-compose.local.yml` 将三个端口映射到所有 IPv4 接口，需要受控网络；`deploy/compose.yaml` 和 `deploy/compose.dev.yaml` 则将三个开发端口绑定到回环地址。Web 端口被占用时，修改 `ports` 中的宿主机端口。
 - 默认拉取 `docker.io/grayrepo/agenvas-server:latest`、`docker.io/grayrepo/agenvas-web:latest` 和官方 `postgres:17.11-alpine`。应用镜像支持 amd64 / arm64，无需本机编译。
 - 应用镜像每次 `up` 都会拉取；需要固定版本时，把 `latest` 改为已发布版本、提交标签或 digest。
 - 每份 Compose 完整列出环境、端口、卷、健康检查和资源限制，直接修改所选文件即可，无需其他配置文件。

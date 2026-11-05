@@ -1,12 +1,14 @@
 import {useState} from "react";
 import {QueryClientProvider} from "@tanstack/react-query";
-import {cleanup,render,screen,waitFor,within} from "@testing-library/react";
+import {act,cleanup,fireEvent,render,screen,waitFor,within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {http,HttpResponse} from "msw";
 import {afterEach,expect,it,vi} from "vitest";
 import {createQueryClient} from "../../app/queryClient";
 import type {Agent,SaveAgentSkillBindingRequest,SkillSelection} from "../../shared/api/client";
 import {server} from "../../test/server";
+import {packagedSkills,packagedSkillVersions} from "../../test/builtinSkills";
+import {setLocale,t} from "../../shared/i18n";
 import {AgentRunSkillControls,AgentSkillSettings,SkillVersionPicker,useAgentSkillSelection} from "./AgentSkillControls";
 
 const agent:Agent={id:"agent-1",projectId:"project-1",profileKey:"creator",profileVersion:1,name:"Agent",instruction:"Create",version:3,createdAt:"2026-10-02T00:00:00Z",updatedAt:"2026-10-02T00:00:00Z"};
@@ -230,4 +232,122 @@ it("selects a builtin Skill alongside a personal Skill",async()=>{
   await user.click(within(dialog).getByRole("button",{name:"使用 Skill"}));
   expect(screen.getByLabelText("active selection")).toHaveTextContent('"skillId":"builtin-write"');
   expect(screen.getByLabelText("active selection")).toHaveTextContent('"skillId":"skill-1"');
+});
+
+it("localizes the canvas Skill picker and selected preview while keeping source and selection literal",async()=>{
+  setLocale("en");
+  const builtin=packagedSkills[0]!,version=packagedSkillVersions[0]!;
+  const personal={...builtin,id:"personal-copy",builtin:false,builtinSource:null,currentVersionId:"personal-version"};
+  server.use(
+    http.get("/api/v1/skills",()=>HttpResponse.json({items:[builtin,personal],nextCursor:null,total:2})),
+    http.get(`/api/v1/skills/${builtin.id}/versions`,()=>HttpResponse.json([version])),
+    http.get(`/api/v1/skills/${builtin.id}/versions/${version.id}`,()=>HttpResponse.json(version)));
+  showRunPicker();const user=userEvent.setup();
+  await user.click(screen.getByRole("button",{name:t("skills.choose")}));
+  const dialog=screen.getByRole("dialog");
+  const button=await within(dialog).findByRole("button",{name:"Visual asset design · short-drama-assets"});
+  expect(button).not.toHaveTextContent(/\p{Script=Han}/u);
+  expect(within(dialog).getByRole("button",{name:personal.title})).toBeVisible();
+  await user.click(button);
+  const preview=await within(dialog).findByRole("region",{name:"Visual asset design · short-drama-assets"});
+  expect(within(preview).getByText(/^Extract characters, looks, locations/)).not.toHaveTextContent(/\p{Script=Han}/u);
+  await user.click(within(preview).getByText(t("skills.body")));
+  expect(within(preview).getByText(/# 原始 Skill 正文/)).toBeVisible();
+  act(()=>{setLocale("ja");});
+  expect(await within(dialog).findByRole("button",{name:"ビジュアル素材設計 · short-drama-assets"})).toHaveAttribute("aria-pressed","true");
+  expect(within(dialog).getByRole("region",{name:"ビジュアル素材設計 · short-drama-assets"})).toBeVisible();
+  await user.click(within(dialog).getByRole("button",{name:t("skills.use")}));
+  expect(screen.getByLabelText("active selection")).toHaveTextContent(`"skillId":"${builtin.id}"`);
+  expect(screen.getByLabelText("active selection")).toHaveTextContent(`"skillVersionId":"${version.id}"`);
+  expect(screen.getByRole("button",{name:t("skills.choose")})).toHaveTextContent("ビジュアル素材設計 · short-drama-assets");
+});
+
+it("resolves built-in origin for a fixed version opened before the catalogue",async()=>{
+  setLocale("en");
+  const builtin=packagedSkills[0]!,version=packagedSkillVersions[0]!;
+  server.use(http.get(`/api/v1/skills/${builtin.id}/versions/${version.id}`,()=>HttpResponse.json(version)),
+    http.get(`/api/v1/skills/${builtin.id}`,()=>HttpResponse.json(builtin)));
+  showRunPicker(agent,{mode:"VERSIONS",skills:[{skillId:builtin.id,skillVersionId:version.id,inputs:[]}]});
+  await waitFor(()=>expect(screen.getByRole("button",{name:t("skills.choose")})).toHaveTextContent("Visual asset design · short-drama-assets"));
+});
+
+it.each([true,false])("waits for uncached origin before displaying candidate metadata (builtin=%s)",async(builtin)=>{
+  setLocale("en");
+  const packaged=packagedSkills[0]!,version=packagedSkillVersions[0]!;
+  let release=()=>{};
+  const pending=new Promise<void>((resolve)=>{release=resolve;});
+  server.use(http.get("/api/v1/skills",()=>HttpResponse.json({items:[],nextCursor:null,total:0})),
+    http.get(`/api/v1/skills/${packaged.id}/versions/${version.id}`,()=>HttpResponse.json(version)),
+    http.get(`/api/v1/skills/${packaged.id}/versions`,()=>HttpResponse.json([version])),
+    http.get(`/api/v1/skills/${packaged.id}`,async()=>{await pending;return HttpResponse.json({...packaged,builtin});}));
+  showRunPicker(agent,{mode:"VERSIONS",skills:[{skillId:packaged.id,skillVersionId:version.id,inputs:[]}]});
+  const user=userEvent.setup();await user.click(screen.getByRole("button",{name:t("skills.choose")}));
+  const dialog=screen.getByRole("dialog");
+  try{
+    const preview=await within(dialog).findByRole("region",{name:version.name});
+    expect(preview).toHaveTextContent(t("common.loading"));
+    expect(preview).not.toHaveTextContent(version.description);
+    expect(preview).not.toHaveTextContent(/\p{Script=Han}/u);
+    release();
+    if(builtin){
+      const loaded=await within(dialog).findByRole("region",{name:"Visual asset design · short-drama-assets"});
+      expect(within(loaded).getByText(/^Extract characters, looks, locations/)).toBeVisible();
+      expect(loaded).not.toHaveTextContent(version.description);
+    }else{
+      await waitFor(()=>expect(within(dialog).getByRole("region",{name:version.name})).toHaveTextContent(version.description));
+      expect(within(dialog).queryByRole("region",{name:"Visual asset design · short-drama-assets"})).not.toBeInTheDocument();
+    }
+  }finally{release();}
+});
+
+it("keeps candidate metadata hidden after an origin failure and retries provenance explicitly",async()=>{
+  setLocale("en");
+  const packaged=packagedSkills[0]!,version=packagedSkillVersions[0]!;
+  let attempts=0,release=()=>{};
+  const pending=new Promise<void>((resolve)=>{release=resolve;});
+  server.use(http.get("/api/v1/skills",()=>HttpResponse.json({items:[],nextCursor:null,total:0})),
+    http.get(`/api/v1/skills/${packaged.id}/versions/${version.id}`,()=>HttpResponse.json(version)),
+    http.get(`/api/v1/skills/${packaged.id}/versions`,()=>HttpResponse.json([version])),
+    http.get(`/api/v1/skills/${packaged.id}`,async()=>{
+      if(++attempts===1)return HttpResponse.json({code:"INTERNAL_ERROR",detail:"Origin unavailable"},{status:500});
+      await pending;return HttpResponse.json(packaged);
+    }));
+  showRunPicker(agent,{mode:"VERSIONS",skills:[{skillId:packaged.id,skillVersionId:version.id,inputs:[]}]});
+  const user=userEvent.setup();await user.click(screen.getByRole("button",{name:t("skills.choose")}));
+  const dialog=screen.getByRole("dialog");
+  try{
+    const preview=await within(dialog).findByRole("region",{name:version.name});
+    const retry=await within(preview).findByRole("button",{name:t("skills.refresh")});
+    expect(within(preview).getByRole("alert")).toBeVisible();
+    expect(preview).not.toHaveTextContent(version.description);
+    expect(preview).not.toHaveTextContent(/\p{Script=Han}/u);
+    await user.click(retry);
+    await waitFor(()=>expect(attempts).toBe(2));
+    expect(preview).toHaveTextContent(t("common.loading"));
+    expect(preview).not.toHaveTextContent(version.description);
+    release();
+    const loaded=await within(dialog).findByRole("region",{name:"Visual asset design · short-drama-assets"});
+    expect(within(loaded).getByText(/^Extract characters, looks, locations/)).toBeVisible();
+  }finally{release();}
+});
+
+it.each(["run","binding"])("refetches %s Skill search for the selected language without changing its draft",async(mode)=>{
+  setLocale("en");
+  const requests:{language:string|null;query:string|null}[]=[];
+  server.use(http.get("/api/v1/skills",({request})=>{
+    requests.push({language:request.headers.get("Accept-Language"),query:new URL(request.url).searchParams.get("query")});
+    return HttpResponse.json({items:packagedSkills,nextCursor:null,total:17});
+  }));
+  if(mode==="binding"){
+    render(<QueryClientProvider client={createQueryClient()}><SkillVersionPicker onChange={()=>{}} /></QueryClientProvider>);
+  }else{
+    showRunPicker();await userEvent.click(screen.getByRole("button",{name:t("skills.choose")}));
+  }
+  const search=await screen.findByRole("searchbox",{name:t("skills.search")});
+  fireEvent.change(search,{target:{value:"design"}});
+  await waitFor(()=>expect(requests).toContainEqual({language:"en",query:"design"}));
+  act(()=>{setLocale("ru");});
+  await waitFor(()=>expect(requests).toContainEqual({language:"ru",query:"design"}));
+  expect(screen.getByRole("searchbox",{name:t("skills.search")})).toBe(search);
+  expect(search).toHaveValue("design");
 });

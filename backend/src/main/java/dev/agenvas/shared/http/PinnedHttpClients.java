@@ -42,7 +42,20 @@ public final class PinnedHttpClients {
      */
     public static OkHttpClient pinned(Dns dns, Duration connectTimeout, Duration readTimeout,
             Duration callTimeout) {
-        return base(dns, connectTimeout, readTimeout, callTimeout)
+        return base(dns, connectTimeout, readTimeout, callTimeout, true)
+                .followRedirects(false)
+                .followSslRedirects(false)
+                .build();
+    }
+
+    /**
+     * Builds a strict transport for status discovery that must never retain raw service metadata.
+     * Unlike ordinary provider calls, this transport excludes debug capture even when the calling
+     * thread has enabled an invocation capture scope.
+     */
+    public static OkHttpClient pinnedUncaptured(Dns dns, Duration connectTimeout, Duration readTimeout,
+            Duration callTimeout) {
+        return base(dns, connectTimeout, readTimeout, callTimeout, false)
                 .followRedirects(false)
                 .followSslRedirects(false)
                 .build();
@@ -59,22 +72,23 @@ public final class PinnedHttpClients {
      */
     public static OkHttpClient pinnedFollowingRedirects(Dns dns, Duration connectTimeout,
             Duration readTimeout, Duration callTimeout) {
-        return base(dns, connectTimeout, readTimeout, callTimeout)
+        return base(dns, connectTimeout, readTimeout, callTimeout, true)
                 .followRedirects(true)
                 .followSslRedirects(true)
                 .build();
     }
 
     private static OkHttpClient.Builder base(Dns dns, Duration connectTimeout,
-            Duration readTimeout, Duration callTimeout) {
-        return new OkHttpClient.Builder()
+            Duration readTimeout, Duration callTimeout, boolean captureDebugBodies) {
+        OkHttpClient.Builder builder = new OkHttpClient.Builder()
                 .proxy(Proxy.NO_PROXY)
                 .dns(dns)
-                .addInterceptor(DebugHttpCapture.interceptor())
                 .addNetworkInterceptor(DROP_RETRY_AFTER)
                 .retryOnConnectionFailure(false)
                 .connectTimeout(connectTimeout)
                 .readTimeout(readTimeout)
                 .callTimeout(callTimeout);
+        if (captureDebugBodies) builder.addInterceptor(DebugHttpCapture.interceptor());
+        return builder;
     }
 }

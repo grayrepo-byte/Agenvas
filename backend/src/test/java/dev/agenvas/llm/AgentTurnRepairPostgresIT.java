@@ -1,6 +1,9 @@
 package dev.agenvas.llm;
 
 import static dev.agenvas.testing.AgentFixture.configureDirector;
+import static dev.agenvas.testing.OnDemandToolsetFixture.onlyLoader;
+import static dev.agenvas.testing.OnDemandToolsetFixture.load;
+import static dev.agenvas.testing.OnDemandToolsetFixture.prepare;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -78,12 +81,13 @@ class AgentTurnRepairPostgresIT {
         AgentRun recovered = runs.create(owner.userId(), project.id(), agent.id(),
                 "Write", "repair-success-run").run();
 
+        prepare(worker, jdbc, recovered.id());
         assertThat(worker.runOnce("repair-test")).isEqualTo(1);
         assertThat(artifactCount(project.id())).isZero();
         assertThat(ledgerCount(recovered.id())).isZero();
         assertThat(tasks.listByRun(owner.userId(), project.id(), recovered.id()))
                 .extracting(Task::status)
-                .containsExactly(Task.Status.SUCCEEDED, Task.Status.READY);
+                .containsExactly(Task.Status.SUCCEEDED, Task.Status.SUCCEEDED, Task.Status.READY);
         assertThat(tasks.listByRun(owner.userId(), project.id(), recovered.id()).getLast()
                 .input().path("repairAttempt").asInt()).isEqualTo(1);
 
@@ -98,6 +102,7 @@ class AgentTurnRepairPostgresIT {
         gateway.alwaysInvalid = true;
         AgentRun exhausted = runs.create(owner.userId(), project.id(), agent.id(),
                 "Write again", "repair-exhaust-run").run();
+        prepare(worker, jdbc, exhausted.id());
         for (int index = 0; index < 3; index++) {
             assertThat(worker.runOnce("repair-test")).as("exhausted turn %s", index + 1)
                     .isEqualTo(1);
@@ -107,11 +112,11 @@ class AgentTurnRepairPostgresIT {
         assertThat(jdbc.sql("select active_run_id is null from project where id=:id").param("id", project.id()).query(Boolean.class).single()).isTrue();
         assertThat(tasks.listByRun(owner.userId(), project.id(), exhausted.id()))
                 .extracting(Task::status)
-                .containsExactly(Task.Status.SUCCEEDED, Task.Status.SUCCEEDED,
+                .containsExactly(Task.Status.SUCCEEDED, Task.Status.SUCCEEDED, Task.Status.SUCCEEDED,
                         Task.Status.FAILED);
-        assertThat(tasks.listByRun(owner.userId(), project.id(), exhausted.id()).get(1)
-                .input().path("repairAttempt").asInt()).isEqualTo(1);
         assertThat(tasks.listByRun(owner.userId(), project.id(), exhausted.id()).get(2)
+                .input().path("repairAttempt").asInt()).isEqualTo(1);
+        assertThat(tasks.listByRun(owner.userId(), project.id(), exhausted.id()).get(3)
                 .input().path("repairAttempt").asInt()).isEqualTo(2);
         assertThat(tasks.listByRun(owner.userId(), project.id(), exhausted.id()).getLast()
                 .errorCode()).isEqualTo("MODEL_OUTPUT_INVALID");
@@ -119,7 +124,7 @@ class AgentTurnRepairPostgresIT {
         assertThat(artifactCount(project.id())).isEqualTo(1);
         assertThat(ledgerCount(exhausted.id())).isZero();
         assertThat(jdbc.sql("select count(*) from llm_turn where run_id = :runId")
-                .param("runId", exhausted.id()).query(Long.class).single()).isEqualTo(3);
+                .param("runId", exhausted.id()).query(Long.class).single()).isEqualTo(4);
         assertThat(worker.runOnce("repair-test")).isZero();
     }
 
@@ -129,7 +134,7 @@ class AgentTurnRepairPostgresIT {
     }
 
     private long ledgerCount(UUID runId) {
-        return jdbc.sql("select count(*) from tool_execution where run_id = :runId")
+        return jdbc.sql("select count(*) from tool_execution where run_id = :runId and tool_name <> 'load_toolset'")
                 .param("runId", runId).query(Long.class).single();
     }
 
@@ -163,6 +168,8 @@ class AgentTurnRepairPostgresIT {
         @Override
         public Exchange call(List<Message> messages, List<ToolCallback> tools,
                 Map<String, Object> toolContext) {
+            if (onlyLoader(tools)) return load("TEXT");
+            assertThat(tools.stream().map(tool -> tool.getToolDefinition().name())).contains("create_text");
             int count = callCounts.computeIfAbsent((String) toolContext.get("runId"),
                     ignored -> new AtomicInteger()).incrementAndGet();
             if (count == 2) {

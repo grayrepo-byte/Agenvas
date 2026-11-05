@@ -290,7 +290,9 @@ public class MediaExecutionWorker {
             else tasks.rejectSubmission(task, workerId, "LOCAL_VIDEO_PROCESSING_FAILED");
             return;
         }
-        tasks.succeedWithArtifacts(task, workerId, results, null);
+        var imageUsage = dev.agenvas.provider.domain.MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(attempt.binding().adapterId())
+                ? content.path("parameters").get("providerUsage") : null;
+        tasks.succeedWithArtifacts(task, workerId, results, imageUsage);
     }
 
     /** Cloud audio extraction also keeps a local, lossless silent copy of the original pinned video. */
@@ -389,6 +391,9 @@ public class MediaExecutionWorker {
             Asset asset = archiveAsset(attempt, task.id(), kind, payload::stream);
             ObjectNode content = resultContent(attempt, asset);
             addNativeMetadata(attempt, content, payload.providerMetadata());
+            if (dev.agenvas.provider.domain.MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(attempt.binding().adapterId())
+                    && payload.providerMetadata() != null && payload.providerMetadata().path("imageTokenUsage").isObject())
+                content.withObject("parameters").set("providerUsage", payload.providerMetadata().path("imageTokenUsage").deepCopy());
             return content;
         } catch (IOException failure) {
             throw new IllegalStateException("Cannot close media response", failure);

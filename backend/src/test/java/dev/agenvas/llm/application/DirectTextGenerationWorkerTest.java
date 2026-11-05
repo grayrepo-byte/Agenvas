@@ -21,6 +21,7 @@ import dev.agenvas.audit.application.CallLogService;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -33,10 +34,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.metadata.ChatGenerationMetadata;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import tools.jackson.databind.JsonNode;
@@ -93,6 +96,37 @@ class DirectTextGenerationWorkerTest {
     }
 
     @Test
+    void oversizedFrozenInputFailsBeforeCallingTheModelOrWritingAnArtifact() {
+        var budget = LlmRequestBudget.resolve(DirectorSettings.defaults(),
+                dev.agenvas.settings.application.LlmModelPolicy.manual(
+                        dev.agenvas.settings.application.ModelCatalog.Provider.COMPATIBLE, 4096, null, 512,
+                        dev.agenvas.settings.application.LlmModelPolicy.OutputParameter.MAX_TOKENS));
+        input.set("requestBudget", mapper.valueToTree(budget));
+        input.put("prompt", "Current user input must be preserved. ".repeat(3000));
+        worker.runOnce(WORKER);
+        verify(tasks).fail(lease, WORKER, "AGENT_CONTEXT_BUDGET_EXCEEDED");
+        verify(gateway, never()).call(anyList(), anyList(), anyMap(), any(), any());
+        verify(tasks, never()).succeedWithTextArtifact(any(), anyString(), any());
+        verify(tasks, never()).checkpointTextResponse(any(), anyString(), any());
+        assertThat(input.path("prompt").asText()).hasSize("Current user input must be preserved. ".length() * 3000);
+    }
+
+    @Test
+    void dispatchAndCheckpointRetainTheFrozenBudget() {
+        var budget = LlmRequestBudget.resolve(DirectorSettings.defaults(),
+                dev.agenvas.settings.application.LlmModelPolicy.manual(
+                        dev.agenvas.settings.application.ModelCatalog.Provider.COMPATIBLE, 8192, null, 1024,
+                        dev.agenvas.settings.application.LlmModelPolicy.OutputParameter.MAX_COMPLETION_TOKENS));
+        input.set("requestBudget", mapper.valueToTree(budget));
+        when(gateway.call(anyList(), anyList(), anyMap(), eq(pinned), eq(budget))).thenReturn(exchange);
+        worker.runOnce(WORKER);
+        verify(gateway).call(anyList(), anyList(), anyMap(), eq(pinned), eq(budget));
+        ArgumentCaptor<JsonNode> checkpoint = ArgumentCaptor.forClass(JsonNode.class);
+        verify(tasks).checkpointTextResponse(eq(lease), eq(WORKER), checkpoint.capture());
+        assertThat(codec.requestBudget(checkpoint.getValue().path("request"))).isEqualTo(budget);
+    }
+
+    @Test
     void replaysThePersistedResponseWithoutConsultingOrCallingTheModel() throws Exception {
         claimedTask(checkpoint(exchange.response()));
 
@@ -106,6 +140,23 @@ class DirectTextGenerationWorkerTest {
         verify(execution, never()).call(any(), any());
         verify(tasks, never()).checkpointTextResponse(any(), anyString(), any());
         verify(execution).checkActive();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"false,length", "true,length", "false,LENGTH", "true,LENGTH"})
+    void tokenLimitedResponseCannotCreateAFinishedTextArtifact(boolean replay, String reason) {
+        var truncated = new ChatResponse(List.of(new Generation(new AssistantMessage("Partial text"),
+                ChatGenerationMetadata.builder().finishReason(reason).build())));
+        if (replay) claimedTask(checkpoint(truncated));
+        else when(gateway.call(anyList(), anyList(), anyMap(), eq(pinned)))
+                .thenReturn(new ChatGateway.Exchange(3, truncated));
+
+        worker.runOnce(WORKER);
+
+        verify(tasks).fail(lease, WORKER, "LLM_OUTPUT_TRUNCATED");
+        verify(tasks, never()).succeedWithTextArtifact(any(), anyString(), any());
+        verify(tasks, never()).succeed(any(), anyString(), any());
+        if (replay) verifyNoInteractions(gateway, callLogs);
     }
 
     @Test
@@ -135,11 +186,12 @@ class DirectTextGenerationWorkerTest {
 
     @ParameterizedTest
     @ValueSource(ints = {1, 2})
-    void callsThePinnedModelWithTheFrozenSchemaSpecificPromptBeforeCheckpointing(int schema) {
+    void callsThePinnedModelWithTheFrozenSchemaSpecificPromptBeforeCheckpointing(int schema) throws Exception {
         input.put("schemaVersion", schema);
         if (schema == 1) input.remove("systemPrompt");
 
         assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        verify(execution).call(any(), eq(Duration.ofMinutes(10)));
 
         ArgumentCaptor<List<Message>> messages = ArgumentCaptor.captor();
         verify(gateway).call(messages.capture(), eq(List.of()), eq(java.util.Map.of()), eq(pinned));

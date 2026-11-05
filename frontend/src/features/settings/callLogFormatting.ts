@@ -1,6 +1,7 @@
 import type { DebugBody } from "../../shared/api/client";
 
 const JSON_INDENT = 2;
+const MAX_FORMATTED_JSON_DEPTH = 128;
 const MODEL_RESPONSE_SCHEMA_VERSION = 1;
 export const MAX_FORMATTED_JSON_CHARS = 2 * 1024 * 1024;
 export const RAW_PAGE_CHARS = 64 * 1024;
@@ -29,11 +30,29 @@ function count(value: unknown): number | undefined {
 }
 export function prettyJson(value: unknown): string { return JSON.stringify(value, null, JSON_INDENT) ?? "null"; }
 
+/** Bound later recursive stringification without counting brackets inside JSON strings. */
+function exceedsFormattingDepth(content: string): boolean {
+  let depth = 0;
+  let quoted = false;
+  let escaped = false;
+  for (const character of content) {
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === '"') quoted = false;
+    } else if (character === '"') quoted = true;
+    else if (character === "[" || character === "{") {
+      if (++depth > MAX_FORMATTED_JSON_DEPTH) return true;
+    } else if (character === "]" || character === "}") depth--;
+  }
+  return false;
+}
+
 /** Never decode media or fetch embedded URLs. Unrecognized/partial bodies retain a raw view. */
 export function parseDebugBody(body: DebugBody | null): ParsedBody {
   if (!body) return { status: "empty" };
   if (body.encoding !== "UTF8" && body.encoding !== "MULTIPART_JSON") return { status: "unsupported" };
-  if (body.content.length > MAX_FORMATTED_JSON_CHARS) return { status: "large" };
+  if (body.content.length > MAX_FORMATTED_JSON_CHARS || exceedsFormattingDepth(body.content)) return { status: "large" };
   try { return { status: "json", value: JSON.parse(body.content) as unknown }; }
   catch { return { status: "invalid" }; }
 }
@@ -43,7 +62,9 @@ function toolCall(value: unknown): LogToolCall {
   const fn = object(call.function);
   let args: unknown = Object.hasOwn(fn, "arguments") ? fn.arguments : call.arguments;
   if (typeof args === "string") {
-    try { args = JSON.parse(args) as unknown; } catch { /* Preserve malformed provider arguments verbatim. */ }
+    const parsed = parseDebugBody({ content: args, encoding: "UTF8", truncated: false });
+    // Nested JSON strings have their own budget; malformed or deep arguments remain verbatim.
+    if (parsed.status === "json") args = parsed.value;
   }
   return { id: text(call.id), name: text(fn.name) ?? text(call.name) ?? "tool", arguments: args };
 }

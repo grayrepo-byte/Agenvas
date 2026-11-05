@@ -19,6 +19,7 @@ public class IdentityService {
 
     /** BCrypt 实际处理的 UTF-8 字节上限，避免长密码被算法静默截断。 */
     private static final int BCRYPT_MAX_BYTES = 72;
+    private static final String BCRYPT_HASH_PREFIX = "{bcrypt}";
 
     /** 创建账户并锁定初始化流程，防止并发创建多个初始管理员。 */
     private final AdminAccountRepository accounts;
@@ -79,7 +80,7 @@ public class IdentityService {
                         ApiMessage.of("api.identity-service.login-has-expired"),
                         ApiMessage.of("api.identity-service.the-current-administrator-account-is-unavailable-please-log-in-again"),
                         false));
-        if (!passwordEncoder.matches(currentPassword, account.passwordHash())) {
+        if (!canVerifyPassword(currentPassword, account.passwordHash()) || !passwordEncoder.matches(currentPassword, account.passwordHash())) {
             throw new ApiProblemException(
                     HttpStatus.UNAUTHORIZED,
                     "CURRENT_PASSWORD_INVALID",
@@ -115,12 +116,21 @@ public class IdentityService {
         return loginName.trim().toLowerCase(Locale.ROOT);
     }
 
+    /** Reject BCrypt truncation without blocking supported legacy algorithms that verify the full input. */
+    public static boolean canVerifyPassword(String password, String encodedPassword) {
+        return password != null && (!encodedPassword.startsWith(BCRYPT_HASH_PREFIX) || isPasswordWithinByteLimit(password));
+    }
+
+    private static boolean isPasswordWithinByteLimit(String password) {
+        return password != null && password.getBytes(StandardCharsets.UTF_8).length <= BCRYPT_MAX_BYTES;
+    }
+
     /** 限制密码字符长度和 UTF-8 字节数，避免 BCrypt 截断产生等价密码。 */
     private void validatePassword(String password) {
         if (password == null || password.length() < 12 || password.length() > 128) {
             throw validationProblem(ApiMessage.of("api.identity-service.password-must-be-12-to-128-characters"));
         }
-        if (password.getBytes(StandardCharsets.UTF_8).length > BCRYPT_MAX_BYTES) {
+        if (!isPasswordWithinByteLimit(password)) {
             throw new ApiProblemException(
                     HttpStatus.BAD_REQUEST,
                     "VALIDATION_ERROR",

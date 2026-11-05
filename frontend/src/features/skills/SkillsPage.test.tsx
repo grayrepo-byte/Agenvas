@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { cleanup,fireEvent,render,screen,waitFor,within } from "@testing-library/react";
+import { act,cleanup,fireEvent,render,screen,waitFor,within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http,HttpResponse } from "msw";
 import { MemoryRouter,Route,Routes,useLocation } from "react-router";
@@ -7,6 +7,9 @@ import { afterEach,beforeEach,describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { CreativeSkill,LibraryEntry,SkillDraft,SkillVersion,SaveSkillDraftRequest } from "../../shared/api/client";
 import { server } from "../../test/server";
+import { selectValue } from "../../test/controls";
+import { packagedSkills,packagedSkillVersions } from "../../test/builtinSkills";
+import { setLocale,t } from "../../shared/i18n";
 import { SkillsPage } from "./SkillsPage";
 
 const SKILL_ID="skill-1",VERSION_ID="skill-version-1",NOW="2026-10-02T00:00:00Z";
@@ -25,6 +28,42 @@ beforeEach(()=>{server.use(
   http.get(`/api/v1/skills/${SKILL_ID}/versions/${VERSION_ID}`,()=>HttpResponse.json(VERSION)),
 );});
 afterEach(()=>{cleanup();vi.restoreAllMocks();});
+it("localizes installed Skill metadata while preserving personal labels and packaged source",async()=>{
+  setLocale("en");
+  const personal={...packagedSkills[0]!,id:"personal-copy",builtin:false,builtinSource:null,currentVersionId:null};
+  const builtin=packagedSkills[0]!,version=packagedSkillVersions[0]!;
+  server.use(http.get("/api/v1/skills",()=>HttpResponse.json({items:[...packagedSkills,personal],nextCursor:null,total:18})),
+    http.get(`/api/v1/skills/${builtin.id}/versions/${version.id}`,()=>HttpResponse.json(version)));
+  mount();
+  await screen.findByRole("button",{name:"Visual asset design · short-drama-assets"});
+  const list=document.querySelector(".skills-list")!;
+  expect(list.querySelectorAll(".skills-list-item")).toHaveLength(18);
+  const builtinButtons=Array.from(list.querySelectorAll(".skills-list-item")).slice(0,17);
+  for(const button of builtinButtons)expect(button.textContent).not.toMatch(/\p{Script=Han}/u);
+  expect(within(list as HTMLElement).getByRole("button",{name:personal.title})).toBeVisible();
+  await userEvent.click(screen.getByRole("button",{name:"Visual asset design · short-drama-assets"}));
+  expect(await screen.findByText(/# 原始 Skill 正文/)).toHaveTextContent("保持原文与 runtime_name。");
+  expect(screen.getByText(version.resources[0]!.path)).toBeInTheDocument();
+  act(()=>{setLocale("ru");});
+  expect(await screen.findByRole("button",{name:"Визуальные материалы · short-drama-assets"})).toBeVisible();
+  expect(screen.getByText(/# 原始 Skill 正文/)).toBeInTheDocument();
+});
+it("refetches catalogue search in the new language while retaining the search draft",async()=>{
+  setLocale("en");
+  const requests:{language:string|null;query:string|null}[]=[];
+  server.use(http.get("/api/v1/skills",({request})=>{
+    requests.push({language:request.headers.get("Accept-Language"),query:new URL(request.url).searchParams.get("query")});
+    return HttpResponse.json({items:packagedSkills,nextCursor:null,total:17});
+  }));
+  mount();
+  const search=await screen.findByRole("textbox",{name:t("skills.search")});
+  fireEvent.change(search,{target:{value:"design"}});
+  await waitFor(()=>expect(requests).toContainEqual({language:"en",query:"design"}));
+  act(()=>{setLocale("ja");});
+  await waitFor(()=>expect(requests).toContainEqual({language:"ja",query:"design"}));
+  expect(screen.getByRole("textbox",{name:t("skills.search")})).toBe(search);
+  expect(search).toHaveValue("design");
+});
 it("shows builtin content read-only with attribution and permits trying its fixed version",async()=>{
   const builtin:CreativeSkill={...SKILL,title:"分集剧本 · short-drama-write",builtin:true,category:"STORY",builtinSource:{name:"Drama Skills",repository:"https://github.com/zenstory-ai/drama-skills",revision:"synthetic-revision",license:"MIT",licenseUrl:"https://github.com/zenstory-ai/drama-skills/blob/synthetic-revision/LICENSE"}};let draftReads=0;
   server.use(http.get("/api/v1/skills",()=>HttpResponse.json({items:[builtin],nextCursor:null,total:1})),
@@ -43,6 +82,153 @@ it("shows builtin content read-only with attribution and permits trying its fixe
 });
 async function openEditor(){mount();await userEvent.click(await screen.findByRole("button",{name:"温暖手绘"}));return screen.findByRole("textbox",{name:"Skill 正文"});}
 describe("Skill editing and publishing",()=>{
+  it("adds distinct input aliases and resource paths after deleting earlier entries",async()=>{
+    const submitted:SaveSkillDraftRequest[]=[];
+    server.use(http.put(`/api/v1/skills/${SKILL_ID}/draft`,async({request})=>{
+      const saved=await request.json() as SaveSkillDraftRequest;submitted.push(saved);
+      return HttpResponse.json({...INITIAL,...saved,version:saved.expectedVersion+1});
+    }));
+    await openEditor();
+    await userEvent.click(screen.getByRole("button",{name:t("skills.inputAdd")}));
+    await userEvent.click(screen.getByRole("button",{name:t("skills.inputAdd")}));
+    await userEvent.click(screen.getAllByRole("button",{name:t("skills.remove")})[0]!);
+    await userEvent.click(screen.getByRole("button",{name:t("skills.inputAdd")}));
+    expect(screen.getAllByRole("textbox",{name:t("skills.alias")}).map((input)=>(input as HTMLInputElement).value).sort()).toEqual(["subject-1","subject-2"]);
+    await userEvent.click(screen.getByRole("tab",{name:t("skills.resources")}));
+    await userEvent.click(screen.getByRole("button",{name:t("skills.resourceAdd")}));
+    await userEvent.click(screen.getByRole("button",{name:t("skills.resourceAdd")}));
+    await userEvent.click(screen.getAllByRole("button",{name:t("skills.remove")})[0]!);
+    await userEvent.click(screen.getByRole("button",{name:t("skills.resourceAdd")}));
+    expect(screen.getAllByRole("textbox",{name:t("skills.resourcePath")}).map((input)=>(input as HTMLInputElement).value).sort()).toEqual(["references/resource-1.md","references/resource-2.md"]);
+    await userEvent.click(screen.getByRole("button",{name:t("skills.save")}));
+    await waitFor(()=>expect(submitted.at(-1)).toEqual(expect.objectContaining({
+      inputSlots:expect.arrayContaining([expect.objectContaining({alias:"subject-1"}),expect.objectContaining({alias:"subject-2"})]),
+      resources:expect.arrayContaining([expect.objectContaining({path:"references/resource-1.md"}),expect.objectContaining({path:"references/resource-2.md"})])
+    })));
+  });
+  it("keeps newer document edits and both attachments when file reads finish out of order",async()=>{
+    const submitted:SaveSkillDraftRequest[]=[];
+    server.use(http.put(`/api/v1/skills/${SKILL_ID}/draft`,async({request})=>{
+      const saved=await request.json() as SaveSkillDraftRequest;submitted.push(saved);
+      return HttpResponse.json({...INITIAL,...saved,version:saved.expectedVersion+1});
+    }));
+    await openEditor();
+    await userEvent.click(screen.getByRole("tab",{name:"资源附件"}));
+    const upload=screen.getByLabelText(t("skills.resourceAdd"),{selector:"input"});
+    let finishFirst!:(value:ArrayBuffer)=>void,finishSecond!:(value:ArrayBuffer)=>void;
+    const first=new File([],"first.md",{type:"text/markdown"}),second=new File([],"second.txt",{type:"text/plain"});
+    Object.defineProperty(first,"arrayBuffer",{value:()=>new Promise<ArrayBuffer>((resolve)=>{finishFirst=resolve;})});
+    Object.defineProperty(second,"arrayBuffer",{value:()=>new Promise<ArrayBuffer>((resolve)=>{finishSecond=resolve;})});
+    await userEvent.upload(upload,first);await userEvent.upload(upload,second);
+    expect(screen.getByRole("button",{name:t("skills.publish")})).toBeDisabled();
+    expect(screen.getByRole("button",{name:t("skills.moveToTrash")})).toBeDisabled();
+    await userEvent.click(screen.getByRole("tab",{name:"SKILL.md"}));
+    const body=screen.getByRole("textbox",{name:"Skill 正文"});
+    fireEvent.change(body,{target:{value:INITIAL.skillMd+"\nKeep this newer thought"}});
+    await act(async()=>{finishSecond(new TextEncoder().encode("Second reference").buffer);});
+    await act(async()=>{finishFirst(new TextEncoder().encode("First reference").buffer);});
+    expect(body).toHaveValue(INITIAL.skillMd+"\nKeep this newer thought");
+    await userEvent.click(screen.getByRole("tab",{name:"资源附件"}));
+    expect(screen.getByDisplayValue("references/first.md")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("references/second.txt")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button",{name:"保存草稿"}));
+    await waitFor(()=>expect(submitted.at(-1)).toEqual(expect.objectContaining({skillMd:INITIAL.skillMd+"\nKeep this newer thought",
+      resources:expect.arrayContaining([{path:"references/first.md",content:"First reference"},{path:"references/second.txt",content:"Second reference"}])})));
+  });
+  it("keeps replacement draft fields unchanged while copying a published version",async()=>{
+    let finishCopy!:()=>void;
+    const copying=new Promise<void>((resolve)=>{finishCopy=resolve;});
+    const copied={...INITIAL,version:2,skillMd:INITIAL.skillMd+"\nCopied version"};
+    server.use(http.post(`/api/v1/skills/${SKILL_ID}/versions/${VERSION_ID}/copy`,async()=>{await copying;return HttpResponse.json(copied);}));
+    const body=await openEditor();
+    await selectValue(screen.getByRole("combobox",{name:"发布版本"}),VERSION_ID);
+    await userEvent.click(await screen.findByRole("button",{name:t("skills.copy")}));
+    expect(body).toBeDisabled();
+    expect(document.getElementById(`skill-title-${SKILL_ID}`)).toHaveAttribute("readonly");
+    await userEvent.type(body,"This input must wait");expect(body).toHaveValue(INITIAL.skillMd);
+    finishCopy();
+    await waitFor(()=>expect(body).toHaveValue(copied.skillMd));
+    expect(body).not.toBeDisabled();
+    await userEvent.type(body,"\nAfter copy");
+    expect(body).toHaveValue(copied.skillMd+"\nAfter copy");
+  });
+  it("restores editing and retains the existing draft after copying fails",async()=>{
+    let finishCopy!:()=>void;
+    const copying=new Promise<void>((resolve)=>{finishCopy=resolve;});
+    server.use(http.post(`/api/v1/skills/${SKILL_ID}/versions/${VERSION_ID}/copy`,async()=>{
+      await copying;return HttpResponse.json({status:409,code:"VERSION_CONFLICT",detail:"Synthetic draft conflict"},{status:409});
+    }));
+    const body=await openEditor();await selectValue(screen.getByRole("combobox",{name:t("skills.versions")}),VERSION_ID);
+    await userEvent.click(await screen.findByRole("button",{name:t("skills.copy")}));
+    expect(body).toBeDisabled();finishCopy();
+    await waitFor(()=>expect(body).not.toBeDisabled());expect(body).toHaveValue(INITIAL.skillMd);
+    expect(document.getElementById(`skill-title-${SKILL_ID}`)).not.toHaveAttribute("readonly");
+    expect(screen.getByText(t("skills.conflict"))).toBeInTheDocument();
+    await userEvent.type(body,"\nRetained after failure");expect(body).toHaveValue(INITIAL.skillMd+"\nRetained after failure");
+  });
+  it("reserves the final attachment slot while reading and releases it after an invalid file",async()=>{
+    const resources=Array.from({length:7},(_,index)=>({path:`references/resource-${index+1}.md`,content:"Existing reference"}));
+    server.use(http.get(`/api/v1/skills/${SKILL_ID}/draft`,()=>HttpResponse.json({...INITIAL,resources})));
+    await openEditor();await userEvent.click(screen.getByRole("tab",{name:t("skills.resources")}));
+    const upload=screen.getByLabelText(t("skills.resourceAdd"),{selector:"input"});
+    let finishRead!:(value:ArrayBuffer)=>void;
+    const invalid=new File([],"broken.md",{type:"text/markdown"});
+    Object.defineProperty(invalid,"arrayBuffer",{value:()=>new Promise<ArrayBuffer>((resolve)=>{finishRead=resolve;})});
+    await userEvent.upload(upload,invalid);
+    expect(upload).toBeDisabled();expect(screen.getByRole("button",{name:t("skills.resourceAdd")})).toBeDisabled();
+    await act(async()=>{finishRead(new Uint8Array([0xff]).buffer);});
+    expect(upload).not.toBeDisabled();expect(screen.getByRole("button",{name:t("skills.publish")})).not.toBeDisabled();
+    expect(document.querySelector(".skills-personal-editor [role=alert]")).toBeInTheDocument();
+    expect(screen.getAllByRole("textbox",{name:t("skills.resourcePath")})).toHaveLength(7);
+    await userEvent.click(screen.getByRole("button",{name:t("skills.resourceAdd")}));
+    expect(screen.getByDisplayValue("references/resource-8.md")).toBeInTheDocument();expect(upload).toBeDisabled();
+  });
+  it.each(["manual resource","same-name upload"])("keeps distinct paths when a pending upload meets a %s",async(other)=>{
+    const submitted:SaveSkillDraftRequest[]=[];
+    server.use(http.put(`/api/v1/skills/${SKILL_ID}/draft`,async({request})=>{
+      const saved=await request.json() as SaveSkillDraftRequest;submitted.push(saved);return HttpResponse.json({...INITIAL,...saved,version:saved.expectedVersion+1});
+    }));
+    await openEditor();await userEvent.click(screen.getByRole("tab",{name:t("skills.resources")}));
+    const upload=screen.getByLabelText(t("skills.resourceAdd"),{selector:"input"});
+    let finishRead!:(value:ArrayBuffer)=>void;
+    const slow=new File([],"resource-1.md",{type:"text/markdown"});
+    Object.defineProperty(slow,"arrayBuffer",{value:()=>new Promise<ArrayBuffer>((resolve)=>{finishRead=resolve;})});
+    await userEvent.upload(upload,slow);
+    if(other==="manual resource") {
+      await userEvent.click(screen.getByRole("button",{name:t("skills.resourceAdd")}));
+      fireEvent.change(screen.getByRole("textbox",{name:t("skills.resourceText")}),{target:{value:"Other reference"}});
+    } else {
+      const fast=new File([],"resource-1.md",{type:"text/markdown"});
+      Object.defineProperty(fast,"arrayBuffer",{value:async()=>new TextEncoder().encode("Other reference").buffer});
+      await userEvent.upload(upload,fast);
+    }
+    await act(async()=>{finishRead(new TextEncoder().encode("Slow reference").buffer);});
+    expect(screen.getAllByRole("textbox",{name:t("skills.resourcePath")}).map((input)=>(input as HTMLInputElement).value).sort())
+      .toEqual(["references/resource-1-1.md","references/resource-1.md"]);
+    await userEvent.click(screen.getByRole("button",{name:t("skills.save")}));
+    await waitFor(()=>expect(submitted.at(-1)?.resources).toEqual([
+      {path:"references/resource-1.md",content:"Other reference"},{path:"references/resource-1-1.md",content:"Slow reference"}
+    ]));
+  });
+  it("allocates aliases across both input and fixed asset namespaces",async()=>{
+    const reference:LibraryEntry={id:"library-image",name:"水彩风格参考",category:"OTHER",kind:"IMAGE",textContent:null,contentType:"image/png",byteSize:120,
+      width:8,height:8,durationMs:null,hasThumbnail:false,source:{},favorite:false,trashedAt:null,version:7,createdAt:NOW,updatedAt:NOW};
+    const initial={...INITIAL,inputSlots:[{alias:"reference-1",kind:"IMAGE",required:true}],assets:[{alias:"subject-1",libraryEntryId:reference.id,expectedLibraryVersion:7,usage:"GUIDE",required:true,purpose:"Existing reference"}]};
+    const submitted:SaveSkillDraftRequest[]=[];
+    server.use(http.get(`/api/v1/skills/${SKILL_ID}/draft`,()=>HttpResponse.json(initial)),
+      http.get("/api/v1/library/entries",()=>HttpResponse.json({items:[reference],nextCursor:null,total:1})),
+      http.put(`/api/v1/skills/${SKILL_ID}/draft`,async({request})=>{
+        const saved=await request.json() as SaveSkillDraftRequest;submitted.push(saved);return HttpResponse.json({...INITIAL,...saved,version:saved.expectedVersion+1});
+      }));
+    await openEditor();await userEvent.click(screen.getByRole("button",{name:t("skills.inputAdd")}));
+    expect(screen.getByDisplayValue("subject-2")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab",{name:t("skills.assets")}));
+    await userEvent.click(screen.getByRole("button",{name:t("skills.assetAdd")}));
+    await userEvent.click(await screen.findByRole("button",{name:t("library.browser.referenceNamed",{"0":reference.name})}));
+    expect(screen.getByDisplayValue("reference-2")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button",{name:t("skills.save")}));
+    await waitFor(()=>expect(submitted.at(-1)?.assets).toContainEqual(expect.objectContaining({alias:"reference-2",libraryEntryId:reference.id})));
+  });
   it("filters the catalogue on the server while retaining an opened personal draft",async()=>{
     const story:CreativeSkill={...SKILL,id:"story",title:"短剧方法",builtin:true,category:"STORY"};
     const ad:CreativeSkill={...SKILL,id:"ad",title:"品牌宣传",builtin:true,category:"ADVERTISING"};
@@ -190,7 +376,7 @@ describe("Skill editing and publishing",()=>{
   it("opens the project director with a fixed Skill version without selecting an Agent or submitting a Run",async()=>{
     const run=vi.fn();server.use(http.post("/api/v1/projects/:id/runs",()=>{run();return HttpResponse.json({});}),
       http.get("/api/v1/projects",()=>HttpResponse.json({items:[{id:"project-1",name:"Mock canvas",status:"ACTIVE"}],nextCursor:null})));
-    await openEditor();const native=screen.getByRole("option",{name:"版本 1",hidden:true}).closest("select");expect(native).not.toBeNull();fireEvent.change(native!,{target:{value:VERSION_ID}});
+    await openEditor();await selectValue(screen.getByRole("combobox",{name:"发布版本"}),VERSION_ID);
     await userEvent.click(await screen.findByRole("button",{name:"在导演中试用"}));
     const project=screen.getByRole("combobox",{name:"项目"});await userEvent.click(project);await userEvent.click(await screen.findByRole("option",{name:"Mock canvas"}));
     expect(within(screen.getByRole("dialog",{name:"在导演中试用"})).getAllByRole("combobox")).toHaveLength(1);

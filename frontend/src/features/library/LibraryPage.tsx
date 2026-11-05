@@ -8,7 +8,7 @@ deleteLibraryEntry,getLibraryEntry,importLibraryEntry,libraryContentUrl,listProj
 type ImportLibraryRequest,type LibraryCategory,type LibraryEntry
 } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
-import { isAudioFile,MEDIA_FILE_ACCEPT } from "../../shared/mediaFiles";
+import { isAudioFile,isVideoFile,MEDIA_FILE_ACCEPT } from "../../shared/mediaFiles";
 import { Dialog } from "../../shared/ui/Dialog";
 import { PageShell } from "../../shared/ui/PageShell";
 import { Notice } from "../../shared/ui/PagePrimitives";
@@ -109,7 +109,7 @@ function UploadWindow({ onClose }: { onClose: () => void }) {
   const done = transfer.data?.status === "SUCCEEDED";
   return <Dialog className="library-upload-dialog" title={t("library.page.upload")} onClose={() => { void client.invalidateQueries({ queryKey: ["library"] }); onClose(); }} busy={transfer.working}
     onSubmit={(event) => { event.preventDefault(); if (file) transfer.start({ file, name: name.trim(), category,
-      kind: isAudioFile(file) ? "AUDIO" : file.type === "video/mp4" ? "VIDEO" : "IMAGE" }); }}
+      kind: isAudioFile(file) ? "AUDIO" : isVideoFile(file) ? "VIDEO" : "IMAGE" }); }}
     footer={<><Button variant="outline"  type="button" disabled={transfer.working} onClick={() => { void client.invalidateQueries({ queryKey: ["library"] }); onClose(); }}>{done ? t("common.done") : t("common.cancel")}</Button>
       <Button variant="default"  type="submit" disabled={!file || !name.trim() || transfer.working || done}>{t("library.page.uploadAndSave")}</Button></>}>
     <div className="library-upload-guidance"><UploadSimple size={24} aria-hidden /><p>{t("library.page.uploadLimitsHint")}</p></div>

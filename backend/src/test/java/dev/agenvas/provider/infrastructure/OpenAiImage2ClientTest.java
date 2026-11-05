@@ -46,6 +46,86 @@ class OpenAiImage2ClientTest {
         server.stop(0);
     }
 
+    @org.junit.jupiter.params.provider.NullSource
+    @ParameterizedTest @ValueSource(strings = {"auto", "low"})
+    void sendsExplicitModerationOnAllThreeTransportsAndPreservesLegacyOmission(String moderation) throws Exception {
+        var generated = new java.util.concurrent.atomic.AtomicReference<tools.jackson.databind.JsonNode>();
+        var urlEdited = new java.util.concurrent.atomic.AtomicReference<tools.jackson.databind.JsonNode>();
+        var fileEdited = new java.util.concurrent.atomic.AtomicReference<String>();
+        String response = "{\"data\":[{\"b64_json\":\"iVBORw0KGgo=\"}]}";
+        server.createContext("/v1/images/generations", exchange -> {
+            generated.set(mapper.readTree(exchange.getRequestBody().readAllBytes()));
+            respond(exchange, 200, response);
+        });
+        server.createContext("/v1/images/edits", exchange -> {
+            byte[] body = exchange.getRequestBody().readAllBytes();
+            if (exchange.getRequestHeaders().getFirst("Content-Type").startsWith("application/json")) urlEdited.set(mapper.readTree(body));
+            else fileEdited.set(new String(body, StandardCharsets.UTF_8));
+            respond(exchange, 200, response);
+        });
+        String origin = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1";
+        try (var image = client.generate("synthetic-key", "gpt-image-2.5-sunburst", "Synthetic scene", "high", "1024x1024", false, origin,
+                new dev.agenvas.provider.domain.OpenAiImageOptions("png", null, 0, 0, moderation));
+             var edit = client.edit("synthetic-key", "gpt-image-2.5-sunburst", "Synthetic edit", "high", "1024x1024",
+                     List.of(new byte[] {1}), null, false, origin, null, moderation);
+             var url = client.editUrls("synthetic-key", "gpt-image-2.5-sunburst", "Synthetic edit", "high", "1024x1024",
+                     List.of("https://example.com/image.png"), null, false, origin, null, moderation)) {
+            assertThat(image.declaredContentType()).isEqualTo("image/png");
+            assertThat(edit.declaredContentType()).isEqualTo("image/png");
+            assertThat(url.declaredContentType()).isEqualTo("image/png");
+        }
+        if (moderation == null) {
+            assertThat(generated.get().has("moderation")).isFalse();
+            assertThat(urlEdited.get().has("moderation")).isFalse();
+            assertThat(fileEdited.get()).doesNotContain("name=\"moderation\"");
+        } else {
+            assertThat(generated.get().path("moderation").asText()).isEqualTo(moderation);
+            assertThat(urlEdited.get().path("moderation").asText()).isEqualTo(moderation);
+            assertThat(fileEdited.get()).contains("name=\"moderation\"", "\r\n\r\n" + moderation + "\r\n");
+        }
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"gpt-image-2.6-flare", "gpt-image-2.6-sunburst"})
+    void generatesAnAnimationWithExplicitFrameOptionsAndRetainsItsBytesAndUsage(String model) throws Exception {
+        byte[] gif = dev.agenvas.testing.GifFixture.animation(2);
+        var received = new java.util.concurrent.atomic.AtomicReference<tools.jackson.databind.JsonNode>();
+        AtomicInteger submissions = new AtomicInteger();
+        server.createContext("/v1/images/generations", exchange -> {
+            submissions.incrementAndGet();
+            received.set(mapper.readTree(exchange.getRequestBody().readAllBytes()));
+            respond(exchange, 200, "{\"data\":[{\"b64_json\":\"" + Base64.getEncoder().encodeToString(gif)
+                    + "\"}],\"usage\":{\"input_tokens\":100,\"output_tokens\":400,\"input_tokens_details\":{\"text_tokens\":100,\"image_tokens\":0}}}");
+        });
+        try (var result = client.generate("synthetic-key", model, "Looping synthetic colors", "xhigh", "auto", false,
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/v1",
+                new dev.agenvas.provider.domain.OpenAiImageOptions("gif", "medium", 2, 200))) {
+            assertThat(result.declaredContentType()).isEqualTo("image/gif");
+            assertThat(result.stream().readAllBytes()).isEqualTo(gif);
+            assertThat(result.providerMetadata().at("/imageTokenUsage/outputTokens").asInt()).isEqualTo(400);
+        }
+        assertThat(received.get().path("model").asText()).isEqualTo(model);
+        assertThat(received.get().path("output_format").asText()).isEqualTo("gif");
+        assertThat(received.get().path("frame_count").asInt()).isEqualTo(2);
+        assertThat(received.get().path("frame_duration_ms").asInt()).isEqualTo(200);
+        assertThat(received.get().path("complexity").asText()).isEqualTo("medium");
+        assertThat(received.get().has("output_compression")).isFalse();
+        assertThat(received.get().has("stream")).isFalse();
+        assertThat(submissions).hasValue(1);
+    }
+
+    @Test void aStaticResponseToAnAnimationRequestIsUnknownAndNeverRegenerated() {
+        AtomicInteger submissions = new AtomicInteger();
+        server.createContext("/v1/images/generations", exchange -> {
+            submissions.incrementAndGet();
+            respond(exchange, 200, "{\"data\":[{\"b64_json\":\"iVBORw0KGgo=\"}]}");
+        });
+        assertThatThrownBy(() -> client.generate("synthetic-key", "gpt-image-2.6-flare", "test", "medium", "auto", false,
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/v1",
+                new dev.agenvas.provider.domain.OpenAiImageOptions("gif", null, 9, 200)))
+                .isInstanceOfSatisfying(OpenAiImage2Client.Uncertain.class, error -> assertThat(error.reasonCode()).isEqualTo(ProviderFailureCodes.PROTOCOL_INVALID));
+        assertThat(submissions).hasValue(1);
+    }
+
     @Test void urlEditsUseOrderedJsonReferencesAndMaskWithoutUploadingFiles() throws Exception {
         var received = new java.util.concurrent.atomic.AtomicReference<tools.jackson.databind.JsonNode>();
         server.createContext("/v1/images/edits", exchange -> {
@@ -54,13 +134,72 @@ class OpenAiImage2ClientTest {
             respond(exchange, 200, "{\"data\":[{\"b64_json\":\"" + Base64.getEncoder().encodeToString(new byte[] {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10}) + "\"}]}");
         });
         try (var result = client.editUrls("synthetic-key", "gpt-image-2", "Synthetic edit", "high", "1024x1024",
-                List.of("https://example.com/first.png", "https://example.com/second.png"), "https://example.com/mask.png", true, "http://127.0.0.1:" + server.getAddress().getPort() + "/v1")) {
+                List.of("http://example.com/first.png", "https://example.com/second.png"), "https://example.com/mask.png", true, "http://127.0.0.1:" + server.getAddress().getPort() + "/v1")) {
             assertThat(result.declaredContentType()).isEqualTo("image/png");
         }
-        assertThat(received.get().at("/images/0/image_url").asText()).isEqualTo("https://example.com/first.png");
+        assertThat(received.get().at("/images/0/image_url").asText()).isEqualTo("http://example.com/first.png");
         assertThat(received.get().at("/images/1/image_url").asText()).isEqualTo("https://example.com/second.png");
         assertThat(received.get().at("/mask/image_url").asText()).isEqualTo("https://example.com/mask.png");
         assertThat(received.get().path("background").asText()).isEqualTo("transparent");
+    }
+
+    @Test
+    void capturesOnlyReportedImageUsageForGenerationAndBothEditTransports() throws IOException {
+        String png = Base64.getEncoder().encodeToString(new byte[] {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10});
+        String response = "{\"data\":[{\"b64_json\":\"" + png + "\"}],\"usage\":{\"input_tokens\":30,"
+                + "\"input_tokens_details\":{\"text_tokens\":10,\"image_tokens\":20},\"output_tokens\":40,"
+                + "\"total_tokens\":70,\"secret\":\"never retain\"}}";
+        server.createContext("/v1/images/generations", exchange -> respond(exchange, 200, response));
+        server.createContext("/v1/images/edits", exchange -> respond(exchange, 200, response));
+        String origin = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1";
+        try (var generated = client.generate("synthetic-key", "gpt-image-2", "test", "medium", "1024x1024", origin);
+                var edited = client.edit("synthetic-key", "gpt-image-2", "test", "medium", "1024x1024", List.of(new byte[]{1}), origin);
+                var urlEdit = client.editUrls("synthetic-key", "gpt-image-2", "test", "medium", "1024x1024",
+                        List.of("https://example.com/image.png"), null, false, origin)) {
+            for (var result : List.of(generated, edited, urlEdit)) {
+                assertThat(result.providerMetadata()).isNotNull();
+                var usage = result.providerMetadata().path("imageTokenUsage");
+                assertThat(usage.path("textInputTokens").asInt()).isEqualTo(10);
+                assertThat(usage.path("imageInputTokens").asInt()).isEqualTo(20);
+                assertThat(usage.path("outputTokens").asInt()).isEqualTo(40);
+                assertThat(usage.path("cachedInputTokens").isNull()).isTrue();
+                assertThat(usage.has("secret")).isFalse();
+            }
+        }
+    }
+
+    @Test
+    void malformedOptionalUsageContainersCannotMasqueradeAsUnreportedDetails() throws IOException {
+        var responseBody = new java.util.concurrent.atomic.AtomicReference<String>();
+        server.createContext("/v1/images/generations", exchange -> respond(exchange, 200, responseBody.get()));
+        String png = Base64.getEncoder().encodeToString(new byte[] {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10});
+        for (String details : List.of("\"invalid\"", "[]", "true", "1")) {
+            for (String optional : List.of(
+                    "\"input_tokens_details\":{\"text_tokens\":10,\"image_tokens\":20},\"output_tokens_details\":" + details,
+                    "\"input_tokens_details\":{\"text_tokens\":10,\"image_tokens\":20,\"cached_tokens_details\":" + details + "}")) {
+                responseBody.set("{\"data\":[{\"b64_json\":\"" + png + "\"}],\"usage\":{\"input_tokens\":30,\"output_tokens\":40," + optional + "}}");
+                try (var result = client.generate("synthetic-key", "gpt-image-2", "test", "medium", "1024x1024",
+                        "http://127.0.0.1:" + server.getAddress().getPort() + "/v1")) {
+                    assertThat(result.providerMetadata().at("/imageTokenUsage/valid").asBoolean()).isFalse();
+                }
+            }
+        }
+    }
+
+    @Test
+    void invalidReportedCountsRemainUnknownWithoutLosingTheImage() throws IOException {
+        var responseBody = new java.util.concurrent.atomic.AtomicReference<String>();
+        server.createContext("/v1/images/generations", exchange -> respond(exchange, 200, responseBody.get()));
+        String png = Base64.getEncoder().encodeToString(new byte[] {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10});
+        for (String count : List.of("-1", "2147483648", "1.5", "\"30\"", "true")) {
+            responseBody.set("{\"data\":[{\"b64_json\":\"" + png + "\"}],\"usage\":{\"input_tokens\":" + count + ",\"output_tokens\":40}}");
+            try (var result = client.generate("synthetic-key", "gpt-image-2", "test", "medium", "1024x1024",
+                    "http://127.0.0.1:" + server.getAddress().getPort() + "/v1")) {
+                assertThat(result.providerMetadata().at("/imageTokenUsage/inputTokens").isNull()).isTrue();
+                assertThat(result.providerMetadata().at("/imageTokenUsage/valid").asBoolean()).isFalse();
+                assertThat(result.stream().readAllBytes()).isNotEmpty();
+            }
+        }
     }
 
     @Test
@@ -382,6 +521,56 @@ class OpenAiImage2ClientTest {
         assertThatThrownBy(() -> client.generate("fake-secret", OpenAiImage2Client.DEFAULT_MODEL, "ridge", "low",
                 "1024x1024", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1")).isInstanceOf(OpenAiImage2Client.Uncertain.class);
         assertThat(redirected).hasValue(0);
+    }
+
+    @Test
+    void queryOnlyResultRedirectPreservesTheFilePath() throws IOException {
+        String origin = "http://127.0.0.1:" + server.getAddress().getPort();
+        AtomicInteger downloaded = new AtomicInteger();
+        server.createContext("/v1/images/generations", exchange -> respond(exchange, 200,
+                "{\"data\":[{\"url\":\"" + origin + "/results/image.png?old=1\"}]}"));
+        server.createContext("/results/image.png", exchange -> {
+            assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isNull();
+            if ("old=1".equals(exchange.getRequestURI().getRawQuery())) {
+                exchange.getResponseHeaders().set("Location", "?signature=2");
+                exchange.sendResponseHeaders(302, -1); exchange.close();
+            } else {
+                assertThat(exchange.getRequestURI().getRawQuery()).isEqualTo("signature=2");
+                downloaded.incrementAndGet(); respond(exchange, 200, "synthetic-result");
+            }
+        });
+        try (var generated = client.generate("synthetic-key", OpenAiImage2Client.DEFAULT_MODEL,
+                "ridge", "medium", "1024x1024", origin + "/v1")) {
+            assertThat(new String(generated.stream().readAllBytes(), StandardCharsets.UTF_8)).isEqualTo("synthetic-result");
+        }
+        assertThat(downloaded).hasValue(1);
+    }
+
+    @Test
+    void resultUrlsAndRedirectsCannotReachAnotherLocalService() throws IOException {
+        AtomicInteger leaked = new AtomicInteger();
+        HttpServer other = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        other.createContext("/admin", exchange -> { leaked.incrementAndGet(); respond(exchange, 200, "private"); });
+        other.start();
+        String forbidden = "http://127.0.0.1:" + other.getAddress().getPort() + "/admin";
+        String origin = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1";
+        try {
+            server.createContext("/v1/images/generations", exchange -> respond(exchange, 200,
+                    "{\"data\":[{\"url\":\"" + forbidden + "\"}]}"));
+            assertThatThrownBy(() -> client.generate("synthetic-key", OpenAiImage2Client.DEFAULT_MODEL,
+                    "ridge", "medium", "1024x1024", origin)).isInstanceOf(OpenAiImage2Client.Uncertain.class);
+            assertThat(leaked).hasValue(0);
+            server.removeContext("/v1/images/generations");
+            server.createContext("/v1/images/generations", exchange -> respond(exchange, 200,
+                    "{\"data\":[{\"url\":\"" + origin + "/jump\"}]}"));
+            server.createContext("/v1/jump", exchange -> {
+                exchange.getResponseHeaders().set("Location", forbidden);
+                exchange.sendResponseHeaders(302, -1); exchange.close();
+            });
+            assertThatThrownBy(() -> client.generate("synthetic-key", OpenAiImage2Client.DEFAULT_MODEL,
+                    "ridge", "medium", "1024x1024", origin)).isInstanceOf(OpenAiImage2Client.Uncertain.class);
+            assertThat(leaked).hasValue(0);
+        } finally { other.stop(0); }
     }
 
     /** 中转站只回结果 URL（官方 API 回 b64_json），客户端必须去下载它，且不带凭证过去。 */

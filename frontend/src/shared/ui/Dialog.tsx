@@ -29,7 +29,11 @@ export function Dialog({ title, description, children, footer, onClose, onSubmit
         <div><DialogTitle>{title}</DialogTitle>{description ? <DialogDescription id={descriptionId}>{description}</DialogDescription> : null}</div>
         <Button type="button" variant="ghost" size="icon-sm" aria-label={t("ui.dialog.close")} disabled={busy} onClick={onClose}><X /></Button>
       </DialogHeader>
-      <form className="ui-dialog-form" onSubmit={onSubmit}>
+      <form className="ui-dialog-form" onSubmit={(event) => {
+        // Portal events follow the React tree; a child dialog must not submit its parent.
+        event.stopPropagation();
+        if (event.target === event.currentTarget) onSubmit(event);
+      }}>
         <div className="ui-dialog-body">{children}</div>
         {footer ? <DialogFooter className="ui-dialog-footer">{footer}</DialogFooter> : null}
       </form>

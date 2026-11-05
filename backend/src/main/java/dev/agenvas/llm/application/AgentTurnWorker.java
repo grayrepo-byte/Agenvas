@@ -28,8 +28,6 @@ public class AgentTurnWorker {
 
     /** 模型调用或任务失败时只记录安全摘要，不输出提示词、模型响应和工具参数。 */
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentTurnWorker.class);
-    /** 单次模型请求的等待上限；超时会中断调用并把任务交给持久化失败处理。 */
-    private static final Duration MODEL_TIMEOUT = LlmCallTimeouts.REQUEST;
 
     /** 认领模型回合任务并续租的应用服务。 */
     private final TaskService tasks;
@@ -194,8 +192,9 @@ public class AgentTurnWorker {
     /** Retry and restart replay the saved request instead of assembling changed user content. */
     private JsonNode frozenRequest(Task lease, UUID ownerId, int stepIndex, LlmTurn saved, AgentRun run) {
         if (saved != null) return saved.request();
+        LlmTurn previous = null;
         if (stepIndex > 0) {
-            LlmTurn previous = turns.find(lease.projectId(), lease.runId(), stepIndex - 1).orElseThrow();
+            previous = turns.find(lease.projectId(), lease.runId(), stepIndex - 1).orElseThrow();
             if (AgentContextService.isCompaction(previous.request())) {
                 return lease.input().has("repairFromStep") ? context.repair(previous.request())
                         : context.afterCompaction(previous.request(), previous.response());
@@ -204,16 +203,30 @@ public class AgentTurnWorker {
         List<Message> messages = lease.input().has("repairFromStep") ? repairContext.assemble(ownerId, lease)
                 : stepIndex == 0 ? initialContext.assemble(ownerId, lease.projectId(), lease.runId())
                 : conversation.afterToolRound(ownerId, lease.projectId(), lease.runId(), stepIndex - 1);
-        return context.prepare(messages, registry.modelDefinitions(run.policySnapshot()));
+        boolean repairing = lease.input().has("repairFromStep");
+        // Repairs keep the rejected request's exact exposure; a rejected load batch cannot activate tools.
+        var definitions = repairing ? codec.requestTools(java.util.Objects.requireNonNull(previous).request(),
+                RunToolPolicy.allowed(run.policySnapshot()))
+                : previous == null ? registry.initialDefinitions(run.policySnapshot())
+                : registry.continuationDefinitions(run.policySnapshot(), previous.request(), messages, codec);
+        if (!repairing) messages = InitialModelContextService.forTools(run.policySnapshot(), messages,
+                previous == null ? List.of() : codec.requestTools(previous.request(), RunToolPolicy.allowed(run.policySnapshot())), definitions);
+        var selected = new ChatGateway.ConfigIdentity(run.policySnapshot().path("modelConfigSource").asText(),
+                run.policySnapshot().path("modelConfigVersion").asInt());
+        // A repair belongs to the rejected request, including its frozen output reserve.
+        // Old envelopes with no budget keep that legacy shape instead of adopting live settings.
+        LlmRequestBudget budget = lease.input().has("repairFromStep")
+                ? codec.requestBudget(java.util.Objects.requireNonNull(previous).request()) : gateway.requestBudgetFor(selected);
+        return budget == null ? context.prepare(messages, definitions) : context.prepare(messages, definitions, budget);
     }
 
     private JsonNode awaitModelResponse(Task lease, String workerId, UUID ownerId, int stepIndex,
             JsonNode request, List<ToolCallback> definitions, Duration remaining, boolean recorded,
             LeasedModelExecutor.Execution execution) throws Exception {
         // rounds.callLeased 在网络请求两侧提交带租约校验的检查点；这里不持有数据库事务。
-        Duration wait = remaining.compareTo(MODEL_TIMEOUT) < 0 ? remaining : MODEL_TIMEOUT;
+        Duration wait = remaining.compareTo(LlmCallTimeouts.REQUEST) < 0 ? remaining : LlmCallTimeouts.REQUEST;
         // Replaying a saved response is allowed after the retry deadline, without a request.
-        Duration timeout = recorded ? MODEL_TIMEOUT : Duration.ofMillis(Math.max(1, wait.toMillis()));
+        Duration timeout = recorded ? LlmCallTimeouts.REQUEST : Duration.ofMillis(Math.max(1, wait.toMillis()));
         return execution.call(() -> rounds.callLeased(ownerId,
                 lease.projectId(), lease.runId(), stepIndex, request,
                 definitions,
@@ -298,11 +311,15 @@ public class AgentTurnWorker {
      * @return 明确的版本冲突/凭证/配置/超时错误码，或通用的 {@code AGENT_TURN_FAILED}
      */
     static String failureCode(Throwable failure) {
+        if (LlmStreamIncompleteException.matches(failure)) return LlmStreamIncompleteException.ERROR_CODE;
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
             if (cause instanceof AgentContextService.BudgetExceeded) return AgentContextService.BUDGET_EXCEEDED;
+            if (cause instanceof LlmRequestBudget.Failure budget) return budget.getMessage();
+            if (cause instanceof LlmProtocolCodec.OutputTruncated) return LlmProtocolCodec.OUTPUT_TRUNCATED;
             if (cause instanceof ApiProblemException problem
                     && ("CREDENTIAL_KEY_VERSION_MISSING".equals(problem.code())
                             || "LLM_CONFIG_UNAVAILABLE".equals(problem.code())
+                            || LlmStreamIncompleteException.ERROR_CODE.equals(problem.code())
                             // Archived media may be unselected after a draft edit. Preserve
                             // the conflict without exposing exception text or overriding the card.
                             || "ARTIFACT_VERSION_CONFLICT".equals(problem.code())

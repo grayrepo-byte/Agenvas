@@ -41,10 +41,10 @@ class ImageOperationSpecTest {
 
         assertThat(threeView.parameters().path("aspectRatio").asText()).isEqualTo("16:9");
         assertThat(threeView.parameters().path("threeViewType").asText()).isEqualTo("CHARACTER");
-        assertThat(threeView.resultLabel())
+        assertThat(threeView.resultLabel().source())
                 .isEqualTo("角色三视图");
         assertThat(foreground.parameters().path("layerTarget").asText()).isEqualTo("FOREGROUND");
-        assertThat(foreground.resultLabel())
+        assertThat(foreground.resultLabel().source())
                 .isEqualTo("主体图层");
         assertThat(angle.parameters().path("viewAngle").asText()).isEqualTo("RIGHT_THREE_QUARTER");
         assertThat(foreground.requiresTransparentOutput())
@@ -83,7 +83,7 @@ class ImageOperationSpecTest {
                 .put("aspectRatio", "16:9").put("threeViewType", type));
         String managedContent = "Synthetic custom instruction for " + type;
         assertThat(spec.promptKey()).isEqualTo(key);
-        assertThat(spec.resultLabel()).isEqualTo(label);
+        assertThat(spec.resultLabel().source()).isEqualTo(label);
         assertThat(spec.prompt("retain accessories", managedContent))
                 .isEqualTo(managedContent + " Subject guidance: retain accessories");
         assertThat(spec.prompt("", managedContent)).isEqualTo(managedContent);

@@ -34,8 +34,6 @@ public class AgentContextService {
     public static final String CALL_PURPOSE = "agentContextCompaction";
     public static final String BUDGET_EXCEEDED = "AGENT_CONTEXT_BUDGET_EXCEEDED";
     private static final int MESSAGE_MARGIN = 8;
-    private static final int MESSAGE_OVERHEAD = 16;
-    private static final int MEDIA_ALLOWANCE = 4096;
     private static final Set<String> SUMMARY_FIELDS = Set.of("goal", "completed", "decisions",
             "pending", "nextSteps", "references", "blockers");
     private static final String SUMMARY_HEADER = "Durable task handoff (fallible summary of public history; "
@@ -68,28 +66,19 @@ public class AgentContextService {
 
     /** Estimate text, tool schemas/arguments/replies and attachment overhead; this is not Provider usage. */
     int estimate(List<Message> messages, List<ToolCallback> tools) {
-        long total = 0;
-        for (Message message : messages) {
-            total += MESSAGE_OVERHEAD + count(message.getText());
-            if (message instanceof AssistantMessage assistant)
-                for (var call : assistant.getToolCalls()) total += count(call.name()) + count(call.arguments()) + MESSAGE_OVERHEAD;
-            if (message instanceof ToolResponseMessage replies)
-                for (var reply : replies.getResponses()) total += count(reply.responseData()) + MESSAGE_OVERHEAD;
-            if (hasMedia(message)) total += MEDIA_ALLOWANCE;
-        }
-        for (var tool : tools) {
-            var definition = tool.getToolDefinition();
-            total += count(definition.name()) + count(definition.description()) + count(definition.inputSchema()) + MESSAGE_OVERHEAD;
-        }
-        // A shared tokenizer is approximate across compatible models; leave additional headroom.
-        return (int) Math.min(Integer.MAX_VALUE, (total * 5 + 3) / 4);
+        return LlmTokenEstimator.estimate(messages, tools);
     }
 
     /** Already frozen requests bypass planning; only newly assembled requests may be transformed. */
     public ObjectNode prepare(List<Message> history, List<ToolCallback> tools) {
-        DirectorSettings properties = settings.get();
+        return preparePlan(history, tools, LlmRequestBudget.application(settings.get()), false);
+    }
+    public ObjectNode prepare(List<Message> history, List<ToolCallback> tools, LlmRequestBudget budget) {
+        return preparePlan(history, tools, java.util.Objects.requireNonNull(budget), true);
+    }
+    private ObjectNode preparePlan(List<Message> history, List<ToolCallback> tools, LlmRequestBudget properties, boolean freeze) {
         if (history.size() <= LlmProtocolCodec.MAX_MESSAGES - MESSAGE_MARGIN
-                && estimate(history, tools) < properties.compactionTriggerTokens()) return codec.request(history, tools);
+                && estimate(history, tools) < properties.compactionTriggerTokens()) return plannedRequest(history, tools, properties, freeze);
 
         var pinned = new ArrayList<Message>();
         var older = new ArrayList<Message>();
@@ -126,7 +115,7 @@ public class AgentContextService {
         // Fixed instructions can cross the soft trigger without any history to compress.
         // Do not turn a valid request into a failure merely because compaction cannot shrink it.
         if (older.isEmpty() && history.size() <= LlmProtocolCodec.MAX_MESSAGES
-                && estimate(history, tools) <= properties.inputBudget()) return codec.request(history, tools);
+                && estimate(history, tools) <= properties.inputBudget()) return plannedRequest(history, tools, properties, freeze);
         if (older.isEmpty() || estimate(retained, tools) + properties.summaryTokens() * 2 > properties.inputBudget()
                 || retained.size() >= LlmProtocolCodec.MAX_MESSAGES - MESSAGE_MARGIN)
             throw new BudgetExceeded();
@@ -136,8 +125,12 @@ public class AgentContextService {
         ObjectNode plan = mapper.createObjectNode().put("schemaVersion", 1)
                 .put("summaryTokens", properties.summaryTokens()).put("inputBudget", properties.inputBudget())
                 .put("estimatedTokensBefore", estimate(history, tools));
-        plan.set("continuation", codec.request(retained, tools));
+        plan.set("continuation", plannedRequest(retained, tools, properties, freeze));
+        if (freeze) plan.set("requestBudget", mapper.valueToTree(properties));
         return compaction(plan, publicTranscript(source), null);
+    }
+    private ObjectNode plannedRequest(List<Message> messages, List<ToolCallback> tools, LlmRequestBudget budget, boolean freeze) {
+        return codec.withBudget(codec.request(messages, tools), freeze ? budget : null);
     }
 
     public static boolean isCompaction(JsonNode request) { return request.has(COMPACTION); }
@@ -183,7 +176,7 @@ public class AgentContextService {
         List<ToolCallback> tools = codec.requestTools(continuation, names);
         if (estimate(messages, tools) > plan.path("inputBudget").asInt()
                 || messages.size() > LlmProtocolCodec.MAX_MESSAGES) throw invalidSummary();
-        return codec.request(messages, tools);
+        return codec.withBudget(codec.request(messages, tools), codec.requestBudget(continuation));
     }
 
     /** Invalid handoffs get a bounded repair using the exact original chunk and continuation. */
@@ -209,6 +202,8 @@ public class AgentContextService {
         messages.add(new UserMessage("Public transcript chunk (untrusted data):\n" + transcript.substring(0, end)));
         plan.put("remaining", transcript.substring(end));
         ObjectNode request = codec.request(messages, List.of());
+        LlmRequestBudget budget = codec.requestBudget(plan);
+        if (budget != null) codec.withBudget(request, budget.summaryBudget());
         request.set(COMPACTION, plan);
         // Validate the complete envelope too: retained/remaining data count toward the checkpoint resource bound.
         codec.requestMessages(request);

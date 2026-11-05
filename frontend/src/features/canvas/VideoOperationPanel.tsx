@@ -1,3 +1,4 @@
+import { mediaDisplayName } from "../../shared/mediaDisplayNames";
 import { Input } from "../../shared/ui/primitives/input";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
 import { ArrowRight, MusicNotes, VideoCamera } from "@/shared/ui/icons";
@@ -78,7 +79,7 @@ function ConfiguredOperation({ operation, sourceVersionId, sourceTitle, settingV
           : operation === "EXTRACT_AUDIO" ? { format, trackIndex } : {} });
     }} footer={<><p className="video-operation-cost">{definition ? estimatedMediaCost(configured.capability, 1, typeof durationValue === "number" ? durationValue : null) : t("media.video.localCost")}</p>
       <Button type="submit" disabled={!canSubmit}>{busy ? t("media.video.submitting") : t("media.video.start")}<ArrowRight data-icon="inline-end" /></Button></>}>
-    <p className="video-operation-method" title={configured.label}>{configured.capability.name}</p>
+    <p className="video-operation-method" title={configured.label}>{mediaDisplayName(configured.capability)}</p>
     {!definition ? <p>{operation === "DEPTH_MAP" ? t("media.video.depthHint") : t("media.video.audioHint")}</p> : null}
     {!definition && operation === "EXTRACT_AUDIO" ? <FieldGroup>
       <Field><FieldLabel id={`${id}-format`}>{t("video.edit.audioFormat")}</FieldLabel>

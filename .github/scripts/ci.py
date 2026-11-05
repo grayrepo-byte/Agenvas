@@ -4,8 +4,10 @@
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
+import sys
 
 
 CODE_JOBS = (
@@ -85,6 +87,27 @@ def gate_errors(needs):
     return errors
 
 
+def publication_manifest_errors(manifest, expected_config_digest):
+    """Compression may change transport digests, never the scanned image configuration/rootfs."""
+    errors = []
+    if not isinstance(expected_config_digest, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", expected_config_digest):
+        errors.append("missing or invalid validated configuration digest")
+    if not isinstance(manifest, dict):
+        return errors + ["expected one architecture image manifest"]
+    config = manifest.get("config")
+    if not isinstance(config, dict) or config.get("digest") != expected_config_digest:
+        errors.append("configuration does not match the validated image")
+    layers = manifest.get("layers")
+    if manifest.get("schemaVersion") != 2 or not isinstance(layers, list) or not layers:
+        return errors + ["expected a nonempty architecture image manifest"]
+    compressed_types = {"application/vnd.docker.image.rootfs.diff.tar.gzip",
+                        "application/vnd.oci.image.layer.v1.tar+gzip"}
+    for index, layer in enumerate(layers):
+        if not isinstance(layer, dict) or layer.get("mediaType") not in compressed_types:
+            errors.append(f"layer {index}: expected gzip compression")
+    return errors
+
+
 def changed_paths(event, repo):
     # Checkout uses the PR merge commit; comparing it to the base includes additions,
     # deletions and both sides of renames without placing PR-controlled text in shell code.
@@ -103,6 +126,8 @@ def main():
     shard.add_argument("index", type=int)
     shard.add_argument("count", type=int)
     commands.add_parser("gate")
+    publication = commands.add_parser("check-publication")
+    publication.add_argument("expected_config_file", type=Path)
     args = parser.parse_args()
     repo = Path(__file__).resolve().parents[2]
     if args.command == "plan":
@@ -117,11 +142,16 @@ def main():
         print(f"Full code validation: {outputs['code_changed']}")
     elif args.command == "shard":
         print(",".join(integration_shard(repo / "backend/src/test/java", args.index, args.count)))
-    else:
+    elif args.command == "gate":
         errors = gate_errors(json.loads(os.environ["CI_NEEDS"]))
         if errors:
             parser.exit(1, "CI gate failed:\n" + "\n".join(errors) + "\n")
         print("CI gate passed.")
+    else:
+        errors = publication_manifest_errors(json.load(sys.stdin), args.expected_config_file.read_text().strip())
+        if errors:
+            parser.exit(1, "Image publication verification failed:\n" + "\n".join(errors) + "\n")
+        print("Published gzip layers preserve the validated image configuration.")
 
 
 if __name__ == "__main__":

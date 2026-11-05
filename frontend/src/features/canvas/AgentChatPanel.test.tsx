@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { Agent, AgentRun, AgentConversation, CreateRunRequest, RunPreflight } from "../../shared/api/client";
 import * as api from "../../shared/api/client";
-import { t } from "../../shared/i18n";
+import { t, setLocale } from "../../shared/i18n";
 import { server } from "../../test/server";
 import { AgentChatPanel, type AgentChatPanelData, type AgentChatRunRequest } from "./AgentChatPanel";
 import { useCanvasStore } from "./canvasStore";
@@ -95,6 +95,61 @@ it("retains unsaved Agent configuration across chat and settings tabs", async ()
   expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue("尚未保存的新名称");
   await user.click(screen.getByRole("button", { name: "保存配置" }));
   expect(onUpdateAgent).toHaveBeenCalledWith(AGENT, "尚未保存的新名称", AGENT.instruction);
+});
+
+it("adopts a refreshed Agent configuration while the local fields are unchanged", async () => {
+  const client = createQueryClient();
+  const onUpdateAgent = vi.fn();
+  const data: AgentChatPanelData = { agent: AGENT, projectId: PROJECT_ID, activeRun: null,
+    canvasNodeCount: 0, selectedNodeCount: 0, onUpdateAgent, updatingAgent: false };
+  const panel = (agent: Agent) => <QueryClientProvider client={client}>
+    <AgentChatPanel data={{ ...data, agent }} />
+  </QueryClientProvider>;
+  const view = render(panel(AGENT));
+  const user = userEvent.setup();
+  await readyComposer();
+  await user.click(screen.getByRole("button", { name: "Agent 设置" }));
+  const refreshed = { ...AGENT, version: AGENT.version + 1, name: "远端导演", instruction: "远端长期指令" };
+  view.rerender(panel(refreshed));
+  await waitFor(() => expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue(refreshed.name));
+  expect(screen.getByRole("textbox", { name: "创作系统提示词" })).toHaveValue(refreshed.instruction);
+  await user.click(screen.getByRole("button", { name: "保存配置" }));
+  expect(onUpdateAgent).toHaveBeenLastCalledWith(refreshed, refreshed.name, refreshed.instruction);
+});
+
+it.each(["refresh", "saved"] as const)("pins a dirty Agent configuration until its %s snapshot is adopted", async (resolution) => {
+  const client = createQueryClient();
+  const onUpdateAgent = vi.fn();
+  const data: AgentChatPanelData = { agent: AGENT, projectId: PROJECT_ID, activeRun: null,
+    canvasNodeCount: 0, selectedNodeCount: 0, onUpdateAgent, updatingAgent: false };
+  const panel = (agent: Agent) => <QueryClientProvider client={client}>
+    <AgentChatPanel data={{ ...data, agent }} />
+  </QueryClientProvider>;
+  const view = render(panel(AGENT));
+  const user = userEvent.setup();
+  await readyComposer();
+  await user.click(screen.getByRole("button", { name: "Agent 设置" }));
+  const name = screen.getByRole("textbox", { name: "名称" });
+  await user.clear(name);
+  await user.type(name, "本地未保存名称");
+  const remote = { ...AGENT, version: AGENT.version + 1, name: "远端导演", instruction: "远端长期指令" };
+  view.rerender(panel(remote));
+  expect(name).toHaveValue("本地未保存名称");
+  expect(screen.getByRole("textbox", { name: "创作系统提示词" })).toHaveValue(AGENT.instruction);
+  await user.click(screen.getByRole("button", { name: "保存配置" }));
+  expect(onUpdateAgent).toHaveBeenLastCalledWith(AGENT, "本地未保存名称", AGENT.instruction);
+  let adopted = remote;
+  if (resolution === "refresh") {
+    await user.click(screen.getByRole("button", { name: "载入最新版本" }));
+  } else {
+    adopted = { ...remote, version: remote.version + 1, name: "本地未保存名称", instruction: AGENT.instruction };
+    view.rerender(panel(adopted));
+  }
+  await waitFor(() => expect(screen.queryByRole("button", { name: "载入最新版本" })).not.toBeInTheDocument());
+  expect(name).toHaveValue(adopted.name);
+  expect(screen.getByRole("textbox", { name: "创作系统提示词" })).toHaveValue(adopted.instruction);
+  await user.click(screen.getByRole("button", { name: "保存配置" }));
+  expect(onUpdateAgent).toHaveBeenLastCalledWith(adopted, adopted.name, adopted.instruction);
 });
 
 it("shows the fixed director identity and preserves the draft when returning from history or settings", async () => {
@@ -1027,4 +1082,16 @@ it("reports a failed active task read in the fixed feedback area", async () => {
   const message = await screen.findByText("运行状态读取失败，可重新读取。");
   expect(message.closest(".agent-chat-feedback")).not.toBeNull();
   expect(screen.getByRole("button", { name: "停止" })).toBeInTheDocument();
+});
+
+
+it("localizes only the untouched empty-session title while retaining authored session titles", async () => {
+  setLocale("en");
+  storedConversations = [conversation({ title: "新会话" }),
+    conversation({ id: "authored-session", title: "新会话", turnCount: 1 })];
+  mountPanel();
+  await screen.findByRole("button", { name: "New session" });
+  await userEvent.setup().click(screen.getByRole("button", { name: t("agent.chat.sessions") }));
+  expect(await screen.findByText("新会话")).toBeInTheDocument();
+  expect(screen.getAllByText("New session").length).toBeGreaterThan(0);
 });

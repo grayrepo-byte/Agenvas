@@ -12,7 +12,7 @@ type AgentConversation,type AgentConversationList,
 type AgentRun,type AgentRunList,
 type CreateRunRequest
 } from "../../shared/api/client";
-import { getFormatLocale,t,useLocale } from "../../shared/i18n";
+import { getFormatLocale,t,translate,useLocale } from "../../shared/i18n";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
 import { Button } from "../../shared/ui/primitives/button";
 import { Input } from "../../shared/ui/primitives/input";
@@ -59,7 +59,7 @@ const EMPTY_DRAFT = { instruction: "" };
 type ConversationDraft = typeof EMPTY_DRAFT;
 
 function resolveConversationRuns(snapshotRun: AgentRun | null, listedRuns: readonly AgentRunList["items"][number][],
-  agentId: string | undefined, conversationId: string | null) {
+  agentId: string, conversationId: string | null) {
   const byId = new Map(listedRuns.map((run) => [run.id, run]));
   const snapshotOwnRun = snapshotRun?.agentInstanceId === agentId ? snapshotRun : null;
   const listedOwnRun = snapshotOwnRun ? byId.get(snapshotOwnRun.id) : undefined;
@@ -79,6 +79,12 @@ function resolveConversationRuns(snapshotRun: AgentRun | null, listedRuns: reado
 }
 
 /** Conversations persist across messages; each submitted message retains its own Run. */
+function conversationTitle(conversation: Pick<AgentConversation, "title" | "turnCount">): string {
+  if (!conversation.title || (conversation.turnCount === 0 && conversation.title === translate("zh", "agent.chat.newSession")))
+    return t("agent.chat.newSession");
+  return conversation.title;
+}
+
 export function AgentChatPanel({ data, headerActions }: {
   data: AgentChatPanelData; headerActions?: ReactNode;
 }) {
@@ -92,14 +98,13 @@ function AgentChatPanelContent({ data, headerActions }: { data: AgentChatPanelDa
   const agent = data.agent;
   const fieldId = useId();
   const skillState = useAgentSkillSelection(data.projectId,agent);
-  const [configuration, setConfiguration] = useState(() => agent
-    ? { base: agent, name: agent.name, instruction: agent.instruction } : null);
-  const configurationDirty = configuration != null &&
-    (configuration.name !== configuration.base.name || configuration.instruction !== configuration.base.instruction);
+  const [configuration, setConfiguration] = useState(() => ({ base: agent, name: agent.name, instruction: agent.instruction }));
+  const configurationDirty = configuration.name !== configuration.base.name
+    || configuration.instruction !== configuration.base.instruction;
   useEffect(() => {
-    if (agent && (!configuration || agent.id !== configuration.base.id ||
+    if (agent.id !== configuration.base.id ||
       (agent.version !== configuration.base.version && (!configurationDirty ||
-        (agent.name === configuration.name && agent.instruction === configuration.instruction))))) {
+        (agent.name === configuration.name && agent.instruction === configuration.instruction)))) {
       setConfiguration({ base: agent, name: agent.name, instruction: agent.instruction });
     }
   }, [agent, configuration, configurationDirty]);
@@ -123,13 +128,12 @@ function AgentChatPanelContent({ data, headerActions }: { data: AgentChatPanelDa
   const [view, setView] = useState<"chat" | "history" | "settings">("chat");
   const createKey = useRef<string | null>(null);
   const runIntent = useRef<{ fingerprint: string; key: string; input: CreateRunRequest & { conversationId: string }; requestId?: string } | null>(null);
-  const conversationKey = ["agent-conversations", data.projectId, agent?.id];
+  const conversationKey = ["agent-conversations", data.projectId, agent.id];
   const conversations = useInfiniteQuery({
     queryKey: conversationKey,
-    queryFn: ({ pageParam }) => listAgentConversations(data.projectId, agent!.id, pageParam),
+    queryFn: ({ pageParam }) => listAgentConversations(data.projectId, agent.id, pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,
-    enabled: Boolean(agent),
   });
   const conversationId = conversations.data?.pages[0]?.currentConversationId ?? null;
   const draftKey = `${agent.id}:${conversationId ?? EMPTY_CONVERSATION_DRAFT}`;
@@ -143,16 +147,16 @@ function AgentChatPanelContent({ data, headerActions }: { data: AgentChatPanelDa
   }, [conversations.isPending,fieldId]);
   const sessions = conversations.data?.pages.flatMap((page) => page.items) ?? [];
   const currentConversation = sessions.find((session) => session.id === conversationId);
-  const runsKey = ["conversation-runs", data.projectId, agent?.id, conversationId];
+  const runsKey = ["conversation-runs", data.projectId, agent.id, conversationId];
   const runs = useInfiniteQuery({
     queryKey: runsKey,
-    queryFn: ({ pageParam }) => listConversationRuns(data.projectId, agent!.id, conversationId!, pageParam),
+    queryFn: ({ pageParam }) => listConversationRuns(data.projectId, agent.id, conversationId!, pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,
-    enabled: Boolean(agent && conversationId),
+    enabled: Boolean(conversationId),
   });
   const { displayedRuns, projectActiveRun, ownRun, currentActiveRun } = resolveConversationRuns(
-    data.activeRun, runs.data?.pages.flatMap((page) => page.items) ?? [], agent?.id, conversationId);
+    data.activeRun, runs.data?.pages.flatMap((page) => page.items) ?? [], agent.id, conversationId);
   const approvals = useQuery({ queryKey: ["run-media-approvals", data.projectId, ownRun?.id],
     queryFn: () => listRunMediaApprovals(data.projectId, ownRun!.id),
     enabled: ownRun?.status === "WAITING_TASKS" });
@@ -167,9 +171,9 @@ function AgentChatPanelContent({ data, headerActions }: { data: AgentChatPanelDa
     && (task.status === "READY" || task.status === "RUNNING")) : undefined;
   const failedRun = !preparing && (latestRun?.status === "BLOCKED" || latestRun?.status === "FAILED") ? latestRun : null;
   // Recheck editable state after asynchronous preparation; never submit a revised draft or Skill.
-  const currentSubmission = useRef({ agentId: agent.id, conversationId, instruction: runInstruction.trim(), agentVersion: agent?.version,
+  const currentSubmission = useRef({ agentId: agent.id, conversationId, instruction: runInstruction.trim(), agentVersion: agent.version,
     skillFingerprint: skillState.fingerprint, activeRun: projectActiveRun });
-  currentSubmission.current = { agentId: agent.id, conversationId, instruction: runInstruction.trim(), agentVersion: agent?.version,
+  currentSubmission.current = { agentId: agent.id, conversationId, instruction: runInstruction.trim(), agentVersion: agent.version,
     skillFingerprint: skillState.fingerprint, activeRun: projectActiveRun };
 
   function setRunInstruction(instruction: string) {
@@ -203,7 +207,7 @@ function AgentChatPanelContent({ data, headerActions }: { data: AgentChatPanelDa
     },
   });
   const selectConversation = useMutation({
-    mutationFn: (id: string) => selectAgentConversation(data.projectId, agent!.id, id),
+    mutationFn: (id: string) => selectAgentConversation(data.projectId, agent.id, id),
     onSuccess: (conversation) => {
       selectInCache(conversation);
       setSubmissionError(null); runIntent.current = null; setView("chat");
@@ -213,7 +217,7 @@ function AgentChatPanelContent({ data, headerActions }: { data: AgentChatPanelDa
   const sessionBusy = createConversation.isPending || selectConversation.isPending;
   function saveRunInCache(run: AgentRun) {
     queryClient.setQueryData<InfiniteData<AgentRunList>>(
-      ["conversation-runs", data.projectId, agent?.id, run.conversationId], (previous) => {
+      ["conversation-runs", data.projectId, agent.id, run.conversationId], (previous) => {
         if (!previous) return { pages: [{ items: [run], nextCursor: null }], pageParams: [undefined] };
         return { ...previous, pages: previous.pages.map((page, index) => ({ ...page,
           items: index === 0 ? [run, ...page.items.filter((item) => item.id !== run.id)]
@@ -237,7 +241,7 @@ function AgentChatPanelContent({ data, headerActions }: { data: AgentChatPanelDa
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["snapshot", data.projectId] }),
         queryClient.invalidateQueries({ queryKey: conversationKey }),
-        queryClient.invalidateQueries({ queryKey: ["conversation-runs", data.projectId, agent?.id, run.conversationId] }),
+        queryClient.invalidateQueries({ queryKey: ["conversation-runs", data.projectId, agent.id, run.conversationId] }),
       ]);
     },
     onError: (error) => {
@@ -254,7 +258,7 @@ function AgentChatPanelContent({ data, headerActions }: { data: AgentChatPanelDa
     onSuccess: async (run) => {
       saveRunInCache(run);
       await queryClient.invalidateQueries({ queryKey: ["snapshot", data.projectId] });
-      await queryClient.invalidateQueries({ queryKey: ["conversation-runs", data.projectId, agent?.id, run.conversationId] });
+      await queryClient.invalidateQueries({ queryKey: ["conversation-runs", data.projectId, agent.id, run.conversationId] });
     },
   });
   useEffect(() => {
@@ -276,14 +280,13 @@ function AgentChatPanelContent({ data, headerActions }: { data: AgentChatPanelDa
     setView("chat");
     void submitRequestedRun.current(request);
   }, [data.runRequest,conversations.isSuccess,conversationId,runs.isSuccess,sessionBusy,skillState.ready,preparing]);
-  if (!agent) return null;
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (configuration) data.onUpdateAgent(configuration.base, configuration.name, configuration.instruction);
+    data.onUpdateAgent(configuration.base, configuration.name, configuration.instruction);
   }
   async function submitRun(request?: AgentChatRunRequest) {
-    if (!agent || projectActiveRun || submissionLock.current || start.isPending || sessionBusy
+    if (projectActiveRun || submissionLock.current || start.isPending || sessionBusy
       || conversations.isPending || conversations.isError || !skillState.ready || (!request && data.runRequest)) return;
     const instruction = (request?.instruction ?? runInstruction).trim();
     if (!instruction) return;
@@ -361,9 +364,9 @@ function AgentChatPanelContent({ data, headerActions }: { data: AgentChatPanelDa
       </header>
       <nav className="agent-chat-toolbar" aria-label={t("agent.chat.conversation")}>
         <Button variant={view === "chat" ? "secondary" : "ghost"} size="sm" aria-label={t("agent.chat.chat")} aria-pressed={view === "chat"} className="agent-chat-tab nodrag"
-          onClick={() => setView("chat")} title={currentConversation?.title || t(conversationId ? "agent.chat.currentSession" : "agent.chat.newSession")} type="button">
+          onClick={() => setView("chat")} title={currentConversation ? conversationTitle(currentConversation) : t(conversationId ? "agent.chat.currentSession" : "agent.chat.newSession")} type="button">
           {view !== "chat" ? <ArrowLeft data-icon="inline-start" /> : <span className="agent-chat-session-dot" aria-hidden="true" />}
-          <span>{currentConversation?.title || t(conversationId ? "agent.chat.currentSession" : "agent.chat.newSession")}</span></Button>
+          <span>{currentConversation ? conversationTitle(currentConversation) : t(conversationId ? "agent.chat.currentSession" : "agent.chat.newSession")}</span></Button>
         <Button variant={view === "history" ? "secondary" : "ghost"} size="icon-sm" aria-label={t("agent.chat.sessions")} aria-pressed={view === "history"} className="agent-chat-icon nodrag"
           onClick={() => setView(view === "history" ? "chat" : "history")} title={t("agent.chat.sessions")} type="button"><ClockCounterClockwise data-icon="inline-start" /></Button>
         <Button variant={view === "settings" ? "secondary" : "ghost"} size="icon-sm" aria-label={t("agent.chat.settings")} aria-pressed={view === "settings"} className="agent-chat-icon nodrag"
@@ -390,11 +393,12 @@ function AgentChatPanelContent({ data, headerActions }: { data: AgentChatPanelDa
           <div className="agent-chat-section-heading"><h4>{t("agent.chat.configuration")}</h4><p>{t("agent.chat.settingsHint")}</p></div>
           <form onSubmit={submit}>
             <FieldGroup>
-              <Field><FieldLabel htmlFor={`${fieldId}-name`}>{t("common.name")}</FieldLabel><Input id={`${fieldId}-name`} value={configuration?.name ?? agent.name} onChange={(event) => setConfiguration((current) => current ? { ...current, name: event.target.value } : current)} maxLength={MAX_AGENT_NAME} name="name" required /></Field>
-              <Field><FieldLabel htmlFor={`${fieldId}-instruction`}>{t("agent.defaults.prompt")}</FieldLabel><Textarea id={`${fieldId}-instruction`} value={configuration?.instruction ?? agent.instruction} onChange={(event) => setConfiguration((current) => current ? { ...current, instruction: event.target.value } : current)} maxLength={MAX_INSTRUCTION} name="instruction" required rows={8} /></Field>
+              <Field><FieldLabel htmlFor={`${fieldId}-name`}>{t("common.name")}</FieldLabel><Input id={`${fieldId}-name`} value={configuration.name} onChange={(event) => setConfiguration((current) => ({ ...current, name: event.target.value }))} maxLength={MAX_AGENT_NAME} name="name" required /></Field>
+              <p className="text-sm text-muted-foreground">{t("prompts.languageHint")}</p>
+              <Field><FieldLabel htmlFor={`${fieldId}-instruction`}>{t("agent.defaults.prompt")}</FieldLabel><Textarea id={`${fieldId}-instruction`} value={configuration.instruction} onChange={(event) => setConfiguration((current) => ({ ...current, instruction: event.target.value }))} maxLength={MAX_INSTRUCTION} name="instruction" required rows={8} /></Field>
             </FieldGroup>
             <Button size="sm" disabled={data.updatingAgent} type="submit">{data.updatingAgent ? t("common.saving") : t("common.saveConfig")}</Button>
-            {configuration && agent.version !== configuration.base.version ? <p role="status">
+            {agent.version !== configuration.base.version ? <p role="status">
               {t("common.versionConflict")}<Button variant="ghost" type="button"
                 onClick={() => setConfiguration({ base: agent, name: agent.name, instruction: agent.instruction })}>{t("common.refreshVersion")}</Button>
             </p> : null}
@@ -409,7 +413,7 @@ function AgentChatPanelContent({ data, headerActions }: { data: AgentChatPanelDa
           {sessions.map((session) => <Button variant="ghost" className="agent-chat-history-item" key={session.id}
             aria-current={session.id === conversationId ? "true" : undefined} disabled={sessionBusy || (preparing && !start.isPending)}
             onClick={() => selectConversation.mutate(session.id)} type="button">
-            <span className="agent-chat-history-title"><span>{session.title || t("agent.chat.newSession")}</span><ArrowUpRight data-icon="inline-end" /></span><small>{t("agent.chat.conversationSummary", { "0": session.turnCount, "1": new Date(session.updatedAt).toLocaleString(getFormatLocale()), "2": session.id === conversationId ? t("agent.chat.currentSessionSuffix") : "" })}</small>
+            <span className="agent-chat-history-title"><span>{conversationTitle(session)}</span><ArrowUpRight data-icon="inline-end" /></span><small>{t("agent.chat.conversationSummary", { "0": session.turnCount, "1": new Date(session.updatedAt).toLocaleString(getFormatLocale()), "2": session.id === conversationId ? t("agent.chat.currentSessionSuffix") : "" })}</small>
           </Button>)}
           {conversations.hasNextPage ? <Button variant="outline" size="sm" disabled={conversations.isFetchingNextPage}
             onClick={() => void conversations.fetchNextPage()} type="button">{conversations.isFetchingNextPage ? t("common.loading") : t("agent.chat.moreSessions")}</Button> : null}

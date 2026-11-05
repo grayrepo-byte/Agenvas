@@ -6,6 +6,8 @@ import { afterEach,beforeEach,describe,expect,it,vi } from "vitest";
 import type { Artifact,KlingProfile,MediaCapability,MediaDraft,MediaSettings,SaveMediaDraftRequest,Task } from "../../shared/api/client";
 import { changeControl,clickControl } from "../../test/controls";
 import { server } from "../../test/server";
+import { setLocale, t } from "../../shared/i18n";
+import { seededStyles } from "../../test/seededCatalogs";
 import { klingField, klingProfiles } from "../../test/klingProfiles";
 import { nativeCapability, nativePlatform, nativeProfiles } from "../../test/nativeProfiles";
 import { MediaDraftEditor } from "./MediaDraftEditor";
@@ -1007,6 +1009,18 @@ describe("MediaDraftEditor", () => {
     await waitFor(() => expect(screen.queryByRole("menu", { name: "图片来源" })).not.toBeInTheDocument());
   });
 
+  it("localizes an installed style selected on the editor toolbar without saving a renamed style", async () => {
+    setLocale("en");
+    const style = seededStyles[0]!;
+    const { saves } = setup({ draft: { ...initialDraft, styleId: style.id }, handlers: [
+      http.get("/api/v1/media-styles", () => HttpResponse.json([style])),
+    ] });
+    await waitFor(() => expect(screen.getByRole("button", { name: t("styles.choose") })).toHaveTextContent("Photorealistic photography"));
+    expect(screen.getByRole("button", { name: t("styles.choose") })).not.toHaveTextContent(/\p{Script=Han}/u);
+    expect(saves).toEqual([]);
+    expect(style.name).toBe("写实摄影");
+  });
+
   it.each(["IMAGE", "VIDEO"] as const)("persists an illustrated style for %s without changing the prompt", async (kind) => {
     const user = userEvent.setup();
     const { saves } = setup({ kind, ...(kind === "VIDEO" ? {
@@ -1078,6 +1092,27 @@ describe("MediaDraftEditor", () => {
     expect(recovery?.saving).toBe(false);
     expect(recovery?.error?.message).toContain("参考转存");
   });
+  it("keeps the library reference picker locked while a failed transfer retry awaits acknowledgement", async () => {
+    let retryWrites = 0, release = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let status = "FAILED";
+    const { saves } = setup({ handlers: [
+      http.get("/api/v1/library/entries", () => HttpResponse.json({ items: [{ id: "library-image", name: "旅馆", category: "SCENE", kind: "IMAGE", version: 0, source: {}, favorite: false, createdAt: NOW, hasThumbnail: false }], total: 1, categoryCounts: { SCENE: 1 } })),
+      http.post(`/api/v1/projects/${PROJECT_ID}/canvas-items/${CANVAS_ITEM_ID}/library-references`, () => HttpResponse.json({ id: "library-command", status: "ACCEPTED" }, { status: 202 })),
+      http.get("/api/v1/library/commands/library-command", () => HttpResponse.json({ id: "library-command", status, errorCode: "STORAGE_ERROR", errorDetail: "Synthetic copy failed" })),
+      http.post("/api/v1/library/commands/library-command/retry", async () => { retryWrites++; await gate; status = "ARCHIVING"; return HttpResponse.json({ id: "library-command", status }, { status: 202 }); }),
+    ] });
+    const user = userEvent.setup(); await screen.findByRole("textbox", { name: "图片提示词" });
+    await user.click(screen.getByRole("button", { name: "添加图片输入" })); await user.click(screen.getByRole("menuitem", { name: /从我的资产选择/ }));
+    await user.click(await screen.findByRole("button", { name: "用作参考：旅馆" }));
+    await user.click(await screen.findByRole("button", { name: "重试本地转存" })); await waitFor(() => expect(retryWrites).toBe(1));
+    try {
+      expect(screen.getByRole("button", { name: "关闭资产选择" })).toBeDisabled();
+      await user.keyboard("{Escape}"); expect(screen.getByRole("dialog", { name: "我的资产参考" })).toBeVisible();
+      expect(screen.getByRole("button", { name: "运行" })).toBeDisabled(); expect(saves).toHaveLength(0);
+    } finally { await act(async () => release()); }
+  });
+
   it("keeps the library reference picker open when choosing a media type", async () => {
     setup({ kind: "AUDIO", settings: audioSettings, handlers: [
       http.get("/api/v1/library/entries", ({ request }) => {
@@ -1413,6 +1448,21 @@ describe("MediaDraftEditor", () => {
     await waitFor(() => expect(saves.at(-1)?.parameters.dynamicValues).toEqual({ seed: 11 }));
     act(() => client.setQueryData(["direct-media-tasks", PROJECT_ID, CANVAS_ITEM_ID], [task("RUNNING")]));
     await waitFor(() => expect(seed).toBeDisabled());
+  });
+
+  it("lets creators select and save both extended GPT Image 2.6 quality levels", async () => {
+    const capability: MediaCapability = { ...imageCapability, settings: { model: "gpt-image-2.6-flare" },
+      supportedImageQualities: ["low", "medium", "high", "xhigh", "max"] };
+    const { saves } = setup({ settings: { ...settings, connections: [{ ...settings.connections[0]!, capabilities: [capability] }] },
+      draft: { ...initialDraft, capabilityId: capability.id, parameters: { quality: "medium" } } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "尺寸与画质" }));
+    const picker = within(screen.getByRole("dialog", { name: "尺寸与画质设置" }));
+    await user.click(picker.getByRole("radio", { name: "xhigh" }));
+    await waitFor(() => expect(saves.some((save) => save.parameters?.quality === "xhigh")).toBe(true));
+    await user.click(picker.getByRole("radio", { name: "max" }));
+    await waitFor(() => expect(saves.at(-1)?.parameters?.quality).toBe("max"));
   });
 
   it("blocks an unsupported AutoDL ratio and enables the saved supported ratio", async () => {
@@ -2354,6 +2404,27 @@ describe("MediaDraftEditor", () => {
     expect(await screen.findByRole("button", { name: "重试" })).toBeVisible();
     expect(screen.getAllByText("结果未知").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
+  });
+
+  it("uses a fresh retry command when the replacement is already UNKNOWN on the same card", async () => {
+    const writes: Array<{ task: string; key: string | null }> = [];
+    const next = { ...task("UNKNOWN"), id: "replacement-already-unknown" };
+    const state: ReturnType<typeof setup> = setup({ tasks: [task("UNKNOWN")], handlers: [
+      http.post(`/api/v1/projects/${PROJECT_ID}/tasks/:taskId/new-attempt`, ({ request, params }) => {
+        const current = { task: String(params.taskId), key: request.headers.get("Idempotency-Key") }; writes.push(current);
+        if (writes.some((entry) => entry.key === current.key && entry.task !== current.task)) return HttpResponse.json({ code: "UNKNOWN_RETRY_CONFLICT" }, { status: 409 });
+        state.setTasks(current.task === "task-direct" ? [next] : [{ ...task("READY"), id: "second-replacement" }]);
+        return HttpResponse.json({ ...task("READY"), id: current.task === "task-direct" ? next.id : "second-replacement" });
+      }),
+    ] });
+    const prompt = await screen.findByRole("textbox", { name: "图片提示词" }); const before = prompt.textContent;
+    await userEvent.click(await screen.findByRole("button", { name: "重试" }));
+    await waitFor(() => expect(state.client.getQueryData<Task[]>(["direct-media-tasks", PROJECT_ID, CANVAS_ITEM_ID])?.[0]?.id).toBe(next.id));
+    await waitFor(() => expect(screen.getByRole("button", { name: "重试" })).toBeEnabled());
+    await userEvent.click(screen.getByRole("button", { name: "重试" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "重试" })).not.toBeInTheDocument());
+    expect(writes).toHaveLength(2); expect(writes[1]?.key).not.toBe(writes[0]?.key);
+    expect(prompt.textContent).toBe(before); expect(state.saves).toHaveLength(0);
   });
 
   it("creates a new task for an accepted blocked request while retaining its draft", async () => {

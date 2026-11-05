@@ -9,6 +9,8 @@ import dev.agenvas.task.domain.Task;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -17,6 +19,15 @@ class ComfyUiWorkflowDefinitionTest {
 
     private ObjectNode definition(boolean video, boolean reference) {
         return (ObjectNode) ComfyWorkflowFixture.settings(mapper, video, reference).path("comfyWorkflow");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "2", "\"1\"", "1.5", "null", "true"})
+    void schemaVersionMustBeTheSupportedInteger(String value) {
+        var raw = definition(false, false);
+        raw.set("schemaVersion", mapper.readTree(value));
+        assertThatThrownBy(() -> ComfyUiWorkflowDefinition.parse(mapper, raw, Task.Kind.IMAGE_GENERATION))
+                .isInstanceOf(ApiProblemException.class);
     }
 
     @Test void importAcceptsApiExportsAndPromptEnvelopesWithoutRebuildingCustomNodes() {

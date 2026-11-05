@@ -136,6 +136,13 @@ class LibraryPostgresIT {
                         "commandKey", "place-hotel", "x", 10, "y", 20))))
                 .andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString());
         awaitCommand(mvc, owner, imported.path("id").asText());
+        JsonNode replayedImport = mapper.readTree(mvc.perform(post("/api/v1/projects/" + target.id() + "/library-imports")
+                .with(auth).with(csrf()).contentType("application/json")
+                .content(mapper.writeValueAsString(Map.of("entryId", entryId, "expectedVersion", 0,
+                        "commandKey", "place-hotel", "x", 10, "y", 20))))
+                .andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString());
+        assertThat(replayedImport.path("id").asText()).isEqualTo(imported.path("id").asText());
+        assertThat(replayedImport.path("status").asText()).isEqualTo("SUCCEEDED");
         JsonNode targetCanvas = mapper.readTree(mvc.perform(get("/api/v1/projects/" + target.id() + "/canvas/items").with(auth))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(targetCanvas.path("items").size()).isEqualTo(1);

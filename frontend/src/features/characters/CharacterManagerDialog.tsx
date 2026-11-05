@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useRef, useState } from "react";
-import { archiveCharacter, listCanvasItems, previewCharacterChange, saveCharacter, type CharacterChangePreview, type CharacterContent, type CharacterLook, type CharacterProfile, type SaveCharacter } from "../../shared/api/client";
+import { ApiError, HTTP_STATUS, archiveCharacter, listCanvasItems, previewCharacterChange, saveCharacter, type CharacterChangePreview, type CharacterContent, type CharacterIndex, type CharacterLook, type CharacterProfile, type SaveCharacter } from "../../shared/api/client";
 import { t, useLocale } from "../../shared/i18n";
 import { Dialog } from "../../shared/ui/Dialog";
 import { Button } from "../../shared/ui/primitives/button";
@@ -11,12 +11,13 @@ import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet 
 import { Input } from "../../shared/ui/primitives/input";
 import { Textarea } from "../../shared/ui/primitives/textarea";
 import { VoiceLibrary } from "../canvas/VoiceLibrary";
-import { VOICES } from "../canvas/voiceCatalog";
+import { getVoiceDisplayName, VOICES } from "../canvas/voiceCatalog";
 import { CharacterReferencePicker, CharacterReferencePreview } from "./CharacterReferencePicker";
 import { characterBindingStale, characterQueryOptions } from "./characterQueries";
 
 const emptyContent = (): CharacterContent => ({ name: "", description: "", looks: [], voice: null });
 const newLook = (): CharacterLook => ({ id: crypto.randomUUID(), name: "", clothing: "", expression: "", description: "", views: [] });
+const REQUEST_TIMEOUT_STATUS = 408;
 type Editor = { id: string; version: number; archived: boolean; content: CharacterContent };
 type Confirmation = { mode: "SAVE" | "ARCHIVE"; preview: CharacterChangePreview; request: SaveCharacter };
 
@@ -34,6 +35,7 @@ export function CharacterManagerDialog({ projectId, onClose }: { projectId: stri
   const busyRef = useRef(false);
   const [error, setError] = useState<Error | null>(null);
   const [saved, setSaved] = useState(false);
+  const selectedVoice = VOICES.find((voice) => voice.id === editor?.content.voice?.speakerId);
   function updateContent(change: (content: CharacterContent) => CharacterContent) {
     setEditor((current) => current ? { ...current, content: change(current.content) } : null);
     setConfirmation(null); setSaved(false);
@@ -46,7 +48,7 @@ export function CharacterManagerDialog({ projectId, onClose }: { projectId: stri
     setError(null); setConfirmation(null); setSaved(false);
   }
   async function operation(mode: "SAVE" | "ARCHIVE", confirmed = false) {
-    if (!editor || busyRef.current) return;
+    if (!editor || busyRef.current || (confirmed && !confirmation)) return;
     busyRef.current = true; setBusy(true); setError(null); setSaved(false);
     try {
       const request = confirmed && confirmation ? confirmation.request : { commandId: crypto.randomUUID(), expectedVersion: editor.version, content: editor.content };
@@ -58,12 +60,17 @@ export function CharacterManagerDialog({ projectId, onClose }: { projectId: stri
       const profile = mode === "ARCHIVE"
         ? await archiveCharacter(projectId, editor.id, { commandId: request.commandId, expectedVersion: request.expectedVersion })
         : await saveCharacter(projectId, editor.id, request);
-      await client.invalidateQueries({ queryKey: characterQueryOptions(projectId).queryKey });
-      selectProfile(profile); setSaved(true);
+      const queryKey = characterQueryOptions(projectId).queryKey;
+      await client.invalidateQueries({ queryKey });
+      const latest = client.getQueryData<CharacterIndex>(queryKey)?.characters.find((entry) => entry.id === profile.id);
+      // Command replay returns its historical result; do not undo a newer observed archive or revision.
+      selectProfile(latest && latest.version > profile.version ? latest : profile); setSaved(true);
     } catch (failure) {
       setError(failure instanceof Error ? failure : new Error(t("character.saveFailed")));
-      // The editable profile and all exact selections survive authentication and CAS failures.
-      setConfirmation(null);
+      // A missing response can follow a committed write. Keep its exact command for explicit replay.
+      const unconfirmed = confirmed && (!(failure instanceof ApiError)
+        || failure.status >= HTTP_STATUS.INTERNAL_SERVER_ERROR || failure.status === REQUEST_TIMEOUT_STATUS);
+      if (!unconfirmed) setConfirmation(null);
     } finally { busyRef.current = false; setBusy(false); }
   }
   async function refreshVersion() {
@@ -125,12 +132,14 @@ export function CharacterManagerDialog({ projectId, onClose }: { projectId: stri
           <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={() => setPicker({ kind: "AUDIO" })}>{t("character.chooseAudio")}</Button>
             <Button type="button" variant="outline" onClick={() => setVoicesOpen(true)}>{t("character.chooseSpeaker")}</Button>
             {content.voice ? <Button type="button" variant="ghost" onClick={() => updateContent((value) => ({ ...value, voice: null }))}>{t("character.clearVoice")}</Button> : null}</div>
-          {content.voice?.speakerId ? <p className="text-sm">{VOICES.find((voice) => voice.id === content.voice?.speakerId)?.name ?? content.voice.speakerId} · {content.voice.speakerId}</p> : null}
+          {content.voice?.speakerId ? <p className="text-sm">{selectedVoice ? getVoiceDisplayName(selectedVoice) : content.voice.speakerId} · {content.voice.speakerId}</p> : null}
           <Field><FieldLabel htmlFor={`${id}-voice-description`}>{t("character.voiceDescription")}</FieldLabel><Textarea id={`${id}-voice-description`} disabled={!content.voice?.versionId && !content.voice?.speakerId} maxLength={2000} value={content.voice?.description ?? ""} onChange={(event) => updateContent((value) => ({ ...value, voice: { versionId: value.voice?.versionId ?? null, speakerId: value.voice?.speakerId ?? null, description: event.target.value } }))} /></Field>
         </FieldSet>
       </FieldGroup> : null}
     </fieldset>
-    {error ? <Alert variant="destructive"><AlertDescription>{error.message}<Button type="button" variant="outline" disabled={busy} onClick={() => { void refreshVersion(); }}>{t("character.refreshKeepDraft")}</Button></AlertDescription></Alert> : null}
+    {error ? <Alert variant="destructive"><AlertDescription>{error.message}
+      {confirmation ? <p>{t("character.retryConfirmationHint", { "0": t("character.confirmSave") })}</p> : null}
+      <Button type="button" variant="outline" disabled={busy} onClick={() => { void refreshVersion(); }}>{t("character.refreshKeepDraft")}</Button></AlertDescription></Alert> : null}
     {saved ? <p role="status">{t("character.saved")}</p> : null}
     {confirmation ? <Alert><AlertDescription><div className="flex flex-col gap-2">
       <strong>{t(confirmation.mode === "ARCHIVE" ? "character.archiveImpact" : "character.changeImpact")}</strong>

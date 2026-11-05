@@ -89,6 +89,7 @@ import dev.agenvas.db.tables.TaskProviderPollRetry;
 import dev.agenvas.db.tables.ThirdPartyPrompt;
 import dev.agenvas.db.tables.ThirdPartyPromptImport;
 import dev.agenvas.db.tables.ThirdPartyPromptSource;
+import dev.agenvas.db.tables.ThirdPartyPromptSyncSettings;
 import dev.agenvas.db.tables.ToolExecution;
 import dev.agenvas.db.tables.UsageLedger;
 import dev.agenvas.db.tables.records.AgentConversationRecord;
@@ -176,6 +177,7 @@ import dev.agenvas.db.tables.records.TaskRecord;
 import dev.agenvas.db.tables.records.ThirdPartyPromptImportRecord;
 import dev.agenvas.db.tables.records.ThirdPartyPromptRecord;
 import dev.agenvas.db.tables.records.ThirdPartyPromptSourceRecord;
+import dev.agenvas.db.tables.records.ThirdPartyPromptSyncSettingsRecord;
 import dev.agenvas.db.tables.records.ToolExecutionRecord;
 import dev.agenvas.db.tables.records.UsageLedgerRecord;
 
@@ -334,6 +336,7 @@ public class Keys {
     public static final UniqueKey<ThirdPartyPromptImportRecord> THIRD_PARTY_PROMPT_IMPORT_PKEY = Internal.createUniqueKey(ThirdPartyPromptImport.THIRD_PARTY_PROMPT_IMPORT, DSL.name("third_party_prompt_import_pkey"), new TableField[] { ThirdPartyPromptImport.THIRD_PARTY_PROMPT_IMPORT.ID }, true);
     public static final UniqueKey<ThirdPartyPromptImportRecord> THIRD_PARTY_PROMPT_IMPORT_PROJECT_ID_COMMAND_KEY_KEY = Internal.createUniqueKey(ThirdPartyPromptImport.THIRD_PARTY_PROMPT_IMPORT, DSL.name("third_party_prompt_import_project_id_command_key_key"), new TableField[] { ThirdPartyPromptImport.THIRD_PARTY_PROMPT_IMPORT.PROJECT_ID, ThirdPartyPromptImport.THIRD_PARTY_PROMPT_IMPORT.COMMAND_KEY }, true);
     public static final UniqueKey<ThirdPartyPromptSourceRecord> THIRD_PARTY_PROMPT_SOURCE_PKEY = Internal.createUniqueKey(ThirdPartyPromptSource.THIRD_PARTY_PROMPT_SOURCE, DSL.name("third_party_prompt_source_pkey"), new TableField[] { ThirdPartyPromptSource.THIRD_PARTY_PROMPT_SOURCE.ID }, true);
+    public static final UniqueKey<ThirdPartyPromptSyncSettingsRecord> THIRD_PARTY_PROMPT_SYNC_SETTINGS_PKEY = Internal.createUniqueKey(ThirdPartyPromptSyncSettings.THIRD_PARTY_PROMPT_SYNC_SETTINGS, DSL.name("third_party_prompt_sync_settings_pkey"), new TableField[] { ThirdPartyPromptSyncSettings.THIRD_PARTY_PROMPT_SYNC_SETTINGS.ID }, true);
     public static final UniqueKey<ToolExecutionRecord> TOOL_EXECUTION_PKEY = Internal.createUniqueKey(ToolExecution.TOOL_EXECUTION, DSL.name("tool_execution_pkey"), new TableField[] { ToolExecution.TOOL_EXECUTION.ID }, true);
     public static final UniqueKey<ToolExecutionRecord> UQ_TOOL_EXECUTION_CALL = Internal.createUniqueKey(ToolExecution.TOOL_EXECUTION, DSL.name("uq_tool_execution_call"), new TableField[] { ToolExecution.TOOL_EXECUTION.RUN_ID, ToolExecution.TOOL_EXECUTION.STEP_INDEX, ToolExecution.TOOL_EXECUTION.TOOL_CALL_ID }, true);
     public static final UniqueKey<UsageLedgerRecord> USAGE_LEDGER_OPERATION_KEY_KEY = Internal.createUniqueKey(UsageLedger.USAGE_LEDGER, DSL.name("usage_ledger_operation_key_key"), new TableField[] { UsageLedger.USAGE_LEDGER.OPERATION_KEY }, true);

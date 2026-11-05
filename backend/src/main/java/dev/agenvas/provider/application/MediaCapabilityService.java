@@ -1,5 +1,6 @@
 package dev.agenvas.provider.application;
 
+import dev.agenvas.shared.security.ServiceEndpointPolicy;
 import dev.agenvas.shared.crypto.Sha256;
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
@@ -383,6 +384,8 @@ public class MediaCapabilityService {
     private String spec(String adapterId, JsonNode suppliedSettings) {
         JsonNode source = suppliedSettings == null ? mapper.createObjectNode() : suppliedSettings;
         var declaration = registry.declaration(adapterId);
+        if (MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(adapterId))
+            declaration = dev.agenvas.provider.domain.OpenAiImageOptions.declaration(declaration, source);
         ComfyUiWorkflowDefinition comfyWorkflow = null;
         if (dev.agenvas.provider.domain.NativeMediaProfiles.supports(adapterId)) {
             declaration = dev.agenvas.provider.domain.NativeMediaProfiles.resolve(adapterId, source).declaration();
@@ -429,6 +432,8 @@ public class MediaCapabilityService {
         } else normalizeAdapterSettings(adapterId, source, settings);
         if (AutoDlWorkflows.ADAPTER_ID.equals(adapterId)) AutoDlWorkflows.normalize(source, settings);
         MediaCapabilityConfiguration.normalize(mapper, declaration, source, settings);
+        if (MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(adapterId) && settings.has("outputFormat"))
+            normalized.put("outputFormat", settings.path("outputFormat").asText());
         var policy = MediaCapabilityConfiguration.policy(declaration, settings);
         if (AutoDlWorkflows.ADAPTER_ID.equals(adapterId)) {
             var workflow = AutoDlWorkflows.require(settings);
@@ -456,7 +461,7 @@ public class MediaCapabilityService {
             case "COMFY_IMAGE_V1" -> List.of("checkpoint");
             case "COMFY_VIDEO_V1" -> List.of("diffusionModel", "textEncoder", "vae",
                     "clipVision");
-            case "OPENAI_GPT_IMAGE_2" -> List.of("quality", "model");
+            case "OPENAI_GPT_IMAGE_2" -> List.of("quality", "model", "outputFormat", "complexity", "frameCount", "frameDurationMs", "moderation");
             case "GOOGLE_NANO_BANANA_2" -> List.of("model");
             default -> List.of();
         };
@@ -467,9 +472,10 @@ public class MediaCapabilityService {
         }
         for (String field : fields) {
             JsonNode value = source.path(field);
+            if (java.util.Set.of("outputFormat", "complexity", "frameCount", "frameDurationMs", "moderation").contains(field)) continue;
             if ("quality".equals(field)) {
                 String quality = value.isMissingNode() ? ImageGenerationParameters.DEFAULT_QUALITY : value.asText();
-                if (!ImageGenerationParameters.QUALITIES.contains(quality)) {
+                if (!dev.agenvas.provider.domain.OpenAiImageOptions.qualities(source.path("model").asText("")).contains(quality)) {
                     throw invalid(ApiMessage.of("api.media-capability-service.gpt-image-2-quality-can-only-be-low-medium-or"));
                 }
                 settings.put(field, quality);
@@ -490,10 +496,14 @@ public class MediaCapabilityService {
             }
             settings.put(field, value.asText());
         }
+        if (MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(adapterId))
+            dev.agenvas.provider.domain.OpenAiImageOptions.normalize(source, settings);
     }
 
     private MediaAdapterRegistry.Declaration declaration(String adapterId, JsonNode settings) {
         var compiled = registry.declaration(adapterId);
+        if (MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(adapterId))
+            return dev.agenvas.provider.domain.OpenAiImageOptions.declaration(compiled, settings);
         if (dev.agenvas.provider.domain.NativeMediaProfiles.supports(adapterId))
             return dev.agenvas.provider.domain.NativeMediaProfiles.resolve(adapterId, settings).declaration();
         if (dev.agenvas.provider.domain.KlingModels.adapter(adapterId))
@@ -698,7 +708,7 @@ public class MediaCapabilityService {
                     entry.set("inputPolicy", mapper.valueToTree(inputPolicy(candidate.binding())));
                     JsonNode settings = candidate.settings();
                     for (String key : List.of("defaultParameters", "defaultDurationSeconds", "videoResolution",
-                            "videoResolutions", "pricing", "pricingByResolution")) {
+                            "videoResolutions", "pricing", "pricingByResolution", "outputFormat", "frameCount", "frameDurationMs", "complexity", "moderation")) {
                         if (settings.has(key)) entry.set(key, settings.get(key).deepCopy());
                     }
                     var definition = runningHubDefinition(candidate.binding());
@@ -752,6 +762,8 @@ public class MediaCapabilityService {
             var selected = dev.agenvas.provider.domain.NativeMediaProfiles.resolve(snapshot.adapterId(), settings);
             settings.set("nativeInputs", mapper.valueToTree(selected.inputs()));
             settings.set("nativeReusableSlots", mapper.valueToTree(selected.protocol().reusableSlots(selected.profile()).stream().sorted().toList()));
+            if (selected.profile().kind() == Task.Kind.VIDEO_GENERATION && settings.get("pricingByResolution") instanceof ObjectNode prices)
+                settings.set("pricingByResolution", MediaCapabilityConfiguration.canonicalNativeResolutionPrices(prices));
         }
         if (dev.agenvas.provider.domain.KlingModels.adapter(snapshot.adapterId())) {
             var profile = dev.agenvas.provider.domain.KlingModels.resolve(settings, registry.declaration(snapshot.adapterId()).kind());
@@ -889,12 +901,7 @@ public class MediaCapabilityService {
                                 || path.contains("\\") || path.contains("//"))) {
                     throw invalid(ApiMessage.of("api.media-capability-service.the-base-url-must-be-the-public-https-api-root"));
                 }
-                // 本机回环是自托管服务与本地假 API 的固定例外，与 ComfyUI 的规则一致。
-                boolean loopback = "http".equals(uri.getScheme())
-                        && "127.0.0.1".equals(uri.getHost()) && uri.getPort() > 0;
-                if (!"https".equals(uri.getScheme()) && !loopback) {
-                    throw invalid(ApiMessage.of("api.media-capability-service.the-base-url-must-be-the-public-https-api-root"));
-                }
+                ServiceEndpointPolicy.validate(uri, true);
                 return uri.toASCIIString().replaceAll("/+$", "");
             } catch (IllegalArgumentException invalidUri) {
                 throw invalid(ApiMessage.of("api.media-capability-service.base-url-is-invalid"));

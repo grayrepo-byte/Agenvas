@@ -5,6 +5,8 @@ import dev.agenvas.llm.application.LlmStreamLogCollector;
 import dev.agenvas.audit.domain.LlmStreamLog;
 import dev.agenvas.llm.application.PublicAssistantResponse;
 import dev.agenvas.llm.application.LlmProtocolCodec;
+import dev.agenvas.llm.application.LlmStreamIncompleteException;
+import dev.agenvas.llm.application.LlmRequestBudget;
 import dev.agenvas.shared.http.DebugHttpCapture;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -52,6 +54,7 @@ public class SpringAiChatGateway implements ChatGateway {
     /** Enabled only when the model's transport removes the internal capture header. */
     private final boolean captureHttp;
     private final LlmImageRelay imageRelay;
+    private final LlmRequestBudget requestBudget;
 
     /** 创建禁用自动工具循环的客户端，并拒绝无效配置版本。 */
     public SpringAiChatGateway(ChatModel model, int configVersion) {
@@ -66,12 +69,18 @@ public class SpringAiChatGateway implements ChatGateway {
     static SpringAiChatGateway withDebugCapture(OpenAiChatModel model, int configVersion, LlmImageRelay relay) {
         return new SpringAiChatGateway(model, configVersion, true, relay);
     }
+    static SpringAiChatGateway withDebugCapture(OpenAiChatModel model, int configVersion, LlmImageRelay relay, LlmRequestBudget budget) {
+        return new SpringAiChatGateway(model, configVersion, true, relay, budget);
+    }
 
     SpringAiChatGateway(ChatModel model, int configVersion, LlmImageRelay relay) {
         this(model, configVersion, false, relay);
     }
 
     private SpringAiChatGateway(ChatModel model, int configVersion, boolean captureHttp, LlmImageRelay relay) {
+        this(model, configVersion, captureHttp, relay, null);
+    }
+    private SpringAiChatGateway(ChatModel model, int configVersion, boolean captureHttp, LlmImageRelay relay, LlmRequestBudget budget) {
         if (configVersion < 1) {
             throw new IllegalArgumentException("LLM configVersion must be positive");
         }
@@ -83,6 +92,7 @@ public class SpringAiChatGateway implements ChatGateway {
         this.configVersion = configVersion;
         this.captureHttp = captureHttp;
         this.imageRelay = model instanceof OpenAiChatModel ? relay : null;
+        this.requestBudget = budget;
     }
 
     private ChatClient.ChatClientRequestSpec prompt() {
@@ -98,6 +108,7 @@ public class SpringAiChatGateway implements ChatGateway {
     @Override
     public Exchange call(List<Message> messages, List<ToolCallback> tools,
             Map<String, Object> toolContext) {
+        if (requestBudget != null) requestBudget.requireInput(messages, tools);
         if (messages == null || messages.isEmpty() || messages.size() > LlmProtocolCodec.MAX_MESSAGES
                 || tools == null || toolContext == null) {
             throw new IllegalArgumentException("Invalid bounded ChatGateway round");
@@ -105,12 +116,18 @@ public class SpringAiChatGateway implements ChatGateway {
         if (!tools.isEmpty() && !(model.getOptions() instanceof ToolCallingChatOptions)) {
             throw new IllegalStateException("Configured ChatModel does not support tool calling");
         }
-        ChatResponse response = prompt()
-                .messages(imageRelay == null ? List.copyOf(messages) : imageRelay.prepare(messages))
-                .tools(tools.toArray(ToolCallback[]::new))
-                .toolContext(Map.copyOf(toolContext))
-                .call()
-                .chatResponse();
+        ChatResponse response;
+        try {
+            response = prompt()
+                    .messages(imageRelay == null ? List.copyOf(messages) : imageRelay.prepare(messages))
+                    .tools(tools.toArray(ToolCallback[]::new))
+                    .toolContext(Map.copyOf(toolContext))
+                    .call()
+                    .chatResponse();
+        } catch (RuntimeException failure) {
+            if (LlmStreamIncompleteException.matches(failure)) throw LlmStreamIncompleteException.problem();
+            throw failure;
+        }
         if (response == null || response.getResult() == null) {
             throw new IllegalStateException("LLM returned no assistant response");
         }
@@ -128,6 +145,7 @@ public class SpringAiChatGateway implements ChatGateway {
     public Exchange callStreaming(List<Message> messages, List<ToolCallback> tools,
             Map<String, Object> toolContext, ConfigIdentity expected, Consumer<String> publicDelta,
             boolean captureContent, Consumer<LlmStreamLog> streamLog) {
+        if (requestBudget != null) requestBudget.requireInput(messages, tools);
         if (!configIdentity().equals(expected)) {
             throw new IllegalStateException("ChatGateway configuration changed before model stream");
         }
@@ -163,7 +181,9 @@ public class SpringAiChatGateway implements ChatGateway {
                 });
                 AtomicReference<ChatResponse> completed = new AtomicReference<>();
                 return new MessageAggregator().aggregate(chunks, completed::set)
-                        .bufferTimeout(MAX_PUBLIC_BATCH_CHUNKS, PUBLIC_BATCH_INTERVAL).doOnNext(batch -> {
+                        // Serialize completion behind an in-flight timer batch. The default
+                        // variant disposes that timer worker on completion and interrupts its write.
+                        .bufferTimeout(MAX_PUBLIC_BATCH_CHUNKS, PUBLIC_BATCH_INTERVAL, true).doOnNext(batch -> {
                             StringBuilder text = new StringBuilder();
                             batch.forEach(chunk -> text.append(PublicAssistantResponse.text(chunk)));
                             if (!text.isEmpty()) {
@@ -187,6 +207,7 @@ public class SpringAiChatGateway implements ChatGateway {
             return new Exchange(configVersion, result.get());
         } catch (RuntimeException | Error error) {
             failure = error;
+            if (LlmStreamIncompleteException.matches(error)) throw LlmStreamIncompleteException.problem();
             throw error;
         } finally {
             // doFinally can run after blockLast wakes. The method boundary owns exactly one snapshot,
@@ -197,7 +218,9 @@ public class SpringAiChatGateway implements ChatGateway {
                         : isCancellation(failure) || terminal.get() == SignalType.CANCEL
                         ? LlmStreamLog.EndStatus.CANCELED : LlmStreamLog.EndStatus.FAILED;
                 try { streamLog.accept(log.snapshot(status, failure == null ? null :
-                        status == LlmStreamLog.EndStatus.CANCELED ? "CALL_STREAM_CANCELED" : "CALL_STREAM_FAILED")); }
+                        status == LlmStreamLog.EndStatus.CANCELED ? "CALL_STREAM_CANCELED"
+                                : LlmStreamIncompleteException.matches(failure) ? LlmStreamIncompleteException.ERROR_CODE
+                                : "CALL_STREAM_FAILED")); }
                 catch (RuntimeException logFailure) {
                     // Semantic logging must never replace the model result or its original failure.
                     org.slf4j.LoggerFactory.getLogger(SpringAiChatGateway.class)

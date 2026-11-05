@@ -153,7 +153,7 @@ class CanvasCopySupportPostgresIT {
 
     @Test
     void textCopiesHaveIndependentBodiesIncludingEmptyTextAndRedoRejectsEditingDeletedCopyArtifact() {
-        for (String text : List.of("Original writing", "")) {
+        for (String text : List.of("Original writing", "", "\n    Indented writing  \n\tcontinued  \n\n")) {
             var sourceArtifact = artifacts.create(owner, project.id(), Artifact.Kind.TEXT, "Text", text(text));
             CanvasItem source = place(sourceArtifact.artifact().id());
             Copied copied = clone(source);

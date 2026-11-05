@@ -87,6 +87,34 @@ function snapshot(seq: number): ProjectSnapshot {
 }
 
 describe("project event subscription", () => {
+  it("recovers from the first disconnect deadline even when native reconnect keeps failing", async () => {
+    vi.useFakeTimers();
+    let stop = () => {};
+    try {
+      const streams: FakeStream[] = [];
+      const urls: string[] = [];
+      const recovered: ProjectSnapshot[] = [];
+      const loadSnapshot = vi.fn(async () => snapshot(12));
+      stop = subscribeProjectEvents(projectId, 4, {
+        onChange: () => {}, onSnapshot: (value) => recovered.push(value), onStatus: () => {},
+      }, {
+        open: (url) => { const stream = new FakeStream(); streams.push(stream); urls.push(url); return stream; },
+        loadSnapshot, schedule: setTimeout, clearSchedule: clearTimeout,
+      });
+      streams[0]!.disconnect();
+      await vi.advanceTimersByTimeAsync(3_000);
+      streams[0]!.disconnect();
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(recovered.map((value) => value.snapshotSeq)).toEqual([12]);
+      expect(streams[0]!.closed).toBe(true);
+      expect(urls[1]).toBe(`/api/v1/projects/${projectId}/events?after=12`);
+      // Late errors from the abandoned stream cannot create another recovery timer.
+      streams[0]!.disconnect();
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(loadSnapshot).toHaveBeenCalledOnce();
+    } finally { stop(); vi.useRealTimers(); }
+  });
+
   it("delivers character and storyboard changes on the same cursor without losing following canvas events", () => {
     const stream = new FakeStream();
     const changes: ProjectEvent[] = [];

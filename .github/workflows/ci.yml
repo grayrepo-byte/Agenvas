@@ -148,6 +148,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Test Compose configuration output compatibility
+        run: python3 deploy/test-compose-check.py
       - name: Verify image, source, and Mock Compose environments
         run: bash deploy/check-compose.sh
       - name: Test automatic installation secrets with isolated PostgreSQL volumes
@@ -213,6 +215,11 @@ jobs:
         env:
           IMAGE_PUBLIC: ${{ matrix.image }}
         run: docker pull "$IMAGE_PUBLIC"
+      - name: Verify Web probes against the built native image
+        if: matrix.service == 'web'
+        env:
+          AGENVAS_TEST_WEB_IMAGE: ${{ matrix.image }}
+        run: python3 deploy/test-web-health.py
       - name: Collect release packages and licenses once
         id: inventory
         if: env.PUBLISH_IMAGES == 'true'
@@ -247,13 +254,16 @@ jobs:
           IMAGE_LOCAL: ${{ matrix.image }}
         run: |
           set -o pipefail
+          docker image inspect --format '{{.Id}}' "$IMAGE_LOCAL" > image-config-digest.txt
           docker save "$IMAGE_LOCAL" | gzip -1 > image.tar.gz
       - name: Retain the exact architecture image until publication
         if: env.PUBLISH_IMAGES == 'true' && matrix.dockerfile != ''
         uses: actions/upload-artifact@v4
         with:
           name: image-${{ matrix.service }}-${{ matrix.architecture }}
-          path: image.tar.gz
+          path: |
+            image.tar.gz
+            image-config-digest.txt
           if-no-files-found: error
           compression-level: 0
           retention-days: 1
@@ -281,6 +291,9 @@ jobs:
         service: [server, web]
         architecture: [amd64, arm64]
     steps:
+      - uses: actions/checkout@v4
+      - name: Install deterministic image transport
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends skopeo
       - name: Validate Docker Hub publishing configuration
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -294,10 +307,10 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: image-${{ matrix.service }}-${{ matrix.architecture }}
-      - name: Load the image without rebuilding
+      - name: Unpack the exact validated image archive without rebuilding
         run: |
           set -o pipefail
-          gzip -dc image.tar.gz | docker load
+          gzip -dc image.tar.gz > image.tar
       - name: Log in to Docker Hub
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
@@ -309,8 +322,14 @@ jobs:
           IMAGE_ARCHITECTURE: ${{ matrix.architecture }}
         run: |
           image_staging="docker.io/$IMAGE_NAMESPACE/agenvas-$IMAGE_SERVICE:ci-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$IMAGE_ARCHITECTURE"
-          docker tag "agenvas-$IMAGE_SERVICE:ci" "$image_staging"
-          docker push "$image_staging"
+          # Docker's image store can push imported OCI tar layers without compression.
+          # Skopeo copies the retained image; it does not rebuild or execute the image.
+          image_authfile="${DOCKER_CONFIG:-$HOME/.docker}/config.json"
+          skopeo copy --authfile "$image_authfile" --format v2s2 \
+            --dest-compress-format gzip --dest-compress-level 6 \
+            docker-archive:image.tar "docker://$image_staging"
+          skopeo inspect --authfile "$image_authfile" --raw "docker://$image_staging" > published-manifest.json
+          python3 .github/scripts/ci.py check-publication image-config-digest.txt < published-manifest.json
 
   publish-dockerhub:
     needs: [push-images]

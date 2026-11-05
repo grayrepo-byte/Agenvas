@@ -5,6 +5,14 @@ import { llmLogView, MAX_FORMATTED_JSON_CHARS, parseDebugBody, prettyJson } from
 const json = (value: unknown) => parseDebugBody({ content: JSON.stringify(value), encoding: "UTF8", truncated: false });
 
 describe("call log formatting", () => {
+  it("limits structural depth while ignoring brackets in escaped JSON strings", () => {
+    const parse = (content: string) => parseDebugBody({ content, encoding: "UTF8", truncated: false });
+    expect(parse("[".repeat(128) + "0" + "]".repeat(128)).status).toBe("json");
+    expect(parse("[".repeat(129) + "0" + "]".repeat(129)).status).toBe("large");
+    const text = '\\"' + "[{".repeat(10_000) + "}]".repeat(10_000);
+    expect(parse(JSON.stringify({ text }))).toEqual({ status: "json", value: { text } });
+  });
+
   it("formats the persisted streaming model protocol with actual usage and tool arguments", () => {
     const response = { schemaVersion: 1, metadata: { id: "stream-1", model: "stream-model",
       usage: { promptTokens: 12, completionTokens: 0, totalTokens: 12 } }, generations: [{

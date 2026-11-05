@@ -71,7 +71,8 @@ public class WanClient {
         String host = origin.getHost();
         boolean workspace = host != null && !host.startsWith("trial.") && REGIONS.stream().anyMatch(region ->
                 host.matches("[A-Za-z0-9][A-Za-z0-9-]{0,62}\\." + java.util.regex.Pattern.quote(region) + "\\.maas\\.aliyuncs\\.com"));
-        if (!"https".equals(origin.getScheme()) || origin.getPort() != -1 && origin.getPort() != 443
+        if (!("http".equals(origin.getScheme()) || "https".equals(origin.getScheme()))
+                || origin.getPort() == 0 || origin.getPort() > 65535
                 || origin.getRawUserInfo() != null || origin.getRawQuery() != null || origin.getRawFragment() != null
                 || !origin.getRawPath().isEmpty() || !workspace)
             throw NativeMediaProfiles.invalid();
@@ -79,7 +80,7 @@ public class WanClient {
     }
     public static void validateOrigin(NativeMediaProtocol.Profile profile, String value) {
         String origin = validatedOrigin(value);
-        if (!WanModels.video(profile) && !origin.matches("https://[A-Za-z0-9][A-Za-z0-9-]{0,62}\\.(cn-beijing|ap-southeast-1)\\.maas\\.aliyuncs\\.com(?::443)?"))
+        if (!WanModels.video(profile) && !origin.matches("https?://[A-Za-z0-9][A-Za-z0-9-]{0,62}\\.(cn-beijing|ap-southeast-1)\\.maas\\.aliyuncs\\.com(?::[0-9]+)?"))
             throw NativeMediaProfiles.invalid();
     }
 
@@ -151,8 +152,8 @@ public class WanClient {
         } else {
             URI url;
             try { url = URI.create(value); } catch (RuntimeException invalid) { throw NativeMediaProfiles.invalid(); }
-            if (!"https".equals(url.getScheme()) || url.getHost() == null || url.getRawUserInfo() != null || url.getRawFragment() != null
-                    || url.getPort() != -1 && url.getPort() != 443 || value.length() > 8192) throw NativeMediaProfiles.invalid();
+            if (!("https".equals(url.getScheme()) || "http".equals(url.getScheme())) || url.getHost() == null || url.getRawUserInfo() != null || url.getRawFragment() != null
+                    || url.getPort() == 0 || url.getPort() > 65535 || value.length() > 8192) throw NativeMediaProfiles.invalid();
         }
     }
 

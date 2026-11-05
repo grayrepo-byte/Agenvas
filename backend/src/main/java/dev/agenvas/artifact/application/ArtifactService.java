@@ -58,7 +58,7 @@ public class ArtifactService {
     /** 组装产物校验、媒体引用鉴权、不可变版本写入与事件事务。
      * @param projects 校验所有者和项目状态
      * @param artifacts 读取并创建产物及内容版本
-     * @param contentValidator 验证内容结构与媒体引用
+     * @param contentValidator 验证内容结构与受保护字段
      * @param assets 校验素材归属并读取已归档媒体
      * @param events 与产物变更同事务追加事件
      * @param objectMapper 规范化内容并生成事件负载
@@ -317,10 +317,8 @@ public class ArtifactService {
             artifacts.createArtifact(empty);
             return new ArtifactView(empty, null);
         }
-        List<ArtifactVersion.InputReference> references =
-                contentValidator.validate(kind, content);
+        contentValidator.validate(kind, content);
         if (!trustedImport) requireUploadAuthorship(kind, content, createdByKind);
-        validateReferences(projectId, references);
         validateMediaAsset(ownerId, projectId, kind, content);
         Instant now = clock.instant();
         UUID artifactId = UUID.randomUUID();
@@ -344,7 +342,7 @@ public class ArtifactService {
                 null,
                 null,
                 content.deepCopy(),
-                references,
+                List.of(),
                 createdByKind,
                 runId,
                 now);
@@ -457,15 +455,8 @@ public class ArtifactService {
             throw versionConflict();
         }
         String title = requestedTitle == null ? current.title() : validateTitle(requestedTitle);
-        List<ArtifactVersion.InputReference> references =
-                contentValidator.validate(current.kind(), content);
+        contentValidator.validate(current.kind(), content);
         requireUploadAuthorship(current.kind(), content, author);
-        validateReferences(projectId, references);
-        if (author == ArtifactVersion.CreatedByKind.AGENT) {
-            for (ArtifactVersion.InputReference reference : references) {
-                requireCanvasVersion(ownerId, projectId, reference.versionId());
-            }
-        }
         validateMediaAsset(ownerId, projectId, current.kind(), content);
         Instant now = clock.instant();
         ArtifactVersion revision = new ArtifactVersion(
@@ -477,7 +468,7 @@ public class ArtifactService {
                 current.resourceDefaultVersionId(),
                 null,
                 content.deepCopy(),
-                references,
+                List.of(),
                 author,
                 runId,
                 now);
@@ -680,8 +671,8 @@ public class ArtifactService {
             boolean allowSelection) {
         Artifact current = artifacts.findForUpdate(ownerId, projectId, artifactId)
                 .orElseThrow(this::notFound);
-        List<ArtifactVersion.InputReference> references = new java.util.ArrayList<>(
-                contentValidator.validate(current.kind(), content));
+        contentValidator.validate(current.kind(), content);
+        List<ArtifactVersion.InputReference> references = new java.util.ArrayList<>();
         if (frozenInput != null) {
             int index = 0;
             for (JsonNode image : frozenInput.path("images")) {
@@ -735,17 +726,15 @@ public class ArtifactService {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
                     ApiMessage.of("api.identity-service.invalid-request"), ApiMessage.of("api.canvas-service.only-image-and-video-cards-can-be-uploaded-with-additional"), false);
         }
-        List<ArtifactVersion.InputReference> references =
-                contentValidator.validate(current.kind(), content);
+        contentValidator.validate(current.kind(), content);
         requireUploadAuthorship(current.kind(), content, ArtifactVersion.CreatedByKind.USER);
-        validateReferences(projectId, references);
         validateMediaAsset(ownerId, projectId, current.kind(), content);
         if (baseVersionId != null) requireVersion(ownerId, projectId, artifactId, baseVersionId);
         Instant now = clock.instant();
         ArtifactVersion revision = new ArtifactVersion(UUID.randomUUID(), projectId,
                 artifactId, artifacts.nextVersionNo(projectId, artifactId),
                 INITIAL_SCHEMA_VERSION, baseVersionId,
-                frozenInput == null ? null : frozenInput.deepCopy(), content.deepCopy(), references,
+                frozenInput == null ? null : frozenInput.deepCopy(), content.deepCopy(), List.of(),
                 ArtifactVersion.CreatedByKind.USER, null, now);
         artifacts.appendVersion(revision);
         return revision;
@@ -809,7 +798,7 @@ public class ArtifactService {
                 type, 1, view.artifact().id(), view.artifact().version(), payload);
     }
 
-    /** 批量核对正文引用版本存在于同一项目且其产物类型符合 Schema 声明。 */
+    /** 批量核对任务固定输入版本存在于同一项目且其产物类型符合冻结输入声明。 */
     private void validateReferences(
             UUID projectId, List<ArtifactVersion.InputReference> references) {
         Set<UUID> ids = new LinkedHashSet<>();

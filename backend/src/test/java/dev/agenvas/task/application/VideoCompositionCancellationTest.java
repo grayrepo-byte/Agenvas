@@ -51,7 +51,7 @@ class VideoCompositionCancellationTest {
                 mock(dev.agenvas.asset.storage.MediaRelayService.class), mock(dev.agenvas.settings.application.PromptService.class),
                 mock(dev.agenvas.provider.application.MediaFunctionService.class),
                 new org.springframework.beans.factory.support.StaticListableBeanFactory().getBeanProvider(
-                        dev.agenvas.character.application.CharacterService.class));
+                        dev.agenvas.character.application.CharacterService.class), dev.agenvas.testing.CreationMessagesTestSupport.messages());
         when(events.recordChange(eq(owner), eq(project), any())).thenAnswer(call -> {
             Supplier<?> mutation = call.getArgument(2);
             var change = (ProjectEventService.Change<?>) mutation.get();

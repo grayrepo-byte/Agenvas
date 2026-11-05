@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -17,6 +18,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 import okhttp3.HttpUrl;
 import okhttp3.Interceptor;
 import okhttp3.MultipartBody;
@@ -43,12 +45,13 @@ public final class DebugHttpCapture implements AutoCloseable {
     private static final String URL_FIELD = "url";
     private static final String IMAGE_DATA_URI_PREFIX = "data:image/";
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final Pattern QUERY_PARAMETER = Pattern.compile("(^|[?&])([^?&=#\\s\"<>]+)=", Pattern.MULTILINE);
     private static final ThreadLocal<DebugHttpCapture> ACTIVE = new ThreadLocal<>();
     /** Internal SDK carrier, removed by the capture interceptor before any network I/O. */
     public static final String CAPTURE_HEADER = "X-Agenvas-Debug-Capture";
     private static final ConcurrentMap<String, DebugHttpCapture> REQUEST_CAPTURES = new ConcurrentHashMap<>();
     private static final Set<String> PRIVATE_FIELDS = Set.of("authorization", "proxyauthorization",
-            "apikey", "key", "secret", "clientsecret", "password", "credential", "credentials",
+            "apikey", "authkey", "key", "secret", "clientsecret", "password", "credential", "credentials",
             "token", "accesstoken", "refreshtoken", "cookie", "setcookie", "headers",
             "signature", "sig", "xgoogsignature", "xamzsignature", "reasoning", "reasoningcontent",
             "reasoningdetails", "reasoningtext", "encryptedcontent", "analysis", "thinking", "thought", "thoughts", "thoughtsignature");
@@ -141,7 +144,8 @@ public final class DebugHttpCapture implements AutoCloseable {
         String value = normalized(name);
         return PRIVATE_FIELDS.contains(value) || value.endsWith("apikey") || value.endsWith("secret")
                 || value.endsWith("password") || value.endsWith("credential") || value.endsWith("token")
-                || value.contains("authorization") || value.startsWith("xamz") || value.startsWith("xgoog") || value.startsWith("xtos");
+                || value.contains("authorization") || value.startsWith("xamz") || value.startsWith("xgoog")
+                || value.startsWith("xtos") || value.startsWith("xoss");
     }
     private void remember(String value) {
         if (value == null || value.isBlank()) return;
@@ -164,11 +168,32 @@ public final class DebugHttpCapture implements AutoCloseable {
         if (!preserveModelContent) {
             value = value.replaceAll("(?s)<(?:think|thinking|reasoning)>.*?(</(?:think|thinking|reasoning)>|$)", REDACTED);
         }
-        return value.replaceAll("(?i)Bearer\\s+[A-Za-z0-9._~+/=-]+", "Bearer " + REDACTED)
+        value = value.replaceAll("(?i)Bearer\\s+[A-Za-z0-9._~+/=-]+", "Bearer " + REDACTED)
                 .replaceAll("(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(-----END [A-Z ]*PRIVATE KEY-----|$)", REDACTED)
-                .replaceAll("\\bsk-[A-Za-z0-9_-]+", REDACTED)
-                .replaceAll("(?i)([?&](?:api[_-]?key|key|token|access[_-]?token|signature|sig|x-amz-[a-z-]+|x-goog-[a-z-]+|x-tos-[a-z-]+|x-oss-[a-z-]+)=)[^&\\s\"<>]+", "$1" + REDACTED)
+                .replaceAll("\\bsk-[A-Za-z0-9_-]+", REDACTED);
+        return redactQueryParameters(value)
                 .replaceAll("(?i)(https?://)[^/\\s@]+@", "$1" + REDACTED + "@");
+    }
+
+    /** Decode names for classification only; keep surrounding text and never decode credential values. */
+    private static String redactQueryParameters(String text) {
+        var parameters = QUERY_PARAMETER.matcher(text);
+        StringBuilder safe = null;
+        int copied = 0;
+        while (parameters.find()) {
+            if (parameters.start() < copied) continue;
+            String name;
+            try { name = URLDecoder.decode(parameters.group(2), StandardCharsets.UTF_8); }
+            catch (IllegalArgumentException malformedEncoding) { continue; }
+            if (!privateField(name)) continue;
+            int end = parameters.end();
+            while (end < text.length() && text.charAt(end) != '&' && !Character.isWhitespace(text.charAt(end))
+                    && text.charAt(end) != '"' && text.charAt(end) != '<' && text.charAt(end) != '>') end++;
+            if (safe == null) safe = new StringBuilder(text.length());
+            safe.append(text, copied, parameters.end()).append(REDACTED);
+            copied = end;
+        }
+        return safe == null ? text : safe.append(text, copied, text.length()).toString();
     }
     private JsonNode scrub(JsonNode node) {
         if (node.isObject()) {
@@ -254,7 +279,7 @@ public final class DebugHttpCapture implements AutoCloseable {
         }
         if (contentType.isEmpty() || contentType.startsWith("text/") || contentType.contains("xml") || contentType.contains("x-www-form-urlencoded")) {
             String text = safeText(new String(bytes, StandardCharsets.UTF_8));
-            text = text.replaceAll("(?i)(api[_-]?key|password|secret|access[_-]?token|authorization|token)([=:\\s]+)[^&\\s<]+", "$1$2" + REDACTED);
+            text = text.replaceAll("(?i)(api[_-]?key|auth[_-]?key|password|secret|access[_-]?token|authorization|token)([=:\\s]+)[^&\\s<]+", "$1$2" + REDACTED);
             return new Body(text, Encoding.UTF8, truncated);
         }
         // A gateway may echo a credential even in an incorrectly labelled/binary body.

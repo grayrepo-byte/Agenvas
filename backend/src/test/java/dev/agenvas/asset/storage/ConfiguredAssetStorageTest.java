@@ -37,7 +37,9 @@ class ConfiguredAssetStorageTest {
         verifyNoInteractions(cloud);
         assertThat(Files.exists(local.checkedPath(bytes.objectKey()))).isTrue();
     }
-    @Test void failedArchiveCheckpointLeavesVerifiedStagingBytesForRecovery() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"png", "gif"})
+    void failedArchiveCheckpointLeavesVerifiedStagingBytesForRecovery(String format) throws Exception {
         var local = new LocalAssetStorage(new AssetProperties(root), null, new ObjectMapper());
         UUID project = UUID.randomUUID(), asset = UUID.randomUUID();
         var repository = mock(StorageRepository.class);
@@ -47,9 +49,12 @@ class ConfiguredAssetStorageTest {
         var storage = new ConfiguredAssetStorage(local, repository, mock(StorageSettingsService.class), cloud, new ObjectMapper(), Clock.systemUTC());
         var output = new java.io.ByteArrayOutputStream();
         ImageIO.write(new java.awt.image.BufferedImage(4, 4, java.awt.image.BufferedImage.TYPE_INT_ARGB), "png", output);
-        assertThatThrownBy(() -> storage.storeImage(project, asset, new ByteArrayInputStream(output.toByteArray())))
+        byte[] original = "gif".equals(format) ? dev.agenvas.testing.GifFixture.animation(2) : output.toByteArray();
+        assertThatThrownBy(() -> storage.storeImage(project, asset, new ByteArrayInputStream(original)))
                 .isInstanceOf(IllegalStateException.class).hasMessage("Database unavailable");
-        assertThat(local.recoverImage(project, asset)).isPresent();
+        var recovered = local.recoverImage(project, asset).orElseThrow();
+        assertThat(Files.readAllBytes(local.checkedPath(recovered.objectKey()))).isEqualTo(original);
+        assertThat(recovered.contentType()).isEqualTo("image/" + format);
         verifyNoInteractions(cloud);
     }
     @Test void remoteFileArchivesUseThePinnedRouteButRequireAnIndependentRelay() {

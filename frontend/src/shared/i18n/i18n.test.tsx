@@ -5,8 +5,8 @@ import { HttpResponse,http } from "msw";
 import { MemoryRouter } from "react-router";
 import { describe,expect,expectTypeOf,it,vi } from "vitest";
 import {
-DEFAULT_LOCALE,LOCALE_NAMES,LOCALE_STORAGE_KEY,SUPPORTED_LOCALES,
-detectLocale,formatDate,formatNumber,getLocale,resolveLocale,setLocale,t,translate,type MessageKey
+DEFAULT_LOCALE,LOCALE_STORAGE_KEY,SUPPORTED_LOCALES,
+detectLocale,formatDate,formatNumber,getLocale,localeName,resolveLocale,setLocale,t,translate,type MessageKey
 } from ".";
 import { LoginPage } from "../../features/auth/LoginPage";
 import { changeControl } from "../../test/controls";
@@ -98,14 +98,14 @@ describe("shared locale configuration", () => {
     }
   });
 
-  it("offers all native names and reports blocked preference storage", async () => {
+  it("offers translated language names and reports blocked preference storage", async () => {
     render(<LanguageSelect />);
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /界面语言/ }));
     const list = within(screen.getByRole("dialog"));
-    for (const locale of SUPPORTED_LOCALES) expect(list.getByRole("button", { name: LOCALE_NAMES[locale] })).toBeInTheDocument();
+    for (const locale of SUPPORTED_LOCALES) expect(list.getByRole("button", { name: localeName(locale) })).toBeInTheDocument();
     const storage = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new DOMException("blocked"); });
-    await user.click(list.getByRole("button", { name: "日本語" }));
+    await user.click(list.getByRole("button", { name: localeName("ja") }));
     expect(getLocale()).toBe("ja");
     expect(screen.getByRole("alert")).toHaveTextContent(translate("ja", "locale.storageFailed"));
     expect(list.getByRole("button", { name: "日本語" })).toHaveAttribute("aria-pressed", "true");
@@ -113,6 +113,16 @@ describe("shared locale configuration", () => {
     await user.click(list.getByRole("button", { name: "日本語" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(localStorage.getItem(LOCALE_STORAGE_KEY)).toBe("ja");
+  });
+
+  it("keeps the English language picker free of Chinese, including accessible names", async () => {
+    setLocale("en");
+    render(<LanguageSelect />);
+    await userEvent.setup().click(screen.getByRole("button", { name: /Interface language/ }));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).not.toHaveTextContent(/\p{Script=Han}/u);
+    expect(within(dialog).getByRole("button", { name: "Chinese" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Japanese" })).toBeInTheDocument();
   });
 
   it("synchronizes other tabs without accepting unsupported languages", () => {

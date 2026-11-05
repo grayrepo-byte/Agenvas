@@ -8,5 +8,6 @@ export function mediaModelDetails(capability: MediaCapability, connectionName?: 
     || capability.settings.checkpoint || capability.settings.diffusionModel || capability.adapterId;
   const Icon = capability.kind === "AUDIO_GENERATION" ? MusicNotes
     : capability.kind === "VIDEO_GENERATION" ? VideoCamera : ImageSquare;
-  return { icon: <Icon />, description: [connectionName, model].filter(Boolean).join(" · ") };
+  return { icon: <Icon />, description: [connectionName, model,
+    capability.settings.outputFormat === "gif" ? `GIF · ${capability.settings.frameCount ?? 9} × ${capability.settings.frameDurationMs ?? 200} ms` : undefined].filter(Boolean).join(" · ") };
 }

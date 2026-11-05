@@ -64,9 +64,9 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("project cache callbacks", () => {
   it.each([
-    { type: "artifact.created", prefixes: ["canvas", "media-draft", "project-resources"] },
-    { type: "artifact.version.created", prefixes: ["canvas", "media-draft", "project-characters", "project-resources"] },
-    { type: "artifact.resource_default_version.changed", prefixes: ["canvas", "media-draft", "project-resources"] },
+    { type: "artifact.created", prefixes: ["canvas", "media-draft", "project-resources", "artifacts"] },
+    { type: "artifact.version.created", prefixes: ["canvas", "media-draft", "project-characters", "project-resources", "artifacts"] },
+    { type: "artifact.resource_default_version.changed", prefixes: ["canvas", "media-draft", "project-resources", "artifacts"] },
     { type: "canvas.items.changed", prefixes: ["canvas-media-versions", "canvas-editor", "canvas", "canvas-connections", "media-draft", "project-characters"] },
     { type: "canvas.connection.created", prefixes: ["canvas-media-versions", "canvas-editor", "canvas", "canvas-connections", "media-draft", "project-characters"] },
     { type: "canvas.connection.deleted", prefixes: ["canvas-media-versions", "canvas-editor", "canvas", "canvas-connections", "media-draft", "project-characters"] },
@@ -87,7 +87,10 @@ describe("project cache callbacks", () => {
   ])("refreshes only the expected views for $type", ({ type, prefixes }) => {
     const tracked = trackCache();
     tracked.callbacks.onChange(event(type));
-    expectCacheEffects(tracked, invalidations(...prefixes));
+    expectCacheEffects(tracked, [...invalidations(...prefixes),
+      ...(type === "artifact.created" || type === "artifact.version.created"
+        ? [["invalidate", ["artifact-versions", projectId, "aggregate-1"]] satisfies CacheCall] : []),
+    ]);
   });
 
   it("refreshes group metadata and restored copy drafts without invalidating another project", () => {
@@ -157,11 +160,12 @@ describe("project cache callbacks", () => {
     const refreshedPrefixes = [
       ...historyPrefixes, "run-tasks", "direct-media-tasks", "media-draft", "canvas-media-versions", "project-usage",
       "storyboard", "storyboard-revisions", "storyboard-media-approvals", "project-characters", "canvas-editor", "project-resources",
+      "artifacts", "artifact-versions",
     ];
     const refreshedKeys = refreshedPrefixes.map((prefix) => [prefix, projectId, "scope-1"]);
     const unchangedKeys = [
-      ["direct-media-queue", projectId], ["artifact-versions", projectId, "artifact-1"],
-      ["artifacts", projectId], ["run-history", "project-2", "scope-1"],
+      ["direct-media-queue", projectId], ["artifact-versions", "project-2", "artifact-1"],
+      ["artifacts", "project-2"], ["run-history", "project-2", "scope-1"],
     ];
     for (const key of [...refreshedKeys, ...unchangedKeys]) tracked.queryClient.setQueryData(key, { previous: true });
     tracked.clear();

@@ -3,6 +3,7 @@ import { listRunActions, listRunMediaApprovals, listRunTasks,
   type AgentMediaApproval, type AgentRun, type Task } from "../../shared/api/client";
 import { getFormatLocale, t, useLocale } from "../../shared/i18n";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
+import { Notice } from "../../shared/ui/PagePrimitives";
 import { Button } from "../../shared/ui/primitives/button";
 import { AgentChatMessage, AgentChatTaskRow, AgentExecutionTrace } from "./AgentChatPrimitives";
 import { AgentMediaApprovalCard } from "./AgentMediaApprovalCard";
@@ -12,6 +13,7 @@ import { BlockedRunNotice } from "./BlockedRunNotice";
 import { UnknownTaskRetryPanel } from "./UnknownTaskRetryPanel";
 import { taskErrorDetail } from "./taskErrorMessages";
 import { isVideoCompositionTask } from "./mediaTaskState";
+import { runActionSummary } from "./runActionSummary";
 
 export const RUN_STATUS_LABELS: Record<AgentRun["status"], string> = {
   get QUEUED() { return t("agent.run.pending"); }, get RUNNING() { return t("agent.run.processing"); },
@@ -28,6 +30,7 @@ const TASK_LABELS: Record<Task["kind"], string> = {
   get IMAGE_GENERATION() { return t("agent.run.generateImage"); }, get AUDIO_GENERATION() { return t("agent.run.generateAudio"); }, get VIDEO_GENERATION() { return t("media.generateVideo"); },
 };
 const TOOL_LABELS: Record<string, string> = {
+  get load_toolset() { return t("agent.run.loadTools"); },
   get read_skill() { return t("skills.body"); }, get read_skill_resource() { return t("skills.resources"); }, get read_skill_asset() { return t("skills.readAsset"); }, get read_project_summary() { return t("agent.run.readProject"); }, get read_selection() { return t("agent.run.readSelection"); },
   get read_artifacts() { return t("agent.run.readArtifact"); }, get read_task_status() { return t("agent.run.readTask"); },
   get create_text() { return t("agent.run.createTextArtifact"); }, get revise_artifact() { return t("agent.run.updateArtifact"); },
@@ -123,6 +126,8 @@ export function AgentRunConversation({ projectId, run, active, showFailureNotice
   return <section aria-label={t("agent.run.title")} className="agent-run-conversation">
     <p className="agent-chat-run-date"><time dateTime={run.createdAt}>{new Date(run.createdAt).toLocaleString(getFormatLocale())}</time>{run.conversationTurn ? t("agent.run.roundSuffix", { "0": run.conversationTurn }) : ""}</p>
     <AgentChatMessage role="user">{run.instruction}</AgentChatMessage>
+    {run.contextSnapshot?.conversationMemory?.truncated ? <Notice tone="info">{t("agent.context.historyLimited")}</Notice> : null}
+    {turns.some(task => task.output?.contextCompacted === true) ? <Notice tone="info">{t("agent.context.compacted")}</Notice> : null}
     {tasks.isPending || actions.isPending ? <CanvasLoadingState compact label={t("agent.run.messagesLoading")} /> : null}
     {tasks.error ? <div className="agent-chat-error" role="alert">{t("agent.run.messagesFailed")}<Button variant="ghost" className="node-action" onClick={() => void tasks.refetch()} type="button">{t("agent.chat.retryMessages")}</Button></div> : null}
     {actions.error ? <div className="agent-chat-error" role="alert">{t("agent.run.actionsFailed")}<Button variant="ghost" className="node-action" onClick={() => void actions.refetch()} type="button">{t("agent.run.retryActions")}</Button></div> : null}
@@ -130,7 +135,7 @@ export function AgentRunConversation({ projectId, run, active, showFailureNotice
       {steps.map((step) => <div className="agent-execution-trace__round" key={step}>
         <p className="agent-execution-trace__round-label">{t("agent.trace.round", { "0": step + 1 })}</p>
         {(actions.data ?? []).filter((action) => action.stepIndex === step).map((action) =>
-          <AgentChatTaskRow key={action.id} label={action.summary} status="completed"
+          <AgentChatTaskRow key={action.id} label={runActionSummary(action)} status="completed"
             toolLabel={TOOL_LABELS[action.toolName] ?? action.toolName}
             detail={`${TOOL_LABELS[action.toolName] ?? action.toolName} · ${new Date(action.completedAt).toLocaleString(getFormatLocale())}`} />)}
         {traceTasks.filter((task) => stepIndex(task) === step).map((task) =>

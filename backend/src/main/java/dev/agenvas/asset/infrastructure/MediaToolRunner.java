@@ -133,8 +133,6 @@ public class MediaToolRunner {
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new MediaToolException("Media tool interrupted", false, exception);
-        } catch (RuntimeException exception) {
-            throw exception;
         } catch (IOException exception) {
             throw new MediaToolException("Media tool could not start", false, exception);
         } finally {

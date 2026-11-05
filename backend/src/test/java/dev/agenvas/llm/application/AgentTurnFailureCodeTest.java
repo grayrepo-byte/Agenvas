@@ -15,6 +15,17 @@ import org.springframework.http.HttpStatus;
 /** Missing historical keys remain explicit even when model calls run in a Future. */
 class AgentTurnFailureCodeTest {
     @Test
+    void incompleteStreamSurvivesSdkAndWorkerWrappersWithoutEnteringTheRetryLoop() {
+        var failure = new ExecutionException(new ModelCallFailure(
+                new IllegalStateException("SDK wrapper", new LlmStreamIncompleteException())));
+        assertThat(AgentTurnWorker.failureCode(failure)).isEqualTo("LLM_STREAM_INCOMPLETE");
+        assertThat(AgentModelRetryPolicy.retryableCode(failure)).isNull();
+        var safe = new ExecutionException(LlmStreamIncompleteException.problem());
+        assertThat(AgentTurnWorker.failureCode(safe)).isEqualTo("LLM_STREAM_INCOMPLETE");
+        assertThat(AgentModelRetryPolicy.retryableCode(safe)).isNull();
+    }
+
+    @Test
     void doesNotRetryStructuredQuotaExhaustionOrTreatToolMessagesAsBilling() {
         var failure = mock(OpenAIServiceException.class);
         when(failure.statusCode()).thenReturn(429);

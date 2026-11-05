@@ -1,30 +1,32 @@
 package dev.agenvas.task.domain;
 
+import dev.agenvas.shared.i18n.ApiMessage;
+
 /** Image post-processing semantics; the configured function binding selects the compatible processor. */
 public enum ImageOperation {
-    SMART_EDIT("智能编辑", true, true),
-    RELIGHT("打光", true, false),
-    OUTPAINT("扩图", true, false),
-    THREE_VIEW("三视图", true, false),
-    LAYER_SPLIT("图层分离", true, false),
-    EXPRESSION_EDIT("表情调整", true, true),
-    REMOVE_BACKGROUND("移除背景", true, false),
-    OBJECT_REMOVE("局部擦除", true, true),
-    VIEW_ANGLE("视角调整", true, false),
-    DEPTH_MAP("深度图", false, false),
-    UPSCALE("高清放大", false, false),
-    RESIZE("缩放", false, false),
-    CROP("裁剪", false, false),
-    ROTATE("旋转", false, false),
-    FLIP_HORIZONTAL("水平镜像", false, false),
-    FLIP_VERTICAL("垂直镜像", false, false);
+    SMART_EDIT("creation.image.smart-edit", true, true),
+    RELIGHT("creation.image.relight", true, false),
+    OUTPAINT("creation.image.outpaint", true, false),
+    THREE_VIEW("creation.image.three-view", true, false),
+    LAYER_SPLIT("creation.image.layer-split", true, false),
+    EXPRESSION_EDIT("creation.image.expression-edit", true, true),
+    REMOVE_BACKGROUND("creation.image.remove-background", true, false),
+    OBJECT_REMOVE("creation.image.object-remove", true, true),
+    VIEW_ANGLE("creation.image.view-angle", true, false),
+    DEPTH_MAP("creation.image.depth-map", false, false),
+    UPSCALE("creation.image.upscale", false, false),
+    RESIZE("creation.image.resize", false, false),
+    CROP("creation.image.crop", false, false),
+    ROTATE("creation.image.rotate", false, false),
+    FLIP_HORIZONTAL("creation.image.flip-horizontal", false, false),
+    FLIP_VERTICAL("creation.image.flip-vertical", false, false);
 
-    private final String resultLabel;
+    private final String resultLabelKey;
     private final boolean cloud;
     private final boolean instructionRequired;
 
-    ImageOperation(String resultLabel, boolean cloud, boolean instructionRequired) {
-        this.resultLabel = resultLabel;
+    ImageOperation(String resultLabelKey, boolean cloud, boolean instructionRequired) {
+        this.resultLabelKey = resultLabelKey;
         this.cloud = cloud;
         this.instructionRequired = instructionRequired;
     }
@@ -32,7 +34,7 @@ public enum ImageOperation {
     public boolean cloud() { return cloud; }
 
     /** Human-readable suffix used when naming a newly accepted result node. */
-    public String resultLabel() { return resultLabel; }
+    public ApiMessage resultLabel() { return ApiMessage.of(resultLabelKey); }
 
     public boolean instructionRequired() { return instructionRequired; }
 }

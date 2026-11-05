@@ -19,6 +19,18 @@ const exchange: CallDebug["exchanges"][number] = { method: "POST", url: "https:/
   responseBody: { content: JSON.stringify(response), encoding: "UTF8", truncated: false } };
 
 describe("FormattedCallExchange", () => {
+  it("keeps deeply nested serialized tool arguments readable without crashing the message dialog", async () => {
+    const argumentsText = "[".repeat(10_000) + "0" + "]".repeat(10_000);
+    const requestBody = JSON.stringify({ messages: [{ role: "assistant", tool_calls: [
+      { function: { name: "nestedTool", arguments: argumentsText } },
+    ] }] });
+    render(<FormattedCallExchange exchange={{ ...exchange,
+      requestBody: { content: requestBody, encoding: "UTF8", truncated: false }, responseBody: null }} mode="formatted" llm />);
+    await userEvent.setup().click(screen.getByRole("button", { name: "展开 Prompt" }));
+    expect(screen.getByRole("dialog", { name: "Prompt" })).toHaveTextContent(argumentsText);
+    expect(screen.getByText(argumentsText)).toBeVisible();
+  });
+
   it("shows LLM facts and actual usage; raw mode preserves captured JSON", () => {
     const { rerender } = render(<FormattedCallExchange exchange={exchange} mode="formatted" llm />);
     expect(screen.getByText("gen-123")).toBeInTheDocument();

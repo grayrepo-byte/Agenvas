@@ -22,4 +22,6 @@
 
 V21 扩展连接平台约束以增加 WAN；ARK 与 GOOGLE 沿用现有加密连接。V22 将 Task、ProviderAttempt 与 CallLog 的 provider_request_id 扩为512字符，与新协议允许的有界原始身份一致，避免外部成功受理后因旧240字符存储上限丢失查询身份。V23 仅将 NATIVE_MEDIA 的内部结果清单上限扩为17，满足 Seedream 拆层；其他协议保持16，既有清单约束不被统一放宽。能力、结果清单和扩展 metadata 复用不可变版本化 JSON；合约与生成 TypeScript 同步，jOOQ 由隔离 PostgreSQL 执行迁移后重新生成，普通构建不连接生成数据库。前后端需一起升级。
 
+原生视频的分辨率价格档在发布、配置回显和受理选价之间使用同一小写名称，`4k` 映射为 `2160p`；原协议参数仍保留供应商要求的 `720P` 等格式。同次配置拒绝重复别名，旧已发布别名仅在读取副本中规范化并以精确规范项优先，不改写历史 Task 或账目。此修正无需数据库迁移；重新保存通过现有不可变版本机制发布。分镜批量确认复用节点的动态参数估算规则，万相参考视频的完整计费时长未确定时保持未知。
+
 官方依据分别见[万相研究](../research/wan-generation-protocol.md)、[Seedream 研究](../research/seedream-image-protocol.md)、[Google 视频研究](../research/google-video-protocol.md)。定向测试使用 fake HTTP、合成素材和真实 PostgreSQL；实际检查结果据实记入开发清单。未调用付费 API、未部署，真实账号、真实模型组合、区域可用性、结果域名和供应商费用仍未验收。

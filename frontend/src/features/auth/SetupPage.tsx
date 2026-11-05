@@ -59,6 +59,7 @@ export function SetupPage() {
         </div>
       ) : (
         <form className="ui-form" onSubmit={submit} aria-busy={setup.isPending}>
+          <Notice title={t("auth.setup.networkWarningTitle")} tone="warning">{t("auth.setup.networkWarningBody")}</Notice>
           <AuthField label={t("auth.setup.username")}>
             <Input autoComplete="username" disabled={setup.isPending} maxLength={LOGIN_NAME_MAX_LENGTH} minLength={LOGIN_NAME_MIN_LENGTH} pattern="[A-Za-z0-9._-]+" required value={loginName} onChange={(event) => setLoginName(event.target.value)} />
           </AuthField>

@@ -74,7 +74,8 @@ final class FakeWebDavServer implements AutoCloseable {
         return new OkHttpClient.Builder().followRedirects(false).retryOnConnectionFailure(false).addInterceptor(chain -> {
             if (TransactionSynchronizationManager.isActualTransactionActive()) networkInTransaction.set(true);
             var target = chain.request().url().newBuilder().scheme("http").host("127.0.0.1").port(server.getAddress().getPort()).build();
-            return chain.proceed(chain.request().newBuilder().url(target).build());
+            return new OkHttpClient.Builder().followRedirects(false).retryOnConnectionFailure(false).build()
+                    .newCall(chain.request().newBuilder().url(target).build()).execute();
         }).build();
     }
     @Override public void close() { server.stop(0); }

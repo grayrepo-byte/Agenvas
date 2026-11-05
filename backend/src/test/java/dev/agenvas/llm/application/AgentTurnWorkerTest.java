@@ -38,6 +38,7 @@ import org.mockito.ArgumentMatchers;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.metadata.ChatGenerationMetadata;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import tools.jackson.databind.JsonNode;
@@ -116,6 +117,35 @@ class AgentTurnWorkerTest {
         }
     }
 
+    @Test
+    void freshModelRequestsUseTheFullRequestDeadline() throws Exception {
+        worker.runOnce(WORKER);
+
+        verify(execution).call(ArgumentMatchers.<Callable<JsonNode>>any(), eq(Duration.ofMinutes(10)));
+        verifyAppliedResponse();
+    }
+
+    @Test void toolRepairReusesRejectedRequestBudgetInsteadOfLiveDirectorSettings() throws Exception {
+        var budget = LlmRequestBudget.resolve(DirectorSettings.defaults(),
+                dev.agenvas.settings.application.LlmModelPolicy.manual(
+                        dev.agenvas.settings.application.ModelCatalog.Provider.COMPATIBLE, 8192, null, 1024,
+                        dev.agenvas.settings.application.LlmModelPolicy.OutputParameter.MAX_COMPLETION_TOKENS));
+        var prior = codec.withBudget(codec.request(frozen, List.of()), budget);
+        when(lease.input()).thenReturn(mapper.createObjectNode().put("stepIndex", 1).put("repairFromStep", 0));
+        when(turns.find(project, runId, 0)).thenReturn(Optional.of(new LlmTurn(project, runId, 0,
+                LlmTurn.Status.RESPONDED, 1, prior, response, NOW, null)));
+        when(turns.find(project, runId, 1)).thenReturn(Optional.empty());
+        when(repairContext.assemble(owner, lease)).thenReturn(frozen);
+        when(rounds.callLeased(eq(owner), eq(project), eq(runId), eq(1), any(JsonNode.class), anyList(),
+                anyMap(), eq(lease), eq(WORKER))).thenReturn(response);
+        worker.runOnce(WORKER);
+        var request = org.mockito.ArgumentCaptor.forClass(JsonNode.class);
+        verify(rounds).callLeased(eq(owner), eq(project), eq(runId), eq(1), request.capture(), anyList(),
+                anyMap(), eq(lease), eq(WORKER));
+        assertThat(codec.requestBudget(request.getValue())).isEqualTo(budget);
+        verify(gateway, never()).requestBudgetFor(any());
+    }
+
     @ParameterizedTest
     @CsvSource({"WAITING_TASKS, 0", "RUNNING, 1"})
     void resumedTurnsReadTheDurableResponseWithoutSubmittingAModelCall(AgentRun.Status status, int nextStep) throws Exception {
@@ -129,6 +159,67 @@ class AgentTurnWorkerTest {
         verifyNoInteractions(rounds, initialContext, conversation, repairContext);
         verifyAppliedResponse();
         verify(tasks).ownerForWorker(lease);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"true,false,length", "false,false,length", "true,true,length", "false,true,length",
+            "true,false,LENGTH", "false,false,LENGTH", "true,true,LENGTH", "false,true,LENGTH"})
+    void tokenLimitedResponseCannotExecuteToolsOrCompleteEvenWhenReplayed(boolean hasTools, boolean replay, String reason)
+            throws Exception {
+        JsonNode truncated = codec.response(new ChatResponse(List.of(new Generation(
+                AssistantMessage.builder().content("Task complete")
+                        .toolCalls(hasTools ? calls : List.of()).build(),
+                ChatGenerationMetadata.builder().finishReason(reason).build()))));
+        if (replay) {
+            when(run.nextStepIndex()).thenReturn(1);
+            when(turns.find(project, runId, 0)).thenReturn(Optional.of(new LlmTurn(project, runId, 0,
+                    LlmTurn.Status.RESPONDED, 1, codec.request(frozen, List.of()), truncated, NOW, null)));
+        } else {
+            when(rounds.callLeased(eq(owner), eq(project), eq(runId), eq(0), any(JsonNode.class), anyList(),
+                    anyMap(), eq(lease), eq(WORKER))).thenReturn(truncated);
+        }
+
+        worker.runOnce(WORKER);
+
+        verifyNoInteractions(tools);
+        verify(commits).finishFailure(lease, WORKER, "LLM_OUTPUT_TRUNCATED");
+        verify(commits, never()).complete(any(), anyString());
+        verify(commits, never()).scheduleRepair(any(), anyString(), anyString(), anyString());
+        verify(commits, never()).modelFailed(any(), anyString(), anyString());
+        if (replay) verifyNoInteractions(rounds);
+    }
+
+    @Test
+    void tokenLimitedCompactionCannotAdvanceOrScheduleAnAutomaticRepair() {
+        JsonNode truncated = codec.response(new ChatResponse(List.of(new Generation(
+                new AssistantMessage("{\"goal\":\"Incomplete handoff\"}"),
+                ChatGenerationMetadata.builder().finishReason("LENGTH").build()))));
+        var request = codec.request(frozen, List.of());
+        request.putObject("contextCompaction");
+        when(run.nextStepIndex()).thenReturn(1);
+        when(turns.find(project, runId, 0)).thenReturn(Optional.of(new LlmTurn(project, runId, 0,
+                LlmTurn.Status.RESPONDED, 1, request, truncated, NOW, null)));
+
+        worker.runOnce(WORKER);
+
+        verifyNoInteractions(tools, rounds);
+        verify(commits).finishFailure(lease, WORKER, "LLM_OUTPUT_TRUNCATED");
+        verify(commits, never()).complete(any(), anyString());
+        verify(commits, never()).scheduleRepair(any(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void incompleteStreamFailsWithoutToolsCompletionOrAutomaticRetry() throws Exception {
+        when(rounds.callLeased(eq(owner), eq(project), eq(runId), eq(0), any(JsonNode.class), anyList(),
+                anyMap(), eq(lease), eq(WORKER))).thenThrow(LlmStreamIncompleteException.problem());
+
+        worker.runOnce(WORKER);
+
+        verifyNoInteractions(tools);
+        verify(commits).finishFailure(lease, WORKER, "LLM_STREAM_INCOMPLETE");
+        verify(commits, never()).complete(any(), anyString());
+        verify(commits, never()).scheduleRepair(any(), anyString(), anyString(), anyString());
+        verify(commits, never()).modelFailed(any(), anyString(), anyString());
     }
 
     @Test

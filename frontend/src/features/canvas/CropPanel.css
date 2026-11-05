@@ -157,6 +157,7 @@
 
 @media (max-width: 720px) {
   .crop-backdrop { padding: 14px; }
+  .crop-dialog { max-width: calc(100vw - 28px); }
   .crop-image-shell > img { max-width: calc(100vw - 28px); max-height: calc(100vh - 154px); }
   .crop-toolbar { gap: 3px; }
   .crop-toolbar button { padding: 0 10px; }

@@ -60,7 +60,7 @@ export function RunningHubForm({ definition, values, prompt, durationSeconds, ch
           onChange={(event) => onChange(field.key, event.target.value ? field.options?.[Number(event.target.value)]?.value : undefined)}>
           <option value="">{t("media.runningHub.selectPlaceholder")}</option>{field.options?.map((option, index) => <option key={index} value={index}>{option.label}</option>)}
         </Select> : field.type === "BOOLEAN" ? <Select {...controlProps} value={value === undefined ? "" : String(value)} onChange={(event) => onChange(field.key, event.target.value ? event.target.value === "true" : undefined)}>
-          <option value="">{t("media.runningHub.useDefault")}</option><option value="true">{t("common.enabled")}</option><option value="false">{t("common.close")}</option>
+          <option value="">{t("media.runningHub.useDefault")}</option><option value="true">{t("common.enabled")}</option><option value="false">{t("common.disabled")}</option>
         </Select> : field.type === "STRING" ? <Textarea {...controlProps} rows={3} maxLength={field.maxLength ?? WORKFLOW_DEFAULT_MAX_LENGTH} value={value === undefined ? "" : String(value)}
           onChange={(event) => onChange(field.key, event.target.value)} /> : <CreatorNumberInput {...controlProps} value={value === undefined ? undefined : Number(value)}
           min={minimum} max={maximum} step={field.step ?? (field.type === "INTEGER" ? 1 : "any")}

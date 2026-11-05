@@ -324,21 +324,24 @@ class LibraryRecoveryPostgresIT {
         UUID item = place(project.id(), text.artifact().id());
         String path = "/api/v1/projects/" + project.id() + "/canvas-items/" + item + "/library-saves";
         mvc.perform(get(path).with(auth)).andExpect(status().isUnprocessableEntity());
-        var revised = artifacts.revise(owner.userId(), project.id(), text.artifact().id(), 0, "角色说明", mapper.valueToTree(Map.of("format", "MARKDOWN", "text", "# 角色\n勇敢的旅行者")));
-        var request = Map.of("versionId", revised.resourceDefaultVersion().id(), "expectedSelectionEpoch", 0,
+        String rawText = "\n    # 角色  \n\t勇敢的旅行者  \n\n";
+        JsonNode revised = postJson("/api/v1/projects/" + project.id() + "/artifacts/" + text.artifact().id() + "/revisions",
+                Map.of("expectedVersion", 0, "title", "角色说明", "content", Map.of("format", "MARKDOWN", "text", rawText)), 201);
+        assertThat(revised.path("resourceDefaultVersion").path("content").path("text").asText()).isEqualTo(rawText);
+        var request = Map.of("versionId", revised.path("resourceDefaultVersion").path("id").asText(), "expectedSelectionEpoch", 0,
                 "expectedArtifactVersion", 1, "name", "角色说明", "category", "CHARACTER", "commandKey", "text-save");
         var stale = new java.util.HashMap<>(request); stale.put("expectedArtifactVersion", 0); stale.put("commandKey", "text-stale");
         postJson(path, stale, 409);
         String commandId = postJson(path, request, 202).path("id").asText(); library.processNext();
         String entry = command(commandId).path("result").path("entryId").asText();
-        assertThat(read("/api/v1/library/entries/" + entry).path("textContent").path("text").asText()).isEqualTo("# 角色\n勇敢的旅行者");
+        assertThat(read("/api/v1/library/entries/" + entry).path("textContent").path("text").asText()).isEqualTo(rawText);
         Project target = projects.create(owner.userId(), "Imported text", Project.AspectRatio.SQUARE_1_1);
         String imported = postJson("/api/v1/projects/" + target.id() + "/library-imports", Map.of("entryId", entry, "expectedVersion", 0,
                 "commandKey", "text-import", "x", 10, "y", 20), 202).path("id").asText(); library.processNext();
         assertThat(command(imported).path("status").asText()).isEqualTo("SUCCEEDED");
         JsonNode importedText = read("/api/v1/projects/" + target.id() + "/canvas/items").path("items").get(0).path("artifact").path("resourceDefaultVersion").path("content");
         assertThat(importedText.path("format").asText()).isEqualTo("MARKDOWN");
-        assertThat(importedText.path("text").asText()).isEqualTo("# 角色\n勇敢的旅行者");
+        assertThat(importedText.path("text").asText()).isEqualTo(rawText);
         mvc.perform(get("/api/v1/library/entries?cursor=eyJ2YWx1ZSI6IngiLCJpZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMCJ9").with(auth))
                 .andExpect(status().isBadRequest());
     }
@@ -386,10 +389,30 @@ class LibraryRecoveryPostgresIT {
         library.processNext();
         assertThat(command(id).path("status").asText()).isEqualTo("FAILED");
         Files.delete(blocked);
-        postJson("/api/v1/library/commands/" + id + "/retry", Map.of(), 202);
+        // Independent tabs can retry the same failed command together. Exactly one
+        // transition is accepted; the other tab must reconcile by reading the command.
+        var ready = new java.util.concurrent.CyclicBarrier(2);
+        java.util.concurrent.Callable<Integer> retryFromTab = () -> {
+            ready.await(10, java.util.concurrent.TimeUnit.SECONDS);
+            return mvc.perform(post("/api/v1/library/commands/" + id + "/retry").with(auth).with(csrf())
+                    .contentType("application/json").content("{}"))
+                    .andReturn().getResponse().getStatus();
+        };
+        try (var tabs = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var first = tabs.submit(retryFromTab);
+            var second = tabs.submit(retryFromTab);
+            assertThat(List.of(first.get(10, java.util.concurrent.TimeUnit.SECONDS), second.get(10, java.util.concurrent.TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(202, 409);
+        }
+        assertThat(command(id).path("status").asText()).isEqualTo("ACCEPTED");
         library.processNext();
         assertThat(command(id).path("status").asText()).isEqualTo("SUCCEEDED");
         assertThat(command(id).path("result").path("entryId").asText()).isEqualTo(id);
+        // A lost retry acknowledgement is reconciled with GET: another retry POST is
+        // a conflict after success, while the original accepted command still replays.
+        postJson("/api/v1/library/commands/" + id + "/retry", Map.of(), 409);
+        assertThat(command(id).path("status").asText()).isEqualTo("SUCCEEDED");
+        assertThat(postJson(source(card), saveRequest(card, "storage-failure"), 202).path("id").asText()).isEqualTo(id);
     }
 
     @Test void usesStableCursorPagesAndServerSearchRatherThanLoadedPageCounts() throws Exception {

@@ -22,7 +22,7 @@ public record DirectorSettings(int contextWindowTokens, int compactionThresholdP
     }
 
     public static DirectorSettings defaults() {
-        return new DirectorSettings(1_000_000, 50, 8192, 2048, 4, 1440, 288, 300, 4, 1);
+        return new DirectorSettings(32768, 50, 4096, 1024, 4, 1440, 288, 300, 4, 1);
     }
 
     Duration recoveryWindow() { return Duration.ofMinutes(recoveryWindowMinutes); }

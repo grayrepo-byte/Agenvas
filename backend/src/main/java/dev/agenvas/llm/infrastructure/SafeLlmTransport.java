@@ -7,6 +7,7 @@ import dev.agenvas.shared.http.PinnedHttpClients;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.net.URI;
 import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
@@ -55,7 +56,17 @@ final class SafeLlmTransport {
     /** Separate whole-call and silent-read deadlines; HTTP tests can shorten either limit. */
     SafeLlmTransport(String endpoint, LlmEndpointPolicy policy, Dns resolver,
             Duration readTimeout, Duration modelTimeout) {
+        // Revoke persisted HTTP exceptions when the operator removes them and restarts.
+        policy.requireAllowedOrigin(URI.create(endpoint));
         this.base = HttpUrl.get(endpoint);
+        // OkHttp bypasses custom Dns for IP literals, so validate them before credentials leave.
+        if (base.host().contains(":") || base.host().matches("[0-9.]+")) {
+            try {
+                policy.requireAllowedAddress(URI.create(endpoint), InetAddress.getByName(base.host()));
+            } catch (UnknownHostException invalid) {
+                throw new IllegalArgumentException("LLM endpoint has an invalid IP address");
+            }
+        }
         String path = base.encodedPath().replaceAll("/+$", "");
         this.completionPath = path + "/chat/completions";
         this.client = PinnedHttpClients.pinned(host -> {
@@ -66,7 +77,7 @@ final class SafeLlmTransport {
             if (addresses.isEmpty()) throw new UnknownHostException("LLM DNS returned no addresses");
             try {
                 for (InetAddress address : addresses) {
-                    policy.requireAllowedAddress(host, address);
+                    policy.requireAllowedAddress(URI.create(endpoint), address);
                 }
             } catch (RuntimeException unsafe) {
                 throw new UnknownHostException("LLM DNS returned a blocked address");
@@ -115,8 +126,15 @@ final class SafeLlmTransport {
             response.close();
             throw new IOException("LLM stream response exceeds the transport size limit");
         }
+        MediaType type = original.contentType();
+        // Streaming SDK parsing does not depend on the response media type. Observe successful
+        // bounded bodies, but require markers only for declared/actual SSE; pure JSON and HTTP
+        // errors retain their original semantics even when the request's Accept asks for SSE.
+        boolean declaredSse = type != null
+                && type.type().equalsIgnoreCase("text") && type.subtype().equalsIgnoreCase("event-stream");
         BufferedSource source = Okio.buffer(new ForwardingSource(original.source()) {
             private long consumed;
+            private final LlmSseCompletion completion = response.isSuccessful() ? new LlmSseCompletion(declaredSse) : null;
 
             @Override
             public long read(okio.Buffer sink, long byteCount) throws IOException {
@@ -129,6 +147,12 @@ final class SafeLlmTransport {
                     try { super.close(); } catch (IOException closeFailure) { exceeded.addSuppressed(closeFailure); }
                     response.close();
                     throw exceeded;
+                }
+                if (completion != null && read == -1) completion.end();
+                else if (completion != null) {
+                    var observed = new okio.Buffer();
+                    sink.copyTo(observed, sink.size() - read, read);
+                    completion.accept(observed);
                 }
                 return read;
             }

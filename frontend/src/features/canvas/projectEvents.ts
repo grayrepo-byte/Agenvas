@@ -87,7 +87,8 @@ export function subscribeProjectEvents(
   }
 
   function scheduleRecovery(delayMillis: number) {
-    clearRetry();
+    // Repeated native reconnect failures must not postpone the first recovery deadline.
+    if (retryTimer !== undefined) return;
     retryTimer = dependencies.schedule(() => {
       retryTimer = undefined;
       void recover();

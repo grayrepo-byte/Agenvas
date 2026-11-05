@@ -144,7 +144,9 @@ class AgentLongTaskPostgresIT {
         assertThat(recovered).isTrue();
         assertThat(gateway.written).isEqualTo(70);
         assertThat(gateway.compactions).isGreaterThan(2);
-        assertThat(count("select count(*) from tool_execution where run_id=:run")).isEqualTo(70);
+        // The discovery receipt is durable too, but it creates no shot card.
+        assertThat(count("select count(*) from tool_execution where run_id=:run and tool_name='create_text'")).isEqualTo(70);
+        assertThat(count("select count(*) from tool_execution where run_id=:run and tool_name='load_toolset'")).isEqualTo(1);
         long turns = count("select count(*) from llm_turn where run_id=:run");
         assertThat(turns).isGreaterThan(70);
         assertThat(count("select count(*) from usage_ledger where run_id=:run and entry_type='SETTLEMENT'"))
@@ -269,6 +271,9 @@ class AgentLongTaskPostgresIT {
                             new AssistantMessage.ToolCall("forged-compaction-tool", "function", "create_text",
                                     "{\"title\":\"Must never be created\",\"text\":\"Forged action\",\"format\":\"PLAIN_TEXT\"}"))).build();
                 }
+            } else if (tools.size() == 1 && "load_toolset".equals(tools.getFirst().getToolDefinition().name())) {
+                assistant = AssistantMessage.builder().content("").toolCalls(List.of(
+                        new AssistantMessage.ToolCall("load-text", "function", "load_toolset", "{\"toolsets\":[\"TEXT\"]}"))).build();
             } else if (written == finishAt) assistant = new AssistantMessage("All requested cards are saved.");
             else {
                 if (written + 1 == failAt && !failed) {

@@ -63,6 +63,13 @@ for compose_file in "${compose_files[@]}"; do
     (.services | all(.[]; .healthcheck.test | length > 0)) and
     .services.server.environment.AGENVAS_STORAGE_ROOT == "/opt/agenvas/data/assets" and
     .services.server.environment.AGENVAS_MCP_ENABLED == "true" and
+    .services.server.environment.AGENVAS_LOCAL_SERVICE_RUNTIME == "CONTAINER" and
+    .services.server.environment.AGENVAS_LOCAL_SERVICE_DISCOVERY_ENABLED == "true" and
+    # Compose versions serialize this same mapping with either delimiter.
+    (.services.server.extra_hosts | if type == "array" then
+      index("host.docker.internal:host-gateway") != null or
+      index("host.docker.internal=host-gateway") != null
+      else ."host.docker.internal" == "host-gateway" end) and
     (.services.server.environment | keys | all(.[]; startswith("AGENVAS_AGENT_") | not)) and
     .volumes."postgres-data".name == (.name + "_postgres-data") and
     .volumes."asset-data".name == (.name + "_asset-data") and

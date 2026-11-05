@@ -1,4 +1,5 @@
 import importlib.util
+import json
 from pathlib import Path
 import re
 import subprocess
@@ -227,6 +228,50 @@ class GateTest(unittest.TestCase):
                 needs = self.needs(False)
                 needs["changes"]["outputs"]["code_changed"] = value
                 self.assertTrue(ci.gate_errors(needs))
+
+
+class ImagePublicationTest(unittest.TestCase):
+    CONFIG_ID = "sha256:" + "a" * 64
+
+    def manifest(self, media_type="application/vnd.oci.image.layer.v1.tar+gzip"):
+        return {"schemaVersion": 2, "config": {"digest": self.CONFIG_ID},
+                "layers": [{"mediaType": media_type, "size": 123, "digest": "sha256:" + "b" * 64}]}
+
+    def test_compressed_layers_keep_the_validated_image_configuration(self):
+        for media_type in ("application/vnd.oci.image.layer.v1.tar+gzip",
+                           "application/vnd.docker.image.rootfs.diff.tar.gzip"):
+            with self.subTest(media_type=media_type):
+                self.assertEqual(ci.publication_manifest_errors(self.manifest(media_type), self.CONFIG_ID), [])
+
+    def test_uncompressed_v008_layers_cannot_reach_final_release_tags(self):
+        for media_type in ("application/vnd.oci.image.layer.v1.tar",
+                           "application/vnd.docker.image.rootfs.diff.tar", "unexpected"):
+            with self.subTest(media_type=media_type):
+                self.assertIn("layer 0: expected gzip compression",
+                              ci.publication_manifest_errors(self.manifest(media_type), self.CONFIG_ID))
+
+    def test_publication_rejects_a_substituted_or_rebuilt_image(self):
+        self.assertIn("configuration does not match the validated image",
+                      ci.publication_manifest_errors(self.manifest(), "sha256:" + "c" * 64))
+
+    def test_cli_rejects_registry_manifest_before_final_tags(self):
+        with tempfile.TemporaryDirectory() as folder:
+            config_file = Path(folder) / "expected-config.txt"
+            config_file.write_text(self.CONFIG_ID + "\n")
+            command = ["python3", str(SCRIPT_DIR / "ci.py"), "check-publication", str(config_file)]
+            accepted = subprocess.run(command, input=json.dumps(self.manifest()),
+                                      capture_output=True, text=True, timeout=10)
+            self.assertEqual(accepted.returncode, 0, accepted.stderr)
+            rejected = subprocess.run(command, input=json.dumps(self.manifest("application/vnd.oci.image.layer.v1.tar")),
+                                      capture_output=True, text=True, timeout=10)
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("expected gzip compression", rejected.stderr)
+
+    def test_missing_artifacts_indexes_and_empty_layers_fail_closed(self):
+        for manifest, config_id in (({}, self.CONFIG_ID), (self.manifest(), ""),
+                                    ({"config": {"digest": self.CONFIG_ID}, "layers": []}, self.CONFIG_ID)):
+            with self.subTest(manifest=manifest, config_id=config_id):
+                self.assertTrue(ci.publication_manifest_errors(manifest, config_id))
 
 
 if __name__ == "__main__":

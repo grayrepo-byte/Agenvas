@@ -37,6 +37,8 @@ function image(width: number, height: number): string {
   return canvas.toDataURL("image/png");
 }
 
+// Locally encoded two-frame red/green GIF, 200 ms/frame and infinite loop.
+const gifUrl = "data:image/gif;base64,R0lGODlhCAAIAIEAAP8AAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQAFAAAACwAAAAACAAIAAAIDwABCBxIsKDBgwgTKkwYEAAh+QQBFAABACwAAAAACAAIAIEA/wAAAAAAAAAAAAAIDwABCBxIsKDBgwgTKkwYEAA7";
 const imageUrl = image(IMAGE_WIDTH, IMAGE_HEIGHT);
 const portraitUrl = image(IMAGE_HEIGHT, IMAGE_WIDTH);
 
@@ -71,7 +73,7 @@ async function video(): Promise<string> {
   return URL.createObjectURL(blob);
 }
 
-type Preview = "image" | "portrait" | "video" | "retry-image" | "retry-video";
+type Preview = "gif" | "image" | "portrait" | "video" | "retry-image" | "retry-video";
 
 function Fixture() {
   const [sourceVideo, setSourceVideo] = useState<string>();
@@ -102,10 +104,11 @@ function Fixture() {
   const isPortrait = preview === "portrait";
   const sourceUrl = preview === "retry-image" ? "/e2e/retry-image.png"
     : preview === "retry-video" ? "/e2e/retry-video.webm"
-    : isVideo ? sourceVideo! : isPortrait ? portraitUrl : imageUrl;
+    : preview === "gif" ? gifUrl : isVideo ? sourceVideo! : isPortrait ? portraitUrl : imageUrl;
   return <>
     <main id="fixture" data-image={imageUrl} data-video={sourceVideo} data-deletions={deletions}>
       <button id="image-open" onClick={() => setPreview("image")}>Open image</button>
+      <button id="gif-open" onClick={() => setPreview("gif")}>Open animated GIF</button>
       <button id="portrait-open" onClick={() => setPreview("portrait")}>Open portrait image</button>
       <button id="video-open" disabled={!sourceVideo} onClick={() => setPreview("video")}>Open video</button>
       <button id="retry-image-open" onClick={() => setPreview("retry-image")}>Open failing image</button>
@@ -116,9 +119,9 @@ function Fixture() {
     </main>
     {preview && sourceVideo ? <MediaPreviewDialog kind={isVideo ? "video" : "image"}
       title={isVideo ? "Synthetic video" : "Synthetic image"} sourceUrl={sourceUrl}
-      posterSrc={isVideo ? imageUrl : undefined} contentType={isVideo ? "video/webm" : "image/png"}
-      width={isVideo ? VIDEO_WIDTH : isPortrait ? IMAGE_HEIGHT : IMAGE_WIDTH}
-      height={isVideo ? VIDEO_HEIGHT : isPortrait ? IMAGE_WIDTH : IMAGE_HEIGHT}
+      posterSrc={isVideo ? imageUrl : undefined} contentType={isVideo ? "video/webm" : preview === "gif" ? "image/gif" : "image/png"}
+      width={preview === "gif" ? 8 : isVideo ? VIDEO_WIDTH : isPortrait ? IMAGE_HEIGHT : IMAGE_WIDTH}
+      height={preview === "gif" ? 8 : isVideo ? VIDEO_HEIGHT : isPortrait ? IMAGE_WIDTH : IMAGE_HEIGHT}
       onClose={() => setPreview(undefined)} /> : null}
     {comparing ? <VideoComparisonDialog projectId="review" title="Synthetic comparison" selectedVersionId="v2" onClose={() => setComparing(false)}
       versions={[2, 1].map((number) => ({ nodeVersionNo: number, version: { id: `v${number}`, versionNo: number, schemaVersion: 1,

@@ -99,12 +99,14 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
   const [threeViewType, setThreeViewType] = useState<ThreeViewType | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [directorOpen, setDirectorOpen] = useState(false);
-  const menuButton = useRef<HTMLButtonElement>(null);
   const uploadInput = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const draft = useQuery(mediaDraftQueryOptions(artifact.projectId, item.id));
   const showDraft = isMediaDraftDisplayed(item, draft.data);
-  const history = useQuery(mediaVersionsQueryOptions(artifact.projectId, item.id));
+  const toolbarActive = selected && toolbarVisible !== false;
+  const history = useQuery({ ...mediaVersionsQueryOptions(artifact.projectId, item.id),
+    // An existing version proves saved results; empty selections still need history to discover them.
+    enabled: toolbarActive || item.selectedVersionId === null });
   const hasResults = Boolean(history.data?.items.length);
   const tasks = useQuery({ queryKey: ["direct-media-tasks", artifact.projectId, item.id],
     queryFn: () => listDirectMediaTasks(artifact.projectId, artifact.id, item.id), enabled: showDraft,
@@ -146,7 +148,6 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
       ]);
     },
   });
-  const toolbarActive = selected && toolbarVisible !== false;
   const videoOperation = useMutation({
     mutationFn: (input: RunVideoOperationRequest) => {
       // A layout save after an uncertain response must replay the original command.
@@ -241,7 +242,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
           <Button variant="ghost" type="button" disabled={!assetId || Boolean(busy) || operation.isPending}
             onClick={() => setOperationOpen("RESIZE")}><ArrowsOutSimple data-icon="inline-start" />{t("image.resize.title")}</Button>
           <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen} modal={false}>
-            <DropdownMenuTrigger asChild><Button variant="ghost" type="button" ref={menuButton}>
+            <DropdownMenuTrigger asChild><Button variant="ghost" type="button">
               <MagicWand />{t("media.card.extensions")}<CaretDown /></Button></DropdownMenuTrigger>
             <DropdownMenuContent aria-labelledby={undefined} aria-label={t("media.card.imageExtensions")} className="w-max p-2 nodrag nowheel nopan"><DropdownMenuGroup>
               {EXTENSIONS.map((entry) => entry.submenu ? <DropdownMenuSub key={entry.label} open={threeViewMenuOpen} onOpenChange={setThreeViewMenuOpen}>

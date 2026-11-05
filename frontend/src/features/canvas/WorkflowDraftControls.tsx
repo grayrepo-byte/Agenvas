@@ -205,7 +205,7 @@ function WorkflowParameterControl({ field, value, disabled, onChange }: {
   </Select>;
   else if (field.type === "BOOLEAN") control = <Select id={id} value={value === undefined ? "" : String(value)} disabled={disabled} aria-label={label}
     onChange={(event) => onChange(field.key, event.target.value === "" ? undefined : event.target.value === "true")}>
-    <option value="">{t("media.runningHub.useDefault")}</option><option value="true">{t("common.enabled")}</option><option value="false">{t("common.close")}</option>
+    <option value="">{t("media.runningHub.useDefault")}</option><option value="true">{t("common.enabled")}</option><option value="false">{t("common.disabled")}</option>
   </Select>;
   else if (field.type === "STRING") control = <Textarea id={id} rows={2} maxLength={field.maxLength ?? WORKFLOW_DEFAULT_MAX_LENGTH} disabled={disabled}
     aria-label={label} value={value === undefined ? "" : String(value)} onChange={(event) => onChange(field.key, event.target.value)} />;

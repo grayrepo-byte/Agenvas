@@ -2,6 +2,7 @@ import { render,screen,within } from "@testing-library/react";
 import { useState } from "react";
 import { describe,expect,it } from "vitest";
 import type { RunningHubDefinition } from "../../shared/api/client";
+import { setLocale } from "../../shared/i18n";
 import { changeControl,clickControl } from "../../test/controls";
 import { RunningHubForm } from "./RunningHubForm";
 import { workflowValidationErrors, workflowUsedVersions, type WorkflowValue } from "./workflowFields";
@@ -21,6 +22,12 @@ function Form() {
     <output>{JSON.stringify(values)}</output></>;
 }
 describe("RunningHubForm", () => {
+  it("describes a false boolean value as Disabled in English", () => {
+    setLocale("en");
+    render(<RunningHubForm definition={{ ...definition, fields: [{ ...definition.fields[1]!, label: "Sound", required: false }] }}
+      values={{ sound: false }} prompt="" durationSeconds={null} choices={[]} onChange={() => {}} />);
+    expect(screen.getByRole("combobox", { name: "Sound" })).toHaveTextContent("Disabled");
+  });
   it("keeps stage groups, independent duplicate-purpose fields and conditional advanced controls", async () => {
     const staged: RunningHubDefinition = { ...definition, fields: [
       { ...definition.fields[0]!, group: "基础生成" },

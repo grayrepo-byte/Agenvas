@@ -3,7 +3,8 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
-import type { ThirdPartyPromptEntry } from "../../shared/api/client";
+import type { ThirdPartyPromptEntry, ThirdPartyPromptSource } from "../../shared/api/client";
+import { setLocale } from "../../shared/i18n";
 import { server } from "../../test/server";
 import { MediaTemplatePicker, type TemplatePickerContext } from "./MediaTemplatePicker";
 import { ThirdPartyPromptCatalog } from "./ThirdPartyPromptCatalog";
@@ -101,5 +102,57 @@ describe("third-party prompt catalogue", () => {
     await user.click(screen.getByRole("button", { name: "使用模板" })); await screen.findByText("Synthetic failure");
     expect(apply).not.toHaveBeenCalled(); await user.click(screen.getByRole("button", { name: "使用模板" }));
     await waitFor(() => expect(apply).toHaveBeenCalled()); expect(calls[0]).toEqual(calls[1]); expect(calls[0]).toMatchObject({ promptId: entry.id, expectedVersion: 2 });
+  });
+});
+
+describe("third-party source failure status", () => {
+  const source: ThirdPartyPromptSource = { id: "native", name: "Synthetic source", targetKind: "IMAGE", format: "NATIVE_JSON",
+    url: "https://example.com/private-feed?private=DO_NOT_DISPLAY", model: "", enabled: true, version: 1,
+    nextSyncAt: "2026-11-04T01:00:00Z", lastSyncedAt: "2026-11-03T00:00:00Z", lastError: null, promptCount: 7, syncing: false };
+  function show(lastError: string | null) {
+    catalogue(); setLocale("en");
+    server.use(http.get("/api/v1/media-templates/third-party/sources", () => HttpResponse.json({ items: [{ ...source, lastError }] })),
+      http.get("/api/v1/settings/media-template-sync", () => HttpResponse.json({ enabled: false, deploymentEnabled: true, version: 0 })));
+    return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <ThirdPartyPromptCatalog kind="IMAGE" system />
+    </QueryClientProvider>);
+  }
+
+  it.each([
+    ["THIRD_PARTY_SOURCE_HTTP_ERROR", "The source did not return a successful download response. Cached entries remain available."],
+    ["THIRD_PARTY_SOURCE_DOWNLOAD_FAILED", "The source could not be downloaded. Check the address, network access and source availability. Cached entries remain available."],
+    ["THIRD_PARTY_SOURCE_TOO_LARGE", "The source response exceeded the download limit. Cached entries remain available."],
+    ["THIRD_PARTY_SOURCE_INVALID_DATA", "The source data or address failed validation. Cached entries remain available."],
+  ])("shows a safe explanation for persisted %s without exposing the configured URL", async (code, message) => {
+    show(code);
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(screen.queryByText(/DO_NOT_DISPLAY/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Failed sources retry after one hour when automatic sync and the source are enabled/)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Cached portrait" })).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Automatically sync third-party prompts" })).not.toBeChecked();
+  });
+
+  it.each(["THIRD_PARTY_SYNC_FAILED", "UNKNOWN_PRIVATE_ERROR", "constructor"])("keeps a generic fallback for %s", async (code) => {
+    show(code);
+    expect(await screen.findByText("Sync failed. Cached entries remain available. Check the source URL and retry.")).toBeInTheDocument();
+    expect(screen.queryByText(code)).not.toBeInTheDocument();
+  });
+
+  it("refreshes a failed explicit manual sync without enabling automatic downloads", async () => {
+    show(null);
+    let syncs = 0; let settingsWrites = 0;
+    server.use(http.post("/api/v1/settings/media-template-sources/native/sync", () => {
+      syncs++;
+      server.use(http.get("/api/v1/media-templates/third-party/sources", () => HttpResponse.json({ items: [
+        { ...source, lastError: "THIRD_PARTY_SOURCE_HTTP_ERROR" },
+      ] })));
+      return HttpResponse.json({ sourceId: source.id, state: "FAILED", inserted: 0, updated: 0, received: 0 });
+    }), http.put("/api/v1/settings/media-template-sync", () => { settingsWrites++; return HttpResponse.json({}); }));
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Sync now" }));
+    expect(await screen.findByText("The source did not return a successful download response. Cached entries remain available.")).toBeInTheDocument();
+    expect(syncs).toBe(1);
+    expect(settingsWrites).toBe(0);
+    expect(screen.getByRole("button", { name: "Cached portrait" })).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Automatically sync third-party prompts" })).not.toBeChecked();
   });
 });

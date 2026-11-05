@@ -8,7 +8,11 @@ import dev.agenvas.mediatemplate.application.ThirdPartyPromptValidation;
 import dev.agenvas.mediatemplate.domain.MediaTemplate.TargetKind;
 import dev.agenvas.mediatemplate.domain.ThirdPartyPrompt;
 import dev.agenvas.mediatemplate.domain.ThirdPartyPrompt.*;
+import java.net.URI;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.HashSet;
@@ -20,6 +24,7 @@ import tools.jackson.databind.ObjectMapper;
 /** Public video API and repository exports use the same model-specific adapter. */
 @Component
 public class ImagePromptGalleryAdapter implements ThirdPartyPromptAdapter {
+    private static final int MAX_PREFILL_BYTES = 512 * 1024;
     private final ObjectMapper mapper;
     public ImagePromptGalleryAdapter(ObjectMapper mapper) { this.mapper = mapper; }
     @Override public Format format() { return Format.IMAGE_PROMPT_GALLERY_JSON; }
@@ -63,6 +68,15 @@ public class ImagePromptGalleryAdapter implements ThirdPartyPromptAdapter {
                 url = builder.replaceQueryParam("offset", pagination.path("nextOffset").asInt()).build().encode().toUriString();
             } else if (pagination.path("nextPage").isIntegralNumber()) {
                 url = builder.replaceQueryParam("page", pagination.path("nextPage").asInt()).build().encode().toUriString();
+            } else if (pagination.path("offset").isIntegralNumber() && pagination.path("limit").isIntegralNumber()
+                    && pagination.path("total").isIntegralNumber() && pagination.path("total").asLong() > receivedIds.size()) {
+                // The compact public API exposes offset/limit/total rather than an explicit next link.
+                long offset = pagination.path("offset").asLong(), limit = pagination.path("limit").asLong();
+                long total = pagination.path("total").asLong();
+                if (offset < 0 || offset >= total || limit <= 0 || limit > ThirdPartyPromptValidation.MAX_ENTRIES
+                        || total > ThirdPartyPromptValidation.MAX_ENTRIES || batch.size() != limit
+                        || offset + limit >= total) throw ThirdPartyPromptValidation.invalid();
+                url = builder.replaceQueryParam("offset", offset + limit).build().encode().toUriString();
             } else {
                 if (pagination.path("hasMore").asBoolean(false) || pagination.path("total").asInt(0) > receivedIds.size()
                         || root.path("total").asInt(0) > receivedIds.size()) throw ThirdPartyPromptValidation.invalid();
@@ -82,27 +96,70 @@ public class ImagePromptGalleryAdapter implements ThirdPartyPromptAdapter {
         for (var item : items) {
             if (!text(item, "domain").equals("video") || !text(item, "model").equals(source.model())) continue;
             String upstreamId = text(item, "id"), prompt = text(item, "prompt");
+            if (prompt.isBlank()) prompt = publicPrefillPrompt(item);
             if (upstreamId.isBlank() || prompt.isBlank()) throw ThirdPartyPromptValidation.invalid();
-            var references = references(mapper, item);
+            var references = galleryReferences(item);
             String declared = text(item, "inputMode");
             if (declared.isBlank()) declared = text(item, "generationMode");
             var inputs = VideoPromptInputs.resolve(prompt, VideoPromptInputs.mode(declared), references, List.of(), declared.equals("audio-driven"));
             var attribution = item.path("source");
             String original = text(attribution, "originalUrl");
             if (original.isBlank()) original = text(attribution, "caseUrl");
+            if (original.isBlank() && !text(item, "caseHref").isBlank())
+                original = URI.create(source.url()).resolve(text(item, "caseHref")).toString();
             if (original.isBlank()) original = source.url();
             var tags = new ArrayList<>(strings(item, "tags"));
+            for (String tag : strings(item, "styleTags")) if (!tags.contains(tag)) tags.add(tag);
             String category = text(item, "category");
             if (!category.isBlank() && !tags.contains(category)) tags.add(category);
             String author = text(item, "author");
             if (author.isBlank()) author = text(item.path("attribution"), "sourceName");
+            String cover = text(item, "coverUrl"), preview = text(item, "previewVideoUrl");
+            if (cover.isBlank()) cover = text(item.path("media"), "thumbnailUrl");
+            if (preview.isBlank() && "video".equals(text(item.path("media"), "type"))) preview = text(item.path("media"), "url");
             String id = source.id() + ":" + upstreamId;
             var value = new Video(id, source.id(), text(item, "title"), prompt, text(item, "description"),
-                    text(item, "coverUrl"), List.copyOf(tags), author, original, text(item, "createdAt"), inputs.mode(), source.model(),
-                    references, null, text(item, "previewVideoUrl"), inputs.missing());
+                    cover, List.copyOf(tags), author, original, text(item, "createdAt"), inputs.mode(), source.model(),
+                    references, null, preview, inputs.missing());
             var previous = result.putIfAbsent(id, value);
             if (previous != null && !previous.equals(value)) throw ThirdPartyPromptValidation.invalid();
         }
         return List.copyOf(result.values());
+    }
+
+    /** Read the inline public launch payload as data; never follow its destination or use its fallback model. */
+    private String publicPrefillPrompt(JsonNode item) {
+        String href = text(item, "tryHref");
+        if (href.length() > MAX_PREFILL_BYTES * 2) throw ThirdPartyPromptValidation.invalid();
+        try {
+            URI uri = URI.create(href);
+            if (!("https".equals(uri.getScheme()) || "http".equals(uri.getScheme())) || uri.getHost() == null || uri.getUserInfo() != null
+                    || uri.getRawQuery() == null) throw ThirdPartyPromptValidation.invalid();
+            String encoded = null;
+            for (String pair : uri.getRawQuery().split("&")) {
+                String[] parts = pair.split("=", 2);
+                if (parts.length == 2 && "s".equals(URLDecoder.decode(parts[0], StandardCharsets.UTF_8))) {
+                    if (encoded != null) throw ThirdPartyPromptValidation.invalid();
+                    encoded = URLDecoder.decode(parts[1], StandardCharsets.UTF_8);
+                }
+            }
+            if (encoded == null || encoded.length() > MAX_PREFILL_BYTES * 2) throw ThirdPartyPromptValidation.invalid();
+            byte[] bytes = Base64.getUrlDecoder().decode(encoded);
+            if (bytes.length > MAX_PREFILL_BYTES) throw ThirdPartyPromptValidation.invalid();
+            var prefill = mapper.readTree(bytes);
+            if (!"image-prompt-gallery".equals(text(prefill, "source")) || text(item, "slug").isBlank()
+                    || !text(item, "slug").equals(text(prefill, "case"))) throw ThirdPartyPromptValidation.invalid();
+            return text(prefill, "prompt");
+        } catch (RuntimeException failure) {
+            throw ThirdPartyPromptValidation.invalid();
+        }
+    }
+
+    private List<Reference> galleryReferences(JsonNode item) {
+        var explicit = references(mapper, item);
+        if (!explicit.isEmpty()) return explicit;
+        // Only the separately declared input array supplies references; the preview remains output-only.
+        return strings(item, "referenceImageUrls").stream()
+                .map(url -> new Reference(MediaKind.IMAGE, Role.REFERENCE, url)).toList();
     }
 }

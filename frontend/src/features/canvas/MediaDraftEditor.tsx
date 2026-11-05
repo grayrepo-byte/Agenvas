@@ -30,11 +30,12 @@ type SaveMediaDraftRequest
 } from "../../shared/api/client";
 import type { MediaTemplateImport } from "../../shared/api/client";
 import { MINIMAX_H3_ADAPTER, MINIMAX_H3_RESOLUTIONS, minimaxResolutionLabel } from "../../shared/minimaxH3";
-import { KLING_VIDEO_ADAPTER, KLING_VIDEO_RESOLUTIONS, klingVideoResolutionLabel, klingOutputCount, klingResolutionTier } from "../../shared/kling";
-import { nativeInputErrors, nativeOutputCount, nativeResolutionTier, nativeValue, nativeVersionAssignable } from "../../shared/nativeMedia";
+import { KLING_VIDEO_ADAPTER, KLING_VIDEO_RESOLUTIONS, klingVideoResolutionLabel } from "../../shared/kling";
+import { nativeInputErrors, nativeVersionAssignable } from "../../shared/nativeMedia";
 import { AUTODL_ADAPTER,publishedAutoDlResolutions,autoDlRatioSupported,resolveAutoDlWorkflow } from "../../shared/autodlWorkflows";
 import { t,useLocale } from "../../shared/i18n";
 import { estimatedMediaCost } from "../../shared/mediaPricing";
+import { mediaDraftPricingInputs } from "./mediaDraftPricing";
 import { isAudioFile, isVideoFile, MEDIA_FILE_ACCEPT } from "../../shared/mediaFiles";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
 import { OptionContent } from "../../shared/ui/OptionContent";
@@ -61,14 +62,14 @@ import { readContentText } from "./artifactContent";
 import { fieldsFromMediaDraft, useMediaDraftSession, useMediaDraftSessionLifecycle } from "./useMediaDraftSession";
 import { MEDIA_TASK_REFRESH_INTERVAL_MS,latestMediaTask,occupiesMediaCard,isMediaTaskRunning,isVideoCompositionTask,isAudioTrimTask } from "./mediaTaskState";
 import { taskErrorDetail } from "./taskErrorMessages";
-import { VOICES } from "./voiceCatalog";
+import { getVoiceDisplayName, VOICES } from "./voiceCatalog";
 import { ASPECT_RATIO_OPTIONS, VIDEO_ASPECT_RATIO_OPTIONS, RESOLUTION_OPTIONS, QUALITY_OPTIONS,
   GENERATION_COUNT_OPTIONS, normalizedImageParameters, normalizedVideoParameters,
   preferredImageVideoMode, preferredVideoMode, inputsForVideoMode, planMediaCapabilityChange,
   type MediaDraftFields as DraftFields } from "./mediaDraftCapability";
 import { PromptMentionEditor, type PromptReference } from "./PromptMentionEditor";
 import { promptForMediaInputs, removePromptReferences } from "./mediaPrompt";
-import { mediaStylesQueryOptions } from "../../shared/mediaStyles";
+import { getMediaStyleLabels, mediaStylesQueryOptions } from "../../shared/mediaStyles";
 import { MediaStylePicker } from "./MediaStylePicker";
 import { CharacterBindingsDialog } from "../characters/CharacterBindingsDialog";
 import { encodeOptimizationPrompt, decodeOptimizationPrompt } from "./videoPromptOptimization";
@@ -94,7 +95,7 @@ const INPUT_COLORS = [
 const QUEUE_LABELS = {
   get WAITING_WORKER() { return t("media.editor.waitingForWorker"); }, get NOT_QUEUED() { return t("media.editor.notQueued"); },
 } as const;
-const QUALITY_LABELS = { get low() { return t("media.editor.lowQuality"); }, get medium() { return t("media.editor.mediumQuality"); }, get high() { return t("media.editor.highQuality"); } } as const;
+const QUALITY_LABELS = { get low() { return t("media.editor.lowQuality"); }, get medium() { return t("media.editor.mediumQuality"); }, get high() { return t("media.editor.highQuality"); }, get xhigh() { return "xhigh"; }, get max() { return "max"; } } as const;
 const ASPECT_RATIO_LABELS: Readonly<Record<(typeof ASPECT_RATIO_OPTIONS)[number], string>> = {
   "1:1": "1:1", "2:3": "2:3", "3:2": "3:2", "9:16": "9:16", "16:9": "16:9",
   "3:4": "3:4", "4:3": "4:3", "21:9": "21:9", get AUTO() { return t("common.automatic"); },
@@ -604,6 +605,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   const startFrame = fields.mediaInputs.find((input) => input.role === "START_FRAME");
   const endFrame = fields.mediaInputs.find((input) => input.role === "END_FRAME");
   const audioSpeaker = fields.parameters.speaker ?? chosenCapability?.settings.defaultParameters?.speaker ?? "";
+  const selectedVoice = VOICES.find((voice) => voice.id === audioSpeaker);
   const audioMixValid = imageCount === 0 || audioCount === 0 && !audioSpeaker;
   const withinCapacity = fields.mediaInputs.length <= MAX_MEDIA_INPUTS && imageCount <= imageCapacity && audioCount <= audioCapacity && videoCount <= videoCapacity;
   const semanticInputsValid = isAudio ? withinCapacity && audioMixValid
@@ -646,16 +648,11 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   const videoModeSupported = artifact.kind !== "VIDEO" || effectiveMode !== null
     && (chosenCapability?.supportedVideoInputModes.includes(effectiveMode) ?? false);
   const workflowValues = workflowDraftValues(chosenCapability, fields);
-  const estimateDuration = chosenCapability?.settings.operation === "MOTION_CONTROL"
-    ? motionMetadata.data?.durationMs ? Math.ceil(motionMetadata.data.durationMs / 1000) : null
-    : nativeInputs && chosenCapability && (chosenCapability.settings.operation === "EXTEND" || nativeValue(chosenCapability, workflowValues, "smart_duration") === true
-      || chosenCapability.adapterId === "WAN_VIDEO" && videoCount > 0) ? null : duration;
-  const estimateResolution = nativeInputs && chosenCapability ? nativeResolutionTier(chosenCapability, workflowValues)
-    : klingInputs && chosenCapability ? klingResolutionTier(chosenCapability, workflowValues) : autodlTier;
-  const estimatedCost = estimatedMediaCost(chosenCapability,
-    nativeInputs && chosenCapability ? nativeOutputCount(chosenCapability, workflowValues)
-      : klingInputs && chosenCapability ? klingOutputCount(chosenCapability, workflowValues) : fullyDeclaredInputs ? 1 : imageParameters.generationCount,
-    isAudio && !fullyDeclaredInputs ? 120 : estimateDuration, estimateResolution);
+  const pricing = mediaDraftPricingInputs(chosenCapability, fields, { imageCount: fullyDeclaredInputs ? 1 : imageParameters.generationCount,
+    durationSeconds: isAudio && !fullyDeclaredInputs ? 120 : duration, videoResolution: autodlTier }, motionMetadata.data?.durationMs);
+  const estimateDuration = pricing.durationSeconds;
+  const estimateResolution = pricing.videoResolution;
+  const estimatedCost = estimatedMediaCost(chosenCapability, pricing.imageCount, estimateDuration, estimateResolution);
   const estimatePrice = Object.entries(chosenCapability?.settings.pricingByResolution ?? {})
     .find(([tier]) => tier === estimateResolution)?.[1] ?? chosenCapability?.settings.pricing;
   // Motion may trim its reference clip, so archived input duration only gives an upper estimate.
@@ -996,9 +993,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
 
   function removeReference(versionId: string) {
     if (session.isReadOnly()) return;
-    const persisted = draft.data?.mediaInputs.find((input) => input.versionId === versionId);
-    if (persisted?.sources.some((source) => source.type === "CONNECTION"
-        && source.connectionId)) {
+    if (hasConnectionSource(versionId)) {
       removeConnectedInput.mutate({ versionId });
       return;
     }
@@ -1327,7 +1322,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         <DropdownMenuTrigger asChild><Button variant="ghost" className="media-draft-toolbar-button media-draft-model-trigger" type="button"
           disabled={editorReadOnly} aria-label={t("media.editor.chooseModel")} aria-haspopup="menu" aria-expanded={popover === "models"}
           aria-controls={`${id}-models`} onPointerDown={(event) => { triggerRef.current = event.currentTarget; }}>
-          <Cube size={17} /><span>{settings.isPending ? t("models.loading") : settings.error ? t("models.loadFailed") : chosenCapability?.name
+          <Cube size={17} /><span>{settings.isPending ? t("models.loading") : settings.error ? t("models.loadFailed") : (chosenCapability ? `${chosenCapability.name}${chosenCapability.settings.outputFormat === "gif" ? " · GIF" : ""}` : undefined)
             ?? (fields.capabilityId ? t("media.editor.modelUnavailable") : t("media.editor.defaultNotConfigured"))}</span><CaretDown size={12} />
         </Button></DropdownMenuTrigger>
         {popover === "models" ? <DropdownMenuContent aria-labelledby={undefined} side="top" align="start" onEscapeKeyDown={(event) => event.stopPropagation()} className="media-draft-popover media-draft-models p-3" ref={focusModelMenu}
@@ -1346,7 +1341,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       {supportsStyle || fields.styleId ? <Button variant="ghost" className="media-draft-toolbar-button" type="button" aria-label={t("styles.choose")}
         disabled={!supportsStyle}
         aria-haspopup="dialog" onClick={() => { setPopover(null); setReferenceSourcesOpen(false); setStylePickerOpen(true); }}>
-        <PaintBrush data-icon="inline-start" /><span>{fields.styleId ? selectedStyle?.name ?? t("styles.unavailable") : t("styles.title")}</span>
+        <PaintBrush data-icon="inline-start" /><span>{fields.styleId ? selectedStyle ? getMediaStyleLabels(selectedStyle).name : t("styles.unavailable") : t("styles.title")}</span>
       </Button> : null}
       {fields.styleId ? <Button variant="ghost" className="media-draft-toolbar-button" size="icon-sm" type="button"
         aria-label={t("styles.clear")} onClick={() => edit({ styleId: null })}><X /></Button> : null}
@@ -1442,7 +1437,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       : null}
       {!fullyDeclaredInputs && isAudio ? <div className="media-draft-popover-anchor">
         <Button variant="ghost" type="button" className="media-draft-toolbar-button" aria-label={t("media.editor.chooseVoice")} aria-expanded={popover === "voices"}
-          onClick={(event) => togglePopover("voices", event.currentTarget)}><MusicNotes size={17} />{VOICES.find((voice) => voice.id === audioSpeaker)?.name ?? t("media.editor.voiceLibrary")}<CaretDown size={12} /></Button>
+          onClick={(event) => togglePopover("voices", event.currentTarget)}><MusicNotes size={17} />{selectedVoice ? getVoiceDisplayName(selectedVoice) : t("media.editor.voiceLibrary")}<CaretDown size={12} /></Button>
         {popover === "voices" ? <VoiceLibrary containerRef={popoverRef} selected={audioSpeaker} onSelect={(speaker) => {
           edit({ parameters: { ...fields.parameters, speaker } }); setPopover(null); triggerRef.current?.focus();
         }} onClose={() => setPopover(null)} /> : null}

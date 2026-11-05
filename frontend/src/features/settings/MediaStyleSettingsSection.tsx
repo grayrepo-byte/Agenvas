@@ -6,7 +6,7 @@ import { ApiError, HTTP_STATUS, createMediaStyle, getMediaStyleSettings, updateM
   uploadMediaStyleThumbnail, type CreateMediaStyleRequest, type MediaStyle } from "../../shared/api/client";
 import { t, useLocale } from "../../shared/i18n";
 import { MAX_MEDIA_STYLE_CATEGORY_LENGTH, MAX_MEDIA_STYLE_NAME_LENGTH, MAX_MEDIA_STYLE_PROMPT_LENGTH,
-  MEDIA_STYLE_PREVIEW_ACCEPT, MEDIA_STYLES_KEY, MEDIA_STYLE_SETTINGS_KEY } from "../../shared/mediaStyles";
+  MEDIA_STYLE_PREVIEW_ACCEPT, MEDIA_STYLES_KEY, MEDIA_STYLE_SETTINGS_KEY, getMediaStyleLabels } from "../../shared/mediaStyles";
 import { Dialog } from "../../shared/ui/Dialog";
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { MediaStylePreview } from "../../shared/ui/MediaStylePreview";
@@ -66,7 +66,9 @@ function MediaStyleForm({ initial, onPersisted, onClose }: {
   const forbidden = error instanceof ApiError && error.status === HTTP_STATUS.FORBIDDEN;
   const conflict = error instanceof ApiError && error.status === HTTP_STATUS.CONFLICT;
   const busy = save.isPending || refresh.isPending;
-  const preview = previewUrl ? { name: fields.name, thumbnailUrl: previewUrl } : knownStyle;
+  const labels = knownStyle ? getMediaStyleLabels({ ...knownStyle, ...fields }) : fields;
+  const preview = previewUrl ? { name: labels.name, thumbnailUrl: previewUrl }
+    : knownStyle ? { ...knownStyle, name: labels.name } : null;
   if (error instanceof ApiError && error.status === HTTP_STATUS.UNAUTHORIZED) return <Navigate to="/login" replace />;
   return <Dialog title={knownStyle ? t("styles.edit") : t("styles.add")} description={t("styles.formHint")}
     onClose={onClose} busy={busy} className="media-style-form" onSubmit={(event) => {
@@ -85,9 +87,9 @@ function MediaStyleForm({ initial, onPersisted, onClose }: {
     <fieldset disabled={busy || forbidden}>
       <FieldGroup>
         <Field><FieldLabel htmlFor={`${id}-name`}>{t("styles.name")}</FieldLabel><Input id={`${id}-name`} required
-          maxLength={MAX_MEDIA_STYLE_NAME_LENGTH} value={fields.name} onChange={(event) => setFields({ ...fields, name: event.target.value })} /></Field>
+          maxLength={MAX_MEDIA_STYLE_NAME_LENGTH} value={labels.name} onChange={(event) => setFields({ ...fields, name: event.target.value })} /></Field>
         <Field><FieldLabel htmlFor={`${id}-category`}>{t("styles.category")}</FieldLabel><Input id={`${id}-category`} required
-          maxLength={MAX_MEDIA_STYLE_CATEGORY_LENGTH} value={fields.category} onChange={(event) => setFields({ ...fields, category: event.target.value })} /></Field>
+          maxLength={MAX_MEDIA_STYLE_CATEGORY_LENGTH} value={labels.category} onChange={(event) => setFields({ ...fields, category: event.target.value })} /></Field>
         <Field><FieldLabel htmlFor={`${id}-prompt`}>{t("styles.prompt")}</FieldLabel><Textarea id={`${id}-prompt`} required
           maxLength={MAX_MEDIA_STYLE_PROMPT_LENGTH} rows={4} value={fields.promptSuffix} onChange={(event) => setFields({ ...fields, promptSuffix: event.target.value })} />
           <FieldDescription>{t("styles.promptHint")}</FieldDescription></Field>
@@ -129,8 +131,10 @@ export function MediaStyleSettingsSection({ enabled }: { enabled: boolean }) {
       </Notice> : null}
       {styles.isSuccess && !styles.data.length ? <EmptyState icon={<PaintBrush />} title={t("styles.empty")} description={t("styles.emptyHint")} /> : null}
       <div className="media-style-settings-grid">
-        {styles.data?.map((style) => <article key={style.id} className="media-style-settings-card" aria-label={style.name}>
-          <MediaStylePreview style={style} /><div className="media-style-settings-card-body"><h3>{style.name}</h3><p>{style.category}</p>
+        {styles.data?.map((style) => {
+          const labels = getMediaStyleLabels(style);
+          return <article key={style.id} className="media-style-settings-card" aria-label={labels.name}>
+          <MediaStylePreview style={{ ...style, name: labels.name }} /><div className="media-style-settings-card-body"><h3>{labels.name}</h3><p>{labels.category}</p>
             <StatusBadge tone={style.enabled ? "success" : "neutral"}>{style.enabled ? t("styles.enabled") : t("styles.disabled")}</StatusBadge>
             {style.builtIn ? <p>{t("styles.builtIn")}</p> : null}
             <div className="media-style-settings-card-actions"><Button type="button" variant="outline" size="sm" onClick={() => setEditing(style)}
@@ -138,7 +142,7 @@ export function MediaStyleSettingsSection({ enabled }: { enabled: boolean }) {
               <Button type="button" variant="ghost" size="sm" disabled={forbidden || conflict || toggle.isPending}
                 onClick={() => toggle.mutate(style)}>{style.enabled ? t("styles.disable") : t("styles.enable")}</Button></div>
           </div>
-        </article>)}
+        </article>; })}
       </div>
     </div>
     {editing ? <MediaStyleForm initial={editing === "new" ? null : editing} onPersisted={saved} onClose={() => setEditing(null)} /> : null}

@@ -19,6 +19,7 @@ import org.jooq.Check;
 import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.Index;
+import org.jooq.JSONB;
 import org.jooq.Name;
 import org.jooq.PlainSQL;
 import org.jooq.QueryPart;
@@ -116,6 +117,13 @@ public class LlmProviderConfig extends TableImpl<LlmProviderConfigRecord> {
      */
     public final TableField<LlmProviderConfigRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "创建时间（UTC）");
 
+    /**
+     * The column <code>public.llm_provider_config.model_policy</code>.
+     * Immutable administrator-confirmed model capacity, output parameter and
+     * metadata provenance; NULL means unknown legacy capacity
+     */
+    public final TableField<LlmProviderConfigRecord, JSONB> MODEL_POLICY = createField(DSL.name("model_policy"), SQLDataType.JSONB, this, "Immutable administrator-confirmed model capacity, output parameter and metadata provenance; NULL means unknown legacy capacity");
+
     private LlmProviderConfig(Name alias, Table<LlmProviderConfigRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
@@ -168,6 +176,7 @@ public class LlmProviderConfig extends TableImpl<LlmProviderConfigRecord> {
     @Override
     public List<Check<LlmProviderConfigRecord>> getChecks() {
         return Arrays.asList(
+            Internal.createCheck(this, DSL.name("llm_model_policy_object"), "(((model_policy IS NULL) OR (jsonb_typeof(model_policy) = 'object'::text)))", true),
             Internal.createCheck(this, DSL.name("llm_provider_config_credential_nonce_check"), "((octet_length(credential_nonce) = 12))", true),
             Internal.createCheck(this, DSL.name("llm_provider_config_key_version_check"), "((key_version > 0))", true),
             Internal.createCheck(this, DSL.name("llm_provider_config_version_check"), "((version > 0))", true)

@@ -81,7 +81,7 @@ class RemoteFileStoragePostgresIT {
         var original = assets.archiveImage(owner.userId(),project,new ByteArrayInputStream(png));
         UUID dav = null;
         for (var protocol : java.util.List.of(StorageProfile.Provider.SMB,StorageProfile.Provider.WEBDAV)) {
-            String endpoint = protocol == StorageProfile.Provider.SMB ? "smb://nas.example.com/media/archives" : "https://nas.example.com/dav/media";
+            String endpoint = protocol == StorageProfile.Provider.SMB ? "smb://nas.example.com/media/archives" : "http://nas.example.com/dav/media";
             var input = mapper.createObjectNode().put("expectedVersion",settings.status().version()).put("name",protocol.name())
                     .put("provider",protocol.name()).put("endpoint",endpoint).put("region","").put("bucket","").put("keyPrefix","agenvas")
                     .put("pathStyle",false).put("accessKeyId","synthetic-user").put("secretAccessKey","synthetic-password");

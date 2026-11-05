@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { type FormEvent, useId, useState } from "react";
+import { type FormEvent, useId, useRef, useState } from "react";
 import { Navigate } from "react-router";
 import { ApiError, HTTP_STATUS, MCP_TOKEN_SCOPES, createMcpToken, listMcpTokens, revokeMcpToken, type McpTokenCreatedResponse, type McpTokenScope, type McpTokenSummary } from "../../shared/api/client";
 import { formatDate, t, useLocale } from "../../shared/i18n";
@@ -45,6 +45,8 @@ export function McpTokensSection({ enabled, userId }: { enabled: boolean; userId
   const [revoking, setRevoking] = useState<string | null>(null);
   const [writeError, setWriteError] = useState<unknown>(null);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const [copyPending, setCopyPending] = useState(false);
+  const copyRequest = useRef({ epoch: 0, pending: false });
   const error = writeError ?? tokens.error;
   if (error instanceof ApiError && error.status === HTTP_STATUS.UNAUTHORIZED) return <Navigate to="/login" replace />;
   const forbidden = error instanceof ApiError && error.status === HTTP_STATUS.FORBIDDEN;
@@ -55,20 +57,35 @@ export function McpTokensSection({ enabled, userId }: { enabled: boolean; userId
   // A shell environment placeholder is shown; the actual credential is never interpolated here.
   const connectionExample = `claude mcp add --transport http agenvas ${endpoint} --header 'Authorization: Bearer \${AGENVAS_MCP_TOKEN}'`;
 
-  function updateSafeMetadata(value: McpTokenSummary) {
-    client.setQueryData<McpTokenSummary[]>(tokensKey, (current = []) => [value, ...current.filter((item) => item.id !== value.id)]);
+  async function updateSafeMetadata(value: McpTokenSummary) {
+    // A list read started before this command must not replace its confirmed result.
+    await client.cancelQueries({ queryKey: tokensKey, exact: true });
+    const updated = client.setQueryData<McpTokenSummary[]>(tokensKey, (current = []) => {
+      const known = current.find((item) => item.id === value.id);
+      // A completed refresh may already know revocation before the old create response arrives.
+      const confirmed = known && known.version >= value.version ? known : value;
+      return [confirmed, ...current.filter((item) => item.id !== value.id)];
+    });
+    return updated?.[0] ?? value;
+  }
+
+  function dismissSecret() {
+    copyRequest.current.epoch++;
+    setCreated(null);
+    setCopyState("idle");
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (unavailable) return;
     setWriteError(null);
+    copyRequest.current.epoch++;
     setCopyState("idle");
     setCreating(true);
     try {
       const result = await createMcpToken({ name: name.trim(), scopes, expiresInDays: Number(expiry) });
-      updateSafeMetadata(result.credential);
-      setCreated(result);
+      const credential = await updateSafeMetadata(result.credential);
+      setCreated(tokenStatus(credential).active ? { ...result, credential } : null);
       setName("");
     } catch (cause) {
       setWriteError(cause);
@@ -83,8 +100,8 @@ export function McpTokensSection({ enabled, userId }: { enabled: boolean; userId
     setRevoking(token.id);
     try {
       const result = await revokeMcpToken(token);
-      updateSafeMetadata(result);
-      if (created?.credential.id === result.id) setCreated(null);
+      await updateSafeMetadata(result);
+      if (created?.credential.id === result.id) dismissSecret();
     } catch (cause) {
       setWriteError(cause);
     } finally {
@@ -93,12 +110,21 @@ export function McpTokensSection({ enabled, userId }: { enabled: boolean; userId
   }
 
   async function copySecret() {
-    if (!created) return;
+    const request = copyRequest.current;
+    if (!created || request.pending) return;
+    const epoch = ++request.epoch;
+    request.pending = true;
+    setCopyPending(true);
+    setCopyState("idle");
     try {
       await navigator.clipboard.writeText(created.token);
-      setCopyState("copied");
+      if (request.epoch === epoch) setCopyState("copied");
     } catch {
-      setCopyState("failed");
+      if (request.epoch === epoch) setCopyState("failed");
+    } finally {
+      // Clipboard writes cannot be canceled. Finish the old write before enabling another secret's copy.
+      request.pending = false;
+      setCopyPending(false);
     }
   }
 
@@ -118,8 +144,8 @@ export function McpTokensSection({ enabled, userId }: { enabled: boolean; userId
             <Input id={`${id}-secret`} readOnly value={created.token} autoComplete="off" spellCheck={false} />
           </Field>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" type="button" onClick={() => { void copySecret(); }}>{t("mcp.tokens.copy")}</Button>
-            <Button variant="outline" type="button" onClick={() => { setCreated(null); setCopyState("idle"); }}>{t("mcp.tokens.dismissSecret")}</Button>
+            <Button variant="outline" type="button" disabled={copyPending} onClick={() => { void copySecret(); }}>{t("mcp.tokens.copy")}</Button>
+            <Button variant="outline" type="button" onClick={dismissSecret}>{t("mcp.tokens.dismissSecret")}</Button>
           </div>
           {copyState !== "idle" ? <p role="status">{copyState === "copied" ? t("mcp.tokens.copied") : t("mcp.tokens.copyFailed")}</p> : null}
         </div>

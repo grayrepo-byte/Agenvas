@@ -1,6 +1,7 @@
 package dev.agenvas.canvas.application;
 
 import dev.agenvas.shared.i18n.ApiMessage;
+import dev.agenvas.shared.i18n.CreationMessages;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
@@ -82,6 +83,7 @@ public class CanvasService {
     private final ObjectMapper objectMapper;
     /** 为新布局项提供统一时间。 */
     private final Clock clock;
+    private final CreationMessages creationMessages;
     private final ObjectProvider<CharacterService> characters;
 
     /** 组装空间投影、布局并发校验和项目事件写入能力。
@@ -100,7 +102,7 @@ public class CanvasService {
             CanvasConnectionService connections,
             ProjectEventService events,
             ObjectMapper objectMapper,
-            Clock clock, ObjectProvider<CharacterService> characters) {
+            Clock clock, ObjectProvider<CharacterService> characters, CreationMessages creationMessages) {
         this.projects = projects;
         this.artifacts = artifacts;
         this.mediaDrafts = mediaDrafts;
@@ -109,6 +111,7 @@ public class CanvasService {
         this.events = events;
         this.objectMapper = objectMapper;
         this.clock = clock;
+        this.creationMessages = creationMessages;
         this.characters = characters;
     }
 
@@ -132,9 +135,6 @@ public class CanvasService {
             CanvasItem source = canvasItems.findForUpdate(ownerId, projectId, sourceItemId)
                     .orElseThrow(this::notFound);
             if (source.version() != expectedSourceVersion) throw conflict();
-            if (source.subjectType() != CanvasItem.SubjectType.ARTIFACT) {
-                throw validation(ApiMessage.of("api.canvas-service.only-picture-and-video-cards-can-copy-working-branches"));
-            }
             ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId,
                     source.subjectId());
             if (artifact.artifact().kind() == Artifact.Kind.TEXT) {
@@ -211,8 +211,7 @@ public class CanvasService {
     @Transactional(readOnly = true)
     public boolean hasArtifactItem(UUID ownerId, UUID projectId, UUID itemId, UUID artifactId) {
         return canvasItems.find(ownerId, projectId, itemId)
-                .filter(item -> item.subjectType() == CanvasItem.SubjectType.ARTIFACT
-                        && item.subjectId().equals(artifactId)).isPresent();
+                .filter(item -> item.subjectId().equals(artifactId)).isPresent();
     }
 
     /**
@@ -224,8 +223,7 @@ public class CanvasService {
     public boolean removeUnchangedEmptyMediaItemWithinChange(UUID ownerId, UUID projectId,
             UUID itemId, UUID artifactId, long expectedDraftVersion) {
         CanvasItem current = canvasItems.findForUpdate(ownerId, projectId, itemId).orElse(null);
-        if (current == null || current.subjectType() != CanvasItem.SubjectType.ARTIFACT
-                || !current.subjectId().equals(artifactId) || current.selectedVersionId() != null
+        if (current == null || !current.subjectId().equals(artifactId) || current.selectedVersionId() != null
                 || !canvasItems.mediaVersionIds(ownerId, projectId, itemId).isEmpty()
                 || mediaDrafts.get(ownerId, projectId, itemId).version() != expectedDraftVersion) {
             return false;
@@ -246,8 +244,7 @@ public class CanvasService {
         if (projects.getRetainedProject(ownerId, projectId).status() == Project.Status.DELETED) return;
         CanvasItem item = canvasItems.findForUpdate(ownerId, projectId, itemId).orElse(null);
         if (item == null) return;
-        if (item.subjectType() != CanvasItem.SubjectType.ARTIFACT
-                || !item.subjectId().equals(artifactId)) throw validation(ApiMessage.of("api.canvas-service.media-mission-objectives-do-not-match"));
+        if (!item.subjectId().equals(artifactId)) throw validation(ApiMessage.of("api.canvas-service.media-mission-objectives-do-not-match"));
         ArtifactVersion version = artifacts.requireVersion(ownerId, projectId, artifactId, versionId);
         canvasItems.addMediaVersion(projectId, itemId, versionId, version.createdAt());
     }
@@ -255,9 +252,6 @@ public class CanvasService {
     private CanvasItem requireMediaItem(UUID ownerId, UUID projectId, UUID itemId, boolean lock) {
         CanvasItem item = (lock ? canvasItems.findForUpdate(ownerId, projectId, itemId)
                 : canvasItems.find(ownerId, projectId, itemId)).orElseThrow(this::notFound);
-        if (item.subjectType() != CanvasItem.SubjectType.ARTIFACT) {
-            throw validation(ApiMessage.of("api.canvas-service.only-image-and-video-nodes-have-media-versions"));
-        }
         Artifact.Kind kind = artifacts.get(ownerId, projectId, item.subjectId()).artifact().kind();
         if (kind == Artifact.Kind.TEXT) {
             throw validation(ApiMessage.of("api.canvas-service.only-image-and-video-nodes-have-media-versions"));
@@ -322,9 +316,6 @@ public class CanvasService {
         projects.requireActiveProject(ownerId, projectId);
         CanvasItem source = canvasItems.findForUpdate(ownerId, projectId, sourceItemId)
                 .orElseThrow(this::notFound);
-        if (source.subjectType() != CanvasItem.SubjectType.ARTIFACT) {
-            throw validation(ApiMessage.of("api.canvas-service.only-media-cards-can-create-output-branches"));
-        }
         ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId,
                 source.subjectId());
         if (artifact.artifact().kind() == Artifact.Kind.TEXT) {
@@ -385,8 +376,7 @@ public class CanvasService {
         projects.requireActiveProject(ownerId, projectId);
         CanvasItem source = canvasItems.findForUpdate(ownerId, projectId, sourceItemId)
                 .orElseThrow(this::notFound);
-        if (source.subjectType() != CanvasItem.SubjectType.ARTIFACT
-                || source.selectedVersionId() == null
+        if (source.selectedVersionId() == null
                 || artifacts.get(ownerId, projectId, source.subjectId()).artifact().kind()
                         != Artifact.Kind.VIDEO) throw conflict();
         String title = derivationTitle(source.title(), resultLabel);
@@ -629,11 +619,9 @@ public class CanvasService {
             projects.requireActiveProject(ownerId, projectId);
             CanvasItem current = canvasItems.findForUpdate(ownerId, projectId, itemId)
                     .orElseThrow(this::notFound);
-            if (current.subjectType() != CanvasItem.SubjectType.ARTIFACT) throw notFound();
             CanvasItem replay = canvasItems.find(ownerId, projectId, targetItemId).orElse(null);
             if (replay != null && replay.selectedVersionId() != null) {
-                if (replay.subjectType() != CanvasItem.SubjectType.ARTIFACT
-                        || !replay.subjectId().equals(current.subjectId())) throw conflict();
+                if (!replay.subjectId().equals(current.subjectId())) throw conflict();
                 ArtifactVersion replayVersion = artifacts.requireVersion(ownerId, projectId,
                         replay.subjectId(), replay.selectedVersionId());
                 if (!replayVersion.content().equals(content)
@@ -669,7 +657,7 @@ public class CanvasService {
             } else {
                 var sourceDraft = mediaDrafts.get(ownerId, projectId, itemId);
                 target = forkMediaDerivationWithinChange(ownerId, projectId, itemId,
-                        targetItemId, sourceDraft.version(), 0, uploadPurpose.resultLabel());
+                        targetItemId, sourceDraft.version(), 0, creationMessages.text(uploadPurpose.resultLabel()));
             }
             ArtifactVersion revision = artifacts.appendUserMediaVersionWithinChange(ownerId,
                     projectId, current.subjectId(), content, sourceVersionId, frozenInput);
@@ -704,7 +692,6 @@ public class CanvasService {
             Long expectedSelectionEpoch, Long expectedDraftVersion) {
         CanvasItem current = canvasItems.findForUpdate(ownerId, projectId, itemId).orElse(null);
         if (current == null
-                || current.subjectType() != CanvasItem.SubjectType.ARTIFACT
                 || !current.subjectId().equals(artifactId)
                 || !java.util.Objects.equals(current.selectedVersionId(),
                         expectedParentVersionId)

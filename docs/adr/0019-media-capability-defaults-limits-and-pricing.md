@@ -18,6 +18,20 @@
 
 OpenAPI 增加 `model`（修正已有实现遗漏）、默认参数、限制和 `MediaCapabilityPricing`，同步生成 TypeScript。既有 JSON 行无需迁移，也没有 jOOQ 生成变更。未配置新增字段的历史能力保留编译上限、既有默认参数和未知价格；旧任务没有 `mediaPricing` 时账本继续保持未知。价格不进入任何凭证或 API Key 字段。
 
+## OpenAI 图片 Token 估算（2026-11-04）
+
+用户要求支持 OpenAI 图片按 Token 计费。`OPENAI_GPT_IMAGE_2` 沿用当前 Images API 的生成、multipart 编辑和 URL 编辑接口，管理员可选择既有按张 `pricing` 或新增 `tokenPricing`，两者互斥。Token 价格分别配置文本输入、图片输入、图片输出的每百万 Token 单价及 CNY/USD 币种，缓存文本/图片输入费率可选。沿用六位小数十进制字符串。按用户追加要求，新建且未定价的官方端点能力默认填入已核验的官方标准美元费率，已有配置不自动改价。显式切换到 Token 模式也可预填；人工修改及已保存的费率在模型切换时保留，当前编辑会话尚未修改的自动预设随精确模型更新，切为未知模型则清空自动费率。其他媒体协议暂不开放 Token 价格。
+
+受理及 Agent 审批摘要固定 `mediaTokenPricing`，审批哈希包含该快照；已发出的请求不受之后修改价格影响。预留时 Token 数量和估算金额未知，不按字符、图片张数或分辨率伪造 Token。成功生成或取消后的晚到结果，在现有租约/fencing 事务内与不可变产物、任务结果和唯一结算账目一起保存真实用量。生成请求不自动重发；重复结算复用原 operationKey。确认未提交的失败继续释放预留，UNKNOWN 保留预留；取消不等于免费。
+
+Images API 的 `input_tokens`、`input_tokens_details.text_tokens/image_tokens`、`output_tokens` 以及可用的总计/输出明细只保留非负且可表示为 int 的计数。不保存响应中的任意元数据。兼容网关额外提供的 `input_tokens_details.cached_tokens` 和 `cached_tokens_details.text_tokens/image_tokens` 可用于缓存核算，这些扩展不是官方 Images API 的必返字段。缓存命中从对应普通输入数量中扣除，避免重复计价。未报告缓存数量保留 null，金额只能按普通输入费率估算；明确报告正缓存量却无法按模态分配、缺少适用缓存费率、用量缺失/非法/总计矛盾、存在未支持的文本输出 Token，或金额超出既有 numeric(18,6) 时，金额保持 UNKNOWN，不妨碍归档结果。整笔费用相加后统一舍入到六位小数。
+
+有可计算金额时仍为 `ESTIMATED/ADMIN_CONFIGURED`，`actualCost` 保持 null，实际扣费以供应商账单为准。配置、任务、晚到结果和用量使用既有 JSONB，无 SQL 迁移或 jOOQ 变化；不改写历史能力、任务或账目，不自动切换既有按张配置。设置页、画布运行提示和审批卡说明生成后按用量估算；未返回 usage 的兼容网关仍能生成，但费用未知。未扩展 Responses API 的主模型或 image_gen 工具计费。
+
+预设仅匹配默认官方连接或精确 `https://api.openai.com/v1[/]`，以及 `gpt-image-2` / `gpt-image-2-2026-04-21`、`gpt-image-2.5-sunburst` / `gpt-image-2.5-sunburst-2026-09-08`、`gpt-image-2.5-flare` / `gpt-image-2.5-flare-2026-09-08`。2026-11-04 核验的标准处理美元/百万 Token 费率分别为文本输入 5、图片输入 8、图片输出 30；不是 Batch 价格。来源与核验日期显示在编辑器。官方说明 GPT Image 2/2.5 的缓存折扣只适用 Responses 图片工具，不适用直接 Images API，因此预设不填缓存折扣。缓存自定义字段只为明确返回明细的兼容网关保留；未知模型、代理和其他路径不猜价、不使用官方预设。按用户决定不提供 GPT Image 1.5 和 1-mini 的专项支持；删除它们的官方价格预设、停用日期逻辑、提示文案及专用正向测试。原有目录仍只列 GPT Image 2 适配器，不增加这两个官方型号选项。通用自定义模型名称入口保持原行为：历史配置、已冻结任务继续携带原模型名和管理员费率调用兼容 Images API，由上游决定能否执行；不自动换模型、不按相似名称套价、不增加针对名字的黑名单。保存配置、任务恢复及账本不做迁移或清理，历史账目不重算。预设的编辑来源标记仅保留在前端草稿，不写入 API。
+
+依据：[OpenAI Images API](https://developers.openai.com/api/reference/resources/images/methods/generate)、[图片生成指南](https://developers.openai.com/api/docs/guides/image-generation)、[定价](https://developers.openai.com/api/docs/pricing)。本轮以本机合成 HTTP、真实 PostgreSQL 和前端定向回归验证；没有真实服务商付费调用。
+
 ## 验证
 
 见 媒体能力配置证据（开发记录不随源码公开）。本轮没有真实云端付费调用；Mock 与假 HTTP 结果不证明真实供应商支持、效果或计费。

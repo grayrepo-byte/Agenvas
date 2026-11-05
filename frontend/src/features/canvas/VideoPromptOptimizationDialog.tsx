@@ -16,6 +16,7 @@ import { SkillCategoryFilter } from "../skills/SkillCategoryFilter";
 import { skillCatalogueGroups } from "../skills/skillCategories";
 import { isMediaTaskRunning, MEDIA_TASK_REFRESH_INTERVAL_MS } from "./mediaTaskState";
 import { taskErrorMessage } from "./taskErrorMessages";
+import { acknowledgePromptTask } from "./promptTaskHistory";
 
 /** Closing only hides durable work; refreshing the history never submits a new model call. */
 export function VideoPromptOptimizationDialog({ projectId, canvasItemId, prompt, maxLength, onApply, onClose }: {
@@ -48,13 +49,13 @@ export function VideoPromptOptimizationDialog({ projectId, canvasItemId, prompt,
   const generated = typeof output?.prompt === "string" ? output.prompt : "";
   const value = latest && edited?.taskId === latest.id ? edited.value : generated;
   function updateTask(task: Task) {
-    client.setQueryData<Task[]>(queryKey, (old) => [task, ...(old ?? []).filter((entry) => entry.id !== task.id)]);
+    return acknowledgePromptTask(client, queryKey, task);
   }
   const run = useMutation({ mutationFn: () => {
     command.current ??= { key: crypto.randomUUID(), request: { prompt, maxLength,
       skill: skillId ? { skillId, skillVersionId: selectedVersionId } : null } };
     return runVideoPromptOptimization(projectId, canvasItemId, command.current.request, command.current.key);
-  }, onSuccess: (task) => { command.current = null; updateTask(task); }, onError: (error) => {
+  }, onSuccess: (task) => { command.current = null; return updateTask(task); }, onError: (error) => {
     if (error instanceof ApiError && error.status < 500 && error.status !== 408) command.current = null;
     if (error instanceof ApiError && error.code === "VIDEO_PROMPT_IN_PROGRESS") void history.refetch();
   } });

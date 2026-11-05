@@ -170,6 +170,9 @@ class NativeMediaPostgresIT {
     @Test void wanReferencesUsePinnedRelayAndSettleInputPlusActualOutputSeconds() throws Exception {
         var settings = mapper.createObjectNode();
         settings.putObject("defaultParameters").putObject("dynamicValues").put("resolution", "720P");
+        settings.putObject("pricing").put("amount", "0.1").put("currency", "CNY").put("unit", "SECOND");
+        settings.putObject("pricingByResolution").putObject("720p")
+                .put("amount", "0.2").put("currency", "CNY").put("unit", "SECOND");
         Fixture f = fixture("WAN", "WAN_VIDEO", settings, mapper.createObjectNode(), 4);
         byte[] bytes = video();
         var asset = assets.archiveVideo(owner, f.project(), new java.io.ByteArrayInputStream(bytes));
@@ -181,6 +184,22 @@ class NativeMediaPostgresIT {
                 drafts.get(owner, f.project(), f.card()).capabilityId(), MediaDraft.VideoInputMode.GENERAL_REFERENCE,
                 List.of(new MediaDraftService.SaveMediaInput(source.resourceDefaultVersion().id(), MediaDraft.InputRole.VIDEO_REFERENCE, "#7C3AED")), List.of(), null).version();
         f = new Fixture(f.project(), f.artifact(), f.card(), version, f.connection());
+        var published = catalog.capabilitySnapshot(drafts.get(owner, f.project(), f.card()).capabilityId());
+        var legacySpec = (ObjectNode) mapper.readTree(published.specJson());
+        var legacyPrices = (ObjectNode) legacySpec.path("settings").path("pricingByResolution");
+        legacyPrices.set("720P", legacyPrices.remove("720p"));
+        String legacyJson = legacySpec.toString();
+        var legacy = new dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapshot(
+                published.connection(), published.capability(), published.connectionVersion(), published.adapterId(),
+                published.mappingSha256(), legacyJson);
+        var projected = catalog.administratorSettings(legacy);
+        assertThat(projected.path("pricingByResolution").propertyNames()).containsExactly("720p");
+        assertThat(projected.at("/pricingByResolution/720p/amount").asText()).isEqualTo("0.2");
+        assertThat(legacy.specJson()).isEqualTo(legacyJson); // A read does not rewrite the historical snapshot.
+        var savedAgain = catalog.publishCapability("native-legacy-price-" + UUID.randomUUID(), f.connection(),
+                "Re-saved synthetic legacy price", "WAN_VIDEO", projected);
+        assertThat(catalog.administratorSettings(catalog.capabilitySnapshot(savedAgain.id()))
+                .at("/pricingByResolution/720p/amount").asText()).isEqualTo("0.2");
         UUID relayProfile = UUID.randomUUID();
         when(relay.pinProfile(any())).thenReturn(relayProfile);
         when(relay.signedMedia(any(), any(), any(), eq(relayProfile), eq(dev.agenvas.asset.domain.Asset.MediaKind.VIDEO))).thenReturn("https://reference.example.invalid/frozen.mp4");
@@ -193,9 +212,23 @@ class NativeMediaPostgresIT {
         assertThat(accepted.input().path("nativeBillableInputSeconds").decimalValue()).isEqualByComparingTo(inputSeconds);
         assertThat(accepted.input().at("/mediaInput/videos/0/relayProfileId").asText()).isEqualTo(relayProfile.toString());
         assertThat(accepted.input().at("/mediaInput/providerParameters/native/values/resolution").asText()).isEqualTo("720P");
+        assertThat(accepted.input().at("/mediaPricing/amount").asText()).isEqualTo("0.2");
         worker.submitOnce("native-wan-submit"); due(accepted.id()); worker.pollOnce("native-wan-poll");
         assertThat(task(f, accepted.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
         assertThat(new java.math.BigDecimal(ledger(accepted.id()).path("videoSeconds").asText())).isEqualByComparingTo(inputSeconds.multiply(java.math.BigDecimal.valueOf(2)));
+        var charges = jdbc.sql("select entry_type, estimated_cost, actual_cost, currency, cost_status, cost_source "
+                        + "from usage_ledger where task_id=:id order by entry_type")
+                .param("id", accepted.id()).query((rs, row) -> {
+                    assertThat(rs.getBigDecimal("actual_cost")).isNull();
+                    assertThat(rs.getString("currency")).isEqualTo("CNY");
+                    assertThat(rs.getString("cost_status")).isEqualTo("ESTIMATED");
+                    assertThat(rs.getString("cost_source")).isEqualTo("ADMIN_CONFIGURED");
+                    var seconds = "RESERVATION".equals(rs.getString("entry_type"))
+                            ? inputSeconds.add(java.math.BigDecimal.valueOf(4)) : inputSeconds.multiply(java.math.BigDecimal.valueOf(2));
+                    assertThat(rs.getBigDecimal("estimated_cost")).isEqualByComparingTo(seconds.multiply(new java.math.BigDecimal("0.2")));
+                    return rs.getString("entry_type");
+                }).list();
+        assertThat(charges).containsExactly("RESERVATION", "SETTLEMENT");
         var request = org.mockito.ArgumentCaptor.forClass(ObjectNode.class);
         verify(wan, times(1)).create(any(), any(), any(), request.capture());
         assertThat(request.getValue().at("/parameters/resolution").asText()).isEqualTo("720P");

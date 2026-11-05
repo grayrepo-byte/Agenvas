@@ -56,6 +56,22 @@ async function chooseDateTime(label: string, value: string) {
 }
 
 describe("CallLogsPage", () => {
+  it("shows system model diagnostics without a project link in list and details", async () => {
+    server.use(http.get("/api/v1/call-logs", () => HttpResponse.json(page([{ ...LOG,
+      projectId: null, projectTitle: null, taskId: null, runId: null,
+      kind: "LLM", operation: "DIAGNOSTIC", mock: false,
+    }]))), http.get("/api/v1/call-logs/:id/debug", ({ params }) =>
+      HttpResponse.json({ id: params.id, captured: false, exchanges: [] })));
+    showPage();
+    expect(await screen.findByText("系统诊断")).toBeInTheDocument();
+    expect(screen.getByText("文本模型 · 工具诊断")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /审计测试项目/ })).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: /call-1/ }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("系统诊断")).toBeInTheDocument();
+    expect([...dialog.querySelectorAll("a")].some((link) => link.getAttribute("href")?.startsWith("/projects/"))).toBe(false);
+  });
+
   beforeEach(() => server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" }))));
 
   it("browses adjacent records inside the dialog and clears the previous debug body", async () => {

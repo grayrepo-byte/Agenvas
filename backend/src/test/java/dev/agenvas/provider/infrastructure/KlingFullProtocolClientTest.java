@@ -106,7 +106,7 @@ class KlingFullProtocolClientTest {
         assertThat(paths.getLast()).isEqualTo("/image-to-video/kling-3.0-turbo");
         var omni = video("kling-3.0-omni", "GENERATE");
         body = client.build(omni, values(omni, mapper.createObjectNode().put("feature_video", A).put("image_1", B).put("elementId1", "subject-generated-id")),
-                Map.of("feature_video", "https://relay.example/feature.mp4", "image_1", "BAUG"), "omni-key");
+                Map.of("feature_video", "http://relay.example:9000/feature.mp4", "image_1", "BAUG"), "omni-key");
         assertThat(body.path("contents").toString()).contains("feature_video", "refer_image", "element_1");
         assertThat(body.path("contents").get(1).path("id").asText()).isEqualTo("image_1");
         assertThat(body.path("contents").get(3).path("element_id").isTextual()).isTrue();
