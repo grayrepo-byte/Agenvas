@@ -29,9 +29,7 @@ import dev.agenvas.task.application.ImagePromptTaskService;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.testing.MigrationVersions;
-import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -134,6 +132,10 @@ class ImagePromptPostgresIT {
         assertThat(gateway.calls).isEqualTo(1);
         assertThat(gateway.messages.getFirst().getText()).isEqualTo(definition.content());
         assertThat(gateway.messages.get(1).getText()).contains("Chinese", "untrusted");
+        byte[] sent = ((UserMessage) gateway.messages.getLast()).getMedia().getFirst().getDataAsByteArray();
+        assertThat(sent).isEqualTo(source.bytes());
+        var decoded = ImageIO.read(new ByteArrayInputStream(sent));
+        assertThat(decoded.getWidth()).isEqualTo(1600); assertThat(decoded.getHeight()).isEqualTo(900);
         var publicResult = TaskController.TaskResponse.from(completed);
         assertThat(publicResult.output().path("prompt").asText()).isEqualTo("Synthetic lakeside, soft morning light.");
         assertThat(publicResult.output().path("mock").asBoolean()).isTrue();
@@ -147,6 +149,53 @@ class ImagePromptPostgresIT {
         assertThat(jdbc.sql("select count(*) from usage_ledger where task_id=:id").param("id", accepted.id()).query(Long.class).single()).isEqualTo(2);
         assertThat(prompts.list(owner.userId(), source.project(), source.artifact(), source.item().id())).hasSize(1);
         definitions.update(changed.id(), changed.version(), definition.name(), definition.description(), definition.content());
+    }
+
+    @Test void dispatchKeepsPinnedOriginalAfterANewerVersionIsAddedAndNeedsNoThumbnail() throws Exception {
+        var source = source();
+        Task accepted = run(source, "pinned-original");
+        byte[] newer = dev.agenvas.testing.ImageAssetFixture.encoded("png", 600, 800);
+        var asset = assets.archiveImage(owner.userId(), source.project(), new ByteArrayInputStream(newer));
+        var content = mapper.createObjectNode().put("sourceType", "UPLOAD").put("assetId", asset.id().toString());
+        canvas.uploadVersion(owner.userId(), source.project(), source.item().id(), UUID.randomUUID(),
+                source.item().version(), content, null, null);
+        var original = assets.metadata(owner.userId(), source.project(), source.asset());
+        Files.delete(STORAGE.resolve(original.thumbnailKey()));
+        worker.runOnce("pinned-original-worker");
+        Task completed = tasks.get(owner.userId(), source.project(), accepted.id());
+        assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(completed.output().path("result").path("sourceVersionId").asText()).isEqualTo(source.version().toString());
+        assertThat(((UserMessage) gateway.messages.getLast()).getMedia().getFirst().getDataAsByteArray()).isEqualTo(source.bytes());
+        assertThat(artifacts.listVersions(owner.userId(), source.project(), source.artifact())).hasSize(2);
+        assertThat(gateway.calls).isEqualTo(1);
+    }
+
+    @Test void missingOriginalFailsClearlyWithoutSendingItsAvailableThumbnail() throws Exception {
+        var source = source();
+        Task accepted = run(source, "missing-original");
+        var original = assets.metadata(owner.userId(), source.project(), source.asset());
+        assertThat(STORAGE.resolve(original.thumbnailKey())).exists();
+        Files.delete(STORAGE.resolve(original.objectKey()));
+        worker.runOnce("missing-original-worker");
+        Task failed = tasks.get(owner.userId(), source.project(), accepted.id());
+        assertThat(failed.status()).isEqualTo(Task.Status.FAILED);
+        assertThat(failed.errorCode()).isEqualTo("IMAGE_PROMPT_INPUT_UNAVAILABLE");
+        assertThat(TaskController.TaskResponse.from(failed).output()).isNull();
+        assertThat(gateway.calls).isZero();
+    }
+
+    @Test void rejectsAnimationBeforeModelCallAndReleasesReservedUsageWithoutAnOutput() throws Exception {
+        var source = source(dev.agenvas.testing.GifFixture.animation(2));
+        Task accepted = run(source, "animated-original");
+        worker.runOnce("animated-original-worker");
+        Task failed = tasks.get(owner.userId(), source.project(), accepted.id());
+        assertThat(failed.status()).isEqualTo(Task.Status.FAILED);
+        assertThat(failed.errorCode()).isEqualTo("IMAGE_PROMPT_INPUT_UNSUPPORTED");
+        assertThat(TaskController.TaskResponse.from(failed).output()).isNull();
+        assertThat(gateway.calls).isZero();
+        assertThat(artifacts.listVersions(owner.userId(), source.project(), source.artifact())).hasSize(1);
+        assertThat(jdbc.sql("select count(*) from usage_ledger where task_id=:id and entry_type='RELEASE'")
+                .param("id", accepted.id()).query(Long.class).single()).isEqualTo(1);
     }
 
     @Test void restoresACheckpointWithoutAnotherModelCallAndFencesCancellation() throws Exception {
@@ -270,20 +319,21 @@ class ImagePromptPostgresIT {
                 source.item().version(), "zh", key);
     }
     private Source source() throws Exception {
+        return source(dev.agenvas.testing.ImageAssetFixture.encoded("png", 1600, 900));
+    }
+    private Source source(byte[] bytes) throws Exception {
         var project = projects.create(owner.userId(), "Synthetic image prompt", Project.AspectRatio.LANDSCAPE_16_9);
-        var png = new ByteArrayOutputStream();
-        ImageIO.write(new BufferedImage(8, 6, BufferedImage.TYPE_INT_RGB), "png", png);
-        var asset = assets.archiveImage(owner.userId(), project.id(), new ByteArrayInputStream(png.toByteArray()));
+        var asset = assets.archiveImage(owner.userId(), project.id(), new ByteArrayInputStream(bytes));
         var artifact = artifacts.createTemplateImport(owner.userId(), project.id(), "Synthetic image", asset.id());
         canvas.apply(owner.userId(), project.id(), List.of(new CanvasService.PlaceArtifact(UUID.randomUUID(), artifact.artifact().id(),
                 BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("320"), new BigDecimal("240"), 0, null, false)));
-        return new Source(project.id(), artifact.artifact().id(), artifact.resourceDefaultVersion().id(), canvas.list(owner.userId(), project.id()).getFirst().item());
+        return new Source(project.id(), artifact.artifact().id(), artifact.resourceDefaultVersion().id(), canvas.list(owner.userId(), project.id()).getFirst().item(), asset.id(), bytes);
     }
     private String path(Source source) { return "/api/v1/projects/" + source.project() + "/artifacts/" + source.artifact() + "/image-prompts"; }
     private UsernamePasswordAuthenticationToken auth(AdminPrincipal principal) {
         return new UsernamePasswordAuthenticationToken(principal, "unused", List.of(new SimpleGrantedAuthority("ROLE_USER")));
     }
-    private record Source(UUID project, UUID artifact, UUID version, CanvasItem item) {}
+    private record Source(UUID project, UUID artifact, UUID version, CanvasItem item, UUID asset, byte[] bytes) {}
     private static Path temporaryRoot() {
         try { return Files.createTempDirectory("agenvas-image-prompt-"); }
         catch (java.io.IOException failure) { throw new IllegalStateException(failure); }

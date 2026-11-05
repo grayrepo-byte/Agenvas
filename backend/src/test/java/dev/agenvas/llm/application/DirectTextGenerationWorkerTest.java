@@ -65,12 +65,13 @@ class DirectTextGenerationWorkerTest {
             new ChatResponse(List.of(new Generation(new AssistantMessage("  Finished text  ")))));
     private Task lease;
     private DirectTextGenerationWorker worker;
+    private final ImagePromptInputService images = mock(ImagePromptInputService.class);
 
     @BeforeEach
     void setup() throws Exception {
         claimedTask(null);
         worker = new DirectTextGenerationWorker(tasks, gateway, codec, callLogs, mapper, executor,
-                mock(ImagePromptInputService.class));
+                images);
         when(executor.open(any(), eq(WORKER))).thenReturn(execution);
         when(gateway.modelDetailsFor(pinned)).thenReturn(new ChatGateway.ModelDetails(true, "MOCK", "synthetic-text", false));
         when(gateway.call(anyList(), anyList(), anyMap(), eq(pinned))).thenReturn(exchange);
@@ -93,6 +94,38 @@ class DirectTextGenerationWorkerTest {
             Thread.interrupted();
             worker.close();
         }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "IMAGE_PROMPT_INPUT_TOO_LARGE", "IMAGE_PROMPT_INPUT_UNSUPPORTED", "IMAGE_PROMPT_INPUT_UNAVAILABLE"})
+    void imageInputFailuresKeepSafeCodesWithoutModelCallsOrCheckpoints(String code) {
+        input.put("schemaVersion", 3).put("purpose", Task.IMAGE_PROMPT_PURPOSE);
+        var failure = mock(ImagePromptInputService.Failure.class);
+        when(failure.getMessage()).thenReturn(code);
+        when(images.messages(lease)).thenReturn(List.of(new org.springframework.ai.chat.messages.UserMessage("Inspect")));
+        when(images.hydrate(eq(lease), anyList())).thenThrow(failure);
+        worker.runOnce(WORKER);
+        verify(tasks).fail(lease, WORKER, code);
+        verify(gateway, never()).call(anyList(), anyList(), anyMap(), any());
+        verify(tasks, never()).checkpointTextResponse(any(), anyString(), any());
+        verify(tasks, never()).succeedWithTextArtifact(any(), anyString(), any());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {400, 413, 415, 422, 401, 500})
+    void imageModelRejectionsAreExplicitAndDoNotTriggerAnotherCall(int status) {
+        input.put("schemaVersion", 3).put("purpose", Task.IMAGE_PROMPT_PURPOSE);
+        var messages = List.<org.springframework.ai.chat.messages.Message>of(new org.springframework.ai.chat.messages.UserMessage("Inspect"));
+        when(images.messages(lease)).thenReturn(messages); when(images.hydrate(lease, messages)).thenReturn(messages);
+        var rejected = mock(com.openai.errors.OpenAIServiceException.class);
+        when(rejected.statusCode()).thenReturn(status);
+        when(gateway.call(anyList(), anyList(), anyMap(), eq(pinned))).thenThrow(rejected);
+        worker.runOnce(WORKER);
+        verify(tasks).fail(lease, WORKER, java.util.Set.of(400, 413, 415, 422).contains(status)
+                ? "IMAGE_PROMPT_MODEL_REJECTED" : "MODEL_CALL_FAILED");
+        verify(gateway).call(anyList(), anyList(), anyMap(), eq(pinned));
+        verify(tasks, never()).checkpointTextResponse(any(), anyString(), any());
     }
 
     @Test

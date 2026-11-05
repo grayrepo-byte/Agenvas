@@ -92,7 +92,7 @@ public class DirectTextGenerationWorker {
             throw stopped;
         } catch (ExecutionException | TimeoutException | RuntimeException failure) {
             execution.checkActive();
-            tasks.fail(lease, workerId, errorCode(failure));
+            tasks.fail(lease, workerId, errorCode(lease, failure));
         }
     }
 
@@ -157,9 +157,15 @@ public class DirectTextGenerationWorker {
         return tasks.checkpointTextResponse(lease, workerId, checkpoint);
     }
 
-    private String errorCode(Throwable failure) {
+    private String errorCode(Task lease, Throwable failure) {
         if (LlmStreamIncompleteException.matches(failure)) return LlmStreamIncompleteException.ERROR_CODE;
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof ImagePromptInputService.Failure input) return input.getMessage();
+            // Compatible gateways have different image/URL/size limits. Report explicit rejections
+            // without publishing the vendor response or retrying with a downscaled image.
+            if (lease.isImagePrompt() && cause instanceof com.openai.errors.OpenAIServiceException service
+                    && java.util.Set.of(400, 413, 415, 422).contains(service.statusCode()))
+                return ImagePromptInputService.MODEL_REJECTED;
             if (cause instanceof java.io.UncheckedIOException) return "LLM_CONNECTION_FAILED";
             if (cause instanceof LlmRequestBudget.Failure budget) return budget.getMessage();
             if (cause instanceof LlmProtocolCodec.OutputTruncated) return LlmProtocolCodec.OUTPUT_TRUNCATED;

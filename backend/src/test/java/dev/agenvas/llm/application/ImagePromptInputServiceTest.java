@@ -29,10 +29,9 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import tools.jackson.databind.ObjectMapper;
 
-/** Synthetic preview: proves project/version boundaries, bounded reads, stream release and public-only prompts. */
+/** Synthetic original: proves project/version boundaries, bounded reads, stream release and public-only prompts. */
 class ImagePromptInputServiceTest {
-    private static final byte[] PNG = Base64.getDecoder().decode(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lXcAAAAASUVORK5CYII=");
+    private static final byte[] PNG = dev.agenvas.testing.ImageAssetFixture.encoded("png", 1600, 900);
     private final UUID owner = UUID.randomUUID(), project = UUID.randomUUID(), artifact = UUID.randomUUID();
     private final UUID version = UUID.randomUUID(), assetId = UUID.randomUUID();
     private final ArtifactService artifacts = mock(ArtifactService.class);
@@ -54,6 +53,7 @@ class ImagePromptInputServiceTest {
         when(source.artifactId()).thenReturn(artifact);
         when(source.content()).thenReturn(mapper.createObjectNode().put("assetId", assetId.toString()));
         when(assets.metadata(owner, project, assetId)).thenReturn(asset); when(asset.mediaKind()).thenReturn(Asset.MediaKind.IMAGE);
+        when(asset.byteSize()).thenReturn((long) PNG.length); when(asset.contentType()).thenReturn("image/png");
     }
 
     @ParameterizedTest @CsvSource({"zh,Chinese", "en,English", "ru,Russian", "ja,Japanese"})
@@ -66,27 +66,60 @@ class ImagePromptInputServiceTest {
         verifyNoInteractions(artifacts, assets, tasks);
     }
 
-    @Test void hydratesOnlyThePinnedPreviewAndClosesItsStreamWithoutMutatingTheCheckpoint() throws Exception {
-        var preview = new AssetService.AssetContent(asset, "synthetic-preview", PNG.length, "image/png");
-        when(assets.content(owner, project, assetId, true)).thenReturn(preview);
+    @Test void hydratesOnlyThePinnedOriginalAndClosesItsStreamWithoutMutatingTheCheckpoint() throws Exception {
+        var original = new AssetService.AssetContent(asset, "synthetic-original", PNG.length, "image/png");
+        when(assets.content(owner, project, assetId, false)).thenReturn(original);
         var closed = new AtomicBoolean();
-        when(assets.open(preview, 0, PNG.length)).thenReturn(new ByteArrayInputStream(PNG) {
+        when(assets.open(original, 0, PNG.length)).thenReturn(new ByteArrayInputStream(PNG) {
             @Override public void close() { closed.set(true); }
         });
         var messages = service.messages(task);
         var hydrated = service.hydrate(task, messages);
-        assertThat(((UserMessage) hydrated.getLast()).getMedia().getFirst().getDataAsByteArray()).isEqualTo(PNG);
+        byte[] sent = ((UserMessage) hydrated.getLast()).getMedia().getFirst().getDataAsByteArray();
+        assertThat(sent).isEqualTo(PNG);
+        var decoded = javax.imageio.ImageIO.read(new ByteArrayInputStream(sent));
+        assertThat(decoded.getWidth()).isEqualTo(1600); assertThat(decoded.getHeight()).isEqualTo(900);
+        verify(assets, never()).content(owner, project, assetId, true);
         assertThat(((UserMessage) messages.getLast()).getMedia()).isEmpty();
         assertThat(new LlmProtocolCodec(mapper).request(messages, java.util.List.of()).toString())
                 .doesNotContain(Base64.getEncoder().encodeToString(PNG), "data:");
         assertThat(closed).isTrue();
     }
 
-    @ParameterizedTest @ValueSource(longs = {0, 10485761})
-    void refusesEmptyOrOversizedPreviewsBeforeOpeningTheirStreams(long size) throws Exception {
-        when(assets.content(owner, project, assetId, true)).thenReturn(new AssetService.AssetContent(asset, "preview", size, "image/png"));
-        assertThatThrownBy(() -> service.hydrate(task, service.messages(task))).isInstanceOf(IllegalArgumentException.class);
+    @ParameterizedTest @CsvSource({"0,IMAGE_PROMPT_INPUT_UNAVAILABLE", "10485761,IMAGE_PROMPT_INPUT_TOO_LARGE"})
+    void refusesEmptyOrOversizedOriginalsBeforeAccessingStorage(long size, String code) throws Exception {
+        when(asset.byteSize()).thenReturn(size);
+        assertThatThrownBy(() -> service.hydrate(task, service.messages(task)))
+                .isInstanceOf(ImagePromptInputService.Failure.class).hasMessage(code);
+        verify(assets, never()).content(any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
         verify(assets, never()).open(any(), anyLong(), anyLong());
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"image/gif", "image/svg+xml", "image/avif", "text/html"})
+    void rejectsUnsupportedOriginalsWithoutUsingAThumbnail(String type) {
+        when(asset.contentType()).thenReturn(type);
+        assertThatThrownBy(() -> service.hydrate(task, service.messages(task)))
+                .isInstanceOf(ImagePromptInputService.Failure.class).hasMessage(ImagePromptInputService.UNSUPPORTED);
+        verify(assets, never()).content(any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"image/jpeg", "image/webp"})
+    void retainsOriginalEncodingAndBytes(String type) throws Exception {
+        byte[] bytes = type.equals("image/jpeg") ? dev.agenvas.testing.ImageAssetFixture.encoded("jpeg", 960, 640)
+                : Base64.getDecoder().decode("UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoEAAQAAkA4JaQAA3AA/vucwAA=");
+        when(asset.byteSize()).thenReturn((long) bytes.length); when(asset.contentType()).thenReturn(type);
+        var original = new AssetService.AssetContent(asset, "original", bytes.length, type);
+        when(assets.content(owner, project, assetId, false)).thenReturn(original);
+        when(assets.open(original, 0, bytes.length)).thenReturn(new ByteArrayInputStream(bytes));
+        var media = ((UserMessage) service.hydrate(task, service.messages(task)).getLast()).getMedia().getFirst();
+        assertThat(media.getMimeType().toString()).isEqualTo(type);
+        assertThat(media.getDataAsByteArray()).isEqualTo(bytes);
+    }
+
+    @Test void rejectsUnauthorizedPinnedVersionsBeforeReadingAnyAsset() {
+        when(artifacts.requireImageVersionForTask(owner, project, version)).thenThrow(new IllegalArgumentException("Denied"));
+        assertThatThrownBy(() -> service.hydrate(task, service.messages(task))).isInstanceOf(IllegalArgumentException.class);
+        verifyNoInteractions(assets);
     }
 
     @Test void refusesAChangedArtifactBeforeReadingAnyMedia() {
@@ -95,15 +128,39 @@ class ImagePromptInputServiceTest {
         verifyNoInteractions(assets);
     }
 
-    @Test void closesTheStreamWhenThePreviewHasFewerBytesThanItsDeclaredSize() throws Exception {
-        var preview = new AssetService.AssetContent(asset, "preview", PNG.length + 1, "image/png");
-        when(assets.content(owner, project, assetId, true)).thenReturn(preview);
+    @Test void closesTheStreamWhenTheOriginalHasFewerBytesThanItsDeclaredSize() throws Exception {
+        when(asset.byteSize()).thenReturn((long) PNG.length + 1);
+        var original = new AssetService.AssetContent(asset, "original", PNG.length + 1, "image/png");
+        when(assets.content(owner, project, assetId, false)).thenReturn(original);
         var closed = new AtomicBoolean();
-        when(assets.open(preview, 0, PNG.length + 1)).thenReturn(new ByteArrayInputStream(PNG) {
+        when(assets.open(original, 0, PNG.length + 1)).thenReturn(new ByteArrayInputStream(PNG) {
             @Override public void close() { closed.set(true); }
         });
         assertThatThrownBy(() -> service.hydrate(task, service.messages(task))).isInstanceOf(IllegalArgumentException.class);
         assertThat(closed).isTrue();
+    }
+
+    @Test void failsSafelyWhenOriginalCannotBeReadWithoutFallingBackToThumbnail() throws Exception {
+        var original = new AssetService.AssetContent(asset, "original", PNG.length, "image/png");
+        when(assets.content(owner, project, assetId, false)).thenReturn(original);
+        when(assets.open(original, 0, PNG.length)).thenThrow(new java.io.IOException("private path and signed URL"));
+        assertThatThrownBy(() -> service.hydrate(task, service.messages(task)))
+                .isInstanceOf(ImagePromptInputService.Failure.class).hasMessage(ImagePromptInputService.UNAVAILABLE)
+                .hasNoCause();
+        verify(assets, never()).content(owner, project, assetId, true);
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void storageVerificationFailuresAreSafeAndNeverReadTheThumbnail(boolean remote) {
+        RuntimeException unavailable = remote ? new dev.agenvas.shared.error.ApiProblemException(
+                org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, "OBJECT_STORAGE_UNAVAILABLE",
+                dev.agenvas.shared.i18n.ApiMessage.of("api.image-prompt.invalid"),
+                dev.agenvas.shared.i18n.ApiMessage.of("api.image-prompt.invalid"), true)
+                : new IllegalStateException("private path", new java.io.IOException("private URL"));
+        when(assets.content(owner, project, assetId, false)).thenThrow(unavailable);
+        assertThatThrownBy(() -> service.hydrate(task, service.messages(task)))
+                .isInstanceOf(ImagePromptInputService.Failure.class).hasMessage(ImagePromptInputService.UNAVAILABLE).hasNoCause();
+        verify(assets, never()).content(owner, project, assetId, true);
     }
 
     @Test void refusesDispatchInsideADatabaseTransaction() {

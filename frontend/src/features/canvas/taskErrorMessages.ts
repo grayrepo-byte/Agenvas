@@ -74,6 +74,10 @@ const TASK_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   get LLM_CALL_TIMEOUT() { return t("agent.retry.timeout"); },
   get LLM_INSUFFICIENT_CREDITS() { return t("agent.failure.insufficientCredits"); },
   get LLM_MEDIA_INPUT_UNSUPPORTED() { return t("agent.failure.mediaInputUnsupported"); },
+  get IMAGE_PROMPT_INPUT_TOO_LARGE() { return t("image.reversePrompt.inputTooLarge"); },
+  get IMAGE_PROMPT_INPUT_UNSUPPORTED() { return t("image.reversePrompt.inputUnsupported"); },
+  get IMAGE_PROMPT_INPUT_UNAVAILABLE() { return t("image.reversePrompt.inputUnavailable"); },
+  get IMAGE_PROMPT_MODEL_REJECTED() { return t("image.reversePrompt.modelRejected"); },
   get EXECUTION_HISTORY_CLEANED() { return t("tasks.errors.executionExpired"); },
   get PROVIDER_POLL_RETRY_EXHAUSTED() { return t("tasks.errors.pollRetryExhausted"); },
   // 措辞保持中性：连接超时也走这个码，那时请求可能根本没发出去，
