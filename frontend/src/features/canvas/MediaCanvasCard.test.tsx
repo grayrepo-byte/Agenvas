@@ -803,11 +803,12 @@ describe("MediaCanvasCard", () => {
         return HttpResponse.json({ id: "smart-task", status: "READY", errorCode: null });
       }),
     );
-    showCard({ ...artifact, resourceDefaultVersionId: "image-version", resourceDefaultVersion: {
+    const shownArtifact: Artifact = { ...artifact, resourceDefaultVersionId: "image-version", resourceDefaultVersion: {
       id: "image-version", versionNo: 1, schemaVersion: 1,
       content: { sourceType: "UPLOAD", assetId: "image-asset" }, inputReferences: [],
       createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
-    } });
+    } };
+    const card = showCard(shownArtifact);
 
     await clickControl(await screen.findByRole("button", { name: "智能编辑" }));
     const smartDialog = screen.getByRole("dialog", { name: "智能编辑图片" });
@@ -822,9 +823,14 @@ describe("MediaCanvasCard", () => {
     await changeControl(screen.getByRole("textbox", { name: "智能编辑提示词" }), {
       target: { value: "把背景替换成参考图中的海边，人物保持不变" },
     });
+    const newer: CanvasItem = { ...itemFor(shownArtifact), version: 1, selectedVersionId: "new-version",
+      selectedVersion: { ...shownArtifact.resourceDefaultVersion!, id: "new-version", content: { sourceType: "UPLOAD", assetId: "new-asset" } } };
+    card.setItem(newer);
+    expect(within(smartDialog).getByAltText("湖边 的智能编辑预览")).toHaveAttribute("src", "/api/v1/projects/project-1/assets/image-asset/content");
     await clickControl(screen.getByRole("button", { name: "开始智能编辑" }));
 
     await waitFor(() => expect(request).toEqual(expect.objectContaining({
+      sourceVersionId: "image-version", expectedCanvasItemVersion: 0,
       operation: "SMART_EDIT", instruction: "把背景替换成参考图中的海边，人物保持不变",
       expectedFunctionVersion: 3, expectedCapabilityVersion: 1, referenceVersionIds: ["reference-version"],
       maskAssetId: null, parameters: {},

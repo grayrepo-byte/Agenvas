@@ -51,7 +51,7 @@ public class DirectMediaTaskController {
         return TaskController.TaskResponse.from(direct.runImageOperation(principal.userId(),
                 projectId, artifactId, request.canvasItemId(), request.sourceVersionId(),
                 request.expectedCanvasItemVersion(), request.operation(), request.instruction(),
-                request.expectedFunctionVersion(), request.expectedCapabilityVersion(), request.referenceVersionIds(), request.maskAssetId(),
+                request.expectedFunctionVersion(), request.expectedCapabilityVersion(), request.referenceVersionIds(), request.maskAssetId(), request.markupAssetId(),
                 request.parameters(), commandKey));
     }
 
@@ -65,6 +65,7 @@ public class DirectMediaTaskController {
             @NotNull @jakarta.validation.constraints.Min(1) Integer expectedCapabilityVersion,
             @jakarta.validation.constraints.Size(max = 15) List<UUID> referenceVersionIds,
             UUID maskAssetId,
+            UUID markupAssetId,
             @NotNull JsonNode parameters) {
         /** Routing belongs to function settings; stale clients cannot submit their own provider choice. */
         @com.fasterxml.jackson.annotation.JsonAnySetter

@@ -3700,5 +3700,13 @@
   "settings.openAi.moderation": "内容审核",
   "settings.openAi.moderationAuto": "标准（auto）",
   "settings.openAi.moderationLow": "较宽松（low）",
-  "settings.openAi.moderationHint": "auto 使用标准内容审核；low 的过滤较宽松，但内容审核仍然生效。"
+  "settings.openAi.moderationHint": "auto 使用标准内容审核；low 的过滤较宽松，但内容审核仍然生效。",
+  "image.smartEdit.maskGuidance": "蒙版引导",
+  "image.smartEdit.markupGuidance": "标注引导",
+  "image.smartEdit.markupCompatibility": "需要支持原生标注的 OpenAI GPT Image 2.5 或 2.6 PNG 模型",
+  "image.smartEdit.markupHint": "标注作为独立透明图层发送给模型。请画出标记，并说明要修改和保留的内容；生成结果将移除标记。",
+  "image.smartEdit.markupSizeLimit": "原生标注的原图和图层最多为 16,777,216 像素，请先缩小图片。",
+  "image.smartEdit.layerExportFailed": "图层导出失败，请重试；未提交编辑请求。",
+  "image.smartEdit.changeGuidance": "切换引导方式",
+  "image.smartEdit.changeGuidanceHint": "切换将清除当前绘图，提示词和参考图会保留。"
 }

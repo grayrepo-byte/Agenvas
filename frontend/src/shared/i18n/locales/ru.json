@@ -3700,5 +3700,13 @@
   "settings.openAi.moderation": "Модерация контента",
   "settings.openAi.moderationAuto": "Стандартная (auto)",
   "settings.openAi.moderationLow": "Менее строгая (low)",
-  "settings.openAi.moderationHint": "auto использует стандартную фильтрацию. При low фильтрация менее строгая, но модерация контента продолжает действовать."
+  "settings.openAi.moderationHint": "auto использует стандартную фильтрацию. При low фильтрация менее строгая, но модерация контента продолжает действовать.",
+  "image.smartEdit.maskGuidance": "По маске",
+  "image.smartEdit.markupGuidance": "По разметке",
+  "image.smartEdit.markupCompatibility": "Требуется совместимая модель OpenAI GPT Image 2.5 или 2.6 с выводом PNG",
+  "image.smartEdit.markupHint": "Аннотации отправляются отдельным прозрачным слоем. Нарисуйте отметки и опишите изменения и сохраняемые детали. Итог должен быть без отметок.",
+  "image.smartEdit.markupSizeLimit": "Нативная разметка поддерживает до 16 777 216 пикселей на изображение. Сначала уменьшите оригинал.",
+  "image.smartEdit.layerExportFailed": "Не удалось экспортировать слой. Правка не отправлена; повторите попытку.",
+  "image.smartEdit.changeGuidance": "Сменить способ редактирования",
+  "image.smartEdit.changeGuidanceHint": "Переключение очистит рисунок, сохранив инструкцию и изображения-примеры."
 }

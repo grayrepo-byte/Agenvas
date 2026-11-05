@@ -35,6 +35,15 @@ public record OpenAiImageOptions(String outputFormat, String complexity, int fra
                 ? EXTENDED_QUALITIES : ImageGenerationParameters.QUALITIES;
     }
 
+    public static boolean supportsMarkup(JsonNode settings) {
+        return "png".equals(settings.path("outputFormat").asText("png"))
+                && supportsMarkupModel(settings.path("model").asText(""));
+    }
+
+    public static boolean supportsMarkupModel(String model) {
+        return MODELS_26.contains(model) || MODELS_25.contains(model);
+    }
+
     public boolean animated() { return "gif".equals(outputFormat); }
 
     public static OpenAiImageOptions parse(JsonNode settings) {

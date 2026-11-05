@@ -3700,5 +3700,13 @@
   "settings.openAi.moderation": "コンテンツ審査",
   "settings.openAi.moderationAuto": "標準（auto）",
   "settings.openAi.moderationLow": "制限を緩和（low）",
-  "settings.openAi.moderationHint": "auto は標準のフィルタリングを使用します。low は制限を緩和しますが、コンテンツ審査は引き続き適用されます。"
+  "settings.openAi.moderationHint": "auto は標準のフィルタリングを使用します。low は制限を緩和しますが、コンテンツ審査は引き続き適用されます。",
+  "image.smartEdit.maskGuidance": "マスクで編集",
+  "image.smartEdit.markupGuidance": "マークアップで編集",
+  "image.smartEdit.markupCompatibility": "対応する OpenAI GPT Image 2.5 または 2.6 の PNG モデルが必要です",
+  "image.smartEdit.markupHint": "注釈は独立した透明レイヤーとして送信されます。印を描き、変更する内容と維持する内容を入力してください。完成画像から印を取り除きます。",
+  "image.smartEdit.markupSizeLimit": "ネイティブのマークアップは各画像 16,777,216 ピクセルまでです。先に原画像を縮小してください。",
+  "image.smartEdit.layerExportFailed": "レイヤーの書き出しに失敗しました。編集は送信されていません。再試行してください。",
+  "image.smartEdit.changeGuidance": "編集方法を切り替え",
+  "image.smartEdit.changeGuidanceHint": "切り替えると現在の描画が消去されます。指示文と参照画像は保持されます。"
 }

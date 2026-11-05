@@ -16,18 +16,22 @@ const capability: MediaCapability = {
   minimumSeconds: 0, maximumSeconds: 0, maxReferenceAudios: 0, maxReferenceVideos: 0,
   maxReferenceImages: 1, supportedVideoInputModes: [], defaultVideoInputMode: null,
   supportsEndFrame: false, supportedImageAspectRatios: ["AUTO"], supportedImageResolutions: ["1K"],
-  supportedImageQualities: ["high"], supportsTransparentBackground: true, supportsImageMask: true,
+  supportedImageQualities: ["high"], supportsTransparentBackground: true, supportsImageMask: true, supportsImageMarkup: true,
   mappingSha256: "a".repeat(64), settings: { pricing: { amount: "0.03", currency: "CNY", unit: "IMAGE" } },
 };
 
 function Fixture() {
   const [open, setOpen] = useState(false);
+  const [submissions, setSubmissions] = useState<unknown[]>([]);
+  const exercise = new URLSearchParams(location.search).has("exercise");
   return <>
     <button onClick={() => setOpen(true)}>打开智能编辑</button>
+    <output data-testid="submissions">{JSON.stringify(submissions)}</output>
     {open ? <SmartEditDialog projectId="synthetic-project" sourceVersionId="synthetic-source"
-      sourceTitle="Synthetic image" sourceUrl={sourceUrl} capabilities={[capability]} configuredMethod submitDisabled
-      busy={false} error={null} onClose={() => setOpen(false)} onSubmit={() => {
-        throw new Error("This layout fixture must not submit generation");
+      sourceTitle="Synthetic image" sourceUrl={sourceUrl} capabilities={[capability]} configuredMethod submitDisabled={!exercise}
+      busy={false} error={null} onClose={() => setOpen(false)} onSubmit={(input) => {
+        if (!exercise) throw new Error("This layout fixture must not submit generation");
+        setSubmissions((current) => [...current, input]);
       }} /> : null}
   </>;
 }

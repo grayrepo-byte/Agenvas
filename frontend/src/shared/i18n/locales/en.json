@@ -3700,5 +3700,13 @@
   "settings.openAi.moderation": "Content moderation",
   "settings.openAi.moderationAuto": "Standard (auto)",
   "settings.openAi.moderationLow": "Less restrictive (low)",
-  "settings.openAi.moderationHint": "auto uses standard content filtering. low uses less restrictive filtering; content moderation still applies."
+  "settings.openAi.moderationHint": "auto uses standard content filtering. low uses less restrictive filtering; content moderation still applies.",
+  "image.smartEdit.maskGuidance": "Mask guidance",
+  "image.smartEdit.markupGuidance": "Markup guidance",
+  "image.smartEdit.markupCompatibility": "Requires a supported OpenAI GPT Image 2.5 or 2.6 PNG capability",
+  "image.smartEdit.markupHint": "Annotations are sent as a separate transparent layer. Draw marks and describe what to change and preserve. The result should remove the marks.",
+  "image.smartEdit.markupSizeLimit": "Native markup supports at most 16,777,216 pixels per image. Resize the source first.",
+  "image.smartEdit.layerExportFailed": "Layer export failed. Try again; no edit was submitted.",
+  "image.smartEdit.changeGuidance": "Change guidance mode",
+  "image.smartEdit.changeGuidanceHint": "Switching clears the current drawing and keeps your prompt and reference images."
 }
