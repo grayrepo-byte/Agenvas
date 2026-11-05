@@ -186,7 +186,7 @@ export function PromptMentionEditor({ id, label, placeholder, prompt, mentions, 
   }
 
   function onKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
-    if (readOnly) return;
+    if (readOnly || event.nativeEvent.isComposing) return;
     if (!menu) return;
     if (event.key === "Escape") {
       event.preventDefault();
