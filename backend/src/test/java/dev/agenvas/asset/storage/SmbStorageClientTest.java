@@ -70,4 +70,19 @@ class SmbStorageClientTest {
         var broken = new SmbStorageClient(mock(StorageSettingsService.class), p -> { throw new java.io.IOException("synthetic-private-address/password"); });
         assertThatThrownBy(() -> broken.matches(profile(), "project/file.png", 10, "hash")).isInstanceOf(ApiProblemException.class).hasMessageNotContaining("password");
     }
+    @Test void failedOpenStillSanitizesTheErrorWhenFileCleanupAlsoFails() throws Exception {
+        var share = mock(DiskShare.class); var file = mock(File.class);
+        var client = mock(SMBClient.class); var connection = mock(Connection.class); var session = mock(Session.class);
+        when(share.openFile(anyString(), any(), any(), any(), any(), any())).thenReturn(file);
+        when(file.getFileInformation()).thenThrow(new IllegalStateException("synthetic-sensitive-read-detail"));
+        doThrow(new IllegalStateException("synthetic-sensitive-close-detail")).when(file).close();
+        var storage = new SmbStorageClient(mock(StorageSettingsService.class), p -> new SmbStorageClient.Handle(client, connection, session, share));
+
+        Throwable failure = catchThrowable(() -> storage.open(profile(), "project/file.png", 0, 4, 10));
+
+        verify(file).close(); verify(share).close(); verify(session).close(); verify(connection).close(); verify(client).close();
+        assertThat(failure).isInstanceOfSatisfying(ApiProblemException.class,
+                problem -> assertThat(problem.code()).isEqualTo("REMOTE_STORAGE_UNAVAILABLE"))
+                .hasMessageNotContaining("synthetic-sensitive").hasNoCause().hasNoSuppressedExceptions();
+    }
 }
