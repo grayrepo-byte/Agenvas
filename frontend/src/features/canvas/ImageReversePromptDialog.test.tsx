@@ -27,6 +27,20 @@ function show() {
 }
 
 describe("ImageReversePromptDialog", () => {
+  it.each([
+    ["IMAGE_PROMPT_INPUT_TOO_LARGE", "原图超过反推的 10 MiB 上限"],
+    ["IMAGE_PROMPT_INPUT_UNSUPPORTED", "反推支持 PNG、JPEG 和 WebP 原图"],
+    ["IMAGE_PROMPT_INPUT_UNAVAILABLE", "无法读取完整原图"],
+    ["IMAGE_PROMPT_MODEL_REJECTED", "模型拒绝了图片请求"],
+  ])("explains %s without submitting another model call", async (code, message) => {
+    const submit = vi.fn();
+    server.use(http.get(path, () => HttpResponse.json([{ ...task("FAILED"), errorCode: code }])),
+      http.post(path, () => { submit(); return HttpResponse.json(task()); }));
+    show();
+    expect(await screen.findByRole("alert")).toHaveTextContent(message);
+    expect(screen.getByText(/PNG\/JPEG\/WebP，最多 10 MiB/)).toBeVisible();
+    expect(submit).not.toHaveBeenCalled();
+  });
   beforeEach(() => server.use(
     http.get(path, () => HttpResponse.json([])),
     http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),

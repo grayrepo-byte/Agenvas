@@ -72,22 +72,27 @@ class MediaRelayServiceTest {
         order.verify(cloud).signedGet(profile, copy.key(), MediaRelayService.URL_LIFETIME);
         verify(settings, never()).relayProfileId();
     }
-    @Test void imageUploadRegistersBeforeNetworkAndDeletesPreparedLocalFile() throws Exception {
-        byte[] image = new byte[] { (byte) 0x89, 'P', 'N', 'G', 1, 2, 3, 4 };
-        var copy = new MediaRelayRepository.Copy(UUID.randomUUID(), profile.id(), "test/media-relay/reference.png", NOW.plus(MediaRelayService.COPY_RETENTION));
-        when(reservations.reserve(profile.id(), ".png")).thenReturn(new MediaRelayReservationService.Reservation(profile, copy));
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"png,.png", "jpeg,.jpg", "webp,.webp"})
+    void imageUploadRegistersBeforeNetworkAndDeletesPreparedLocalFile(String format, String extension) throws Exception {
+        byte[] image = format.equals("webp") ? java.util.Base64.getDecoder().decode(
+                "UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoEAAQAAkA4JaQAA3AA/vucwAA=")
+                : dev.agenvas.testing.ImageAssetFixture.encoded(format, 1600, 900);
+        String contentType = "image/" + format;
+        var copy = new MediaRelayRepository.Copy(UUID.randomUUID(), profile.id(), "test/media-relay/reference" + extension, NOW.plus(MediaRelayService.COPY_RETENTION));
+        when(reservations.reserve(profile.id(), extension)).thenReturn(new MediaRelayReservationService.Reservation(profile, copy));
         when(cloud.signedGet(profile, copy.key(), MediaRelayService.URL_LIFETIME)).thenReturn("https://example.com/image?X-Amz-Signature=synthetic");
         doAnswer(call -> {
             Path file = call.getArgument(2);
             assertThat(java.nio.file.Files.readAllBytes(file)).isEqualTo(image);
             return null;
-        }).when(cloud).put(eq(profile), eq(copy.key()), any(Path.class), eq("image/png"), eq(8L), anyString());
-        assertThat(relay.signedImage(profile.id(), image, "image/png")).startsWith("https://example.com/image");
+        }).when(cloud).put(eq(profile), eq(copy.key()), any(Path.class), eq(contentType), eq((long) image.length), anyString());
+        assertThat(relay.signedImage(profile.id(), image, contentType)).startsWith("https://example.com/image");
         var file = ArgumentCaptor.forClass(Path.class);
         var order = inOrder(reservations, cloud);
-        order.verify(reservations).reserve(profile.id(), ".png");
+        order.verify(reservations).reserve(profile.id(), extension);
         order.verify(cloud).requirePublic(profile);
-        order.verify(cloud).put(eq(profile), eq(copy.key()), file.capture(), eq("image/png"), eq(8L), anyString());
+        order.verify(cloud).put(eq(profile), eq(copy.key()), file.capture(), eq(contentType), eq((long) image.length), anyString());
         order.verify(cloud).signedGet(profile, copy.key(), MediaRelayService.URL_LIFETIME);
         assertThat(java.nio.file.Files.exists(file.getValue())).isFalse();
     }

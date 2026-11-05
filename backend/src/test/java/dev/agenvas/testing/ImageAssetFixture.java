@@ -15,13 +15,18 @@ public final class ImageAssetFixture {
 
     /** Archives a tiny PNG through the production validation and metadata path. */
     public static UUID archive(AssetService assets, UUID ownerId, UUID projectId) {
-        BufferedImage image = new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB);
+        return assets.archiveImage(ownerId, projectId, new ByteArrayInputStream(encoded("png", 2, 2))).id();
+    }
+
+    /** Real synthetic raster bytes; dimensions can deliberately exceed the thumbnail ceiling. */
+    public static byte[] encoded(String format, int width, int height) {
+        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        image.setRGB(width - 1, height - 1, 0x38caca);
         try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-            if (!ImageIO.write(image, "png", output)) {
-                throw new IllegalStateException("PNG encoder unavailable in integration test");
+            if (!ImageIO.write(image, format, output)) {
+                throw new IllegalStateException("Image encoder unavailable in integration test");
             }
-            return assets.archiveImage(ownerId, projectId,
-                    new ByteArrayInputStream(output.toByteArray())).id();
+            return output.toByteArray();
         } catch (IOException exception) {
             throw new IllegalStateException("Cannot create integration-test PNG", exception);
         }

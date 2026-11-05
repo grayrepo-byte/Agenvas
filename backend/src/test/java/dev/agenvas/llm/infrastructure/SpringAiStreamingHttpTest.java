@@ -41,14 +41,20 @@ class SpringAiStreamingHttpTest {
     private static final String MODEL_ID = "synthetic-stream-model";
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.CsvSource({"true,true", "true,false", "false,true", "false,false"})
-    void relaySwitchControlsActualRegularAndStreamingImageWireContent(boolean enabled, boolean streaming) throws Exception {
-        byte[] png = new byte[] { (byte) 0x89, 'P', 'N', 'G', 1, 2, 3, 4 };
+    @org.junit.jupiter.params.provider.CsvSource({
+            "true,true,png", "true,false,png", "false,true,png", "false,false,png",
+            "true,true,jpeg", "true,false,jpeg", "false,true,jpeg", "false,false,jpeg",
+            "true,true,webp", "true,false,webp", "false,true,webp", "false,false,webp"})
+    void relaySwitchControlsActualRegularAndStreamingImageWireContent(boolean enabled, boolean streaming, String format) throws Exception {
+        byte[] original = format.equals("webp") ? Base64.getDecoder().decode(
+                "UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoEAAQAAkA4JaQAA3AA/vucwAA=")
+                : dev.agenvas.testing.ImageAssetFixture.encoded(format, 1600, 900);
+        String contentType = "image/" + format;
         var relay = org.mockito.Mockito.mock(dev.agenvas.asset.storage.MediaRelayService.class);
         var profile = java.util.UUID.randomUUID();
         org.mockito.Mockito.when(relay.llmProfile()).thenReturn(enabled ? profile : null);
-        org.mockito.Mockito.when(relay.signedImage(profile, png, "image/png"))
-                .thenReturn("https://example.com/media-relay/preview.png?X-Amz-Signature=synthetic");
+        org.mockito.Mockito.when(relay.signedImage(profile, original, contentType))
+                .thenReturn("https://example.com/media-relay/original." + format + "?X-Amz-Signature=synthetic");
         var received = new AtomicReference<JsonNode>();
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1/chat/completions", exchange -> {
@@ -67,14 +73,14 @@ class SpringAiStreamingHttpTest {
             OpenAiChatModel model = OpenAiChatModel.builder().options(OpenAiChatOptions.builder()
                     .baseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1")
                     .apiKey("synthetic-key").model(MODEL_ID).maxRetries(0).timeout(Duration.ofSeconds(TIMEOUT_SECONDS)).build()).build();
-            UserMessage input = UserMessage.builder().text("Inspect").media(new Media(MimeTypeUtils.IMAGE_PNG, new ByteArrayResource(png))).build();
+            UserMessage input = UserMessage.builder().text("Inspect").media(new Media(MimeTypeUtils.parseMimeType(contentType), new ByteArrayResource(original))).build();
             var gateway = new SpringAiChatGateway(model, CONFIG_VERSION, new LlmImageRelay(relay));
             if (streaming) gateway.callStreaming(List.of(input), List.of(), Map.of(), gateway.configIdentity(), ignored -> {});
             else gateway.call(List.of(input), List.of(), Map.of());
             String image = received.get().at("/messages/0/content/1/image_url/url").asText();
-            assertThat(image).isEqualTo(enabled ? "https://example.com/media-relay/preview.png?X-Amz-Signature=synthetic"
-                    : "data:image/png;base64," + Base64.getEncoder().encodeToString(png));
-            assertThat(input.getMedia().getFirst().getDataAsByteArray()).isEqualTo(png);
+            assertThat(image).isEqualTo(enabled ? "https://example.com/media-relay/original." + format + "?X-Amz-Signature=synthetic"
+                    : "data:" + contentType + ";base64," + Base64.getEncoder().encodeToString(original));
+            assertThat(input.getMedia().getFirst().getDataAsByteArray()).isEqualTo(original);
             org.mockito.Mockito.verify(relay, org.mockito.Mockito.times(enabled ? 1 : 0)).signedImage(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString());
         } finally { server.stop(0); }
     }
