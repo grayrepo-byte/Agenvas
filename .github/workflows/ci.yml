@@ -148,6 +148,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Test Compose configuration output compatibility
+        run: python3 deploy/test-compose-check.py
       - name: Verify image, source, and Mock Compose environments
         run: bash deploy/check-compose.sh
       - name: Test automatic installation secrets with isolated PostgreSQL volumes

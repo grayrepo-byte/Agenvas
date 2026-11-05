@@ -12,6 +12,10 @@ COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml 
 RUN pnpm install --frozen-lockfile
 
 COPY contracts /workspace/contracts
+# Type checking includes test fixtures that read these packaged skill manifests.
+# They are build inputs only; the runtime receives dist below.
+COPY backend/src/main/resources/builtin-skills/drama-skills/manifest.json /workspace/backend/src/main/resources/builtin-skills/drama-skills/manifest.json
+COPY backend/src/main/resources/builtin-skills/minimax-h3/manifest.json /workspace/backend/src/main/resources/builtin-skills/minimax-h3/manifest.json
 COPY frontend .
 RUN pnpm api:generate && pnpm build
 
