@@ -64,7 +64,9 @@ describe("CallLogsPage", () => {
       HttpResponse.json({ id: params.id, captured: false, exchanges: [] })));
     showPage();
     expect(await screen.findByText("系统诊断")).toBeInTheDocument();
-    expect(screen.getByText("文本模型 · 工具诊断")).toBeInTheDocument();
+    const table = screen.getByRole("table");
+    expect(within(table).getByRole("cell", { name: "文本模型" })).toBeInTheDocument();
+    expect(within(table).getByRole("cell", { name: "工具诊断" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /审计测试项目/ })).not.toBeInTheDocument();
     await userEvent.setup().click(screen.getByRole("button", { name: /call-1/ }));
     const dialog = screen.getByRole("dialog");

@@ -50,7 +50,7 @@
 .agent-chat-pending-approval > span { min-width: 0; overflow-wrap: anywhere; }
 .agent-chat-pending-approval > button { flex: none; }
 .agent-chat-composer { position: relative; flex: none; padding: 11px 12px 9px; margin: 4px 14px 14px; background: var(--chat-surface); border: 1px solid var(--ui-border-strong); border-radius: 15px; transition: border-color var(--ui-duration), box-shadow var(--ui-duration); }
-.agent-chat-composer:has(textarea:focus-visible) { border-color: var(--ui-accent-ring); box-shadow: 0 0 0 3px var(--ui-accent-subtle); }
+.agent-chat-composer:has(textarea:focus-visible) { border-color: var(--ui-focus-border); box-shadow: none; }
 .agent-chat-surface .agent-chat-composer textarea { background: transparent; border: 0; padding: 4px 2px; min-height: 66px; max-height: 160px; resize: none; outline: none; box-shadow: none; font-size: 13px; line-height: 1.8; }
 .agent-chat-composer-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 7px; }
 .agent-chat-composer-actions { display: flex; align-items: center; gap: 6px; min-width: 0; }

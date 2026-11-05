@@ -108,8 +108,7 @@
 }
 
 .agent-chat-task__disclosure > summary:focus-visible {
-  outline: 2px solid var(--agent-chat-focus);
-  outline-offset: -3px;
+  background: var(--ui-focus-surface);
   border-radius: 9px;
 }
 

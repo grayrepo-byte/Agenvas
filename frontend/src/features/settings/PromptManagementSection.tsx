@@ -78,8 +78,9 @@ export function PromptManagementSection({ enabled }: { enabled: boolean }) {
         {settings.isPending && enabled ? <LoadingState compact label={t("prompts.loading")} /> : null}
         {settings.isSuccess && !rows.length ? <EmptyState title={t("prompts.empty")} /> : null}
         {rows.map((row) => <Button type="button" variant={selection === row.id ? "secondary" : "outline"} className="prompt-management-record h-auto justify-start whitespace-normal py-3 text-left"
-          disabled={pending} key={row.id} onClick={() => select(row.id)} aria-pressed={selection === row.id}>
-          <span className="min-w-0"><span className="block">{getPromptLabels(row).name}{drafts[row.id] ? ` · ${t("prompts.unsaved")}` : ""}</span><span className="block break-all text-xs text-muted-foreground">{row.key}</span></span>
+          disabled={pending} key={row.id} onClick={() => select(row.id)} aria-pressed={selection === row.id} title={`${getPromptLabels(row).name} · ${row.key}${drafts[row.id] ? ` · ${t("prompts.unsaved")}` : ""}`}>
+          <span className="min-w-0"><span className="block">{getPromptLabels(row).name}</span><span className="block break-all text-xs text-muted-foreground">{row.key}</span></span>
+          {drafts[row.id] ? <StatusBadge tone="warning">{t("prompts.unsaved")}</StatusBadge> : null}
           <StatusBadge>{row.kind === "AGENT" ? t("prompts.agent") : t("prompts.function")}</StatusBadge>
         </Button>)}
       </div>

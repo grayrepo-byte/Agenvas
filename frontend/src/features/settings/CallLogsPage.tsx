@@ -95,7 +95,7 @@ export function CallLogsPage() {
       {data.items.length === 0 ? <EmptyState icon={<ListMagnifyingGlass size={27} />} title={t("logs.calls.empty")}
         description={t("logs.calls.emptyHint")} /> :
         <Table className="call-log-table"><TableCaption className="sr-only">{t("logs.calls.auditTitle")}</TableCaption><TableHeader><TableRow>
-          <TableHead scope="col" className="call-log-model-column">{t("common.model")}</TableHead><TableHead scope="col" className="call-log-type-column">{t("logs.calls.callType")}</TableHead><TableHead scope="col" className="call-log-project-column">{t("common.project")}</TableHead><TableHead scope="col" className="call-log-time-column">{t("logs.calls.time")}</TableHead><TableHead scope="col" className="call-log-time-column">{t("logs.calls.responseTime")}</TableHead>
+          <TableHead scope="col" className="call-log-model-column">{t("common.model")}</TableHead><TableHead scope="col" className="call-log-type-column">{t("logs.calls.callType")}</TableHead><TableHead scope="col" className="call-log-operation-column">{t("logs.calls.operations")}</TableHead><TableHead scope="col" className="call-log-project-column">{t("common.project")}</TableHead><TableHead scope="col" className="call-log-time-column">{t("logs.calls.time")}</TableHead><TableHead scope="col" className="call-log-time-column">{t("logs.calls.responseTime")}</TableHead>
           <TableHead scope="col" className="call-log-duration-column">{t("logs.calls.duration")}</TableHead><TableHead scope="col" className="call-log-result-column">{t("logs.calls.result")}</TableHead><TableHead scope="col" className="call-log-details-column"><span className="sr-only">{t("logs.calls.details")}</span></TableHead>
         </TableRow></TableHeader><TableBody>{data.items.map((log) => <CallLogRow key={log.id} log={log}
           onDetails={() => setSelectedId(log.id)} />)}</TableBody></Table>}
@@ -141,10 +141,10 @@ function CallLogFilterForm({ filters, onApply, disabled }: { filters: CallLogFil
       <Field><FieldLabel htmlFor="call-log-project">{t("logs.calls.projectId")}</FieldLabel>
         <Input id="call-log-project" name="projectId" defaultValue={filters.projectId} placeholder={t("logs.calls.allProjects")} /></Field>
       <Field><FieldLabel htmlFor="call-log-kind">{t("logs.calls.callType")}</FieldLabel>
-        <Select id="call-log-kind" name="kind" defaultValue={filters.kind ?? ""}><option value="">{t("common.allKinds")}</option>
+        <Select id="call-log-kind" name="kind" density="compact" defaultValue={filters.kind ?? ""}><option value="">{t("common.allKinds")}</option>
           {Object.entries(KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></Field>
       <Field><FieldLabel htmlFor="call-log-status">{t("logs.calls.status")}</FieldLabel>
-        <Select id="call-log-status" name="status" defaultValue={filters.status ?? ""}><option value="">{t("logs.calls.allStatuses")}</option>
+        <Select id="call-log-status" name="status" density="compact" defaultValue={filters.status ?? ""}><option value="">{t("logs.calls.allStatuses")}</option>
           {Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></Field>
       <Field><FieldLabel htmlFor="call-log-trace">Trace ID</FieldLabel>
         <Input id="call-log-trace" name="traceId" defaultValue={filters.traceId} placeholder={t("logs.calls.traceSearchPlaceholder")} /></Field>
@@ -188,10 +188,12 @@ function CallLogRow({ log, onDetails }: { log: CallLog; onDetails: () => void })
   const KindIcon = KIND_ICONS[log.kind];
   return <TableRow data-status={log.status}>
       <TableCell className="call-log-model-cell" data-label={t("common.model")}><span className="call-log-model" title={log.model ?? t("logs.calls.modelNotRecorded")}>{log.model ?? t("logs.calls.modelNotRecorded")}</span></TableCell>
-      <TableCell className="call-log-type-cell" data-label={t("logs.calls.callType")}><span className="call-log-kind"><KindIcon aria-hidden /><strong>{KIND_LABELS[log.kind]} · {OPERATION_LABELS[log.operation]}</strong></span>
+      <TableCell className="call-log-type-cell" data-label={t("logs.calls.callType")}><span className="call-log-kind" title={KIND_LABELS[log.kind]}><KindIcon aria-hidden /><strong>{KIND_LABELS[log.kind]}</strong></span></TableCell>
+      <TableCell className="call-log-operation-cell" data-label={t("logs.calls.operations")}><div className="call-log-operation">
+        <span className="call-log-operation-label" title={OPERATION_LABELS[log.operation]}>{OPERATION_LABELS[log.operation]}</span>
         <div className="call-log-badges">{log.mock ? <StatusBadge>{t("logs.calls.mock")}</StatusBadge> : null}
-          {log.historical ? <StatusBadge>{t("logs.calls.historicalRecord")}</StatusBadge> : null}</div></TableCell>
-      <TableCell className="call-log-project-cell" data-label={t("common.project")}>{log.projectId ? <Link className="call-log-project" to={`/projects/${encodeURIComponent(log.projectId)}`}><span>{log.projectTitle}</span><ArrowSquareOut aria-hidden /></Link> : <span>{t("logs.calls.systemDiagnostic")}</span>}</TableCell>
+          {log.historical ? <StatusBadge>{t("logs.calls.historicalRecord")}</StatusBadge> : null}</div></div></TableCell>
+      <TableCell className="call-log-project-cell" data-label={t("common.project")}>{log.projectId ? <Link className="call-log-project" title={log.projectTitle ?? undefined} to={`/projects/${encodeURIComponent(log.projectId)}`}><span>{log.projectTitle}</span><ArrowSquareOut aria-hidden /></Link> : <span>{t("logs.calls.systemDiagnostic")}</span>}</TableCell>
       <TableCell className="call-log-start-cell" data-label={t("logs.calls.time")}><LogTime compact value={log.startedAt} /></TableCell>
       <TableCell className="call-log-response-cell" data-label={t("logs.calls.responseTime")}><LogTime compact value={log.respondedAt} missing={log.status === "RUNNING" ? t("logs.calls.waitingForResponse") : t("common.notRecorded")} /></TableCell>
       <TableCell className="call-log-duration-cell" data-label={t("logs.calls.duration")}>{log.durationMs === null ? t("common.notRecorded") : `${log.durationMs.toLocaleString(getFormatLocale())} ms`}</TableCell>

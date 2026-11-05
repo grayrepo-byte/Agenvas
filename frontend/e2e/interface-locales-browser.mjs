@@ -188,7 +188,7 @@ try {
         await click('.media-function-row[aria-label="Resize"] [role="combobox"]');
         await waitFor(() => Boolean(document.querySelector('[role="listbox"]')));
         const options = await snapshot(`en-local-function-options-${viewport.width}`);
-        assert.match(options.text, /Local media processing · Local image processing/);
+        assert.match(options.text, /Local image processing/);
         await screenshot(`en-local-function-options-${viewport.width}`);
         await click('[role="option"][data-value=""]');
         await waitFor(() => !document.querySelector('[role="listbox"]'));
@@ -196,7 +196,7 @@ try {
         await waitFor(() => Boolean(document.querySelector('[role="listbox"]')));
         await click('[role="option"][data-value="00000000-0000-4000-8000-000000000202"]');
         await waitFor(() => !document.querySelector('[role="listbox"]'));
-        await waitFor(() => document.querySelector('.media-function-row[aria-label="Resize"] .media-function-controls > button').disabled);
+        await waitFor(() => document.querySelector('.media-function-row[aria-label="Resize"] .media-function-actions > button').disabled);
         await click('.media-function-workspace [role="tab"]:nth-child(2)');
         await waitFor(() => document.querySelector('.media-function-workspace [role="tab"]:nth-child(2)').getAttribute("aria-selected") === "true");
         await snapshot(`en-video-functions-${viewport.width}`);

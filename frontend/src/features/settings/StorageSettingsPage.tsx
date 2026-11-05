@@ -179,23 +179,26 @@ export function StorageSettingsPage() {
           {snapshot.profiles.length ? <div className="storage-connection-list">
             {snapshot.profiles.map((profile) => <section className="storage-connection-card" key={profile.id} aria-label={profile.name}>
               <div className="storage-connection-identity"><span className="storage-connection-symbol" aria-hidden><HardDrives weight="duotone" /></span>
-                <div className="storage-connection-copy"><h3>{profile.name}</h3><p>{LABELS[profile.provider]}{!fileProtocol(profile.provider) ? ` · ${profile.bucket} · ${profile.region}` : ""}</p></div>
+                <div className="storage-connection-copy"><h3 title={profile.name}>{profile.name}</h3><p>{LABELS[profile.provider]}</p></div>
+              </div>
+              <div className="storage-connection-location"><p className="storage-connection-endpoint" title={profile.endpoint}>{profile.endpoint}</p>
+                {!fileProtocol(profile.provider) ? <p className="storage-connection-location-detail" title={`${profile.bucket} · ${profile.region}`}>{profile.bucket} · {profile.region}</p> : null}
+              </div>
+              <div className="storage-connection-status">
                 <div className="storage-connection-badges">
                   {profile.id === snapshot.activeProfileId ? <StatusBadge tone="success">{t("settings.storage.archiveUsage")}</StatusBadge> : null}
                   {profile.id === snapshot.relayProfileId ? <StatusBadge>{t("settings.storage.relayUsage")}</StatusBadge> : null}
                   {drafts[profile.id] ? <StatusBadge tone="warning">{t("common.unsavedChanges")}</StatusBadge> : null}
                 </div>
+                <div className="storage-connection-meta"><span><Key aria-hidden />{profile.accessKeyMask}</span>
+                  {profile.inUse ? <span title={t("settings.storage.locationLocked")}><LockSimple aria-hidden />{t("settings.storage.inUse")}</span> : null}</div>
               </div>
-              <p className="storage-connection-endpoint">{profile.endpoint}</p>
-              <div className="storage-connection-footer"><div className="storage-connection-meta"><span><Key aria-hidden />{profile.accessKeyMask}</span>
-                {profile.inUse ? <span title={t("settings.storage.locationLocked")}><LockSimple aria-hidden />{t("settings.storage.inUse")}</span> : null}</div>
-                <div className="storage-connection-actions">
-                  <Button type="button" variant="outline" size="sm" disabled={busy} aria-label={t("settings.storage.editNamed", { "0": profile.name })} onClick={() => openConnection(profile)}><PencilSimple data-icon="inline-start" aria-hidden />{t("settings.storage.editConnection")}</Button>
-                  <Button type="button" variant="ghost" size="sm" disabled={busy} aria-label={t("settings.storage.updateCredentialsNamed", { "0": profile.name })} onClick={() => {
-                    setRotation({ id: profile.id, name: profile.name, provider: profile.provider, version: snapshot.version, accessKeyId: "", secret: "" }); setError(null); setMessage("");
-                  }}><Key data-icon="inline-start" aria-hidden />{t("settings.storage.credentialsSection")}</Button>
-                  <Button type="button" variant="ghost" size="icon-sm" disabled={busy} aria-label={t("settings.storage.deleteNamed", { "0": profile.name })} onClick={() => { setDeleting({ profile, version: snapshot.version }); setError(null); setMessage(""); }}><Trash aria-hidden /></Button>
-                </div>
+              <div className="storage-connection-actions">
+                <Button type="button" variant="outline" size="sm" disabled={busy} aria-label={t("settings.storage.editNamed", { "0": profile.name })} onClick={() => openConnection(profile)}><PencilSimple data-icon="inline-start" aria-hidden />{t("settings.storage.editConnection")}</Button>
+                <Button type="button" variant="ghost" size="icon-sm" disabled={busy} aria-label={t("settings.storage.updateCredentialsNamed", { "0": profile.name })} title={t("settings.storage.updateCredentialsNamed", { "0": profile.name })} onClick={() => {
+                  setRotation({ id: profile.id, name: profile.name, provider: profile.provider, version: snapshot.version, accessKeyId: "", secret: "" }); setError(null); setMessage("");
+                }}><Key aria-hidden /></Button>
+                <Button type="button" variant="ghost" size="icon-sm" disabled={busy} aria-label={t("settings.storage.deleteNamed", { "0": profile.name })} title={t("settings.storage.deleteNamed", { "0": profile.name })} onClick={() => { setDeleting({ profile, version: snapshot.version }); setError(null); setMessage(""); }}><Trash aria-hidden /></Button>
               </div>
             </section>)}
           </div> : <EmptyState icon={<HardDrives aria-hidden />} title={t("settings.storage.connectionsEmpty")} />}
@@ -204,9 +207,10 @@ export function StorageSettingsPage() {
         <div className="storage-purpose-grid">
           <Panel className="storage-purpose-panel" title={t("settings.storage.defaultStorage")} description={t("settings.storage.archiveDescription")}
             actions={<Archive aria-hidden />}>
-            <div className="storage-destination storage-current-destination"><strong>{archiveProfile?.name ?? t("settings.storage.local")}</strong><StatusBadge tone="success">{t("settings.storage.currentDefault")}</StatusBadge></div>
             <FieldGroup>
-              <Field data-disabled={busy || undefined}><FieldLabel htmlFor="storage-archive-destination">{t("settings.storage.archiveConnection")}</FieldLabel>
+              <Field data-disabled={busy || undefined}>
+                <div className="storage-destination storage-current-destination"><FieldLabel htmlFor="storage-archive-destination">{t("settings.storage.archiveConnection")}</FieldLabel>
+                  <span className="storage-destination-saved"><strong title={archiveProfile?.name ?? t("settings.storage.local")}>{archiveProfile?.name ?? t("settings.storage.local")}</strong><StatusBadge tone="success">{t("settings.storage.currentDefault")}</StatusBadge></span></div>
                 <Select id="storage-archive-destination" disabled={busy} value={snapshot.activeProfileId ?? ""} onChange={(event) => {
                   const profileId = event.target.value || null;
                   void write(() => activateStorageProfile({ expectedVersion: snapshot.version, profileId }), t(profileId ? "settings.storage.cloudDefaultHint" : "settings.storage.localDefaultHint"));

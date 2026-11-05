@@ -7,7 +7,7 @@
 .projects-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; margin-bottom: 24px; }
 .projects-search { flex: 1; min-width: 160px; display: flex; align-items: center; gap: 9px; border: 1px solid var(--line); border-radius: 9px; padding: 0 12px; color: var(--muted); background: var(--ui-field); transition: border-color var(--ui-duration), box-shadow var(--ui-duration); }
 .app-page .projects-search input[type="search"] { min-width: 0; width: 100%; margin: 0; padding: 9px 0; border: 0; background: transparent; box-shadow: none; }
-.projects-search:focus-within { border-color: var(--ui-focus); box-shadow: var(--ui-focus-shadow); }
+.projects-search:focus-within { border-color: var(--ui-focus-border); }
 .app-page .projects-search input[type="search"]:focus { outline: 0; box-shadow: none; }
 .projects-search > svg { flex: none; }
 .projects-filter-actions { display: flex; align-items: center; gap: 15px; }
@@ -15,7 +15,7 @@
 .projects-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 18px; }
 .project-card { display: flex; flex-direction: column; min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); box-shadow: var(--ui-inset-highlight); transition: border-color 180ms, box-shadow 180ms, transform 220ms var(--ui-ease-out); }
 .project-card:hover { border-color: var(--ui-border-strong); box-shadow: var(--ui-panel-shadow), 0 8px 24px #0002; transform: translateY(-2px); }
-.project-card:focus-within { border-color: var(--ui-accent-ring); }
+.project-card:focus-within { border-color: var(--ui-focus-border); }
 .project-card-cover { position: relative; display: grid; place-items: center; min-height: 154px; padding: 20px; overflow: hidden; border-bottom: 1px solid var(--line); background: radial-gradient(ellipse at 50% 100%, var(--ui-accent-subtle), transparent 78%), var(--ui-field); }
 .project-card-cover::before { position: absolute; inset: 0; content: ""; background-image: radial-gradient(var(--ui-border-strong) .6px, transparent .6px); background-size: 14px 14px; opacity: .32; mask-image: linear-gradient(transparent, black); }
 .project-card-folder { position: absolute; left: 15px; top: 14px; display: flex; color: var(--ui-text-subtle); }

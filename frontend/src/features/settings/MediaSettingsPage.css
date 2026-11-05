@@ -173,15 +173,9 @@ body:has(.app-shell--settings) .comfy-capability-dialog .ui-dialog-body { paddin
 .app-shell--settings .media-settings-table tr[data-disabled="true"] .media-table-name strong { color: var(--ui-text-muted); }
 .app-shell--settings .media-capabilities-table td:nth-child(6) { white-space: nowrap; font-size: 12px; font-variant-numeric: tabular-nums; }
 .app-shell--settings .media-services-panel > .ui-empty-state { margin: 0 22px 22px; }
-.media-setup-flow { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 0 12px 8px; }
-.media-setup-flow > div { display: flex; align-items: center; gap: 10px; }
-.media-setup-flow > div > svg { width: 20px; height: 20px; color: var(--ui-text-subtle); }
-.media-flow-number { color: var(--ui-text-subtle); font-size: 10px; font-variant-numeric: tabular-nums; }
-.media-setup-flow strong, .media-setup-flow small { display: block; font-size: 11px; font-weight: 400; line-height: 1.8; }
-.media-setup-flow strong { color: var(--ui-text-secondary); }
-.media-setup-flow small { color: var(--ui-text-subtle); }
-.media-setup-flow > svg { width: 16px; height: 16px; flex: none; color: var(--ui-border-strong); }
 @media (min-width: 761px) {
+  .app-shell--settings .media-settings-table th:last-child,
+  .app-shell--settings .media-settings-table td:last-child:not([colspan]) { text-align: right; }
   .media-capabilities-table th:nth-child(1) { width: 18%; }
   .media-capabilities-table th:nth-child(2) { width: 13%; }
   .media-capabilities-table th:nth-child(3) { width: 10%; }
@@ -214,8 +208,6 @@ body:has(.app-shell--settings) .comfy-capability-dialog .ui-dialog-body { paddin
   .media-default-card-name { font-size: 14px; }
   .media-default-card-heading { flex-wrap: wrap; }
   .media-default-card-heading > .ui-badge { margin-left: 0; }
-  .media-setup-flow { gap: 10px; padding-inline: 0; }
-  .media-flow-number { display: none; }
 }
 @media (max-width: 760px) {
   .app-shell--settings .media-settings-page { gap: 24px; }
@@ -254,6 +246,4 @@ body:has(.app-shell--settings) .comfy-capability-dialog .ui-dialog-body { paddin
   .app-shell--settings .media-settings-table td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 5px; color: var(--ui-text-subtle); font-size: 10px; }
   .app-shell--settings .media-settings-table td[colspan] { grid-column: 1 / -1; }
   .media-catalog-topline { margin-bottom: 0; flex-wrap: nowrap; }
-  .media-setup-flow { align-items: flex-start; flex-direction: column; gap: 14px; padding: 0 4px 8px; }
-  .media-setup-flow > svg { display: none; }
 }

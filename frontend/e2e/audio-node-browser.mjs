@@ -215,7 +215,16 @@ try {
     await cdp("Input.dispatchKeyEvent", { type: "keyUp", ...params });
   }
   assert.equal(await page(() => document.activeElement.classList.contains("audio-player-seek")), true);
-  assert.equal(await outline(), "solid", "Keyboard seeking retains a visible focus indicator");
+  assert.equal(await outline(), "none", "Keyboard seeking must not draw an inner focus border");
+  assert.equal(await page(() => {
+    const progress = document.querySelector(".audio-player-progress");
+    const probe = document.createElement("span");
+    probe.style.background = "var(--ui-focus-surface)";
+    progress.append(probe);
+    const hasFocusSurface = getComputedStyle(progress).backgroundColor === getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return hasFocusSurface && document.activeElement.matches(":focus-visible");
+  }), true, "Keyboard seeking retains a neutral surface focus indicator");
   const time = await page(() => document.querySelector("audio").currentTime);
   await cdp("Input.dispatchKeyEvent", { type: "keyDown", key: "ArrowRight", code: "ArrowRight" });
   await cdp("Input.dispatchKeyEvent", { type: "keyUp", key: "ArrowRight", code: "ArrowRight" });

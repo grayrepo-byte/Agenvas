@@ -134,12 +134,12 @@ export function LlmSettingsPage() {
           <p className="settings-step-label">{t("settings.llm.connectionStep")}</p>
           <Panel className="llm-editor-panel" title={t("settings.llm.llmConfiguration")} description={t("settings.llm.endpointHint")} actions={<StatusBadge tone={snapshot.configured ? "success" : "neutral"}>{snapshot.configured ? t("common.configured") : t("models.unconfigured")}</StatusBadge>}>
             <form className="ui-form llm-configuration-form" onSubmit={submit} aria-busy={saving}>
-              <div className="settings-config-summary">
+              <div className="settings-config-summary llm-saved-summary">
                 <span className="ui-muted">{t("settings.llm.savedConnection")}</span>
-                {snapshot.configured ? <strong className="llm-saved-model">{snapshot.modelId}<span>{snapshot.endpoint}</span></strong> : null}
+                {snapshot.configured ? <strong className="llm-saved-model"><span className="llm-saved-model-id" title={snapshot.modelId ?? undefined}>{snapshot.modelId}</span><span className="llm-saved-endpoint" title={snapshot.endpoint ?? undefined}>{snapshot.endpoint}</span></strong> : null}
                 <span>{snapshot.configured ? t("settings.llm.savedVersion", { "0": snapshot.version, "1": snapshot.keyMask ?? t("settings.llm.set") }) : t("settings.llm.modelMissing")}</span>
-                <span className="ui-muted">{t("settings.llm.credentialsHint")}</span>
               </div>
+              <p className="llm-credential-note ui-muted">{t("settings.llm.credentialsHint")}</p>
               {hasRemoteUpdate ? <Notice tone="warning" title={t("settings.llm.conflictTitle")}>
                 <p>{t("settings.llm.conflictHint")}</p>
                 <Button variant="outline"  type="button" disabled={busy} onClick={() => { setDraft(null); setModelOptions(null); setCapacityError(""); setApiKey(""); setKeyInvalid(false); setError(""); setAcknowledgedVersion(null); }}>{t("settings.shared.refreshConfig")}</Button>
@@ -158,11 +158,11 @@ export function LlmSettingsPage() {
                 <FieldDescription id="llm-key-description">{t("settings.llm.keyEntryHint")}</FieldDescription>
                 {keyInvalid ? <FieldError id="llm-key-error">{t("settings.llm.keyValidationError")}</FieldError> : null}
               </Field>
-              <LlmModelOptions value={options} endpoint={endpoint} modelId={modelId} apiKey={apiKey} base={base}
+              <div className="llm-model-options"><LlmModelOptions value={options} endpoint={endpoint} modelId={modelId} apiKey={apiKey} base={base}
                 disabled={busy} onSelectModel={value => editDraft("modelId", value)} onChange={value => {
                   if (base) setDraft(existing => existing ?? { base, endpoint, modelId });
                   setModelOptions(value); setCapacityError(""); setSaved(false); setAcknowledgedVersion(null);
-                }} />
+                }} /></div>
               {capacityError ? <Notice tone="danger">{capacityError}</Notice> : null}
               {error ? <Notice tone="danger"><p>{error}</p><p>{t("settings.llm.keyClearedHint")}</p></Notice> : null}
               {saved ? <Notice tone="success">{t("settings.llm.saved")}</Notice> : null}

@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import type { LlmSettings } from "../../shared/api/client";
 import { MemoryRouter } from "react-router";
 import { createQueryClient } from "../../app/queryClient";
-import { setLocale } from "../../shared/i18n";
+import { setLocale, t } from "../../shared/i18n";
 import { server } from "../../test/server";
 import { LlmSettingsPage } from "./LlmSettingsPage";
 const manualSelection = { provider: "COMPATIBLE", mode: "MANUAL", contextWindowTokens: 16384,
@@ -40,8 +40,8 @@ describe("LlmSettingsPage", () => {
         keyMask: "masked", toolCallingVerified: false, updatedAt: null }); }));
     render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><LlmSettingsPage /></MemoryRouter></QueryClientProvider>);
     const user = userEvent.setup();
-    await user.type(await screen.findByRole("textbox", { name: "Endpoint address" }), "https://router.example/v1");
-    fireEvent.change(screen.getByLabelText("API key (re-enter each time you save)"), { target: { value: "synthetic-key" } });
+    await user.type(await screen.findByRole("textbox", { name: t("settings.llm.endpoint") }), "https://router.example/v1");
+    fireEvent.change(screen.getByLabelText(t("settings.llm.apiKey")), { target: { value: "synthetic-key" } });
     await user.click(screen.getByRole("combobox", { name: "Metadata provider" }));
     await user.click(screen.getByRole("option", { name: "OpenRouter" }));
     await user.click(screen.getByRole("button", { name: "Read model list" }));
@@ -140,7 +140,7 @@ describe("LlmSettingsPage", () => {
     const consent = await screen.findByRole("checkbox", { name: "I understand this diagnostic sends real model requests and may incur charges" });
     expect(consent).not.toBeChecked();
     expect(screen.getByText("Charges depend on your provider or proxy, including for local endpoints. Confirm before each diagnostic.")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Run potentially billable diagnostics" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: t("settings.llm.runDiagnostic") })).toBeDisabled();
   });
 
   it("discards unsaved fields and credentials without saving or diagnosing", async () => {

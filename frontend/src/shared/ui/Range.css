@@ -16,7 +16,7 @@
 .ui-range::-moz-range-thumb { width: var(--ui-range-thumb); height: var(--ui-range-thumb); border: 0; border-radius: 50%; background: var(--ui-text); box-shadow: 0 1px 3px color-mix(in srgb, var(--ui-bg) 50%, transparent); transition: transform var(--ui-duration); }
 .ui-range:enabled:is(:hover, :active, :focus-visible)::-webkit-slider-thumb { transform: scale(1.25); }
 .ui-range:enabled:is(:hover, :active, :focus-visible)::-moz-range-thumb { transform: scale(1.25); }
-.ui-range[data-slot="range"]:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
+.ui-range[data-slot="range"]:focus-visible { outline: none; }
 .ui-range[data-slot="range"]:disabled { opacity: .4; cursor: not-allowed; }
 /* A real audio waveform is the visible track; this input supplies its hit area and keys. */
 .ui-range[data-variant="waveform"], .ui-range[data-variant="waveform"]:disabled { opacity: 0; }
