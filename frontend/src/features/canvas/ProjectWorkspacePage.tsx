@@ -309,16 +309,23 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const project = useQuery({
     queryKey: ["projects", projectId],
     queryFn: () => getProject(projectId),
+    // Seed missing projections only; preserve existing data and the snapshot's actual freshness.
+    initialData: () => snapshot.data?.project,
+    initialDataUpdatedAt: () => snapshot.dataUpdatedAt,
     enabled: snapshot.isSuccess,
   });
   const canvas = useQuery({
     queryKey: ["canvas", projectId],
     queryFn: () => listCanvasItems(projectId),
+    initialData: () => snapshot.data?.canvas,
+    initialDataUpdatedAt: () => snapshot.dataUpdatedAt,
     enabled: snapshot.isSuccess,
   });
   const canvasConnections = useQuery({
     queryKey: ["canvas-connections", projectId],
     queryFn: () => listCanvasConnections(projectId),
+    initialData: () => snapshot.data ? { items: snapshot.data.connections } : undefined,
+    initialDataUpdatedAt: () => snapshot.dataUpdatedAt,
     enabled: snapshot.isSuccess,
   });
   const mediaRatios = useMediaNodeRatios(canvas.data?.items);
