@@ -10,6 +10,7 @@ import java.net.UnknownHostException;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import okhttp3.Call;
 import okhttp3.Dns;
@@ -36,9 +37,11 @@ public class ModelMetadataClient implements AutoCloseable {
     private final ObjectMapper json = JsonMapper.builder(JsonFactory.builder()
             .streamReadConstraints(StreamReadConstraints.builder().maxNestingDepth(32)
                     .maxStringLength(262144).maxNumberLength(32).build()).build()).build();
-    // No queue: a resolver that ignores cancellation must not accumulate HTTP workers.
+    // The permit bounds live operations, including resolvers that ignore cancellation.
+    // One handoff slot lets a completed call admit its successor before the worker is idle.
+    private final Semaphore capacity = new Semaphore(1);
     private final ThreadPoolExecutor worker = new ThreadPoolExecutor(0, 1, 10, TimeUnit.SECONDS,
-            new SynchronousQueue<>(), task -> { var thread = new Thread(task, "model-metadata"); thread.setDaemon(true); return thread; });
+            new ArrayBlockingQueue<>(1), task -> { var thread = new Thread(task, "model-metadata"); thread.setDaemon(true); return thread; });
 
     @Autowired
     public ModelMetadataClient(LlmEndpointPolicy policy) { this(policy, Dns.SYSTEM, Duration.ofSeconds(10)); }
@@ -48,10 +51,11 @@ public class ModelMetadataClient implements AutoCloseable {
     public ModelCatalog fetch(ModelCatalog.Provider provider, String endpoint, String key, String modelId) {
         if (provider == null || key == null || key.length() < 8 || key.length() > 4096 || !key.matches("[!-~]+")
                 || (modelId != null && !modelId.isEmpty() && !ModelCatalog.validModelId(modelId))) throw failure("INVALID");
+        if (!capacity.tryAcquire()) throw failure("BUSY");
         var active = new AtomicReference<Call>();
-        Future<ModelCatalog> pending;
-        try { pending = worker.submit(() -> retrieve(provider, endpoint, key, modelId, active)); }
-        catch (RejectedExecutionException busy) { throw failure("BUSY"); }
+        var pending = new MetadataTask(() -> retrieve(provider, endpoint, key, modelId, active));
+        try { worker.execute(pending); }
+        catch (RejectedExecutionException busy) { pending.releaseCapacity(); throw failure("BUSY"); }
         try { return pending.get(deadline.toMillis(), TimeUnit.MILLISECONDS); }
         catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt(); pending.cancel(true); cancel(active); throw failure("CANCELED");
@@ -60,6 +64,27 @@ public class ModelMetadataClient implements AutoCloseable {
         } catch (ExecutionException failed) {
             if (failed.getCause() instanceof MetadataFailure known) throw known;
             throw failure("UNAVAILABLE");
+        }
+    }
+
+    private final class MetadataTask extends FutureTask<ModelCatalog> {
+        private final AtomicBoolean released = new AtomicBoolean();
+
+        MetadataTask(Callable<ModelCatalog> action) { super(action); }
+
+        private void releaseCapacity() {
+            if (released.compareAndSet(false, true)) capacity.release();
+        }
+
+        // Publish completion only after retrieve has finished and its slot is reusable.
+        @Override protected void set(ModelCatalog result) { releaseCapacity(); super.set(result); }
+        @Override protected void setException(Throwable failure) { releaseCapacity(); super.setException(failure); }
+
+        @Override public void run() {
+            try { super.run(); }
+            // A task canceled before starting never invokes the callable or either setter.
+            // Cancellation while running keeps capacity until the actual resolver returns.
+            finally { releaseCapacity(); }
         }
     }
 

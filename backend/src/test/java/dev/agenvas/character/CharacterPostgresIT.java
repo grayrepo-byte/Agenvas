@@ -33,6 +33,9 @@ import dev.agenvas.task.application.DirectMediaTaskService;
 import dev.agenvas.testing.ImageAssetFixture;
 import java.math.BigDecimal;
 import java.nio.file.Path;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -41,6 +44,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.annotation.DirtiesContext;
@@ -55,9 +61,17 @@ import tools.jackson.databind.ObjectMapper;
 /** Real PostgreSQL verifies HTTP ownership, command replay, CAS and explicit shot review. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class, properties = {
+@SpringBootTest(classes = {AgenvasApplication.class, CharacterPostgresIT.NanosecondClockConfig.class}, properties = {
         "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class CharacterPostgresIT {
+    @TestConfiguration
+    static class NanosecondClockConfig {
+        @Bean @Primary Clock nanosecondClock() {
+            // Exercise database rounding on every platform, including millisecond-resolution clocks.
+            return Clock.offset(Clock.tickMillis(ZoneOffset.UTC), Duration.ofNanos(123));
+        }
+    }
+
     @TempDir static Path storage;
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     @DynamicPropertySource static void properties(DynamicPropertyRegistry registry) {
@@ -224,8 +238,12 @@ class CharacterPostgresIT {
                 applied.binding().version(), applied.draft().version(), List.of(), ClearMode.KEEP_INPUTS));
         var cleared = characters.apply(owner, project.id(), item, new ApplyCharacterBindings(UUID.randomUUID(),
                 applied.binding().version(), applied.draft().version(), List.of(), ClearMode.KEEP_INPUTS, clearPreview.previewHash()));
-        var newer = drafts.save(owner, project.id(), item, cleared.draft().version(), "Later explicit draft edit",
+        drafts.save(owner, project.id(), item, cleared.draft().version(), "Later explicit draft edit",
                 mapper.createObjectNode(), null, null, null, commands(cleared.draft()), List.of(), null);
+        // Compare database snapshots across replay; Java receipts retain finer timestamp precision.
+        var newer = drafts.get(owner, project.id(), item);
+        assertThat(newer.prompt()).isEqualTo("Later explicit draft edit");
+        assertThat(newer.version()).isEqualTo(cleared.draft().version() + 1);
         long after = events.replayWindow(owner, project.id()).latestSequence();
         var mvc = webAppContextSetup(context).apply(springSecurity()).build();
         var auth = authentication(new UsernamePasswordAuthenticationToken(new AdminPrincipal(owner, "synthetic-replay"), null, List.of()));
@@ -261,14 +279,12 @@ class CharacterPostgresIT {
         assertThat(archives.getFirst()).isEqualTo(archives.getLast());
         assertThat(archives.getFirst().archived()).isTrue();
         assertThat(archives.getFirst().version()).isEqualTo(2);
+        var archivedRow = characters.list(owner, project.id()).characters().getFirst();
+        assertThat(archivedRow.version()).isEqualTo(2);
         mvc.perform(post(path + "/archive").with(auth).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(archive)))
                 .andExpect(status().isOk());
         assertThat(characters.save(owner, project.id(), character, save)).isEqualTo(saves.getFirst());
-        var persisted = characters.list(owner, project.id()).characters().getFirst();
-        assertThat(persisted).usingRecursiveComparison().ignoringFields("updatedAt").isEqualTo(archives.getFirst());
-        // Command receipts replay exactly; the current row separately uses PostgreSQL's microsecond precision.
-        assertThat(persisted.updatedAt()).isCloseTo(archives.getFirst().updatedAt(),
-                org.assertj.core.api.Assertions.within(1, java.time.temporal.ChronoUnit.MICROS));
+        assertThat(characters.list(owner, project.id()).characters().getFirst()).isEqualTo(archivedRow);
         mvc.perform(put(path).with(auth).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(
                 new SaveCharacter(save.commandId(), 0, new CharacterContent("Different intent", "", List.of(), null)))))
                 .andExpect(status().isConflict());
