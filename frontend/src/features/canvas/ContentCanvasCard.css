@@ -47,10 +47,9 @@
 .text-card-editor-body { position: relative; display: flex; flex-direction: column; padding: 18px 20px; }
 .content-canvas-card .text-card-editor-body textarea {
   box-sizing: border-box; width: 100%; min-height: 0; flex: 1 1 auto; resize: none;
-  border: 0; border-radius: var(--ui-radius-sm); background: transparent; color: var(--ui-text-secondary); padding: 0;
-  font: inherit; font-size: var(--ui-text-md); line-height: 1.75; outline: none; white-space: pre-wrap;
+  padding: 0;
+  outline: none; white-space: pre-wrap;
 }
-.text-card-editor-body textarea::placeholder { color: var(--ui-text-subtle); }
 /* The card owns the focus boundary; avoid a second frame around its editable body. */
 .text-card-editor-body textarea.ui-focusable { box-shadow: none; }
 .text-card-editor-body textarea.ui-focusable:focus-visible { outline: none; box-shadow: none; }
@@ -58,19 +57,7 @@
 .text-card-editor-footer .ui-select { width: auto; }
 .text-card-count { color: var(--ui-text-subtle); font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .text-card-editor-footer .content-card-locked { margin-left: 0; }
-.text-card-save {
-  display: inline-flex; width: 26px; height: 26px; flex: none; align-items: center; justify-content: center;
-  margin-left: auto; border: 0; border-radius: var(--ui-radius-sm); background: var(--ui-accent); color: var(--ui-accent-foreground); cursor: pointer;
-}
-.text-card-save:disabled { cursor: not-allowed; opacity: .38; }
-.text-card-save:hover:enabled { background: var(--ui-accent-hover); }
-.text-card-done {
-  display: inline-flex; width: 26px; height: 26px; flex: none; align-items: center; justify-content: center;
-  border: 0; border-radius: var(--ui-radius-sm); background: var(--ui-surface-raised); color: var(--ui-text-muted); cursor: pointer;
-}
-.text-card-done:hover:enabled { background: var(--ui-hover); color: var(--ui-text); }
-.text-card-done:disabled { cursor: not-allowed; opacity: .45; }
-.text-card-save:focus-visible, .text-card-version-tag:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
+.text-card-save { margin-left: auto; }
 .text-card-version-picker { position: relative; flex: none; }
 
 .text-card-notice, .text-card-error {

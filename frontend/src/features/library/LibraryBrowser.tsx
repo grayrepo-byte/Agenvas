@@ -44,7 +44,7 @@ export function LibraryBrowser({ trash = false, kinds, onPick, disabled = false,
   const retryRead = () => { if (list.isFetchNextPageError) void list.fetchNextPage(); else void list.refetch(); };
   return <section className={cn("library-browser", page && "library-browser--page")} aria-label={t("library.browser.list")}>
     <div className="library-controls">
-    <ToggleGroup type="single" variant="outline" spacing={2} className="library-categories" aria-label={t("library.browser.categoryFilter")}
+    <ToggleGroup size="sm" type="single" variant="outline" spacing={2} className="library-categories" aria-label={t("library.browser.categoryFilter")}
       value={category ?? "ALL"} onValueChange={(value) => { if (value) setCategory(value === "ALL" ? undefined : value as LibraryCategory); }}>
       <ToggleGroupItem value="ALL">{page ? <Images data-icon="inline-start" aria-hidden /> : null}{t("common.all")}</ToggleGroupItem>
       {Object.entries(CATEGORY_LABELS).map(([key, label]) => {
@@ -55,19 +55,19 @@ export function LibraryBrowser({ trash = false, kinds, onPick, disabled = false,
       })}
     </ToggleGroup>
     <FieldGroup className="library-filters">
-      <Field className="library-search-field"><FieldLabel htmlFor={`${filterId}-search`}>{t("library.browser.search")}</FieldLabel><Input id={`${filterId}-search`} type="search" maxLength={MAX_LIBRARY_NAME_LENGTH} value={query} placeholder={t("library.browser.nameSearch")} onChange={(event) => setQuery(event.target.value)} /></Field>
+      <Field className="library-search-field"><FieldLabel htmlFor={`${filterId}-search`}>{t("library.browser.search")}</FieldLabel><Input density="compact" id={`${filterId}-search`} type="search" maxLength={MAX_LIBRARY_NAME_LENGTH} value={query} placeholder={t("library.browser.nameSearch")} onChange={(event) => setQuery(event.target.value)} /></Field>
       <Field className="library-select-field"><FieldLabel htmlFor={`${filterId}-kind`}>{t("media.kind")}</FieldLabel><Select density="compact" id={`${filterId}-kind`} value={kind ?? ""} onChange={(event) => setKind(event.target.value ? event.target.value as Artifact["kind"] : undefined)}>
         {!kinds ? <option value="">{t("common.allKinds")}</option> : null}{availableKinds.map((value) => <option key={value} value={value}>{KIND_LABELS[value]}</option>)}</Select></Field>
       <Field className="library-select-field"><FieldLabel htmlFor={`${filterId}-sort`}>{t("library.browser.sort")}</FieldLabel><Select density="compact" id={`${filterId}-sort`} value={sort} onChange={(event) => setSort(event.target.value as LibrarySort)}><option value="SAVED">{t("library.browser.recentSaved")}</option><option value="NAME">{t("common.name")}</option><option value="UPDATED">{t("library.browser.recentModified")}</option></Select></Field>
       <div className="library-filter-actions">
-        <Button variant="outline" type="button" aria-pressed={favorite} onClick={() => setFavorite(!favorite)}><BookmarkSimple data-icon="inline-start" />{t("library.browser.favoritesOnly")}</Button>
-        <Button variant="outline" type="button" disabled={list.isFetching} onClick={() => void list.refetch()}>{page ? <ArrowsClockwise data-icon="inline-start" aria-hidden /> : null}{t("library.browser.refresh")}</Button>
+        <Button size="sm" variant="outline" type="button" aria-pressed={favorite} onClick={() => setFavorite(!favorite)}><BookmarkSimple data-icon="inline-start" />{t("library.browser.favoritesOnly")}</Button>
+        <Button size="sm" variant="outline" type="button" disabled={list.isFetching} onClick={() => void list.refetch()}>{page ? <ArrowsClockwise data-icon="inline-start" aria-hidden /> : null}{t("library.browser.refresh")}</Button>
       </div>
     </FieldGroup>
     </div>
     {toggleFavorite.error ? page ? <Notice tone="danger">{t("library.browser.staleAssetsHint", { "0": toggleFavorite.error.message })}</Notice> : <p role="alert">{t("library.browser.staleAssetsHint", { "0": toggleFavorite.error.message })}</p> : null}
     {list.isPending ? page ? <div className="library-loading"><LoadingState compact label={t("library.browser.loading")} /></div> : <p>{t("library.browser.loading")}</p> : null}
-    {list.error ? page ? <Notice tone="danger"><p>{list.error.message}</p><Button variant="outline" type="button" disabled={list.isFetching} onClick={retryRead}>{t("library.browser.retry")}</Button></Notice>
+    {list.error ? page ? <Notice tone="danger"><p>{list.error.message}</p><Button size="sm" variant="outline" type="button" disabled={list.isFetching} onClick={retryRead}>{t("library.browser.retry")}</Button></Notice>
       : <div role="alert">{list.error.message}<Button variant="ghost" type="button" onClick={retryRead}>{t("library.browser.retry")}</Button></div> : null}
     <div className="library-grid">{list.data?.pages.flatMap((page) => page.items).filter((entry) => !mediaOnly || MEDIA_ASSET_KINDS.some((kind) => kind === entry.kind)).map((entry) => {
       const KindIcon = KIND_ICONS[entry.kind];
@@ -89,6 +89,6 @@ export function LibraryBrowser({ trash = false, kinds, onPick, disabled = false,
     })}</div>
     {list.data?.pages[0]?.total === 0 ? page ? <EmptyState icon={<Images />} title={emptyTitle} description={t("library.browser.saveHint")} />
       : <div className="library-empty"><FileText size={32} /><p>{emptyTitle}</p><p>{t("library.browser.saveHint")}</p></div> : null}
-    {list.hasNextPage ? <Button variant="outline" className={page ? "library-load-more" : undefined} type="button" disabled={list.isFetching} onClick={() => void list.fetchNextPage()}>{list.isFetchingNextPage ? t("common.loading") : t("library.browser.loadMore")}</Button> : null}
+    {list.hasNextPage ? <Button size="sm" variant="outline" className={page ? "library-load-more" : undefined} type="button" disabled={list.isFetching} onClick={() => void list.fetchNextPage()}>{list.isFetchingNextPage ? t("common.loading") : t("library.browser.loadMore")}</Button> : null}
   </section>;
 }

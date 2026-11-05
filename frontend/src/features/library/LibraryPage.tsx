@@ -33,7 +33,7 @@ export function LibraryPage() {
     <div className="library-page">
     <Tabs className="library-workspace" defaultValue="LIBRARY">
       <div className="library-navigation">
-        <TabsList variant="line" aria-label={t("resources.navigation")}>
+        <TabsList size="sm" aria-label={t("resources.navigation")}>
           <TabsTrigger value="LIBRARY"><BookmarkSimple data-icon="inline-start" aria-hidden />{t("library.title")}</TabsTrigger>
           <TabsTrigger value="RESOURCES"><Images data-icon="inline-start" aria-hidden />{t("resources.title")}</TabsTrigger>
           <TabsTrigger value="TRASH"><Trash data-icon="inline-start" aria-hidden />{t("library.page.trash")}</TabsTrigger>

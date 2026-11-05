@@ -29,7 +29,7 @@
 .auth-card-heading p, .auth-footer { color: var(--muted); font-size: 13px; line-height: 1.8; }
 .auth-card-heading p { margin: 0; }
 .auth-card .ui-form { gap: 21px; }
-.auth-card form > [data-slot="button"], .auth-card .primary-button { width: 100%; justify-content: center; }
+.auth-card form > [data-slot="button"], .auth-card .ui-stack > [data-slot="button"] { width: 100%; justify-content: center; }
 .auth-card form > [data-slot="button"] { margin-top: 4px; }
 .auth-footer { margin: 26px 0 0; padding-top: 22px; border-top: 1px solid var(--line); text-align: center; }
 .auth-footer a { color: var(--ui-text-secondary); text-decoration: none; text-underline-offset: 4px; }

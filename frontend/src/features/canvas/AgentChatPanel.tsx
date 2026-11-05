@@ -487,7 +487,7 @@ function AgentChatPanelContent({ data, headerActions }: { data: AgentChatPanelDa
       </div>
       {view === "chat" ? <form aria-label={t("agent.chat.sendTask")} className="agent-chat-composer nodrag nowheel nopan" onSubmit={(event) => { event.preventDefault(); void submitRun(); }}>
         {currentActiveRun?.status === "BLOCKED" ? <p className="agent-chat-run-status">{t("agent.chat.endBlockedHint")}</p> : null}
-        <Textarea id={`${fieldId}-composer`} aria-label={t("agent.chat.currentTask")} disabled={conversations.isPending || (conversations.isError && !conversations.data)} maxLength={MAX_INSTRUCTION} onChange={(event) => {
+        <Textarea variant="ghost" id={`${fieldId}-composer`} aria-label={t("agent.chat.currentTask")} disabled={conversations.isPending || (conversations.isError && !conversations.data)} maxLength={MAX_INSTRUCTION} onChange={(event) => {
           setRunInstruction(event.target.value);
         }} onKeyDown={(event) => {
           // IME Enter confirms Chinese input; only an explicit modifier shortcut submits.

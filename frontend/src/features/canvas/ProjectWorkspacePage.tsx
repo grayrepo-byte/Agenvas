@@ -1433,7 +1433,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               }}
               className="workspace-media-toolbar nodrag nowheel nopan">
               <CanvasEditorOverlay>
-                <Button variant="ghost" aria-label={t("canvas.workspace.closeEditor")} className="workspace-bottom-close"
+                <Button variant="ghost" size="icon-sm" aria-label={t("canvas.workspace.closeEditor")} className="workspace-bottom-close"
                   onClick={() => setSelectedIds([])} type="button"><X size={15} /></Button>
                 {selectedItems[0].artifact.kind === "IMAGE" ||
                   selectedItems[0].artifact.kind === "VIDEO" || selectedItems[0].artifact.kind === "AUDIO" ?

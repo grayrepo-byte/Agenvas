@@ -37,7 +37,7 @@ export function BlockedRunNotice({ projectId, runId, status = "BLOCKED" }: {
       <p className="agent-chat-panel-notice-title"><WarningCircle aria-hidden="true" />{noticeTitle}</p>
       {tasks.isPending ? <p>{t("agent.blocked.reasonLoading")}</p> : null}
       {tasks.error ? <p>{t("agent.blocked.reasonUnavailable")}</p> : null}
-      {tasks.error ? <Button variant="ghost" className="agent-chat-panel-text-button" onClick={() => void tasks.refetch()} type="button">{t("common.retryRead")}</Button> : null}
+      {tasks.error ? <Button variant="link" size="sm" className="agent-chat-panel-text-button" onClick={() => void tasks.refetch()} type="button">{t("common.retryRead")}</Button> : null}
       {tasks.data && explanation !== noticeTitle ? <p>{explanation}</p> : null}
       {modelFailure?.errorCode === "LLM_RETRY_EXHAUSTED" && modelFailure.output?.modelRetry ?
         <p>{t("agent.retry.lastError", { "0": taskErrorMessage(modelFailure.output.modelRetry.lastErrorCode) ?? modelFailure.output.modelRetry.lastErrorCode })}</p> : null}

@@ -104,9 +104,9 @@ export function AgentMediaApprovalCard({ projectId, runId, approval, disabled = 
     footer={reviewing ? <div className="agent-media-approval__decision">
       <p>{t("agent.approval.expiresAt", { "0": new Date(approval.expiresAt).toLocaleString(getFormatLocale()) })}</p>
       <div className="agent-media-approval__buttons">
-        <Button variant="ghost" size="sm" className="agent-chat-panel-secondary" type="button"
+        <Button variant="outline" size="sm" type="button"
           disabled={disabled || decision.isPending || !!editing} onClick={() => submit("REJECT")}>{t("agent.approval.reject")}</Button>
-        <Button variant="ghost" size="sm" className="agent-chat-panel-primary" type="button"
+        <Button size="sm" type="button"
           disabled={disabled || decision.isPending || !!editing} onClick={() => submit("APPROVE")}>{decision.isPending ? t("agent.approval.submitting") : t("agent.approval.approve")}</Button>
       </div>
     </div> : undefined}>

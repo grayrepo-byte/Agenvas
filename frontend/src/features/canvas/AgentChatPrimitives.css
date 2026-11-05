@@ -252,12 +252,6 @@
 
 .agent-chat-approval__footer .agent-chat-panel-actions { margin-top: 0; }
 .agent-chat-approval__footer button { border-radius: 999px; }
-.agent-chat-approval__footer .agent-chat-panel-primary {
-  border-color: var(--ui-accent);
-  background: var(--ui-accent);
-  color: var(--ui-accent-foreground);
-}
-.agent-chat-approval__footer .agent-chat-panel-primary:hover:enabled { background: var(--ui-accent-hover); }
 
 @keyframes agent-approval-enter {
   from { opacity: 0; transform: translateY(5px); }

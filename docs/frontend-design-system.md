@@ -16,6 +16,7 @@
 | --- | --- |
 | 配色、间距、字号、圆角、控件高度、阴影与动效时长 | `frontend/src/shared/ui/design-tokens.css` |
 | shadcn 基础组件 | `frontend/components.json`、`frontend/src/shared/ui/primitives/` |
+| 输入框、搜索组合、按钮、复选框、开关、Tab、选项组与字段的公共外观 | `frontend/src/shared/ui/Controls.css`，由 `styles.css` 全局加载，覆盖页面、画布与 Portal |
 | Phosphor 图标与图标类型 | `frontend/src/shared/ui/icons.ts`，按实际使用的 CSR 图标逐个导出 |
 | 多行编辑的字体、行高与滚动条 | `styles.css` 的 `ui-multiline`，消费 `design-tokens.css` 的编辑器与滚动条变量 |
 | 日期与时间选择 | `frontend/src/shared/ui/DateTimePicker.tsx`，组合 `primitives/calendar.tsx`、`popover.tsx`、`input.tsx` |
@@ -31,6 +32,26 @@
 | 语言入口与四语言选择窗口 | `shared/i18n/LanguageSelect.tsx`，复用 `Dialog.tsx` 与 `PageTheme.css` |
 
 公共视觉只在以上入口修改。业务 CSS 在已登记的页面作用域管理锚点、宽度、排列、缩略图、信息层级与紧凑密度，消费 `--ui-*` 变量；下拉框变体、语义配色、菜单与交互仍由公共组件维护，不复制一份组件再修改。画布图片、画笔及引用色等业务内容颜色不属于控件主题。
+
+## 基础控件与密度
+
+基础控件以 `Controls.css` 和 `Dropdown.css` 为唯一外观入口。沿用冷调深色和蓝色主色，常规输入框、Select 与 Button 高36px；紧凑输入、Select、Button 高32px，明确通过组件属性选用，不按页面选择器改高度。边框、圆角、悬停、禁用、错误、选中和键盘焦点共同消费主题 token。旧页面的按钮链接统一使用 `Button asChild`，不再维护 `primary-button` / `secondary-button` 等平行外观。
+
+| 场景 | 公共接口 |
+| --- | --- |
+| 常规或紧凑输入 | `Input` / `Input density="compact"`，保留原生 `size`、ref、表单与验证属性 |
+| 已有外壳的输入或编辑器 | `Input variant="ghost"` / `Textarea variant="ghost"`；领域容器负责整体焦点 |
+| 带图标搜索 | `.ui-search-field` + 图标 + `Input variant="ghost"`；紧凑组合同时设置容器 `data-density="compact"` 与 Input density，仅外壳绘制焦点 |
+| 普通、多行文字编辑 | `Textarea`，共用14px字号和1.75行距；业务只管理可用高度、滚动及专用排版 |
+| 勾选与即时设置 | `Checkbox` / `Switch`；Checkbox 的 checked、unchecked、indeterminate 均有明确图形，保持 label、空格键和表单语义 |
+| 分段、线形、带说明的导航 | `TabsList variant="default\|line\|navigation"`，紧凑用 `size="sm"`；横向默认可局部滚动，嵌套页签按自身方向处理 |
+| 单选或多选按钮组 | `ToggleGroup type="single\|multiple"`，尺寸用 `size`，选中态由公共组件维护 |
+| 主操作、次要操作、图标按钮 | `Button` 的 `variant` / `size`；主操作使用 default，图标按钮显式选择 icon 尺寸，不用 ghost 加主色 CSS |
+| 带头像、说明或多行标题的选择行 | `Button size="content"`，随内容增长；用于音色和提示词目录等富信息条目 |
+
+项目、Skill 与媒体目录搜索复用同一组合外观；系统分类与能力编辑导航使用 navigation Tab，保留各自的响应式排列与已挂载草稿。画布多选改用同一 Checkbox，领域只保留24px点按尺寸、定位及手势隔离。媒体时间线、画笔颜色、缩略图卡片和特殊编辑器继续管理自身布局。
+
+ESLint 在业务组件中拒绝原生可见 input、textarea 和用 Input 冒充复选框/单选框；隐藏表单字段与文件入口可保留。原生 Select、Range 与手写菜单限制继续生效。`pnpm test:controls` 构建真实公共组件的合成页，在桌面/窄屏检查尺寸、搜索焦点、半选与禁用、开关圆点边界、嵌套 Tab、菜单视口、焦点恢复和滑块键盘操作；不访问业务 API 或真实 Provider。
 
 图标从 `@/shared/ui/icons` 引入；新增图标时在该文件使用 `@phosphor-icons/react/dist/csr/<Name>` 逐个导出，类型使用包的 `/lib` 入口。ESLint 禁止从 `@phosphor-icons/react` 总入口导入，避免 TypeScript 与 Vite 加载整个 CSR/SSR 图标目录；shadcn CLI 生成的图标导入也需调整到公共入口。
 

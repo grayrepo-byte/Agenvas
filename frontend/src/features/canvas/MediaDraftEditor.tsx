@@ -171,7 +171,7 @@ function MediaReferenceThumbnail({ index, color, thumbnailUrl, accessibleLabel, 
     {thumbnailUrl ? <img src={thumbnailUrl} alt="" draggable={false} />
       : audio ? <MusicNotes className="media-draft-reference-fallback" size={25} aria-hidden="true" /> : <ImageSquare className="media-draft-reference-fallback" size={25} aria-hidden="true" />}
     <span className="media-draft-reference-index" aria-hidden="true">{index + 1}</span>
-    <Button variant="ghost" className="media-draft-reference-remove" type="button"
+    <Button variant="ghost" size="icon-xs" className="media-draft-reference-remove" type="button"
       aria-label={t("media.editor.removeNamedInput", { "0": accessibleLabel })} disabled={busy}
       title={connected ? t("media.editor.removeInputAndRelations") : t("media.editor.removeInput")}
       onClick={onRemove}><X size={13} /></Button>
@@ -1257,8 +1257,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
           {!workflow ? <p>{t("media.editor.selectionOrderHint", { "0": Math.max(0,
             remainingAssetCapacity - assetSelection.length) })}</p> : null}
           <div className="media-draft-reference-actions">
-            <Button variant="ghost" type="button" disabled={commitAssetReferences.isPending} onClick={() => setPopover(null)}>{t("common.cancel")}</Button>
-            {!workflow ? <Button variant="ghost" type="button" className="is-primary"
+            <Button variant="outline" size="sm" type="button" disabled={commitAssetReferences.isPending} onClick={() => setPopover(null)}>{t("common.cancel")}</Button>
+            {!workflow ? <Button size="sm" type="button"
               disabled={!assetSelection.length || save.isPending || commitAssetReferences.isPending}
               onClick={confirmAssetReferences}>
               {commitAssetReferences.isPending ? t("common.adding") : t("media.editor.addSelected", { "0": mixedPicker ? t("media.editor.assets") : t("common.image"), "1": assetSelection.length })}
@@ -1445,7 +1445,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       <span className="media-draft-cost" title={t("media.editor.estimateHint")}><Coins size={16} /><span>{estimatedCost}
         {motionDurationUpperBound ? ` · ${t("media.pricing.referenceDurationUpperBound")}` : null}</span></span>
       <PopoverPrimitive.Root open={submissionTipOpen} onOpenChange={setSubmissionTipOpen}>
-        <PopoverPrimitive.Anchor asChild><Button variant="ghost" className="media-draft-run" type="button" disabled={!canSubmit}
+        <PopoverPrimitive.Anchor asChild><Button size="icon-sm" className="media-draft-run" type="button" disabled={!canSubmit}
           aria-label={run.isPending ? t("media.editor.submittingRun") : t("media.editor.run")}
           title={occupied ? t("media.editor.activeTaskHint") : t("media.editor.run")}
           onClick={() => {

@@ -1,10 +1,28 @@
 .controls-fixture { max-width: 1180px; margin: auto; padding: 40px 28px; }
 .controls-fixture > header { margin-bottom: var(--ui-space-8); }
 .controls-fixture > header > p { margin: 0; color: var(--ui-accent-text); font-size: var(--ui-text-xs); letter-spacing: .15em; }
-.controls-fixture h1 { margin: var(--ui-space-3) 0; color: var(--ui-text); font-size: 30px; font-weight: 500; }
-.controls-fixture header > span { color: var(--ui-text-muted); font-size: var(--ui-text-sm); }
-.controls-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--ui-space-5); align-items: start; }
-.controls-fixture [data-slot="field-label"] { display: flex; justify-content: space-between; }
+.controls-fixture h1 { margin: var(--ui-space-3) 0; color: var(--ui-text); font-size: 30px; font-weight: 500; letter-spacing: -.03em; }
+.controls-fixture header > span { color: var(--ui-text-muted); font-size: var(--ui-text-sm); line-height: 1.7; }
+.controls-summary { display: flex; flex-wrap: wrap; gap: var(--ui-space-3) var(--ui-space-5); margin-top: var(--ui-space-5); color: var(--ui-text-subtle); font-size: var(--ui-text-xs); }
+.controls-summary > span { display: inline-flex; align-items: center; gap: var(--ui-space-2); }
+.controls-summary svg { width: 14px; height: 14px; color: var(--ui-accent-text); }
+.controls-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--ui-space-5); align-items: start; }
+.controls-grid > *, .controls-pair > *, .controls-tabs-examples > * { min-width: 0; }
+.controls-wide { grid-column: 1 / -1; }
+.controls-pair, .controls-tabs-examples { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--ui-space-4); }
 .controls-fixture output { color: var(--ui-text-muted); font-variant-numeric: tabular-nums; }
+.controls-fixture [data-slot="field-label"] output { margin-left: auto; }
+.controls-buttons, .controls-options { display: flex; flex-wrap: wrap; gap: var(--ui-space-2); }
 .controls-action { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-3); margin-top: var(--ui-space-5); font-size: var(--ui-text-xs); }
-@media (max-width: 700px) { .controls-fixture { padding: 24px 16px; } .controls-fixture h1 { font-size: 24px; } .controls-grid { grid-template-columns: 1fr; } }
+.controls-tab-copy { color: var(--ui-text-muted); font-size: var(--ui-text-sm); line-height: 1.75; margin: var(--ui-space-3) 0 0; }
+.controls-navigation { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: var(--ui-space-5); padding-top: var(--ui-space-5); margin-top: var(--ui-space-5); border-top: 1px solid var(--ui-border); }
+.controls-navigation > [data-slot="tabs-list"] { width: 100%; }
+.controls-navigation > [data-slot="tabs-list"] > [data-slot="tabs-trigger"] > span { display: flex; flex-direction: column; gap: var(--ui-space-1); }
+.controls-range-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--ui-space-4) var(--ui-space-6); }
+.controls-fixture > footer { margin-top: var(--ui-space-6); color: var(--ui-text-subtle); font-size: var(--ui-text-xs); line-height: 1.7; }
+@media (max-width: 700px) {
+  .controls-fixture { padding: 24px 16px; }
+  .controls-fixture h1 { font-size: 24px; }
+  .controls-grid, .controls-pair, .controls-tabs-examples, .controls-range-grid { grid-template-columns: minmax(0, 1fr); }
+  .controls-navigation { grid-template-columns: minmax(0, 1fr); }
+}

@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./shared/ui/design-tokens.css";
+@import "./shared/ui/Controls.css";
 @import "./shared/ui/Scrollbars.css";
 @import "./features/canvas/agentConversation.css";
 @import "./features/canvas/CanvasWorkspace.css";
@@ -86,46 +87,8 @@ select {
   font: inherit;
 }
 
-input:not([data-slot]):not([type="range"]) {
-  display: block;
-  width: 100%;
-  margin-top: 0.5rem;
-  border: 1px solid var(--line);
-  border-radius: 0.875rem;
-  background: var(--ui-field);
-  padding: 0.75rem 0.875rem;
-  color: var(--ink);
-  outline: none;
-}
-
-input:not([data-slot]):not([type="range"]):focus {
-  border-color: var(--accent);
-  box-shadow: var(--ui-focus-shadow);
-}
-
-.primary-button,
-.secondary-button {
-  align-items: center;
-  justify-content: center;
-  border-radius: 0.875rem;
-  padding: 0.75rem 1rem;
-  font-weight: 650;
-}
-
-.primary-button {
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: var(--ui-accent-foreground);
-}
-
-.secondary-button {
-  border: 1px solid var(--line);
-  background: var(--ui-surface-raised);
-  color: var(--ink);
-}
-
 button:disabled {
-  cursor: wait;
+  cursor: not-allowed;
   opacity: 0.55;
 }
 
@@ -280,10 +243,7 @@ button:disabled {
   height: var(--ui-canvas-control-size);
   border: 0;
   border-radius: var(--ui-radius-md);
-  background: var(--accent);
-  color: var(--ui-accent-foreground);
 }
-.workspace-add-button:hover:enabled { background: var(--ui-accent-hover); }
 .workspace-tool-modes { flex-direction: column; gap: 4px; }
 .workspace-tool-modes .workspace-tool-item {
   flex: none;
@@ -635,10 +595,7 @@ button:disabled {
 .media-operation-panel header span { color: var(--ui-text-muted); font-size: 11px; }
 .artifact-card-toolbar .media-operation-panel header button { width: 28px; min-width: 28px; height: 28px; padding: 0; }
 .media-operation-panel > label { display: grid; gap: 6px; color: var(--ui-text-secondary); font-size: 11px; }
-.media-operation-panel :is(textarea, input) { width: 100%; border: 1px solid var(--ui-border); border-radius: 9px; background: var(--ui-field); color: var(--ui-text); font: inherit; outline: none; }
-.media-operation-panel input { height: 36px; padding: 0 10px; }
-.media-operation-panel textarea { min-height: 82px; padding: 9px 10px; resize: vertical; line-height: 1.5; }
-.media-operation-panel :is(textarea, input):focus { border-color: var(--ui-focus); box-shadow: 0 0 0 2px var(--ui-accent-ring); }
+.media-operation-panel textarea { min-height: 82px; }
 .media-operation-panel fieldset { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 0; padding: 0; border: 0; }
 .media-operation-panel legend { grid-column: 1 / -1; margin-bottom: 6px; color: var(--ui-text-secondary); font-size: 11px; }
 .media-operation-panel fieldset label { display: grid; gap: 5px; color: var(--ui-text-muted); font-size: 10px; }
@@ -658,16 +615,9 @@ button:disabled {
 .video-operation-panel > p { color: var(--ui-text-secondary); }
 .video-operation-panel > [role="alert"] { color: var(--ui-danger); }
 .video-operation-fields { min-width: 0; }
-.artifact-card-toolbar .media-operation-panel footer button { height: 34px; border-radius: 9px; background: var(--ui-hover); }
-.artifact-card-toolbar .media-operation-panel footer button.is-primary { background: var(--ui-accent); color: var(--ui-accent-foreground); }
-.artifact-card-toolbar .media-operation-panel footer button.is-primary:hover:not(:disabled) { background: var(--ui-accent-hover); }
 .smart-edit-dialog { position: fixed; inset: 0; width: 100%; max-width: none; height: 100dvh; border: 0; border-radius: 0; background: var(--ui-bg); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 18px; padding: 14px 24px 20px; color: var(--ui-text); }
 .smart-edit-toolbar { justify-self: center; display: flex; align-items: center; gap: 5px; min-height: 50px; padding: 7px 10px; border: 1px solid var(--ui-border); border-radius: 25px; background: var(--ui-canvas-chrome); box-shadow: 0 14px 34px #0009; }
-.smart-edit-toolbar button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 12px; border: 0; border-radius: 17px; background: transparent; color: var(--ui-text-secondary); font-size: 12px; cursor: pointer; }
-.smart-edit-toolbar button:hover:not(:disabled) { background: var(--ui-hover); color: var(--ui-text); }
-.smart-edit-toolbar button.is-active { background: var(--ui-accent); color: var(--ui-accent-foreground); }
-.smart-edit-toolbar button.is-icon { width: 34px; padding: 0; }
-.smart-edit-toolbar button:disabled { opacity: .35; }
+.smart-edit-toolbar button { border-radius: 17px; }
 .smart-edit-close { font-weight: 650; }
 .smart-edit-divider { width: 1px; height: 22px; margin: 0 2px; background: var(--ui-border); }
 .smart-edit-brush-size { display: flex; align-items: center; width: 150px; padding: 0 8px; }
@@ -695,16 +645,13 @@ button:disabled {
 .smart-edit-references img { width: 100%; height: 100%; border: 1px solid var(--ui-border-strong); border-radius: 8px; object-fit: cover; }
 .smart-edit-references > div > span { position: absolute; top: 3px; left: 3px; display: grid; place-items: center; width: 14px; height: 14px; border-radius: 7px; background: #111d; color: var(--ui-text); font-size: 8px; }
 .smart-edit-references button { position: absolute; top: -4px; right: -4px; display: grid; place-items: center; width: 17px; height: 17px; padding: 0; border: 0; border-radius: 9px; background: var(--ui-hover); color: var(--ui-text); cursor: pointer; }
-.smart-edit-composer textarea { width: 100%; min-height: 52px; padding: 0; resize: none; border: 0; background: transparent; color: var(--ui-text); font: inherit; font-size: 13px; line-height: 1.55; outline: none; }
-.smart-edit-composer textarea::placeholder { color: var(--ui-text-subtle); }
+.smart-edit-composer textarea { width: 100%; min-height: 52px; padding: 0; resize: none; }
 .smart-edit-mask-hint { color: var(--ui-text-muted); font-size: 10px; }
 .smart-edit-footer { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .smart-edit-model { display: inline-flex; flex: 1; align-items: center; min-width: 0; color: var(--ui-text-secondary); }
 .smart-edit-model .ui-select { width: 100%; max-width: 220px; }
 .smart-edit-cost { display: inline-flex; flex-shrink: 0; align-items: center; gap: 5px; margin-left: auto; color: var(--ui-text-muted); font-size: 10px; white-space: nowrap; }
-.smart-edit-submit { display: grid; flex: 0 0 33px; place-items: center; width: 33px; height: 33px; padding: 0; border: 0; border-radius: 50%; background: var(--ui-accent); color: var(--ui-accent-foreground); cursor: pointer; }
-.smart-edit-submit:hover:not(:disabled) { background: var(--ui-accent-hover); }
-.smart-edit-submit:disabled { opacity: .38; cursor: not-allowed; }
+.smart-edit-submit { flex: none; border-radius: 50%; }
 .smart-edit-submit-progress { font-size: 16px; letter-spacing: 1px; }
 .smart-edit-composer > p { margin: 0; color: var(--ui-danger); font-size: 10px; }
 @media (max-width: 720px) {
@@ -842,19 +789,8 @@ button:disabled {
   width: 100%;
   min-height: 74px;
   margin-top: 18px;
-  border: 1px solid transparent;
-  border-radius: 14px;
-  padding: 12px;
   resize: none;
-  background: var(--ui-field);
-  color: var(--ui-text);
-  font: inherit;
-  font-size: 12px;
-  line-height: 1.5;
-  outline: none;
 }
-.relight-style-section textarea::placeholder { color: var(--ui-text-subtle); }
-.relight-style-section textarea:focus { border-color: var(--ui-text-subtle); }
 .relight-error { margin: 9px 0 0; color: var(--ui-danger); font-size: 11px; }
 .relight-dialog-footer {
   display: flex;
@@ -868,16 +804,7 @@ button:disabled {
 .relight-capability-select .ui-select { max-width: 250px; }
 .relight-submit-group { display: flex; align-items: center; gap: 9px; margin-inline-start: auto; }
 .relight-submit-group > span { display: inline-flex; align-items: center; gap: 4px; color: var(--ui-text-secondary); font-size: 11px; }
-.relight-submit-group .relight-submit {
-  width: 35px;
-  min-width: 35px;
-  height: 35px;
-  padding: 0;
-  background: var(--ui-accent);
-  color: var(--ui-accent-foreground);
-  box-shadow: 0 6px 18px var(--ui-accent-glow);
-}
-.relight-submit-group .relight-submit:hover:not(:disabled) { background: var(--ui-accent-hover); }
+
 
 @media (max-width: 660px), (max-height: 560px) {
   .relight-dialog { top: 16px; min-height: 0; transform: translateX(-50%); }
@@ -934,16 +861,6 @@ button:disabled {
   color: var(--ink);
 }
 
-.workspace-shell input,
-.workspace-shell textarea {
-  border: 1px solid var(--line);
-  border-radius: 0.65rem;
-  background: var(--ui-field);
-  color: var(--ink);
-  padding: 0.55rem;
-}
-
-.workspace-shell .secondary-button,
 .workspace-shell .node-action {
   border-color: var(--line);
   background: var(--ui-field);

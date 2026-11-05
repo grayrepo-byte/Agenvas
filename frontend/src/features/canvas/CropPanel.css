@@ -121,7 +121,6 @@
   box-shadow: 0 14px 34px #0008;
 }
 
-.crop-toolbar button,
 .crop-ratio-control {
   display: inline-flex;
   align-items: center;
@@ -136,15 +135,11 @@
   font-size: 13px;
 }
 
-.crop-toolbar button { padding: 0 14px; cursor: pointer; }
-.crop-toolbar button:hover:not(:disabled) { background: var(--ui-hover); }
-.crop-toolbar button:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
-.crop-toolbar button:disabled { opacity: .56; cursor: progress; }
+.crop-toolbar button { border-radius: 999px; }
 .crop-toolbar-divider { width: 1px; height: 22px; background: var(--ui-border); }
 .crop-ratio-control { padding: 0 8px 0 12px; }
 
-.crop-toolbar .crop-confirm { min-width: 86px; background: var(--ui-accent); color: var(--ui-accent-foreground); font-weight: 650; }
-.crop-toolbar .crop-confirm:hover:not(:disabled) { background: var(--ui-focus); }
+.crop-toolbar .crop-confirm { min-width: 86px; }
 .crop-error {
   max-width: 520px;
   margin: -6px 0 0;
@@ -160,6 +155,5 @@
   .crop-dialog { max-width: calc(100vw - 28px); }
   .crop-image-shell > img { max-width: calc(100vw - 28px); max-height: calc(100vh - 154px); }
   .crop-toolbar { gap: 3px; }
-  .crop-toolbar button { padding: 0 10px; }
   .crop-ratio-control { padding-left: 8px; }
 }

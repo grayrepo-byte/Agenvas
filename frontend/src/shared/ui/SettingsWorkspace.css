@@ -94,7 +94,6 @@ body:has(.app-shell--studio) { min-width: 0; }
 .app-shell--studio .media-table-name { gap: 12px; }
 .app-shell--studio .media-table-name > svg { box-sizing: content-box; padding: 7px; border: 1px solid var(--settings-rule); border-radius: 10px; background: var(--ui-field); color: var(--ui-text-secondary); }
 .app-shell--studio .media-table-actions { flex-wrap: wrap; row-gap: 6px; }
-.app-shell--studio .media-table-actions [data-slot="button"] { font-size: 11px; height: 30px; padding-inline: 10px; }
 .app-shell--studio .media-table-endpoint { max-width: 260px; font-size: 11px; color: var(--ui-text-muted); }
 .app-shell--studio .storage-destinations { gap: 0; }
 .app-shell--studio .storage-destination { padding-block: 20px; border-color: var(--settings-rule); }
@@ -104,9 +103,6 @@ body:has(.app-shell--studio) { min-width: 0; }
 .app-shell--studio .storage-destination .ui-muted { font-size: 11px; }
 
 /* The same shared tabs retain Radix roving focus and force-mounted draft panels. */
-.app-shell--studio .app-page-content [data-slot="tabs-list"]:not(.system-settings-tabs) { align-self: flex-start; max-width: 100%; height: auto; min-height: 38px; padding: 3px; margin-bottom: 14px; gap: 4px; border: 1px solid var(--settings-rule); border-radius: 10px; background: var(--settings-surface); }
-.app-shell--studio .app-page-content [data-slot="tabs-list"]:not(.system-settings-tabs) > [data-slot="tabs-trigger"] { min-height: 32px; padding: 6px 18px; font-size: 12px; transition: background-color 180ms, color 180ms, box-shadow 180ms; }
-.app-shell--studio .app-page-content [data-slot="tabs-list"]:not(.system-settings-tabs) > [data-state="active"] { background: var(--ui-selected); color: var(--ui-text); box-shadow: var(--ui-panel-shadow); }
 .app-shell--studio .settings-tab-count { display: inline-grid; place-items: center; min-width: 20px; height: 18px; margin-left: 4px; padding-inline: 5px; border-radius: 5px; background: var(--ui-hover); color: var(--ui-text-muted); font-size: 10px; font-variant-numeric: tabular-nums; }
 .app-shell--studio [data-state="active"] > .settings-tab-count { color: var(--ui-text-secondary); }
 
@@ -191,8 +187,6 @@ body:has(.app-shell--studio) .ui-dialog-footer { padding: 14px 20px; background:
   .app-shell--studio .ui-form, .app-shell--studio .ui-stack { gap: 14px; }
   .app-shell--studio .settings-save-bar { align-items: flex-start; }
   .app-shell--studio .settings-save-bar > .ui-form-actions { margin-left: auto; }
-  .app-shell--studio .app-page-content [data-slot="tabs-list"]:not(.system-settings-tabs) { flex-wrap: wrap; }
-  .app-shell--studio .app-page-content [data-slot="tabs-list"]:not(.system-settings-tabs) > [data-slot="tabs-trigger"] { padding-inline: 12px; font-size: 11px; }
   body:has(.app-shell--studio) .ui-dialog-header, body:has(.app-shell--studio) .ui-dialog-body { padding: 18px; }
   body:has(.app-shell--studio) .ui-dialog-footer { padding: 14px 18px; }
 }

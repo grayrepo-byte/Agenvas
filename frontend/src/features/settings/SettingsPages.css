@@ -3,7 +3,6 @@
 .settings-save-bar { justify-content: space-between; padding-top: var(--ui-space-4); border-top: 1px solid var(--ui-border); }
 .settings-config-summary { display: grid; gap: 6px; padding-bottom: 18px; border-bottom: 1px solid var(--line); font-size: var(--ui-text-md); }
 .settings-consent { display: flex; align-items: flex-start; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: var(--ui-radius-lg); background: var(--ui-field); font-size: var(--ui-text-md); line-height: 1.6; cursor: pointer; }
-.settings-consent input { flex: none; width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--accent); }
 .settings-status-line { display: flex; align-items: flex-start; gap: 10px; font-size: var(--ui-text-md); line-height: 1.6; }
 .settings-status-line svg { flex: none; color: var(--muted); }
 .settings-mode-summary { font-size: var(--ui-text-md); line-height: 1.8; }
