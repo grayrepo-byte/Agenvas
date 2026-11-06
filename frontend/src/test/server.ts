@@ -2,6 +2,7 @@ import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 
 export const server = setupServer(
+  http.get("/api/v1/projects/:projectId/character-library/links", () => HttpResponse.json({ items: [] })),
   http.get("/api/v1/projects/:projectId/canvas/editor", () => HttpResponse.json({ items: [], groups: [] })),
   http.get("/api/v1/projects/:projectId/characters", () => HttpResponse.json({ characters: [], bindings: [] })),
   http.get("/api/v1/account/mcp-tokens", () => HttpResponse.json([])),

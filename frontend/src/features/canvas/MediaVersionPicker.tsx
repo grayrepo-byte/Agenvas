@@ -3,7 +3,7 @@ import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { useRef,useState } from "react";
 import {
 ApiError,assetThumbnailUrl,selectCanvasMediaVersion,
-type CanvasItem
+type CanvasItem, type Artifact
 } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";
@@ -20,7 +20,7 @@ const FIRST_NODE_VERSION_NO = 1;
 function VersionThumbnail({ projectId, assetId, kind }: {
   projectId: string;
   assetId: string;
-  kind: CanvasItem["artifact"]["kind"];
+  kind: Artifact["kind"];
 }) {
   const [failedAssetId, setFailedAssetId] = useState<string>();
   const FallbackIcon = kind === "AUDIO" ? MusicNotes : kind === "VIDEO" ? FilmStrip : ImageSquare;
@@ -63,12 +63,14 @@ export function MediaVersionPicker({ projectId, item }: { projectId: string; ite
     },
   });
 
+  const artifact = item.artifact;
+  if (!artifact) return null;
   if (!canSelect) return history.error ? <div className="media-version-picker" role="alert">
     {t("media.versions.loadFailed")}<Button variant="ghost" type="button" disabled={history.isFetching}
       onClick={() => void history.refetch()}>{t("common.retryRead")}</Button>
   </div> : null;
 
-  const video = item.artifact.kind === "VIDEO";
+  const video = artifact.kind === "VIDEO";
   return <><DropdownMenu open={menuOpen} onOpenChange={setOpen} modal={false}><div className="media-version-picker" ref={anchor}
     onKeyDown={(event) => {
       if (event.key === "Escape") { event.stopPropagation(); setOpen(false); toggle.current?.focus(); }
@@ -93,7 +95,7 @@ export function MediaVersionPicker({ projectId, item }: { projectId: string; ite
           versionNo={nodeVersionNo} selected={version.id === item.selectedVersionId}
           summary={readContentText(version.content, "prompt") || t(VERSION_SOURCE_LABELS[version.createdByKind])}
           createdAt={version.createdAt} disabled={select.isPending}
-          preview={<VersionThumbnail projectId={projectId} assetId={readContentText(version.content, "assetId")} kind={item.artifact.kind} />}
+          preview={<VersionThumbnail projectId={projectId} assetId={readContentText(version.content, "assetId")} kind={artifact.kind} />}
           onSelect={(event) => { event.preventDefault(); select.mutate(version.id); }} />)}
       </DropdownMenuGroup>
       {select.isPending ? <CanvasVersionMenuStatus label={t("media.versions.selecting")} /> : null}

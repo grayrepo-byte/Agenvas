@@ -86,9 +86,10 @@ public class CanvasAgentToolService {
         var data = result.putArray("data");
         for (int index = offset; index < end; index++) {
             var entry = directory.get(index);
-            ObjectNode item = describe(context, entry, characterIndex).put("kind", entry.artifact().artifact().kind().name())
-                    .put("artifactVersion", entry.artifact().artifact().version())
+            ObjectNode item = describe(context, entry, characterIndex)
                     .put("locked", entry.item().locked()).put("zIndex", entry.item().zIndex());
+            if (entry.artifact() != null) item.put("kind", entry.artifact().artifact().kind().name())
+                    .put("artifactVersion", entry.artifact().artifact().version());
             JsonNode draft = item.path("mediaDraft");
             if (!includeDrafts && draft.isObject()) {
                 ObjectNode metadata = mapper.createObjectNode().put("version", draft.path("version").asLong())
@@ -259,8 +260,11 @@ public class CanvasAgentToolService {
             CharacterIndex characterIndex) {
         CanvasItem item = entry.item();
         var data = mapper.createObjectNode().put("itemId", item.id().toString()).put("itemVersion", item.version())
-                .put("artifactId", item.subjectId().toString()).put("title", item.title())
-                .put("x", item.x()).put("y", item.y()).put("width", item.width()).put("height", item.height());
+                .put("title", item.title()).put("x", item.x()).put("y", item.y())
+                .put("width", item.width()).put("height", item.height());
+        if (item.subjectType() == CanvasItem.SubjectType.CHARACTER)
+            return dev.agenvas.canvas.application.CharacterNodeSummary.append(data, item, entry.characterNode());
+        data.put("artifactId", item.subjectId().toString());
         var version = entry.artifact().artifact().kind() == Artifact.Kind.TEXT ? entry.artifact().resourceDefaultVersion() : entry.selectedVersion();
         if (version != null) data.put("selectedVersionId", version.id().toString());
         if (entry.artifact().artifact().kind() != Artifact.Kind.TEXT)

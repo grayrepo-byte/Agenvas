@@ -272,6 +272,21 @@ public class LibraryService {
         });
     }
 
+    public record PinnedCharacterMedia(String pinKey, Media media, String contentHash) {}
+
+    /** Pins verified image/audio bytes under the entry deletion lock; the caller owns its copy. */
+    public PinnedCharacterMedia pinForCharacter(UUID owner, UUID entryId, long expectedVersion, UUID pinId) {
+        return tx.execute(ignored -> {
+            LibraryEntry entry = requireLocked(owner, entryId);
+            checkEntry(entry, expectedVersion);
+            if (entry.fileId() == null || entry.kind() != Artifact.Kind.IMAGE && entry.kind() != Artifact.Kind.AUDIO)
+                throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", ApiMessage.of("api.character.invalid"));
+            Media media = repository.file(owner, entry.fileId());
+            if (!media.kind().name().equals(entry.kind().name())) throw new IllegalStateException("Library media kind mismatch");
+            return new PinnedCharacterMedia(archive.pin(owner, pinId, archive.file(owner, media, false)), media, media.sha256());
+        });
+    }
+
     private Media requireSkillImage(UUID owner, LibraryEntry entry) {
         if (entry.kind() != Artifact.Kind.IMAGE || entry.fileId() == null)
             throw problem(HttpStatus.UNPROCESSABLE_ENTITY, "SKILL_ASSET_KIND_UNSUPPORTED",

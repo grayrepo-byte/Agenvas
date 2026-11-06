@@ -216,6 +216,18 @@ public class AssetService {
         });
     }
 
+    /** Terminal cleanup for a durable character import, including its crash-before-metadata gap. */
+    public boolean cleanupPlannedCharacterImport(UUID owner, UUID project, UUID assetId, Asset.MediaKind kind,
+            BooleanSupplier stillDiscardable) {
+        projects.getRetainedProject(owner, project);
+        return withMediaLock(project, assetId, kind, () -> {
+            if (!stillDiscardable.getAsBoolean()) return false;
+            if (assets.find(project, assetId).isPresent()) return true;
+            storage.discardPreparedMedia(project, assetId, kind);
+            return true;
+        });
+    }
+
     /** Registers prepared immutable bytes in the same transaction as the imported content and events. */
     public void registerLibraryImport(UUID owner, Asset asset) {
         events.recordChange(owner, asset.projectId(), () -> {

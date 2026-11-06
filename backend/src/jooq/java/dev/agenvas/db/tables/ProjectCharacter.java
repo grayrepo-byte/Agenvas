@@ -6,7 +6,9 @@ package dev.agenvas.db.tables;
 
 import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
+import dev.agenvas.db.tables.CanvasItem.CanvasItemPath;
 import dev.agenvas.db.tables.Project.ProjectPath;
+import dev.agenvas.db.tables.ProjectCharacterLibraryLink.ProjectCharacterLibraryLinkPath;
 import dev.agenvas.db.tables.ProjectCharacterRevision.ProjectCharacterRevisionPath;
 import dev.agenvas.db.tables.records.ProjectCharacterRecord;
 
@@ -196,6 +198,32 @@ public class ProjectCharacter extends TableImpl<ProjectCharacterRecord> {
             _project = new ProjectPath(this, Keys.PROJECT_CHARACTER__FK_PROJECT_CHARACTER_PROJECT, null);
 
         return _project;
+    }
+
+    private transient CanvasItemPath _canvasItem;
+
+    /**
+     * Get the implicit to-many join path to the <code>public.canvas_item</code>
+     * table
+     */
+    public CanvasItemPath canvasItem() {
+        if (_canvasItem == null)
+            _canvasItem = new CanvasItemPath(this, null, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_CHARACTER.getInverseKey());
+
+        return _canvasItem;
+    }
+
+    private transient ProjectCharacterLibraryLinkPath _projectCharacterLibraryLink;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.project_character_library_link</code> table
+     */
+    public ProjectCharacterLibraryLinkPath projectCharacterLibraryLink() {
+        if (_projectCharacterLibraryLink == null)
+            _projectCharacterLibraryLink = new ProjectCharacterLibraryLinkPath(this, null, Keys.PROJECT_CHARACTER_LIBRARY_LINK__FK_CHARACTER_LIBRARY_LINK_CHARACTER.getInverseKey());
+
+        return _projectCharacterLibraryLink;
     }
 
     private transient ProjectCharacterRevisionPath _projectCharacterRevision;

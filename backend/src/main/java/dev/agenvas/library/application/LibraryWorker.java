@@ -9,13 +9,13 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /** A single local copy executor, with no queued jobs or blocked shared scheduler threads. */
 @Component
-@ConditionalOnProperty(name = "agenvas.library.worker-enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnExpression("${agenvas.library.worker-enabled:true} && !${agenvas.recovery-mode:false}")
 public class LibraryWorker {
     private static final Logger LOGGER = LoggerFactory.getLogger(LibraryWorker.class);
     private static final int SHUTDOWN_SECONDS = 10;

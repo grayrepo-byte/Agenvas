@@ -4,6 +4,8 @@
   /* Modal surfaces sit above canvas NodeToolbars; portal order handles nested dialogs. */
   --ui-z-dialog: 2400;
   --ui-z-popup: 2500;
+  --ui-media-scrim: #000;
+  --ui-media-overlay-foreground: #fff;
   --ui-video-output-background: #000;
   --ui-video-subtitle-foreground: #fff;
   --ui-video-subtitle-outline: #000;

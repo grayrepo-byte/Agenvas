@@ -38,7 +38,7 @@ export type CanvasHandleId = keyof typeof CANVAS_HANDLES;
  * React Flow 的几何盒固定在卡片边框；home 是卡片外的静止位置，只有内层圆点跟随指针。
  * 使用不动的 home 测距离，避免圆点移动后重新测量导致追逐抖动，也不改变连线端点。
  */
-export function CanvasHandle({ id }: { id: CanvasHandleId }) {
+export function CanvasHandle({ id, label }: { id: CanvasHandleId; label?: string }) {
   useLocale();
   const { direction, hint, icon: IconComponent, position, role } = CANVAS_HANDLES[id];
   const homeRef = useRef<HTMLSpanElement>(null);
@@ -78,7 +78,7 @@ export function CanvasHandle({ id }: { id: CanvasHandleId }) {
     <Handle className={`canvas-handle canvas-handle--${role}`} id={id}
       onPointerMove={followPointer} onPointerLeave={resetOffset}
       onPointerDown={resetOffset} onPointerCancel={resetOffset}
-      isConnectable position={position} title={hint} type={direction}>
+      isConnectable position={position} title={label ?? hint} aria-label={label ?? hint} type={direction}>
       <span className="canvas-handle-home" ref={homeRef}>
           <span className="canvas-handle-dot">
             <IconComponent aria-hidden="true" className="canvas-handle-icon" size={HANDLE_ICON_SIZE} weight="light" />

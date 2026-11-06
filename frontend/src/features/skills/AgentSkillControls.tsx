@@ -197,7 +197,7 @@ function SkillChoicePanel({choice,state,index,resources,resourcesFetching,onChan
         {selected.inputSlots.map((slot)=><Field key={slot.alias}><FieldLabel>{slot.alias}{slot.required ? ` · ${t("skills.required")}`:""}</FieldLabel>
           <Select aria-label={`${slot.alias} · ${t("skills.inputVersion")}`} disabled={resourcesFetching} value={choice.inputs.find((input)=>input.alias===slot.alias)?.artifactVersionId??""}
             onChange={(event)=>{const inputs=choice.inputs.filter((input)=>input.alias!==slot.alias);if(event.target.value)inputs.push({alias:slot.alias,artifactVersionId:event.target.value});onChange({...choice,inputs});}}>
-            <option value="">{t("skills.inputVersion")}</option>{resources?.items.filter((item)=>item.artifact.kind===slot.kind && canvasItemVersionId(item))
+            <option value="">{t("skills.inputVersion")}</option>{resources?.items.filter((item)=>item.artifact?.kind===slot.kind && canvasItemVersionId(item))
               .map((item)=><option key={item.id} value={canvasItemVersionId(item)!}>{item.title}</option>)}
           </Select></Field>)}
       </FieldGroup>

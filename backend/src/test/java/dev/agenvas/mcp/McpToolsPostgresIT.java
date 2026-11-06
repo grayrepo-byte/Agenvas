@@ -70,6 +70,31 @@ class McpToolsPostgresIT {
         principal = token(user, Set.of(McpScope.READ, McpScope.CONTENT_WRITE, McpScope.MEDIA_GENERATE));
     }
 
+    @Autowired dev.agenvas.character.application.CharacterService characters;
+    @Autowired dev.agenvas.canvas.application.CanvasCharacterNodeService characterNodes;
+
+    @Test void readsCharacterCardsAsBoundedMetadataWithoutMediaReadPermission() {
+        UUID characterId = UUID.randomUUID(), lookId = UUID.randomUUID(), itemId = UUID.randomUUID();
+        var look = new dev.agenvas.character.application.CharacterModels.CharacterLook(lookId, "Winter", "Blue coat", "", "", List.of());
+        var content = new dev.agenvas.character.application.CharacterModels.CharacterContent("Aster", "Private persona", List.of(look), null);
+        characters.save(user, project.id(), characterId,
+                new dev.agenvas.character.application.CharacterModels.SaveCharacter(UUID.randomUUID(), 0, content));
+        var selection = new dev.agenvas.canvas.application.CanvasCharacterNodeModels.Selection(characterId, 1, lookId, List.of(), true, false);
+        characterNodes.create(user, project.id(), itemId,
+                new dev.agenvas.canvas.application.CanvasCharacterNodeModels.CreateNode(selection,
+                        java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO, java.math.BigDecimal.valueOf(320),
+                        java.math.BigDecimal.valueOf(320), 0, null, false));
+
+        var result = call(principal, "read_canvas", read()).data();
+        assertThat(result.at("/items/0/kind").asText()).isEqualTo("CHARACTER");
+        assertThat(result.at("/items/0/characterId").asText()).isEqualTo(characterId.toString());
+        assertThat(result.at("/items/0/characterVersion").asLong()).isEqualTo(1);
+        assertThat(result.at("/items/0/characterNodeVersion").asLong()).isZero();
+        assertThat(result.at("/items/0/lookName").asText()).isEqualTo("Winter");
+        assertThat(result.at("/items/0/artifactId").isMissingNode()).isTrue();
+        assertThat(result.toString()).doesNotContain("Private persona", "Blue coat", "mediaInputs", "speakerId");
+    }
+
     @Test void createsAndRevisesTextWithAtomicPlacementAndExternalProvenance() {
         ObjectNode create = command("create-text").put("title", "Storyboard").put("text", "First scene");
         JsonNode created = call(principal, "create_text", create).data();

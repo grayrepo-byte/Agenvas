@@ -70,6 +70,17 @@ public class MediaCharacterDraftGateway implements CharacterDraftGateway {
         List<String> warnings = new ArrayList<>();
         List<String> changes = new ArrayList<>();
         Map<UUID, Artifact.Kind> desired = desiredReferences(after, owner, project, kind, warnings);
+        if (kind == Artifact.Kind.VIDEO && !desired.isEmpty()) {
+            var binding = capabilities.forDraft(before.capabilityId(), Task.Kind.VIDEO_GENERATION);
+            if (!capabilities.inputPolicy(binding).supportedVideoInputModes().contains("GENERAL_REFERENCE")) throw invalid();
+            // A first/tail frame describes a shot boundary, never an identity reference.
+            // Users must explicitly convert existing frames before applying character references.
+            if (before.mediaInputs().stream().anyMatch(input -> input.role() == MediaDraft.InputRole.START_FRAME
+                    || input.role() == MediaDraft.InputRole.END_FRAME)) {
+                throw new ApiProblemException(HttpStatus.BAD_REQUEST, "CHARACTER_REFERENCE_MODE_REQUIRED",
+                        ApiMessage.of("api.character.invalid"), ApiMessage.of("api.character.reference-mode-required"), false);
+            }
+        }
         Map<UUID, List<UUID>> owned = new LinkedHashMap<>();
         Map<UUID, List<UUID>> release = new LinkedHashMap<>();
         Set<UUID> removed = new LinkedHashSet<>();
@@ -144,14 +155,8 @@ public class MediaCharacterDraftGateway implements CharacterDraftGateway {
         MediaDraft.VideoInputMode mode = mode(kind, before, inputs);
         if (mode != before.videoInputMode()) {
             changes.add("INPUT_MODE_CHANGED");
-            if (mode == MediaDraft.VideoInputMode.GENERAL_REFERENCE) inputs = inputs.stream()
-                    .map(input -> new MediaDraftService.SaveMediaInput(input.versionId(),
-                            input.role() == MediaDraft.InputRole.START_FRAME || input.role() == MediaDraft.InputRole.END_FRAME
-                                    ? MediaDraft.InputRole.REFERENCE : input.role(), input.color())).toList();
-            mentions = mentions.stream().map(mention -> new MediaDraft.PromptMention(mention.versionId(),
-                    mode == MediaDraft.VideoInputMode.GENERAL_REFERENCE
-                            && (mention.role() == MediaDraft.InputRole.START_FRAME || mention.role() == MediaDraft.InputRole.END_FRAME)
-                            ? MediaDraft.InputRole.REFERENCE : mention.role())).toList();
+            // Existing boundary frames are rejected above; switching an empty draft's
+            // mode never rewrites a user's frame or mention into a character reference.
         }
         MediaDraft candidate = drafts.previewSave(owner, project, item, expectedDraftVersion,
                 prompt, parameters, before.durationSeconds(), before.capabilityId(), mode,
@@ -189,7 +194,7 @@ public class MediaCharacterDraftGateway implements CharacterDraftGateway {
             UUID owner, UUID project, Artifact.Kind targetKind, List<String> warnings) {
         Map<UUID, Artifact.Kind> references = new LinkedHashMap<>();
         for (var snapshot : snapshots) {
-            if (snapshot.useAppearance()) for (var view : snapshot.look().views()) {
+            if (snapshot.useAppearance() && snapshot.look() != null) for (var view : snapshot.look().views()) {
                 artifacts.requireMediaVersionForTask(owner, project, view.versionId(), Artifact.Kind.IMAGE);
                 references.put(view.versionId(), Artifact.Kind.IMAGE);
             }
@@ -245,7 +250,7 @@ public class MediaCharacterDraftGateway implements CharacterDraftGateway {
         for (var snapshot : snapshots) {
             text.append("\nCharacter: ").append(snapshot.name());
             line(text, "Identity", snapshot.description());
-            if (snapshot.useAppearance()) {
+            if (snapshot.useAppearance() && snapshot.look() != null) {
                 line(text, "Look", snapshot.look().name());
                 line(text, "Clothing", snapshot.look().clothing());
                 line(text, "Expression", snapshot.look().expression());

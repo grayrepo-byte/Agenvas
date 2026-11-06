@@ -50,7 +50,7 @@ class CanvasCopySupportTest {
         UUID oldManual = UUID.randomUUID(), connectionId = UUID.randomUUID();
         MediaDraft original = draft(source, List.of(new MediaDraft.InputSource(oldManual, MediaDraft.SourceType.MANUAL, null),
                 new MediaDraft.InputSource(UUID.randomUUID(), MediaDraft.SourceType.CONNECTION, connectionId)));
-        when(items.requireArtifactItem(owner, project, source)).thenReturn(card);
+        when(items.requireItem(owner, project, source)).thenReturn(card);
         when(artifacts.get(owner, project, artifactId)).thenReturn(view(artifactId, Artifact.Kind.IMAGE, null));
         when(drafts.get(owner, project, source)).thenReturn(original);
         when(characters.prepareCanvasCopy(eq(owner), eq(project), eq(source), any())).thenReturn(mapper.createObjectNode().put("fixed", true));
@@ -80,7 +80,7 @@ class CanvasCopySupportTest {
         var sourceVersion = textVersion(artifactId, body);
         var copiedVersion = textVersion(copyArtifact, body);
         CanvasItem card = card(source, artifactId, null);
-        when(items.requireArtifactItem(owner, project, source)).thenReturn(card);
+        when(items.requireItem(owner, project, source)).thenReturn(card);
         when(artifacts.get(owner, project, artifactId)).thenReturn(view(artifactId, Artifact.Kind.TEXT, sourceVersion));
         when(artifacts.createTextCopyWithinChange(owner, project, "Card title", body)).thenReturn(view(copyArtifact, Artifact.Kind.TEXT, copiedVersion));
         when(artifacts.get(owner, project, copyArtifact)).thenReturn(view(copyArtifact, Artifact.Kind.TEXT, copiedVersion));
@@ -94,7 +94,7 @@ class CanvasCopySupportTest {
     @Test
     void redoRestoresFrozenSourcesAndAdvancesDraftAndBindingIncarnations() {
         CanvasItem sourceCard = card(source, artifactId, image);
-        when(items.requireArtifactItem(owner, project, source)).thenReturn(sourceCard);
+        when(items.requireItem(owner, project, source)).thenReturn(sourceCard);
         when(artifacts.get(owner, project, artifactId)).thenReturn(view(artifactId, Artifact.Kind.IMAGE, null));
         when(drafts.get(owner, project, source)).thenReturn(draft(source, List.of(new MediaDraft.InputSource(UUID.randomUUID(), MediaDraft.SourceType.MANUAL, null))));
         when(characters.prepareCanvasCopy(eq(owner), eq(project), eq(source), any())).thenReturn(mapper.createObjectNode().put("version", 1));
@@ -114,7 +114,7 @@ class CanvasCopySupportTest {
     @Test
     void captureExcludesPresentationButIncludesAllDurableUsageGuards() {
         CanvasItem card = card(target, artifactId, image);
-        when(items.requireArtifactItem(owner, project, target)).thenReturn(card);
+        when(items.requireItem(owner, project, target)).thenReturn(card);
         when(items.mediaCopyGuard(owner, project, target)).thenReturn(new CanvasItemQueryService.MediaCopyGuard(7, List.of(image)));
         when(artifacts.get(owner, project, artifactId)).thenReturn(view(artifactId, Artifact.Kind.IMAGE, null));
         when(drafts.get(owner, project, target)).thenReturn(draft(target, List.of()));

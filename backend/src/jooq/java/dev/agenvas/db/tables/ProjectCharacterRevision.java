@@ -7,6 +7,7 @@ package dev.agenvas.db.tables;
 import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.CanvasCharacterBindingMember.CanvasCharacterBindingMemberPath;
+import dev.agenvas.db.tables.CanvasCharacterNode.CanvasCharacterNodePath;
 import dev.agenvas.db.tables.ProjectCharacter.ProjectCharacterPath;
 import dev.agenvas.db.tables.records.ProjectCharacterRevisionRecord;
 
@@ -188,6 +189,19 @@ public class ProjectCharacterRevision extends TableImpl<ProjectCharacterRevision
             _projectCharacter = new ProjectCharacterPath(this, Keys.PROJECT_CHARACTER_REVISION__FK_CHARACTER_REVISION_CHARACTER, null);
 
         return _projectCharacter;
+    }
+
+    private transient CanvasCharacterNodePath _canvasCharacterNode;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.canvas_character_node</code> table
+     */
+    public CanvasCharacterNodePath canvasCharacterNode() {
+        if (_canvasCharacterNode == null)
+            _canvasCharacterNode = new CanvasCharacterNodePath(this, null, Keys.CANVAS_CHARACTER_NODE__FK_CANVAS_CHARACTER_NODE_REVISION.getInverseKey());
+
+        return _canvasCharacterNode;
     }
 
     private transient CanvasCharacterBindingMemberPath _canvasCharacterBindingMember;

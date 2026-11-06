@@ -1,6 +1,7 @@
 package dev.agenvas.character.infrastructure;
 
 import static dev.agenvas.db.Tables.PROJECT_CHARACTER;
+
 import static dev.agenvas.db.Tables.PROJECT_CHARACTER_REVISION;
 import static dev.agenvas.db.Tables.PROJECT_CHARACTER_COMMAND;
 import static dev.agenvas.db.Tables.CANVAS_CHARACTER_BINDING;
@@ -40,6 +41,29 @@ public class CharacterRepository {
     public Optional<CharacterProfile> profile(UUID project, UUID character) {
         return db.selectFrom(PROJECT_CHARACTER).where(PROJECT_CHARACTER.PROJECT_ID.eq(project)
                 .and(PROJECT_CHARACTER.ID.eq(character))).fetchOptional().map(this::profile);
+    }
+
+    /** Immutable revision reads never resolve the profile's current content. */
+    public Optional<CharacterProfile> revision(UUID project, UUID character, long version) {
+        return db.selectFrom(PROJECT_CHARACTER_REVISION)
+                .where(
+                        PROJECT_CHARACTER_REVISION
+                                .PROJECT_ID
+                                .eq(project)
+                                .and(PROJECT_CHARACTER_REVISION.CHARACTER_ID.eq(character))
+                                .and(PROJECT_CHARACTER_REVISION.VERSION.eq(version)))
+                .fetchOptional()
+                .map(
+                        row ->
+                                new CharacterProfile(
+                                        character,
+                                        project,
+                                        mapper.treeToValue(
+                                                body(row.getContentJson()), CharacterContent.class),
+                                        version,
+                                        row.getArchived(),
+                                        instant(row.getCreatedAt()),
+                                        instant(row.getCreatedAt())));
     }
     public boolean insertProfile(CharacterProfile value) {
         boolean inserted = db.insertInto(PROJECT_CHARACTER).set(PROJECT_CHARACTER.ID, value.id())
@@ -109,6 +133,31 @@ public class CharacterRepository {
         }
         return changed;
     }
+    public List<UUID> nodeOwnedCharacters(UUID project, UUID item) {
+        return db.select(CANVAS_CHARACTER_BINDING.NODE_CHARACTER_IDS_JSON)
+                .from(CANVAS_CHARACTER_BINDING)
+                .where(
+                        CANVAS_CHARACTER_BINDING
+                                .PROJECT_ID
+                                .eq(project)
+                                .and(CANVAS_CHARACTER_BINDING.CANVAS_ITEM_ID.eq(item)))
+                .fetchOptional(CANVAS_CHARACTER_BINDING.NODE_CHARACTER_IDS_JSON)
+                .map(value -> List.of(mapper.treeToValue(body(value), UUID[].class)))
+                .orElse(List.of());
+    }
+
+    public void nodeOwnedCharacters(UUID project, UUID item, List<UUID> ids) {
+        if (db.update(CANVAS_CHARACTER_BINDING)
+                        .set(CANVAS_CHARACTER_BINDING.NODE_CHARACTER_IDS_JSON, json(ids))
+                        .where(
+                                CANVAS_CHARACTER_BINDING
+                                        .PROJECT_ID
+                                        .eq(project)
+                                        .and(CANVAS_CHARACTER_BINDING.CANVAS_ITEM_ID.eq(item)))
+                        .execute()
+                != 1) throw new IllegalStateException("Character binding ownership update failed");
+    }
+
     public boolean review(UUID project, UUID item, long expected, long draftVersion, UUID selected, Instant now) {
         return db.update(CANVAS_CHARACTER_BINDING).set(CANVAS_CHARACTER_BINDING.VERSION, expected + 1)
                 .set(CANVAS_CHARACTER_BINDING.NEEDS_REVIEW, false).set(CANVAS_CHARACTER_BINDING.REVIEWED_DRAFT_VERSION, draftVersion)

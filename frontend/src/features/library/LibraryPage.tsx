@@ -21,6 +21,8 @@ import { CATEGORY_LABELS,KIND_LABELS,MAX_LIBRARY_NAME_LENGTH } from "./libraryLa
 import { TransferState,useLibraryTransfer } from "./useLibraryTransfer";
 import { Tabs,TabsContent,TabsList,TabsTrigger } from "../../shared/ui/primitives/tabs";
 import { ResourceBrowser } from "./ResourceBrowser";
+import { CharacterLibrary } from "../character-library/CharacterLibrary";
+import { cl } from "../character-library/characterLibraryMessages";
 import { Separator } from "../../shared/ui/primitives/separator";
 
 const DEFAULT_LIBRARY_DROP_COORDINATE = 80;
@@ -35,12 +37,14 @@ export function LibraryPage() {
       <div className="library-navigation">
         <TabsList size="sm" aria-label={t("resources.navigation")}>
           <TabsTrigger value="LIBRARY"><BookmarkSimple data-icon="inline-start" aria-hidden />{t("library.title")}</TabsTrigger>
+          <TabsTrigger value="CHARACTERS">{cl("title")}</TabsTrigger>
           <TabsTrigger value="RESOURCES"><Images data-icon="inline-start" aria-hidden />{t("resources.title")}</TabsTrigger>
           <TabsTrigger value="TRASH"><Trash data-icon="inline-start" aria-hidden />{t("library.page.trash")}</TabsTrigger>
         </TabsList>
         <Button asChild variant="ghost" size="sm"><Link to="/projects">{t("library.page.openCanvas")}<ArrowUpRight data-icon="inline-end" aria-hidden /></Link></Button>
       </div>
       <TabsContent value="LIBRARY"><LibraryBrowser presentation="page" mediaOnly onPick={setSelected} /></TabsContent>
+      <TabsContent value="CHARACTERS"><CharacterLibrary /></TabsContent>
       <TabsContent value="RESOURCES"><ResourceBrowser /></TabsContent>
       <TabsContent value="TRASH"><LibraryBrowser presentation="page" mediaOnly trash onPick={setSelected} /></TabsContent>
     </Tabs>

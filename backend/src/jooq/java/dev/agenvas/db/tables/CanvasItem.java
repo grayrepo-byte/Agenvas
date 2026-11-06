@@ -10,11 +10,14 @@ import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.Artifact.ArtifactPath;
 import dev.agenvas.db.tables.ArtifactVersion.ArtifactVersionPath;
 import dev.agenvas.db.tables.CanvasCharacterBinding.CanvasCharacterBindingPath;
+import dev.agenvas.db.tables.CanvasCharacterConnection.CanvasCharacterConnectionPath;
+import dev.agenvas.db.tables.CanvasCharacterNode.CanvasCharacterNodePath;
 import dev.agenvas.db.tables.CanvasConnection.CanvasConnectionPath;
 import dev.agenvas.db.tables.CanvasGroup.CanvasGroupPath;
 import dev.agenvas.db.tables.CanvasItemMediaVersion.CanvasItemMediaVersionPath;
 import dev.agenvas.db.tables.MediaDraft.MediaDraftPath;
 import dev.agenvas.db.tables.Project.ProjectPath;
+import dev.agenvas.db.tables.ProjectCharacter.ProjectCharacterPath;
 import dev.agenvas.db.tables.TaskArtifactTarget.TaskArtifactTargetPath;
 import dev.agenvas.db.tables.records.CanvasItemRecord;
 
@@ -82,20 +85,22 @@ public class CanvasItem extends TableImpl<CanvasItemRecord> {
     public final TableField<CanvasItemRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
 
     /**
-     * The column <code>public.canvas_item.subject_type</code>. 画布主体类型，固定为
-     * ARTIFACT
+     * The column <code>public.canvas_item.subject_type</code>.
+     * 画布业务主体：ARTIFACT或CHARACTER
      */
-    public final TableField<CanvasItemRecord, String> SUBJECT_TYPE = createField(DSL.name("subject_type"), SQLDataType.VARCHAR(32).nullable(false), this, "画布主体类型，固定为 ARTIFACT");
+    public final TableField<CanvasItemRecord, String> SUBJECT_TYPE = createField(DSL.name("subject_type"), SQLDataType.VARCHAR(32).nullable(false), this, "画布业务主体：ARTIFACT或CHARACTER");
 
     /**
-     * The column <code>public.canvas_item.subject_id</code>. 画布内容对应的产物身份
+     * The column <code>public.canvas_item.subject_id</code>.
+     * 同项目产物或角色档案身份，由主体类型决定
      */
-    public final TableField<CanvasItemRecord, UUID> SUBJECT_ID = createField(DSL.name("subject_id"), SQLDataType.UUID.nullable(false), this, "画布内容对应的产物身份");
+    public final TableField<CanvasItemRecord, UUID> SUBJECT_ID = createField(DSL.name("subject_id"), SQLDataType.UUID.nullable(false), this, "同项目产物或角色档案身份，由主体类型决定");
 
     /**
-     * The column <code>public.canvas_item.artifact_id</code>. 画布内容对应的非空产物外键
+     * The column <code>public.canvas_item.artifact_id</code>.
+     * 产物节点的同项目内容身份；角色节点为空
      */
-    public final TableField<CanvasItemRecord, UUID> ARTIFACT_ID = createField(DSL.name("artifact_id"), SQLDataType.UUID.nullable(false), this, "画布内容对应的非空产物外键");
+    public final TableField<CanvasItemRecord, UUID> ARTIFACT_ID = createField(DSL.name("artifact_id"), SQLDataType.UUID, this, "产物节点的同项目内容身份；角色节点为空");
 
     /**
      * The column <code>public.canvas_item.x</code>. 画布水平坐标
@@ -172,6 +177,12 @@ public class CanvasItem extends TableImpl<CanvasItemRecord> {
      * 任何关联连线创建、修改、删除时递增；与展示版本和内容选择epoch独立，防止连线变化后误撤销复制
      */
     public final TableField<CanvasItemRecord, Long> TOPOLOGY_EPOCH = createField(DSL.name("topology_epoch"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "任何关联连线创建、修改、删除时递增；与展示版本和内容选择epoch独立，防止连线变化后误撤销复制");
+
+    /**
+     * The column <code>public.canvas_item.character_id</code>.
+     * 角色节点的同项目档案身份；产物节点为空
+     */
+    public final TableField<CanvasItemRecord, UUID> CHARACTER_ID = createField(DSL.name("character_id"), SQLDataType.UUID, this, "角色节点的同项目档案身份；产物节点为空");
 
     private CanvasItem(Name alias, Table<CanvasItemRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -257,7 +268,7 @@ public class CanvasItem extends TableImpl<CanvasItemRecord> {
 
     @Override
     public List<ForeignKey<CanvasItemRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.CANVAS_ITEM__FK_CANVAS_ITEM_ARTIFACT, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_GROUP, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_PROJECT, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_SELECTED_VERSION);
+        return Arrays.asList(Keys.CANVAS_ITEM__FK_CANVAS_ITEM_ARTIFACT, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_CHARACTER, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_GROUP, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_PROJECT, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_SELECTED_VERSION);
     }
 
     private transient ArtifactPath _artifact;
@@ -270,6 +281,19 @@ public class CanvasItem extends TableImpl<CanvasItemRecord> {
             _artifact = new ArtifactPath(this, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_ARTIFACT, null);
 
         return _artifact;
+    }
+
+    private transient ProjectCharacterPath _projectCharacter;
+
+    /**
+     * Get the implicit join path to the <code>public.project_character</code>
+     * table.
+     */
+    public ProjectCharacterPath projectCharacter() {
+        if (_projectCharacter == null)
+            _projectCharacter = new ProjectCharacterPath(this, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_CHARACTER, null);
+
+        return _projectCharacter;
     }
 
     private transient CanvasGroupPath _canvasGroup;
@@ -320,6 +344,32 @@ public class CanvasItem extends TableImpl<CanvasItemRecord> {
             _canvasItemMediaVersion = new CanvasItemMediaVersionPath(this, null, Keys.CANVAS_ITEM_MEDIA_VERSION__CANVAS_ITEM_MEDIA_VERSION_PROJECT_ID_CANVAS_ITEM_ID_FKEY.getInverseKey());
 
         return _canvasItemMediaVersion;
+    }
+
+    private transient CanvasCharacterConnectionPath _canvasCharacterConnection;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.canvas_character_connection</code> table
+     */
+    public CanvasCharacterConnectionPath canvasCharacterConnection() {
+        if (_canvasCharacterConnection == null)
+            _canvasCharacterConnection = new CanvasCharacterConnectionPath(this, null, Keys.CANVAS_CHARACTER_CONNECTION__FK_CANVAS_CHARACTER_CONNECTION_TARGET.getInverseKey());
+
+        return _canvasCharacterConnection;
+    }
+
+    private transient CanvasCharacterNodePath _canvasCharacterNode;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.canvas_character_node</code> table
+     */
+    public CanvasCharacterNodePath canvasCharacterNode() {
+        if (_canvasCharacterNode == null)
+            _canvasCharacterNode = new CanvasCharacterNodePath(this, null, Keys.CANVAS_CHARACTER_NODE__FK_CANVAS_CHARACTER_NODE_ITEM.getInverseKey());
+
+        return _canvasCharacterNode;
     }
 
     private transient CanvasConnectionPath _fkCanvasConnectionSource;
@@ -393,8 +443,8 @@ public class CanvasItem extends TableImpl<CanvasItemRecord> {
     public List<Check<CanvasItemRecord>> getChecks() {
         return Arrays.asList(
             Internal.createCheck(this, DSL.name("ck_canvas_item_geometry"), "((((x >= ('-1000000'::integer)::numeric) AND (x <= (1000000)::numeric)) AND ((y >= ('-1000000'::integer)::numeric) AND (y <= (1000000)::numeric)) AND ((width >= (120)::numeric) AND (width <= (2000)::numeric)) AND ((height >= (80)::numeric) AND (height <= (2000)::numeric)) AND ((z_index >= '-1000'::integer) AND (z_index <= 1000))))", true),
-            Internal.createCheck(this, DSL.name("ck_canvas_item_subject_mapping"), "((subject_id = artifact_id))", true),
-            Internal.createCheck(this, DSL.name("ck_canvas_item_subject_type"), "(((subject_type)::text = 'ARTIFACT'::text))", true),
+            Internal.createCheck(this, DSL.name("ck_canvas_item_subject_mapping"), "(((((subject_type)::text = 'ARTIFACT'::text) AND (artifact_id IS NOT NULL) AND (subject_id = artifact_id) AND (character_id IS NULL)) OR (((subject_type)::text = 'CHARACTER'::text) AND (artifact_id IS NULL) AND (character_id IS NOT NULL) AND (subject_id = character_id) AND (selected_version_id IS NULL))))", true),
+            Internal.createCheck(this, DSL.name("ck_canvas_item_subject_type"), "(((subject_type)::text = ANY ((ARRAY['ARTIFACT'::character varying, 'CHARACTER'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("ck_canvas_item_title"), "(((length(btrim((title)::text)) >= 1) AND (length(btrim((title)::text)) <= 160)))", true),
             Internal.createCheck(this, DSL.name("ck_canvas_item_topology_epoch"), "((topology_epoch >= 0))", true),
             Internal.createCheck(this, DSL.name("ck_canvas_item_version_non_negative"), "((version >= 0))", true),

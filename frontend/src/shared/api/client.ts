@@ -1029,7 +1029,7 @@ export async function listRunTasks(projectId: string, runId: string): Promise<Ta
     t("api.errors.runTasksUnavailable"));
 }
 
-async function readJson<T>(path: string, fallbackMessage: string): Promise<T> {
+export async function readJson<T>(path: string, fallbackMessage: string): Promise<T> {
   const response = await apiFetch(path, {
     credentials: "same-origin",
     headers: { Accept: "application/json" },
@@ -1040,13 +1040,13 @@ async function readJson<T>(path: string, fallbackMessage: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-async function writeJson<T>(path: string, init: RequestInit,
+export async function writeJson<T>(path: string, init: RequestInit,
   failureMessage = t("api.errors.requestFailed")): Promise<T> {
   const response = await write(path, init, failureMessage);
   return (await response.json()) as T;
 }
 
-async function writeEmpty(path: string, init: RequestInit): Promise<void> {
+export async function writeEmpty(path: string, init: RequestInit): Promise<void> {
   await write(path, init);
 }
 

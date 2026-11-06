@@ -1,6 +1,7 @@
 package dev.agenvas.canvas.application;
 
 import dev.agenvas.artifact.application.ArtifactService;
+
 import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.MediaDraft;
@@ -42,6 +43,18 @@ public class CanvasCopySupport {
     private final StoryboardSelectedMediaReadAccessService storyboards;
     private final ObjectMapper mapper;
     private final Clock clock;
+    private org.springframework.beans.factory.ObjectProvider<CanvasCharacterNodeService>
+            characterNodes;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void characterNodes(
+            org.springframework.beans.factory.ObjectProvider<CanvasCharacterNodeService> nodes) {
+        this.characterNodes = nodes;
+    }
+
+    public long characterSelectionVersion(UUID owner, UUID project, CanvasItem item) {
+        return characterNodes.getObject().view(owner, item).version();
+    }
 
     public CanvasCopySupport(ProjectService projects, ArtifactService artifacts, MediaDraftService drafts,
             CanvasItemQueryService items, CanvasConnectionService connections, CharacterService characters,
@@ -57,7 +70,9 @@ public class CanvasCopySupport {
      */
     @Transactional(readOnly = true)
     public JsonNode capture(UUID owner, UUID project, CanvasItem requested) {
-        CanvasItem item = items.requireArtifactItem(owner, project, requested.id());
+        CanvasItem item = items.requireItem(owner, project, requested.id());
+        if (item.subjectType() == CanvasItem.SubjectType.CHARACTER)
+            return characterNodes.getObject().copyGuard(owner, project, item);
         var artifact = artifacts.get(owner, project, item.subjectId());
         Artifact.Kind kind = artifact.artifact().kind();
         ObjectNode guard = document().put("subjectId", item.subjectId().toString()).put("kind", kind.name());
@@ -85,7 +100,18 @@ public class CanvasCopySupport {
     @Transactional(propagation = Propagation.MANDATORY)
     public PreparedCopy prepareCloneWithinChange(UUID owner, UUID project, CanvasItem requested, UUID targetId) {
         projects.requireActiveProject(owner, project);
-        CanvasItem source = items.requireArtifactItem(owner, project, requested.id());
+        CanvasItem source = items.requireItem(owner, project, requested.id());
+        if (source.subjectType() == CanvasItem.SubjectType.CHARACTER) {
+            var node = characterNodes.getObject().view(owner, source);
+            ObjectNode frozen =
+                    document()
+                            .put("kind", "CHARACTER")
+                            .put("targetId", targetId.toString())
+                            .put("subjectId", source.subjectId().toString())
+                            .putNull("selectedVersionId");
+            frozen.set("selection", mapper.valueToTree(node.selection()));
+            return new PreparedCopy(source.subjectId(), null, frozen);
+        }
         var artifact = artifacts.get(owner, project, source.subjectId());
         if (artifact.artifact().archivedAt() != null) throw conflict();
         ObjectNode frozen = document().put("kind", artifact.artifact().kind().name()).put("targetId", targetId.toString());
@@ -122,6 +148,23 @@ public class CanvasCopySupport {
     public void restoreWithinChange(UUID owner, UUID project, CanvasItem target, JsonNode frozen, JsonNode previousGuard) {
         projects.requireActiveProject(owner, project);
         validateSnapshot(target, frozen);
+        if (target.subjectType() == CanvasItem.SubjectType.CHARACTER) {
+            if (!"CHARACTER".equals(frozen.path("kind").asText())) throw conflict();
+            var selection =
+                    mapper.treeToValue(
+                            frozen.path("selection"), CanvasCharacterNodeModels.Selection.class);
+            characterNodes
+                    .getObject()
+                    .installCopy(
+                            owner,
+                            project,
+                            target.id(),
+                            selection,
+                            previousGuard == null
+                                    ? 0
+                                    : previousGuard.path("node").path("version").asLong() + 1);
+            return;
+        }
         var artifact = artifacts.get(owner, project, target.subjectId());
         if (!artifact.artifact().kind().name().equals(frozen.path("kind").asText()) || artifact.artifact().archivedAt() != null) throw conflict();
         if (artifact.artifact().kind() == Artifact.Kind.TEXT) {

@@ -21,6 +21,9 @@ import dev.agenvas.db.tables.CallLog;
 import dev.agenvas.db.tables.CallLogDebug;
 import dev.agenvas.db.tables.CanvasCharacterBinding;
 import dev.agenvas.db.tables.CanvasCharacterBindingMember;
+import dev.agenvas.db.tables.CanvasCharacterCommand;
+import dev.agenvas.db.tables.CanvasCharacterConnection;
+import dev.agenvas.db.tables.CanvasCharacterNode;
 import dev.agenvas.db.tables.CanvasConnection;
 import dev.agenvas.db.tables.CanvasEditCommand;
 import dev.agenvas.db.tables.CanvasEditReceipt;
@@ -29,6 +32,11 @@ import dev.agenvas.db.tables.CanvasItem;
 import dev.agenvas.db.tables.CanvasItemMediaInput;
 import dev.agenvas.db.tables.CanvasItemMediaInputSource;
 import dev.agenvas.db.tables.CanvasItemMediaVersion;
+import dev.agenvas.db.tables.CharacterLibraryCleanup;
+import dev.agenvas.db.tables.CharacterLibraryCommand;
+import dev.agenvas.db.tables.CharacterLibraryMedia;
+import dev.agenvas.db.tables.CharacterLibraryProfile;
+import dev.agenvas.db.tables.CharacterLibraryRevision;
 import dev.agenvas.db.tables.CreativeSkill;
 import dev.agenvas.db.tables.DirectorSettings;
 import dev.agenvas.db.tables.IdempotencyRecord;
@@ -65,6 +73,7 @@ import dev.agenvas.db.tables.MediaTemplateImportSource;
 import dev.agenvas.db.tables.Project;
 import dev.agenvas.db.tables.ProjectCharacter;
 import dev.agenvas.db.tables.ProjectCharacterCommand;
+import dev.agenvas.db.tables.ProjectCharacterLibraryLink;
 import dev.agenvas.db.tables.ProjectCharacterRevision;
 import dev.agenvas.db.tables.ProjectEvent;
 import dev.agenvas.db.tables.PromptDefinition;
@@ -188,6 +197,21 @@ public class Tables {
     public static final CanvasCharacterBindingMember CANVAS_CHARACTER_BINDING_MEMBER = CanvasCharacterBindingMember.CANVAS_CHARACTER_BINDING_MEMBER;
 
     /**
+     * 明确角色节点应用的持久回执；重放不重写草稿或创建任务
+     */
+    public static final CanvasCharacterCommand CANVAS_CHARACTER_COMMAND = CanvasCharacterCommand.CANVAS_CHARACTER_COMMAND;
+
+    /**
+     * 角色应用逻辑关系；不生成、不自动修改输入、不冒充图片首帧或执行DAG
+     */
+    public static final CanvasCharacterConnection CANVAS_CHARACTER_CONNECTION = CanvasCharacterConnection.CANVAS_CHARACTER_CONNECTION;
+
+    /**
+     * 角色节点独立选择：固定项目修订、造型和本次参考，不改写媒体草稿
+     */
+    public static final CanvasCharacterNode CANVAS_CHARACTER_NODE = CanvasCharacterNode.CANVAS_CHARACTER_NODE;
+
+    /**
      * 画布卡片关系；输入来源和派生线不代表执行依赖
      */
     public static final CanvasConnection CANVAS_CONNECTION = CanvasConnection.CANVAS_CONNECTION;
@@ -226,6 +250,34 @@ public class Tables {
      * 媒体卡片独占的结果版本历史
      */
     public static final CanvasItemMediaVersion CANVAS_ITEM_MEDIA_VERSION = CanvasItemMediaVersion.CANVAS_ITEM_MEDIA_VERSION;
+
+    /**
+     * Persistent cleanup queue for accepted pins and rejected independent
+     * outputs.
+     */
+    public static final CharacterLibraryCleanup CHARACTER_LIBRARY_CLEANUP = CharacterLibraryCleanup.CHARACTER_LIBRARY_CLEANUP;
+
+    /**
+     * Durable role transfer and synchronous mutation receipts with lease
+     * fencing.
+     */
+    public static final CharacterLibraryCommand CHARACTER_LIBRARY_COMMAND = CharacterLibraryCommand.CHARACTER_LIBRARY_COMMAND;
+
+    /**
+     * Independently archived immutable image or audio; never depends on source
+     * project or entry.
+     */
+    public static final CharacterLibraryMedia CHARACTER_LIBRARY_MEDIA = CharacterLibraryMedia.CHARACTER_LIBRARY_MEDIA;
+
+    /**
+     * Account-owned reusable character identity and current CAS projection.
+     */
+    public static final CharacterLibraryProfile CHARACTER_LIBRARY_PROFILE = CharacterLibraryProfile.CHARACTER_LIBRARY_PROFILE;
+
+    /**
+     * Immutable account character content revisions.
+     */
+    public static final CharacterLibraryRevision CHARACTER_LIBRARY_REVISION = CharacterLibraryRevision.CHARACTER_LIBRARY_REVISION;
 
     /**
      * 用户创作 Skill 身份、当前发布版本和回收站状态
@@ -413,6 +465,12 @@ public class Tables {
      * mutations.
      */
     public static final ProjectCharacterCommand PROJECT_CHARACTER_COMMAND = ProjectCharacterCommand.PROJECT_CHARACTER_COMMAND;
+
+    /**
+     * Explicit project copy source revision; library edits never auto
+     * synchronize.
+     */
+    public static final ProjectCharacterLibraryLink PROJECT_CHARACTER_LIBRARY_LINK = ProjectCharacterLibraryLink.PROJECT_CHARACTER_LIBRARY_LINK;
 
     /**
      * Immutable revisions used by fixed character shot snapshots.

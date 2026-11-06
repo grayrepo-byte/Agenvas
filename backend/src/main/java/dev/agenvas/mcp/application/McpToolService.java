@@ -255,7 +255,14 @@ public class McpToolService {
         ArrayNode items = output.putArray("items");
         for (int index = offset; index < Math.min(entries.size(), offset + limit); index++) {
             var entry = entries.get(index);
-            items.add(node(owner, project, entry.item(), entry.artifact(), input.path("includeDrafts").asBoolean()));
+            if (entry.item().subjectType() == CanvasItem.SubjectType.CHARACTER) {
+                CanvasItem item = entry.item();
+                ObjectNode summary = mapper.createObjectNode().put("canvasItemId", item.id().toString())
+                        .put("title", item.title()).put("expectedVersion", item.version()).put("locked", item.locked())
+                        .put("x", item.x()).put("y", item.y()).put("width", item.width()).put("height", item.height())
+                        .put("zIndex", item.zIndex());
+                items.add(dev.agenvas.canvas.application.CharacterNodeSummary.append(summary, item, entry.characterNode()));
+            } else items.add(node(owner, project, entry.item(), entry.artifact(), input.path("includeDrafts").asBoolean()));
         }
         return output;
     }
