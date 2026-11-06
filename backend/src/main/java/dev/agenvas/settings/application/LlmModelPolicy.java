@@ -9,6 +9,8 @@ public record LlmModelPolicy(ModelCatalog.Provider provider, Source source,
         Integer reportedOutputTokens, Integer runtimeContextTokens, String modelDigest, Instant checkedAt) {
     public enum Source { MANUAL, PROVIDER_REPORTED, OLLAMA_RUNTIME }
     public enum OutputParameter { MAX_TOKENS, MAX_COMPLETION_TOKENS }
+    private static final int DEFAULT_CONTEXT_WINDOW_TOKENS = 1_000_000;
+    private static final int DEFAULT_MAX_OUTPUT_TOKENS = 4096;
     public LlmModelPolicy {
         if (contextWindowTokens == null && inputLimitTokens == null)
             throw new IllegalArgumentException("MODEL_CAPACITY_UNKNOWN");
@@ -32,6 +34,11 @@ public record LlmModelPolicy(ModelCatalog.Provider provider, Source source,
             int output, OutputParameter parameter) {
         return new LlmModelPolicy(provider, Source.MANUAL, context, input, output, parameter,
                 null, null, null, null, null);
+    }
+    /** Local configuration fallback for new requests; it does not claim detection or update stored versions. */
+    public static LlmModelPolicy genericDefault() {
+        return manual(ModelCatalog.Provider.COMPATIBLE, DEFAULT_CONTEXT_WINDOW_TOKENS, null,
+                DEFAULT_MAX_OUTPUT_TOKENS, OutputParameter.MAX_TOKENS);
     }
     private static boolean valid(Integer value) {
         return value == null || value > 0 && value <= ModelCatalog.MAX_REPORTED_TOKENS;

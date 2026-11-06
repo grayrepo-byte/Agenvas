@@ -55,7 +55,8 @@ public class StoredChatModelFactory {
         return create(config, LlmCallTimeouts.REQUEST, LlmCallTimeouts.TRANSPORT_READ, budget);
     }
     public LlmRequestBudget requestBudget(LlmProviderConfig config) {
-        return LlmRequestBudget.resolve(settings == null ? DirectorSettings.defaults() : settings.get(), config.modelPolicy());
+        return LlmRequestBudget.resolve(settings == null ? DirectorSettings.defaults() : settings.get(),
+                config == null ? null : config.modelPolicy());
     }
 
     /** SDK and transport share the total deadline; silent reads have an independent limit. */
@@ -63,9 +64,9 @@ public class StoredChatModelFactory {
         return create(config, modelTimeout, readTimeout, config.modelPolicy() == null ? null : requestBudget(config));
     }
     private SpringAiChatGateway create(LlmProviderConfig config, Duration modelTimeout, Duration readTimeout, LlmRequestBudget budget) {
-        if (budget != null && (config.modelPolicy() == null
-                || budget.responseReserveTokens() > config.modelPolicy().maxOutputTokens()
-                || budget.outputParameter() != config.modelPolicy().outputParameter())) throw LlmRequestBudget.unknown();
+        var policy = config.modelPolicy() == null ? LlmModelPolicy.genericDefault() : config.modelPolicy();
+        if (budget != null && (budget.responseReserveTokens() > policy.maxOutputTokens()
+                || budget.outputParameter() != policy.outputParameter())) throw LlmRequestBudget.unknown();
         String secret = cipher.decrypt(config.id(), config.version(),
                 new CredentialCipher.Encrypted(config.credentialCiphertext(),
                         config.credentialNonce(), config.keyVersion()));
@@ -103,6 +104,10 @@ public class StoredChatModelFactory {
 
     SpringAiChatGateway environment(org.springframework.ai.chat.model.ChatModel model, int version) {
         return new SpringAiChatGateway(model, version, imageRelay);
+    }
+
+    SpringAiChatGateway environment(org.springframework.ai.chat.model.ChatModel model, int version, LlmRequestBudget budget) {
+        return new SpringAiChatGateway(model, version, imageRelay, budget);
     }
 
     /** 历史部署密钥已退役时，在预留用量前拒绝创建客户端。 */

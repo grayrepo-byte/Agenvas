@@ -5,6 +5,8 @@ import dev.agenvas.settings.application.LlmModelPolicy;
 import dev.agenvas.settings.application.ModelCatalog;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.ai.chat.messages.SystemMessage;
 import tools.jackson.databind.ObjectMapper;
 
@@ -30,8 +32,14 @@ class LlmRequestBudgetTest {
         assertThat(DirectorSettings.defaults().responseReserveTokens()).isEqualTo(4096);
         assertThat(DirectorSettings.defaults().summaryTokens()).isEqualTo(1024);
     }
-    @Test void missingCapacityDoesNotBecomeTheApplicationCeiling() {
-        assertThatThrownBy(() -> LlmRequestBudget.resolve(DirectorSettings.defaults(), null)).hasMessage("MODEL_CAPACITY_UNKNOWN");
+    @ParameterizedTest @CsvSource({"32768,32768", "2000000,1000000"})
+    void missingCapacityUsesGenericMillionTokenDefaultWithinTheApplicationCeiling(int applicationWindow, int expectedWindow) {
+        var settings = new DirectorSettings(applicationWindow, 50, 8192, 1024, 4, 1440, 288, 300, 4, 1);
+        var budget = LlmRequestBudget.resolve(settings, null);
+        assertThat(budget.contextWindowTokens()).isEqualTo(expectedWindow);
+        assertThat(budget.responseReserveTokens()).isEqualTo(4096);
+        assertThat(budget.inputBudget()).isEqualTo(expectedWindow - 4096);
+        assertThat(budget.outputParameter()).isEqualTo(LlmModelPolicy.OutputParameter.MAX_TOKENS);
     }
     @Test void fourKCapacityStaysFourKAndOutputIsActuallyReserved() {
         var policy = LlmModelPolicy.manual(ModelCatalog.Provider.COMPATIBLE, 4096, null, 1024,

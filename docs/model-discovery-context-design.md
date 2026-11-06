@@ -36,12 +36,19 @@ clients cannot relabel arbitrary values as detected. User overrides are labelled
 manual. Preview does not modify encrypted configurations.
 
 New connection versions persist the selected policy alongside the existing encrypted
-credential. Legacy connections without a capacity policy stay unchanged until edited
-and explicitly saved; opening the form does not modify a saved connection. New
-requests require confirmed capacity; stored complete requests and responses remain immutable. The default global
-application ceiling remains 32768 tokens (not a detected provider capacity), with a
-4096-token response reserve and 1024-token summary. The connection form default does
-not rewrite saved connections or director settings and needs no API or data migration.
+credential. For new requests, an existing capacity policy takes precedence. When no
+policy exists, including legacy database connections and environment configuration,
+resolve a generic 1,000,000-token context, 4,096-token maximum output and MAX_TOKENS
+(`max_tokens`) parameter locally. No metadata request or connection resave is needed
+to resolve this default, and it is not a provider capacity claim. Existing Ollama
+runtime validation still applies. The default global application ceiling remains
+32768 tokens, with a 4096-token response reserve and 1024-token summary; effective
+budgets use the smaller resolved connection and application limits.
+
+Runtime default resolution does not write a policy into legacy database connections,
+change director settings or require an API or data migration. Frozen request budgets
+and responses remain immutable. Historical recovery without a frozen budget is not
+backfilled with the default, and failed old tasks are not resubmitted automatically.
 
 For each new request, effective context is bounded by the selected connection and
 the global application ceiling. Effective output is bounded by the selected output

@@ -15,18 +15,19 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.NullSource;
 import org.springframework.ai.chat.messages.UserMessage;
 import tools.jackson.databind.ObjectMapper;
 
 class LlmOutputBudgetHttpTest {
-    @Test void newDiagnosticRequiresConfirmedCapacityBeforeDecryptingOrDispatching() {
+    @Test void legacyDiagnosticUsesGenericCapacityWithoutRequiringAConfigurationResave() {
         var cipher = mock(CredentialCipher.class);
+        when(cipher.decrypt(any(), anyInt(), any())).thenReturn("synthetic-key");
         var config = new LlmProviderConfig(UUID.randomUUID(), 1, "http://127.0.0.1:1/v1", "synthetic",
                 new byte[]{1}, new byte[]{2}, 1, "masked", false, true, Instant.EPOCH);
         var factory = new StoredChatModelFactory(cipher, new LlmEndpointPolicy(new LlmEndpointProperties(true)));
-        assertThatThrownBy(() -> new StoredLlmDiagnosticGateway(factory).open(config))
-                .hasMessage("MODEL_CAPACITY_UNKNOWN");
-        verifyNoInteractions(cipher);
+        assertThatCode(() -> new StoredLlmDiagnosticGateway(factory).open(config)).doesNotThrowAnyException();
+        assertThat(config.modelPolicy()).isNull();
     }
 
     @Test void unloadedSmallerOrReplacedOllamaRuntimeCannotReachGeneration() {
@@ -57,7 +58,7 @@ class LlmOutputBudgetHttpTest {
         // These failures occur before any generation dispatch.
     }
 
-    @ParameterizedTest @EnumSource(LlmModelPolicy.OutputParameter.class)
+    @ParameterizedTest @EnumSource(LlmModelPolicy.OutputParameter.class) @NullSource
     void frozenOutputLimitIsSentAsExactlyOneSupportedParameter(LlmModelPolicy.OutputParameter parameter) throws Exception {
         var body = new AtomicReference<String>();
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -73,16 +74,16 @@ class LlmOutputBudgetHttpTest {
         try {
             var cipher = mock(CredentialCipher.class);
             when(cipher.decrypt(any(), anyInt(), any())).thenReturn("synthetic-key");
-            var policy = LlmModelPolicy.manual(ModelCatalog.Provider.COMPATIBLE, 4096, null, 1024, parameter);
+            var policy = parameter == null ? null : LlmModelPolicy.manual(ModelCatalog.Provider.COMPATIBLE, 4096, null, 1024, parameter);
             var config = new LlmProviderConfig(UUID.randomUUID(), 1, "http://127.0.0.1:"+server.getAddress().getPort()+"/v1",
                     "synthetic", new byte[]{1}, new byte[]{2}, 1, "masked", true, true, Instant.EPOCH, policy);
             var factory = new StoredChatModelFactory(cipher, new LlmEndpointPolicy(new LlmEndpointProperties(true)));
             var budget = LlmRequestBudget.resolve(DirectorSettings.defaults(), policy);
             factory.create(config, budget).call(List.of(new UserMessage("small synthetic request")), List.of(), Map.of());
             var sent = new ObjectMapper().readTree(body.get());
-            String field = parameter == LlmModelPolicy.OutputParameter.MAX_TOKENS ? "max_tokens" : "max_completion_tokens";
-            String other = parameter == LlmModelPolicy.OutputParameter.MAX_TOKENS ? "max_completion_tokens" : "max_tokens";
-            assertThat(sent.path(field).asInt()).isEqualTo(1024);
+            String field = parameter == LlmModelPolicy.OutputParameter.MAX_COMPLETION_TOKENS ? "max_completion_tokens" : "max_tokens";
+            String other = parameter == LlmModelPolicy.OutputParameter.MAX_COMPLETION_TOKENS ? "max_tokens" : "max_completion_tokens";
+            assertThat(sent.path(field).asInt()).isEqualTo(parameter == null ? 4096 : 1024);
             assertThat(sent.has(other)).isFalse();
         } finally { server.stop(0); }
     }

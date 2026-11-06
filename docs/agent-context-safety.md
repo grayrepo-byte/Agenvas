@@ -36,14 +36,19 @@ The selected output limit and reserve determine the actual `max_tokens` or
 `max_completion_tokens` sent to the API. Choose the parameter supported by the
 specific compatible deployment; reading a model ID does not establish that support.
 
-Migration changes only the untouched initial million-token default settings. Saved
-custom settings and old immutable connection versions are preserved. Legacy versions
-with no confirmed capacity cannot start new model requests: edit and save the model
-connection first, accepting the generic manual defaults or adjusting them. The form
-defaults do not automatically rewrite saved connections or Director Settings; the
-default application ceiling remains 32,768. Existing complete frozen
-requests/responses retain their original envelope; they are not rewritten to pretend
-capacity was known.
+For new requests, an existing capacity policy takes precedence. Legacy database
+connections without a policy and environment configuration use a generic
+1,000,000-token context, 4,096-token maximum output and MAX_TOKENS (`max_tokens`)
+parameter without requiring the connection to be saved again. Resolving this
+default is local and sends no metadata request; it does not establish provider
+capacity or bypass existing Ollama runtime validation. The effective budget still
+uses the smaller connection/application limits.
+
+Saved custom settings and old immutable connection versions are preserved. Runtime
+defaults do not fill the database's missing policy or rewrite Director Settings.
+Existing frozen budgets and responses retain their original envelope. Historical
+recovery without a frozen budget is not backfilled, and failed old tasks are not
+resubmitted automatically.
 
 Ollama `/api/show` advertises model capability; `/api/ps` describes loaded context.
 Automatic capacity needs the exact loaded model (and matching digest when present).

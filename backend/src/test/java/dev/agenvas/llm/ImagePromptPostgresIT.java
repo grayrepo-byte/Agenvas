@@ -19,10 +19,17 @@ import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.llm.application.ChatGateway;
 import dev.agenvas.llm.application.DirectTextGenerationWorker;
+import dev.agenvas.llm.application.LlmProperties;
 import dev.agenvas.llm.application.LlmProtocolCodec;
+import dev.agenvas.llm.application.LlmRequestBudget;
+import dev.agenvas.llm.infrastructure.ConfiguredChatGateway;
+import dev.agenvas.llm.infrastructure.StoredChatModelFactory;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.settings.application.PromptService;
+import dev.agenvas.settings.application.LlmModelPolicy;
+import dev.agenvas.settings.application.LlmProviderConfigRepository;
+import dev.agenvas.settings.application.LlmProviderConfigService;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.api.TaskController;
 import dev.agenvas.task.application.ImagePromptTaskService;
@@ -36,6 +43,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.Base64;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import javax.imageio.ImageIO;
@@ -48,9 +56,11 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -71,12 +81,13 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import tools.jackson.databind.ObjectMapper;
 
-/** Real PostgreSQL, synthetic archived image and fake model: no real Provider or private materials. */
+/** Real PostgreSQL and synthetic images/responses, including the SDK against local HTTP; no real Provider or private materials. */
 @Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = {AgenvasApplication.class, ImagePromptPostgresIT.FakeConfig.class}, properties = {
-        "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
+        "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false",
+        "agenvas.settings.llm.allow-loopback-http=true"})
 class ImagePromptPostgresIT {
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     private static final Path STORAGE = temporaryRoot();
@@ -86,6 +97,7 @@ class ImagePromptPostgresIT {
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("agenvas.storage.root", STORAGE::toString);
+        registry.add("agenvas.credentials.master-key-base64", () -> Base64.getEncoder().encodeToString(new byte[32]));
     }
     @Autowired IdentityService identities;
     @Autowired ProjectService projects;
@@ -101,6 +113,8 @@ class ImagePromptPostgresIT {
     @Autowired DirectTextGenerationWorker worker;
     @Autowired LlmProtocolCodec codec;
     @Autowired FakeGateway gateway;
+    @Autowired LlmProviderConfigService configs;
+    @Autowired LlmProviderConfigRepository configRepository;
     @Autowired JdbcClient jdbc;
     @Autowired ObjectMapper mapper;
     @Autowired WebApplicationContext context;
@@ -111,7 +125,71 @@ class ImagePromptPostgresIT {
         if (owner == null) owner = identities.setup("image-prompt-admin", "synthetic-password-123");
         mvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
-        gateway.failure = false; gateway.calls = 0;
+        gateway.failure = false; gateway.calls = 0; gateway.useStoredConfig = false;
+    }
+
+    @Test void acceptsLegacyConnectionWithFrozenDefaultBudgetAndPublishesItsOriginalImagePrompt() throws Exception {
+        var requests = new java.util.concurrent.atomic.AtomicInteger();
+        var sent = new java.util.concurrent.atomic.AtomicReference<String>();
+        var http = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        http.createContext("/v1/chat/completions", exchange -> {
+            requests.incrementAndGet();
+            sent.set(new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+            byte[] response = ("{\"id\":\"synthetic-image-prompt\",\"object\":\"chat.completion\",\"created\":1,"
+                    + "\"model\":\"synthetic-vision\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\","
+                    + "\"content\":\"Synthetic legacy image prompt.\"},\"finish_reason\":\"stop\"}],"
+                    + "\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":4,\"total_tokens\":9}}")
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response); exchange.close();
+        });
+        http.start();
+        try {
+            var saved = configs.replace(configs.status().version(), "http://127.0.0.1:" + http.getAddress().getPort() + "/v1",
+                    "synthetic-vision", "synthetic-policy-key");
+            var legacy = configRepository.findVersion(saved.version()).orElseThrow();
+            assertThat(legacy.modelPolicy()).isNull();
+            gateway.useStoredConfig = true;
+            var source = source();
+            String body = mapper.createObjectNode().put("canvasItemId", source.item().id().toString())
+                    .put("sourceVersionId", source.version().toString()).put("expectedCanvasItemVersion", source.item().version()).toString();
+            mvc.perform(post(path(source)).with(authentication(auth(owner))).with(csrf()).header("Idempotency-Key", "legacy-capacity")
+                    .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isOk());
+            var accepted = prompts.list(owner.userId(), source.project(), source.artifact(), source.item().id()).getFirst();
+            var frozenInput = accepted.input().deepCopy();
+            assertThat(accepted.input().path("modelConfigSource").asText()).isEqualTo("stored");
+            assertThat(accepted.input().path("modelConfigVersion").asInt()).isEqualTo(saved.version());
+            var budget = codec.requestBudget(accepted.input());
+            assertThat(budget.contextWindowTokens()).isEqualTo(32768);
+            assertThat(budget.responseReserveTokens()).isEqualTo(4096);
+            assertThat(budget.inputBudget()).isEqualTo(28672);
+            assertThat(budget.outputParameter()).isEqualTo(LlmModelPolicy.OutputParameter.MAX_TOKENS);
+
+            assertThat(worker.runOnce("legacy-capacity-worker")).isEqualTo(1);
+            var completed = tasks.get(owner.userId(), source.project(), accepted.id());
+            assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
+            assertThat(completed.input()).isEqualTo(frozenInput);
+            assertThat(codec.requestBudget(completed.output().path("request"))).isEqualTo(budget);
+            assertThat(requests).hasValue(1);
+            var wire = mapper.readTree(sent.get());
+            assertThat(wire.path("max_tokens").asInt()).isEqualTo(4096);
+            assertThat(wire.has("max_completion_tokens")).isFalse();
+            var content = wire.path("messages").get(wire.path("messages").size() - 1).path("content");
+            String imageUrl = java.util.stream.StreamSupport.stream(content.spliterator(), false)
+                    .filter(part -> "image_url".equals(part.path("type").asText()))
+                    .findFirst().orElseThrow().path("image_url").path("url").asText();
+            assertThat(imageUrl).startsWith("data:image/png;base64,");
+            assertThat(Base64.getDecoder().decode(imageUrl.substring(imageUrl.indexOf(',') + 1))).isEqualTo(source.bytes());
+            var result = TaskController.TaskResponse.from(completed).output();
+            assertThat(result.path("prompt").asText()).isEqualTo("Synthetic legacy image prompt.");
+            assertThat(canvas.list(owner.userId(), source.project())).hasSize(2);
+            assertThat(artifacts.get(owner.userId(), source.project(), UUID.fromString(result.path("artifactId").asText()))
+                    .resourceDefaultVersion().content().path("text").asText()).isEqualTo("Synthetic legacy image prompt.");
+            assertThat(configRepository.findVersion(saved.version()).orElseThrow()).usingRecursiveComparison().isEqualTo(legacy);
+            assertThat(configs.status().version()).isEqualTo(saved.version());
+            assertThat(configs.status().modelPolicy()).isNull();
+        } finally { http.stop(0); }
     }
 
     @Test void freezesInputsAndPublishesOneTextCardWithoutChangingTheSource() throws Exception {
@@ -470,12 +548,26 @@ class ImagePromptPostgresIT {
         catch (java.io.IOException failure) { throw new IllegalStateException(failure); }
     }
     @TestConfiguration static class FakeConfig {
-        @Bean @Primary FakeGateway gateway() { return new FakeGateway(); }
+        @Bean @Primary FakeGateway gateway(ObjectProvider<ChatModel> models, LlmProperties properties,
+                LlmProviderConfigRepository configs, StoredChatModelFactory factory) {
+            return new FakeGateway(new ConfiguredChatGateway(models, properties, configs, factory));
+        }
     }
     static class FakeGateway implements ChatGateway {
+        private final ConfiguredChatGateway configured;
         int calls;
         boolean failure;
+        boolean useStoredConfig;
         List<Message> messages;
+        FakeGateway(ConfiguredChatGateway configured) { this.configured = configured; }
+        @Override public LlmRequestBudget requestBudgetFor(ConfigIdentity expected) {
+            return useStoredConfig ? configured.requestBudgetFor(expected) : null;
+        }
+        @Override public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context,
+                ConfigIdentity expected, LlmRequestBudget budget) {
+            return useStoredConfig ? configured.call(messages, tools, context, expected, budget)
+                    : ChatGateway.super.call(messages, tools, context, expected, budget);
+        }
         @Override public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context) {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
             assertThat(tools).isEmpty(); assertThat(context).isEmpty();
@@ -489,8 +581,13 @@ class ImagePromptPostgresIT {
                     .content("Synthetic lakeside, soft morning light.").properties(Map.of("reasoning_content", "private thought")).build()))));
         }
         @Override public Capabilities capabilities() { return new Capabilities(true, false, false); }
-        @Override public int configVersion() { return 1; }
-        @Override public String configSource() { return "mock"; }
-        @Override public ModelDetails modelDetails() { return new ModelDetails(true, "synthetic", "synthetic-vision", true); }
+        @Override public int configVersion() { return useStoredConfig ? configured.configVersion() : 1; }
+        @Override public String configSource() { return useStoredConfig ? configured.configSource() : "mock"; }
+        @Override public ConfigIdentity configIdentity() {
+            return useStoredConfig ? configured.configIdentity() : ChatGateway.super.configIdentity();
+        }
+        @Override public ModelDetails modelDetails() {
+            return useStoredConfig ? configured.modelDetails() : new ModelDetails(true, "synthetic", "synthetic-vision", true);
+        }
     }
 }
