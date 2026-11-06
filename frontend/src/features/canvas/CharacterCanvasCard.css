@@ -1,0 +1,56 @@
+/* Character metadata follows the existing canvas surface and contextual toolbar. */
+.character-canvas-card { min-width: 0; }
+.character-node-body { display: flex; flex-direction: column; gap: 12px; height: 100%; min-height: 0; overflow: auto; padding: 14px; }
+.character-node-overview { display: flex; align-items: flex-start; gap: 14px; min-width: 0; }
+.character-node-portrait { flex: 0 0 88px; height: 118px; overflow: hidden; border: 1px solid var(--ui-canvas-border); border-radius: var(--ui-radius-md); background: var(--ui-surface-raised); }
+.character-reference-image { display: block; width: 100%; height: 100%; object-fit: contain; }
+.character-reference-fallback { display: flex; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 8px; color: var(--ui-text-muted); text-align: center; font-size: var(--ui-text-xs); }
+.character-reference-fallback > svg { width: 32px; height: 32px; flex-shrink: 0; color: var(--ui-text-subtle); }
+.character-node-identity { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 7px; }
+.character-node-heading { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
+.character-node-heading > strong { min-width: 0; flex: 1; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font-size: var(--ui-text-md); line-height: 1.35; }
+.character-node-look { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ui-text-secondary); font-size: var(--ui-text-sm); }
+.character-node-update { align-self: flex-start; }
+.character-node-description { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; color: var(--ui-text-muted); font-size: var(--ui-text-xs); line-height: 1.5; }
+.character-node-reference-count { display: flex; align-items: center; gap: 5px; color: var(--ui-text-secondary); font-size: var(--ui-text-xs); font-variant-numeric: tabular-nums; }
+.character-node-reference-count > svg { flex: none; width: 14px; height: 14px; }
+.character-node-main-actions { display: flex; flex: none; align-items: center; gap: 6px; }
+.character-node-configure { flex: 1; min-width: 0; }
+.character-node-footer { display: flex; flex-direction: column; gap: 8px; margin-top: auto; padding-top: 10px; border-top: 1px solid var(--ui-canvas-border); }
+.character-node-hint { color: var(--ui-text-muted); font-size: var(--ui-text-xs); line-height: 1.5; }
+.character-node-empty-connections, .character-node-connections > summary { display: flex; align-items: center; gap: 6px; color: var(--ui-text-secondary); font-size: var(--ui-text-xs); }
+.character-node-empty-connections > svg, .character-node-connections > summary > svg { width: 14px; height: 14px; flex: none; }
+.character-node-connections > summary { cursor: pointer; list-style: none; padding: 2px 0; }
+.character-node-connections > summary::-webkit-details-marker { display: none; }
+.character-node-connections > summary > svg:last-child { margin-left: auto; }
+.character-node-connections[open] > summary > svg:last-child { transform: rotate(90deg); }
+.character-node-connections > summary:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); border-radius: var(--ui-radius-sm); }
+.character-node-connections > div { display: flex; flex-direction: column; gap: 4px; max-height: 116px; overflow: auto; margin-top: 6px; }
+.character-node-connections button { justify-content: space-between; min-width: 0; }
+.character-node-editor-fields { gap: 14px; }
+.character-node-use-options { display: flex; flex-wrap: wrap; gap: 12px 24px; }
+.character-node-use-options > [data-slot="field"] { width: auto; }
+.character-node-update-prompt { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.character-node-update-prompt > span { flex: 1; min-width: 180px; }
+.character-node-view-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.character-node-view-option { min-width: 0; gap: 8px; padding: 9px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: var(--ui-surface); }
+.character-node-view-option[data-selected="true"] { border-color: var(--ui-focus-border); }
+.character-node-view-image { height: 142px; min-width: 0; overflow: hidden; border-radius: var(--ui-radius-sm); background: var(--ui-surface-raised); }
+.character-node-view-label { display: flex; align-items: flex-start; gap: 7px; }
+.character-node-view-label label { overflow-wrap: anywhere; line-height: 1.45; }
+.character-node-view-description { overflow-wrap: anywhere; color: var(--ui-text-muted); font-size: var(--ui-text-xs); line-height: 1.5; }
+.character-node-picker-row { display: flex; align-items: center; gap: 12px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); padding: 12px; }
+.character-node-picker-portrait { flex: none; width: 44px; height: 58px; overflow: hidden; border-radius: var(--ui-radius-sm); background: var(--ui-surface-raised); }
+.character-node-picker-portrait > svg { width: 100%; height: 100%; padding: 7px; color: var(--ui-text-muted); }
+.character-node-picker-info { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 5px; }
+.character-node-picker-info strong { overflow-wrap: anywhere; font-size: var(--ui-text-sm); }
+.character-node-picker-info > span { color: var(--ui-text-muted); font-size: var(--ui-text-xs); }
+@media (max-width: 600px) { .character-node-view-options { grid-template-columns: repeat(2, minmax(0, 1fr)); } .character-node-view-image { height: 128px; } }
+@media (max-width: 380px) { .character-node-picker-row { flex-wrap: wrap; } .character-node-picker-row > button { margin-left: auto; } }
+
+.character-node-picker .ui-dialog-body { display: flex; flex-direction: column; gap: 12px; }
+.character-node-picker .ui-dialog-body > button { align-self: flex-start; }
+.character-node-target-menu { max-width: min(320px, calc(100vw - 32px)); }
+.character-node-target-menu [role="menuitem"] > span { min-width: 0; flex: 1; }
+
+.character-node-editor .ui-dialog-body { display: flex; flex-direction: column; gap: 14px; }

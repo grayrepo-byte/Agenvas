@@ -27,15 +27,15 @@ function changeLabel(value: string) { const key = CHANGE_LABELS[value]; return k
 
 type Prepared = { result: CharacterNodeBindingPreview; before: MediaDraft; request: ApplyCharacterNodeBindings };
 /** Topology and fixed-selection changes are revalidated server-side when the user explicitly applies. */
-export function CharacterConnectionDialog({ projectId, source, target, readOnly, onClose }: {
-  projectId: string; source?: CanvasItem; target: CanvasItem; readOnly: boolean; onClose: () => void;
+export function CharacterConnectionDialog({ projectId, source, target, readOnly, readOnlyHint, onClose }: {
+  projectId: string; source?: CanvasItem; target: CanvasItem; readOnly: boolean; readOnlyHint?: string; onClose: () => void;
 }) {
   useLocale();
   const client = useQueryClient();
   const id = useId();
   const recoveryKey = `${projectId}:${target.id}`;
   const restored = useRef(useCharacterNodeRecovery.getState().pending[recoveryKey]);
-  const connection = useRef<ConnectCharacterNode | null>(restored.current?.kind === "connection" ? restored.current.request : restored.current ? null : source?.characterNode ? {
+  const connection = useRef<ConnectCharacterNode | null>(restored.current?.kind === "connection" ? restored.current.request : restored.current ? null : source?.characterNode && !source.characterNode.connections.some((edge) => edge.targetCanvasItemId === target.id) ? {
     connectionId: crypto.randomUUID(), sourceCanvasItemId: source.id, targetCanvasItemId: target.id,
     expectedSourceItemVersion: source.version, expectedSourceSelectionVersion: source.characterNode.version,
     expectedTargetItemVersion: target.version,
@@ -173,7 +173,7 @@ export function CharacterConnectionDialog({ projectId, source, target, readOnly,
         <span>{input.role}</span><CharacterReferencePreview projectId={projectId} versionId={input.versionId} kind={input.role === "AUDIO_REFERENCE" ? "AUDIO" : input.role === "VIDEO_REFERENCE" ? "VIDEO" : "IMAGE"} />
       </div>)}</FieldSet>
     </FieldSet> : !busy ? <p>{t("characterNode.previewRequired")}</p> : null}
-    {blocked ? <Alert><AlertDescription>{t("media.editor.editingLocked")}</AlertDescription></Alert> : null}
+    {blocked ? <Alert><AlertDescription>{readOnlyHint ?? t("media.editor.editingLocked")}</AlertDescription></Alert> : null}
     {uncertain ? <Alert><AlertDescription><p>{t("characterNode.reconcile")}</p><p>{t("characterNode.pendingSaved")}</p>
       {error instanceof ApiError && error.status === 404 ? <p>{t("characterNode.receiptMissing")}</p> : null}
       <code className="break-all">{pendingId}</code></AlertDescription></Alert> : null}

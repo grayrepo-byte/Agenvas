@@ -98,7 +98,7 @@ it("keeps reference choices after selection CAS failure and never writes a disab
   mount(<CharacterNodeEditor projectId="project" item={role} readOnly={false} onClose={() => {}} />);
   await userEvent.click(await screen.findByLabelText(/Side/));
   await userEvent.click(screen.getByRole("button", { name: t("character.confirmSave") }));
-  await screen.findByText("Synthetic selection conflict");
+  expect((await screen.findByText("Synthetic selection conflict")).closest("[role=alert]")).toHaveFocus();
   expect(screen.getByLabelText(/Side/)).toBeChecked();
   expect(writes[0]?.selection.viewVersionIds).toEqual(["front", "side"]);
 });
@@ -346,4 +346,44 @@ it("retains an uncertain creation with no projected record across explicit exit 
   await userEvent.click(screen.getByRole("button", { name: t("characterNode.reconcileAction") }));
   await waitFor(() => expect(placed).toHaveBeenCalledOnce());
   expect(writes).toHaveLength(1);
+});
+
+it("gives each image option a short purpose label and preserves a cancelled choice", async () => {
+  const close = vi.fn();
+  mount(<CharacterNodeEditor projectId="project" item={role} readOnly={false} onClose={close} />);
+  const side = await screen.findByRole("checkbox", { name: "Side" });
+  expect(await screen.findByRole("checkbox", { name: "Front" })).toBeChecked();
+  await userEvent.click(side);
+  await userEvent.click(screen.getByRole("button", { name: t("ui.dialog.close") }));
+  await userEvent.click(screen.getByRole("button", { name: t("common.continueEditing") }));
+  expect(side).toBeChecked();
+  expect(close).not.toHaveBeenCalled();
+});
+
+it("accepts only one placement while repeated clicks are waiting for acknowledgement", async () => {
+  let accepted = 0;
+  let finish: (() => void) | undefined;
+  const waiting = new Promise<void>((resolve) => { finish = resolve; });
+  server.use(http.put(`${BASE}/canvas/character-nodes/:id`, async ({ params }) => {
+    accepted += 1; await waiting;
+    return HttpResponse.json({ item: { ...role, id: params.id }, artifact: null, selectedVersion: null, characterNode: role.characterNode });
+  }));
+  const placed = vi.fn();
+  mount(<CharacterNodePlacementDialog projectId="project" point={{x:0,y:0}} zIndex={0} readOnly={false} onClose={() => {}} onManage={() => {}} onPlaced={placed} />);
+  const place = await screen.findByRole("button", { name: t("canvas.place") });
+  await userEvent.dblClick(place);
+  expect(accepted).toBe(1);
+  expect(place).toBeDisabled();
+  finish?.();
+  await waitFor(() => expect(placed).toHaveBeenCalledTimes(1));
+});
+
+it("reopens an existing gesture relationship without creating a second connection", async () => {
+  const calls = installPreview();
+  if (!role.characterNode) throw new Error("Missing role fixture");
+  const connected = {...role, characterNode:{...role.characterNode, connections:[{id:"edge", sourceCanvasItemId:"role", targetCanvasItemId:"shot", version:1}]}};
+  mount(<CharacterConnectionDialog projectId="project" source={connected} target={target} readOnly={false} onClose={() => {}} />);
+  expect(await screen.findByLabelText(t("character.promptAfter"))).toHaveValue("Manual prompt\nHero");
+  expect(calls.connections).toHaveLength(0);
+  expect(calls.previews).toHaveLength(1);
 });

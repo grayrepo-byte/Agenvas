@@ -3,7 +3,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { beforeEach, expect, it } from "vitest";
+import { beforeEach, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { CanvasItem, CharacterProfile, ProjectSnapshot } from "../../shared/api/client";
 import { t } from "../../shared/i18n";
@@ -55,7 +55,7 @@ it("restores the fixed character projection after a snapshot recovery without co
   if (!role.characterNode) throw new Error("Missing role fixture");
   const recovered: CanvasItem = { ...role, characterNode: { ...role.characterNode, newerVersionAvailable: true } };
   act(() => projectCacheCallbacks(client, "project").onSnapshot({ ...snapshot, canvas: { items: [recovered] }, snapshotSeq: 42 }));
-  await waitFor(() => expect(screen.getByText(t("character.outdated"))).toBeVisible());
+  await waitFor(() => expect(screen.getByText(t("characterNode.updateAvailable"))).toBeVisible());
   expect(screen.getByText("v3")).toBeVisible();
   expect(client.getQueryData<{ items: CanvasItem[] }>(["canvas", "project"])?.items[0]?.artifact).toBeNull();
 });
@@ -91,4 +91,70 @@ it("deletes only canvas topology and explains that applied frozen drafts remain"
   await userEvent.click(await screen.findByRole("button", { name: t("canvas.card.remove") }));
   expect(await screen.findByText(t("characterNode.retained"))).toBeVisible();
   expect(removals).toEqual([{ commands: [{ type: "REMOVE", itemId: "role", expectedVersion: 1 }] }]);
+});
+
+it("offers configuration without selecting the node and labels its toolbar as a character reference", async () => {
+  show();
+  const configure = await screen.findByRole("button", { name: t("characterNode.configure") });
+  expect(configure).toBeVisible();
+  expect(screen.getByText(t("characterNode.textOnly"))).toBeVisible();
+  act(() => useCanvasStore.getState().setSelectedIds([role.id]));
+  expect(await screen.findByText(t("characterNode.referenceSource"))).toBeVisible();
+  expect(screen.queryByText(t("canvas.studio.draft"))).not.toBeInTheDocument();
+  await userEvent.click(configure);
+  expect(await screen.findByRole("dialog", { name: t("characterNode.fixedSelection") })).toBeVisible();
+});
+
+it("offers a keyboard connection menu that previews without generating", async () => {
+  const target: CanvasItem = { ...role, id: "target", subjectType: "ARTIFACT", subjectId: "image", characterNode: null, title: "Scene image",
+    artifact: { id: "image", projectId: "project", kind: "IMAGE", title: "Scene image", version: 0, resourceDefaultVersion: null, resourceDefaultVersionId: null, createdAt: NOW, updatedAt: NOW } };
+  const items = [role, target]; const connections: unknown[] = [];
+  server.use(http.get("/api/v1/projects/project/snapshot", () => HttpResponse.json({ ...snapshot, canvas: {items} })),
+    http.get("/api/v1/projects/project/canvas/editor", () => HttpResponse.json({items,groups:[]})),
+    http.get("/api/v1/projects/project/canvas/items", () => HttpResponse.json({items})),
+    http.get("/api/v1/projects/project/canvas-items/target/media-draft", () => HttpResponse.json({projectId:"project",canvasItemId:"target",version:0,createdAt:NOW,updatedAt:NOW,prompt:"",parameters:{},durationSeconds:null,capabilityId:null,videoInputMode:null,styleId:null,mediaInputs:[],mentions:[],displayMode:"DRAFT"})),
+    http.post("/api/v1/projects/project/canvas/character-connections",async({request})=>{connections.push(await request.json());return HttpResponse.json({id:"edge",sourceCanvasItemId:"role",targetCanvasItemId:"target",version:0});}),
+    http.post("/api/v1/projects/project/canvas-items/target/character-node-bindings/preview",()=>HttpResponse.json({title:"Unsupported",detail:"Synthetic model rejects references",code:"VALIDATION_ERROR"},{status:400,headers:{"Content-Type":"application/problem+json"}})));
+  const client = show();
+  const connect = await screen.findByRole("button", { name: t("characterNode.connectShot") });
+  connect.focus(); await userEvent.keyboard("{Enter}");
+  await screen.findByRole("menuitem", {name:"Scene image"});
+  await userEvent.keyboard("{ArrowDown}{Enter}");
+  expect(await screen.findByRole("dialog", {name:t("characterNode.connectPreview")})).toBeVisible();
+  await screen.findByText("Synthetic model rejects references");
+  expect(connections).toHaveLength(1);
+  expect(screen.getByRole("button", {name:t("character.applyDraft")})).toBeDisabled();
+  await userEvent.click(screen.getByRole("button", {name:t("ui.dialog.close")}));
+  act(() => client.setQueryData(["canvas", "project"], {items:[{...role, characterNode:{...role.characterNode, connections:[{id:"edge",sourceCanvasItemId:"role",targetCanvasItemId:"target",version:0}]}},target]}));
+  await userEvent.click(screen.getByRole("button", {name:t("characterNode.connectShot")}));
+  const existingTarget = await screen.findByRole("menuitem", {name:"Scene image"});
+  expect(existingTarget).toHaveAccessibleDescription(t("characterNode.alreadyConnected"));
+  await userEvent.click(existingTarget);
+  await screen.findByText("Synthetic model rejects references");
+  expect(connections).toHaveLength(1);
+});
+
+it("keeps character placement and fixed selection read-only on narrow viewports", async () => {
+  vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+  try {
+    show();
+    await screen.findByText("Flight suit");
+    await userEvent.click(screen.getByRole("button", { name: t("characterNode.configure") }));
+    expect(await screen.findByRole("button", { name: t("character.confirmSave") })).toBeDisabled();
+    expect(screen.getByLabelText(t("character.lookName"))).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: t("ui.dialog.close") }));
+    await userEvent.click(screen.getByRole("button", { name: t("characterNode.place") }));
+    expect(await screen.findByRole("button", { name: t("canvas.place") })).toBeDisabled();
+  } finally { vi.unstubAllGlobals(); }
+});
+
+it("distinguishes a library update from the node's fixed project revision", async () => {
+  server.use(http.get("/api/v1/projects/project/character-library/links", () => HttpResponse.json({items:[{
+    characterId:"hero",libraryId:"library",libraryVersion:1,currentLibraryVersion:2,libraryArchived:false,projectCharacterVersion:3,hasUpdate:true,
+  }]})));
+  show();
+  const update = await screen.findByText(t("characterNode.libraryUpdate"));
+  expect(update).toHaveAttribute("title", t("characterNode.libraryUpdateHint"));
+  expect(screen.getByText("v3")).toBeVisible();
+  expect(screen.queryByText(t("characterNode.updateAvailable"))).not.toBeInTheDocument();
 });

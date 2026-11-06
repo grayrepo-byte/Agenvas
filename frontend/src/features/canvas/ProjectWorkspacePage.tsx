@@ -183,6 +183,8 @@ type CanvasNodeData = {
   connectionTarget: "valid" | "invalid" | null;
   onEditCharacter: (item: CanvasItem) => void;
   onPreviewCharacterTarget: (targetId: string) => void;
+  onConnectCharacterTarget: (sourceId: string, targetId: string) => void;
+  characterReadOnly: boolean;
   characterLabel: string | null;
   characterNeedsReview: boolean;
 };
@@ -207,6 +209,15 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const focusedTrySkill = useRef<string | null>(null);
   useLocale();
   const queryClient = useQueryClient();
+  // Match the workspace's existing read-only breakpoint, including open dialogs.
+  const [characterNarrow, setCharacterNarrow] = useState(() => window.matchMedia?.("(max-width: 1023px)").matches ?? false);
+  useEffect(() => {
+    const media = window.matchMedia?.("(max-width: 1023px)");
+    if (!media) return;
+    const update = () => setCharacterNarrow(media.matches);
+    media.addEventListener?.("change", update);
+    return () => media.removeEventListener?.("change", update);
+  }, []);
   const uploadInput = useRef<HTMLInputElement>(null);
   const uploadPoint = useRef<CreationPoint | null>(null);
   const uploadProgress = useRef<UploadIntent | null>(null);
@@ -915,6 +926,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               projectId,
               onEditCharacter: (item) => setCharacterEditorId(item.id),
               onPreviewCharacterTarget: (targetId) => setCharacterConnection({ targetId, key: crypto.randomUUID() }),
+              onConnectCharacterTarget: (sourceId, targetId) => setCharacterConnection({ sourceId, targetId, key: crypto.randomUUID() }),
+              characterReadOnly: characterNarrow || project.data?.status !== "ACTIVE",
               characterLabel: bindingsByItem.get(item.id)?.snapshots.map((snapshot) => `${snapshot.name} v${snapshot.characterVersion}`).join(" · ") || null,
               characterNeedsReview: Boolean(bindingsByItem.get(item.id)?.needsReview || (bindingsByItem.get(item.id) && characterBindingStale(bindingsByItem.get(item.id)!, characters.data?.characters ?? []))),
               onResizeEnd: handleResizeEnd,
@@ -940,6 +953,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     ],
     [
       canvas.data?.items,
+      characterNarrow,
       organization,
       lockedItemIds,
       groupDropTargetId,
@@ -964,6 +978,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       handleToggleLocked,
       handleDuplicate,
       mediaRatios,
+      project.data?.status,
       projectId,
       selectedIds,
       selecting,
@@ -1701,18 +1716,18 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         mode={organization.dialog.mode} busy={organization.busy} retrying={Boolean(editing.error)}
         onSave={organization.saveGroup} onClose={organization.closeDialog} /> : null}
       {characterPlacement ? <CharacterNodePlacementDialog projectId={projectId} point={characterPlacement.point} initialProfileId={characterPlacement.profileId}
-        zIndex={canvas.data?.items.length ?? 0} readOnly={project.data?.status !== "ACTIVE"} onClose={() => setCharacterPlacement(null)}
+        zIndex={canvas.data?.items.length ?? 0} readOnly={characterNarrow || project.data?.status !== "ACTIVE"} readOnlyHint={characterNarrow ? t("canvas.workspace.viewportHint") : undefined} onClose={() => setCharacterPlacement(null)}
         onManage={() => setCharactersOpen(true)} onPlaced={(item) => {
           queryClient.setQueryData<Canvas>(["canvas", projectId], (current) => ({ items: [...(current?.items ?? []).filter((entry) => entry.id !== item.id), item] }));
           setSelectedIds([item.id], CANVAS_SELECTION_MODE.SINGLE); setCharacterPlacement(null);
           void queryClient.invalidateQueries({ queryKey: ["canvas-editor", projectId] });
         }} /> : null}
       {characterEditorItem ? <CharacterNodeEditor projectId={projectId}
-        item={characterEditorItem} readOnly={project.data?.status !== "ACTIVE"}
+        item={characterEditorItem} readOnly={characterNarrow || project.data?.status !== "ACTIVE"} readOnlyHint={characterNarrow ? t("canvas.workspace.viewportHint") : undefined}
         onClose={() => setCharacterEditorId(null)} /> : null}
       {characterConnection && characterConnectionTarget ? <CharacterConnectionDialog key={characterConnection.key}
         projectId={projectId} source={canvas.data?.items.find((item) => item.id === characterConnection.sourceId)}
-        target={characterConnectionTarget} readOnly={project.data?.status !== "ACTIVE"}
+        target={characterConnectionTarget} readOnly={characterNarrow || project.data?.status !== "ACTIVE"} readOnlyHint={characterNarrow ? t("canvas.workspace.viewportHint") : undefined}
         onClose={() => setCharacterConnection(null)} /> : null}
       {charactersOpen ? <CharacterManagerDialog projectId={projectId} onClose={() => setCharactersOpen(false)} /> : null}
       {videoEditIds ? <VideoEditDialog projectId={projectId} items={canvas.data?.items ?? []} initialIds={videoEditIds} onClose={() => setVideoEditIds(null)} /> : null}
@@ -1730,12 +1745,13 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
     selected={selected} onToggle={() => data.onToggleSelection(data.item.id)} /> : null;
   const artifact = data.item.artifact;
   if (data.item.characterNode) return <>
-    <CanvasHandle id="artifact-output" />{halo}{selectionControl}
+    <CanvasHandle id="artifact-output" label={t("characterNode.connectPurpose")} />{halo}{selectionControl}
     <CharacterCanvasCard item={data.item} projectId={data.projectId} selected={selected || data.dragging}
       toolbarVisible={data.toolbarVisible} onEdit={() => data.onEditCharacter(data.item)}
       onDuplicate={() => data.onDuplicate(data.item)} onRemove={() => data.onRemove(data.item)} onToggleLocked={() => data.onToggleLocked(data.item)}
-      onPreviewTarget={data.onPreviewCharacterTarget}>
-      <NodeResizer isVisible={selected && data.toolbarVisible && !data.item.locked} minWidth={240} minHeight={200}
+      onPreviewTarget={data.onPreviewCharacterTarget} readOnly={data.characterReadOnly}
+      onConnectTarget={(targetId) => data.onConnectCharacterTarget(data.item.id, targetId)}>
+      <NodeResizer isVisible={selected && data.toolbarVisible && !data.item.locked && !data.characterReadOnly} minWidth={320} minHeight={300}
         onResizeEnd={(_, layout) => data.onResizeEnd(data.item.id, layout)} />
     </CharacterCanvasCard>
   </>;
