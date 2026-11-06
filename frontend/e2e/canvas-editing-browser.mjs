@@ -118,13 +118,31 @@ async function navigate(baseUrl, nextLocale = "zh", { motionLarge = false } = {}
   await ready(motionLarge ? 100 : undefined);
 }
 async function zoomToFirstCard() {
-  // Native wheel zoom stays anchored to the first card, even with another 99 cards in view.
+  // A large-canvas fit can leave the first title under the fixed header. Pan from
+  // blank canvas before zooming on its title; text bodies intentionally own wheel input.
+  const placement = await page((selector) => {
+    const box = document.querySelector(selector).getBoundingClientRect();
+    let pane;
+    for (let y = 120; y < innerHeight - 120 && !pane; y += 40)
+      for (let x = 120; x < innerWidth - 120; x += 40)
+        if (document.elementFromPoint(x, y)?.classList.contains("react-flow__pane")) { pane = { x, y }; break; }
+    return { pane, dx: innerWidth / 2 - box.x - box.width / 2,
+      dy: innerHeight / 3 - box.y - box.height / 2 };
+  }, card("synthetic-card-0"));
+  assert.ok(placement.pane, "The close-up starts from a hittable blank canvas region");
+  await clickNamed("button", "canvas.tools.handTool");
+  await dragFromPoint(placement.pane, placement.dx, placement.dy);
+  await waitForStableViewport();
+  await clickNamed("button", "canvas.tools.selectionTool");
   for (let attempt = 0; attempt < 6; attempt++) {
     const box = await page((selector) => document.querySelector(selector).getBoundingClientRect().toJSON(), card("synthetic-card-0"));
     if (box.width >= 250) break;
-    await cdp("Input.dispatchMouseEvent", { type: "mouseWheel", x: box.x + box.width / 2, y: box.y + box.height / 2, deltaX: 0, deltaY: -280 });
-    await pause(120);
+    const anchor = await point(`${card("synthetic-card-0")} .artifact-card-title-icon`);
+    await cdp("Input.dispatchMouseEvent", { type: "mouseWheel", ...anchor, deltaX: 0, deltaY: -280 });
+    await waitForStableViewport();
   }
+  assert.ok(await page((selector) => document.querySelector(selector).getBoundingClientRect().width >= 250,
+    card("synthetic-card-0")), "Native wheel reaches a usable card close-up");
   await click(`${card("synthetic-card-0")} .artifact-card-title-icon`);
   await waitFor(() => document.querySelector('.react-flow__node[data-id="synthetic-card-0"]')?.classList.contains("selected"));
   await waitForStableViewport();
