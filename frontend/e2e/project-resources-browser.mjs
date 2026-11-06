@@ -100,7 +100,11 @@ try {
         return { width: drawer.clientWidth, scrollWidth: drawer.scrollWidth, screenWidth: innerWidth,
           bounds: drawer.getBoundingClientRect().toJSON(),
           previews: [...document.querySelectorAll(".project-resource-preview")].map(button => {
-            const box = button.getBoundingClientRect(); return { width: box.width, height: box.height };
+            const box = button.getBoundingClientRect();
+            const thumbnail = button.querySelector(".project-resource-thumbnail").getBoundingClientRect();
+            return { width: box.width, height: box.height, top: box.top, bottom: box.bottom,
+              thumbnail: { top: thumbnail.top, bottom: thumbnail.bottom },
+              copyTop: button.closest(".project-resource-card").querySelector(".project-resource-copy").getBoundingClientRect().top };
           }),
           autoplay: Boolean(document.querySelector("video[autoplay],audio[autoplay]")),
         };
@@ -108,7 +112,12 @@ try {
       assert.equal(layout.width, layout.scrollWidth, `No horizontal overflow at ${viewport.width}/${locale}`);
       assert.ok(layout.bounds.left >= 0 && layout.bounds.right <= viewport.width);
       assert.equal(layout.autoplay, false);
-      for (const preview of layout.previews) assert.ok(preview.width > 90 && preview.height > 60, "Thumbnails reserve visible space");
+      for (const preview of layout.previews) {
+        assert.ok(preview.width > 90 && preview.height > 60, "Thumbnails reserve visible space");
+        assert.ok(preview.thumbnail.top >= preview.top && preview.thumbnail.bottom <= preview.bottom,
+          "The whole thumbnail must fit inside its clickable preview");
+        assert.ok(preview.copyTop >= preview.thumbnail.bottom, "Result labels must stay below the thumbnail");
+      }
       if (locale === "zh" && viewport.width === 1440 && process.env.AGENVAS_RESOURCES_SCREENSHOT) {
         const capture = await cdp("Page.captureScreenshot", { format: "png", clip: { x: layout.bounds.x, y: layout.bounds.y,
           width: layout.bounds.width, height: layout.bounds.height, scale: 1 } });
