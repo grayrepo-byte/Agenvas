@@ -20,6 +20,8 @@ import dev.agenvas.db.tables.CanvasEditReceipt;
 import dev.agenvas.db.tables.CanvasItem;
 import dev.agenvas.db.tables.CanvasItemMediaInput;
 import dev.agenvas.db.tables.CanvasItemMediaInputSource;
+import dev.agenvas.db.tables.CharacterLibraryCleanup;
+import dev.agenvas.db.tables.CharacterLibraryCommand;
 import dev.agenvas.db.tables.CreativeSkill;
 import dev.agenvas.db.tables.IdempotencyRecord;
 import dev.agenvas.db.tables.LibraryCleanup;
@@ -76,6 +78,8 @@ public class Indexes {
     public static final Index IX_CANVAS_CONNECTION_TARGET = Internal.createIndex(DSL.name("ix_canvas_connection_target"), CanvasConnection.CANVAS_CONNECTION, new OrderField[] { CanvasConnection.CANVAS_CONNECTION.PROJECT_ID, CanvasConnection.CANVAS_CONNECTION.TARGET_CANVAS_ITEM_ID }, false);
     public static final Index IX_CANVAS_ITEM_PROJECT = Internal.createIndex(DSL.name("ix_canvas_item_project"), CanvasItem.CANVAS_ITEM, new OrderField[] { CanvasItem.CANVAS_ITEM.PROJECT_ID, CanvasItem.CANVAS_ITEM.Z_INDEX, CanvasItem.CANVAS_ITEM.ID }, false);
     public static final Index IX_CANVAS_ITEM_SUBJECT = Internal.createIndex(DSL.name("ix_canvas_item_subject"), CanvasItem.CANVAS_ITEM, new OrderField[] { CanvasItem.CANVAS_ITEM.PROJECT_ID, CanvasItem.CANVAS_ITEM.SUBJECT_TYPE, CanvasItem.CANVAS_ITEM.SUBJECT_ID }, false);
+    public static final Index IX_CHARACTER_LIBRARY_CLEANUP = Internal.createIndex(DSL.name("ix_character_library_cleanup"), CharacterLibraryCleanup.CHARACTER_LIBRARY_CLEANUP, new OrderField[] { CharacterLibraryCleanup.CHARACTER_LIBRARY_CLEANUP.AVAILABLE_AT }, false);
+    public static final Index IX_CHARACTER_LIBRARY_QUEUE = Internal.createIndex(DSL.name("ix_character_library_queue"), CharacterLibraryCommand.CHARACTER_LIBRARY_COMMAND, new OrderField[] { CharacterLibraryCommand.CHARACTER_LIBRARY_COMMAND.STATUS, CharacterLibraryCommand.CHARACTER_LIBRARY_COMMAND.LEASE_UNTIL, CharacterLibraryCommand.CHARACTER_LIBRARY_COMMAND.CREATED_AT }, false);
     public static final Index IX_CHARACTER_MEMBER_IMPACT = Internal.createIndex(DSL.name("ix_character_member_impact"), CanvasCharacterBindingMember.CANVAS_CHARACTER_BINDING_MEMBER, new OrderField[] { CanvasCharacterBindingMember.CANVAS_CHARACTER_BINDING_MEMBER.PROJECT_ID, CanvasCharacterBindingMember.CANVAS_CHARACTER_BINDING_MEMBER.CHARACTER_ID, CanvasCharacterBindingMember.CANVAS_CHARACTER_BINDING_MEMBER.CANVAS_ITEM_ID }, false);
     public static final Index IX_CONVERSATION_AGENT_UPDATED = Internal.createIndex(DSL.name("ix_conversation_agent_updated"), AgentConversation.AGENT_CONVERSATION, new OrderField[] { AgentConversation.AGENT_CONVERSATION.PROJECT_ID, AgentConversation.AGENT_CONVERSATION.AGENT_INSTANCE_ID, AgentConversation.AGENT_CONVERSATION.UPDATED_AT.desc(), AgentConversation.AGENT_CONVERSATION.ID.desc() }, false);
     public static final Index IX_CREATIVE_SKILL_LIST = Internal.createIndex(DSL.name("ix_creative_skill_list"), CreativeSkill.CREATIVE_SKILL, new OrderField[] { CreativeSkill.CREATIVE_SKILL.OWNER_ID, CreativeSkill.CREATIVE_SKILL.TRASHED_AT, CreativeSkill.CREATIVE_SKILL.UPDATED_AT.desc(), CreativeSkill.CREATIVE_SKILL.ID.desc() }, false);

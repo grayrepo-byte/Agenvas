@@ -13,6 +13,7 @@ import dev.agenvas.db.tables.AppUser.AppUserPath;
 import dev.agenvas.db.tables.Artifact.ArtifactPath;
 import dev.agenvas.db.tables.Asset.AssetPath;
 import dev.agenvas.db.tables.AssetStorageRoute.AssetStorageRoutePath;
+import dev.agenvas.db.tables.CanvasCharacterCommand.CanvasCharacterCommandPath;
 import dev.agenvas.db.tables.CanvasEditCommand.CanvasEditCommandPath;
 import dev.agenvas.db.tables.CanvasEditReceipt.CanvasEditReceiptPath;
 import dev.agenvas.db.tables.CanvasGroup.CanvasGroupPath;
@@ -294,6 +295,19 @@ public class Project extends TableImpl<ProjectRecord> {
             _asset = new AssetPath(this, null, Keys.ASSET__FK_ASSET_PROJECT.getInverseKey());
 
         return _asset;
+    }
+
+    private transient CanvasCharacterCommandPath _canvasCharacterCommand;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.canvas_character_command</code> table
+     */
+    public CanvasCharacterCommandPath canvasCharacterCommand() {
+        if (_canvasCharacterCommand == null)
+            _canvasCharacterCommand = new CanvasCharacterCommandPath(this, null, Keys.CANVAS_CHARACTER_COMMAND__FK_CANVAS_CHARACTER_COMMAND_PROJECT.getInverseKey());
+
+        return _canvasCharacterCommand;
     }
 
     private transient CanvasEditCommandPath _canvasEditCommand;

@@ -206,6 +206,24 @@ public class CanvasCharacterBindingRecord extends UpdatableRecordImpl<CanvasChar
         return (OffsetDateTime) get(10);
     }
 
+    /**
+     * Setter for
+     * <code>public.canvas_character_binding.node_character_ids_json</code>.
+     * schemaVersion=1：上次明确节点应用拥有的角色身份；普通手动应用清空来源，节点应用保留其他角色
+     */
+    public void setNodeCharacterIdsJson(JSONB value) {
+        set(11, value);
+    }
+
+    /**
+     * Getter for
+     * <code>public.canvas_character_binding.node_character_ids_json</code>.
+     * schemaVersion=1：上次明确节点应用拥有的角色身份；普通手动应用清空来源，节点应用保留其他角色
+     */
+    public JSONB getNodeCharacterIdsJson() {
+        return (JSONB) get(11);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -229,7 +247,7 @@ public class CanvasCharacterBindingRecord extends UpdatableRecordImpl<CanvasChar
     /**
      * Create a detached, initialised CanvasCharacterBindingRecord
      */
-    public CanvasCharacterBindingRecord(UUID projectId, UUID canvasItemId, Long version, Long draftVersion, JSONB snapshotsJson, JSONB draftStateJson, Boolean needsReview, Long reviewedDraftVersion, UUID reviewedSelectedVersionId, OffsetDateTime reviewedAt, OffsetDateTime updatedAt) {
+    public CanvasCharacterBindingRecord(UUID projectId, UUID canvasItemId, Long version, Long draftVersion, JSONB snapshotsJson, JSONB draftStateJson, Boolean needsReview, Long reviewedDraftVersion, UUID reviewedSelectedVersionId, OffsetDateTime reviewedAt, OffsetDateTime updatedAt, JSONB nodeCharacterIdsJson) {
         super(CanvasCharacterBinding.CANVAS_CHARACTER_BINDING);
 
         setProjectId(projectId);
@@ -243,6 +261,7 @@ public class CanvasCharacterBindingRecord extends UpdatableRecordImpl<CanvasChar
         setReviewedSelectedVersionId(reviewedSelectedVersionId);
         setReviewedAt(reviewedAt);
         setUpdatedAt(updatedAt);
+        setNodeCharacterIdsJson(nodeCharacterIdsJson);
         resetChangedOnNotNull();
     }
 }

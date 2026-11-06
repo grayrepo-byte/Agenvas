@@ -255,7 +255,8 @@ public class CanvasController {
             boolean locked,
             long version,
             ArtifactResponse artifact,
-            ArtifactVersionResponse selectedVersion) {
+            ArtifactVersionResponse selectedVersion,
+            dev.agenvas.canvas.application.CanvasCharacterNodeModels.CharacterNode characterNode) {
 
         /** 布局与不可变媒体版本分别投影。 */
         static CanvasItemResponse from(CanvasService.CanvasEntry entry) {
@@ -276,7 +277,8 @@ public class CanvasController {
                     item.version(),
                     entry.artifact() == null ? null : ArtifactResponse.from(entry.artifact()),
                     entry.selectedVersion() == null ? null
-                            : ArtifactVersionResponse.from(entry.selectedVersion()));
+                            : ArtifactVersionResponse.from(entry.selectedVersion()),
+                    entry.characterNode());
         }
     }
 }

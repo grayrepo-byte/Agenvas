@@ -1,6 +1,7 @@
 package dev.agenvas.export.application;
 
 import dev.agenvas.artifact.application.ArtifactService;
+
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.asset.application.AssetService;
@@ -37,7 +38,7 @@ import tools.jackson.databind.node.ObjectNode;
 /** 按所有者读取项目，并只导出明确允许的非密钥配置、产物历史及媒体元数据。 */
 @Service
 public class ProjectExportManifestService {
-    private static final int MANIFEST_SCHEMA_VERSION = 11;
+    private static final int MANIFEST_SCHEMA_VERSION = 12;
 
     /** 校验项目所有者并读取一致性快照中的项目版本。 */
     private final ProjectService projects;
@@ -139,7 +140,7 @@ public class ProjectExportManifestService {
         CanvasItem item = entry.item();
         MediaDraftEntry draft = null;
         List<UUID> mediaVersionIds = List.of();
-        if (entry.artifact().artifact().kind() != Artifact.Kind.TEXT) {
+        if (entry.artifact() != null && entry.artifact().artifact().kind() != Artifact.Kind.TEXT) {
             draft = mediaDraftEntry(mediaDrafts.get(ownerId, projectId, item.id()));
             mediaVersionIds = canvas.listMediaVersions(ownerId, projectId, item.id()).stream()
                     .map(ArtifactVersion::id).toList();
@@ -147,7 +148,8 @@ public class ProjectExportManifestService {
         return new CanvasItemEntry(item.id(), item.subjectType(), item.subjectId(),
                 item.selectedVersionId(), item.title(), item.x(), item.y(), item.width(),
                 item.height(), item.zIndex(), item.groupId(), item.locked(), item.version(),
-                mediaVersionIds, draft);
+                mediaVersionIds, draft,
+                entry.characterNode());
     }
 
     private MediaDraftEntry mediaDraftEntry(MediaDraft draft) {
@@ -232,7 +234,8 @@ public class ProjectExportManifestService {
             UUID selectedVersionId, String title, java.math.BigDecimal x,
             java.math.BigDecimal y, java.math.BigDecimal width, java.math.BigDecimal height,
             int zIndex, UUID groupId, boolean locked, long version,
-            List<UUID> mediaVersionIds, MediaDraftEntry mediaDraft) {}
+            List<UUID> mediaVersionIds, MediaDraftEntry mediaDraft,
+            dev.agenvas.canvas.application.CanvasCharacterNodeModels.CharacterNode characterNode) {}
 
     /** Complete safe generation state for one image or video card. */
     public record MediaDraftEntry(String prompt, JsonNode parameters, Integer durationSeconds,

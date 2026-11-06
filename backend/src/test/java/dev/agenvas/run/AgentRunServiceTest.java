@@ -134,12 +134,27 @@ class AgentRunServiceTest {
         var textVersion = mock(ArtifactVersion.class);
         when(textVersion.id()).thenReturn(textVersionId);
         var textView = new ArtifactService.ArtifactView(text, textVersion);
+        UUID characterNodeId = UUID.randomUUID(), characterId = UUID.randomUUID(), lookId = UUID.randomUUID();
+        UUID privateImage = UUID.randomUUID();
+        var characterNode = mock(CanvasItem.class);
+        when(characterNode.id()).thenReturn(characterNodeId);
+        when(characterNode.subjectId()).thenReturn(characterId);
+        when(characterNode.subjectType()).thenReturn(CanvasItem.SubjectType.CHARACTER);
+        var look = new dev.agenvas.character.application.CharacterModels.CharacterLook(lookId, "Winter", "", "", "",
+                List.of(new dev.agenvas.character.application.CharacterModels.CharacterView(privateImage, "front", "")));
+        var snapshot = new dev.agenvas.character.application.CharacterModels.CharacterSnapshot(characterId, 3, "Aster",
+                "Private persona", look, null, true, false);
+        var selection = new dev.agenvas.canvas.application.CanvasCharacterNodeModels.Selection(characterId, 3, lookId,
+                List.of(privateImage), true, false);
+        var role = new dev.agenvas.canvas.application.CanvasCharacterNodeModels.CharacterNode(characterNodeId, selection,
+                snapshot, 2, true, List.of());
         when(canvas.list(owner, projectId)).thenReturn(List.of(new CanvasService.CanvasEntry(imageNode, view, result),
                 new CanvasService.CanvasEntry(emptyNode, view, null),
-                new CanvasService.CanvasEntry(textNode, textView, null)));
+                new CanvasService.CanvasEntry(textNode, textView, null),
+                new CanvasService.CanvasEntry(characterNode, null, null, role)));
 
         var run = service.create(owner, projectId, agentId, "Use image", "synthetic-request", null,
-                List.of(imageNodeId, emptyNodeId, textNodeId)).run();
+                List.of(imageNodeId, emptyNodeId, textNodeId, characterNodeId)).run();
         assertThat(run.contextSnapshot().has("bindings")).isFalse();
         assertThat(run.contextSnapshot().has("outputGroupId")).isFalse();
         assertThat(run.contextSnapshot().has("canvasScope")).isFalse();
@@ -149,6 +164,11 @@ class AgentRunServiceTest {
         assertThat(run.contextSnapshot().at("/selection/1").has("versionId")).isFalse();
         assertThat(run.contextSnapshot().at("/selection/2/kind").asText()).isEqualTo("TEXT");
         assertThat(run.contextSnapshot().at("/selection/2/versionId").asText()).isEqualTo(textVersionId.toString());
+        assertThat(run.contextSnapshot().at("/selection/3/kind").asText()).isEqualTo("CHARACTER");
+        assertThat(run.contextSnapshot().at("/selection/3/characterVersion").asLong()).isEqualTo(3);
+        assertThat(run.contextSnapshot().at("/selection/3/characterNodeVersion").asLong()).isEqualTo(2);
+        assertThat(run.contextSnapshot().at("/selection/3/lookId").asText()).isEqualTo(lookId.toString());
+        assertThat(run.contextSnapshot().toString()).doesNotContain(privateImage.toString(), "Private persona");
         verify(rows).create(run);
         verify(tasks).createInitialTurn(projectId, run.id(), NOW);
         verify(canvas).list(owner, projectId);

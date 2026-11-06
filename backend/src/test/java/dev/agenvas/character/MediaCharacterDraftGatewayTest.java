@@ -47,7 +47,7 @@ class MediaCharacterDraftGatewayTest {
         when(artifacts.get(owner, project, artifact)).thenReturn(new ArtifactService.ArtifactView(media, null));
         when(drafts.pruneRemovedMentions(anyString(), anyList(), anyList())).thenAnswer(invocation -> invocation.getArgument(0));
         when(drafts.previewSave(eq(owner), eq(project), eq(item), anyLong(), anyString(), any(), any(), any(), any(), anyList(), anyList(), any()))
-                .thenAnswer(invocation -> candidate(invocation.getArgument(4), invocation.getArgument(5), invocation.getArgument(9)));
+                .thenAnswer(invocation -> candidate(invocation.getArgument(4), invocation.getArgument(5), invocation.getArgument(8), invocation.getArgument(9)));
     }
 
     @Test
@@ -192,6 +192,53 @@ class MediaCharacterDraftGatewayTest {
                 .isInstanceOfSatisfying(ApiProblemException.class, error -> assertThat(error.code()).isEqualTo("CHARACTER_INPUT_INCOMPATIBLE"));
     }
 
+    @Test
+    void sameImageUsedAsFirstFrameCannotMasqueradeAsCharacterReferenceForFirstFrameOnlyVideo() {
+        UUID reference = UUID.randomUUID();
+        videoFrameFixture(reference, java.util.Set.of("START_END"));
+        assertThatThrownBy(() -> gateway.preview(owner, project, item, 4, DraftState.empty(),
+                List.of(snapshot(reference)), ClearMode.REMOVE_OWNED))
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        error -> assertThat(error.code()).isEqualTo("CHARACTER_INPUT_INCOMPATIBLE"));
+        verify(drafts, never()).previewSave(any(), any(), any(), anyLong(), anyString(), any(), any(), any(), any(), anyList(), anyList(), any());
+    }
+
+    @Test
+    void existingFirstFrameRequiresExplicitModeChangeEvenWhenGeneralReferencesAreSupported() {
+        UUID reference = UUID.randomUUID();
+        videoFrameFixture(reference, java.util.Set.of("START_END", "GENERAL_REFERENCE"));
+        assertThatThrownBy(() -> gateway.preview(owner, project, item, 4, DraftState.empty(),
+                List.of(snapshot(reference)), ClearMode.REMOVE_OWNED))
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        error -> assertThat(error.code()).isEqualTo("CHARACTER_REFERENCE_MODE_REQUIRED"));
+        assertThat(drafts.get(owner, project, item).mediaInputs().getFirst().role()).isEqualTo(MediaDraft.InputRole.START_FRAME);
+    }
+
+    @Test
+    void emptyVideoDraftCanPreviewGeneralReferencesWithoutInventingBoundaryFrames() {
+        UUID reference = UUID.randomUUID();
+        videoFrameFixture(reference, java.util.Set.of("START_END", "GENERAL_REFERENCE"));
+        when(drafts.get(owner, project, item)).thenReturn(new MediaDraft(project, item, "Scene", mapper.createObjectNode(),
+                5, capability, null, MediaDraft.VideoInputMode.START_END, List.of(), List.of(), MediaDraft.DisplayMode.DRAFT, 4, now, now));
+        var plan = gateway.preview(owner, project, item, 4, DraftState.empty(), List.of(snapshot(reference)), ClearMode.REMOVE_OWNED);
+        assertThat(plan.candidateDraft().videoInputMode()).isEqualTo(MediaDraft.VideoInputMode.GENERAL_REFERENCE);
+        assertThat(plan.candidateDraft().mediaInputs()).extracting(MediaDraft.MediaInput::role).containsExactly(MediaDraft.InputRole.REFERENCE);
+        assertThat(plan.changes()).contains("INPUT_MODE_CHANGED");
+    }
+
+    private void videoFrameFixture(UUID reference, java.util.Set<String> modes) {
+        when(artifacts.get(owner, project, artifact).artifact().kind()).thenReturn(Artifact.Kind.VIDEO);
+        var frame = new MediaDraft.MediaInput(reference, artifact, MediaDraft.InputRole.START_FRAME, 0, "#7C3AED",
+                List.of(new MediaDraft.InputSource(UUID.randomUUID(), MediaDraft.SourceType.MANUAL, null)));
+        when(drafts.get(owner, project, item)).thenReturn(new MediaDraft(project, item, "Scene", mapper.createObjectNode(),
+                5, capability, null, MediaDraft.VideoInputMode.START_END, List.of(frame), List.of(), MediaDraft.DisplayMode.DRAFT, 4, now, now));
+        var binding = mock(dev.agenvas.provider.domain.MediaCapabilityBinding.class);
+        var declaration = mock(dev.agenvas.provider.domain.MediaAdapterRegistry.Declaration.class);
+        when(capabilities.forDraft(capability, dev.agenvas.task.domain.Task.Kind.VIDEO_GENERATION)).thenReturn(binding);
+        when(capabilities.inputPolicy(binding)).thenReturn(declaration);
+        when(declaration.supportedVideoInputModes()).thenReturn(modes);
+    }
+
     private CharacterSnapshot snapshot(UUID version) {
         return new CharacterSnapshot(UUID.randomUUID(), 1, "Alice", "Curly hair",
                 new CharacterLook(UUID.randomUUID(), "Travel", "Blue coat", "Calm", "", List.of(new CharacterView(version, "FRONT", ""))),
@@ -205,8 +252,8 @@ class MediaCharacterDraftGatewayTest {
         return new MediaDraft(project, item, prompt, mapper.createObjectNode(), null, capability, null,
                 null, inputs, List.of(), MediaDraft.DisplayMode.DRAFT, 4, now, now);
     }
-    private MediaDraft candidate(String prompt, tools.jackson.databind.JsonNode parameters, List<MediaDraftService.SaveMediaInput> inputs) {
-        return new MediaDraft(project, item, prompt, parameters, null, capability, null, null,
+    private MediaDraft candidate(String prompt, tools.jackson.databind.JsonNode parameters, MediaDraft.VideoInputMode mode, List<MediaDraftService.SaveMediaInput> inputs) {
+        return new MediaDraft(project, item, prompt, parameters, null, capability, null, mode,
                 inputs.stream().map(input -> input(input.versionId(), MediaDraft.SourceType.MANUAL)).toList(),
                 List.of(), MediaDraft.DisplayMode.DRAFT, 5, now, now);
     }

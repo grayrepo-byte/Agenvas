@@ -25,6 +25,8 @@ public class RecoveryModeWriteGuard implements WebMvcConfigurer {
                 .addPathPatterns("/api/v1/projects", "/api/v1/projects/**",
                         "/api/v1/settings", "/api/v1/settings/**",
                         "/api/v1/media-templates", "/api/v1/media-templates/**",
+                        "/api/v1/library", "/api/v1/library/**",
+                        "/api/v1/character-library", "/api/v1/character-library/**",
                         "/api/v1/skills", "/api/v1/skills/**");
     }
 

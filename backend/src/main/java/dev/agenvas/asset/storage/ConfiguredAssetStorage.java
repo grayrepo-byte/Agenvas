@@ -260,6 +260,25 @@ public class ConfiguredAssetStorage implements AssetStorage {
         local.discardPreparedImage(project, asset);
     }
 
+    @Override public void discardPreparedMedia(UUID project, UUID asset, dev.agenvas.asset.domain.Asset.MediaKind kind) {
+        if (kind == dev.agenvas.asset.domain.Asset.MediaKind.IMAGE) { discardPreparedImage(project, asset); return; }
+        if (kind != dev.agenvas.asset.domain.Asset.MediaKind.AUDIO) throw new IllegalArgumentException("Unsupported prepared kind");
+        var route = repository.route(project, asset);
+        if (route.isPresent()) {
+            if (!AUDIO_KIND.equals(route.get().mediaKind())) throw new IllegalStateException("Prepared audio route kind mismatch");
+            if (route.get().metadata() != null && route.get().profileId() != null) {
+                Archive receipt = decode(route.get().metadata());
+                String prefix = project + "/" + asset;
+                boolean originalIdentity = java.util.List.of(".mp3", ".wav", ".ogg").stream()
+                        .anyMatch(suffix -> receipt.key().equals(prefix + suffix));
+                if (!AUDIO_KIND.equals(receipt.kind()) || !originalIdentity || receipt.thumbnail() != null)
+                    throw new IllegalStateException("Prepared audio receipt identity mismatch");
+                discardPreparedCloudFile(settings.requireProfile(route.get().profileId()), receipt.key());
+            }
+        }
+        local.discardPreparedMedia(project, asset, kind);
+    }
+
     private void discardPreparedCloudFile(StorageProfile profile, String key) {
         cloud.delete(profile, remoteKey(profile, key));
         local.discard(".cloud-cache/" + qualified(profile.id(), key));

@@ -118,3 +118,15 @@ it.each([
   fireEvent.submit(form);
   await waitFor(() => expect(kinds).toEqual([kind]));
 });
+
+it("keeps complete character profiles in their own asset-page tab", async () => {
+  let reads = 0;
+  server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+    http.get("/api/v1/library/entries", () => HttpResponse.json({ items: [], total: 0, nextCursor: null, categoryCounts: {} })),
+    http.get("/api/v1/character-library/profiles", () => { reads++; return HttpResponse.json({ items: [], nextCursor: null }); }));
+  render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><LibraryPage /></MemoryRouter></QueryClientProvider>);
+  await userEvent.click(await screen.findByRole("tab", { name: "角色库" }));
+  expect(await screen.findByText("完整角色档案与普通资产中的“角色”分类分开管理。")).toBeVisible();
+  expect(screen.getByRole("button", { name: "新建库角色" })).toBeVisible();
+  expect(reads).toBe(1);
+});

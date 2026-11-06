@@ -1,9 +1,10 @@
+import type { ArtifactCanvasItem } from "./versionedArtifact";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { act,fireEvent,render,screen,waitFor,within } from "@testing-library/react";
 import { http,HttpResponse } from "msw";
 import { describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { ArtifactVersionList,CanvasItem } from "../../shared/api/client";
+import type { ArtifactVersionList } from "../../shared/api/client";
 import { clickControl,selectValue } from "../../test/controls";
 import { server } from "../../test/server";
 import { MediaVersionPicker } from "./MediaVersionPicker";
@@ -12,7 +13,7 @@ const base = "/api/v1/projects/project-1/canvas/items/item-1";
 const version = (id: string, versionNo: number): ArtifactVersionList["items"][number] => ({ id, versionNo, schemaVersion: 1,
   content: { sourceType: "UPLOAD", assetId: `asset-${id}` }, inputReferences: [], createdByKind: "TASK",
   runId: null, createdAt: "2026-09-30T00:00:00Z" });
-const item: CanvasItem = { id: "item-1", subjectType: "ARTIFACT", subjectId: "image-1",
+const item: ArtifactCanvasItem = { id: "item-1", subjectType: "ARTIFACT", subjectId: "image-1",
   title: "Concept", x: 0, y: 0, width: 280, height: 240, zIndex: 0, locked: false,
   selectedVersionId: "v2", selectedVersion: version("v2", 2), version: 7,
   artifact: { id: "image-1", projectId: "project-1", kind: "IMAGE", title: "Concept", resourceDefaultVersionId: null,

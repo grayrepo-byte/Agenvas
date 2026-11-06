@@ -4,13 +4,449 @@ info:
   version: 0.1.0
   description: |
     Agenvas 的权威 HTTP 合约。覆盖当前已实现的身份、项目、画布、Agent、Task 与私有素材切片；未实现的 MVP 能力继续按开发清单加入。
-    部署者设置 AGENVAS_RECOVERY_MODE=true 后，/api/v1/projects、/api/v1/settings 与 /api/v1/media-templates 下的非 GET/HEAD/OPTIONS 请求统一返回 HTTP 503 ProblemDetail，code=RECOVERY_MODE_READ_ONLY；身份登录与只读核对仍可用。恢复模式同时关闭后台调度，不能把 503 当作业务版本冲突重试。
+    部署者设置 AGENVAS_RECOVERY_MODE=true 后，/api/v1/projects、/api/v1/settings、/api/v1/media-templates、/api/v1/library、/api/v1/character-library 与 /api/v1/skills 下的非 GET/HEAD/OPTIONS 请求统一返回 HTTP 503 ProblemDetail，code=RECOVERY_MODE_READ_ONLY；身份登录与只读核对仍可用。恢复模式同时关闭后台调度，不能把 503 当作业务版本冲突重试。
     服务端为每次 HTTP 请求生成 X-Request-Id 响应头；ProblemDetail.traceId 与它相同。客户端同名请求头不会被信任或回显。
     所有 API 接受 Accept-Language 语言协商（en、zh、ru、ja，地区变体按基础语言匹配；不支持、缺失或无效时回退 zh，q=0 不选用）。响应携带 Content-Language 与 Vary: Accept-Language，包括认证和 CSRF 错误。Problem 的 title、detail、fieldErrors.message 使用协商语言；code、状态、字段路径、ID 和用户内容不随语言变化。语言偏好仅由浏览器保存，无账号配置 API 或数据库迁移。
     请求 Content-Type 不受支持时返回 HTTP 415（UNSUPPORTED_MEDIA_TYPE），Accept 无法匹配接口的响应格式时返回 HTTP 406（NOT_ACCEPTABLE）；两者使用 application/problem+json、retryable=false，并保留支持的格式响应头，不能作为临时服务端故障重试。
 servers:
   - url: /
 paths:
+  "/api/v1/character-library/profiles":
+    get:
+      operationId: "listCharacterLibraryProfiles"
+      tags: ["CharacterLibrary"]
+      responses:
+        "200":
+          description: "Owned character library result"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/CharacterLibraryPage"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Authentication required"
+        "404":
+          description: "Resource unavailable"
+        "409":
+          description: "Version or command conflict"
+      parameters:
+        -
+          name: "query"
+          in: "query"
+          schema:
+            type: "string"
+            maxLength: 160
+        -
+          name: "archived"
+          in: "query"
+          schema:
+            type: "boolean"
+            default: false
+        -
+          name: "cursor"
+          in: "query"
+          schema:
+            type: "string"
+            format: "uuid"
+        -
+          name: "limit"
+          in: "query"
+          schema:
+            type: "integer"
+            minimum: 1
+            maximum: 100
+            default: 30
+  "/api/v1/character-library/profiles/{id}":
+    get:
+      operationId: "getCharacterLibraryProfile"
+      tags: ["CharacterLibrary"]
+      responses:
+        "200":
+          description: "Owned character library result"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/CharacterLibraryProfile"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Authentication required"
+        "404":
+          description: "Resource unavailable"
+        "409":
+          description: "Version or command conflict"
+      parameters:
+        -
+          name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+    put:
+      operationId: "saveCharacterLibraryProfile"
+      tags: ["CharacterLibrary"]
+      responses:
+        "200":
+          description: "Owned character library result"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/CharacterLibraryProfile"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Authentication required"
+        "404":
+          description: "Resource unavailable"
+        "409":
+          description: "Version or command conflict"
+      parameters:
+        -
+          name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/CharacterLibrarySave"
+  "/api/v1/character-library/profiles/{id}/archive":
+    post:
+      operationId: "archiveCharacterLibraryProfile"
+      tags: ["CharacterLibrary"]
+      responses:
+        "200":
+          description: "Owned character library result"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/CharacterLibraryProfile"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Authentication required"
+        "404":
+          description: "Resource unavailable"
+        "409":
+          description: "Version or command conflict"
+      parameters:
+        -
+          name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/CharacterLibraryArchive"
+  "/api/v1/character-library/profiles/{id}/from-project":
+    post:
+      operationId: "publishProjectCharacterToLibrary"
+      tags: ["CharacterLibrary"]
+      responses:
+        "202":
+          description: "Owned character library result"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/CharacterLibraryCommand"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Authentication required"
+        "404":
+          description: "Resource unavailable"
+        "409":
+          description: "Version or command conflict"
+      parameters:
+        -
+          name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/CharacterLibraryPublish"
+  "/api/v1/character-library/media":
+    post:
+      operationId: "archiveCharacterLibraryMedia"
+      tags: ["CharacterLibrary"]
+      responses:
+        "202":
+          description: "Owned character library result"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/CharacterLibraryCommand"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Authentication required"
+        "404":
+          description: "Resource unavailable"
+        "409":
+          description: "Version or command conflict"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/CharacterLibraryMediaSource"
+  "/api/v1/character-library/media/uploads":
+    post:
+      operationId: "uploadCharacterLibraryMedia"
+      tags: ["CharacterLibrary"]
+      responses:
+        "202":
+          description: "Owned character library result"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/CharacterLibraryCommand"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Authentication required"
+        "404":
+          description: "Resource unavailable"
+        "409":
+          description: "Version or command conflict"
+      requestBody:
+        required: true
+        content:
+          "multipart/form-data":
+            schema:
+              type: "object"
+              additionalProperties: false
+              required: ["commandId", "kind", "file"]
+              properties:
+                commandId:
+                  type: "string"
+                  format: "uuid"
+                kind:
+                  type: "string"
+                  enum: ["IMAGE", "AUDIO"]
+                file:
+                  type: "string"
+                  format: "binary"
+  "/api/v1/character-library/media/{mediaId}/content":
+    get:
+      operationId: "readCharacterLibraryMediaContent"
+      tags: ["CharacterLibrary"]
+      responses:
+        "200":
+          description: "Private immutable media bytes"
+          content:
+            "application/octet-stream":
+              schema:
+                type: "string"
+                format: "binary"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Authentication required"
+        "404":
+          description: "Resource unavailable"
+        "409":
+          description: "Version or command conflict"
+      parameters:
+        -
+          name: "mediaId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+  "/api/v1/character-library/media/{mediaId}/thumbnail":
+    get:
+      operationId: "readCharacterLibraryMediaThumbnail"
+      tags: ["CharacterLibrary"]
+      responses:
+        "200":
+          description: "Private immutable media bytes"
+          content:
+            "application/octet-stream":
+              schema:
+                type: "string"
+                format: "binary"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Authentication required"
+        "404":
+          description: "Resource unavailable"
+        "409":
+          description: "Version or command conflict"
+      parameters:
+        -
+          name: "mediaId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+  "/api/v1/character-library/commands/{commandId}":
+    get:
+      operationId: "getCharacterLibraryCommand"
+      tags: ["CharacterLibrary"]
+      responses:
+        "200":
+          description: "Owned character library result"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/CharacterLibraryCommand"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Authentication required"
+        "404":
+          description: "Resource unavailable"
+        "409":
+          description: "Version or command conflict"
+      parameters:
+        -
+          name: "commandId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+  "/api/v1/character-library/commands/{commandId}/retry":
+    post:
+      operationId: "retryCharacterLibraryCommand"
+      tags: ["CharacterLibrary"]
+      responses:
+        "202":
+          description: "Owned character library result"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/CharacterLibraryCommand"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Authentication required"
+        "404":
+          description: "Resource unavailable"
+        "409":
+          description: "Version or command conflict"
+      parameters:
+        -
+          name: "commandId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+  "/api/v1/projects/{projectId}/character-library/imports/preview":
+    post:
+      operationId: "previewCharacterLibraryImport"
+      tags: ["CharacterLibrary"]
+      responses:
+        "200":
+          description: "Owned character library result"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/CharacterLibraryTransferPreview"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Authentication required"
+        "404":
+          description: "Resource unavailable"
+        "409":
+          description: "Version or command conflict"
+      parameters:
+        -
+          name: "projectId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/CharacterLibraryTransfer"
+  "/api/v1/projects/{projectId}/character-library/imports":
+    post:
+      operationId: "importCharacterLibraryProfile"
+      tags: ["CharacterLibrary"]
+      responses:
+        "202":
+          description: "Owned character library result"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/CharacterLibraryCommand"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Authentication required"
+        "404":
+          description: "Resource unavailable"
+        "409":
+          description: "Version or command conflict"
+      parameters:
+        -
+          name: "projectId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/CharacterLibraryImport"
+  "/api/v1/projects/{projectId}/character-library/links":
+    get:
+      operationId: "listProjectCharacterLibraryLinks"
+      tags: ["CharacterLibrary"]
+      responses:
+        "200":
+          description: "Owned character library result"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/CharacterLibraryLinks"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Authentication required"
+        "404":
+          description: "Resource unavailable"
+        "409":
+          description: "Version or command conflict"
+      parameters:
+        -
+          name: "projectId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
   /api/v1/settings/local-services/discover:
     post:
       operationId: discoverLocalService
@@ -5254,6 +5690,19 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
+  "/api/v1/projects/{projectId}/canvas/character-nodes/{itemId}": {"put": {"operationId": "createCharacterNode", "tags": ["Canvas"], "parameters": [{"in": "path", "name": "projectId", "required": true, "schema": {"type": "string", "format": "uuid"}}, {"in": "path", "name": "itemId", "required": true, "schema": {"type": "string", "format": "uuid"}}], "responses": {"200": {"description": "Success", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CanvasCharacterNodeEntry"}}}}, "400": {"$ref": "#/components/responses/ValidationError"}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}}, "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateCharacterNode"}}}}}}
+  "/api/v1/projects/{projectId}/canvas/character-nodes/{itemId}/selection": {"put": {"operationId": "saveCharacterNodeSelection", "tags": ["Canvas"], "parameters": [{"in": "path", "name": "projectId", "required": true, "schema": {"type": "string", "format": "uuid"}}, {"in": "path", "name": "itemId", "required": true, "schema": {"type": "string", "format": "uuid"}}], "responses": {"200": {"description": "Success", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CharacterNode"}}}}, "400": {"$ref": "#/components/responses/ValidationError"}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}}, "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SaveCharacterNodeSelection"}}}}}}
+  "/api/v1/projects/{projectId}/canvas/character-connections": {"get": {"operationId": "listCharacterNodeConnections", "tags": ["Canvas"], "parameters": [{"in": "path", "name": "projectId", "required": true, "schema": {"type": "string", "format": "uuid"}}], "responses": {"200": {"description": "Success", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CharacterNodeConnectionList"}}}}, "400": {"$ref": "#/components/responses/ValidationError"}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}}}, "post": {"operationId": "connectCharacterNode", "tags": ["Canvas"], "parameters": [{"in": "path", "name": "projectId", "required": true, "schema": {"type": "string", "format": "uuid"}}], "responses": {"201": {"description": "Success", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CharacterNodeConnection"}}}}, "400": {"$ref": "#/components/responses/ValidationError"}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}}, "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ConnectCharacterNode"}}}}}}
+  "/api/v1/projects/{projectId}/canvas/character-connections/{connectionId}/disconnect": {"post": {"operationId": "disconnectCharacterNode", "tags": ["Canvas"], "parameters": [{"in": "path", "name": "projectId", "required": true, "schema": {"type": "string", "format": "uuid"}}, {"in": "path", "name": "connectionId", "required": true, "schema": {"type": "string", "format": "uuid"}}], "responses": {"204": {"description": "Disconnected; applied draft retained"}, "400": {"$ref": "#/components/responses/ValidationError"}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}}, "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DisconnectCharacterNode"}}}}}}
+  "/api/v1/projects/{projectId}/canvas-items/{targetId}/character-node-bindings/preview": {"post": {"operationId": "previewCharacterNodeBindings", "tags": ["Canvas"], "parameters": [{"in": "path", "name": "projectId", "required": true, "schema": {"type": "string", "format": "uuid"}}, {"in": "path", "name": "targetId", "required": true, "schema": {"type": "string", "format": "uuid"}}], "responses": {"200": {"description": "Success", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CharacterNodeBindingPreview"}}}}, "400": {"$ref": "#/components/responses/ValidationError"}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}}, "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PreviewCharacterNodeBindings"}}}}}}
+  "/api/v1/projects/{projectId}/canvas-items/{targetId}/character-node-bindings/apply": {"post": {"operationId": "applyCharacterNodeBindings", "tags": ["Canvas"], "parameters": [{"in": "path", "name": "projectId", "required": true, "schema": {"type": "string", "format": "uuid"}}, {"in": "path", "name": "targetId", "required": true, "schema": {"type": "string", "format": "uuid"}}], "responses": {"200": {"description": "Success", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CharacterBindingApplied"}}}}, "400": {"$ref": "#/components/responses/ValidationError"}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}}, "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApplyCharacterNodeBindings"}}}}}}
+
+  "/api/v1/projects/{projectId}/characters/{characterId}/revisions/{version}": {"get": {"operationId": "getCharacterRevision", "tags": ["Characters"], "parameters": [{"in": "path", "name": "projectId", "required": true, "schema": {"type": "string", "format": "uuid"}}, {"in": "path", "name": "characterId", "required": true, "schema": {"type": "string", "format": "uuid"}}, {"in": "path", "name": "version", "required": true, "schema": {"type": "integer", "format": "int64", "minimum": 1}}], "responses": {"200": {"description": "Fixed immutable project character revision", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CharacterProfile"}}}}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "404": {"$ref": "#/components/responses/NotFound"}}}}
+
+  "/api/v1/projects/{projectId}/canvas/character-connections/{connectionId}/receipt": {"get": {"operationId": "getCharacterNodeConnectionReceipt", "tags": ["Canvas"], "summary": "Read the retained success receipt without changing project or canvas state", "description": "Owner-authorized read remains available after project archival and node lock/deletion. Returns the original successful result only; command hashes are private. Missing receipt or an application receipt for a different target returns 404.", "parameters": [{"in": "path", "name": "projectId", "required": true, "schema": {"type": "string", "format": "uuid"}}, {"in": "path", "name": "connectionId", "required": true, "schema": {"type": "string", "format": "uuid"}}], "responses": {"200": {"description": "Original successful command receipt", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CharacterNodeConnection"}}}}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "404": {"$ref": "#/components/responses/NotFound"}}}}
+
+  "/api/v1/projects/{projectId}/canvas-items/{targetId}/character-node-bindings/receipts/{commandId}": {"get": {"operationId": "getCharacterNodeApplicationReceipt", "tags": ["Canvas"], "summary": "Read the retained success receipt without changing project or canvas state", "description": "Owner-authorized read remains available after project archival and node lock/deletion. Returns the original successful result only; command hashes are private. Missing receipt or an application receipt for a different target returns 404.", "parameters": [{"in": "path", "name": "projectId", "required": true, "schema": {"type": "string", "format": "uuid"}}, {"in": "path", "name": "targetId", "required": true, "schema": {"type": "string", "format": "uuid"}}, {"in": "path", "name": "commandId", "required": true, "schema": {"type": "string", "format": "uuid"}}], "responses": {"200": {"description": "Original successful command receipt", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CharacterBindingApplied"}}}}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "404": {"$ref": "#/components/responses/NotFound"}}}}
+
 components:
   securitySchemes:
     McpBearer:
@@ -5261,6 +5710,412 @@ components:
       scheme: bearer
       description: 用户级 MCP 访问令牌，仅用于明确列出的 MCP 接口。
   schemas:
+    CharacterNodeSelection: {"type": "object", "additionalProperties": false, "required": ["characterId", "characterVersion", "lookId", "viewVersionIds", "useAppearance", "useVoice"], "properties": {"characterId": {"type": "string", "format": "uuid"}, "characterVersion": {"type": "integer", "format": "int64", "minimum": 1}, "lookId": {"type": ["string", "null"], "format": "uuid"}, "viewVersionIds": {"type": "array", "maxItems": 14, "uniqueItems": true, "items": {"type": "string", "format": "uuid"}}, "useAppearance": {"type": "boolean"}, "useVoice": {"type": "boolean"}}}
+    CharacterNodeConnection: {"type": "object", "additionalProperties": false, "required": ["id", "sourceCanvasItemId", "targetCanvasItemId", "version"], "properties": {"id": {"type": "string", "format": "uuid"}, "sourceCanvasItemId": {"type": "string", "format": "uuid"}, "targetCanvasItemId": {"type": "string", "format": "uuid"}, "version": {"type": "integer", "format": "int64", "minimum": 0}}}
+    CharacterNode: {"type": "object", "additionalProperties": false, "required": ["canvasItemId", "selection", "snapshot", "version", "newerVersionAvailable", "connections"], "properties": {"canvasItemId": {"type": "string", "format": "uuid"}, "selection": {"$ref": "#/components/schemas/CharacterNodeSelection"}, "snapshot": {"$ref": "#/components/schemas/CharacterSnapshot"}, "version": {"type": "integer", "format": "int64", "minimum": 0}, "newerVersionAvailable": {"type": "boolean"}, "connections": {"type": "array", "items": {"$ref": "#/components/schemas/CharacterNodeConnection"}}}}
+    CreateCharacterNode: {"type": "object", "additionalProperties": false, "required": ["selection", "x", "y", "width", "height", "zIndex", "groupId", "locked"], "properties": {"selection": {"$ref": "#/components/schemas/CharacterNodeSelection"}, "x": {"type": "number", "minimum": -1000000, "maximum": 1000000}, "y": {"type": "number", "minimum": -1000000, "maximum": 1000000}, "width": {"type": "number", "minimum": 120, "maximum": 2000}, "height": {"type": "number", "minimum": 80, "maximum": 2000}, "zIndex": {"type": "integer", "minimum": -1000, "maximum": 1000}, "groupId": {"type": ["string", "null"], "format": "uuid"}, "locked": {"type": "boolean"}}}
+    SaveCharacterNodeSelection: {"type": "object", "additionalProperties": false, "required": ["expectedItemVersion", "expectedSelectionVersion", "selection"], "properties": {"expectedItemVersion": {"type": "integer", "format": "int64", "minimum": 0}, "expectedSelectionVersion": {"type": "integer", "format": "int64", "minimum": 0}, "selection": {"$ref": "#/components/schemas/CharacterNodeSelection"}}}
+    ConnectCharacterNode: {"type": "object", "additionalProperties": false, "required": ["connectionId", "sourceCanvasItemId", "targetCanvasItemId", "expectedSourceItemVersion", "expectedSourceSelectionVersion", "expectedTargetItemVersion"], "properties": {"connectionId": {"type": "string", "format": "uuid"}, "sourceCanvasItemId": {"type": "string", "format": "uuid"}, "targetCanvasItemId": {"type": "string", "format": "uuid"}, "expectedSourceItemVersion": {"type": "integer", "format": "int64", "minimum": 0}, "expectedSourceSelectionVersion": {"type": "integer", "format": "int64", "minimum": 0}, "expectedTargetItemVersion": {"type": "integer", "format": "int64", "minimum": 0}}}
+    DisconnectCharacterNode: {"type": "object", "additionalProperties": false, "required": ["expectedVersion"], "properties": {"expectedVersion": {"type": "integer", "format": "int64", "minimum": 0}}}
+    PreviewCharacterNodeBindings: {"type": "object", "additionalProperties": false, "required": ["expectedBindingVersion", "expectedDraftVersion", "clearMode"], "properties": {"expectedBindingVersion": {"type": "integer", "format": "int64", "minimum": 0}, "expectedDraftVersion": {"type": "integer", "format": "int64", "minimum": 0}, "clearMode": {"$ref": "#/components/schemas/CharacterClearMode"}}}
+    ApplyCharacterNodeBindings: {"type": "object", "additionalProperties": false, "required": ["expectedBindingVersion", "expectedDraftVersion", "clearMode", "commandId", "previewHash"], "properties": {"expectedBindingVersion": {"type": "integer", "format": "int64", "minimum": 0}, "expectedDraftVersion": {"type": "integer", "format": "int64", "minimum": 0}, "clearMode": {"$ref": "#/components/schemas/CharacterClearMode"}, "commandId": {"type": "string", "format": "uuid"}, "previewHash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}}
+    CharacterNodeBindingPreview: {"type": "object", "additionalProperties": false, "required": ["previewHash", "characterPreview", "connections"], "properties": {"previewHash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "characterPreview": {"$ref": "#/components/schemas/CharacterBindingPreview"}, "connections": {"type": "array", "items": {"$ref": "#/components/schemas/CharacterNodeConnection"}}}}
+    CharacterNodeConnectionList: {"type": "object", "additionalProperties": false, "required": ["items"], "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/CharacterNodeConnection"}}}}
+    CanvasCharacterNodeEntry: {"type": "object", "additionalProperties": false, "required": ["item", "artifact", "selectedVersion", "characterNode"], "properties": {"item": {"type": "object", "additionalProperties": false, "required": ["id", "projectId", "subjectType", "subjectId", "selectedVersionId", "title", "x", "y", "width", "height", "zIndex", "groupId", "locked", "version", "createdAt", "updatedAt"], "properties": {"id": {"type": "string", "format": "uuid"}, "projectId": {"type": "string", "format": "uuid"}, "subjectType": {"type": "string", "const": "CHARACTER"}, "subjectId": {"type": "string", "format": "uuid"}, "selectedVersionId": {"type": "null"}, "title": {"type": "string"}, "x": {"type": "number"}, "y": {"type": "number"}, "width": {"type": "number"}, "height": {"type": "number"}, "zIndex": {"type": "integer"}, "groupId": {"type": ["string", "null"], "format": "uuid"}, "locked": {"type": "boolean"}, "version": {"type": "integer", "format": "int64", "minimum": 0}, "createdAt": {"type": "string", "format": "date-time"}, "updatedAt": {"type": "string", "format": "date-time"}}}, "artifact": {"type": "null"}, "selectedVersion": {"type": "null"}, "characterNode": {"$ref": "#/components/schemas/CharacterNode"}}}
+    CharacterLibraryView:
+      type: "object"
+      additionalProperties: false
+      required: ["mediaId", "purpose", "description"]
+      properties:
+        mediaId:
+          type: "string"
+          format: "uuid"
+        purpose:
+          type: "string"
+          maxLength: 120
+          minLength: 1
+        description:
+          type: "string"
+          maxLength: 2000
+    CharacterLibraryLook:
+      type: "object"
+      additionalProperties: false
+      required: ["id", "name", "clothing", "expression", "description", "views"]
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+        name:
+          type: "string"
+          maxLength: 160
+          minLength: 1
+        clothing:
+          type: "string"
+          maxLength: 2000
+        expression:
+          type: "string"
+          maxLength: 2000
+        description:
+          type: "string"
+          maxLength: 4000
+        views:
+          type: "array"
+          maxItems: 14
+          items:
+            "$ref": "#/components/schemas/CharacterLibraryView"
+    CharacterLibraryVoice:
+      type: "object"
+      additionalProperties: false
+      required: ["mediaId", "speakerId", "description"]
+      properties:
+        mediaId:
+          oneOf:
+            -
+              type: "string"
+              format: "uuid"
+            -
+              type: "null"
+        speakerId:
+          oneOf:
+            -
+              type: "string"
+              maxLength: 120
+            -
+              type: "null"
+        description:
+          type: "string"
+          maxLength: 2000
+    CharacterLibraryContent:
+      type: "object"
+      additionalProperties: false
+      required: ["name", "persona", "appearance", "identityViews", "looks", "voice"]
+      properties:
+        name:
+          type: "string"
+          maxLength: 160
+          minLength: 1
+        persona:
+          type: "string"
+          maxLength: 4000
+        appearance:
+          type: "string"
+          maxLength: 4000
+        identityViews:
+          type: "array"
+          maxItems: 14
+          items:
+            allOf:
+              -
+                "$ref": "#/components/schemas/CharacterLibraryView"
+              -
+                type: "object"
+                properties:
+                  purpose:
+                    type: "string"
+                    minLength: 1
+                    maxLength: 101
+        looks:
+          type: "array"
+          maxItems: 20
+          items:
+            "$ref": "#/components/schemas/CharacterLibraryLook"
+        voice:
+          oneOf:
+            -
+              "$ref": "#/components/schemas/CharacterLibraryVoice"
+            -
+              type: "null"
+      description: "Persona and appearance with the project heading must fit 4000 characters. Identity views plus each look deduplicate to at most 14 images; merged view descriptions must fit 2000 characters."
+    CharacterLibraryProfile:
+      type: "object"
+      additionalProperties: false
+      required: ["id", "content", "version", "archived", "createdAt", "updatedAt"]
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+        content:
+          "$ref": "#/components/schemas/CharacterLibraryContent"
+        version:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        archived:
+          type: "boolean"
+        createdAt:
+          type: "string"
+          format: "date-time"
+        updatedAt:
+          type: "string"
+          format: "date-time"
+    CharacterLibrarySave:
+      type: "object"
+      additionalProperties: false
+      required: ["commandId", "expectedVersion", "content"]
+      properties:
+        commandId:
+          type: "string"
+          format: "uuid"
+        expectedVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        content:
+          "$ref": "#/components/schemas/CharacterLibraryContent"
+    CharacterLibraryArchive:
+      type: "object"
+      additionalProperties: false
+      required: ["commandId", "expectedVersion"]
+      properties:
+        commandId:
+          type: "string"
+          format: "uuid"
+        expectedVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+    CharacterLibraryPage:
+      type: "object"
+      additionalProperties: false
+      required: ["items", "nextCursor"]
+      properties:
+        items:
+          type: "array"
+          maxItems: 100
+          items:
+            "$ref": "#/components/schemas/CharacterLibraryProfile"
+        nextCursor:
+          oneOf:
+            -
+              type: "string"
+              format: "uuid"
+            -
+              type: "null"
+    CharacterLibraryMediaSource:
+      type: "object"
+      additionalProperties: false
+      required: ["commandId", "sourceType", "entryId", "expectedEntryVersion", "projectId", "versionId"]
+      properties:
+        commandId:
+          type: "string"
+          format: "uuid"
+        sourceType:
+          type: "string"
+          enum: ["LIBRARY_ENTRY", "PROJECT_VERSION"]
+        entryId:
+          oneOf:
+            -
+              type: "string"
+              format: "uuid"
+            -
+              type: "null"
+        expectedEntryVersion:
+          oneOf:
+            -
+              type: "integer"
+              format: "int64"
+              minimum: 0
+            -
+              type: "null"
+        projectId:
+          oneOf:
+            -
+              type: "string"
+              format: "uuid"
+            -
+              type: "null"
+        versionId:
+          oneOf:
+            -
+              type: "string"
+              format: "uuid"
+            -
+              type: "null"
+    CharacterLibraryPublish:
+      type: "object"
+      additionalProperties: false
+      required: ["commandId", "expectedVersion", "sourceProjectId", "sourceCharacterId", "sourceCharacterVersion", "identityVersionIds"]
+      properties:
+        commandId:
+          type: "string"
+          format: "uuid"
+        expectedVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        sourceProjectId:
+          type: "string"
+          format: "uuid"
+        sourceCharacterId:
+          type: "string"
+          format: "uuid"
+        sourceCharacterVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        identityVersionIds:
+          type: "array"
+          maxItems: 14
+          items:
+            type: "string"
+            format: "uuid"
+    CharacterLibraryTransfer:
+      type: "object"
+      additionalProperties: false
+      required: ["libraryId", "libraryVersion", "characterId", "expectedCharacterVersion"]
+      properties:
+        libraryId:
+          type: "string"
+          format: "uuid"
+        libraryVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        characterId:
+          type: "string"
+          format: "uuid"
+        expectedCharacterVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+    CharacterLibraryImport:
+      type: "object"
+      additionalProperties: false
+      required: ["libraryId", "libraryVersion", "characterId", "expectedCharacterVersion", "commandId", "previewHash"]
+      properties:
+        libraryId:
+          type: "string"
+          format: "uuid"
+        libraryVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        characterId:
+          type: "string"
+          format: "uuid"
+        expectedCharacterVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        commandId:
+          type: "string"
+          format: "uuid"
+        previewHash:
+          type: "string"
+          pattern: "^[a-f0-9]{64}$"
+    CharacterLibraryTransferPreview:
+      type: "object"
+      additionalProperties: false
+      required: ["libraryId", "libraryVersion", "characterId", "expectedCharacterVersion", "previewHash", "content", "currentCharacter", "affectedItems", "changes"]
+      properties:
+        libraryId:
+          type: "string"
+          format: "uuid"
+        libraryVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        characterId:
+          type: "string"
+          format: "uuid"
+        expectedCharacterVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        previewHash:
+          type: "string"
+        content:
+          "$ref": "#/components/schemas/CharacterLibraryContent"
+        currentCharacter:
+          oneOf:
+            - {$ref: "#/components/schemas/CharacterProfile"}
+            - {type: "null"}
+          description: Current full project content that will be replaced; null for new imports.
+        affectedItems:
+          type: "array"
+          maxItems: 10000
+          items:
+            type: "object"
+            additionalProperties: false
+            required: ["canvasItemId", "title", "bindingVersion"]
+            properties:
+              canvasItemId:
+                type: "string"
+                format: "uuid"
+              title:
+                type: "string"
+              bindingVersion:
+                type: "integer"
+                format: "int64"
+                minimum: 1
+        changes:
+          type: "array"
+          maxItems: 100
+          items:
+            type: "string"
+    CharacterLibraryCommand:
+      type: "object"
+      additionalProperties: false
+      required: ["id", "status", "result", "errorCode", "errorDetail"]
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+        status:
+          type: "string"
+          enum: ["ACCEPTED", "ARCHIVING", "SUCCEEDED", "FAILED"]
+        result:
+          type: ["object", "null"]
+          additionalProperties: true
+        errorCode:
+          oneOf:
+            -
+              type: "string"
+            -
+              type: "null"
+        errorDetail:
+          oneOf:
+            -
+              type: "string"
+            -
+              type: "null"
+    CharacterLibraryLink:
+      type: "object"
+      additionalProperties: false
+      required: ["characterId", "libraryId", "libraryVersion", "currentLibraryVersion", "libraryArchived", "projectCharacterVersion", "hasUpdate"]
+      properties:
+        characterId:
+          type: "string"
+          format: "uuid"
+        libraryId:
+          type: "string"
+          format: "uuid"
+        libraryVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        currentLibraryVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        libraryArchived:
+          type: "boolean"
+        projectCharacterVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        hasUpdate:
+          type: "boolean"
+    CharacterLibraryLinks:
+      type: "object"
+      additionalProperties: false
+      required: ["items"]
+      properties:
+        items:
+          type: "array"
+          maxItems: 200
+          items:
+            "$ref": "#/components/schemas/CharacterLibraryLink"
     LocalServiceKind:
       type: string
       enum: [OLLAMA, COMFYUI]
@@ -7611,7 +8466,7 @@ components:
           type: array
           description: 已安装或由项目导演默认绑定的固定版本，包含 version、mapping 和可空的 directorBinding（skillId、skillVersionId、position）；未安装时 mapping.assets 为空，不导出多助手绑定列表。
           items: {type: object, additionalProperties: true}
-        schemaVersion: {type: integer, const: 11}
+        schemaVersion: {type: integer, const: 12}
         generatedAt: {type: string, format: date-time}
         snapshotSeq: {type: integer, format: int64, minimum: 0}
         project: {$ref: "#/components/schemas/ManifestProject"}
@@ -7718,6 +8573,10 @@ components:
           type: array
           uniqueItems: true
           items: {type: string, format: uuid}
+        characterNode:
+          oneOf:
+            - {$ref: "#/components/schemas/CharacterNode"}
+            - {type: "null"}
     ManifestMediaDraft:
       type: object
       additionalProperties: false
@@ -9171,7 +10030,7 @@ components:
         textDelta: {type: string, description: 仅 delta 事件提供公开文本增量；completed 后重读已提交终稿。}
     CanvasSubjectType:
       type: string
-      const: ARTIFACT
+      enum: [ARTIFACT, CHARACTER]
     CanvasItem:
       type: object
       additionalProperties: false
@@ -9194,7 +10053,14 @@ components:
           oneOf:
             - {$ref: "#/components/schemas/ArtifactVersion"}
             - {type: "null"}
-        artifact: {$ref: "#/components/schemas/Artifact"}
+        artifact:
+          oneOf:
+            - {$ref: "#/components/schemas/Artifact"}
+            - {type: "null"}
+        characterNode:
+          oneOf:
+            - {$ref: "#/components/schemas/CharacterNode"}
+            - {type: "null"}
     Canvas:
       type: object
       additionalProperties: false

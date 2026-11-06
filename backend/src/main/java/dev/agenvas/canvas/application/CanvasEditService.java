@@ -114,12 +114,17 @@ public class CanvasEditService {
                 CanvasItem source = requireItem(owner, project, copy.sourceItemId());
                 if (source.version() != copy.expectedSourceVersion() || currentItems.containsKey(copy.targetItemId())) throw conflict();
                 canvas.validateGeometry(copy.x(), copy.y(), copy.width(), copy.height(), copy.zIndex());
-                var artifact = artifacts.get(owner, project, source.subjectId());
-                if (artifact.artifact().kind() == Artifact.Kind.TEXT) {
-                    UUID contentVersion = artifact.resourceDefaultVersion() == null ? null : artifact.resourceDefaultVersion().id();
-                    if (!Objects.equals(contentVersion, copy.expectedSourceContentVersion())) throw conflict();
-                } else if (copy.expectedSourceDraftVersion() == null ||
-                        drafts.get(owner, project, source.id()).version() != copy.expectedSourceDraftVersion()) throw conflict();
+                if (source.subjectType() == CanvasItem.SubjectType.CHARACTER) {
+                    if (copy.expectedSourceDraftVersion() == null || copies.characterSelectionVersion(
+                            owner, project, source) != copy.expectedSourceDraftVersion()) throw conflict();
+                } else {
+                    var artifact = artifacts.get(owner, project, source.subjectId());
+                    if (artifact.artifact().kind() == Artifact.Kind.TEXT) {
+                        UUID contentVersion = artifact.resourceDefaultVersion() == null ? null : artifact.resourceDefaultVersion().id();
+                        if (!Objects.equals(contentVersion, copy.expectedSourceContentVersion())) throw conflict();
+                    } else if (copy.expectedSourceDraftVersion() == null ||
+                            drafts.get(owner, project, source.id()).version() != copy.expectedSourceDraftVersion()) throw conflict();
+                }
                 currentItems.put(copy.targetItemId(), new CanvasItem(copy.targetItemId(), project, source.subjectType(),
                         source.subjectId(), source.selectedVersionId(), source.title(), copy.x(), copy.y(), copy.width(),
                         copy.height(), copy.zIndex(), copy.groupId(), false, 0, clock.instant(), clock.instant()));
@@ -141,7 +146,8 @@ public class CanvasEditService {
                 copies.installWithinChange(owner, project, target, prepared.frozen());
                 snapshots.add(new CopySnapshot(target, prepared.frozen(), copies.capture(owner, project, target)));
             }
-            // Freeze authoritative post-write versions for receipt diagnostics; replay uses semantics.
+                            // Freeze authoritative post-write versions for receipt diagnostics;
+                            // replay uses semantics.
             afterItems = afterItems.stream().map(item -> requireItem(owner, project, item.id())).toList();
             afterGroups = refreshedGroups(project, afterGroups);
             Receipt receipt = new Receipt(request.commandId(), request.operation(), 0, ReceiptState.APPLIED);

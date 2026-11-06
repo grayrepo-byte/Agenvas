@@ -579,7 +579,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         current: version.id === candidate.resourceDefaultVersionId }] : [];
     }));
   const canvasChoices = (canvas.data?.items ?? []).flatMap((item) => {
-    if (item.id === canvasItemId || !["IMAGE", "AUDIO", ...(workflow || videoCapacity > 0 ? ["VIDEO"] : [])].includes(item.artifact.kind) || !item.selectedVersion) return [];
+    if (!item.artifact || item.id === canvasItemId || !["IMAGE", "AUDIO", ...(workflow || videoCapacity > 0 ? ["VIDEO"] : [])].includes(item.artifact.kind) || !item.selectedVersion) return [];
     const assetId = imageAssetId(item.selectedVersion.content);
     return assetId ? [{ canvasItemId: item.id, versionId: item.selectedVersion.id,
       title: item.title, kind: item.artifact.kind, versionNo: item.selectedVersion.versionNo, assetId }] : [];

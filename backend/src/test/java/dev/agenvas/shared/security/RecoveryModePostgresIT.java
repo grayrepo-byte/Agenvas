@@ -91,6 +91,8 @@ class RecoveryModePostgresIT {
         assertThat(context.getBeansOfType(DirectTextGenerationScheduler.class)).isEmpty();
         assertThat(context.getBeansOfType(MediaExecutionScheduler.class)).isEmpty();
         assertThat(context.getBeansOfType(dev.agenvas.skill.application.SkillWorker.class)).isEmpty();
+        assertThat(context.getBeansOfType(dev.agenvas.library.application.LibraryWorker.class)).isEmpty();
+        assertThat(context.getBeansOfType(dev.agenvas.characterlibrary.application.CharacterLibraryWorker.class)).isEmpty();
 
         AdminPrincipal owner = identities.setup("recovery-admin", "recovery-password-123");
         Project project = projects.create(owner.userId(), "Restored project",

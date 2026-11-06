@@ -1,6 +1,7 @@
+import type { ArtifactCanvasItem } from "./versionedArtifact";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { applyCanvasCommands, createArtifact, getMediaDraft, listCanvasItems, runMediaDraft, saveMediaDraft,
-  type CanvasItem, type MediaDraft } from "../../shared/api/client";
+  type MediaDraft } from "../../shared/api/client";
 import { createStoryboardNodePreparation, prepareStoryboardNode } from "./storyboardNodePreparation";
 import { newStoryboardShot } from "./storyboardDraft";
 
@@ -8,7 +9,7 @@ vi.mock("../../shared/api/client", () => ({ applyCanvasCommands: vi.fn(), create
   getMediaDraft: vi.fn(), listCanvasItems: vi.fn(), runMediaDraft: vi.fn(), saveMediaDraft: vi.fn() }));
 
 const now = "2026-10-23T00:00:00Z";
-const source: CanvasItem = { id: "source", subjectType: "ARTIFACT", subjectId: "source-artifact", title: "Source",
+const source: ArtifactCanvasItem = { id: "source", subjectType: "ARTIFACT", subjectId: "source-artifact", title: "Source",
   x: 120, y: 40, width: 640, height: 360, zIndex: 0, locked: false, groupId: null, version: 0,
   selectedVersionId: null, selectedVersion: null,
   artifact: { id: "source-artifact", projectId: "project", kind: "IMAGE", title: "Source",

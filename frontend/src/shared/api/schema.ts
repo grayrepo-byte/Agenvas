@@ -4,6 +4,214 @@
  */
 
 export interface paths {
+    "/api/v1/character-library/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listCharacterLibraryProfiles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/character-library/profiles/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getCharacterLibraryProfile"];
+        put: operations["saveCharacterLibraryProfile"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/character-library/profiles/{id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["archiveCharacterLibraryProfile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/character-library/profiles/{id}/from-project": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["publishProjectCharacterToLibrary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/character-library/media": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["archiveCharacterLibraryMedia"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/character-library/media/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["uploadCharacterLibraryMedia"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/character-library/media/{mediaId}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["readCharacterLibraryMediaContent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/character-library/media/{mediaId}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["readCharacterLibraryMediaThumbnail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/character-library/commands/{commandId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getCharacterLibraryCommand"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/character-library/commands/{commandId}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["retryCharacterLibraryCommand"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/character-library/imports/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["previewCharacterLibraryImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/character-library/imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["importCharacterLibraryProfile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/character-library/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listProjectCharacterLibraryLinks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/local-services/discover": {
         parameters: {
             query?: never;
@@ -4041,10 +4249,441 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/canvas/character-nodes/{itemId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["createCharacterNode"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/canvas/character-nodes/{itemId}/selection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["saveCharacterNodeSelection"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/canvas/character-connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listCharacterNodeConnections"];
+        put?: never;
+        post: operations["connectCharacterNode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/canvas/character-connections/{connectionId}/disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["disconnectCharacterNode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/canvas-items/{targetId}/character-node-bindings/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["previewCharacterNodeBindings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/canvas-items/{targetId}/character-node-bindings/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["applyCharacterNodeBindings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/characters/{characterId}/revisions/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getCharacterRevision"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/canvas/character-connections/{connectionId}/receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the retained success receipt without changing project or canvas state
+         * @description Owner-authorized read remains available after project archival and node lock/deletion. Returns the original successful result only; command hashes are private. Missing receipt or an application receipt for a different target returns 404.
+         */
+        get: operations["getCharacterNodeConnectionReceipt"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/canvas-items/{targetId}/character-node-bindings/receipts/{commandId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the retained success receipt without changing project or canvas state
+         * @description Owner-authorized read remains available after project archival and node lock/deletion. Returns the original successful result only; command hashes are private. Missing receipt or an application receipt for a different target returns 404.
+         */
+        get: operations["getCharacterNodeApplicationReceipt"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        CharacterNodeSelection: {
+            /** Format: uuid */
+            characterId: string;
+            /** Format: int64 */
+            characterVersion: number;
+            /** Format: uuid */
+            lookId: string | null;
+            viewVersionIds: string[];
+            useAppearance: boolean;
+            useVoice: boolean;
+        };
+        CharacterNodeConnection: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            sourceCanvasItemId: string;
+            /** Format: uuid */
+            targetCanvasItemId: string;
+            /** Format: int64 */
+            version: number;
+        };
+        CharacterNode: {
+            /** Format: uuid */
+            canvasItemId: string;
+            selection: components["schemas"]["CharacterNodeSelection"];
+            snapshot: components["schemas"]["CharacterSnapshot"];
+            /** Format: int64 */
+            version: number;
+            newerVersionAvailable: boolean;
+            connections: components["schemas"]["CharacterNodeConnection"][];
+        };
+        CreateCharacterNode: {
+            selection: components["schemas"]["CharacterNodeSelection"];
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+            zIndex: number;
+            /** Format: uuid */
+            groupId: string | null;
+            locked: boolean;
+        };
+        SaveCharacterNodeSelection: {
+            /** Format: int64 */
+            expectedItemVersion: number;
+            /** Format: int64 */
+            expectedSelectionVersion: number;
+            selection: components["schemas"]["CharacterNodeSelection"];
+        };
+        ConnectCharacterNode: {
+            /** Format: uuid */
+            connectionId: string;
+            /** Format: uuid */
+            sourceCanvasItemId: string;
+            /** Format: uuid */
+            targetCanvasItemId: string;
+            /** Format: int64 */
+            expectedSourceItemVersion: number;
+            /** Format: int64 */
+            expectedSourceSelectionVersion: number;
+            /** Format: int64 */
+            expectedTargetItemVersion: number;
+        };
+        DisconnectCharacterNode: {
+            /** Format: int64 */
+            expectedVersion: number;
+        };
+        PreviewCharacterNodeBindings: {
+            /** Format: int64 */
+            expectedBindingVersion: number;
+            /** Format: int64 */
+            expectedDraftVersion: number;
+            clearMode: components["schemas"]["CharacterClearMode"];
+        };
+        ApplyCharacterNodeBindings: {
+            /** Format: int64 */
+            expectedBindingVersion: number;
+            /** Format: int64 */
+            expectedDraftVersion: number;
+            clearMode: components["schemas"]["CharacterClearMode"];
+            /** Format: uuid */
+            commandId: string;
+            previewHash: string;
+        };
+        CharacterNodeBindingPreview: {
+            previewHash: string;
+            characterPreview: components["schemas"]["CharacterBindingPreview"];
+            connections: components["schemas"]["CharacterNodeConnection"][];
+        };
+        CharacterNodeConnectionList: {
+            items: components["schemas"]["CharacterNodeConnection"][];
+        };
+        CanvasCharacterNodeEntry: {
+            item: {
+                /** Format: uuid */
+                id: string;
+                /** Format: uuid */
+                projectId: string;
+                /** @constant */
+                subjectType: "CHARACTER";
+                /** Format: uuid */
+                subjectId: string;
+                selectedVersionId: null;
+                title: string;
+                x: number;
+                y: number;
+                width: number;
+                height: number;
+                zIndex: number;
+                /** Format: uuid */
+                groupId: string | null;
+                locked: boolean;
+                /** Format: int64 */
+                version: number;
+                /** Format: date-time */
+                createdAt: string;
+                /** Format: date-time */
+                updatedAt: string;
+            };
+            artifact: null;
+            selectedVersion: null;
+            characterNode: components["schemas"]["CharacterNode"];
+        };
+        CharacterLibraryView: {
+            /** Format: uuid */
+            mediaId: string;
+            purpose: string;
+            description: string;
+        };
+        CharacterLibraryLook: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            clothing: string;
+            expression: string;
+            description: string;
+            views: components["schemas"]["CharacterLibraryView"][];
+        };
+        CharacterLibraryVoice: {
+            mediaId: string | null;
+            speakerId: string | null;
+            description: string;
+        };
+        /** @description Persona and appearance with the project heading must fit 4000 characters. Identity views plus each look deduplicate to at most 14 images; merged view descriptions must fit 2000 characters. */
+        CharacterLibraryContent: {
+            name: string;
+            persona: string;
+            appearance: string;
+            identityViews: (components["schemas"]["CharacterLibraryView"] & {
+                purpose?: string;
+            })[];
+            looks: components["schemas"]["CharacterLibraryLook"][];
+            voice: components["schemas"]["CharacterLibraryVoice"] | null;
+        };
+        CharacterLibraryProfile: {
+            /** Format: uuid */
+            id: string;
+            content: components["schemas"]["CharacterLibraryContent"];
+            /** Format: int64 */
+            version: number;
+            archived: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CharacterLibrarySave: {
+            /** Format: uuid */
+            commandId: string;
+            /** Format: int64 */
+            expectedVersion: number;
+            content: components["schemas"]["CharacterLibraryContent"];
+        };
+        CharacterLibraryArchive: {
+            /** Format: uuid */
+            commandId: string;
+            /** Format: int64 */
+            expectedVersion: number;
+        };
+        CharacterLibraryPage: {
+            items: components["schemas"]["CharacterLibraryProfile"][];
+            nextCursor: string | null;
+        };
+        CharacterLibraryMediaSource: {
+            /** Format: uuid */
+            commandId: string;
+            /** @enum {string} */
+            sourceType: "LIBRARY_ENTRY" | "PROJECT_VERSION";
+            entryId: string | null;
+            expectedEntryVersion: number | null;
+            projectId: string | null;
+            versionId: string | null;
+        };
+        CharacterLibraryPublish: {
+            /** Format: uuid */
+            commandId: string;
+            /** Format: int64 */
+            expectedVersion: number;
+            /** Format: uuid */
+            sourceProjectId: string;
+            /** Format: uuid */
+            sourceCharacterId: string;
+            /** Format: int64 */
+            sourceCharacterVersion: number;
+            identityVersionIds: string[];
+        };
+        CharacterLibraryTransfer: {
+            /** Format: uuid */
+            libraryId: string;
+            /** Format: int64 */
+            libraryVersion: number;
+            /** Format: uuid */
+            characterId: string;
+            /** Format: int64 */
+            expectedCharacterVersion: number;
+        };
+        CharacterLibraryImport: {
+            /** Format: uuid */
+            libraryId: string;
+            /** Format: int64 */
+            libraryVersion: number;
+            /** Format: uuid */
+            characterId: string;
+            /** Format: int64 */
+            expectedCharacterVersion: number;
+            /** Format: uuid */
+            commandId: string;
+            previewHash: string;
+        };
+        CharacterLibraryTransferPreview: {
+            /** Format: uuid */
+            libraryId: string;
+            /** Format: int64 */
+            libraryVersion: number;
+            /** Format: uuid */
+            characterId: string;
+            /** Format: int64 */
+            expectedCharacterVersion: number;
+            previewHash: string;
+            content: components["schemas"]["CharacterLibraryContent"];
+            /** @description Current full project content that will be replaced; null for new imports. */
+            currentCharacter: components["schemas"]["CharacterProfile"] | null;
+            affectedItems: {
+                /** Format: uuid */
+                canvasItemId: string;
+                title: string;
+                /** Format: int64 */
+                bindingVersion: number;
+            }[];
+            changes: string[];
+        };
+        CharacterLibraryCommand: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            status: "ACCEPTED" | "ARCHIVING" | "SUCCEEDED" | "FAILED";
+            result: {
+                [key: string]: unknown;
+            } | null;
+            errorCode: string | null;
+            errorDetail: string | null;
+        };
+        CharacterLibraryLink: {
+            /** Format: uuid */
+            characterId: string;
+            /** Format: uuid */
+            libraryId: string;
+            /** Format: int64 */
+            libraryVersion: number;
+            /** Format: int64 */
+            currentLibraryVersion: number;
+            libraryArchived: boolean;
+            /** Format: int64 */
+            projectCharacterVersion: number;
+            hasUpdate: boolean;
+        };
+        CharacterLibraryLinks: {
+            items: components["schemas"]["CharacterLibraryLink"][];
+        };
         /** @enum {string} */
         LocalServiceKind: "OLLAMA" | "COMFYUI";
         LocalServiceDiscoveryRequest: {
@@ -5560,7 +6199,7 @@ export interface components {
                 [key: string]: unknown;
             }[];
             /** @constant */
-            schemaVersion: 11;
+            schemaVersion: 12;
             /** Format: date-time */
             generatedAt: string;
             /** Format: int64 */
@@ -5651,6 +6290,7 @@ export interface components {
             version: number;
             mediaDraft: components["schemas"]["ManifestMediaDraft"] | null;
             mediaVersionIds: string[];
+            characterNode?: components["schemas"]["CharacterNode"] | null;
         };
         ManifestMediaDraft: {
             prompt: string;
@@ -6937,8 +7577,8 @@ export interface components {
             /** @description 仅 delta 事件提供公开文本增量；completed 后重读已提交终稿。 */
             textDelta?: string;
         };
-        /** @constant */
-        CanvasSubjectType: "ARTIFACT";
+        /** @enum {string} */
+        CanvasSubjectType: "ARTIFACT" | "CHARACTER";
         CanvasItem: {
             /** Format: uuid */
             id: string;
@@ -6959,7 +7599,8 @@ export interface components {
             /** Format: int64 */
             version: number;
             selectedVersion: components["schemas"]["ArtifactVersion"] | null;
-            artifact: components["schemas"]["Artifact"];
+            artifact: components["schemas"]["Artifact"] | null;
+            characterNode?: components["schemas"]["CharacterNode"] | null;
         };
         Canvas: {
             items: components["schemas"]["CanvasItem"][];
@@ -7744,6 +8385,740 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listCharacterLibraryProfiles: {
+        parameters: {
+            query?: {
+                query?: string;
+                archived?: boolean;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Owned character library result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterLibraryPage"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resource unavailable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Version or command conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getCharacterLibraryProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Owned character library result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterLibraryProfile"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resource unavailable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Version or command conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    saveCharacterLibraryProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CharacterLibrarySave"];
+            };
+        };
+        responses: {
+            /** @description Owned character library result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterLibraryProfile"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resource unavailable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Version or command conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    archiveCharacterLibraryProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CharacterLibraryArchive"];
+            };
+        };
+        responses: {
+            /** @description Owned character library result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterLibraryProfile"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resource unavailable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Version or command conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    publishProjectCharacterToLibrary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CharacterLibraryPublish"];
+            };
+        };
+        responses: {
+            /** @description Owned character library result */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterLibraryCommand"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resource unavailable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Version or command conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    archiveCharacterLibraryMedia: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CharacterLibraryMediaSource"];
+            };
+        };
+        responses: {
+            /** @description Owned character library result */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterLibraryCommand"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resource unavailable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Version or command conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    uploadCharacterLibraryMedia: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: uuid */
+                    commandId: string;
+                    /** @enum {string} */
+                    kind: "IMAGE" | "AUDIO";
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Owned character library result */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterLibraryCommand"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resource unavailable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Version or command conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readCharacterLibraryMediaContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mediaId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Private immutable media bytes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resource unavailable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Version or command conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readCharacterLibraryMediaThumbnail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mediaId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Private immutable media bytes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resource unavailable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Version or command conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getCharacterLibraryCommand: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                commandId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Owned character library result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterLibraryCommand"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resource unavailable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Version or command conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    retryCharacterLibraryCommand: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                commandId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Owned character library result */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterLibraryCommand"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resource unavailable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Version or command conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    previewCharacterLibraryImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CharacterLibraryTransfer"];
+            };
+        };
+        responses: {
+            /** @description Owned character library result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterLibraryTransferPreview"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resource unavailable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Version or command conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    importCharacterLibraryProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CharacterLibraryImport"];
+            };
+        };
+        responses: {
+            /** @description Owned character library result */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterLibraryCommand"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resource unavailable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Version or command conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listProjectCharacterLibraryLinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Owned character library result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterLibraryLinks"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resource unavailable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Version or command conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     discoverLocalService: {
         parameters: {
             query?: never;
@@ -15314,6 +16689,299 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    createCharacterNode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCharacterNode"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasCharacterNodeEntry"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    saveCharacterNodeSelection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveCharacterNodeSelection"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterNode"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listCharacterNodeConnections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterNodeConnectionList"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    connectCharacterNode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectCharacterNode"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterNodeConnection"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    disconnectCharacterNode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DisconnectCharacterNode"];
+            };
+        };
+        responses: {
+            /** @description Disconnected; applied draft retained */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    previewCharacterNodeBindings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                targetId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreviewCharacterNodeBindings"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterNodeBindingPreview"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    applyCharacterNodeBindings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                targetId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyCharacterNodeBindings"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterBindingApplied"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getCharacterRevision: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                characterId: string;
+                version: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Fixed immutable project character revision */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterProfile"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getCharacterNodeConnectionReceipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Original successful command receipt */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterNodeConnection"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getCharacterNodeApplicationReceipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                targetId: string;
+                commandId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Original successful command receipt */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterBindingApplied"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
         };
     };
 }

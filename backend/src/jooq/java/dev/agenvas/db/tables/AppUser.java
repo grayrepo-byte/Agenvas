@@ -9,6 +9,9 @@ import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.AgentMediaApproval.AgentMediaApprovalPath;
 import dev.agenvas.db.tables.AgentRun.AgentRunPath;
+import dev.agenvas.db.tables.CharacterLibraryCommand.CharacterLibraryCommandPath;
+import dev.agenvas.db.tables.CharacterLibraryMedia.CharacterLibraryMediaPath;
+import dev.agenvas.db.tables.CharacterLibraryProfile.CharacterLibraryProfilePath;
 import dev.agenvas.db.tables.CreativeSkill.CreativeSkillPath;
 import dev.agenvas.db.tables.IdempotencyRecord.IdempotencyRecordPath;
 import dev.agenvas.db.tables.LibraryCleanup.LibraryCleanupPath;
@@ -237,6 +240,45 @@ public class AppUser extends TableImpl<AppUserRecord> {
             _agentRun = new AgentRunPath(this, null, Keys.AGENT_RUN__FK_AGENT_RUN_USER.getInverseKey());
 
         return _agentRun;
+    }
+
+    private transient CharacterLibraryCommandPath _characterLibraryCommand;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.character_library_command</code> table
+     */
+    public CharacterLibraryCommandPath characterLibraryCommand() {
+        if (_characterLibraryCommand == null)
+            _characterLibraryCommand = new CharacterLibraryCommandPath(this, null, Keys.CHARACTER_LIBRARY_COMMAND__FK_CHARACTER_LIBRARY_COMMAND_OWNER.getInverseKey());
+
+        return _characterLibraryCommand;
+    }
+
+    private transient CharacterLibraryMediaPath _characterLibraryMedia;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.character_library_media</code> table
+     */
+    public CharacterLibraryMediaPath characterLibraryMedia() {
+        if (_characterLibraryMedia == null)
+            _characterLibraryMedia = new CharacterLibraryMediaPath(this, null, Keys.CHARACTER_LIBRARY_MEDIA__FK_CHARACTER_LIBRARY_MEDIA_OWNER.getInverseKey());
+
+        return _characterLibraryMedia;
+    }
+
+    private transient CharacterLibraryProfilePath _characterLibraryProfile;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.character_library_profile</code> table
+     */
+    public CharacterLibraryProfilePath characterLibraryProfile() {
+        if (_characterLibraryProfile == null)
+            _characterLibraryProfile = new CharacterLibraryProfilePath(this, null, Keys.CHARACTER_LIBRARY_PROFILE__FK_CHARACTER_LIBRARY_PROFILE_OWNER.getInverseKey());
+
+        return _characterLibraryProfile;
     }
 
     private transient IdempotencyRecordPath _idempotencyRecord;

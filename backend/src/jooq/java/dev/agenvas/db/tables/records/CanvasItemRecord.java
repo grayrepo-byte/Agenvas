@@ -51,44 +51,48 @@ public class CanvasItemRecord extends UpdatableRecordImpl<CanvasItemRecord> {
     }
 
     /**
-     * Setter for <code>public.canvas_item.subject_type</code>. 画布主体类型，固定为
-     * ARTIFACT
+     * Setter for <code>public.canvas_item.subject_type</code>.
+     * 画布业务主体：ARTIFACT或CHARACTER
      */
     public void setSubjectType(String value) {
         set(2, value);
     }
 
     /**
-     * Getter for <code>public.canvas_item.subject_type</code>. 画布主体类型，固定为
-     * ARTIFACT
+     * Getter for <code>public.canvas_item.subject_type</code>.
+     * 画布业务主体：ARTIFACT或CHARACTER
      */
     public String getSubjectType() {
         return (String) get(2);
     }
 
     /**
-     * Setter for <code>public.canvas_item.subject_id</code>. 画布内容对应的产物身份
+     * Setter for <code>public.canvas_item.subject_id</code>.
+     * 同项目产物或角色档案身份，由主体类型决定
      */
     public void setSubjectId(UUID value) {
         set(3, value);
     }
 
     /**
-     * Getter for <code>public.canvas_item.subject_id</code>. 画布内容对应的产物身份
+     * Getter for <code>public.canvas_item.subject_id</code>.
+     * 同项目产物或角色档案身份，由主体类型决定
      */
     public UUID getSubjectId() {
         return (UUID) get(3);
     }
 
     /**
-     * Setter for <code>public.canvas_item.artifact_id</code>. 画布内容对应的非空产物外键
+     * Setter for <code>public.canvas_item.artifact_id</code>.
+     * 产物节点的同项目内容身份；角色节点为空
      */
     public void setArtifactId(UUID value) {
         set(4, value);
     }
 
     /**
-     * Getter for <code>public.canvas_item.artifact_id</code>. 画布内容对应的非空产物外键
+     * Getter for <code>public.canvas_item.artifact_id</code>.
+     * 产物节点的同项目内容身份；角色节点为空
      */
     public UUID getArtifactId() {
         return (UUID) get(4);
@@ -302,6 +306,22 @@ public class CanvasItemRecord extends UpdatableRecordImpl<CanvasItemRecord> {
         return (Long) get(18);
     }
 
+    /**
+     * Setter for <code>public.canvas_item.character_id</code>.
+     * 角色节点的同项目档案身份；产物节点为空
+     */
+    public void setCharacterId(UUID value) {
+        set(19, value);
+    }
+
+    /**
+     * Getter for <code>public.canvas_item.character_id</code>.
+     * 角色节点的同项目档案身份；产物节点为空
+     */
+    public UUID getCharacterId() {
+        return (UUID) get(19);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -325,7 +345,7 @@ public class CanvasItemRecord extends UpdatableRecordImpl<CanvasItemRecord> {
     /**
      * Create a detached, initialised CanvasItemRecord
      */
-    public CanvasItemRecord(UUID id, UUID projectId, String subjectType, UUID subjectId, UUID artifactId, BigDecimal x, BigDecimal y, BigDecimal width, BigDecimal height, Integer zIndex, UUID groupId, Boolean locked, Long version, OffsetDateTime createdAt, OffsetDateTime updatedAt, String title, UUID selectedVersionId, Long mediaSelectionEpoch, Long topologyEpoch) {
+    public CanvasItemRecord(UUID id, UUID projectId, String subjectType, UUID subjectId, UUID artifactId, BigDecimal x, BigDecimal y, BigDecimal width, BigDecimal height, Integer zIndex, UUID groupId, Boolean locked, Long version, OffsetDateTime createdAt, OffsetDateTime updatedAt, String title, UUID selectedVersionId, Long mediaSelectionEpoch, Long topologyEpoch, UUID characterId) {
         super(CanvasItem.CANVAS_ITEM);
 
         setId(id);
@@ -347,6 +367,7 @@ public class CanvasItemRecord extends UpdatableRecordImpl<CanvasItemRecord> {
         setSelectedVersionId(selectedVersionId);
         setMediaSelectionEpoch(mediaSelectionEpoch);
         setTopologyEpoch(topologyEpoch);
+        setCharacterId(characterId);
         resetChangedOnNotNull();
     }
 }

@@ -13,6 +13,11 @@ import { Textarea } from "../../shared/ui/primitives/textarea";
 import { VoiceLibrary } from "../canvas/VoiceLibrary";
 import { getVoiceDisplayName, VOICES } from "../canvas/voiceCatalog";
 import { CharacterReferencePicker, CharacterReferencePreview } from "./CharacterReferencePicker";
+import { getLibraryCharacter, type LibraryCharacter } from "../../shared/api/characterLibrary";
+import { CharacterLibraryImportDialog } from "../character-library/CharacterLibraryImportDialog";
+import { PublishCharacterDialog } from "../character-library/PublishCharacterDialog";
+import { characterLibraryLinksOptions } from "../character-library/characterLibraryQueries";
+import { cl } from "../character-library/characterLibraryMessages";
 import { characterBindingStale, characterQueryOptions } from "./characterQueries";
 
 const emptyContent = (): CharacterContent => ({ name: "", description: "", looks: [], voice: null });
@@ -35,6 +40,13 @@ export function CharacterManagerDialog({ projectId, onClose }: { projectId: stri
   const busyRef = useRef(false);
   const [error, setError] = useState<Error | null>(null);
   const [saved, setSaved] = useState(false);
+  const [libraryImport, setLibraryImport] = useState(false);
+  const syncDraft = useRef<{ dirty: boolean; content: string } | null>(null);
+  const [librarySync, setLibrarySync] = useState<LibraryCharacter | null>(null);
+  const [publishing, setPublishing] = useState<CharacterProfile | null>(null);
+  const links = useQuery(characterLibraryLinksOptions(projectId));
+  const libraryLink = links.data?.items.find((link) => link.characterId === editor?.id);
+  const savedProfile = index.data?.characters.find((profile) => profile.id === editor?.id);
   const selectedVoice = VOICES.find((voice) => voice.id === editor?.content.voice?.speakerId);
   function updateContent(change: (content: CharacterContent) => CharacterContent) {
     setEditor((current) => current ? { ...current, content: change(current.content) } : null);
@@ -84,6 +96,19 @@ export function CharacterManagerDialog({ projectId, onClose }: { projectId: stri
     } catch (failure) { setError(failure instanceof Error ? failure : new Error(t("character.loadFailed"))); }
     finally { busyRef.current = false; setBusy(false); }
   }
+  async function synchronized(characterId: string) {
+    const baseline = syncDraft.current;
+    try {
+      const fresh = await index.refetch({ throwOnError: true });
+      const currentProfile = fresh.data?.characters.find((profile) => profile.id === characterId);
+      if (!currentProfile) return;
+      // A clean editor follows the explicitly synchronized result; preserve any local draft, including edits made while reloading.
+      setEditor((current) => current?.id === characterId && baseline && !baseline.dirty && JSON.stringify(current.content) === baseline.content
+        ? { id: currentProfile.id, version: currentProfile.version, archived: currentProfile.archived, content: structuredClone(currentProfile.content) } : current);
+      setConfirmation(null); setSaved(false);
+      if (baseline?.dirty) setError(new Error(cl("syncDraftPreserved")));
+    } catch (failure) { setError(failure instanceof Error ? failure : new Error(t("character.loadFailed"))); }
+  }
   const content = editor?.content;
   const appearances = index.data?.bindings.filter((binding) => binding.snapshots.some((snapshot) => snapshot.characterId === editor?.id)) ?? [];
   return <Dialog title={t("character.title")} description={t("character.description")} busy={busy} onClose={onClose}
@@ -94,11 +119,16 @@ export function CharacterManagerDialog({ projectId, onClose }: { projectId: stri
     <fieldset disabled={busy} className="flex min-w-0 flex-col gap-4">
       <div className="flex flex-wrap gap-2">
         <Button type="button" variant="outline" onClick={() => { setEditor({ id: crypto.randomUUID(), version: 0, archived: false, content: emptyContent() }); setError(null); setConfirmation(null); setSaved(false); }}>{t("character.create")}</Button>
+        <Button type="button" variant="outline" onClick={() => setLibraryImport(true)}>{cl("import")}</Button>
         {(index.data?.characters ?? []).map((profile) => <Button type="button" key={profile.id} variant={editor?.id === profile.id ? "secondary" : "ghost"} onClick={() => selectProfile(profile)}>{profile.content.name}{profile.archived ? <Badge variant="outline">{t("character.archived")}</Badge> : null}</Button>)}
       </div>
       {index.isPending ? <p role="status">{t("common.loading")}</p> : null}
       {index.error ? <Alert variant="destructive"><AlertDescription>{index.error.message}<Button type="button" variant="ghost" onClick={() => { void index.refetch(); }}>{t("common.retry")}</Button></AlertDescription></Alert> : null}
       {!index.isPending && !index.data?.characters.length && !editor ? <Empty><EmptyHeader><EmptyDescription>{t("character.empty")}</EmptyDescription></EmptyHeader></Empty> : null}
+      {savedProfile && !savedProfile.archived ? <div className="flex flex-col gap-2"><p className="text-sm text-muted-foreground">{cl("publishHint")}</p><div className="flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={() => setPublishing(savedProfile)}>{cl("publish")}</Button>
+        {libraryLink ? <><Badge variant="outline">{cl(libraryLink.hasUpdate ? "newer" : "noUpdate")} · v{libraryLink.libraryVersion}</Badge><Button type="button" variant="outline" disabled={libraryLink.libraryArchived} onClick={() => { if (busyRef.current) return; syncDraft.current = { dirty: JSON.stringify(editor?.content) !== JSON.stringify(savedProfile.content), content: JSON.stringify(editor?.content) }; busyRef.current = true; setBusy(true); setError(null); void getLibraryCharacter(libraryLink.libraryId).then(setLibrarySync).catch((failure: unknown) => setError(failure instanceof Error ? failure : new Error(t("character.loadFailed")))).finally(() => { busyRef.current = false; setBusy(false); }); }}>{cl("sync")}</Button></> : null}
+      </div></div> : null}
+      {links.error ? <Alert variant="destructive"><AlertDescription>{links.error.message}<Button type="button" variant="outline" onClick={() => { void links.refetch(); }}>{t("common.retry")}</Button></AlertDescription></Alert> : null}
       {editor?.archived ? <Alert><AlertDescription>{t("character.archivedHint")}</AlertDescription></Alert> : null}
       {editor && appearances.length ? <FieldSet><FieldLegend>{t("character.appearances")}</FieldLegend>{appearances.map((binding) => {
         const snapshot = binding.snapshots.find((entry) => entry.characterId === editor.id);
@@ -151,6 +181,9 @@ export function CharacterManagerDialog({ projectId, onClose }: { projectId: stri
       if (picker.kind === "IMAGE") updateLook(picker.lookId, (look) => ({ ...look, views: look.views.some((view) => view.versionId === versionId) ? look.views : [...look.views, { versionId, purpose: "", description: "" }] }));
       else updateContent((value) => ({ ...value, voice: { versionId, speakerId: value.voice?.speakerId ?? null, description: value.voice?.description ?? "" } }));
     }} /> : null}
+    {libraryImport ? <CharacterLibraryImportDialog projectId={projectId} onClose={() => setLibraryImport(false)} /> : null}
+    {librarySync && editor ? <CharacterLibraryImportDialog projectId={projectId} source={librarySync} characterId={editor.id} expectedCharacterVersion={editor.version} onCompleted={(characterId) => { void synchronized(characterId); }} onClose={() => setLibrarySync(null)} /> : null}
+    {publishing ? <PublishCharacterDialog projectId={projectId} profile={publishing} onClose={() => { setPublishing(null); void index.refetch(); }} /> : null}
     {voicesOpen ? <Dialog title={t("character.chooseSpeaker")} onClose={() => setVoicesOpen(false)} onSubmit={(event) => event.preventDefault()}><VoiceLibrary selected={content?.voice?.speakerId ?? ""} containerRef={null} onClose={() => setVoicesOpen(false)} onSelect={(speakerId) => { updateContent((value) => ({ ...value, voice: !speakerId && !value.voice?.versionId ? null : { versionId: value.voice?.versionId ?? null, speakerId: speakerId || null, description: value.voice?.description ?? "" } })); setVoicesOpen(false); }} /></Dialog> : null}
   </Dialog>;
 }
