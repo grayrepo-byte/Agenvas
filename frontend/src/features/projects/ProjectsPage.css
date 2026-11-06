@@ -8,6 +8,7 @@
 .projects-search { flex: 1; min-width: 160px; }
 .projects-filter-actions { display: flex; align-items: center; gap: 15px; }
 .projects-archive-filter { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); white-space: nowrap; cursor: pointer; }
+.projects-search-scope { margin: -6px 0 16px; font-size: var(--ui-text-xs); line-height: 1.6; }
 .projects-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 18px; }
 .project-card { display: flex; flex-direction: column; min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); box-shadow: var(--ui-inset-highlight); transition: border-color 180ms, box-shadow 180ms, transform 220ms var(--ui-ease-out); }
 .project-card:hover { border-color: var(--ui-border-strong); box-shadow: var(--ui-panel-shadow), 0 8px 24px #0002; transform: translateY(-2px); }

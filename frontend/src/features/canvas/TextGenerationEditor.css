@@ -7,3 +7,4 @@
 }
 .text-generation-model { flex: 1 1 14ch; min-width: 0; margin-right: auto; justify-content: flex-start; text-align: left; cursor: default; }
 .text-generation-model > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.text-generation-draft-hint { flex-shrink: 0; margin: 0 0 var(--ui-space-2); color: var(--ui-text-muted); font-size: var(--ui-text-xs); }

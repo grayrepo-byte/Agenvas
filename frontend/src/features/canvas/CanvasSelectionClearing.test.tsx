@@ -596,9 +596,13 @@ describe("node editor centering", () => {
       expect(focusProbe.fit).not.toHaveBeenCalled();
     }
     const centersBeforeClosing = focusProbe.center.mock.calls.length;
-    fireEvent.click(screen.getByRole("button", { name: "关闭编辑区" }));
+    const closeEditor = screen.getByRole("button", { name: "关闭编辑区" });
+    closeEditor.focus();
+    fireEvent.click(closeEditor);
     expect(selectedIds()).toEqual([]);
     expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
+    expect(nodeElement("text-card")).toHaveFocus();
+    expect(flowProps.autoPanOnNodeFocus).toBe(false);
     expect(focusProbe.instance!.getViewport()).toEqual(viewport);
     expect(focusProbe.center).toHaveBeenCalledTimes(centersBeforeClosing);
     for (const call of focusProbe.viewport.mock.calls) expect(call).toEqual([viewport, { duration: 0 }]);
@@ -668,6 +672,33 @@ describe("node editor centering", () => {
     act(() => flowProps.onMoveStart?.(new MouseEvent("mousedown"), viewport));
     expect(focusProbe.viewport).toHaveBeenCalledExactlyOnceWith(viewport, { duration: 0 });
     expect(selectedIds()).toEqual([]);
+  });
+
+  it("leaves composing Escape to the input method, then returns focus when the editor closes", async () => {
+    await renderInteractiveFlow();
+    fireEvent.click(nodeElement("text-card"));
+    const prompt = await screen.findByRole("textbox", { name: "文字生成提示词" });
+    if (prompt instanceof HTMLTextAreaElement) fireEvent.change(prompt, { target: { value: "正在输入的中文" } });
+    else {
+      prompt.textContent = "正在输入的中文";
+      fireEvent.input(prompt);
+    }
+    await act(() => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())));
+    const centersBeforeClosing = focusProbe.center.mock.calls.length;
+    prompt.focus();
+    const transform = document.querySelector(".react-flow__viewport")?.getAttribute("style");
+    fireEvent.keyDown(prompt, { key: "Escape", isComposing: true });
+    expect(selectedIds()).toEqual(["text-card"]);
+    expect(prompt).toHaveFocus();
+    fireEvent.keyDown(prompt, { key: "Escape", isComposing: false });
+    expect(selectedIds()).toEqual([]);
+    expect(nodeElement("text-card")).toHaveFocus();
+    expect(document.querySelector(".react-flow__viewport")).toHaveAttribute("style", transform!);
+    expect(focusProbe.center).toHaveBeenCalledTimes(centersBeforeClosing);
+    fireEvent.keyDown(nodeElement("text-card"), { key: "Enter" });
+    const reopenedPrompt = await screen.findByRole("textbox", { name: "文字生成提示词" });
+    if (reopenedPrompt instanceof HTMLTextAreaElement) expect(reopenedPrompt).toHaveValue("正在输入的中文");
+    else expect(reopenedPrompt).toHaveTextContent("正在输入的中文");
   });
 });
 

@@ -19,6 +19,7 @@ type ReactFlowInstance,
 type ResizeParams,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import "./WorkspaceStudio.css";
 import { memo,useCallback,useEffect,useMemo,useRef,useState } from "react";
 import { Link,Navigate,useParams,useLocation } from "react-router";
 import {
@@ -1108,11 +1109,24 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     return () => document.removeEventListener("pointerdown", closeOnOutsidePointer, true);
   }, [creationMenu]);
 
+  const closeSelectionEditor = useCallback(() => {
+    const canvas = canvasElement.current;
+    const editor = canvas?.querySelector(".workspace-media-editor");
+    const ownsFocus = editor?.contains(document.activeElement);
+    const selection = useCanvasStore.getState().selectedIds;
+    const node = selection.length === 1
+      ? Array.from(canvas?.querySelectorAll<HTMLElement>(".react-flow__node") ?? [])
+        .find((element) => element.dataset.id === selection[0]) : undefined;
+    setSelectedIds([]);
+    // Closing an editor returns keyboard context without scrolling or selecting the node.
+    if (ownsFocus) node?.focus({ preventScroll: true });
+  }, [setSelectedIds]);
+
   // Esc 先交给当前模态/弹出层，再关创建菜单，最后关底部编辑区。setSelectedIds 对相同值返回原 state，
   // 因此没有选中时按 Esc 不会引起重渲染。
   useEffect(() => {
     function closeOnEscape(event: KeyboardEvent) {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
       // Radix 的 document 监听器可能晚于画布注册；不能依赖它先 preventDefault。
       // 即使焦点落到 document，打开的模态仍拥有 Escape，避免取消选中卸载编辑草稿。
       if (document.querySelector('[role="dialog"]:not([hidden]):not([aria-modal="false"]), [role="alertdialog"]:not([hidden])')) return;
@@ -1122,11 +1136,11 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         return;
       }
       if (document.querySelector('[role="listbox"], [role="menu"]')) return;
-      setSelectedIds([]);
+      closeSelectionEditor();
     }
     document.addEventListener("keydown", closeOnEscape);
     return () => document.removeEventListener("keydown", closeOnEscape);
-  }, [creationMenu, setSelectedIds]);
+  }, [creationMenu, closeSelectionEditor]);
 
   function chooseCreationKind(kind: CreationKind, point = creationMenu?.point, centerAtPoint = creationMenu?.centerAtPoint ?? false) {
     if (!point) return;
@@ -1332,6 +1346,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             onLocate={canvas.data?.items.some((item) => item.id === toggleLocked.variables?.id) ? () => locateFeedbackNodes([toggleLocked.variables!.id]) : undefined} /> : null}
         </div>
         <ReactFlow<WorkspaceNode>
+          // Keyboard focus return must preserve the view, including offscreen nodes.
+          autoPanOnNodeFocus={false}
           colorMode="dark"
           connectOnClick={false}
           connectionLineType={ConnectionLineType.Bezier}
@@ -1459,7 +1475,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               className="workspace-media-toolbar nodrag nowheel nopan">
               <CanvasEditorOverlay>
                 <Button variant="ghost" size="icon-sm" aria-label={t("canvas.workspace.closeEditor")} className="workspace-bottom-close"
-                  onClick={() => setSelectedIds([])} type="button"><X size={15} /></Button>
+                  onClick={closeSelectionEditor} type="button"><X size={15} /></Button>
                 {selectedItems[0].artifact.kind === "IMAGE" ||
                   selectedItems[0].artifact.kind === "VIDEO" || selectedItems[0].artifact.kind === "AUDIO" ?
                   <MediaDraftEditor key={selectedItems[0].id}
@@ -1469,7 +1485,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
                     openingAgentConversation={openAudioConversation.isPending} /> : null}
                 {selectedItems[0].artifact.kind === "TEXT" ?
                   <TextGenerationEditor key={selectedItems[0].artifact.id}
-                    artifact={selectedItems[0].artifact} /> : null}
+                    artifact={selectedItems[0].artifact} canvasItemId={selectedItems[0].id} /> : null}
               </CanvasEditorOverlay>
             </NodeToolbar> : null}
           <Background color="var(--ui-canvas-dot)" gap={24} size={1} />
