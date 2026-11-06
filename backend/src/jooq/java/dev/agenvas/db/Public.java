@@ -78,6 +78,12 @@ import dev.agenvas.db.tables.ProjectCharacterRevision;
 import dev.agenvas.db.tables.ProjectEvent;
 import dev.agenvas.db.tables.PromptDefinition;
 import dev.agenvas.db.tables.ProviderAttempt;
+import dev.agenvas.db.tables.ReferenceCatalogCacheJob;
+import dev.agenvas.db.tables.ReferenceCatalogImport;
+import dev.agenvas.db.tables.ReferenceCatalogPrivateCommand;
+import dev.agenvas.db.tables.ReferenceCatalogPrivateImage;
+import dev.agenvas.db.tables.ReferenceCatalogSnapshot;
+import dev.agenvas.db.tables.ReferenceCatalogSource;
 import dev.agenvas.db.tables.SkillBindingCommand;
 import dev.agenvas.db.tables.SkillDraft;
 import dev.agenvas.db.tables.SkillInstallCommand;
@@ -507,6 +513,39 @@ public class Public extends SchemaImpl {
     public final ProviderAttempt PROVIDER_ATTEMPT = ProviderAttempt.PROVIDER_ATTEMPT;
 
     /**
+     * Explicit authorized image prefetch jobs; pinned immutable metadata and
+     * durable per-image progress
+     */
+    public final ReferenceCatalogCacheJob REFERENCE_CATALOG_CACHE_JOB = ReferenceCatalogCacheJob.REFERENCE_CATALOG_CACHE_JOB;
+
+    /**
+     * Durable exact image import replay without provider execution
+     */
+    public final ReferenceCatalogImport REFERENCE_CATALOG_IMPORT = ReferenceCatalogImport.REFERENCE_CATALOG_IMPORT;
+
+    /**
+     * Owner-scoped selected-image command replay; never public or bulk image
+     * permission
+     */
+    public final ReferenceCatalogPrivateCommand REFERENCE_CATALOG_PRIVATE_COMMAND = ReferenceCatalogPrivateCommand.REFERENCE_CATALOG_PRIVATE_COMMAND;
+
+    /**
+     * Individually selected owner-private base pose or photographic costume
+     * cache authorization and fixed integrity
+     */
+    public final ReferenceCatalogPrivateImage REFERENCE_CATALOG_PRIVATE_IMAGE = ReferenceCatalogPrivateImage.REFERENCE_CATALOG_PRIVATE_IMAGE;
+
+    /**
+     * Immutable safe catalog metadata; previous ready snapshot survives failure
+     */
+    public final ReferenceCatalogSnapshot REFERENCE_CATALOG_SNAPSHOT = ReferenceCatalogSnapshot.REFERENCE_CATALOG_SNAPSHOT;
+
+    /**
+     * Admin registered public GitHub metadata sources; manual sync only
+     */
+    public final ReferenceCatalogSource REFERENCE_CATALOG_SOURCE = ReferenceCatalogSource.REFERENCE_CATALOG_SOURCE;
+
+    /**
      * Agent Skill 绑定命令的幂等摘要与响应
      */
     public final SkillBindingCommand SKILL_BINDING_COMMAND = SkillBindingCommand.SKILL_BINDING_COMMAND;
@@ -712,6 +751,12 @@ public class Public extends SchemaImpl {
             ProjectEvent.PROJECT_EVENT,
             PromptDefinition.PROMPT_DEFINITION,
             ProviderAttempt.PROVIDER_ATTEMPT,
+            ReferenceCatalogCacheJob.REFERENCE_CATALOG_CACHE_JOB,
+            ReferenceCatalogImport.REFERENCE_CATALOG_IMPORT,
+            ReferenceCatalogPrivateCommand.REFERENCE_CATALOG_PRIVATE_COMMAND,
+            ReferenceCatalogPrivateImage.REFERENCE_CATALOG_PRIVATE_IMAGE,
+            ReferenceCatalogSnapshot.REFERENCE_CATALOG_SNAPSHOT,
+            ReferenceCatalogSource.REFERENCE_CATALOG_SOURCE,
             SkillBindingCommand.SKILL_BINDING_COMMAND,
             SkillDraft.SKILL_DRAFT,
             SkillInstallCommand.SKILL_INSTALL_COMMAND,

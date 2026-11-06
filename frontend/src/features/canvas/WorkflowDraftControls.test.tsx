@@ -45,6 +45,34 @@ function ValuesHarness({ dialog = false, initialValues = {} }: { dialog?: boolea
 }
 
 describe("WorkflowMediaInputs", () => {
+  it.each(["VIDEO", "AUDIO"] as const)("omits the image catalog from an opted-in %s workflow slot", async (kind) => {
+    const field: CreatorInputField = { key: "source", label: "测试槽位", type: kind, required: false, advanced: false };
+    render(<WorkflowMediaInputs catalogEnabled definition={{ fields: [field] }} values={{ source: "saved-version" }} prompt="" durationSeconds={null}
+      choices={[{ id: "saved-version", label: "Saved media", kind, available: true }]} onChange={vi.fn()} onChooseSource={vi.fn()} />);
+    await clickControl(screen.getByRole("button", { name: "选择测试槽位" }));
+    const menu = screen.getByRole("menu", { name: "图片来源" });
+    expect(within(menu).queryByRole("menuitem", { name: "姿势与服装参考" })).not.toBeInTheDocument();
+    for (const name of ["从设备上传", "从资源库选择", "从画布选择", "从我的资产选择"]) {
+      expect(within(menu).getByRole("menuitem", { name })).toBeInTheDocument();
+    }
+  });
+
+  it("keeps the image catalog available for an explicitly opted-in IMAGE workflow slot", async () => {
+    const field: CreatorInputField = { key: "source", label: "测试槽位", type: "IMAGE", required: false, advanced: false };
+    render(<WorkflowMediaInputs catalogEnabled definition={{ fields: [field] }} values={{ source: "saved-version" }} prompt="" durationSeconds={null}
+      choices={[{ id: "saved-version", label: "Saved image", kind: "IMAGE", available: true }]} onChange={vi.fn()} onChooseSource={vi.fn()} />);
+    await clickControl(screen.getByRole("button", { name: "选择测试槽位" }));
+    expect(screen.getByRole("menuitem", { name: "姿势与服装参考" })).toBeEnabled();
+  });
+
+  it("omits the image catalog when a shared image workflow consumer has not opted in", async () => {
+    const field: CreatorInputField = { key: "source", label: "测试槽位", type: "IMAGE", required: false, advanced: false };
+    render(<WorkflowMediaInputs definition={{ fields: [field] }} values={{ source: "saved-version" }} prompt="" durationSeconds={null}
+      choices={[{ id: "saved-version", label: "Saved image", kind: "IMAGE", available: true }]} onChange={vi.fn()} onChooseSource={vi.fn()} />);
+    await clickControl(screen.getByRole("button", { name: "选择测试槽位" }));
+    expect(screen.queryByRole("menuitem", { name: "姿势与服装参考" })).not.toBeInTheDocument();
+  });
+
   it("shows independent creator stages in published order without merging duplicate-purpose controls", () => {
     const fields = [
       { key: "baseRatio", label: "画幅", type: "STRING" as const, group: "基础生成", required: false, advanced: false },

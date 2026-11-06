@@ -24,6 +24,10 @@ import dev.agenvas.db.tables.MediaTemplate.MediaTemplatePath;
 import dev.agenvas.db.tables.MediaTemplateImage.MediaTemplateImagePath;
 import dev.agenvas.db.tables.MediaTemplateImportCommand.MediaTemplateImportCommandPath;
 import dev.agenvas.db.tables.Project.ProjectPath;
+import dev.agenvas.db.tables.ReferenceCatalogCacheJob.ReferenceCatalogCacheJobPath;
+import dev.agenvas.db.tables.ReferenceCatalogImport.ReferenceCatalogImportPath;
+import dev.agenvas.db.tables.ReferenceCatalogPrivateCommand.ReferenceCatalogPrivateCommandPath;
+import dev.agenvas.db.tables.ReferenceCatalogPrivateImage.ReferenceCatalogPrivateImagePath;
 import dev.agenvas.db.tables.SkillBindingCommand.SkillBindingCommandPath;
 import dev.agenvas.db.tables.SkillInstallCommand.SkillInstallCommandPath;
 import dev.agenvas.db.tables.SkillInstallOperation.SkillInstallOperationPath;
@@ -422,6 +426,58 @@ public class AppUser extends TableImpl<AppUserRecord> {
             _project = new ProjectPath(this, null, Keys.PROJECT__PROJECT_OWNER_ID_FKEY.getInverseKey());
 
         return _project;
+    }
+
+    private transient ReferenceCatalogCacheJobPath _referenceCatalogCacheJob;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.reference_catalog_cache_job</code> table
+     */
+    public ReferenceCatalogCacheJobPath referenceCatalogCacheJob() {
+        if (_referenceCatalogCacheJob == null)
+            _referenceCatalogCacheJob = new ReferenceCatalogCacheJobPath(this, null, Keys.REFERENCE_CATALOG_CACHE_JOB__REFERENCE_CATALOG_CACHE_JOB_OWNER_ID_FKEY.getInverseKey());
+
+        return _referenceCatalogCacheJob;
+    }
+
+    private transient ReferenceCatalogImportPath _referenceCatalogImport;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.reference_catalog_import</code> table
+     */
+    public ReferenceCatalogImportPath referenceCatalogImport() {
+        if (_referenceCatalogImport == null)
+            _referenceCatalogImport = new ReferenceCatalogImportPath(this, null, Keys.REFERENCE_CATALOG_IMPORT__REFERENCE_CATALOG_IMPORT_OWNER_ID_FKEY.getInverseKey());
+
+        return _referenceCatalogImport;
+    }
+
+    private transient ReferenceCatalogPrivateCommandPath _referenceCatalogPrivateCommand;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.reference_catalog_private_command</code> table
+     */
+    public ReferenceCatalogPrivateCommandPath referenceCatalogPrivateCommand() {
+        if (_referenceCatalogPrivateCommand == null)
+            _referenceCatalogPrivateCommand = new ReferenceCatalogPrivateCommandPath(this, null, Keys.REFERENCE_CATALOG_PRIVATE_COMMAND__REFERENCE_CATALOG_PRIVATE_COMMAND_OWNER_ID_FKEY.getInverseKey());
+
+        return _referenceCatalogPrivateCommand;
+    }
+
+    private transient ReferenceCatalogPrivateImagePath _referenceCatalogPrivateImage;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.reference_catalog_private_image</code> table
+     */
+    public ReferenceCatalogPrivateImagePath referenceCatalogPrivateImage() {
+        if (_referenceCatalogPrivateImage == null)
+            _referenceCatalogPrivateImage = new ReferenceCatalogPrivateImagePath(this, null, Keys.REFERENCE_CATALOG_PRIVATE_IMAGE__REFERENCE_CATALOG_PRIVATE_IMAGE_OWNER_ID_FKEY.getInverseKey());
+
+        return _referenceCatalogPrivateImage;
     }
 
     private transient SkillBindingCommandPath _skillBindingCommand;

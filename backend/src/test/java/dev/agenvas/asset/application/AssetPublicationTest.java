@@ -51,6 +51,7 @@ class AssetPublicationTest {
     @BeforeEach
     void setup() {
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
+        org.mockito.Mockito.doCallRealMethod().when(storage).discardRejectedUpload(any(), any(), any(), any());
         service = new AssetService(projects, repository, storage,
                 new ProjectEventService(events, clock, mock(ApplicationEventPublisher.class)),
                 new ObjectMapper(), clock);

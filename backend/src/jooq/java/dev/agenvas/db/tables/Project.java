@@ -23,6 +23,7 @@ import dev.agenvas.db.tables.MediaTemplateImportCommand.MediaTemplateImportComma
 import dev.agenvas.db.tables.ProjectCharacter.ProjectCharacterPath;
 import dev.agenvas.db.tables.ProjectCharacterCommand.ProjectCharacterCommandPath;
 import dev.agenvas.db.tables.ProjectEvent.ProjectEventPath;
+import dev.agenvas.db.tables.ReferenceCatalogImport.ReferenceCatalogImportPath;
 import dev.agenvas.db.tables.SkillBindingCommand.SkillBindingCommandPath;
 import dev.agenvas.db.tables.SkillInstallCommand.SkillInstallCommandPath;
 import dev.agenvas.db.tables.SkillInstallOperation.SkillInstallOperationPath;
@@ -450,6 +451,19 @@ public class Project extends TableImpl<ProjectRecord> {
             _mediaTemplateImportCommand = new MediaTemplateImportCommandPath(this, null, Keys.MEDIA_TEMPLATE_IMPORT_COMMAND__MEDIA_TEMPLATE_IMPORT_COMMAND_PROJECT_ID_FKEY.getInverseKey());
 
         return _mediaTemplateImportCommand;
+    }
+
+    private transient ReferenceCatalogImportPath _referenceCatalogImport;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.reference_catalog_import</code> table
+     */
+    public ReferenceCatalogImportPath referenceCatalogImport() {
+        if (_referenceCatalogImport == null)
+            _referenceCatalogImport = new ReferenceCatalogImportPath(this, null, Keys.REFERENCE_CATALOG_IMPORT__REFERENCE_CATALOG_IMPORT_PROJECT_ID_FKEY.getInverseKey());
+
+        return _referenceCatalogImport;
     }
 
     private transient SkillBindingCommandPath _skillBindingCommand;

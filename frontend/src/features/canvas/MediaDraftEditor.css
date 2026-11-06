@@ -46,7 +46,10 @@
   clip-path: inset(50%); white-space: nowrap; }
 .media-draft-popover.media-draft-reference-sources {
   width: 220px;
-  overflow: visible; transform-origin: top left; }
+  /* Named image slots can add a catalog action; keep the full menu scrollable
+     within the space Radix calculated for its current side of the trigger. */
+  max-height: min(420px, 55vh, var(--radix-dropdown-menu-content-available-height));
+  overflow-x: hidden; overflow-y: auto; transform-origin: top left; }
 .media-draft-reference-sources > button > span { flex: 1; }
 .media-draft-reference-chip { position: relative; display: grid; width: 46px; height: 46px; flex: 0 0 46px;
   place-items: center; overflow: hidden; border: 1px solid var(--ui-canvas-border); border-radius: 10px; background: var(--ui-surface-raised);

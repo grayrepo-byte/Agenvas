@@ -60,6 +60,8 @@ async function gesture(selector, dx = 0) {
   }
   await cdp("Input.dispatchMouseEvent", { type: "mouseReleased", x: start.x + dx, y: start.y,
     button: "left", clickCount: 1 });
+  // Let the completed drag's temporary click suppression expire before a new gesture.
+  if (dx) await page(() => new Promise((resolve) => setTimeout(resolve, 0)));
 }
 async function button(text) {
   const target = await page((label) => {
@@ -175,6 +177,7 @@ try {
     else waiting.resolve(message.result);
   });
   await cdp("Page.enable");
+  if (process.argv.includes("--slow")) await cdp("Emulation.setCPUThrottlingRate", { rate: 4 });
   await cdp("Fetch.enable", { patterns: [{ urlPattern: "*/e2e/audio-node.wav", requestStage: "Request" },
     { urlPattern: "*/api/v1/*", requestStage: "Request" }] });
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });

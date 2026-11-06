@@ -20,6 +20,8 @@ const groupEntryOnly = process.argv.includes("--group-entry-only");
 const connectionDropOnly = process.argv.includes("--connection-drop-only");
 const selectAllOnly = process.argv.includes("--select-all-only");
 const shortcutsOnly = process.argv.includes("--shortcuts-only");
+const emptyCreationOnly = process.argv.includes("--empty-creation-only");
+const initialGroupOnly = process.argv.includes("--initial-group-only");
 const dragCase = process.argv.includes("--hand-drag-only") ? "hand"
   : process.argv.includes("--text-node-drag-only") ? "node" : process.argv.includes("--drag-diagnostics") ? "diagnostics" : null;
 const catalogs = Object.fromEntries(await Promise.all(["zh", "ru"].map(async (locale) => [locale,
@@ -116,13 +118,31 @@ async function navigate(baseUrl, nextLocale = "zh", { motionLarge = false } = {}
   await ready(motionLarge ? 100 : undefined);
 }
 async function zoomToFirstCard() {
-  // Native wheel zoom stays anchored to the first card, even with another 99 cards in view.
+  // A large-canvas fit can leave the first title under the fixed header. Pan from
+  // blank canvas before zooming on its title; text bodies intentionally own wheel input.
+  const placement = await page((selector) => {
+    const box = document.querySelector(selector).getBoundingClientRect();
+    let pane;
+    for (let y = 120; y < innerHeight - 120 && !pane; y += 40)
+      for (let x = 120; x < innerWidth - 120; x += 40)
+        if (document.elementFromPoint(x, y)?.classList.contains("react-flow__pane")) { pane = { x, y }; break; }
+    return { pane, dx: innerWidth / 2 - box.x - box.width / 2,
+      dy: innerHeight / 3 - box.y - box.height / 2 };
+  }, card("synthetic-card-0"));
+  assert.ok(placement.pane, "The close-up starts from a hittable blank canvas region");
+  await clickNamed("button", "canvas.tools.handTool");
+  await dragFromPoint(placement.pane, placement.dx, placement.dy);
+  await waitForStableViewport();
+  await clickNamed("button", "canvas.tools.selectionTool");
   for (let attempt = 0; attempt < 6; attempt++) {
     const box = await page((selector) => document.querySelector(selector).getBoundingClientRect().toJSON(), card("synthetic-card-0"));
     if (box.width >= 250) break;
-    await cdp("Input.dispatchMouseEvent", { type: "mouseWheel", x: box.x + box.width / 2, y: box.y + box.height / 2, deltaX: 0, deltaY: -280 });
-    await pause(120);
+    const anchor = await point(`${card("synthetic-card-0")} .artifact-card-title-icon`);
+    await cdp("Input.dispatchMouseEvent", { type: "mouseWheel", ...anchor, deltaX: 0, deltaY: -280 });
+    await waitForStableViewport();
   }
+  assert.ok(await page((selector) => document.querySelector(selector).getBoundingClientRect().width >= 250,
+    card("synthetic-card-0")), "Native wheel reaches a usable card close-up");
   await click(`${card("synthetic-card-0")} .artifact-card-title-icon`);
   await waitFor(() => document.querySelector('.react-flow__node[data-id="synthetic-card-0"]')?.classList.contains("selected"));
   await waitForStableViewport();
@@ -695,6 +715,65 @@ async function runShortcutRegression(baseUrl) {
   await screenshot("shortcuts-native-text-history");
   console.log(`Canvas shortcuts passed: native Cmd/Ctrl copy, paste, duplicate, undo/redo and both delete keys; unavailable commands prevent browser defaults; textarea undo/redo/deletion and clipboard-key isolation preserve the draft. Synthetic screenshots: ${screenshots}`);
 }
+async function runEmptyCreationRegression(baseUrl) {
+  await cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
+  for (const name of ["文字", "图片", "音频", "视频"]) {
+    await cdp("Page.navigate", { url: new URL(`${route}?locale=zh&empty-creation=1`, baseUrl).href });
+    await waitFor(() => document.querySelectorAll(".canvas-empty-types button").length === 4);
+    if (name === "图片") await clickNamed("button", "canvas.workspace.zoomOut");
+    if (name === "视频") await clickNamed("button", "canvas.workspace.zoomIn");
+    const before = await page(() => document.querySelector(".react-flow__viewport").style.transform);
+    await click(await namedSelector(".canvas-empty-types button", name));
+    await waitFor(() => {
+      const node = document.querySelector(".react-flow__node");
+      const canvas = document.querySelector(".react-flow");
+      if (!node || !canvas) return false;
+      const n = node.getBoundingClientRect(), c = canvas.getBoundingClientRect();
+      return n.width > 0 && n.left >= c.left && n.right <= c.right && n.top >= c.top && n.bottom <= c.bottom;
+    });
+    await page(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const after = await page(() => {
+      const node = document.querySelector(".react-flow__node").getBoundingClientRect();
+      const canvas = document.querySelector(".react-flow").getBoundingClientRect();
+      return { dx: node.x + node.width / 2 - canvas.x - canvas.width / 2,
+        dy: node.y + node.height / 2 - canvas.y - canvas.height / 2,
+        viewport: document.querySelector(".react-flow__viewport").style.transform };
+    });
+    assert.ok(Math.abs(after.dx) < 1 && Math.abs(after.dy) < 1, `The first ${name} card must stay centered: ${JSON.stringify(after)}`);
+    assert.equal(after.viewport, before, "Creating a centered card must not move the empty canvas viewport");
+    assert.equal((await evidence()).items.length, 1);
+  }
+  assert.deepEqual(runtimeErrors, []);
+  console.log("Empty canvas creation passed: first text/image/audio/video card remains centered, visible and persisted without a viewport jump; synthetic only");
+}
+
+async function runInitialGroupRegression(baseUrl) {
+  for (const failedRead of [false, true]) {
+    await cdp("Page.navigate", { url: new URL(`${route}?locale=zh&initial-group=1${failedRead ? "&group-read-failure=1" : ""}`, baseUrl).href });
+    if (failedRead) {
+      await waitFor(() => Boolean(document.querySelector('[role="alert"]')));
+      await clickNamed("button", "common.retryRead");
+    }
+    await waitFor(() => Boolean(document.querySelector(".canvas-group--collapsed")));
+    await page(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const layout = await page(() => {
+      const canvas = document.querySelector(".react-flow").getBoundingClientRect();
+      const visible = [...document.querySelectorAll(".react-flow__node")]
+        .filter((node) => getComputedStyle(node).visibility !== "hidden")
+        .map((node) => ({ id: node.dataset.id, rect: node.getBoundingClientRect().toJSON() }));
+      return { canvas: canvas.toJSON(), visible,
+        zoom: new DOMMatrixReadOnly(getComputedStyle(document.querySelector(".react-flow__viewport")).transform).a };
+    });
+    assert.equal(layout.visible.length, 2);
+    for (const { id, rect } of layout.visible) assert.ok(rect.left >= layout.canvas.left
+      && rect.right <= layout.canvas.right && rect.top >= layout.canvas.top && rect.bottom <= layout.canvas.bottom,
+    `Initial fit must use visible group contents after delayed metadata, ${id}: ${JSON.stringify(layout)}`);
+    assert.ok((await evidence()).requests.every((request) => request.method === "GET"), "Reading or retrying groups must not write canvas data");
+  }
+  assert.deepEqual(runtimeErrors, []);
+  console.log("Initial collapsed-group fit passed: delayed metadata and explicit read retry, hidden members excluded, visible nodes remain in view without writes; synthetic only");
+}
+
 try {
   const config = { root, configFile: join(root, "vite.config.ts") };
   if (production) {
@@ -722,7 +801,9 @@ try {
   await cdp("Page.enable"); await cdp("Runtime.enable");
   const baseUrl = server.resolvedUrls.local[0];
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-  if (shortcutsOnly) await runShortcutRegression(baseUrl);
+  if (initialGroupOnly) await runInitialGroupRegression(baseUrl);
+  else if (emptyCreationOnly) await runEmptyCreationRegression(baseUrl);
+  else if (shortcutsOnly) await runShortcutRegression(baseUrl);
   else if (selectAllOnly) await runSelectAllRegression(baseUrl);
   else if (connectionDropOnly) await runConnectionDropRegression(baseUrl);
   else if (groupEntryOnly) await runGroupEntryRegression(baseUrl);

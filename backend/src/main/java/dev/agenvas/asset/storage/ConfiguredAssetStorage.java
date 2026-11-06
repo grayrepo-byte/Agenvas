@@ -238,6 +238,21 @@ public class ConfiguredAssetStorage implements AssetStorage {
         local.discard(".cloud-cache/" + key);
     }
 
+    @Override public void discardRejectedUpload(UUID project, UUID asset, String original, String thumbnail) {
+        // Capture validated remote identities before clearing the receipt. Clear first so a crash
+        // during deletion cannot leave a READY receipt pointing at already removed bytes.
+        Remote main = original.startsWith(REMOTE_PREFIX) ? remote(original) : null;
+        Remote preview = thumbnail != null && thumbnail.startsWith(REMOTE_PREFIX) ? remote(thumbnail) : null;
+        repository.resetRejectedUpload(project, asset);
+        try { discardRejectedFile(original, main); }
+        finally { if (thumbnail != null) discardRejectedFile(thumbnail, preview); }
+    }
+    private void discardRejectedFile(String key, Remote remote) {
+        if (remote == null) { local.discard(key); return; }
+        cloud.delete(remote.profile(), remoteKey(remote.profile(), remote.key()));
+        local.discard(".cloud-cache/" + key);
+    }
+
     /** Cleanup uses the pinned receipt directly; recovering an unfinished route would upload it. */
     @Override public void discardPreparedImage(UUID project, UUID asset) {
         var route = repository.route(project, asset);

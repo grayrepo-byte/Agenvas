@@ -159,6 +159,7 @@ export function BrushMarkupEditor(props: {
     <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label={t("image.markupEditor.title")}
       className="markup-dialog" onKeyDown={(event) => {
         event.stopPropagation();
+        if (event.nativeEvent.isComposing) return;
         if (event.key === "Tab") {
           const controls = dialogRef.current?.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled)");
           const first = controls?.[0]; const last = controls?.[controls.length - 1];
@@ -231,7 +232,8 @@ export function BrushMarkupEditor(props: {
             onChange={(event) => setText({ ...text, value: event.target.value })}
             onBlur={finishText} onKeyDown={(event) => {
               event.stopPropagation();
-              if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); finishText(); }
+              if (event.nativeEvent.isComposing) return;
+              if (event.key === "Enter") { event.preventDefault(); finishText(); }
               if (event.key === "Escape") setText(null);
             }} /> : null}
         </div>

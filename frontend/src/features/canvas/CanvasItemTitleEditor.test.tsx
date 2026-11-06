@@ -84,6 +84,31 @@ function showRetriableTitle() {
 }
 
 describe("CanvasItemTitleEditor", () => {
+  it.each(["Enter", "Escape"])("preserves the title draft when the input method handles %s", async (key) => {
+    let requests = 0;
+    server.use(http.post("/api/v1/projects/:projectId/canvas/edits", () => {
+      requests += 1;
+      return HttpResponse.json({ items: [item] });
+    }));
+    showTitle();
+    const user = userEvent.setup();
+    await user.dblClick(screen.getByRole("button", { name: "重命名图片：新图片" }));
+    const editor = screen.getByRole("textbox", { name: "图片标题" });
+    await user.clear(editor);
+    await user.type(editor, "尚未确认的标题");
+
+    expect(fireEvent.keyDown(editor, { key, isComposing: true })).toBe(true);
+    expect(screen.getByRole("textbox", { name: "图片标题" })).toBe(editor);
+    expect(editor).toHaveValue("尚未确认的标题");
+    expect(editor).toHaveFocus();
+    expect(requests).toBe(0);
+
+    // After composition, an explicit Escape still cancels the node rename.
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("button", { name: "重命名图片：新图片" })).toBeVisible();
+    expect(requests).toBe(0);
+  });
+
   it("edits one node title with CanvasItem CAS and leaves the Artifact name unchanged", async () => {
     let requestBody: unknown;
     server.use(

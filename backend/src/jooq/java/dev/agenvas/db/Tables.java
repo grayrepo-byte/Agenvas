@@ -78,6 +78,12 @@ import dev.agenvas.db.tables.ProjectCharacterRevision;
 import dev.agenvas.db.tables.ProjectEvent;
 import dev.agenvas.db.tables.PromptDefinition;
 import dev.agenvas.db.tables.ProviderAttempt;
+import dev.agenvas.db.tables.ReferenceCatalogCacheJob;
+import dev.agenvas.db.tables.ReferenceCatalogImport;
+import dev.agenvas.db.tables.ReferenceCatalogPrivateCommand;
+import dev.agenvas.db.tables.ReferenceCatalogPrivateImage;
+import dev.agenvas.db.tables.ReferenceCatalogSnapshot;
+import dev.agenvas.db.tables.ReferenceCatalogSource;
 import dev.agenvas.db.tables.SkillBindingCommand;
 import dev.agenvas.db.tables.SkillDraft;
 import dev.agenvas.db.tables.SkillInstallCommand;
@@ -491,6 +497,39 @@ public class Tables {
      * 固定任务租约和连接能力版本的外部提交尝试；结果未知时禁止自动重提
      */
     public static final ProviderAttempt PROVIDER_ATTEMPT = ProviderAttempt.PROVIDER_ATTEMPT;
+
+    /**
+     * Explicit authorized image prefetch jobs; pinned immutable metadata and
+     * durable per-image progress
+     */
+    public static final ReferenceCatalogCacheJob REFERENCE_CATALOG_CACHE_JOB = ReferenceCatalogCacheJob.REFERENCE_CATALOG_CACHE_JOB;
+
+    /**
+     * Durable exact image import replay without provider execution
+     */
+    public static final ReferenceCatalogImport REFERENCE_CATALOG_IMPORT = ReferenceCatalogImport.REFERENCE_CATALOG_IMPORT;
+
+    /**
+     * Owner-scoped selected-image command replay; never public or bulk image
+     * permission
+     */
+    public static final ReferenceCatalogPrivateCommand REFERENCE_CATALOG_PRIVATE_COMMAND = ReferenceCatalogPrivateCommand.REFERENCE_CATALOG_PRIVATE_COMMAND;
+
+    /**
+     * Individually selected owner-private base pose or photographic costume
+     * cache authorization and fixed integrity
+     */
+    public static final ReferenceCatalogPrivateImage REFERENCE_CATALOG_PRIVATE_IMAGE = ReferenceCatalogPrivateImage.REFERENCE_CATALOG_PRIVATE_IMAGE;
+
+    /**
+     * Immutable safe catalog metadata; previous ready snapshot survives failure
+     */
+    public static final ReferenceCatalogSnapshot REFERENCE_CATALOG_SNAPSHOT = ReferenceCatalogSnapshot.REFERENCE_CATALOG_SNAPSHOT;
+
+    /**
+     * Admin registered public GitHub metadata sources; manual sync only
+     */
+    public static final ReferenceCatalogSource REFERENCE_CATALOG_SOURCE = ReferenceCatalogSource.REFERENCE_CATALOG_SOURCE;
 
     /**
      * Agent Skill 绑定命令的幂等摘要与响应

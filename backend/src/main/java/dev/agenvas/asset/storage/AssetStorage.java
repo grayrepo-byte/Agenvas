@@ -71,6 +71,11 @@ public interface AssetStorage {
         for (String suffix : java.util.List.of(".mp3", ".wav", ".ogg")) discard(prefix + suffix);
     }
 
+    /** Rejected publication cleanup; caller holds the media lock and has checked READY absence. */
+    default void discardRejectedUpload(UUID projectId, UUID assetId, String original, String thumbnail) {
+        try { discard(original); } finally { if (thumbnail != null) discard(thumbnail); }
+    }
+
     /** Removes controlled server-derived image keys without decoding or resuming an upload. */
     default void discardPreparedImage(UUID projectId, UUID assetId) {
         String prefix = projectId + "/" + assetId;
