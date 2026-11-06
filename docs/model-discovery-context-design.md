@@ -12,11 +12,21 @@ adapters preserve the configured prefix. Choosing Gemini/Ollama explicitly permi
 only their documented sibling metadata paths, never arbitrary returned URLs.
 
 Store raw theoretical/context/input/output limits separately from runtime context
-observations and the administrator's effective selection. Every number is nullable
-until supported by metadata or explicit manual configuration. Ollama model_info is
-not allocated memory: automatic selection requires a matching loaded-model context,
-and must never increase allocation to the architectural maximum. Runtime changes
-must cause a safe failure rather than silently expanding or shrinking a frozen call.
+observations and the administrator's effective selection. Missing provider metadata
+stays unknown. When capacity is unavailable, discovery fails, a model ID is entered
+manually, or a legacy connection without a capacity policy is opened for editing,
+the form prefills a 1,000,000-token context, leaves the input limit empty and clears
+the automatic preview. This fallback preserves the draft's output limit; new forms
+start with the existing 4,096-token output default.
+Saving these editable generic defaults uses the existing MANUAL provenance; they
+are not detected or measured provider capacity. Preserve explicit manual values.
+Reliable metadata still selects AUTO, including input-only Gemini metadata without
+inventing a combined context limit. Ollama model_info is not allocated memory:
+automatic selection requires a matching loaded-model context and must never increase
+allocation to the architectural maximum. The manual default remains available when
+no loaded runtime is reported, without changing server allocation. Runtime changes
+must cause a safe failure for automatic policies rather than silently expanding or
+shrinking a frozen call.
 
 Metadata preview has DRAFT and SAVED credential modes. Saved mode derives both
 endpoint and credential from the same expected immutable version. Draft mode uses
@@ -26,11 +36,12 @@ clients cannot relabel arbitrary values as detected. User overrides are labelled
 manual. Preview does not modify encrypted configurations.
 
 New connection versions persist the selected policy alongside the existing encrypted
-credential. Unknown old policies stay unknown; no model capacity is invented during
-migration. New requests require confirmed capacity; stored complete requests and
-responses remain immutable. Replace the untouched built-in million-token default
-with a 32768-token application ceiling (not a detected provider capacity), 4096-token
-response reserve and 1024-token summary. Preserve explicitly saved director settings.
+credential. Legacy connections without a capacity policy stay unchanged until edited
+and explicitly saved; opening the form does not modify a saved connection. New
+requests require confirmed capacity; stored complete requests and responses remain immutable. The default global
+application ceiling remains 32768 tokens (not a detected provider capacity), with a
+4096-token response reserve and 1024-token summary. The connection form default does
+not rewrite saved connections or director settings and needs no API or data migration.
 
 For each new request, effective context is bounded by the selected connection and
 the global application ceiling. Effective output is bounded by the selected output

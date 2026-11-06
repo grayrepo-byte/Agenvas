@@ -8,7 +8,7 @@ import { Notice } from "../../shared/ui/PagePrimitives";
 import { Button } from "../../shared/ui/primitives/button";
 import { Field, FieldDescription, FieldLabel } from "../../shared/ui/primitives/field";
 import { Input } from "../../shared/ui/primitives/input";
-import { automaticModelOptions, modelOptionsFromPolicy, type ModelOptionsDraft } from "./llmModelConfiguration";
+import { automaticModelOptions, DEFAULT_CONTEXT_WINDOW_TOKENS, fallbackModelOptions, modelOptionsFromPolicy, type ModelOptionsDraft } from "./llmModelConfiguration";
 import { validLlmApiKey } from "./llmApiKey";
 
 const PROVIDERS: Record<LlmModelProvider, MessageKey> = {
@@ -45,10 +45,15 @@ export function LlmModelOptions(props: Props) {
     onSuccess: (preview: LlmModelPreview) => {
       const current = latest.current;
       const model = preview.models.find(item => item.id === current.modelId);
-      if (model && !current.value.manualOverride) {
-        const next = automaticModelOptions(current.value, model, preview.id);
-        current.onChange(next ?? { ...current.value, mode: "MANUAL", context: "", input: "", previewId: null, previewModelId: null });
+      if (!current.value.manualOverride) {
+        const next = model ? automaticModelOptions(current.value, model, preview.id) : null;
+        current.onChange(next ?? fallbackModelOptions(current.value));
       }
+    },
+    onError: (cause, id) => {
+      if (id !== sequence.current || cause instanceof DOMException && cause.name === "AbortError") return;
+      const current = latest.current;
+      if (!current.value.manualOverride) current.onChange(fallbackModelOptions(current.value));
     },
     retry: false,
   });
@@ -59,7 +64,7 @@ export function LlmModelOptions(props: Props) {
     cancel(); setError("");
     const current = latest.current;
     if (current.value.previewId && !current.value.manualOverride)
-      current.onChange({ ...current.value, mode: "MANUAL", context: "", input: "", previewId: null, previewModelId: null });
+      current.onChange(fallbackModelOptions(current.value));
     return () => { sequence.current++; active.current?.controller.abort(); active.current = null; };
   }, [endpoint, apiKey, value.provider, base?.version, cancel]);
   useEffect(() => { if (disabled) cancel(); }, [disabled, cancel]);
@@ -105,7 +110,7 @@ export function LlmModelOptions(props: Props) {
         const model = data.models.find(item => item.id === id);
         if (model && !value.manualOverride) {
           const next = automaticModelOptions(value, model, data.id);
-          onChange(next ?? { ...value, mode: "MANUAL", context: "", input: "", previewId: null, previewModelId: null });
+          onChange(next ?? fallbackModelOptions(value));
         }
       }}>
         {!visible.some(model => model.id === modelId) ? <option value={modelId}>{modelId || t("modelConnection.select")}</option> : null}
@@ -121,6 +126,8 @@ export function LlmModelOptions(props: Props) {
     {value.provider === "OLLAMA" ? <Notice tone="info">{t("modelConnection.ollamaHint")}</Notice> : null}
     {value.provider === "GEMINI" || value.provider === "ANTHROPIC" ? <FieldDescription>{t("modelConnection.compatibilityHint")}</FieldDescription> : null}
     {!automatic && !value.context && !value.input ? <Notice tone="warning">{t("modelConnection.unknown")}</Notice> : null}
+    {value.mode === "MANUAL" && !value.manualOverride && value.context === String(DEFAULT_CONTEXT_WINDOW_TOKENS)
+      ? <Notice tone="info">{t("modelConnection.defaultContext")}</Notice> : null}
     <div className="ui-form-actions">
       <Button type="button" variant={value.mode === "AUTO" ? "secondary" : "outline"} disabled={disabled || !automatic} onClick={() => { if (automatic) onChange({ ...automatic, manualOverride: false }); }}>{t("modelConnection.auto")}</Button>
       <Button type="button" variant={value.mode === "MANUAL" ? "secondary" : "outline"} disabled={disabled} onClick={() => onChange({ ...value, mode: "MANUAL", manualOverride: true })}>{t("modelConnection.manual")}</Button>

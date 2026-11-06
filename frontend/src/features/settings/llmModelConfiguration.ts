@@ -1,11 +1,17 @@
 import type { LlmModelMetadata, LlmModelPolicy, LlmModelProvider, LlmModelSelection } from "../../shared/api/client";
+export const DEFAULT_CONTEXT_WINDOW_TOKENS = 1_000_000;
 export type ModelOptionsDraft = { provider: LlmModelProvider; mode: "AUTO" | "MANUAL"; context: string; input: string;
   output: string; outputParameter: LlmModelSelection["outputParameter"]; previewId: string | null; previewModelId: string | null; manualOverride: boolean };
 export function modelOptionsFromPolicy(policy: LlmModelPolicy | null | undefined): ModelOptionsDraft {
   return { provider: policy?.provider ?? "COMPATIBLE", mode: policy && policy.source !== "MANUAL" ? "AUTO" : "MANUAL",
-    context: String(policy?.contextWindowTokens ?? ""), input: String(policy?.inputLimitTokens ?? ""),
+    context: String(policy?.contextWindowTokens ?? (policy?.inputLimitTokens ? "" : DEFAULT_CONTEXT_WINDOW_TOKENS)), input: String(policy?.inputLimitTokens ?? ""),
     output: String(policy?.maxOutputTokens ?? 4096), outputParameter: policy?.outputParameter ?? "MAX_TOKENS", previewId: null, previewModelId: null,
     manualOverride: policy?.source === "MANUAL" };
+}
+/** A generic default is editable configuration, never a provider-reported capacity. */
+export function fallbackModelOptions(draft: ModelOptionsDraft): ModelOptionsDraft {
+  return { ...draft, mode: "MANUAL", context: String(DEFAULT_CONTEXT_WINDOW_TOKENS), input: "",
+    previewId: null, previewModelId: null, manualOverride: false };
 }
 export function automaticModelOptions(draft: ModelOptionsDraft, model: LlmModelMetadata, previewId: string): ModelOptionsDraft | null {
   const declared = draft.provider === "OLLAMA" ? model.runtimeContextTokens : model.deploymentContextTokens ?? model.contextWindowTokens;

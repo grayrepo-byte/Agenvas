@@ -55,18 +55,54 @@ describe("LlmSettingsPage", () => {
         previewId, maxOutputTokens: 2048, outputParameter: "MAX_TOKENS" } }]));
   });
 
-  it("requires confirmed capacity before saving instead of silently assuming a million tokens", async () => {
+  it.each([false, true])("saves the generic million-token default without manual capacity entry (metadata failure: %s)", async failed => {
     unconfiguredLlmSettings(); const writes: unknown[] = [];
-    server.use(http.put("/api/v1/settings/llm", async ({ request }) => { writes.push(await request.json()); return HttpResponse.json({}); }));
+    server.use(http.post("/api/v1/settings/llm/models", () => new HttpResponse(null, { status: 502 })));
+    server.use(http.put("/api/v1/settings/llm", async ({ request }) => { writes.push(await request.json());
+      return HttpResponse.json({ configured: true, version: 1, endpoint: "https://api.example.com/v1", modelId: "model-a",
+        keyMask: "masked", toolCallingVerified: false, updatedAt: null }); }));
     render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><LlmSettingsPage /></MemoryRouter></QueryClientProvider>);
     const user = userEvent.setup();
     await user.type(await screen.findByRole("textbox", { name: "端点地址" }), "https://api.example.com/v1");
     await user.type(screen.getByRole("textbox", { name: "模型 ID" }), "model-a");
     fireEvent.change(screen.getByLabelText("API Key（每次修改均需重新输入）"), { target: { value: "synthetic-key" } });
+    if (failed) {
+      await user.click(screen.getByRole("button", { name: t("modelConnection.read") }));
+      await screen.findByText(t("modelConnection.failed"));
+    }
     await user.click(screen.getByRole("button", { name: "保存配置" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("请重新读取信息以使用自动值，或手动确认有效的容量和输出上限。");
-    expect(writes).toEqual([]);
-    expect(screen.getByLabelText("API Key（每次修改均需重新输入）")).toHaveValue("synthetic-key");
+    await waitFor(() => expect(writes).toEqual([{ expectedVersion: 0, endpoint: "https://api.example.com/v1",
+      modelId: "model-a", apiKey: "synthetic-key", modelSelection: { provider: "COMPATIBLE", mode: "MANUAL",
+        contextWindowTokens: 1_000_000, inputLimitTokens: null, maxOutputTokens: 4096, outputParameter: "MAX_TOKENS" } }]));
+  });
+  it.each(["modelId", "endpoint", "apiKey"] as const)("uses the generic default when editing %s on a saved automatic connection", async field => {
+    setLocale("en"); unconfiguredLlmSettings(); const writes: unknown[] = [];
+    const policy = { provider: "COMPATIBLE", source: "PROVIDER_REPORTED", contextWindowTokens: 32000,
+      inputLimitTokens: null, maxOutputTokens: 2048, outputParameter: "MAX_TOKENS", theoreticalContextTokens: 32000,
+      reportedOutputTokens: 2048, runtimeContextTokens: null, modelDigest: null, checkedAt: "2026-11-04T00:00:00Z" } as const;
+    const saved: LlmSettings = { configured: true, version: 7, endpoint: "https://provider.example/v1", modelId: "model-a",
+      keyMask: "masked", toolCallingVerified: false, updatedAt: null, modelPolicy: policy };
+    server.use(http.get("/api/v1/settings/llm", () => HttpResponse.json(saved)),
+      http.put("/api/v1/settings/llm", async ({ request }) => { writes.push(await request.json());
+        return HttpResponse.json({ ...saved, version: 8, modelPolicy: { ...policy, source: "MANUAL", contextWindowTokens: 1_000_000 } }); }));
+    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><LlmSettingsPage /></MemoryRouter></QueryClientProvider>);
+    expect(await screen.findByLabelText(t("modelConnection.context"))).toHaveValue(32000);
+    const fields = { modelId: t("settings.llm.modelId"), endpoint: t("settings.llm.endpoint"), apiKey: t("settings.llm.apiKey") };
+    const changed = { modelId: "custom-model", endpoint: "https://different.example/v1", apiKey: "synthetic-key" };
+    fireEvent.change(screen.getByLabelText(fields[field]), { target: { value: changed[field] } });
+    await waitFor(() => expect(screen.getByLabelText(t("modelConnection.context"))).toHaveValue(1_000_000));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: t("settings.llm.revert") }));
+    expect(screen.getByLabelText(t("modelConnection.context"))).toHaveValue(32000);
+    expect(screen.getByRole("button", { name: t("common.saveConfig") })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(fields[field]), { target: { value: changed[field] } });
+    if (field !== "apiKey") fireEvent.change(screen.getByLabelText(fields.apiKey), { target: { value: "synthetic-key" } });
+    await user.click(screen.getByRole("button", { name: t("common.saveConfig") }));
+    await waitFor(() => expect(writes).toEqual([{ expectedVersion: 7,
+      endpoint: field === "endpoint" ? changed.endpoint : saved.endpoint,
+      modelId: field === "modelId" ? changed.modelId : saved.modelId, apiKey: "synthetic-key",
+      modelSelection: { provider: "COMPATIBLE", mode: "MANUAL", contextWindowTokens: 1_000_000,
+        inputLimitTokens: null, maxOutputTokens: 2048, outputParameter: "MAX_TOKENS" } }]));
   });
   it.each([
     ["the usual six-character Ollama placeholder", "ollama", false],
