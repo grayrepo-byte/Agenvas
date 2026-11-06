@@ -52,7 +52,7 @@ export function CharacterCanvasCard({ item, projectId, selected, toolbarVisible,
   const imageCount = snapshot.useAppearance ? snapshot.look?.views.length ?? 0 : 0;
   const audioCount = snapshot.useVoice && snapshot.voice?.versionId ? 1 : 0;
   const targetPicker = <DropdownMenu open={targetPickerOpen} onOpenChange={setTargetPickerOpen}><DropdownMenuTrigger asChild>
-    <Button ref={targetTrigger} className="nodrag nowheel" type="button" variant="secondary" size="icon-lg" aria-label={t("characterNode.chooseTarget")} title={t("characterNode.chooseTarget")}><LinkSimple aria-hidden="true" /></Button>
+    <Button ref={targetTrigger} className="nodrag nowheel" type="button" variant="ghost" size="icon-lg" aria-label={t("characterNode.chooseTarget")} title={t("characterNode.chooseTarget")}><LinkSimple aria-hidden="true" /></Button>
   </DropdownMenuTrigger>
     <DropdownMenuContent side={readOnly ? "bottom" : "right"} align="start" sideOffset={12} sticky="always" collisionPadding={12} className="character-node-target-menu" aria-describedby={targetDescriptionId} onCloseAutoFocus={(event) => {
       const action = queuedAction.current;
@@ -83,7 +83,7 @@ export function CharacterCanvasCard({ item, projectId, selected, toolbarVisible,
       {portrait ? <CharacterReferenceImage projectId={projectId} versionId={portrait.versionId} alt={t("characterNode.portraitAlt", { name: snapshot.name })} />
         : <div className="character-reference-fallback" role="img" aria-label={t("characterNode.noPortrait")}><UserCircle aria-hidden="true" /><span>{t(snapshot.useVoice && !snapshot.useAppearance ? "characterNode.voiceOnly" : "characterNode.textOnly")}</span></div>}
       <div className="character-node-edge-actions nodrag nowheel">
-        <Button type="button" variant="secondary" size="icon-lg" onClick={onEdit} aria-label={t("characterNode.configure")} title={t("characterNode.configure")}><PencilSimple aria-hidden="true" /></Button>
+        <Button type="button" variant="ghost" size="icon-lg" onClick={onEdit} aria-label={t("characterNode.configure")} title={t("characterNode.configure")}><PencilSimple aria-hidden="true" /></Button>
         {targetPicker}
       </div>
       <div className="character-node-caption">

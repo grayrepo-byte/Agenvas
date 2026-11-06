@@ -7,7 +7,14 @@
 .character-reference-fallback { display: flex; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 8px; color: var(--ui-text-muted); text-align: center; font-size: var(--ui-text-xs); }
 .character-reference-fallback > svg { width: 32px; height: 32px; flex-shrink: 0; color: var(--ui-text-subtle); }
 .character-node-surface > .character-reference-fallback { padding-bottom: 96px; }
-.character-node-edge-actions > button[data-size="icon-lg"] { width: 44px; height: 44px; }
+/* Keep the touch target generous without painting two full button tiles over the image. */
+.character-node-edge-actions > button[data-size="icon-lg"] { position: relative; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; color: var(--ui-media-overlay-foreground); box-shadow: none; }
+.character-node-edge-actions > button[data-variant="ghost"]:hover:not(:disabled) { background: transparent; color: var(--ui-media-overlay-foreground); }
+.character-node-edge-actions > button::before { content: ""; position: absolute; inset: 6px; border-radius: 50%; opacity: 0; background: color-mix(in srgb, var(--ui-media-scrim) 40%, transparent); }
+.character-node-edge-actions > button:is(:hover, :active, :focus-visible, [data-state="open"])::before { opacity: 1; }
+.character-node-edge-actions > button:is(:focus-visible, [data-state="open"])::before { background: color-mix(in srgb, var(--ui-media-scrim) 72%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ui-media-overlay-foreground) 80%, transparent); }
+/* A dark contour keeps white line icons readable on bright references too. */
+.character-node-edge-actions > button > svg { position: relative; width: 18px; height: 18px; paint-order: stroke fill; stroke: var(--ui-media-scrim); stroke-width: 12px; stroke-linejoin: round; filter: drop-shadow(0 1px 1px var(--ui-media-scrim)); }
 .character-node-edge-actions { position: absolute; z-index: 2; top: 8px; right: 8px; display: flex; gap: 4px; opacity: 0; pointer-events: none; }
 .character-canvas-card:is(:hover, :focus-within, .is-selected) .character-node-edge-actions,
 .character-node-surface[data-picker-open="true"] .character-node-edge-actions { opacity: 1; pointer-events: auto; }
