@@ -20,6 +20,7 @@ const groupEntryOnly = process.argv.includes("--group-entry-only");
 const connectionDropOnly = process.argv.includes("--connection-drop-only");
 const selectAllOnly = process.argv.includes("--select-all-only");
 const shortcutsOnly = process.argv.includes("--shortcuts-only");
+const emptyCreationOnly = process.argv.includes("--empty-creation-only");
 const dragCase = process.argv.includes("--hand-drag-only") ? "hand"
   : process.argv.includes("--text-node-drag-only") ? "node" : process.argv.includes("--drag-diagnostics") ? "diagnostics" : null;
 const catalogs = Object.fromEntries(await Promise.all(["zh", "ru"].map(async (locale) => [locale,
@@ -695,6 +696,38 @@ async function runShortcutRegression(baseUrl) {
   await screenshot("shortcuts-native-text-history");
   console.log(`Canvas shortcuts passed: native Cmd/Ctrl copy, paste, duplicate, undo/redo and both delete keys; unavailable commands prevent browser defaults; textarea undo/redo/deletion and clipboard-key isolation preserve the draft. Synthetic screenshots: ${screenshots}`);
 }
+async function runEmptyCreationRegression(baseUrl) {
+  await cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
+  for (const name of ["文字", "图片", "音频", "视频"]) {
+    await cdp("Page.navigate", { url: new URL(`${route}?locale=zh&empty-creation=1`, baseUrl).href });
+    await waitFor(() => document.querySelectorAll(".canvas-empty-types button").length === 4);
+    if (name === "图片") await clickNamed("button", "canvas.workspace.zoomOut");
+    if (name === "视频") await clickNamed("button", "canvas.workspace.zoomIn");
+    const before = await page(() => document.querySelector(".react-flow__viewport").style.transform);
+    await click(await namedSelector(".canvas-empty-types button", name));
+    await waitFor(() => {
+      const node = document.querySelector(".react-flow__node");
+      const canvas = document.querySelector(".react-flow");
+      if (!node || !canvas) return false;
+      const n = node.getBoundingClientRect(), c = canvas.getBoundingClientRect();
+      return n.width > 0 && n.left >= c.left && n.right <= c.right && n.top >= c.top && n.bottom <= c.bottom;
+    });
+    await page(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const after = await page(() => {
+      const node = document.querySelector(".react-flow__node").getBoundingClientRect();
+      const canvas = document.querySelector(".react-flow").getBoundingClientRect();
+      return { dx: node.x + node.width / 2 - canvas.x - canvas.width / 2,
+        dy: node.y + node.height / 2 - canvas.y - canvas.height / 2,
+        viewport: document.querySelector(".react-flow__viewport").style.transform };
+    });
+    assert.ok(Math.abs(after.dx) < 1 && Math.abs(after.dy) < 1, `The first ${name} card must stay centered: ${JSON.stringify(after)}`);
+    assert.equal(after.viewport, before, "Creating a centered card must not move the empty canvas viewport");
+    assert.equal((await evidence()).items.length, 1);
+  }
+  assert.deepEqual(runtimeErrors, []);
+  console.log("Empty canvas creation passed: first text/image/audio/video card remains centered, visible and persisted without a viewport jump; synthetic only");
+}
+
 try {
   const config = { root, configFile: join(root, "vite.config.ts") };
   if (production) {
@@ -722,7 +755,8 @@ try {
   await cdp("Page.enable"); await cdp("Runtime.enable");
   const baseUrl = server.resolvedUrls.local[0];
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-  if (shortcutsOnly) await runShortcutRegression(baseUrl);
+  if (emptyCreationOnly) await runEmptyCreationRegression(baseUrl);
+  else if (shortcutsOnly) await runShortcutRegression(baseUrl);
   else if (selectAllOnly) await runSelectAllRegression(baseUrl);
   else if (connectionDropOnly) await runConnectionDropRegression(baseUrl);
   else if (groupEntryOnly) await runGroupEntryRegression(baseUrl);

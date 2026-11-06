@@ -33,6 +33,7 @@ function textItem(index: number): CanvasItem {
 }
 let items: CanvasItem[] = Array.from({ length: 100 }, (_, index) => textItem(index));
 if (options.has("group-entry")) items = items.slice(0, 3);
+if (options.has("empty-creation")) items = [];
 if (options.has("connection-drop")) {
   const source = textItem(0);
   const version: NonNullable<CanvasItem["selectedVersion"]> = {
@@ -57,7 +58,7 @@ if (options.has("hand-drag")) {
   items = [textItem(0), empty, ...media, ...(options.has("motion-large") ? items.slice(4).map((item) => ({ ...item, y: item.y + 310 })) : [])];
 }
 let groups: CanvasGroup[] = [];
-const connections: ProjectSnapshot["connections"] = options.has("hand-drag") || options.has("connection-drop") ? [] : [
+const connections: ProjectSnapshot["connections"] = options.has("hand-drag") || options.has("connection-drop") || options.has("empty-creation") ? [] : [
   { id: "synthetic-internal-connection", projectId, sourceCanvasItemId: items[0]!.id, targetCanvasItemId: items[1]!.id,
     sourceArtifactVersionId: items[0]!.selectedVersionId!, relationType: "MEDIA_DERIVATION", version: 0, createdAt: now, updatedAt: now },
   { id: "synthetic-external-connection", projectId, sourceCanvasItemId: items[1]!.id, targetCanvasItemId: items[2]!.id,

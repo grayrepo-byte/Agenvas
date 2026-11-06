@@ -207,6 +207,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     itemId: string; zIndex: number; title: string; artifactId?: string } | null>(null);
   const [eventStatus, setEventStatus] = useState<EventSyncStatus>("connecting");
   const flow = useRef<ReactFlowInstance<WorkspaceNode> | null>(null);
+  const [flowReady, setFlowReady] = useState(false);
+  const initialViewportSet = useRef(false);
   const groupDragOrigins = useRef(new Map<string, { x: number; y: number;
     members: { id: string; x: number; y: number }[] }>());
   const editorFocusFrame = useRef<number | null>(null);
@@ -970,6 +972,15 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       if (instance) viewportMotion.center(first.x + width / 2, first.y + height / 2, instance.getZoom());
     },
   });
+  useEffect(() => {
+    if (!flowReady || !flow.current || !canvas.isSuccess || initialViewportSet.current) return;
+    initialViewportSet.current = true;
+    // Fit the initial snapshot once. An empty snapshot already has its final view;
+    // later creations must preserve the user's viewport and the new card's screen position.
+    if (nodes.length > 0) void flow.current.fitView({ padding: 0.2, maxZoom: 1,
+      nodes: nodes.filter((node) => node.style?.visibility !== "hidden").map(({ id }) => ({ id })) });
+  }, [canvas.isSuccess, flowReady, nodes]);
+
   const relationEdges = useMemo(() => remapCollapsedCanvasEdges(displayCanvasRelations(
     projectedRelations, [...selectedIds, ...organization.selectedItems.map((item) => item.id)], selectedEdgeIds,
     displaySettings.preferences), organization.projection.collapsedNodeByMemberId), [projectedRelations, organization.projection.collapsedNodeByMemberId,
@@ -1355,8 +1366,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           deleteKeyCode={null}
           edges={relationEdges}
           edgeTypes={edgeTypes}
-          fitView
-          fitViewOptions={{ padding: 0.2, maxZoom: 1, nodes: nodes.filter((node) => node.style?.visibility !== "hidden").map(({ id }) => ({ id })) }}
           isValidConnection={(connection) => isCanvasConnectionValid(canvas.data?.items ?? [], connection)}
           minZoom={CANVAS_MIN_ZOOM}
           nodes={nodes}
@@ -1453,7 +1462,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             window.requestAnimationFrame(focusArtifactEditor);
           }}
           onEdgesChange={handleEdgesChange}
-          onInit={(instance) => { flow.current = instance; }}
+          onInit={(instance) => { flow.current = instance; setFlowReady(true); }}
           onMoveStart={(event) => { if (event) { cancelCameraMotion(); clearSelection(); } }}
           selectionOnDrag={selecting}
           selectionMode={SelectionMode.Partial}

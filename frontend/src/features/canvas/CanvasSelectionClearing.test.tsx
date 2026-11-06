@@ -29,6 +29,8 @@ const focusProbe = vi.hoisted(() => ({
   fit: vi.fn<ReactFlowInstance["fitView"]>().mockResolvedValue(true), zoom: 1,
   updateInternals: vi.fn(),
   instance: null as ReactFlowInstance | null,
+  deferInit: false,
+  pendingInit: null as (() => void) | null,
 }));
 
 // 选中态的同步依赖 React Flow 的变更通知，这里直接驱动页面对应的回调。
@@ -58,8 +60,12 @@ vi.mock("@xyflow/react", async (importOriginal) => {
         autoPanOnSelection={false} {...TEST_VIEWPORT}
         defaultViewport={{ x: 0, y: 0, zoom: focusProbe.zoom }}
         onInit={(instance) => {
-          focusProbe.instance = instance;
-          props.onInit?.({ ...instance, setCenter: focusProbe.center, setViewport: focusProbe.viewport, fitView: focusProbe.fit });
+          const initialize = () => {
+            focusProbe.instance = instance;
+            props.onInit?.({ ...instance, setCenter: focusProbe.center, setViewport: focusProbe.viewport, fitView: focusProbe.fit });
+          };
+          if (focusProbe.deferInit) focusProbe.pendingInit = initialize;
+          else initialize();
         }}>
         <TestHandleMeasurements />{props.children}
       </real.ReactFlow> : <div data-testid="flow" />;
@@ -115,6 +121,8 @@ beforeEach(() => {
   focusProbe.fit.mockClear();
   focusProbe.zoom = 1;
   focusProbe.instance = null;
+  focusProbe.deferInit = false;
+  focusProbe.pendingInit = null;
   useCanvasStore.setState({ selectedIds: [], selectionMode: CANVAS_SELECTION_MODE.SINGLE,
     drafts: {}, mediaDraftRecoveries: {}, saveState: "saved" });
   server.use(
@@ -528,6 +536,48 @@ describe("connection gesture overlays", () => {
 });
 
 describe("node editor centering", () => {
+  it("fits the loaded snapshot when a delayed initial callback captured the pending query", async () => {
+    renderRealFlow = true;
+    focusProbe.deferInit = true;
+    await renderFlow();
+    await waitFor(() => expect(focusProbe.pendingInit).not.toBeNull());
+    expect(focusProbe.fit).not.toHaveBeenCalled();
+    act(() => focusProbe.pendingInit?.());
+    await waitFor(() => expect(focusProbe.fit).toHaveBeenCalledOnce());
+    expect(focusProbe.fit).toHaveBeenCalledWith({ padding: 0.2, maxZoom: 1,
+      nodes: [{ id: "image-card" }, { id: "middle-card" }, { id: "text-card" }] });
+  });
+
+  it("fits the first loaded snapshot once and preserves the view on later canvas refreshes", async () => {
+    renderRealFlow = true;
+    const client = await renderFlow();
+    await waitFor(() => expect(focusProbe.fit).toHaveBeenCalledOnce());
+    expect(focusProbe.fit).toHaveBeenCalledWith({ padding: 0.2, maxZoom: 1,
+      nodes: [{ id: "image-card" }, { id: "middle-card" }, { id: "text-card" }] });
+    act(() => client.setQueryData(["canvas", "project-1"], {
+      items: items.map((item) => ({ ...item, x: item.x + 100, version: item.version + 1 })),
+    }));
+    await waitFor(() => expect(flowProps.nodes?.find((node) => node.id === "image-card")?.position.x).toBe(100));
+    expect(focusProbe.fit).toHaveBeenCalledOnce();
+  });
+
+  it("keeps an initially empty canvas view when the first card arrives", async () => {
+    renderRealFlow = true;
+    server.use(
+      http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({
+        ...snapshot(), canvas: { items: [] }, connections: [],
+      })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
+    );
+    const client = await renderFlow(0);
+    await waitFor(() => expect(focusProbe.instance).not.toBeNull());
+    await screen.findByRole("button", { name: "创建第一个节点" });
+    expect(focusProbe.fit).not.toHaveBeenCalled();
+    act(() => client.setQueryData(["canvas", "project-1"], { items: [items[0]] }));
+    await waitFor(() => expect(flowProps.nodes).toHaveLength(1));
+    expect(focusProbe.fit).not.toHaveBeenCalled();
+  });
+
   it.each([0.6, 1.8])("centers initial, repeated, and switched editor clicks at zoom %s without changing node layouts", async (zoom) => {
     focusProbe.zoom = zoom;
     // Focus must use the current canvas projection, including unsaved layout and media dimensions.
@@ -540,6 +590,7 @@ describe("node editor centering", () => {
     });
     await renderInteractiveFlow();
     await waitFor(() => expect(focusProbe.instance).not.toBeNull());
+    const fitsAfterInitialLoad = focusProbe.fit.mock.calls.length;
     const viewport = focusProbe.instance!.getViewport();
     expect(viewport.zoom).toBe(zoom);
     const layouts = new Map(["image-card", "text-card"].map((id) => {
@@ -593,7 +644,7 @@ describe("node editor centering", () => {
       // The probe does not animate the camera. A second focus may stop the previous
       // native transition, but that stop must preserve the current position and zoom.
       for (const call of focusProbe.viewport.mock.calls) expect(call).toEqual([viewport, { duration: 0 }]);
-      expect(focusProbe.fit).not.toHaveBeenCalled();
+      expect(focusProbe.fit).toHaveBeenCalledTimes(fitsAfterInitialLoad);
     }
     const centersBeforeClosing = focusProbe.center.mock.calls.length;
     const closeEditor = screen.getByRole("button", { name: "关闭编辑区" });
@@ -606,7 +657,7 @@ describe("node editor centering", () => {
     expect(focusProbe.instance!.getViewport()).toEqual(viewport);
     expect(focusProbe.center).toHaveBeenCalledTimes(centersBeforeClosing);
     for (const call of focusProbe.viewport.mock.calls) expect(call).toEqual([viewport, { duration: 0 }]);
-    expect(focusProbe.fit).not.toHaveBeenCalled();
+    expect(focusProbe.fit).toHaveBeenCalledTimes(fitsAfterInitialLoad);
   });
 
   it("focuses both media and text nodes immediately when reduced motion is requested", async () => {
