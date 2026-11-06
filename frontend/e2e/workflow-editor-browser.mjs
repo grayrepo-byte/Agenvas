@@ -305,10 +305,17 @@ try {
       console.log(JSON.stringify({ viewport, openAiGeometry: ordinary.geometry, workflowGeometry: initial.geometry }));
       assert.deepEqual(initial.editorStyle, ordinary.editorStyle, "Workflow editor border and padding must match OpenAI");
       assert.deepEqual(initial.tileStyle, ordinary.tileStyle, "The single workflow add entry must use the OpenAI reference button appearance");
-      // RunningHub exposes different toolbar controls, which can wrap differently on narrow screens.
-      const sharedGeometry = Object.entries(initial.geometry).filter(([key]) => workflowQuery !== "runninghub" || key !== "editorHeight");
+      assert.ok(initial.editor.height <= viewport.height - 32 + tolerance,
+        "The initial workflow editor must remain accessible inside the viewport");
+      // Optional reference help and provider-specific toolbar wrapping determine total height.
+      // Compare shared hit areas and writing space without requiring those different blocks to align.
+      const sharedGeometry = Object.entries(initial.geometry).filter(([key]) =>
+        !["editorHeight", "tileY", "promptY"].includes(key));
       for (const [key, value] of sharedGeometry) assert.ok(Math.abs(value - ordinary.geometry[key]) <= tolerance,
         `${key} must match OpenAI: ${value} vs ${ordinary.geometry[key]}`);
+      const promptGap = (geometry) => geometry.promptY - geometry.tileY - geometry.tileHeight;
+      assert.ok(Math.abs(promptGap(initial.geometry) - promptGap(ordinary.geometry)) <= tolerance,
+        "Spacing between references and prompt must stay consistent");
       for (const gap of initial.tileGaps) assert.ok(Math.abs(gap - ordinary.referenceGap) <= tolerance, "Workflow slots must use the OpenAI reference spacing");
       assert.equal(initial.inlineParameters, 0, "Scalar parameters must stay out of the main editor");
       assert.ok(initial.prompt.height > 40 && initial.toolbar.bottom <= initial.editor.bottom + tolerance,
@@ -373,5 +380,5 @@ try {
   }
   if (server?.close) await server.close();
   else if (server) await new Promise((resolve, reject) => server.httpServer.close((error) => error ? reject(error) : resolve()));
-  await rm(profile, { recursive: true, force: true });
+  await rm(profile, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
 }
