@@ -22,6 +22,7 @@ const selectAllOnly = process.argv.includes("--select-all-only");
 const shortcutsOnly = process.argv.includes("--shortcuts-only");
 const emptyCreationOnly = process.argv.includes("--empty-creation-only");
 const initialGroupOnly = process.argv.includes("--initial-group-only");
+const editorCloseOnly = process.argv.includes("--editor-close-only") || process.argv.includes("--editor-close-bottom-only");
 const dragCase = process.argv.includes("--hand-drag-only") ? "hand"
   : process.argv.includes("--text-node-drag-only") ? "node" : process.argv.includes("--drag-diagnostics") ? "diagnostics" : null;
 const catalogs = Object.fromEntries(await Promise.all(["zh", "ru"].map(async (locale) => [locale,
@@ -107,14 +108,14 @@ async function screenshot(name) {
   const image = await cdp("Page.captureScreenshot", { format: "png" });
   await writeFile(join(screenshots, `${name}.png`), Buffer.from(image.data, "base64"), { mode: 0o600 });
 }
-async function ready(expected = connectionDropOnly ? 2 : groupEntryOnly ? 3 : dragCase || motionOnly ? 4 : 100) {
+async function ready(expected = connectionDropOnly ? 2 : groupEntryOnly ? 3 : dragCase || motionOnly || editorCloseOnly ? 4 : 100) {
   await waitFor((expected) => document.querySelectorAll(".react-flow__node-canvasCard").length === expected
     && window.__agenvasCanvasEditingFixture.evidence().requests.some((request) => request.path.endsWith("/canvas/editor")), expected);
   assert.equal((await evidence()).unexpected.length, 0);
 }
 async function navigate(baseUrl, nextLocale = "zh", { motionLarge = false } = {}) {
   locale = nextLocale;
-  await cdp("Page.navigate", { url: new URL(`${route}?locale=${locale}${dragCase || motionOnly ? "&hand-drag=1" : ""}${groupEntryOnly ? "&group-entry=1" : ""}${connectionDropOnly ? "&connection-drop=1" : ""}${motionLarge ? "&motion-large=1" : ""}`, baseUrl).href });
+  await cdp("Page.navigate", { url: new URL(`${route}?locale=${locale}${dragCase || motionOnly ? "&hand-drag=1" : ""}${groupEntryOnly ? "&group-entry=1" : ""}${connectionDropOnly ? "&connection-drop=1" : ""}${motionLarge ? "&motion-large=1" : ""}${editorCloseOnly ? "&editor-close=1" : ""}`, baseUrl).href });
   await ready(motionLarge ? 100 : undefined);
 }
 async function zoomToFirstCard() {
@@ -774,6 +775,196 @@ async function runInitialGroupRegression(baseUrl) {
   console.log("Initial collapsed-group fit passed: delayed metadata and explicit read retry, hidden members excluded, visible nodes remain in view without writes; synthetic only");
 }
 
+async function runEditorCloseRegression(baseUrl) {
+  await cdp("Emulation.setDeviceMetricsOverride", { width: 1024, height: 900, deviceScaleFactor: 1, mobile: false });
+  await navigate(baseUrl);
+  await waitFor(() => Boolean(window.__agenvasCanvasEditingFixture.setViewport));
+  const original = (await evidence()).items;
+  const promptSelector = ".workspace-media-editor .media-draft-prompt";
+  const closeSelector = ".workspace-media-editor .workspace-bottom-close";
+  async function openAtEdge(item, zoom, editorTop) {
+    await page(async (item, zoom, editorTop) => {
+      const canvas = document.querySelector(".react-flow").getBoundingClientRect();
+      const gap = item.artifact.kind === "TEXT" ? 16 : 32;
+      await window.__agenvasCanvasEditingFixture.setViewport({
+        x: canvas.width - 120 - (item.x + item.width / 2) * zoom,
+        y: editorTop == null ? 100 - item.y * zoom : editorTop - canvas.top - (item.y + item.height) * zoom - gap,
+        zoom,
+      }, { duration: 0 });
+      window.__agenvasCanvasEditingFixture.select(item.id);
+    }, item, zoom, editorTop);
+    await waitFor((selector) => Boolean(document.querySelector(selector))
+      && document.querySelector(".workspace-media-editor .media-draft-prompt")?.getAttribute("aria-readonly") !== "true", closeSelector);
+    await waitForStableViewport();
+  }
+  async function closeLayout(item) {
+    const layout = await page((item) => {
+      const button = document.querySelector(".workspace-media-editor .workspace-bottom-close");
+      const rect = button.getBoundingClientRect();
+      const editor = document.querySelector(".workspace-media-editor");
+      const panel = editor.querySelector(".media-draft-editor");
+      const node = document.querySelector(`.react-flow__node[data-id="${item.id}"]`);
+      return { close: rect.toJSON(), viewportWidth: innerWidth, viewportHeight: innerHeight,
+        translation: { inline: button.style.translate, computed: getComputedStyle(button).translate, duration: getComputedStyle(button).transitionDuration },
+        director: document.querySelector(".agent-chat-dock").getBoundingClientRect().toJSON(),
+        canvas: document.querySelector(".react-flow").getBoundingClientRect().toJSON(),
+        editor: editor.getBoundingClientRect().toJSON(), node: node.getBoundingClientRect().toJSON(),
+        scrollTop: panel.scrollTop, scrollHeight: panel.scrollHeight, clientHeight: panel.clientHeight,
+        centerHit: (() => { const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+          return { tag: hit?.tagName, label: hit?.getAttribute("aria-label"), text: hit?.textContent }; })(),
+        hittable: [[rect.left + 2, rect.y + rect.height / 2], [rect.right - 2, rect.y + rect.height / 2],
+          [rect.x + rect.width / 2, rect.top + 2], [rect.x + rect.width / 2, rect.bottom - 2],
+          [rect.x + rect.width / 2, rect.y + rect.height / 2]]
+          .every(([x, y]) => button.contains(document.elementFromPoint(x, y))) };
+    }, item);
+    const { close, canvas, editor, node, viewportWidth, viewportHeight } = layout;
+    assert.ok(close.width >= 24 && close.height >= 24, `Complete close target is measurable: ${JSON.stringify(layout)}`);
+    assert.ok(close.left >= Math.max(0, canvas.left) && close.right <= Math.min(viewportWidth, canvas.right)
+      && close.top >= Math.max(0, canvas.top) && close.bottom <= Math.min(viewportHeight, canvas.bottom) && layout.hittable,
+    `Shared editor close button remains fully visible and hittable: ${JSON.stringify(layout)}`);
+    assert.ok(Math.abs(editor.left + editor.width / 2 - node.left - node.width / 2) < 1,
+      "The editor retains its horizontal node anchor");
+    assert.ok(Math.abs(editor.top - node.bottom - (item.artifact.kind === "TEXT" ? 16 : 32)) < 1,
+      "The editor stays below its node rather than shifting upward");
+    return layout;
+  }
+  async function closeByPointer(item) {
+    const before = await viewport();
+    await click(closeSelector);
+    await waitFor(() => !document.querySelector(".workspace-media-editor"));
+    assert.equal(await page((selector) => document.activeElement === document.querySelector(selector), card(item.id)), true,
+      "Closing returns keyboard focus to the selected node");
+    assert.deepEqual(await viewport(), before, "Closing does not move or zoom the canvas");
+  }
+  if (process.argv.includes("--editor-close-bottom-only")) {
+    await cdp("Emulation.setDeviceMetricsOverride", { width: 1024, height: 560, deviceScaleFactor: 1, mobile: false });
+    await openAtEdge(original[0], 1.8, 650);
+    await closeLayout(original[0]);
+    await closeByPointer(original[0]);
+    return;
+  }
+  for (const width of [1024, 1280, 1440, 1920]) {
+    await cdp("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
+    for (const zoom of [0.6, 1, 1.8]) {
+      for (const item of original) {
+        await openAtEdge(item, zoom);
+        const layout = await closeLayout(item);
+        if (width === 1024 && zoom === 1 && item.artifact.kind === "IMAGE") {
+          console.log(`Editor close edge probe: ${JSON.stringify(layout)}`);
+          await screenshot("editor-close-right-edge");
+        }
+        await closeByPointer(item);
+      }
+    }
+  }
+  // Native keyboard input, Escape, focus restoration and reopening the same draft.
+  for (const item of original) {
+    await openAtEdge(item, 1);
+    const before = await viewport();
+    const draft = `Synthetic preserved ${item.artifact.kind} prompt`;
+    await page((selector) => document.querySelector(selector).focus({ preventScroll: true }), promptSelector);
+    await cdp("Input.insertText", { text: draft });
+    await waitFor((selector, expected) => {
+      const element = document.querySelector(selector); return (element?.value ?? element?.textContent) === expected;
+    }, promptSelector, draft);
+    await key("Escape", "Escape", 0, 27);
+    await waitFor(() => !document.querySelector(".workspace-media-editor"));
+    assert.equal(await page((selector) => document.activeElement === document.querySelector(selector), card(item.id)), true);
+    assert.deepEqual(await viewport(), before, "Escape returns focus without panning");
+    await key("Enter", "Enter", 0, 13);
+    await waitFor((selector) => Boolean(document.querySelector(selector)), promptSelector);
+    await waitFor((selector, expected) => {
+      const element = document.querySelector(selector); return (element?.value ?? element?.textContent) === expected;
+    }, promptSelector, draft);
+    await closeLayout(item);
+    await closeByPointer(item);
+  }
+  // The panel may shrink after opening, but the camera and node anchoring stay put.
+  await cdp("Emulation.setDeviceMetricsOverride", { width: 1920, height: 900, deviceScaleFactor: 1, mobile: false });
+  await openAtEdge(original[0], 1);
+  const beforeResize = await viewport();
+  await cdp("Emulation.setDeviceMetricsOverride", { width: 1024, height: 560, deviceScaleFactor: 1, mobile: false });
+  await waitForStableViewport();
+  await closeLayout(original[0]);
+  assert.deepEqual(await viewport(), beforeResize, "Window narrowing does not move the camera");
+  await closeByPointer(original[0]);
+
+  // Constrained panels really scroll; their close control remains outside that scroll.
+  for (const item of original) {
+    await openAtEdge(item, 1.8, 400);
+    const beforeScroll = await closeLayout(item);
+    assert.ok(beforeScroll.scrollHeight > beforeScroll.clientHeight, `Short ${item.artifact.kind} panel is scrollable`);
+    await page(() => { document.querySelector(".workspace-media-editor .media-draft-editor").scrollTop = 10000; });
+    await waitFor(() => document.querySelector(".workspace-media-editor .media-draft-editor").scrollTop > 0);
+    const scrolled = await closeLayout(item);
+    assert.ok(Object.entries(scrolled.close).every(([key, value]) => Math.abs(value - beforeScroll.close[key]) < 0.5),
+      "Panel scrolling keeps the close button stationary within browser subpixel rounding");
+    assert.deepEqual(scrolled.editor, beforeScroll.editor, "Panel scrolling does not reposition the editor");
+    await closeByPointer(item);
+  }
+  // A scrolling host can move the canvas without changing its native transform.
+  await page(() => {
+    document.body.style.paddingTop = "180px";
+    document.body.style.minHeight = "1100px";
+    window.scrollTo(0, 100);
+  });
+  await waitFor(() => window.scrollY === 100);
+  await openAtEdge(original[0], 1, 100);
+  await closeLayout(original[0]);
+  await closeByPointer(original[0]);
+  assert.equal(await page(() => window.scrollY), 100, "Closing does not scroll the host page");
+  await page(() => { window.scrollTo(0, 0); document.body.style.paddingTop = ""; document.body.style.minHeight = ""; });
+  await waitFor(() => window.scrollY === 0);
+  // A tall zoomed node can place the whole editor below the canvas. Its close
+  // control remains reachable without moving that editor over the source node.
+  await openAtEdge(original[0], 1.8, 650);
+  await closeLayout(original[0]);
+  await screenshot("editor-close-bottom-edge");
+  await closeByPointer(original[0]);
+  // Real dock controls and stacking, backed by an empty synthetic director.
+  // At this height the expanded dock and bottom-left viewport controls leave
+  // only a diagonal gap, so one-axis edge correction cannot make the X usable.
+  await openAtEdge(original[0], 1.8, 650);
+  await clickNamed("button", "agent.chat.openDirector");
+  await clickNamed("button", "agent.chat.expandDirector");
+  await waitFor(() => Boolean(document.querySelector(".agent-chat-dock-panel--expanded:not([hidden])")));
+  await waitForStableViewport();
+  // The dock resize and the close button's native 150ms CSS transition settle
+  // independently of the camera. Observe both rather than guessing a delay.
+  const expandedTrace = [];
+  let steady = 0;
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const sample = await page(() => {
+      const button = document.querySelector(".workspace-media-editor .workspace-bottom-close");
+      const close = button.getBoundingClientRect();
+      const dock = document.querySelector(".agent-chat-dock").getBoundingClientRect();
+      return { close: [close.x, close.y, close.width, close.height], dock: [dock.x, dock.y, dock.width, dock.height],
+        hittable: button.contains(document.elementFromPoint(close.x + close.width / 2, close.y + close.height / 2)) };
+    });
+    const prior = expandedTrace.at(-1);
+    steady = prior && sample.hittable && [...sample.close, ...sample.dock].every((value, index) =>
+      Math.abs(value - [...prior.close, ...prior.dock][index]) < 0.1) ? steady + 1 : 0;
+    expandedTrace.push(sample);
+    if (steady >= 3) break;
+    await pause(50);
+  }
+  console.log(`Expanded director geometry settling: ${JSON.stringify(expandedTrace)}`);
+  assert.ok(steady >= 3, "Expanded director and close button settle into a hittable gap");
+  const expanded = await closeLayout(original[0]);
+  console.log(`Expanded director close probe: ${JSON.stringify(expanded)}`);
+  await screenshot("editor-close-expanded-director");
+  await closeByPointer(original[0]);
+  assert.equal(await page(() => Boolean(document.querySelector(".agent-chat-dock-panel--expanded:not([hidden])"))), true,
+    "Closing the editor leaves the nonmodal director open");
+  await clickNamed("button", "agent.chat.closeDirector");
+  assert.deepEqual((await evidence()).items, original, "No node layout or content is changed by edge protection");
+  assert.deepEqual((await evidence()).unexpected, []);
+  assert.deepEqual(runtimeErrors, [], "No uncaught application runtime errors");
+  assert.equal((await evidence()).requests.some((request) => request.method === "POST"), false,
+    "The synthetic browser regression never invokes generation or another command");
+  console.log(`Editor close browser passed: 48 right-edge cases (four media/text kinds, four desktop widths, three canvas zooms), native pointer and Escape/Enter focus/draft restoration, window narrowing, four scrolled panels, page scrolling/top edge, bottom edge, and real expanded director dock. Synthetic screenshots: ${screenshots}`);
+}
+
 try {
   const config = { root, configFile: join(root, "vite.config.ts") };
   if (production) {
@@ -801,7 +992,8 @@ try {
   await cdp("Page.enable"); await cdp("Runtime.enable");
   const baseUrl = server.resolvedUrls.local[0];
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-  if (initialGroupOnly) await runInitialGroupRegression(baseUrl);
+  if (editorCloseOnly) await runEditorCloseRegression(baseUrl);
+  else if (initialGroupOnly) await runInitialGroupRegression(baseUrl);
   else if (emptyCreationOnly) await runEmptyCreationRegression(baseUrl);
   else if (shortcutsOnly) await runShortcutRegression(baseUrl);
   else if (selectAllOnly) await runSelectAllRegression(baseUrl);

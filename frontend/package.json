@@ -21,6 +21,7 @@
     "test:media-preview": "node e2e/media-preview-browser.mjs",
     "test:video-hover": "node e2e/video-hover-browser.mjs",
     "test:editor-feedback-layout": "node e2e/editor-feedback-browser.mjs",
+    "test:canvas-editor-close": "node e2e/canvas-editing-browser.mjs --editor-close-only",
     "test:audio-node": "node e2e/audio-node-browser.mjs",
     "test:media-function-parameters": "node e2e/media-function-parameters-browser.mjs",
     "test:runninghub-node-picker": "node e2e/runninghub-node-picker-browser.mjs",

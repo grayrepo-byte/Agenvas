@@ -1,9 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
+import { useEffect } from "react";
+import { ReactFlowProvider, useReactFlow } from "@xyflow/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { ProjectWorkspacePage } from "../src/features/canvas/ProjectWorkspacePage";
 import { useCanvasStore } from "../src/features/canvas/canvasStore";
-import type { Artifact, CanvasCommand, CreateArtifactRequest, CanvasEditReceipt, CanvasEditReplayRequest, CanvasEditRequest, CanvasEditResponse,
+import type { Agent, Artifact, CanvasCommand, CreateArtifactRequest, CanvasEditReceipt, CanvasEditReplayRequest, CanvasEditRequest, CanvasEditResponse,
   CanvasEditorState, CanvasGroup, CanvasItem, CreateCanvasConnectionRequest, MediaCapability, MediaDraft, MediaSettings,
   ProjectSnapshot, ReviseArtifactRequest, SaveMediaDraftRequest } from "../src/shared/api/client";
 import { resolveLocale, setLocale } from "../src/shared/i18n";
@@ -17,7 +19,10 @@ const projectId = "synthetic-canvas-editing";
 const now = "2026-10-23T00:00:00Z";
 const project: ProjectSnapshot["project"] = { id: projectId, name: "Synthetic 100-node canvas · Большой творческий холст",
   status: "ACTIVE", aspectRatio: "LANDSCAPE_16_9", version: 0, createdAt: now, updatedAt: now };
-function textItem(index: number): CanvasItem {
+const syntheticDirector: Agent = { id: "synthetic-director", projectId, name: "Synthetic director", instruction: "Synthetic layout only",
+  profileKey: "creator", profileVersion: 1, version: 0, createdAt: now, updatedAt: now };
+type SyntheticArtifactItem = CanvasItem & { artifact: Artifact };
+function textItem(index: number): SyntheticArtifactItem {
   const id = `synthetic-card-${index}`;
   const version: NonNullable<Artifact["resourceDefaultVersion"]> = { id: `${id}-v1`, versionNo: 1, schemaVersion: 1,
     content: { format: "PLAIN_TEXT", text: `Synthetic independent text ${index}. 合成镜头笔记，支持独立编辑。` },
@@ -31,7 +36,7 @@ function textItem(index: number): CanvasItem {
     zIndex: index, groupId: null, locked: false, selectedVersionId: version.id, selectedVersion: version,
     artifact, version: 0 };
 }
-let items: CanvasItem[] = Array.from({ length: 100 }, (_, index) => textItem(index));
+let items: SyntheticArtifactItem[] = Array.from({ length: 100 }, (_, index) => textItem(index));
 if (options.has("group-entry")) items = items.slice(0, 3);
 if (options.has("empty-creation")) items = [];
 if (options.has("initial-group")) items = [
@@ -53,7 +58,7 @@ if (options.has("hand-drag")) {
   const empty = textItem(1);
   empty.artifact.resourceDefaultVersion!.content = { format: "PLAIN_TEXT", text: "" };
   empty.title = "EMPTY TEXT";
-  const media = (["IMAGE", "VIDEO"] as const).map((kind, index): CanvasItem => {
+  const media = (["IMAGE", "VIDEO"] as const).map((kind, index): SyntheticArtifactItem => {
     const item = textItem(index + 2);
     item.title = `SYNTHETIC ${kind}`; item.x = index * 380; item.y = 310;
     item.selectedVersion = null; item.selectedVersionId = null;
@@ -62,9 +67,18 @@ if (options.has("hand-drag")) {
   });
   items = [textItem(0), empty, ...media, ...(options.has("motion-large") ? items.slice(4).map((item) => ({ ...item, y: item.y + 310 })) : [])];
 }
+if (options.has("editor-close")) items = (["IMAGE", "VIDEO", "AUDIO", "TEXT"] as const).map((kind, index) => {
+  const item = textItem(index);
+  const media = kind !== "TEXT";
+  return { ...item, x: index * 700, y: 0, width: 420, height: 180,
+    title: `SYNTHETIC ${kind}`, selectedVersion: media ? null : item.selectedVersion,
+    selectedVersionId: media ? null : item.selectedVersionId,
+    artifact: { ...item.artifact, kind, resourceDefaultVersion: media ? null : item.artifact.resourceDefaultVersion,
+      resourceDefaultVersionId: media ? null : item.artifact.resourceDefaultVersionId } };
+});
 let groups: CanvasGroup[] = options.has("initial-group") ? [{ id: "synthetic-initial-group", projectId,
   name: "Synthetic collapsed group", collapsed: true, version: 0 }] : [];
-const connections: ProjectSnapshot["connections"] = options.has("hand-drag") || options.has("connection-drop") || options.has("empty-creation") || options.has("initial-group") ? [] : [
+const connections: ProjectSnapshot["connections"] = options.has("hand-drag") || options.has("connection-drop") || options.has("empty-creation") || options.has("initial-group") || options.has("editor-close") ? [] : [
   { id: "synthetic-internal-connection", projectId, sourceCanvasItemId: items[0]!.id, targetCanvasItemId: items[1]!.id,
     sourceArtifactVersionId: items[0]!.selectedVersionId!, relationType: "MEDIA_DERIVATION", version: 0, createdAt: now, updatedAt: now },
   { id: "synthetic-external-connection", projectId, sourceCanvasItemId: items[1]!.id, targetCanvasItemId: items[2]!.id,
@@ -108,6 +122,7 @@ let nextPlacementFailure: number | null = null;
 const copy = <T,>(value: T): T => structuredClone(value);
 const state = (): CanvasEditorState => copy({ items, groups });
 const diagnostics = {
+  select: (itemId: string) => { useCanvasStore.getState().setSelectedIds([itemId]); },
   evidence: () => copy({ items, groups, connections, requests, edits, replays, textSaves, placements, removals, unexpected,
     mediaDrafts: [...mediaDrafts.values()], draftSaves,
     layoutDrafts: useCanvasStore.getState().drafts,
@@ -118,6 +133,18 @@ const diagnostics = {
   failNextPlacement: (status: number) => { nextPlacementFailure = status; },
 };
 Object.assign(window, { __agenvasCanvasEditingFixture: diagnostics });
+// Use the same provider and native viewport API as ProjectWorkspace. The browser
+// probe can open an editor at an edge without simulating a centering node click.
+function ViewportDiagnostics() {
+  const flow = useReactFlow();
+  useEffect(() => {
+    Object.assign(diagnostics, {
+      setViewport: flow.setViewport,
+      viewport: flow.getViewport,
+    });
+  }, [flow]);
+  return null;
+}
 function problem(status: number, detail: string) {
   return Response.json({ type: "about:blank", title: "Synthetic canvas failure", detail, status,
     code: status === 409 ? "VERSION_CONFLICT" : "SYNTHETIC_FAILURE", traceId: "synthetic", retryable: status !== 409 },
@@ -177,8 +204,9 @@ function persistEdit(request: CanvasEditRequest): CanvasEditResponse | Response 
 function restore(target: CanvasEditorState) {
   const current = new Map(items.map((item) => [item.id, item]));
   items = target.items.map((snapshot) => {
+    if (!snapshot.artifact) throw new Error("Synthetic canvas fixture supports Artifact items only");
     const live = current.get(snapshot.id);
-    if (!live) return copy(snapshot);
+    if (!live) return copy({ ...snapshot, artifact: snapshot.artifact });
     return { ...live, title: snapshot.title, x: snapshot.x, y: snapshot.y, width: snapshot.width, height: snapshot.height,
       zIndex: snapshot.zIndex, locked: snapshot.locked, groupId: snapshot.groupId, version: live.version + 1 };
   });
@@ -213,7 +241,8 @@ window.fetch = async (input, init) => {
   else if (path.endsWith("/auth/csrf")) value = { headerName: "X-XSRF-TOKEN", token: "synthetic-token" };
   else if (path === `/api/v1/projects/${projectId}` && method === "GET") value = project;
   else if (path.endsWith("/snapshot") && method === "GET") value = { project, canvas: { items }, connections,
-    director: null, activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0 } satisfies ProjectSnapshot;
+    director: options.has("editor-close") ? syntheticDirector : null,
+    activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0 } satisfies ProjectSnapshot;
   else if (path.endsWith("/canvas/editor") && method === "GET") {
     if (options.has("group-read-failure") && requests.filter((request) => request.path.endsWith("/canvas/editor")).length === 1)
       return problem(503, "Synthetic group metadata is temporarily unavailable");
@@ -295,6 +324,8 @@ window.fetch = async (input, init) => {
   else if (path.endsWith("/artifacts") && method === "GET") value = { items: items.map((item) => item.artifact) };
   else if (path.endsWith("/versions") && method === "GET") value = { items: [items.find((item) => item.artifact.id === path.split("/").at(-2))?.artifact.resourceDefaultVersion].filter(Boolean) };
   else if (path.endsWith("/characters") && method === "GET") value = { characters: [], bindings: [] };
+  else if (options.has("editor-close") && path.endsWith("/conversations") && method === "GET") value = { items: [], currentConversationId: null, nextCursor: null };
+  else if (options.has("editor-close") && path.endsWith("/skill-binding") && method === "GET") value = { agentId: syntheticDirector.id, agentVersion: 0, skills: [] };
   else if (path.endsWith("/media-draft") && method === "GET") value = mediaDraft(path.split("/").at(-2)!);
   else if (path.endsWith("/media-draft") && method === "PUT") {
     const body = JSON.parse(String(init?.body)) as SaveMediaDraftRequest;
@@ -311,7 +342,7 @@ window.fetch = async (input, init) => {
   else if (path.endsWith("/assets/synthetic-image") && method === "GET") value = { id: "synthetic-image", width: 330, height: 240 };
   else if (path.endsWith("/settings/llm")) value = { configured: false, version: 0 };
   else if (path.endsWith("/settings/diagnostics")) value = { llmMode: "MOCK" };
-  else if (path.endsWith("/settings/media-connections")) value = options.has("connection-drop") ? mediaSettings : { connections: [], defaults: [] };
+  else if (path.endsWith("/settings/media-connections")) value = options.has("connection-drop") || options.has("editor-close") ? mediaSettings : { connections: [], defaults: [] };
   else if (path.endsWith("/settings/media-functions")) value = [];
   else if (method === "GET" && /\/(text-generations|run|tasks|exports|export-proposals|usage|media-approvals)$/.test(path)) value = [];
   else {
@@ -322,7 +353,9 @@ window.fetch = async (input, init) => {
 };
 const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
 const fixtureRoot = createRoot(document.getElementById("root")!);
-fixtureRoot.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[`/projects/${projectId}`]}><Routes>
+const workspace = <MemoryRouter initialEntries={[`/projects/${projectId}`]}><Routes>
   <Route path="/projects/:projectId" element={<ProjectWorkspacePage />} />
-</Routes></MemoryRouter></QueryClientProvider>);
+</Routes></MemoryRouter>;
+fixtureRoot.render(<QueryClientProvider client={client}>{options.has("editor-close")
+  ? <ReactFlowProvider><ViewportDiagnostics />{workspace}</ReactFlowProvider> : workspace}</QueryClientProvider>);
 if (import.meta.hot) import.meta.hot.dispose(() => { fixtureRoot.unmount(); window.fetch = originalFetch; });
