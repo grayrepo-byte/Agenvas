@@ -34,6 +34,11 @@ function textItem(index: number): CanvasItem {
 let items: CanvasItem[] = Array.from({ length: 100 }, (_, index) => textItem(index));
 if (options.has("group-entry")) items = items.slice(0, 3);
 if (options.has("empty-creation")) items = [];
+if (options.has("initial-group")) items = [
+  { ...textItem(0), groupId: "synthetic-initial-group" },
+  { ...textItem(1), x: 6000, y: 2000, groupId: "synthetic-initial-group" },
+  { ...textItem(2), x: 400, y: 200 },
+];
 if (options.has("connection-drop")) {
   const source = textItem(0);
   const version: NonNullable<CanvasItem["selectedVersion"]> = {
@@ -57,8 +62,9 @@ if (options.has("hand-drag")) {
   });
   items = [textItem(0), empty, ...media, ...(options.has("motion-large") ? items.slice(4).map((item) => ({ ...item, y: item.y + 310 })) : [])];
 }
-let groups: CanvasGroup[] = [];
-const connections: ProjectSnapshot["connections"] = options.has("hand-drag") || options.has("connection-drop") || options.has("empty-creation") ? [] : [
+let groups: CanvasGroup[] = options.has("initial-group") ? [{ id: "synthetic-initial-group", projectId,
+  name: "Synthetic collapsed group", collapsed: true, version: 0 }] : [];
+const connections: ProjectSnapshot["connections"] = options.has("hand-drag") || options.has("connection-drop") || options.has("empty-creation") || options.has("initial-group") ? [] : [
   { id: "synthetic-internal-connection", projectId, sourceCanvasItemId: items[0]!.id, targetCanvasItemId: items[1]!.id,
     sourceArtifactVersionId: items[0]!.selectedVersionId!, relationType: "MEDIA_DERIVATION", version: 0, createdAt: now, updatedAt: now },
   { id: "synthetic-external-connection", projectId, sourceCanvasItemId: items[1]!.id, targetCanvasItemId: items[2]!.id,
@@ -208,7 +214,12 @@ window.fetch = async (input, init) => {
   else if (path === `/api/v1/projects/${projectId}` && method === "GET") value = project;
   else if (path.endsWith("/snapshot") && method === "GET") value = { project, canvas: { items }, connections,
     director: null, activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0 } satisfies ProjectSnapshot;
-  else if (path.endsWith("/canvas/editor") && method === "GET") value = state();
+  else if (path.endsWith("/canvas/editor") && method === "GET") {
+    if (options.has("group-read-failure") && requests.filter((request) => request.path.endsWith("/canvas/editor")).length === 1)
+      return problem(503, "Synthetic group metadata is temporarily unavailable");
+    if (options.has("initial-group")) await new Promise((resolve) => window.setTimeout(resolve, 500));
+    value = state();
+  }
   else if (path.endsWith("/canvas/items") && method === "GET") value = { items };
   else if (path.endsWith("/canvas/connections") && method === "GET") value = { items: connections };
   else if (path.endsWith("/canvas/connections") && method === "POST") {

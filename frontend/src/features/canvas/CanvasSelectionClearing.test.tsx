@@ -536,6 +536,35 @@ describe("connection gesture overlays", () => {
 });
 
 describe("node editor centering", () => {
+  it("waits for referenced group definitions before fitting a collapsed canvas", async () => {
+    renderRealFlow = true;
+    const groupedItems = items.map((item, index) => ({ ...item, groupId: index < 2 ? "initial-group" : null }));
+    let completeGroupRead: (() => void) | undefined;
+    const groupRead = new Promise<void>((resolve) => { completeGroupRead = resolve; });
+    let reads = 0;
+    server.use(
+      http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({
+        ...snapshot(), canvas: { items: groupedItems },
+      })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: groupedItems })),
+      http.get("/api/v1/projects/:projectId/canvas/editor", async () => {
+        reads++; await groupRead;
+        return HttpResponse.json({ items: groupedItems, groups: [{ id: "initial-group", projectId: "project-1",
+          name: "Collapsed group", collapsed: true, version: 0 }] });
+      }),
+    );
+    await renderFlow();
+    await waitFor(() => { expect(reads).toBe(1); expect(focusProbe.instance).not.toBeNull(); });
+    expect(focusProbe.fit).not.toHaveBeenCalled();
+    act(() => completeGroupRead?.());
+    await waitFor(() => expect(focusProbe.fit).toHaveBeenCalledOnce());
+    const fitted = focusProbe.fit.mock.lastCall?.[0]?.nodes;
+    expect(fitted).toHaveLength(2);
+    expect(fitted).toContainEqual({ id: "text-card" });
+    expect(fitted).not.toContainEqual({ id: "image-card" });
+    expect(fitted).not.toContainEqual({ id: "middle-card" });
+  });
+
   it("fits the loaded snapshot when a delayed initial callback captured the pending query", async () => {
     renderRealFlow = true;
     focusProbe.deferInit = true;

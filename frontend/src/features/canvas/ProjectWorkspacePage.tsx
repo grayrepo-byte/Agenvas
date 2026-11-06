@@ -974,12 +974,16 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   });
   useEffect(() => {
     if (!flowReady || !flow.current || !canvas.isSuccess || initialViewportSet.current) return;
+    // Group definitions load separately; fitting before they arrive would include
+    // distant children that the saved collapsed state is meant to hide.
+    const knownGroups = new Set(organization.groups.map((group) => group.id));
+    if (canvas.data.items.some((item) => item.groupId && !knownGroups.has(item.groupId))) return;
     initialViewportSet.current = true;
     // Fit the initial snapshot once. An empty snapshot already has its final view;
     // later creations must preserve the user's viewport and the new card's screen position.
     if (nodes.length > 0) void flow.current.fitView({ padding: 0.2, maxZoom: 1,
       nodes: nodes.filter((node) => node.style?.visibility !== "hidden").map(({ id }) => ({ id })) });
-  }, [canvas.isSuccess, flowReady, nodes]);
+  }, [canvas.data, canvas.isSuccess, flowReady, nodes, organization.groups]);
 
   const relationEdges = useMemo(() => remapCollapsedCanvasEdges(displayCanvasRelations(
     projectedRelations, [...selectedIds, ...organization.selectedItems.map((item) => item.id)], selectedEdgeIds,

@@ -21,6 +21,7 @@ const connectionDropOnly = process.argv.includes("--connection-drop-only");
 const selectAllOnly = process.argv.includes("--select-all-only");
 const shortcutsOnly = process.argv.includes("--shortcuts-only");
 const emptyCreationOnly = process.argv.includes("--empty-creation-only");
+const initialGroupOnly = process.argv.includes("--initial-group-only");
 const dragCase = process.argv.includes("--hand-drag-only") ? "hand"
   : process.argv.includes("--text-node-drag-only") ? "node" : process.argv.includes("--drag-diagnostics") ? "diagnostics" : null;
 const catalogs = Object.fromEntries(await Promise.all(["zh", "ru"].map(async (locale) => [locale,
@@ -728,6 +729,33 @@ async function runEmptyCreationRegression(baseUrl) {
   console.log("Empty canvas creation passed: first text/image/audio/video card remains centered, visible and persisted without a viewport jump; synthetic only");
 }
 
+async function runInitialGroupRegression(baseUrl) {
+  for (const failedRead of [false, true]) {
+    await cdp("Page.navigate", { url: new URL(`${route}?locale=zh&initial-group=1${failedRead ? "&group-read-failure=1" : ""}`, baseUrl).href });
+    if (failedRead) {
+      await waitFor(() => Boolean(document.querySelector('[role="alert"]')));
+      await clickNamed("button", "common.retryRead");
+    }
+    await waitFor(() => Boolean(document.querySelector(".canvas-group--collapsed")));
+    await page(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const layout = await page(() => {
+      const canvas = document.querySelector(".react-flow").getBoundingClientRect();
+      const visible = [...document.querySelectorAll(".react-flow__node")]
+        .filter((node) => getComputedStyle(node).visibility !== "hidden")
+        .map((node) => ({ id: node.dataset.id, rect: node.getBoundingClientRect().toJSON() }));
+      return { canvas: canvas.toJSON(), visible,
+        zoom: new DOMMatrixReadOnly(getComputedStyle(document.querySelector(".react-flow__viewport")).transform).a };
+    });
+    assert.equal(layout.visible.length, 2);
+    for (const { id, rect } of layout.visible) assert.ok(rect.left >= layout.canvas.left
+      && rect.right <= layout.canvas.right && rect.top >= layout.canvas.top && rect.bottom <= layout.canvas.bottom,
+    `Initial fit must use visible group contents after delayed metadata, ${id}: ${JSON.stringify(layout)}`);
+    assert.ok((await evidence()).requests.every((request) => request.method === "GET"), "Reading or retrying groups must not write canvas data");
+  }
+  assert.deepEqual(runtimeErrors, []);
+  console.log("Initial collapsed-group fit passed: delayed metadata and explicit read retry, hidden members excluded, visible nodes remain in view without writes; synthetic only");
+}
+
 try {
   const config = { root, configFile: join(root, "vite.config.ts") };
   if (production) {
@@ -755,7 +783,8 @@ try {
   await cdp("Page.enable"); await cdp("Runtime.enable");
   const baseUrl = server.resolvedUrls.local[0];
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-  if (emptyCreationOnly) await runEmptyCreationRegression(baseUrl);
+  if (initialGroupOnly) await runInitialGroupRegression(baseUrl);
+  else if (emptyCreationOnly) await runEmptyCreationRegression(baseUrl);
   else if (shortcutsOnly) await runShortcutRegression(baseUrl);
   else if (selectAllOnly) await runSelectAllRegression(baseUrl);
   else if (connectionDropOnly) await runConnectionDropRegression(baseUrl);
