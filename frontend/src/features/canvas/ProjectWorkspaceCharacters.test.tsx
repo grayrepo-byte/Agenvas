@@ -95,17 +95,19 @@ it("deletes only canvas topology and explains that applied frozen drafts remain"
   expect(removals).toEqual([{ commands: [{ type: "REMOVE", itemId: "role", expectedVersion: 1 }] }]);
 });
 
-it("offers configuration from a compact menu without selecting the node", async () => {
+it("offers direct edge configuration without selecting the node", async () => {
   show();
-  const actions = await screen.findByRole("button", { name: t("characterNode.nodeActions") });
-  await userEvent.click(actions);
-  const configure = await screen.findByRole("menuitem", { name: t("characterNode.configure") });
+  const configure = await screen.findByRole("button", { name: t("characterNode.configure") });
   expect(configure).toBeVisible();
   expect(screen.getByText(t("characterNode.textOnly"))).toBeVisible();
   await userEvent.click(configure);
   expect(await screen.findByRole("dialog", { name: t("characterNode.fixedSelection") })).toBeVisible();
+  const description = screen.getByText(t("character.characterDescription"));
+  expect(screen.getByText("Pilot")).not.toBeVisible();
+  await userEvent.click(description);
+  expect(screen.getByText("Pilot")).toBeVisible();
   await userEvent.click(screen.getByRole("button", {name:t("ui.dialog.close")}));
-  expect(actions).toHaveFocus();
+  expect(configure).toHaveFocus();
 });
 
 it("offers a keyboard connection menu that previews without generating", async () => {
@@ -119,7 +121,7 @@ it("offers a keyboard connection menu that previews without generating", async (
     http.post("/api/v1/projects/project/canvas/character-connections",async({request})=>{connections.push(await request.json());return HttpResponse.json({id:"edge",sourceCanvasItemId:"role",targetCanvasItemId:"target",version:0});}),
     http.post("/api/v1/projects/project/canvas-items/target/character-node-bindings/preview",()=>HttpResponse.json({title:"Unsupported",detail:"Synthetic model rejects references",code:"VALIDATION_ERROR"},{status:400,headers:{"Content-Type":"application/problem+json"}})));
   const client = show();
-  const connect = await screen.findByRole("button", { name: t("characterNode.nodeActions") });
+  const connect = await screen.findByRole("button", { name: t("characterNode.chooseTarget") });
   connect.focus(); await userEvent.keyboard("{Enter}");
   await screen.findByRole("menuitem", {name:"Scene image"});
   expect(screen.getByText(t("characterNode.chooseTarget"))).toBeVisible();
@@ -133,7 +135,7 @@ it("offers a keyboard connection menu that previews without generating", async (
   await userEvent.click(screen.getByRole("button", {name:t("ui.dialog.close")}));
   expect(connect).toHaveFocus();
   act(() => client.setQueryData(["canvas", "project"], {items:[{...role, characterNode:{...role.characterNode, connections:[{id:"edge",sourceCanvasItemId:"role",targetCanvasItemId:"target",version:0}]}},target]}));
-  await userEvent.click(screen.getByRole("button", {name:t("characterNode.nodeActions")}));
+  await userEvent.click(screen.getByRole("button", {name:t("characterNode.chooseTarget")}));
   const existingTarget = await screen.findByRole("menuitem", {name:"Scene image"});
   expect(existingTarget).toHaveAccessibleDescription(t("characterNode.alreadyConnected"));
   await userEvent.click(existingTarget);
@@ -152,9 +154,10 @@ it("keeps character placement and fixed selection read-only on narrow viewports"
       http.get("/api/v1/projects/project/canvas/items", () => HttpResponse.json({items})));
     show();
     await screen.findByText("Flight suit");
-    await userEvent.click(screen.getByRole("button", { name: t("characterNode.nodeActions") }));
+    await userEvent.click(screen.getByRole("button", { name: t("characterNode.chooseTarget") }));
     expect(await screen.findByRole("menuitem", {name:"Scene image"})).toHaveAttribute("aria-disabled","true");
-    await userEvent.click(await screen.findByRole("menuitem", { name: t("characterNode.configure") }));
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(screen.getByRole("button", { name: t("characterNode.configure") }));
     expect(await screen.findByRole("button", { name: t("character.confirmSave") })).toBeDisabled();
     expect(screen.getByLabelText(t("character.lookName"))).toBeDisabled();
     await userEvent.click(screen.getByRole("button", { name: t("ui.dialog.close") }));
@@ -174,9 +177,9 @@ it("distinguishes a library update from the node's fixed project revision", asyn
   expect(screen.queryByText(t("characterNode.updateAvailable"))).not.toBeInTheDocument();
 });
 
-it("keeps the compact menu reachable and restores focus after keyboard cancellation", async () => {
+it("keeps the edge target picker reachable and restores focus after keyboard cancellation", async () => {
   show();
-  const actions = await screen.findByRole("button", {name:t("characterNode.nodeActions")});
+  const actions = await screen.findByRole("button", {name:t("characterNode.chooseTarget")});
   actions.focus(); await userEvent.keyboard("{Enter}");
   expect(await screen.findByRole("menuitem", {name:t("characterNode.noTarget")})).toHaveAttribute("aria-disabled","true");
   await userEvent.keyboard("{Escape}");

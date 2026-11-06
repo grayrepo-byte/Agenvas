@@ -1,4 +1,4 @@
-import { CopySimple, LockSimple, PencilSimple, X, UserCircle, ImageSquare, SpeakerHigh, LinkSimple, CaretRight, VideoCamera, CheckCircle, DotsThree } from "@/shared/ui/icons";
+import { CopySimple, LockSimple, PencilSimple, X, UserCircle, ImageSquare, SpeakerHigh, LinkSimple, VideoCamera, CheckCircle } from "@/shared/ui/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useEffectEvent, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -8,7 +8,6 @@ import { t, useLocale } from "../../shared/i18n";
 import { Dialog } from "../../shared/ui/Dialog";
 import { Select } from "../../shared/ui/Select";
 import { Alert, AlertDescription } from "../../shared/ui/primitives/alert";
-import { Badge } from "../../shared/ui/primitives/badge";
 import { Button } from "../../shared/ui/primitives/button";
 import { Checkbox } from "../../shared/ui/primitives/checkbox";
 import { Empty, EmptyDescription, EmptyHeader } from "../../shared/ui/primitives/empty";
@@ -18,7 +17,7 @@ import { characterQueryOptions } from "../characters/characterQueries";
 import { useCharacterNodeRecovery, type CharacterPlacementRecovery } from "./characterNodeRecovery";
 import { sameCharacterSelection } from "./characterCanvas";
 import { ArtifactCardFrame } from "./ArtifactCardFrame";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from "../../shared/ui/primitives/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel } from "../../shared/ui/primitives/dropdown-menu";
 import { characterLibraryLinksOptions } from "../character-library/characterLibraryQueries";
 import "./CharacterCanvasCard.css";
 
@@ -37,11 +36,11 @@ export function CharacterCanvasCard({ item, projectId, selected, toolbarVisible,
   onPreviewTarget: (targetId: string) => void; onConnectTarget: (targetId: string) => void; readOnly?: boolean; onEdit: () => void; onDuplicate: () => void; onRemove: () => void; onToggleLocked: () => void;
 }) {
   useLocale();
-  const actionsDescriptionId = useId();
-  const actionsTrigger = useRef<HTMLButtonElement>(null);
-  const [actionsOpen, setActionsOpen] = useState(false);
+  const targetDescriptionId = useId();
+  const targetTrigger = useRef<HTMLButtonElement>(null);
+  const [targetPickerOpen, setTargetPickerOpen] = useState(false);
   const queuedAction = useRef<(() => void) | null>(null);
-  const chooseAction = (action: () => void) => { queuedAction.current = action; setActionsOpen(false); };
+  const chooseAction = (action: () => void) => { queuedAction.current = action; setTargetPickerOpen(false); };
   const canvas = useQuery({ queryKey: ["canvas", projectId], queryFn: () => listCanvasItems(projectId), retry: false });
   const links = useQuery(characterLibraryLinksOptions(projectId));
   const node = item.characterNode;
@@ -52,19 +51,17 @@ export function CharacterCanvasCard({ item, projectId, selected, toolbarVisible,
   const portrait = snapshot.look?.views[0];
   const imageCount = snapshot.useAppearance ? snapshot.look?.views.length ?? 0 : 0;
   const audioCount = snapshot.useVoice && snapshot.voice?.versionId ? 1 : 0;
-  const actions = <DropdownMenu open={actionsOpen} onOpenChange={setActionsOpen}><DropdownMenuTrigger asChild>
-    <Button ref={actionsTrigger} className="character-node-actions nodrag nowheel size-11" type="button" variant="ghost" size="icon-lg" aria-label={t("characterNode.nodeActions")} title={t("characterNode.nodeActions")}><DotsThree aria-hidden="true" /></Button>
+  const targetPicker = <DropdownMenu open={targetPickerOpen} onOpenChange={setTargetPickerOpen}><DropdownMenuTrigger asChild>
+    <Button ref={targetTrigger} className="nodrag nowheel" type="button" variant="secondary" size="icon-lg" aria-label={t("characterNode.chooseTarget")} title={t("characterNode.chooseTarget")}><LinkSimple aria-hidden="true" /></Button>
   </DropdownMenuTrigger>
-    <DropdownMenuContent align="end" sticky="always" collisionPadding={12} className="character-node-target-menu" aria-describedby={actionsDescriptionId} onCloseAutoFocus={(event) => {
+    <DropdownMenuContent side={readOnly ? "bottom" : "right"} align="start" sideOffset={12} sticky="always" collisionPadding={12} className="character-node-target-menu" aria-describedby={targetDescriptionId} onCloseAutoFocus={(event) => {
       const action = queuedAction.current;
       if (!action) return;
       // Open dialogs after the menu focus scope closes, with a persistent return target.
-      event.preventDefault(); queuedAction.current = null; actionsTrigger.current?.focus(); action();
+      event.preventDefault(); queuedAction.current = null; targetTrigger.current?.focus(); action();
     }}>
-      <DropdownMenuGroup><DropdownMenuItem onSelect={() => chooseAction(onEdit)}><PencilSimple aria-hidden="true" />{t("characterNode.configure")}</DropdownMenuItem></DropdownMenuGroup>
-      <DropdownMenuSeparator />
       <DropdownMenuLabel>{t("characterNode.chooseTarget")}</DropdownMenuLabel>
-      <p id={actionsDescriptionId} className="character-node-menu-hint">{t("characterNode.targetHint")}</p>
+      <p id={targetDescriptionId} className="character-node-menu-hint">{t("characterNode.targetHint")}</p>
       <DropdownMenuGroup>{targets.length ? targets.map((target) => {
         const connected = node.connections.some((connection) => connection.targetCanvasItemId === target.id);
         return <DropdownMenuItem key={target.id} disabled={target.locked || item.locked || readOnly} title={target.title} aria-description={connected ? t("characterNode.alreadyConnected") : undefined} onSelect={() => chooseAction(() => connected ? onPreviewTarget(target.id) : onConnectTarget(target.id))}>
@@ -82,26 +79,19 @@ export function CharacterCanvasCard({ item, projectId, selected, toolbarVisible,
       <Button type="button" variant="ghost" disabled={readOnly} onClick={onToggleLocked}><LockSimple data-icon="inline-start" />{t(item.locked ? "canvas.card.unlock" : "canvas.card.lock")}</Button>
       <Button type="button" variant="ghost" disabled={item.locked || readOnly} title={t("characterNode.retained")} onClick={onRemove}><X data-icon="inline-start" />{t("canvas.card.remove")}</Button>
     </>}>
-    <div className="character-node-body">
-      <div className="character-node-heading"><strong title={snapshot.name}>{snapshot.name}</strong><Badge variant="outline" title={t("characterNode.fixedVersion", { version: snapshot.characterVersion })}>v{snapshot.characterVersion}</Badge>{actions}</div>
-      <div className="character-node-overview">
-        <div className="character-node-portrait">
-          {portrait ? <CharacterReferenceImage projectId={projectId} versionId={portrait.versionId} alt={t("characterNode.portraitAlt", { name: snapshot.name })} />
-            : <div className="character-reference-fallback" role="img" aria-label={t("characterNode.noPortrait")}><UserCircle aria-hidden="true" /><span>{t(snapshot.useVoice && !snapshot.useAppearance ? "characterNode.voiceOnly" : "characterNode.textOnly")}</span></div>}
-        </div>
-        <div className="character-node-identity">
-          <p className="character-node-look" title={snapshot.look?.name}>{snapshot.look?.name ?? t("characterNode.lookFallback")}</p>
-          {node.newerVersionAvailable ? <Badge className="character-node-update" variant="secondary">{t("characterNode.updateAvailable")}</Badge> : libraryUpdate ? <Badge className="character-node-update" variant="secondary" title={t("characterNode.libraryUpdateHint")}>{t("characterNode.libraryUpdate")}</Badge> : null}
-          <p className="character-node-description" title={snapshot.description}>{snapshot.description}</p>
-          <p className="character-node-reference-count"><ImageSquare aria-hidden="true" /><span>{t("characterNode.counts", { images: imageCount, audio: audioCount })}</span>{snapshot.useVoice ? <SpeakerHigh aria-label={t("character.useVoice")} /> : null}</p>
-        </div>
+    <div className="character-node-surface" data-picker-open={targetPickerOpen}>
+      {portrait ? <CharacterReferenceImage projectId={projectId} versionId={portrait.versionId} alt={t("characterNode.portraitAlt", { name: snapshot.name })} />
+        : <div className="character-reference-fallback" role="img" aria-label={t("characterNode.noPortrait")}><UserCircle aria-hidden="true" /><span>{t(snapshot.useVoice && !snapshot.useAppearance ? "characterNode.voiceOnly" : "characterNode.textOnly")}</span></div>}
+      <div className="character-node-edge-actions nodrag nowheel">
+        <Button type="button" variant="secondary" size="icon-lg" onClick={onEdit} aria-label={t("characterNode.configure")} title={t("characterNode.configure")}><PencilSimple aria-hidden="true" /></Button>
+        {targetPicker}
       </div>
-      <div className="character-node-footer nodrag nowheel">
-        {node.connections.length ? <details className="character-node-connections"><summary><LinkSimple aria-hidden="true" /><span>{t("characterNode.connections", { count: node.connections.length })}</span><CaretRight aria-hidden="true" /></summary>
-          <div>{node.connections.map((connection) => { const title = canvas.data?.items.find((entry) => entry.id === connection.targetCanvasItemId)?.title ?? t("characterNode.linkedTarget");
-            return <Button key={connection.id} type="button" size="sm" variant="ghost" onClick={() => onPreviewTarget(connection.targetCanvasItemId)} aria-label={t("characterNode.previewTarget", { name: title })}><span className="truncate">{title}</span><CaretRight aria-hidden="true" /></Button>;
-          })}</div></details> : <p className="character-node-empty-connections" title={t("characterNode.connectPurpose")}><LinkSimple aria-hidden="true" />{t("characterNode.noConnections")}</p>}
-        <p className="character-node-hint">{t("characterNode.usageHint")}</p>
+      <div className="character-node-caption">
+        <div className="character-node-caption-heading"><strong title={snapshot.name}>{snapshot.name}</strong><span title={t("characterNode.fixedVersion", { version: snapshot.characterVersion })}>v{snapshot.characterVersion}</span></div>
+        <div className="character-node-caption-meta"><span title={snapshot.look?.name}>{snapshot.look?.name ?? t("characterNode.lookFallback")}</span>
+          {node.newerVersionAvailable ? <span>{t("characterNode.updateAvailable")}</span> : libraryUpdate ? <span title={t("characterNode.libraryUpdateHint")}>{t("characterNode.libraryUpdate")}</span> : null}
+        </div>
+        <p className="character-node-caption-counts"><ImageSquare aria-hidden="true" /><span>{t("characterNode.counts", { images: imageCount, audio: audioCount })}</span>{snapshot.useVoice ? <SpeakerHigh aria-label={t("character.useVoice")} /> : null}{node.connections.length ? <><span aria-hidden="true">·</span><span>{t("characterNode.connections", { count: node.connections.length })}</span></> : null}</p>
       </div>
     </div>{children}
   </ArtifactCardFrame>;
@@ -167,7 +157,8 @@ function CharacterNodeEditorForm({ projectId, item, node, readOnly, readOnlyHint
   }
   return <><Dialog className="character-node-editor" title={t("characterNode.fixedSelection")} description={t("characterNode.selectionHint")} busy={busy || uncertain} onClose={requestClose}
     onSubmit={(event) => { event.preventDefault(); void save(); }} footer={<Button type="submit" disabled={busy || blocked && !uncertain}>{t(uncertain ? "characterNode.reconcileAction" : "character.confirmSave")}</Button>}>
-    <p>{node.snapshot.name} · v{selection.characterVersion}</p>
+    <p>{fixedProfile?.content.name ?? node.snapshot.name} · v{selection.characterVersion}</p>
+    {fixedProfile?.content.description ? <details className="character-node-editor-description"><summary>{t("character.characterDescription")}</summary><p>{fixedProfile.content.description}</p></details> : null}
     {blocked ? <Alert><AlertDescription>{profile?.archived ? t("characterNode.archived") : readOnlyHint ?? t("media.editor.editingLocked")}</AlertDescription></Alert> : null}
     {index.isPending || needsRevision && revision.isPending ? <p role="status">{t("common.loading")}</p> : null}
     {error ? <Alert ref={errorAlert} tabIndex={-1} variant="destructive"><AlertDescription>{error.message}{uncertain ? <p>{t("characterNode.reconcile")}</p> : error instanceof ApiError ? <Button type="button" variant="outline" disabled={busy} onClick={() => { void Promise.all([index.refetch(), client.invalidateQueries({ queryKey: ["canvas", projectId] })]); }}>{t("characterNode.refreshSelection")}</Button> : null}</AlertDescription></Alert> : null}

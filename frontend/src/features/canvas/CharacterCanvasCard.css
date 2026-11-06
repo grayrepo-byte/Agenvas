@@ -1,30 +1,29 @@
 /* Character metadata follows the existing canvas surface and contextual toolbar. */
 .character-canvas-card { min-width: 0; }
-.character-node-body { display: flex; flex-direction: column; gap: 8px; height: 100%; min-height: 0; overflow: auto; padding: 12px; }
-.character-node-overview { display: flex; align-items: flex-start; gap: 14px; min-width: 0; }
-.character-node-portrait { flex: 0 0 112px; height: 152px; overflow: hidden; border: 1px solid var(--ui-canvas-border); border-radius: var(--ui-radius-md); background: var(--ui-surface-raised); }
+/* The reference image is the node surface; no inset image frame or content card. */
+.character-node-surface { position: relative; width: 100%; height: 100%; overflow: hidden; border-radius: inherit; }
 .character-reference-image { display: block; width: 100%; height: 100%; object-fit: contain; }
+.character-node-surface > .character-reference-image { object-fit: cover; }
 .character-reference-fallback { display: flex; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 8px; color: var(--ui-text-muted); text-align: center; font-size: var(--ui-text-xs); }
 .character-reference-fallback > svg { width: 32px; height: 32px; flex-shrink: 0; color: var(--ui-text-subtle); }
-.character-node-identity { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 7px; }
-.character-node-heading { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.character-node-heading > strong { min-width: 0; flex: 1; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font-size: var(--ui-text-md); line-height: 1.35; }
-.character-node-look { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ui-text-secondary); font-size: var(--ui-text-sm); }
-.character-node-update { align-self: flex-start; }
-.character-node-description { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; color: var(--ui-text-muted); font-size: var(--ui-text-xs); line-height: 1.5; }
-.character-node-reference-count { display: flex; align-items: center; gap: 5px; color: var(--ui-text-secondary); font-size: var(--ui-text-xs); font-variant-numeric: tabular-nums; }
-.character-node-reference-count > svg { flex: none; width: 14px; height: 14px; }
-.character-node-footer { display: flex; flex-direction: column; gap: 6px; margin-top: auto; padding-top: 8px; border-top: 1px solid var(--ui-canvas-border); }
-.character-node-hint { color: var(--ui-text-muted); font-size: var(--ui-text-xs); line-height: 1.5; }
-.character-node-empty-connections, .character-node-connections > summary { display: flex; align-items: center; gap: 6px; color: var(--ui-text-secondary); font-size: var(--ui-text-xs); }
-.character-node-empty-connections > svg, .character-node-connections > summary > svg { width: 14px; height: 14px; flex: none; }
-.character-node-connections > summary { cursor: pointer; list-style: none; padding: 2px 0; }
-.character-node-connections > summary::-webkit-details-marker { display: none; }
-.character-node-connections > summary > svg:last-child { margin-left: auto; }
-.character-node-connections[open] > summary > svg:last-child { transform: rotate(90deg); }
-.character-node-connections > summary:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); border-radius: var(--ui-radius-sm); }
-.character-node-connections > div { display: flex; flex-direction: column; gap: 4px; max-height: 116px; overflow: auto; margin-top: 6px; }
-.character-node-connections button { justify-content: space-between; min-width: 0; }
+.character-node-surface > .character-reference-fallback { padding-bottom: 96px; }
+.character-node-edge-actions > button[data-size="icon-lg"] { width: 44px; height: 44px; }
+.character-node-edge-actions { position: absolute; z-index: 2; top: 8px; right: 8px; display: flex; gap: 4px; opacity: 0; pointer-events: none; }
+.character-canvas-card:is(:hover, :focus-within, .is-selected) .character-node-edge-actions,
+.character-node-surface[data-picker-open="true"] .character-node-edge-actions { opacity: 1; pointer-events: auto; }
+.character-node-caption { position: absolute; inset: auto 0 0; display: flex; flex-direction: column; gap: 5px; padding: 34px 14px 12px; color: var(--ui-media-overlay-foreground); background: linear-gradient(transparent, color-mix(in srgb, var(--ui-media-scrim) 68%, transparent) 42%, color-mix(in srgb, var(--ui-media-scrim) 90%, transparent)); }
+.character-node-caption-heading { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.character-node-caption-heading > strong { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--ui-text-lg); }
+.character-node-caption-heading > span { flex: none; font-size: var(--ui-text-xs); }
+.character-node-caption-meta { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--ui-text-sm); }
+.character-node-caption-meta > span:first-child { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.character-node-caption-meta > span:last-child:not(:first-child) { flex-shrink: 0; }
+.character-node-caption-counts { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; font-size: var(--ui-text-xs); line-height: 1.5; }
+.character-node-caption-counts > svg { width: 14px; height: 14px; flex: none; }
+.character-node-editor-description { color: var(--ui-text-secondary); font-size: var(--ui-text-sm); line-height: 1.5; }
+.character-node-editor-description > summary { cursor: pointer; }
+.character-node-editor-description > p { white-space: pre-wrap; overflow-wrap: anywhere; padding-top: 8px; }
+@media (hover: none), (pointer: coarse) { .character-node-edge-actions { opacity: 1; pointer-events: auto; } }
 .character-node-editor-fields { gap: 14px; }
 .character-node-use-options { display: flex; flex-wrap: wrap; gap: 12px 24px; }
 .character-node-use-options > [data-slot="field"] { width: auto; }
@@ -51,7 +50,6 @@
 .character-node-target-menu { width: 296px; max-width: calc(100vw - 32px); }
 .character-node-target-menu [role="menuitem"] { min-height: 44px; }
 .character-node-menu-hint { padding: 0 8px 8px; color: var(--ui-text-muted); font-size: var(--ui-text-xs); line-height: 1.5; }
-.character-node-actions { margin-right: -6px; flex: none; }
 .character-node-target-menu [role="menuitem"] > span { min-width: 0; flex: 1; }
 
 .character-node-editor .ui-dialog-body { display: flex; flex-direction: column; gap: 14px; }

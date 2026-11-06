@@ -162,6 +162,18 @@ it("edits unselected images from a complete pinned revision without silently upg
   await waitFor(() => expect(writes).toHaveLength(1));
   expect(writes[0]?.selection).toMatchObject({ characterVersion: 3, viewVersionIds: ["front", "side"] });
 });
+it.each(["Pilot", ""])("shows the selected revision's description after an explicit upgrade from %j", async (oldDescription) => {
+  if (!role.characterNode) throw new Error("Missing role fixture");
+  const pinned = { ...role, characterNode: { ...role.characterNode, snapshot: { ...role.characterNode.snapshot, description: oldDescription } } };
+  server.use(http.get(`${BASE}/characters`, () => HttpResponse.json({ characters: [{ ...profile, version: 4, content: { ...profile.content, name: "New hero", description: "New identity description" } }], bindings: [] })),
+    http.get(`${BASE}/characters/hero/revisions/3`, () => HttpResponse.json({ ...profile, content: { ...profile.content, description: oldDescription } })));
+  mount(<CharacterNodeEditor projectId="project" item={pinned} readOnly={false} onClose={() => {}} />);
+  await userEvent.click(await screen.findByRole("button", { name: t("character.useLatest") }));
+  await userEvent.click(await screen.findByText(t("character.characterDescription")));
+  expect(screen.getByText("New identity description")).toBeVisible();
+  expect(screen.getByText("New hero · v4")).toBeVisible();
+  expect(screen.queryByText("Pilot")).not.toBeInTheDocument();
+});
 it("asks before closing failed selection edits and retains them when the user keeps editing", async () => {
   const close = vi.fn();
   server.use(http.put(`${BASE}/canvas/character-nodes/role/selection`, () => HttpResponse.json({ title: "Conflict", detail: "Synthetic conflict", code: "CHARACTER_NODE_VERSION_CONFLICT" }, { status: 409, headers: { "Content-Type": "application/problem+json" } })));
