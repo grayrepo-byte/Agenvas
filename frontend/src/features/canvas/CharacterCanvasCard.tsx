@@ -1,4 +1,4 @@
-import { CopySimple, LockSimple, PencilSimple, X, UserCircle, ImageSquare, SpeakerHigh, LinkSimple, CaretRight, VideoCamera, CheckCircle } from "@/shared/ui/icons";
+import { CopySimple, LockSimple, PencilSimple, X, UserCircle, ImageSquare, SpeakerHigh, LinkSimple, CaretRight, VideoCamera, CheckCircle, DotsThree } from "@/shared/ui/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useEffectEvent, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -18,7 +18,7 @@ import { characterQueryOptions } from "../characters/characterQueries";
 import { useCharacterNodeRecovery, type CharacterPlacementRecovery } from "./characterNodeRecovery";
 import { sameCharacterSelection } from "./characterCanvas";
 import { ArtifactCardFrame } from "./ArtifactCardFrame";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from "../../shared/ui/primitives/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from "../../shared/ui/primitives/dropdown-menu";
 import { characterLibraryLinksOptions } from "../character-library/characterLibraryQueries";
 import "./CharacterCanvasCard.css";
 
@@ -37,6 +37,11 @@ export function CharacterCanvasCard({ item, projectId, selected, toolbarVisible,
   onPreviewTarget: (targetId: string) => void; onConnectTarget: (targetId: string) => void; readOnly?: boolean; onEdit: () => void; onDuplicate: () => void; onRemove: () => void; onToggleLocked: () => void;
 }) {
   useLocale();
+  const actionsDescriptionId = useId();
+  const actionsTrigger = useRef<HTMLButtonElement>(null);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const queuedAction = useRef<(() => void) | null>(null);
+  const chooseAction = (action: () => void) => { queuedAction.current = action; setActionsOpen(false); };
   const canvas = useQuery({ queryKey: ["canvas", projectId], queryFn: () => listCanvasItems(projectId), retry: false });
   const links = useQuery(characterLibraryLinksOptions(projectId));
   const node = item.characterNode;
@@ -47,6 +52,27 @@ export function CharacterCanvasCard({ item, projectId, selected, toolbarVisible,
   const portrait = snapshot.look?.views[0];
   const imageCount = snapshot.useAppearance ? snapshot.look?.views.length ?? 0 : 0;
   const audioCount = snapshot.useVoice && snapshot.voice?.versionId ? 1 : 0;
+  const actions = <DropdownMenu open={actionsOpen} onOpenChange={setActionsOpen}><DropdownMenuTrigger asChild>
+    <Button ref={actionsTrigger} className="character-node-actions nodrag nowheel size-11" type="button" variant="ghost" size="icon-lg" aria-label={t("characterNode.nodeActions")} title={t("characterNode.nodeActions")}><DotsThree aria-hidden="true" /></Button>
+  </DropdownMenuTrigger>
+    <DropdownMenuContent align="end" sticky="always" collisionPadding={12} className="character-node-target-menu" aria-describedby={actionsDescriptionId} onCloseAutoFocus={(event) => {
+      const action = queuedAction.current;
+      if (!action) return;
+      // Open dialogs after the menu focus scope closes, with a persistent return target.
+      event.preventDefault(); queuedAction.current = null; actionsTrigger.current?.focus(); action();
+    }}>
+      <DropdownMenuGroup><DropdownMenuItem onSelect={() => chooseAction(onEdit)}><PencilSimple aria-hidden="true" />{t("characterNode.configure")}</DropdownMenuItem></DropdownMenuGroup>
+      <DropdownMenuSeparator />
+      <DropdownMenuLabel>{t("characterNode.chooseTarget")}</DropdownMenuLabel>
+      <p id={actionsDescriptionId} className="character-node-menu-hint">{t("characterNode.targetHint")}</p>
+      <DropdownMenuGroup>{targets.length ? targets.map((target) => {
+        const connected = node.connections.some((connection) => connection.targetCanvasItemId === target.id);
+        return <DropdownMenuItem key={target.id} disabled={target.locked || item.locked || readOnly} title={target.title} aria-description={connected ? t("characterNode.alreadyConnected") : undefined} onSelect={() => chooseAction(() => connected ? onPreviewTarget(target.id) : onConnectTarget(target.id))}>
+          {target.artifact?.kind === "VIDEO" ? <VideoCamera aria-hidden="true" /> : <ImageSquare aria-hidden="true" />}<span className="truncate">{target.title}</span>{connected ? <CheckCircle aria-hidden="true" /> : null}
+        </DropdownMenuItem>;
+      }) : <DropdownMenuItem disabled>{t("characterNode.noTarget")}</DropdownMenuItem>}</DropdownMenuGroup>
+    </DropdownMenuContent>
+  </DropdownMenu>;
   return <ArtifactCardFrame title={item.title} kindLabel={t("character.title")} selected={selected}
     locked={item.locked} toolbarVisible={toolbarVisible} editableTitle={{ projectId, item }}
     titleIcon={<UserCircle />} toolbarStageLabel={t("characterNode.referenceSource")} className="character-canvas-card"
@@ -57,28 +83,18 @@ export function CharacterCanvasCard({ item, projectId, selected, toolbarVisible,
       <Button type="button" variant="ghost" disabled={item.locked || readOnly} title={t("characterNode.retained")} onClick={onRemove}><X data-icon="inline-start" />{t("canvas.card.remove")}</Button>
     </>}>
     <div className="character-node-body">
+      <div className="character-node-heading"><strong title={snapshot.name}>{snapshot.name}</strong><Badge variant="outline" title={t("characterNode.fixedVersion", { version: snapshot.characterVersion })}>v{snapshot.characterVersion}</Badge>{actions}</div>
       <div className="character-node-overview">
-        <div className="character-node-portrait nodrag nowheel">
+        <div className="character-node-portrait">
           {portrait ? <CharacterReferenceImage projectId={projectId} versionId={portrait.versionId} alt={t("characterNode.portraitAlt", { name: snapshot.name })} />
             : <div className="character-reference-fallback" role="img" aria-label={t("characterNode.noPortrait")}><UserCircle aria-hidden="true" /><span>{t(snapshot.useVoice && !snapshot.useAppearance ? "characterNode.voiceOnly" : "characterNode.textOnly")}</span></div>}
         </div>
         <div className="character-node-identity">
-          <div className="character-node-heading"><strong title={snapshot.name}>{snapshot.name}</strong><Badge variant="outline" title={t("characterNode.fixedVersion", { version: snapshot.characterVersion })}>v{snapshot.characterVersion}</Badge></div>
           <p className="character-node-look" title={snapshot.look?.name}>{snapshot.look?.name ?? t("characterNode.lookFallback")}</p>
           {node.newerVersionAvailable ? <Badge className="character-node-update" variant="secondary">{t("characterNode.updateAvailable")}</Badge> : libraryUpdate ? <Badge className="character-node-update" variant="secondary" title={t("characterNode.libraryUpdateHint")}>{t("characterNode.libraryUpdate")}</Badge> : null}
           <p className="character-node-description" title={snapshot.description}>{snapshot.description}</p>
           <p className="character-node-reference-count"><ImageSquare aria-hidden="true" /><span>{t("characterNode.counts", { images: imageCount, audio: audioCount })}</span>{snapshot.useVoice ? <SpeakerHigh aria-label={t("character.useVoice")} /> : null}</p>
         </div>
-      </div>
-      <div className="character-node-main-actions nodrag nowheel"><Button className="character-node-configure" type="button" variant="outline" size="sm" onClick={onEdit}><PencilSimple aria-hidden="true" />{t("characterNode.configure")}</Button>
-        <DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="outline" size="sm" disabled={item.locked || readOnly} title={t("characterNode.connectPurpose")}><LinkSimple aria-hidden="true" />{t("characterNode.connectShot")}</Button></DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="character-node-target-menu"><DropdownMenuGroup>{targets.length ? targets.map((target) => {
-            const connected = node.connections.some((connection) => connection.targetCanvasItemId === target.id);
-            return <DropdownMenuItem key={target.id} disabled={target.locked} title={target.title} aria-description={connected ? t("characterNode.alreadyConnected") : undefined} onSelect={() => connected ? onPreviewTarget(target.id) : onConnectTarget(target.id)}>
-              {target.artifact?.kind === "VIDEO" ? <VideoCamera aria-hidden="true" /> : <ImageSquare aria-hidden="true" />}<span className="truncate">{target.title}</span>{connected ? <CheckCircle aria-hidden="true" /> : null}
-            </DropdownMenuItem>;
-          }) : <DropdownMenuItem disabled>{t("characterNode.noTarget")}</DropdownMenuItem>}</DropdownMenuGroup></DropdownMenuContent>
-        </DropdownMenu>
       </div>
       <div className="character-node-footer nodrag nowheel">
         {node.connections.length ? <details className="character-node-connections"><summary><LinkSimple aria-hidden="true" /><span>{t("characterNode.connections", { count: node.connections.length })}</span><CaretRight aria-hidden="true" /></summary>
