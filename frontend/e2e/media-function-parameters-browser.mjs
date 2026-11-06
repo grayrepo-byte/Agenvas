@@ -179,7 +179,21 @@ try {
         await cdp("Input.dispatchMouseEvent", { type: "mouseReleased", ...points.end, button: "left", buttons: 0, clickCount: 1 });
         assert.deepEqual(await page(() => [...document.querySelector(".markup-image-shell canvas")
           .getContext("2d").getImageData(600, 300, 1, 1).data]), [255, 48, 56, 255], "A moving stroke must remain continuous");
-        console.log(JSON.stringify({ viewport, mode, penTap: true, undoRedo: true, eraserTap: true, drag: true }));
+        await pointerClick('button[aria-label="文字"]');
+        await pointerClick(".markup-image-shell canvas");
+        await cdp("Input.insertText", { text: "合成标注草稿" });
+        for (const key of ["Enter", "Escape"]) {
+          await page((key) => document.querySelector('input[aria-label="标注文字"]').dispatchEvent(
+            new KeyboardEvent("keydown", { key, isComposing: true, bubbles: true, cancelable: true })), key);
+          assert.deepEqual(await page(() => {
+            const input = document.querySelector('input[aria-label="标注文字"]');
+            return { value: input?.value, focused: input === document.activeElement };
+          }), { value: "合成标注草稿", focused: true }, "Composing keys must preserve annotation text and focus");
+        }
+        await cdp("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
+        await cdp("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
+        await waitFor(() => !document.querySelector('input[aria-label="标注文字"]'));
+        console.log(JSON.stringify({ viewport, mode, penTap: true, undoRedo: true, eraserTap: true, drag: true, composition: true }));
         continue;
       }
       await waitFor(() => document.querySelectorAll('.runninghub-form [role="combobox"]').length >= 3);
