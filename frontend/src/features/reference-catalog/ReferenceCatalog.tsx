@@ -2,7 +2,8 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { getCurrentUser } from "../../shared/api/client";
 import { importReference, listReferenceEntries, listReferenceSources, referenceExternalUrl, referencePreviewUrl,
-  type ReferenceEntry, type ReferenceImport, type ReferenceImportRequest, type ReferenceKind, type ReferenceVariant } from "../../shared/api/referenceCatalog";
+  importPrivateReferenceImage, privateReferencePreviewUrl,
+  type ReferencePrivateImportRequest, type ReferenceEntry, type ReferenceImport, type ReferenceImportRequest, type ReferenceKind, type ReferenceVariant } from "../../shared/api/referenceCatalog";
 import { t, useLocale } from "../../shared/i18n";
 import { Dialog } from "../../shared/ui/Dialog";
 import { Notice } from "../../shared/ui/PagePrimitives";
@@ -12,13 +13,17 @@ import { Input } from "../../shared/ui/primitives/input";
 import { ToggleGroup, ToggleGroupItem } from "../../shared/ui/primitives/toggle-group";
 import { ReferenceSourcesDialog } from "./ReferenceSourcesDialog";
 import { referenceLabel, referenceFacetLabel } from "./referenceLabels";
+import { PrivateCacheManager } from "./PrivateCacheManager";
+import { PrivateReferenceCacheControls, usePrivateReferenceCache } from "./PrivateReferenceCache";
 import "./ReferenceCatalog.css";
 
 export type ReferenceCatalogProps = { projectId?: string; onApply?: (image: ReferenceImport) => Promise<void>; onBusy?: (busy: boolean) => void; disabledReason?: string; actionLabel?: string; children?: ReactNode; placement?: { x: number; y: number } };
 const PAGE_SIZE = 50;
+type CatalogImportIntent = { kind: "SHARED"; request: ReferenceImportRequest } | { kind: "PRIVATE"; id: string; request: ReferencePrivateImportRequest };
 export function ReferenceCatalog({ projectId, onApply, onBusy, disabledReason, actionLabel, children, placement }: ReferenceCatalogProps) {
   const locale = useLocale(); const id = useId();
   const [kind, setKind] = useState<ReferenceKind>("POSE"); const [query, setQuery] = useState(""); const [category, setCategory] = useState(""); const [sourceId, setSourceId] = useState("");
+  const [privateManager, setPrivateManager] = useState(false);
   const [viewSelections, setViewSelections] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<ReferenceEntry | null>(null); const [manage, setManage] = useState(false);
   const [tag, setTag] = useState(""); const [style, setStyle] = useState(""); const [collection, setCollection] = useState(""); const [extended, setExtended] = useState(""); const [angle, setAngle] = useState("");
@@ -33,7 +38,8 @@ export function ReferenceCatalog({ projectId, onApply, onBusy, disabledReason, a
   return <section className="reference-catalog" aria-label={t("reference.title")}>
     <div className="reference-toolbar"><ToggleGroup type="single" variant="outline" spacing={2} value={kind} onValueChange={(value) => { if (value) { setKind(value as ReferenceKind); setCategory(""); setTag(""); setStyle(""); setCollection(""); setExtended(""); setAngle(""); } }} aria-label={t("reference.title")}>
       <ToggleGroupItem value="POSE">{t("reference.poses")}</ToggleGroupItem><ToggleGroupItem value="COSTUME">{t("reference.costumes")}</ToggleGroupItem></ToggleGroup>
-      {user.data?.role === "ADMIN" ? <Button type="button" variant="outline" onClick={() => setManage(true)}>{t("reference.manageSources")}</Button> : null}</div>
+      {user.data?.role === "ADMIN" ? <Button className="reference-source-settings-trigger" type="button" variant="outline" onClick={() => setManage(true)}>{t("reference.manageSources")}</Button> : null}
+      {user.data?.id ? <Button className="reference-private-cache-trigger" size="content" type="button" variant="outline" onClick={() => setPrivateManager(true)}>{t("reference.private.manage")}</Button> : null}</div>
     <div className="reference-filters"><Input id={`${id}-search`} type="search" maxLength={200} aria-label={t("reference.search")} placeholder={t("reference.search")} value={query} onChange={(event) => setQuery(event.target.value)} />
       <Select aria-label={t("reference.source")} value={sourceId} onChange={(event) => setSourceId(event.target.value)}><option value="">{t("reference.all")}</option>{sources.data?.items.map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}</Select>
       <Select aria-label={t("reference.category")} value={category} onChange={(event) => setCategory(event.target.value)}><option value="">{t("reference.all")}</option>{categories.map((item) => <option key={item} value={item}>{referenceLabel(item, entries.find((entry) => entry.category === item)?.localizedCategory, locale)}</option>)}</Select>
@@ -50,6 +56,7 @@ export function ReferenceCatalog({ projectId, onApply, onBusy, disabledReason, a
     </Button>; })}</div>
     {list.hasNextPage ? <Button type="button" variant="outline" disabled={list.isFetching} onClick={() => void list.fetchNextPage()}>{t("projects.loadMore")}</Button> : null}
     {selected ? <ReferencePreview key={`${selected.snapshotId}:${selected.id}`} entry={selected} projectId={projectId} onApply={onApply} onBusy={onBusy} placement={placement} initialAngle={angle} initialVariantId={viewSelections[`${selected.snapshotId}:${selected.id}`]} onVariantChange={(variantId) => setViewSelections((current) => ({ ...current, [`${selected.snapshotId}:${selected.id}`]: variantId }))} disabledReason={disabledReason} actionLabel={actionLabel} onClose={() => setSelected(null)} /> : null}
+    {privateManager && user.data?.id ? <PrivateCacheManager key={user.data.id} ownerId={user.data.id} sources={sources.data?.items} onClose={() => setPrivateManager(false)} /> : null}
     {manage ? <ReferenceSourcesDialog onClose={() => setManage(false)} /> : null}
   </section>;
 }
@@ -57,24 +64,35 @@ function ReferencePreview({ entry, projectId, onApply, onBusy, disabledReason, a
   const locale = useLocale(); const [variantId, setVariantId] = useState(initialVariantId ?? entry.variants.find((variant) => variant.angle === initialAngle)?.id ?? entry.variants[0]?.id ?? ""); const [busy, setBusy] = useState(false); const [error, setError] = useState<Error | null>(null);
   const [previewFailed, setPreviewFailed] = useState(false); const [previewAttempt, setPreviewAttempt] = useState(0);
   const mounted = useRef(true); useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const intent = useRef<ReferenceImportRequest | null>(null); const imported = useRef<ReferenceImport | null>(null);
+  const intent = useRef<CatalogImportIntent | null>(null); const imported = useRef<ReferenceImport | null>(null);
   const variant: ReferenceVariant | undefined = entry.variants.find((candidate) => candidate.id === variantId);
   const title = referenceLabel(entry.title, entry.localizedTitle, locale);
-  const allowed = entry.importAllowed && variant?.importAllowed && Boolean(variant.sha256);
-  const preview = variant && allowed ? referencePreviewUrl(variant) : undefined;
+  const sharedAllowed = Boolean(entry.importAllowed && variant?.importAllowed && variant.sha256);
+  const privateCache = usePrivateReferenceCache(entry, variant, sharedAllowed, onBusy);
+  const privateImage = privateCache.allowed ? privateCache.image : undefined;
+  const allowed = sharedAllowed || Boolean(privateImage);
+  const working = busy || privateCache.busy;
+  const preview = variant && sharedAllowed ? referencePreviewUrl(variant) : privateImage ? privateReferencePreviewUrl(privateImage) : undefined;
   const external = referenceExternalUrl(variant?.externalUrl ?? entry.externalUrl);
   async function apply() {
-    if (!projectId || !onApply || !variant?.sha256 || !allowed || disabledReason || busy) return;
-    intent.current ??= { sourceId: entry.sourceId, snapshotId: entry.snapshotId, entryId: entry.id, variantId: variant.id, sha256: variant.sha256, commandKey: crypto.randomUUID(), ...(placement ? { placement } : {}) };
+    if (!projectId || !onApply || !variant || !allowed || disabledReason || working) return;
+    if (!intent.current) {
+      const command = { commandKey: crypto.randomUUID(), ...(placement ? { placement } : {}) };
+      if (privateImage && !sharedAllowed) intent.current = { kind: "PRIVATE", id: privateImage.id, request: command };
+      else if (variant.sha256) intent.current = { kind: "SHARED", request: { ...command, sourceId: entry.sourceId, snapshotId: entry.snapshotId, entryId: entry.id, variantId: variant.id, sha256: variant.sha256 } };
+      else return;
+    }
     setBusy(true); onBusy?.(true); setError(null);
-    try { imported.current ??= await importReference(projectId, intent.current); if (mounted.current) { await onApply(imported.current); onClose(); } }
+    try { imported.current ??= await (intent.current.kind === "PRIVATE" ? importPrivateReferenceImage(projectId, intent.current.id, intent.current.request) : importReference(projectId, intent.current.request)); if (mounted.current) { await onApply(imported.current); onClose(); } }
     catch (failure) { setError(failure instanceof Error ? failure : new Error(t("reference.importFailed"))); }
     finally { setBusy(false); onBusy?.(false); }
   }
-  return <Dialog className="reference-preview-dialog" title={title} description={[referenceLabel(entry.category ?? "", entry.localizedCategory, locale), entry.tags.map((tag) => referenceLabel(referenceFacetLabel(tag), entry.localizedTags?.[tag], locale)).join(" · ")].filter(Boolean).join(" · ")} busy={busy} onClose={onClose} onSubmit={(event) => { event.preventDefault(); void apply(); }}
-    footer={<><Button type="button" variant="outline" disabled={busy} onClick={onClose}>{t("common.close")}</Button>{onApply ? <Button type="submit" disabled={!allowed || Boolean(disabledReason) || busy || !projectId}>{busy ? t("reference.importing") : error ? t("common.retry") : actionLabel ?? t("reference.append")}</Button> : null}</>}>
+  return <Dialog className="reference-preview-dialog" title={title} description={[referenceLabel(entry.category ?? "", entry.localizedCategory, locale), entry.tags.map((tag) => referenceLabel(referenceFacetLabel(tag), entry.localizedTags?.[tag], locale)).join(" · ")].filter(Boolean).join(" · ")} busy={working} onClose={onClose} onSubmit={(event) => { event.preventDefault(); void apply(); }}
+    footer={<><Button type="button" variant="outline" disabled={working} onClick={onClose}>{t("common.close")}</Button>{onApply ? <Button type="submit" disabled={!allowed || Boolean(disabledReason) || working || !projectId}>{busy ? t("reference.importing") : error ? t("common.retry") : actionLabel ?? t("reference.append")}</Button> : null}</>}>
     <div className="reference-preview-image">{previewFailed ? <Notice tone="danger"><p>{t("reference.previewFailed")}</p><Button type="button" variant="outline" onClick={() => { setPreviewFailed(false); setPreviewAttempt((value) => value + 1); }}>{t("reference.retryPreview")}</Button></Notice> : preview ? <img key={`${variantId}:${previewAttempt}`} src={preview} alt={`${title} · ${referenceLabel(variant?.label ?? "", variant?.localizedLabel, locale)}`} onError={() => setPreviewFailed(true)} /> : <p>{t(allowed ? "reference.noPreview" : (variant?.disabledReason ?? entry.disabledReason) === "REFERENCE_CATALOG_SOURCE_DISABLED" ? "reference.sourceUnavailable" : "reference.rightsRequired")}</p>}</div>
-    <ToggleGroup className="reference-views" type="single" variant="outline" spacing={2} aria-label={t("reference.view")} value={variantId} disabled={busy || Boolean(intent.current)} onValueChange={(value) => { if (value) { setVariantId(value); onVariantChange(value); setPreviewFailed(false); } }}>{entry.variants.map((candidate) => <ToggleGroupItem key={candidate.id} value={candidate.id}>{referenceLabel(candidate.label, candidate.localizedLabel, locale)}</ToggleGroupItem>)}</ToggleGroup>
+    <ToggleGroup className="reference-views" type="single" variant="outline" spacing={2} aria-label={t("reference.view")} value={variantId} disabled={working || privateCache.frozen || Boolean(intent.current)} onValueChange={(value) => { if (value) { setVariantId(value); onVariantChange(value); setPreviewFailed(false); } }}>{entry.variants.map((candidate) => <ToggleGroupItem key={candidate.id} value={candidate.id}>{referenceLabel(candidate.label, candidate.localizedLabel, locale)}</ToggleGroupItem>)}</ToggleGroup>
+    <PrivateReferenceCacheControls cache={privateCache} disabled={working || Boolean(intent.current)} />
+    {sharedAllowed && variant?.cached ? <p className="reference-hint">{t("reference.cache.cached")}</p> : null}
     {external ? <Button asChild variant="outline"><a href={external} target="_blank" rel="noopener noreferrer">{t("reference.external")}</a></Button> : null}
     {entry.code ? <p>{entry.code}</p> : null}
     {referenceLabel("", entry.series, locale) ? <p>{referenceLabel("", entry.series, locale)}</p> : null}

@@ -10,6 +10,10 @@
 
 **Spec:** User-delegated implementation following the read-only research delivered in this thread; concrete source contract in docs/reference-packs.md. User subsequently selected hongye007/open-pose-costume and requested the same configurable-source/manual-sync/local-cache interaction as third-party prompts.
 
+This plan records the initial `b5486b8` slice. The explicit image-file-cache follow-up
+supersedes its metadata/link-only limits and deferred audio entry issue; see
+[REFERENCE-CACHE-PLAN.md](REFERENCE-CACHE-PLAN.md) and ADR 0076 for current behavior.
+
 ## Global Constraints
 
 - Four UI languages; no new runtime dependencies without need.

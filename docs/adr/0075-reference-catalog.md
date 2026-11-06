@@ -15,8 +15,10 @@ digest; a failed synchronization retains the last successful snapshot.
 
 The selected source format preserves its bilingual metadata and stable filter IDs.
 Its code license does not grant image rights, and its additional archive permission
-does not establish downstream redistribution. This adapter therefore remains
-metadata-only and link-only for images. No upstream dataset or image is bundled.
+does not establish downstream redistribution. No upstream dataset or image is
+bundled. The original implementation was metadata/link-only. The user's explicit
+image-cache requirement and the distinction between individual private reference
+use and bulk redistribution amend that decision in [ADR 0076](0076-reference-image-cache-and-networking.md).
 
 A separate authorized reference-pack format supports self-owned or independently
 licensed images with exact checksums and reviewed permission. Its imports create

@@ -68,8 +68,9 @@ four languages; source descriptions retain their original Chinese/English data.
 Original metadata points mostly to the upstream galleries. Custom files use
 relative `custom/...` paths under `public/`. The repository's `pose/covers`,
 `pose/originals`, `costume/covers` and `costume/originals` archives are a different
-layout; this adapter does not silently substitute those archives for the recorded
-source URLs.
+layout. The private-cache operation below explicitly maps eligible base pose and
+photographic costume variants to their fixed-commit original PNG archive paths;
+it does not rewrite all source URLs or guess anime/depth/custom paths.
 
 ### Image rights are separate
 
@@ -81,11 +82,22 @@ without independently verifying it or granting downstream redistribution rights.
 The [custom-image terms](https://github.com/hongye007/open-pose-costume/blob/main/public/custom/LICENSE.txt)
 also impose separate noncommercial and distribution restrictions.
 
-Consequently, this adapter is metadata-only: no automatic image hotlinks, preview
-proxy, thumbnail download, image archive or project import. Entries offer an
-external source link. An administrator checking a generic image-permission option
-does not override this format's restriction. This preserves a useful local source
-cache and search without treating the existence of a public archive as a license.
+The original [pose](https://ai-pose-gallery.pages.dev/) and
+[costume](https://ai-costume-gallery.pages.dev/) galleries allow downloading
+individual original PNGs as creative references, including commercial work, while
+separately restricting bulk download and redistribution. These are different
+operations. A user can explicitly cache one eligible base pose or photographic
+costume view privately, preview it locally and import an independent project copy.
+This is a limited implementation of individual reference use, not a claim that
+every file or whole-library download is permitted. Anime, depth and custom entries
+retain their external source links and specific unavailability explanations.
+
+Metadata synchronization and opening the catalog do not download images. This
+format has no whole-library prefetch, automatic image hotlinks, default bundled
+images or public mirror. The generic distribution-approval checkbox cannot enable
+those operations for this format. An account's private cache index and preview
+require that account's authorization; another account cannot read its private
+image IDs. The physical checksum-addressed bytes may be deduplicated on the server.
 
 Do not bundle the upstream JSON or translations into Agenvas releases or tests.
 Test fixtures use invented records with the same shape. The configured download
@@ -133,12 +145,46 @@ explicit operator action.
 Only repository-relative safe paths are accepted for these image files. Downloads
 use the fixed commit, checked public GitHub destinations and bounded requests.
 Files must match their declared hash, size and content type, and pass the existing
-media decoder, image-size and pixel limits. Catalog metadata cannot authorize
+media decoder, image-size and pixel limits. Selected private archive images use
+the fixed Git tree's blob identity and size before recording the verified PNG's
+observed SHA-256. A provenance hash is never substituted for a file checksum.
+Catalog metadata cannot authorize
 arbitrary network endpoints, execute code, set model credentials or run generation.
+
+## Image file cache and cleanup
+
+Authorized pack previews and imports reuse a persistent content-addressed file
+cache. Administrators can start a prefetch job for a fixed pack snapshot, inspect
+actual file/byte progress, cancel, and retry only failed files. Command keys preserve
+the accepted job after a lost response. Jobs and failure records survive process
+restart; an interrupted worker lease is reclaimed with fencing. Successful files
+are not downloaded again. Changing a source cannot redirect an existing job.
+
+The default physical quota is 512 MiB. Configure `agenvas.reference-catalog.cache.root`
+to choose a cache directory (otherwise it lives under the configured local storage
+root), and `agenvas.reference-catalog.cache.quota-bytes` to set the quota. This cache
+requires a persistent writable filesystem even when project media use object storage.
+Quota exhaustion is reported explicitly; it does not silently evict protected files.
+Writes are atomic and guarded across concurrent processes sharing this filesystem.
+
+The administrator cache panel shows actual physical bytes/files, available quota,
+and files protected by active private indexes. Shared cleanup preserves those
+files. Every account also has a private-cache manager listing all its cached views,
+including older snapshots, and can explicitly remove its own records. Owner usage
+is logical usage, so it need not equal the deduplicated physical server total.
+Clearing either cache does not delete already imported project media. A later
+explicit recache remains possible when the source and its usage policy permit it.
+
+Cached bytes are revalidated before use. Recovery mode can read verified cache
+hits but cannot initialize directories, download misses, acquire, clear or import.
+Source authorization is checked again for each access; caching never creates a
+permission bypass. See [public-download networking](public-download-networking.md)
+for supported safe proxy and DNS configuration.
 
 ## Applying a single reference
 
-For an authorized pack, select one real variant, then explicitly use it as a
+For an authorized pack or an eligible privately cached view, select one real
+variant, then explicitly use it as a
 reference or place it on the canvas. Application creates an independent image
 version in the target project. It preserves other prompt content and media inputs,
 checks the target capability and its image capacity, and does not invoke a model.
@@ -149,7 +195,8 @@ is reused after a lost response; reusing it with different input is a conflict.
 Source synchronization or disabling does not rewrite an imported version or a
 previously accepted task. Clearing directory caches must not delete project media.
 
-Local metadata remains searchable when GitHub is unavailable. Authorized images
-already imported into a project follow that project's configured media storage;
-unfetched remote images still need connectivity. This is not a promise that a
+Local metadata remains searchable when GitHub is unavailable. Verified cached
+images can be previewed and imported without reaching GitHub again; unfetched or
+removed images need connectivity. Images already imported into a project follow
+that project's configured media storage. This is not a promise that a
 browser, database and remote storage deployment can all operate without a network.

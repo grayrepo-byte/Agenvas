@@ -4,6 +4,205 @@
  */
 
 export interface paths {
+    "/api/v1/reference-catalog/private-images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read only the current account selected private image cache
+         * @description Owner scoped. Frozen metadata may remain after clearing, with cached=false; no image fetch occurs.
+         */
+        get: operations["listPrivateReferenceImages"];
+        put?: never;
+        /**
+         * Explicitly cache one permitted selected image for this account
+         * @description Session/CSRF protected, one selected base pose or photographic costume only. Separates private reference use from bulk caching and redistribution. Pins the source commit and Git blob identity, validates decoded bytes and records observed SHA-256. No automatic grid downloads. Same fixed command replays safely; no permission is inferred for anime, depth or custom collections.
+         */
+        post: operations["cachePrivateReferenceImage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reference-catalog/private-images/{imageId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Clear the current owner private cache entry while preserving project copies
+         * @description Owner only and CSRF protected. Returns cached=false, retaining fixed integrity for an explicit re-cache. Other owners and independent project media are protected.
+         */
+        delete: operations["clearPrivateReferenceImage"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reference-catalog/private-images/{imageId}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read this owner already-cached image offline
+         * @description Owner identity and current source policy are checked before bytes. Cache hit only; missing files never trigger a hidden network download. Other accounts receive not found.
+         */
+        get: operations["previewPrivateReferenceImage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/reference-catalog/private-images/{imageId}/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Copy an owned cached reference into an active owned project
+         * @description Owner-private image authorization, project ownership and fixed command key are enforced. Reads cached bytes offline and publishes an independent project image version with optional explicit placement. No provider call; clearing cache does not change imported media.
+         */
+        post: operations["importPrivateReferenceImage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/reference-catalog/cache": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read local image file cache quota and physical usage
+         * @description Administrator-only. Includes protected private image usage separately; project media is outside this rebuildable cache.
+         */
+        get: operations["getReferenceCatalogCacheStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/reference-catalog/cache/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read durable image cache jobs */
+        get: operations["listReferenceCatalogCacheJobs"];
+        put?: never;
+        /**
+         * Explicitly cache an authorized fixed image selection
+         * @description Administrator-only, CSRF protected. Empty entryIds means all entries of this pinned snapshot. Restricted sources cannot bulk cache. Fixed command key replays the same job; progress records real success/failure. Metadata sync does not start this job.
+         */
+        post: operations["createReferenceCatalogCacheJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/reference-catalog/cache/jobs/{jobId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read actual image cache progress */
+        get: operations["getReferenceCatalogCacheJob"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/reference-catalog/cache/jobs/{jobId}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry only failed cache items
+         * @description Administrator-only. Already-ready items are not downloaded again; cancelled jobs cannot be resumed implicitly.
+         */
+        post: operations["retryReferenceCatalogCacheJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/reference-catalog/cache/jobs/{jobId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel remaining image cache work */
+        post: operations["cancelReferenceCatalogCacheJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/reference-catalog/cache/clear": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Clear rebuildable shared cache files with protected private and project copies retained
+         * @description Administrator-only and CSRF protected. Empty object explicitly selects the shared cache. Optional source/snapshot/entry selection narrows it. Active matching jobs are cancelled/fenced; active owner-private indexes and independent project media remain protected.
+         */
+        post: operations["clearReferenceCatalogCache"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/reference-catalog/sources": {
         parameters: {
             query?: never;
@@ -4179,6 +4378,98 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ReferenceCatalogPrivateImage: {
+            /** Format: uuid */
+            id: string;
+            sourceId: string;
+            /** Format: uuid */
+            snapshotId: string;
+            entryId: string;
+            variantId: string;
+            sha256: string;
+            /** Format: int64 */
+            byteSize: number;
+            contentType: string;
+            width: number;
+            height: number;
+            previewUrl: string;
+            cached: boolean;
+        };
+        ReferenceCatalogPrivateImages: {
+            items: components["schemas"]["ReferenceCatalogPrivateImage"][];
+        };
+        CacheReferenceCatalogPrivateImage: {
+            sourceId: string;
+            /** Format: uuid */
+            snapshotId: string;
+            entryId: string;
+            variantId: string;
+            commandKey: string;
+        };
+        ImportReferenceCatalogPrivateImage: {
+            commandKey: string;
+            placement?: components["schemas"]["ReferenceCatalogPlacement"];
+        };
+        ReferenceCatalogCacheStats: {
+            /** Format: int64 */
+            quotaBytes: number;
+            /** Format: int64 */
+            usedBytes: number;
+            fileCount: number;
+            /** Format: int64 */
+            availableBytes: number;
+            /** Format: int64 */
+            protectedBytes: number;
+            protectedFileCount: number;
+        };
+        ReferenceCatalogCacheFailure: {
+            entryId: string;
+            variantId: string;
+            code: string;
+        };
+        ReferenceCatalogCacheJob: {
+            /** Format: uuid */
+            id: string;
+            sourceId: string;
+            /** Format: uuid */
+            snapshotId: string;
+            /** @enum {string} */
+            state: "QUEUED" | "RUNNING" | "SUCCEEDED" | "PARTIAL_FAILED" | "CANCELLED";
+            totalCount: number;
+            readyCount: number;
+            failedCount: number;
+            /** Format: int64 */
+            totalBytes: number;
+            /** Format: int64 */
+            readyBytes: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            failures: components["schemas"]["ReferenceCatalogCacheFailure"][];
+        };
+        ReferenceCatalogCacheJobs: {
+            items: components["schemas"]["ReferenceCatalogCacheJob"][];
+        };
+        CreateReferenceCatalogCacheJob: {
+            sourceId: string;
+            /** Format: uuid */
+            snapshotId: string;
+            entryIds: string[];
+            commandKey: string;
+        };
+        ClearReferenceCatalogCache: {
+            sourceId?: string;
+            /** Format: uuid */
+            snapshotId?: string;
+            entryIds?: string[];
+        };
+        ReferenceCatalogCacheClearResult: {
+            removedFiles: number;
+            /** Format: int64 */
+            removedBytes: number;
+            stats: components["schemas"]["ReferenceCatalogCacheStats"];
+        };
         /** @enum {string} */
         ReferenceCatalogKind: "POSE" | "COSTUME";
         /** @enum {string} */
@@ -4220,6 +4511,11 @@ export interface components {
             availability: "AVAILABLE" | "LINK_ONLY";
             importAllowed: boolean;
             disabledReason: string | null;
+            /** @description Local file presence hint; every read still verifies permissions and image integrity. */
+            cached: boolean;
+            /** @description One user-selected private cache operation is permitted; this does not permit bulk caching or redistribution. */
+            privateCacheAllowed: boolean;
+            privateCacheDisabledReason: string | null;
         };
         ReferenceCatalogEntry: {
             sourceId: string;
@@ -8028,6 +8324,446 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listPrivateReferenceImages: {
+        parameters: {
+            query?: {
+                sourceId?: string;
+                snapshotId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceCatalogPrivateImages"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Recovery mode blocks writes */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    cachePrivateReferenceImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CacheReferenceCatalogPrivateImage"];
+            };
+        };
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceCatalogPrivateImage"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Recovery mode blocks writes */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    clearPrivateReferenceImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                imageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceCatalogPrivateImage"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Recovery mode blocks writes */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    previewPrivateReferenceImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                imageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Verified private cached image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Verified cached image is unavailable; no implicit download */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    importPrivateReferenceImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                imageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportReferenceCatalogPrivateImage"];
+            };
+        };
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceCatalogImport"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Recovery mode blocks writes */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getReferenceCatalogCacheStats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceCatalogCacheStats"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Recovery mode blocks writes */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listReferenceCatalogCacheJobs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceCatalogCacheJobs"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Recovery mode blocks writes */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createReferenceCatalogCacheJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateReferenceCatalogCacheJob"];
+            };
+        };
+        responses: {
+            /** @description Successful response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceCatalogCacheJob"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Recovery mode blocks writes */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getReferenceCatalogCacheJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceCatalogCacheJob"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Recovery mode blocks writes */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    retryReferenceCatalogCacheJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceCatalogCacheJob"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Recovery mode blocks writes */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    cancelReferenceCatalogCacheJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceCatalogCacheJob"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Recovery mode blocks writes */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    clearReferenceCatalogCache: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClearReferenceCatalogCache"];
+            };
+        };
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceCatalogCacheClearResult"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Recovery mode blocks writes */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     listReferenceCatalogSources: {
         parameters: {
             query?: never;

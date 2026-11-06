@@ -5,7 +5,7 @@ import { ReferenceCatalog } from "../src/features/reference-catalog/ReferenceCat
 import { Dialog } from "../src/shared/ui/Dialog";
 import { Button } from "../src/shared/ui/primitives/button";
 import { setLocale } from "../src/shared/i18n";
-import type { ReferenceEntry, ReferenceSource } from "../src/shared/api/referenceCatalog";
+import type { ReferenceEntry, ReferencePrivateImage, ReferenceSource } from "../src/shared/api/referenceCatalog";
 import "../src/styles.css";
 
 setLocale("en");
@@ -18,14 +18,28 @@ const entry: ReferenceEntry = { id: "neutral", sourceId: source.id, snapshotId: 
   facets: { purpose: "Synthetic layout and interaction test" }, collection: "builtin", extended: false, externalUrl: null, importAllowed: true, disabledReason: null,
   variants: ["front", "side", "high", "low", "diag"].map((angle) => ({ id: `neutral-${angle}`, label: angle, localizedLabel: { en: angle }, view: angle, angle,
     externalUrl: null, previewUrl: `/api/v1/reference-catalog/synthetic-preview/${angle}`, sha256: "b".repeat(64), byteSize: 1024,
-    contentType: "image/png", availability: "AVAILABLE", importAllowed: true, disabledReason: null })) };
+    contentType: "image/png", availability: "AVAILABLE", importAllowed: true, disabledReason: null, cached: false, privateCacheAllowed: false, privateCacheDisabledReason: null })) };
 const data: ReferenceEntry[] = [entry, { ...entry, id: "links", title: "Metadata-only source", localizedTitle: { en: "Metadata-only source" }, importAllowed: false,
   disabledReason: "REFERENCE_CATALOG_LINK_ONLY", variants: entry.variants.map((v) => ({ ...v, previewUrl: null, externalUrl: "https://example.com/reference", importAllowed: false, availability: "LINK_ONLY", sha256: null })) }];
 let imports = 0;
+let privateImages: ReferencePrivateImage[] = [{ id: "00000000-0000-4000-8000-000000000002", sourceId: source.id,
+  snapshotId: "00000000-0000-4000-8000-000000000003", entryId: "old-snapshot-geometric-study", variantId: "old-front-view",
+  sha256: "b".repeat(64), byteSize: 1024, contentType: "image/png", width: 240, height: 320,
+  previewUrl: "/api/v1/reference-catalog/synthetic-preview/front", cached: true }];
 globalThis.fetch = async (input, init) => {
   const url = new URL(input instanceof Request ? input.url : String(input), location.origin);
   if (url.pathname === "/api/v1/auth/me") return Response.json({ id: "synthetic-user", username: "synthetic", role: "ADMIN" });
   if (url.pathname === "/api/v1/auth/csrf") return Response.json({ headerName: "X-CSRF-TOKEN", token: "synthetic" });
+  if (url.pathname === "/api/v1/settings/reference-catalog/cache") return Response.json({ quotaBytes: 536870912, usedBytes: 0, fileCount: 0, availableBytes: 536870912, protectedBytes: 0, protectedFileCount: 0 });
+  if (url.pathname === "/api/v1/settings/reference-catalog/cache/jobs") return Response.json({ items: [] });
+  if (url.pathname === "/api/v1/reference-catalog/private-images") return Response.json({ items: privateImages });
+  if (url.pathname.startsWith("/api/v1/reference-catalog/private-images/") && init?.method === "DELETE") {
+    const removed = privateImages.find((image) => url.pathname.endsWith(image.id));
+    if (!removed) throw new Error("Unknown synthetic private image");
+    privateImages = privateImages.filter((image) => image.id !== removed.id);
+    document.documentElement.dataset.privateClearCount = "1";
+    return Response.json({ ...removed, cached: false });
+  }
   if (url.pathname === "/api/v1/reference-catalog/sources") return Response.json({ items: [source] });
   if (url.pathname === "/api/v1/reference-catalog") {
     const query = (url.searchParams.get("query") ?? "").toLowerCase();

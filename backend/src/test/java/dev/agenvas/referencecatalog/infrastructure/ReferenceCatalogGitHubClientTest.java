@@ -23,6 +23,18 @@ class ReferenceCatalogGitHubClientTest {
         assertThat(request.get().header("Authorization")).isNull();
         request.set(null);assertThat(client.resolve(source("B".repeat(40)))).isEqualTo("b".repeat(40));assertThat(request.get()).isNull();
     }
+    @Test void fixedArchiveInspectionTraversesOnlyTreesAndRejectsSymlinkAndTruncation(){
+        var client=new ReferenceCatalogGitHubClient();var requests=new java.util.ArrayList<String>();
+        var mode=new AtomicReference<>("100644");var truncated=new AtomicReference<>(false);
+        var fake=new OkHttpClient.Builder().addInterceptor(chain->{String path=chain.request().url().encodedPath();requests.add(path);String sha=path.substring(path.lastIndexOf('/')+1);
+            String child=sha.equals("a".repeat(40))?"{\"path\":\"pose\",\"type\":\"tree\",\"mode\":\"040000\",\"sha\":\""+"b".repeat(40)+"\"}":sha.equals("b".repeat(40))?"{\"path\":\"originals\",\"type\":\"tree\",\"mode\":\"040000\",\"sha\":\""+"c".repeat(40)+"\"}":"{\"path\":\"synthetic.png\",\"type\":\"blob\",\"mode\":\""+mode.get()+"\",\"sha\":\""+"d".repeat(40)+"\",\"size\":1404}";
+            String json="{\"sha\":\""+sha+"\",\"truncated\":"+truncated.get()+",\"tree\":["+child+"]}";
+            return new Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK").body(ResponseBody.create(json,MediaType.get("application/json"))).build();}).build();
+        ReflectionTestUtils.setField(client,"http",fake);
+        assertThat(client.inspectFile(source("main"),"a".repeat(40),"pose/originals/synthetic.png")).isEqualTo(new ReferenceCatalogGitHubClient.GitFile("d".repeat(40),1404));assertThat(requests).hasSize(3);
+        ((java.util.Map<?,?>)ReflectionTestUtils.getField(client,"trees")).clear();mode.set("120000");assertThatThrownBy(()->client.inspectFile(source("main"),"a".repeat(40),"pose/originals/synthetic.png")).extracting("code").isEqualTo("REFERENCE_CATALOG_INVALID");
+        ((java.util.Map<?,?>)ReflectionTestUtils.getField(client,"trees")).clear();truncated.set(true);assertThatThrownBy(()->client.inspectFile(source("main"),"a".repeat(40),"pose/originals/synthetic.png")).extracting("code").isEqualTo("REFERENCE_CATALOG_INVALID");
+    }
     @Test void strictTransportRejectsUnknownHostsAndDisablesProxyRedirectsAndRetries() throws Exception {
         var client=new ReferenceCatalogGitHubClient();var http=(OkHttpClient)ReflectionTestUtils.getField(client,"http");
         assertThat(http.proxy()).isEqualTo(Proxy.NO_PROXY);assertThat(http.followRedirects()).isFalse();assertThat(http.followSslRedirects()).isFalse();assertThat(http.retryOnConnectionFailure()).isFalse();

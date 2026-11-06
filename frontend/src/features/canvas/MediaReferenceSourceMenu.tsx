@@ -86,9 +86,9 @@ export function MediaReferenceSourceMenu({ label, title, disabled = false, suspe
           <DropdownMenuItem disabled={libraryDisabled} onSelect={(event) => { event.preventDefault(); choose("library"); }}>
             <ImagesSquare /><span>{t("media.editor.chooseLibrary")}</span>
           </DropdownMenuItem>
-          <DropdownMenuItem disabled={catalogDisabled || libraryDisabled} onSelect={(event) => { event.preventDefault(); choose("catalog"); }}>
+          {!catalogDisabled ? <DropdownMenuItem disabled={libraryDisabled} onSelect={(event) => { event.preventDefault(); choose("catalog"); }}>
             <ImagesSquare /><span>{t("reference.title")}</span>
-          </DropdownMenuItem>
+          </DropdownMenuItem> : null}
           <DropdownMenuItem disabled aria-label={t("media.editor.sketchUnavailableLabel")} title={t("media.editor.sketchUnavailable")}>
             <PaintBrush /><span>{t("media.editor.sketchReference")}</span><small>{t("media.editor.notAvailable")}</small>
           </DropdownMenuItem>

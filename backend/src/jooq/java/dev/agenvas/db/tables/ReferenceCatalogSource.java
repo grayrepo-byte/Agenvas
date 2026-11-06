@@ -6,6 +6,8 @@ package dev.agenvas.db.tables;
 
 import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
+import dev.agenvas.db.tables.ReferenceCatalogCacheJob.ReferenceCatalogCacheJobPath;
+import dev.agenvas.db.tables.ReferenceCatalogPrivateImage.ReferenceCatalogPrivateImagePath;
 import dev.agenvas.db.tables.ReferenceCatalogSnapshot.ReferenceCatalogSnapshotPath;
 import dev.agenvas.db.tables.records.ReferenceCatalogSourceRecord;
 
@@ -242,6 +244,32 @@ public class ReferenceCatalogSource extends TableImpl<ReferenceCatalogSourceReco
     @Override
     public UniqueKey<ReferenceCatalogSourceRecord> getPrimaryKey() {
         return Keys.REFERENCE_CATALOG_SOURCE_PKEY;
+    }
+
+    private transient ReferenceCatalogCacheJobPath _referenceCatalogCacheJob;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.reference_catalog_cache_job</code> table
+     */
+    public ReferenceCatalogCacheJobPath referenceCatalogCacheJob() {
+        if (_referenceCatalogCacheJob == null)
+            _referenceCatalogCacheJob = new ReferenceCatalogCacheJobPath(this, null, Keys.REFERENCE_CATALOG_CACHE_JOB__REFERENCE_CATALOG_CACHE_JOB_SOURCE_ID_FKEY.getInverseKey());
+
+        return _referenceCatalogCacheJob;
+    }
+
+    private transient ReferenceCatalogPrivateImagePath _referenceCatalogPrivateImage;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.reference_catalog_private_image</code> table
+     */
+    public ReferenceCatalogPrivateImagePath referenceCatalogPrivateImage() {
+        if (_referenceCatalogPrivateImage == null)
+            _referenceCatalogPrivateImage = new ReferenceCatalogPrivateImagePath(this, null, Keys.REFERENCE_CATALOG_PRIVATE_IMAGE__REFERENCE_CATALOG_PRIVATE_IMAGE_SOURCE_ID_FKEY.getInverseKey());
+
+        return _referenceCatalogPrivateImage;
     }
 
     private transient ReferenceCatalogSnapshotPath _referenceCatalogSnapshot;

@@ -9,10 +9,14 @@ import { setLocale } from "../../shared/i18n";
 import { ReferenceCatalog } from "./ReferenceCatalog";
 
 const variant = { id: "front", label: "Front view", view: "front", availability: "AVAILABLE", importAllowed: true, sha256: "abc", previewUrl: "/api/v1/reference-catalog/preview/front" };
+function cacheReads() { return [
+  http.get("/api/v1/settings/reference-catalog/cache", () => HttpResponse.json({ quotaBytes: 1000, usedBytes: 0, availableBytes: 1000, fileCount: 0, protectedBytes: 0, protectedFileCount: 0 })),
+  http.get("/api/v1/settings/reference-catalog/cache/jobs", () => HttpResponse.json({ items: [] })),
+]; }
 const entry = { sourceId: "pack", snapshotId: "snapshot", id: "walk", kind: "POSE", title: "Walking", category: "Movement", tags: ["walk"], facets: { gender: "neutral" }, importAllowed: true, variants: [variant, { ...variant, id: "back", label: "Back view", view: "back" }] };
 function setup(items: object[] = [entry], admin = false, filters?: object) {
   setLocale("en");
-  server.use(
+  server.use(...cacheReads(),
     http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "user", role: admin ? "ADMIN" : "USER" })),
     http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
     http.get("/api/v1/reference-catalog/sources", () => HttpResponse.json({ items: [] })),
@@ -72,7 +76,7 @@ it("requires explicit permission review and manual sync for a new source", async
 });
 it("replays a lost import with the same intent and never generates or replaces input", async () => {
   setLocale("en"); let attempts = 0; const imports: Record<string, unknown>[] = []; let appliedVersion = "";
-  server.use(
+  server.use(...cacheReads(),
     http.get("/api/v1/auth/me", () => HttpResponse.json({ role: "USER" })),
     http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
     http.get("/api/v1/reference-catalog/sources", () => HttpResponse.json({ items: [] })),
@@ -117,7 +121,7 @@ it("fills the actual repository metadata preset without fetching it", async () =
 });
 it("reports a failed manual sync returned with HTTP 200 and retains the prior catalog", async () => {
   setLocale("en"); const source = { id: "pack", name: "Original pack", owner: "me", repository: "pack", ref: "main", manifestPath: "manifest.json", format: "AGENVAS_REFERENCE_PACK", enabled: true, imageDistributionApproved: true, version: 4, currentSnapshotId: "snapshot", resolvedCommit: "original-commit", lastSyncStatus: "SUCCESS", lastSyncError: null, syncedAt: "2026-11-01T00:00:00Z" };
-  server.use(
+  server.use(...cacheReads(),
     http.get("/api/v1/auth/me", () => HttpResponse.json({ role: "ADMIN" })),
     http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
     http.get("/api/v1/reference-catalog/sources", () => HttpResponse.json({ items: [source] })),
@@ -147,4 +151,16 @@ it("shows a preview error with a local retry", async () => {
   expect(await screen.findByText("Image preview could not be loaded. Retry the preview or open the original source.")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Retry preview" }));
   expect(screen.getByRole("img")).toHaveAttribute("src", variant.previewUrl);
+});
+
+it("exposes image cache management separately from metadata source configuration", async () => {
+  const user = setup([], true); await user.click(await screen.findByRole("button", { name: "Manage sources" }));
+  expect(await screen.findByRole("heading", { name: "Local image cache" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Cache authorized images" })).toBeDisabled();
+  expect(await screen.findByText("0 / 1,000 bytes · 0 files")).toBeInTheDocument();
+});
+it("labels a preview cached only when the server reports that exact variant as cached", async () => {
+  const user = setup([{ ...entry, variants: [{ ...variant, cached: true }] }]);
+  await user.click(await screen.findByRole("button", { name: "Preview Walking" }));
+  expect(screen.getByText("Cached locally on this server")).toBeInTheDocument();
 });

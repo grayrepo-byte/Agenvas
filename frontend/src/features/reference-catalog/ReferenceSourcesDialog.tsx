@@ -10,6 +10,9 @@ import { Checkbox } from "../../shared/ui/primitives/checkbox";
 import { Field, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
 import { Input } from "../../shared/ui/primitives/input";
 
+import { ReferenceCacheManager } from "./ReferenceCacheManager";
+import { referenceFailureMessage } from "./referenceFailure";
+
 const EMPTY_SOURCE: CreateReferenceSource = { id: "", name: "", owner: "", repository: "", ref: "main", format: "AGENVAS_REFERENCE_PACK", manifestPath: "manifest.json", imageDistributionApproved: false };
 export function ReferenceSourcesDialog({ onClose }: { onClose: () => void }) {
   useLocale(); const id = useId(); const client = useQueryClient();
@@ -42,11 +45,12 @@ export function ReferenceSourcesDialog({ onClose }: { onClose: () => void }) {
       <p>{source.format !== "OPEN_POSE_COSTUME" && source.imageDistributionApproved ? t("reference.imagesApproved") : t("reference.metadataOnly")}</p>
       {source.resolvedCommit ? <p>{t("reference.pinnedCommit", { "0": source.resolvedCommit })}</p> : null}
       {source.syncedAt ? <p>{t("reference.lastSync", { "0": formatDate(source.syncedAt) })}</p> : null}
-      {source.lastSyncError ? <Notice tone="danger"><p>{source.lastSyncError}</p><p>{t("reference.syncRetained")}</p></Notice> : null}
+      {source.lastSyncError ? <Notice tone="danger"><p>{referenceFailureMessage(source.lastSyncError)}</p><p>{t("reference.syncRetained")}</p></Notice> : null}
       <div className="ui-form-actions"><Button type="button" variant="outline" disabled={write.isPending || !source.enabled} onClick={() => write.mutate({ kind: "SYNC", source })}>{t("reference.sync")}</Button>
       <Button type="button" variant="ghost" disabled={write.isPending} onClick={() => write.mutate({ kind: "DISABLE", source })}>{t(source.enabled ? "reference.disable" : "reference.enable")}</Button></div>
       <Field orientation="horizontal"><Checkbox id={`${id}-${source.id}`} checked={source.format !== "OPEN_POSE_COSTUME" && source.imageDistributionApproved} disabled={write.isPending || source.format === "OPEN_POSE_COSTUME"} onCheckedChange={() => write.mutate({ kind: "RIGHTS", source })} /><FieldLabel htmlFor={`${id}-${source.id}`}>{t("reference.permissionReview")}</FieldLabel></Field>
     </section>)}</div>
+    <ReferenceCacheManager sources={sources.data?.items ?? []} disabled={write.isPending} />
     <FieldGroup className="reference-source-form"><h3>{t("reference.addSource")}</h3>
       <Button type="button" variant="outline" disabled={write.isPending} onClick={() => setForm({ ...EMPTY_SOURCE, id: "open-pose-costume", name: "Open Pose Costume", owner: "hongye007", repository: "open-pose-costume", format: "OPEN_POSE_COSTUME", manifestPath: "public/data/catalog.json" })}>{t("reference.preset")}</Button>
       <Field><FieldLabel htmlFor={`${id}-format`}>{t("reference.format")}</FieldLabel><Select id={`${id}-format`} value={form.format} disabled={write.isPending} onChange={(event) => { const format = event.target.value as CreateReferenceSource["format"]; setForm((current) => ({ ...current, format, imageDistributionApproved: false, manifestPath: format === "OPEN_POSE_COSTUME" ? "public/data/catalog.json" : "manifest.json" })); }}><option value="AGENVAS_REFERENCE_PACK">{t("reference.packFormat")}</option><option value="OPEN_POSE_COSTUME">{t("reference.openFormat")}</option></Select></Field>

@@ -16,8 +16,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class ReferenceCatalogService {
     private final ReferenceCatalogRepository repository; private final ReferenceCatalogGitHubClient github;
     private final ReferenceCatalogParser parser; private final Clock clock; private final TransactionTemplate tx;
-    public ReferenceCatalogService(ReferenceCatalogRepository repository,ReferenceCatalogGitHubClient github,ReferenceCatalogParser parser,Clock clock,PlatformTransactionManager transactions){
-        this.repository=repository;this.github=github;this.parser=parser;this.clock=clock;this.tx=new TransactionTemplate(transactions);
+    private final ReferenceCatalogImageCache cache; private final boolean recovery;
+    public ReferenceCatalogService(ReferenceCatalogRepository repository,ReferenceCatalogGitHubClient github,ReferenceCatalogParser parser,Clock clock,PlatformTransactionManager transactions,ReferenceCatalogImageCache cache,
+            @org.springframework.beans.factory.annotation.Value("${agenvas.recovery-mode:false}") boolean recovery){
+        this.repository=repository;this.github=github;this.parser=parser;this.clock=clock;this.tx=new TransactionTemplate(transactions);this.cache=cache;this.recovery=recovery;
     }
     public List<Source> sources(){return repository.sources();}
     public Source source(String id){return repository.source(id).orElseThrow(ReferenceCatalogService::missing);}
@@ -56,7 +58,7 @@ public class ReferenceCatalogService {
     }
     public record Filters(List<String> categories,List<String> tags,List<String> styles,List<String> collections,List<String> angles){}
     public record VariantView(String id,String label,String view,String angle,Map<String,String> localizedLabel,String externalUrl,
-            String previewUrl,String sha256,Long byteSize,String contentType,String availability,boolean importAllowed,String disabledReason){}
+            String previewUrl,String sha256,Long byteSize,String contentType,String availability,boolean importAllowed,String disabledReason,boolean cached,boolean privateCacheAllowed,String privateCacheDisabledReason){}
     public record EntryView(String sourceId,UUID snapshotId,String id,Kind kind,String title,Map<String,String> localizedTitle,String code,
             String category,Map<String,String> localizedCategory,Map<String,String> series,List<String> tags,Map<String,Map<String,String>> localizedTags,Map<String,String> localizedKeywords,
             Map<String,String> facets,String collection,boolean extended,String externalUrl,boolean importAllowed,String disabledReason,List<VariantView> variants){}
@@ -86,24 +88,53 @@ public class ReferenceCatalogService {
     private EntryView view(Source source,Snapshot snapshot,Entry e){
         List<VariantView> variants=e.variants().stream().map(v->{boolean allowed=ReferenceCatalogParser.importable(source,snapshot,v);
             return new VariantView(v.id(),v.label(),v.view(),v.angle(),v.localizedLabel(),v.externalUrl(),allowed?previewUrl(source.id(),snapshot.id(),e.id(),v.id()):null,
-                    v.sha256(),v.byteSize(),v.contentType(),allowed?"AVAILABLE":"LINK_ONLY",allowed,allowed?null:disabled(source));}).toList();
+                    v.sha256(),v.byteSize(),v.contentType(),allowed?"AVAILABLE":"LINK_ONLY",allowed,allowed?null:disabled(source),cache.contains(v.sha256(),v.byteSize()),dev.agenvas.referencecatalog.domain.ReferenceCatalogPrivatePolicy.disabledReason(source,e)==null,dev.agenvas.referencecatalog.domain.ReferenceCatalogPrivatePolicy.disabledReason(source,e));}).toList();
         boolean allowed=variants.stream().anyMatch(VariantView::importAllowed);
         return new EntryView(source.id(),snapshot.id(),e.id(),e.kind(),e.title(),e.localizedTitle(),e.code(),e.category(),e.localizedCategory(),e.series(),e.tags(),e.localizedTags(),e.localizedKeywords(),
                 e.facets(),e.collection(),e.extended(),e.externalUrl(),allowed,allowed?null:disabled(source),variants);
     }
     public record Selection(Source source,Snapshot snapshot,Entry entry,Variant variant){}
-    public Selection selection(String sourceId,UUID snapshotId,String entryId,String variantId){
+    public Selection metadataSelection(String sourceId,UUID snapshotId,String entryId,String variantId){
         Source s=source(sourceId);Snapshot snapshot=repository.snapshot(sourceId,snapshotId).orElseThrow(ReferenceCatalogService::missing);
         Entry e=snapshot.entries().stream().filter(x->x.id().equals(entryId)).findFirst().orElseThrow(ReferenceCatalogService::missing);
         Variant v=e.variants().stream().filter(x->x.id().equals(variantId)).findFirst().orElseThrow(ReferenceCatalogService::missing);
-        if(!ReferenceCatalogParser.importable(s,snapshot,v))throw problem(HttpStatus.CONFLICT,disabled(s),"api.reference-catalog.rightsRequired");
         return new Selection(s,snapshot,e,v);
     }
-    public byte[] download(Selection selected){
-        // Rights are checked again immediately before every fetch, independently of stale client metadata.
-        selection(selected.source().id(),selected.snapshot().id(),selected.entry().id(),selected.variant().id());
-        var v=selected.variant();byte[] bytes=github.file(selected.source(),selected.snapshot().commit(),v.path(),MAX_IMAGE_BYTES);
-        image(bytes,v.sha256(),v.byteSize(),v.contentType());return bytes;
+    public Selection selection(String sourceId,UUID snapshotId,String entryId,String variantId){
+        var selected=metadataSelection(sourceId,snapshotId,entryId,variantId);
+        if(!ReferenceCatalogParser.importable(selected.source(),selected.snapshot(),selected.variant()))throw problem(HttpStatus.CONFLICT,disabled(selected.source()),"api.reference-catalog.rightsRequired");
+        return selected;
+    }
+    public byte[] download(Selection selected){return download(selected,()->{});}
+    public byte[] download(Selection selected,Runnable stillActive){
+        Runnable authorize=()->{
+            stillActive.run();
+            Source current=source(selected.source().id());
+            if(!ReferenceCatalogParser.importable(current,selected.snapshot(),selected.variant()))throw problem(HttpStatus.CONFLICT,disabled(current),"api.reference-catalog.rightsRequired");
+        };
+        var v=selected.variant();
+        return cache.get(v.sha256(),v.byteSize(),v.contentType(),!recovery,authorize,
+                ()->github.file(selected.source(),selected.snapshot().commit(),v.path(),MAX_IMAGE_BYTES));
+    }
+    /** Freeze only explicitly selected metadata; callers cannot submit raw file paths or hashes. */
+    public List<Selection> selections(String sourceId,UUID snapshotId,List<String> entryIds){
+        if(snapshotId==null || entryIds==null || entryIds.size()>5000 || new HashSet<>(entryIds).size()!=entryIds.size())throw invalid();
+        Source s=source(sourceId);Snapshot snapshot=repository.snapshot(sourceId,snapshotId).orElseThrow(ReferenceCatalogService::missing);
+        Set<String> requested=new HashSet<>(entryIds);List<Selection> selections=new ArrayList<>();Set<String> found=new HashSet<>();
+        for(Entry e:snapshot.entries())if(requested.isEmpty() || requested.contains(e.id())){
+            found.add(e.id());for(Variant v:e.variants()){
+                if(!ReferenceCatalogParser.importable(s,snapshot,v))throw problem(HttpStatus.CONFLICT,disabled(s),"api.reference-catalog.rightsRequired");
+                selections.add(new Selection(s,snapshot,e,v));
+            }
+        }
+        if(!found.containsAll(requested) || selections.isEmpty())throw missing();return List.copyOf(selections);
+    }
+    public Set<String> cachedImageHashes(String sourceId,UUID snapshotId,List<String> entryIds){
+        Source source=source(sourceId);UUID fixed=snapshotId==null?source.currentSnapshotId():snapshotId;if(fixed==null)return Set.of();
+        Snapshot snapshot=repository.snapshot(sourceId,fixed).orElseThrow(ReferenceCatalogService::missing);
+        Set<String> requested=new HashSet<>(entryIds),found=new HashSet<>(),hashes=new HashSet<>();
+        for(Entry e:snapshot.entries())if(requested.isEmpty() || requested.contains(e.id())){found.add(e.id());for(Variant v:e.variants())if(v.sha256()!=null)hashes.add(v.sha256());}
+        if(!found.containsAll(requested))throw missing();return Set.copyOf(hashes);
     }
     public static String previewUrl(String source,UUID snapshot,String entry,String variant){return "/api/v1/reference-catalog/sources/"+source+"/snapshots/"+snapshot+"/entries/"+entry+"/variants/"+variant+"/preview";}
     private static String disabled(Source source){return !source.enabled()?"REFERENCE_CATALOG_SOURCE_DISABLED":source.format()==Format.OPEN_POSE_COSTUME?"REFERENCE_CATALOG_LINK_ONLY":"REFERENCE_CATALOG_RIGHTS_REQUIRED";}

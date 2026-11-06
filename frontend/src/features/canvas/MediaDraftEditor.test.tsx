@@ -142,6 +142,31 @@ describe("MediaDraftEditor", () => {
     await waitFor(() => expect(Object.values(useCanvasStore.getState().mediaDraftRecoveries)
       .some((recovery) => recovery.saving)).toBe(false));
   });
+  it("omits the pose and costume catalog from ordinary audio reference sources", async () => {
+    setup({ kind: "AUDIO", settings: audioSettings });
+    const user = userEvent.setup();
+    await screen.findByRole("textbox", { name: "音频提示词" });
+    await user.click(screen.getByRole("button", { name: "添加图片或音频输入" }));
+    const menu = screen.getByRole("menu", { name: "图片来源" });
+    expect(within(menu).queryByRole("menuitem", { name: "姿势与服装参考" })).not.toBeInTheDocument();
+    for (const name of ["从设备上传", "从资源库选择", "从画布选择", "从我的资产选择"]) {
+      expect(within(menu).getByRole("menuitem", { name })).toBeInTheDocument();
+    }
+  });
+
+  it("omits the image catalog from image slots on an unsupported audio workflow editor", async () => {
+    const capability: MediaCapability = { ...audioCapability, settings: { nativeInputs: [
+      { key: "image_source", label: "Audio source image", type: "IMAGE", required: false, advanced: false },
+    ] } };
+    setup({ kind: "AUDIO", settings: { ...audioSettings, connections: [{ ...audioSettings.connections[0]!, capabilities: [capability] }] },
+      draft: { ...initialDraft, capabilityId: capability.id, parameters: { dynamicValues: { image_source: "image-v1" } },
+        mediaInputs: [{ versionId: "image-v1", artifactId: "reference-image", role: "REFERENCE", color: "#F15CAF", order: 0, sources: [] }] } });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "选择Audio source image" }));
+    expect(screen.queryByRole("menuitem", { name: "姿势与服装参考" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "从我的资产选择" })).toBeInTheDocument();
+  });
+
   it.each(["IMAGE", "AUDIO"] as const)("does not expose video camera presets on %s nodes", async (kind) => {
     setup({ kind, ...(kind === "AUDIO" ? { settings: audioSettings } : {}) });
     await screen.findByRole("textbox", { name: kind === "IMAGE" ? "图片提示词" : "音频提示词" });

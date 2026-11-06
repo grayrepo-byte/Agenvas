@@ -11,6 +11,467 @@ info:
 servers:
   - url: /
 paths:
+  /api/v1/reference-catalog/private-images:
+    get:
+      operationId: listPrivateReferenceImages
+      summary: Read only the current account selected private image cache
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogPrivateImages'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+        - name: sourceId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: snapshotId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      description: Owner scoped. Frozen metadata may remain after clearing, with cached=false; no image fetch occurs.
+    post:
+      operationId: cachePrivateReferenceImage
+      summary: Explicitly cache one permitted selected image for this account
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogPrivateImage'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CacheReferenceCatalogPrivateImage'
+      description: >-
+        Session/CSRF protected, one selected base pose or photographic costume only. Separates private reference
+        use from bulk caching and redistribution. Pins the source commit and Git blob identity, validates
+        decoded bytes and records observed SHA-256. No automatic grid downloads. Same fixed command replays
+        safely; no permission is inferred for anime, depth or custom collections.
+  /api/v1/reference-catalog/private-images/{imageId}:
+    delete:
+      operationId: clearPrivateReferenceImage
+      summary: Clear the current owner private cache entry while preserving project copies
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogPrivateImage'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+        - name: imageId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      description: >-
+        Owner only and CSRF protected. Returns cached=false, retaining fixed integrity for an explicit re-cache.
+        Other owners and independent project media are protected.
+  /api/v1/reference-catalog/private-images/{imageId}/preview:
+    get:
+      operationId: previewPrivateReferenceImage
+      summary: Read this owner already-cached image offline
+      tags:
+        - Reference Catalog
+      description: >-
+        Owner identity and current source policy are checked before bytes. Cache hit only; missing files never
+        trigger a hidden network download. Other accounts receive not found.
+      parameters:
+        - name: imageId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Verified private cached image
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Verified cached image is unavailable; no implicit download
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/projects/{projectId}/reference-catalog/private-images/{imageId}/import:
+    post:
+      operationId: importPrivateReferenceImage
+      summary: Copy an owned cached reference into an active owned project
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogImport'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: imageId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportReferenceCatalogPrivateImage'
+      description: >-
+        Owner-private image authorization, project ownership and fixed command key are enforced. Reads cached
+        bytes offline and publishes an independent project image version with optional explicit placement. No
+        provider call; clearing cache does not change imported media.
+  /api/v1/settings/reference-catalog/cache:
+    get:
+      operationId: getReferenceCatalogCacheStats
+      summary: Read local image file cache quota and physical usage
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogCacheStats'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      description: >-
+        Administrator-only. Includes protected private image usage separately; project media is outside this
+        rebuildable cache.
+  /api/v1/settings/reference-catalog/cache/jobs:
+    get:
+      operationId: listReferenceCatalogCacheJobs
+      summary: Read durable image cache jobs
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogCacheJobs'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+    post:
+      operationId: createReferenceCatalogCacheJob
+      summary: Explicitly cache an authorized fixed image selection
+      tags:
+        - Reference Catalog
+      responses:
+        '202':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogCacheJob'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReferenceCatalogCacheJob'
+      description: >-
+        Administrator-only, CSRF protected. Empty entryIds means all entries of this pinned snapshot. Restricted
+        sources cannot bulk cache. Fixed command key replays the same job; progress records real
+        success/failure. Metadata sync does not start this job.
+  /api/v1/settings/reference-catalog/cache/jobs/{jobId}:
+    get:
+      operationId: getReferenceCatalogCacheJob
+      summary: Read actual image cache progress
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogCacheJob'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+  /api/v1/settings/reference-catalog/cache/jobs/{jobId}/retry:
+    post:
+      operationId: retryReferenceCatalogCacheJob
+      summary: Retry only failed cache items
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogCacheJob'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      description: >-
+        Administrator-only. Already-ready items are not downloaded again; cancelled jobs cannot be resumed
+        implicitly.
+  /api/v1/settings/reference-catalog/cache/jobs/{jobId}/cancel:
+    post:
+      operationId: cancelReferenceCatalogCacheJob
+      summary: Cancel remaining image cache work
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogCacheJob'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+  /api/v1/settings/reference-catalog/cache/clear:
+    post:
+      operationId: clearReferenceCatalogCache
+      summary: Clear rebuildable shared cache files with protected private and project copies retained
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogCacheClearResult'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClearReferenceCatalogCache'
+      description: >-
+        Administrator-only and CSRF protected. Empty object explicitly selects the shared cache. Optional
+        source/snapshot/entry selection narrows it. Active matching jobs are cancelled/fenced; active
+        owner-private indexes and independent project media remain protected.
   /api/v1/reference-catalog/sources:
     get:
       operationId: listReferenceCatalogSources
@@ -5617,6 +6078,280 @@ components:
       scheme: bearer
       description: 用户级 MCP 访问令牌，仅用于明确列出的 MCP 接口。
   schemas:
+    ReferenceCatalogPrivateImage:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - sourceId
+        - snapshotId
+        - entryId
+        - variantId
+        - sha256
+        - byteSize
+        - contentType
+        - width
+        - height
+        - previewUrl
+        - cached
+      properties:
+        id:
+          type: string
+          format: uuid
+        sourceId:
+          type: string
+        snapshotId:
+          type: string
+          format: uuid
+        entryId:
+          type: string
+        variantId:
+          type: string
+        sha256:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+        byteSize:
+          type: integer
+          format: int64
+          minimum: 1
+        contentType:
+          type: string
+        width:
+          type: integer
+          minimum: 1
+        height:
+          type: integer
+          minimum: 1
+        previewUrl:
+          type: string
+        cached:
+          type: boolean
+    ReferenceCatalogPrivateImages:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReferenceCatalogPrivateImage'
+    CacheReferenceCatalogPrivateImage:
+      type: object
+      additionalProperties: false
+      required:
+        - sourceId
+        - snapshotId
+        - entryId
+        - variantId
+        - commandKey
+      properties:
+        sourceId:
+          type: string
+          maxLength: 100
+        snapshotId:
+          type: string
+          format: uuid
+        entryId:
+          type: string
+          maxLength: 100
+        variantId:
+          type: string
+          maxLength: 100
+        commandKey:
+          type: string
+          minLength: 1
+          maxLength: 200
+    ImportReferenceCatalogPrivateImage:
+      type: object
+      additionalProperties: false
+      required:
+        - commandKey
+      properties:
+        commandKey:
+          type: string
+          minLength: 1
+          maxLength: 200
+        placement:
+          $ref: '#/components/schemas/ReferenceCatalogPlacement'
+    ReferenceCatalogCacheStats:
+      type: object
+      additionalProperties: false
+      required:
+        - quotaBytes
+        - usedBytes
+        - fileCount
+        - availableBytes
+        - protectedBytes
+        - protectedFileCount
+      properties:
+        quotaBytes:
+          type: integer
+          format: int64
+          minimum: 0
+        usedBytes:
+          type: integer
+          format: int64
+          minimum: 0
+        fileCount:
+          type: integer
+          minimum: 0
+        availableBytes:
+          type: integer
+          format: int64
+          minimum: 0
+        protectedBytes:
+          type: integer
+          format: int64
+          minimum: 0
+        protectedFileCount:
+          type: integer
+          minimum: 0
+    ReferenceCatalogCacheFailure:
+      type: object
+      additionalProperties: false
+      required:
+        - entryId
+        - variantId
+        - code
+      properties:
+        entryId:
+          type: string
+        variantId:
+          type: string
+        code:
+          type: string
+    ReferenceCatalogCacheJob:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - sourceId
+        - snapshotId
+        - state
+        - totalCount
+        - readyCount
+        - failedCount
+        - totalBytes
+        - readyBytes
+        - createdAt
+        - updatedAt
+        - failures
+      properties:
+        id:
+          type: string
+          format: uuid
+        sourceId:
+          type: string
+        snapshotId:
+          type: string
+          format: uuid
+        state:
+          type: string
+          enum:
+            - QUEUED
+            - RUNNING
+            - SUCCEEDED
+            - PARTIAL_FAILED
+            - CANCELLED
+        totalCount:
+          type: integer
+          minimum: 0
+        readyCount:
+          type: integer
+          minimum: 0
+        failedCount:
+          type: integer
+          minimum: 0
+        totalBytes:
+          type: integer
+          format: int64
+          minimum: 0
+        readyBytes:
+          type: integer
+          format: int64
+          minimum: 0
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        failures:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReferenceCatalogCacheFailure'
+    ReferenceCatalogCacheJobs:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReferenceCatalogCacheJob'
+    CreateReferenceCatalogCacheJob:
+      type: object
+      additionalProperties: false
+      required:
+        - sourceId
+        - snapshotId
+        - entryIds
+        - commandKey
+      properties:
+        sourceId:
+          type: string
+          maxLength: 100
+        snapshotId:
+          type: string
+          format: uuid
+        entryIds:
+          type: array
+          maxItems: 5000
+          items:
+            type: string
+            minLength: 1
+            maxLength: 100
+        commandKey:
+          type: string
+          minLength: 1
+          maxLength: 200
+    ClearReferenceCatalogCache:
+      type: object
+      additionalProperties: false
+      required: []
+      properties:
+        sourceId:
+          type: string
+          maxLength: 100
+        snapshotId:
+          type: string
+          format: uuid
+        entryIds:
+          type: array
+          maxItems: 5000
+          items:
+            type: string
+            minLength: 1
+            maxLength: 100
+    ReferenceCatalogCacheClearResult:
+      type: object
+      additionalProperties: false
+      required:
+        - removedFiles
+        - removedBytes
+        - stats
+      properties:
+        removedFiles:
+          type: integer
+          minimum: 0
+        removedBytes:
+          type: integer
+          format: int64
+          minimum: 0
+        stats:
+          $ref: '#/components/schemas/ReferenceCatalogCacheStats'
     ReferenceCatalogKind:
       type: string
       enum:
@@ -5715,6 +6450,9 @@ components:
         - availability
         - importAllowed
         - disabledReason
+        - cached
+        - privateCacheAllowed
+        - privateCacheDisabledReason
       properties:
         id:
           type: string
@@ -5759,6 +6497,18 @@ components:
         importAllowed:
           type: boolean
         disabledReason:
+          anyOf:
+            - type: string
+            - type: 'null'
+        cached:
+          type: boolean
+          description: Local file presence hint; every read still verifies permissions and image integrity.
+        privateCacheAllowed:
+          type: boolean
+          description: >-
+            One user-selected private cache operation is permitted; this does not permit bulk caching or
+            redistribution.
+        privateCacheDisabledReason:
           anyOf:
             - type: string
             - type: 'null'

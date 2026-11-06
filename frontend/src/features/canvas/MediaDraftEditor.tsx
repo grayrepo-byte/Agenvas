@@ -1146,7 +1146,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       <div className="media-draft-popover-anchor">
         <Input ref={uploadInputRef} className="media-draft-upload-input" type="file"
           accept={[MEDIA_FILE_ACCEPT.IMAGE, ...(audioCapacity > 0 ? [MEDIA_FILE_ACCEPT.AUDIO] : []), ...(videoCapacity > 0 ? [MEDIA_FILE_ACCEPT.VIDEO] : [])].join(",")} multiple aria-label={videoCapacity > 0 ? t("media.editor.chooseLocalAllMedia") : audioCapacity > 0 ? t("media.editor.chooseLocalMedia") : t("media.editor.chooseLocalImage")} onChange={handleUploadSelection} />
-        <MediaReferenceSourceMenu catalogDisabled={false} open={referenceSourcesOpen && !popover} onOpenChange={setReferenceSourcesOpen} suspended={Boolean(popover)}
+        <MediaReferenceSourceMenu catalogDisabled={isAudio} open={referenceSourcesOpen && !popover} onOpenChange={setReferenceSourcesOpen} suspended={Boolean(popover)}
           disabled={editorReadOnly || !chosenCapability || referenceLimitReached || uploading || commitAssetReferences.isPending}
           libraryDisabled={save.isPending || expectedVersion === null}
           label={videoCapacity > 0 ? t("media.editor.addVideoMediaInput") : audioCapacity > 0 ? t("media.editor.addMixedInput") : t("media.editor.addImageInput")}
@@ -1187,7 +1187,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       canvasChoices={canvasChoices.map((choice) => ({ id: choice.versionId, label: `${choice.title} · v${choice.versionNo}`,
         kind: choice.kind, available: true, thumbnailUrl: choice.kind === "AUDIO" ? undefined : assetThumbnailUrl(artifact.projectId, choice.assetId) }))}
       disabled={editorReadOnly || run.isPending || removeConnectedInput.isPending || libraryBusy}
-      catalogEnabled libraryDisabled={save.isPending || expectedVersion === null || workflowUploading} pickerOpen={Boolean(popover)}
+      catalogEnabled={!isAudio} libraryDisabled={save.isPending || expectedVersion === null || workflowUploading} pickerOpen={Boolean(popover)}
       onChooseSource={(field, source, trigger) => {
         if (source === "library" && workflowUploads.current.size > 0) return;
         triggerRef.current = trigger; setWorkflowPickerFieldKey(field?.key ?? null);

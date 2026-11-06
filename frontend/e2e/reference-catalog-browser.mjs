@@ -176,7 +176,7 @@ try {
     await pointerClick('.reference-preview-dialog .ui-dialog-header button');
     await waitFor(() => !document.querySelector('.reference-preview-dialog'));
     await waitFor(() => document.activeElement === document.querySelector('.reference-card:last-child'));
-    await pointerClick('.reference-toolbar > button');
+    await pointerClick('.reference-source-settings-trigger');
     await waitFor(() => Boolean(document.querySelector('.reference-sources-dialog')));
     assert.equal(await page(() => { const e = document.querySelector('.reference-sources-dialog'); return e.scrollWidth > e.clientWidth; }), false, "Source settings must fit viewport");
     if (process.env.AGENVAS_E2E_SCREENSHOT_DIR) {
@@ -184,9 +184,29 @@ try {
       const shot = await cdp("Page.captureScreenshot", { format: "png" });
       await writeFile(join(process.env.AGENVAS_E2E_SCREENSHOT_DIR, `reference-${viewport.width}x${viewport.height}.png`), Buffer.from(shot.data, "base64"));
     }
-    console.log(JSON.stringify({ viewport, append: initial.button, sourceSettings: "visible" }));
+    await pointerClick('.reference-sources-dialog .ui-dialog-header button');
+    await waitFor(() => !document.querySelector('.reference-sources-dialog'));
+    await pointerClick('.reference-private-cache-trigger');
+    await waitFor(() => Boolean(document.querySelector('.reference-private-record')));
+    const ownerCache = await page(() => {
+      const dialog = document.querySelector('.reference-private-manager-dialog');
+      return { text: dialog.textContent, overflow: dialog.scrollWidth > dialog.clientWidth,
+        bottom: dialog.getBoundingClientRect().bottom };
+    });
+    assert.equal(ownerCache.overflow, false, "Owner cache must fit viewport");
+    assert.ok(ownerCache.bottom <= viewport.height + tolerance, "Owner cache footer must fit viewport");
+    assert.ok(ownerCache.text.includes("old-snapshot-geometric-study"), "Old snapshot images must remain manageable");
+    if (process.env.AGENVAS_E2E_SCREENSHOT_DIR) {
+      const shot = await cdp("Page.captureScreenshot", { format: "png" });
+      await writeFile(join(process.env.AGENVAS_E2E_SCREENSHOT_DIR, `owner-cache-${viewport.width}x${viewport.height}.png`), Buffer.from(shot.data, "base64"));
+    }
+    await pointerClick('.reference-private-record button');
+    await pointerClick('.reference-private-manager-dialog button[data-variant=destructive]');
+    await waitFor(() => !document.querySelector('.reference-private-record'));
+    assert.equal(await page(() => document.documentElement.dataset.privateClearCount), "1", "Only the explicitly selected owner record is cleared");
+    console.log(JSON.stringify({ viewport, append: initial.button, sourceSettings: "visible", ownerCache: "old snapshot cleared" }));
   }
-  console.log(`Reference catalog browser regression passed: ${viewports.length} viewports, exact view import, metadata-only gating, source settings`);
+  console.log(`Reference catalog browser regression passed: ${viewports.length} viewports, exact view import, metadata-only gating, source settings, owner old-snapshot cleanup`);
 
 } finally {
   socket?.close();
