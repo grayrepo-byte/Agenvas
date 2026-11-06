@@ -4,6 +4,140 @@
  */
 
 export interface paths {
+    "/api/v1/reference-catalog/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read configured sources without contacting GitHub */
+        get: operations["listReferenceCatalogSources"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reference-catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search locally cached pose groups and costume entries
+         * @description Authenticated local metadata search. OPEN_POSE_COSTUME images remain LINK_ONLY. Filters use stable source identifiers; no provider or image download occurs.
+         */
+        get: operations["listReferenceCatalogEntries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/reference-catalog/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Configure a public GitHub metadata source
+         * @description Administrator only and CSRF protected. Does not synchronize automatically. Image permission is separate and cannot enable restricted OPEN_POSE_COSTUME images.
+         */
+        post: operations["createReferenceCatalogSource"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/reference-catalog/sources/{sourceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Enable a source and record reviewed image permission */
+        patch: operations["updateReferenceCatalogSource"];
+        trace?: never;
+    };
+    "/api/v1/settings/reference-catalog/sources/{sourceId}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Manually publish a validated fixed-commit metadata snapshot
+         * @description Administrator only. Bounded credential-free GitHub reads occur outside database transactions. A FAILED result preserves the previous ready snapshot. No image downloads.
+         */
+        post: operations["syncReferenceCatalogSource"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/reference-catalog/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Copy one authorized image variant into an owned active project
+         * @description Fixed source snapshot, variant and hash. Same key and payload replays the same result; changed payload conflicts. Optional placement creates a canvas image card. No media generation. Restricted and unreviewed images are rejected; project copies survive source changes.
+         */
+        post: operations["importReferenceCatalogImage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reference-catalog/sources/{sourceId}/snapshots/{snapshotId}/entries/{entryId}/variants/{variantId}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview one authorized checksum-verified image
+         * @description Authenticated fixed-snapshot read. Permission, hash, byte count, format, dimensions and decoding are checked. No arbitrary URL or gallery proxy. OPEN_POSE_COSTUME remains link-only.
+         */
+        get: operations["previewReferenceCatalogImage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/local-services/discover": {
         parameters: {
             query?: never;
@@ -4046,6 +4180,156 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /** @enum {string} */
+        ReferenceCatalogKind: "POSE" | "COSTUME";
+        /** @enum {string} */
+        ReferenceCatalogFormat: "OPEN_POSE_COSTUME" | "AGENVAS_REFERENCE_PACK";
+        ReferenceCatalogSource: {
+            id: string;
+            name: string;
+            owner: string;
+            repository: string;
+            ref: string;
+            manifestPath: string;
+            format: components["schemas"]["ReferenceCatalogFormat"];
+            enabled: boolean;
+            imageDistributionApproved: boolean;
+            version: number;
+            currentSnapshotId: string | null;
+            lastSyncStatus: string;
+            lastSyncError: string | null;
+            syncedAt: string | null;
+            resolvedCommit: string | null;
+        };
+        ReferenceCatalogSources: {
+            items: components["schemas"]["ReferenceCatalogSource"][];
+        };
+        ReferenceCatalogVariant: {
+            id: string;
+            label: string;
+            view: string;
+            angle: string;
+            localizedLabel: {
+                [key: string]: string;
+            };
+            externalUrl: string | null;
+            previewUrl: string | null;
+            sha256: string | null;
+            byteSize: number | null;
+            contentType: string | null;
+            /** @enum {string} */
+            availability: "AVAILABLE" | "LINK_ONLY";
+            importAllowed: boolean;
+            disabledReason: string | null;
+        };
+        ReferenceCatalogEntry: {
+            sourceId: string;
+            /** Format: uuid */
+            snapshotId: string;
+            id: string;
+            kind: components["schemas"]["ReferenceCatalogKind"];
+            title: string;
+            localizedTitle: {
+                [key: string]: string;
+            };
+            code: string;
+            category: string;
+            localizedCategory: {
+                [key: string]: string;
+            };
+            series: {
+                [key: string]: string;
+            };
+            tags: string[];
+            localizedTags: {
+                [key: string]: {
+                    [key: string]: string;
+                };
+            };
+            localizedKeywords: {
+                [key: string]: string;
+            };
+            facets: {
+                [key: string]: string;
+            };
+            collection: string;
+            extended: boolean;
+            externalUrl: string | null;
+            importAllowed: boolean;
+            disabledReason: string | null;
+            variants: components["schemas"]["ReferenceCatalogVariant"][];
+        };
+        ReferenceCatalogFilters: {
+            categories: string[];
+            tags: string[];
+            styles: string[];
+            collections: string[];
+            angles: string[];
+        };
+        ReferenceCatalogPage: {
+            items: components["schemas"]["ReferenceCatalogEntry"][];
+            /** Format: int64 */
+            total: number;
+            offset: number;
+            limit: number;
+            filters: components["schemas"]["ReferenceCatalogFilters"];
+        };
+        CreateReferenceCatalogSource: {
+            id: string;
+            name: string;
+            owner: string;
+            repository: string;
+            ref: string;
+            manifestPath?: string;
+            format: components["schemas"]["ReferenceCatalogFormat"];
+            imageDistributionApproved: boolean;
+        };
+        UpdateReferenceCatalogSource: {
+            expectedVersion: number;
+            enabled: boolean;
+            imageDistributionApproved: boolean;
+        };
+        SyncReferenceCatalogSource: {
+            expectedVersion: number;
+        };
+        ReferenceCatalogSyncResult: {
+            /** @enum {string} */
+            state: "SUCCESS" | "FAILED" | "RUNNING" | "DISABLED" | "SUPERSEDED";
+            source: components["schemas"]["ReferenceCatalogSource"];
+            snapshotId: string | null;
+            entryCount: number;
+            variantCount: number;
+        };
+        ReferenceCatalogPlacement: {
+            x: number;
+            y: number;
+        };
+        ReferenceCatalogImportRequest: {
+            sourceId: string;
+            /** Format: uuid */
+            snapshotId: string;
+            entryId: string;
+            variantId: string;
+            sha256: string;
+            commandKey: string;
+            placement?: components["schemas"]["ReferenceCatalogPlacement"];
+        };
+        ReferenceCatalogImport: {
+            /** Format: uuid */
+            artifactId: string;
+            canvasItemId: string | null;
+            /** Format: uuid */
+            versionId: string;
+            /** Format: uuid */
+            assetId: string;
+            title: string;
+            contentType: string;
+            /** Format: int64 */
+            byteSize: number;
+            width: number;
+            height: number;
+            thumbnailUrl: string;
+        };
+        /** @enum {string} */
         LocalServiceKind: "OLLAMA" | "COMFYUI";
         LocalServiceDiscoveryRequest: {
             service: components["schemas"]["LocalServiceKind"];
@@ -7744,6 +8028,285 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listReferenceCatalogSources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceCatalogSources"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Recovery mode blocks writes */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listReferenceCatalogEntries: {
+        parameters: {
+            query?: {
+                kind?: components["schemas"]["ReferenceCatalogKind"];
+                sourceId?: string;
+                query?: string;
+                category?: string;
+                tag?: string;
+                style?: string;
+                collection?: string;
+                extended?: boolean;
+                angle?: string;
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceCatalogPage"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Recovery mode blocks writes */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createReferenceCatalogSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateReferenceCatalogSource"];
+            };
+        };
+        responses: {
+            /** @description Successful response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceCatalogSource"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Recovery mode blocks writes */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    updateReferenceCatalogSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sourceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateReferenceCatalogSource"];
+            };
+        };
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceCatalogSource"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Recovery mode blocks writes */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    syncReferenceCatalogSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sourceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncReferenceCatalogSource"];
+            };
+        };
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceCatalogSyncResult"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Recovery mode blocks writes */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    importReferenceCatalogImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReferenceCatalogImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceCatalogImport"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Recovery mode blocks writes */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    previewReferenceCatalogImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sourceId: string;
+                snapshotId: string;
+                entryId: string;
+                variantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated image bytes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                    "image/jpeg": string;
+                    "image/webp": string;
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Recovery mode blocks writes */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     discoverLocalService: {
         parameters: {
             query?: never;

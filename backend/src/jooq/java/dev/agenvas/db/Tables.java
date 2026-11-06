@@ -69,6 +69,9 @@ import dev.agenvas.db.tables.ProjectCharacterRevision;
 import dev.agenvas.db.tables.ProjectEvent;
 import dev.agenvas.db.tables.PromptDefinition;
 import dev.agenvas.db.tables.ProviderAttempt;
+import dev.agenvas.db.tables.ReferenceCatalogImport;
+import dev.agenvas.db.tables.ReferenceCatalogSnapshot;
+import dev.agenvas.db.tables.ReferenceCatalogSource;
 import dev.agenvas.db.tables.SkillBindingCommand;
 import dev.agenvas.db.tables.SkillDraft;
 import dev.agenvas.db.tables.SkillInstallCommand;
@@ -433,6 +436,21 @@ public class Tables {
      * 固定任务租约和连接能力版本的外部提交尝试；结果未知时禁止自动重提
      */
     public static final ProviderAttempt PROVIDER_ATTEMPT = ProviderAttempt.PROVIDER_ATTEMPT;
+
+    /**
+     * Durable exact image import replay without provider execution
+     */
+    public static final ReferenceCatalogImport REFERENCE_CATALOG_IMPORT = ReferenceCatalogImport.REFERENCE_CATALOG_IMPORT;
+
+    /**
+     * Immutable safe catalog metadata; previous ready snapshot survives failure
+     */
+    public static final ReferenceCatalogSnapshot REFERENCE_CATALOG_SNAPSHOT = ReferenceCatalogSnapshot.REFERENCE_CATALOG_SNAPSHOT;
+
+    /**
+     * Admin registered public GitHub metadata sources; manual sync only
+     */
+    public static final ReferenceCatalogSource REFERENCE_CATALOG_SOURCE = ReferenceCatalogSource.REFERENCE_CATALOG_SOURCE;
 
     /**
      * Agent Skill 绑定命令的幂等摘要与响应

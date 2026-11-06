@@ -129,12 +129,23 @@ class RecoveryModePostgresIT {
         var adminAuthentication = authentication(new UsernamePasswordAuthenticationToken(
                 owner, null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
         for (String settingsPath : List.of("/api/v1/settings/media-styles",
-                "/api/v1/settings/media-templates")) {
+                "/api/v1/settings/media-templates", "/api/v1/settings/reference-catalog/sources")) {
             mvc.perform(post(settingsPath).with(adminAuthentication).with(csrf())
                             .contentType(MediaType.APPLICATION_JSON).content("{}"))
                     .andExpect(status().isServiceUnavailable())
                     .andExpect(jsonPath("$.code").value("RECOVERY_MODE_READ_ONLY"));
         }
+        mvc.perform(get("/api/v1/reference-catalog/sources").with(authentication))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/v1/settings/reference-catalog/sources/synthetic/sync")
+                        .with(adminAuthentication).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"expectedVersion\":0}"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("RECOVERY_MODE_READ_ONLY"));
+        mvc.perform(post("/api/v1/projects/" + project.id() + "/reference-catalog/import")
+                        .with(authentication).with(csrf()).contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("RECOVERY_MODE_READ_ONLY"));
         mvc.perform(post("/api/v1/skills").with(authentication).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content("{\"title\":\"Frozen Skill\"}"))
                 .andExpect(status().isServiceUnavailable())

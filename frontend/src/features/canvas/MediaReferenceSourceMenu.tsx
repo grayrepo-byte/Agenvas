@@ -5,13 +5,13 @@ import { Button } from "../../shared/ui/primitives/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from "../../shared/ui/primitives/dropdown-menu";
 
 const SOURCE_CLOSE_DELAY_MS = 120;
-export type MediaReferenceSource = "upload" | "resources" | "canvas" | "library";
+export type MediaReferenceSource = "upload" | "resources" | "canvas" | "library" | "catalog";
 
 /** Ordinary references and named workflow slots share the same source interaction. */
-export function MediaReferenceSourceMenu({ label, title, disabled = false, suspended = false, libraryDisabled = false, uploadDisabled = false,
+export function MediaReferenceSourceMenu({ label, title, disabled = false, suspended = false, libraryDisabled = false, uploadDisabled = false, catalogDisabled = true,
   className = "media-draft-reference-add", invalid, children, open: controlledOpen, onOpenChange,
   onTrigger, onChoose }: {
-  label: string; title?: string; disabled?: boolean; suspended?: boolean; libraryDisabled?: boolean; uploadDisabled?: boolean;
+  label: string; title?: string; disabled?: boolean; suspended?: boolean; libraryDisabled?: boolean; uploadDisabled?: boolean; catalogDisabled?: boolean;
   className?: string; invalid?: boolean; children?: ReactNode; open?: boolean;
   onOpenChange?: (open: boolean) => void; onTrigger?: (trigger: HTMLButtonElement) => void;
   onChoose: (source: MediaReferenceSource, trigger: HTMLButtonElement) => void;
@@ -85,6 +85,9 @@ export function MediaReferenceSourceMenu({ label, title, disabled = false, suspe
           </DropdownMenuItem>
           <DropdownMenuItem disabled={libraryDisabled} onSelect={(event) => { event.preventDefault(); choose("library"); }}>
             <ImagesSquare /><span>{t("media.editor.chooseLibrary")}</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled={catalogDisabled || libraryDisabled} onSelect={(event) => { event.preventDefault(); choose("catalog"); }}>
+            <ImagesSquare /><span>{t("reference.title")}</span>
           </DropdownMenuItem>
           <DropdownMenuItem disabled aria-label={t("media.editor.sketchUnavailableLabel")} title={t("media.editor.sketchUnavailable")}>
             <PaintBrush /><span>{t("media.editor.sketchReference")}</span><small>{t("media.editor.notAvailable")}</small>

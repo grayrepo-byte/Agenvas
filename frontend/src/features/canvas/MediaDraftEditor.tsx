@@ -43,6 +43,9 @@ import { Alert,AlertDescription } from "../../shared/ui/primitives/alert";
 import { Button } from "../../shared/ui/primitives/button";
 import { DropdownMenu,DropdownMenuContent,DropdownMenuGroup,DropdownMenuItem,DropdownMenuTrigger } from "../../shared/ui/primitives/dropdown-menu";
 import { Input } from "../../shared/ui/primitives/input";
+import { Dialog } from "../../shared/ui/Dialog";
+import { ReferenceCatalog } from "../reference-catalog/ReferenceCatalog";
+import { useCatalogReferenceApplication } from "../reference-catalog/useCatalogReferenceApplication";
 import { LibraryReferencePicker } from "../library/LibraryReferencePicker";
 import { MediaTemplatePicker } from "../templates/MediaTemplatePicker";
 import { templateDraftChanges, type TemplateApplyOptions } from "../templates/templateApplication";
@@ -228,6 +231,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   const draggedReferenceIndex = useRef<number | null>(null);
   const runIntent = useRef<RunIntent | null>(null);
   const [libraryBusy, setLibraryBusy] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
   const [templateBusy, setTemplateBusy] = useState(false);
   const [characterOpen, setCharacterOpen] = useState(false);
@@ -279,6 +283,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   const workflow = workflowDefinition(chosenCapability);
   const chosenCapabilityRef = useRef(chosenCapability);
   useLayoutEffect(() => { chosenCapabilityRef.current = chosenCapability; }, [chosenCapability]);
+  const catalogApplication = useCatalogReferenceApplication({ projectId: artifact.projectId, canvasItemId, kind: artifact.kind,
+    capability: chosenCapability, slotKey: workflowPickerFieldKey, colors: INPUT_COLORS, session, onApplied: () => setCatalogOpen(false) });
   const canvas = useQuery({
     queryKey: ["canvas", artifact.projectId],
     queryFn: () => listCanvasItems(artifact.projectId),
@@ -473,7 +479,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     readOnly: editorReadOnly,
     refreshBlocked: commitAssetReferences.isPending || libraryBusy || templateBusy || characterOpen || run.isPending,
     autosaveBlocked: commitAssetReferences.isPending || removeConnectedInput.isPending
-      || libraryBusy || templateBusy || characterOpen || popover === "libraryReferences",
+      || libraryBusy || templateBusy || characterOpen || catalogOpen || popover === "libraryReferences",
     closeBlocked: libraryBusy || templateBusy || characterBusy,
   });
 
@@ -1121,6 +1127,11 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         prompt={fields.prompt} hasMentions={fields.mentions.length > 0} onApply={(prompt) => edit({ prompt, mentions: [] })} /> : null}
       <span className={`media-draft-save-state${error ? " is-error" : ""}`} role="status">{saveLabel}</span>
     </div>
+    {catalogOpen ? <Dialog className="reference-picker-dialog" title={t("reference.title")} busy={libraryBusy} onClose={() => setCatalogOpen(false)} onSubmit={(event) => event.preventDefault()}
+      footer={<Button type="button" variant="outline" disabled={libraryBusy} onClick={() => setCatalogOpen(false)}>{t("common.close")}</Button>}>
+      <ReferenceCatalog projectId={artifact.projectId} disabledReason={catalogApplication.disabledReason} onApply={catalogApplication.onApply}
+        onBusy={(busy) => { catalogApplication.onBusy(busy); setLibraryBusy(busy); }} />
+    </Dialog> : null}
     {characterOpen ? <CharacterBindingsDialog projectId={artifact.projectId} itemId={canvasItemId} session={session} readOnly={editorReadOnly}
       onBusy={setCharacterBusy} onClose={() => setCharacterOpen(false)} /> : null}
     {templateOpen && (artifact.kind === "IMAGE" || artifact.kind === "VIDEO") ? <MediaTemplatePicker projectId={artifact.projectId}
@@ -1135,7 +1146,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       <div className="media-draft-popover-anchor">
         <Input ref={uploadInputRef} className="media-draft-upload-input" type="file"
           accept={[MEDIA_FILE_ACCEPT.IMAGE, ...(audioCapacity > 0 ? [MEDIA_FILE_ACCEPT.AUDIO] : []), ...(videoCapacity > 0 ? [MEDIA_FILE_ACCEPT.VIDEO] : [])].join(",")} multiple aria-label={videoCapacity > 0 ? t("media.editor.chooseLocalAllMedia") : audioCapacity > 0 ? t("media.editor.chooseLocalMedia") : t("media.editor.chooseLocalImage")} onChange={handleUploadSelection} />
-        <MediaReferenceSourceMenu open={referenceSourcesOpen && !popover} onOpenChange={setReferenceSourcesOpen} suspended={Boolean(popover)}
+        <MediaReferenceSourceMenu catalogDisabled={false} open={referenceSourcesOpen && !popover} onOpenChange={setReferenceSourcesOpen} suspended={Boolean(popover)}
           disabled={editorReadOnly || !chosenCapability || referenceLimitReached || uploading || commitAssetReferences.isPending}
           libraryDisabled={save.isPending || expectedVersion === null}
           label={videoCapacity > 0 ? t("media.editor.addVideoMediaInput") : audioCapacity > 0 ? t("media.editor.addMixedInput") : t("media.editor.addImageInput")}
@@ -1144,6 +1155,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
           onChoose={(source) => {
             setWorkflowPickerFieldKey(null);
             if (source === "upload") uploadInputRef.current?.click();
+            else if (source === "catalog") setCatalogOpen(true);
             else if (source === "resources") openAssetReferences();
             else setPopover(source === "canvas" ? "canvasReferences" : "libraryReferences");
           }} />
@@ -1175,11 +1187,12 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       canvasChoices={canvasChoices.map((choice) => ({ id: choice.versionId, label: `${choice.title} · v${choice.versionNo}`,
         kind: choice.kind, available: true, thumbnailUrl: choice.kind === "AUDIO" ? undefined : assetThumbnailUrl(artifact.projectId, choice.assetId) }))}
       disabled={editorReadOnly || run.isPending || removeConnectedInput.isPending || libraryBusy}
-      libraryDisabled={save.isPending || expectedVersion === null || workflowUploading} pickerOpen={Boolean(popover)}
+      catalogEnabled libraryDisabled={save.isPending || expectedVersion === null || workflowUploading} pickerOpen={Boolean(popover)}
       onChooseSource={(field, source, trigger) => {
         if (source === "library" && workflowUploads.current.size > 0) return;
         triggerRef.current = trigger; setWorkflowPickerFieldKey(field?.key ?? null);
-        if (source === "resources") openAssetReferences();
+        if (source === "catalog") setCatalogOpen(true);
+        else if (source === "resources") openAssetReferences();
         else setPopover(source === "canvas" ? "canvasReferences" : "libraryReferences");
       }} onChange={changeDynamicField} onUpload={uploadDynamicSlot} />}
         {popover === "libraryReferences" && expectedVersion !== null ? <div className="ui-popover-surface media-draft-popover media-draft-library-popover" ref={popoverRef} role="dialog" aria-label={t("media.editor.libraryReferences")}>

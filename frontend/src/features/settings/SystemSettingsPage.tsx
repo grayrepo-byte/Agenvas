@@ -18,6 +18,7 @@ import "./SettingsPages.css";
 import "./SystemSettingsPage.css";
 import { SystemDiagnosticsSection } from "./SystemDiagnosticsSection";
 import { MediaStyleSettingsSection } from "./MediaStyleSettingsSection";
+import { ReferenceSourcesSettings } from "../reference-catalog/ReferenceSourcesSettings";
 import { SystemMediaTemplatesSection } from "../templates/MediaTemplatePicker";
 
 const TABS = ["general", "prompts", "styles", "security", "logs", "diagnostics", "templates"] as const;
@@ -92,7 +93,7 @@ export function SystemSettingsPage() {
       {tab === "security" ? <><PasswordChangeSection /><McpTokensSection key={currentUser.data?.id} userId={currentUser.data?.id} enabled={currentUser.isSuccess && selected === tab} /></> : null}
       {tab === "logs" ? <><CallLogRetentionSection enabled={currentUser.isSuccess && selected === tab} /><DebugModeSection enabled={currentUser.isSuccess && selected === tab} /></> : null}
       {tab === "diagnostics" ? <SystemDiagnosticsSection enabled={currentUser.isSuccess && selected === tab} /> : null}
-      {tab === "templates" ? <SystemMediaTemplatesSection enabled={currentUser.data?.role === "ADMIN" && selected === tab} /> : null}
+      {tab === "templates" ? <><SystemMediaTemplatesSection enabled={currentUser.data?.role === "ADMIN" && selected === tab} /><ReferenceSourcesSettings enabled={currentUser.data?.role === "ADMIN" && selected === tab} /></> : null}
     </TabsContent>)}
     </div>
     </Tabs>

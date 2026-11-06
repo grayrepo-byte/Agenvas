@@ -3025,4 +3025,56 @@ describe("MediaDraftEditor", () => {
     expect(screen.getByText(/本地视频参考需要管理员配置/)).toBeVisible();
   });
 
+  it("appends a catalog image without replacing character references, prompt, parameters or running generation", async () => {
+    const generate = vi.fn(); let imported = false;
+    const original: MediaDraft = { ...initialDraft, capabilityId: imageCapability.id, prompt: "Character direction stays", parameters: { quality: "high" },
+      mediaInputs: [{ versionId: "character-v1", role: "REFERENCE", color: "#F15CAF", artifactId: "character", order: 0, sources: [{ id: "manual", type: "MANUAL", connectionId: null }] }] };
+    const { saves } = setup({ draft: original, handlers: [
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ role: "USER" })),
+      http.get("/api/v1/reference-catalog/sources", () => HttpResponse.json({ items: [] })),
+      http.get("/api/v1/reference-catalog", () => HttpResponse.json({ items: [{ sourceId: "pack", snapshotId: "snapshot", id: "pose", kind: "POSE", title: "合成姿势", category: "动作", tags: [], facets: {}, importAllowed: true,
+        variants: [{ id: "front", label: "正面", importAllowed: true, availability: "AVAILABLE", sha256: "abc", previewUrl: "/api/v1/reference-catalog/preview/front" }] }], total: 1, offset: 0, limit: 50 })),
+      http.post(`/api/v1/projects/${PROJECT_ID}/reference-catalog/import`, () => { imported = true; return HttpResponse.json({ versionId: "pose-v1", artifactId: "pose", assetId: "pose-asset", title: "合成姿势" }); }),
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [
+        { ...artifact, id: "character", resourceDefaultVersionId: "character-v1" }, ...(imported ? [{ ...artifact, id: "pose", resourceDefaultVersionId: "pose-v1" }] : [])] })),
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/character/versions`, () => HttpResponse.json({ items: [{ id: "character-v1", versionNo: 1, content: { assetId: "character-asset" } }] })),
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/pose/versions`, () => HttpResponse.json({ items: [{ id: "pose-v1", versionNo: 1, content: { assetId: "pose-asset" } }] })),
+      http.post(`${BASE}/run`, () => { generate(); return HttpResponse.json(task("READY")); }),
+    ] });
+    const user = userEvent.setup(); await screen.findByRole("textbox", { name: "图片提示词" });
+    await user.click(screen.getByRole("button", { name: "添加图片输入" }));
+    await user.click(screen.getByRole("menuitem", { name: "姿势与服装参考" }));
+    await user.click(await screen.findByRole("button", { name: "预览 合成姿势" }));
+    await user.click(screen.getByRole("button", { name: "追加为参考图" }));
+    await waitFor(() => expect(saves.at(-1)?.mediaInputs).toHaveLength(2));
+    expect(saves.at(-1)).toMatchObject({ prompt: original.prompt, parameters: original.parameters,
+      mediaInputs: [{ versionId: "character-v1", role: "REFERENCE", color: "#F15CAF" }, { versionId: "pose-v1", role: "REFERENCE" }] });
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("recovers a lost catalog draft acknowledgement without importing twice or saving a second version", async () => {
+    let serverDraft: MediaDraft = { ...initialDraft, capabilityId: imageCapability.id }; let saves = 0; let imports = 0;
+    setup({ draft: serverDraft, handlers: [
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ role: "USER" })),
+      http.get("/api/v1/reference-catalog/sources", () => HttpResponse.json({ items: [] })),
+      http.get("/api/v1/reference-catalog", () => HttpResponse.json({ items: [{ sourceId: "pack", snapshotId: "snapshot", id: "pose", kind: "POSE", title: "合成姿势", category: "动作", tags: [], facets: {}, importAllowed: true,
+        variants: [{ id: "front", label: "正面", importAllowed: true, availability: "AVAILABLE", sha256: "abc" }] }], total: 1, offset: 0, limit: 50 })),
+      http.post(`/api/v1/projects/${PROJECT_ID}/reference-catalog/import`, () => { imports++; return HttpResponse.json({ versionId: "pose-v1", artifactId: "pose", assetId: "pose-asset", title: "合成姿势" }); }),
+      http.get(DRAFT_URL, () => HttpResponse.json(serverDraft)),
+      http.put(DRAFT_URL, async ({ request }) => {
+        const input = await request.json() as SaveMediaDraftRequest; saves++;
+        if (input.expectedVersion !== serverDraft.version) return HttpResponse.json({ title: "CAS conflict", code: "MEDIA_DRAFT_CONFLICT" }, { status: 409, headers: { "Content-Type": "application/problem+json" } });
+        serverDraft = { ...serverDraft, ...input, version: serverDraft.version + 1, mediaInputs: input.mediaInputs.map((item, order) => ({ ...item, order, artifactId: "pose", sources: [] })) };
+        return HttpResponse.error();
+      }),
+    ] });
+    const user = userEvent.setup(); await screen.findByRole("textbox", { name: "图片提示词" });
+    await user.click(screen.getByRole("button", { name: "添加图片输入" })); await user.click(screen.getByRole("menuitem", { name: "姿势与服装参考" }));
+    await user.click(await screen.findByRole("button", { name: "预览 合成姿势" })); await user.click(screen.getByRole("button", { name: "追加为参考图" }));
+    await screen.findByText("导入或应用失败，草稿已保留。重试会继续同一次图片导入。");
+    await user.click(screen.getByRole("button", { name: "重试" }));
+    await waitFor(() => expect(screen.queryAllByRole("dialog", { hidden: true })).toHaveLength(0));
+    expect(imports).toBe(1); expect(saves).toBe(1);
+  });
+
 });

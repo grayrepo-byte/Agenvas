@@ -1,0 +1,28 @@
+.reference-catalog { display: flex; flex-direction: column; gap: var(--ui-space-4); min-width: 0; }
+.reference-toolbar, .reference-filters { display: flex; align-items: center; flex-wrap: wrap; gap: var(--ui-space-2); }
+.reference-toolbar { justify-content: space-between; }
+.reference-filters input { flex: 1 1 220px; }
+.reference-filters .ui-select { flex: 0 1 180px; }
+.reference-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: var(--ui-space-3); }
+.reference-card { display: flex; flex-direction: column; align-items: stretch; height: auto; padding: var(--ui-space-2); white-space: normal; text-align: start; gap: var(--ui-space-2); min-width: 0; }
+.reference-card-image { flex: none; display: flex; align-items: center; justify-content: center; aspect-ratio: 1; background: var(--ui-surface-raised); border-radius: var(--ui-radius-md); overflow: hidden; color: var(--ui-text-muted); }
+.reference-card-image img { width: 100%; height: 100%; object-fit: contain; }
+.reference-card strong, .reference-tags { overflow-wrap: anywhere; }
+.reference-tags, .reference-hint, .reference-facet, .reference-empty, .reference-card > span:not(.reference-card-image) { font-size: var(--ui-text-sm); color: var(--ui-text-muted); }
+.reference-preview-dialog, .reference-sources-dialog { --ui-dialog-width: 860px; }
+.reference-preview-dialog .ui-dialog-body { display: flex; flex-direction: column; gap: var(--ui-space-4); }
+/* Keep the full image in scrollable content when the dialog has little vertical space. */
+.reference-preview-image { flex: none; display: flex; align-items: center; justify-content: center; min-height: 180px; background: var(--ui-surface-raised); padding: var(--ui-space-3); }
+.reference-preview-image img { max-height: 360px; max-width: 100%; object-fit: contain; }
+.reference-source-list, .reference-source { display: flex; flex-direction: column; gap: var(--ui-space-3); }
+.reference-source { padding-block: var(--ui-space-3); border-bottom: 1px solid var(--ui-border); }
+.reference-source p { margin: 0; overflow-wrap: anywhere; }
+.reference-source-form { margin-top: var(--ui-space-5); }
+@media (max-width: 560px) { .reference-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .reference-filters .ui-select { flex: 1 1 120px; } }
+.reference-picker-dialog { --ui-dialog-width: 1000px; }
+.reference-target { max-width: 360px; }
+@media (min-width: 700px) {
+  .reference-source-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .reference-source-form > h3, .reference-source-form > p, .reference-source-form > button, .reference-source-form > [data-orientation="horizontal"] { grid-column: 1 / -1; }
+}
+.reference-preview-dialog .reference-views { width: auto; flex-wrap: wrap; align-self: flex-start; }

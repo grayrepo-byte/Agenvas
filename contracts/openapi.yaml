@@ -11,6 +11,362 @@ info:
 servers:
   - url: /
 paths:
+  /api/v1/reference-catalog/sources:
+    get:
+      operationId: listReferenceCatalogSources
+      summary: Read configured sources without contacting GitHub
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogSources'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/reference-catalog:
+    get:
+      operationId: listReferenceCatalogEntries
+      summary: Search locally cached pose groups and costume entries
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogPage'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+        - name: kind
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ReferenceCatalogKind'
+        - name: sourceId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: query
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+            default: ''
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: tag
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: style
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: collection
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: extended
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - name: angle
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      description: >-
+        Authenticated local metadata search. OPEN_POSE_COSTUME images remain LINK_ONLY. Filters use stable
+        source identifiers; no provider or image download occurs.
+  /api/v1/settings/reference-catalog/sources:
+    post:
+      operationId: createReferenceCatalogSource
+      summary: Configure a public GitHub metadata source
+      tags:
+        - Reference Catalog
+      responses:
+        '201':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogSource'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReferenceCatalogSource'
+      description: >-
+        Administrator only and CSRF protected. Does not synchronize automatically. Image permission is separate
+        and cannot enable restricted OPEN_POSE_COSTUME images.
+  /api/v1/settings/reference-catalog/sources/{sourceId}:
+    patch:
+      operationId: updateReferenceCatalogSource
+      summary: Enable a source and record reviewed image permission
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogSource'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+        - name: sourceId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateReferenceCatalogSource'
+  /api/v1/settings/reference-catalog/sources/{sourceId}/sync:
+    post:
+      operationId: syncReferenceCatalogSource
+      summary: Manually publish a validated fixed-commit metadata snapshot
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogSyncResult'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+        - name: sourceId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncReferenceCatalogSource'
+      description: >-
+        Administrator only. Bounded credential-free GitHub reads occur outside database transactions. A FAILED
+        result preserves the previous ready snapshot. No image downloads.
+  /api/v1/projects/{projectId}/reference-catalog/import:
+    post:
+      operationId: importReferenceCatalogImage
+      summary: Copy one authorized image variant into an owned active project
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogImport'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReferenceCatalogImportRequest'
+      description: >-
+        Fixed source snapshot, variant and hash. Same key and payload replays the same result; changed payload
+        conflicts. Optional placement creates a canvas image card. No media generation. Restricted and
+        unreviewed images are rejected; project copies survive source changes.
+  /api/v1/reference-catalog/sources/{sourceId}/snapshots/{snapshotId}/entries/{entryId}/variants/{variantId}/preview:
+    get:
+      operationId: previewReferenceCatalogImage
+      summary: Preview one authorized checksum-verified image
+      tags:
+        - Reference Catalog
+      description: >-
+        Authenticated fixed-snapshot read. Permission, hash, byte count, format, dimensions and decoding are
+        checked. No arbitrary URL or gallery proxy. OPEN_POSE_COSTUME remains link-only.
+      parameters:
+        - name: sourceId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: snapshotId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: entryId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: variantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Validated image bytes
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/v1/settings/local-services/discover:
     post:
       operationId: discoverLocalService
@@ -5261,6 +5617,477 @@ components:
       scheme: bearer
       description: 用户级 MCP 访问令牌，仅用于明确列出的 MCP 接口。
   schemas:
+    ReferenceCatalogKind:
+      type: string
+      enum:
+        - POSE
+        - COSTUME
+    ReferenceCatalogFormat:
+      type: string
+      enum:
+        - OPEN_POSE_COSTUME
+        - AGENVAS_REFERENCE_PACK
+    ReferenceCatalogSource:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - owner
+        - repository
+        - ref
+        - manifestPath
+        - format
+        - enabled
+        - imageDistributionApproved
+        - version
+        - currentSnapshotId
+        - lastSyncStatus
+        - lastSyncError
+        - syncedAt
+        - resolvedCommit
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        owner:
+          type: string
+        repository:
+          type: string
+        ref:
+          type: string
+        manifestPath:
+          type: string
+        format:
+          $ref: '#/components/schemas/ReferenceCatalogFormat'
+        enabled:
+          type: boolean
+        imageDistributionApproved:
+          type: boolean
+        version:
+          type: integer
+          minimum: 0
+        currentSnapshotId:
+          anyOf:
+            - type: string
+              format: uuid
+            - type: 'null'
+        lastSyncStatus:
+          type: string
+        lastSyncError:
+          anyOf:
+            - type: string
+            - type: 'null'
+        syncedAt:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+        resolvedCommit:
+          anyOf:
+            - type: string
+            - type: 'null'
+    ReferenceCatalogSources:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReferenceCatalogSource'
+    ReferenceCatalogVariant:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - label
+        - view
+        - angle
+        - localizedLabel
+        - externalUrl
+        - previewUrl
+        - sha256
+        - byteSize
+        - contentType
+        - availability
+        - importAllowed
+        - disabledReason
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        view:
+          type: string
+        angle:
+          type: string
+        localizedLabel:
+          type: object
+          additionalProperties:
+            type: string
+        externalUrl:
+          anyOf:
+            - type: string
+            - type: 'null'
+        previewUrl:
+          anyOf:
+            - type: string
+            - type: 'null'
+        sha256:
+          anyOf:
+            - type: string
+              pattern: ^[a-f0-9]{64}$
+            - type: 'null'
+        byteSize:
+          anyOf:
+            - type: integer
+              format: int64
+              minimum: 1
+            - type: 'null'
+        contentType:
+          anyOf:
+            - type: string
+            - type: 'null'
+        availability:
+          type: string
+          enum:
+            - AVAILABLE
+            - LINK_ONLY
+        importAllowed:
+          type: boolean
+        disabledReason:
+          anyOf:
+            - type: string
+            - type: 'null'
+    ReferenceCatalogEntry:
+      type: object
+      additionalProperties: false
+      required:
+        - sourceId
+        - snapshotId
+        - id
+        - kind
+        - title
+        - localizedTitle
+        - code
+        - category
+        - localizedCategory
+        - series
+        - tags
+        - localizedTags
+        - localizedKeywords
+        - facets
+        - collection
+        - extended
+        - externalUrl
+        - importAllowed
+        - disabledReason
+        - variants
+      properties:
+        sourceId:
+          type: string
+        snapshotId:
+          type: string
+          format: uuid
+        id:
+          type: string
+        kind:
+          $ref: '#/components/schemas/ReferenceCatalogKind'
+        title:
+          type: string
+        localizedTitle:
+          type: object
+          additionalProperties:
+            type: string
+        code:
+          type: string
+        category:
+          type: string
+        localizedCategory:
+          type: object
+          additionalProperties:
+            type: string
+        series:
+          type: object
+          additionalProperties:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+        localizedTags:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties:
+              type: string
+        localizedKeywords:
+          type: object
+          additionalProperties:
+            type: string
+        facets:
+          type: object
+          additionalProperties:
+            type: string
+        collection:
+          type: string
+        extended:
+          type: boolean
+        externalUrl:
+          anyOf:
+            - type: string
+            - type: 'null'
+        importAllowed:
+          type: boolean
+        disabledReason:
+          anyOf:
+            - type: string
+            - type: 'null'
+        variants:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReferenceCatalogVariant'
+    ReferenceCatalogFilters:
+      type: object
+      additionalProperties: false
+      required:
+        - categories
+        - tags
+        - styles
+        - collections
+        - angles
+      properties:
+        categories:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+        styles:
+          type: array
+          items:
+            type: string
+        collections:
+          type: array
+          items:
+            type: string
+        angles:
+          type: array
+          items:
+            type: string
+    ReferenceCatalogPage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - total
+        - offset
+        - limit
+        - filters
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReferenceCatalogEntry'
+        total:
+          type: integer
+          format: int64
+          minimum: 0
+        offset:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+        filters:
+          $ref: '#/components/schemas/ReferenceCatalogFilters'
+    CreateReferenceCatalogSource:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - owner
+        - repository
+        - ref
+        - format
+        - imageDistributionApproved
+      properties:
+        id:
+          type: string
+          maxLength: 100
+        name:
+          type: string
+          maxLength: 160
+        owner:
+          type: string
+          maxLength: 100
+        repository:
+          type: string
+          maxLength: 100
+        ref:
+          type: string
+          maxLength: 160
+        manifestPath:
+          type: string
+          maxLength: 512
+        format:
+          $ref: '#/components/schemas/ReferenceCatalogFormat'
+        imageDistributionApproved:
+          type: boolean
+    UpdateReferenceCatalogSource:
+      type: object
+      additionalProperties: false
+      required:
+        - expectedVersion
+        - enabled
+        - imageDistributionApproved
+      properties:
+        expectedVersion:
+          type: integer
+          minimum: 0
+        enabled:
+          type: boolean
+        imageDistributionApproved:
+          type: boolean
+    SyncReferenceCatalogSource:
+      type: object
+      additionalProperties: false
+      required:
+        - expectedVersion
+      properties:
+        expectedVersion:
+          type: integer
+          minimum: 0
+    ReferenceCatalogSyncResult:
+      type: object
+      additionalProperties: false
+      required:
+        - state
+        - source
+        - snapshotId
+        - entryCount
+        - variantCount
+      properties:
+        state:
+          type: string
+          enum:
+            - SUCCESS
+            - FAILED
+            - RUNNING
+            - DISABLED
+            - SUPERSEDED
+        source:
+          $ref: '#/components/schemas/ReferenceCatalogSource'
+        snapshotId:
+          anyOf:
+            - type: string
+              format: uuid
+            - type: 'null'
+        entryCount:
+          type: integer
+          minimum: 0
+        variantCount:
+          type: integer
+          minimum: 0
+    ReferenceCatalogPlacement:
+      type: object
+      additionalProperties: false
+      required:
+        - x
+        - 'y'
+      properties:
+        x:
+          type: number
+          minimum: -1000000
+          maximum: 1000000
+        'y':
+          type: number
+          minimum: -1000000
+          maximum: 1000000
+    ReferenceCatalogImportRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - sourceId
+        - snapshotId
+        - entryId
+        - variantId
+        - sha256
+        - commandKey
+      properties:
+        sourceId:
+          type: string
+          maxLength: 100
+        snapshotId:
+          type: string
+          format: uuid
+        entryId:
+          type: string
+          maxLength: 100
+        variantId:
+          type: string
+          maxLength: 100
+        sha256:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+        commandKey:
+          type: string
+          minLength: 1
+          maxLength: 200
+        placement:
+          $ref: '#/components/schemas/ReferenceCatalogPlacement'
+    ReferenceCatalogImport:
+      type: object
+      additionalProperties: false
+      required:
+        - artifactId
+        - canvasItemId
+        - versionId
+        - assetId
+        - title
+        - contentType
+        - byteSize
+        - width
+        - height
+        - thumbnailUrl
+      properties:
+        artifactId:
+          type: string
+          format: uuid
+        canvasItemId:
+          anyOf:
+            - type: string
+              format: uuid
+            - type: 'null'
+        versionId:
+          type: string
+          format: uuid
+        assetId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        contentType:
+          type: string
+        byteSize:
+          type: integer
+          format: int64
+          minimum: 1
+        width:
+          type: integer
+          minimum: 1
+        height:
+          type: integer
+          minimum: 1
+        thumbnailUrl:
+          type: string
     LocalServiceKind:
       type: string
       enum: [OLLAMA, COMFYUI]

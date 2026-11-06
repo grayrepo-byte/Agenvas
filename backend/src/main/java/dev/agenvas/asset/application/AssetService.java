@@ -141,8 +141,7 @@ public class AssetService {
             } catch (RuntimeException failure) {
                 if (assets.find(project, id).isEmpty()) {
                     try {
-                        try { storage.discard(prepared.objectKey()); }
-                        finally { if (prepared.thumbnailKey() != null) storage.discard(prepared.thumbnailKey()); }
+                        storage.discardRejectedUpload(project, id, prepared.objectKey(), prepared.thumbnailKey());
                     } catch (RuntimeException cleanupFailure) {
                         failure.addSuppressed(cleanupFailure);
                     }

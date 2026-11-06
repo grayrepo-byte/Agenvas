@@ -34,6 +34,8 @@ import dev.agenvas.db.tables.MediaTemplate;
 import dev.agenvas.db.tables.Project;
 import dev.agenvas.db.tables.ProjectEvent;
 import dev.agenvas.db.tables.ProviderAttempt;
+import dev.agenvas.db.tables.ReferenceCatalogImport;
+import dev.agenvas.db.tables.ReferenceCatalogSnapshot;
 import dev.agenvas.db.tables.SkillInstallOperation;
 import dev.agenvas.db.tables.SkillPublishOperation;
 import dev.agenvas.db.tables.SpringSession;
@@ -102,6 +104,8 @@ public class Indexes {
     public static final Index IX_USAGE_LEDGER_PROJECT_CREATED = Internal.createIndex(DSL.name("ix_usage_ledger_project_created"), UsageLedger.USAGE_LEDGER, new OrderField[] { UsageLedger.USAGE_LEDGER.PROJECT_ID, UsageLedger.USAGE_LEDGER.CREATED_AT.desc(), UsageLedger.USAGE_LEDGER.ID.desc() }, false);
     public static final Index LIBRARY_CLEANUP_DUE_IDX = Internal.createIndex(DSL.name("library_cleanup_due_idx"), LibraryCleanup.LIBRARY_CLEANUP, new OrderField[] { LibraryCleanup.LIBRARY_CLEANUP.NEXT_ATTEMPT_AT, LibraryCleanup.LIBRARY_CLEANUP.CREATED_AT, LibraryCleanup.LIBRARY_CLEANUP.ID }, false);
     public static final Index MEDIA_RELAY_OBJECT_EXPIRY_IDX = Internal.createIndex(DSL.name("media_relay_object_expiry_idx"), MediaRelayObject.MEDIA_RELAY_OBJECT, new OrderField[] { MediaRelayObject.MEDIA_RELAY_OBJECT.EXPIRES_AT }, false);
+    public static final Index REFERENCE_CATALOG_IMPORT_REPLAY = Internal.createIndex(DSL.name("reference_catalog_import_replay"), ReferenceCatalogImport.REFERENCE_CATALOG_IMPORT, new OrderField[] { ReferenceCatalogImport.REFERENCE_CATALOG_IMPORT.OWNER_ID, ReferenceCatalogImport.REFERENCE_CATALOG_IMPORT.PROJECT_ID, ReferenceCatalogImport.REFERENCE_CATALOG_IMPORT.COMMAND_KEY }, true);
+    public static final Index REFERENCE_CATALOG_SNAPSHOT_SOURCE = Internal.createIndex(DSL.name("reference_catalog_snapshot_source"), ReferenceCatalogSnapshot.REFERENCE_CATALOG_SNAPSHOT, new OrderField[] { ReferenceCatalogSnapshot.REFERENCE_CATALOG_SNAPSHOT.SOURCE_ID }, false);
     public static final Index SPRING_SESSION_IX1 = Internal.createIndex(DSL.name("spring_session_ix1"), SpringSession.SPRING_SESSION, new OrderField[] { SpringSession.SPRING_SESSION.SESSION_ID }, true);
     public static final Index SPRING_SESSION_IX2 = Internal.createIndex(DSL.name("spring_session_ix2"), SpringSession.SPRING_SESSION, new OrderField[] { SpringSession.SPRING_SESSION.EXPIRY_TIME }, false);
     public static final Index SPRING_SESSION_IX3 = Internal.createIndex(DSL.name("spring_session_ix3"), SpringSession.SPRING_SESSION, new OrderField[] { SpringSession.SPRING_SESSION.PRINCIPAL_NAME }, false);

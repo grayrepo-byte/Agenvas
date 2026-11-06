@@ -156,3 +156,11 @@ describe("SystemSettingsPage", () => {
   });
 
 });
+it("exposes local reference source configuration from system templates", async () => {
+  server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+    http.get("/api/v1/media-templates", () => HttpResponse.json({ items: [] })),
+    http.get("/api/v1/reference-catalog/sources", () => HttpResponse.json({ items: [] })));
+  render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/settings/system?tab=templates"]}><SystemSettingsPage /></MemoryRouter></QueryClientProvider>);
+  const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "管理来源" }));
+  expect(screen.getByRole("dialog", { name: "参考素材来源" })).toBeInTheDocument();
+});

@@ -20,6 +20,7 @@ import { LibraryBrowser } from "./LibraryBrowser";
 import { CATEGORY_LABELS,KIND_LABELS,MAX_LIBRARY_NAME_LENGTH } from "./libraryLabels";
 import { TransferState,useLibraryTransfer } from "./useLibraryTransfer";
 import { Tabs,TabsContent,TabsList,TabsTrigger } from "../../shared/ui/primitives/tabs";
+import { ReferenceCatalogPage } from "../reference-catalog/ReferenceCatalogPage";
 import { ResourceBrowser } from "./ResourceBrowser";
 import { Separator } from "../../shared/ui/primitives/separator";
 
@@ -36,12 +37,14 @@ export function LibraryPage() {
         <TabsList size="sm" aria-label={t("resources.navigation")}>
           <TabsTrigger value="LIBRARY"><BookmarkSimple data-icon="inline-start" aria-hidden />{t("library.title")}</TabsTrigger>
           <TabsTrigger value="RESOURCES"><Images data-icon="inline-start" aria-hidden />{t("resources.title")}</TabsTrigger>
+          <TabsTrigger value="REFERENCE_CATALOG"><Images data-icon="inline-start" aria-hidden />{t("reference.title")}</TabsTrigger>
           <TabsTrigger value="TRASH"><Trash data-icon="inline-start" aria-hidden />{t("library.page.trash")}</TabsTrigger>
         </TabsList>
         <Button asChild variant="ghost" size="sm"><Link to="/projects">{t("library.page.openCanvas")}<ArrowUpRight data-icon="inline-end" aria-hidden /></Link></Button>
       </div>
       <TabsContent value="LIBRARY"><LibraryBrowser presentation="page" mediaOnly onPick={setSelected} /></TabsContent>
       <TabsContent value="RESOURCES"><ResourceBrowser /></TabsContent>
+      <TabsContent value="REFERENCE_CATALOG"><ReferenceCatalogPage /></TabsContent>
       <TabsContent value="TRASH"><LibraryBrowser presentation="page" mediaOnly trash onPick={setSelected} /></TabsContent>
     </Tabs>
     {selected ? <LibraryDetail key={selected.id} entry={selected} onClose={() => setSelected(null)} /> : null}
