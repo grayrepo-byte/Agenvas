@@ -142,6 +142,31 @@ describe("MediaDraftEditor", () => {
     await waitFor(() => expect(Object.values(useCanvasStore.getState().mediaDraftRecoveries)
       .some((recovery) => recovery.saving)).toBe(false));
   });
+  it("omits the pose and costume catalog from ordinary audio reference sources", async () => {
+    setup({ kind: "AUDIO", settings: audioSettings });
+    const user = userEvent.setup();
+    await screen.findByRole("textbox", { name: "音频提示词" });
+    await user.click(screen.getByRole("button", { name: "添加图片或音频输入" }));
+    const menu = screen.getByRole("menu", { name: "图片来源" });
+    expect(within(menu).queryByRole("menuitem", { name: "姿势与服装参考" })).not.toBeInTheDocument();
+    for (const name of ["从设备上传", "从资源库选择", "从画布选择", "从我的资产选择"]) {
+      expect(within(menu).getByRole("menuitem", { name })).toBeInTheDocument();
+    }
+  });
+
+  it("omits the image catalog from image slots on an unsupported audio workflow editor", async () => {
+    const capability: MediaCapability = { ...audioCapability, settings: { nativeInputs: [
+      { key: "image_source", label: "Audio source image", type: "IMAGE", required: false, advanced: false },
+    ] } };
+    setup({ kind: "AUDIO", settings: { ...audioSettings, connections: [{ ...audioSettings.connections[0]!, capabilities: [capability] }] },
+      draft: { ...initialDraft, capabilityId: capability.id, parameters: { dynamicValues: { image_source: "image-v1" } },
+        mediaInputs: [{ versionId: "image-v1", artifactId: "reference-image", role: "REFERENCE", color: "#F15CAF", order: 0, sources: [] }] } });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "选择Audio source image" }));
+    expect(screen.queryByRole("menuitem", { name: "姿势与服装参考" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "从我的资产选择" })).toBeInTheDocument();
+  });
+
   it.each(["IMAGE", "AUDIO"] as const)("does not expose video camera presets on %s nodes", async (kind) => {
     setup({ kind, ...(kind === "AUDIO" ? { settings: audioSettings } : {}) });
     await screen.findByRole("textbox", { name: kind === "IMAGE" ? "图片提示词" : "音频提示词" });
@@ -330,6 +355,56 @@ describe("MediaDraftEditor", () => {
     expect(screen.getByRole("textbox", { name: "视频提示词" })).toHaveTextContent(preset.prompt);
     cleanup();
     expect(useCanvasStore.getState().mediaDraftRecoveries[`${PROJECT_ID}:${CANVAS_ITEM_ID}`]?.request.prompt).toBe(expectedPrompt);
+  });
+
+  it.each([false, true])("hides unsupported references only when no inputs exist (has inputs: %s)", async (hasInputs) => {
+    const capability = { ...imageCapability, maxReferenceImages: 0 };
+    const { saves } = setup({ settings: { ...settings, connections: [{ ...settings.connections[0]!, capabilities: [capability] }] },
+      draft: { ...initialDraft, mediaInputs: hasInputs ? [{ versionId: "reference-v1", artifactId: "reference-image",
+        role: "REFERENCE", order: 0, color: "#F15CAF", sources: [{ id: "manual-reference", type: "MANUAL", connectionId: null }] }] : [] } });
+    await screen.findByText(capability.name);
+    const editor = screen.getByLabelText(t("media.editor.title"));
+    expect(editor).toHaveAttribute("data-reference-panel", String(hasInputs));
+    if (hasInputs) expect(screen.getByRole("listitem")).toBeInTheDocument();
+    expect(saves).toHaveLength(0);
+  });
+
+  it("offers media settings only when no models are available and reloads without generating", async () => {
+    let generations = 0;
+    setup({ settings: { connections: [], defaults: [] }, handlers: [
+      http.post(`${BASE}/run`, () => { generations++; return HttpResponse.json({}); }),
+    ] });
+    const user = userEvent.setup();
+    const link = await screen.findByRole("link", { name: "配置媒体模型（新标签页）" });
+    expect(link).toHaveAttribute("href", "/settings/media");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "选择可用模型" })).not.toBeInTheDocument();
+    server.use(http.get("/api/v1/settings/media-connections", () => HttpResponse.json(settings)));
+    await user.click(screen.getByRole("button", { name: "重新读取配置" }));
+    await waitFor(() => expect(screen.queryByRole("link", { name: "配置媒体模型（新标签页）" })).not.toBeInTheDocument());
+    expect(screen.getByRole("textbox", { name: "图片提示词" })).toHaveTextContent(initialDraft.prompt);
+    expect(generations).toBe(0);
+  });
+
+  it("opens the existing model picker when models exist but no default is configured", async () => {
+    const { saves } = setup({ settings: { ...settings, defaults: [] } });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "选择可用模型" }));
+    expect(screen.queryByRole("link", { name: "配置媒体模型（新标签页）" })).not.toBeInTheDocument();
+    const menu = screen.getByRole("menu", { name: "生成模型" });
+    await user.click(within(menu).getByRole("menuitemradio"));
+    await waitFor(() => expect(saves).toHaveLength(1));
+    expect(saves[0]?.capabilityId).toBe(imageCapability.id);
+    expect(screen.queryByRole("button", { name: "选择可用模型" })).not.toBeInTheDocument();
+  });
+
+  it("does not show a setup link when media configuration failed to load", async () => {
+    setup({ handlers: [http.get("/api/v1/settings/media-connections", () => HttpResponse.json({ title: "读取失败" }, { status: 503 }))] });
+    await screen.findByText("无法读取模型配置。");
+    expect(screen.getByLabelText(t("media.editor.title"))).toHaveAttribute("data-reference-panel", "true");
+    expect(screen.queryByRole("link", { name: "配置媒体模型（新标签页）" })).not.toBeInTheDocument();
   });
   it("runs one Wan request with finite image count and keeps sequential cost unknown", async () => {
     const capability = nativeCapability(nativeProfiles.find((profile) => profile.adapterId === "WAN_IMAGE")!);
@@ -2788,7 +2863,7 @@ describe("MediaDraftEditor", () => {
         { kind: "IMAGE_GENERATION", capabilityId: null, version: 0 },
       ] }))] });
     const user = userEvent.setup();
-    await screen.findByText("尚未配置默认模型，请选择可用模型或先在媒体设置中配置。");
+    await screen.findByRole("link", { name: "配置媒体模型（新标签页）" });
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
     configured = true;
     failed = true;
@@ -2973,6 +3048,58 @@ describe("MediaDraftEditor", () => {
     const chip = screen.getByRole("listitem", { name: /合成视频 · v1，序号 1/ });
     expect(chip.querySelector("img")?.getAttribute("src")).toContain("asset-video-v1/thumbnail");
     expect(screen.getByText(/本地视频参考需要管理员配置/)).toBeVisible();
+  });
+
+  it("appends a catalog image without replacing character references, prompt, parameters or running generation", async () => {
+    const generate = vi.fn(); let imported = false;
+    const original: MediaDraft = { ...initialDraft, capabilityId: imageCapability.id, prompt: "Character direction stays", parameters: { quality: "high" },
+      mediaInputs: [{ versionId: "character-v1", role: "REFERENCE", color: "#F15CAF", artifactId: "character", order: 0, sources: [{ id: "manual", type: "MANUAL", connectionId: null }] }] };
+    const { saves } = setup({ draft: original, handlers: [
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ role: "USER" })),
+      http.get("/api/v1/reference-catalog/sources", () => HttpResponse.json({ items: [] })),
+      http.get("/api/v1/reference-catalog", () => HttpResponse.json({ items: [{ sourceId: "pack", snapshotId: "snapshot", id: "pose", kind: "POSE", title: "合成姿势", category: "动作", tags: [], facets: {}, importAllowed: true,
+        variants: [{ id: "front", label: "正面", importAllowed: true, availability: "AVAILABLE", sha256: "abc", previewUrl: "/api/v1/reference-catalog/preview/front" }] }], total: 1, offset: 0, limit: 50 })),
+      http.post(`/api/v1/projects/${PROJECT_ID}/reference-catalog/import`, () => { imported = true; return HttpResponse.json({ versionId: "pose-v1", artifactId: "pose", assetId: "pose-asset", title: "合成姿势" }); }),
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [
+        { ...artifact, id: "character", resourceDefaultVersionId: "character-v1" }, ...(imported ? [{ ...artifact, id: "pose", resourceDefaultVersionId: "pose-v1" }] : [])] })),
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/character/versions`, () => HttpResponse.json({ items: [{ id: "character-v1", versionNo: 1, content: { assetId: "character-asset" } }] })),
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/pose/versions`, () => HttpResponse.json({ items: [{ id: "pose-v1", versionNo: 1, content: { assetId: "pose-asset" } }] })),
+      http.post(`${BASE}/run`, () => { generate(); return HttpResponse.json(task("READY")); }),
+    ] });
+    const user = userEvent.setup(); await screen.findByRole("textbox", { name: "图片提示词" });
+    await user.click(screen.getByRole("button", { name: "添加图片输入" }));
+    await user.click(screen.getByRole("menuitem", { name: "姿势与服装参考" }));
+    await user.click(await screen.findByRole("button", { name: "预览 合成姿势" }));
+    await user.click(screen.getByRole("button", { name: "追加为参考图" }));
+    await waitFor(() => expect(saves.at(-1)?.mediaInputs).toHaveLength(2));
+    expect(saves.at(-1)).toMatchObject({ prompt: original.prompt, parameters: original.parameters,
+      mediaInputs: [{ versionId: "character-v1", role: "REFERENCE", color: "#F15CAF" }, { versionId: "pose-v1", role: "REFERENCE" }] });
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("recovers a lost catalog draft acknowledgement without importing twice or saving a second version", async () => {
+    let serverDraft: MediaDraft = { ...initialDraft, capabilityId: imageCapability.id }; let saves = 0; let imports = 0;
+    setup({ draft: serverDraft, handlers: [
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ role: "USER" })),
+      http.get("/api/v1/reference-catalog/sources", () => HttpResponse.json({ items: [] })),
+      http.get("/api/v1/reference-catalog", () => HttpResponse.json({ items: [{ sourceId: "pack", snapshotId: "snapshot", id: "pose", kind: "POSE", title: "合成姿势", category: "动作", tags: [], facets: {}, importAllowed: true,
+        variants: [{ id: "front", label: "正面", importAllowed: true, availability: "AVAILABLE", sha256: "abc" }] }], total: 1, offset: 0, limit: 50 })),
+      http.post(`/api/v1/projects/${PROJECT_ID}/reference-catalog/import`, () => { imports++; return HttpResponse.json({ versionId: "pose-v1", artifactId: "pose", assetId: "pose-asset", title: "合成姿势" }); }),
+      http.get(DRAFT_URL, () => HttpResponse.json(serverDraft)),
+      http.put(DRAFT_URL, async ({ request }) => {
+        const input = await request.json() as SaveMediaDraftRequest; saves++;
+        if (input.expectedVersion !== serverDraft.version) return HttpResponse.json({ title: "CAS conflict", code: "MEDIA_DRAFT_CONFLICT" }, { status: 409, headers: { "Content-Type": "application/problem+json" } });
+        serverDraft = { ...serverDraft, ...input, version: serverDraft.version + 1, mediaInputs: input.mediaInputs.map((item, order) => ({ ...item, order, artifactId: "pose", sources: [] })) };
+        return HttpResponse.error();
+      }),
+    ] });
+    const user = userEvent.setup(); await screen.findByRole("textbox", { name: "图片提示词" });
+    await user.click(screen.getByRole("button", { name: "添加图片输入" })); await user.click(screen.getByRole("menuitem", { name: "姿势与服装参考" }));
+    await user.click(await screen.findByRole("button", { name: "预览 合成姿势" })); await user.click(screen.getByRole("button", { name: "追加为参考图" }));
+    await screen.findByText("导入或应用失败，草稿已保留。重试会继续同一次图片导入。");
+    await user.click(screen.getByRole("button", { name: "重试" }));
+    await waitFor(() => expect(screen.queryAllByRole("dialog", { hidden: true })).toHaveLength(0));
+    expect(imports).toBe(1); expect(saves).toBe(1);
   });
 
 });

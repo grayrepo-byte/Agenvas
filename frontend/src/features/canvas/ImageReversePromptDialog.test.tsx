@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -20,10 +20,13 @@ function task(status: Task["status"] = "READY"): Task {
 function show() {
   const client = createQueryClient();
   const close = vi.fn();
-  const view = render(<QueryClientProvider client={client}>
-    <ImageReversePromptDialog projectId="p" artifactId="a" title="湖边" assetId="asset" request={request} open onClose={close} />
-  </QueryClientProvider>);
-  return { client, close, ...view };
+  const showCard = vi.fn().mockResolvedValue(true);
+  const dialog = (open = true, sourceVersionId = "v") => <QueryClientProvider client={client}>
+    <ImageReversePromptDialog key={sourceVersionId} projectId="p" artifactId="a" title="湖边" assetId="asset"
+      request={{ ...request, sourceVersionId }} open={open} onClose={close} onShowCard={showCard} />
+  </QueryClientProvider>;
+  const view = render(dialog());
+  return { client, close, showCard, ...view, reopen: (open: boolean, source = "v") => view.rerender(dialog(open, source)) };
 }
 
 describe("ImageReversePromptDialog", () => {
@@ -45,6 +48,76 @@ describe("ImageReversePromptDialog", () => {
     http.get(path, () => HttpResponse.json([])),
     http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
   ));
+
+  it("restores a persisted text card and opens it only after refreshing the canvas", async () => {
+    const user = userEvent.setup();
+    let submissions = 0, reads = 0;
+    server.use(http.get(path, () => HttpResponse.json([{ ...task("SUCCEEDED"), input: { schemaVersion: 5, sourceVersionId: "v" },
+      output: { prompt: "已保存的提示词", sourceVersionId: "v", mock: false,
+        artifactId: "text-artifact", artifactVersionId: "text-version", canvasItemId: "text-item" } }])),
+      http.get("/api/v1/projects/p/canvas/items", () => { reads++; return HttpResponse.json({ projectId: "p", items: [{ id: "text-item" }], groups: [] }); }),
+      http.post(path, () => { submissions++; return HttpResponse.json(task()); }));
+    const { showCard, close } = show();
+    await screen.findByText("已生成文字卡片，可在画布中编辑。");
+    expect(screen.getByRole("textbox", { name: "反推提示词" })).toHaveAttribute("readonly");
+    expect(showCard).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "查看文字卡片" }));
+    await waitFor(() => expect(showCard).toHaveBeenCalledWith("text-item", expect.any(AbortSignal)));
+    expect(close).toHaveBeenCalledOnce();
+    expect(reads).toBe(1); expect(submissions).toBe(0);
+  });
+
+  it("retains a saved card result if refreshing the canvas fails", async () => {
+    const user = userEvent.setup();
+    server.use(http.get(path, () => HttpResponse.json([{ ...task("SUCCEEDED"),
+      output: { prompt: "持久结果", mock: true, artifactId: "text-artifact", canvasItemId: "text-item" } }])),
+      http.get("/api/v1/projects/p/canvas/items", () => new HttpResponse(null, { status: 503 })));
+    const { showCard, close } = show();
+    await user.click(await screen.findByRole("button", { name: "查看文字卡片" }));
+    await screen.findByRole("alert");
+    expect(screen.getByRole("textbox")).toHaveValue("持久结果");
+    expect(showCard).not.toHaveBeenCalled(); expect(close).not.toHaveBeenCalled();
+  });
+
+  it("does not recreate a removed result card when opening history", async () => {
+    const user = userEvent.setup(); let writes = 0;
+    server.use(http.get(path, () => HttpResponse.json([{ ...task("SUCCEEDED"),
+      output: { prompt: "原始反推文本", artifactId: "text-artifact", canvasItemId: "removed-card", mock: false } }])),
+      http.get("/api/v1/projects/p/canvas/items", () => HttpResponse.json({ projectId: "p", items: [] })),
+      http.post(path, () => { writes++; return HttpResponse.json(task()); }));
+    const first = show();
+    await user.click(await screen.findByRole("button", { name: "查看文字卡片" }));
+    await screen.findByText("找不到这张文字卡片，可能已被移除。反推原文仍可复制。");
+    expect(first.showCard).not.toHaveBeenCalled(); expect(first.close).not.toHaveBeenCalled();
+    expect(screen.getByRole("textbox")).toHaveValue("原始反推文本");
+    first.unmount();
+    show();
+    await screen.findByText("已生成文字卡片，可在画布中编辑。");
+    expect(screen.getByRole("textbox")).toHaveValue("原始反推文本");
+    expect(writes).toBe(0);
+  });
+
+  it.each(["dismiss", "reopen", "unmount"])("ignores a late view response after %s", async (mode) => {
+    const user = userEvent.setup(); let reads = 0, release = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    server.use(http.get(path, () => HttpResponse.json([{ ...task("SUCCEEDED"),
+      output: { prompt: "原始文本", artifactId: "text-artifact", canvasItemId: "text-item", mock: false } }])),
+      http.get("/api/v1/projects/p/canvas/items", async () => { reads++; await gate; return HttpResponse.json({ items: [{ id: "text-item" }] }); }));
+    const shown = show();
+    await user.click(await screen.findByRole("button", { name: "查看文字卡片" }));
+    await waitFor(() => expect(reads).toBe(1));
+    if (mode === "unmount") shown.unmount();
+    else {
+      await user.click(screen.getByRole("button", { name: "关闭" }));
+      shown.reopen(false);
+      if (mode === "reopen") shown.reopen(true, "other-version");
+    }
+    await act(async () => { release(); });
+    await waitFor(() => expect(shown.client.isMutating()).toBe(0));
+    expect(shown.showCard).not.toHaveBeenCalled();
+    expect(shown.close).toHaveBeenCalledTimes(mode === "unmount" ? 0 : 1);
+    if (mode === "reopen") expect(screen.getByRole("dialog", { name: "提示词反推" })).toBeVisible();
+  });
 
   it("requires an explicit start, pins the selected version and prevents duplicate clicks", async () => {
     const user = userEvent.setup();

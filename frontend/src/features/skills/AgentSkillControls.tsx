@@ -58,14 +58,14 @@ export function SkillVersionPicker({skillId,versionId,onChange,disabled=false}:{
   const selected=useQuery({queryKey:["skill",skillId],queryFn:()=>getSkill(skillId!),
     enabled:Boolean(skillId) && skills.isSuccess && !items.some((skill)=>skill.id===skillId)});
   const versions=useQuery({queryKey:["skill-versions",skillId],queryFn:()=>listSkillVersions(skillId!),enabled:Boolean(skillId)});
-  return <FieldGroup><Field><FieldLabel className="sr-only">{t("skills.search")}</FieldLabel><Input type="search" aria-label={t("skills.search")} placeholder={t("skills.search")} value={search} disabled={disabled} onChange={(event)=>setSearch(event.target.value)} /></Field>
+  return <FieldGroup><Field><FieldLabel className="sr-only">{t("skills.search")}</FieldLabel><Input density="compact" type="search" aria-label={t("skills.search")} placeholder={t("skills.search")} value={search} disabled={disabled} onChange={(event)=>setSearch(event.target.value)} /></Field>
     <SkillCategoryFilter value={category} onChange={setCategory} disabled={disabled} />
     <Field><FieldLabel>{t("skills.choose")}</FieldLabel><Select aria-label={t("skills.choose")} value={skillId??""} disabled={disabled} onChange={(event)=>onChange(event.target.value,"")}><option value="">{t("skills.choose")}</option>
       {skillId && !items.some((skill)=>skill.id===skillId) ? <option value={skillId}>{selected.data ? getSkillLabels(selected.data).title : versions.data?.[0]?.name ?? t("skills.choose")}</option> : null}
       {skillCatalogueGroups(items).map((group)=><optgroup key={group.label} label={group.label}>{group.items.map((skill)=><option key={skill.id} value={skill.id}>{getSkillLabels(skill).title}</option>)}</optgroup>)}
     </Select></Field>
     <Field><FieldLabel>{t("skills.versions")}</FieldLabel><Select aria-label={t("skills.versions")} value={versionId??""} disabled={disabled || !skillId || versions.isPending} onChange={(event)=>onChange(skillId!,event.target.value)}><option value="">{t("skills.noVersion")}</option>{versions.data?.map((version)=><option key={version.id} value={version.id}>{t("skills.version",{"0":version.versionNumber})}</option>)}</Select></Field>
-    {skills.hasNextPage ? <Button variant="outline" disabled={skills.isFetchingNextPage} onClick={()=>void skills.fetchNextPage()}>{t("projects.loadMore")}</Button> : null}
+    {skills.hasNextPage ? <Button size="sm" variant="outline" disabled={skills.isFetchingNextPage} onClick={()=>void skills.fetchNextPage()}>{t("projects.loadMore")}</Button> : null}
     {skills.isPending ? <LoadingState compact label={t("common.loading")} /> : null}
     {skills.isSuccess && !items.length ? <EmptyState title={t("skills.empty")} description={t("skills.emptyHint")} /> : null}
     {skills.error || versions.error || selected.error ? <SkillError error={(skills.error??versions.error??selected.error)!} onRefresh={()=>{void skills.refetch();if(skillId){void versions.refetch();if(selected.isEnabled)void selected.refetch();}}} /> : null}
@@ -96,11 +96,11 @@ export function AgentSkillSettings({projectId,agent,state,onChanged}:{projectId:
     {state.binding.isPending ? <LoadingState label={t("common.loading")} compact /> : null}
     {choices.map((choice,index)=><div key={index}>
       <SkillVersionPicker skillId={choice.skillId} versionId={choice.skillVersionId} disabled={save.isPending} onChange={(skillId,skillVersionId)=>changed(choices.map((item,position)=>position===index ? {skillId,skillVersionId}:item))} />
-      {choices.length>1 ? <Button variant="ghost" type="button" disabled={save.isPending} onClick={()=>changed(choices.filter((_,position)=>position!==index))}>{t("skills.removeChoice")}</Button> : null}
+      {choices.length>1 ? <Button size="sm" variant="ghost" type="button" disabled={save.isPending} onClick={()=>changed(choices.filter((_,position)=>position!==index))}>{t("skills.removeChoice")}</Button> : null}
     </div>)}
-    <Button variant="outline" type="button" disabled={choices.length>=MAX_SKILLS || save.isPending} onClick={()=>changed([...choices,{skillId:"",skillVersionId:""}])}>{t("skills.addChoice")}</Button>
-    <div className="ui-form-actions"><Button type="button" disabled={!dirty || !valid || save.isPending || state.binding.isFetching || state.binding.isError} onClick={()=>save.mutate(false)}>{t("skills.saveBinding")}</Button>
-      <Button variant="outline" type="button" disabled={!state.binding.data?.skills.length || save.isPending || state.binding.isFetching || state.binding.isError} onClick={()=>save.mutate(true)}>{t("skills.clear")}</Button></div>
+    <Button size="sm" variant="outline" type="button" disabled={choices.length>=MAX_SKILLS || save.isPending} onClick={()=>changed([...choices,{skillId:"",skillVersionId:""}])}>{t("skills.addChoice")}</Button>
+    <div className="ui-form-actions"><Button size="sm" type="button" disabled={!dirty || !valid || save.isPending || state.binding.isFetching || state.binding.isError} onClick={()=>save.mutate(false)}>{t("skills.saveBinding")}</Button>
+      <Button size="sm" variant="outline" type="button" disabled={!state.binding.data?.skills.length || save.isPending || state.binding.isFetching || state.binding.isError} onClick={()=>save.mutate(true)}>{t("skills.clear")}</Button></div>
     {state.binding.error || save.error ? <SkillError error={(state.binding.error??save.error)!} onRefresh={()=>{
       void state.binding.refetch().then((latest)=>{if(!latest.error && latest.data){baseAgentVersion.current=latest.data.agentVersion;intent.current=null;save.reset();}});
       void client.invalidateQueries({queryKey:["canvas",projectId]});
@@ -144,14 +144,14 @@ function AgentSkillPickerDialog({projectId,agent,selection,onClose,onSelect}:{pr
   return <Dialog title={t("skills.choose")} description={t("skills.pickerHint")} className="skills-dialog agent-skill-picker"
     onClose={onClose} onSubmit={(event)=>{event.preventDefault();event.stopPropagation();if(state.ready && !resources.isError)onSelect({mode:state.choices.length ? "VERSIONS":"NONE",skills:state.choices});}}
     footer={<>
-      <Button variant="outline" type="button" onClick={()=>onSelect({mode:"NONE",skills:[]})}>{t("skills.none")}</Button>
-      <Button variant="outline" type="button" onClick={onClose}>{t("common.cancel")}</Button>
-      <Button type="submit" disabled={!state.ready || resources.isError}>{t("skills.use")}</Button>
+      <Button size="sm" variant="outline" type="button" onClick={()=>onSelect({mode:"NONE",skills:[]})}>{t("skills.none")}</Button>
+      <Button size="sm" variant="outline" type="button" onClick={onClose}>{t("common.cancel")}</Button>
+      <Button size="sm" type="submit" disabled={!state.ready || resources.isError}>{t("skills.use")}</Button>
     </>}>
     <div className="agent-skill-picker-toolbar">
-      <Input type="search" aria-label={t("skills.search")} placeholder={t("skills.search")} value={search} onChange={(event)=>setSearch(event.target.value)} />
+      <Input density="compact" type="search" aria-label={t("skills.search")} placeholder={t("skills.search")} value={search} onChange={(event)=>setSearch(event.target.value)} />
       <SkillCategoryFilter value={category} onChange={setCategory} />
-      {state.binding.data?.skills.length ? <Button variant="outline" type="button" onClick={()=>update(state.binding.data!.skills.map((choice)=>({...choice,inputs:[]})))}>{t("skills.defaultMode")}</Button> : null}
+      {state.binding.data?.skills.length ? <Button size="sm" variant="outline" type="button" onClick={()=>update(state.binding.data!.skills.map((choice)=>({...choice,inputs:[]})))}>{t("skills.defaultMode")}</Button> : null}
     </div>
     <p role="status">{t("skills.selectionLimit",{"0":state.choices.length,"1":MAX_SKILLS})}</p>
     {skills.isPending ? <LoadingState compact label={t("common.loading")} /> : null}
@@ -163,7 +163,7 @@ function AgentSkillPickerDialog({projectId,agent,selection,onClose,onSelect}:{pr
         {selected ? <Check data-icon="inline-start" />:<BookOpen data-icon="inline-start" />}<strong>{getSkillLabels(skill).title}</strong>{skill.builtin ? <StatusBadge>{t("skills.builtin")}</StatusBadge> : null}<span>{getSkillLabels(skill).description}</span>
       </Button>;})}
     </div></section>)}
-    {skills.hasNextPage ? <Button variant="outline" type="button" disabled={skills.isFetchingNextPage} onClick={()=>void skills.fetchNextPage()}>{t("projects.loadMore")}</Button> : null}
+    {skills.hasNextPage ? <Button size="sm" variant="outline" type="button" disabled={skills.isFetchingNextPage} onClick={()=>void skills.fetchNextPage()}>{t("projects.loadMore")}</Button> : null}
     {state.choices.map((choice,index)=><SkillChoicePanel key={choice.skillId} choice={choice} state={state} index={index}
       resources={resources.data} resourcesFetching={resources.isFetching} onChange={(changed)=>update(state.choices.map((item)=>item.skillId===changed.skillId ? changed:item))} />)}
     {error ? <SkillError error={error} onRefresh={()=>{void skills.refetch();state.versions.forEach((query)=>void query.refetch());if(resources.isEnabled)void resources.refetch();}} /> : null}
@@ -197,7 +197,7 @@ function SkillChoicePanel({choice,state,index,resources,resourcesFetching,onChan
         {selected.inputSlots.map((slot)=><Field key={slot.alias}><FieldLabel>{slot.alias}{slot.required ? ` · ${t("skills.required")}`:""}</FieldLabel>
           <Select aria-label={`${slot.alias} · ${t("skills.inputVersion")}`} disabled={resourcesFetching} value={choice.inputs.find((input)=>input.alias===slot.alias)?.artifactVersionId??""}
             onChange={(event)=>{const inputs=choice.inputs.filter((input)=>input.alias!==slot.alias);if(event.target.value)inputs.push({alias:slot.alias,artifactVersionId:event.target.value});onChange({...choice,inputs});}}>
-            <option value="">{t("skills.inputVersion")}</option>{resources?.items.filter((item)=>item.artifact.kind===slot.kind && canvasItemVersionId(item))
+            <option value="">{t("skills.inputVersion")}</option>{resources?.items.filter((item)=>item.artifact?.kind===slot.kind && canvasItemVersionId(item))
               .map((item)=><option key={item.id} value={canvasItemVersionId(item)!}>{item.title}</option>)}
           </Select></Field>)}
       </FieldGroup>

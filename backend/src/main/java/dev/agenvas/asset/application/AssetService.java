@@ -141,8 +141,7 @@ public class AssetService {
             } catch (RuntimeException failure) {
                 if (assets.find(project, id).isEmpty()) {
                     try {
-                        try { storage.discard(prepared.objectKey()); }
-                        finally { if (prepared.thumbnailKey() != null) storage.discard(prepared.thumbnailKey()); }
+                        storage.discardRejectedUpload(project, id, prepared.objectKey(), prepared.thumbnailKey());
                     } catch (RuntimeException cleanupFailure) {
                         failure.addSuppressed(cleanupFailure);
                     }
@@ -212,6 +211,18 @@ public class AssetService {
         return storage.withTaskImageLock(project, assetId, () -> {
             if (assets.find(project, assetId).isPresent()) return true;
             storage.discardPreparedImage(project, assetId);
+            return true;
+        });
+    }
+
+    /** Terminal cleanup for a durable character import, including its crash-before-metadata gap. */
+    public boolean cleanupPlannedCharacterImport(UUID owner, UUID project, UUID assetId, Asset.MediaKind kind,
+            BooleanSupplier stillDiscardable) {
+        projects.getRetainedProject(owner, project);
+        return withMediaLock(project, assetId, kind, () -> {
+            if (!stillDiscardable.getAsBoolean()) return false;
+            if (assets.find(project, assetId).isPresent()) return true;
+            storage.discardPreparedMedia(project, assetId, kind);
             return true;
         });
     }

@@ -19,7 +19,7 @@ public record LlmRequestBudget(int schemaVersion, int contextWindowTokens, int r
                 || outputParameter == null || directorVersion < 1) throw new Failure("MODEL_POLICY_INVALID");
     }
     public static LlmRequestBudget resolve(DirectorSettings settings, LlmModelPolicy policy) {
-        if (policy == null) throw unknown();
+        if (policy == null) policy = LlmModelPolicy.genericDefault();
         int output = Math.min(settings.responseReserveTokens(), policy.maxOutputTokens());
         // With independent input/output declarations, only the application supplies a
         // combined ceiling. The persisted provider policy continues to have no context claim.

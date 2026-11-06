@@ -1,6 +1,7 @@
 package dev.agenvas.canvas.infrastructure;
 
 import static dev.agenvas.db.Tables.CANVAS_ITEM;
+
 import static dev.agenvas.db.Tables.CANVAS_GROUP;
 import static dev.agenvas.db.Tables.CANVAS_ITEM_MEDIA_VERSION;
 import static dev.agenvas.db.Tables.PROJECT;
@@ -100,7 +101,14 @@ public class JooqCanvasItemRepository implements CanvasItemRepository {
                 .set(CANVAS_ITEM.SELECTED_VERSION_ID, item.selectedVersionId())
                 .set(CANVAS_ITEM.MEDIA_SELECTION_EPOCH, item.version())
                 .set(CANVAS_ITEM.TITLE, item.title())
-                .set(CANVAS_ITEM.ARTIFACT_ID, item.subjectId())
+                .set(CANVAS_ITEM.ARTIFACT_ID, item.subjectType() == CanvasItem.SubjectType.ARTIFACT
+                                        ? item.subjectId()
+                                        : null)
+                        .set(
+                                CANVAS_ITEM.CHARACTER_ID,
+                                item.subjectType() == CanvasItem.SubjectType.CHARACTER
+                                        ? item.subjectId()
+                                        : null)
                 .set(CANVAS_ITEM.X, item.x())
                 .set(CANVAS_ITEM.Y, item.y())
                 .set(CANVAS_ITEM.WIDTH, item.width())

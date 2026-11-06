@@ -4,10 +4,19 @@ import { automaticModelOptions, modelOptionsFromPolicy, modelSelection } from ".
 const unloaded: LlmModelMetadata = { id: "model", contextWindowTokens: 131072, inputLimitTokens: null,
   outputLimitTokens: null, runtimeContextTokens: null, digest: null, deploymentContextTokens: null };
 describe("model capacity selection", () => {
-  it("keeps unknown capacity empty and blocks an unconfirmed save", () => {
-    const draft = modelOptionsFromPolicy(null);
-    expect(draft.context).toBe("");
-    expect(modelSelection(draft, "model")).toBeNull();
+  it.each([null, undefined])("allows saving an unknown capacity with the generic million-token default", policy => {
+    const draft = modelOptionsFromPolicy(policy);
+    expect(modelSelection(draft, "model")).toEqual({ provider: "COMPATIBLE", mode: "MANUAL",
+      contextWindowTokens: 1_000_000, inputLimitTokens: null, maxOutputTokens: 4096, outputParameter: "MAX_TOKENS" });
+  });
+  it("retains saved manual capacity and separate input limits without adding a generic context", () => {
+    const policy = { provider: "GEMINI", source: "MANUAL", contextWindowTokens: null,
+      inputLimitTokens: 32000, maxOutputTokens: 2048, outputParameter: "MAX_TOKENS", modelDigest: null,
+      checkedAt: null, runtimeContextTokens: null, theoreticalContextTokens: null, reportedOutputTokens: null } as const;
+    expect(modelSelection(modelOptionsFromPolicy(policy), "model")).toMatchObject({ mode: "MANUAL",
+      contextWindowTokens: null, inputLimitTokens: 32000, maxOutputTokens: 2048 });
+    expect(modelSelection(modelOptionsFromPolicy({ ...policy, contextWindowTokens: 16384 }), "model"))
+      .toMatchObject({ contextWindowTokens: 16384 });
   });
   it("does not promote Ollama architecture capacity or a missing runtime into automatic settings", () => {
     expect(automaticModelOptions({ ...modelOptionsFromPolicy(null), provider: "OLLAMA" }, unloaded, "preview")).toBeNull();

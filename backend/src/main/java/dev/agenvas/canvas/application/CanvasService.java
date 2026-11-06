@@ -85,6 +85,12 @@ public class CanvasService {
     private final Clock clock;
     private final CreationMessages creationMessages;
     private final ObjectProvider<CharacterService> characters;
+    private ObjectProvider<CanvasCharacterNodeService> characterNodes;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void characterNodes(ObjectProvider<CanvasCharacterNodeService> nodes) {
+        this.characterNodes = nodes;
+    }
 
     /** 组装空间投影、布局并发校验和项目事件写入能力。
      * @param projects 校验项目归属和活动状态
@@ -135,6 +141,19 @@ public class CanvasService {
             CanvasItem source = canvasItems.findForUpdate(ownerId, projectId, sourceItemId)
                     .orElseThrow(this::notFound);
             if (source.version() != expectedSourceVersion) throw conflict();
+            if (source.subjectType() == CanvasItem.SubjectType.CHARACTER) {
+                var selection = characterNodes.getObject().view(ownerId, source);
+                if (selection.version() != expectedSourceDraftVersion) throw conflict();
+                CanvasItem target = placement(targetItemId, projectId, CanvasItem.SubjectType.CHARACTER,
+                        source.subjectId(), null, source.title(), x, y, width, height,
+                        zIndex, source.groupId(), false);
+                if (!canvasItems.create(target)) throw conflict();
+                characterNodes.getObject().installCopy(ownerId, projectId, targetItemId, selection.selection(), 0);
+                ObjectNode payload = objectMapper.createObjectNode();
+                payload.putArray("itemIds").add(targetItemId.toString());
+                return ProjectEventService.Change.changed(new DuplicateResult(toEntry(ownerId, target), null),
+                        new ProjectEventService.EventDraft("canvas.items.changed", 1, projectId, 0, payload));
+            }
             ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId,
                     source.subjectId());
             if (artifact.artifact().kind() == Artifact.Kind.TEXT) {
@@ -158,7 +177,9 @@ public class CanvasService {
         }).value();
         // The canvas event has already advanced the locked project sequence. A separate
         // character event can now be appended without nesting changed sequence snapshots.
-        characters.getObject().copyBindingsWithinChange(ownerId, projectId, sourceItemId, targetItemId);
+        if (copied.item().item().subjectType() == CanvasItem.SubjectType.ARTIFACT) {
+            characters.getObject().copyBindingsWithinChange(ownerId, projectId, sourceItemId, targetItemId);
+        }
         return copied;
     }
 
@@ -211,7 +232,8 @@ public class CanvasService {
     @Transactional(readOnly = true)
     public boolean hasArtifactItem(UUID ownerId, UUID projectId, UUID itemId, UUID artifactId) {
         return canvasItems.find(ownerId, projectId, itemId)
-                .filter(item -> item.subjectId().equals(artifactId)).isPresent();
+                .filter(item -> item.subjectType() == CanvasItem.SubjectType.ARTIFACT
+                        && item.subjectId().equals(artifactId)).isPresent();
     }
 
     /**
@@ -252,6 +274,7 @@ public class CanvasService {
     private CanvasItem requireMediaItem(UUID ownerId, UUID projectId, UUID itemId, boolean lock) {
         CanvasItem item = (lock ? canvasItems.findForUpdate(ownerId, projectId, itemId)
                 : canvasItems.find(ownerId, projectId, itemId)).orElseThrow(this::notFound);
+        if (item.subjectType() != CanvasItem.SubjectType.ARTIFACT) throw notFound();
         Artifact.Kind kind = artifacts.get(ownerId, projectId, item.subjectId()).artifact().kind();
         if (kind == Artifact.Kind.TEXT) {
             throw validation(ApiMessage.of("api.canvas-service.only-image-and-video-nodes-have-media-versions"));
@@ -408,6 +431,15 @@ public class CanvasService {
         projects.requireActiveProject(ownerId, projectId);
         ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId, artifactId);
         return placeGeneratedArtifact(ownerId, projectId, artifact, mediaSelection(artifact), groupId);
+    }
+
+    /** Accepted text results survive removal of the source node and project archival. Deleted projects retain only the artifact. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public CanvasItem placeTaskTextWithinChange(UUID ownerId, UUID projectId, UUID artifactId) {
+        if (projects.getRetainedProject(ownerId, projectId).status() == Project.Status.DELETED) return null;
+        ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId, artifactId);
+        if (artifact.artifact().kind() != Artifact.Kind.TEXT) throw new IllegalArgumentException("Expected a text task result");
+        return placeGeneratedArtifact(ownerId, projectId, artifact, null, null);
     }
 
     private CanvasItem placeGeneratedArtifact(UUID ownerId, UUID projectId,
@@ -920,6 +952,14 @@ public class CanvasService {
         if (current.version() != command.expectedVersion()) {
             throw conflict();
         }
+        if (current.subjectType() == CanvasItem.SubjectType.CHARACTER && current.locked()) {
+            throw new ApiProblemException(
+                    HttpStatus.CONFLICT,
+                    "CANVAS_ITEM_LOCKED",
+                    ApiMessage.of("api.creative-artifact-tool-service.card-locked"),
+                    ApiMessage.of("api.canvas-edit.locked"),
+                    false);
+        }
         connections.removeItemConnectionsWithinChange(ownerId, projectId, command.itemId());
         if (!canvasItems.delete(
                         ownerId,
@@ -932,6 +972,9 @@ public class CanvasService {
 
     /** Layout rows refer only to artifacts; the database remains the source of immutable content. */
     CanvasEntry toEntry(UUID ownerId, CanvasItem item) {
+        if (item.subjectType() == CanvasItem.SubjectType.CHARACTER)
+            return new CanvasEntry(
+                    item, null, null, characterNodes.getObject().view(ownerId, item));
         ArtifactService.ArtifactView artifact = artifacts.get(ownerId, item.projectId(), item.subjectId());
         return new CanvasEntry(item, artifact, selectedVersion(ownerId, item, artifact));
     }
@@ -1168,5 +1211,12 @@ public class CanvasService {
     public record CanvasEntry(
             CanvasItem item,
             ArtifactService.ArtifactView artifact,
-            ArtifactVersion selectedVersion) {}
+            ArtifactVersion selectedVersion,
+            CanvasCharacterNodeModels.CharacterNode characterNode) {
+        public CanvasEntry(
+                CanvasItem item,
+                ArtifactService.ArtifactView artifact,
+                ArtifactVersion selectedVersion) {
+            this(item, artifact, selectedVersion, null);}
+}
 }

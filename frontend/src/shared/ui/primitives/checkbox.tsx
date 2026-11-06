@@ -1,17 +1,19 @@
-import { Check as CheckIcon } from "@/shared/ui/icons"
+import { Check as CheckIcon, Minus as MinusIcon } from "@/shared/ui/icons"
 import { cn } from "cn"
 import { Checkbox as CheckboxPrimitive } from "radix-ui"
 import * as React from "react"
 
 function Checkbox({
   className,
+  checked,
   ...props
 }: React.ComponentProps<typeof CheckboxPrimitive.Root>) {
   return (
     <CheckboxPrimitive.Root
       data-slot="checkbox"
+      checked={checked}
       className={cn(
-        "peer size-4 shrink-0 rounded-[4px] border border-input shadow-xs transition-shadow outline-none ui-focusable disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground dark:bg-input/30 dark:aria-invalid:ring-destructive/40 dark:data-[state=checked]:bg-primary",
+        "peer shrink-0 ui-focusable",
         className
       )}
       {...props}
@@ -20,7 +22,8 @@ function Checkbox({
         data-slot="checkbox-indicator"
         className="grid place-content-center text-current transition-none"
       >
-        <CheckIcon className="size-3.5" />
+        <CheckIcon data-check-icon />
+        <MinusIcon data-mixed-icon />
       </CheckboxPrimitive.Indicator>
     </CheckboxPrimitive.Root>
   )

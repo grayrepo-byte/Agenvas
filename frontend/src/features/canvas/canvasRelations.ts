@@ -22,7 +22,7 @@ export function mediaInputSource(items: CanvasItem[], sourceId: string, sourceHa
   if (sourceHandle !== "artifact-output") return null;
   const source = items.find((item) => item.id === sourceId);
   const sourceVersionId = source ? canvasItemVersionId(source) : null;
-  if (!source || !["IMAGE", "AUDIO", "VIDEO"].includes(source.artifact.kind) || !sourceVersionId) return null;
+  if (!source?.artifact || !["IMAGE", "AUDIO", "VIDEO"].includes(source.artifact.kind) || !sourceVersionId) return null;
   return { sourceCanvasItemId: source.id, sourceVersionId };
 }
 
@@ -31,7 +31,7 @@ export function mediaInputConnection(items: CanvasItem[], connection: Connection
   if (connection.targetHandle !== "artifact-input") return null;
   const source = mediaInputSource(items, connection.source, connection.sourceHandle ?? null);
   const target = items.find((item) => item.id === connection.target);
-  if (!source || !target || target.artifact.kind === "TEXT" || source.sourceCanvasItemId === target.id) return null;
+  if (!source || !target?.artifact || target.artifact.kind === "TEXT" || source.sourceCanvasItemId === target.id) return null;
   return { ...source, targetCanvasItemId: target.id };
 }
 

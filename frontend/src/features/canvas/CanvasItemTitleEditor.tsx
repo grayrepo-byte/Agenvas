@@ -125,7 +125,8 @@ export function CanvasItemTitleEditor({ projectId, item, kindLabel }: {
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     event.stopPropagation();
-    if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+    if (event.nativeEvent.isComposing) return;
+    if (event.key === "Enter") {
       event.preventDefault();
       event.currentTarget.blur();
     } else if (event.key === "Escape") {

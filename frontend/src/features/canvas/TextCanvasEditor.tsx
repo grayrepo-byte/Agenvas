@@ -96,7 +96,7 @@ export function TextCanvasEditor({ artifact, canvasItemId, locked, onDone, edito
         <span>{t("common.versionConflict")}</span>
         <Button variant="ghost" type="button" onClick={reload}>{t("common.refreshVersion")}</Button>
       </div> : null}
-      <Textarea ref={editorRef} aria-label={t("text.editor.content")} data-content-editor-focus="true" maxLength={MAX_TEXT_LENGTH}
+      <Textarea variant="ghost" ref={editorRef} aria-label={t("text.editor.content")} data-content-editor-focus="true" maxLength={MAX_TEXT_LENGTH}
         disabled={status.busy} placeholder={t("text.editor.contentPlaceholder")} required value={fields.text}
         onChange={(event) => edit({ text: event.target.value })} />
       {status.dirty ? <span className="text-card-count" role="status">{t("common.unsavedChanges")}</span> : null}
@@ -116,7 +116,7 @@ export function TextCanvasEditor({ artifact, canvasItemId, locked, onDone, edito
       </Select>
       <span className="text-card-count">{fields.text.length}/{MAX_TEXT_LENGTH}</span>
       {locked ? <LockSimple className="content-card-locked" size={13} aria-label={t("canvas.card.locked")} /> : null}
-      <Button variant="ghost" size="icon-xs" aria-label={t("text.editor.exit")} className="text-card-done" disabled={status.busy}
+      <Button variant="secondary" size="icon-xs" aria-label={t("text.editor.exit")} className="text-card-done" disabled={status.busy}
         onClick={requestExit} title={t("text.editor.exit")} type="button"><X size={14} /></Button>
       <Button size="icon-xs" aria-label={t("text.editor.saveVersion")} className="text-card-save" disabled={status.busy || !status.dirty || !valid}
         title={status.saving ? t("common.saving") : t("text.editor.saveVersion")} type="submit"><ArrowUp size={15} weight="bold" /></Button>

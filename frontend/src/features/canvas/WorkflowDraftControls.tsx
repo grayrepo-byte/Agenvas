@@ -35,6 +35,7 @@ export type WorkflowMediaInputsProps = WorkflowValuesProps & {
   onUpload?: (field: CreatorInputField, file: File, options?: { requireEmptySlot: boolean }) => Promise<void>;
   onBusy?: (busy: boolean) => void;
   libraryDisabled?: boolean;
+  catalogEnabled?: boolean;
   pickerOpen?: boolean;
   onChooseSource: (field: CreatorInputField | null, source: Exclude<MediaReferenceSource, "upload">, trigger: HTMLButtonElement) => void;
 };
@@ -49,12 +50,12 @@ function MediaPreview({ choice, kind }: { choice?: WorkflowMediaChoice; kind: Cr
   return <Icon aria-hidden="true" />;
 }
 
-function WorkflowMediaSlot({ field, index, value, choices, canvasChoices, disabled, onChange, onUpload, onBusy, onChooseSource, libraryDisabled, pickerOpen }: {
+function WorkflowMediaSlot({ field, index, value, choices, canvasChoices, disabled, onChange, onUpload, onBusy, onChooseSource, libraryDisabled, catalogEnabled, pickerOpen }: {
   index: number;
   field: CreatorInputField; value: WorkflowValue | undefined; choices: WorkflowMediaChoice[]; canvasChoices: WorkflowMediaChoice[];
   disabled: boolean; onChange: WorkflowValuesProps["onChange"]; onUpload?: WorkflowMediaInputsProps["onUpload"];
   onBusy: (busy: boolean) => void;
-  onChooseSource: WorkflowMediaInputsProps["onChooseSource"]; libraryDisabled?: boolean; pickerOpen?: boolean;
+  onChooseSource: WorkflowMediaInputsProps["onChooseSource"]; libraryDisabled?: boolean; catalogEnabled?: boolean; pickerOpen?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -80,7 +81,7 @@ function WorkflowMediaSlot({ field, index, value, choices, canvasChoices, disabl
       style={hasValue ? { "--reference-color": "var(--ui-accent)" } as CSSProperties : undefined}>
       <MediaReferenceSourceMenu label={t("media.workflow.chooseSlot", { "0": label })}
         className={cn("workflow-media-tile", hasValue ? "workflow-media-filled-trigger" : "media-draft-reference-add")}
-        disabled={locked} invalid={unavailable || !!error} libraryDisabled={libraryDisabled} uploadDisabled={!onUpload}
+        disabled={locked} invalid={unavailable || !!error} libraryDisabled={libraryDisabled} catalogDisabled={!catalogEnabled || field.type !== "IMAGE"} uploadDisabled={!onUpload}
         suspended={pickerOpen}
         title={`${label === field.label ? "" : `${label} · `}${workflowFieldHint(field)}${field.required ? " *" : ""}${choice ? ` · ${choice.label}` : hasValue ? ` · ${t("media.runningHub.savedVersionPending")}` : ""}`}
         onChoose={(source, trigger) => {
@@ -90,7 +91,7 @@ function WorkflowMediaSlot({ field, index, value, choices, canvasChoices, disabl
         {hasValue ? <MediaPreview choice={choice} kind={field.type} /> : undefined}
       </MediaReferenceSourceMenu>
       {hasValue ? <><span className="media-draft-reference-index pointer-events-none" aria-hidden="true">{index + 1}</span>
-        <Button type="button" variant="ghost" className="media-draft-reference-remove" disabled={locked}
+        <Button type="button" variant="ghost" size="icon-xs" className="media-draft-reference-remove" disabled={locked}
           aria-label={t("media.workflow.clearSlot", { "0": label })} onClick={() => onChange(field.key, undefined)}><X size={13} /></Button></> : null}
     </div>
     <span className="sr-only" id={labelId}>{label}{field.required ? " *" : ""}</span>
@@ -146,7 +147,7 @@ function WorkflowMediaAdd({ fields, emptyFields, props, onBusy }: {
   }
   const accept = [...new Set(emptyFields.map((field) => MEDIA_FILE_ACCEPT[field.type as keyof typeof MEDIA_FILE_ACCEPT]))].join(",");
   return <Field className="workflow-media-add" aria-labelledby={labelId} data-disabled={props.disabled} data-invalid={!!error}>
-    <MediaReferenceSourceMenu label={t("media.editor.addVideoMediaInput")} disabled={locked || !emptyFields.length}
+    <MediaReferenceSourceMenu label={t("media.editor.addVideoMediaInput")} catalogDisabled disabled={locked || !emptyFields.length}
       invalid={!!error} libraryDisabled={props.libraryDisabled} uploadDisabled={!props.onUpload} suspended={props.pickerOpen}
       onChoose={(source, trigger) => {
         if (source === "upload") fileInput.current?.click();
@@ -182,7 +183,7 @@ export function WorkflowMediaInputs(props: WorkflowMediaInputsProps) {
     return <WorkflowMediaSlot key={field.key} field={field} index={index}
       value={workflowFieldValue(field, props.values, props.prompt, props.durationSeconds)} choices={props.choices}
       canvasChoices={props.canvasChoices ?? []} disabled={props.disabled ?? false} onChange={props.onChange} onUpload={props.onUpload}
-      onChooseSource={props.onChooseSource} libraryDisabled={props.libraryDisabled} pickerOpen={props.pickerOpen}
+      onChooseSource={props.onChooseSource} libraryDisabled={props.libraryDisabled} catalogEnabled={props.catalogEnabled} pickerOpen={props.pickerOpen}
       onBusy={(busy) => uploadBusy(field, busy)} />;
   }
   return <div className="media-draft-reference-row workflow-media-inputs" aria-label={t("media.workflow.mediaInputs")}>

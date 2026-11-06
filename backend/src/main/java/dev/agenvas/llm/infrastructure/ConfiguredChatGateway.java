@@ -1,6 +1,7 @@
 package dev.agenvas.llm.infrastructure;
 
 import dev.agenvas.llm.application.ChatGateway;
+import dev.agenvas.llm.application.DirectorSettings;
 import dev.agenvas.audit.domain.LlmStreamLog;
 import dev.agenvas.llm.application.LlmProperties;
 import dev.agenvas.llm.application.LlmRequestBudget;
@@ -29,22 +30,23 @@ public class ConfiguredChatGateway implements ChatGateway {
     private volatile RuntimeClient activeClient;
     @Override public LlmRequestBudget requestBudgetFor(ConfigIdentity expected) {
         var config = pinnedConfig(expected);
-        if (config == null || factory == null) throw LlmRequestBudget.unknown();
+        if (config == null) {
+            requireEnvironmentModel();
+            return factory == null ? LlmRequestBudget.resolve(DirectorSettings.defaults(), null)
+                    : factory.requestBudget(null);
+        }
+        if (factory == null) throw LlmRequestBudget.unknown();
         return factory.requestBudget(config);
     }
     @Override public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context,
             ConfigIdentity expected, LlmRequestBudget budget) {
         budget.requireInput(messages, tools);
-        var config = pinnedConfig(expected);
-        if (config == null) throw LlmRequestBudget.unknown();
-        return factory.create(config, budget).call(messages, tools, context);
+        return requireConfigured(pinnedConfig(expected), budget).call(messages, tools, context);
     }
     @Override public Exchange callStreaming(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context,
             ConfigIdentity expected, LlmRequestBudget budget, Consumer<String> delta, boolean captureContent, Consumer<LlmStreamLog> log) {
         budget.requireInput(messages, tools);
-        var config = pinnedConfig(expected);
-        if (config == null) throw LlmRequestBudget.unknown();
-        var pinned = factory.create(config, budget);
+        var pinned = requireConfigured(pinnedConfig(expected), budget);
         return pinned.callStreaming(messages, tools, context, pinned.configIdentity(), delta, captureContent, log);
     }
 
@@ -168,12 +170,23 @@ public class ConfiguredChatGateway implements ChatGateway {
                 return gateway;
             }
         }
-        ChatModel model = models.getIfAvailable();
-        if (model == null) {
-            throw new IllegalStateException("No LLM ChatModel is configured for this installation");
-        }
+        ChatModel model = requireEnvironmentModel();
         return factory == null ? new SpringAiChatGateway(model, properties.configVersion())
                 : factory.environment(model, properties.configVersion());
+    }
+
+    /** Frozen envelopes retain their exact wire limit, including summary and retry requests. */
+    private SpringAiChatGateway requireConfigured(LlmProviderConfig config, LlmRequestBudget budget) {
+        if (config != null) return factory.create(config, budget);
+        ChatModel model = requireEnvironmentModel();
+        return factory == null ? new SpringAiChatGateway(model, properties.configVersion(), null, budget)
+                : factory.environment(model, properties.configVersion(), budget);
+    }
+
+    private ChatModel requireEnvironmentModel() {
+        ChatModel model = models.getIfAvailable();
+        if (model == null) throw new IllegalStateException("No LLM ChatModel is configured for this installation");
+        return model;
     }
 
     /** 只解析 Run 固定的数据库版本或仍未被数据库配置取代的环境版本。 */

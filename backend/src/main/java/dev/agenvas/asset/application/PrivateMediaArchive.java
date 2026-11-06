@@ -69,25 +69,55 @@ public class PrivateMediaArchive {
 
     /** Stable IDs, archive file locks and recovery avoid overwriting bytes after a process restart. */
     public Media archive(UUID ownerId, UUID fileId, Asset.MediaKind kind, InputStream input) {
+        return archive(ownerId, fileId, kind, input, () -> true);
+    }
+
+    /** A durable caller fences delayed writers inside the same lock used by terminal cleanup. */
+    public Media archive(UUID ownerId, UUID fileId, Asset.MediaKind kind, Path source,
+            java.util.function.BooleanSupplier stillActive) {
+        try (InputStream input = Files.newInputStream(source, LinkOption.NOFOLLOW_LINKS)) {
+            return archive(ownerId, fileId, kind, input, stillActive);
+        } catch (IOException failure) { throw new IllegalStateException("Cannot read pinned media", failure); }
+    }
+    private Media archive(UUID ownerId, UUID fileId, Asset.MediaKind kind, InputStream input,
+            java.util.function.BooleanSupplier stillActive) {
         return switch (kind) {
             case IMAGE -> storage.withTaskImageLock(ownerId, fileId, () -> {
+                if (!stillActive.getAsBoolean()) throw new IllegalStateException("Archive lease superseded");
                 var saved = storage.recoverImage(ownerId, fileId).orElseGet(() -> storage.storeImage(ownerId, fileId, input));
                 return new Media(SCHEMA_VERSION, fileId, ownerId, kind, saved.objectKey(), saved.contentType(), saved.byteSize(),
                         saved.sha256(), saved.width(), saved.height(), null, saved.thumbnailKey(),
                         saved.thumbnailByteSize(), saved.thumbnailSha256());
             });
             case VIDEO -> storage.withTaskVideoLock(ownerId, fileId, () -> {
+                if (!stillActive.getAsBoolean()) throw new IllegalStateException("Archive lease superseded");
                 var saved = storage.recoverVideo(ownerId, fileId).orElseGet(() -> storage.storeVideo(ownerId, fileId, input));
                 return new Media(SCHEMA_VERSION, fileId, ownerId, kind, saved.objectKey(), "video/mp4", saved.byteSize(),
                         saved.sha256(), saved.width(), saved.height(), saved.durationMs(), saved.thumbnailKey(),
                         saved.thumbnailByteSize(), saved.thumbnailSha256());
             });
             case AUDIO -> storage.withTaskAudioLock(ownerId, fileId, () -> {
+                if (!stillActive.getAsBoolean()) throw new IllegalStateException("Archive lease superseded");
                 var saved = storage.recoverAudio(ownerId, fileId).orElseGet(() -> storage.storeAudio(ownerId, fileId, input));
                 return new Media(SCHEMA_VERSION, fileId, ownerId, kind, saved.objectKey(), saved.contentType(), saved.byteSize(),
                         saved.sha256(), null, null, saved.durationMs(), null, null, null);
             });
         };
+    }
+
+    /** Only a terminal command may discard its own unregistered deterministic output. */
+    public void cleanupUnregistered(UUID ownerId, UUID fileId, Asset.MediaKind kind,
+            java.util.function.BooleanSupplier stillDiscardable) {
+        java.util.function.Supplier<Boolean> cleanup = () -> {
+            if (!stillDiscardable.getAsBoolean()) return false;
+            storage.discardPreparedMedia(ownerId, fileId, kind);
+            return true;
+        };
+        switch (kind) {
+            case IMAGE -> storage.withTaskImageLock(ownerId, fileId, cleanup);
+            case AUDIO -> storage.withTaskAudioLock(ownerId, fileId, cleanup);
+            case VIDEO -> throw new IllegalArgumentException("Character media excludes video");
+        }
     }
 
     public Path file(UUID ownerId, Media media, boolean thumbnail) {

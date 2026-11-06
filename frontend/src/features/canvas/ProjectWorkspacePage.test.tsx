@@ -1,3 +1,4 @@
+import type { ArtifactCanvasItem } from "./versionedArtifact";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { act,fireEvent,render,screen,waitFor,within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -73,7 +74,7 @@ function connectionsProjection(readItems: () => ProjectSnapshot["connections"]) 
 }
 
 /** One persisted image artifact with an archived UPLOAD version. */
-function imageCard(): CanvasItem {
+function imageCard(): ArtifactCanvasItem {
   const now = "2026-09-24T00:00:00Z";
   return {
     id: "image-card", subjectType: "ARTIFACT", subjectId: "image-id",
@@ -97,7 +98,7 @@ function imageCard(): CanvasItem {
   };
 }
 
-function textCard(): CanvasItem {
+function textCard(): ArtifactCanvasItem {
   const item = imageCard();
   return { ...item, id: "text-card", subjectId: "text-id", title: "Notes", width: 280, height: 180,
     artifact: { ...item.artifact, id: "text-id", kind: "TEXT", title: "Notes",

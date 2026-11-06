@@ -1,6 +1,7 @@
 package dev.agenvas.canvas.domain;
 
 import java.math.BigDecimal;
+
 import java.time.Instant;
 import java.util.UUID;
 
@@ -68,6 +69,8 @@ public record CanvasItem(
     /** 可投影到画布上的业务对象类别。 */
     public enum SubjectType {
         /** 画布项引用 Artifact；媒体卡片渲染自身选用的版本。 */
-        ARTIFACT
+        ARTIFACT,
+        /** Fixed project-character configuration; no Artifact or media result. */
+        CHARACTER
     }
 }

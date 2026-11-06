@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "license": "CC0-1.0",
+  "entries": [
+    {
+      "id": "synthetic-neutral",
+      "kind": "POSE",
+      "title": "Synthetic neutral stance",
+      "category": "standing",
+      "tags": [
+        "geometric",
+        "test"
+      ],
+      "facets": {},
+      "variants": [
+        {
+          "id": "neutral-front",
+          "label": "Front",
+          "view": "front",
+          "path": "images/neutral-front.png",
+          "sha256": "6c2082eb2340e65d35308a4a8ad5e8d78a6bd2a578758667141cf090389f7450",
+          "byteSize": 1404,
+          "contentType": "image/png"
+        },
+        {
+          "id": "neutral-high",
+          "label": "High",
+          "view": "high",
+          "path": "images/neutral-high.png",
+          "sha256": "b0b2857dd0408d2f37b451ff0ab8cac9eaf1ebd891a6acc84f75c24fbee1397a",
+          "byteSize": 1258,
+          "contentType": "image/png"
+        },
+        {
+          "id": "neutral-low",
+          "label": "Low",
+          "view": "low",
+          "path": "images/neutral-low.png",
+          "sha256": "92892ce86198208cc99acce2faec50a9322c3799ac8f781f15513a43e765505e",
+          "byteSize": 1430,
+          "contentType": "image/png"
+        },
+        {
+          "id": "neutral-side",
+          "label": "Side",
+          "view": "side",
+          "path": "images/neutral-side.png",
+          "sha256": "87a7caf71edf1ff847341a45a5eda0f84fb337dc84a42f960fa98f971049ad08",
+          "byteSize": 1208,
+          "contentType": "image/png"
+        },
+        {
+          "id": "neutral-diag",
+          "label": "Diag",
+          "view": "diag",
+          "path": "images/neutral-diag.png",
+          "sha256": "335d2705c0cdf00f7ec753a2c0c3b2409e0a789e1c97abb99444ce2460c1e429",
+          "byteSize": 1361,
+          "contentType": "image/png"
+        }
+      ]
+    },
+    {
+      "id": "synthetic-reach",
+      "kind": "POSE",
+      "title": "Synthetic reaching stance",
+      "category": "gestures",
+      "tags": [
+        "geometric",
+        "test"
+      ],
+      "facets": {},
+      "variants": [
+        {
+          "id": "reach-front",
+          "label": "Front",
+          "view": "front",
+          "path": "images/reach-front.png",
+          "sha256": "097b3fcc02607cdba76e78a88972db45b63b7f20b2b3ff510a41d62e016d7908",
+          "byteSize": 1286,
+          "contentType": "image/png"
+        }
+      ]
+    },
+    {
+      "id": "synthetic-coat",
+      "kind": "COSTUME",
+      "title": "Synthetic geometric coat",
+      "category": "winter",
+      "tags": [
+        "geometric",
+        "test"
+      ],
+      "facets": {
+        "season": "winter"
+      },
+      "variants": [
+        {
+          "id": "coat-front",
+          "label": "Front",
+          "view": "front",
+          "path": "images/coat-front.png",
+          "sha256": "f5cdbb8ccc6282ea736248bd6ed00cae0d19ede09e5041db04af3b929241606e",
+          "byteSize": 1632,
+          "contentType": "image/png"
+        }
+      ]
+    }
+  ]
+}

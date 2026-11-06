@@ -3,7 +3,7 @@ import { useCallback, useLayoutEffect, useRef, type ComponentProps } from "react
 import { Input } from "./primitives/input";
 import "./Range.css";
 
-type RangeProps = Omit<ComponentProps<typeof Input>, "type"> & {
+type RangeProps = Omit<ComponentProps<typeof Input>, "type" | "variant"> & {
   variant?: "parameter" | "media" | "temperature" | "waveform";
 };
 

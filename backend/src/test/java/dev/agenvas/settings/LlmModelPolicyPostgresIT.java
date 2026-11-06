@@ -68,7 +68,7 @@ class LlmModelPolicyPostgresIT {
             assertThat(configs.status().version()).isEqualTo(before); assertThat(requests).hasValue(1);
         } finally { http.stop(0); }
     }
-    @Test void capacityIsImmutableAndOldCapacityStaysUnknown() {
+    @Test void capacityIsImmutableAndLegacyConnectionsUseRuntimeDefaultsWithoutBeingRewritten() {
         configs.replace(0, "https://10.0.0.5/v1", "synthetic-model", "synthetic-policy-key");
         var old = repository.findVersion(1).orElseThrow();
         assertThat(old.modelPolicy()).isNull();
@@ -80,8 +80,11 @@ class LlmModelPolicyPostgresIT {
         var fixed = new dev.agenvas.llm.application.ChatGateway.ConfigIdentity("stored", 2);
         assertThat(gateway.requestBudgetFor(fixed).contextWindowTokens()).isEqualTo(16384);
         assertThat(gateway.requestBudgetFor(fixed).responseReserveTokens()).isEqualTo(2048);
-        assertThatThrownBy(() -> gateway.requestBudgetFor(new dev.agenvas.llm.application.ChatGateway.ConfigIdentity("stored", 1)))
-                .hasMessage("MODEL_CAPACITY_UNKNOWN");
+        var legacyBudget = gateway.requestBudgetFor(new dev.agenvas.llm.application.ChatGateway.ConfigIdentity("stored", 1));
+        assertThat(legacyBudget.contextWindowTokens()).isEqualTo(32768);
+        assertThat(legacyBudget.responseReserveTokens()).isEqualTo(4096);
+        assertThat(legacyBudget.inputBudget()).isEqualTo(28672);
+        assertThat(legacyBudget.outputParameter()).isEqualTo(LlmModelPolicy.OutputParameter.MAX_TOKENS);
         assertThat(repository.findVersion(1).orElseThrow()).usingRecursiveComparison().ignoringFields("active").isEqualTo(old);
         assertThatThrownBy(() -> configs.replace(1, "https://10.0.0.5/v1", "synthetic-model", "synthetic-policy-key", selection))
                 .isInstanceOf(ApiProblemException.class);

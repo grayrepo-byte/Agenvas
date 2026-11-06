@@ -30,9 +30,9 @@ export function AudioPromptTools({ projectId, canvasItemId, prompt, hasMentions,
   useLocale();
   const [mode, setMode] = useState<Mode | null>(null);
   return <><span className="audio-prompt-tools">
-    <Button variant="ghost" type="button" aria-label={t("audio.promptTools.assistantTitle")} title={t("audio.promptTools.assistant")} onClick={() => setMode("assist")}><MagicWand size={15} /></Button>
-    <Button variant="ghost" type="button" aria-label={t("audio.promptTools.translateTitle")} title={t("audio.promptTools.translate")} onClick={() => setMode("translate")}><Translate size={15} /></Button>
-    <Button variant="ghost" type="button" aria-label={t("audio.promptTools.expandLabel")} title={t("audio.promptTools.expand")} onClick={() => setMode("expand")}><ArrowsOutSimple size={15} /></Button>
+    <Button variant="ghost" size="icon-xs" type="button" aria-label={t("audio.promptTools.assistantTitle")} title={t("audio.promptTools.assistant")} onClick={() => setMode("assist")}><MagicWand size={15} /></Button>
+    <Button variant="ghost" size="icon-xs" type="button" aria-label={t("audio.promptTools.translateTitle")} title={t("audio.promptTools.translate")} onClick={() => setMode("translate")}><Translate size={15} /></Button>
+    <Button variant="ghost" size="icon-xs" type="button" aria-label={t("audio.promptTools.expandLabel")} title={t("audio.promptTools.expand")} onClick={() => setMode("expand")}><ArrowsOutSimple size={15} /></Button>
   </span>{mode ? <PromptToolDialog mode={mode} projectId={projectId} canvasItemId={canvasItemId}
     prompt={prompt} hasMentions={hasMentions} onApply={onApply} onClose={() => setMode(null)} /> : null}</>;
 }

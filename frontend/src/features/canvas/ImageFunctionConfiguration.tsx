@@ -11,14 +11,14 @@ import { RunningHubForm } from "./RunningHubForm";
 import { workflowValidationErrors, type WorkflowValue } from "./workflowFields";
 import "./ImageFunctionConfiguration.css";
 
-type Submission = Pick<RunImageOperationRequest, "expectedFunctionVersion" | "expectedCapabilityVersion" | "parameters" | "instruction" | "referenceVersionIds" | "maskAssetId">;
+type Submission = Pick<RunImageOperationRequest, "expectedFunctionVersion" | "expectedCapabilityVersion" | "parameters" | "instruction" | "referenceVersionIds" | "maskAssetId" | "markupAssetId">;
 type Configuration = {
   capability: MediaCapability;
   controls: ReactNode;
   parameterControls: ReactNode;
   submitDisabled: boolean;
   submit: (parameters: RunImageOperationRequest["parameters"], instruction?: string,
-    extras?: Pick<RunImageOperationRequest, "referenceVersionIds" | "maskAssetId">) => void;
+    extras?: Pick<RunImageOperationRequest, "referenceVersionIds" | "maskAssetId" | "markupAssetId">) => void;
 };
 
 /** All image workspaces consume the same administrator route and pin its displayed versions. */
@@ -35,7 +35,7 @@ export function ImageFunctionConfiguration({ operation, sourceVersionId, busy, o
   if (configured && setting) return <ConfiguredImageFunction key={`${operation}:${setting.version}:${configured.capability.capabilityVersion}`}
     configured={configured} version={setting.version} sourceVersionId={sourceVersionId} busy={busy} onSubmit={onSubmit}>{children}</ConfiguredImageFunction>;
   return <div className="media-operation-panel video-operation-panel nodrag nowheel nopan" role="dialog" aria-label={imageOperationLabel(operation)}>
-    <header><strong>{imageOperationLabel(operation)}</strong><Button variant="ghost" type="button" aria-label={t("common.close")} disabled={busy} onClick={onClose}><X size={16} /></Button></header>
+    <header><strong>{imageOperationLabel(operation)}</strong><Button variant="ghost" size="icon-sm" type="button" aria-label={t("common.close")} disabled={busy} onClick={onClose}><X size={16} /></Button></header>
     {functions.isPending || settings.isPending ? <p role="status">{t("app.pageLoading")}</p>
       : functions.error || settings.error ? <p role="alert">{(functions.error ?? settings.error)?.message}
         <Button variant="ghost" type="button" onClick={() => { void functions.refetch(); void settings.refetch(); }}>{t("common.retry")}</Button></p>

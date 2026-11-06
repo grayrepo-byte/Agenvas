@@ -139,6 +139,15 @@ public class StorageRepository {
                 .and(ASSET_STORAGE_ROUTE.METADATA_JSON.isNull()).execute() != 1)
             throw new IllegalStateException("Archive metadata already checkpointed");
     }
+    /** Preserve the selected destination while making a rejected upload recoverable again. */
+    public void resetRejectedUpload(UUID project, UUID asset) {
+        if (dsl.fetchExists(dev.agenvas.db.Tables.ASSET, dev.agenvas.db.Tables.ASSET.PROJECT_ID.eq(project)
+                .and(dev.agenvas.db.Tables.ASSET.ID.eq(asset))))
+            throw new IllegalStateException("Registered media cannot lose its archive receipt");
+        dsl.update(ASSET_STORAGE_ROUTE).setNull(ASSET_STORAGE_ROUTE.METADATA_JSON)
+                .set(ASSET_STORAGE_ROUTE.READY, false)
+                .where(ASSET_STORAGE_ROUTE.PROJECT_ID.eq(project).and(ASSET_STORAGE_ROUTE.ASSET_ID.eq(asset))).execute();
+    }
     public void ready(UUID project, UUID asset) {
         if (dsl.update(ASSET_STORAGE_ROUTE).set(ASSET_STORAGE_ROUTE.READY, true)
                 .where(ASSET_STORAGE_ROUTE.PROJECT_ID.eq(project)).and(ASSET_STORAGE_ROUTE.ASSET_ID.eq(asset)).execute() != 1)

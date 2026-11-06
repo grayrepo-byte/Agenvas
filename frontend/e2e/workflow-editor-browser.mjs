@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,7 +17,9 @@ const pollMs = 50;
 const timeoutMs = 15_000;
 const tolerance = 1;
 const workflowAddSelector = "button[aria-label='添加参考素材']";
-const referenceSourceNames = ["从设备上传", "从资源库选择", "从画布选择", "从我的资产选择"];
+const messages = JSON.parse(await readFile(new URL("../src/shared/i18n/locales/zh.json", import.meta.url), "utf8"));
+const referenceSourceNames = ["media.editor.upload", "media.editor.chooseResources", "media.editor.chooseCanvas",
+  "media.editor.chooseLibrary"].map((key) => messages[key]);
 const syntheticImage = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#6670a6"/><circle cx="32" cy="24" r="12" fill="#d2d8f0"/><path d="M12 64 Q32 30 52 64" fill="#d2d8f0"/></svg>').toString("base64");
 const viewports = [
   { width: 2560, height: 1179 },
@@ -124,20 +126,27 @@ function referenceMenu() {
     items: items.map((item) => ({ text: item.textContent.trim(), disabled: item.getAttribute("aria-disabled") === "true" })) };
 }
 
-async function openReferenceMenu(selector, viewport) {
+async function openReferenceMenu(selector, viewport, catalogEnabled = true) {
   await pointerClick(selector);
   await waitFor(() => Boolean(document.querySelector(".media-draft-reference-sources[role=menu]")));
   const menu = await page(referenceMenu);
   assert.equal(menu.label, "图片来源", "Both ordinary and workflow slots expose the existing source menu");
   assert.ok(menu.classes.includes("media-draft-reference-sources"), "Source menus share the existing CSS class");
-  assert.deepEqual(menu.items.slice(0, referenceSourceNames.length), referenceSourceNames.map((text) => ({ text, disabled: false })));
-  assert.equal(menu.items.length, referenceSourceNames.length + 1);
+  const sourceNames = catalogEnabled ? [...referenceSourceNames, messages["reference.title"]] : referenceSourceNames;
+  assert.deepEqual(menu.items.slice(0, sourceNames.length), sourceNames.map((text) => ({ text, disabled: false })));
+  assert.equal(menu.items.length, sourceNames.length + 1);
   assert.ok(menu.items.at(-1).text.includes("绘制引用图") && menu.items.at(-1).disabled,
     "The unavailable sketch action stays disabled for every adapter");
   const bounds = menu.bounds;
+  if (!(bounds.x >= -tolerance && bounds.y >= -tolerance && bounds.right <= viewport.width + tolerance
+    && bounds.bottom <= viewport.height + tolerance)) await captureReferenceScreenshot("source-menu-overflow");
   assert.ok(bounds.x >= -tolerance && bounds.y >= -tolerance && bounds.right <= viewport.width + tolerance
-    && bounds.bottom <= viewport.height + tolerance, "Reference source menu must fit the viewport");
+    && bounds.bottom <= viewport.height + tolerance, `Reference source menu must fit the viewport: ${JSON.stringify({ selector, viewport, bounds })}`);
   return menu;
+}
+
+function sharedReferenceItemStyles(ordinaryMenu, workflowMenu) {
+  return workflowMenu.items.map((item) => ordinaryMenu.itemStyles[ordinaryMenu.items.findIndex((source) => source.text === item.text)]);
 }
 
 async function assertReferencePickerFits(viewport) {
@@ -162,9 +171,9 @@ async function assertWorkflowReferenceCount(selectedCount = 0) {
 async function verifyWorkflowPickers(baseUrl, query, expectedMenu, viewport) {
   await cdp("Page.navigate", { url: new URL(`${route}?${query}`, baseUrl).href });
   await assertWorkflowReferenceCount();
-  const menu = await openReferenceMenu(workflowAddSelector, viewport);
+  const menu = await openReferenceMenu(workflowAddSelector, viewport, false);
   assert.deepEqual(menu.style, expectedMenu.style, "Workflow source menus must use the ordinary editor surface");
-  assert.deepEqual(menu.itemStyles, expectedMenu.itemStyles, "Workflow and ordinary source actions must share CSS");
+  assert.deepEqual(menu.itemStyles, sharedReferenceItemStyles(expectedMenu, menu), "Workflow and ordinary source actions must share CSS");
   const adapter = query.includes("runninghub") ? "runninghub" : "comfyui";
   await captureReferenceScreenshot(`${adapter}-source-menu`);
   await clickNamed("menuitem", "从资源库选择");
@@ -191,7 +200,7 @@ async function verifyWorkflowPickers(baseUrl, query, expectedMenu, viewport) {
   assert.deepEqual(await page(() => window.__workflowFixtureDraft.mediaInputs.map((input) => input.versionId)), ["synthetic-image-v1"],
     "Replacing a slot preserves the picked exact version and removes its prior unassigned reference");
 
-  await openReferenceMenu(workflowAddSelector, viewport);
+  await openReferenceMenu(workflowAddSelector, viewport, false);
   await clickNamed("menuitem", "从我的资产选择");
   await waitFor(() => Boolean(document.querySelector(".media-draft-library-popover .library-browser")));
   await assertReferencePickerFits(viewport);
@@ -305,17 +314,24 @@ try {
       console.log(JSON.stringify({ viewport, openAiGeometry: ordinary.geometry, workflowGeometry: initial.geometry }));
       assert.deepEqual(initial.editorStyle, ordinary.editorStyle, "Workflow editor border and padding must match OpenAI");
       assert.deepEqual(initial.tileStyle, ordinary.tileStyle, "The single workflow add entry must use the OpenAI reference button appearance");
-      // RunningHub exposes different toolbar controls, which can wrap differently on narrow screens.
-      const sharedGeometry = Object.entries(initial.geometry).filter(([key]) => workflowQuery !== "runninghub" || key !== "editorHeight");
+      assert.ok(initial.editor.height <= viewport.height - 32 + tolerance,
+        "The initial workflow editor must remain accessible inside the viewport");
+      // Optional reference help and provider-specific toolbar wrapping determine total height.
+      // Compare shared hit areas and writing space without requiring those different blocks to align.
+      const sharedGeometry = Object.entries(initial.geometry).filter(([key]) =>
+        !["editorHeight", "tileY", "promptY"].includes(key));
       for (const [key, value] of sharedGeometry) assert.ok(Math.abs(value - ordinary.geometry[key]) <= tolerance,
         `${key} must match OpenAI: ${value} vs ${ordinary.geometry[key]}`);
+      const promptGap = (geometry) => geometry.promptY - geometry.tileY - geometry.tileHeight;
+      assert.ok(Math.abs(promptGap(initial.geometry) - promptGap(ordinary.geometry)) <= tolerance,
+        "Spacing between references and prompt must stay consistent");
       for (const gap of initial.tileGaps) assert.ok(Math.abs(gap - ordinary.referenceGap) <= tolerance, "Workflow slots must use the OpenAI reference spacing");
       assert.equal(initial.inlineParameters, 0, "Scalar parameters must stay out of the main editor");
       assert.ok(initial.prompt.height > 40 && initial.toolbar.bottom <= initial.editor.bottom + tolerance,
         "Prompt and toolbar must remain visible in the compact editor");
-      const workflowMenu = await openReferenceMenu(workflowAddSelector, viewport);
+      const workflowMenu = await openReferenceMenu(workflowAddSelector, viewport, false);
       assert.deepEqual(workflowMenu.style, ordinaryMenu.style, "Workflow source menu shares the ordinary editor CSS surface");
-      assert.deepEqual(workflowMenu.itemStyles, ordinaryMenu.itemStyles, "Workflow source actions share the ordinary editor CSS");
+      assert.deepEqual(workflowMenu.itemStyles, sharedReferenceItemStyles(ordinaryMenu, workflowMenu), "Workflow source actions share the ordinary editor CSS");
       await clickNamed("menuitem", "从我的资产选择");
       await waitFor(() => Boolean(document.querySelector(".media-draft-library-popover .library-browser")));
       await assertReferencePickerFits(viewport);
@@ -373,5 +389,5 @@ try {
   }
   if (server?.close) await server.close();
   else if (server) await new Promise((resolve, reject) => server.httpServer.close((error) => error ? reject(error) : resolve()));
-  await rm(profile, { recursive: true, force: true });
+  await rm(profile, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
 }

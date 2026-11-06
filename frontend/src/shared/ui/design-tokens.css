@@ -4,6 +4,8 @@
   /* Modal surfaces sit above canvas NodeToolbars; portal order handles nested dialogs. */
   --ui-z-dialog: 2400;
   --ui-z-popup: 2500;
+  --ui-media-scrim: #000;
+  --ui-media-overlay-foreground: #fff;
   --ui-video-output-background: #000;
   --ui-video-subtitle-foreground: #fff;
   --ui-video-subtitle-outline: #000;
@@ -88,9 +90,11 @@
   --ui-model-menu-width: 340px;
   --ui-menu-shadow: 0 16px 48px #0006, inset 0 1px 0 #ffffff08;
   --ui-panel-shadow: 0 4px 16px #00000014, inset 0 1px 0 #ffffff04;
-  --ui-focus-width: 2px;
-  --ui-focus-offset: 2px;
-  --ui-focus-shadow: 0 0 0 var(--ui-focus-width) var(--ui-accent-ring);
+  --ui-focus-width: 0px;
+  --ui-focus-offset: 0px;
+  --ui-focus-shadow: none;
+  --ui-focus-border: var(--ui-border-strong);
+  --ui-focus-surface: var(--ui-hover);
   --ui-inset-highlight: inset 0 0 0 1px #ffffff04;
   --ui-duration: 150ms;
   /* Canvas surfaces and motion share one vocabulary; position/size never animate during drag. */

@@ -63,6 +63,19 @@ public interface AssetStorage {
     }
     void discard(String objectKey);
 
+    /** Removes deterministic unpublished bytes without decoding or resuming remote uploads. */
+    default void discardPreparedMedia(UUID projectId, UUID assetId, dev.agenvas.asset.domain.Asset.MediaKind kind) {
+        if (kind == dev.agenvas.asset.domain.Asset.MediaKind.IMAGE) { discardPreparedImage(projectId, assetId); return; }
+        if (kind != dev.agenvas.asset.domain.Asset.MediaKind.AUDIO) throw new IllegalArgumentException("Unsupported prepared kind");
+        String prefix = projectId + "/" + assetId;
+        for (String suffix : java.util.List.of(".mp3", ".wav", ".ogg")) discard(prefix + suffix);
+    }
+
+    /** Rejected publication cleanup; caller holds the media lock and has checked READY absence. */
+    default void discardRejectedUpload(UUID projectId, UUID assetId, String original, String thumbnail) {
+        try { discard(original); } finally { if (thumbnail != null) discard(thumbnail); }
+    }
+
     /** Removes controlled server-derived image keys without decoding or resuming an upload. */
     default void discardPreparedImage(UUID projectId, UUID assetId) {
         String prefix = projectId + "/" + assetId;

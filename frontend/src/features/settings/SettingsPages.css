@@ -3,7 +3,6 @@
 .settings-save-bar { justify-content: space-between; padding-top: var(--ui-space-4); border-top: 1px solid var(--ui-border); }
 .settings-config-summary { display: grid; gap: 6px; padding-bottom: 18px; border-bottom: 1px solid var(--line); font-size: var(--ui-text-md); }
 .settings-consent { display: flex; align-items: flex-start; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: var(--ui-radius-lg); background: var(--ui-field); font-size: var(--ui-text-md); line-height: 1.6; cursor: pointer; }
-.settings-consent input { flex: none; width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--accent); }
 .settings-status-line { display: flex; align-items: flex-start; gap: 10px; font-size: var(--ui-text-md); line-height: 1.6; }
 .settings-status-line svg { flex: none; color: var(--muted); }
 .settings-mode-summary { font-size: var(--ui-text-md); line-height: 1.8; }
@@ -61,17 +60,32 @@
 }
 
 /* Editing and verification follow one reading order; media administration stays below it. */
-.llm-workflow-intro { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 22px; }
-.llm-workflow-intro p { margin: 0; color: var(--ui-text-muted); font-size: var(--ui-text-md); line-height: 1.7; }
+.llm-workflow-intro { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.llm-workflow-intro p { margin: 0; color: var(--ui-text-muted); font-size: 12px; line-height: 1.6; }
 .llm-workflow-intro .ui-badge { max-width: 100%; }
 .settings-step-label { margin: 0; color: var(--ui-text-secondary); font-size: var(--ui-text-sm); font-weight: 600; }
 .llm-settings-layout > .llm-media-panel { grid-column: 1 / -1; }
-.llm-saved-model { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 14px; overflow-wrap: anywhere; font-weight: 600; }
-.llm-saved-model > span { color: var(--ui-text-muted); font-size: var(--ui-text-sm); font-weight: 400; }
-.llm-settings-layout .settings-config-summary { padding: 14px 16px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: var(--ui-field); }
-.llm-diagnostic-action { flex-direction: column; align-items: stretch; gap: 12px; }
+.llm-saved-model { display: grid; gap: 2px; min-width: 0; font-size: 12px; font-weight: 600; }
+.llm-saved-model > span { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.llm-saved-model > .llm-saved-endpoint { color: var(--ui-text-muted); font-size: 11px; font-weight: 400; }
+.app-shell--settings .llm-settings-layout .llm-saved-summary { display: grid; grid-template-columns: minmax(80px, .7fr) minmax(0, 1.4fr) minmax(100px, 1fr); align-items: center; gap: 12px; min-height: 52px; padding: 8px 12px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: var(--ui-field); font-size: 11px; line-height: 1.5; }
+.llm-credential-note { margin: -6px 0 0; font-size: 11px; line-height: 1.6; }
+.llm-model-options { min-width: 0; }
+.llm-model-options .ui-stack.ui-muted { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; font-size: 11px; }
+.llm-model-options .ui-stack.ui-muted > p { margin: 0; overflow-wrap: anywhere; }
+.llm-diagnostic-action { align-items: center; justify-content: space-between; gap: 8px; }
 .llm-diagnostic-action > span { font-size: var(--ui-text-sm); line-height: 1.7; }
-.llm-diagnostic-action > button { width: 100%; white-space: normal; height: auto; min-height: var(--ui-control-height); }
+.llm-diagnostic-action > button { margin-left: auto; white-space: normal; height: auto; min-height: var(--ui-control-height-compact); }
 .llm-waiting-icon { width: 40px; height: 40px; color: var(--ui-text-subtle); }
-@media (min-width: 1181px) { .app-shell--studio .settings-page-layout.llm-settings-layout { grid-template-columns: minmax(0, 1.35fr) minmax(320px, .8fr); gap: 24px; } }
-@media (max-width: 560px) { .llm-workflow-intro { margin-bottom: 16px; } .llm-settings-layout .settings-save-bar { align-items: stretch; flex-direction: column; } .llm-settings-layout .settings-save-bar > .ui-form-actions { justify-content: flex-end; } }
+@media (min-width: 720px) { .app-shell--settings .llm-editor-panel .llm-connection-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; } }
+@media (min-width: 1000px) {
+  .app-shell--settings .llm-media-overview { grid-template-columns: minmax(0, 1fr) repeat(2, minmax(160px, .55fr)); align-items: center; }
+  .app-shell--settings .llm-media-overview > .settings-mode-summary { grid-column: auto; }
+}
+@media (min-width: 1181px) { .app-shell--studio .settings-page-layout.llm-settings-layout { grid-template-columns: minmax(0, 1.5fr) minmax(300px, .8fr); gap: 16px; } }
+@media (max-width: 560px) {
+  .app-shell--settings .llm-settings-layout .llm-saved-summary { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .llm-model-options .ui-stack.ui-muted { grid-template-columns: minmax(0, 1fr); }
+  .llm-settings-layout .settings-save-bar { align-items: stretch; flex-direction: column; }
+  .llm-settings-layout .settings-save-bar > .ui-form-actions { justify-content: flex-end; }
+}

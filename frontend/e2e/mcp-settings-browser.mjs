@@ -102,7 +102,7 @@ try {
     await page(() => document.querySelector("button[aria-label='撤销令牌 Browser-created client']").click());
     await waitFor(() => {
       const button = document.querySelector("button[aria-label='撤销令牌 Browser-created client']");
-      return button?.disabled && button.closest("li").innerText.includes("已撤销") && !button.innerText.includes("正在撤销");
+      return button?.disabled && button.closest("tr").innerText.includes("已撤销") && !button.innerText.includes("正在撤销");
     });
     if (viewport.width === 1440 && process.env.AGENVAS_MCP_SCREENSHOT) {
       await page(() => document.querySelector("[aria-label='MCP 访问令牌列表']").closest("section").scrollIntoView({ block: "start" }));

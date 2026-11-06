@@ -85,6 +85,114 @@ class OpenAiImage2AdapterTest {
         verifyNoMoreInteractions(fixture.client());
     }
 
+    @Test void nativeMarkupKeepsSourceGridAndSeparateLayerOnFileAndRelayTransports() throws Exception {
+        var fixture = editFixture(true);
+        assertThat(fixture.adapter().preflightFailure(fixture.context())).isNull();
+        fixture.adapter().submit(fixture.context());
+        var images = org.mockito.ArgumentCaptor.forClass(List.class);
+        var ink = org.mockito.ArgumentCaptor.forClass(byte[].class);
+        verify(fixture.client()).edit(any(), eq("gpt-image-2.6-flare"), any(), any(), any(), images.capture(), isNull(), eq(false), any(), isNull(), isNull(), ink.capture());
+        var source = ImageIO.read(new java.io.ByteArrayInputStream((byte[]) images.getValue().getFirst()));
+        var overlay = ImageIO.read(new java.io.ByteArrayInputStream(ink.getValue()));
+        assertThat(source.getWidth()).isEqualTo(16); assertThat(source.getHeight()).isEqualTo(8);
+        assertThat(overlay.getRGB(0,0)).isEqualTo(0xffff0000);
+        assertThat(overlay.getRGB(1,0) >>> 24).isZero();
+        var input = (tools.jackson.databind.node.ObjectNode) fixture.context().lease().input();
+        UUID profile = UUID.randomUUID(); input.put("imageRelayProfileId",profile.toString());
+        when(fixture.relay().signedImage(eq(profile),any(),eq("image/png"))).thenReturn("https://example.com/source.png","https://example.com/markup.png");
+        fixture.adapter().submit(fixture.context());
+        verify(fixture.client()).editUrls(any(),eq("gpt-image-2.6-flare"),any(),any(),any(),eq(List.of("https://example.com/source.png")),isNull(),eq(false),any(),isNull(),isNull(),eq("https://example.com/markup.png"));
+    }
+
+    @Test void httpMarkupRelayIsRejectedBeforeAnyProviderSubmission() throws Exception {
+        var fixture = editFixture(true);
+        var profile = UUID.randomUUID();
+        ((tools.jackson.databind.node.ObjectNode)fixture.context().lease().input()).put("imageRelayProfileId",profile.toString());
+        when(fixture.relay().signedImage(eq(profile),any(),eq("image/png"))).thenReturn("http://example.com/source.png","http://example.com/markup.png");
+        assertThat(fixture.adapter().submit(fixture.context())).isEqualTo(new Submission.Rejected(ProviderFailureCodes.MEDIA_RELAY_PREPARATION_FAILED));
+        verifyNoInteractions(fixture.client());
+    }
+
+    @Test void preflightCountsTheOriginalSizeNativeSourceInTheActualReferenceBudget() throws Exception {
+        var fixture = editFixture(true);
+        var random = new java.util.Random(7);
+        var source = noise(2400,2400,random);
+        var overlay = new BufferedImage(2400,2400,BufferedImage.TYPE_INT_ARGB); overlay.setRGB(0,0,0xffff0000);
+        ImageIO.write(source,"png",fixture.sourcePath().toFile()); ImageIO.write(overlay,"png",fixture.layerPath().toFile());
+        var referencePath = temporary.resolve("synthetic-noise-reference.png");
+        ImageIO.write(noise(1024,1024,random),"png",referencePath.toFile());
+        var images = (tools.jackson.databind.node.ArrayNode)fixture.context().lease().input().at("/mediaInput/images");
+        UUID referenceAsset = UUID.randomUUID(), artifact = UUID.fromString(images.get(0).path("artifactId").asText());
+        var reference = mock(ArtifactVersion.class); when(reference.artifactId()).thenReturn(artifact);
+        when(reference.content()).thenReturn(new ObjectMapper().createObjectNode().put("assetId",referenceAsset.toString()));
+        var asset = mock(Asset.class); when(asset.mediaKind()).thenReturn(Asset.MediaKind.IMAGE); when(asset.contentType()).thenReturn("image/png");
+        when(fixture.assets().get(fixture.context().ownerId(),fixture.context().lease().projectId(),referenceAsset)).thenReturn(new AssetService.AssetFile(asset,referencePath));
+        for(int i=1;i<16;i++) {
+            UUID version = UUID.randomUUID();
+            images.addObject().put("artifactId",artifact.toString()).put("versionId",version.toString()).put("order",i).put("role","REFERENCE");
+            when(fixture.artifacts().requireImageVersionForTask(fixture.context().ownerId(),fixture.context().lease().projectId(),version)).thenReturn(reference);
+        }
+        assertThat(java.nio.file.Files.size(fixture.sourcePath()) + 15*java.nio.file.Files.size(referencePath))
+                .isGreaterThan(OpenAiImage2Client.MAX_REFERENCE_TOTAL_BYTES);
+        assertThat(fixture.adapter().preflightFailure(fixture.context())).isEqualTo("PROVIDER_UNSUPPORTED_INPUT");
+        verifyNoInteractions(fixture.client());
+    }
+
+    private BufferedImage noise(int width,int height,java.util.Random random) {
+        var image = new BufferedImage(width,height,BufferedImage.TYPE_INT_RGB);
+        for(int y=0;y<height;y++) for(int x=0;x<width;x++) image.setRGB(x,y,random.nextInt());
+        return image;
+    }
+
+    @Test void maskPreservesTransparentSelectionAndOpaquePadding() throws Exception {
+        var fixture = editFixture(false);
+        fixture.adapter().submit(fixture.context());
+        var mask = org.mockito.ArgumentCaptor.forClass(byte[].class);
+        verify(fixture.client()).edit(any(),any(),any(),any(),any(),anyList(),mask.capture(),eq(false),any());
+        var image = ImageIO.read(new java.io.ByteArrayInputStream(mask.getValue()));
+        assertThat(image.getRGB(256,512) >>> 24).isZero();
+        assertThat(image.getRGB(768,512) >>> 24).isEqualTo(255);
+        assertThat(image.getRGB(0,0) >>> 24).isEqualTo(255);
+    }
+
+    private EditFixture editFixture(boolean markup) throws Exception {
+        var mapper = new ObjectMapper();
+        var catalog = mock(JooqMediaCapabilityRepository.class);
+        var cipher = mock(CredentialCipher.class); var artifacts = mock(ArtifactService.class);
+        var assets = mock(AssetService.class); var client = mock(OpenAiImage2Client.class); var relay=mock(MediaRelayService.class);
+        var binding = new MediaCapabilityBinding(UUID.randomUUID(),1,UUID.randomUUID(),1,MediaAdapterRegistry.OPENAI_GPT_IMAGE_2,"synthetic-hash");
+        var snapshot=mock(JooqMediaCapabilityRepository.Snapshot.class);
+        when(catalog.snapshotAt(binding.capabilityId(),1,binding.connectionId(),1)).thenReturn(Optional.of(snapshot));
+        when(snapshot.specJson()).thenReturn("{\"settings\":{\"model\":\"gpt-image-2.6-flare\"}}");
+        when(snapshot.adapterId()).thenReturn(binding.adapterId()); when(snapshot.mappingSha256()).thenReturn(binding.mappingSha256());
+        when(snapshot.connectionVersion()).thenReturn(new JooqMediaCapabilityRepository.ConnectionVersion(binding.connectionId(),1,"https://example.com/v1","synthetic-hash",new byte[]{1},new byte[]{2},1,"masked"));
+        when(cipher.decryptMedia(any(),anyInt(),any())).thenReturn("synthetic-key");
+        UUID owner=UUID.randomUUID(),project=UUID.randomUUID(),artifact=UUID.randomUUID(),version=UUID.randomUUID(),sourceId=UUID.randomUUID(),layerId=UUID.randomUUID();
+        var input=mapper.createObjectNode().put("prompt","Synthetic edit");
+        input.putObject("imageOperation").put(markup ? "markupAssetId" : "maskAssetId",layerId.toString());
+        var media=input.putObject("mediaInput"); media.putObject("parameters").put("aspectRatio","1:1");
+        media.putArray("images").addObject().put("artifactId",artifact.toString()).put("versionId",version.toString()).put("order",0).put("role","REFERENCE");
+        Task task=mock(Task.class); when(task.input()).thenReturn(input); when(task.projectId()).thenReturn(project);
+        var sourceVersion=mock(ArtifactVersion.class); when(sourceVersion.artifactId()).thenReturn(artifact);
+        when(sourceVersion.content()).thenReturn(mapper.createObjectNode().put("assetId",sourceId.toString()));
+        when(artifacts.requireImageVersionForTask(owner,project,version)).thenReturn(sourceVersion);
+        var source=new BufferedImage(16,8,BufferedImage.TYPE_INT_RGB);
+        var layer=new BufferedImage(16,8,BufferedImage.TYPE_INT_ARGB);
+        if(markup) layer.setRGB(0,0,0xffff0000);
+        else for(int y=0;y<8;y++) for(int x=8;x<16;x++) layer.setRGB(x,y,0xffffffff);
+        Path sourcePath=temporary.resolve(UUID.randomUUID()+".png"),layerPath=temporary.resolve(UUID.randomUUID()+".png");
+        ImageIO.write(source,"png",sourcePath.toFile()); ImageIO.write(layer,"png",layerPath.toFile());
+        for(var pair: List.of(new Object[]{sourceId,sourcePath},new Object[]{layerId,layerPath})) {
+            var asset=mock(Asset.class); when(asset.mediaKind()).thenReturn(Asset.MediaKind.IMAGE);
+            when(asset.contentType()).thenReturn("image/png"); when(asset.byteSize()).thenReturn(java.nio.file.Files.size((Path)pair[1]));
+            when(assets.get(owner,project,(UUID)pair[0])).thenReturn(new AssetService.AssetFile(asset,(Path)pair[1]));
+        }
+        var adapter=new OpenAiImage2Adapter(catalog,cipher,artifacts,assets,mock(ProjectService.class),client,mapper,relay);
+        return new EditFixture(adapter,client,new AttemptContext(task,binding,owner,null,null),relay,assets,artifacts,sourcePath,layerPath);
+    }
+    private record EditFixture(OpenAiImage2Adapter adapter,OpenAiImage2Client client,AttemptContext context,MediaRelayService relay,
+            AssetService assets, ArtifactService artifacts, Path sourcePath, Path layerPath) {}
+
     private GenerationFixture generationFixture() {
         var mapper = new ObjectMapper();
         var catalog = mock(JooqMediaCapabilityRepository.class);

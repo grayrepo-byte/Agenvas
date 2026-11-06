@@ -79,7 +79,7 @@ public class OpenAiImage2Adapter implements MediaAdapter {
                 throw new IllegalArgumentException("GIF output does not support image edits");
             size(context);
             if (!FrozenMediaInputs.images(context.lease()).isEmpty()) {
-                referencePngs(context);
+                referencePngs(context, markupPair(context));
                 maskPng(context);
             }
         } catch (RuntimeException invalid) {
@@ -119,21 +119,31 @@ public class OpenAiImage2Adapter implements MediaAdapter {
                         : client.generate(key, model, prompt, quality, size(context), parameters.transparentBackground(), origin));
             }
             if (options.animated()) return new Submission.Rejected("PROVIDER_UNSUPPORTED_INPUT");
-            List<byte[]> references = referencePngs(context);
+            var markup = markupPair(context);
+            List<byte[]> references = referencePngs(context, markup);
             byte[] mask = maskPng(context);
             UUID profile = relayProfile(context);
+            if (profile == null && markup != null) return new Submission.Completed(client.edit(key, model, prompt, quality,
+                    size(context), references, null, parameters.transparentBackground(), origin, options.complexity(), options.moderation(), markup.markup()));
             if (profile == null) return new Submission.Completed(options.complexity() == null && options.moderation() == null
                     ? client.edit(key, model, prompt, quality, size(context), references, mask, parameters.transparentBackground(), origin)
                     : client.edit(key, model, prompt, quality, size(context), references, mask, parameters.transparentBackground(), origin, options.complexity(), options.moderation()));
             List<String> urls;
             String maskUrl;
+            String markupUrl;
             try {
                 urls = references.stream().map(png -> relay.signedImage(profile, png, "image/png")).toList();
                 maskUrl = mask == null ? null : relay.signedImage(profile, mask, "image/png");
+                markupUrl = markup == null ? null : relay.signedImage(profile, markup.markup(), "image/png");
+                // Native markup's URL contract requires HTTPS. A local preparation error is never UNKNOWN.
+                if (markupUrl != null && !"https".equals(java.net.URI.create(markupUrl).getScheme()))
+                    throw new IllegalArgumentException("Native markup relay requires HTTPS");
             } catch (RuntimeException preparationFailed) {
                 // No paid generation request was sent, so preparation failure is never UNKNOWN.
                 return new Submission.Rejected(ProviderFailureCodes.MEDIA_RELAY_PREPARATION_FAILED);
             }
+            if (markupUrl != null) return new Submission.Completed(client.editUrls(key, model, prompt, quality,
+                    size(context), urls, null, parameters.transparentBackground(), origin, options.complexity(), options.moderation(), markupUrl));
             return new Submission.Completed(options.complexity() == null && options.moderation() == null
                     ? client.editUrls(key, model, prompt, quality, size(context), urls, maskUrl, parameters.transparentBackground(), origin)
                     : client.editUrls(key, model, prompt, quality, size(context), urls, maskUrl, parameters.transparentBackground(), origin, options.complexity(), options.moderation()));
@@ -234,7 +244,7 @@ public class OpenAiImage2Adapter implements MediaAdapter {
     }
 
     /** Resolve every exact same-project version in the task's frozen order. */
-    private List<byte[]> referencePngs(AttemptContext context) {
+    private List<byte[]> referencePngs(AttemptContext context, dev.agenvas.provider.domain.OpenAiMarkupInput.Pair markup) {
         Task task = context.lease();
         List<FrozenMediaInputs.Image> inputs = FrozenMediaInputs.images(task);
         if (inputs.isEmpty()
@@ -248,7 +258,7 @@ public class OpenAiImage2Adapter implements MediaAdapter {
         long totalBytes = 0;
         List<byte[]> result = new ArrayList<>(inputs.size());
         for (FrozenMediaInputs.Image input : inputs) {
-            byte[] png = referencePng(context, task, input, width, height);
+            byte[] png = markup != null && result.isEmpty() ? markup.source() : referencePng(context, task, input, width, height);
             totalBytes += png.length;
             if (totalBytes > OpenAiImage2Client.MAX_REFERENCE_TOTAL_BYTES) {
                 throw new IllegalArgumentException("Pinned reference PNG total size is invalid");
@@ -300,6 +310,26 @@ public class OpenAiImage2Adapter implements MediaAdapter {
         }
     }
 
+    /** The first frozen image owns native markup; never resize its grid to output dimensions. */
+    private dev.agenvas.provider.domain.OpenAiMarkupInput.Pair markupPair(AttemptContext context) {
+        var operation = context.lease().input().path("imageOperation");
+        String id = operation.path("markupAssetId").asText("");
+        if (id.isBlank()) return null;
+        if (!operation.path("maskAssetId").asText("").isBlank()
+                || !dev.agenvas.provider.domain.OpenAiImageOptions.supportsMarkup(mapper.readTree(snapshot(context).specJson()).path("settings")))
+            throw new IllegalArgumentException("Pinned markup mode is unsupported");
+        var first = FrozenMediaInputs.images(context.lease()).getFirst();
+        var version = artifacts.requireImageVersionForTask(context.ownerId(), context.lease().projectId(), first.versionId());
+        if (!first.artifactId().equals(version.artifactId())) throw new IllegalArgumentException("Pinned source identity changed");
+        var source = assets.get(context.ownerId(), context.lease().projectId(), UUID.fromString(version.content().path("assetId").asText()));
+        var markup = assets.get(context.ownerId(), context.lease().projectId(), UUID.fromString(id));
+        if (!"image/png".equals(markup.asset().contentType())) throw new IllegalArgumentException("Markup must be PNG");
+        try {
+            return dev.agenvas.provider.domain.OpenAiMarkupInput.prepare(
+                    java.nio.file.Files.readAllBytes(source.path()), java.nio.file.Files.readAllBytes(markup.path()));
+        } catch (IOException unreadable) { throw new IllegalArgumentException("Pinned markup cannot be read", unreadable); }
+    }
+
     /** Resizes the immutable alpha mask with the same contain transform as the first input image. */
     private byte[] maskPng(AttemptContext context) {
         String maskAssetId = context.lease().input().path("imageOperation")
@@ -332,6 +362,8 @@ public class OpenAiImage2Adapter implements MediaAdapter {
                 int scaledHeight = Math.max(1, (int) Math.round(source.getHeight() * scale));
                 graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
                         RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                // Replace alpha within the source rectangle; SrcOver on opaque padding erases the selection.
+                graphics.setComposite(java.awt.AlphaComposite.Src);
                 graphics.drawImage(source, (width - scaledWidth) / 2,
                         (height - scaledHeight) / 2, scaledWidth, scaledHeight, null);
             } finally {

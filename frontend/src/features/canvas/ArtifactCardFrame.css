@@ -78,7 +78,7 @@
   min-width: 64px;
   max-width: 100%;
   margin: 0;
-  border: 1px solid var(--ui-focus);
+  border: 1px solid var(--ui-border);
   border-radius: var(--ui-radius-sm);
   padding: 1px 5px;
   background: var(--ui-surface-raised);
@@ -86,11 +86,11 @@
   font: inherit;
   line-height: normal;
   outline: none;
-  box-shadow: 0 0 0 1px var(--ui-focus);
+  box-shadow: none;
 }
 .artifact-card-title-input:focus {
-  border-color: var(--ui-focus);
-  box-shadow: 0 0 0 1px var(--ui-focus);
+  border-color: var(--ui-focus-border);
+  box-shadow: none;
 }
 .artifact-card-title-input.is-error {
   border-color: var(--ui-danger);

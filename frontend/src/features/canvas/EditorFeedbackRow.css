@@ -17,7 +17,7 @@
 .editor-feedback-copy { min-width: 0; padding-top: 1px; overflow-wrap: anywhere; }
 .editor-feedback-copy strong { font-weight: 600; margin-right: 8px; }
 .editor-feedback-copy strong + span { color: var(--ui-text-muted); }
-.editor-feedback-action { flex-shrink: 0; margin-left: 2px; }
+.editor-feedback-action { display: flex; flex-shrink: 0; gap: 4px; margin-left: 2px; }
 .editor-feedback-row[data-tone="loading"] .editor-feedback-icon { animation: editor-feedback-spin 1s linear infinite; }
 @keyframes editor-feedback-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {

@@ -1,3 +1,4 @@
+import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { act,cleanup,createEvent,fireEvent,render,screen,waitFor,within } from "@testing-library/react";
 import type { NodeSelectionChange,ReactFlowInstance,ReactFlowProps } from "@xyflow/react";
@@ -6,11 +7,14 @@ import { useLayoutEffect } from "react";
 import { MemoryRouter,Route,Routes } from "react-router";
 import { afterEach,beforeEach,describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { CanvasEditRequest,CanvasItem,ProjectSnapshot,SaveMediaDraftRequest } from "../../shared/api/client";
+import type { CanvasEditRequest,CanvasItem,MediaDraft,ProjectSnapshot,SaveMediaDraftRequest } from "../../shared/api/client";
 import { server } from "../../test/server";
+import { imageFunctionsFixture } from "../../test/imageFunctionsFixture";
 import { CANVAS_POINTER_THRESHOLD } from "./canvasInteraction";
 import { canvasGroupNodeId } from "./canvasGroups";
 import { CANVAS_SELECTION_MODE,useCanvasStore } from "./canvasStore";
+import { useCharacterNodeRecovery } from "./characterNodeRecovery";
+import { t } from "../../shared/i18n";
 import { ProjectWorkspacePage } from "./ProjectWorkspacePage";
 
 type CanvasItemChange = NonNullable<CanvasEditRequest["itemChanges"]>[number];
@@ -28,6 +32,8 @@ const focusProbe = vi.hoisted(() => ({
   fit: vi.fn<ReactFlowInstance["fitView"]>().mockResolvedValue(true), zoom: 1,
   updateInternals: vi.fn(),
   instance: null as ReactFlowInstance | null,
+  deferInit: false,
+  pendingInit: null as (() => void) | null,
 }));
 
 // 选中态的同步依赖 React Flow 的变更通知，这里直接驱动页面对应的回调。
@@ -57,8 +63,12 @@ vi.mock("@xyflow/react", async (importOriginal) => {
         autoPanOnSelection={false} {...TEST_VIEWPORT}
         defaultViewport={{ x: 0, y: 0, zoom: focusProbe.zoom }}
         onInit={(instance) => {
-          focusProbe.instance = instance;
-          props.onInit?.({ ...instance, setCenter: focusProbe.center, setViewport: focusProbe.viewport, fitView: focusProbe.fit });
+          const initialize = () => {
+            focusProbe.instance = instance;
+            props.onInit?.({ ...instance, setCenter: focusProbe.center, setViewport: focusProbe.viewport, fitView: focusProbe.fit });
+          };
+          if (focusProbe.deferInit) focusProbe.pendingInit = initialize;
+          else initialize();
         }}>
         <TestHandleMeasurements />{props.children}
       </real.ReactFlow> : <div data-testid="flow" />;
@@ -114,6 +124,9 @@ beforeEach(() => {
   focusProbe.fit.mockClear();
   focusProbe.zoom = 1;
   focusProbe.instance = null;
+  focusProbe.deferInit = false;
+  focusProbe.pendingInit = null;
+  useCharacterNodeRecovery.setState({ pending: {}, placements: {} });
   useCanvasStore.setState({ selectedIds: [], selectionMode: CANVAS_SELECTION_MODE.SINGLE,
     drafts: {}, mediaDraftRecoveries: {}, saveState: "saved" });
   server.use(
@@ -527,6 +540,84 @@ describe("connection gesture overlays", () => {
 });
 
 describe("node editor centering", () => {
+  it("waits for referenced group definitions before fitting a collapsed canvas", async () => {
+    renderRealFlow = true;
+    const groupedItems = items.map((item, index) => ({ ...item, groupId: index < 2 ? "initial-group" : null }));
+    let completeGroupRead: (() => void) | undefined;
+    const groupRead = new Promise<void>((resolve) => { completeGroupRead = resolve; });
+    let reads = 0;
+    server.use(
+      http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({
+        ...snapshot(), canvas: { items: groupedItems },
+      })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: groupedItems })),
+      http.get("/api/v1/projects/:projectId/canvas/editor", async () => {
+        reads++; await groupRead;
+        return HttpResponse.json({ items: groupedItems, groups: [{ id: "initial-group", projectId: "project-1",
+          name: "Collapsed group", collapsed: true, version: 0 }] });
+      }),
+    );
+    await renderFlow();
+    await waitFor(() => { expect(reads).toBe(1); expect(focusProbe.instance).not.toBeNull(); });
+    expect(focusProbe.fit).not.toHaveBeenCalled();
+    act(() => completeGroupRead?.());
+    await waitFor(() => expect(focusProbe.fit).toHaveBeenCalledOnce());
+    const fitted = focusProbe.fit.mock.lastCall?.[0]?.nodes;
+    expect(fitted).toHaveLength(2);
+    expect(fitted).toContainEqual({ id: "text-card" });
+    expect(fitted).not.toContainEqual({ id: "image-card" });
+    expect(fitted).not.toContainEqual({ id: "middle-card" });
+  });
+
+  it("fits the loaded snapshot when a delayed initial callback captured the pending query", async () => {
+    renderRealFlow = true;
+    focusProbe.deferInit = true;
+    await renderFlow();
+    await waitFor(() => expect(focusProbe.pendingInit).not.toBeNull());
+    expect(focusProbe.fit).not.toHaveBeenCalled();
+    act(() => focusProbe.pendingInit?.());
+    await waitFor(() => expect(focusProbe.fit).toHaveBeenCalledOnce());
+    expect(focusProbe.fit).toHaveBeenCalledWith({ padding: 0.2, maxZoom: 1,
+      nodes: [{ id: "image-card" }, { id: "middle-card" }, { id: "text-card" }] });
+  });
+
+  it("fits the first loaded snapshot once and preserves the view on later canvas refreshes", async () => {
+    renderRealFlow = true;
+    const client = await renderFlow();
+    await waitFor(() => expect(focusProbe.fit).toHaveBeenCalledOnce());
+    expect(focusProbe.fit).toHaveBeenCalledWith({ padding: 0.2, maxZoom: 1,
+      nodes: [{ id: "image-card" }, { id: "middle-card" }, { id: "text-card" }] });
+    act(() => client.setQueryData(["canvas", "project-1"], {
+      items: items.map((item) => ({ ...item, x: item.x + 100, version: item.version + 1 })),
+    }));
+    await waitFor(() => expect(flowProps.nodes?.find((node) => node.id === "image-card")?.position.x).toBe(100));
+    expect(focusProbe.fit).toHaveBeenCalledOnce();
+  });
+
+  it.each(["ARTIFACT", "CHARACTER"] as const)("keeps an initially empty canvas view when the first %s card arrives", async (subjectType) => {
+    renderRealFlow = true;
+    server.use(
+      http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({
+        ...snapshot(), canvas: { items: [] }, connections: [],
+      })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
+    );
+    const client = await renderFlow(0);
+    await waitFor(() => expect(focusProbe.instance).not.toBeNull());
+    await screen.findByRole("button", { name: "创建第一个节点" });
+    expect(focusProbe.fit).not.toHaveBeenCalled();
+    const original = items[0];
+    if (!original) throw new Error("Missing initial item fixture");
+    const first: CanvasItem = subjectType === "ARTIFACT" ? original : { ...original, id: "character-card", subjectType: "CHARACTER", subjectId: "hero", artifact: null,
+      characterNode: { canvasItemId: "character-card", version: 0, newerVersionAvailable: false, connections: [],
+        selection: { characterId: "hero", characterVersion: 1, lookId: null, viewVersionIds: [], useAppearance: true, useVoice: false },
+        snapshot: { characterId: "hero", characterVersion: 1, name: "Hero", description: "Pilot", look: null, voice: null, useAppearance: true, useVoice: false } } };
+    expect(flowProps.fitView).not.toBe(true);
+    act(() => client.setQueryData(["canvas", "project-1"], { items: [first] }));
+    await waitFor(() => expect(flowProps.nodes).toHaveLength(1));
+    expect(focusProbe.fit).not.toHaveBeenCalled();
+  });
+
   it.each([0.6, 1.8])("centers initial, repeated, and switched editor clicks at zoom %s without changing node layouts", async (zoom) => {
     focusProbe.zoom = zoom;
     // Focus must use the current canvas projection, including unsaved layout and media dimensions.
@@ -539,6 +630,7 @@ describe("node editor centering", () => {
     });
     await renderInteractiveFlow();
     await waitFor(() => expect(focusProbe.instance).not.toBeNull());
+    const fitsAfterInitialLoad = focusProbe.fit.mock.calls.length;
     const viewport = focusProbe.instance!.getViewport();
     expect(viewport.zoom).toBe(zoom);
     const layouts = new Map(["image-card", "text-card"].map((id) => {
@@ -592,16 +684,20 @@ describe("node editor centering", () => {
       // The probe does not animate the camera. A second focus may stop the previous
       // native transition, but that stop must preserve the current position and zoom.
       for (const call of focusProbe.viewport.mock.calls) expect(call).toEqual([viewport, { duration: 0 }]);
-      expect(focusProbe.fit).not.toHaveBeenCalled();
+      expect(focusProbe.fit).toHaveBeenCalledTimes(fitsAfterInitialLoad);
     }
     const centersBeforeClosing = focusProbe.center.mock.calls.length;
-    fireEvent.click(screen.getByRole("button", { name: "关闭编辑区" }));
+    const closeEditor = screen.getByRole("button", { name: "关闭编辑区" });
+    closeEditor.focus();
+    fireEvent.click(closeEditor);
     expect(selectedIds()).toEqual([]);
     expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
+    expect(nodeElement("text-card")).toHaveFocus();
+    expect(flowProps.autoPanOnNodeFocus).toBe(false);
     expect(focusProbe.instance!.getViewport()).toEqual(viewport);
     expect(focusProbe.center).toHaveBeenCalledTimes(centersBeforeClosing);
     for (const call of focusProbe.viewport.mock.calls) expect(call).toEqual([viewport, { duration: 0 }]);
-    expect(focusProbe.fit).not.toHaveBeenCalled();
+    expect(focusProbe.fit).toHaveBeenCalledTimes(fitsAfterInitialLoad);
   });
 
   it("focuses both media and text nodes immediately when reduced motion is requested", async () => {
@@ -667,6 +763,33 @@ describe("node editor centering", () => {
     act(() => flowProps.onMoveStart?.(new MouseEvent("mousedown"), viewport));
     expect(focusProbe.viewport).toHaveBeenCalledExactlyOnceWith(viewport, { duration: 0 });
     expect(selectedIds()).toEqual([]);
+  });
+
+  it("leaves composing Escape to the input method, then returns focus when the editor closes", async () => {
+    await renderInteractiveFlow();
+    fireEvent.click(nodeElement("text-card"));
+    const prompt = await screen.findByRole("textbox", { name: "文字生成提示词" });
+    if (prompt instanceof HTMLTextAreaElement) fireEvent.change(prompt, { target: { value: "正在输入的中文" } });
+    else {
+      prompt.textContent = "正在输入的中文";
+      fireEvent.input(prompt);
+    }
+    await act(() => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())));
+    const centersBeforeClosing = focusProbe.center.mock.calls.length;
+    prompt.focus();
+    const transform = document.querySelector(".react-flow__viewport")?.getAttribute("style");
+    fireEvent.keyDown(prompt, { key: "Escape", isComposing: true });
+    expect(selectedIds()).toEqual(["text-card"]);
+    expect(prompt).toHaveFocus();
+    fireEvent.keyDown(prompt, { key: "Escape", isComposing: false });
+    expect(selectedIds()).toEqual([]);
+    expect(nodeElement("text-card")).toHaveFocus();
+    expect(document.querySelector(".react-flow__viewport")).toHaveAttribute("style", transform!);
+    expect(focusProbe.center).toHaveBeenCalledTimes(centersBeforeClosing);
+    fireEvent.keyDown(nodeElement("text-card"), { key: "Enter" });
+    const reopenedPrompt = await screen.findByRole("textbox", { name: "文字生成提示词" });
+    if (reopenedPrompt instanceof HTMLTextAreaElement) expect(reopenedPrompt).toHaveValue("正在输入的中文");
+    else expect(reopenedPrompt).toHaveTextContent("正在输入的中文");
   });
 });
 
@@ -882,6 +1005,44 @@ describe("workspace selection with real React Flow", () => {
     expect(useCanvasStore.getState().selectionMode).toBe(CANVAS_SELECTION_MODE.MULTIPLE);
     expect(screen.getByRole("group", { name: "批量操作" })).toBeVisible();
     expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
+  });
+
+  it("reveals a reverse-prompt result inside a collapsed group before selecting it", async () => {
+    const grouped = items.map((item) => ({ ...item, groupId: item.id === "text-card" ? "result-group" : null,
+      ...(item.id === "image-card" ? { selectedVersionId: imageVersionId, selectedVersion: item.artifact?.resourceDefaultVersion ?? null } : {}) }));
+    let collapsed = true, writes = 0;
+    const groups = () => [{ id: "result-group", projectId: "project-1", name: "反推结果组", collapsed, version: collapsed ? 0 : 1 }];
+    server.use(
+      http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({ ...snapshot(), canvas: { items: grouped } })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: grouped })),
+      http.get("/api/v1/projects/:projectId/canvas/editor", () => HttpResponse.json({ items: grouped, groups: groups() })),
+      http.post("/api/v1/projects/:projectId/canvas/edits", async ({ request }) => {
+        const input = await request.json() as CanvasEditRequest;
+        expect(input).toMatchObject({ operation: "GROUP", groupChanges: [{ type: "UPSERT", groupId: "result-group", expectedVersion: 0, collapsed: false }] });
+        writes++; collapsed = false;
+        return HttpResponse.json({ items: grouped, groups: groups(), receipt: { id: input.commandId, operation: input.operation, revision: 0, state: "APPLIED" } });
+      }));
+    renderRealFlow = true;
+    await renderFlow(items.length + 1);
+    await waitFor(() => expect(nodeElement("text-card")).not.toBeVisible());
+    server.use(http.get("/api/v1/settings/media-functions", () => HttpResponse.json(imageFunctionsFixture())),
+      http.get("/api/v1/projects/project-1/artifacts/image-id/image-prompts", () => HttpResponse.json([{
+      id: "synthetic-reverse", projectId: "project-1", runId: null, stepKey: "reverse", kind: "TEXT_GENERATION", status: "SUCCEEDED",
+      cancelRequested: false, input: { schemaVersion: 5, purpose: "IMAGE_REVERSE_PROMPT", sourceVersionId: imageVersionId },
+      output: { prompt: "Saved prompt", mock: false, artifactId: "text-id", canvasItemId: "text-card" },
+      attemptNo: 1, nextActionAt: now, version: 2, createdAt: now, updatedAt: now,
+    }])));
+    act(() => useCanvasStore.getState().setSelectedIds(["image-card"]));
+    const reverse = await screen.findByRole("button", { name: "提示词反推" });
+    await waitFor(() => expect(reverse).toBeEnabled()); fireEvent.click(reverse);
+    fireEvent.click(await screen.findByRole("button", { name: "查看文字卡片" }));
+    await waitFor(() => expect(nodeElement("text-card")).toBeVisible());
+    await waitFor(() => expect(nodeElement("text-card")).toHaveClass("selected"));
+    expect(selectedIds()).toEqual(["text-card"]); expect(writes).toBe(1);
+    await waitFor(() => expect(focusProbe.fit).toHaveBeenCalledWith(expect.objectContaining({ nodes: [{ id: "text-card" }] })));
+    act(() => useCanvasStore.getState().setSelectedIds(["image-card"]));
+    await screen.findByRole("button", { name: "提示词反推" });
+    expect(screen.queryByRole("dialog", { name: "提示词反推" })).not.toBeInTheDocument();
   });
 
   it.each([false, true])("selects grouped nodes once with collapsed=%s and includes locked/offscreen cards", async (collapsed) => {
@@ -1228,4 +1389,76 @@ describe("canvas interaction tools", () => {
     expect(await screen.findByLabelText("媒体卡片操作")).toBeVisible();
     expect(await screen.findByLabelText("所选卡片编辑区")).toBeVisible();
   });
+});
+
+
+it.each(["connection", "apply"] as const)("reopens the original %s recovery from an archived workspace header without creating an edge", async (kind) => {
+  const targetId = "image-card";
+  const commandId = "original-command";
+  const connectionId = "original-connection";
+  const confirmedDraft: MediaDraft = { projectId: "project-1", canvasItemId: targetId, version: 1, prompt: "", parameters: {},
+    capabilityId: null, videoInputMode: null, durationSeconds: null, styleId: null, mediaInputs: [], mentions: [], displayMode: "DRAFT", createdAt: now, updatedAt: now };
+  useCharacterNodeRecovery.getState().retain(`project-1:${targetId}`, kind === "connection"
+    ? { kind, request: { connectionId, sourceCanvasItemId: "role", targetCanvasItemId: targetId, expectedSourceItemVersion: 1, expectedSourceSelectionVersion: 1, expectedTargetItemVersion: 3 } }
+    : { kind, request: { commandId, expectedBindingVersion: 0, expectedDraftVersion: 0, clearMode: "REMOVE_OWNED", previewHash: "original-hash" } });
+  let writes = 0, lookups = 0;
+  server.use(http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({ ...snapshot(), project: { ...snapshot().project, status: "ARCHIVED" } })),
+    http.post("/api/v1/projects/:projectId/canvas/character-connections", () => { writes++; return HttpResponse.json({}, { status: 409 }); }),
+    http.post("/api/v1/projects/:projectId/canvas-items/:targetId/character-node-bindings/apply", () => { writes++; return HttpResponse.json({}, { status: 409 }); }),
+    http.get("/api/v1/projects/:projectId/canvas/character-connections/:connectionId/receipt", ({ params }) => {
+      lookups++; expect(params.connectionId).toBe(connectionId);
+      return HttpResponse.json({ id: connectionId, sourceCanvasItemId: "role", targetCanvasItemId: targetId, version: 0 });
+    }),
+    http.get("/api/v1/projects/:projectId/canvas-items/:targetId/character-node-bindings/receipts/:commandId", ({ params }) => {
+      lookups++; expect(params.targetId).toBe(targetId); expect(params.commandId).toBe(commandId);
+      return HttpResponse.json({ draft: confirmedDraft, binding: { canvasItemId: targetId, version: 1 } });
+    }));
+  await renderFlow();
+  await userEvent.click(await screen.findByRole("button", { name: t("characterNode.reconcileAction") }));
+  const dialog = await screen.findByRole("dialog", { name: t("characterNode.connectPreview") });
+  await userEvent.click(within(dialog).getByRole("button", { name: t("characterNode.reconcileAction") }));
+  await waitFor(() => expect(useCharacterNodeRecovery.getState().pending[`project-1:${targetId}`]).toBeUndefined());
+  expect(lookups).toBe(1); expect(writes).toBe(0);
+});
+
+it("reopens a retained creation from the archived workspace header without submitting a replacement", async () => {
+  const pending = { id: "original-created-character", request: { selection: { characterId: "hero", characterVersion: 1, lookId: null,
+    viewVersionIds: [], useAppearance: true, useVoice: false }, x: 0, y: 0, width: 320, height: 300, zIndex: 0, groupId: null, locked: false } };
+  useCharacterNodeRecovery.getState().retainPlacement("project-1", pending);
+  let writes = 0;
+  server.use(http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({ ...snapshot(), project: { ...snapshot().project, status: "ARCHIVED" } })),
+    http.put("/api/v1/projects/:projectId/canvas/character-nodes/:itemId", () => { writes++; return HttpResponse.json({}, { status: 409 }); }));
+  await renderFlow();
+  const openRecovery = screen.getByRole("button", { name: t("characterNode.place") });
+  expect(openRecovery).toBeEnabled();
+  await userEvent.click(openRecovery);
+  await screen.findByText(pending.id);
+  await userEvent.click(screen.getByRole("button", { name: t("characterNode.reconcileAction") }));
+  await screen.findByText(t("characterNode.receiptMissing"));
+  await userEvent.click(screen.getByRole("button", { name: t("characterNode.pendingExit") }));
+  await userEvent.click(screen.getByRole("button", { name: t("characterNode.place") }));
+  expect(await screen.findByText(pending.id)).toBeVisible();
+  expect(useCharacterNodeRecovery.getState().placements["project-1"]).toEqual(pending);
+  expect(writes).toBe(0);
+});
+
+it("keeps an empty snapshot final when its first character arrives before delayed flow initialization", async () => {
+  renderRealFlow = true;
+  focusProbe.deferInit = true;
+  server.use(http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({ ...snapshot(), canvas: { items: [] }, connections: [] })),
+    http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })));
+  const client = await renderFlow(0);
+  await waitFor(() => expect(focusProbe.pendingInit).not.toBeNull());
+  await screen.findByRole("button", { name: "创建第一个节点" });
+  const first: CanvasItem = { id: "first-role", subjectType: "CHARACTER", subjectId: "hero", title: "Hero", x: 400, y: 300,
+    width: 320, height: 300, zIndex: 0, locked: false, version: 0, artifact: null, selectedVersion: null, selectedVersionId: null,
+    characterNode: { canvasItemId: "first-role", version: 0, newerVersionAvailable: false, connections: [],
+      selection: { characterId: "hero", characterVersion: 1, lookId: null, viewVersionIds: [], useAppearance: true, useVoice: false },
+      snapshot: { characterId: "hero", characterVersion: 1, name: "Hero", description: "Pilot", look: null, voice: null, useAppearance: true, useVoice: false } } };
+  act(() => client.setQueryData(["canvas", "project-1"], { items: [first] }));
+  await waitFor(() => expect(flowProps.nodes).toHaveLength(1));
+  act(() => focusProbe.pendingInit?.());
+  await waitFor(() => expect(focusProbe.instance).not.toBeNull());
+  expect(focusProbe.fit).not.toHaveBeenCalled();
+  expect(flowProps.fitView).not.toBe(true);
 });

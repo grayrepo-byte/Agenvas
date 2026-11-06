@@ -45,9 +45,9 @@ export function VideoEditDialog({ projectId, items, initialIds, onClose }: {
   useLocale();
   const prefix = useId();
   const [sources] = useState(() => items.filter((item) => item.selectedVersionId && item.selectedVersion));
-  const allVideos = sources.filter((item) => item.artifact.kind === "VIDEO");
+  const allVideos = sources.filter((item) => item.artifact?.kind === "VIDEO");
   const videos = [...new Map(allVideos.map((item) => [item.selectedVersionId, item])).values()];
-  const audios = [...new Map(sources.filter((item) => item.artifact.kind === "AUDIO").map((item) => [item.selectedVersionId, item])).values()];
+  const audios = [...new Map(sources.filter((item) => item.artifact?.kind === "AUDIO").map((item) => [item.selectedVersionId, item])).values()];
   const createShot = (item: CanvasItem): EditShot => ({ id: crypto.randomUUID(), videoVersionId: item.selectedVersionId!, startMs: 0, endMs: null, speed: 1, fadeMs: 0, lines: [] });
   const [shots, setShots] = useState<EditShot[]>(() => {
     const selected = initialIds.flatMap((id) => allVideos.find((item) => item.id === id) ?? []);

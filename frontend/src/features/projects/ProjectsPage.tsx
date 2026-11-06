@@ -1,10 +1,11 @@
 import { Field, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
 import { Archive,ArrowClockwise,ArrowRight,Folder,MagnifyingGlass,PencilSimple,Plus,Trash,X } from "@/shared/ui/icons";
 import { useInfiniteQuery,useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
-import { type FormEvent,useRef,useState } from "react";
-import { Link } from "react-router";
+import { type FormEvent,useId,useRef,useState } from "react";
+import { Link,useNavigate } from "react-router";
 import {
 ApiError,
+HTTP_STATUS,
 archiveProject,
 createProject,
 deleteProject,
@@ -38,6 +39,8 @@ const ASPECT_RATIOS: Record<Project["aspectRatio"], string> = {
 export function ProjectsPage() {
   useLocale();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const searchScopeId = useId();
   const nameInput = useRef<HTMLInputElement>(null);
   const [includeArchived, setIncludeArchived] = useState(false);
   const [search, setSearch] = useState("");
@@ -54,14 +57,20 @@ export function ProjectsPage() {
   });
   const create = useMutation({
     mutationFn: createProject,
-    onSuccess: async () => {
+    onSuccess: (project) => {
       setName("");
-      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.setQueryData(["projects", project.id], project);
+      // A list refresh must not hold up entry into the project just created.
+      void queryClient.invalidateQueries({ queryKey: ["projects"], exact: false });
+      navigate(`/projects/${project.id}`);
     },
   });
   const loadedProjects = projects.data?.pages.flatMap((page) => page.items) ?? [];
   const query = search.trim().toLocaleLowerCase();
   const visibleProjects = loadedProjects.filter((project) => project.name.toLocaleLowerCase().includes(query));
+  const searchScope = projects.hasNextPage
+    ? t("projects.searchMoreHint", { "0": loadedProjects.length })
+    : t("projects.searchCompleteHint", { "0": loadedProjects.length });
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -75,14 +84,15 @@ export function ProjectsPage() {
         <section className="projects-library" aria-label={t("projects.title")}>
           <div className="projects-list-heading"><h2>{t("projects.title")}</h2><StatusBadge>{t("projects.loadedCount", { "0": loadedProjects.length })}</StatusBadge>{query ? <span className="ui-muted">{t("projects.matchCount", { "0": visibleProjects.length })}</span> : null}</div>
           <div className="projects-toolbar">
-            <label className="projects-search"><MagnifyingGlass size={17} aria-hidden="true" /><Input aria-label={t("projects.search")} placeholder={t("projects.searchPlaceholder")} type="search" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
+            <label className="projects-search ui-search-field"><MagnifyingGlass size={17} aria-hidden="true" /><Input variant="ghost" aria-label={t("projects.search")} aria-describedby={query && projects.data ? searchScopeId : undefined} placeholder={t("projects.searchPlaceholder")} type="search" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
             <div className="projects-filter-actions"><label className="projects-archive-filter"><Checkbox checked={includeArchived} onCheckedChange={(event) => setIncludeArchived(event === true)} />{t("projects.showArchived")}</label>
               <Button variant="outline" size="icon" aria-label={t("projects.refresh")} disabled={projects.isFetching} onClick={() => void projects.refetch()} type="button"><ArrowClockwise aria-hidden="true" /></Button></div>
           </div>
+          {query && projects.data ? <p id={searchScopeId} className="projects-search-scope ui-muted" role="status">{searchScope}</p> : null}
           {projects.isPending ? <LoadingState label={t("common.projectLoading")} /> : null}
           {projects.error ? <Notice title={t("projects.loadFailed")} tone="danger"><p>{errorMessage(projects.error)}</p><Button variant="outline"  disabled={projects.isFetching} onClick={() => void (projects.isFetchNextPageError ? projects.fetchNextPage() : projects.refetch())} type="button">{t("common.retryRead")}</Button></Notice> : null}
           {projects.isSuccess && loadedProjects.length === 0 ? <EmptyState icon={<Folder size={28} aria-hidden="true" />} title={t("projects.emptyTitle")} description={t("projects.emptyHint")} action={<Button variant="outline"  onClick={() => nameInput.current?.focus()} type="button"><Plus size={15} aria-hidden="true" />{t("projects.newProject")}</Button>} /> : null}
-          {loadedProjects.length > 0 && visibleProjects.length === 0 ? <EmptyState icon={<MagnifyingGlass size={28} aria-hidden="true" />} title={t("projects.emptySearch")} description={t("projects.searchScopeHint")} action={<Button variant="outline"  onClick={() => setSearch("")} type="button">{t("projects.clearSearch")}</Button>} /> : null}
+          {loadedProjects.length > 0 && visibleProjects.length === 0 ? <EmptyState icon={<MagnifyingGlass size={28} aria-hidden="true" />} title={projects.hasNextPage ? t("projects.emptyLoadedSearch") : t("projects.emptySearch")} description={projects.hasNextPage ? t("projects.searchLoadMoreHint") : t("projects.searchScopeHint")} action={<Button variant="outline"  onClick={() => setSearch("")} type="button">{t("projects.clearSearch")}</Button>} /> : null}
           <div className="projects-grid">{visibleProjects.map((project) => <ProjectCard key={project.id} project={project} />)}</div>
           {projects.hasNextPage ? <div className="projects-load-more"><Button variant="outline"  disabled={projects.isFetching} onClick={() => void projects.fetchNextPage()} type="button">{projects.isFetchingNextPage ? t("projects.loading") : t("projects.loadMore")}</Button></div> : null}
         </section>
@@ -95,7 +105,6 @@ export function ProjectsPage() {
             </FieldGroup>
             {create.error ? <Notice tone="danger">{errorMessage(create.error)}</Notice> : null}
             <Button disabled={create.isPending || !name.trim()} type="submit"><Plus data-icon="inline-start" aria-hidden="true" />{create.isPending ? t("common.creating") : t("projects.create")}</Button>
-            {create.isSuccess ? <Notice tone="success">{t("projects.created")}</Notice> : null}
           </form>
         </Panel>
       </div>
@@ -107,6 +116,7 @@ export function ProjectsPage() {
 function ProjectCard({ project }: { project: Project }) {
   useLocale();
   const queryClient = useQueryClient();
+  const nameInput = useRef<HTMLInputElement>(null);
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(project.name);
   const [editVersion, setEditVersion] = useState(project.version);
@@ -118,6 +128,12 @@ function ProjectCard({ project }: { project: Project }) {
     onSuccess: async () => {
       setEditing(false);
       await queryClient.invalidateQueries({ queryKey: ["projects"] });
+    },
+    onError: (error) => {
+      // Refresh the server name/version while retaining the draft and its CAS baseline.
+      if (error instanceof ApiError && error.status === HTTP_STATUS.CONFLICT) {
+        void queryClient.invalidateQueries({ queryKey: ["projects"] });
+      }
     },
   });
   const archive = useMutation({ mutationFn: () => archiveProject(project), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projects"] }) });
@@ -154,9 +170,14 @@ function ProjectCard({ project }: { project: Project }) {
         <div className="project-card-status"><span>{ASPECT_LABELS[project.aspectRatio]}</span><StatusBadge tone={archived ? "neutral" : "success"}>{archived ? t("projects.archived") : t("projects.active")}</StatusBadge></div>
       {editing ? (
         <form className="ui-form project-rename" onSubmit={submit} aria-busy={rename.isPending}>
-          <Field><FieldLabel className="ui-field block"><span>{t("projects.newName")}</span><Input autoFocus disabled={pending} maxLength={PROJECT_NAME_MAX_LENGTH} required value={name} onChange={(event) => setName(event.target.value)} /></FieldLabel></Field>
+          <Field><FieldLabel className="ui-field block"><span>{t("projects.newName")}</span><Input ref={nameInput} autoFocus disabled={pending} maxLength={PROJECT_NAME_MAX_LENGTH} required value={name} onChange={(event) => setName(event.target.value)} /></FieldLabel></Field>
           {rename.error ? <Notice tone="danger">{errorMessage(rename.error)}</Notice> : null}
-          {project.version !== editVersion ? <Notice tone="warning">{t("projects.conflict")}</Notice> : null}
+          {project.version !== editVersion ? <Notice tone="warning"><p>{t("projects.conflict")}</p><p>{t("projects.latestName", { "0": project.name })}</p><Button variant="outline" size="sm" disabled={pending} type="button" onClick={() => {
+            // Adopting the visible server version preserves input; saving is a separate action.
+            setEditVersion(project.version);
+            rename.reset();
+            nameInput.current?.focus({ preventScroll: true });
+          }}>{t("projects.continueRename")}</Button></Notice> : null}
           <div className="ui-form-actions"><Button disabled={pending || archived || !name.trim() || project.version !== editVersion} type="submit">{rename.isPending ? t("common.savingProgress") : t("projects.saveName")}</Button><Button variant="ghost" disabled={pending} onClick={() => setEditing(false)} type="button"><X data-icon="inline-start" aria-hidden="true" />{t("common.cancel")}</Button></div>
         </form>
       ) : <><h3>{project.name}</h3><p className="project-card-meta"><time dateTime={project.updatedAt}>{t("projects.updated", { "0": formatDate(project.updatedAt, { month: "short", day: "numeric" }) })}</time></p></>}

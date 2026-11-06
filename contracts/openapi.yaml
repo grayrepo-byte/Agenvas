@@ -4,13 +4,1266 @@ info:
   version: 0.1.0
   description: |
     Agenvas 的权威 HTTP 合约。覆盖当前已实现的身份、项目、画布、Agent、Task 与私有素材切片；未实现的 MVP 能力继续按开发清单加入。
-    部署者设置 AGENVAS_RECOVERY_MODE=true 后，/api/v1/projects、/api/v1/settings 与 /api/v1/media-templates 下的非 GET/HEAD/OPTIONS 请求统一返回 HTTP 503 ProblemDetail，code=RECOVERY_MODE_READ_ONLY；身份登录与只读核对仍可用。恢复模式同时关闭后台调度，不能把 503 当作业务版本冲突重试。
+    部署者设置 AGENVAS_RECOVERY_MODE=true 后，/api/v1/projects、/api/v1/settings、/api/v1/media-templates、/api/v1/library、/api/v1/character-library、/api/v1/reference-catalog 与 /api/v1/skills 下的非 GET/HEAD/OPTIONS 请求统一返回 HTTP 503 ProblemDetail，code=RECOVERY_MODE_READ_ONLY；身份登录与只读核对仍可用。恢复模式同时关闭后台调度，不能把 503 当作业务版本冲突重试。
     服务端为每次 HTTP 请求生成 X-Request-Id 响应头；ProblemDetail.traceId 与它相同。客户端同名请求头不会被信任或回显。
     所有 API 接受 Accept-Language 语言协商（en、zh、ru、ja，地区变体按基础语言匹配；不支持、缺失或无效时回退 zh，q=0 不选用）。响应携带 Content-Language 与 Vary: Accept-Language，包括认证和 CSRF 错误。Problem 的 title、detail、fieldErrors.message 使用协商语言；code、状态、字段路径、ID 和用户内容不随语言变化。语言偏好仅由浏览器保存，无账号配置 API 或数据库迁移。
     请求 Content-Type 不受支持时返回 HTTP 415（UNSUPPORTED_MEDIA_TYPE），Accept 无法匹配接口的响应格式时返回 HTTP 406（NOT_ACCEPTABLE）；两者使用 application/problem+json、retryable=false，并保留支持的格式响应头，不能作为临时服务端故障重试。
 servers:
   - url: /
 paths:
+  "/api/v1/character-library/profiles":
+    get:
+      operationId: "listCharacterLibraryProfiles"
+      tags: ["CharacterLibrary"]
+      responses:
+        "200":
+          description: "Owned character library result"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/CharacterLibraryPage"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Authentication required"
+        "404":
+          description: "Resource unavailable"
+        "409":
+          description: "Version or command conflict"
+      parameters:
+        -
+          name: "query"
+          in: "query"
+          schema:
+            type: "string"
+            maxLength: 160
+        -
+          name: "archived"
+          in: "query"
+          schema:
+            type: "boolean"
+            default: false
+        -
+          name: "cursor"
+          in: "query"
+          schema:
+            type: "string"
+            format: "uuid"
+        -
+          name: "limit"
+          in: "query"
+          schema:
+            type: "integer"
+            minimum: 1
+            maximum: 100
+            default: 30
+  "/api/v1/character-library/profiles/{id}":
+    get:
+      operationId: "getCharacterLibraryProfile"
+      tags: ["CharacterLibrary"]
+      responses:
+        "200":
+          description: "Owned character library result"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/CharacterLibraryProfile"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Authentication required"
+        "404":
+          description: "Resource unavailable"
+        "409":
+          description: "Version or command conflict"
+      parameters:
+        -
+          name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+    put:
+      operationId: "saveCharacterLibraryProfile"
+      tags: ["CharacterLibrary"]
+      responses:
+        "200":
+          description: "Owned character library result"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/CharacterLibraryProfile"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Authentication required"
+        "404":
+          description: "Resource unavailable"
+        "409":
+          description: "Version or command conflict"
+      parameters:
+        -
+          name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/CharacterLibrarySave"
+  "/api/v1/character-library/profiles/{id}/archive":
+    post:
+      operationId: "archiveCharacterLibraryProfile"
+      tags: ["CharacterLibrary"]
+      responses:
+        "200":
+          description: "Owned character library result"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/CharacterLibraryProfile"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Authentication required"
+        "404":
+          description: "Resource unavailable"
+        "409":
+          description: "Version or command conflict"
+      parameters:
+        -
+          name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/CharacterLibraryArchive"
+  "/api/v1/character-library/profiles/{id}/from-project":
+    post:
+      operationId: "publishProjectCharacterToLibrary"
+      tags: ["CharacterLibrary"]
+      responses:
+        "202":
+          description: "Owned character library result"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/CharacterLibraryCommand"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Authentication required"
+        "404":
+          description: "Resource unavailable"
+        "409":
+          description: "Version or command conflict"
+      parameters:
+        -
+          name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/CharacterLibraryPublish"
+  "/api/v1/character-library/media":
+    post:
+      operationId: "archiveCharacterLibraryMedia"
+      tags: ["CharacterLibrary"]
+      responses:
+        "202":
+          description: "Owned character library result"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/CharacterLibraryCommand"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Authentication required"
+        "404":
+          description: "Resource unavailable"
+        "409":
+          description: "Version or command conflict"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/CharacterLibraryMediaSource"
+  "/api/v1/character-library/media/uploads":
+    post:
+      operationId: "uploadCharacterLibraryMedia"
+      tags: ["CharacterLibrary"]
+      responses:
+        "202":
+          description: "Owned character library result"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/CharacterLibraryCommand"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Authentication required"
+        "404":
+          description: "Resource unavailable"
+        "409":
+          description: "Version or command conflict"
+      requestBody:
+        required: true
+        content:
+          "multipart/form-data":
+            schema:
+              type: "object"
+              additionalProperties: false
+              required: ["commandId", "kind", "file"]
+              properties:
+                commandId:
+                  type: "string"
+                  format: "uuid"
+                kind:
+                  type: "string"
+                  enum: ["IMAGE", "AUDIO"]
+                file:
+                  type: "string"
+                  format: "binary"
+  "/api/v1/character-library/media/{mediaId}/content":
+    get:
+      operationId: "readCharacterLibraryMediaContent"
+      tags: ["CharacterLibrary"]
+      responses:
+        "200":
+          description: "Private immutable media bytes"
+          content:
+            "application/octet-stream":
+              schema:
+                type: "string"
+                format: "binary"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Authentication required"
+        "404":
+          description: "Resource unavailable"
+        "409":
+          description: "Version or command conflict"
+      parameters:
+        -
+          name: "mediaId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+  "/api/v1/character-library/media/{mediaId}/thumbnail":
+    get:
+      operationId: "readCharacterLibraryMediaThumbnail"
+      tags: ["CharacterLibrary"]
+      responses:
+        "200":
+          description: "Private immutable media bytes"
+          content:
+            "application/octet-stream":
+              schema:
+                type: "string"
+                format: "binary"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Authentication required"
+        "404":
+          description: "Resource unavailable"
+        "409":
+          description: "Version or command conflict"
+      parameters:
+        -
+          name: "mediaId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+  "/api/v1/character-library/commands/{commandId}":
+    get:
+      operationId: "getCharacterLibraryCommand"
+      tags: ["CharacterLibrary"]
+      responses:
+        "200":
+          description: "Owned character library result"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/CharacterLibraryCommand"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Authentication required"
+        "404":
+          description: "Resource unavailable"
+        "409":
+          description: "Version or command conflict"
+      parameters:
+        -
+          name: "commandId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+  "/api/v1/character-library/commands/{commandId}/retry":
+    post:
+      operationId: "retryCharacterLibraryCommand"
+      tags: ["CharacterLibrary"]
+      responses:
+        "202":
+          description: "Owned character library result"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/CharacterLibraryCommand"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Authentication required"
+        "404":
+          description: "Resource unavailable"
+        "409":
+          description: "Version or command conflict"
+      parameters:
+        -
+          name: "commandId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+  "/api/v1/projects/{projectId}/character-library/imports/preview":
+    post:
+      operationId: "previewCharacterLibraryImport"
+      tags: ["CharacterLibrary"]
+      responses:
+        "200":
+          description: "Owned character library result"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/CharacterLibraryTransferPreview"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Authentication required"
+        "404":
+          description: "Resource unavailable"
+        "409":
+          description: "Version or command conflict"
+      parameters:
+        -
+          name: "projectId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/CharacterLibraryTransfer"
+  "/api/v1/projects/{projectId}/character-library/imports":
+    post:
+      operationId: "importCharacterLibraryProfile"
+      tags: ["CharacterLibrary"]
+      responses:
+        "202":
+          description: "Owned character library result"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/CharacterLibraryCommand"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Authentication required"
+        "404":
+          description: "Resource unavailable"
+        "409":
+          description: "Version or command conflict"
+      parameters:
+        -
+          name: "projectId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/CharacterLibraryImport"
+  "/api/v1/projects/{projectId}/character-library/links":
+    get:
+      operationId: "listProjectCharacterLibraryLinks"
+      tags: ["CharacterLibrary"]
+      responses:
+        "200":
+          description: "Owned character library result"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/CharacterLibraryLinks"
+        "400":
+          description: "Invalid input"
+        "401":
+          description: "Authentication required"
+        "404":
+          description: "Resource unavailable"
+        "409":
+          description: "Version or command conflict"
+      parameters:
+        -
+          name: "projectId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+  /api/v1/reference-catalog/private-images:
+    get:
+      operationId: listPrivateReferenceImages
+      summary: Read only the current account selected private image cache
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogPrivateImages'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+        - name: sourceId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: snapshotId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      description: Owner scoped. Frozen metadata may remain after clearing, with cached=false; no image fetch occurs.
+    post:
+      operationId: cachePrivateReferenceImage
+      summary: Explicitly cache one permitted selected image for this account
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogPrivateImage'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CacheReferenceCatalogPrivateImage'
+      description: >-
+        Session/CSRF protected, one selected base pose or photographic costume only. Separates private reference
+        use from bulk caching and redistribution. Pins the source commit and Git blob identity, validates
+        decoded bytes and records observed SHA-256. No automatic grid downloads. Same fixed command replays
+        safely; no permission is inferred for anime, depth or custom collections.
+  /api/v1/reference-catalog/private-images/{imageId}:
+    delete:
+      operationId: clearPrivateReferenceImage
+      summary: Clear the current owner private cache entry while preserving project copies
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogPrivateImage'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+        - name: imageId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      description: >-
+        Owner only and CSRF protected. Returns cached=false, retaining fixed integrity for an explicit re-cache.
+        Other owners and independent project media are protected.
+  /api/v1/reference-catalog/private-images/{imageId}/preview:
+    get:
+      operationId: previewPrivateReferenceImage
+      summary: Read this owner already-cached image offline
+      tags:
+        - Reference Catalog
+      description: >-
+        Owner identity and current source policy are checked before bytes. Cache hit only; missing files never
+        trigger a hidden network download. Other accounts receive not found.
+      parameters:
+        - name: imageId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Verified private cached image
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Verified cached image is unavailable; no implicit download
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/projects/{projectId}/reference-catalog/private-images/{imageId}/import:
+    post:
+      operationId: importPrivateReferenceImage
+      summary: Copy an owned cached reference into an active owned project
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogImport'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: imageId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportReferenceCatalogPrivateImage'
+      description: >-
+        Owner-private image authorization, project ownership and fixed command key are enforced. Reads cached
+        bytes offline and publishes an independent project image version with optional explicit placement. No
+        provider call; clearing cache does not change imported media.
+  /api/v1/settings/reference-catalog/cache:
+    get:
+      operationId: getReferenceCatalogCacheStats
+      summary: Read local image file cache quota and physical usage
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogCacheStats'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      description: >-
+        Administrator-only. Includes protected private image usage separately; project media is outside this
+        rebuildable cache.
+  /api/v1/settings/reference-catalog/cache/jobs:
+    get:
+      operationId: listReferenceCatalogCacheJobs
+      summary: Read durable image cache jobs
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogCacheJobs'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+    post:
+      operationId: createReferenceCatalogCacheJob
+      summary: Explicitly cache an authorized fixed image selection
+      tags:
+        - Reference Catalog
+      responses:
+        '202':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogCacheJob'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReferenceCatalogCacheJob'
+      description: >-
+        Administrator-only, CSRF protected. Empty entryIds means all entries of this pinned snapshot. Restricted
+        sources cannot bulk cache. Fixed command key replays the same job; progress records real
+        success/failure. Metadata sync does not start this job.
+  /api/v1/settings/reference-catalog/cache/jobs/{jobId}:
+    get:
+      operationId: getReferenceCatalogCacheJob
+      summary: Read actual image cache progress
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogCacheJob'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+  /api/v1/settings/reference-catalog/cache/jobs/{jobId}/retry:
+    post:
+      operationId: retryReferenceCatalogCacheJob
+      summary: Retry only failed cache items
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogCacheJob'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      description: >-
+        Administrator-only. Already-ready items are not downloaded again; cancelled jobs cannot be resumed
+        implicitly.
+  /api/v1/settings/reference-catalog/cache/jobs/{jobId}/cancel:
+    post:
+      operationId: cancelReferenceCatalogCacheJob
+      summary: Cancel remaining image cache work
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogCacheJob'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+  /api/v1/settings/reference-catalog/cache/clear:
+    post:
+      operationId: clearReferenceCatalogCache
+      summary: Clear rebuildable shared cache files with protected private and project copies retained
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogCacheClearResult'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClearReferenceCatalogCache'
+      description: >-
+        Administrator-only and CSRF protected. Empty object explicitly selects the shared cache. Optional
+        source/snapshot/entry selection narrows it. Active matching jobs are cancelled/fenced; active
+        owner-private indexes and independent project media remain protected.
+  /api/v1/reference-catalog/sources:
+    get:
+      operationId: listReferenceCatalogSources
+      summary: Read configured sources without contacting GitHub
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogSources'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/reference-catalog:
+    get:
+      operationId: listReferenceCatalogEntries
+      summary: Search locally cached pose groups and costume entries
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogPage'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+        - name: kind
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ReferenceCatalogKind'
+        - name: sourceId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: query
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+            default: ''
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: tag
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: style
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: collection
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: extended
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - name: angle
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      description: >-
+        Authenticated local metadata search. OPEN_POSE_COSTUME images remain LINK_ONLY. Filters use stable
+        source identifiers; no provider or image download occurs.
+  /api/v1/settings/reference-catalog/sources:
+    post:
+      operationId: createReferenceCatalogSource
+      summary: Configure a public GitHub metadata source
+      tags:
+        - Reference Catalog
+      responses:
+        '201':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogSource'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReferenceCatalogSource'
+      description: >-
+        Administrator only and CSRF protected. Does not synchronize automatically. Image permission is separate
+        and cannot enable restricted OPEN_POSE_COSTUME images.
+  /api/v1/settings/reference-catalog/sources/{sourceId}:
+    patch:
+      operationId: updateReferenceCatalogSource
+      summary: Enable a source and record reviewed image permission
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogSource'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+        - name: sourceId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateReferenceCatalogSource'
+  /api/v1/settings/reference-catalog/sources/{sourceId}/sync:
+    post:
+      operationId: syncReferenceCatalogSource
+      summary: Manually publish a validated fixed-commit metadata snapshot
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogSyncResult'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+        - name: sourceId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncReferenceCatalogSource'
+      description: >-
+        Administrator only. Bounded credential-free GitHub reads occur outside database transactions. A FAILED
+        result preserves the previous ready snapshot. No image downloads.
+  /api/v1/projects/{projectId}/reference-catalog/import:
+    post:
+      operationId: importReferenceCatalogImage
+      summary: Copy one authorized image variant into an owned active project
+      tags:
+        - Reference Catalog
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogImport'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReferenceCatalogImportRequest'
+      description: >-
+        Fixed source snapshot, variant and hash. Same key and payload replays the same result; changed payload
+        conflicts. Optional placement creates a canvas image card. No media generation. Restricted and
+        unreviewed images are rejected; project copies survive source changes.
+  /api/v1/reference-catalog/sources/{sourceId}/snapshots/{snapshotId}/entries/{entryId}/variants/{variantId}/preview:
+    get:
+      operationId: previewReferenceCatalogImage
+      summary: Preview one authorized checksum-verified image
+      tags:
+        - Reference Catalog
+      description: >-
+        Authenticated fixed-snapshot read. Permission, hash, byte count, format, dimensions and decoding are
+        checked. No arbitrary URL or gallery proxy. OPEN_POSE_COSTUME remains link-only.
+      parameters:
+        - name: sourceId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: snapshotId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: entryId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: variantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Validated image bytes
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: Recovery mode blocks writes
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/v1/settings/local-services/discover:
     post:
       operationId: discoverLocalService
@@ -3061,7 +4314,7 @@ paths:
     post:
       operationId: runImagePrompt
       summary: 固定选用图片版本、语言、功能提示词与文字模型，受理提示词反推任务
-      description: 使用 TEXT_GENERATION Task 的 IMAGE_REVERSE_PROMPT 用途与输入 schema 3；无产物输出目标，不修改媒体草稿或选用结果。校验来源节点 CAS 与精确版本归属，固定 image.reverse-prompt 正文与版本。相同键同请求重放，不重新读取配置；同节点有其他命令的活动任务时返回 409，不创建重复任务。Worker 发送受控图片预览，关闭自动工具执行，成功后 output 仅返回 prompt、sourceVersionId、mock。Mock 明确标记为演示；真实模型须支持图片理解。沿用任务租约、公开状态事件、查询、取消、用量与响应检查点恢复。
+      description: 使用 TEXT_GENERATION Task 的 IMAGE_REVERSE_PROMPT 用途与输入 schema 5；成功后在同一租约及取消屏障事务中创建独立 TEXT 产物、不可变 TASK 版本和画布文字卡片，不修改媒体草稿或来源选用结果。校验来源节点 CAS 与精确版本归属，固定 image.reverse-prompt 正文与版本。相同键同请求重放，不重新读取配置；同节点有其他命令的活动任务时返回 409，不创建重复任务。Worker 发送固定版本的归档原图，关闭自动工具执行。成功 output 返回 prompt、sourceVersionId、mock、artifactId、artifactVersionId 和 canvasItemId（项目已删除时不创建节点并省略 canvasItemId）。标题冻结为请求语言，Mock 卡片标题明确标记。重复命令、查询和检查点恢复不会重复建卡；发布失败保留响应检查点，租约恢复只重试发布。历史 schema 3 继续只返回原反推文本，不自动补卡。Mock 明确标记为演示；真实模型须支持图片理解。沿用任务租约、公开状态事件、查询、取消、用量与响应检查点恢复。
       tags: [Tasks]
       parameters:
         - name: Idempotency-Key
@@ -5254,6 +6507,19 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
+  "/api/v1/projects/{projectId}/canvas/character-nodes/{itemId}": {"put": {"operationId": "createCharacterNode", "tags": ["Canvas"], "parameters": [{"in": "path", "name": "projectId", "required": true, "schema": {"type": "string", "format": "uuid"}}, {"in": "path", "name": "itemId", "required": true, "schema": {"type": "string", "format": "uuid"}}], "responses": {"200": {"description": "Success", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CanvasCharacterNodeEntry"}}}}, "400": {"$ref": "#/components/responses/ValidationError"}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}}, "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateCharacterNode"}}}}}}
+  "/api/v1/projects/{projectId}/canvas/character-nodes/{itemId}/selection": {"put": {"operationId": "saveCharacterNodeSelection", "tags": ["Canvas"], "parameters": [{"in": "path", "name": "projectId", "required": true, "schema": {"type": "string", "format": "uuid"}}, {"in": "path", "name": "itemId", "required": true, "schema": {"type": "string", "format": "uuid"}}], "responses": {"200": {"description": "Success", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CharacterNode"}}}}, "400": {"$ref": "#/components/responses/ValidationError"}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}}, "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SaveCharacterNodeSelection"}}}}}}
+  "/api/v1/projects/{projectId}/canvas/character-connections": {"get": {"operationId": "listCharacterNodeConnections", "tags": ["Canvas"], "parameters": [{"in": "path", "name": "projectId", "required": true, "schema": {"type": "string", "format": "uuid"}}], "responses": {"200": {"description": "Success", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CharacterNodeConnectionList"}}}}, "400": {"$ref": "#/components/responses/ValidationError"}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}}}, "post": {"operationId": "connectCharacterNode", "tags": ["Canvas"], "parameters": [{"in": "path", "name": "projectId", "required": true, "schema": {"type": "string", "format": "uuid"}}], "responses": {"201": {"description": "Success", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CharacterNodeConnection"}}}}, "400": {"$ref": "#/components/responses/ValidationError"}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}}, "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ConnectCharacterNode"}}}}}}
+  "/api/v1/projects/{projectId}/canvas/character-connections/{connectionId}/disconnect": {"post": {"operationId": "disconnectCharacterNode", "tags": ["Canvas"], "parameters": [{"in": "path", "name": "projectId", "required": true, "schema": {"type": "string", "format": "uuid"}}, {"in": "path", "name": "connectionId", "required": true, "schema": {"type": "string", "format": "uuid"}}], "responses": {"204": {"description": "Disconnected; applied draft retained"}, "400": {"$ref": "#/components/responses/ValidationError"}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}}, "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DisconnectCharacterNode"}}}}}}
+  "/api/v1/projects/{projectId}/canvas-items/{targetId}/character-node-bindings/preview": {"post": {"operationId": "previewCharacterNodeBindings", "tags": ["Canvas"], "parameters": [{"in": "path", "name": "projectId", "required": true, "schema": {"type": "string", "format": "uuid"}}, {"in": "path", "name": "targetId", "required": true, "schema": {"type": "string", "format": "uuid"}}], "responses": {"200": {"description": "Success", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CharacterNodeBindingPreview"}}}}, "400": {"$ref": "#/components/responses/ValidationError"}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}}, "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PreviewCharacterNodeBindings"}}}}}}
+  "/api/v1/projects/{projectId}/canvas-items/{targetId}/character-node-bindings/apply": {"post": {"operationId": "applyCharacterNodeBindings", "tags": ["Canvas"], "parameters": [{"in": "path", "name": "projectId", "required": true, "schema": {"type": "string", "format": "uuid"}}, {"in": "path", "name": "targetId", "required": true, "schema": {"type": "string", "format": "uuid"}}], "responses": {"200": {"description": "Success", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CharacterBindingApplied"}}}}, "400": {"$ref": "#/components/responses/ValidationError"}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}}, "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApplyCharacterNodeBindings"}}}}}}
+
+  "/api/v1/projects/{projectId}/characters/{characterId}/revisions/{version}": {"get": {"operationId": "getCharacterRevision", "tags": ["Characters"], "parameters": [{"in": "path", "name": "projectId", "required": true, "schema": {"type": "string", "format": "uuid"}}, {"in": "path", "name": "characterId", "required": true, "schema": {"type": "string", "format": "uuid"}}, {"in": "path", "name": "version", "required": true, "schema": {"type": "integer", "format": "int64", "minimum": 1}}], "responses": {"200": {"description": "Fixed immutable project character revision", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CharacterProfile"}}}}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "404": {"$ref": "#/components/responses/NotFound"}}}}
+
+  "/api/v1/projects/{projectId}/canvas/character-connections/{connectionId}/receipt": {"get": {"operationId": "getCharacterNodeConnectionReceipt", "tags": ["Canvas"], "summary": "Read the retained success receipt without changing project or canvas state", "description": "Owner-authorized read remains available after project archival and node lock/deletion. Returns the original successful result only; command hashes are private. Missing receipt or an application receipt for a different target returns 404.", "parameters": [{"in": "path", "name": "projectId", "required": true, "schema": {"type": "string", "format": "uuid"}}, {"in": "path", "name": "connectionId", "required": true, "schema": {"type": "string", "format": "uuid"}}], "responses": {"200": {"description": "Original successful command receipt", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CharacterNodeConnection"}}}}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "404": {"$ref": "#/components/responses/NotFound"}}}}
+
+  "/api/v1/projects/{projectId}/canvas-items/{targetId}/character-node-bindings/receipts/{commandId}": {"get": {"operationId": "getCharacterNodeApplicationReceipt", "tags": ["Canvas"], "summary": "Read the retained success receipt without changing project or canvas state", "description": "Owner-authorized read remains available after project archival and node lock/deletion. Returns the original successful result only; command hashes are private. Missing receipt or an application receipt for a different target returns 404.", "parameters": [{"in": "path", "name": "projectId", "required": true, "schema": {"type": "string", "format": "uuid"}}, {"in": "path", "name": "targetId", "required": true, "schema": {"type": "string", "format": "uuid"}}, {"in": "path", "name": "commandId", "required": true, "schema": {"type": "string", "format": "uuid"}}], "responses": {"200": {"description": "Original successful command receipt", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CharacterBindingApplied"}}}}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "404": {"$ref": "#/components/responses/NotFound"}}}}
+
 components:
   securitySchemes:
     McpBearer:
@@ -5261,6 +6527,1172 @@ components:
       scheme: bearer
       description: 用户级 MCP 访问令牌，仅用于明确列出的 MCP 接口。
   schemas:
+    CharacterNodeSelection: {"type": "object", "additionalProperties": false, "required": ["characterId", "characterVersion", "lookId", "viewVersionIds", "useAppearance", "useVoice"], "properties": {"characterId": {"type": "string", "format": "uuid"}, "characterVersion": {"type": "integer", "format": "int64", "minimum": 1}, "lookId": {"type": ["string", "null"], "format": "uuid"}, "viewVersionIds": {"type": "array", "maxItems": 14, "uniqueItems": true, "items": {"type": "string", "format": "uuid"}}, "useAppearance": {"type": "boolean"}, "useVoice": {"type": "boolean"}}}
+    CharacterNodeConnection: {"type": "object", "additionalProperties": false, "required": ["id", "sourceCanvasItemId", "targetCanvasItemId", "version"], "properties": {"id": {"type": "string", "format": "uuid"}, "sourceCanvasItemId": {"type": "string", "format": "uuid"}, "targetCanvasItemId": {"type": "string", "format": "uuid"}, "version": {"type": "integer", "format": "int64", "minimum": 0}}}
+    CharacterNode: {"type": "object", "additionalProperties": false, "required": ["canvasItemId", "selection", "snapshot", "version", "newerVersionAvailable", "connections"], "properties": {"canvasItemId": {"type": "string", "format": "uuid"}, "selection": {"$ref": "#/components/schemas/CharacterNodeSelection"}, "snapshot": {"$ref": "#/components/schemas/CharacterSnapshot"}, "version": {"type": "integer", "format": "int64", "minimum": 0}, "newerVersionAvailable": {"type": "boolean"}, "connections": {"type": "array", "items": {"$ref": "#/components/schemas/CharacterNodeConnection"}}}}
+    CreateCharacterNode: {"type": "object", "additionalProperties": false, "required": ["selection", "x", "y", "width", "height", "zIndex", "groupId", "locked"], "properties": {"selection": {"$ref": "#/components/schemas/CharacterNodeSelection"}, "x": {"type": "number", "minimum": -1000000, "maximum": 1000000}, "y": {"type": "number", "minimum": -1000000, "maximum": 1000000}, "width": {"type": "number", "minimum": 120, "maximum": 2000}, "height": {"type": "number", "minimum": 80, "maximum": 2000}, "zIndex": {"type": "integer", "minimum": -1000, "maximum": 1000}, "groupId": {"type": ["string", "null"], "format": "uuid"}, "locked": {"type": "boolean"}}}
+    SaveCharacterNodeSelection: {"type": "object", "additionalProperties": false, "required": ["expectedItemVersion", "expectedSelectionVersion", "selection"], "properties": {"expectedItemVersion": {"type": "integer", "format": "int64", "minimum": 0}, "expectedSelectionVersion": {"type": "integer", "format": "int64", "minimum": 0}, "selection": {"$ref": "#/components/schemas/CharacterNodeSelection"}}}
+    ConnectCharacterNode: {"type": "object", "additionalProperties": false, "required": ["connectionId", "sourceCanvasItemId", "targetCanvasItemId", "expectedSourceItemVersion", "expectedSourceSelectionVersion", "expectedTargetItemVersion"], "properties": {"connectionId": {"type": "string", "format": "uuid"}, "sourceCanvasItemId": {"type": "string", "format": "uuid"}, "targetCanvasItemId": {"type": "string", "format": "uuid"}, "expectedSourceItemVersion": {"type": "integer", "format": "int64", "minimum": 0}, "expectedSourceSelectionVersion": {"type": "integer", "format": "int64", "minimum": 0}, "expectedTargetItemVersion": {"type": "integer", "format": "int64", "minimum": 0}}}
+    DisconnectCharacterNode: {"type": "object", "additionalProperties": false, "required": ["expectedVersion"], "properties": {"expectedVersion": {"type": "integer", "format": "int64", "minimum": 0}}}
+    PreviewCharacterNodeBindings: {"type": "object", "additionalProperties": false, "required": ["expectedBindingVersion", "expectedDraftVersion", "clearMode"], "properties": {"expectedBindingVersion": {"type": "integer", "format": "int64", "minimum": 0}, "expectedDraftVersion": {"type": "integer", "format": "int64", "minimum": 0}, "clearMode": {"$ref": "#/components/schemas/CharacterClearMode"}}}
+    ApplyCharacterNodeBindings: {"type": "object", "additionalProperties": false, "required": ["expectedBindingVersion", "expectedDraftVersion", "clearMode", "commandId", "previewHash"], "properties": {"expectedBindingVersion": {"type": "integer", "format": "int64", "minimum": 0}, "expectedDraftVersion": {"type": "integer", "format": "int64", "minimum": 0}, "clearMode": {"$ref": "#/components/schemas/CharacterClearMode"}, "commandId": {"type": "string", "format": "uuid"}, "previewHash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}}
+    CharacterNodeBindingPreview: {"type": "object", "additionalProperties": false, "required": ["previewHash", "characterPreview", "connections"], "properties": {"previewHash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "characterPreview": {"$ref": "#/components/schemas/CharacterBindingPreview"}, "connections": {"type": "array", "items": {"$ref": "#/components/schemas/CharacterNodeConnection"}}}}
+    CharacterNodeConnectionList: {"type": "object", "additionalProperties": false, "required": ["items"], "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/CharacterNodeConnection"}}}}
+    CanvasCharacterNodeEntry: {"type": "object", "additionalProperties": false, "required": ["item", "artifact", "selectedVersion", "characterNode"], "properties": {"item": {"type": "object", "additionalProperties": false, "required": ["id", "projectId", "subjectType", "subjectId", "selectedVersionId", "title", "x", "y", "width", "height", "zIndex", "groupId", "locked", "version", "createdAt", "updatedAt"], "properties": {"id": {"type": "string", "format": "uuid"}, "projectId": {"type": "string", "format": "uuid"}, "subjectType": {"type": "string", "const": "CHARACTER"}, "subjectId": {"type": "string", "format": "uuid"}, "selectedVersionId": {"type": "null"}, "title": {"type": "string"}, "x": {"type": "number"}, "y": {"type": "number"}, "width": {"type": "number"}, "height": {"type": "number"}, "zIndex": {"type": "integer"}, "groupId": {"type": ["string", "null"], "format": "uuid"}, "locked": {"type": "boolean"}, "version": {"type": "integer", "format": "int64", "minimum": 0}, "createdAt": {"type": "string", "format": "date-time"}, "updatedAt": {"type": "string", "format": "date-time"}}}, "artifact": {"type": "null"}, "selectedVersion": {"type": "null"}, "characterNode": {"$ref": "#/components/schemas/CharacterNode"}}}
+    CharacterLibraryView:
+      type: "object"
+      additionalProperties: false
+      required: ["mediaId", "purpose", "description"]
+      properties:
+        mediaId:
+          type: "string"
+          format: "uuid"
+        purpose:
+          type: "string"
+          maxLength: 120
+          minLength: 1
+        description:
+          type: "string"
+          maxLength: 2000
+    CharacterLibraryLook:
+      type: "object"
+      additionalProperties: false
+      required: ["id", "name", "clothing", "expression", "description", "views"]
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+        name:
+          type: "string"
+          maxLength: 160
+          minLength: 1
+        clothing:
+          type: "string"
+          maxLength: 2000
+        expression:
+          type: "string"
+          maxLength: 2000
+        description:
+          type: "string"
+          maxLength: 4000
+        views:
+          type: "array"
+          maxItems: 14
+          items:
+            "$ref": "#/components/schemas/CharacterLibraryView"
+    CharacterLibraryVoice:
+      type: "object"
+      additionalProperties: false
+      required: ["mediaId", "speakerId", "description"]
+      properties:
+        mediaId:
+          oneOf:
+            -
+              type: "string"
+              format: "uuid"
+            -
+              type: "null"
+        speakerId:
+          oneOf:
+            -
+              type: "string"
+              maxLength: 120
+            -
+              type: "null"
+        description:
+          type: "string"
+          maxLength: 2000
+    CharacterLibraryContent:
+      type: "object"
+      additionalProperties: false
+      required: ["name", "persona", "appearance", "identityViews", "looks", "voice"]
+      properties:
+        name:
+          type: "string"
+          maxLength: 160
+          minLength: 1
+        persona:
+          type: "string"
+          maxLength: 4000
+        appearance:
+          type: "string"
+          maxLength: 4000
+        identityViews:
+          type: "array"
+          maxItems: 14
+          items:
+            allOf:
+              -
+                "$ref": "#/components/schemas/CharacterLibraryView"
+              -
+                type: "object"
+                properties:
+                  purpose:
+                    type: "string"
+                    minLength: 1
+                    maxLength: 101
+        looks:
+          type: "array"
+          maxItems: 20
+          items:
+            "$ref": "#/components/schemas/CharacterLibraryLook"
+        voice:
+          oneOf:
+            -
+              "$ref": "#/components/schemas/CharacterLibraryVoice"
+            -
+              type: "null"
+      description: "Persona and appearance with the project heading must fit 4000 characters. Identity views plus each look deduplicate to at most 14 images; merged view descriptions must fit 2000 characters."
+    CharacterLibraryProfile:
+      type: "object"
+      additionalProperties: false
+      required: ["id", "content", "version", "archived", "createdAt", "updatedAt"]
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+        content:
+          "$ref": "#/components/schemas/CharacterLibraryContent"
+        version:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        archived:
+          type: "boolean"
+        createdAt:
+          type: "string"
+          format: "date-time"
+        updatedAt:
+          type: "string"
+          format: "date-time"
+    CharacterLibrarySave:
+      type: "object"
+      additionalProperties: false
+      required: ["commandId", "expectedVersion", "content"]
+      properties:
+        commandId:
+          type: "string"
+          format: "uuid"
+        expectedVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        content:
+          "$ref": "#/components/schemas/CharacterLibraryContent"
+    CharacterLibraryArchive:
+      type: "object"
+      additionalProperties: false
+      required: ["commandId", "expectedVersion"]
+      properties:
+        commandId:
+          type: "string"
+          format: "uuid"
+        expectedVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+    CharacterLibraryPage:
+      type: "object"
+      additionalProperties: false
+      required: ["items", "nextCursor"]
+      properties:
+        items:
+          type: "array"
+          maxItems: 100
+          items:
+            "$ref": "#/components/schemas/CharacterLibraryProfile"
+        nextCursor:
+          oneOf:
+            -
+              type: "string"
+              format: "uuid"
+            -
+              type: "null"
+    CharacterLibraryMediaSource:
+      type: "object"
+      additionalProperties: false
+      required: ["commandId", "sourceType", "entryId", "expectedEntryVersion", "projectId", "versionId"]
+      properties:
+        commandId:
+          type: "string"
+          format: "uuid"
+        sourceType:
+          type: "string"
+          enum: ["LIBRARY_ENTRY", "PROJECT_VERSION"]
+        entryId:
+          oneOf:
+            -
+              type: "string"
+              format: "uuid"
+            -
+              type: "null"
+        expectedEntryVersion:
+          oneOf:
+            -
+              type: "integer"
+              format: "int64"
+              minimum: 0
+            -
+              type: "null"
+        projectId:
+          oneOf:
+            -
+              type: "string"
+              format: "uuid"
+            -
+              type: "null"
+        versionId:
+          oneOf:
+            -
+              type: "string"
+              format: "uuid"
+            -
+              type: "null"
+    CharacterLibraryPublish:
+      type: "object"
+      additionalProperties: false
+      required: ["commandId", "expectedVersion", "sourceProjectId", "sourceCharacterId", "sourceCharacterVersion", "identityVersionIds"]
+      properties:
+        commandId:
+          type: "string"
+          format: "uuid"
+        expectedVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        sourceProjectId:
+          type: "string"
+          format: "uuid"
+        sourceCharacterId:
+          type: "string"
+          format: "uuid"
+        sourceCharacterVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        identityVersionIds:
+          type: "array"
+          maxItems: 14
+          items:
+            type: "string"
+            format: "uuid"
+    CharacterLibraryTransfer:
+      type: "object"
+      additionalProperties: false
+      required: ["libraryId", "libraryVersion", "characterId", "expectedCharacterVersion"]
+      properties:
+        libraryId:
+          type: "string"
+          format: "uuid"
+        libraryVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        characterId:
+          type: "string"
+          format: "uuid"
+        expectedCharacterVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+    CharacterLibraryImport:
+      type: "object"
+      additionalProperties: false
+      required: ["libraryId", "libraryVersion", "characterId", "expectedCharacterVersion", "commandId", "previewHash"]
+      properties:
+        libraryId:
+          type: "string"
+          format: "uuid"
+        libraryVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        characterId:
+          type: "string"
+          format: "uuid"
+        expectedCharacterVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        commandId:
+          type: "string"
+          format: "uuid"
+        previewHash:
+          type: "string"
+          pattern: "^[a-f0-9]{64}$"
+    CharacterLibraryTransferPreview:
+      type: "object"
+      additionalProperties: false
+      required: ["libraryId", "libraryVersion", "characterId", "expectedCharacterVersion", "previewHash", "content", "currentCharacter", "affectedItems", "changes"]
+      properties:
+        libraryId:
+          type: "string"
+          format: "uuid"
+        libraryVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        characterId:
+          type: "string"
+          format: "uuid"
+        expectedCharacterVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        previewHash:
+          type: "string"
+        content:
+          "$ref": "#/components/schemas/CharacterLibraryContent"
+        currentCharacter:
+          oneOf:
+            - {$ref: "#/components/schemas/CharacterProfile"}
+            - {type: "null"}
+          description: Current full project content that will be replaced; null for new imports.
+        affectedItems:
+          type: "array"
+          maxItems: 10000
+          items:
+            type: "object"
+            additionalProperties: false
+            required: ["canvasItemId", "title", "bindingVersion"]
+            properties:
+              canvasItemId:
+                type: "string"
+                format: "uuid"
+              title:
+                type: "string"
+              bindingVersion:
+                type: "integer"
+                format: "int64"
+                minimum: 1
+        changes:
+          type: "array"
+          maxItems: 100
+          items:
+            type: "string"
+    CharacterLibraryCommand:
+      type: "object"
+      additionalProperties: false
+      required: ["id", "status", "result", "errorCode", "errorDetail"]
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+        status:
+          type: "string"
+          enum: ["ACCEPTED", "ARCHIVING", "SUCCEEDED", "FAILED"]
+        result:
+          type: ["object", "null"]
+          additionalProperties: true
+        errorCode:
+          oneOf:
+            -
+              type: "string"
+            -
+              type: "null"
+        errorDetail:
+          oneOf:
+            -
+              type: "string"
+            -
+              type: "null"
+    CharacterLibraryLink:
+      type: "object"
+      additionalProperties: false
+      required: ["characterId", "libraryId", "libraryVersion", "currentLibraryVersion", "libraryArchived", "projectCharacterVersion", "hasUpdate"]
+      properties:
+        characterId:
+          type: "string"
+          format: "uuid"
+        libraryId:
+          type: "string"
+          format: "uuid"
+        libraryVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        currentLibraryVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        libraryArchived:
+          type: "boolean"
+        projectCharacterVersion:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        hasUpdate:
+          type: "boolean"
+    CharacterLibraryLinks:
+      type: "object"
+      additionalProperties: false
+      required: ["items"]
+      properties:
+        items:
+          type: "array"
+          maxItems: 200
+          items:
+            "$ref": "#/components/schemas/CharacterLibraryLink"
+    ReferenceCatalogPrivateImage:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - sourceId
+        - snapshotId
+        - entryId
+        - variantId
+        - sha256
+        - byteSize
+        - contentType
+        - width
+        - height
+        - previewUrl
+        - cached
+      properties:
+        id:
+          type: string
+          format: uuid
+        sourceId:
+          type: string
+        snapshotId:
+          type: string
+          format: uuid
+        entryId:
+          type: string
+        variantId:
+          type: string
+        sha256:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+        byteSize:
+          type: integer
+          format: int64
+          minimum: 1
+        contentType:
+          type: string
+        width:
+          type: integer
+          minimum: 1
+        height:
+          type: integer
+          minimum: 1
+        previewUrl:
+          type: string
+        cached:
+          type: boolean
+    ReferenceCatalogPrivateImages:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReferenceCatalogPrivateImage'
+    CacheReferenceCatalogPrivateImage:
+      type: object
+      additionalProperties: false
+      required:
+        - sourceId
+        - snapshotId
+        - entryId
+        - variantId
+        - commandKey
+      properties:
+        sourceId:
+          type: string
+          maxLength: 100
+        snapshotId:
+          type: string
+          format: uuid
+        entryId:
+          type: string
+          maxLength: 100
+        variantId:
+          type: string
+          maxLength: 100
+        commandKey:
+          type: string
+          minLength: 1
+          maxLength: 200
+    ImportReferenceCatalogPrivateImage:
+      type: object
+      additionalProperties: false
+      required:
+        - commandKey
+      properties:
+        commandKey:
+          type: string
+          minLength: 1
+          maxLength: 200
+        placement:
+          $ref: '#/components/schemas/ReferenceCatalogPlacement'
+    ReferenceCatalogCacheStats:
+      type: object
+      additionalProperties: false
+      required:
+        - quotaBytes
+        - usedBytes
+        - fileCount
+        - availableBytes
+        - protectedBytes
+        - protectedFileCount
+      properties:
+        quotaBytes:
+          type: integer
+          format: int64
+          minimum: 0
+        usedBytes:
+          type: integer
+          format: int64
+          minimum: 0
+        fileCount:
+          type: integer
+          minimum: 0
+        availableBytes:
+          type: integer
+          format: int64
+          minimum: 0
+        protectedBytes:
+          type: integer
+          format: int64
+          minimum: 0
+        protectedFileCount:
+          type: integer
+          minimum: 0
+    ReferenceCatalogCacheFailure:
+      type: object
+      additionalProperties: false
+      required:
+        - entryId
+        - variantId
+        - code
+      properties:
+        entryId:
+          type: string
+        variantId:
+          type: string
+        code:
+          type: string
+    ReferenceCatalogCacheJob:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - sourceId
+        - snapshotId
+        - state
+        - totalCount
+        - readyCount
+        - failedCount
+        - totalBytes
+        - readyBytes
+        - createdAt
+        - updatedAt
+        - failures
+      properties:
+        id:
+          type: string
+          format: uuid
+        sourceId:
+          type: string
+        snapshotId:
+          type: string
+          format: uuid
+        state:
+          type: string
+          enum:
+            - QUEUED
+            - RUNNING
+            - SUCCEEDED
+            - PARTIAL_FAILED
+            - CANCELLED
+        totalCount:
+          type: integer
+          minimum: 0
+        readyCount:
+          type: integer
+          minimum: 0
+        failedCount:
+          type: integer
+          minimum: 0
+        totalBytes:
+          type: integer
+          format: int64
+          minimum: 0
+        readyBytes:
+          type: integer
+          format: int64
+          minimum: 0
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        failures:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReferenceCatalogCacheFailure'
+    ReferenceCatalogCacheJobs:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReferenceCatalogCacheJob'
+    CreateReferenceCatalogCacheJob:
+      type: object
+      additionalProperties: false
+      required:
+        - sourceId
+        - snapshotId
+        - entryIds
+        - commandKey
+      properties:
+        sourceId:
+          type: string
+          maxLength: 100
+        snapshotId:
+          type: string
+          format: uuid
+        entryIds:
+          type: array
+          maxItems: 5000
+          items:
+            type: string
+            minLength: 1
+            maxLength: 100
+        commandKey:
+          type: string
+          minLength: 1
+          maxLength: 200
+    ClearReferenceCatalogCache:
+      type: object
+      additionalProperties: false
+      required: []
+      properties:
+        sourceId:
+          type: string
+          maxLength: 100
+        snapshotId:
+          type: string
+          format: uuid
+        entryIds:
+          type: array
+          maxItems: 5000
+          items:
+            type: string
+            minLength: 1
+            maxLength: 100
+    ReferenceCatalogCacheClearResult:
+      type: object
+      additionalProperties: false
+      required:
+        - removedFiles
+        - removedBytes
+        - stats
+      properties:
+        removedFiles:
+          type: integer
+          minimum: 0
+        removedBytes:
+          type: integer
+          format: int64
+          minimum: 0
+        stats:
+          $ref: '#/components/schemas/ReferenceCatalogCacheStats'
+    ReferenceCatalogKind:
+      type: string
+      enum:
+        - POSE
+        - COSTUME
+    ReferenceCatalogFormat:
+      type: string
+      enum:
+        - OPEN_POSE_COSTUME
+        - AGENVAS_REFERENCE_PACK
+    ReferenceCatalogSource:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - owner
+        - repository
+        - ref
+        - manifestPath
+        - format
+        - enabled
+        - imageDistributionApproved
+        - version
+        - currentSnapshotId
+        - lastSyncStatus
+        - lastSyncError
+        - syncedAt
+        - resolvedCommit
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        owner:
+          type: string
+        repository:
+          type: string
+        ref:
+          type: string
+        manifestPath:
+          type: string
+        format:
+          $ref: '#/components/schemas/ReferenceCatalogFormat'
+        enabled:
+          type: boolean
+        imageDistributionApproved:
+          type: boolean
+        version:
+          type: integer
+          minimum: 0
+        currentSnapshotId:
+          anyOf:
+            - type: string
+              format: uuid
+            - type: 'null'
+        lastSyncStatus:
+          type: string
+        lastSyncError:
+          anyOf:
+            - type: string
+            - type: 'null'
+        syncedAt:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+        resolvedCommit:
+          anyOf:
+            - type: string
+            - type: 'null'
+    ReferenceCatalogSources:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReferenceCatalogSource'
+    ReferenceCatalogVariant:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - label
+        - view
+        - angle
+        - localizedLabel
+        - externalUrl
+        - previewUrl
+        - sha256
+        - byteSize
+        - contentType
+        - availability
+        - importAllowed
+        - disabledReason
+        - cached
+        - privateCacheAllowed
+        - privateCacheDisabledReason
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        view:
+          type: string
+        angle:
+          type: string
+        localizedLabel:
+          type: object
+          additionalProperties:
+            type: string
+        externalUrl:
+          anyOf:
+            - type: string
+            - type: 'null'
+        previewUrl:
+          anyOf:
+            - type: string
+            - type: 'null'
+        sha256:
+          anyOf:
+            - type: string
+              pattern: ^[a-f0-9]{64}$
+            - type: 'null'
+        byteSize:
+          anyOf:
+            - type: integer
+              format: int64
+              minimum: 1
+            - type: 'null'
+        contentType:
+          anyOf:
+            - type: string
+            - type: 'null'
+        availability:
+          type: string
+          enum:
+            - AVAILABLE
+            - LINK_ONLY
+        importAllowed:
+          type: boolean
+        disabledReason:
+          anyOf:
+            - type: string
+            - type: 'null'
+        cached:
+          type: boolean
+          description: Local file presence hint; every read still verifies permissions and image integrity.
+        privateCacheAllowed:
+          type: boolean
+          description: >-
+            One user-selected private cache operation is permitted; this does not permit bulk caching or
+            redistribution.
+        privateCacheDisabledReason:
+          anyOf:
+            - type: string
+            - type: 'null'
+    ReferenceCatalogEntry:
+      type: object
+      additionalProperties: false
+      required:
+        - sourceId
+        - snapshotId
+        - id
+        - kind
+        - title
+        - localizedTitle
+        - code
+        - category
+        - localizedCategory
+        - series
+        - tags
+        - localizedTags
+        - localizedKeywords
+        - facets
+        - collection
+        - extended
+        - externalUrl
+        - importAllowed
+        - disabledReason
+        - variants
+      properties:
+        sourceId:
+          type: string
+        snapshotId:
+          type: string
+          format: uuid
+        id:
+          type: string
+        kind:
+          $ref: '#/components/schemas/ReferenceCatalogKind'
+        title:
+          type: string
+        localizedTitle:
+          type: object
+          additionalProperties:
+            type: string
+        code:
+          type: string
+        category:
+          type: string
+        localizedCategory:
+          type: object
+          additionalProperties:
+            type: string
+        series:
+          type: object
+          additionalProperties:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+        localizedTags:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties:
+              type: string
+        localizedKeywords:
+          type: object
+          additionalProperties:
+            type: string
+        facets:
+          type: object
+          additionalProperties:
+            type: string
+        collection:
+          type: string
+        extended:
+          type: boolean
+        externalUrl:
+          anyOf:
+            - type: string
+            - type: 'null'
+        importAllowed:
+          type: boolean
+        disabledReason:
+          anyOf:
+            - type: string
+            - type: 'null'
+        variants:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReferenceCatalogVariant'
+    ReferenceCatalogFilters:
+      type: object
+      additionalProperties: false
+      required:
+        - categories
+        - tags
+        - styles
+        - collections
+        - angles
+      properties:
+        categories:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+        styles:
+          type: array
+          items:
+            type: string
+        collections:
+          type: array
+          items:
+            type: string
+        angles:
+          type: array
+          items:
+            type: string
+    ReferenceCatalogPage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - total
+        - offset
+        - limit
+        - filters
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReferenceCatalogEntry'
+        total:
+          type: integer
+          format: int64
+          minimum: 0
+        offset:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+        filters:
+          $ref: '#/components/schemas/ReferenceCatalogFilters'
+    CreateReferenceCatalogSource:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - owner
+        - repository
+        - ref
+        - format
+        - imageDistributionApproved
+      properties:
+        id:
+          type: string
+          maxLength: 100
+        name:
+          type: string
+          maxLength: 160
+        owner:
+          type: string
+          maxLength: 100
+        repository:
+          type: string
+          maxLength: 100
+        ref:
+          type: string
+          maxLength: 160
+        manifestPath:
+          type: string
+          maxLength: 512
+        format:
+          $ref: '#/components/schemas/ReferenceCatalogFormat'
+        imageDistributionApproved:
+          type: boolean
+    UpdateReferenceCatalogSource:
+      type: object
+      additionalProperties: false
+      required:
+        - expectedVersion
+        - enabled
+        - imageDistributionApproved
+      properties:
+        expectedVersion:
+          type: integer
+          minimum: 0
+        enabled:
+          type: boolean
+        imageDistributionApproved:
+          type: boolean
+    SyncReferenceCatalogSource:
+      type: object
+      additionalProperties: false
+      required:
+        - expectedVersion
+      properties:
+        expectedVersion:
+          type: integer
+          minimum: 0
+    ReferenceCatalogSyncResult:
+      type: object
+      additionalProperties: false
+      required:
+        - state
+        - source
+        - snapshotId
+        - entryCount
+        - variantCount
+      properties:
+        state:
+          type: string
+          enum:
+            - SUCCESS
+            - FAILED
+            - RUNNING
+            - DISABLED
+            - SUPERSEDED
+        source:
+          $ref: '#/components/schemas/ReferenceCatalogSource'
+        snapshotId:
+          anyOf:
+            - type: string
+              format: uuid
+            - type: 'null'
+        entryCount:
+          type: integer
+          minimum: 0
+        variantCount:
+          type: integer
+          minimum: 0
+    ReferenceCatalogPlacement:
+      type: object
+      additionalProperties: false
+      required:
+        - x
+        - 'y'
+      properties:
+        x:
+          type: number
+          minimum: -1000000
+          maximum: 1000000
+        'y':
+          type: number
+          minimum: -1000000
+          maximum: 1000000
+    ReferenceCatalogImportRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - sourceId
+        - snapshotId
+        - entryId
+        - variantId
+        - sha256
+        - commandKey
+      properties:
+        sourceId:
+          type: string
+          maxLength: 100
+        snapshotId:
+          type: string
+          format: uuid
+        entryId:
+          type: string
+          maxLength: 100
+        variantId:
+          type: string
+          maxLength: 100
+        sha256:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+        commandKey:
+          type: string
+          minLength: 1
+          maxLength: 200
+        placement:
+          $ref: '#/components/schemas/ReferenceCatalogPlacement'
+    ReferenceCatalogImport:
+      type: object
+      additionalProperties: false
+      required:
+        - artifactId
+        - canvasItemId
+        - versionId
+        - assetId
+        - title
+        - contentType
+        - byteSize
+        - width
+        - height
+        - thumbnailUrl
+      properties:
+        artifactId:
+          type: string
+          format: uuid
+        canvasItemId:
+          anyOf:
+            - type: string
+              format: uuid
+            - type: 'null'
+        versionId:
+          type: string
+          format: uuid
+        assetId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        contentType:
+          type: string
+        byteSize:
+          type: integer
+          format: int64
+          minimum: 1
+        width:
+          type: integer
+          minimum: 1
+        height:
+          type: integer
+          minimum: 1
+        thumbnailUrl:
+          type: string
     LocalServiceKind:
       type: string
       enum: [OLLAMA, COMFYUI]
@@ -6678,6 +9110,7 @@ components:
           items: {type: string, enum: [low, medium, high, xhigh, max]}
         supportsTransparentBackground: {type: boolean}
         supportsImageMask: {type: boolean}
+        supportsImageMarkup: {type: boolean, description: "Native separate transparent PNG annotation for supported OpenAI GPT Image 2.5/2.6 PNG capabilities. Omitted means unsupported."}
         mappingSha256: {type: string, pattern: "^[0-9a-f]{64}$"}
         settings: {$ref: "#/components/schemas/FixedMediaAdapterSettings"}
     FixedMediaAdapterSettings:
@@ -7610,7 +10043,7 @@ components:
           type: array
           description: 已安装或由项目导演默认绑定的固定版本，包含 version、mapping 和可空的 directorBinding（skillId、skillVersionId、position）；未安装时 mapping.assets 为空，不导出多助手绑定列表。
           items: {type: object, additionalProperties: true}
-        schemaVersion: {type: integer, const: 11}
+        schemaVersion: {type: integer, const: 12}
         generatedAt: {type: string, format: date-time}
         snapshotSeq: {type: integer, format: int64, minimum: 0}
         project: {$ref: "#/components/schemas/ManifestProject"}
@@ -7717,6 +10150,10 @@ components:
           type: array
           uniqueItems: true
           items: {type: string, format: uuid}
+        characterNode:
+          oneOf:
+            - {$ref: "#/components/schemas/CharacterNode"}
+            - {type: "null"}
     ManifestMediaDraft:
       type: object
       additionalProperties: false
@@ -8147,6 +10584,10 @@ components:
           uniqueItems: true
           items: {type: string, format: uuid}
         maskAssetId: {type: [string, "null"], format: uuid}
+        markupAssetId:
+          type: [string, "null"]
+          format: uuid
+          description: "SMART_EDIT only. Same-project READY transparent PNG containing annotations, matching the oriented first source image. At most 16,777,216 pixels and 20 MiB. Mutually exclusive with maskAssetId; requires supportsImageMarkup."
         parameters: {$ref: "#/components/schemas/ImageOperationParameters"}
     ImageOperationParameters:
       type: object
@@ -9079,11 +11520,17 @@ components:
             modelRetry 是 AgentModelRetry 投影；READY 使用 nextActionAt 显示下次重试时间。
             内部上下文压缩完成时 contextCompacted=true；不包含 assistantText、assistantStream 或交接摘要正文。
             媒体故障或恢复中可包含有界 providerFailure 诊断；成功后使用实际归档结果，不保留旧故障正文。
-            TEXT_GENERATION 的 IMAGE_REVERSE_PROMPT 用途成功时仅返回 prompt、sourceVersionId、mock；VIDEO_PROMPT_OPTIMIZATION 仅返回 prompt、mock，其他状态 output=null；不返回请求、模型完整响应或私有推理。
+            TEXT_GENERATION 的 IMAGE_REVERSE_PROMPT 用途成功时返回 prompt、sourceVersionId、mock；schema 5 另有 artifactId、artifactVersionId 及 canvasItemId（已删除项目省略节点 ID），schema 3 保持结果文本而不补卡；VIDEO_PROMPT_OPTIMIZATION 仅返回 prompt、mock，其他状态 output=null；不返回请求、模型完整响应或私有推理。
           oneOf:
             - type: object
               additionalProperties: true
               properties:
+                prompt: {type: string, description: 反推或优化的原始提示词；文字卡片的后续编辑从产物版本读取。}
+                sourceVersionId: {type: string, format: uuid, description: 反推时固定的来源图片版本。}
+                mock: {type: boolean}
+                artifactId: {type: string, format: uuid}
+                artifactVersionId: {type: string, format: uuid}
+                canvasItemId: {type: string, format: uuid, description: 已创建的结果节点；重放不重建已移除节点。}
                 modelRetry: {$ref: "#/components/schemas/AgentModelRetry"}
                 providerFailure: {$ref: "#/components/schemas/ProviderFailure"}
                 contextCompacted: {type: boolean, description: 内部上下文压缩已完成；不代表创作任务完成。}
@@ -9160,7 +11607,7 @@ components:
         textDelta: {type: string, description: 仅 delta 事件提供公开文本增量；completed 后重读已提交终稿。}
     CanvasSubjectType:
       type: string
-      const: ARTIFACT
+      enum: [ARTIFACT, CHARACTER]
     CanvasItem:
       type: object
       additionalProperties: false
@@ -9183,7 +11630,14 @@ components:
           oneOf:
             - {$ref: "#/components/schemas/ArtifactVersion"}
             - {type: "null"}
-        artifact: {$ref: "#/components/schemas/Artifact"}
+        artifact:
+          oneOf:
+            - {$ref: "#/components/schemas/Artifact"}
+            - {type: "null"}
+        characterNode:
+          oneOf:
+            - {$ref: "#/components/schemas/CharacterNode"}
+            - {type: "null"}
     Canvas:
       type: object
       additionalProperties: false

@@ -14,7 +14,7 @@ import { Input } from "../../shared/ui/primitives/input";
 import { LocalServiceDiscovery } from "./LocalServiceDiscovery";
 import "./SettingsPages.css";
 import { LlmModelOptions } from "./LlmModelOptions";
-import { modelOptionsFromPolicy, modelSelection, type ModelOptionsDraft } from "./llmModelConfiguration";
+import { fallbackModelOptions, modelOptionsFromPolicy, modelSelection, type ModelOptionsDraft } from "./llmModelConfiguration";
 import { LLM_API_KEY_MAX_LENGTH, LLM_API_KEY_MIN_LENGTH, LLM_API_KEY_PATTERN, validLlmApiKey } from "./llmApiKey";
 
 
@@ -55,8 +55,14 @@ export function LlmSettingsPage() {
   const hasUnsavedChanges = endpoint !== (snapshot?.endpoint ?? "") || modelId !== (snapshot?.modelId ?? "") || apiKey !== "" || modelOptions !== null;
   const busy = saving || diagnosing;
 
+  /** Only user edits invalidate automatic capacity; undo and server refresh keep their saved policy. */
+  function invalidateAutomaticOptions() {
+    if (options.mode === "AUTO" && !options.manualOverride) setModelOptions(fallbackModelOptions(options));
+  }
+
   function editDraft(field: "endpoint" | "modelId", value: string) {
     if (!base) return;
+    if (value !== (field === "endpoint" ? endpoint : modelId)) invalidateAutomaticOptions();
     setDraft({ base, endpoint, modelId, [field]: value });
     setSaved(false);
     setAcknowledgedVersion(null);
@@ -134,12 +140,12 @@ export function LlmSettingsPage() {
           <p className="settings-step-label">{t("settings.llm.connectionStep")}</p>
           <Panel className="llm-editor-panel" title={t("settings.llm.llmConfiguration")} description={t("settings.llm.endpointHint")} actions={<StatusBadge tone={snapshot.configured ? "success" : "neutral"}>{snapshot.configured ? t("common.configured") : t("models.unconfigured")}</StatusBadge>}>
             <form className="ui-form llm-configuration-form" onSubmit={submit} aria-busy={saving}>
-              <div className="settings-config-summary">
+              <div className="settings-config-summary llm-saved-summary">
                 <span className="ui-muted">{t("settings.llm.savedConnection")}</span>
-                {snapshot.configured ? <strong className="llm-saved-model">{snapshot.modelId}<span>{snapshot.endpoint}</span></strong> : null}
+                {snapshot.configured ? <strong className="llm-saved-model"><span className="llm-saved-model-id" title={snapshot.modelId ?? undefined}>{snapshot.modelId}</span><span className="llm-saved-endpoint" title={snapshot.endpoint ?? undefined}>{snapshot.endpoint}</span></strong> : null}
                 <span>{snapshot.configured ? t("settings.llm.savedVersion", { "0": snapshot.version, "1": snapshot.keyMask ?? t("settings.llm.set") }) : t("settings.llm.modelMissing")}</span>
-                <span className="ui-muted">{t("settings.llm.credentialsHint")}</span>
               </div>
+              <p className="llm-credential-note ui-muted">{t("settings.llm.credentialsHint")}</p>
               {hasRemoteUpdate ? <Notice tone="warning" title={t("settings.llm.conflictTitle")}>
                 <p>{t("settings.llm.conflictHint")}</p>
                 <Button variant="outline"  type="button" disabled={busy} onClick={() => { setDraft(null); setModelOptions(null); setCapacityError(""); setApiKey(""); setKeyInvalid(false); setError(""); setAcknowledgedVersion(null); }}>{t("settings.shared.refreshConfig")}</Button>
@@ -153,16 +159,17 @@ export function LlmSettingsPage() {
                 minLength={LLM_API_KEY_MIN_LENGTH} maxLength={LLM_API_KEY_MAX_LENGTH} pattern={LLM_API_KEY_PATTERN} title={t("settings.llm.keyValidationError")}
                 aria-invalid={keyInvalid || undefined} onInvalid={() => setKeyInvalid(true)} onChange={(event) => {
                   if (base && !draft) setDraft({ base, endpoint, modelId });
+                  if (event.target.value !== apiKey) invalidateAutomaticOptions();
                   setApiKey(event.target.value); setKeyInvalid(false); setError(""); setSaved(false); setAcknowledgedVersion(null);
                 }} aria-describedby={`llm-key-description${keyInvalid ? " llm-key-error" : ""}`} />
                 <FieldDescription id="llm-key-description">{t("settings.llm.keyEntryHint")}</FieldDescription>
                 {keyInvalid ? <FieldError id="llm-key-error">{t("settings.llm.keyValidationError")}</FieldError> : null}
               </Field>
-              <LlmModelOptions value={options} endpoint={endpoint} modelId={modelId} apiKey={apiKey} base={base}
+              <div className="llm-model-options"><LlmModelOptions value={options} endpoint={endpoint} modelId={modelId} apiKey={apiKey} base={base}
                 disabled={busy} onSelectModel={value => editDraft("modelId", value)} onChange={value => {
                   if (base) setDraft(existing => existing ?? { base, endpoint, modelId });
                   setModelOptions(value); setCapacityError(""); setSaved(false); setAcknowledgedVersion(null);
-                }} />
+                }} /></div>
               {capacityError ? <Notice tone="danger">{capacityError}</Notice> : null}
               {error ? <Notice tone="danger"><p>{error}</p><p>{t("settings.llm.keyClearedHint")}</p></Notice> : null}
               {saved ? <Notice tone="success">{t("settings.llm.saved")}</Notice> : null}

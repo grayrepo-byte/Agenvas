@@ -144,6 +144,16 @@ public class OpenAiImage2Client {
 
     public MediaPayload edit(String key, String model, String prompt, String quality, String size,
             List<byte[]> referencePngs, byte[] maskPng, boolean transparentBackground, String baseUrl, String complexity, String moderation) {
+        return edit(key, model, prompt, quality, size, referencePngs, maskPng, transparentBackground, baseUrl, complexity, moderation, null);
+    }
+
+    public MediaPayload edit(String key, String model, String prompt, String quality, String size,
+            List<byte[]> referencePngs, byte[] maskPng, boolean transparentBackground, String baseUrl,
+            String complexity, String moderation, byte[] markupPng) {
+        requireMarkupMode(model, maskPng != null, markupPng != null);
+        if (markupPng != null && (!dev.agenvas.provider.domain.OpenAiMarkupInput.isPng(markupPng)
+                || markupPng.length > dev.agenvas.provider.domain.OpenAiMarkupInput.MAX_BYTES))
+            throw new IllegalArgumentException("Native markup must be a bounded PNG");
         OpenAiImageOptions.requireModeration(moderation);
         validateReferences(referencePngs);
         validateMask(maskPng);
@@ -165,6 +175,8 @@ public class OpenAiImage2Client {
             body.addFormDataPart("mask", "edit-mask.png",
                     RequestBody.create(maskPng, MediaType.parse("image/png")));
         }
+        if (markupPng != null) body.addFormDataPart("markup", "edit-markup.png",
+                RequestBody.create(markupPng, MediaType.parse("image/png")));
         return send(key, baseUrl, "images/edits", body.build());
     }
 
@@ -192,6 +204,13 @@ public class OpenAiImage2Client {
 
     public MediaPayload editUrls(String key, String model, String prompt, String quality, String size,
             List<String> images, String mask, boolean transparentBackground, String baseUrl, String complexity, String moderation) {
+        return editUrls(key, model, prompt, quality, size, images, mask, transparentBackground, baseUrl, complexity, moderation, null);
+    }
+
+    public MediaPayload editUrls(String key, String model, String prompt, String quality, String size,
+            List<String> images, String mask, boolean transparentBackground, String baseUrl,
+            String complexity, String moderation, String markup) {
+        requireMarkupMode(model, mask != null, markup != null);
         OpenAiImageOptions.requireModeration(moderation);
         if (images == null || images.isEmpty() || images.size() > MediaAdapterRegistry.OPENAI_MAX_REFERENCE_IMAGES)
             throw new IllegalArgumentException("Pinned reference URL count is invalid");
@@ -204,8 +223,17 @@ public class OpenAiImage2Client {
         var references = body.putArray("images");
         for (String image : images) references.addObject().put("image_url", requireImageUrl(image));
         if (mask != null) body.putObject("mask").put("image_url", requireImageUrl(mask));
+        if (markup != null) {
+            if (!"https".equals(URI.create(markup).getScheme())) throw new IllegalArgumentException("Markup relay must use HTTPS");
+            body.putObject("markup").put("image_url", requireImageUrl(markup));
+        }
         return send(key, baseUrl, "images/edits", RequestBody.create(body.toString().getBytes(StandardCharsets.UTF_8),
                 MediaType.parse("application/json")));
+    }
+
+    private static void requireMarkupMode(String model, boolean mask, boolean markup) {
+        if (markup && (mask || !OpenAiImageOptions.supportsMarkupModel(model)))
+            throw new IllegalArgumentException("Unsupported native markup edit");
     }
 
     private static String requireImageUrl(String value) {

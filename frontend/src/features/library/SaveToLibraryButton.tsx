@@ -41,7 +41,7 @@ function SaveWindow({ projectId, itemId, onClose }: { projectId: string; itemId:
     transfer.start({ versionId: source.data.versionId, expectedSelectionEpoch: source.data.expectedSelectionEpoch,
       ...(source.data.kind === "TEXT" ? { expectedArtifactVersion: source.data.expectedArtifactVersion } : {}), name: value.trim(), category });
   }} footer={<><Button variant="outline"  type="button" disabled={transfer.working} onClick={onClose}>{done ? t("common.done") : t("common.cancel")}</Button>
-    {done ? <Link className="primary-button" to="/library">{t("library.save.view")}</Link> : <Button variant="default"  type="submit" disabled={!source.data || !value.trim() || transfer.working || transfer.data?.status === "FAILED"}>{transfer.working ? t("common.saving") : t("library.save.title")}</Button>}</>}>
+    {done ? <Button asChild><Link to="/library">{t("library.save.view")}</Link></Button> : <Button variant="default"  type="submit" disabled={!source.data || !value.trim() || transfer.working || transfer.data?.status === "FAILED"}>{transfer.working ? t("common.saving") : t("library.save.title")}</Button>}</>}>
     {source.isPending ? <p>{t("library.save.resultLoading")}</p> : null}
     {source.error ? <p role="alert">{source.error.message}<Button variant="ghost" type="button" onClick={() => void source.refetch()}>{t("library.save.refreshPreview")}</Button></p> : null}
     {source.data ? <><p>{t("library.save.nodeVersionTitle", { "0": source.data.title, "1": source.data.versionNo })}</p>

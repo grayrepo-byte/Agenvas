@@ -72,6 +72,19 @@ public class CharacterService {
     @Transactional(readOnly = true)
     public CharacterIndex exportData(UUID owner, UUID project) { return list(owner, project); }
 
+    @Transactional(readOnly = true)
+    public CharacterProfile currentProfile(UUID owner, UUID project, UUID character) {
+        projects.get(owner, project);
+        return profile(project, character);
+    }
+
+    /** Authorized fixed project revision for account-library publication and character cards. */
+    @Transactional(readOnly = true)
+    public CharacterProfile getRevision(UUID owner, UUID project, UUID character, long version) {
+        projects.get(owner, project);
+        if (character == null || version < 1) throw invalid();
+        return repository.revision(project, character, version).orElseThrow(this::invalid); }
+
     @Transactional
     public CharacterProfile save(UUID owner, UUID project, UUID character, SaveCharacter request) {
         projects.requireActiveProject(owner, project);
@@ -153,6 +166,7 @@ public class CharacterService {
                     applied.draft().version(), prepared.response().snapshots(), applied.state(), true,
                     null, null, null, clock.instant());
             if (!repository.saveBinding(row, request.expectedBindingVersion())) throw conflict();
+            repository.nodeOwnedCharacters(project, item, List.of());
             CharacterBindingApplied response = new CharacterBindingApplied(response(owner, row, repository.profiles(project)), applied.draft());
             repository.command(project, request.commandId(), hash, response, clock.instant());
             // The normal draft save already advanced the same locked project event sequence.
@@ -355,10 +369,30 @@ public class CharacterService {
         if ((before == null ? 0 : before.version()) != request.expectedBindingVersion()) throw conflict();
         if (drafts.get(owner, project, item).version() != request.expectedDraftVersion()) throw conflict();
         List<CharacterSnapshot> snapshots = snapshots(owner, project, request.selections());
-        Plan plan = gateway.preview(owner, project, item, request.expectedDraftVersion(),
-                before == null ? DraftState.empty() : before.state(), snapshots, request.clearMode());
+        return prepareSnapshots(
+                owner,
+                project,
+                item,
+                request.expectedBindingVersion(),
+                request.expectedDraftVersion(),
+                request.clearMode(),
+                before,
+                snapshots);
+    }
+
+    private Prepared prepareSnapshots(
+            UUID owner,
+            UUID project,
+            UUID item,
+            long bindingVersion,
+            long draftVersion,
+            ClearMode clearMode,
+            BindingRow before,
+            List<CharacterSnapshot> snapshots) {
+        Plan plan = gateway.preview(owner, project, item, draftVersion,
+                before == null ? DraftState.empty() : before.state(), snapshots, clearMode);
         ObjectNode semantics = mapper.createObjectNode();
-        semantics.set("request", mapper.valueToTree(request));
+        semantics.set("request", mapper.valueToTree(List.of(bindingVersion, draftVersion, clearMode, snapshots)));
         semantics.set("snapshots", mapper.valueToTree(snapshots));
         // Fresh source UUIDs and timestamps are deliberately excluded from the confirmation digest.
         MediaDraft candidate = plan.candidateDraft();
@@ -375,8 +409,181 @@ public class CharacterService {
         semantics.set("beforeState", mapper.valueToTree(before == null ? DraftState.empty() : before.state()));
         semantics.set("warnings", mapper.valueToTree(plan.warnings())); semantics.set("changes", mapper.valueToTree(plan.changes()));
         String previewHash = Sha256.hex(canonical(semantics));
-        return new Prepared(new CharacterBindingPreview(previewHash, request.expectedBindingVersion(), request.expectedDraftVersion(),
+        return new Prepared(new CharacterBindingPreview(previewHash, bindingVersion, draftVersion,
                 snapshots, candidate, plan.warnings(), plan.changes()), plan);
+    }
+
+    /**
+     * Internal node-application boundary. Controllers cannot submit snapshots; every fixed snapshot
+     * is revalidated against its immutable project revision and exact media here.
+     */
+    @Transactional(readOnly = true)
+    public CharacterBindingPreview previewFixedNodeBindings(
+            UUID owner,
+            UUID project,
+            UUID item,
+            long bindingVersion,
+            long draftVersion,
+            ClearMode clearMode,
+            List<CharacterSnapshot> fixed) {
+        projects.requireActiveProject(owner, project);
+        return prepareFixed(owner, project, item, bindingVersion, draftVersion, clearMode, fixed)
+                .response();
+    }
+
+    @Transactional
+    public CharacterBindingApplied applyFixedNodeBindings(
+            UUID owner,
+            UUID project,
+            UUID item,
+            UUID commandId,
+            long bindingVersion,
+            long draftVersion,
+            ClearMode clearMode,
+            List<CharacterSnapshot> fixed,
+            String previewHash) {
+        requireCommand(commandId);
+        String hash =
+                digest(
+                        "apply-fixed-node",
+                        item,
+                        List.of(bindingVersion, draftVersion, clearMode, fixed, previewHash));
+        return events.recordChange(
+                        owner,
+                        project,
+                        () -> {
+                            projects.requireActiveProject(owner, project);
+                            CharacterBindingApplied prior =
+                                    replay(project, commandId, hash, CharacterBindingApplied.class);
+                            if (prior != null) return ProjectEventService.Change.unchanged(prior);
+                            Prepared prepared =
+                                    prepareFixed(
+                                            owner,
+                                            project,
+                                            item,
+                                            bindingVersion,
+                                            draftVersion,
+                                            clearMode,
+                                            fixed);
+                            if (!prepared.response().previewHash().equals(previewHash))
+                                throw conflict();
+                            var applied =
+                                    gateway.apply(
+                                            owner, project, item, draftVersion, prepared.plan());
+                            BindingRow row =
+                                    new BindingRow(
+                                            project,
+                                            item,
+                                            bindingVersion + 1,
+                                            applied.draft().version(),
+                                            prepared.response().snapshots(),
+                                            applied.state(),
+                                            true,
+                                            null,
+                                            null,
+                                            null,
+                                            clock.instant());
+                            if (!repository.saveBinding(row, bindingVersion)) throw conflict();
+                            repository.nodeOwnedCharacters(
+                                    project,
+                                    item,
+                                    fixed.stream().map(CharacterSnapshot::characterId).toList());
+                            CharacterBindingApplied result =
+                                    new CharacterBindingApplied(
+                                            response(owner, row, repository.profiles(project)),
+                                            applied.draft());
+                            repository.command(project, commandId, hash, result, clock.instant());
+                            events.append(
+                                    owner,
+                                    project,
+                                    event("character.bindings.changed", item, row.version()));
+                            return ProjectEventService.Change.unchanged(result);
+                        })
+                .value();
+    }
+
+    private Prepared prepareFixed(
+            UUID owner,
+            UUID project,
+            UUID item,
+            long bindingVersion,
+            long draftVersion,
+            ClearMode clearMode,
+            List<CharacterSnapshot> fixed) {
+        if (bindingVersion < 0
+                || draftVersion < 0
+                || clearMode == null
+                || fixed == null
+                || fixed.size() > MAX_SHOT_CHARACTERS) throw invalid();
+        requireEditableMedia(owner, project, item);
+        BindingRow before = repository.binding(project, item).orElse(null);
+        if ((before == null ? 0 : before.version()) != bindingVersion
+                || drafts.get(owner, project, item).version() != draftVersion) throw conflict();
+        Set<UUID> seen = new HashSet<>();
+        for (CharacterSnapshot snapshot : fixed) {
+            if (snapshot == null
+                    || !seen.add(snapshot.characterId())
+                    || !snapshot.useAppearance() && !snapshot.useVoice()) throw invalid();
+            CharacterProfile revision =
+                    getRevision(
+                            owner, project, snapshot.characterId(), snapshot.characterVersion());
+            if (revision.archived() || profile(project, snapshot.characterId()).archived())
+                throw archived();
+            if (!revision.content().name().equals(snapshot.name())
+                    || !Objects.equals(revision.content().description(), snapshot.description()))
+                throw invalid();
+            if (snapshot.look() != null) {
+                CharacterLook base =
+                        revision.content().looks().stream()
+                                .filter(look -> look.id().equals(snapshot.look().id()))
+                                .findFirst()
+                                .orElseThrow(this::invalid);
+                CharacterLook expected =
+                        new CharacterLook(
+                                base.id(),
+                                base.name(),
+                                base.clothing(),
+                                base.expression(),
+                                base.description(),
+                                snapshot.look().views());
+                if (!expected.equals(snapshot.look())
+                        || !base.views().containsAll(snapshot.look().views())
+                        || snapshot.look().views().stream()
+                                        .map(CharacterView::versionId)
+                                        .distinct()
+                                        .count()
+                                != snapshot.look().views().size()) throw invalid();
+                if (snapshot.useAppearance())
+                    for (CharacterView view : snapshot.look().views())
+                        validateMedia(owner, project, view.versionId(), Artifact.Kind.IMAGE);
+            } else if (snapshot.useAppearance() && !revision.content().looks().isEmpty()) throw invalid();
+            if (!Objects.equals(snapshot.voice(), revision.content().voice())) throw invalid();
+            if (snapshot.useVoice()) {
+                if (snapshot.voice() == null) throw invalid();
+                if (snapshot.voice().versionId() != null)
+                    validateMedia(
+                            owner, project, snapshot.voice().versionId(), Artifact.Kind.AUDIO);
+            }
+        }
+        // Existing manually applied characters survive node application. Only identities
+        // owned by the last explicit node application are eligible for removal on disconnect.
+        Set<UUID> owned = new HashSet<>(repository.nodeOwnedCharacters(project, item));
+        List<CharacterSnapshot> merged = new ArrayList<>();
+        if (before != null)
+            for (CharacterSnapshot existing : before.snapshots())
+                if (!owned.contains(existing.characterId())
+                        && !seen.contains(existing.characterId())) merged.add(existing);
+        merged.addAll(fixed);
+        if (merged.size() > MAX_SHOT_CHARACTERS) throw invalid();
+        return prepareSnapshots(
+                owner,
+                project,
+                item,
+                bindingVersion,
+                draftVersion,
+                clearMode,
+                before,
+                List.copyOf(merged));
     }
     private List<CharacterSnapshot> snapshots(UUID owner, UUID project, List<CharacterBindingSelection> selections) {
         Set<UUID> seen = new HashSet<>();
@@ -389,9 +596,10 @@ public class CharacterService {
             if (selected.characterVersion() != profile.version()) throw conflict();
             CharacterLook look = selected.lookId() == null ? null : profile.content().looks().stream()
                     .filter(candidate -> candidate.id().equals(selected.lookId())).findFirst().orElseThrow(this::invalid);
-            if (selected.useAppearance() && look == null || selected.useVoice() && profile.content().voice() == null) throw invalid();
+            if (selected.useAppearance() && look == null && !profile.content().looks().isEmpty()
+                    || selected.useVoice() && profile.content().voice() == null) throw invalid();
             // Revalidate each exact same-project reference on every preview and apply, including archival.
-            if (selected.useAppearance()) for (CharacterView view : look.views()) validateMedia(owner, project, view.versionId(), Artifact.Kind.IMAGE);
+            if (selected.useAppearance() && look != null) for (CharacterView view : look.views()) validateMedia(owner, project, view.versionId(), Artifact.Kind.IMAGE);
             if (selected.useVoice() && profile.content().voice().versionId() != null)
                 validateMedia(owner, project, profile.content().voice().versionId(), Artifact.Kind.AUDIO);
             result.add(new CharacterSnapshot(profile.id(), profile.version(), profile.content().name(), profile.content().description(),

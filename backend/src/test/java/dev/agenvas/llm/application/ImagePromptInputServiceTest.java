@@ -62,6 +62,9 @@ class ImagePromptInputServiceTest {
         var messages = service.messages(task);
         assertThat(messages.getFirst().getText()).isEqualTo("Frozen image reconstruction instruction");
         assertThat(messages.get(1).getText()).contains(language, "untrusted", "Do not call tools", "private reasoning");
+        assertThat(messages.get(1).getText()).contains("original language", "output format");
+        assertThat(messages.getLast().getMetadata().get(ImagePromptInputService.METADATA_KEY))
+                .isEqualTo(java.util.List.of(version.toString()));
         assertThat(((UserMessage) messages.getLast()).getMedia()).isEmpty();
         verifyNoInteractions(artifacts, assets, tasks);
     }

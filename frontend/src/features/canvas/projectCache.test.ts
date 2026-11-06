@@ -75,7 +75,7 @@ describe("project cache callbacks", () => {
     { type: "agent.run.changed", prefixes: ["snapshot", ...historyPrefixes] },
     { type: "project.changed", prefixes: ["projects"] },
     { type: "media.draft.changed", prefixes: ["media-draft", "canvas-connections", "project-characters"] },
-    { type: "character.profile.changed", prefixes: ["project-characters"] },
+    { type: "character.profile.changed", prefixes: ["canvas", "project-characters"] },
     { type: "character.bindings.changed", prefixes: ["project-characters"] },
     { type: "usage.changed", prefixes: ["project-usage"] },
     { type: "task.changed", prefixes: [] },
@@ -229,4 +229,11 @@ describe("project cache callbacks", () => {
         ["run-history-tasks", projectId, "run-1"], ["run-actions", projectId, "run-1"], ["run-tasks", projectId, "run-1"],
       ].map((key) => JSON.stringify(key))));
     });
+});
+
+it("refreshes fixed character node badges and projection when a project profile changes", () => {
+  const tracked = trackCache();
+  tracked.callbacks.onChange(event("character.profile.changed"));
+  expect(tracked.invalidate).toHaveBeenCalledWith({ queryKey: ["canvas", projectId] });
+  expect(tracked.invalidate).toHaveBeenCalledWith({ queryKey: ["project-characters", projectId] });
 });

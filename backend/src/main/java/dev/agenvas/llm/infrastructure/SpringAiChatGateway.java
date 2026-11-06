@@ -7,6 +7,7 @@ import dev.agenvas.llm.application.PublicAssistantResponse;
 import dev.agenvas.llm.application.LlmProtocolCodec;
 import dev.agenvas.llm.application.LlmStreamIncompleteException;
 import dev.agenvas.llm.application.LlmRequestBudget;
+import dev.agenvas.settings.application.LlmModelPolicy;
 import dev.agenvas.shared.http.DebugHttpCapture;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -24,6 +25,8 @@ import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.MessageAggregator;
+import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
@@ -77,6 +80,10 @@ public class SpringAiChatGateway implements ChatGateway {
         this(model, configVersion, false, relay);
     }
 
+    SpringAiChatGateway(ChatModel model, int configVersion, LlmImageRelay relay, LlmRequestBudget budget) {
+        this(model, configVersion, false, relay, budget);
+    }
+
     private SpringAiChatGateway(ChatModel model, int configVersion, boolean captureHttp, LlmImageRelay relay) {
         this(model, configVersion, captureHttp, relay, null);
     }
@@ -85,7 +92,7 @@ public class SpringAiChatGateway implements ChatGateway {
             throw new IllegalArgumentException("LLM configVersion must be positive");
         }
         this.model = model;
-        this.client = ChatClient.builder(model)
+        this.client = ChatClient.builder(budget == null ? model : new BudgetedChatModel(model, budget))
                 .defaultAdvisors(advisors -> advisors.param(
                         ChatClientAttributes.TOOL_CALLING_ADVISOR_AUTO_REGISTER.getKey(), false))
                 .build();
@@ -93,6 +100,35 @@ public class SpringAiChatGateway implements ChatGateway {
         this.captureHttp = captureHttp;
         this.imageRelay = model instanceof OpenAiChatModel ? relay : null;
         this.requestBudget = budget;
+    }
+
+    /**
+     * Apply the frozen limit after ChatClient has merged provider defaults and tool options.
+     * Its builder merge ignores nulls, so request.options alone cannot clear the opposite
+     * OpenAI output parameter inherited from environment configuration.
+     */
+    private record BudgetedChatModel(ChatModel delegate, LlmRequestBudget budget) implements ChatModel {
+        @Override public ChatOptions getOptions() { return delegate.getOptions(); }
+
+        @Override public ChatResponse call(Prompt prompt) { return delegate.call(boundedPrompt(prompt)); }
+
+        @Override public Flux<ChatResponse> stream(Prompt prompt) { return delegate.stream(boundedPrompt(prompt)); }
+
+        private Prompt boundedPrompt(Prompt prompt) {
+            ChatOptions.Builder<?> options = prompt.getOptions().mutate();
+            if (options instanceof OpenAiChatOptions.Builder openAi) {
+                // Clear completion first: OpenAI's builder otherwise ignores maxTokens updates.
+                openAi.maxCompletionTokens(null).maxTokens(null);
+                if (budget.outputParameter() == LlmModelPolicy.OutputParameter.MAX_COMPLETION_TOKENS)
+                    openAi.maxCompletionTokens(budget.responseReserveTokens());
+                else openAi.maxTokens(budget.responseReserveTokens());
+            } else {
+                if (budget.outputParameter() != LlmModelPolicy.OutputParameter.MAX_TOKENS)
+                    throw new IllegalStateException("Configured ChatModel does not support the frozen output-token parameter");
+                options.maxTokens(budget.responseReserveTokens());
+            }
+            return prompt.mutate().chatOptions(options.build()).build();
+        }
     }
 
     private ChatClient.ChatClientRequestSpec prompt() {

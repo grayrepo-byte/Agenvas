@@ -78,6 +78,7 @@ export function projectCacheCallbacks(queryClient: QueryClient, projectId: strin
           }
         }
       }
+      if (event.type === "character.profile.changed") invalidate("canvas");
       if (event.type === "project.changed") invalidate("projects");
       if (event.type === "task.status.changed" || event.type === "agent.run.changed" || event.type === "agent.conversation.changed") {
         invalidate("snapshot", ...HISTORY_QUERY_PREFIXES);

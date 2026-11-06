@@ -19,10 +19,17 @@ import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.llm.application.ChatGateway;
 import dev.agenvas.llm.application.DirectTextGenerationWorker;
+import dev.agenvas.llm.application.LlmProperties;
 import dev.agenvas.llm.application.LlmProtocolCodec;
+import dev.agenvas.llm.application.LlmRequestBudget;
+import dev.agenvas.llm.infrastructure.ConfiguredChatGateway;
+import dev.agenvas.llm.infrastructure.StoredChatModelFactory;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.settings.application.PromptService;
+import dev.agenvas.settings.application.LlmModelPolicy;
+import dev.agenvas.settings.application.LlmProviderConfigRepository;
+import dev.agenvas.settings.application.LlmProviderConfigService;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.api.TaskController;
 import dev.agenvas.task.application.ImagePromptTaskService;
@@ -36,6 +43,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.Base64;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import javax.imageio.ImageIO;
@@ -48,9 +56,11 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -71,12 +81,13 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import tools.jackson.databind.ObjectMapper;
 
-/** Real PostgreSQL, synthetic archived image and fake model: no real Provider or private materials. */
+/** Real PostgreSQL and synthetic images/responses, including the SDK against local HTTP; no real Provider or private materials. */
 @Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = {AgenvasApplication.class, ImagePromptPostgresIT.FakeConfig.class}, properties = {
-        "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
+        "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false",
+        "agenvas.settings.llm.allow-loopback-http=true"})
 class ImagePromptPostgresIT {
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     private static final Path STORAGE = temporaryRoot();
@@ -86,6 +97,7 @@ class ImagePromptPostgresIT {
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("agenvas.storage.root", STORAGE::toString);
+        registry.add("agenvas.credentials.master-key-base64", () -> Base64.getEncoder().encodeToString(new byte[32]));
     }
     @Autowired IdentityService identities;
     @Autowired ProjectService projects;
@@ -95,9 +107,14 @@ class ImagePromptPostgresIT {
     @Autowired ImagePromptTaskService prompts;
     @Autowired PromptService definitions;
     @Autowired TaskService tasks;
+    @Autowired dev.agenvas.task.application.TaskRepository taskRepository;
+    @Autowired dev.agenvas.usage.application.UsageService usage;
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
     @Autowired DirectTextGenerationWorker worker;
     @Autowired LlmProtocolCodec codec;
     @Autowired FakeGateway gateway;
+    @Autowired LlmProviderConfigService configs;
+    @Autowired LlmProviderConfigRepository configRepository;
     @Autowired JdbcClient jdbc;
     @Autowired ObjectMapper mapper;
     @Autowired WebApplicationContext context;
@@ -108,10 +125,74 @@ class ImagePromptPostgresIT {
         if (owner == null) owner = identities.setup("image-prompt-admin", "synthetic-password-123");
         mvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
-        gateway.failure = false; gateway.calls = 0;
+        gateway.failure = false; gateway.calls = 0; gateway.useStoredConfig = false;
     }
 
-    @Test void freezesInputsSendsAnImageAndPublishesOnlyThePromptWithoutChangingTheSource() throws Exception {
+    @Test void acceptsLegacyConnectionWithFrozenDefaultBudgetAndPublishesItsOriginalImagePrompt() throws Exception {
+        var requests = new java.util.concurrent.atomic.AtomicInteger();
+        var sent = new java.util.concurrent.atomic.AtomicReference<String>();
+        var http = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        http.createContext("/v1/chat/completions", exchange -> {
+            requests.incrementAndGet();
+            sent.set(new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+            byte[] response = ("{\"id\":\"synthetic-image-prompt\",\"object\":\"chat.completion\",\"created\":1,"
+                    + "\"model\":\"synthetic-vision\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\","
+                    + "\"content\":\"Synthetic legacy image prompt.\"},\"finish_reason\":\"stop\"}],"
+                    + "\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":4,\"total_tokens\":9}}")
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response); exchange.close();
+        });
+        http.start();
+        try {
+            var saved = configs.replace(configs.status().version(), "http://127.0.0.1:" + http.getAddress().getPort() + "/v1",
+                    "synthetic-vision", "synthetic-policy-key");
+            var legacy = configRepository.findVersion(saved.version()).orElseThrow();
+            assertThat(legacy.modelPolicy()).isNull();
+            gateway.useStoredConfig = true;
+            var source = source();
+            String body = mapper.createObjectNode().put("canvasItemId", source.item().id().toString())
+                    .put("sourceVersionId", source.version().toString()).put("expectedCanvasItemVersion", source.item().version()).toString();
+            mvc.perform(post(path(source)).with(authentication(auth(owner))).with(csrf()).header("Idempotency-Key", "legacy-capacity")
+                    .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isOk());
+            var accepted = prompts.list(owner.userId(), source.project(), source.artifact(), source.item().id()).getFirst();
+            var frozenInput = accepted.input().deepCopy();
+            assertThat(accepted.input().path("modelConfigSource").asText()).isEqualTo("stored");
+            assertThat(accepted.input().path("modelConfigVersion").asInt()).isEqualTo(saved.version());
+            var budget = codec.requestBudget(accepted.input());
+            assertThat(budget.contextWindowTokens()).isEqualTo(32768);
+            assertThat(budget.responseReserveTokens()).isEqualTo(4096);
+            assertThat(budget.inputBudget()).isEqualTo(28672);
+            assertThat(budget.outputParameter()).isEqualTo(LlmModelPolicy.OutputParameter.MAX_TOKENS);
+
+            assertThat(worker.runOnce("legacy-capacity-worker")).isEqualTo(1);
+            var completed = tasks.get(owner.userId(), source.project(), accepted.id());
+            assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
+            assertThat(completed.input()).isEqualTo(frozenInput);
+            assertThat(codec.requestBudget(completed.output().path("request"))).isEqualTo(budget);
+            assertThat(requests).hasValue(1);
+            var wire = mapper.readTree(sent.get());
+            assertThat(wire.path("max_tokens").asInt()).isEqualTo(4096);
+            assertThat(wire.has("max_completion_tokens")).isFalse();
+            var content = wire.path("messages").get(wire.path("messages").size() - 1).path("content");
+            String imageUrl = java.util.stream.StreamSupport.stream(content.spliterator(), false)
+                    .filter(part -> "image_url".equals(part.path("type").asText()))
+                    .findFirst().orElseThrow().path("image_url").path("url").asText();
+            assertThat(imageUrl).startsWith("data:image/png;base64,");
+            assertThat(Base64.getDecoder().decode(imageUrl.substring(imageUrl.indexOf(',') + 1))).isEqualTo(source.bytes());
+            var result = TaskController.TaskResponse.from(completed).output();
+            assertThat(result.path("prompt").asText()).isEqualTo("Synthetic legacy image prompt.");
+            assertThat(canvas.list(owner.userId(), source.project())).hasSize(2);
+            assertThat(artifacts.get(owner.userId(), source.project(), UUID.fromString(result.path("artifactId").asText()))
+                    .resourceDefaultVersion().content().path("text").asText()).isEqualTo("Synthetic legacy image prompt.");
+            assertThat(configRepository.findVersion(saved.version()).orElseThrow()).usingRecursiveComparison().isEqualTo(legacy);
+            assertThat(configs.status().version()).isEqualTo(saved.version());
+            assertThat(configs.status().modelPolicy()).isNull();
+        } finally { http.stop(0); }
+    }
+
+    @Test void freezesInputsAndPublishesOneTextCardWithoutChangingTheSource() throws Exception {
         var source = source();
         var definition = definitions.require(ImagePromptTaskService.PROMPT_KEY, PromptService.Kind.FUNCTION);
         assertThat(definition.builtIn()).isTrue();
@@ -142,8 +223,21 @@ class ImagePromptPostgresIT {
         assertThat(publicResult.input().has("systemPrompt")).isFalse();
         assertThat(publicResult.output().toString()).doesNotContain("response", "private thought", "request");
         assertThat(completed.output().path("request").toString()).doesNotContain("data:", "mediaType", "image/png");
-        assertThat(canvas.list(owner.userId(), source.project())).hasSize(1);
-        assertThat(canvas.list(owner.userId(), source.project()).getFirst().item().selectedVersionId()).isEqualTo(source.version());
+        assertThat(canvas.list(owner.userId(), source.project())).hasSize(2);
+        var resultItem = canvas.list(owner.userId(), source.project()).stream()
+                .filter(entry -> !entry.item().id().equals(source.item().id())).findFirst().orElseThrow();
+        assertThat(resultItem.artifact().artifact().kind()).isEqualTo(dev.agenvas.artifact.domain.Artifact.Kind.TEXT);
+        var text = artifacts.get(owner.userId(), source.project(), resultItem.artifact().artifact().id());
+        assertThat(text.resourceDefaultVersion().content().path("text").asText()).isEqualTo("Synthetic lakeside, soft morning light.");
+        assertThat(text.resourceDefaultVersion().createdByKind()).isEqualTo(dev.agenvas.artifact.domain.ArtifactVersion.CreatedByKind.TASK);
+        assertThat(text.artifact().title()).contains("Mock");
+        assertThat(publicResult.output().path("artifactId").asText()).isEqualTo(text.artifact().id().toString());
+        assertThat(publicResult.output().path("artifactVersionId").asText()).isEqualTo(text.resourceDefaultVersion().id().toString());
+        assertThat(publicResult.output().path("canvasItemId").asText()).isEqualTo(resultItem.item().id().toString());
+        assertThat(run(source, "first").id()).isEqualTo(accepted.id());
+        assertThat(worker.runOnce("replay-worker")).isZero();
+        assertThat(canvas.list(owner.userId(), source.project())).hasSize(2);
+        assertThat(canvas.list(owner.userId(), source.project()).stream().filter(entry -> entry.item().id().equals(source.item().id())).findFirst().orElseThrow().item()).isEqualTo(source.item());
         assertThat(artifacts.listVersions(owner.userId(), source.project(), source.artifact())).hasSize(1);
         assertThat(jdbc.sql("select count(*) from task_artifact_target where task_id=:id").param("id", accepted.id()).query(Long.class).single()).isZero();
         assertThat(jdbc.sql("select count(*) from usage_ledger where task_id=:id").param("id", accepted.id()).query(Long.class).single()).isEqualTo(2);
@@ -213,6 +307,8 @@ class ImagePromptPostgresIT {
         assertThat(restored.status()).isEqualTo(Task.Status.SUCCEEDED);
         assertThat(restored.output().path("result").path("prompt").asText()).isEqualTo("Recovered prompt");
         assertThat(gateway.calls).isZero();
+        assertThat(canvas.list(owner.userId(), source.project())).hasSize(2);
+        assertThat(restored.output().path("result").path("canvasItemId").asText()).isNotBlank();
 
         Task next = run(source, "cancel-running");
         Task oldLease = tasks.claimTextGenerations("cancel-worker", 1).getFirst();
@@ -222,6 +318,10 @@ class ImagePromptPostgresIT {
         assertThatThrownBy(() -> tasks.checkpointTextResponse(oldLease, "cancel-worker", checkpoint)).isInstanceOf(ApiProblemException.class);
         tasks.succeed(oldLease, "cancel-worker", checkpoint);
         assertThat(TaskController.TaskResponse.from(tasks.get(owner.userId(), source.project(), next.id())).output()).isNull();
+        assertThatThrownBy(() -> tasks.succeedWithImagePromptCard(oldLease, "cancel-worker", checkpoint,
+                mapper.createObjectNode().put("format", "PLAIN_TEXT").put("text", "Late text")))
+                .isInstanceOf(ApiProblemException.class);
+        assertThat(canvas.list(owner.userId(), source.project())).hasSize(2);
         Task queued = run(source, "cancel-queued");
         assertThat(prompts.cancel(owner.userId(), source.project(), source.artifact(), queued.id()).status()).isEqualTo(Task.Status.CANCELED);
         // Replaying an older command or cancellation does not promote it in current history.
@@ -288,6 +388,7 @@ class ImagePromptPostgresIT {
         var failed = prompts.list(owner.userId(), source.project(), source.artifact(), source.item().id()).getFirst();
         assertThat(failed.status()).isEqualTo(Task.Status.FAILED);
         assertThat(failed.errorCode()).isEqualTo("MODEL_CALL_FAILED");
+        assertThat(canvas.list(owner.userId(), source.project())).hasSize(1);
         assertThat(TaskController.TaskResponse.from(failed).output()).isNull();
         assertThat(artifacts.listVersions(owner.userId(), source.project(), source.artifact())).hasSize(1);
     }
@@ -312,6 +413,114 @@ class ImagePromptPostgresIT {
             assertThat(rows.next()).isTrue(); assertThat(rows.getString("content")).isEqualTo("Synthetic administrator edit");
             assertThat(rows.next()).isFalse();
         }
+    }
+
+
+    @Test void explicitRerunCreatesANewIndependentCardAndOldResultRemainsEditable() throws Exception {
+        var source = source();
+        var first = run(source, "first-card");
+        worker.runOnce("first-card-worker");
+        var firstOutput = TaskController.TaskResponse.from(tasks.get(owner.userId(), source.project(), first.id())).output();
+        var artifactId = UUID.fromString(firstOutput.path("artifactId").asText());
+        var original = artifacts.get(owner.userId(), source.project(), artifactId);
+        artifacts.revise(owner.userId(), source.project(), artifactId, original.artifact().version(),
+                original.artifact().title(), mapper.createObjectNode().put("format", "PLAIN_TEXT").put("text", "User edited prompt"));
+        run(source, "second-card");
+        worker.runOnce("second-card-worker");
+        assertThat(canvas.list(owner.userId(), source.project())).hasSize(3);
+        assertThat(artifacts.get(owner.userId(), source.project(), artifactId).resourceDefaultVersion().content().path("text").asText())
+                .isEqualTo("User edited prompt");
+        assertThat(run(source, "first-card").id()).isEqualTo(first.id());
+        assertThat(canvas.list(owner.userId(), source.project())).hasSize(3);
+        assertThat(gateway.calls).isEqualTo(2);
+    }
+
+    @Test void concurrentResultPublicationCreatesExactlyOneCard() throws Exception {
+        var source = source();
+        var accepted = run(source, "concurrent-publication");
+        var lease = tasks.claimTextGenerations("publication-worker", 1).getFirst();
+        var output = mapper.createObjectNode().put("schemaVersion", 1);
+        output.set("response", codec.response(new ChatResponse(List.of(new Generation(new AssistantMessage("One saved prompt"))))));
+        tasks.checkpointTextResponse(lease, "publication-worker", output);
+        output.putObject("result").put("prompt", "One saved prompt").put("mock", true).put("sourceVersionId", source.version().toString());
+        var content = mapper.createObjectNode().put("format", "PLAIN_TEXT").put("text", "One saved prompt");
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var publish = (java.util.concurrent.Callable<Boolean>) () -> {
+                try { tasks.succeedWithImagePromptCard(lease, "publication-worker", output, content); return true; }
+                catch (ApiProblemException fenced) { assertThat(fenced.code()).isEqualTo("TASK_LEASE_LOST"); return false; }
+            };
+            var first = executor.submit(publish); var second = executor.submit(publish);
+            assertThat(List.of(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS))).containsExactlyInAnyOrder(true, false);
+        }
+        assertThat(tasks.get(owner.userId(), source.project(), accepted.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(canvas.list(owner.userId(), source.project())).hasSize(2);
+        assertThat(jdbc.sql("select count(*) from artifact where project_id=:project and kind='TEXT'").param("project", source.project()).query(Long.class).single()).isEqualTo(1);
+        assertThat(gateway.calls).isZero();
+    }
+
+    @Test void publicationFailureRollsBackAndRecoversCheckpointWithoutAnotherModelCall() throws Exception {
+        var source = source();
+        var accepted = run(source, "publication-recovery");
+        jdbc.sql("create function synthetic_reject_prompt_card() returns trigger language plpgsql as $$ begin raise exception 'Synthetic placement failure'; end $$").update();
+        jdbc.sql("create trigger synthetic_reject_prompt_card before insert on canvas_item for each row execute function synthetic_reject_prompt_card()").update();
+        try {
+            worker.runOnce("publication-failure-worker");
+            var deferred = tasks.get(owner.userId(), source.project(), accepted.id());
+            assertThat(deferred.status()).isEqualTo(Task.Status.RUNNING);
+            assertThat(deferred.output().has("response")).isTrue();
+            assertThat(canvas.list(owner.userId(), source.project())).hasSize(1);
+            assertThat(jdbc.sql("select count(*) from artifact where project_id=:project").param("project", source.project()).query(Long.class).single()).isEqualTo(1);
+        } finally {
+            jdbc.sql("drop trigger synthetic_reject_prompt_card on canvas_item").update();
+            jdbc.sql("drop function synthetic_reject_prompt_card()").update();
+        }
+        jdbc.sql("update task set lease_until=now()-interval '1 second' where id=:id").param("id", accepted.id()).update();
+        worker.runOnce("publication-recovery-worker");
+        assertThat(tasks.get(owner.userId(), source.project(), accepted.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(canvas.list(owner.userId(), source.project())).hasSize(2);
+        assertThat(gateway.calls).isEqualTo(1);
+    }
+
+    @Test void checkpointedResultSurvivesSourceRemovalAndProjectArchival() throws Exception {
+        var source = source();
+        var accepted = run(source, "removed-source");
+        var lease = tasks.claimTextGenerations("removed-source-worker", 1).getFirst();
+        var checkpoint = mapper.createObjectNode().put("schemaVersion", 1);
+        checkpoint.set("response", codec.response(new ChatResponse(List.of(new Generation(new AssistantMessage("Retained prompt"))))));
+        tasks.checkpointTextResponse(lease, "removed-source-worker", checkpoint);
+        canvas.apply(owner.userId(), source.project(), List.of(new CanvasService.Remove(source.item().id(), source.item().version())));
+        projects.archive(owner.userId(), source.project(), projects.get(owner.userId(), source.project()).version());
+        jdbc.sql("update task set lease_until=now()-interval '1 second' where id=:id").param("id", lease.id()).update();
+        worker.runOnce("retained-result-worker");
+        var completed = tasks.get(owner.userId(), source.project(), accepted.id());
+        assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(canvas.list(owner.userId(), source.project())).hasSize(1);
+        assertThat(canvas.list(owner.userId(), source.project()).getFirst().artifact().resourceDefaultVersion().content().path("text").asText())
+                .isEqualTo("Retained prompt");
+        assertThat(gateway.calls).isZero();
+    }
+
+    @Test void legacySchemaThreeStillExecutesWithoutCreatingCards() throws Exception {
+        var source = source();
+        var template = run(source, "template");
+        prompts.cancel(owner.userId(), source.project(), source.artifact(), template.id());
+        var input = (tools.jackson.databind.node.ObjectNode) template.input().deepCopy();
+        input.put("schemaVersion", 3); input.remove("outputTitle");
+        var now = java.time.Instant.now();
+        Task accepted = new Task(UUID.randomUUID(), source.project(), null, "legacy", Task.Kind.TEXT_GENERATION,
+                Task.Status.READY, false, input, dev.agenvas.shared.crypto.Sha256.hex(input.toString()),
+                null, null, 1, now, null, null, 0, 0, null, now, now, null);
+        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status -> {
+            taskRepository.create(accepted); usage.reserveDirectTextTask(owner.userId(), accepted);
+        });
+        worker.runOnce("legacy-worker");
+        var completed = tasks.get(owner.userId(), source.project(), accepted.id());
+        assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(TaskController.TaskResponse.from(completed).output().path("prompt").asText()).isNotBlank();
+        assertThat(TaskController.TaskResponse.from(completed).output().has("canvasItemId")).isFalse();
+        assertThat(canvas.list(owner.userId(), source.project())).hasSize(1);
+        assertThat(run(source, "legacy").id()).isEqualTo(accepted.id());
+        assertThat(gateway.calls).isEqualTo(1);
     }
 
     private Task run(Source source, String key) {
@@ -339,12 +548,26 @@ class ImagePromptPostgresIT {
         catch (java.io.IOException failure) { throw new IllegalStateException(failure); }
     }
     @TestConfiguration static class FakeConfig {
-        @Bean @Primary FakeGateway gateway() { return new FakeGateway(); }
+        @Bean @Primary FakeGateway gateway(ObjectProvider<ChatModel> models, LlmProperties properties,
+                LlmProviderConfigRepository configs, StoredChatModelFactory factory) {
+            return new FakeGateway(new ConfiguredChatGateway(models, properties, configs, factory));
+        }
     }
     static class FakeGateway implements ChatGateway {
+        private final ConfiguredChatGateway configured;
         int calls;
         boolean failure;
+        boolean useStoredConfig;
         List<Message> messages;
+        FakeGateway(ConfiguredChatGateway configured) { this.configured = configured; }
+        @Override public LlmRequestBudget requestBudgetFor(ConfigIdentity expected) {
+            return useStoredConfig ? configured.requestBudgetFor(expected) : null;
+        }
+        @Override public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context,
+                ConfigIdentity expected, LlmRequestBudget budget) {
+            return useStoredConfig ? configured.call(messages, tools, context, expected, budget)
+                    : ChatGateway.super.call(messages, tools, context, expected, budget);
+        }
         @Override public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context) {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
             assertThat(tools).isEmpty(); assertThat(context).isEmpty();
@@ -358,8 +581,13 @@ class ImagePromptPostgresIT {
                     .content("Synthetic lakeside, soft morning light.").properties(Map.of("reasoning_content", "private thought")).build()))));
         }
         @Override public Capabilities capabilities() { return new Capabilities(true, false, false); }
-        @Override public int configVersion() { return 1; }
-        @Override public String configSource() { return "mock"; }
-        @Override public ModelDetails modelDetails() { return new ModelDetails(true, "synthetic", "synthetic-vision", true); }
+        @Override public int configVersion() { return useStoredConfig ? configured.configVersion() : 1; }
+        @Override public String configSource() { return useStoredConfig ? configured.configSource() : "mock"; }
+        @Override public ConfigIdentity configIdentity() {
+            return useStoredConfig ? configured.configIdentity() : ChatGateway.super.configIdentity();
+        }
+        @Override public ModelDetails modelDetails() {
+            return useStoredConfig ? configured.modelDetails() : new ModelDetails(true, "synthetic", "synthetic-vision", true);
+        }
     }
 }

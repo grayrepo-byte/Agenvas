@@ -1,3 +1,4 @@
+import { UserCircle } from "../../shared/ui/icons";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import { assetContentUrl, assetThumbnailUrl, listArtifacts, listArtifactVersions, listCanvasItems } from "../../shared/api/client";
@@ -55,13 +56,30 @@ export function CharacterReferencePicker({ projectId, kind, onSelect, onClose }:
   </Dialog>;
 }
 
-/** Selected references retain exact identity and resolve preview media through project-authorized endpoints. */
-export function CharacterReferencePreview({ projectId, versionId, kind }: { projectId: string; versionId: string; kind: "IMAGE" | "AUDIO" | "VIDEO" }) {
+/** All reference presentations resolve the same authorized exact version and share caches. */
+function useReferenceVersion(projectId: string, versionId: string, kind: "IMAGE" | "AUDIO" | "VIDEO") {
   const resources = useQuery({ queryKey: ["artifacts", projectId], queryFn: () => listArtifacts(projectId) });
   const artifacts = (resources.data?.items ?? []).filter((artifact) => artifact.kind === kind);
   const histories = useQueries({ queries: artifacts.map((artifact) => ({ queryKey: ["artifact-versions", projectId, artifact.id], queryFn: () => listArtifactVersions(projectId, artifact.id) })) });
   const version = histories.flatMap((history, index) => (history.data?.items ?? []).map((entry) => ({ ...entry, title: artifacts[index]?.title ?? "" }))).find((candidate) => candidate.id === versionId);
   const assetId = version && "assetId" in version.content ? version.content.assetId : undefined;
+  return { version, assetId, pending: resources.isPending || histories.some((history) => history.isPending) };
+}
+
+/** A visual reference without resource titles or technical IDs in the canvas/option label. */
+export function CharacterReferenceImage({ projectId, versionId, alt }: { projectId: string; versionId: string; alt: string }) {
+  useLocale();
+  const { assetId, pending } = useReferenceVersion(projectId, versionId, "IMAGE");
+  const [failed, setFailed] = useState<string | null>(null);
+  if (assetId && failed !== assetId) return <img className="character-reference-image" src={assetThumbnailUrl(projectId, assetId)} alt={alt} draggable={false} onError={() => setFailed(assetId)} />;
+  return <div className="character-reference-fallback" role="img" aria-label={pending ? t("common.loading") : t("characterNode.previewUnavailable")}>
+    <UserCircle aria-hidden="true" /><span>{pending ? t("common.loading") : t("characterNode.previewUnavailable")}</span>
+  </div>;
+}
+
+/** Selected references retain exact identity and resolve preview media through project-authorized endpoints. */
+export function CharacterReferencePreview({ projectId, versionId, kind }: { projectId: string; versionId: string; kind: "IMAGE" | "AUDIO" | "VIDEO" }) {
+  const { version, assetId } = useReferenceVersion(projectId, versionId, kind);
   return <div className="flex min-w-0 flex-col gap-1">
     <span className="text-sm">{version?.title || t("character.referenceUnavailable")} · {t(kind === "IMAGE" ? "common.image" : kind === "AUDIO" ? "common.audio" : "common.video")}{version ? ` · v${version.versionNo}` : ""}</span>
     {assetId && kind === "IMAGE" ? <img className="size-20 rounded object-contain" src={assetThumbnailUrl(projectId, assetId)} alt={t("character.imageReference")} /> : null}

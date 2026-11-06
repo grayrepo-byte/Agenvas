@@ -14,6 +14,16 @@ import tools.jackson.databind.ObjectMapper;
 class OpenAiImageOptionsTest {
     private final ObjectMapper mapper = new ObjectMapper();
 
+    @Test void markupIsExplicitlyLimitedToSupportedPngModels() {
+        for (String model : List.of("gpt-image-2.6-flare", "gpt-image-2.6-sunburst", "gpt-image-2.5-flare", "gpt-image-2.5-sunburst-2026-09-08")) {
+            var settings=mapper.createObjectNode().put("model",model);
+            assertThat(OpenAiImageOptions.supportsMarkup(settings)).isTrue();
+            assertThat(OpenAiImageOptions.supportsMarkup(settings.put("outputFormat","gif"))).isFalse();
+        }
+        for (String model:List.of("", "gpt-image-2", "chatgpt-image-latest", "custom-model"))
+            assertThat(OpenAiImageOptions.supportsMarkup(mapper.createObjectNode().put("model",model))).isFalse();
+    }
+
     @ParameterizedTest @ValueSource(strings = {"auto", "low"})
     void retainsExplicitModerationAcrossStaticAndGifCapabilities(String moderation) {
         for (String format : List.of("png", "gif")) {

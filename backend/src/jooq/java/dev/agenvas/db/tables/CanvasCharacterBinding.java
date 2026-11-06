@@ -132,6 +132,13 @@ public class CanvasCharacterBinding extends TableImpl<CanvasCharacterBindingReco
      */
     public final TableField<CanvasCharacterBindingRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "Last aggregate application or review time.");
 
+    /**
+     * The column
+     * <code>public.canvas_character_binding.node_character_ids_json</code>.
+     * schemaVersion=1：上次明确节点应用拥有的角色身份；普通手动应用清空来源，节点应用保留其他角色
+     */
+    public final TableField<CanvasCharacterBindingRecord, JSONB> NODE_CHARACTER_IDS_JSON = createField(DSL.name("node_character_ids_json"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'{\"content\": [], \"schemaVersion\": 1}'::jsonb"), SQLDataType.JSONB)), this, "schemaVersion=1：上次明确节点应用拥有的角色身份；普通手动应用清空来源，节点应用保留其他角色");
+
     private CanvasCharacterBinding(Name alias, Table<CanvasCharacterBindingRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }

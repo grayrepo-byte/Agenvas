@@ -631,7 +631,9 @@ public class AgentRunService {
             reference.put("itemId", item.id().toString());
             reference.put("subjectType", item.subjectType().name());
             reference.put("subjectId", item.subjectId().toString());
-            if (selected.artifact() != null) {
+            if (item.subjectType() == CanvasItem.SubjectType.CHARACTER) {
+                dev.agenvas.canvas.application.CharacterNodeSummary.append(reference, item, selected.characterNode());
+            } else if (selected.artifact() != null) {
                 // Text owns its current Artifact version; media owns the node's exact selection, including an empty draft.
                 ArtifactVersion selectedVersion = selected.artifact().artifact().kind() == Artifact.Kind.TEXT
                         ? selected.artifact().resourceDefaultVersion() : selected.selectedVersion();

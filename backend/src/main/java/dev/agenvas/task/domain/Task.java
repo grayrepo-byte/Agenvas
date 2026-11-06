@@ -95,7 +95,14 @@ public record Task(
         return compositionRunId() == null ? runId : compositionRunId();
     }
 
-    /** Image analysis produces text in the Task result without mutating a media draft or Artifact. */
+    /** New image analysis tasks publish a separate text card; schema 3 keeps its result-only contract. */
+    public static final int IMAGE_PROMPT_CARD_SCHEMA_VERSION = 5;
+
+    public boolean isImagePromptCard() {
+        return isImagePrompt() && input.path("schemaVersion").asInt() == IMAGE_PROMPT_CARD_SCHEMA_VERSION;
+    }
+
+    /** Image analysis never mutates the source image or its media draft. */
     public boolean isImagePrompt() {
         return kind == Kind.TEXT_GENERATION && IMAGE_PROMPT_PURPOSE.equals(input.path("purpose").asText());
     }

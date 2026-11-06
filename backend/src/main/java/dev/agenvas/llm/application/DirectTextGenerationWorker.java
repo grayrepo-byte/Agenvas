@@ -86,7 +86,15 @@ public class DirectTextGenerationWorker {
                         .put("mock", "mock".equals(lease.input().path("modelConfigSource").asText()));
                 if (lease.isImagePrompt()) result.put("sourceVersionId", lease.input().path("sourceVersionId").asText());
                 output.set("result", result);
-                tasks.succeed(lease, workerId, output);
+                if (lease.isImagePromptCard()) {
+                    try {
+                        tasks.succeedWithImagePromptCard(lease, workerId, output, content);
+                    } catch (RuntimeException publicationFailure) {
+                        // The durable response is already settled. Leave the lease recoverable so
+                        // a transaction/placement failure retries publication, never the model call.
+                        LOGGER.warn("Image-prompt task {} could not publish its text card; checkpoint retained for lease recovery", lease.id());
+                    }
+                } else tasks.succeed(lease, workerId, output);
             } else tasks.succeedWithTextArtifact(lease, workerId, content);
         } catch (LeasedModelExecutor.Stopped stopped) {
             throw stopped;

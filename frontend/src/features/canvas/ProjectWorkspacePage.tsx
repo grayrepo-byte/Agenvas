@@ -1,3 +1,8 @@
+import { CharacterCanvasCard, CharacterNodeEditor, CharacterNodePlacementDialog, CHARACTER_DRAG_TYPE } from "./CharacterCanvasCard";
+import { useCharacterNodeRecovery } from "./characterNodeRecovery";
+import { CharacterConnectionDialog } from "./CharacterConnectionDialog";
+import { characterConnectionForEdge, characterConnectionForGesture, projectCharacterRelations } from "./characterCanvas";
+import { disconnectCharacterNode, type CharacterConnection } from "../../shared/api/characterNodes";
 import { VideoEditDialog } from "./VideoEditDialog";
 import { AlignLeftSimple,ArrowClockwise,ArrowCounterClockwise,ArrowLeft,CopySimple,CheckCircle,CircleNotch,Cube,DownloadSimple,FolderSimple,ImageSquare,MusicNotes,Plus,SelectionAll,Sparkle,TextT,VideoCamera,WarningCircle,X,type Icon } from "@/shared/ui/icons";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
@@ -19,6 +24,7 @@ type ReactFlowInstance,
 type ResizeParams,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import "./WorkspaceStudio.css";
 import { memo,useCallback,useEffect,useMemo,useRef,useState } from "react";
 import { Link,Navigate,useParams,useLocation } from "react-router";
 import {
@@ -30,6 +36,7 @@ createArtifact,
 createCanvasConnection,
 disconnectCanvasConnection,
 getCurrentUser,
+getCanvasEditor,
 getMediaDraft,
 getMediaSettings,
 getProject,
@@ -102,7 +109,7 @@ import { CanvasGroupRenameDialog } from "./CanvasGroupActions";
 import { canvasGroupCreationPoint, canvasGroupDropTarget, canvasGroupIdFromNodeId, canvasGroupNodeId,
   remapCollapsedCanvasEdges, type CanvasGroupMemberLayout, type CanvasGroupProjection } from "./canvasGroups";
 import { hasOpenCanvasEditingOverlay, resolveCanvasEditingShortcut } from "./canvasEditingShortcuts";
-import { CanvasEditingContext, canvasItemPresentation } from "./useCanvasEditing";
+import { CanvasEditingContext, canvasEditorKey, canvasItemPresentation } from "./useCanvasEditing";
 import { CANVAS_EDIT_ITEM_LIMIT, useCanvasOrganization } from "./useCanvasOrganization";
 import { connectedMediaModel, type ConnectedMediaModel } from "./connectedMediaModel";
 import { fieldsFromMediaDraft } from "./useMediaDraftSession";
@@ -165,6 +172,7 @@ type CanvasNodeData = {
   onMakeMV: (item: CanvasItem) => void;
   onComposeVideo: (item: CanvasItem) => void;
   onEditVideo: (item: CanvasItem) => void;
+  onShowCard: (itemId: string, signal: AbortSignal) => Promise<boolean>;
   compositionDisabledReason: string | null;
   mediaAspectRatio: number | undefined;
   dragging: boolean;
@@ -173,6 +181,10 @@ type CanvasNodeData = {
   onToggleSelection: (itemId: string) => void;
   /** Connection gesture feedback: this card is under the pointer and will accept, or reject, the line. */
   connectionTarget: "valid" | "invalid" | null;
+  onEditCharacter: (item: CanvasItem) => void;
+  onPreviewCharacterTarget: (targetId: string) => void;
+  onConnectCharacterTarget: (sourceId: string, targetId: string) => void;
+  characterReadOnly: boolean;
   characterLabel: string | null;
   characterNeedsReview: boolean;
 };
@@ -197,6 +209,15 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const focusedTrySkill = useRef<string | null>(null);
   useLocale();
   const queryClient = useQueryClient();
+  // Match the workspace's existing read-only breakpoint, including open dialogs.
+  const [characterNarrow, setCharacterNarrow] = useState(() => window.matchMedia?.("(max-width: 1023px)").matches ?? false);
+  useEffect(() => {
+    const media = window.matchMedia?.("(max-width: 1023px)");
+    if (!media) return;
+    const update = () => setCharacterNarrow(media.matches);
+    media.addEventListener?.("change", update);
+    return () => media.removeEventListener?.("change", update);
+  }, []);
   const uploadInput = useRef<HTMLInputElement>(null);
   const uploadPoint = useRef<CreationPoint | null>(null);
   const uploadProgress = useRef<UploadIntent | null>(null);
@@ -204,6 +225,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     itemId: string; zIndex: number; title: string; artifactId?: string } | null>(null);
   const [eventStatus, setEventStatus] = useState<EventSyncStatus>("connecting");
   const flow = useRef<ReactFlowInstance<WorkspaceNode> | null>(null);
+  const [flowReady, setFlowReady] = useState(false);
+  const initialViewportSet = useRef(false);
   const groupDragOrigins = useRef(new Map<string, { x: number; y: number;
     members: { id: string; x: number; y: number }[] }>());
   const editorFocusFrame = useRef<number | null>(null);
@@ -269,6 +292,13 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [storyboardOpen, setStoryboardOpen] = useState(false);
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const [charactersOpen, setCharactersOpen] = useState(false);
+  const pendingCharacterPlacement = useCharacterNodeRecovery((state) => state.placements[projectId]);
+  const pendingCharacterOperations = useCharacterNodeRecovery((state) => state.pending);
+  const projectCharacterRecoveries = Object.entries(pendingCharacterOperations).filter(([key]) => key.startsWith(`${projectId}:`));
+  const [characterPlacement, setCharacterPlacement] = useState<{ point: CreationPoint; profileId?: string } | null>(null);
+  const [characterEditorId, setCharacterEditorId] = useState<string | null>(null);
+  const [characterConnection, setCharacterConnection] = useState<{ sourceId?: string; targetId: string; key: string } | null>(null);
+  const [characterNotice, setCharacterNotice] = useState(false);
   const characters = useQuery(characterQueryOptions(projectId));
   const bindingsByItem = useMemo(() => new Map(characters.data?.bindings.map((binding) => [binding.canvasItemId, binding]) ?? []), [characters.data]);
   const [agentChatOpen, setAgentChatOpen] = useState(false);
@@ -333,7 +363,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     const draft = useCanvasStore.getState().drafts[item.id];
     const storedHeight = patch?.height ?? draft?.height ?? item.height;
     // A result has a compact player; preserve explicit user sizes and pending resize drafts.
-    const compactAudio = item.artifact.kind === "AUDIO" && item.selectedVersion
+    const compactAudio = item.artifact?.kind === "AUDIO" && item.selectedVersion
       && patch?.height === undefined && draft?.height === undefined
       && AUDIO_PLACEHOLDER_HEIGHTS.has(item.height);
     return projectImageNodeSize({
@@ -370,6 +400,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     ...canvasMutationFeedback,
     onSuccess: (saved, item) => {
       queryClient.setQueryData(["canvas", projectId], saved);
+      if (item.characterNode) setCharacterNotice(true);
       clearDraft(item.id);
       editing.clearHistory();
       setSaveState("saved");
@@ -467,7 +498,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         const source = queryClient.getQueryData<Canvas>(["canvas", projectId])?.items
           .find((item) => item.id === connectionSource.sourceCanvasItemId);
         const settings = await queryClient.fetchQuery({ queryKey: ["media-settings"], queryFn: getMediaSettings });
-        const model = source && connectedMediaModel(settings, kind, source.artifact.kind);
+        const model = source?.artifact && connectedMediaModel(settings, kind, source.artifact.kind);
         if (!model) throw new CanvasConnectionError(t("canvas.workspace.noCompatibleModel"));
         initialModel = model;
       }
@@ -539,7 +570,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     ? t("canvas.workspace.compositionBusy")
     : agentRunRequest ? t("canvas.workspace.compositionPending") : null;
   const requestVideoComposition = useCallback((items: readonly CanvasItem[]) => {
-    if (compositionDisabledReason || !items.some((item) => item.artifact.kind === "VIDEO")
+    if (compositionDisabledReason || !items.some((item) => item.artifact?.kind === "VIDEO")
       || items.some((item) => !item.selectedVersionId)) return;
     setAgentRunRequest({ id: crypto.randomUUID(), instruction: t("agent.chat.compositionInstruction"),
       selectedItemIds: items.map((item) => item.id) });
@@ -547,7 +578,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   }, [compositionDisabledReason, openAgentChat]);
   const openAudioConversation = useMutation({
     mutationFn: async (source: CanvasItem) => {
-      if (source.artifact.kind !== "AUDIO" || !source.selectedVersionId)
+      if (source.artifact?.kind !== "AUDIO" || !source.selectedVersionId)
         throw new Error(t("canvas.workspace.audioResultRequired"));
       setAgentChatOpen(true);
       if (director) return director;
@@ -590,6 +621,15 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         queryClient.invalidateQueries({ queryKey: ["canvas-connections", projectId] }),
         queryClient.invalidateQueries({ queryKey: ["media-draft", projectId] }),
       ]);
+      setSaveState("saved");
+    },
+  });
+  const removeCharacterConnection = useMutation({
+    mutationFn: (connection: CharacterConnection) => disconnectCharacterNode(projectId, connection),
+    ...canvasMutationFeedback,
+    onSuccess: async () => {
+      setCharacterNotice(true);
+      await queryClient.invalidateQueries({ queryKey: ["canvas", projectId] });
       setSaveState("saved");
     },
   });
@@ -647,7 +687,16 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const editAgentMutate = editAgent.mutate;
   const removeItemMutateAsync = removeItem.mutateAsync;
   const removeMediaConnectionMutateAsync = removeMediaConnection.mutateAsync;
-  const connectInputMutate = connectInput.mutate;
+  const removeCharacterConnectionMutateAsync = removeCharacterConnection.mutateAsync;
+  const connectInputMutate = useCallback((connection: Connection) => {
+    const items = queryClient.getQueryData<Canvas>(["canvas", projectId])?.items ?? [];
+    const character = characterConnectionForGesture(items, connection);
+    if (character) {
+      setCharacterConnection({ sourceId: character.source.id, targetId: character.target.id, key: crypto.randomUUID() });
+      return;
+    }
+    connectInput.mutate(connection);
+  }, [connectInput, projectId, queryClient]);
 
   const handleResizeEnd = useCallback(
     (itemId: string, layout: LayoutPatch) => {
@@ -693,6 +742,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       const removals: Promise<unknown>[] = deletedNodes.flatMap((node) =>
         node.type === "canvasGroup" ? [] : [removeItemMutateAsync(node.data.item)]);
       for (const edge of relations) {
+        const character = characterConnectionForEdge(canvas.data?.items ?? [], edge);
+        if (character) { removals.push(removeCharacterConnectionMutateAsync(character)); continue; }
         const connection = canvasConnectionForEdge(canvasConnections.data?.items ?? [], edge);
         if (connection) removals.push(removeMediaConnectionMutateAsync(connection));
       }
@@ -702,7 +753,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       return false;
     },
     [canvas.data?.items, canvasConnections.data?.items,
-      removeItemMutateAsync, removeMediaConnectionMutateAsync, organization],
+      removeItemMutateAsync, removeMediaConnectionMutateAsync, removeCharacterConnectionMutateAsync, organization],
   );
   /**
    * A drop lands on the card under the pointer, so a big card does not require aiming at its left port.
@@ -736,7 +787,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     const target = items.find((item) => item.id === nodeId);
     const targetHandle = target ? "artifact-input" : null;
     trackConnectionTarget(target && targetHandle ? { itemId: target.id, targetHandle,
-      valid: isCanvasConnectionValid(items, { source: source.nodeId, sourceHandle: source.handleId,
+      valid: isWorkspaceConnectionValid(items, { source: source.nodeId, sourceHandle: source.handleId,
         target: target.id, targetHandle }) } : null);
   }, [canvas.data?.items, trackConnectionTarget]);
   useEffect(() => {
@@ -811,6 +862,27 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     const item = canvas.data?.items.find((candidate) => candidate.id === node.id);
     return item && !item.locked ? [{ id: item.id, groupId: item.groupId, ...node.position, ...effectiveNodeSize(item) }] : [];
   }), [canvas.data?.items, effectiveNodeSize]);
+  const showGeneratedCard = useCallback(async (itemId: string, signal: AbortSignal) => {
+    const item = queryClient.getQueryData<Canvas>(["canvas", projectId])?.items.find((candidate) => candidate.id === itemId);
+    if (item?.groupId) {
+      const editor = await queryClient.fetchQuery({ queryKey: canvasEditorKey(projectId),
+        queryFn: () => getCanvasEditor(projectId), staleTime: 0, retry: false });
+      if (signal.aborted) return false;
+      const currentItem = editor.items.find((candidate) => candidate.id === itemId);
+      const group = editor.groups.find((candidate) => candidate.id === currentItem?.groupId);
+      if (group?.collapsed) await editing.execute({ operation: "GROUP", groupChanges: [{ type: "UPSERT",
+        groupId: group.id, expectedVersion: group.version, name: group.name, collapsed: false }] });
+    }
+    if (signal.aborted) return false;
+    // Fit before selecting: selecting the target unmounts this source's toolbar and cancels its signal.
+    // The returned boolean distinguishes that completed navigation from an abandoned preparation.
+    return new Promise<boolean>((resolve) => window.requestAnimationFrame(() => {
+      if (signal.aborted) { resolve(false); return; }
+      viewportMotion.fit({ nodes: [{ id: itemId }], padding: 0.2, maxZoom: 1 });
+      setSelectedIds([itemId], CANVAS_SELECTION_MODE.SINGLE);
+      resolve(true);
+    }));
+  }, [queryClient, projectId, editing, setSelectedIds, viewportMotion]);
   const nodes = useMemo<WorkspaceNode[]>(
     () => [
       ...organization.projection.groups.map((entry): CanvasGroupFlowNode => ({
@@ -852,6 +924,10 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             data: {
               item,
               projectId,
+              onEditCharacter: (item) => setCharacterEditorId(item.id),
+              onPreviewCharacterTarget: (targetId) => setCharacterConnection({ targetId, key: crypto.randomUUID() }),
+              onConnectCharacterTarget: (sourceId, targetId) => setCharacterConnection({ sourceId, targetId, key: crypto.randomUUID() }),
+              characterReadOnly: characterNarrow || project.data?.status !== "ACTIVE",
               characterLabel: bindingsByItem.get(item.id)?.snapshots.map((snapshot) => `${snapshot.name} v${snapshot.characterVersion}`).join(" · ") || null,
               characterNeedsReview: Boolean(bindingsByItem.get(item.id)?.needsReview || (bindingsByItem.get(item.id) && characterBindingStale(bindingsByItem.get(item.id)!, characters.data?.characters ?? []))),
               onResizeEnd: handleResizeEnd,
@@ -861,6 +937,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               onMakeMV: (item) => makeMV.mutate(item),
               onComposeVideo: (item) => requestVideoComposition([item]),
               onEditVideo: (item) => setVideoEditIds([item.id]),
+              onShowCard: showGeneratedCard,
               compositionDisabledReason,
               mediaAspectRatio: mediaRatios[item.id],
               dragging: draggingIds.includes(item.id),
@@ -876,6 +953,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     ],
     [
       canvas.data?.items,
+      characterNarrow,
       organization,
       lockedItemIds,
       groupDropTargetId,
@@ -891,6 +969,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       nodeActionsVisible,
       multiSelecting,
       requestVideoComposition,
+      showGeneratedCard,
       compositionDisabledReason,
       handleToggleSelection,
       effectiveNodeSize,
@@ -899,6 +978,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       handleToggleLocked,
       handleDuplicate,
       mediaRatios,
+      project.data?.status,
       projectId,
       selectedIds,
       selecting,
@@ -913,7 +993,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [selectedEdgeIds, setSelectedEdgeIds] = useState<string[]>([]);
   const projectedRelations = useMemo(() => {
     const items = canvas.data?.items ?? [];
-    return projectCanvasRelations(items, canvasConnections.data?.items ?? []);
+    return [...projectCanvasRelations(items, canvasConnections.data?.items ?? []), ...projectCharacterRelations(items)];
   },
     [canvas.data?.items, canvasConnections.data?.items]);
   const organizeCanvas = useMutation({
@@ -944,6 +1024,24 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       if (instance) viewportMotion.center(first.x + width / 2, first.y + height / 2, instance.getZoom());
     },
   });
+  useEffect(() => {
+    if (!canvas.isSuccess || initialViewportSet.current) return;
+    // An empty loaded snapshot has its final view even before React Flow finishes
+    // initializing. A subsequent creation must not trigger a delayed initial fit.
+    if (canvas.data.items.length === 0 && organization.groups.length === 0) {
+      initialViewportSet.current = true;
+      return;
+    }
+    if (!flowReady || !flow.current) return;
+    // Saved group definitions arrive separately. Wait so collapsed children do not
+    // pull the first viewport toward distant nodes that are meant to stay hidden.
+    const knownGroups = new Set(organization.groups.map((group) => group.id));
+    if (canvas.data.items.some((item) => item.groupId && !knownGroups.has(item.groupId))) return;
+    initialViewportSet.current = true;
+    if (nodes.length > 0) void flow.current.fitView({ padding: 0.2, maxZoom: 1,
+      nodes: nodes.filter((node) => node.style?.visibility !== "hidden").map(({ id }) => ({ id })) });
+  }, [canvas.data, canvas.isSuccess, flowReady, nodes, organization.groups]);
+
   const relationEdges = useMemo(() => remapCollapsedCanvasEdges(displayCanvasRelations(
     projectedRelations, [...selectedIds, ...organization.selectedItems.map((item) => item.id)], selectedEdgeIds,
     displaySettings.preferences), organization.projection.collapsedNodeByMemberId), [projectedRelations, organization.projection.collapsedNodeByMemberId,
@@ -1083,11 +1181,24 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     return () => document.removeEventListener("pointerdown", closeOnOutsidePointer, true);
   }, [creationMenu]);
 
+  const closeSelectionEditor = useCallback(() => {
+    const canvas = canvasElement.current;
+    const editor = canvas?.querySelector(".workspace-media-editor");
+    const ownsFocus = editor?.contains(document.activeElement);
+    const selection = useCanvasStore.getState().selectedIds;
+    const node = selection.length === 1
+      ? Array.from(canvas?.querySelectorAll<HTMLElement>(".react-flow__node") ?? [])
+        .find((element) => element.dataset.id === selection[0]) : undefined;
+    setSelectedIds([]);
+    // Closing an editor returns keyboard context without scrolling or selecting the node.
+    if (ownsFocus) node?.focus({ preventScroll: true });
+  }, [setSelectedIds]);
+
   // Esc 先交给当前模态/弹出层，再关创建菜单，最后关底部编辑区。setSelectedIds 对相同值返回原 state，
   // 因此没有选中时按 Esc 不会引起重渲染。
   useEffect(() => {
     function closeOnEscape(event: KeyboardEvent) {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
       // Radix 的 document 监听器可能晚于画布注册；不能依赖它先 preventDefault。
       // 即使焦点落到 document，打开的模态仍拥有 Escape，避免取消选中卸载编辑草稿。
       if (document.querySelector('[role="dialog"]:not([hidden]):not([aria-modal="false"]), [role="alertdialog"]:not([hidden])')) return;
@@ -1097,11 +1208,11 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         return;
       }
       if (document.querySelector('[role="listbox"], [role="menu"]')) return;
-      setSelectedIds([]);
+      closeSelectionEditor();
     }
     document.addEventListener("keydown", closeOnEscape);
     return () => document.removeEventListener("keydown", closeOnEscape);
-  }, [creationMenu, setSelectedIds]);
+  }, [creationMenu, closeSelectionEditor]);
 
   function chooseCreationKind(kind: CreationKind, point = creationMenu?.point, centerAtPoint = creationMenu?.centerAtPoint ?? false) {
     if (!point) return;
@@ -1127,7 +1238,9 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   }
 
   const selectedItems = organization.selectedItems;
-  const selectedVideos = selectedItems.filter((item) => item.artifact.kind === "VIDEO");
+  const characterEditorItem = canvas.data?.items.find((item) => item.id === characterEditorId);
+  const characterConnectionTarget = canvas.data?.items.find((item) => item.id === characterConnection?.targetId);
+  const selectedVideos = selectedItems.filter((item) => item.artifact?.kind === "VIDEO");
   const compositionUnavailable = !selectedVideos.length ? t("canvas.workspace.compositionVideoRequired")
     : selectedItems.some((item) => !item.selectedVersionId) ? t("canvas.workspace.compositionResultRequired")
     : compositionDisabledReason;
@@ -1191,6 +1304,17 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           <SaveBadge state={saveState} />
         </div>
         <div className="workspace-header-actions">
+          <Button variant="ghost" size="sm" disabled={project.data?.status !== "ACTIVE" && !pendingCharacterPlacement} onClick={() => setCharacterPlacement({ point: canvasCenter() })} type="button">{t("characterNode.place")}</Button>
+          {projectCharacterRecoveries.map(([key, recovery]) => {
+            const targetId = key.slice(projectId.length + 1);
+            const target = canvas.data?.items.find((item) => item.id === targetId);
+            return <span key={key} className="flex items-center gap-1">
+              <Button variant="ghost" size="sm" type="button" disabled={!target}
+                title={target?.title ?? t("storyboard.missingNode")} onClick={() => setCharacterConnection({ targetId,
+                  sourceId: recovery.kind === "connection" ? recovery.request.sourceCanvasItemId : undefined, key: crypto.randomUUID() })}>{t("characterNode.reconcileAction")}</Button>
+              {!target ? <span className="text-xs text-muted-foreground">{t("storyboard.missingNode")} <code>{targetId}</code></span> : null}
+            </span>;
+          })}
           <Button variant="ghost" size="sm" onClick={() => setCharactersOpen(true)} type="button">{t("character.title")}</Button>
           <Button variant="ghost" size="sm" onClick={() => {
             setResourcesOpen(true);
@@ -1296,6 +1420,10 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           </CanvasErrorNotice> : null}
           {saveLayout.error ? <CanvasErrorNotice error={saveLayout.error} title={feedbackTitle(t("canvas.feedback.saveLayout"), layoutErrorIds)} message={workspaceErrorMessage(saveLayout.error)}
             onLocate={layoutErrorIds.some((id) => canvas.data?.items.some((item) => item.id === id)) ? () => locateFeedbackNodes(layoutErrorIds) : undefined} /> : null}
+          {characterNotice ? <div className="canvas-message" role="status">{t("characterNode.retained")}<Button variant="ghost" size="xs" onClick={() => setCharacterNotice(false)}>{t("common.close")}</Button></div> : null}
+          {removeCharacterConnection.error ? <CanvasErrorNotice error={removeCharacterConnection.error} title={t("characterNode.connectPreview")} message={removeCharacterConnection.error.message}>
+            <Button variant="ghost" size="xs" disabled={removeCharacterConnection.isPending} onClick={() => { if (removeCharacterConnection.variables) removeCharacterConnection.mutate(removeCharacterConnection.variables); }}>{t("common.retry")}</Button>
+          </CanvasErrorNotice> : null}
           {connectInput.error ? <CanvasErrorNotice error={connectInput.error} title={feedbackTitle(t("canvas.feedback.connect"), connectionErrorIds)} message={workspaceErrorMessage(connectInput.error)}
             onLocate={connectionErrorIds.some((id) => canvas.data?.items.some((item) => item.id === id)) ? () => locateFeedbackNodes(connectionErrorIds) : undefined}>
             <Button variant="ghost" size="xs" type="button" disabled={connectInput.isPending}
@@ -1307,6 +1435,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             onLocate={canvas.data?.items.some((item) => item.id === toggleLocked.variables?.id) ? () => locateFeedbackNodes([toggleLocked.variables!.id]) : undefined} /> : null}
         </div>
         <ReactFlow<WorkspaceNode>
+          // Keyboard focus return must preserve the view, including offscreen nodes.
+          autoPanOnNodeFocus={false}
           colorMode="dark"
           connectOnClick={false}
           connectionLineType={ConnectionLineType.Bezier}
@@ -1314,9 +1444,15 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           deleteKeyCode={null}
           edges={relationEdges}
           edgeTypes={edgeTypes}
-          fitView
-          fitViewOptions={{ padding: 0.2, maxZoom: 1, nodes: nodes.filter((node) => node.style?.visibility !== "hidden").map(({ id }) => ({ id })) }}
-          isValidConnection={(connection) => isCanvasConnectionValid(canvas.data?.items ?? [], connection)}
+          isValidConnection={(connection) => isWorkspaceConnectionValid(canvas.data?.items ?? [], connection)}
+          onDragOver={(event) => { if (event.dataTransfer.types.includes(CHARACTER_DRAG_TYPE)) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; } }}
+          onDrop={(event) => {
+            const profileId = event.dataTransfer.getData(CHARACTER_DRAG_TYPE);
+            if (!profileId || project.data?.status !== "ACTIVE") return;
+            event.preventDefault();
+            const point = flow.current?.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+            if (point) setCharacterPlacement({ point, profileId });
+          }}
           minZoom={CANVAS_MIN_ZOOM}
           nodes={nodes}
           nodeTypes={nodeTypes}
@@ -1412,7 +1548,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             window.requestAnimationFrame(focusArtifactEditor);
           }}
           onEdgesChange={handleEdgesChange}
-          onInit={(instance) => { flow.current = instance; }}
+          onInit={(instance) => { flow.current = instance; setFlowReady(true); }}
           onMoveStart={(event) => { if (event) { cancelCameraMotion(); clearSelection(); } }}
           selectionOnDrag={selecting}
           selectionMode={SelectionMode.Partial}
@@ -1433,8 +1569,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               }}
               className="workspace-media-toolbar nodrag nowheel nopan">
               <CanvasEditorOverlay>
-                <Button variant="ghost" aria-label={t("canvas.workspace.closeEditor")} className="workspace-bottom-close"
-                  onClick={() => setSelectedIds([])} type="button"><X size={15} /></Button>
+                <Button variant="ghost" size="icon-sm" aria-label={t("canvas.workspace.closeEditor")} className="workspace-bottom-close"
+                  onClick={closeSelectionEditor} type="button"><X size={15} /></Button>
                 {selectedItems[0].artifact.kind === "IMAGE" ||
                   selectedItems[0].artifact.kind === "VIDEO" || selectedItems[0].artifact.kind === "AUDIO" ?
                   <MediaDraftEditor key={selectedItems[0].id}
@@ -1444,7 +1580,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
                     openingAgentConversation={openAudioConversation.isPending} /> : null}
                 {selectedItems[0].artifact.kind === "TEXT" ?
                   <TextGenerationEditor key={selectedItems[0].artifact.id}
-                    artifact={selectedItems[0].artifact} /> : null}
+                    artifact={selectedItems[0].artifact} canvasItemId={selectedItems[0].id} /> : null}
               </CanvasEditorOverlay>
             </NodeToolbar> : null}
           <Background color="var(--ui-canvas-dot)" gap={24} size={1} />
@@ -1510,7 +1646,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           if (node?.type === "canvasCard") focusNodeForEditing(node);
           window.requestAnimationFrame(focusArtifactEditor);
         }} /> : null}
-        {directorItem ? <DirectorWorkbench key={directorItem.id} projectId={projectId} artifactId={directorItem.artifact.id}
+        {directorItem?.artifact ? <DirectorWorkbench key={directorItem.id} projectId={projectId} artifactId={directorItem.artifact.id}
           canvasItemId={directorItem.id} expectedVersion={directorItem.version} sourceVersionId={directorItem.selectedVersionId}
           sourceTitle={directorItem.title} initialScene={directorItem.selectedVersion?.frozenInput?.directorScene}
           onClose={() => setDirectorItem(null)} /> : null}
@@ -1579,6 +1715,20 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         initialName={organization.dialog.mode === "rename" ? organization.dialog.group.name : ""}
         mode={organization.dialog.mode} busy={organization.busy} retrying={Boolean(editing.error)}
         onSave={organization.saveGroup} onClose={organization.closeDialog} /> : null}
+      {characterPlacement ? <CharacterNodePlacementDialog projectId={projectId} point={characterPlacement.point} initialProfileId={characterPlacement.profileId}
+        zIndex={canvas.data?.items.length ?? 0} readOnly={characterNarrow || project.data?.status !== "ACTIVE"} readOnlyHint={characterNarrow ? t("canvas.workspace.viewportHint") : undefined} onClose={() => setCharacterPlacement(null)}
+        onManage={() => setCharactersOpen(true)} onPlaced={(item) => {
+          queryClient.setQueryData<Canvas>(["canvas", projectId], (current) => ({ items: [...(current?.items ?? []).filter((entry) => entry.id !== item.id), item] }));
+          setSelectedIds([item.id], CANVAS_SELECTION_MODE.SINGLE); setCharacterPlacement(null);
+          void queryClient.invalidateQueries({ queryKey: ["canvas-editor", projectId] });
+        }} /> : null}
+      {characterEditorItem ? <CharacterNodeEditor projectId={projectId}
+        item={characterEditorItem} readOnly={characterNarrow || project.data?.status !== "ACTIVE"} readOnlyHint={characterNarrow ? t("canvas.workspace.viewportHint") : undefined}
+        onClose={() => setCharacterEditorId(null)} /> : null}
+      {characterConnection && characterConnectionTarget ? <CharacterConnectionDialog key={characterConnection.key}
+        projectId={projectId} source={canvas.data?.items.find((item) => item.id === characterConnection.sourceId)}
+        target={characterConnectionTarget} readOnly={characterNarrow || project.data?.status !== "ACTIVE"} readOnlyHint={characterNarrow ? t("canvas.workspace.viewportHint") : undefined}
+        onClose={() => setCharacterConnection(null)} /> : null}
       {charactersOpen ? <CharacterManagerDialog projectId={projectId} onClose={() => setCharactersOpen(false)} /> : null}
       {videoEditIds ? <VideoEditDialog projectId={projectId} items={canvas.data?.items ?? []} initialIds={videoEditIds} onClose={() => setVideoEditIds(null)} /> : null}
       <div className="workspace-narrow-warning">{t("canvas.workspace.viewportHint")}</div>
@@ -1594,6 +1744,18 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
   const selectionControl = data.multiSelecting ? <CanvasSelectionCheckbox title={data.item.title}
     selected={selected} onToggle={() => data.onToggleSelection(data.item.id)} /> : null;
   const artifact = data.item.artifact;
+  if (data.item.characterNode) return <>
+    <CanvasHandle id="artifact-output" label={t("characterNode.connectPurpose")} />{halo}{selectionControl}
+    <CharacterCanvasCard item={data.item} projectId={data.projectId} selected={selected || data.dragging}
+      toolbarVisible={data.toolbarVisible} onEdit={() => data.onEditCharacter(data.item)}
+      onDuplicate={() => data.onDuplicate(data.item)} onRemove={() => data.onRemove(data.item)} onToggleLocked={() => data.onToggleLocked(data.item)}
+      onPreviewTarget={data.onPreviewCharacterTarget} readOnly={data.characterReadOnly}
+      onConnectTarget={(targetId) => data.onConnectCharacterTarget(data.item.id, targetId)}>
+      <NodeResizer isVisible={selected && data.toolbarVisible && !data.item.locked && !data.characterReadOnly} minWidth={320} minHeight={300}
+        onResizeEnd={(_, layout) => data.onResizeEnd(data.item.id, layout)} />
+    </CharacterCanvasCard>
+  </>;
+  if (!artifact) return null;
   const cardProps = {
     artifact, item: data.item, selected: selected || data.dragging, locked: data.item.locked,
     toolbarVisible: data.toolbarVisible,
@@ -1612,7 +1774,7 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
       {halo}
       {selectionControl}
       {artifact.kind === "IMAGE" || artifact.kind === "VIDEO" || artifact.kind === "AUDIO"
-        ? <MediaCanvasCard {...cardProps} onEdit={focusArtifactEditor}
+        ? <MediaCanvasCard {...cardProps} onEdit={focusArtifactEditor} onShowCard={data.onShowCard}
           onDuplicate={() => data.onDuplicate(data.item)} onMakeMV={() => data.onMakeMV(data.item)}
           onComposeVideo={() => data.onComposeVideo(data.item)} onEditVideo={() => data.onEditVideo(data.item)} compositionDisabledReason={data.compositionDisabledReason} />
         : <ContentCanvasCard {...cardProps} onDuplicate={() => data.onDuplicate(data.item)} />}
@@ -1620,6 +1782,10 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
     </>
   );
 });
+
+function isWorkspaceConnectionValid(items: CanvasItem[], connection: Connection | Edge) {
+  return characterConnectionForGesture(items, connection) !== null || isCanvasConnectionValid(items, connection);
+}
 
 const nodeTypes = { canvasCard: CanvasCardNode, canvasGroup: CanvasGroupNode };
 

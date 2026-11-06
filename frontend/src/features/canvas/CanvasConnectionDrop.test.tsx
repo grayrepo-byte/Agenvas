@@ -1,4 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
+import type { ReactFlowInstance } from "@xyflow/react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useEffect } from "react";
@@ -15,7 +16,7 @@ type FlowProps = {
   zoomOnDoubleClick?: unknown;
   onConnectStart?: (event: unknown, params: { nodeId: string | null; handleId: string | null }) => void;
   onConnectEnd?: (event: unknown, state: { toHandle?: unknown }) => Promise<void> | void;
-  onInit?: (instance: { screenToFlowPosition: (point: { x: number; y: number }) => { x: number; y: number } }) => void;
+  onInit?: (instance: Pick<ReactFlowInstance, "screenToFlowPosition" | "fitView">) => void;
 };
 
 let flowProps: FlowProps = {};
@@ -28,7 +29,10 @@ vi.mock("@xyflow/react", async (importOriginal) => {
     ReactFlow: (props: FlowProps) => {
       flowProps = props;
       useEffect(() => {
-        props.onInit?.({ screenToFlowPosition: ({ x, y }) => ({ x: (x - 140) / 2, y: (y - 80) / 2 }) });
+        props.onInit?.({
+          screenToFlowPosition: ({ x, y }) => ({ x: (x - 140) / 2, y: (y - 80) / 2 }),
+          fitView: async () => true,
+        });
       }, [props.onInit]);
       return <div className="react-flow"><div className="react-flow__pane" data-testid="flow" /></div>;
     },

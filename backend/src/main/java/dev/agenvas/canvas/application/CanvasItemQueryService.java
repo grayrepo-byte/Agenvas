@@ -18,17 +18,24 @@ public class CanvasItemQueryService {
         this.canvasItems = canvasItems;
     }
 
-    /** Resolves one owned card; the persisted canvas subject is always an Artifact. */
+    @Transactional(readOnly = true)
+    public CanvasItem requireItem(UUID ownerId, UUID projectId, UUID canvasItemId) {
+        return canvasItems.find(ownerId, projectId, canvasItemId).orElseThrow(this::notFound);
+    }
+
+    /** Resolves an owned Artifact card; character nodes never grant media or content access. */
     @Transactional(readOnly = true)
     public CanvasItem requireArtifactItem(UUID ownerId, UUID projectId, UUID canvasItemId) {
-        return canvasItems.find(ownerId, projectId, canvasItemId).orElseThrow(this::notFound);
+        return canvasItems.find(ownerId, projectId, canvasItemId)
+                .filter(item -> item.subjectType() == CanvasItem.SubjectType.ARTIFACT).orElseThrow(this::notFound);
     }
 
     /** Current display identities only, without loading Artifact bodies or media drafts. */
     @Transactional(readOnly = true)
     public List<CanvasItem> artifactItems(UUID ownerId, UUID projectId, UUID artifactId) {
         return canvasItems.list(ownerId, projectId).stream()
-                .filter(item -> item.subjectId().equals(artifactId)).toList();
+                .filter(item -> item.subjectType() == CanvasItem.SubjectType.ARTIFACT
+                        && item.subjectId().equals(artifactId)).toList();
     }
 
     /** Content revisions deliberately exclude layout/title CAS so presentation undo composes. */

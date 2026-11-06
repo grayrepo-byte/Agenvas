@@ -1,3 +1,4 @@
+import { hasCanvasArtifact, type ArtifactCanvasItem } from "./versionedArtifact";
 import { AudioPlayer } from "./AudioPlayer";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
@@ -101,7 +102,7 @@ function ProductionEditor({ projectId, role, production, items, review, disabled
     <div className="storyboard-inline"><h3>{t(ROLE_KEYS[role])}</h3>{review ? <Status value="REVIEW" /> : null}</div>
     <FieldGroup><Labeled label={t("storyboard.productionNode")}>{(id) => <Select id={id} value={production?.canvasItemId ?? ""} disabled={disabled}
       onChange={(event) => onChange(event.target.value ? { role, canvasItemId: event.target.value, selectedVersionId: null, confirmReviewed: false } : null)}>
-      <option value="">{t("storyboard.notBound")}</option>{items.filter((candidate) => candidate.artifact.kind === ROLE_KIND[role]).map((candidate) =>
+      <option value="">{t("storyboard.notBound")}</option>{items.filter((candidate) => candidate.artifact?.kind === ROLE_KIND[role]).map((candidate) =>
         <option key={candidate.id} value={candidate.id}>{candidate.title}</option>)}
       {production && !item ? <option value={production.canvasItemId}>{t("storyboard.missingNode")}</option> : null}
     </Select>}</Labeled>
@@ -127,7 +128,7 @@ function ProductionEditor({ projectId, role, production, items, review, disabled
   </section>;
 }
 
-type BatchEntry = { item: CanvasItem; draft: MediaDraft; name: string; cost: string };
+type BatchEntry = { item: ArtifactCanvasItem; draft: MediaDraft; name: string; cost: string };
 type BatchResult = { name: string; state: "submitted" | "failed" | "uncertain"; detail: string };
 
 export function StoryboardWorkbench({ projectId, items, onClose, onOpenNode }: {
@@ -165,7 +166,7 @@ export function StoryboardWorkbench({ projectId, items, onClose, onOpenNode }: {
   useEffect(() => { editorRef.current?.scrollTo({ top: 0 }); }, [shot?.id]);
   const shotBase = draft?.base.shots.find((candidate) => candidate.id === shot?.id);
   const boundIds = [...new Set(shots.flatMap((entry) => entry.productions.map((production) => production.canvasItemId)))];
-  const boundItems = items.filter((item) => boundIds.includes(item.id));
+  const boundItems = items.filter(hasCanvasArtifact).filter((item) => boundIds.includes(item.id));
   const taskQueries = useQueries({ queries: boundItems.map((item) => ({
     queryKey: ["direct-media-tasks", projectId, item.id], queryFn: () => listDirectMediaTasks(projectId, item.artifact.id, item.id),
     refetchInterval: MEDIA_TASK_REFRESH_INTERVAL_MS,
@@ -215,7 +216,7 @@ export function StoryboardWorkbench({ projectId, items, onClose, onOpenNode }: {
     const settings = await getMediaSettings();
     return Promise.all(unique.map(async ({ production, shot: entry }) => {
       const item = items.find((candidate) => candidate.id === production.canvasItemId);
-      if (!item) throw new Error(t("storyboard.missingNode"));
+      if (!item || !hasCanvasArtifact(item)) throw new Error(t("storyboard.missingNode"));
       const [currentDraft, currentTasks] = await Promise.all([getMediaDraft(projectId, item.id), listDirectMediaTasks(projectId, item.artifact.id, item.id)]);
       if (currentTasks.some(occupiesMediaCard)) throw new Error(`${entry.code}: ${t("storyboard.busyNode")}`);
       const capability = settings.connections.filter((connection) => connection.enabled).flatMap((connection) => connection.capabilities)
@@ -293,7 +294,7 @@ export function StoryboardWorkbench({ projectId, items, onClose, onOpenNode }: {
     const status = shotStatus(entry, draft?.base.shots.find((candidate) => candidate.id === entry.id), tasks, approvals.data?.items ?? []);
     // Retain detached result references for repair, but do not present a missing production node as ready.
     const available = entry.productions.some((production) => production.selectedVersionId && items.some((item) => item.id === production.canvasItemId))
-      || shotMediaCandidates(approvals.data?.items ?? [], entry).some((candidate) => items.some((item) => item.id === candidate.canvasItemId && item.artifact.kind !== "TEXT"));
+      || shotMediaCandidates(approvals.data?.items ?? [], entry).some((candidate) => items.some((item) => item.id === candidate.canvasItemId && item.artifact !== null && item.artifact.kind !== "TEXT"));
     return status === "READY" && !available && entry.productions.some((production) => !items.some((item) => item.id === production.canvasItemId))
       ? "PREPARING" : status;
   };

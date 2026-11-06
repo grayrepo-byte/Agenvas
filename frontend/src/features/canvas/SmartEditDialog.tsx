@@ -26,6 +26,8 @@ import { mediaModelDetails } from "./mediaModelPresentation";
 
 const MASK_LONG_EDGE = 1024;
 const MASK_HISTORY_LIMIT = 20;
+const MARKUP_MAX_PIXELS = 16_777_216;
+type Guidance = "MASK" | "MARKUP";
 const MAX_ARTIFACT_TITLE_LENGTH = 120;
 
 type Tool = "BRUSH" | "RECTANGLE";
@@ -44,13 +46,18 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
   error: Error | null;
   onClose: () => void;
   onSubmit: (input: { instruction: string; capabilityId: string;
-    referenceVersionIds: string[]; maskAssetId?: string }) => void;
+    referenceVersionIds: string[]; maskAssetId?: string; markupAssetId?: string }) => void;
 }) {
   useLocale();
   const queryClient = useQueryClient();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
   const drawing = useRef(false);
+  const submitting = useRef(false);
+  const archivedLayer = useRef<string | null>(null);
+  const sourceDimensions = useRef<{ width: number; height: number } | null>(null);
+  const [guidance, setGuidance] = useState<Guidance>("MASK");
+  const [pendingGuidance, setPendingGuidance] = useState<Guidance | null>(null);
   const pointerStart = useRef<{ x: number; y: number } | null>(null);
   const rectangleBase = useRef<ImageData | null>(null);
   const history = useRef<ImageData[]>([]);
@@ -75,18 +82,20 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
     }, enabled: referencePickerOpen });
 
   const eligibleCapabilities = useMemo(() => capabilities.filter((capability) =>
-    !hasMask || capability.supportsImageMask), [capabilities, hasMask]);
+    guidance === "MARKUP" ? capability.supportsImageMarkup === true : !hasMask || capability.supportsImageMask), [capabilities, hasMask, guidance]);
   const selectedCapability = eligibleCapabilities.find((capability) => capability.id === capabilityId)
     ?? eligibleCapabilities[0];
   const selectedCapabilityId = selectedCapability?.id ?? "";
   const referenceCapacity = Math.max(0, (selectedCapability?.maxReferenceImages ?? 1) - 1);
   const canSubmit = !busy && !submitDisabled && !uploading && instruction.trim().length > 0
-    && Boolean(selectedCapabilityId) && references.length <= referenceCapacity;
+    && Boolean(selectedCapabilityId) && references.length <= referenceCapacity
+    && (guidance !== "MARKUP" || hasMask && Boolean(sourceDimensions.current)
+      && sourceDimensions.current!.width * sourceDimensions.current!.height <= MARKUP_MAX_PIXELS);
 
   const availableReferences = useMemo(() => {
     const candidates: Reference[] = [];
     for (const item of referenceSources.data?.canvasItems ?? []) {
-      if (item.artifact.kind !== "IMAGE"
+      if (item.artifact?.kind !== "IMAGE"
           || !item.selectedVersion || item.selectedVersion.id === sourceVersionId) continue;
       const assetId = readContentText(item.selectedVersion.content, "assetId");
       if (assetId) candidates.push({ versionId: item.selectedVersion.id, label: item.title,
@@ -123,9 +132,29 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
     return false;
   }
 
+  function changeGuidance(next: Guidance) {
+    if (busy || uploading || guidance === next) return;
+    if (hasMask) { setPendingGuidance(next); return; }
+    applyGuidance(next);
+  }
+
+  function applyGuidance(next: Guidance) {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d", { willReadFrequently: true });
+    if (canvas && context) {
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      history.current = [context.getImageData(0, 0, canvas.width, canvas.height)];
+      historyIndex.current = 0;
+    }
+    archivedLayer.current = null;
+    setHasMask(false); setGuidance(next); setPendingGuidance(null); setLocalError(null); updateHistoryState();
+  }
+
   function initializeMask(image: HTMLImageElement) {
     const canvas = canvasRef.current;
     if (!canvas || image.naturalWidth < 1 || image.naturalHeight < 1) return;
+    sourceDimensions.current = { width: image.naturalWidth, height: image.naturalHeight };
+    archivedLayer.current = null;
     const scale = Math.min(1, MASK_LONG_EDGE / Math.max(image.naturalWidth, image.naturalHeight));
     canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
     canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
@@ -149,7 +178,7 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
 
   function configureStroke(context: CanvasRenderingContext2D) {
     context.globalCompositeOperation = strokeMode === "ERASE" ? "destination-out" : "source-over";
-    context.strokeStyle = "rgba(255, 0, 92, .62)";
+    context.strokeStyle = guidance === "MARKUP" ? "rgb(255, 0, 92)" : "rgba(255, 0, 92, .62)";
     context.fillStyle = "rgba(255, 0, 92, .48)";
     context.lineWidth = brushSize;
     context.lineCap = "round";
@@ -161,6 +190,7 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
     const context = canvas?.getContext("2d", { willReadFrequently: true });
     if (!canvas || !context) return;
     const snapshot = context.getImageData(0, 0, canvas.width, canvas.height);
+    archivedLayer.current = null;
     history.current = history.current.slice(0, historyIndex.current + 1);
     history.current.push(snapshot);
     if (history.current.length > MASK_HISTORY_LIMIT) history.current.shift();
@@ -170,10 +200,12 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
   }
 
   function restoreHistory(nextIndex: number) {
+    if (busy || uploading || submitting.current) return;
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d", { willReadFrequently: true });
     const snapshot = history.current[nextIndex];
     if (!context || !snapshot) return;
+    archivedLayer.current = null;
     context.putImageData(snapshot, 0, 0);
     historyIndex.current = nextIndex;
     setHasMask(selectionExists(snapshot));
@@ -181,6 +213,7 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
   }
 
   function pointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
+    if (busy || uploading || !sourceDimensions.current) return;
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d", { willReadFrequently: true });
     const point = canvasPoint(event);
@@ -200,7 +233,7 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
   }
 
   function pointerMove(event: ReactPointerEvent<HTMLCanvasElement>) {
-    if (!drawing.current) return;
+    if (!drawing.current || busy || uploading) return;
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d", { willReadFrequently: true });
     const point = canvasPoint(event);
@@ -214,6 +247,7 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
       const width = Math.abs(point.x - start.x);
       const height = Math.abs(point.y - start.y);
       if (strokeMode === "ERASE") context.clearRect(x, y, width, height);
+      else if (guidance === "MARKUP") context.strokeRect(x, y, width, height);
       else context.fillRect(x, y, width, height);
       return;
     }
@@ -234,15 +268,20 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
 
   function exportMask(): Promise<File | null> {
     const selection = canvasRef.current;
-    if (!selection || !hasMask) return Promise.resolve(null);
+    if (!hasMask) return Promise.resolve(null);
+    if (!selection) throw new Error(t("image.smartEdit.layerExportFailed"));
     const selectionContext = selection.getContext("2d", { willReadFrequently: true });
-    if (!selectionContext) return Promise.resolve(null);
+    if (!selectionContext) throw new Error(t("image.smartEdit.layerExportFailed"));
     const selected = selectionContext.getImageData(0, 0, selection.width, selection.height);
     const mask = document.createElement("canvas");
-    mask.width = selection.width;
-    mask.height = selection.height;
+    mask.width = guidance === "MARKUP" ? sourceDimensions.current!.width : selection.width;
+    mask.height = guidance === "MARKUP" ? sourceDimensions.current!.height : selection.height;
     const maskContext = mask.getContext("2d");
-    if (!maskContext) return Promise.resolve(null);
+    if (!maskContext) throw new Error(t("image.smartEdit.layerExportFailed"));
+    if (guidance === "MARKUP") {
+      maskContext.drawImage(selection, 0, 0, mask.width, mask.height);
+      return pngFile(mask, "smart-edit-markup.png");
+    }
     const pixels = maskContext.createImageData(mask.width, mask.height);
     for (let index = 0; index < pixels.data.length; index += 4) {
       pixels.data[index] = 255;
@@ -251,29 +290,40 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
       pixels.data[index + 3] = selected.data[index + 3]! > 0 ? 0 : 255;
     }
     maskContext.putImageData(pixels, 0, 0);
-    return new Promise((resolve) => mask.toBlob((blob) => resolve(blob
-      ? new File([blob], "smart-edit-mask.png", { type: "image/png" }) : null), "image/png"));
+    return pngFile(mask, "smart-edit-mask.png");
+  }
+
+  function pngFile(canvas: HTMLCanvasElement, filename: string): Promise<File> {
+    return new Promise((resolve, reject) => canvas.toBlob((blob) => blob
+      ? resolve(new File([blob], filename, { type: "image/png" }))
+      : reject(new Error(t("image.smartEdit.layerExportFailed"))), "image/png"));
   }
 
   async function submit() {
-    if (!canSubmit) return;
+    if (!canSubmit || submitting.current || drawing.current) return;
+    submitting.current = true;
     setLocalError(null);
     setUploading(true);
     try {
-      const mask = await exportMask();
-      const archivedMask = mask ? await uploadImageAsset(projectId, mask) : null;
+      if (hasMask && !archivedLayer.current) {
+        const layer = await exportMask();
+        if (!layer) throw new Error(t("image.smartEdit.layerExportFailed"));
+        archivedLayer.current = (await uploadImageAsset(projectId, layer)).id;
+      }
       onSubmit({ instruction: instruction.trim(), capabilityId: selectedCapabilityId,
         referenceVersionIds: references.map((reference) => reference.versionId),
-        ...(archivedMask ? { maskAssetId: archivedMask.id } : {}) });
+        ...(archivedLayer.current ? guidance === "MARKUP"
+          ? { markupAssetId: archivedLayer.current } : { maskAssetId: archivedLayer.current } : {}) });
     } catch (failure) {
-      setLocalError(failure instanceof ApiError ? failure.message : t("image.smartEdit.maskUploadFailed"));
+      setLocalError(failure instanceof Error ? failure.message : t("image.smartEdit.maskUploadFailed"));
     } finally {
+      submitting.current = false;
       setUploading(false);
     }
   }
 
   async function uploadReferenceFiles(files: File[]) {
-    if (!files.length) return;
+    if (!files.length || busy || uploading || submitting.current) return;
     setUploading(true);
     setLocalError(null);
     try {
@@ -324,32 +374,40 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
         <Button variant="ghost" type="button" className="smart-edit-close" disabled={busy || uploading} onClick={requestClose}
           aria-label={t("image.smartEdit.exit")}><X size={19} />{t("media.card.smartEdit")}</Button>
         <span className="smart-edit-divider" />
-        <Button variant="ghost" type="button" className={tool === "BRUSH" ? "is-active" : ""}
-          aria-pressed={tool === "BRUSH"} onClick={() => setTool("BRUSH")}>
-          <PaintBrush size={17} />{t("image.smartEdit.brushMask")}</Button>
-        <Button variant="ghost" type="button" className={tool === "RECTANGLE" ? "is-active" : ""}
-          aria-pressed={tool === "RECTANGLE"} onClick={() => setTool("RECTANGLE")}>
-          <BoundingBox size={17} />{t("image.smartEdit.rectangleMask")}</Button>
+        <Button variant="ghost" type="button" className={guidance === "MASK" ? "is-active" : ""} data-guidance="MASK" aria-pressed={guidance === "MASK"} disabled={busy || uploading}
+          onClick={() => changeGuidance("MASK")}>{t("image.smartEdit.maskGuidance")}</Button>
+        <Button variant="ghost" type="button" className={guidance === "MARKUP" ? "is-active" : ""} data-guidance="MARKUP" aria-pressed={guidance === "MARKUP"}
+          disabled={busy || uploading || !capabilities.some((entry) => entry.supportsImageMarkup)}
+          title={t("image.smartEdit.markupCompatibility")}
+          onClick={() => changeGuidance("MARKUP")}>{t("image.smartEdit.markupGuidance")}</Button>
         <span className="smart-edit-divider" />
-        <Button variant="ghost" type="button" className={strokeMode === "PAINT" ? "is-active is-icon" : "is-icon"}
-          aria-label={t("image.smartEdit.addMask")} aria-pressed={strokeMode === "PAINT"}
+        <Button variant="ghost" type="button" className={tool === "BRUSH" ? "is-active" : ""}
+          disabled={busy || uploading} aria-pressed={tool === "BRUSH"} onClick={() => setTool("BRUSH")}>
+          <PaintBrush size={17} />{guidance === "MARKUP" ? t("image.markupEditor.brush") : t("image.smartEdit.brushMask")}</Button>
+        <Button variant="ghost" type="button" className={tool === "RECTANGLE" ? "is-active" : ""}
+          disabled={busy || uploading} aria-pressed={tool === "RECTANGLE"} onClick={() => setTool("RECTANGLE")}>
+          <BoundingBox size={17} />{guidance === "MARKUP" ? t("image.markupEditor.rectangle") : t("image.smartEdit.rectangleMask")}</Button>
+        <span className="smart-edit-divider" />
+        <Button variant="ghost" size="icon-sm" type="button" className={strokeMode === "PAINT" ? "is-active is-icon" : "is-icon"}
+          aria-label={t("image.smartEdit.addMask")} disabled={busy || uploading} aria-pressed={strokeMode === "PAINT"}
           onClick={() => setStrokeMode("PAINT")}><PaintBrush size={18} /></Button>
-        <Button variant="ghost" type="button" className={strokeMode === "ERASE" ? "is-active is-icon" : "is-icon"}
-          aria-label={t("image.smartEdit.eraseMask")} aria-pressed={strokeMode === "ERASE"}
+        <Button variant="ghost" size="icon-sm" type="button" className={strokeMode === "ERASE" ? "is-active is-icon" : "is-icon"}
+          aria-label={t("image.smartEdit.eraseMask")} disabled={busy || uploading} aria-pressed={strokeMode === "ERASE"}
           onClick={() => setStrokeMode("ERASE")}><Eraser size={18} /></Button>
         <label className="smart-edit-brush-size"><span className="sr-only">{t("image.brushSize")}</span>
-          <Range min={8} max={120} value={brushSize}
+          <Range disabled={busy || uploading} min={8} max={120} value={brushSize}
             onChange={(event) => setBrushSize(Number(event.target.value))} /></label>
-        <Button variant="ghost" type="button" className="is-icon" aria-label={t("image.smartEdit.undoMask")} disabled={!historyState.canUndo}
+        <Button variant="ghost" size="icon-sm" type="button" className="is-icon" aria-label={t("image.smartEdit.undoMask")} disabled={busy || uploading || !historyState.canUndo}
           onClick={() => restoreHistory(historyIndex.current - 1)}><ArrowCounterClockwise size={18} /></Button>
-        <Button variant="ghost" type="button" className="is-icon" aria-label={t("image.smartEdit.redoMask")} disabled={!historyState.canRedo}
+        <Button variant="ghost" size="icon-sm" type="button" className="is-icon" aria-label={t("image.smartEdit.redoMask")} disabled={busy || uploading || !historyState.canRedo}
           onClick={() => restoreHistory(historyIndex.current + 1)}><ArrowClockwise size={18} /></Button>
       </div>
 
       <div className="smart-edit-stage" aria-label={t("image.smartEdit.maskEditor")}>
         <div className="smart-edit-image-wrap">
           <img src={sourceUrl} alt={t("image.smartEdit.previewLabel", { "0": sourceTitle })}
-            onLoad={(event) => initializeMask(event.currentTarget)} />
+            onLoad={(event) => initializeMask(event.currentTarget)}
+            onError={() => { sourceDimensions.current = null; setLocalError(t("image.markupEditor.imageLoadFailed")); }} />
           <canvas ref={canvasRef} aria-label={t("image.smartEdit.maskCanvas")}
             onPointerDown={pointerDown} onPointerMove={pointerMove}
             onPointerUp={pointerUp} onPointerCancel={pointerUp} />
@@ -358,10 +416,10 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
 
       <div className="smart-edit-composer">
         <div className="smart-edit-reference-actions">
-          <Button variant="ghost" type="button" aria-expanded={referencePickerOpen}
+          <Button variant="ghost" type="button" disabled={busy || uploading} aria-expanded={referencePickerOpen}
             onClick={() => setReferencePickerOpen((open) => !open)}><Plus size={17} />{t("image.smartEdit.references")}</Button>
-          <Button variant="ghost" type="button" onClick={() => uploadRef.current?.click()}><UploadSimple size={17} />{t("image.smartEdit.upload")}</Button>
-          <Input ref={uploadRef} className="sr-only" type="file" accept={MEDIA_FILE_ACCEPT.IMAGE}
+          <Button variant="ghost" type="button" disabled={busy || uploading} onClick={() => uploadRef.current?.click()}><UploadSimple size={17} />{t("image.smartEdit.upload")}</Button>
+          <Input ref={uploadRef} disabled={busy || uploading} className="sr-only" type="file" accept={MEDIA_FILE_ACCEPT.IMAGE}
             multiple aria-label={t("image.smartEdit.uploadReference")} onChange={handleUpload} />
           {referencePickerOpen ? <div className="smart-edit-reference-picker" role="dialog"
             aria-label={t("image.smartEdit.chooseReference")}>
@@ -370,7 +428,7 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
               : availableReferences.length ? availableReferences.map((reference) => {
                 const selected = references.some((item) => item.versionId === reference.versionId);
                 return <Button variant="ghost" key={reference.versionId} type="button" className={selected ? "is-selected" : ""}
-                  disabled={!selected && references.length >= referenceCapacity}
+                  disabled={busy || uploading || !selected && references.length >= referenceCapacity}
                   onClick={() => setReferences((current) => selected
                     ? current.filter((item) => item.versionId !== reference.versionId)
                     : [...current, reference])}>
@@ -382,19 +440,19 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
         {references.length ? <div className="smart-edit-references" aria-label={t("image.smartEdit.selectedReferences")}>
           {references.map((reference, index) => <div key={reference.versionId}>
             <img src={reference.thumbnailUrl} alt="" /><span>{index + 2}</span>
-            <Button variant="ghost" type="button" aria-label={t("image.smartEdit.removeReference", { "0": reference.label })}
+            <Button variant="ghost" size="icon-xs" type="button" disabled={busy || uploading} aria-label={t("image.smartEdit.removeReference", { "0": reference.label })}
               onClick={() => setReferences((current) => current.filter(
                 (item) => item.versionId !== reference.versionId))}><X size={12} /></Button>
           </div>)}</div> : null}
-        <Textarea value={instruction} maxLength={4000}
+        <Textarea variant="ghost" disabled={busy || uploading} value={instruction} maxLength={4000}
           aria-label={t("image.smartEdit.prompt")}
           placeholder={t("image.smartEdit.promptPlaceholder")}
           onChange={(event) => setInstruction(event.target.value)} />
-        <span className="smart-edit-mask-hint">{hasMask ? t("image.smartEdit.transparencyHint") : t("image.smartEdit.noMaskHint")}</span>
+        <span className="smart-edit-mask-hint">{guidance === "MARKUP" ? t("image.smartEdit.markupHint") : hasMask ? t("image.smartEdit.transparencyHint") : t("image.smartEdit.noMaskHint")}</span>
         {extraControls}
         <div className="smart-edit-footer">
           <label className="smart-edit-model"><span className="sr-only">{t("media.imageCapability")}</span>
-            <Select variant="ghost" density="compact" icon={<Cube size={17} />} value={selectedCapabilityId} disabled={configuredMethod} portalContainer={menuContainer}
+            <Select variant="ghost" density="compact" icon={<Cube size={17} />} value={selectedCapabilityId} disabled={configuredMethod || busy || uploading} portalContainer={menuContainer}
               optionDetails={Object.fromEntries(eligibleCapabilities.map((capability) => [capability.id, mediaModelDetails(capability)]))}
               onChange={(event) => setCapabilityId(event.target.value)}>
               {eligibleCapabilities.length ? eligibleCapabilities.map((capability) =>
@@ -404,16 +462,24 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
           <span className="smart-edit-cost" title={t("media.editor.estimateHint")}>
             <Coins size={16} /><span>{estimatedMediaCost(selectedCapability, 1, null)}</span>
           </span>
-          <Button variant="ghost" type="button" className="smart-edit-submit" aria-label={t("image.smartEdit.start")}
+          <Button size="icon-sm" type="button" className="smart-edit-submit" aria-label={t("image.smartEdit.start")}
             disabled={!canSubmit} onClick={() => void submit()}>
             {busy || uploading ? <span className="smart-edit-submit-progress">…</span>
               : <ArrowUp size={21} weight="bold" />}</Button>
         </div>
         {references.length > referenceCapacity ? <p role="alert">{t("image.smartEdit.extraReferenceLimit", { "0": referenceCapacity })}</p> : null}
+        {guidance === "MARKUP" && sourceDimensions.current && sourceDimensions.current.width * sourceDimensions.current.height > MARKUP_MAX_PIXELS
+          ? <p role="alert">{t("image.smartEdit.markupSizeLimit")}</p> : null}
         {localError ? <p role="alert">{localError}</p> : null}
         {error ? <p role="alert">{error instanceof ApiError ? error.message : t("image.smartEdit.submitFailed")}</p> : null}
       </div>
     </DialogContent>
+    {pendingGuidance ? <Dialog title={t("image.smartEdit.changeGuidance")} onClose={() => setPendingGuidance(null)}
+      onSubmit={(event) => { event.preventDefault(); applyGuidance(pendingGuidance); }}
+      footer={<><Button variant="outline" type="button" onClick={() => setPendingGuidance(null)}>{t("common.continueEditing")}</Button>
+        <Button variant="destructive" type="submit">{t("common.discardChanges")}</Button></>}>
+      <p>{t("image.smartEdit.changeGuidanceHint")}</p>
+    </Dialog> : null}
     {confirmExit ? <Dialog title={t("common.unsavedChanges")} onClose={() => setConfirmExit(false)}
       onSubmit={(event) => { event.preventDefault(); onClose(); }}
       footer={<><Button variant="outline" type="button" onClick={() => setConfirmExit(false)}>{t("common.continueEditing")}</Button>

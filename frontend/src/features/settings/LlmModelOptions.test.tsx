@@ -47,7 +47,7 @@ describe("model discovery in connection form", () => {
       await waitFor(() => expect(read).toHaveBeenCalledTimes(1));
       view.rerender(<Harness endpoint="https://different.example/v1" />);
       await act(async () => { resolve(response); });
-      expect(screen.getByLabelText("Confirmed context window")).toHaveValue(null);
+      expect(screen.getByLabelText("Confirmed context window")).toHaveValue(1_000_000);
       expect(screen.queryByLabelText("Fetched models")).not.toBeInTheDocument();
     } finally { read.mockRestore(); }
   });
@@ -67,15 +67,84 @@ describe("model discovery in connection form", () => {
     expect(screen.getByLabelText("Confirmed context window")).toHaveValue(16384);
     expect(screen.getByLabelText("draft")).toHaveTextContent('"mode":"MANUAL"');
   });
-  it("keeps absent capacity unknown and allows manual configuration after failure", async () => {
+  it("uses the generic default when discovered metadata has no capacity and permits manual overrides", async () => {
     setLocale("en");
     server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
       http.post("/api/v1/settings/llm/models", () => HttpResponse.json({ ...response, models: [{ ...response.models[0], contextWindowTokens: null, outputLimitTokens: null }] })));
     render(<Harness />); const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Read model list" }));
-    expect(await screen.findByText(/Capacity is unknown/)).toBeInTheDocument();
-    expect(screen.getByLabelText("Confirmed context window")).toHaveValue(null);
+    await screen.findByLabelText("Fetched models");
+    expect(screen.getByLabelText("Confirmed context window")).toHaveValue(1_000_000);
+    expect(screen.getByLabelText("draft")).toHaveTextContent('"mode":"MANUAL"');
+    expect(screen.getByRole("button", { name: "Use automatic values" })).toBeDisabled();
     fireEvent.change(screen.getByLabelText("Confirmed context window"), { target: { value: "8192" } });
     expect(screen.getByLabelText("Confirmed context window")).toHaveValue(8192);
+  });
+  it("uses the default after metadata failure and preserves explicit manual values on retry", async () => {
+    setLocale("en");
+    const read = vi.spyOn(api, "previewLlmModels").mockRejectedValue(new Error("metadata unavailable"));
+    try {
+      render(<Harness />); const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "Read model list" }));
+      await screen.findByText(/Model metadata could not be read/);
+      expect(screen.getByLabelText("Confirmed context window")).toHaveValue(1_000_000);
+      fireEvent.change(screen.getByLabelText("Confirmed context window"), { target: { value: "8192" } });
+      await user.click(screen.getByRole("button", { name: "Read model list" }));
+      await waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+      expect(screen.getByLabelText("Confirmed context window")).toHaveValue(8192);
+    } finally { read.mockRestore(); }
+  });
+  it("replaces previous detected capacity when selecting a model without capacity", async () => {
+    setLocale("en");
+    const read = vi.spyOn(api, "previewLlmModels").mockResolvedValue({ ...response, models: [...response.models,
+      { ...response.models[0]!, id: "model-b", contextWindowTokens: null, outputLimitTokens: null }] });
+    try {
+      render(<Harness />); const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "Read model list" }));
+      await waitFor(() => expect(screen.getByLabelText("Confirmed context window")).toHaveValue(32000));
+      await user.click(screen.getByLabelText("Fetched models"));
+      await user.click(screen.getByRole("option", { name: "model-b" }));
+      expect(screen.getByLabelText("Confirmed context window")).toHaveValue(1_000_000);
+      expect(screen.getByLabelText("draft")).toHaveTextContent('"mode":"MANUAL"');
+    } finally { read.mockRestore(); }
+  });
+  it("returns to the default when an endpoint change invalidates detected capacity", async () => {
+    setLocale("en"); const read = vi.spyOn(api, "previewLlmModels").mockResolvedValue(response);
+    try {
+      const view = render(<Harness />); const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "Read model list" }));
+      await waitFor(() => expect(screen.getByLabelText("Confirmed context window")).toHaveValue(32000));
+      view.rerender(<Harness endpoint="https://different.example/v1" />);
+      expect(screen.getByLabelText("Confirmed context window")).toHaveValue(1_000_000);
+      expect(screen.getByLabelText("draft")).toHaveTextContent('"previewId":null');
+    } finally { read.mockRestore(); }
+  });
+  it("returns to the default if a refreshed list no longer includes the selected model", async () => {
+    setLocale("en"); const read = vi.spyOn(api, "previewLlmModels").mockResolvedValueOnce(response)
+      .mockResolvedValueOnce({ ...response, models: [] });
+    try {
+      render(<Harness />); const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "Read model list" }));
+      await waitFor(() => expect(screen.getByLabelText("Confirmed context window")).toHaveValue(32000));
+      await user.click(screen.getByRole("button", { name: "Read model list" }));
+      await waitFor(() => expect(screen.getByLabelText("Confirmed context window")).toHaveValue(1_000_000));
+      expect(screen.getByLabelText("Request output limit")).toHaveValue(2048);
+      expect(screen.getByLabelText("draft")).toHaveTextContent('"mode":"MANUAL"');
+    } finally { read.mockRestore(); }
+  });
+  it("ignores a canceled request failure after a new endpoint has already returned metadata", async () => {
+    setLocale("en"); let reject!: (cause: Error) => void;
+    const read = vi.spyOn(api, "previewLlmModels").mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail; }))
+      .mockResolvedValue(response);
+    try {
+      const view = render(<Harness />); const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "Read model list" }));
+      view.rerender(<Harness endpoint="https://different.example/v1" />);
+      await user.click(screen.getByRole("button", { name: "Read model list" }));
+      await waitFor(() => expect(screen.getByLabelText("Confirmed context window")).toHaveValue(32000));
+      await act(async () => { reject(new Error("old endpoint unavailable")); });
+      expect(screen.getByLabelText("Confirmed context window")).toHaveValue(32000);
+      expect(screen.getByLabelText("draft")).toHaveTextContent('"mode":"AUTO"');
+    } finally { read.mockRestore(); }
   });
 });

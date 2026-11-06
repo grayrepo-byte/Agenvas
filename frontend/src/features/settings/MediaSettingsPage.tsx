@@ -222,7 +222,7 @@ function CapabilityEditorFields({ connectionId, connectionOrigin, name, onNameCh
     }
   }}>
     <Tabs className="capability-editor-workspace" orientation="vertical" value={tab} onValueChange={(value) => { const next = EDITOR_TABS.find((item) => item.id === value); if (next) setTab(next.id); }}>
-    <TabsList className="capability-editor-navigation" aria-label={t("settings.mediaSettings.configurationSections")}>
+    <TabsList variant="navigation" className="capability-editor-navigation" aria-label={t("settings.mediaSettings.configurationSections")}>
       {EDITOR_TABS.map((item, index) => <TabsTrigger key={item.id} value={item.id} aria-label={item.label}>
         <span className="capability-step-number" aria-hidden>{String(index + 1).padStart(2, "0")}</span>
         <span><strong>{item.label}</strong><small>{t(`settings.editor.${item.id}Hint`)}</small></span>
@@ -733,7 +733,7 @@ export function MediaSettingsPage() {
         <div className="media-catalog-heading"><div><h2>{selectedTab === "capabilities" ? t("settings.mediaSettings.publishedCapabilities") : t("settings.mediaSettings.connections")}</h2>
           <p>{selectedTab === "capabilities" ? t("settings.mediaWorkspace.catalogDescription") : t("settings.mediaWorkspace.connectionDescription")}</p></div>
           <span className="media-catalog-result-count" role="status">{t("settings.mediaWorkspace.showing", { "0": visibleCount, "1": selectedTab === "capabilities" ? capabilities.length : settings.data.connections.length })}</span></div>
-        <FieldGroup className="media-catalog-toolbar"><Field className="media-catalog-search"><FieldLabel className="sr-only" htmlFor="media-catalog-search">{t("settings.catalog.search")}</FieldLabel><MagnifyingGlass aria-hidden /><Input id="media-catalog-search" placeholder={t("settings.catalog.searchPlaceholder")} value={catalogQuery} onChange={(event) => setCatalogQuery(event.target.value)} /></Field>
+        <FieldGroup className="media-catalog-toolbar"><Field className="media-catalog-search"><FieldLabel className="sr-only" htmlFor="media-catalog-search">{t("settings.catalog.search")}</FieldLabel><div className="ui-search-field" data-density="compact"><MagnifyingGlass aria-hidden /><Input density="compact" variant="ghost" id="media-catalog-search" placeholder={t("settings.catalog.searchPlaceholder")} value={catalogQuery} onChange={(event) => setCatalogQuery(event.target.value)} /></div></Field>
           {selectedTab === "capabilities" ? <Field><FieldLabel className="sr-only" htmlFor="media-catalog-kind">{t("settings.mediaWorkspace.allKinds")}</FieldLabel><Select id="media-catalog-kind" value={catalogKind} onChange={(event) => { const kind = CATALOG_KINDS.find((entry) => entry === event.target.value); if (kind) setCatalogKind(kind); }}>
             <option value="all">{t("settings.mediaWorkspace.allKinds")}</option><option value="IMAGE_GENERATION">{t("settings.mediaWorkspace.imageKind")}</option><option value="VIDEO_GENERATION">{t("settings.mediaWorkspace.videoKind")}</option><option value="AUDIO_GENERATION">{t("settings.mediaWorkspace.audioKind")}</option><option value="local">{t("settings.mediaWorkspace.localKind")}</option>
           </Select></Field> : null}
@@ -770,11 +770,6 @@ export function MediaSettingsPage() {
         </Panel>
         </TabsContent>
         </Tabs>
-        <section className="media-setup-flow" aria-label={t("settings.mediaWorkspace.flowTitle")}>
-          <div><span className="media-flow-number">01</span><PlugsConnected aria-hidden /><span><strong>{t("settings.mediaWorkspace.connectStep")}</strong><small>{t("settings.mediaWorkspace.connectHint")}</small></span></div><ArrowRight aria-hidden />
-          <div><span className="media-flow-number">02</span><Sparkle aria-hidden /><span><strong>{t("settings.mediaWorkspace.publishStep")}</strong><small>{t("settings.mediaWorkspace.publishHint")}</small></span></div><ArrowRight aria-hidden />
-          <div><span className="media-flow-number">03</span><ImageSquare aria-hidden /><span><strong>{t("settings.mediaWorkspace.defaultStep")}</strong><small>{t("settings.mediaWorkspace.defaultHint")}</small></span></div>
-        </section>
         {chooseConnection ? <Dialog compact title={t("settings.catalog.chooseConnection")} description={t("settings.catalog.chooseConnectionHint")} onClose={() => setChooseConnection(false)} onSubmit={(event) => event.preventDefault()}>
           <div className="media-publish-choices">{settings.data.connections.filter((connection) => connection.enabled && connection.platform !== "LOCAL" && platformAdapters[connection.platform].length > 0).map((connection) => <Button className="media-publish-choice" variant="outline" type="button" key={connection.id} onClick={() => { setChooseConnection(false); setPublishingConnectionId(connection.id); }}><PlugsConnected aria-hidden /><span><strong>{connection.name}</strong><small>{connection.platform}</small></span><ArrowRight aria-hidden /></Button>)}</div>
           {!settings.data.connections.some((connection) => connection.enabled && connection.platform !== "LOCAL" && platformAdapters[connection.platform].length > 0) ? <EmptyState title={t("settings.catalog.noConnection")} action={<Button type="button" onClick={() => { setChooseConnection(false); setCreating(true); }}>{t("settings.mediaSettings.addConnection")}</Button>} /> : null}

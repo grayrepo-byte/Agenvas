@@ -134,9 +134,8 @@ export function MediaStyleSettingsSection({ enabled }: { enabled: boolean }) {
         {styles.data?.map((style) => {
           const labels = getMediaStyleLabels(style);
           return <article key={style.id} className="media-style-settings-card" aria-label={labels.name}>
-          <MediaStylePreview style={{ ...style, name: labels.name }} /><div className="media-style-settings-card-body"><h3>{labels.name}</h3><p>{labels.category}</p>
+          <MediaStylePreview style={{ ...style, name: labels.name }} /><div className="media-style-settings-card-body"><h3 title={labels.name}>{labels.name}</h3><p>{labels.category}{style.builtIn ? ` · ${t("styles.builtIn")}` : ""}</p>
             <StatusBadge tone={style.enabled ? "success" : "neutral"}>{style.enabled ? t("styles.enabled") : t("styles.disabled")}</StatusBadge>
-            {style.builtIn ? <p>{t("styles.builtIn")}</p> : null}
             <div className="media-style-settings-card-actions"><Button type="button" variant="outline" size="sm" onClick={() => setEditing(style)}
               disabled={forbidden || toggle.isPending}><PencilSimple data-icon="inline-start" />{t("styles.edit")}</Button>
               <Button type="button" variant="ghost" size="sm" disabled={forbidden || conflict || toggle.isPending}

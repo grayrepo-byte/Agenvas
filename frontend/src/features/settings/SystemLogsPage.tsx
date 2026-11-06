@@ -62,15 +62,15 @@ export function SystemLogsPage() {
         <div className="system-logs-controls">
         <form className="system-logs-filter-form" onSubmit={(event) => { event.preventDefault(); setSearch(keyword.trim()); setKeyword(keyword.trim()); }}>
         <FieldGroup className="system-logs-filters">
-          <Field><FieldLabel className="ui-field block">{t("settings.systemLogs.channel")}<Select value={stream ?? ""} onChange={(event) => {
+          <Field><FieldLabel htmlFor="system-logs-stream">{t("settings.systemLogs.channel")}</FieldLabel><Select id="system-logs-stream" density="compact" value={stream ?? ""} onChange={(event) => {
             const value = event.target.value;
             setStream(value === "STDOUT" || value === "STDERR" ? value : undefined);
-          }}><option value="">{t("settings.systemLogs.allChannels")}</option><option value="STDOUT">{t("settings.systemLogs.stdout")}</option><option value="STDERR">{t("settings.systemLogs.stderr")}</option></Select></FieldLabel></Field>
+          }}><option value="">{t("settings.systemLogs.allChannels")}</option><option value="STDOUT">{t("settings.systemLogs.stdout")}</option><option value="STDERR">{t("settings.systemLogs.stderr")}</option></Select></Field>
           <Field className="system-logs-keyword"><FieldLabel htmlFor="system-logs-keyword">{t("settings.systemLogs.keyword")}</FieldLabel><Input id="system-logs-keyword" type="search" maxLength={MAX_SEARCH_LENGTH} value={keyword}
             placeholder={t("settings.systemLogs.searchPlaceholder")} onChange={(event) => setKeyword(event.target.value)} aria-describedby={keyword.trim() !== search ? "system-logs-pending-search" : undefined} /></Field>
-          <Field><FieldLabel className="ui-field block">{t("settings.systemLogs.lineLimit")}<Select value={limit} onChange={(event) => setLimit(Number(event.target.value))}>
+          <Field><FieldLabel htmlFor="system-logs-limit">{t("settings.systemLogs.lineLimit")}</FieldLabel><Select id="system-logs-limit" density="compact" value={limit} onChange={(event) => setLimit(Number(event.target.value))}>
             {LINE_LIMITS.map((value) => <option key={value} value={value}>{t("settings.systemLogs.recentLines", { "0": value })}</option>)}
-          </Select></FieldLabel></Field>
+          </Select></Field>
           <Button variant="outline" size="sm" type="submit"><MagnifyingGlass data-icon="inline-start" aria-hidden />{t("settings.systemLogs.search")}</Button>
         </FieldGroup>
         {keyword.trim() !== search ? <p className="system-logs-search-pending ui-muted" id="system-logs-pending-search" role="status">{t("settings.systemLogs.searchPending")}</p> : null}

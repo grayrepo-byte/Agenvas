@@ -79,6 +79,38 @@ describe("BrushMarkupEditor", () => {
     expect(screen.getByRole("slider", { name: "笔刷大小" })).toBeInTheDocument();
   });
 
+  it.each(["Enter", "Escape"])("keeps uncommitted annotation text while the input method handles %s", async (key) => {
+    const { canvas } = show();
+    await clickControl(screen.getByRole("button", { name: /^文字$/ }));
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 40, clientY: 60 });
+    const input = screen.getByRole("textbox", { name: "标注文字" });
+    await changeControl(input, { target: { value: "保留标注草稿" } });
+    context.fillText.mockClear();
+
+    fireEvent.keyDown(input, { key, isComposing: true });
+    expect(screen.getByRole("textbox", { name: "标注文字" })).toBe(input);
+    expect(input).toHaveValue("保留标注草稿");
+    expect(input).toHaveFocus();
+    expect(context.fillText).not.toHaveBeenCalled();
+    expect(props.onClose).not.toHaveBeenCalled();
+
+    // The same key resumes its annotation action after composition ends.
+    fireEvent.keyDown(input, { key, isComposing: false });
+    expect(screen.queryByRole("textbox", { name: "标注文字" })).not.toBeInTheDocument();
+    if (key === "Enter") expect(context.fillText).toHaveBeenCalledWith("保留标注草稿", expect.any(Number), expect.any(Number));
+    else expect(context.fillText).not.toHaveBeenCalled();
+    expect(props.onClose).not.toHaveBeenCalled();
+  });
+
+  it("does not close the annotation dialog on a composing Escape", () => {
+    show();
+    const dialog = screen.getByRole("dialog", { name: "画笔标注" });
+    fireEvent.keyDown(dialog, { key: "Escape", isComposing: true });
+    expect(props.onClose).not.toHaveBeenCalled();
+    fireEvent.keyDown(dialog, { key: "Escape", isComposing: false });
+    expect(props.onClose).toHaveBeenCalledOnce();
+  });
+
   it("retries the same archived file and target after a lost response, without an AI request", async () => {
     const requests: unknown[] = []; let uploads = 0;
     mockUpload(() => uploads++);

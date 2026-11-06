@@ -6,17 +6,26 @@ The existing model connection form can read a model list explicitly and fill lim
 when the selected provider reports reliable metadata. Select the provider profile,
 enter its compatible chat base URL and key, then choose **Read model list**. This is
 metadata traffic only: it does not save settings, download weights, generate content
-or verify tools. The model ID remains editable. Missing limits stay unknown; confirm
-them with the serving operator and use **Use manual values** when necessary.
+or verify tools. The model ID remains editable. Missing provider limits stay unknown.
+When capacity is unavailable, discovery fails, a model ID is entered manually, or a
+legacy connection without a capacity policy is edited, the form prefills a generic
+1,000,000-token context with no input limit and clears the automatic preview. The
+fallback preserves the draft's current output limit; new forms start at 4,096 tokens.
+These values are editable and are saved as MANUAL when you save the connection;
+they are not a provider capacity claim. Explicit manual values are preserved.
+Adjust them to the serving deployment
+when its limits are known.
 
 The form distinguishes theoretical context, provider input/output limits and observed
 Ollama loaded context. Automatic values are bound to the endpoint, credential, model
 and configuration version in a ten-minute preview. Editing their scope requires a
 fresh read; manual overrides remain manual. Model metadata is provider-reported,
 not a measured guarantee. OpenAI and generic compatible lists normally provide IDs
-without capacity: these profiles require manual confirmation. Gemini/Anthropic
-metadata may provide separate input and output limits. Their generation still uses
-the existing documented OpenAI compatibility endpoint, with its compatibility limits.
+without capacity, so the form uses the generic manual defaults. Reliable metadata
+continues to select automatic values. Gemini/Anthropic metadata may provide separate
+input and output limits; an input-only result does not add a combined context limit.
+Their generation still uses the existing documented OpenAI compatibility endpoint,
+with its compatibility limits.
 
 Director Settings supplies an application ceiling, not the remote model's context.
 The default is now 32,768 tokens, response reserve 4,096 and summary 1,024. Each new
@@ -27,11 +36,19 @@ The selected output limit and reserve determine the actual `max_tokens` or
 `max_completion_tokens` sent to the API. Choose the parameter supported by the
 specific compatible deployment; reading a model ID does not establish that support.
 
-Migration changes only the untouched initial million-token default settings. Saved
-custom settings and old immutable connection versions are preserved. Legacy versions
-with no confirmed capacity cannot start new model requests: edit and save the model
-connection with confirmed limits first. Existing complete frozen requests/responses
-retain their original envelope; they are not rewritten to pretend capacity was known.
+For new requests, an existing capacity policy takes precedence. Legacy database
+connections without a policy and environment configuration use a generic
+1,000,000-token context, 4,096-token maximum output and MAX_TOKENS (`max_tokens`)
+parameter without requiring the connection to be saved again. Resolving this
+default is local and sends no metadata request; it does not establish provider
+capacity or bypass existing Ollama runtime validation. The effective budget still
+uses the smaller connection/application limits.
+
+Saved custom settings and old immutable connection versions are preserved. Runtime
+defaults do not fill the database's missing policy or rewrite Director Settings.
+Existing frozen budgets and responses retain their original envelope. Historical
+recovery without a frozen budget is not backfilled, and failed old tasks are not
+resubmitted automatically.
 
 Ollama `/api/show` advertises model capability; `/api/ps` describes loaded context.
 Automatic capacity needs the exact loaded model (and matching digest when present).
@@ -44,7 +61,9 @@ an unloaded, smaller or replaced runtime stops with
 generation call; direct tasks report a connection failure for explicit retry.
 This is a preflight, not an atomic reservation:
 Ollama may still unload or change a model between this check and generation.
-Manual mode remains available when a deployment cannot expose native metadata.
+Manual mode, including the generic 1M context default, remains available when a
+deployment cannot expose native metadata or no loaded runtime is reported. A manual
+value does not allocate or increase Ollama's server context.
 
 For a focused retest of the reported `qwen2.5:14b` scenario, the following is an
 illustrative 16K configuration. Save this as `Modelfile.agenvas` on the Ollama host:

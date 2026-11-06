@@ -24,6 +24,12 @@ public class CharacterController {
     public CharacterIndex list(@AuthenticationPrincipal AdminPrincipal principal, @PathVariable UUID projectId) {
         return characters.list(principal.userId(), projectId);
     }
+    /** Reads one immutable revision so fixed character nodes can edit their original look/reference choices. */
+    @GetMapping("/characters/{characterId}/revisions/{version}")
+    public CharacterProfile revision(@AuthenticationPrincipal AdminPrincipal principal, @PathVariable UUID projectId,
+            @PathVariable UUID characterId, @PathVariable long version) {
+        return characters.getRevision(principal.userId(), projectId, characterId, version);
+    }
     @PutMapping("/characters/{characterId}")
     public CharacterProfile save(@AuthenticationPrincipal AdminPrincipal principal, @PathVariable UUID projectId,
             @PathVariable UUID characterId, @RequestBody SaveCharacter request) {

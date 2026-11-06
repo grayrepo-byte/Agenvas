@@ -4,7 +4,7 @@
 .video-presets-toolbar { display: flex; align-items: center; gap: 16px; padding: 16px 24px; border-bottom: 1px solid var(--ui-border); }
 .video-presets-search { position: relative; flex: 1; }
 .video-presets-search > svg { position: absolute; left: 12px; top: 11px; width: 18px; height: 18px; color: var(--ui-text-muted); pointer-events: none; }
-.video-presets-search input { padding-left: 38px; background: var(--ui-field); }
+.video-presets-search input { padding-left: 38px; }
 .video-presets-scenarios { display: flex; flex: none; align-items: center; gap: 12px; min-width: 0; padding: 8px 24px; border-bottom: 1px solid var(--ui-border); }
 .video-presets-scenarios > span { flex: none; color: var(--ui-text-subtle); font-size: var(--ui-text-xs); }
 .video-presets-scenario-options[data-slot="toggle-group"] { flex: 1; min-width: 0; overflow-x: auto; padding: 2px; }

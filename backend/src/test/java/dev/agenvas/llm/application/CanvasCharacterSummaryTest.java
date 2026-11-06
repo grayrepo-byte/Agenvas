@@ -45,6 +45,28 @@ class CanvasCharacterSummaryTest {
             mock(MediaDraftRestoreService.class), media, mapper, characters);
 
     @Test
+    void characterCardsExposeIdentityWithoutPretendingToBeArtifactsOrGrantingMediaReads() {
+        UUID characterId = UUID.randomUUID(), cardId = UUID.randomUUID();
+        var card = mock(CanvasItem.class);
+        when(card.id()).thenReturn(cardId);
+        when(card.subjectType()).thenReturn(CanvasItem.SubjectType.valueOf("CHARACTER"));
+        when(card.subjectId()).thenReturn(characterId);
+        when(card.title()).thenReturn("Aster — winter look");
+        stubIndex(List.of(profile(characterId, new CharacterContent("Aster", "private-long-persona", List.of(), null), 2)), List.of());
+        when(canvas.list(owner, project)).thenReturn(List.of(new CanvasService.CanvasEntry(card, null, null)));
+
+        var result = read(mapper.createObjectNode().put("limit", 1).put("includeDrafts", true));
+
+        assertThat(result.at("/data/0/kind").asText()).isEqualTo("CHARACTER");
+        assertThat(result.at("/data/0/characterId").asText()).isEqualTo(characterId.toString());
+        assertThat(result.at("/data/0/title").asText()).isEqualTo("Aster — winter look");
+        assertThat(result.at("/data/0/artifactId").isMissingNode()).isTrue();
+        assertThat(result.at("/data/0/mediaDraft").isMissingNode()).isTrue();
+        assertThat(result.toString()).doesNotContain("private-long-persona", "versionId", "mediaRead");
+        verifyNoInteractions(artifacts, drafts, media, run);
+    }
+
+    @Test
     void directoryAndSingleNodeExposeUsefulMetadataWithoutReferenceIdsOrReadAuthority() {
         UUID cardId = UUID.randomUUID(), characterId = UUID.randomUUID(), referenceId = UUID.randomUUID();
         var look = new CharacterLook(UUID.randomUUID(), "Winter", "Blue coat", "Calm", "Rain-soaked traveler",

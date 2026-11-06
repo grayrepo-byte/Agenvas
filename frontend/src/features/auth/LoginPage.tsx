@@ -6,6 +6,7 @@ import { t,useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";
 import { Input } from "../../shared/ui/primitives/input";
 import { AuthField,AuthLayout,FormError } from "./AuthLayout";
+import { useCanvasStore } from "../canvas/canvasStore";
 
 /** Administrator login backed by the server-side JDBC session. */
 export function LoginPage() {
@@ -17,6 +18,7 @@ export function LoginPage() {
   const loginRequest = useMutation({
     mutationFn: login,
     onSuccess: (user) => {
+      useCanvasStore.getState().clearTextGenerationDrafts();
       queryClient.setQueryData(["auth", "me"], user);
       navigate("/projects", { replace: true });
     },

@@ -4,6 +4,7 @@ import { http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
+import type { MediaFunctionSetting } from "../../shared/api/client";
 import { selectValue, clickControl } from "../../test/controls";
 import { server } from "../../test/server";
 import { imageFunctionSettings, imageFunctionsFixture, imageWorkflowCapability } from "../../test/imageFunctionsFixture";
@@ -32,7 +33,7 @@ describe("MediaFunctionSettingsPage", () => {
     mount();
     expect(await screen.findByRole("link", { name: "功能设置" })).toHaveAttribute("href", "/settings/functions");
     await clickControl(await screen.findByRole("tab", { name: "视频节点工具" }));
-    const row = await screen.findByRole("region", { name: "视频高清" });
+    const row = await screen.findByRole("rowgroup", { name: "视频高清" });
     await selectValue(within(row).getByRole("combobox"), "upscale-cap");
     await clickControl(within(row).getByRole("button", { name: "保存配置" }));
     await waitFor(() => expect(request).toEqual({ expectedVersion: 4, capabilityId: "upscale-cap" }));
@@ -50,13 +51,13 @@ describe("MediaFunctionSettingsPage", () => {
           ? { ...entry, capabilityId: "image-upscale", version: 4 } : entry));
       }));
     mount();
-    const image = await screen.findByRole("region", { name: "高清放大" });
+    const image = await screen.findByRole("rowgroup", { name: "高清放大" });
     await selectValue(within(image).getByRole("combobox"), "image-upscale");
     await clickControl(within(image).getByRole("button", { name: "保存配置" }));
     await waitFor(() => expect(request).toEqual({ expectedVersion: 3, capabilityId: "image-upscale" }));
     expect(await within(image).findByRole("status")).toHaveTextContent("功能设置已保存");
     await clickControl(screen.getByRole("tab", { name: "视频节点工具" }));
-    expect(within(screen.getByRole("region", { name: "视频高清" })).getByRole("button", { name: "保存配置" })).toBeDisabled();
+    expect(within(screen.getByRole("rowgroup", { name: "视频高清" })).getByRole("button", { name: "保存配置" })).toBeDisabled();
   });
   it("can disable an image function while retaining failed selections and excluding incompatible generation templates", async () => {
     const settings = imageFunctionsFixture();
@@ -69,7 +70,7 @@ describe("MediaFunctionSettingsPage", () => {
           ? { ...entry, capabilityId: null, version: 4 } : entry));
       }));
     mount();
-    const row = await screen.findByRole("region", { name: "智能编辑" });
+    const row = await screen.findByRole("rowgroup", { name: "智能编辑" });
     await clickControl(within(row).getByRole("combobox"));
     expect(screen.getByRole("option", { name: /合成图片模型/ })).toBeVisible();
     expect(screen.queryByRole("option", { name: /Unsupported generator/ })).not.toBeInTheDocument();
@@ -81,12 +82,53 @@ describe("MediaFunctionSettingsPage", () => {
     server.use(http.put("/api/v1/settings/media-functions/VIDEO_UPSCALE", () => HttpResponse.json({ title: "保存失败", detail: "保存失败" }, { status: 503, headers: { "Content-Type": "application/problem+json" } })));
     mount();
     await clickControl(await screen.findByRole("tab", { name: "视频节点工具" }));
-    const row = await screen.findByRole("region", { name: "视频高清" });
+    const row = await screen.findByRole("rowgroup", { name: "视频高清" });
     await selectValue(within(row).getByRole("combobox"), "upscale-cap");
     await clickControl(within(row).getByRole("button", { name: "保存配置" }));
     expect(await within(row).findByText("保存失败")).toBeVisible();
     expect(within(row).getByRole("combobox")).toHaveTextContent("AI 超分");
     expect(within(row).getByRole("button", { name: "保存配置" })).toBeEnabled();
+  });
+  it("retains a conflicting draft until explicit refresh and saves with the refreshed version", async () => {
+    let functions: MediaFunctionSetting[] = [
+      { operation: "VIDEO_UPSCALE", capabilityId: null, version: 4 },
+      { operation: "VIDEO_DEPTH_MAP", capabilityId: "depth-cap", version: 0 },
+      { operation: "VIDEO_EXTRACT_AUDIO", capabilityId: "audio-cap", version: 0 },
+    ];
+    const requests: unknown[] = [];
+    server.use(
+      http.get("/api/v1/settings/media-functions", () => HttpResponse.json(functions)),
+      http.put("/api/v1/settings/media-functions/VIDEO_UPSCALE", async ({ request }) => {
+        requests.push(await request.json());
+        if (requests.length === 1) {
+          functions = functions.map((entry) => entry.operation === "VIDEO_UPSCALE" ? { ...entry, version: 5 } : entry);
+          return HttpResponse.json({ title: "配置冲突", detail: "配置冲突" }, { status: 409, headers: { "Content-Type": "application/problem+json" } });
+        }
+        functions = functions.map((entry) => entry.operation === "VIDEO_UPSCALE" ? { ...entry, capabilityId: "upscale-cap", version: 6 } : entry);
+        return HttpResponse.json(functions);
+      }),
+    );
+    mount();
+    await clickControl(await screen.findByRole("tab", { name: "视频节点工具" }));
+    const row = screen.getByRole("rowgroup", { name: "视频高清" });
+    await selectValue(within(row).getByRole("combobox"), "upscale-cap");
+    await clickControl(within(row).getByRole("button", { name: "保存配置" }));
+    expect(await within(row).findByText("配置冲突")).toBeVisible();
+    const refresh = await within(row).findByRole("button", { name: "重新读取" });
+    expect(within(row).getByRole("combobox")).toHaveTextContent("AI 超分");
+    expect(within(row).getByRole("button", { name: "保存配置" })).toBeDisabled();
+    expect(requests).toEqual([{ expectedVersion: 4, capabilityId: "upscale-cap" }]);
+    await clickControl(refresh);
+    expect(within(row).getByRole("combobox")).toHaveTextContent("未配置 / 停用");
+    expect(within(row).queryByText("配置冲突")).not.toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: "保存配置" })).toBeDisabled();
+    await selectValue(within(row).getByRole("combobox"), "upscale-cap");
+    await clickControl(within(row).getByRole("button", { name: "保存配置" }));
+    expect(await within(row).findByRole("status")).toHaveTextContent("功能设置已保存");
+    expect(requests).toEqual([
+      { expectedVersion: 4, capabilityId: "upscale-cap" },
+      { expectedVersion: 5, capabilityId: "upscale-cap" },
+    ]);
   });
   it("shows one category at a time and retains unsaved image and video selections across tabs", async () => {
     const settings = imageFunctionsFixture();
@@ -102,14 +144,14 @@ describe("MediaFunctionSettingsPage", () => {
     const videoTab = screen.getByRole("tab", { name: "视频节点工具" });
     expect(imageTab).toHaveAttribute("aria-selected", "true");
     expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
-    expect(screen.getAllByRole("region")).toHaveLength(imageFunctionSettings().length);
-    expect(screen.queryByRole("region", { name: "视频高清" })).not.toBeInTheDocument();
-    const image = screen.getByRole("region", { name: "智能编辑" });
+    expect(screen.getAllByRole("rowgroup", { name: /.+/ })).toHaveLength(imageFunctionSettings().length);
+    expect(screen.queryByRole("rowgroup", { name: "视频高清" })).not.toBeInTheDocument();
+    const image = screen.getByRole("rowgroup", { name: "智能编辑" });
     await selectValue(within(image).getByRole("combobox"), "");
     await clickControl(videoTab);
     expect(videoTab).toHaveAttribute("aria-selected", "true");
-    expect(screen.queryByRole("region", { name: "智能编辑" })).not.toBeInTheDocument();
-    const video = screen.getByRole("region", { name: "视频高清" });
+    expect(screen.queryByRole("rowgroup", { name: "智能编辑" })).not.toBeInTheDocument();
+    const video = screen.getByRole("rowgroup", { name: "视频高清" });
     await selectValue(within(video).getByRole("combobox"), "upscale-cap");
     await clickControl(imageTab);
     expect(within(image).getByRole("combobox")).toHaveTextContent("未配置 / 停用");
@@ -121,17 +163,17 @@ describe("MediaFunctionSettingsPage", () => {
   it("filters saved availability and searches without discarding hidden drafts", async () => {
     mount();
     await clickControl(await screen.findByRole("tab", { name: "视频节点工具" }));
-    const row = screen.getByRole("region", { name: "视频高清" });
+    const row = screen.getByRole("rowgroup", { name: "视频高清" });
     await selectValue(within(row).getByRole("combobox"), "upscale-cap");
     await clickControl(screen.getByRole("radio", { name: "已可用" }));
-    expect(screen.queryByRole("region", { name: "视频高清" })).not.toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "音频分离" })).toBeInTheDocument();
+    expect(screen.queryByRole("rowgroup", { name: "视频高清" })).not.toBeInTheDocument();
+    expect(screen.getByRole("rowgroup", { name: "音频分离" })).toBeInTheDocument();
     await clickControl(screen.getByRole("radio", { name: "待配置" }));
     expect(within(row).getByRole("combobox")).toHaveTextContent("AI 超分");
     const search = screen.getByRole("searchbox", { name: "搜索工具或能力" });
     fireEvent.change(search, { target: { value: "missing-function" } });
     expect(within(screen.getByRole("tabpanel")).getByText("没有匹配的工具")).toBeVisible();
-    expect(screen.queryByRole("region", { name: "视频高清" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("rowgroup", { name: "视频高清" })).not.toBeInTheDocument();
     await clickControl(screen.getByRole("button", { name: "重置筛选" }));
     expect(within(row).getByRole("combobox")).toHaveTextContent("AI 超分");
     expect(within(row).getByRole("button", { name: "保存配置" })).toBeEnabled();

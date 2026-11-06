@@ -8,32 +8,10 @@
   font-size: 14px; line-height: 1.6; -webkit-font-smoothing: antialiased;
 }
 :where(.app-page, .auth-page) :is(button, input, textarea) { font: inherit; }
-:is(.app-page, .auth-page) :is(input:not([data-slot]):not([type="checkbox"]):not([type="radio"]), textarea:not([data-slot])) {
-  display: block; width: 100%; min-width: 0; margin-top: var(--ui-space-2); border: 1px solid var(--line);
-  border-radius: var(--ui-radius-md); background: var(--field); color: var(--ink); padding: var(--ui-space-2) var(--ui-space-3); font-size: var(--ui-text-md);
-  min-height: var(--ui-control-height); outline: none; transition: border-color 150ms, box-shadow 150ms;
-}
-:is(.app-page, .auth-page) :is(input, textarea)::placeholder { color: var(--ui-text-subtle); }
-:is(.app-page, .auth-page) :is(input, textarea):not([data-slot]):focus-visible { border-color: var(--ui-focus); box-shadow: var(--ui-focus-shadow); }
-:is(.app-page, .auth-page) :is(input[type="checkbox"], input[type="radio"]) { display: inline-block; flex: none; width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
-:is(.app-page, .auth-page) :is(button, a, summary):focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
+:is(.app-page, .auth-page) :is(button, a, summary):focus-visible { outline: none; }
 :is(.app-page, .auth-page) :is(button, a) { -webkit-tap-highlight-color: transparent; }
 :is(.app-page, .auth-page) button { cursor: pointer; }
 :is(.app-page, .auth-page) :is(button, input, select, textarea):disabled { cursor: not-allowed; opacity: .5; }
-:is(.app-page, .auth-page) :is(.primary-button, .secondary-button, .ghost-button, .danger-button) {
-  display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 36px;
-  border-radius: var(--ui-radius-md); padding: 8px 13px; border: 1px solid transparent; font-size: var(--ui-text-sm);
-  font-weight: 550; line-height: 1.4; text-decoration: none; transition: background 150ms, border-color 150ms, transform 150ms;
-}
-:is(.app-page, .auth-page) .primary-button { background: var(--accent); border-color: var(--ui-accent); color: var(--ui-accent-foreground); }
-:is(.app-page, .auth-page) .primary-button:hover:not(:disabled) { background: var(--ui-accent-hover); }
-:is(.app-page, .auth-page) .secondary-button { background: var(--ui-surface-raised); border-color: var(--ui-border); color: var(--ui-text); }
-:is(.app-page, .auth-page) .secondary-button:hover:not(:disabled) { background: var(--ui-hover); border-color: var(--ui-border-strong); }
-:is(.app-page, .auth-page) .ghost-button { background: transparent; color: var(--muted); }
-:is(.app-page, .auth-page) .ghost-button:hover:not(:disabled) { background: var(--ui-field); color: var(--ink); }
-:is(.app-page, .auth-page) .danger-button { background: var(--ui-danger-bg); border-color: var(--ui-danger-border); color: var(--ui-danger); }
-:is(.app-page, .auth-page) .danger-button:hover:not(:disabled) { background: var(--ui-danger-bg); }
-:is(.app-page, .auth-page) :is(.primary-button, .secondary-button):active:not(:disabled) { transform: translateY(1px); }
 .ui-stack { display: flex; flex-direction: column; gap: var(--ui-space-5); }
 .ui-summary-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0 0 var(--ui-space-6); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-lg); background: var(--ui-surface); }
 .ui-summary-strip > div { min-width: 0; padding: var(--ui-space-5) var(--ui-space-6); }
@@ -61,7 +39,6 @@
 .ui-notice > svg { flex: none; margin-top: 1px; }
 .ui-notice > div { min-width: 0; overflow-wrap: anywhere; }
 .ui-notice strong { display: block; margin-bottom: 3px; font-weight: 550; }
-.ui-notice .secondary-button { margin-top: 10px; }
 .ui-notice--success { color: var(--ui-success); background: var(--ui-success-bg); border-color: var(--ui-success-border); }
 .ui-notice--warning { color: var(--ui-warning); background: var(--ui-warning-bg); border-color: var(--ui-warning-border); }
 .ui-notice--danger { color: var(--ui-danger); background: var(--ui-danger-bg); border-color: var(--ui-danger-border); }

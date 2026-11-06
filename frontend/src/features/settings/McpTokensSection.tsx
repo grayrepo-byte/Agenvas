@@ -9,6 +9,7 @@ import { Button } from "../../shared/ui/primitives/button";
 import { Checkbox } from "../../shared/ui/primitives/checkbox";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "../../shared/ui/primitives/field";
 import { Input } from "../../shared/ui/primitives/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../shared/ui/primitives/table";
 
 const DEFAULT_EXPIRY_DAYS = 30;
 const MAX_EXPIRY_DAYS = 90;
@@ -128,8 +129,8 @@ export function McpTokensSection({ enabled, userId }: { enabled: boolean; userId
     }
   }
 
-  return <Panel title={t("mcp.tokens.title")} description={t("mcp.tokens.description")}>
-    <div className="flex min-w-0 flex-col gap-5">
+  return <Panel className="mcp-settings-panel" title={t("mcp.tokens.title")} description={t("mcp.tokens.description")}>
+    <div className="ui-stack">
       <p className="ui-muted">{t("mcp.tokens.directGenerationHint")}</p>
       {tokens.isPending && enabled ? <LoadingState compact label={t("mcp.tokens.loading")} /> : null}
       {error ? <Notice tone="danger" title={forbidden ? t("mcp.tokens.forbidden") : conflict ? t("mcp.tokens.conflict") : t("mcp.tokens.failed")}>
@@ -150,8 +151,8 @@ export function McpTokensSection({ enabled, userId }: { enabled: boolean; userId
           {copyState !== "idle" ? <p role="status">{copyState === "copied" ? t("mcp.tokens.copied") : t("mcp.tokens.copyFailed")}</p> : null}
         </div>
       </Notice> : null}
-      <form className="ui-form" onSubmit={(event) => { void submit(event); }} aria-busy={creating}>
-        <FieldGroup>
+      <form className="ui-form mcp-token-create" onSubmit={(event) => { void submit(event); }} aria-busy={creating}>
+        <FieldGroup className="mcp-token-create-fields">
           <Field data-disabled={unavailable}>
             <FieldLabel htmlFor={`${id}-name`}>{t("mcp.tokens.name")}</FieldLabel>
             <Input id={`${id}-name`} autoComplete="off" required maxLength={MAX_NAME_LENGTH} disabled={unavailable} value={name} onChange={(event) => { setName(event.target.value); }} />
@@ -161,9 +162,9 @@ export function McpTokensSection({ enabled, userId }: { enabled: boolean; userId
             <Input id={`${id}-expiry`} type="number" inputMode="numeric" required min={MIN_EXPIRY_DAYS} max={MAX_EXPIRY_DAYS} step={1} disabled={unavailable} value={expiry} onChange={(event) => { setExpiry(event.target.value); }} aria-describedby={`${id}-expiry-hint`} />
             <FieldDescription id={`${id}-expiry-hint`}>{t("mcp.tokens.expiryHint", { "0": MAX_EXPIRY_DAYS })}</FieldDescription>
           </Field>
-          <FieldSet>
+          <FieldSet className="mcp-token-scopes">
             <FieldLegend>{t("mcp.tokens.scopes")}</FieldLegend>
-            <FieldGroup>
+            <FieldGroup className="mcp-token-scope-options">
               {SCOPES.map((scope) => <Field orientation="horizontal" key={scope} data-disabled={unavailable || scope === MCP_TOKEN_SCOPES.READ}>
                 <Checkbox id={`${id}-${scope}`} checked={scopes.includes(scope)} disabled={unavailable || scope === MCP_TOKEN_SCOPES.READ}
                   onCheckedChange={(checked) => { setScopes((current) => checked === true ? [...current, scope] : current.filter((item) => item !== scope)); }} />
@@ -180,20 +181,34 @@ export function McpTokensSection({ enabled, userId }: { enabled: boolean; userId
         </div>
       </form>
       {tokens.data?.length === 0 ? <EmptyState title={t("mcp.tokens.empty")} /> : null}
-      {tokens.data && tokens.data.length > 0 ? <ul className="flex min-w-0 flex-col gap-5" aria-label={t("mcp.tokens.list")}>
+      {tokens.data && tokens.data.length > 0 ? <div className="mcp-tokens-scroll" tabIndex={0} role="region" aria-label={t("mcp.tokens.list")}>
+        <Table className="mcp-token-table" aria-label={t("mcp.tokens.list")}>
+        <TableHeader><TableRow>
+          <TableHead scope="col">{t("mcp.tokens.name")}</TableHead>
+          <TableHead scope="col">{t("mcp.tokens.hintColumn")}</TableHead>
+          <TableHead scope="col">{t("mcp.tokens.scopes")}</TableHead>
+          <TableHead scope="col">{t("mcp.tokens.createdColumn")}</TableHead>
+          <TableHead scope="col">{t("mcp.tokens.expiresColumn")}</TableHead>
+          <TableHead scope="col">{t("mcp.tokens.lastUsedColumn")}</TableHead>
+          <TableHead scope="col">{t("settings.mediaSettings.status")}</TableHead>
+          <TableHead scope="col">{t("settings.mediaSettings.operations")}</TableHead>
+        </TableRow></TableHeader><TableBody>
         {tokens.data.map((token) => {
           const status = tokenStatus(token);
-          return <li key={token.id} className="flex min-w-0 flex-col gap-2">
-            <div className="flex flex-wrap items-center justify-between gap-2"><strong className="break-all">{token.name}</strong><StatusBadge tone={status.tone}>{status.label}</StatusBadge></div>
-            <p className="ui-muted break-all">{token.tokenHint}</p>
-            <p>{token.scopes.map(scopeLabel).join(" · ")}</p>
-            <p className="ui-muted">{t("mcp.tokens.createdAt", { "0": formatDate(token.createdAt) })}</p>
-            <p className="ui-muted">{t("mcp.tokens.expiresAt", { "0": formatDate(token.expiresAt) })}</p>
-            <p className="ui-muted">{t("mcp.tokens.lastUsedAt", { "0": token.lastUsedAt ? formatDate(token.lastUsedAt) : t("mcp.tokens.neverUsed") })}</p>
-            <div><Button variant="outline" type="button" disabled={unavailable || !status.active} aria-label={t("mcp.tokens.revokeNamed", { "0": token.name })} onClick={() => { void revoke(token); }}>{revoking === token.id ? t("mcp.tokens.revoking") : t("mcp.tokens.revoke")}</Button></div>
-          </li>;
+          const scopes = token.scopes.map(scopeLabel).join(" · ");
+          return <TableRow key={token.id}>
+            <TableCell data-label={t("mcp.tokens.name")}><strong title={token.name}>{token.name}</strong></TableCell>
+            <TableCell data-label={t("mcp.tokens.hintColumn")}><span title={token.tokenHint}>{token.tokenHint}</span></TableCell>
+            <TableCell data-label={t("mcp.tokens.scopes")}><span title={scopes}>{scopes}</span></TableCell>
+            <TableCell data-label={t("mcp.tokens.createdColumn")}><time dateTime={token.createdAt} title={formatDate(token.createdAt)}>{formatDate(token.createdAt)}</time></TableCell>
+            <TableCell data-label={t("mcp.tokens.expiresColumn")}><time dateTime={token.expiresAt} title={formatDate(token.expiresAt)}>{formatDate(token.expiresAt)}</time></TableCell>
+            <TableCell data-label={t("mcp.tokens.lastUsedColumn")}>{token.lastUsedAt ? <time dateTime={token.lastUsedAt} title={formatDate(token.lastUsedAt)}>{formatDate(token.lastUsedAt)}</time> : t("mcp.tokens.neverUsed")}</TableCell>
+            <TableCell data-label={t("settings.mediaSettings.status")}><StatusBadge tone={status.tone}>{status.label}</StatusBadge></TableCell>
+            <TableCell><Button variant="outline" size="sm" type="button" disabled={unavailable || !status.active} aria-label={t("mcp.tokens.revokeNamed", { "0": token.name })} onClick={() => { void revoke(token); }}>{revoking === token.id ? t("mcp.tokens.revoking") : t("mcp.tokens.revoke")}</Button></TableCell>
+          </TableRow>;
         })}
-      </ul> : null}
+        </TableBody></Table>
+      </div> : null}
       <div className="flex min-w-0 flex-col gap-3">
         <h3>{t("mcp.tokens.connect")}</h3>
         <p className="ui-muted">{t("mcp.tokens.connectHint")}</p>

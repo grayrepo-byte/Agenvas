@@ -13,6 +13,7 @@ import dev.agenvas.db.tables.AppUser.AppUserPath;
 import dev.agenvas.db.tables.Artifact.ArtifactPath;
 import dev.agenvas.db.tables.Asset.AssetPath;
 import dev.agenvas.db.tables.AssetStorageRoute.AssetStorageRoutePath;
+import dev.agenvas.db.tables.CanvasCharacterCommand.CanvasCharacterCommandPath;
 import dev.agenvas.db.tables.CanvasEditCommand.CanvasEditCommandPath;
 import dev.agenvas.db.tables.CanvasEditReceipt.CanvasEditReceiptPath;
 import dev.agenvas.db.tables.CanvasGroup.CanvasGroupPath;
@@ -22,6 +23,7 @@ import dev.agenvas.db.tables.MediaTemplateImportCommand.MediaTemplateImportComma
 import dev.agenvas.db.tables.ProjectCharacter.ProjectCharacterPath;
 import dev.agenvas.db.tables.ProjectCharacterCommand.ProjectCharacterCommandPath;
 import dev.agenvas.db.tables.ProjectEvent.ProjectEventPath;
+import dev.agenvas.db.tables.ReferenceCatalogImport.ReferenceCatalogImportPath;
 import dev.agenvas.db.tables.SkillBindingCommand.SkillBindingCommandPath;
 import dev.agenvas.db.tables.SkillInstallCommand.SkillInstallCommandPath;
 import dev.agenvas.db.tables.SkillInstallOperation.SkillInstallOperationPath;
@@ -296,6 +298,19 @@ public class Project extends TableImpl<ProjectRecord> {
         return _asset;
     }
 
+    private transient CanvasCharacterCommandPath _canvasCharacterCommand;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.canvas_character_command</code> table
+     */
+    public CanvasCharacterCommandPath canvasCharacterCommand() {
+        if (_canvasCharacterCommand == null)
+            _canvasCharacterCommand = new CanvasCharacterCommandPath(this, null, Keys.CANVAS_CHARACTER_COMMAND__FK_CANVAS_CHARACTER_COMMAND_PROJECT.getInverseKey());
+
+        return _canvasCharacterCommand;
+    }
+
     private transient CanvasEditCommandPath _canvasEditCommand;
 
     /**
@@ -436,6 +451,19 @@ public class Project extends TableImpl<ProjectRecord> {
             _mediaTemplateImportCommand = new MediaTemplateImportCommandPath(this, null, Keys.MEDIA_TEMPLATE_IMPORT_COMMAND__MEDIA_TEMPLATE_IMPORT_COMMAND_PROJECT_ID_FKEY.getInverseKey());
 
         return _mediaTemplateImportCommand;
+    }
+
+    private transient ReferenceCatalogImportPath _referenceCatalogImport;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.reference_catalog_import</code> table
+     */
+    public ReferenceCatalogImportPath referenceCatalogImport() {
+        if (_referenceCatalogImport == null)
+            _referenceCatalogImport = new ReferenceCatalogImportPath(this, null, Keys.REFERENCE_CATALOG_IMPORT__REFERENCE_CATALOG_IMPORT_PROJECT_ID_FKEY.getInverseKey());
+
+        return _referenceCatalogImport;
     }
 
     private transient SkillBindingCommandPath _skillBindingCommand;

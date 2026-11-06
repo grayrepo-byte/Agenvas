@@ -27,7 +27,7 @@ function Candidate({ projectId, candidate, shot, base, approvals, items, disable
   approvals: readonly AgentMediaApproval[]; disabled: boolean; onChoose: (production: ProductionInput) => void;
 }) {
   const item = items.find((entry) => entry.id === candidate.canvasItemId);
-  const role = item && item.artifact.kind !== "TEXT" ? KIND_ROLE[item.artifact.kind] : undefined;
+  const role = item?.artifact && item.artifact.kind !== "TEXT" ? KIND_ROLE[item.artifact.kind] : undefined;
   const history = useQuery({ queryKey: ["canvas-media-versions", projectId, item?.id],
     queryFn: () => listCanvasMediaVersions(projectId, item!.id), enabled: Boolean(item && role) });
   const version = history.data?.items.find((entry) => entry.id === candidate.versionId);

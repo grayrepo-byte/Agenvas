@@ -21,6 +21,9 @@ import dev.agenvas.db.tables.CallLog;
 import dev.agenvas.db.tables.CallLogDebug;
 import dev.agenvas.db.tables.CanvasCharacterBinding;
 import dev.agenvas.db.tables.CanvasCharacterBindingMember;
+import dev.agenvas.db.tables.CanvasCharacterCommand;
+import dev.agenvas.db.tables.CanvasCharacterConnection;
+import dev.agenvas.db.tables.CanvasCharacterNode;
 import dev.agenvas.db.tables.CanvasConnection;
 import dev.agenvas.db.tables.CanvasEditCommand;
 import dev.agenvas.db.tables.CanvasEditReceipt;
@@ -29,6 +32,11 @@ import dev.agenvas.db.tables.CanvasItem;
 import dev.agenvas.db.tables.CanvasItemMediaInput;
 import dev.agenvas.db.tables.CanvasItemMediaInputSource;
 import dev.agenvas.db.tables.CanvasItemMediaVersion;
+import dev.agenvas.db.tables.CharacterLibraryCleanup;
+import dev.agenvas.db.tables.CharacterLibraryCommand;
+import dev.agenvas.db.tables.CharacterLibraryMedia;
+import dev.agenvas.db.tables.CharacterLibraryProfile;
+import dev.agenvas.db.tables.CharacterLibraryRevision;
 import dev.agenvas.db.tables.CreativeSkill;
 import dev.agenvas.db.tables.DirectorSettings;
 import dev.agenvas.db.tables.IdempotencyRecord;
@@ -65,10 +73,17 @@ import dev.agenvas.db.tables.MediaTemplateImportSource;
 import dev.agenvas.db.tables.Project;
 import dev.agenvas.db.tables.ProjectCharacter;
 import dev.agenvas.db.tables.ProjectCharacterCommand;
+import dev.agenvas.db.tables.ProjectCharacterLibraryLink;
 import dev.agenvas.db.tables.ProjectCharacterRevision;
 import dev.agenvas.db.tables.ProjectEvent;
 import dev.agenvas.db.tables.PromptDefinition;
 import dev.agenvas.db.tables.ProviderAttempt;
+import dev.agenvas.db.tables.ReferenceCatalogCacheJob;
+import dev.agenvas.db.tables.ReferenceCatalogImport;
+import dev.agenvas.db.tables.ReferenceCatalogPrivateCommand;
+import dev.agenvas.db.tables.ReferenceCatalogPrivateImage;
+import dev.agenvas.db.tables.ReferenceCatalogSnapshot;
+import dev.agenvas.db.tables.ReferenceCatalogSource;
 import dev.agenvas.db.tables.SkillBindingCommand;
 import dev.agenvas.db.tables.SkillDraft;
 import dev.agenvas.db.tables.SkillInstallCommand;
@@ -202,6 +217,21 @@ public class Public extends SchemaImpl {
     public final CanvasCharacterBindingMember CANVAS_CHARACTER_BINDING_MEMBER = CanvasCharacterBindingMember.CANVAS_CHARACTER_BINDING_MEMBER;
 
     /**
+     * 明确角色节点应用的持久回执；重放不重写草稿或创建任务
+     */
+    public final CanvasCharacterCommand CANVAS_CHARACTER_COMMAND = CanvasCharacterCommand.CANVAS_CHARACTER_COMMAND;
+
+    /**
+     * 角色应用逻辑关系；不生成、不自动修改输入、不冒充图片首帧或执行DAG
+     */
+    public final CanvasCharacterConnection CANVAS_CHARACTER_CONNECTION = CanvasCharacterConnection.CANVAS_CHARACTER_CONNECTION;
+
+    /**
+     * 角色节点独立选择：固定项目修订、造型和本次参考，不改写媒体草稿
+     */
+    public final CanvasCharacterNode CANVAS_CHARACTER_NODE = CanvasCharacterNode.CANVAS_CHARACTER_NODE;
+
+    /**
      * 画布卡片关系；输入来源和派生线不代表执行依赖
      */
     public final CanvasConnection CANVAS_CONNECTION = CanvasConnection.CANVAS_CONNECTION;
@@ -240,6 +270,34 @@ public class Public extends SchemaImpl {
      * 媒体卡片独占的结果版本历史
      */
     public final CanvasItemMediaVersion CANVAS_ITEM_MEDIA_VERSION = CanvasItemMediaVersion.CANVAS_ITEM_MEDIA_VERSION;
+
+    /**
+     * Persistent cleanup queue for accepted pins and rejected independent
+     * outputs.
+     */
+    public final CharacterLibraryCleanup CHARACTER_LIBRARY_CLEANUP = CharacterLibraryCleanup.CHARACTER_LIBRARY_CLEANUP;
+
+    /**
+     * Durable role transfer and synchronous mutation receipts with lease
+     * fencing.
+     */
+    public final CharacterLibraryCommand CHARACTER_LIBRARY_COMMAND = CharacterLibraryCommand.CHARACTER_LIBRARY_COMMAND;
+
+    /**
+     * Independently archived immutable image or audio; never depends on source
+     * project or entry.
+     */
+    public final CharacterLibraryMedia CHARACTER_LIBRARY_MEDIA = CharacterLibraryMedia.CHARACTER_LIBRARY_MEDIA;
+
+    /**
+     * Account-owned reusable character identity and current CAS projection.
+     */
+    public final CharacterLibraryProfile CHARACTER_LIBRARY_PROFILE = CharacterLibraryProfile.CHARACTER_LIBRARY_PROFILE;
+
+    /**
+     * Immutable account character content revisions.
+     */
+    public final CharacterLibraryRevision CHARACTER_LIBRARY_REVISION = CharacterLibraryRevision.CHARACTER_LIBRARY_REVISION;
 
     /**
      * 用户创作 Skill 身份、当前发布版本和回收站状态
@@ -429,6 +487,12 @@ public class Public extends SchemaImpl {
     public final ProjectCharacterCommand PROJECT_CHARACTER_COMMAND = ProjectCharacterCommand.PROJECT_CHARACTER_COMMAND;
 
     /**
+     * Explicit project copy source revision; library edits never auto
+     * synchronize.
+     */
+    public final ProjectCharacterLibraryLink PROJECT_CHARACTER_LIBRARY_LINK = ProjectCharacterLibraryLink.PROJECT_CHARACTER_LIBRARY_LINK;
+
+    /**
      * Immutable revisions used by fixed character shot snapshots.
      */
     public final ProjectCharacterRevision PROJECT_CHARACTER_REVISION = ProjectCharacterRevision.PROJECT_CHARACTER_REVISION;
@@ -447,6 +511,39 @@ public class Public extends SchemaImpl {
      * 固定任务租约和连接能力版本的外部提交尝试；结果未知时禁止自动重提
      */
     public final ProviderAttempt PROVIDER_ATTEMPT = ProviderAttempt.PROVIDER_ATTEMPT;
+
+    /**
+     * Explicit authorized image prefetch jobs; pinned immutable metadata and
+     * durable per-image progress
+     */
+    public final ReferenceCatalogCacheJob REFERENCE_CATALOG_CACHE_JOB = ReferenceCatalogCacheJob.REFERENCE_CATALOG_CACHE_JOB;
+
+    /**
+     * Durable exact image import replay without provider execution
+     */
+    public final ReferenceCatalogImport REFERENCE_CATALOG_IMPORT = ReferenceCatalogImport.REFERENCE_CATALOG_IMPORT;
+
+    /**
+     * Owner-scoped selected-image command replay; never public or bulk image
+     * permission
+     */
+    public final ReferenceCatalogPrivateCommand REFERENCE_CATALOG_PRIVATE_COMMAND = ReferenceCatalogPrivateCommand.REFERENCE_CATALOG_PRIVATE_COMMAND;
+
+    /**
+     * Individually selected owner-private base pose or photographic costume
+     * cache authorization and fixed integrity
+     */
+    public final ReferenceCatalogPrivateImage REFERENCE_CATALOG_PRIVATE_IMAGE = ReferenceCatalogPrivateImage.REFERENCE_CATALOG_PRIVATE_IMAGE;
+
+    /**
+     * Immutable safe catalog metadata; previous ready snapshot survives failure
+     */
+    public final ReferenceCatalogSnapshot REFERENCE_CATALOG_SNAPSHOT = ReferenceCatalogSnapshot.REFERENCE_CATALOG_SNAPSHOT;
+
+    /**
+     * Admin registered public GitHub metadata sources; manual sync only
+     */
+    public final ReferenceCatalogSource REFERENCE_CATALOG_SOURCE = ReferenceCatalogSource.REFERENCE_CATALOG_SOURCE;
 
     /**
      * Agent Skill 绑定命令的幂等摘要与响应
@@ -597,6 +694,9 @@ public class Public extends SchemaImpl {
             CallLogDebug.CALL_LOG_DEBUG,
             CanvasCharacterBinding.CANVAS_CHARACTER_BINDING,
             CanvasCharacterBindingMember.CANVAS_CHARACTER_BINDING_MEMBER,
+            CanvasCharacterCommand.CANVAS_CHARACTER_COMMAND,
+            CanvasCharacterConnection.CANVAS_CHARACTER_CONNECTION,
+            CanvasCharacterNode.CANVAS_CHARACTER_NODE,
             CanvasConnection.CANVAS_CONNECTION,
             CanvasEditCommand.CANVAS_EDIT_COMMAND,
             CanvasEditReceipt.CANVAS_EDIT_RECEIPT,
@@ -605,6 +705,11 @@ public class Public extends SchemaImpl {
             CanvasItemMediaInput.CANVAS_ITEM_MEDIA_INPUT,
             CanvasItemMediaInputSource.CANVAS_ITEM_MEDIA_INPUT_SOURCE,
             CanvasItemMediaVersion.CANVAS_ITEM_MEDIA_VERSION,
+            CharacterLibraryCleanup.CHARACTER_LIBRARY_CLEANUP,
+            CharacterLibraryCommand.CHARACTER_LIBRARY_COMMAND,
+            CharacterLibraryMedia.CHARACTER_LIBRARY_MEDIA,
+            CharacterLibraryProfile.CHARACTER_LIBRARY_PROFILE,
+            CharacterLibraryRevision.CHARACTER_LIBRARY_REVISION,
             CreativeSkill.CREATIVE_SKILL,
             DirectorSettings.DIRECTOR_SETTINGS,
             IdempotencyRecord.IDEMPOTENCY_RECORD,
@@ -641,10 +746,17 @@ public class Public extends SchemaImpl {
             Project.PROJECT,
             ProjectCharacter.PROJECT_CHARACTER,
             ProjectCharacterCommand.PROJECT_CHARACTER_COMMAND,
+            ProjectCharacterLibraryLink.PROJECT_CHARACTER_LIBRARY_LINK,
             ProjectCharacterRevision.PROJECT_CHARACTER_REVISION,
             ProjectEvent.PROJECT_EVENT,
             PromptDefinition.PROMPT_DEFINITION,
             ProviderAttempt.PROVIDER_ATTEMPT,
+            ReferenceCatalogCacheJob.REFERENCE_CATALOG_CACHE_JOB,
+            ReferenceCatalogImport.REFERENCE_CATALOG_IMPORT,
+            ReferenceCatalogPrivateCommand.REFERENCE_CATALOG_PRIVATE_COMMAND,
+            ReferenceCatalogPrivateImage.REFERENCE_CATALOG_PRIVATE_IMAGE,
+            ReferenceCatalogSnapshot.REFERENCE_CATALOG_SNAPSHOT,
+            ReferenceCatalogSource.REFERENCE_CATALOG_SOURCE,
             SkillBindingCommand.SKILL_BINDING_COMMAND,
             SkillDraft.SKILL_DRAFT,
             SkillInstallCommand.SKILL_INSTALL_COMMAND,
