@@ -108,12 +108,17 @@ class CustomCostumePostgresIT {
         var s=source();var request=new CustomCostumeService.Save(s.item(),s.version(),s.itemVersion(),"Concurrent coat",null,List.of("synthetic"),"concurrent-save");
         ReferenceCatalogService.EntryView saved;
         try(var pool=Executors.newFixedThreadPool(2)){var first=pool.submit(()->costumes.save(owner.userId(),s.project(),request));var second=pool.submit(()->costumes.save(owner.userId(),s.project(),request));saved=first.get(30,TimeUnit.SECONDS);assertThat(second.get(30,TimeUnit.SECONDS)).isEqualTo(saved);}
-        var external=catalog.create("synthetic-"+UUID.randomUUID(),"Synthetic external","fixture","repo","a".repeat(40),"reference-pack.json",Format.AGENVAS_REFERENCE_PACK,true);
+        var external=catalog.create("synthetic-"+UUID.randomUUID(),"Synthetic external","fixture","repo","a".repeat(40),"reference-pack.json",Format.AGENVAS_REFERENCE_PACK,true,dev.agenvas.referencecatalog.domain.ReferenceCatalog.SourceType.GITHUB);
         when(github.resolve(any())).thenReturn("a".repeat(40));
         when(github.file(any(),any(),eq("reference-pack.json"),anyInt())).thenAnswer(i->{assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();return Files.readAllBytes(Path.of("../examples/reference-pack/reference-pack.json"));});
         assertThat(catalog.sync(external.id(),0).state()).isEqualTo("SUCCESS");
         var mixed=catalog.list(Kind.COSTUME,null,"",null,null,null,null,null,null,0,100);assertThat(mixed.items()).extracting(ReferenceCatalogService.EntryView::origin).contains(Origin.SELF_CREATED,Origin.THIRD_PARTY);
         assertThat(catalog.list(Kind.COSTUME,external.id(),"",null,null,null,null,null,null,0,100).items()).allMatch(e->e.origin()==Origin.THIRD_PARTY);
+        var automatic=mapper.readTree(mvc.perform(get("/api/v1/reference-catalog").with(auth)
+                .param("kind","COSTUME").param("sourceId",external.id()).param("includeSelfCreated","true"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(automatic.path("items")).anyMatch(e->e.path("origin").asText().equals("SELF_CREATED"));
+        assertThat(automatic.path("items")).anyMatch(e->e.path("origin").asText().equals("THIRD_PARTY"));
         var latest=catalog.source(external.id());catalog.update(external.id(),latest.version(),false,false);cache.clear(null,null,List.of());
         UUID id=UUID.fromString(saved.id());assertThat(Files.readAllBytes(costumes.image(id).path())).isEqualTo(Files.readAllBytes(assets.get(owner.userId(),s.project(),s.asset()).path()));
         var target=projects.create(owner.userId(),"Concurrent target",Project.AspectRatio.LANDSCAPE_16_9);

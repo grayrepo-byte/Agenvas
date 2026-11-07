@@ -56,7 +56,8 @@ public class ReferenceCatalogSnapshotRecord extends UpdatableRecordImpl<Referenc
 
     /**
      * Setter for <code>public.reference_catalog_snapshot.commit_sha</code>.
-     * Pinned public GitHub commit
+     * Pinned Git commit when available; live JSON sources use null and retain
+     * exact manifest SHA256
      */
     public void setCommitSha(String value) {
         set(2, value);
@@ -64,7 +65,8 @@ public class ReferenceCatalogSnapshotRecord extends UpdatableRecordImpl<Referenc
 
     /**
      * Getter for <code>public.reference_catalog_snapshot.commit_sha</code>.
-     * Pinned public GitHub commit
+     * Pinned Git commit when available; live JSON sources use null and retain
+     * exact manifest SHA256
      */
     public String getCommitSha() {
         return (String) get(2);

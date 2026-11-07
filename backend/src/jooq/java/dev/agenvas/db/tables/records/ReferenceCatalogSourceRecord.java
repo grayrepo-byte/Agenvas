@@ -14,7 +14,8 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Admin registered public GitHub metadata sources; manual sync only
+ * Administrator-selected catalog delivery sources with cached immutable JSON
+ * snapshots
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class ReferenceCatalogSourceRecord extends UpdatableRecordImpl<ReferenceCatalogSourceRecord> {
@@ -313,6 +314,24 @@ public class ReferenceCatalogSourceRecord extends UpdatableRecordImpl<ReferenceC
         return (OffsetDateTime) get(17);
     }
 
+    /**
+     * Setter for <code>public.reference_catalog_source.source_type</code>.
+     * Catalog and image delivery: Omilic website or GitHub repository; existing
+     * sources retain GitHub
+     */
+    public void setSourceType(String value) {
+        set(18, value);
+    }
+
+    /**
+     * Getter for <code>public.reference_catalog_source.source_type</code>.
+     * Catalog and image delivery: Omilic website or GitHub repository; existing
+     * sources retain GitHub
+     */
+    public String getSourceType() {
+        return (String) get(18);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -336,7 +355,7 @@ public class ReferenceCatalogSourceRecord extends UpdatableRecordImpl<ReferenceC
     /**
      * Create a detached, initialised ReferenceCatalogSourceRecord
      */
-    public ReferenceCatalogSourceRecord(String id, String name, String owner, String repository, String ref, String manifestPath, String format, Boolean enabled, Boolean imageDistributionApproved, Long version, UUID currentSnapshotId, String lastSyncStatus, String lastSyncError, OffsetDateTime syncedAt, String resolvedCommit, UUID leaseToken, OffsetDateTime leaseUntil, OffsetDateTime createdAt) {
+    public ReferenceCatalogSourceRecord(String id, String name, String owner, String repository, String ref, String manifestPath, String format, Boolean enabled, Boolean imageDistributionApproved, Long version, UUID currentSnapshotId, String lastSyncStatus, String lastSyncError, OffsetDateTime syncedAt, String resolvedCommit, UUID leaseToken, OffsetDateTime leaseUntil, OffsetDateTime createdAt, String sourceType) {
         super(ReferenceCatalogSource.REFERENCE_CATALOG_SOURCE);
 
         setId(id);
@@ -357,6 +376,7 @@ public class ReferenceCatalogSourceRecord extends UpdatableRecordImpl<ReferenceC
         setLeaseToken(leaseToken);
         setLeaseUntil(leaseUntil);
         setCreatedAt(createdAt);
+        setSourceType(sourceType);
         resetChangedOnNotNull();
     }
 }

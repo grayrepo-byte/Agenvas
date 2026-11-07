@@ -14,17 +14,32 @@ function cacheReads() { return [
   http.get("/api/v1/settings/reference-catalog/cache/jobs", () => HttpResponse.json({ items: [] })),
 ]; }
 const entry = { sourceId: "pack", snapshotId: "snapshot", id: "walk", kind: "POSE", title: "Walking", category: "Movement", tags: ["walk"], facets: { gender: "neutral" }, importAllowed: true, variants: [variant, { ...variant, id: "back", label: "Back view", view: "back" }] };
-function setup(items: object[] = [entry], admin = false, filters?: object) {
+function setup(items: object[] = [entry], admin = false, filters?: object, initialSources: object[] = [], readEntries?: (request: Request) => Response) {
   setLocale("en");
   server.use(...cacheReads(),
     http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "user", role: admin ? "ADMIN" : "USER" })),
     http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
-    http.get("/api/v1/reference-catalog/sources", () => HttpResponse.json({ items: [] })),
-    http.get("/api/v1/reference-catalog", () => HttpResponse.json({ items, total: items.length, offset: 0, limit: 50, filters })),
+    http.get("/api/v1/reference-catalog/sources", () => HttpResponse.json({ items: initialSources })),
+    http.get("/api/v1/reference-catalog", ({ request }) => readEntries?.(request) ?? HttpResponse.json({ items, total: items.length, offset: 0, limit: 50, filters })),
   );
   render(<QueryClientProvider client={createQueryClient()}><ReferenceCatalog /></QueryClientProvider>);
   return userEvent.setup();
 }
+it("prefers a saved website directory on reopening and loads all sources only when explicitly selected", async () => {
+  const sources = ["OMILIC", "GITHUB"].map((sourceType) => ({ sourceType, id: sourceType.toLowerCase(), name: sourceType, owner: "hongye007", repository: "open-pose-costume", ref: "main", manifestPath: sourceType === "OMILIC" ? "data/catalog.json" : "public/data/catalog.json", format: "OPEN_POSE_COSTUME", enabled: true, imageDistributionApproved: false, version: 1, currentSnapshotId: "snapshot", resolvedCommit: null, lastSyncStatus: "SUCCESS", lastSyncError: null, syncedAt: "2026-11-07T00:00:00Z" }));
+  const reads: (string | null)[] = [];
+  const user = setup([], false, undefined, sources, (request) => {
+    const source = new URL(request.url).searchParams.get("sourceId"); reads.push(source);
+    const items = [{ ...entry, sourceId: "omilic", title: "Website pose" }, { ...entry, sourceId: "github", title: "Legacy GitHub pose" }].filter((entry) => !source || entry.sourceId === source);
+    return HttpResponse.json({ items, total: items.length, offset: 0, limit: 50 });
+  });
+  await screen.findByRole("button", { name: "Preview Website pose" });
+  expect(reads).toEqual(["omilic"]);
+  expect(screen.queryByRole("button", { name: "Preview Legacy GitHub pose" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("combobox", { name: "Source" })); await user.click(screen.getByRole("option", { name: "All" }));
+  expect(await screen.findByRole("button", { name: "Preview Legacy GitHub pose" })).toBeInTheDocument();
+  expect(reads.at(-1)).toBeNull();
+});
 it("keeps pose views grouped and preview selection preserves search", async () => {
   const user = setup();
   await user.type(screen.getByRole("searchbox", { name: "Search references" }), "walk");
@@ -63,11 +78,11 @@ it("loads a preset and immediately shows that source's catalog", async () => {
     http.post("/api/v1/settings/reference-catalog/sources", async ({ request }) => {
       saved = { ...await request.json() as object, enabled: true, version: 0 }; return HttpResponse.json(saved);
     }),
-    http.post("/api/v1/settings/reference-catalog/sources/open-pose-costume/sync", () => HttpResponse.json({ state: "SUCCESS", source: { ...saved, currentSnapshotId: "snapshot" }, snapshotId: "snapshot", entryCount: 1, variantCount: 1 })));
+    http.post("/api/v1/settings/reference-catalog/sources/omilic/sync", () => HttpResponse.json({ state: "SUCCESS", source: { ...saved, currentSnapshotId: "snapshot" }, snapshotId: "snapshot", entryCount: 1, variantCount: 1 })));
   await user.click(await screen.findByRole("button", { name: "Manage sources" }));
   await user.click(screen.getByRole("button", { name: "Load" }));
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Reference sources" })).not.toBeInTheDocument());
-  expect(screen.getByRole("combobox", { name: "Source" })).toHaveTextContent("Open Pose Costume");
+  expect(screen.getByRole("combobox", { name: "Source" })).toHaveTextContent("Omilic");
 });
 it("replays a lost import with the same intent and never generates or replaces input", async () => {
   setLocale("en"); let attempts = 0; const imports: Record<string, unknown>[] = []; let appliedVersion = "";
@@ -106,7 +121,7 @@ it("uses cached bilingual metadata and sends the real source facet filters", asy
   expect(requests.at(-1)?.searchParams.get("style")).toBe("photo");
 });
 it("reports a failed load returned with HTTP 200 and retains the prior catalog", async () => {
-  setLocale("en"); const source = { id: "pack", name: "Original pack", owner: "me", repository: "pack", ref: "main", manifestPath: "manifest.json", format: "AGENVAS_REFERENCE_PACK", enabled: true, imageDistributionApproved: true, version: 4, currentSnapshotId: "snapshot", resolvedCommit: "original-commit", lastSyncStatus: "SUCCESS", lastSyncError: null, syncedAt: "2026-11-01T00:00:00Z" };
+  setLocale("en"); const source = { id: "pack", name: "Original pack", sourceType: "GITHUB", owner: "me", repository: "pack", ref: "main", manifestPath: "manifest.json", format: "AGENVAS_REFERENCE_PACK", enabled: true, imageDistributionApproved: true, version: 4, currentSnapshotId: "snapshot", resolvedCommit: "original-commit", lastSyncStatus: "SUCCESS", lastSyncError: null, syncedAt: "2026-11-01T00:00:00Z" };
   server.use(...cacheReads(),
     http.get("/api/v1/auth/me", () => HttpResponse.json({ role: "ADMIN" })),
     http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
@@ -121,7 +136,7 @@ it("reports a failed load returned with HTTP 200 and retains the prior catalog",
   const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "Manage sources" }));
   await user.click(screen.getByRole("combobox", { name: "Source" }));
   await user.click(screen.getByRole("option", { name: "Original pack" }));
-  await user.click(screen.getByRole("button", { name: "Load" }));
+  await user.click(screen.getByRole("button", { name: "Refresh catalog" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("The last successful catalog remains available.");
   expect(screen.getByRole("button", { name: "Retry loading" })).toBeEnabled();
   await user.click(screen.getByRole("button", { name: "Close" }));
@@ -351,4 +366,40 @@ it("keeps refresh recovery available when an uncertain metadata editor is reopen
   await user.click(screen.getByRole("button", { name: "Refresh details" }));
   await waitFor(() => expect(screen.getByRole("textbox", { name: "Name" })).toBeEnabled());
   expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("Saved outfit pending");
+});
+it("combines saved website and self-created costumes by default without broadening explicit source filters", async () => {
+  const sources = ["OMILIC", "GITHUB"].map((sourceType) => ({ sourceType, id: sourceType.toLowerCase(), name: sourceType,
+    enabled: true, version: 1, currentSnapshotId: "snapshot" }));
+  const reads: URL[] = [];
+  const external = [{ ...entry, sourceId: "omilic", title: "Website pose" },
+    { ...entry, kind: "COSTUME", sourceId: "omilic", title: "Website outfit" },
+    { ...entry, kind: "COSTUME", sourceId: "github", title: "GitHub outfit" }];
+  const user = setup([], false, undefined, sources, (request) => {
+    const url = new URL(request.url); reads.push(url);
+    const source = url.searchParams.get("sourceId"); const includeSelfCreated = url.searchParams.get("includeSelfCreated") === "true";
+    const items = [...external, costume].filter((item) => item.kind === url.searchParams.get("kind")
+      && (!source || item.sourceId === source || includeSelfCreated && "origin" in item && item.origin === "SELF_CREATED"));
+    return HttpResponse.json({ items, total: items.length, offset: 0, limit: 50 });
+  });
+  await screen.findByRole("button", { name: "Preview Website pose" });
+  await user.click(screen.getByRole("radio", { name: "Costumes" }));
+  await screen.findByRole("button", { name: "Preview Website outfit" });
+  expect(await screen.findByRole("button", { name: "Preview Saved outfit" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Preview GitHub outfit" })).not.toBeInTheDocument();
+  expect(reads.every((url) => url.searchParams.get("sourceId") === "omilic")).toBe(true);
+  expect(reads[0]?.searchParams.has("includeSelfCreated")).toBe(false);
+  expect(reads.at(-1)?.searchParams.get("includeSelfCreated")).toBe("true");
+  await user.click(screen.getByRole("combobox", { name: "Source" })); await user.click(screen.getByRole("option", { name: "GITHUB" }));
+  await screen.findByRole("button", { name: "Preview GitHub outfit" });
+  expect(screen.queryByRole("button", { name: "Preview Saved outfit" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Preview Website outfit" })).not.toBeInTheDocument();
+  expect(reads.at(-1)?.searchParams.has("includeSelfCreated")).toBe(false);
+  await user.click(screen.getByRole("combobox", { name: "Source" })); await user.click(screen.getByRole("option", { name: "OMILIC" }));
+  await screen.findByRole("button", { name: "Preview Website outfit" });
+  expect(screen.queryByRole("button", { name: "Preview Saved outfit" })).not.toBeInTheDocument();
+  expect(reads.at(-1)?.searchParams.has("includeSelfCreated")).toBe(false);
+  await user.click(screen.getByRole("combobox", { name: "Source" })); await user.click(screen.getByRole("option", { name: "All" }));
+  expect(await screen.findByRole("button", { name: "Preview Saved outfit" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Preview Website outfit" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Preview GitHub outfit" })).toBeInTheDocument();
 });

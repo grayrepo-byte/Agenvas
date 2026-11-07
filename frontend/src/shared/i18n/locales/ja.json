@@ -3930,7 +3930,7 @@
   "reference.network.proxyAuthRequired": "このプロキシには認証が必要ですが、公開ダウンロードは現在認証に対応していません。信頼できる認証不要の接続先を管理者に依頼してください。",
   "reference.network.proxyError": "プロキシトンネルの確立に失敗しました。HTTP、HTTPS、SOCKS5 の種類と数値アドレスへの対応を管理者に確認してください。",
   "reference.network.tlsFailed": "TLS 検証に失敗しました。管理者に証明書の信頼とホスト名の確認を依頼し、検証を無効にせず再試行してください。",
-  "reference.network.rateLimited": "GitHub のリクエスト制限に達しました。ローカルキャッシュは利用できます。後で再試行してください。",
+  "reference.network.rateLimited": "ソースのリクエスト上限に達しました。キャッシュ済み画像は引き続き利用できます。時間をおいて再試行してください。",
   "reference.network.unavailable": "ソースに一時的に接続できません。ローカルキャッシュは利用できます。接続を確認し、再試行してください。",
   "media.promptInputs.count": "共通プロンプト · {0}",
   "media.promptInputs.hint": "保存済みの本文を接続順に結合し、ローカルのプロンプトを末尾に追加します。空白は除外され、実行受付時に固定されます。選択したスタイルは別途追加されます。",
@@ -3965,5 +3965,9 @@
   "costume.deleteFailed": "服装の参考を削除できませんでした。",
   "costume.sourcePinned": "ダイアログを開いた時点の画像バージョンを保存します。",
   "costume.tagsInvalid": "タグは32個まで、各64文字以内で入力してください。",
-  "costume.refresh": "情報を更新"
+  "costume.refresh": "情報を更新",
+  "reference.omilicSource": "Omilic（推奨）",
+  "reference.refreshCatalog": "カタログを更新",
+  "reference.searchPlaceholder": "名前・番号・キーワードで検索",
+  "reference.classification": "拡張分類"
 }

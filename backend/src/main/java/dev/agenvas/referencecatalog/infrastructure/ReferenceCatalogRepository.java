@@ -19,11 +19,12 @@ public class ReferenceCatalogRepository {
     public Optional<Source> source(String id){return db.selectFrom(REFERENCE_CATALOG_SOURCE).where(REFERENCE_CATALOG_SOURCE.ID.eq(id)).fetchOptional(this::source);}
     private Source source(dev.agenvas.db.tables.records.ReferenceCatalogSourceRecord r){
         return new Source(r.getId(),r.getName(),r.getOwner(),r.getRepository(),r.getRef(),r.getManifestPath(),Format.valueOf(r.getFormat()),r.getEnabled(),
-                r.getImageDistributionApproved(),r.getVersion(),r.getCurrentSnapshotId(),r.getLastSyncStatus(),r.getLastSyncError(),r.getSyncedAt()==null?null:r.getSyncedAt().toInstant(),r.getResolvedCommit());
+                r.getImageDistributionApproved(),r.getVersion(),r.getCurrentSnapshotId(),r.getLastSyncStatus(),r.getLastSyncError(),r.getSyncedAt()==null?null:r.getSyncedAt().toInstant(),r.getResolvedCommit(),SourceType.valueOf(r.getSourceType()));
     }
     public boolean insert(Source s,Instant now){return db.insertInto(REFERENCE_CATALOG_SOURCE).set(REFERENCE_CATALOG_SOURCE.ID,s.id())
             .set(REFERENCE_CATALOG_SOURCE.NAME,s.name()).set(REFERENCE_CATALOG_SOURCE.OWNER,s.owner()).set(REFERENCE_CATALOG_SOURCE.REPOSITORY,s.repository())
             .set(REFERENCE_CATALOG_SOURCE.REF,s.ref()).set(REFERENCE_CATALOG_SOURCE.MANIFEST_PATH,s.manifestPath()).set(REFERENCE_CATALOG_SOURCE.FORMAT,s.format().name())
+            .set(REFERENCE_CATALOG_SOURCE.SOURCE_TYPE,s.sourceType().name())
             .set(REFERENCE_CATALOG_SOURCE.IMAGE_DISTRIBUTION_APPROVED,s.imageDistributionApproved()).set(REFERENCE_CATALOG_SOURCE.CREATED_AT,time(now))
             .onConflict(REFERENCE_CATALOG_SOURCE.ID).doNothing().execute()==1;}
     public boolean update(String id,long expected,boolean enabled,boolean approved){return db.update(REFERENCE_CATALOG_SOURCE)
@@ -46,7 +47,8 @@ public class ReferenceCatalogRepository {
                 .where(REFERENCE_CATALOG_SOURCE.ID.eq(id).and(REFERENCE_CATALOG_SOURCE.VERSION.eq(version)).and(REFERENCE_CATALOG_SOURCE.LEASE_TOKEN.eq(token))
                         .and(REFERENCE_CATALOG_SOURCE.ENABLED.isTrue()).and(REFERENCE_CATALOG_SOURCE.LEASE_UNTIL.gt(time(now)))).execute();
         if(changed!=1)return false;
-        db.insertInto(REFERENCE_CATALOG_SNAPSHOT).set(REFERENCE_CATALOG_SNAPSHOT.ID,snapshot.id()).set(REFERENCE_CATALOG_SNAPSHOT.SOURCE_ID,id)
+        if(!db.fetchExists(REFERENCE_CATALOG_SNAPSHOT,REFERENCE_CATALOG_SNAPSHOT.ID.eq(snapshot.id()).and(REFERENCE_CATALOG_SNAPSHOT.SOURCE_ID.eq(id))))
+            db.insertInto(REFERENCE_CATALOG_SNAPSHOT).set(REFERENCE_CATALOG_SNAPSHOT.ID,snapshot.id()).set(REFERENCE_CATALOG_SNAPSHOT.SOURCE_ID,id)
                 .set(REFERENCE_CATALOG_SNAPSHOT.COMMIT_SHA,snapshot.commit()).set(REFERENCE_CATALOG_SNAPSHOT.MANIFEST_HASH,snapshot.manifestHash())
                 .set(REFERENCE_CATALOG_SNAPSHOT.LICENSE,snapshot.license()).set(REFERENCE_CATALOG_SNAPSHOT.ENTRIES_JSON,json(new Entries(1,snapshot.entries())))
                 .set(REFERENCE_CATALOG_SNAPSHOT.CREATED_AT,time(now)).execute(); return true;

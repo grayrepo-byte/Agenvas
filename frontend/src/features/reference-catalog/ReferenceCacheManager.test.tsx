@@ -10,7 +10,7 @@ import { server } from "../../test/server";
 import { ReferenceCacheManager } from "./ReferenceCacheManager";
 
 const base = "/api/v1/settings/reference-catalog/cache";
-const source: ReferenceSource = { id: "pack", name: "Original pack", owner: "me", repository: "pack", ref: "main", manifestPath: "manifest.json", format: "AGENVAS_REFERENCE_PACK", enabled: true, imageDistributionApproved: true, version: 4, currentSnapshotId: "snapshot", resolvedCommit: "commit", lastSyncStatus: "SUCCESS", lastSyncError: null, syncedAt: "2026-11-01T00:00:00Z" };
+const source: ReferenceSource = { sourceType: "GITHUB", id: "pack", name: "Original pack", owner: "me", repository: "pack", ref: "main", manifestPath: "manifest.json", format: "AGENVAS_REFERENCE_PACK", enabled: true, imageDistributionApproved: true, version: 4, currentSnapshotId: "snapshot", resolvedCommit: "commit", lastSyncStatus: "SUCCESS", lastSyncError: null, syncedAt: "2026-11-01T00:00:00Z" };
 const stats = { protectedBytes: 0, protectedFileCount: 0, quotaBytes: 1000, usedBytes: 100, availableBytes: 900, fileCount: 1 };
 const job = { id: "job", sourceId: "pack", snapshotId: "snapshot", state: "RUNNING", totalCount: 2, readyCount: 1, failedCount: 0, totalBytes: 300, readyBytes: 100, createdAt: "2026-11-01T00:00:00Z", updatedAt: "2026-11-01T00:00:00Z", failures: [] };
 function setup(sources: ReferenceSource[] = [source], jobs: object[] = []) {

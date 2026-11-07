@@ -1118,6 +1118,13 @@ paths:
           required: false
           schema:
             type: string
+        - name: includeSelfCreated
+          in: query
+          required: false
+          description: Include independent self-created costumes alongside an automatically preferred external source; explicit source selection normally leaves this false.
+          schema:
+            type: boolean
+            default: false
         - name: query
           in: query
           required: false
@@ -7395,6 +7402,11 @@ components:
       enum:
         - OPEN_POSE_COSTUME
         - AGENVAS_REFERENCE_PACK
+    ReferenceCatalogSourceType:
+      type: string
+      enum:
+        - OMILIC
+        - GITHUB
     ReferenceCatalogSource:
       type: object
       additionalProperties: false
@@ -7414,6 +7426,7 @@ components:
         - lastSyncError
         - syncedAt
         - resolvedCommit
+        - sourceType
       properties:
         id:
           type: string
@@ -7429,6 +7442,8 @@ components:
           type: string
         format:
           $ref: '#/components/schemas/ReferenceCatalogFormat'
+        sourceType:
+          $ref: '#/components/schemas/ReferenceCatalogSourceType'
         enabled:
           type: boolean
         imageDistributionApproved:
@@ -7710,6 +7725,9 @@ components:
         - format
         - imageDistributionApproved
       properties:
+        sourceType:
+          $ref: '#/components/schemas/ReferenceCatalogSourceType'
+          default: GITHUB
         id:
           type: string
           maxLength: 100

@@ -7,7 +7,7 @@ import java.util.*;
 import org.junit.jupiter.api.Test;
 
 class ReferenceCatalogPrivatePolicyTest {
-    Source source(){return new Source("source","Known metadata","hongye007","open-pose-costume","a".repeat(40),"public/data/catalog.json",Format.OPEN_POSE_COSTUME,true,false,0,null,"NEVER",null,null,null);}
+    Source source(){return new Source("source","Known metadata","hongye007","open-pose-costume","a".repeat(40),"public/data/catalog.json",Format.OPEN_POSE_COSTUME,true,false,0,null,"NEVER",null,null,null, SourceType.GITHUB);}
     Entry entry(Kind kind,String host,String collection){return new Entry("synthetic",kind,"Original synthetic",Map.of("en","Original"),"P1","standing",Map.of(),Map.of(),List.of(),Map.of(),Map.of(),Map.of(),collection,false,"https://"+host+"/",List.of());}
     @Test void individualBaseImagePermissionIsIndependentOfDistributionWhileOtherScopesRemainSpecific(){
         assertThat(ReferenceCatalogPrivatePolicy.disabledReason(source(),entry(Kind.POSE,"ai-pose-gallery.pages.dev","builtin"))).isNull();

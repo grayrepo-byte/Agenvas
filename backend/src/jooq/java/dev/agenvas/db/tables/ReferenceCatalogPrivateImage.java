@@ -108,22 +108,23 @@ public class ReferenceCatalogPrivateImage extends TableImpl<ReferenceCatalogPriv
     /**
      * The column
      * <code>public.reference_catalog_private_image.repository_path</code>.
-     * Server-derived fixed archive path; never a browser-supplied URL
+     * Immutable snapshot-derived image URL or repository path; never
+     * browser-supplied
      */
-    public final TableField<ReferenceCatalogPrivateImageRecord, String> REPOSITORY_PATH = createField(DSL.name("repository_path"), SQLDataType.VARCHAR(512).nullable(false), this, "Server-derived fixed archive path; never a browser-supplied URL");
+    public final TableField<ReferenceCatalogPrivateImageRecord, String> REPOSITORY_PATH = createField(DSL.name("repository_path"), SQLDataType.VARCHAR(2048).nullable(false), this, "Immutable snapshot-derived image URL or repository path; never browser-supplied");
 
     /**
      * The column <code>public.reference_catalog_private_image.blob_sha</code>.
-     * Git blob object SHA1 verified from immutable commit tree before first
-     * image read
+     * Frozen image-content Git blob SHA1; live JSON sources observe it on
+     * validated first download, legacy sources verify it against a Git tree
      */
-    public final TableField<ReferenceCatalogPrivateImageRecord, String> BLOB_SHA = createField(DSL.name("blob_sha"), SQLDataType.VARCHAR(40), this, "Git blob object SHA1 verified from immutable commit tree before first image read");
+    public final TableField<ReferenceCatalogPrivateImageRecord, String> BLOB_SHA = createField(DSL.name("blob_sha"), SQLDataType.VARCHAR(40), this, "Frozen image-content Git blob SHA1; live JSON sources observe it on validated first download, legacy sources verify it against a Git tree");
 
     /**
      * The column <code>public.reference_catalog_private_image.byte_size</code>.
-     * Fixed Git tree size checked against decoded downloaded bytes
+     * Frozen validated image byte count
      */
-    public final TableField<ReferenceCatalogPrivateImageRecord, Long> BYTE_SIZE = createField(DSL.name("byte_size"), SQLDataType.BIGINT, this, "Fixed Git tree size checked against decoded downloaded bytes");
+    public final TableField<ReferenceCatalogPrivateImageRecord, Long> BYTE_SIZE = createField(DSL.name("byte_size"), SQLDataType.BIGINT, this, "Frozen validated image byte count");
 
     /**
      * The column <code>public.reference_catalog_private_image.sha256</code>.
