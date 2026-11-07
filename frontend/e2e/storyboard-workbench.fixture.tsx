@@ -36,6 +36,9 @@ const source: ArtifactVersion = { id: "synthetic-script-v1", versionNo: 1, schem
   content: { format: "PLAIN_TEXT", text: "合成剧本：林岚与陈河在天台交还信件。所有人物与素材为合成测试数据。" }, inputReferences: [], createdByKind: "USER", createdAt };
 const sourceArtifact: Artifact = { id: "synthetic-script", projectId, kind: "TEXT", title: "Synthetic script · 林岚 / 陈河",
   version: 1, resourceDefaultVersionId: source.id, resourceDefaultVersion: source, createdAt, updatedAt: createdAt };
+const promptSource: CanvasItem = { id: "synthetic-shared-text", subjectType: "ARTIFACT", subjectId: sourceArtifact.id,
+  title: "Synthetic public prompt", x: 0, y: 0, width: 320, height: 240, zIndex: 1, locked: false, version: 1,
+  selectedVersionId: null, selectedVersion: null, artifact: sourceArtifact };
 versions.set(sourceArtifact.id, [source]);
 const characters = [mediaItem("synthetic-character-lin", "林岚 · 固定外观参考", "IMAGE"), mediaItem("synthetic-character-chen", "陈河 · 固定外观参考", "IMAGE")];
 const directorItems = options.has("director-media") ? [mediaItem("synthetic-director-video", "导演候选视频", "VIDEO"), mediaItem("synthetic-director-audio", "导演额外音频", "AUDIO")] : [];
@@ -99,7 +102,8 @@ settings.connections[0]!.capabilities = roles.map((role) => videoFunctionCapabil
   settings: { pricing: { amount: "0.25", currency: "USD", unit: role === "KEYFRAME" ? "IMAGE" : role === "VIDEO" ? "VIDEO" : "SECOND" } } }));
 function draftFor(item: CanvasItem): MediaDraft {
   const role = roles.find((candidate) => kinds[candidate] === item.artifact.kind)!;
-  return { projectId, canvasItemId: item.id, prompt: `Synthetic frozen ${role} prompt for ${item.title}`, parameters: {}, durationSeconds: 5,
+  return { projectId, canvasItemId: item.id, prompt: options.has("shared-prompts") && item.id === "synthetic-shot-1-video"
+    ? "" : `Synthetic frozen ${role} prompt for ${item.title}`, parameters: {}, durationSeconds: 5,
     capabilityId: `synthetic-cap-${role}`, styleId: null, videoInputMode: null, mediaInputs: [], mentions: [], displayMode: "RESULT", version: 7, createdAt, updatedAt: createdAt };
 }
 const originalFetch = window.fetch.bind(window);
@@ -123,6 +127,11 @@ window.fetch = async (input, init) => {
   }
   else if (url.pathname.endsWith("/media-approvals") && method === "GET") response = options.has("director-media") ? [directorApproval] : [];
   else if (url.pathname.endsWith("/media-connections")) response = settings;
+  else if (url.pathname.endsWith("/canvas/items")) response = { items: [...items, promptSource] };
+  else if (url.pathname.endsWith("/canvas/connections")) response = { items: options.has("shared-prompts") ? [1, 2].map((shot) => ({
+    id: `synthetic-prompt-link-${shot}`, projectId, sourceCanvasItemId: promptSource.id, targetCanvasItemId: `synthetic-shot-${shot}-video`,
+    relationType: "PROMPT_INPUT", sourceArtifactVersionId: source.id, version: 1, createdAt, updatedAt: createdAt,
+  })) : [] };
   else if (url.pathname.endsWith("/artifacts")) response = { items: artifacts };
   else if (url.pathname.endsWith("/media-versions") || url.pathname.endsWith("/versions")) response = { items: versions.get(url.pathname.split("/").at(-2)!) ?? [] };
   else if (url.pathname.endsWith("/media-draft")) { const item = items.find((candidate) => candidate.id === url.pathname.split("/").at(-2)); if (!item) throw new Error("Unknown synthetic node"); response = draftFor(item); }
