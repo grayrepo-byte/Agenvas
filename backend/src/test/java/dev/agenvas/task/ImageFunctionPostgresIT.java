@@ -38,6 +38,8 @@ import javax.imageio.ImageIO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -106,6 +108,74 @@ class ImageFunctionPostgresIT {
         } finally {
             functions.update(MediaFunction.IMAGE_DEPTH_MAP, image.version() + 1, image.capabilityId());
         }
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {2, 4})
+    void regeneratesOneFailedBatchCardWithoutCreatingAnotherBatch(int count) {
+        var source = source();
+        var draft = drafts.save(owner.userId(), source.project(), source.item(), 0,
+                "A red kite over a lake", mapper.createObjectNode().put("generationCount", count),
+                null, null, null, List.of(), List.of(), null);
+        Task primary = direct.run(owner.userId(), source.project(), source.artifact(), source.item(),
+                draft.version(), "four-image-batch");
+        var cards = canvas.list(owner.userId(), source.project());
+        assertThat(cards).hasSize(count);
+        cards.stream().filter(card -> !card.item().id().equals(source.item())).forEach(card ->
+                assertThat(drafts.get(owner.userId(), source.project(), card.item().id())
+                        .parameters().path("generationCount").asInt()).isEqualTo(1));
+
+        String workerId = "synthetic-batch-failure";
+        var leases = tasks.claimBoundMedia(workerId, count);
+        assertThat(leases).hasSize(count);
+        assertThat(leases).allSatisfy(task ->
+                assertThat(task.input().path("generationCount").asInt()).isEqualTo(count));
+        Task failed = leases.stream().filter(task -> !task.id().equals(primary.id())).findFirst().orElseThrow();
+        tasks.fail(failed, workerId, "PROVIDER_REJECTED");
+        UUID failedItemId = UUID.fromString(failed.input().path("canvasItemId").asText());
+        var failedDraft = drafts.get(owner.userId(), source.project(), failedItemId);
+        Task regenerated = direct.run(owner.userId(), source.project(), source.artifact(), failedItemId,
+                failedDraft.version(), "regenerate-one-batch-card");
+
+        assertThat(canvas.list(owner.userId(), source.project())).hasSize(count);
+        assertThat(failedDraft.parameters().path("generationCount").asInt()).isEqualTo(1);
+        assertThat(regenerated.input().path("generationCount").asInt()).isEqualTo(1);
+        assertThat(regenerated.input().path("canvasItemId").asText()).isEqualTo(failedItemId.toString());
+        assertThat(drafts.get(owner.userId(), source.project(), source.item()).parameters()
+                .path("generationCount").asInt()).isEqualTo(count);
+        assertThat(direct.list(owner.userId(), source.project(), source.artifact(), failedItemId)).hasSize(2);
+        assertThat(direct.run(owner.userId(), source.project(), source.artifact(), failedItemId,
+                failedDraft.version(), "regenerate-one-batch-card").id()).isEqualTo(regenerated.id());
+
+        // This class also exercises worker polling; do not leave synthetic work for another test.
+        direct.cancelQueued(owner.userId(), source.project(), regenerated.id());
+        leases.stream().filter(task -> !task.id().equals(failed.id()))
+                .forEach(task -> tasks.fail(task, workerId, "PROVIDER_REJECTED"));
+    }
+
+    @Test void selectsEverySuccessfulBatchOutputAndOverridesInheritedCountsOnExtraCards() {
+        var connection = capabilities.createConnection("Synthetic batch defaults", null);
+        ObjectNode configuration = mapper.createObjectNode();
+        configuration.putObject("defaultParameters").put("generationCount", 4);
+        var capability = capabilities.publishCapability(connection.id(), "Synthetic four image default",
+                "MOCK_IMAGE", configuration);
+        var project = projects.create(owner.userId(), "Synthetic empty batch", Project.AspectRatio.LANDSCAPE_16_9);
+        var image = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE, "Batch image", null);
+        UUID itemId = dev.agenvas.support.CanvasMediaFixture.place(canvas,
+                owner.userId(), project.id(), image.artifact().id());
+        var draft = drafts.save(owner.userId(), project.id(), itemId, 0,
+                "A red kite over a lake", mapper.createObjectNode(),
+                null, capability.id(), null, List.of(), List.of(), null);
+        direct.run(owner.userId(), project.id(), image.artifact().id(), itemId, draft.version(), "empty-batch");
+        for (int index = 0; index < 4; index++) assertThat(worker.submitOnce("synthetic-batch-success")).isEqualTo(1);
+
+        assertThat(canvas.list(owner.userId(), project.id())).hasSize(4).allSatisfy(card -> {
+            assertThat(card.selectedVersion()).isNotNull();
+            assertThat(canvas.listMediaVersions(owner.userId(), project.id(), card.item().id())).hasSize(1);
+            assertThat(card.selectedVersion().frozenInput().at("/parameters/generationCount").asInt()).isEqualTo(4);
+            assertThat(drafts.get(owner.userId(), project.id(), card.item().id()).parameters()
+                    .path("generationCount").asInt()).isEqualTo(card.item().id().equals(itemId) ? 0 : 1);
+        });
     }
 
     @Test void rejectsStaleSettingAndCapabilityBeforeCreatingAnyResult() {

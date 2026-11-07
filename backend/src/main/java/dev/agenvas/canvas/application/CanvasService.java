@@ -289,7 +289,7 @@ public class CanvasService {
 
     /**
      * Creates one task-owned output branch beside a source card while the caller holds the
-     * project-event transaction. The source draft is copied, but its tasks and connections are not.
+     * project-event transaction. Copies the source inputs with a single-output count.
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public CanvasItem forkMediaOutputWithinChange(UUID ownerId, UUID projectId,
@@ -366,7 +366,7 @@ public class CanvasService {
             // Operation inputs live in the immutable Task, not in the result node's next draft.
             mediaDrafts.initializeWithinChange(projectId, targetItemId, false);
         } else {
-            mediaDrafts.duplicateWithinChange(ownerId, projectId, sourceItemId, targetItemId,
+            mediaDrafts.duplicateBatchOutputWithinChange(ownerId, projectId, sourceItemId, targetItemId,
                     expectedSourceDraftVersion);
         }
         ObjectNode payload = objectMapper.createObjectNode();

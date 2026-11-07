@@ -334,6 +334,21 @@ public class MediaDraftService {
     public MediaDraft duplicateWithinChange(UUID ownerId, UUID projectId,
             UUID sourceCanvasItemId, UUID targetCanvasItemId,
             long expectedSourceDraftVersion) {
+        return duplicateWithinChange(ownerId, projectId, sourceCanvasItemId,
+                targetCanvasItemId, expectedSourceDraftVersion, false);
+    }
+
+    /** Additional batch cards represent one output; generating from one starts with one image. */
+    public MediaDraft duplicateBatchOutputWithinChange(UUID ownerId, UUID projectId,
+            UUID sourceCanvasItemId, UUID targetCanvasItemId,
+            long expectedSourceDraftVersion) {
+        return duplicateWithinChange(ownerId, projectId, sourceCanvasItemId,
+                targetCanvasItemId, expectedSourceDraftVersion, true);
+    }
+
+    private MediaDraft duplicateWithinChange(UUID ownerId, UUID projectId,
+            UUID sourceCanvasItemId, UUID targetCanvasItemId,
+            long expectedSourceDraftVersion, boolean singleOutput) {
         MediaDraft source = get(ownerId, projectId, sourceCanvasItemId);
         if (source.version() != expectedSourceDraftVersion) {
             throw draftConflict(ApiMessage.of("api.media-draft-service.the-source-draft-has-changed-before-copying-please-save-and"));
@@ -348,7 +363,8 @@ public class MediaDraftService {
                                         MediaDraft.SourceType.MANUAL, null))))
                 .toList();
         MediaDraft duplicate = new MediaDraft(projectId, targetCanvasItemId,
-                source.prompt(), source.parameters().deepCopy(), source.durationSeconds(),
+                source.prompt(), singleOutput ? singleOutputParameters(source.parameters(), true)
+                        : source.parameters().deepCopy(), source.durationSeconds(),
                 source.capabilityId(), source.styleId(), source.videoInputMode(), inputs,
                 List.copyOf(source.mentions()), source.displayMode(), 1, now, now);
         if (!artifacts.updateMediaDraft(duplicate, 0)) {
@@ -395,7 +411,7 @@ public class MediaDraftService {
         return restored;
     }
 
-    /** A batch result copies the accepted draft, never the user's newer working draft. */
+    /** A batch result copies the accepted inputs with a single-output count, never a newer draft. */
     public void initializeFrozenWithinChange(UUID projectId, UUID canvasItemId, Artifact.Kind kind, JsonNode frozen) {
         initializeWithinChange(projectId, canvasItemId, false);
         Instant now = clock.instant();
@@ -409,11 +425,21 @@ public class MediaDraftService {
         List<MediaDraft.PromptMention> mentions = new ArrayList<>();
         for (JsonNode mention : frozen.path("mentions")) mentions.add(new MediaDraft.PromptMention(UUID.fromString(mention.path("versionId").asText()), MediaDraft.InputRole.valueOf(mention.path("role").asText())));
         MediaDraft draft = new MediaDraft(projectId, canvasItemId, frozen.path("prompt").asText(""),
-                frozen.path("parameters").deepCopy(), kind == Artifact.Kind.VIDEO && frozen.path("durationSeconds").asInt() > 0 ? frozen.path("durationSeconds").asInt() : null,
+                singleOutputParameters(frozen.path("parameters"), false), kind == Artifact.Kind.VIDEO && frozen.path("durationSeconds").asInt() > 0 ? frozen.path("durationSeconds").asInt() : null,
                 UUID.fromString(frozen.path("capabilityId").asText()), frozenStyleId(frozen), kind == Artifact.Kind.VIDEO ? parseMode(frozen.path("mode").asText()) : null,
                 List.copyOf(inputs), List.copyOf(mentions), MediaDraft.DisplayMode.DRAFT, 1, now, now);
         if (!artifacts.updateMediaDraft(draft, 0)) throw new IllegalStateException("New batch draft update failed");
         artifacts.replaceMediaInputs(projectId, canvasItemId, inputs, now);
+    }
+
+    private JsonNode singleOutputParameters(JsonNode parameters, boolean imageBatch) {
+        JsonNode copy = parameters.deepCopy();
+        // Only application-split image batches use this field. Preserve native/workflow controls.
+        // An explicit 1 also overrides a batch count inherited from capability defaults.
+        if (copy instanceof ObjectNode object && (imageBatch || object.has("generationCount"))) {
+            object.put("generationCount", 1);
+        }
+        return copy;
     }
 
     /** Adds one connection source without duplicating an already selected exact version. */
