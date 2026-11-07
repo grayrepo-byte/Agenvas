@@ -4196,6 +4196,7 @@ paths:
     post:
       operationId: runMediaDraft
       summary: 固定已保存的媒体草稿，首个输出为当前节点追加版本，其余输出使用独立节点并受理 USER_DIRECT Task
+      description: 用户显式提交当前已保存草稿。节点存在未取消的直连 UNKNOWN（无外部请求 ID）或已受理 BLOCKED 时，按当前模型、参数和素材创建独立新任务及用量预留，原任务状态、请求与费用记录保留，并原子记录替代关系；不会复制原任务输入或恢复原请求查询。其他占用仍返回已有任务，Agent 和 MCP 不借此替代未知任务。同键重放返回已受理任务，不重新生成。
       tags: [Tasks]
       parameters:
         - name: Idempotency-Key

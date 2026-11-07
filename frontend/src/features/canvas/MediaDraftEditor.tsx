@@ -59,11 +59,10 @@ import { WorkflowMediaInputs, WorkflowParametersDialog } from "./WorkflowDraftCo
 import { MediaReferenceSourceMenu } from "./MediaReferenceSourceMenu";
 import { activeWorkflowMediaFields, workflowDefinition, workflowDraftValues } from "./workflowDraft";
 import { EditorFeedbackRow } from "./EditorFeedbackRow";
-import { UnknownTaskRetryPanel } from "./UnknownTaskRetryPanel";
 import { VoiceLibrary } from "./VoiceLibrary";
 import { readContentText } from "./artifactContent";
 import { fieldsFromMediaDraft, useMediaDraftSession, useMediaDraftSessionLifecycle } from "./useMediaDraftSession";
-import { MEDIA_TASK_REFRESH_INTERVAL_MS,latestMediaTask,occupiesMediaCard,isMediaTaskRunning,isVideoCompositionTask,isAudioTrimTask } from "./mediaTaskState";
+import { MEDIA_TASK_REFRESH_INTERVAL_MS,latestMediaTask,occupiesMediaCard,canRegenerateMediaTask,isMediaTaskRunning,isVideoCompositionTask,isAudioTrimTask } from "./mediaTaskState";
 import { taskErrorDetail } from "./taskErrorMessages";
 import { getVoiceDisplayName, VOICES } from "./voiceCatalog";
 import { ASPECT_RATIO_OPTIONS, VIDEO_ASPECT_RATIO_OPTIONS, RESOLUTION_OPTIONS, QUALITY_OPTIONS,
@@ -466,8 +465,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       ]);
     },
   });
-  // Card-scoped history includes approved Agent work. Unknown outcomes keep their
-  // explicit retry controls; active requests lock edits through local archival.
+  // Card-scoped history includes approved Agent work. Active requests lock edits
+  // through local archival; unresolved direct requests allow an explicit new generation.
   const editorReadOnly = !isAudio && (run.isPending || !directTasks.isSuccess
     || Boolean(directTasks.data?.some(isMediaTaskRunning)));
   useEffect(() => {
@@ -635,7 +634,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         && (chosenCapability?.supportsEndFrame || !endFrame)
       : effectiveMode === "GENERAL_REFERENCE" ? fields.mediaInputs.length > 0 && withinCapacity
         && (chosenCapability?.adapterId !== "ARK_SEEDANCE_2_I2V" || imageCount + videoCount > 0) : false;
-  const occupied = latestTask ? occupiesMediaCard(latestTask) : false;
+  const occupied = latestTask ? occupiesMediaCard(latestTask) && !canRegenerateMediaTask(latestTask) : false;
   const duration = mediaDraftDuration(fields, chosenCapability, workflow);
   const validDuration = duration != null && Number.isInteger(duration)
     && duration >= Math.max(MIN_VIDEO_SECONDS, chosenCapability?.minimumSeconds ?? MIN_VIDEO_SECONDS)
@@ -1557,10 +1556,10 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         ? t("media.editor.queuePosition", { "0": queue.data.waitingAhead, "1": QUEUE_LABELS[queue.data.reason] })
         : t("tasks.status.queued")}</EditorFeedbackRow> : null}
       {cancel.error ? <EditorFeedbackRow tone="danger">{t("media.editor.cancelFailed", { "0": cancel.error.message })}</EditorFeedbackRow> : null}
-      {latestTask && (latestTask.status === "UNKNOWN" || latestTask.status === "BLOCKED" && Boolean(latestTask.providerRequestId))
-        ? latestTask.runId === null ? <UnknownTaskRetryPanel compact errorCode={latestTask.errorCode} providerFailure={latestTask.output?.providerFailure} taskStatus={latestTask.status}
-        projectId={artifact.projectId} taskId={latestTask.id} taskVersion={latestTask.version} />
-        : <EditorFeedbackRow tone="warning">{t("tasks.status.unknown")}</EditorFeedbackRow> : null}
+      {latestTask?.status === "UNKNOWN" ? <EditorFeedbackRow tone="warning" title={t("tasks.status.unknown")}>
+        {taskErrorDetail(latestTask.errorCode, latestTask.output?.providerFailure).replace(/^ · /, "")}
+        {canRegenerateMediaTask(latestTask) ? <> {t("media.editor.regenerateUnknownHint")}</> : null}
+      </EditorFeedbackRow> : null}
       {error ? <EditorFeedbackRow tone="danger" action={
         <Button variant="ghost" size="xs" disabled={editorReadOnly} onClick={() => void retry()} type="button">
           {error instanceof ApiError && error.status === HTTP_STATUS.CONFLICT ? t("media.editor.refreshVersion")

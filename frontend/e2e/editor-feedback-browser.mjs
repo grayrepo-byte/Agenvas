@@ -103,7 +103,7 @@ try {
   const baseUrl = server.resolvedUrls.local[0];
   for (const viewport of viewports) {
     await cdp("Emulation.setDeviceMetricsOverride", { ...viewport, deviceScaleFactor: 1, mobile: false });
-    for (const state of ["UNKNOWN", "UNKNOWN&longError", "READY", "FAILED", "BLOCKED", "RUNNING"]) {
+    for (const state of ["UNKNOWN", "UNKNOWN&longError", "READY", "FAILED", "BLOCKED", "BLOCKED&accepted", "RUNNING"]) {
       await cdp("Page.navigate", { url: new URL(`${route}?openai&task=${state}`, baseUrl).href });
       await waitFor(() => Boolean(document.querySelector(".editor-feedback-row")));
       // Wait for task queries, rather than measuring the initial loading row.
@@ -115,6 +115,7 @@ try {
         return { text: feedback.innerText, height: feedback.clientHeight, scrollHeight: feedback.scrollHeight,
           width: feedback.clientWidth, scrollWidth: feedback.scrollWidth,
           editorBottom: editor.getBoundingClientRect().bottom,
+          generateDisabled: editor.querySelector(".media-draft-run").disabled,
           nestedCard: Boolean(feedback.querySelector(".agent-chat-panel")),
           rows: rows.map(row => ({ width: row.getBoundingClientRect().width, height: row.getBoundingClientRect().height,
             border: getComputedStyle(row).borderTopWidth, background: getComputedStyle(row).backgroundColor })),
@@ -141,12 +142,16 @@ try {
       }
       if (state === "UNKNOWN") {
         assert.ok(layout.text.includes("提交结果未确认，需人工核对"));
+        assert.ok(layout.text.includes("原请求可能仍会生成并计费"));
         if (viewport.width >= 1440) {
-          assert.ok(layout.rows[0].height <= 24 && layout.height <= 36, `Short unknown result fits a single row: ${JSON.stringify(layout)}`);
-          assert.ok(layout.rows[0].width < layout.width * 0.8, "Status hugs its content");
+          assert.ok(layout.rows[0].height <= 64, `Unknown result stays compact: ${JSON.stringify(layout)}`);
         }
-        assert.equal(layout.buttons[0].label, "重试");
       }
+      if (state.startsWith("UNKNOWN") || state.startsWith("BLOCKED") || state === "FAILED") {
+        assert.equal(layout.buttons.length, 0, "Generation outcomes show text without a separate retry");
+        assert.equal(layout.generateDisabled, false, "The main generation button accepts the current draft");
+      }
+      if (state === "READY" || state === "RUNNING") assert.equal(layout.generateDisabled, true);
       if (state === "READY") assert.equal(layout.buttons[0].label, "取消排队");
       for (const button of layout.buttons) {
         assert.equal(button.height, 24);
@@ -154,7 +159,7 @@ try {
       }
     }
   }
-  console.log("Editor feedback layout passed: UNKNOWN / long reason / READY / FAILED / BLOCKED / RUNNING, four viewports, compact actions and no nested cards or unnecessary scrollbars; synthetic only");
+  console.log("Editor feedback layout passed: UNKNOWN / long reason / READY / FAILED / BLOCKED / accepted BLOCKED / RUNNING, four viewports, current-draft generation and text-only outcomes; synthetic only");
 
 } finally {
   socket?.close();

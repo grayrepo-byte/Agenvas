@@ -1235,7 +1235,7 @@ describe("MediaCanvasCard", () => {
     ])));
     showCard();
     expect(await screen.findByText("结果未知")).toBeInTheDocument();
-    expect(screen.queryByText("可在编辑区重试")).not.toBeInTheDocument();
+    expect(screen.queryByText("可在编辑区重新生成")).not.toBeInTheDocument();
     expect(screen.queryByText("正在生成")).not.toBeInTheDocument();
   });
 
@@ -1263,7 +1263,7 @@ describe("MediaCanvasCard", () => {
     ])));
     showCard();
     expect(await screen.findByText("结果未知")).toBeInTheDocument();
-    expect(screen.getByText("可在编辑区重试")).toBeInTheDocument();
+    expect(screen.getByText("可在编辑区重新生成")).toBeInTheDocument();
     expect(screen.queryByText("正在生成")).not.toBeInTheDocument();
   });
 
