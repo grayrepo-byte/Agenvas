@@ -483,7 +483,7 @@
   "image.reversePrompt.copy": "复制提示词",
   "image.reversePrompt.copyFailed": "复制失败。可选择提示词后手动复制。",
   "image.reversePrompt.failed": "提示词反推未完成，请重新反推。",
-  "image.reversePrompt.hint": "使用后台文字模型分析此版本的原图（PNG/JPEG/WebP，最多 10 MiB）。模型须支持图片理解，调用可能产生费用；供应商还可能有更严格的限制。成功后自动生成画布文字卡片，可在卡片中编辑。",
+  "image.reversePrompt.hint": "使用后台文字模型分析当前原图（PNG/JPEG/WebP，最多 10 MiB），直接生成派生文字节点并与图片连线。模型须支持图片理解，调用可能产生费用；供应商还可能有更严格的限制。",
   "image.reversePrompt.inputTooLarge": "原图超过反推的 10 MiB 上限。请选择较小的原图；系统不会自动缩图。",
   "image.reversePrompt.inputUnsupported": "反推支持 PNG、JPEG 和 WebP 原图。暂不支持 GIF，请先明确导出要分析的静态图片。",
   "image.reversePrompt.inputUnavailable": "无法读取完整原图。请检查素材存储后重新反推。",

@@ -483,7 +483,7 @@
   "image.reversePrompt.copy": "プロンプトをコピー",
   "image.reversePrompt.copyFailed": "コピーできませんでした。プロンプトを選択して手動でコピーしてください。",
   "image.reversePrompt.failed": "推定に失敗しました。再推定してください。",
-  "image.reversePrompt.hint": "設定済みのテキストモデルでこのバージョンの元画像を分析します（PNG/JPEG/WebP、最大 10 MiB）。画像理解への対応が必要で、料金が発生する場合があります。プロバイダーの制限がさらに厳しい場合があります。成功するとキャンバスにテキストカードが自動作成され、カードで編集できます。",
+  "image.reversePrompt.hint": "設定済みテキストモデルで現在の元画像（PNG/JPEG/WebP、最大 10 MiB）を分析し、画像に接続した派生テキストノードを作成します。画像理解への対応が必要です。料金が発生する場合があり、プロバイダーの制限がさらに厳しい場合があります。",
   "image.reversePrompt.inputTooLarge": "元画像が推定の上限 10 MiB を超えています。小さい元画像を選択してください。自動縮小は行いません。",
   "image.reversePrompt.inputUnsupported": "推定は PNG、JPEG、WebP の元画像に対応しています。GIF には対応していません。分析する静止画を明示的に書き出してください。",
   "image.reversePrompt.inputUnavailable": "元画像全体を読み込めませんでした。素材ストレージを確認してから再推定してください。",

@@ -9,7 +9,6 @@ import { afterEach,beforeEach,describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { CanvasEditRequest,CanvasItem,MediaDraft,ProjectSnapshot,SaveMediaDraftRequest } from "../../shared/api/client";
 import { server } from "../../test/server";
-import { imageFunctionsFixture } from "../../test/imageFunctionsFixture";
 import { CANVAS_POINTER_THRESHOLD } from "./canvasInteraction";
 import { canvasGroupNodeId } from "./canvasGroups";
 import { CANVAS_SELECTION_MODE,useCanvasStore } from "./canvasStore";
@@ -1005,44 +1004,6 @@ describe("workspace selection with real React Flow", () => {
     expect(useCanvasStore.getState().selectionMode).toBe(CANVAS_SELECTION_MODE.MULTIPLE);
     expect(screen.getByRole("group", { name: "批量操作" })).toBeVisible();
     expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
-  });
-
-  it("reveals a reverse-prompt result inside a collapsed group before selecting it", async () => {
-    const grouped = items.map((item) => ({ ...item, groupId: item.id === "text-card" ? "result-group" : null,
-      ...(item.id === "image-card" ? { selectedVersionId: imageVersionId, selectedVersion: item.artifact?.resourceDefaultVersion ?? null } : {}) }));
-    let collapsed = true, writes = 0;
-    const groups = () => [{ id: "result-group", projectId: "project-1", name: "反推结果组", collapsed, version: collapsed ? 0 : 1 }];
-    server.use(
-      http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({ ...snapshot(), canvas: { items: grouped } })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: grouped })),
-      http.get("/api/v1/projects/:projectId/canvas/editor", () => HttpResponse.json({ items: grouped, groups: groups() })),
-      http.post("/api/v1/projects/:projectId/canvas/edits", async ({ request }) => {
-        const input = await request.json() as CanvasEditRequest;
-        expect(input).toMatchObject({ operation: "GROUP", groupChanges: [{ type: "UPSERT", groupId: "result-group", expectedVersion: 0, collapsed: false }] });
-        writes++; collapsed = false;
-        return HttpResponse.json({ items: grouped, groups: groups(), receipt: { id: input.commandId, operation: input.operation, revision: 0, state: "APPLIED" } });
-      }));
-    renderRealFlow = true;
-    await renderFlow(items.length + 1);
-    await waitFor(() => expect(nodeElement("text-card")).not.toBeVisible());
-    server.use(http.get("/api/v1/settings/media-functions", () => HttpResponse.json(imageFunctionsFixture())),
-      http.get("/api/v1/projects/project-1/artifacts/image-id/image-prompts", () => HttpResponse.json([{
-      id: "synthetic-reverse", projectId: "project-1", runId: null, stepKey: "reverse", kind: "TEXT_GENERATION", status: "SUCCEEDED",
-      cancelRequested: false, input: { schemaVersion: 5, purpose: "IMAGE_REVERSE_PROMPT", sourceVersionId: imageVersionId },
-      output: { prompt: "Saved prompt", mock: false, artifactId: "text-id", canvasItemId: "text-card" },
-      attemptNo: 1, nextActionAt: now, version: 2, createdAt: now, updatedAt: now,
-    }])));
-    act(() => useCanvasStore.getState().setSelectedIds(["image-card"]));
-    const reverse = await screen.findByRole("button", { name: "提示词反推" });
-    await waitFor(() => expect(reverse).toBeEnabled()); fireEvent.click(reverse);
-    fireEvent.click(await screen.findByRole("button", { name: "查看文字卡片" }));
-    await waitFor(() => expect(nodeElement("text-card")).toBeVisible());
-    await waitFor(() => expect(nodeElement("text-card")).toHaveClass("selected"));
-    expect(selectedIds()).toEqual(["text-card"]); expect(writes).toBe(1);
-    await waitFor(() => expect(focusProbe.fit).toHaveBeenCalledWith(expect.objectContaining({ nodes: [{ id: "text-card" }] })));
-    act(() => useCanvasStore.getState().setSelectedIds(["image-card"]));
-    await screen.findByRole("button", { name: "提示词反推" });
-    expect(screen.queryByRole("dialog", { name: "提示词反推" })).not.toBeInTheDocument();
   });
 
   it.each([false, true])("selects grouped nodes once with collapsed=%s and includes locked/offscreen cards", async (collapsed) => {

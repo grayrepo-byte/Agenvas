@@ -4314,7 +4314,7 @@ paths:
     post:
       operationId: runImagePrompt
       summary: 固定选用图片版本、语言、功能提示词与文字模型，受理提示词反推任务
-      description: 使用 TEXT_GENERATION Task 的 IMAGE_REVERSE_PROMPT 用途与输入 schema 5；成功后在同一租约及取消屏障事务中创建独立 TEXT 产物、不可变 TASK 版本和画布文字卡片，不修改媒体草稿或来源选用结果。校验来源节点 CAS 与精确版本归属，固定 image.reverse-prompt 正文与版本。相同键同请求重放，不重新读取配置；同节点有其他命令的活动任务时返回 409，不创建重复任务。Worker 发送固定版本的归档原图，关闭自动工具执行。成功 output 返回 prompt、sourceVersionId、mock、artifactId、artifactVersionId 和 canvasItemId（项目已删除时不创建节点并省略 canvasItemId）。标题冻结为请求语言，Mock 卡片标题明确标记。重复命令、查询和检查点恢复不会重复建卡；发布失败保留响应检查点，租约恢复只重试发布。历史 schema 3 继续只返回原反推文本，不自动补卡。Mock 明确标记为演示；真实模型须支持图片理解。沿用任务租约、公开状态事件、查询、取消、用量与响应检查点恢复。
+      description: 使用 TEXT_GENERATION Task 的 IMAGE_REVERSE_PROMPT 用途与输入 schema 5；成功后在同一租约及取消屏障事务中创建独立 TEXT 产物、不可变 TASK 版本、来源图片右侧避碰的文字卡片及固定受理图片版本的 MEDIA_DERIVATION 连线，沿用来源当前分组，不修改媒体草稿或来源选用结果。来源移除时保留普通独立文字节点，不补建来源或悬空连线；项目归档不丢弃已受理结果。校验来源节点 CAS 与精确版本归属，固定 image.reverse-prompt 正文与版本。相同键同请求重放，不重新读取配置；同节点有其他命令的活动任务时返回 409，不创建重复任务。Worker 发送固定版本的归档原图，关闭自动工具执行。成功 output 返回 prompt、sourceVersionId、mock、artifactId、artifactVersionId 和 canvasItemId（项目已删除时不创建节点并省略 canvasItemId）。标题冻结为请求语言，Mock 卡片标题明确标记。重复命令、查询和检查点恢复不会重复建卡或连线；卡片或连线发布失败整体回滚，保留响应检查点，租约恢复只重试发布。历史 schema 3 继续只返回原反推文本，不自动补卡。Mock 明确标记为演示；真实模型须支持图片理解。沿用任务租约、公开状态事件、查询、取消、用量与响应检查点恢复。
       tags: [Tasks]
       parameters:
         - name: Idempotency-Key

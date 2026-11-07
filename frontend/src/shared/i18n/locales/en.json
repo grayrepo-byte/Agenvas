@@ -483,7 +483,7 @@
   "image.reversePrompt.copy": "Copy prompt",
   "image.reversePrompt.copyFailed": "Copy failed. Select the prompt and copy it manually.",
   "image.reversePrompt.failed": "Prompt inference failed. Please infer again.",
-  "image.reversePrompt.hint": "Analyze this version’s original image with the configured text model (PNG/JPEG/WebP, up to 10 MiB). The model must support image understanding and may charge for the call; provider limits may be stricter. A successful result creates a text card on the canvas, where you can edit it.",
+  "image.reversePrompt.hint": "Analyze the current original image (PNG/JPEG/WebP, up to 10 MiB) with the configured text model, creating a derived text node connected to the image. The model must support image understanding; charges and stricter provider limits may apply.",
   "image.reversePrompt.inputTooLarge": "The original exceeds the 10 MiB inference limit. Select a smaller original; images are never resized automatically.",
   "image.reversePrompt.inputUnsupported": "Inference supports original PNG, JPEG and WebP images. GIF is not supported; explicitly export a still image to analyze first.",
   "image.reversePrompt.inputUnavailable": "The complete original could not be read. Check asset storage before inferring again.",

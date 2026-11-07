@@ -168,6 +168,29 @@ public class CanvasConnectionService {
         return connection;
     }
 
+    /** A newly published text result records the task's image version, even after the source changes selection.
+     * The caller owns the project lock, fresh target and task lease fence; this does not create a media input.
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public CanvasConnection createImagePromptDerivationWithinChange(UUID ownerId, UUID projectId,
+            UUID sourceItemId, UUID targetItemId, UUID sourceVersionId) {
+        projects.getRetainedProject(ownerId, projectId);
+        CanvasItem source = canvasItems.requireArtifactItem(ownerId, projectId, sourceItemId);
+        CanvasItem target = canvasItems.requireArtifactItem(ownerId, projectId, targetItemId);
+        if (artifacts.get(ownerId, projectId, source.subjectId()).artifact().kind() != Artifact.Kind.IMAGE
+                || artifacts.get(ownerId, projectId, target.subjectId()).artifact().kind() != Artifact.Kind.TEXT) {
+            throw new IllegalArgumentException("Expected an image source and a new text result");
+        }
+        artifacts.requireVersion(ownerId, projectId, source.subjectId(), sourceVersionId);
+        Instant now = clock.instant();
+        CanvasConnection connection = new CanvasConnection(UUID.randomUUID(), projectId,
+                sourceItemId, targetItemId, CanvasConnection.RelationType.MEDIA_DERIVATION,
+                sourceVersionId, 0, now, now);
+        connections.create(connection);
+        events.append(ownerId, projectId, connectionEvent(connection, "canvas.connection.created"));
+        return connection;
+    }
+
     @Transactional
     public ConnectionResult disconnect(UUID ownerId, UUID projectId, UUID connectionId,
             Long expectedTargetDraftVersion) {

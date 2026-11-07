@@ -5,11 +5,11 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import type { Task } from "../../shared/api/client";
 import { server } from "../../test/server";
-import { ImageReversePromptDialog } from "./ImageReversePromptDialog";
+import { useImageReversePrompt } from "./useImageReversePrompt";
 import { VideoPromptOptimizationDialog } from "./VideoPromptOptimizationDialog";
 
 const configurations = [
-  { kind: "image", path: "/api/v1/projects/p/artifacts/a/image-prompts", key: ["image-prompt-tasks", "p", "i"], start: "开始反推", again: "重新反推", result: "反推提示词" },
+  { kind: "image", path: "/api/v1/projects/p/artifacts/a/image-prompts", key: ["image-prompt-tasks", "p", "i"], start: "提示词反推", again: "排队中", result: "反推提示词" },
   { kind: "video", path: "/api/v1/projects/p/canvas-items/i/video-prompt-optimizations", key: ["video-prompt-tasks", "p", "i"], start: "开始优化", again: "重新优化", result: "优化结果" },
 ] as const;
 type Configuration = typeof configurations[number];
@@ -18,12 +18,17 @@ function task(config: Configuration, changes: Partial<Task> = {}): Task {
     input: config.kind === "image" ? { sourceVersionId: "v", purpose: "IMAGE_REVERSE_PROMPT" } : { prompt: "Synthetic original", purpose: "VIDEO_PROMPT_OPTIMIZATION" },
     output: null, attemptNo: 1, version: 1, nextActionAt: "2026-11-04T00:00:00Z", createdAt: "2026-11-04T00:00:00Z", updatedAt: "2026-11-04T00:00:00Z", ...changes };
 }
+function ImageAction() {
+  const action = useImageReversePrompt({ projectId: "p", artifactId: "a", canvasItemId: "i",
+    request: { canvasItemId: "i", sourceVersionId: "v", expectedCanvasItemVersion: 1 }, enabled: true });
+  return <>{action.controls}{action.feedback}</>;
+}
 function show(config: Configuration) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity }, mutations: { retry: false } } });
   server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
     http.get("/api/v1/skills", () => HttpResponse.json({ items: [], nextCursor: null, total: 0 })));
   render(<QueryClientProvider client={client}>{config.kind === "image"
-    ? <ImageReversePromptDialog projectId="p" artifactId="a" title="Synthetic image" assetId="asset" request={{ canvasItemId: "i", sourceVersionId: "v", expectedCanvasItemVersion: 1 }} open onClose={() => {}} />
+    ? <ImageAction />
     : <VideoPromptOptimizationDialog projectId="p" canvasItemId="i" prompt="Synthetic original" maxLength={20000} onApply={() => true} onClose={() => {}} />}</QueryClientProvider>);
   return client;
 }
@@ -55,10 +60,12 @@ describe.each(configurations)("$kind prompt task acknowledgements", (config) => 
     await waitFor(() => expect(start).toBeEnabled()); await userEvent.click(start);
     await waitFor(() => expect(writes).toBe(1));
     act(() => { client.setQueryData(config.key, [task(config, { status: "SUCCEEDED", version: 3, output: { prompt: "Completed synthetic result", mock: false } })]); });
-    const result = await screen.findByRole("textbox", { name: config.result });
-    fireEvent.change(result, { target: { value: "User edited result" } });
+    if (config.kind === "video") {
+      const result = await screen.findByRole("textbox", { name: config.result });
+      fireEvent.change(result, { target: { value: "User edited result" } });
+    }
     await act(async () => release()); await waitFor(() => expect(client.isMutating()).toBe(0));
-    expect(screen.getByRole("textbox", { name: config.result })).toHaveValue("User edited result");
+    if (config.kind === "video") expect(screen.getByRole("textbox", { name: config.result })).toHaveValue("User edited result");
     expect(client.getQueryData<Task[]>(config.key)?.[0]?.version).toBe(3); expect(writes).toBe(1);
   });
 
@@ -77,9 +84,9 @@ describe.each(configurations)("$kind prompt task acknowledgements", (config) => 
     await waitFor(() => expect(start).toBeEnabled()); await userEvent.click(start); await waitFor(() => expect(writes).toBe(1));
     const newer = task(config, { id: newId, status: "SUCCEEDED", version: 4, createdAt: newTime, output: { prompt: "Newer result", mock: false } });
     act(() => { client.setQueryData(config.key, includeOld ? [newer, old] : [newer]); });
-    await screen.findByDisplayValue("Newer result");
+    if (config.kind === "video") await screen.findByDisplayValue("Newer result");
     await act(async () => release()); await waitFor(() => expect(client.isMutating()).toBe(0));
-    expect(screen.getByRole("textbox", { name: config.result })).toHaveValue("Newer result");
+    if (config.kind === "video") expect(screen.getByRole("textbox", { name: config.result })).toHaveValue("Newer result");
     expect(client.getQueryData<Task[]>(config.key)?.map((entry) => entry.id)).toEqual([newId, oldId]);
   });
 
@@ -95,7 +102,7 @@ describe.each(configurations)("$kind prompt task acknowledgements", (config) => 
     act(() => { client.setQueryData(config.key, [newer, canceled]); });
     await act(async () => release()); await waitFor(() => expect(client.isMutating()).toBe(0));
     await screen.findByRole("alert");
-    expect(screen.getByRole("textbox", { name: config.result })).toHaveValue("Newer completed task");
+    if (config.kind === "video") expect(screen.getByRole("textbox", { name: config.result })).toHaveValue("Newer completed task");
     expect(client.getQueryData<Task[]>(config.key)?.map((entry) => entry.id)).toEqual(["task-two", "task-one"]);
     expect(cancels).toBe(1);
   });
