@@ -8,18 +8,19 @@ const input = (patch: Partial<CanvasEditorViewportInput> = {}): CanvasEditorView
 });
 
 describe("calculateCanvasEditorViewport", () => {
-  it("keeps the current zoom and geometric center when the editor fits below the node", () => {
-    expect(calculateCanvasEditorViewport(input())).toEqual({ zoom: 1, centerOffsetY: 0 });
+  it("keeps the current zoom and leaves more editor space by focusing in the upper third", () => {
+    expect(calculateCanvasEditorViewport(input())).toEqual({ zoom: 1, centerOffsetY: 150 });
   });
 
   it("moves the node upward at 720px without zooming when that leaves room for the editor", () => {
     const options = input({ canvas: { width: 1280, height: 720 } });
     const result = calculateCanvasEditorViewport(options);
-    expect(result).toEqual({ zoom: 1, centerOffsetY: 27 });
+    expect(result).toEqual({ zoom: 1, centerOffsetY: 120 });
     const nodeCenterY = options.canvas.height / 2 - result.centerOffsetY * result.zoom;
     const editorBottom = nodeCenterY + options.nodeSize.height * result.zoom / 2
       + options.editorGap + options.editorHeight;
-    expect(editorBottom).toBe(options.canvas.height - options.margin);
+    expect(nodeCenterY).toBe(240);
+    expect(editorBottom).toBeLessThan(options.canvas.height - options.margin);
   });
 
   it("zooms a tall node out in a 600px canvas so the toolbar, node and editor all fit", () => {
@@ -39,12 +40,20 @@ describe("calculateCanvasEditorViewport", () => {
     const result = calculateCanvasEditorViewport(options);
     expect(result.zoom).toBeCloseTo(0.368);
     expect(result.zoom * options.nodeSize.width).toBeCloseTo(options.canvas.width - options.margin * 2);
-    expect(result.centerOffsetY).toBe(0);
+    expect(options.canvas.height / 2 - result.centerOffsetY * result.zoom).toBeCloseTo(300);
   });
 
   it("preserves an already smaller zoom instead of enlarging the node", () => {
     expect(calculateCanvasEditorViewport(input({ currentZoom: 0.5 })))
-      .toEqual({ zoom: 0.5, centerOffsetY: 0 });
+      .toEqual({ zoom: 0.5, centerOffsetY: 300 });
+  });
+
+  it("keeps a tall media node's toolbar visible while preserving the current zoom", () => {
+    const options = input({ nodeSize: { width: 420, height: 600 }, editorHeight: 0, editorGap: 0, minZoom: 1 });
+    const result = calculateCanvasEditorViewport(options);
+    expect(result).toEqual({ zoom: 1, centerOffsetY: 86 });
+    const nodeTop = options.canvas.height / 2 - result.centerOffsetY * result.zoom - 300;
+    expect(nodeTop - options.topToolbarSpace).toBe(options.margin);
   });
 
   it.each([

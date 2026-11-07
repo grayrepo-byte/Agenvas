@@ -81,7 +81,8 @@ if (options.has("hand-drag")) {
 if (options.has("editor-close")) items = (["IMAGE", "VIDEO", "AUDIO", "TEXT"] as const).map((kind, index) => {
   const item = textItem(index);
   const media = kind !== "TEXT";
-  return { ...item, x: index * 700, y: 0, width: 420, height: 180,
+  return { ...item, x: index * 700, y: 0, width: 420,
+    height: options.has("editor-focus") && kind === "IMAGE" ? 640 : 180,
     title: `SYNTHETIC ${kind}`, selectedVersion: media ? null : item.selectedVersion,
     selectedVersionId: media ? null : item.selectedVersionId,
     artifact: { ...item.artifact, kind, resourceDefaultVersion: media ? null : item.artifact.resourceDefaultVersion,

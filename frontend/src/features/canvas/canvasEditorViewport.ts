@@ -10,7 +10,8 @@ export type CanvasEditorViewportInput = {
 };
 
 /** Reserve screen space for a node's toolbar and editor without changing its layout.
- * Keep the user's zoom when possible, then move the node only as far upward as needed.
+ * Prefer the upper third of the canvas, leaving more room for the editor below.
+ * Keep the user's zoom when possible and leave room for the toolbar above tall nodes.
  * Add centerOffsetY to the node's world-space center when calling React Flow's setCenter.
  */
 export function calculateCanvasEditorViewport({
@@ -27,6 +28,6 @@ export function calculateCanvasEditorViewport({
   const bottomLimit = canvas.height - margin - editorHeight - editorGap - halfNodeHeight;
   // At minZoom the full stack may still not fit. Keep the editor's scrolling fallback
   // instead of moving the node below the canvas center to satisfy the top boundary.
-  const targetY = Math.min(canvasCenterY, Math.max(topLimit, Math.min(canvasCenterY, bottomLimit)));
+  const targetY = Math.min(canvasCenterY, Math.max(topLimit, Math.min(canvas.height / 3, bottomLimit)));
   return { zoom, centerOffsetY: (canvasCenterY - targetY) / zoom };
 }
