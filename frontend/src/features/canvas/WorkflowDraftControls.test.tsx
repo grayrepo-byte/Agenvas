@@ -45,6 +45,15 @@ function ValuesHarness({ dialog = false, initialValues = {} }: { dialog?: boolea
 }
 
 describe("WorkflowMediaInputs", () => {
+  it("shows fields enabled by the combined public prompt while keeping local prompt controls separate", () => {
+    const conditional = { ...definition, fields: [definition.fields[0]!, {
+      key: "detail", label: "Detail", type: "STRING" as const, required: true, advanced: false,
+      nodeId: "2", fieldName: "text", enabledWhen: { field: "prompt", value: "Shared\n\nLocal" },
+    }] };
+    render(<WorkflowParameterFields definition={conditional} values={{}} prompt="Local" durationSeconds={null}
+      composePrompt={(local) => `Shared\n\n${local}`} onChange={() => {}} />);
+    expect(screen.getByRole("textbox", { name: /^Detail/ })).toBeInTheDocument();
+  });
   it.each(["VIDEO", "AUDIO"] as const)("omits the image catalog from an opted-in %s workflow slot", async (kind) => {
     const field: CreatorInputField = { key: "source", label: "测试槽位", type: kind, required: false, advanced: false };
     render(<WorkflowMediaInputs catalogEnabled definition={{ fields: [field] }} values={{ source: "saved-version" }} prompt="" durationSeconds={null}

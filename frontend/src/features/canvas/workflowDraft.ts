@@ -5,8 +5,8 @@ import { evaluateWorkflowFields, isWorkflowMediaField, type WorkflowValue } from
 
 /** Keep published ordering and apply the same effective values used for submission. */
 export function activeWorkflowMediaFields(definition: CreatorInputDefinition, values: Record<string, WorkflowValue>,
-  prompt: string, durationSeconds: number | null | undefined): CreatorInputField[] {
-  return evaluateWorkflowFields(definition, values, prompt, durationSeconds).activeFields.filter(isWorkflowMediaField);
+  prompt: string, durationSeconds: number | null | undefined, composePrompt?: (local: string) => string): CreatorInputField[] {
+  return evaluateWorkflowFields(definition, values, prompt, durationSeconds, composePrompt).activeFields.filter(isWorkflowMediaField);
 }
 
 /** The public Comfy summary contains declared inputs only; the graph stays on the server. */

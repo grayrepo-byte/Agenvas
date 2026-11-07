@@ -90,7 +90,7 @@ import { CANVAS_POINTER_THRESHOLD,useCanvasInteraction } from "./canvasInteracti
 import { arrangeCanvas,CANVAS_ARRANGE_GAP } from "./arrangeCanvas";
 import {
 canvasConnectionForEdge,
-isCanvasConnectionValid,mediaInputConnection,mediaInputSource,projectCanvasRelations,
+isCanvasConnectionValid,mediaInputConnection,canvasInputSource,promptInputConnection,projectCanvasRelations,
 } from "./canvasRelations";
 import { CANVAS_SELECTION_MODE,useCanvasStore } from "./canvasStore";
 import { CANVAS_MAX_SIZE,imageNodeResizeBounds,projectImageNodeSize } from "./imageNodeLayout";
@@ -119,7 +119,7 @@ type CreationKind = "TEXT" | "IMAGE" | "VIDEO" | "AUDIO";
 type CreationPoint = { x: number; y: number; groupId?: string };
 type UploadIntent = { file: File; point: CreationPoint; title: string; createKey: string; itemId: string;
   zIndex: number; assetId?: string; artifactId?: string };
-type ConnectionSource = NonNullable<ReturnType<typeof mediaInputSource>>;
+type ConnectionSource = NonNullable<ReturnType<typeof canvasInputSource>>;
 type CreationMenu = { x: number; y: number; point: CreationPoint; centerAtPoint: boolean;
   /** undefined is ordinary creation; null is a gesture without a usable media result. */
   connectionSource?: ConnectionSource | null };
@@ -600,9 +600,14 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       // Creation updates the cache before React renders again; resolve its new target
       // from the confirmed projection rather than the previous render's item list.
       const items = queryClient.getQueryData<Canvas>(["canvas", projectId])?.items ?? [];
-      const media = mediaInputConnection(items, connection);
+      const prompt = promptInputConnection(items, connection);
+      const media = prompt ?? mediaInputConnection(items, connection);
       if (!media || (connection.sourceVersionId && media.sourceVersionId !== connection.sourceVersionId))
         throw new CanvasConnectionError(t("canvas.workspace.unsupportedConnection"));
+      if (prompt && !connection.initialModel) {
+        await createCanvasConnection(projectId, { ...prompt, relationType: "PROMPT_INPUT" });
+        return;
+      }
       let targetDraft = await getMediaDraft(projectId, media.targetCanvasItemId);
       // Initialize only the new, untouched draft. Retries keep confirmed saves and later user edits.
       if (connection.initialModel && targetDraft.version === 0 && targetDraft.mediaInputs.length === 0) {
@@ -611,8 +616,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         });
         queryClient.setQueryData(["media-draft", projectId, media.targetCanvasItemId], targetDraft);
       }
-      await createCanvasConnection(projectId, { ...media, relationType: "MEDIA_INPUT",
-        expectedTargetDraftVersion: targetDraft.version });
+      await createCanvasConnection(projectId, { ...media, relationType: prompt ? "PROMPT_INPUT" : "MEDIA_INPUT",
+        ...(prompt ? {} : { expectedTargetDraftVersion: targetDraft.version }) });
     },
     ...canvasMutationFeedback,
     onSuccess: async () => {
@@ -635,7 +640,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   });
   const removeMediaConnection = useMutation({
     mutationFn: async (connection: CanvasConnection) => {
-      if (connection.relationType === "MEDIA_DERIVATION") {
+      if (connection.relationType !== "MEDIA_INPUT") {
         return disconnectCanvasConnection(projectId, connection.id, {});
       }
       const targetDraft = await getMediaDraft(projectId, connection.targetCanvasItemId);
@@ -800,7 +805,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     params: { nodeId: string | null; handleId: string | null }) => {
     connectionSource.current = params.nodeId
       ? { nodeId: params.nodeId, handleId: params.handleId,
-        media: mediaInputSource(canvas.data?.items ?? [], params.nodeId, params.handleId) }
+        media: canvasInputSource(canvas.data?.items ?? [], params.nodeId, params.handleId) }
       : null;
     trackConnectionTarget(null);
     setConnectGesture(true);

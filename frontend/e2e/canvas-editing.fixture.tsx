@@ -54,6 +54,17 @@ if (options.has("connection-drop")) {
   source.artifact = { ...source.artifact, kind: "IMAGE", title: source.title, resourceDefaultVersion: version };
   items = [source, textItem(1)];
 }
+if (options.has("prompt-links")) {
+  items = [textItem(0), { ...textItem(1), x: 0, y: 310 }, ...(["IMAGE", "VIDEO", "AUDIO"] as const).map((kind, index) => {
+    const item = textItem(index + 2); item.title = `SYNTHETIC ${kind}`;
+    item.x = index === 1 ? 810 : 430; item.y = index === 2 ? 310 : 0;
+    item.selectedVersionId = null; item.selectedVersion = null;
+    item.artifact = { ...item.artifact, kind, title: item.title, resourceDefaultVersionId: null, resourceDefaultVersion: null };
+    return item;
+  })];
+  items[0]!.artifact.resourceDefaultVersion!.content = { format: "PLAIN_TEXT", text: "Common lighting" };
+  items[1]!.artifact.resourceDefaultVersion!.content = { format: "PLAIN_TEXT", text: "Secondary tone" };
+}
 if (options.has("hand-drag")) {
   const empty = textItem(1);
   empty.artifact.resourceDefaultVersion!.content = { format: "PLAIN_TEXT", text: "" };
@@ -78,7 +89,7 @@ if (options.has("editor-close")) items = (["IMAGE", "VIDEO", "AUDIO", "TEXT"] as
 });
 let groups: CanvasGroup[] = options.has("initial-group") ? [{ id: "synthetic-initial-group", projectId,
   name: "Synthetic collapsed group", collapsed: true, version: 0 }] : [];
-const connections: ProjectSnapshot["connections"] = options.has("hand-drag") || options.has("connection-drop") || options.has("empty-creation") || options.has("initial-group") || options.has("editor-close") ? [] : [
+const connections: ProjectSnapshot["connections"] = options.has("prompt-links") || options.has("hand-drag") || options.has("connection-drop") || options.has("empty-creation") || options.has("initial-group") || options.has("editor-close") ? [] : [
   { id: "synthetic-internal-connection", projectId, sourceCanvasItemId: items[0]!.id, targetCanvasItemId: items[1]!.id,
     sourceArtifactVersionId: items[0]!.selectedVersionId!, relationType: "MEDIA_DERIVATION", version: 0, createdAt: now, updatedAt: now },
   { id: "synthetic-external-connection", projectId, sourceCanvasItemId: items[1]!.id, targetCanvasItemId: items[2]!.id,
@@ -93,6 +104,15 @@ const removals: CanvasCommand[] = [];
 const createdArtifacts = new Map<string, Artifact>();
 const mediaDrafts = new Map<string, MediaDraft>();
 const draftSaves: SaveMediaDraftRequest[] = [];
+const generationRequests: Array<{ artifactId: string; body: unknown }> = [];
+if (options.has("prompt-links")) {
+  const saved = sessionStorage.getItem("synthetic-prompt-links");
+  if (saved) {
+    const state = JSON.parse(saved) as { items: SyntheticArtifactItem[]; connections: ProjectSnapshot["connections"]; drafts: MediaDraft[] };
+    items = state.items; connections.push(...state.connections);
+    for (const draft of state.drafts) mediaDrafts.set(draft.canvasItemId, draft);
+  }
+}
 function mediaModel(kind: "IMAGE" | "VIDEO" | "AUDIO", acceptsImage = true): MediaCapability {
   return { id: `synthetic-${kind.toLowerCase()}-${acceptsImage ? "input" : "text-only"}`, name: `Synthetic ${kind} model`,
     enabled: true, version: 0, capabilityVersion: 1, adapterId: `MOCK_${kind}`, kind: `${kind}_GENERATION`,
@@ -124,7 +144,7 @@ const state = (): CanvasEditorState => copy({ items, groups });
 const diagnostics = {
   select: (itemId: string) => { useCanvasStore.getState().setSelectedIds([itemId]); },
   evidence: () => copy({ items, groups, connections, requests, edits, replays, textSaves, placements, removals, unexpected,
-    mediaDrafts: [...mediaDrafts.values()], draftSaves,
+    mediaDrafts: [...mediaDrafts.values()], draftSaves, generationRequests,
     layoutDrafts: useCanvasStore.getState().drafts,
     mediaDraftRecoveryCount: Object.keys(useCanvasStore.getState().mediaDraftRecoveries).length,
     receipts: [...receipts.values()].map(({ receipt }) => receipt) }),
@@ -254,6 +274,15 @@ window.fetch = async (input, init) => {
   else if (path.endsWith("/canvas/connections") && method === "POST") {
     const request = JSON.parse(String(init?.body)) as CreateCanvasConnectionRequest;
     const before = mediaDraft(request.targetCanvasItemId);
+    if (request.relationType === "PROMPT_INPUT") {
+      const connection: ProjectSnapshot["connections"][number] = { id: crypto.randomUUID(), projectId,
+        sourceCanvasItemId: request.sourceCanvasItemId, targetCanvasItemId: request.targetCanvasItemId,
+        sourceArtifactVersionId: request.sourceVersionId, relationType: "PROMPT_INPUT", version: 0,
+        createdAt: new Date().toISOString(), updatedAt: now };
+      connections.push(connection);
+      sessionStorage.setItem("synthetic-prompt-links", JSON.stringify({ items, connections, drafts: [...mediaDrafts.values()] }));
+      return Response.json({ connection, draft: null }, { status: 201 });
+    }
     const model = mediaSettings.connections[0]!.capabilities.find((candidate) => candidate.id === before.capabilityId);
     if (!model || model.maxReferenceImages < 1) return problem(400, "Synthetic text-only model rejects image inputs");
     if (before.version !== request.expectedTargetDraftVersion) return problem(409, "Synthetic stale draft version");
@@ -266,6 +295,17 @@ window.fetch = async (input, init) => {
       color: "#67C7F3", sources: [{ id: crypto.randomUUID(), type: "CONNECTION", connectionId: connection.id }] }] };
     mediaDrafts.set(draft.canvasItemId, draft);
     connections.push(connection); value = { connection, draft };
+  }
+  else if (options.has("prompt-links") && path.endsWith("/disconnect") && method === "POST") {
+    const id = path.split("/").at(-2)!;
+    const index = connections.findIndex((edge) => edge.id === id);
+    const [connection] = connections.splice(index, 1); value = { connection, draft: null };
+  }
+  else if (options.has("prompt-links") && path.endsWith("/run") && method === "POST") {
+    const body = JSON.parse(String(init?.body)) as { canvasItemId: string };
+    generationRequests.push({ artifactId: path.split("/").at(-2)!, body });
+    value = { id: crypto.randomUUID(), projectId, runId: null, stepKey: "synthetic-run", kind: "IMAGE_GENERATION", status: "READY",
+      input: {}, cancelRequested: false, providerRequestId: null, attemptNo: 1, nextActionAt: now, version: 0, createdAt: now, updatedAt: now };
   }
   else if (path.endsWith("/canvas/edits") && method === "POST") {
     const request = JSON.parse(String(init?.body)) as CanvasEditRequest; edits.push(copy(request)); value = persistEdit(request);
@@ -342,12 +382,15 @@ window.fetch = async (input, init) => {
   else if (path.endsWith("/assets/synthetic-image") && method === "GET") value = { id: "synthetic-image", width: 330, height: 240 };
   else if (path.endsWith("/settings/llm")) value = { configured: false, version: 0 };
   else if (path.endsWith("/settings/diagnostics")) value = { llmMode: "MOCK" };
-  else if (path.endsWith("/settings/media-connections")) value = options.has("connection-drop") || options.has("editor-close") ? mediaSettings : { connections: [], defaults: [] };
+  else if (path.endsWith("/settings/media-connections")) value = options.has("prompt-links") || options.has("connection-drop") || options.has("editor-close") ? mediaSettings : { connections: [], defaults: [] };
   else if (path.endsWith("/settings/media-functions")) value = [];
   else if (method === "GET" && /\/(text-generations|run|tasks|exports|export-proposals|usage|media-approvals)$/.test(path)) value = [];
   else {
     unexpected.push(`${method} ${path}`);
     throw new Error(`Unsupported synthetic canvas request: ${method} ${path}`);
+  }
+  if (options.has("prompt-links") && method !== "GET") {
+    sessionStorage.setItem("synthetic-prompt-links", JSON.stringify({ items, connections, drafts: [...mediaDrafts.values()] }));
   }
   return value instanceof Response ? value : Response.json(value);
 };

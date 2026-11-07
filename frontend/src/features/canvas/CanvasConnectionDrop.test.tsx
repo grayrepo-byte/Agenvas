@@ -221,10 +221,10 @@ async function releaseOnPane(sourceId = "image-id-card", x = 620, y = 400, touch
 }
 
 /** 从源卡片出口拖到 nodeId 卡片上松手，模拟 React Flow 没有解析到任何连接点。 */
-async function dropOn(nodeId: string | null) {
+async function dropOn(nodeId: string | null, sourceId = "image-id-card") {
   pointAt(nodeId ?? "missing-card");
   await act(async () => {
-    flowProps.onConnectStart?.(null, { nodeId: "image-id-card", handleId: "artifact-output" });
+    flowProps.onConnectStart?.(null, { nodeId: sourceId, handleId: "artifact-output" });
   });
   document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 10 }));
   await act(async () => {
@@ -412,7 +412,23 @@ describe("canvas connection drop target", () => {
     expect(canvasConnections).toHaveLength(0);
   });
 
-  it.each(["text-id-card", "empty-image-id-card"])("disables connected creation from %s without a usable media source", async (sourceId) => {
+  it("connects saved text to an existing media node without a draft CAS or media reference", async () => {
+    await renderFlow();
+    await dropOn("empty-image-id-card", "text-id-card");
+    await waitFor(() => expect(canvasConnections).toHaveLength(1));
+    expect(canvasConnections[0]).toMatchObject({ sourceCanvasItemId: "text-id-card", targetCanvasItemId: "empty-image-id-card", relationType: "PROMPT_INPUT" });
+    expect(canvasConnections[0]).not.toHaveProperty("expectedTargetDraftVersion");
+  });
+
+  it("creates a media node from the text output and persists a prompt connection", async () => {
+    await renderFlow();
+    await releaseOnPane("text-id-card");
+    await userEvent.setup().click(screen.getByRole("option", { name: "图片" }));
+    await waitFor(() => expect(canvasConnections).toHaveLength(1));
+    expect(canvasConnections[0]).toMatchObject({ sourceCanvasItemId: "text-id-card", relationType: "PROMPT_INPUT" });
+  });
+
+  it.each(["empty-image-id-card"])("disables connected creation from %s without a usable media source", async (sourceId) => {
     await renderFlow();
     await releaseOnPane(sourceId);
     for (const option of screen.getAllByRole("option")) expect(option).toHaveAttribute("aria-disabled", "true");
