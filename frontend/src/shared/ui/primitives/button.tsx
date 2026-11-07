@@ -17,6 +17,8 @@ const buttonVariants = cva(
           "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost:
           "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
+        // The preview supplies the surface; paint feedback only around the icon.
+        "media-overlay": "relative bg-transparent shadow-none",
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
@@ -52,6 +54,7 @@ function Button({
 
   return (
     <Comp
+      data-ui-button=""
       data-slot="button"
       data-variant={variant}
       data-size={size}

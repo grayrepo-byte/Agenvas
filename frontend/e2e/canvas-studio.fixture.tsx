@@ -8,7 +8,9 @@ import "../src/styles.css";
 
 // Isolated browser fixture: all requests and writes stay in memory. No real account or provider.
 setLocale("zh");
-const projectId = "studio-preview";
+const projectId = "synthetic-studio-preview";
+const options = new URLSearchParams(location.search);
+const lightActions = options.has("light-actions");
 const now = "2026-10-15T00:00:00Z";
 const project = { id: projectId, name: "海岸来信 · 创作工作室（Mock）", status: "ACTIVE",
   aspectRatio: "LANDSCAPE_16_9", version: 0, createdAt: now, updatedAt: now, archivedAt: null };
@@ -32,7 +34,31 @@ let items: CanvasItem[] = artifacts.map((subject, index) => ({
   zIndex: index, groupId: null, locked: false, version: 0,
   selectedVersionId: subject.resourceDefaultVersionId, selectedVersion: subject.resourceDefaultVersion,
 }));
-if (new URLSearchParams(location.search).has("empty")) items = [];
+if (lightActions) {
+  const audio = artifact("audio", "AUDIO", "04 / 海风 · 环境声");
+  artifacts.push(audio);
+  items.push({ ...items[1]!, id: audio.id, subjectId: audio.id, title: audio.title, artifact: audio });
+  items = items.map((item, index) => {
+    const kind = item.artifact!.kind;
+    if (kind === "TEXT") return { ...item, x: 0, y: 0, width: 320, height: 250 };
+    const assetId = `synthetic-library-${kind === "IMAGE" ? 0 : kind === "VIDEO" ? 5 : 3}`;
+    const version: NonNullable<CanvasItem["selectedVersion"]> = { id: `${item.id}-v1`, versionNo: 1, schemaVersion: 1,
+      content: { sourceType: "UPLOAD", assetId },
+      inputReferences: [], createdByKind: "USER" as const, runId: null, createdAt: now };
+    const subject = { ...item.artifact!, resourceDefaultVersion: version, resourceDefaultVersionId: version.id };
+    artifacts[index] = subject;
+    return { ...item, artifact: subject, selectedVersion: version, selectedVersionId: version.id,
+      x: index === 3 ? 0 : 370, y: index === 2 || index === 3 ? 320 : 0, width: 320, height: index === 3 ? 180 : 250 };
+  });
+  items.push({ id: "character", subjectType: "CHARACTER", subjectId: "synthetic-hero", title: "05 / 旅人 · 角色参考",
+    x: 740, y: 0, width: 260, height: 370, zIndex: 4, locked: false, version: 0, artifact: null,
+    selectedVersionId: null, selectedVersion: null,
+    characterNode: { canvasItemId: "character", version: 1, newerVersionAvailable: false, connections: [],
+      selection: { characterId: "synthetic-hero", characterVersion: 1, lookId: "travel", viewVersionIds: ["image-v1"], useAppearance: true, useVoice: false },
+      snapshot: { characterId: "synthetic-hero", characterVersion: 1, name: "旅人", description: "独立合成角色，仅用于界面验证", useAppearance: true, useVoice: false, voice: null,
+        look: { id: "travel", name: "海岸旅装", clothing: "", expression: "", description: "", views: [{ versionId: "image-v1", purpose: "正面", description: "" }] } } } });
+}
+if (options.has("empty")) items = [];
 const drafts = new Map<string, MediaDraft>();
 const connections = [{ id: "story-image", projectId, sourceCanvasItemId: "brief", targetCanvasItemId: "image",
   relationType: "MEDIA_DERIVATION", sourceArtifactVersionId: "brief-v1", version: 0, createdAt: now, updatedAt: now }];
@@ -74,13 +100,17 @@ window.fetch = async (input, init) => {
     }
     value = { items };
   } else if (path.endsWith("/canvas/items")) value = { items };
+  else if (path.endsWith("/canvas/editor")) value = { items, groups: [] };
+  else if (path.endsWith("/characters")) value = { characters: [], bindings: [] };
   else if (path.endsWith("/canvas/connections")) value = { items: items.length ? connections : [] };
   else if (path.endsWith(`/projects/${projectId}`)) value = project;
   else if (path.endsWith("/media-draft")) {
     const itemId = path.split("/").at(-2)!;
     let draft: MediaDraft = drafts.get(itemId) ?? { projectId, canvasItemId: itemId,
-    prompt: "让海风、日落和细碎的光，成为故事的主角。", parameters: {}, videoInputMode: "TEXT", mediaInputs: [],
-    mentions: [], durationSeconds: null, capabilityId: null, styleId: null, displayMode: "DRAFT", version: 0, createdAt: now, updatedAt: now };
+    prompt: "让海风、日落和细碎的光，成为故事的主角。", parameters: {}, videoInputMode: "TEXT",
+    mediaInputs: lightActions && itemId === "video" ? [{ versionId: "image-v1", artifactId: "image", role: "REFERENCE", order: 0,
+      color: "#3388cc", sources: [{ id: "synthetic-manual-input", type: "MANUAL", connectionId: null }] }] : [],
+    mentions: [], durationSeconds: null, capabilityId: null, styleId: null, displayMode: lightActions ? "RESULT" : "DRAFT", version: 0, createdAt: now, updatedAt: now };
     if (init?.method === "PUT") {
       const request = JSON.parse(String(init.body)) as SaveMediaDraftRequest;
       draft = { ...draft, ...request, mediaInputs: request.mediaInputs.map((entry, order) => ({ ...entry, order,
@@ -90,6 +120,10 @@ window.fetch = async (input, init) => {
     drafts.set(itemId, draft);
     value = draft;
   }
+  else if (path.endsWith("/media-versions")) value = { items: [items.find((item) => item.id === path.split("/").at(-2))?.selectedVersion].filter(Boolean) };
+  else if (path.endsWith("/versions")) value = { items: [artifacts.find((entry) => entry.id === path.split("/").at(-2))?.resourceDefaultVersion].filter(Boolean) };
+  else if (/\/assets\/synthetic-library-/.test(path)) value = { id: path.split("/").at(-1), width: 640, height: 360, durationMs: 500 };
+  else if (path.endsWith("/media-functions")) value = [];
   else if (path.endsWith("/media-connections")) value = { connections: [], defaults: [] };
   else if (path.endsWith("/llm")) value = { configured: false, version: 0 };
   else if (path.endsWith("/diagnostics")) value = { llmMode: "MOCK" };

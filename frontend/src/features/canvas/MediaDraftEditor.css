@@ -37,7 +37,7 @@
 .media-draft-reference-list::-webkit-scrollbar { display: none; }
 .media-draft-reference-add {
   display: flex; align-items: center; justify-content: center; width: 46px; height: 46px;
-  border: 1px dashed var(--ui-canvas-border); border-radius: 10px; background: var(--ui-surface); color: var(--ui-text-muted);
+  border: 1px dashed var(--ui-canvas-border); border-radius: 10px; background: transparent; color: var(--ui-text-secondary);
 }
 .media-draft-editor button { cursor: pointer; }
 .media-draft-editor button:disabled { cursor: not-allowed; opacity: 0.46; }
@@ -66,17 +66,21 @@
 .media-draft-reference-index { position: absolute; top: 2px; left: 3px; min-width: 15px; height: 15px;
   padding: 0 3px; border-radius: 5px; background: #080809c7; color: var(--ui-text); font-size: 10px;
   font-weight: 650; line-height: 15px; text-align: center; text-shadow: 0 1px 2px #000; }
-.media-draft-reference-remove { position: absolute; top: 2px; right: 2px; display: flex; align-items: center;
-  justify-content: center; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 5px;
-  background: #111d; color: var(--ui-text); opacity: 0; transform: scale(0.85);
-  transition: opacity 120ms ease, transform 120ms ease, background 120ms ease; }
-.media-draft-reference-chip:hover .media-draft-reference-remove,
-.media-draft-reference-chip:focus-within .media-draft-reference-remove { opacity: 1; transform: scale(1); }
-.media-draft-editor .media-draft-reference-remove:disabled { opacity: 0; }
-.media-draft-editor .media-draft-reference-chip:hover .media-draft-reference-remove:disabled,
-.media-draft-editor .media-draft-reference-chip:focus-within .media-draft-reference-remove:disabled { opacity: 0.46; }
-.media-draft-reference-remove:hover:enabled { background: #d92e48; }
-.media-draft-reference-remove:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: 1px; }
+/* The thumbnail is already a surface; removal uses the shared media action. */
+.media-draft-reference-chip > .media-draft-reference-remove[data-variant="media-overlay"] {
+  position: absolute; top: 0; right: 0; width: 32px; height: 32px;
+  opacity: 0; pointer-events: none;
+}
+.media-draft-reference-chip > .media-draft-reference-remove[data-variant="media-overlay"]::before { inset: 2px; }
+.media-draft-reference-chip > .media-draft-reference-remove[data-variant="media-overlay"] > svg { width: 14px; height: 14px; }
+.media-draft-reference-chip:is(:hover, :focus-within) > .media-draft-reference-remove { opacity: 1; pointer-events: auto; }
+.media-draft-reference-chip:is(:hover, :focus-within) > .media-draft-reference-remove:disabled { opacity: .46; }
+@media (hover: none), (pointer: coarse) {
+  .media-draft-reference-list { min-height: 64px; }
+  .media-draft-reference-chip { width: 64px; height: 64px; flex-basis: 64px; }
+  .media-draft-reference-chip > .media-draft-reference-remove[data-variant="media-overlay"] { width: 44px; height: 44px; opacity: 1; pointer-events: auto; }
+  .media-draft-reference-chip > .media-draft-reference-remove[data-variant="media-overlay"]:disabled { opacity: .46; }
+}
 .media-draft-prompt-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 /* Natural text height is measured independently; available space caps growth and preserves controls. */
 .media-draft-prompt-shell {

@@ -174,7 +174,7 @@ function MediaReferenceThumbnail({ index, color, thumbnailUrl, accessibleLabel, 
     {thumbnailUrl ? <img src={thumbnailUrl} alt="" draggable={false} />
       : audio ? <MusicNotes className="media-draft-reference-fallback" size={25} aria-hidden="true" /> : <ImageSquare className="media-draft-reference-fallback" size={25} aria-hidden="true" />}
     <span className="media-draft-reference-index" aria-hidden="true">{index + 1}</span>
-    <Button variant="ghost" size="icon-xs" className="media-draft-reference-remove" type="button"
+    <Button variant="media-overlay" data-tone="danger" size="icon-sm" className="media-draft-reference-remove" type="button"
       aria-label={t("media.editor.removeNamedInput", { "0": accessibleLabel })} disabled={busy}
       title={connected ? t("media.editor.removeInputAndRelations") : t("media.editor.removeInput")}
       onClick={onRemove}><X size={13} /></Button>

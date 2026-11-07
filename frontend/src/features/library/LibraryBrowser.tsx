@@ -61,7 +61,7 @@ export function LibraryBrowser({ trash = false, kinds, onPick, disabled = false,
       <Field className="library-select-field"><FieldLabel htmlFor={`${filterId}-sort`}>{t("library.browser.sort")}</FieldLabel><Select density="compact" id={`${filterId}-sort`} value={sort} onChange={(event) => setSort(event.target.value as LibrarySort)}><option value="SAVED">{t("library.browser.recentSaved")}</option><option value="NAME">{t("common.name")}</option><option value="UPDATED">{t("library.browser.recentModified")}</option></Select></Field>
       <div className="library-filter-actions">
         <Button size="sm" variant="outline" type="button" aria-pressed={favorite} onClick={() => setFavorite(!favorite)}><BookmarkSimple data-icon="inline-start" />{t("library.browser.favoritesOnly")}</Button>
-        <Button size="sm" variant="outline" type="button" disabled={list.isFetching} onClick={() => void list.refetch()}>{page ? <ArrowsClockwise data-icon="inline-start" aria-hidden /> : null}{t("library.browser.refresh")}</Button>
+        <Button size="sm" variant="ghost" type="button" disabled={list.isFetching} onClick={() => void list.refetch()}>{page ? <ArrowsClockwise data-icon="inline-start" aria-hidden /> : null}{t("library.browser.refresh")}</Button>
       </div>
     </FieldGroup>
     </div>
@@ -83,12 +83,12 @@ export function LibraryBrowser({ trash = false, kinds, onPick, disabled = false,
           : <><strong>{entry.name}</strong><small>{CATEGORY_LABELS[entry.category]} · {KIND_LABELS[entry.kind]}{entry.durationMs ? t("library.browser.durationSuffix", { "0": (entry.durationMs / 1000).toFixed(1) }) : ""}{entry.favorite ? t("library.browser.favoriteSuffix") : ""}</small>
           <time dateTime={entry.createdAt}>{new Date(entry.createdAt).toLocaleDateString(getFormatLocale())}</time></>}
       </Button>
-      <Button variant="ghost" type="button" className="library-favorite" aria-label={`${entry.favorite ? t("library.browser.unfavorite") : t("library.browser.favorite")} ${entry.name}`} aria-pressed={entry.favorite}
+      <Button variant="media-overlay" size="icon-lg" type="button" className="library-favorite" aria-label={`${entry.favorite ? t("library.browser.unfavorite") : t("library.browser.favorite")} ${entry.name}`} aria-pressed={entry.favorite}
         disabled={toggleFavorite.isPending || disabled} onClick={() => toggleFavorite.mutate(entry)}><BookmarkSimple size={17} weight={entry.favorite ? "fill" : "regular"} /></Button>
     </article>;
     })}</div>
     {list.data?.pages[0]?.total === 0 ? page ? <EmptyState icon={<Images />} title={emptyTitle} description={t("library.browser.saveHint")} />
       : <div className="library-empty"><FileText size={32} /><p>{emptyTitle}</p><p>{t("library.browser.saveHint")}</p></div> : null}
-    {list.hasNextPage ? <Button size="sm" variant="outline" className={page ? "library-load-more" : undefined} type="button" disabled={list.isFetching} onClick={() => void list.fetchNextPage()}>{list.isFetchingNextPage ? t("common.loading") : t("library.browser.loadMore")}</Button> : null}
+    {list.hasNextPage ? <Button size="sm" variant="ghost" className={page ? "library-load-more" : undefined} type="button" disabled={list.isFetching} onClick={() => void list.fetchNextPage()}>{list.isFetchingNextPage ? t("common.loading") : t("library.browser.loadMore")}</Button> : null}
   </section>;
 }

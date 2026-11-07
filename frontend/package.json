@@ -15,6 +15,7 @@
     "lint": "node scripts/check-theme-colors.mjs && node scripts/check-i18n.mjs && eslint . --max-warnings=0",
     "test": "node --test scripts/check-i18n.test.mjs && vitest run",
     "test:controls": "node e2e/controls-browser.mjs",
+    "test:light-actions": "node e2e/light-actions-browser.mjs",
     "test:skills-layout": "node e2e/skills-layout-browser.mjs",
     "test:smart-edit-layout": "node e2e/smart-edit-dialog-browser.mjs",
     "test:project-resources": "node e2e/project-resources-browser.mjs",

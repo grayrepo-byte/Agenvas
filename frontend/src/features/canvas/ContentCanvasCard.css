@@ -38,9 +38,7 @@
 
 .content-card-empty { display: flex; flex: 1 1 auto; flex-direction: column; align-items: center; justify-content: center; gap: 12px; min-height: 0; padding: 20px; color: var(--ui-text-muted); font-size: var(--ui-text-xs); text-align: center; }
 .content-card-empty > svg { flex-shrink: 0; color: var(--ui-text-subtle); }
-.content-card-empty button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 14px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: var(--ui-surface-raised); color: var(--ui-text); font-size: var(--ui-text-sm); cursor: pointer; }
-.content-card-empty button:hover { background: var(--ui-hover); }
-.content-card-empty button:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
+.content-card-empty button { gap: 6px; font-size: var(--ui-text-sm); }
 
 .text-card-editor { display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; }
 .text-card-editor-body { position: relative; display: flex; flex-direction: column; padding: 18px 20px; }
