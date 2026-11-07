@@ -14,7 +14,8 @@ import { LibraryPage } from "../src/features/library/LibraryPage";
 import { SkillsPage } from "../src/features/skills/SkillsPage";
 import { workspaceDesignResponse } from "./workspace-design-data";
 import type {
-  CallDebug, CallLog, CallLogRetentionSettings, DebugSettings, DirectorSettings, LlmSettings, MediaCapability, MediaConnection,
+  CallDebug, CallLog, CallLogRetentionSettings, DebugSettings, DirectorSettings, LlmModelMetadata, LlmModelPolicy,
+  LlmModelPreview, LlmModelProvider, LlmSettings, MediaCapability, MediaConnection,
   MediaFunctionSetting, MediaSettings, MediaStyle, MediaTemplate, PromptDefinition, StorageProfile, StorageProvider, StorageSettings,
   SystemLogSnapshot,
 } from "../src/shared/api/client";
@@ -46,8 +47,19 @@ const initialRoute = requestedRoute && routes.has(requestedRoute.split("?")[0] ?
 
 let llm: LlmSettings = {
   configured: true, version: 4, endpoint: "https://api.example.com/v1", modelId: "creative-director-model",
-  keyMask: "••••DEMO", toolCallingVerified: false, updatedAt: now,
+  keyMask: "••••DEMO", toolCallingVerified: false, updatedAt: now, modelPolicy: null,
 };
+const llmProviders: readonly LlmModelProvider[] = ["COMPATIBLE", "OPENAI", "OPENROUTER", "GEMINI", "ANTHROPIC", "OLLAMA"];
+const llmModels: LlmModelMetadata[] = [
+  { id: "creative-director-model", contextWindowTokens: 32768, inputLimitTokens: null, outputLimitTokens: 8192,
+    runtimeContextTokens: 16384, deploymentContextTokens: null, digest: "synthetic-model-digest" },
+  { id: "creative-director-extended", contextWindowTokens: 131072, inputLimitTokens: null, outputLimitTokens: 16384,
+    runtimeContextTokens: 32768, deploymentContextTokens: null, digest: "synthetic-extended-digest" },
+  { id: "creative-director-unreported", contextWindowTokens: null, inputLimitTokens: null, outputLimitTokens: null,
+    runtimeContextTokens: null, deploymentContextTokens: null, digest: null },
+];
+let nextLlmPreview = 1;
+const llmPreviews = new Map<string, { response: LlmModelPreview; provider: LlmModelProvider; version: number; endpoint: string }>();
 let retention: CallLogRetentionSettings = { retentionDays: 90, version: 2 };
 let debug: DebugSettings = { debugMode: false, version: 1 };
 let director: DirectorSettings = { contextWindowTokens: 1_000_000, compactionThresholdPercent: 50,
@@ -181,6 +193,67 @@ function error(message: string, status = 422, code = "SYNTHETIC_PREVIEW_UNSUPPOR
     { status, headers: { "Content-Type": "application/problem+json" } });
 }
 
+const invalidLlm = (message: string) => error(message, 400, "LLM_MODEL_POLICY_INVALID");
+const conflictingLlm = () => error("合成模型配置或预览已变化，请重新读取后再保存。", 409, "LLM_SETTINGS_CONFLICT");
+function positiveInteger(value: unknown, maximum: number): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 && value <= maximum;
+}
+
+/** Synthetic model metadata only; preview scope retains no credential and never contacts a Provider. */
+function llmResponse(path: string, method: string, body: Record<string, unknown>): Response {
+  if (path === "/api/v1/settings/llm" && method === "GET") return Response.json(llm);
+  const discovering = path === "/api/v1/settings/llm/models" && method === "POST";
+  if (!discovering && (path !== "/api/v1/settings/llm" || method !== "PUT")) return error("此合成模型操作未实现。", 405);
+  if (body.expectedVersion !== llm.version) return conflictingLlm();
+  const endpoint = discovering && body.credentialMode === "SAVED" ? llm.endpoint ?? "" : stringField(body, "endpoint").trim();
+  if (endpoint === "https://fail.example.test/v1") return error("合成模型服务暂时不可用，草稿可修改后重试。", 502, "PROVIDER_UNAVAILABLE");
+  if (!endpoint) return invalidLlm("请填写合成模型服务地址。");
+  if (discovering) {
+    const provider = llmProviders.find((value) => value === body.provider);
+    if (!provider || (body.credentialMode !== "SAVED" && body.credentialMode !== "DRAFT")) return invalidLlm("模型读取范围无效。");
+    if (body.credentialMode === "SAVED" && (!llm.configured || provider !== (llm.modelPolicy?.provider ?? "COMPATIBLE"))) return conflictingLlm();
+    if (body.credentialMode === "DRAFT" && !stringField(body, "apiKey")) return invalidLlm("读取草稿模型须填写合成凭证。");
+    const id = `00000000-0000-4000-8000-${String(nextLlmPreview++).padStart(12, "0")}`;
+    const response: LlmModelPreview = { id, models: llmModels, partial: false, checkedAt: now };
+    llmPreviews.set(id, { response, provider, version: llm.version, endpoint });
+    return Response.json(response);
+  }
+  const selection = body.modelSelection;
+  if (!selection || typeof selection !== "object") return invalidLlm("请填写模型容量。");
+  const values = selection as Record<string, unknown>;
+  const provider = llmProviders.find((value) => value === values.provider);
+  const outputParameter = values.outputParameter;
+  if (!provider || !positiveInteger(values.maxOutputTokens, 2_000_000)
+    || (outputParameter !== "MAX_TOKENS" && outputParameter !== "MAX_COMPLETION_TOKENS")) return invalidLlm("模型输出设置无效。");
+  const modelId = stringField(body, "modelId").trim();
+  if (!modelId || !stringField(body, "apiKey")) return invalidLlm("请填写模型和合成凭证。");
+  let model: LlmModelMetadata | undefined;
+  let context: number | null;
+  let input: number | null;
+  if (values.mode === "AUTO") {
+    const preview = typeof values.previewId === "string" ? llmPreviews.get(values.previewId) : undefined;
+    if (!preview || preview.version !== llm.version || preview.provider !== provider || preview.endpoint !== endpoint) return conflictingLlm();
+    model = preview.response.models.find((value) => value.id === modelId);
+    if (!model) return conflictingLlm();
+    context = provider === "OLLAMA" ? model.runtimeContextTokens : model.deploymentContextTokens ?? model.contextWindowTokens;
+    if (context && model.contextWindowTokens) context = Math.min(context, model.contextWindowTokens);
+    input = model.inputLimitTokens;
+  } else if (values.mode === "MANUAL") {
+    if (values.contextWindowTokens != null && !positiveInteger(values.contextWindowTokens, 16_000_000)
+      || values.inputLimitTokens != null && !positiveInteger(values.inputLimitTokens, 16_000_000)) return invalidLlm("模型容量须为正整数。");
+    context = typeof values.contextWindowTokens === "number" ? values.contextWindowTokens : null;
+    input = typeof values.inputLimitTokens === "number" ? values.inputLimitTokens : null;
+  } else return invalidLlm("请选择有效的容量来源。");
+  if ((!context && !input) || context && values.maxOutputTokens >= context
+    || model?.outputLimitTokens && values.maxOutputTokens > model.outputLimitTokens) return invalidLlm("最大输出须小于上下文容量并符合模型限制。");
+  const modelPolicy: LlmModelPolicy = { provider, source: values.mode === "MANUAL" ? "MANUAL" : provider === "OLLAMA" ? "OLLAMA_RUNTIME" : "PROVIDER_REPORTED",
+    contextWindowTokens: context, inputLimitTokens: input, maxOutputTokens: values.maxOutputTokens, outputParameter,
+    theoreticalContextTokens: model?.contextWindowTokens ?? null, reportedOutputTokens: model?.outputLimitTokens ?? null,
+    runtimeContextTokens: model?.runtimeContextTokens ?? null, modelDigest: model?.digest ?? null, checkedAt: model ? now : null };
+  llm = { ...llm, endpoint, modelId, configured: true, toolCallingVerified: false, version: llm.version + 1, updatedAt: now, modelPolicy };
+  return Response.json(llm);
+}
+
 const storageLocationFields = ["provider", "endpoint", "region", "bucket", "keyPrefix", "pathStyle"] as const;
 type StorageLocation = Pick<StorageProfile, "name" | typeof storageLocationFields[number]>;
 const storageProviders: readonly StorageProvider[] = ["ALIYUN_OSS", "TENCENT_COS", "S3", "SMB", "WEBDAV"];
@@ -301,10 +374,7 @@ window.fetch = async (input, init) => {
     director = { ...updated, version: director.version + 1 };
     return Response.json(director);
   }
-  if (path === "/api/v1/settings/llm") {
-    if (method === "PUT") llm = { ...llm, endpoint: stringField(body, "endpoint"), modelId: stringField(body, "modelId"), configured: true, toolCallingVerified: false, version: llm.version + 1, updatedAt: now };
-    return Response.json(llm);
-  }
+  if (path === "/api/v1/settings/llm" || path === "/api/v1/settings/llm/models") return llmResponse(path, method, body);
   if (path === "/api/v1/settings/llm/diagnose") { llm = { ...llm, toolCallingVerified: true }; return Response.json(llm); }
   if (path === "/api/v1/settings/diagnostics") return Response.json({
     checkedAt: now, database: "AVAILABLE", storage: "AVAILABLE", llmMode: "CONFIGURED", llmConfigured: llm.configured,

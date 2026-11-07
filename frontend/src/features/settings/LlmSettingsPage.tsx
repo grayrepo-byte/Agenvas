@@ -34,6 +34,7 @@ export function LlmSettingsPage() {
   const [draft, setDraft] = useState<ConfigurationDraft | null>(null);
   const [modelOptions, setModelOptions] = useState<ModelOptionsDraft | null>(null);
   const [capacityError, setCapacityError] = useState("");
+  const [capacityValidationAttempt, setCapacityValidationAttempt] = useState(0);
   const [apiKey, setApiKey] = useState("");
   const [keyInvalid, setKeyInvalid] = useState(false);
   const keyInput = useRef<HTMLInputElement>(null);
@@ -78,7 +79,11 @@ export function LlmSettingsPage() {
     }
     setKeyInvalid(false);
     const selection = modelSelection(options, modelId.trim());
-    if (!selection) { setCapacityError(t("modelConnection.capacityInvalid")); return; }
+    if (!selection) {
+      setCapacityError(t("modelConnection.capacityInvalid"));
+      setCapacityValidationAttempt(attempt => attempt + 1);
+      return;
+    }
     setCapacityError("");
     setSaving(true);
     setError("");
@@ -166,7 +171,7 @@ export function LlmSettingsPage() {
                 {keyInvalid ? <FieldError id="llm-key-error">{t("settings.llm.keyValidationError")}</FieldError> : null}
               </Field>
               <div className="llm-model-options"><LlmModelOptions value={options} endpoint={endpoint} modelId={modelId} apiKey={apiKey} base={base}
-                disabled={busy} onSelectModel={value => editDraft("modelId", value)} onChange={value => {
+                disabled={busy} validationAttempt={capacityValidationAttempt} onSelectModel={value => editDraft("modelId", value)} onChange={value => {
                   if (base) setDraft(existing => existing ?? { base, endpoint, modelId });
                   setModelOptions(value); setCapacityError(""); setSaved(false); setAcknowledgedVersion(null);
                 }} /></div>

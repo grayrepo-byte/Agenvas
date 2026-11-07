@@ -11,7 +11,9 @@ import { server } from "../../test/server";
 import { LlmSettingsPage } from "./LlmSettingsPage";
 const manualSelection = { provider: "COMPATIBLE", mode: "MANUAL", contextWindowTokens: 16384,
   inputLimitTokens: null, maxOutputTokens: 2048, outputParameter: "MAX_TOKENS" } as const;
-function confirmCapacity() {
+async function confirmCapacity() {
+  const advanced = screen.getByRole("button", { name: t("modelConnection.advanced") });
+  if (advanced.getAttribute("aria-expanded") === "false") await userEvent.setup().click(advanced);
   fireEvent.change(screen.getByLabelText("确认的上下文窗口"), { target: { value: "16384" } });
   fireEvent.change(screen.getByLabelText("请求最大输出"), { target: { value: "2048" } });
 }
@@ -42,11 +44,12 @@ describe("LlmSettingsPage", () => {
     const user = userEvent.setup();
     await user.type(await screen.findByRole("textbox", { name: t("settings.llm.endpoint") }), "https://router.example/v1");
     fireEvent.change(screen.getByLabelText(t("settings.llm.apiKey")), { target: { value: "synthetic-key" } });
-    await user.click(screen.getByRole("combobox", { name: "Metadata provider" }));
+    await user.click(screen.getByRole("combobox", { name: t("modelConnection.provider") }));
     await user.click(screen.getByRole("option", { name: "OpenRouter" }));
     await user.click(screen.getByRole("button", { name: "Read model list" }));
     await user.click(await screen.findByRole("combobox", { name: "Fetched models" }));
     await user.click(screen.getByRole("option", { name: "model-b" }));
+    await user.click(screen.getByRole("button", { name: t("modelConnection.advanced") }));
     await waitFor(() => expect(screen.getByLabelText("Confirmed context window")).toHaveValue(16384));
     expect(writes).toEqual([]);
     await user.click(screen.getByRole("button", { name: "Save configuration" }));
@@ -86,7 +89,8 @@ describe("LlmSettingsPage", () => {
       http.put("/api/v1/settings/llm", async ({ request }) => { writes.push(await request.json());
         return HttpResponse.json({ ...saved, version: 8, modelPolicy: { ...policy, source: "MANUAL", contextWindowTokens: 1_000_000 } }); }));
     render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><LlmSettingsPage /></MemoryRouter></QueryClientProvider>);
-    expect(await screen.findByLabelText(t("modelConnection.context"))).toHaveValue(32000);
+    await userEvent.setup().click(await screen.findByRole("button", { name: t("modelConnection.advanced") }));
+    expect(screen.getByLabelText(t("modelConnection.context"))).toHaveValue(32000);
     const fields = { modelId: t("settings.llm.modelId"), endpoint: t("settings.llm.endpoint"), apiKey: t("settings.llm.apiKey") };
     const changed = { modelId: "custom-model", endpoint: "https://different.example/v1", apiKey: "synthetic-key" };
     fireEvent.change(screen.getByLabelText(fields[field]), { target: { value: changed[field] } });
@@ -103,6 +107,29 @@ describe("LlmSettingsPage", () => {
       modelId: field === "modelId" ? changed.modelId : saved.modelId, apiKey: "synthetic-key",
       modelSelection: { provider: "COMPATIBLE", mode: "MANUAL", contextWindowTokens: 1_000_000,
         inputLimitTokens: null, maxOutputTokens: 2048, outputParameter: "MAX_TOKENS" } }]));
+  });
+  it("opens collapsed advanced fields after an invalid save and keeps them open while fixing the draft", async () => {
+    setLocale("en"); unconfiguredLlmSettings();
+    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><LlmSettingsPage /></MemoryRouter></QueryClientProvider>);
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText(t("settings.llm.endpoint")), "https://provider.example/v1");
+    await user.type(screen.getByLabelText(t("settings.llm.modelId")), "model-a");
+    fireEvent.change(screen.getByLabelText(t("settings.llm.apiKey")), { target: { value: "synthetic-key" } });
+    const advanced = screen.getByRole("button", { name: t("modelConnection.advanced") });
+    await user.click(advanced);
+    fireEvent.change(screen.getByLabelText(t("modelConnection.output")), { target: { value: "0" } });
+    await user.click(advanced);
+    await user.click(screen.getByRole("button", { name: "Save configuration" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(t("modelConnection.capacityInvalid"));
+    expect(advanced).toHaveAttribute("aria-expanded", "true");
+    await user.click(advanced);
+    expect(advanced).toHaveAttribute("aria-expanded", "false");
+    await user.click(screen.getByRole("button", { name: "Save configuration" }));
+    expect(advanced).toHaveAttribute("aria-expanded", "true");
+    fireEvent.change(screen.getByLabelText(t("modelConnection.output")), { target: { value: "4096" } });
+    expect(advanced).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByLabelText(t("modelConnection.output"))).toHaveValue(4096);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
   it.each([
     ["the usual six-character Ollama placeholder", "ollama", false],
@@ -159,7 +186,7 @@ describe("LlmSettingsPage", () => {
     await user.click(screen.getByRole("button", { name: "保存配置" }));
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     fireEvent.change(key, { target: { value: validKey } });
-    confirmCapacity();
+    await confirmCapacity();
     expect(key).not.toHaveAttribute("aria-invalid", "true");
     await user.click(screen.getByRole("button", { name: "保存配置" }));
     expect(await screen.findByText("配置已加密保存，密钥输入已清空。")).toBeInTheDocument();
@@ -249,7 +276,7 @@ describe("LlmSettingsPage", () => {
     await user.type(screen.getByRole("textbox", { name: "模型 ID" }), "model-a");
     const keyInput = screen.getByLabelText("API Key（每次修改均需重新输入）") as HTMLInputElement;
     await user.type(keyInput, "secret-7890");
-    confirmCapacity();
+    await confirmCapacity();
     await user.click(screen.getByRole("button", { name: "保存配置" }));
 
     expect(await within(screen.getByRole("region", { name: "LLM 配置" })).findByRole("status")).toHaveTextContent("配置已加密保存");
@@ -329,7 +356,7 @@ describe("LlmSettingsPage", () => {
     await user.type(modelInput, "local-draft");
     const keyInput = screen.getByLabelText("API Key（每次修改均需重新输入）");
     await user.type(keyInput, "local-secret");
-    confirmCapacity();
+    await confirmCapacity();
     current = latest;
     act(() => { queryClient.setQueryData(["settings", "llm"], latest); });
     expect(await screen.findByText("已有更新的配置")).toBeInTheDocument();
