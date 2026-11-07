@@ -250,12 +250,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     const centerX = node.position.x + width / 2;
     const centerY = node.position.y + height / 2;
     const currentZoom = instance.getZoom();
-    if (node.data.item.artifact?.kind !== "TEXT") {
-      viewportMotion.center(centerX, centerY, currentZoom);
-      return;
-    }
-    // Wait for the text editor's four-line minimum to be measured. Reserve real
-    // screen space rather than making a taller prompt inside a clipped panel.
+    // Measure the mounted toolbar before placing any node in the upper canvas.
+    // Text also reserves its four-line editor; media focus keeps the user's zoom.
     editorFocusFrame.current = window.requestAnimationFrame(() => {
       editorFocusFrame.current = null;
       const selection = useCanvasStore.getState();
@@ -263,19 +259,22 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           || selection.selectedIds.length !== 1 || selection.selectedIds[0] !== node.id) return;
       const canvas = canvasElement.current?.querySelector(".react-flow");
       const bounds = canvas?.getBoundingClientRect();
-      const editor = canvas?.querySelector<HTMLElement>(".text-generation-editor");
+      const editor = node.data.item.artifact?.kind === "TEXT"
+        ? canvas?.querySelector<HTMLElement>(".text-generation-editor") : null;
       const anchor = [...canvas?.querySelectorAll<HTMLElement>(".react-flow__node") ?? []]
         .find(element => element.dataset.id === node.id);
       const actions = [...canvas?.querySelectorAll<HTMLElement>(".artifact-actions-toolbar") ?? []]
         .find(element => element.dataset.id === node.id);
-      if (!bounds?.width || !bounds.height || !editor?.scrollHeight || !anchor) {
+      if (!bounds?.width || !bounds.height || !anchor) {
         viewportMotion.center(centerX, centerY, currentZoom);
         return;
       }
       const target = calculateCanvasEditorViewport({ canvas: bounds, nodeSize: { width, height },
-        currentZoom, minZoom: CANVAS_MIN_ZOOM,
-        editorHeight: editor.scrollHeight + editor.offsetHeight - editor.clientHeight,
-        editorGap: TEXT_EDITOR_NODE_GAP,
+        // With no measured text editor, use the current zoom as the lower bound
+        // so positioning alone cannot resize media or a still-mounting text node.
+        currentZoom, minZoom: editor?.scrollHeight ? CANVAS_MIN_ZOOM : currentZoom,
+        editorHeight: editor?.scrollHeight ? editor.scrollHeight + editor.offsetHeight - editor.clientHeight : 0,
+        editorGap: editor ? TEXT_EDITOR_NODE_GAP : EDITOR_NODE_GAP,
         topToolbarSpace: actions ? Math.max(0, anchor.getBoundingClientRect().top - actions.getBoundingClientRect().top) : 0,
         margin: EDITOR_VIEWPORT_MARGIN });
       viewportMotion.center(centerX, centerY + target.centerOffsetY, target.zoom);

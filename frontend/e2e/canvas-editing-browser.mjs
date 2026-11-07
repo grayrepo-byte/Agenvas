@@ -23,6 +23,7 @@ const shortcutsOnly = process.argv.includes("--shortcuts-only");
 const emptyCreationOnly = process.argv.includes("--empty-creation-only");
 const initialGroupOnly = process.argv.includes("--initial-group-only");
 const editorCloseOnly = process.argv.includes("--editor-close-only") || process.argv.includes("--editor-close-bottom-only");
+const editorFocusOnly = process.argv.includes("--editor-focus-only");
 const dragCase = process.argv.includes("--hand-drag-only") ? "hand"
   : process.argv.includes("--text-node-drag-only") ? "node" : process.argv.includes("--drag-diagnostics") ? "diagnostics" : null;
 const catalogs = Object.fromEntries(await Promise.all(["zh", "ru"].map(async (locale) => [locale,
@@ -108,14 +109,14 @@ async function screenshot(name) {
   const image = await cdp("Page.captureScreenshot", { format: "png" });
   await writeFile(join(screenshots, `${name}.png`), Buffer.from(image.data, "base64"), { mode: 0o600 });
 }
-async function ready(expected = connectionDropOnly ? 2 : groupEntryOnly ? 3 : dragCase || motionOnly || editorCloseOnly ? 4 : 100) {
+async function ready(expected = connectionDropOnly ? 2 : groupEntryOnly ? 3 : dragCase || motionOnly || editorCloseOnly || editorFocusOnly ? 4 : 100) {
   await waitFor((expected) => document.querySelectorAll(".react-flow__node-canvasCard").length === expected
     && window.__agenvasCanvasEditingFixture.evidence().requests.some((request) => request.path.endsWith("/canvas/editor")), expected);
   assert.equal((await evidence()).unexpected.length, 0);
 }
 async function navigate(baseUrl, nextLocale = "zh", { motionLarge = false } = {}) {
   locale = nextLocale;
-  await cdp("Page.navigate", { url: new URL(`${route}?locale=${locale}${dragCase || motionOnly ? "&hand-drag=1" : ""}${groupEntryOnly ? "&group-entry=1" : ""}${connectionDropOnly ? "&connection-drop=1" : ""}${motionLarge ? "&motion-large=1" : ""}${editorCloseOnly ? "&editor-close=1" : ""}`, baseUrl).href });
+  await cdp("Page.navigate", { url: new URL(`${route}?locale=${locale}${dragCase || motionOnly ? "&hand-drag=1" : ""}${groupEntryOnly ? "&group-entry=1" : ""}${connectionDropOnly ? "&connection-drop=1" : ""}${motionLarge ? "&motion-large=1" : ""}${editorCloseOnly || editorFocusOnly ? "&editor-close=1" : ""}${editorFocusOnly ? "&editor-focus=1" : ""}`, baseUrl).href });
   await ready(motionLarge ? 100 : undefined);
 }
 async function zoomToFirstCard() {
@@ -414,7 +415,7 @@ async function expectedCenter(itemId) {
     const node = document.querySelector(selector).getBoundingClientRect();
     const matrix = new DOMMatrixReadOnly(getComputedStyle(document.querySelector(".react-flow__viewport")).transform);
     return { x: matrix.m41 + flow.x + flow.width / 2 - node.x - node.width / 2,
-      y: matrix.m42 + flow.y + flow.height / 2 - node.y - node.height / 2, zoom: matrix.m11 };
+      y: matrix.m42 + flow.y + flow.height / 3 - node.y - node.height / 2, zoom: matrix.m11 };
   }, card(itemId));
 }
 function assertViewport(actual, expected, description) {
@@ -470,7 +471,14 @@ async function runMotionRegression(baseUrl) {
   await click(`${card("synthetic-card-2")} .media-card-empty`); await pause(90);
   const lastTarget = await expectedCenter("synthetic-card-3");
   await page(() => { window.__agenvasMotionTrace.switchedAt = performance.now() - window.__agenvasMotionTrace.startedAt; });
-  await click(`${card("synthetic-card-3")} .media-card-empty`);
+  // Use a broad, empty part of the moving card: the center is an upload button,
+  // and its small title icon can move out from under the pointer between CDP calls.
+  const secondClick = await page((selector) => {
+    const bounds = document.querySelector(selector).getBoundingClientRect();
+    return { x: bounds.x + bounds.width / 4, y: bounds.y + bounds.height / 4 };
+  }, card("synthetic-card-3"));
+  await cdp("Input.dispatchMouseEvent", { type: "mousePressed", ...secondClick, button: "left", clickCount: 1 });
+  await cdp("Input.dispatchMouseEvent", { type: "mouseReleased", ...secondClick, button: "left", clickCount: 1 });
   const continuous = await finishMotionTrace("motion-last-click-wins");
   assertViewport(continuous.samples.at(-1), lastTarget, "The last clicked node owns the final viewport");
   assertNoOvershoot({ ...continuous, name: `${continuous.name}-after-switch`,
@@ -775,6 +783,53 @@ async function runInitialGroupRegression(baseUrl) {
   console.log("Initial collapsed-group fit passed: delayed metadata and explicit read retry, hidden members excluded, visible nodes remain in view without writes; synthetic only");
 }
 
+async function runEditorFocusRegression(baseUrl) {
+  for (const size of [{ width: 1440, height: 900, zoom: 0.75 }, { width: 1280, height: 720, zoom: 0.6 },
+    { width: 1280, height: 600, zoom: 0.45 }]) {
+    await cdp("Emulation.setDeviceMetricsOverride", { ...size, deviceScaleFactor: 1, mobile: false });
+    await navigate(baseUrl);
+    await waitFor(() => Boolean(window.__agenvasCanvasEditingFixture.setViewport));
+    const before = await evidence();
+    for (const item of before.items) {
+      await page(async (item, zoom) => {
+        const bounds = document.querySelector(".react-flow").getBoundingClientRect();
+        await window.__agenvasCanvasEditingFixture.setViewport({
+          x: bounds.width / 2 - (item.x + item.width / 2) * zoom,
+          y: bounds.height / 2 - (item.y + item.height / 2) * zoom, zoom,
+        }, { duration: 0 });
+      }, item, size.zoom);
+      await waitForStableViewport();
+      await click(`${card(item.id)} .artifact-card-title-icon`);
+      await waitForStableViewport();
+      const layout = await page((selector) => {
+        const node = document.querySelector(selector).getBoundingClientRect();
+        const canvas = document.querySelector(".react-flow").getBoundingClientRect();
+        const toolbar = document.querySelector(".artifact-actions-toolbar").getBoundingClientRect();
+        const editor = document.querySelector(".workspace-media-editor").getBoundingClientRect();
+        return { node: node.toJSON(), canvas: canvas.toJSON(), toolbar: toolbar.toJSON(), editor: editor.toJSON(),
+          zoom: window.__agenvasCanvasEditingFixture.viewport().zoom };
+      }, card(item.id));
+      const { node, canvas, toolbar, editor } = layout;
+      const expectedY = Math.min(canvas.height / 2, Math.max(canvas.height / 3,
+        16 + node.height / 2 + node.top - toolbar.top));
+      assert.ok(Math.abs(node.x + node.width / 2 - canvas.x - canvas.width / 2) < 1, "Node stays horizontally centered");
+      assert.ok(Math.abs(node.y + node.height / 2 - canvas.y - expectedY) < 1, `Upper focus respects the toolbar: ${JSON.stringify(layout)}`);
+      assert.equal(layout.zoom, size.zoom, "These nodes fit without changing the current zoom");
+      assert.ok(toolbar.top >= canvas.top + 15, `The upper toolbar retains its margin: ${JSON.stringify(layout)}`);
+      assert.ok(editor.top >= node.bottom && editor.height > 0, "Editor remains below the node with usable space");
+      const focused = await viewport();
+      await click(`${card(item.id)} .artifact-card-title-icon`); await waitForStableViewport();
+      assertViewport(await viewport(), focused, "Repeated focus stays at the same position and zoom");
+      await screenshot(`editor-upper-focus-${item.artifact.kind.toLowerCase()}-${size.width}x${size.height}`);
+      await click(".workspace-media-editor .workspace-bottom-close");
+      assertViewport(await viewport(), focused, "Closing the editor preserves the focused viewport");
+    }
+    await assertViewportOnly(before, "Upper editor focus");
+  }
+  assert.deepEqual(runtimeErrors, []);
+  console.log(`Upper editor focus passed: four node types, portrait image, three viewport sizes, repeated clicks and close; synthetic screenshots: ${screenshots}`);
+}
+
 async function runEditorCloseRegression(baseUrl) {
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1024, height: 900, deviceScaleFactor: 1, mobile: false });
   await navigate(baseUrl);
@@ -992,7 +1047,8 @@ try {
   await cdp("Page.enable"); await cdp("Runtime.enable");
   const baseUrl = server.resolvedUrls.local[0];
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-  if (editorCloseOnly) await runEditorCloseRegression(baseUrl);
+  if (editorFocusOnly) await runEditorFocusRegression(baseUrl);
+  else if (editorCloseOnly) await runEditorCloseRegression(baseUrl);
   else if (initialGroupOnly) await runInitialGroupRegression(baseUrl);
   else if (emptyCreationOnly) await runEmptyCreationRegression(baseUrl);
   else if (shortcutsOnly) await runShortcutRegression(baseUrl);

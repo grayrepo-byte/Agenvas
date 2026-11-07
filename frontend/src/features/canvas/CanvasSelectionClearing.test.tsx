@@ -617,13 +617,13 @@ describe("node editor centering", () => {
     expect(focusProbe.fit).not.toHaveBeenCalled();
   });
 
-  it.each([0.6, 1.8])("centers initial, repeated, and switched editor clicks at zoom %s without changing node layouts", async (zoom) => {
+  it.each([0.6, 1.8])("focuses initial, repeated, and switched editor clicks in the upper canvas at zoom %s without changing node layouts", async (zoom) => {
     focusProbe.zoom = zoom;
     // Focus must use the current canvas projection, including unsaved layout and media dimensions.
     useCanvasStore.getState().updateDraft("image-card", { x: 120, y: 620, width: 420, height: 320 });
     const originalBounds = HTMLElement.prototype.getBoundingClientRect;
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-      return this.classList.contains("workspace-canvas")
+      return this.classList.contains("workspace-canvas") || this.classList.contains("react-flow")
         ? new DOMRect(0, 0, TEST_VIEWPORT.width, TEST_VIEWPORT.height)
         : originalBounds.call(this);
     });
@@ -674,8 +674,10 @@ describe("node editor centering", () => {
       for (const [itemId, layout] of layouts) expect(nodeElement(itemId)).toHaveStyle(layout);
       expect(useCanvasStore.getState().drafts).toBe(layoutDrafts);
       expect(focusProbe.center).toHaveBeenCalledTimes(centersBeforeClick + 1);
+      // At 1.8x the 320px media node needs its center at 304px for the 16px top margin.
+      const screenRise = id === "image-card" && zoom === 1.8 ? 146 : 150;
       expect(focusProbe.center).toHaveBeenLastCalledWith(
-        projected.position.x + width / 2, projected.position.y + height / 2,
+        projected.position.x + width / 2, projected.position.y + height / 2 + screenRise / zoom,
         expect.objectContaining({ zoom, duration: expect.any(Number), ease: expect.any(Function), interpolate: "linear" }));
       const duration = focusProbe.center.mock.lastCall?.[2]?.duration;
       expect(duration).toBeGreaterThanOrEqual(240);
@@ -713,15 +715,17 @@ describe("node editor centering", () => {
     expect(focusProbe.viewport).not.toHaveBeenCalled();
   });
 
-  it.each(["pointerDown", "wheel"] as const)("cancels a pending text editor focus on %s before the next frame", async (gesture) => {
+  it.each(["image-card", "text-card"].flatMap(id => ["pointerDown", "wheel"].map(gesture => ({ id, gesture } as const))))(
+    "cancels a pending $id editor focus on $gesture before the next frame", async ({ id, gesture }) => {
     await renderInteractiveFlow();
     const schedule = vi.spyOn(window, "requestAnimationFrame");
     const cancel = vi.spyOn(window, "cancelAnimationFrame");
-    fireEvent.click(nodeElement("text-card"));
+    fireEvent.click(nodeElement(id));
     expect(schedule).toHaveBeenCalled();
     const frame = schedule.mock.results.at(-1)?.value;
     expect(frame).toEqual(expect.any(Number));
-    fireEvent[gesture](nodeElement("image-card"));
+    if (gesture === "pointerDown") fireEvent.pointerDown(nodeElement("image-card"));
+    else fireEvent.wheel(nodeElement("image-card"));
     expect(cancel).toHaveBeenCalledWith(frame);
     await act(() => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())));
     expect(focusProbe.center).not.toHaveBeenCalled();
@@ -735,6 +739,7 @@ describe("node editor centering", () => {
     await renderInteractiveFlow();
     const node = nodeElement("image-card");
     fireEvent.click(node);
+    await act(() => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())));
     expect(focusProbe.center).toHaveBeenCalledOnce();
     const viewport = focusProbe.instance!.getViewport();
     const onPointerDown = vi.fn(() => {
@@ -755,6 +760,7 @@ describe("node editor centering", () => {
   it("keeps programmatic camera motion and gives user viewport movement immediate control", async () => {
     await renderInteractiveFlow();
     fireEvent.click(nodeElement("image-card"));
+    await act(() => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())));
     const viewport = focusProbe.instance!.getViewport();
     act(() => flowProps.onMoveStart?.(null, viewport));
     expect(focusProbe.viewport).not.toHaveBeenCalled();
