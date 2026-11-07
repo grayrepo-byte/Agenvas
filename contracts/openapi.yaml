@@ -10186,7 +10186,7 @@ components:
         id: {type: string, format: uuid}
         sourceCanvasItemId: {type: string, format: uuid}
         targetCanvasItemId: {type: string, format: uuid}
-        relationType: {type: string, enum: [MEDIA_INPUT, MEDIA_DERIVATION]}
+        relationType: {type: string, enum: [MEDIA_INPUT, MEDIA_DERIVATION, PROMPT_INPUT]}
         sourceArtifactVersionId: {type: string, format: uuid}
         version: {type: integer, format: int64, minimum: 0}
     SetupStatus:
@@ -10743,7 +10743,7 @@ components:
         projectId: {type: string, format: uuid}
         sourceCanvasItemId: {type: string, format: uuid}
         targetCanvasItemId: {type: string, format: uuid}
-        relationType: {type: string, enum: [MEDIA_INPUT, MEDIA_DERIVATION]}
+        relationType: {type: string, enum: [MEDIA_INPUT, MEDIA_DERIVATION, PROMPT_INPUT]}
         sourceArtifactVersionId: {type: string, format: uuid}
         version: {type: integer, format: int64, minimum: 0}
         createdAt: {type: string, format: date-time}
@@ -10755,6 +10755,7 @@ components:
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/CanvasConnection"}}
     CreateCanvasConnectionRequest:
+      description: "PROMPT_INPUT connects saved text to media nodes, follows saved text edits at acceptance, and needs no target draft version. sourceVersionId checks the text resource default at connection time. MEDIA_INPUT retains exact media version and draft CAS semantics."
       type: object
       additionalProperties: false
       required: [sourceCanvasItemId, targetCanvasItemId, sourceVersionId, relationType]
@@ -10762,7 +10763,7 @@ components:
         sourceCanvasItemId: {type: string, format: uuid}
         targetCanvasItemId: {type: string, format: uuid}
         sourceVersionId: {type: string, format: uuid}
-        relationType: {type: string, const: MEDIA_INPUT}
+        relationType: {type: string, enum: [MEDIA_INPUT, PROMPT_INPUT]}
         expectedTargetDraftVersion: {type: integer, format: int64, minimum: 0}
     DisconnectCanvasConnectionRequest:
       type: object
@@ -10929,12 +10930,27 @@ components:
         role: {type: string, minLength: 1, maxLength: 64}
         order: {type: integer, minimum: 0}
         kind: {$ref: "#/components/schemas/ArtifactKind"}
+    FrozenPromptInput:
+      type: object
+      additionalProperties: false
+      required: [connectionId, canvasItemId, artifactId, versionId, title, text]
+      properties:
+        connectionId: {type: string, format: uuid}
+        canvasItemId: {type: string, format: uuid}
+        artifactId: {type: string, format: uuid}
+        versionId: {type: string, format: uuid}
+        title: {type: string}
+        text: {type: string}
     MediaFrozenInput:
       type: object
       additionalProperties: true
       description: Immutable input of a media Task and its result; schema 7 fixes applicable applied character snapshots without resolving later profile revisions.
       properties:
         schemaVersion: {type: integer, minimum: 1, maximum: 7}
+        promptInputs:
+          type: array
+          description: Saved text bodies frozen in connection creation order (createdAt, then UUID); never reread by workers.
+          items: {$ref: "#/components/schemas/FrozenPromptInput"}
         characterBindings:
           type: array
           items: {$ref: "#/components/schemas/CharacterSnapshot"}

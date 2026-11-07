@@ -415,7 +415,7 @@
   "canvas.workspace.streamConnecting": "イベントストリームを接続中...",
   "canvas.workspace.syncRetrying": "同期に失敗しました。再試行中です",
   "canvas.workspace.toggleInteraction": "キャンバスの操作を切り替え",
-  "canvas.workspace.unsupportedConnection": "既存のメディアバージョンを対応するメディア入力に接続してください。",
+  "canvas.workspace.unsupportedConnection": "保存済みのテキスト本文またはメディアのバージョンを、対応するメディアノードに接続してください。",
   "canvas.workspace.noCompatibleModel": "この素材を選択した種類のノードの入力に使用できる有効なモデルがありません。先にメディア設定で対応モデルを設定してください。",
   "canvas.workspace.viewportControls": "キャンバス表示の操作",
   "canvas.workspace.viewportHint": "キャンバスの編集には画面幅 1024 px 以上が必要です。現在はプレビューのみ利用できます。",
@@ -3963,5 +3963,12 @@
   "reference.network.proxyError": "プロキシトンネルの確立に失敗しました。HTTP、HTTPS、SOCKS5 の種類と数値アドレスへの対応を管理者に確認してください。",
   "reference.network.tlsFailed": "TLS 検証に失敗しました。管理者に証明書の信頼とホスト名の確認を依頼し、検証を無効にせず再試行してください。",
   "reference.network.rateLimited": "GitHub のリクエスト制限に達しました。ローカルキャッシュは利用できます。後で再試行してください。",
-  "reference.network.unavailable": "ソースに一時的に接続できません。ローカルキャッシュは利用できます。接続を確認し、再試行してください。"
+  "reference.network.unavailable": "ソースに一時的に接続できません。ローカルキャッシュは利用できます。接続を確認し、再試行してください。",
+  "media.promptInputs.count": "共通プロンプト · {0}",
+  "media.promptInputs.hint": "保存済みの本文を接続順に結合し、ローカルのプロンプトを末尾に追加します。空白は除外され、実行受付時に固定されます。選択したスタイルは別途追加されます。",
+  "media.promptInputs.empty": "空のテキスト（除外）",
+  "media.promptInputs.combined": "結合プレビュー",
+  "media.promptInputs.failed": "共通プロンプトを読み込めませんでした。実行前に再試行してください。",
+  "media.promptInputs.unsupported": "この機能には有効なプロンプト入力がありません。機能を変更するか接続を解除してください。",
+  "media.promptInputs.tooLong": "結合したプロンプトは最大 {0} 文字です。"
 }

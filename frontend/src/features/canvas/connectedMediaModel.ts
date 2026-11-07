@@ -10,6 +10,12 @@ function connectionFields(capability: MediaCapability, kind: Artifact["kind"], s
     durationSeconds: kind === "VIDEO" ? capability.settings.defaultDurationSeconds ?? null : null,
     videoInputMode: kind === "VIDEO" ? "GENERAL_REFERENCE" : null };
   const definition = workflowDefinition(capability);
+  if (sourceKind === "TEXT") {
+    if (definition && !definition.fields.some((field) => field.source === "PROMPT")) return null;
+    if (kind === "VIDEO") fields.videoInputMode = capability.defaultVideoInputMode
+      ?? (capability.supportedVideoInputModes.includes("TEXT") ? "TEXT" : preferredImageVideoMode(capability));
+    return fields;
+  }
   // Declared slots are authoritative, including their default-dependent conditions.
   if (definition) return activeWorkflowMediaFields(definition, fields.parameters.dynamicValues ?? {}, "", fields.durationSeconds)
     .some((field) => field.type === sourceKind) ? fields : null;

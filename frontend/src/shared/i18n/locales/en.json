@@ -415,7 +415,7 @@
   "canvas.workspace.streamConnecting": "Connecting event stream...",
   "canvas.workspace.syncRetrying": "Sync failed, retrying",
   "canvas.workspace.toggleInteraction": "Toggle canvas interactivity",
-  "canvas.workspace.unsupportedConnection": "Connect an existing media version to a compatible media input.",
+  "canvas.workspace.unsupportedConnection": "Connect saved text or a media version to a compatible media node.",
   "canvas.workspace.noCompatibleModel": "No enabled model accepts this media as input for the selected node type. Configure a compatible model in media settings first.",
   "canvas.workspace.viewportControls": "Canvas view controls",
   "canvas.workspace.viewportHint": "Canvas editing requires at least 1024px width; currently only a read-only preview is available.",
@@ -3963,5 +3963,12 @@
   "reference.network.proxyError": "The proxy tunnel failed. Ask the administrator to check the configured HTTP, HTTPS or SOCKS5 proxy type and numeric-address support.",
   "reference.network.tlsFailed": "TLS verification failed. Ask the administrator to check the certificate trust and hostname, then retry without disabling verification.",
   "reference.network.rateLimited": "GitHub is rate limiting requests. The local cache remains available; retry later.",
-  "reference.network.unavailable": "The source is temporarily unavailable. The local cache remains available; check connectivity and retry."
+  "reference.network.unavailable": "The source is temporarily unavailable. The local cache remains available; check connectivity and retry.",
+  "media.promptInputs.count": "Shared prompts · {0}",
+  "media.promptInputs.hint": "Saved text bodies are combined in connection creation order, followed by the local prompt. Blank text is skipped. Inputs freeze at acceptance; the selected style is appended separately.",
+  "media.promptInputs.empty": "Empty text (skipped)",
+  "media.promptInputs.combined": "Combined preview",
+  "media.promptInputs.failed": "Could not load shared prompts. Retry before generating.",
+  "media.promptInputs.unsupported": "This capability has no active prompt input. Change the capability or disconnect the text input.",
+  "media.promptInputs.tooLong": "The combined prompt supports at most {0} characters."
 }

@@ -88,16 +88,16 @@ public class CanvasConnection extends TableImpl<CanvasConnectionRecord> {
 
     /**
      * The column <code>public.canvas_connection.relation_type</code>.
-     * MEDIA_INPUT 是精确媒体输入，MEDIA_DERIVATION 是可移除来源提示
+     * MEDIA_INPUT 固定媒体版本；MEDIA_DERIVATION 为来源提示；PROMPT_INPUT 在生成受理时读取文本节点已保存正文
      */
-    public final TableField<CanvasConnectionRecord, String> RELATION_TYPE = createField(DSL.name("relation_type"), SQLDataType.VARCHAR(32).nullable(false), this, "MEDIA_INPUT 是精确媒体输入，MEDIA_DERIVATION 是可移除来源提示");
+    public final TableField<CanvasConnectionRecord, String> RELATION_TYPE = createField(DSL.name("relation_type"), SQLDataType.VARCHAR(32).nullable(false), this, "MEDIA_INPUT 固定媒体版本；MEDIA_DERIVATION 为来源提示；PROMPT_INPUT 在生成受理时读取文本节点已保存正文");
 
     /**
      * The column
      * <code>public.canvas_connection.source_artifact_version_id</code>.
-     * 连线固定的来源版本
+     * 建立连线时的来源版本；PROMPT_INPUT 仅作建连审计，执行时冻结文本节点当时的正文版本
      */
-    public final TableField<CanvasConnectionRecord, UUID> SOURCE_ARTIFACT_VERSION_ID = createField(DSL.name("source_artifact_version_id"), SQLDataType.UUID.nullable(false), this, "连线固定的来源版本");
+    public final TableField<CanvasConnectionRecord, UUID> SOURCE_ARTIFACT_VERSION_ID = createField(DSL.name("source_artifact_version_id"), SQLDataType.UUID.nullable(false), this, "建立连线时的来源版本；PROMPT_INPUT 仅作建连审计，执行时冻结文本节点当时的正文版本");
 
     /**
      * The column <code>public.canvas_connection.version</code>.
@@ -259,7 +259,7 @@ public class CanvasConnection extends TableImpl<CanvasConnectionRecord> {
     public List<Check<CanvasConnectionRecord>> getChecks() {
         return Arrays.asList(
             Internal.createCheck(this, DSL.name("ck_canvas_connection_distinct_items"), "((source_canvas_item_id <> target_canvas_item_id))", true),
-            Internal.createCheck(this, DSL.name("ck_canvas_connection_type"), "(((relation_type)::text = ANY ((ARRAY['MEDIA_INPUT'::character varying, 'MEDIA_DERIVATION'::character varying])::text[])))", true),
+            Internal.createCheck(this, DSL.name("ck_canvas_connection_type"), "(((relation_type)::text = ANY ((ARRAY['MEDIA_INPUT'::character varying, 'MEDIA_DERIVATION'::character varying, 'PROMPT_INPUT'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("ck_canvas_connection_version"), "((version >= 0))", true)
         );
     }

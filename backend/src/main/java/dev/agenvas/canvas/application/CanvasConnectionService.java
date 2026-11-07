@@ -79,14 +79,19 @@ public class CanvasConnectionService {
                     sourceItemId);
             Artifact sourceArtifact = artifacts.get(ownerId, projectId,
                     source.subjectId()).artifact();
-            if (sourceArtifact.kind() != Artifact.Kind.IMAGE
+            boolean promptInput = relationType == CanvasConnection.RelationType.PROMPT_INPUT;
+            if (promptInput && sourceArtifact.kind() != Artifact.Kind.TEXT) {
+                throw invalid(ApiMessage.of("api.canvas-prompt.invalid-source"));
+            }
+            if (!promptInput && sourceArtifact.kind() != Artifact.Kind.IMAGE
                     && (!Set.of(Artifact.Kind.AUDIO, Artifact.Kind.VIDEO).contains(sourceArtifact.kind())
                         || relationType != CanvasConnection.RelationType.MEDIA_INPUT)) {
                 throw invalid(ApiMessage.of("api.canvas-connection-service.canvas-image-input-connections-must-originate-from-the-image-card"));
             }
-            if (sourceVersionId == null
-                    || !sourceVersionId.equals(source.selectedVersionId())) {
-                throw conflict(ApiMessage.of("api.canvas-connection-service.the-source-image-version-has-changed-during-dragging-please-reconnect"));
+            UUID currentSourceVersion = promptInput ? sourceArtifact.resourceDefaultVersionId() : source.selectedVersionId();
+            if (sourceVersionId == null || !sourceVersionId.equals(currentSourceVersion)) {
+                throw conflict(ApiMessage.of(promptInput ? "api.canvas-prompt.source-changed"
+                        : "api.canvas-connection-service.the-source-image-version-has-changed-during-dragging-please-reconnect"));
             }
             if (relationType == CanvasConnection.RelationType.MEDIA_DERIVATION) {
                 throw invalid(ApiMessage.of("api.canvas-connection-service.media-derived-lines-can-only-be-created-by-media-change"));
@@ -105,6 +110,12 @@ public class CanvasConnectionService {
             Instant now = clock.instant();
             CanvasConnection connection = new CanvasConnection(UUID.randomUUID(), projectId,
                     sourceItemId, targetItemId, relationType, sourceVersionId, 0, now, now);
+            if (promptInput) {
+                CanvasItem target = canvasItems.requireArtifactItem(ownerId, projectId, targetItemId);
+                if (artifacts.get(ownerId, projectId, target.subjectId()).artifact().kind() == Artifact.Kind.TEXT) {
+                    throw invalid(ApiMessage.of("api.canvas-prompt.invalid-target"));
+                }
+            }
             connections.create(connection);
             MediaDraft draft = null;
             if (relationType == CanvasConnection.RelationType.MEDIA_INPUT) {
@@ -119,7 +130,7 @@ public class CanvasConnectionService {
                 draft = drafts.addConnectionInputWithinChange(ownerId, projectId,
                         targetItemId, expectedTargetDraftVersion, sourceVersionId,
                         connection.id(), replaceManualSource, slotKey);
-            } else {
+            } else if (!promptInput) {
                 throw invalid(ApiMessage.of("api.canvas-connection-service.unsupported-canvas-wire-type"));
             }
             return ProjectEventService.Change.changed(new ConnectionResult(connection, draft),
@@ -242,6 +253,16 @@ public class CanvasConnectionService {
             }
             if (!connections.delete(projectId, connection.id())) {
                 throw conflict(ApiMessage.of("api.canvas-connection-service.the-connection-was-deleted-by-another-operation"));
+            }
+        }
+    }
+
+    /** Explicit history reuse materializes frozen shared text and must remove its live sources. */
+    void clearTargetPromptConnectionsWithinChange(UUID ownerId, UUID projectId, UUID targetCanvasItemId) {
+        for (CanvasConnection edge : connections.list(ownerId, projectId)) {
+            if (edge.relationType() == CanvasConnection.RelationType.PROMPT_INPUT
+                    && edge.targetCanvasItemId().equals(targetCanvasItemId)) {
+                disconnect(ownerId, projectId, edge.id(), null);
             }
         }
     }

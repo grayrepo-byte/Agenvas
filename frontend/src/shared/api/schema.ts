@@ -6900,7 +6900,7 @@ export interface components {
             /** Format: uuid */
             targetCanvasItemId: string;
             /** @enum {string} */
-            relationType: "MEDIA_INPUT" | "MEDIA_DERIVATION";
+            relationType: "MEDIA_INPUT" | "MEDIA_DERIVATION" | "PROMPT_INPUT";
             /** Format: uuid */
             sourceArtifactVersionId: string;
             /** Format: int64 */
@@ -7371,7 +7371,7 @@ export interface components {
             /** Format: uuid */
             targetCanvasItemId: string;
             /** @enum {string} */
-            relationType: "MEDIA_INPUT" | "MEDIA_DERIVATION";
+            relationType: "MEDIA_INPUT" | "MEDIA_DERIVATION" | "PROMPT_INPUT";
             /** Format: uuid */
             sourceArtifactVersionId: string;
             /** Format: int64 */
@@ -7384,6 +7384,7 @@ export interface components {
         CanvasConnectionList: {
             items: components["schemas"]["CanvasConnection"][];
         };
+        /** @description PROMPT_INPUT connects saved text to media nodes, follows saved text edits at acceptance, and needs no target draft version. sourceVersionId checks the text resource default at connection time. MEDIA_INPUT retains exact media version and draft CAS semantics. */
         CreateCanvasConnectionRequest: {
             /** Format: uuid */
             sourceCanvasItemId: string;
@@ -7391,8 +7392,8 @@ export interface components {
             targetCanvasItemId: string;
             /** Format: uuid */
             sourceVersionId: string;
-            /** @constant */
-            relationType: "MEDIA_INPUT";
+            /** @enum {string} */
+            relationType: "MEDIA_INPUT" | "PROMPT_INPUT";
             /** Format: int64 */
             expectedTargetDraftVersion?: number;
         };
@@ -7520,9 +7521,23 @@ export interface components {
             order: number;
             kind: components["schemas"]["ArtifactKind"];
         };
+        FrozenPromptInput: {
+            /** Format: uuid */
+            connectionId: string;
+            /** Format: uuid */
+            canvasItemId: string;
+            /** Format: uuid */
+            artifactId: string;
+            /** Format: uuid */
+            versionId: string;
+            title: string;
+            text: string;
+        };
         /** @description Immutable input of a media Task and its result; schema 7 fixes applicable applied character snapshots without resolving later profile revisions. */
         MediaFrozenInput: {
             schemaVersion?: number;
+            /** @description Saved text bodies frozen in connection creation order (createdAt, then UUID); never reread by workers. */
+            promptInputs?: components["schemas"]["FrozenPromptInput"][];
             characterBindings?: components["schemas"]["CharacterSnapshot"][];
             characterContribution?: components["schemas"]["CharacterContribution"];
         } & {

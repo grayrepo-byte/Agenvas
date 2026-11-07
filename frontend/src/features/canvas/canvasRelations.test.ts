@@ -45,13 +45,18 @@ describe("media canvas relations", () => {
     expect(target.selectedVersionId).toBeNull();
   });
 
-  it("rejects text inputs, text destinations, self relations, missing nodes and reversed handles", () => {
+  it("rejects text destinations, self relations, missing nodes and reversed handles", () => {
     const source = item("source"); const text = item("text", "TEXT");
     expect(isCanvasConnectionValid([source, text], gesture(source, text))).toBe(false);
-    expect(isCanvasConnectionValid([source, text], gesture(text, source))).toBe(false);
+    expect(isCanvasConnectionValid([source, text], gesture(text, source))).toBe(true);
     expect(isCanvasConnectionValid([source], gesture(source, source))).toBe(false);
     expect(isCanvasConnectionValid([source], gesture(source, item("missing")))).toBe(false);
     expect(isCanvasConnectionValid([source, item("target")], { ...gesture(source, item("target")), sourceHandle: "artifact-input" })).toBe(false);
+  });
+
+  it.each(["IMAGE", "VIDEO", "AUDIO"] as const)("accepts saved text as a prompt for %s", (kind) => {
+    const text = item("text", "TEXT"); const target = item("target", kind);
+    expect(isCanvasConnectionValid([text, target], gesture(text, target))).toBe(true);
   });
 
   it("projects only persisted relations with two visible endpoints", () => {

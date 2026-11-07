@@ -33,7 +33,8 @@ import tools.jackson.databind.node.ObjectNode;
 /** Persists generation input separately from immutable media results. */
 @Service
 public class MediaDraftService {
-    private static final int MAX_PROMPT_LENGTH = 20_000;
+    /** Shared bound for saved local prompts and composed text-node inputs. */
+    public static final int MAX_PROMPT_LENGTH = 20_000;
     private static final int MIN_VIDEO_SECONDS = 1;
     // Drafts must survive switching away from longer workflows; execution checks the target protocol.
     private static final int MAX_VIDEO_SECONDS = MediaAdapterRegistry.RUNNINGHUB_MAX_VIDEO_SECONDS;
@@ -284,8 +285,23 @@ public class MediaDraftService {
                 && frozen.path("durationSeconds").canConvertToInt()
                 ? frozen.path("durationSeconds").intValue() : null;
         return save(ownerId, projectId, canvasItemId, expectedDraftVersion,
-                frozen.path("prompt").asText(""), frozen.path("parameters").deepCopy(),
+                restoredPrompt(frozen), frozen.path("parameters").deepCopy(),
                 durationSeconds, capabilityId, mode, inputs, mentions, frozenStyleId(frozen));
+    }
+
+    /** Explicit history reuse turns frozen public text into manual prompt content, without live links. */
+    private String restoredPrompt(JsonNode frozen) {
+        String local = frozen.path("prompt").asText("");
+        if (frozen.path("promptInputs").isEmpty()) return local;
+        if (local.isBlank() && frozen.hasNonNull("userRenderedPrompt")) return frozen.path("userRenderedPrompt").asText();
+        List<String> pieces = new ArrayList<>();
+        for (JsonNode source : frozen.path("promptInputs")) {
+            String text = source.path("text").asText("").strip();
+            if (!text.isEmpty()) pieces.add(text);
+        }
+        if (pieces.isEmpty()) return local;
+        if (!local.isBlank()) pieces.add(local.strip());
+        return String.join("\n\n", pieces);
     }
 
     private UUID frozenStyleId(JsonNode frozen) {

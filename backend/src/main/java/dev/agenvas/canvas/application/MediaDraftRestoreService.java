@@ -26,10 +26,13 @@ public class MediaDraftRestoreService {
     @Transactional
     public MediaDraft restore(UUID ownerId, UUID projectId, UUID canvasItemId,
             UUID versionId, long expectedDraftVersion) {
-        long versionAfterCleanup = connections.clearTargetMediaConnectionsWithinChange(
-                ownerId, projectId, canvasItemId, expectedDraftVersion);
-        return drafts.restoreVersionInputs(ownerId, projectId, canvasItemId, versionId,
-                versionAfterCleanup);
+        return events.recordChange(ownerId, projectId, () -> {
+            long versionAfterCleanup = connections.clearTargetMediaConnectionsWithinChange(
+                    ownerId, projectId, canvasItemId, expectedDraftVersion);
+            connections.clearTargetPromptConnectionsWithinChange(ownerId, projectId, canvasItemId);
+            MediaDraft saved = drafts.restoreVersionInputs(ownerId, projectId, canvasItemId, versionId, versionAfterCleanup);
+            return ProjectEventService.Change.unchanged(saved);
+        }).value();
     }
 
     /** Switching capability is an explicit input reconciliation. Ordinary autosaves still

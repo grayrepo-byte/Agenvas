@@ -54,8 +54,13 @@ describe("connected media model selection", () => {
     expect(connectedMediaModel(settings([model]), "VIDEO", "IMAGE")).toBeNull();
   });
 
-  it.each(["VIDEO", "AUDIO", "TEXT"] as const)("does not mistake an ordinary image model for a %s input model", (source) => {
+  it.each(["VIDEO", "AUDIO"] as const)("does not mistake an ordinary image model for a %s input model", (source) => {
     expect(connectedMediaModel(settings([image]), "IMAGE", source)).toBeNull();
+  });
+
+  it("uses text as a prompt on ordinary image models and rejects promptless workflows", () => {
+    expect(connectedMediaModel(settings([image]), "IMAGE", "TEXT")).toMatchObject({ capabilityId: image.id });
+    expect(connectedMediaModel(settings([{ ...image, settings: { comfyInputs: [] } }]), "IMAGE", "TEXT")).toBeNull();
   });
 
   it("supports audio references while accounting for the default speaker", () => {

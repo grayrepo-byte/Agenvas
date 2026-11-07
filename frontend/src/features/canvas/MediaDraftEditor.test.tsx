@@ -142,6 +142,40 @@ describe("MediaDraftEditor", () => {
     await waitFor(() => expect(Object.values(useCanvasStore.getState().mediaDraftRecoveries)
       .some((recovery) => recovery.saving)).toBe(false));
   });
+  it("keeps local text when loading shared sources fails and enables retry", async () => {
+    setup({ handlers: [http.get(`/api/v1/projects/${PROJECT_ID}/canvas/connections`, () =>
+      HttpResponse.json({ code: "UNAVAILABLE", retryable: true }, { status: 503 }), { once: true })] });
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("公共提示词读取失败");
+    expect(screen.getByRole("textbox", { name: "图片提示词" })).toHaveTextContent(initialDraft.prompt);
+    expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
+    await userEvent.setup().click(within(alert).getByRole("button", { name: "重试" }));
+    await waitFor(() => expect(screen.queryByText("公共提示词读取失败，请重试后运行。")).not.toBeInTheDocument());
+    expect(screen.getByRole("textbox", { name: "图片提示词" })).toHaveTextContent(initialDraft.prompt);
+  });
+
+  it("previews shared saved text while leaving the local prompt separate and permits upstream-only submit", async () => {
+    let submitted = false;
+    const version = { id: "text-latest", versionNo: 2, schemaVersion: 1, content: { text: "Common lighting", format: "PLAIN_TEXT" },
+      inputReferences: [], createdByKind: "USER", runId: null, createdAt: NOW };
+    setup({ draft: { ...initialDraft, prompt: "" }, handlers: [
+      http.get(`/api/v1/projects/${PROJECT_ID}/canvas/connections`, () => HttpResponse.json({ items: [{ id: "prompt-link",
+        projectId: PROJECT_ID, sourceCanvasItemId: "text-card", targetCanvasItemId: CANVAS_ITEM_ID,
+        relationType: "PROMPT_INPUT", sourceArtifactVersionId: "text-original", version: 0, createdAt: NOW, updatedAt: NOW }] })),
+      http.get(`/api/v1/projects/${PROJECT_ID}/canvas/items`, () => HttpResponse.json({ items: [{ id: "text-card", subjectId: "text-artifact",
+        title: "Public lighting", artifact: { id: "text-artifact", kind: "TEXT", resourceDefaultVersionId: version.id, resourceDefaultVersion: version } }] })),
+      http.post(`${BASE}/run`, async () => { submitted = true; return HttpResponse.json(task("READY"), { status: 202 }); }),
+    ] });
+    await screen.findByRole("button", { name: "公共提示词 · 1" });
+    expect(screen.getByRole("textbox", { name: "图片提示词" })).toHaveTextContent("");
+    await userEvent.setup().click(screen.getByRole("button", { name: "公共提示词 · 1" }));
+    expect(await screen.findByLabelText("合并预览")).toHaveTextContent("Common lighting");
+    expect(screen.getByText("Public lighting")).toBeInTheDocument();
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    await userEvent.setup().click(screen.getByRole("button", { name: "运行" }));
+    await waitFor(() => expect(submitted).toBe(true));
+  });
+
   it("omits the pose and costume catalog from ordinary audio reference sources", async () => {
     setup({ kind: "AUDIO", settings: audioSettings });
     const user = userEvent.setup();

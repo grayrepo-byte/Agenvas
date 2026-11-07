@@ -415,7 +415,7 @@
   "canvas.workspace.streamConnecting": "正在连接事件流…",
   "canvas.workspace.syncRetrying": "同步失败，正在重试",
   "canvas.workspace.toggleInteraction": "切换画布交互",
-  "canvas.workspace.unsupportedConnection": "仅支持将已有媒体版本连到兼容的媒体输入。",
+  "canvas.workspace.unsupportedConnection": "可将已保存的文本正文或媒体版本连到兼容的媒体节点。",
   "canvas.workspace.noCompatibleModel": "没有已启用的模型支持将此素材作为该类型节点的输入，请先在媒体设置中配置兼容模型。",
   "canvas.workspace.viewportControls": "画布视图控制",
   "canvas.workspace.viewportHint": "画布编辑需要至少 1024px 宽度；当前仅提供只读预览。",
@@ -3963,5 +3963,12 @@
   "reference.network.proxyError": "代理隧道建立失败。请管理员检查配置的 HTTP、HTTPS 或 SOCKS5 类型及数字地址支持。",
   "reference.network.tlsFailed": "TLS 校验失败。请管理员检查证书信任和主机名后重试，勿关闭校验。",
   "reference.network.rateLimited": "GitHub 请求已达限额。本地缓存仍然可用，请稍后重试。",
-  "reference.network.unavailable": "暂时无法连接来源。本地缓存仍然可用，请检查网络后重试。"
+  "reference.network.unavailable": "暂时无法连接来源。本地缓存仍然可用，请检查网络后重试。",
+  "media.promptInputs.count": "公共提示词 · {0}",
+  "media.promptInputs.hint": "按连线建立顺序合并已保存的文本正文，再追加本地提示词；空白文本会跳过。运行时冻结内容，所选风格另行附加。",
+  "media.promptInputs.empty": "空文本（不参与合并）",
+  "media.promptInputs.combined": "合并预览",
+  "media.promptInputs.failed": "公共提示词读取失败，请重试后运行。",
+  "media.promptInputs.unsupported": "当前能力没有可用的主提示词输入，请切换能力或断开文本连线。",
+  "media.promptInputs.tooLong": "合并后的提示词最多支持 {0} 个字符。"
 }

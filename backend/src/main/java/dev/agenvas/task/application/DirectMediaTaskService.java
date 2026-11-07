@@ -12,6 +12,8 @@ import dev.agenvas.artifact.domain.ImageGenerationParameters;
 import dev.agenvas.artifact.domain.MediaDraft;
 import dev.agenvas.artifact.domain.VideoGenerationParameters;
 import dev.agenvas.canvas.application.CanvasService;
+import dev.agenvas.canvas.application.CanvasPromptInputService;
+import dev.agenvas.canvas.application.CanvasPromptInputService.PromptInput;
 import dev.agenvas.canvas.application.CanvasItemQueryService;
 import dev.agenvas.canvas.domain.CanvasItem;
 import dev.agenvas.character.application.CharacterService;
@@ -96,6 +98,7 @@ public class DirectMediaTaskService {
     private final dev.agenvas.provider.application.MediaFunctionService functions;
     private final dev.agenvas.asset.storage.MediaRelayService relay;
     private final ObjectProvider<CharacterService> characters;
+    private final CanvasPromptInputService promptInputs;
 
     public DirectMediaTaskService(TaskRepository tasks, MediaDraftService drafts,
             ArtifactService artifacts, AssetService assets, CanvasItemQueryService canvasItems,
@@ -104,7 +107,8 @@ public class DirectMediaTaskService {
             ProjectEventService events, UsageService usage,
             ObjectMapper mapper, Clock clock, ProjectService projects, AgentRunService runs, MediaStyleService styles, dev.agenvas.asset.storage.MediaRelayService relay,
             PromptService prompts, dev.agenvas.provider.application.MediaFunctionService functions,
-            ObjectProvider<CharacterService> characters, CreationMessages creationMessages) {
+            ObjectProvider<CharacterService> characters, CreationMessages creationMessages,
+            CanvasPromptInputService promptInputs) {
         this.tasks = tasks;
         this.drafts = drafts;
         this.artifacts = artifacts;
@@ -124,6 +128,7 @@ public class DirectMediaTaskService {
         this.prompts = prompts;
         this.functions = functions;
         this.characters = characters;
+        this.promptInputs = promptInputs;
     }
 
     @Transactional
@@ -319,7 +324,8 @@ public class DirectMediaTaskService {
                         : kind == Task.Kind.AUDIO_GENERATION ? "TEXT" : draft.videoInputMode().name());
                 if (dynamic) frozen.set("runningHubContract", mapper.valueToTree(definition.executionContract()));
                 frozen.put("prompt", draft.prompt());
-                frozen.put("userRenderedPrompt", renderPrompt(draft));
+                frozen.put("userRenderedPrompt", prepared.userRenderedPrompt());
+                frozen.set("promptInputs", mapper.valueToTree(prepared.promptInputs()));
                 frozen.put("renderedPrompt", renderedPrompt);
                 if (prepared.style() == null) frozen.putNull("style");
                 else frozen.set("style", mapper.valueToTree(prepared.style()));
@@ -426,13 +432,29 @@ public class DirectMediaTaskService {
         if (draft.version() != expectedDraftVersion) throw conflict(ApiMessage.of("api.direct-media-task-service.the-draft-has-changed-please-check-the-save-status-and"));
         if (lockStyle) styles.lockForGeneration(draft.styleId());
         MediaStyleService.Snapshot style = styles.forGeneration(draft.styleId(), target.kind());
-        String renderedPrompt = MediaStyleService.compose(renderPrompt(draft), style);
+        var linkedPrompts = promptInputs.resolve(ownerId, projectId, canvasItem.id());
+        String userRenderedPrompt = CanvasPromptInputService.compose(linkedPrompts, renderPrompt(draft));
+        String renderedPrompt = MediaStyleService.compose(userRenderedPrompt, style);
         MediaCapabilityBinding selected = capabilities.forDraft(draft.capabilityId(), kind);
         var definition = capabilities.runningHubDefinition(selected);
         var nativeProfile = capabilities.nativeProfile(selected);
         var kling = capabilities.klingProfile(selected);
-        if (kling != null) renderedPrompt = MediaStyleService.compose(renderKlingPrompt(draft, kling), style);
-        if (nativeProfile != null) renderedPrompt = MediaStyleService.compose(renderNativePrompt(draft, nativeProfile), style);
+        if (kling != null) {
+            String local = renderKlingPrompt(draft, kling);
+            if (!linkedPrompts.isEmpty() && local.isBlank()) local = KlingModels.inputs(kling).stream()
+                    .filter(field -> field.effectiveSource() == RunningHubDefinition.Source.PROMPT)
+                    .map(field -> field.defaultValue()).filter(java.util.Objects::nonNull).map(JsonNode::asText).findFirst().orElse("");
+            userRenderedPrompt = CanvasPromptInputService.compose(linkedPrompts, local);
+            renderedPrompt = MediaStyleService.compose(userRenderedPrompt, style);
+        }
+        if (nativeProfile != null) {
+            String local = renderNativePrompt(draft, nativeProfile);
+            if (!linkedPrompts.isEmpty() && local.isBlank()) local = nativeProfile.inputs().stream()
+                    .filter(field -> field.effectiveSource() == RunningHubDefinition.Source.PROMPT)
+                    .map(field -> field.defaultValue()).filter(java.util.Objects::nonNull).map(JsonNode::asText).findFirst().orElse("");
+            userRenderedPrompt = CanvasPromptInputService.compose(linkedPrompts, local);
+            renderedPrompt = MediaStyleService.compose(userRenderedPrompt, style);
+        }
         JsonNode configuredSettings = capabilities.settings(selected);
         var comfy = ComfyUiWorkflowDefinition.configured(configuredSettings)
                 ? ComfyUiWorkflowDefinition.parse(mapper, configuredSettings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY), kind) : null;
@@ -445,9 +467,14 @@ public class DirectMediaTaskService {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "MEDIA_STYLE_PROMPT_UNSUPPORTED",
                     ApiMessage.of("api.media-style.title"), ApiMessage.of("api.media-style.prompt-unsupported"), false);
         }
+        if (!linkedPrompts.isEmpty() && (comfy != null && !comfy.maps(ComfyUiWorkflowDefinition.Source.PROMPT)
+                || nativeProfile != null && nativeProfile.inputs().stream().noneMatch(field -> field.effectiveSource() == RunningHubDefinition.Source.PROMPT)
+                || kling != null && KlingModels.inputs(kling).stream().noneMatch(field -> field.effectiveSource() == RunningHubDefinition.Source.PROMPT))) {
+            throw invalid(ApiMessage.of("api.canvas-prompt.unsupported"));
+        }
         if (comfy != null && !comfy.maps(ComfyUiWorkflowDefinition.Source.PROMPT)) renderedPrompt = "";
         if (!fullyDeclared && (comfy == null || comfy.maps(ComfyUiWorkflowDefinition.Source.PROMPT))
-                && draft.prompt().isBlank()) throw invalid(ApiMessage.of("api.direct-media-task-service.prompt-words-need-to-be-filled-in-before-running"));
+                && CanvasPromptInputService.compose(linkedPrompts, draft.prompt()).isBlank()) throw invalid(ApiMessage.of("api.direct-media-task-service.prompt-words-need-to-be-filled-in-before-running"));
         if (!fullyDeclared && kind == Task.Kind.VIDEO_GENERATION
                 && draft.videoInputMode() == MediaDraft.VideoInputMode.START_END
                 && (draft.mediaInputs().isEmpty()
@@ -492,18 +519,16 @@ public class DirectMediaTaskService {
         ObjectNode dynamicParameters = null;
         if (dynamic) {
             dynamicParameters = mapper.createObjectNode();
-            ObjectNode dynamicValues = definition.values(mapper, draft.parameters(), renderPrompt(draft), duration, true);
-            if (style != null) {
-                dynamicValues = definition.transformPromptValues(mapper, dynamicValues,
-                        prompt -> MediaStyleService.compose(prompt, style));
-                for (var field : definition.fields()) {
-                    if (field.effectiveSource() == dev.agenvas.provider.domain.RunningHubDefinition.Source.PROMPT
-                            && dynamicValues.hasNonNull(field.key())) {
-                        renderedPrompt = dynamicValues.path(field.key()).asText();
-                        break;
-                    }
-                }
-            }
+            ObjectNode dynamicValues = definition.values(mapper, draft.parameters(), renderPrompt(draft), duration, true,
+                    prompt -> CanvasPromptInputService.compose(linkedPrompts, prompt));
+            ObjectNode baseDynamicValues = dynamicValues;
+            var promptField = definition.fields().stream().filter(field -> field.effectiveSource()
+                    == dev.agenvas.provider.domain.RunningHubDefinition.Source.PROMPT && baseDynamicValues.hasNonNull(field.key())).findFirst();
+            if (promptField.isPresent()) userRenderedPrompt = dynamicValues.path(promptField.get().key()).asText();
+            if (style != null) dynamicValues = definition.transformPromptValues(mapper, dynamicValues,
+                    prompt -> MediaStyleService.compose(prompt, style));
+            if (promptField.isPresent()) renderedPrompt = dynamicValues.path(promptField.get().key()).asText();
+            else if (!linkedPrompts.isEmpty()) throw invalid(ApiMessage.of("api.canvas-prompt.unsupported"));
             dynamicParameters.set(dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY, dynamicValues);
             dev.agenvas.artifact.application.MediaDraftService.validateSlots(definition, dynamicParameters, draft.mediaInputs(), true);
         } else if (nativeProfile != null) {
@@ -528,6 +553,22 @@ public class DirectMediaTaskService {
         } else if (comfy == null) {
             validateCapabilityInputs(kind, draft, capabilities.inputPolicy(binding),
                     capabilities.parameters(binding, draft.parameters()));
+        }
+        ObjectNode effectiveDynamicParameters = dynamicParameters;
+        if (!linkedPrompts.isEmpty() && (nativeProfile != null && nativeProfile.inputs().stream().noneMatch(field ->
+                    field.effectiveSource() == RunningHubDefinition.Source.PROMPT
+                            && preparedPromptPresent(effectiveDynamicParameters, NativeMediaProtocol.VALUES_PROPERTY, field.key()))
+                || kling != null && KlingModels.inputs(kling).stream().noneMatch(field ->
+                    field.effectiveSource() == RunningHubDefinition.Source.PROMPT
+                            && preparedPromptPresent(effectiveDynamicParameters, KlingModels.VALUES_PROPERTY, field.key())))) {
+            throw invalid(ApiMessage.of("api.canvas-prompt.unsupported"));
+        }
+        if (!linkedPrompts.isEmpty() && renderedPrompt.length() > MediaDraftService.MAX_PROMPT_LENGTH) {
+            throw invalid(ApiMessage.of("api.canvas-prompt.too-long", MediaDraftService.MAX_PROMPT_LENGTH));
+        }
+        if (!linkedPrompts.isEmpty() && !fullyDeclared && kind == Task.Kind.AUDIO_GENERATION
+                && renderedPrompt.codePointCount(0, renderedPrompt.length()) > AudioGenerationParameters.MAX_PROMPT_LENGTH) {
+            throw invalid(ApiMessage.of("api.direct-media-task-service.seed-audio-prompt-words-can-be-up-to-3000-characters"));
         }
         if (capabilities.inputPolicy(binding).platform() == dev.agenvas.provider.domain.MediaPlatform.COMFYUI
                 && renderedPrompt.length() > MediaAdapterRegistry.COMFY_MAX_PROMPT_LENGTH) {
@@ -598,9 +639,13 @@ public class DirectMediaTaskService {
         }
         return new PreparedMedia(target, canvasItem, draft, kind, binding, definition,
                 dynamicParameters, imageParameters, videoParameters, duration, configuredSettings,
-                renderedPrompt, autodlResolution, resolutionTier, style, comfyValues, kling, nativeProfile,
+                renderedPrompt, userRenderedPrompt, autodlResolution, resolutionTier, style, comfyValues, kling, nativeProfile,
                 characters.getObject().frozenBindings(ownerId, projectId, canvasItem.id()).deepCopy(),
-                mapper.valueToTree(characters.getObject().frozenContribution(ownerId, projectId, canvasItem.id())));
+                mapper.valueToTree(characters.getObject().frozenContribution(ownerId, projectId, canvasItem.id())), linkedPrompts);
+    }
+
+    private static boolean preparedPromptPresent(ObjectNode parameters, String property, String key) {
+        return parameters != null && parameters.path(property).hasNonNull(key);
     }
 
     private ComfyUiWorkflowDefinition.Dimensions comfyDimensions(UUID ownerId, UUID projectId, PreparedMedia prepared) {
@@ -618,10 +663,10 @@ public class DirectMediaTaskService {
             dev.agenvas.provider.domain.RunningHubDefinition definition,
             ObjectNode dynamicParameters, ImageGenerationParameters imageParameters,
             VideoGenerationParameters videoParameters, Integer duration, JsonNode configuredSettings,
-            String renderedPrompt, String autodlResolution, String resolutionTier,
+            String renderedPrompt, String userRenderedPrompt, String autodlResolution, String resolutionTier,
             MediaStyleService.Snapshot style, ObjectNode comfyValues, KlingModels.Profile kling,
             NativeMediaProfiles.Selection nativeProfile, JsonNode characterBindings,
-            JsonNode characterContribution) {}
+            JsonNode characterContribution, List<PromptInput> promptInputs) {}
 
     private ObjectNode nativeProviderParameters(PreparedMedia prepared) {
         ObjectNode result = mapper.createObjectNode();
@@ -760,6 +805,7 @@ public class DirectMediaTaskService {
         snapshot.put("draftVersion", expectedDraftVersion);
         snapshot.put("prompt", prepared.renderedPrompt());
         snapshot.put("structuralPrompt", prepared.draft().prompt());
+        snapshot.set("promptInputs", mapper.valueToTree(prepared.promptInputs()));
         snapshot.set("style", mapper.valueToTree(prepared.style()));
         snapshot.set("parameters", effectiveParameters);
         var comfyDimensions = comfyDimensions(ownerId, projectId, prepared);
@@ -786,7 +832,8 @@ public class DirectMediaTaskService {
         if (prepared.configuredSettings().has("tokenPricing")) snapshot.set("mediaTokenPricing", prepared.configuredSettings().get("tokenPricing").deepCopy());
         ObjectNode summary = mapper.createObjectNode();
         summary.put("kind", prepared.kind().name());
-        summary.put("prompt", renderPrompt(prepared.draft()));
+        summary.put("prompt", prepared.userRenderedPrompt());
+        summary.set("promptInputs", mapper.valueToTree(prepared.promptInputs()));
         if (prepared.style() != null) {
             summary.put("styleId", prepared.style().id().toString());
             summary.put("styleName", prepared.style().name());
