@@ -1,6 +1,7 @@
 /* ContextCards and Records from Beautiful UI: restrained surfaces, compact status rows, and inset controls. */
 .settings-page-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, var(--ui-settings-aside-width)); gap: var(--ui-space-6); align-items: start; }
 .settings-save-bar { justify-content: space-between; padding-top: var(--ui-space-4); border-top: 1px solid var(--ui-border); }
+.settings-save-bar > .ui-form-actions { margin-left: auto; }
 .settings-config-summary { display: grid; gap: 6px; padding-bottom: 18px; border-bottom: 1px solid var(--line); font-size: var(--ui-text-md); }
 .settings-consent { display: flex; align-items: flex-start; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: var(--ui-radius-lg); background: var(--ui-field); font-size: var(--ui-text-md); line-height: 1.6; cursor: pointer; }
 .settings-status-line { display: flex; align-items: flex-start; gap: 10px; font-size: var(--ui-text-md); line-height: 1.6; }

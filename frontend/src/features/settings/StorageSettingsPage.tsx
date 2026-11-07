@@ -7,7 +7,7 @@ import {
   type MediaRelaySettingsRequest, type CreateStorageProfileRequest, type StorageProfile, type StorageProvider, type StorageSettings,
 } from "../../shared/api/client";
 import { t, useLocale } from "../../shared/i18n";
-import { Archive, GlobeSimple, HardDrives, Key, LockSimple, PencilSimple, Plus, ShieldCheck, Trash } from "../../shared/ui/icons";
+import { Archive, GlobeSimple, HardDrives, Key, LockSimple, PencilSimple, Plus, Trash } from "../../shared/ui/icons";
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { EmptyState, Notice, Panel, StatusBadge } from "../../shared/ui/PagePrimitives";
 import { PageShell } from "../../shared/ui/PageShell";
@@ -202,7 +202,6 @@ export function StorageSettingsPage() {
               </div>
             </section>)}
           </div> : <EmptyState icon={<HardDrives aria-hidden />} title={t("settings.storage.connectionsEmpty")} />}
-          <p className="storage-privacy-note"><ShieldCheck aria-hidden />{t("settings.storage.credentialPrivacyHint")}</p>
         </Panel>
         <div className="storage-purpose-grid">
           <Panel className="storage-purpose-panel" title={t("settings.storage.defaultStorage")} description={t("settings.storage.archiveDescription")}

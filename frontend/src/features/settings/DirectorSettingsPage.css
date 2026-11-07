@@ -5,7 +5,7 @@
 .director-settings-row > [data-slot="field-label"] { width: auto; min-width: 0; font-size: 12px; }
 .director-settings-row > [data-slot="field-description"] { margin: 0; font-size: 11px; line-height: 1.6; }
 .director-settings-row > [data-slot="field-error"] { grid-column: 2 / -1; }
-.director-settings-save { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--ui-space-3); padding-top: var(--ui-space-3); border-top: 1px solid var(--ui-border); }
+.director-settings-save { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: var(--ui-space-3); padding-top: var(--ui-space-3); border-top: 1px solid var(--ui-border); }
 .director-settings-save p { flex: 1 1 260px; margin: 0; }
 @media (max-width: 900px) {
   .director-settings-row[data-slot="field"] { grid-template-columns: minmax(0, 1fr) minmax(140px, 180px); }

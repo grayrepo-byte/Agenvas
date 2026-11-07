@@ -174,7 +174,7 @@ export function LlmSettingsPage() {
               {error ? <Notice tone="danger"><p>{error}</p><p>{t("settings.llm.keyClearedHint")}</p></Notice> : null}
               {saved ? <Notice tone="success">{t("settings.llm.saved")}</Notice> : null}
               <div className="ui-form-actions settings-save-bar">
-                {saving ? <LoadingState compact label={t("settings.llm.saving")} /> : <span className="ui-muted">{hasUnsavedChanges ? t("common.unsavedChanges") : t("settings.llm.toolValidationRequired")}</span>}
+                {saving ? <LoadingState compact label={t("settings.llm.saving")} /> : hasUnsavedChanges ? <span className="ui-muted">{t("common.unsavedChanges")}</span> : null}
                 <div className="ui-form-actions">
                   {hasUnsavedChanges ? <Button variant="ghost"  type="button" disabled={busy} onClick={() => {
                     setDraft(null); setModelOptions(null); setCapacityError(""); setApiKey(""); setKeyInvalid(false); setError(""); setSaved(false); setAcknowledgedVersion(null);
@@ -200,7 +200,6 @@ export function LlmSettingsPage() {
             <div className="ui-form-actions llm-diagnostic-action"><span className="ui-muted">{t("settings.llm.costConfirmationHint")}</span><Button variant="outline"  type="button" disabled={busy || !costAcknowledged || hasUnsavedChanges || hasRemoteUpdate} onClick={diagnose}>{diagnosing ? t("settings.llm.diagnosing") : t("settings.llm.runDiagnostic")}</Button></div>
           </div>
         </Panel> : snapshot ? <Panel className="llm-diagnostics-panel" title={t("settings.llm.waitingConfiguration")} description={t("settings.llm.waitingConfigurationHint")}><ShieldCheck className="llm-waiting-icon" aria-hidden /></Panel> : null}
-        <Notice title={t("settings.llm.configurationAndValidation")}>{t("settings.llm.realModelHint")}</Notice>
       </aside>
       <Panel className="llm-media-panel" title={t("settings.llm.mediaConfiguration")}>
           <div className="llm-media-overview">

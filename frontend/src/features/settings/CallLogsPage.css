@@ -58,7 +58,6 @@
 .app-shell--settings .call-log-toggle { text-align: right; }
 .app-shell--settings .call-log-toggle > button { color: var(--ui-text-subtle); }
 .app-shell--settings .call-log-table tr:hover .call-log-toggle > button { color: var(--ui-text); }
-.app-shell--settings .call-log-duration-hint { margin: 0; padding: 8px 16px; font-size: 11px; line-height: 1.7; }
 .app-shell--settings .call-log-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 16px; border-top: 1px solid var(--settings-rule, var(--ui-border)); }
 .app-shell--settings .call-log-pagination > span { font-size: 11px; font-variant-numeric: tabular-nums; }
 
@@ -135,7 +134,7 @@ body:has(.app-shell--settings) .call-log-dialog .call-log-body pre { max-height:
   .app-shell--settings .call-log-filters[data-slot="field-group"] { grid-template-columns: minmax(0, 1fr); }
   .app-shell--settings .call-log-results > .ui-panel-header { padding: 10px 12px; gap: 8px; }
   .app-shell--settings .call-log-table tr { padding: 12px; gap: 8px; }
-  .app-shell--settings .call-log-pagination, .app-shell--settings .call-log-duration-hint { padding-inline: 12px; }
+  .app-shell--settings .call-log-pagination { padding-inline: 12px; }
   .app-shell--settings .call-log-pagination > .ui-form-actions { margin-left: auto; }
   body:has(.app-shell--settings) .ui-dialog.app-page.call-log-dialog { width: calc(100% - 16px); max-height: calc(100dvh - 16px); }
   body:has(.app-shell--settings) .call-log-dialog .call-log-metadata { grid-template-columns: minmax(0, 1fr); }

@@ -166,6 +166,5 @@ export function MediaFunctionSettingsPage() {
       </Table></div>
     </TabsContent>; })}
     </Tabs> : null}
-    <p className="ui-muted">{t("media.functions.compatibilityHint")}</p>
   </PageShell>;
 }
