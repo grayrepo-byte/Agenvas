@@ -211,7 +211,13 @@ public class DirectMediaTaskService {
             requireTargetCard(authorizedTarget, authorizedCard);
             Task occupying = tasks.findOccupyingDirectMediaTask(projectId, canvasItemId)
                     .orElse(null);
-            if (occupying != null) {
+            // Only a user's explicit generation can replace an unresolved direct request.
+            // Prepare the current saved draft instead of replaying the old provider binding.
+            boolean replaceUnresolved = runId == null && external == null && occupying != null
+                    && occupying.runId() == null && !occupying.cancelRequested()
+                    && (occupying.status() == Task.Status.UNKNOWN && occupying.providerRequestId() == null
+                        || occupying.status() == Task.Status.BLOCKED && occupying.providerRequestId() != null);
+            if (occupying != null && !replaceUnresolved) {
                 if (external != null) throw new ApiProblemException(HttpStatus.CONFLICT, "CANVAS_ITEM_BUSY",
                         ApiMessage.of("api.creative-artifact-tool-service.card-locked"),
                         ApiMessage.of("api.task-service.this-media-card-already-has-tasks-queued-executed-or-pending"), false);
@@ -399,6 +405,21 @@ public class DirectMediaTaskService {
                         new ProjectEventService.EventDraft("task.status.changed", TASK_EVENT_SCHEMA_VERSION, task.id(),
                                 task.version(), payload));
                 accepted.add(task);
+            }
+            if (replaceUnresolved) {
+                Task replacement = accepted.getFirst();
+                // Keep the original UNKNOWN/BLOCKED outcome and its reservation intact.
+                // The project lock makes the replacement, batch and usage reservation atomic.
+                tasks.createManualReplacement(new TaskRepository.ManualReplacement(projectId,
+                        occupying.id(), replacement.id(), ownerId, occupying.version(),
+                        "draft:" + Sha256.hex(commandKey), now));
+                ObjectNode payload = mapper.createObjectNode();
+                payload.put("taskId", occupying.id().toString());
+                payload.put("status", occupying.status().name());
+                payload.put("replacementTaskId", replacement.id().toString());
+                events.append(ownerId, projectId, new ProjectEventService.EventDraft(
+                        "task.status.changed", TASK_EVENT_SCHEMA_VERSION, occupying.id(),
+                        occupying.version(), payload));
             }
             return ProjectEventService.Change.unchanged(List.copyOf(accepted));
         }).value();

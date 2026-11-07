@@ -75,6 +75,8 @@ class ManualUnknownRetryPostgresIT {
     @Autowired private TaskService tasks;
     @Autowired private TaskRepository taskRepository;
     @Autowired private ManualUnknownRetryService retries;
+    @Autowired private dev.agenvas.provider.application.MediaCapabilityService mediaCapabilities;
+    @Autowired private tools.jackson.databind.ObjectMapper mapper;
     @Autowired private JdbcClient jdbc;
     @Autowired private WebApplicationContext webContext;
 
@@ -82,6 +84,7 @@ class ManualUnknownRetryPostgresIT {
     void explicitRiskCreatesOneNewReservationWithoutReusingTheOriginal() throws Exception {
         AdminPrincipal owner = identities.setup("retry-admin",
                 "retry-password-123");
+        generateFromCurrentDraftAfterUnknown(owner);
         Project project = projects.create(owner.userId(), "Retry fixture",
                 Project.AspectRatio.LANDSCAPE_16_9);
         // 用户直连媒体任务必须绑定一张媒体卡片；先建空卡片、保存草稿，再走真实运行入口。
@@ -221,6 +224,76 @@ class ManualUnknownRetryPostgresIT {
                 Instant.now(), Instant.now().plusSeconds(30))).singleElement()
                 .extracting(Task::id).isEqualTo(replacement.id());
         repeatedUnknownOnOneCardRequiresANewCommand(owner);
+    }
+
+    private void generateFromCurrentDraftAfterUnknown(AdminPrincipal owner) throws Exception {
+        var connection = mediaCapabilities.createConnection("Synthetic replacement models", null);
+        var capability = mediaCapabilities.publishCapability(connection.id(), "Synthetic new image model",
+                "MOCK_IMAGE", mapper.createObjectNode());
+        var mvc = webAppContextSetup(webContext).apply(springSecurity()).build();
+        var auth = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of()));
+        for (String status : List.of("UNKNOWN", "BLOCKED")) {
+            var project = projects.create(owner.userId(), "Synthetic current draft " + status, Project.AspectRatio.SQUARE_1_1);
+            var card = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE, "Synthetic new generation", null);
+            UUID item = dev.agenvas.support.CanvasMediaFixture.place(canvas, owner.userId(), project.id(), card.artifact().id());
+            dev.agenvas.support.CanvasMediaFixture.save(drafts, owner.userId(), project.id(), item, 0,
+                    "Original prompt", null, null, null);
+            Task original = directMedia.run(owner.userId(), project.id(), card.artifact().id(), item, 1, "original");
+            jdbc.sql("update task set status=:status,provider_request_id=:request,version=version+1 where id=:id")
+                    .param("status", status).param("request", status.equals("BLOCKED") ? "synthetic-accepted" : null)
+                    .param("id", original.id()).update();
+            Task unresolved = tasks.get(owner.userId(), project.id(), original.id());
+            var changed = drafts.save(owner.userId(), project.id(), item, 1, "New prompt and model",
+                    mapper.createObjectNode().put("aspectRatio", "16:9").put("resolution", "2K"),
+                    null, capability.id(), null, List.of(), List.of(), null);
+            String path = "/api/v1/projects/" + project.id() + "/artifacts/" + card.artifact().id() + "/run";
+            String body = "{\"canvasItemId\":\"" + item + "\",\"expectedDraftVersion\":" + changed.version() + "}";
+            mvc.perform(post(path).with(auth).with(csrf()).header("Idempotency-Key", "stale-draft")
+                            .contentType("application/json").content("{\"canvasItemId\":\"" + item
+                                    + "\",\"expectedDraftVersion\":" + (changed.version() - 1) + "}"))
+                    .andExpect(status().isConflict());
+            assertThat(taskRepository.findManualReplacement(project.id(), original.id())).isEmpty();
+            assertThat(taskRepository.findOccupyingDirectMediaTask(project.id(), item))
+                    .get().extracting(Task::id).isEqualTo(original.id());
+            CountDownLatch start = new CountDownLatch(1);
+            try (var pool = Executors.newFixedThreadPool(2)) {
+                Future<Task> first = pool.submit(() -> {
+                    start.await();
+                    return directMedia.run(owner.userId(), project.id(), card.artifact().id(), item,
+                            changed.version(), "current-draft");
+                });
+                Future<Task> duplicate = pool.submit(() -> {
+                    start.await();
+                    return directMedia.run(owner.userId(), project.id(), card.artifact().id(), item,
+                            changed.version(), "current-draft");
+                });
+                start.countDown();
+                assertThat(first.get().id()).isEqualTo(duplicate.get().id());
+            }
+            var accepted = mapper.readTree(mvc.perform(post(path).with(auth).with(csrf())
+                            .header("Idempotency-Key", "current-draft").contentType("application/json").content(body))
+                    .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+            UUID replacementId = UUID.fromString(accepted.path("id").asText());
+            assertThat(replacementId).isNotEqualTo(original.id());
+            assertThat(accepted.at("/input/mediaInput/capabilityId").asText()).isEqualTo(capability.id().toString());
+            assertThat(accepted.at("/input/mediaInput/prompt").asText()).isEqualTo("New prompt and model");
+            assertThat(accepted.at("/input/mediaInput/parameters/aspectRatio").asText()).isEqualTo("16:9");
+            assertThat(accepted.at("/input/mediaInput/parameters/resolution").asText()).isEqualTo("2K");
+            assertThat(tasks.get(owner.userId(), project.id(), original.id())).isEqualTo(unresolved);
+            assertThat(tasks.replacementTaskId(owner.userId(), project.id(), original.id())).isEqualTo(replacementId);
+            assertThat(taskRepository.listMediaForCanvasItem(owner.userId(), project.id(), item))
+                    .extracting(Task::id).containsExactly(replacementId);
+            assertThat(jdbc.sql("select count(*) from usage_ledger where project_id=:project")
+                    .param("project", project.id()).query(Long.class).single()).isEqualTo(2);
+            // Replaying the accepted command and another click while READY cannot submit again.
+            mvc.perform(post(path).with(auth).with(csrf()).header("Idempotency-Key", "current-draft")
+                            .contentType("application/json").content(body))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(replacementId.toString()));
+            assertThat(directMedia.run(owner.userId(), project.id(), card.artifact().id(), item,
+                    changed.version(), "another-click").id()).isEqualTo(replacementId);
+            // Finish the fixture so the class's later worker assertions see only their own work.
+            jdbc.sql("update task set status='FAILED',completed_at=now(),version=version+1 where id=:id").param("id", replacementId).update();
+        }
     }
 
     private void repeatedUnknownOnOneCardRequiresANewCommand(AdminPrincipal owner) {
