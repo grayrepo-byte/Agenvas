@@ -86,8 +86,7 @@ import tools.jackson.databind.ObjectMapper;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = {AgenvasApplication.class, ImagePromptPostgresIT.FakeConfig.class}, properties = {
-        "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false",
-        "agenvas.settings.llm.allow-loopback-http=true"})
+        "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class ImagePromptPostgresIT {
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     private static final Path STORAGE = temporaryRoot();
@@ -461,7 +460,6 @@ class ImagePromptPostgresIT {
             assertThat(rows.next()).isFalse();
         }
     }
-
 
     @Test void explicitRerunCreatesANewIndependentCardAndOldResultRemainsEditable() throws Exception {
         var source = source();

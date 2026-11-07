@@ -10,12 +10,12 @@ import org.junit.jupiter.api.Test;
 
 /** Local synthetic proxy protocol checks; no Internet requests or production endpoint overrides. */
 class PublicDownloadSocketFactoryTest {
-    @Test void httpConnectSendsNumericDestinationOnlyAndDoesNotForwardCredentials() throws Exception {
+    @Test void httpConnectAcceptsNumericFakeIpAndDoesNotForwardCredentials() throws Exception {
         try(var server=new ServerSocket(0,1,InetAddress.getLoopbackAddress());var executor=Executors.newSingleThreadExecutor()) {
             var request=executor.submit(()->{try(var peer=server.accept()){peer.setSoTimeout(2000);String headers=headers(peer.getInputStream());peer.getOutputStream().write("HTTP/1.1 200 Connection established\r\n\r\n".getBytes(StandardCharsets.US_ASCII));return headers;}});
             var factory=factory(PublicDownloadProperties.ProxyType.HTTP,server.getLocalPort());
-            try(var socket=factory.createSocket()){socket.connect(new InetSocketAddress(InetAddress.getByName("185.199.108.133"),443),2000);}
-            assertThat(request.get(3,TimeUnit.SECONDS)).isEqualTo("CONNECT 185.199.108.133:443 HTTP/1.1\r\nHost: 185.199.108.133:443\r\n\r\n");
+            try(var socket=factory.createSocket()){socket.connect(new InetSocketAddress(InetAddress.getByName("198.18.1.3"),443),2000);}
+            assertThat(request.get(3,TimeUnit.SECONDS)).isEqualTo("CONNECT 198.18.1.3:443 HTTP/1.1\r\nHost: 198.18.1.3:443\r\n\r\n");
         }
     }
     @Test void socksUsesNumericIpv4WireTypeAndNeverSendsOriginDomain() throws Exception {
@@ -36,11 +36,11 @@ class PublicDownloadSocketFactoryTest {
             assertThat(served.get(3,TimeUnit.SECONDS)).isEqualTo(-1);
         }
     }
-    @Test void boundedTunnelHeadersAndNonpublicDestinationsFailClosed() throws Exception {
-        for(var target:List.of(new InetSocketAddress(InetAddress.getByName("198.18.1.3"),443),InetSocketAddress.createUnresolved("raw.githubusercontent.com",443)))
+    @Test void boundedTunnelHeadersAndUnresolvedDestinationsFailClosed() throws Exception {
+        for(var target:List.of(InetSocketAddress.createUnresolved("raw.githubusercontent.com",443)))
             try(var socket=factory(PublicDownloadProperties.ProxyType.HTTP,9).createSocket()) {
                 assertThatThrownBy(()->socket.connect(target,200)).isInstanceOf(IOException.class)
-                    .satisfies(e->assertThat(PublicDownloadException.reason(e)).isEqualTo(PublicDownloadException.Reason.DNS_BLOCKED));
+                    .satisfies(e->assertThat(PublicDownloadException.reason(e)).isEqualTo(PublicDownloadException.Reason.DNS_FAILED));
             }
         try(var server=new ServerSocket(0,1,InetAddress.getLoopbackAddress());var executor=Executors.newSingleThreadExecutor()) {
             var served=executor.submit(()->{try(var peer=server.accept()){headers(peer.getInputStream());peer.getOutputStream().write(("HTTP/1.1 200 OK\r\nX: "+"x".repeat(9000)+"\r\n\r\n").getBytes(StandardCharsets.US_ASCII));}return true;});

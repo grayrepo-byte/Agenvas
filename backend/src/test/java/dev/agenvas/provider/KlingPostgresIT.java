@@ -659,7 +659,7 @@ class KlingPostgresIT {
     }
     @TestConfiguration static class FakeClient {
         @Bean @Primary KlingClient fakeKlingClient(ObjectMapper mapper) { return new KlingClient(mapper, origin()); }
-        @Bean @Primary KlingMediaDownloadPolicy fakeKlingDownloadPolicy() { return KlingMediaDownloadPolicy.forLoopbackTest(origin()); }
+        @Bean @Primary KlingMediaDownloadPolicy fakeKlingDownloadPolicy() { return new KlingMediaDownloadPolicy(); }
         /** Synthetic URL signing only; this test neither uploads private data nor verifies an object-store connection. */
         @Bean @Primary MediaRelayService fakeMediaRelayService() {
             MediaRelayService relay = mock(MediaRelayService.class);

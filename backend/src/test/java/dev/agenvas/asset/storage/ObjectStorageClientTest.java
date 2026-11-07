@@ -35,16 +35,7 @@ class ObjectStorageClientTest {
         for (String key : new String[] { "../secret", "/absolute", "project/../secret", "project/key?token=x" })
             assertThatThrownBy(() -> ObjectStorageClient.url(profile(StorageProfile.Provider.S3, true), key)).isInstanceOf(IllegalArgumentException.class);
     }
-    @Test void dnsChecksEveryAnswerAndBlocksMetadataLoopbackAndUnspecifiedAddresses() throws Exception {
-        for (String address : new String[] { "169.254.169.254", "127.0.0.1", "::1", "0.0.0.0", "224.0.0.1", "fe80::1" }) {
-            var dns = ObjectStorageClient.checkedDns(ignored -> List.of(InetAddress.getByName(address)));
-            assertThatThrownBy(() -> dns.lookup("store.example.com")).isInstanceOf(java.net.UnknownHostException.class);
-        }
-        var mixed = ObjectStorageClient.checkedDns(ignored -> List.of(InetAddress.getByName("8.8.8.8"), InetAddress.getByName("169.254.169.254")));
-        assertThatThrownBy(() -> mixed.lookup("store.example.com")).isInstanceOf(java.net.UnknownHostException.class);
-        var privateDns = ObjectStorageClient.checkedDns(ignored -> List.of(InetAddress.getByName("10.1.2.3")));
-        assertThat(privateDns.lookup("minio.example.com")).hasSize(1);
-    }
+
     @Test void s3MatchesAmazonsPublishedHeaderSignatureExample() {
         var s3 = new StorageProfile(UUID.randomUUID(), "example", StorageProfile.Provider.S3,
                 "https://s3.amazonaws.com", "us-east-1", "examplebucket", "", false, 1, null, "mask", Instant.EPOCH);
@@ -92,11 +83,6 @@ class ObjectStorageClientTest {
                 .isEqualTo("aeeed9bbccd4d02ee5c0109b86d86835f995330da4c265957d157751f604d404");
         assertThat(signed.encodedQuery()).contains("%2F20130524%2Fus-east-1%2Fs3%2Faws4_request");
         assertThat(signed.queryParameter("X-Amz-SignedHeaders")).isEqualTo("host");
-    }
-    @Test void providerInputsRejectPrivateAndProxyFakeIpsWhileArchiveStillSupportsPrivateStorage() throws Exception {
-        for (String ip : new String[] { "127.0.0.1", "10.1.2.3", "169.254.169.254", "198.18.0.1", "fc00::1", "::1", "0.0.0.0" })
-            assertThat(ObjectStorageClient.isPublic(InetAddress.getByName(ip))).isFalse();
-        assertThat(ObjectStorageClient.isPublic(InetAddress.getByName("8.8.8.8"))).isTrue();
     }
 
     @Test void ossPresignedGetMatchesIndependentPythonCanonicalCalculation() {

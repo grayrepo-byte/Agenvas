@@ -13,48 +13,22 @@ import okhttp3.Response;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-/** Fetches only fixed Ark result hosts through a DNS-validated, redirect-free connection. */
+/** Fetches HTTP(S) Ark results through a bounded, credential-free connection. */
 @Component
 public class ArkMediaDownloadPolicy {
-    private static final URI OFFICIAL = URI.create(
-            "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com");
-    private final URI origin;
     private final OkHttpClient http;
 
     @Autowired
     public ArkMediaDownloadPolicy() {
-        this(OFFICIAL, Dns.SYSTEM, false);
-    }
-
-    /** Test-only loopback transport; no runtime configuration or admin API exposes it. */
-    public static ArkMediaDownloadPolicy forLoopbackTest(URI origin) {
-        return new ArkMediaDownloadPolicy(origin, Dns.SYSTEM, true);
-    }
-
-    ArkMediaDownloadPolicy(URI origin, Dns resolver, boolean loopbackTest) {
-        if (!OFFICIAL.equals(origin) && !(loopbackTest
-                && "http".equals(origin.getScheme())
-                && "127.0.0.1".equals(origin.getHost()) && origin.getPort() > 0
-                && (origin.getRawPath() == null || origin.getRawPath().isEmpty())
-                && origin.getRawUserInfo() == null && origin.getRawQuery() == null
-                && origin.getRawFragment() == null)) {
-            throw new IllegalArgumentException("Ark result origin is not fixed");
-        }
-        this.origin = origin;
-        this.http = PinnedHttpClients.pinned(FixedCloudDns.checked(resolver, loopbackTest),
+        this.http = PinnedHttpClients.pinned(Dns.SYSTEM,
                 Duration.ofSeconds(10), Duration.ofMinutes(2), Duration.ofMinutes(3));
     }
 
-    /** Rejects a URL before the HTTP client can resolve or follow anything from it. */
     public void validate(URI url) {
-        if (url == null || !origin.getScheme().equalsIgnoreCase(url.getScheme())
-                || !origin.getHost().equalsIgnoreCase(url.getHost())
-                || effectivePort(origin) != effectivePort(url)
-                || url.getRawUserInfo() != null || url.getRawFragment() != null
-                || url.getRawPath() == null || url.getRawPath().isEmpty()
-                || url.getRawPath().contains("..")) {
-            throw new Rejected("ARK_MEDIA_URL_REJECTED");
-        }
+        try { dev.agenvas.shared.security.ServiceEndpointPolicy.downloadDns(url, Dns.SYSTEM); }
+        catch (IllegalArgumentException | NullPointerException | java.net.UnknownHostException invalid) { throw new Rejected("ARK_MEDIA_URL_REJECTED"); }
+        String path = url.getRawPath();
+        if (path == null || path.isEmpty() || path.contains("..")) throw new Rejected("ARK_MEDIA_URL_REJECTED");
     }
 
     /** Caller owns sink; bytes are bounded before any media parser sees the result. */
@@ -98,11 +72,6 @@ public class ArkMediaDownloadPolicy {
         } catch (IOException failure) {
             throw new TechnicalFailure("Ark media stream failed");
         }
-    }
-
-    private static int effectivePort(URI uri) {
-        return uri.getPort() < 0 ? ("https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80)
-                : uri.getPort();
     }
 
     public static final class Rejected extends RuntimeException {

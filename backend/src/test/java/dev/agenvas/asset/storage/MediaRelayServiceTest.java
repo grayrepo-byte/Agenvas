@@ -62,7 +62,6 @@ class MediaRelayServiceTest {
         assertThat(relay.signedVideo(owner, project, assetId, profile.id())).isEqualTo("signed-url");
         var capture = ArgumentCaptor.forClass(MediaRelayRepository.Copy.class);
         var order = inOrder(copies, cloud);
-        order.verify(cloud).requirePublic(profile);
         order.verify(copies).register(capture.capture(), eq(NOW));
         var copy = capture.getValue();
         assertThat(copy.profileId()).isEqualTo(profile.id());
@@ -91,7 +90,6 @@ class MediaRelayServiceTest {
         var file = ArgumentCaptor.forClass(Path.class);
         var order = inOrder(reservations, cloud);
         order.verify(reservations).reserve(profile.id(), extension);
-        order.verify(cloud).requirePublic(profile);
         order.verify(cloud).put(eq(profile), eq(copy.key()), file.capture(), eq(contentType), eq((long) image.length), anyString());
         order.verify(cloud).signedGet(profile, copy.key(), MediaRelayService.URL_LIFETIME);
         assertThat(java.nio.file.Files.exists(file.getValue())).isFalse();

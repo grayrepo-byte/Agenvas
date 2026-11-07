@@ -9,7 +9,7 @@ The check runs from the Agenvas server, not your browser. If you access a remote
 | Service | Port | Read-only request | Form value |
 | --- | --- | --- | --- |
 | Ollama | 11434 | `GET /api/version` | The discovered host endpoint with `/v1` |
-| ComfyUI | 8188 | `GET /system_stats` | The specific IPv4 address checked, without `/v1` or `/prompt` |
+| ComfyUI | 8188 | `GET /system_stats` | The specific IPv4/IPv6 address checked, without `/v1` or `/prompt` |
 
 Checks do not send saved API keys, cookies, prompts, model requests or media tasks. No GPU or installed model is needed to identify the service. A recognized response means the status interface answered; it does not establish model capacity, tool support or successful generation.
 
@@ -29,17 +29,14 @@ Container markers are checked before native OS detection. Standard Compose expli
 
 `host.docker.internal` and `host-gateway` supply a name/address mapping. They do not start a reverse proxy, forward ports, change service listen addresses, or alter host firewall settings. Containers never probe their own loopback as the host. Discovery does not alter the host's network or service configuration.
 
-## A service was found but the address is blocked
+## Use a discovered address
 
-Discovery does not change endpoint authorization. [Configured HTTP/HTTPS endpoints](http-endpoints.md) now accept public and private service addresses by default. Metadata, special addresses and loopback aliases stay blocked; a native JVM needs the existing exact-loopback LLM option. The bounded container discovery probe still checks only the standard ports at its fixed private host candidate; it does not scan the network or gain public probing targets. Operators may explicitly [restrict LLM HTTP to exact origins](ollama-local.md#optional-exact-origin-only-llm-http); the legacy Ollama override alone does not disable general HTTP.
-
-ComfyUI discovery continues returning the exact private IPv4 address that answered. Manual ComfyUI configuration also accepts private IPv6 and private DNS names, including `host.docker.internal`. A later discovered-address change requires a new check or manual update.
+A found service can be selected without address permission checks. No loopback switch, public/private classification or origin allowlist is required. ComfyUI returns the selected IPv4/IPv6 route; Ollama returns the host alias with `/v1`. A changed address requires a new discovery or manual update. Manual configuration remains available for other hosts or ports.
 
 ## Understanding failed checks
 
 - **No service / timeout:** start the service, verify its listening interface and standard port, and check the network path. Repeated checks do not change those settings.
 - **Host name unavailable:** use the standard Compose host mapping or configure a manual reachable address.
-- **Address rejected:** the candidate resolved to an unsupported or unsafe address. Discovery supports a private IPv4 host address, not a public, fake-IP, metadata, link-local or mixed DNS result.
 - **Authentication required / unexpected response:** use manual connection configuration for the authenticated service or proxy. No credential is tried automatically.
 - **Busy:** another bounded check or resolver is still running, or the minimum interval has not elapsed. Wait before trying again.
 - **Unknown runtime:** choose a correct server runtime mode or keep using manual configuration.
@@ -48,4 +45,4 @@ Each accepted request has an outward deadline of three seconds, including name r
 
 ## Verification scope
 
-Security-chain and bounded transport tests cover fixed targets, response identification, limits, cancellation and permissions. On the local Mac, the real discovery service recognized synthetic status servers on both standard loopback ports and preserved the existing LLM policy. A temporary read-only Docker container ran the newly packaged discovery code and identified both synthetic host interfaces through the host-gateway alias, returning Ollama’s `/v1` endpoint and the checked ComfyUI IPv4 address. These checks do not prove real Ollama model quality, ComfyUI workflow compatibility, or Windows/WSL/Linux routing; those remain separate acceptance tests.
+Focused synthetic DNS/HTTP and security-chain tests cover fixed requests, unrestricted DNS answer ranges, response identification, bounds, cancellation and administrator permissions. Real Ollama/ComfyUI generation, Windows/WSL routing and live deployment networks require separate acceptance.

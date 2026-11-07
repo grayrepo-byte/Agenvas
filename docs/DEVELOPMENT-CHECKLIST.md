@@ -3863,3 +3863,12 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 隔离 Chrome 的生产画布专项通过，验证原生 Cmd+C/V、内部提示词线可见、独立文字版本映射、外部线过滤、重复粘贴及撤销/重做，零运行时异常；截图目视检查为合成内容，保存在仓库外私有目录。浏览器 HTTP 使用内存夹具，真实持久化由 PostgreSQL 单列验证。
 - [x] 合并 develop 时保留既有节点中上定位、分镜公共提示词预检及两套浏览器入口，解决开发记录与浏览器入口冲突。合并后十四个前端定向文件 290 项通过，类型检查、完整 lint、生产构建、生产画布子图复制与节点定位两项原生 Chrome 专项通过；后端、合约及生成类型与已验收子图分支一致，本轮未重复运行后端专项。
 - [ ] 全量测试、真实模型/Provider 和部署验证未运行；跨项目模板/跨画布导入未实现，本次仅实现同项目选中子图复用。
+
+## 2026-11-07 移除地址安全检查与白名单
+
+- [x] 按用户决定删除共用 IP 分类器、云媒体 DNS 拦截、下载公网检查、CDN 主机/端口白名单、LLM HTTP Origin/回环准入开关和中继公网预检。模型、媒体、来源同步、存储、中继及本机发现均不再过滤私网、localhost、IPv4/IPv6、特殊用途或代理 Fake-IP 地址；保留 URL/协议路径、凭据作用域、鉴权、文件/响应限制及任务重试语义。可灵/MiniMax 改用既有 shadcn 地址输入框，可配置的 WAN/Google 原生视频不限定官方域名或区域。
+- [x] 删除本地发现的 `BLOCKED_ADDRESS` 和 `policyAllowed`，同步 OpenAPI、生成 TypeScript、四语言提示、Compose/环境示例、规格和网络指南；[ADR 0079](adr/0079-remove-outbound-address-checks.md) 替代旧地址策略。删除旧部署变量，不保留策略开关兼容层；没有数据库、Flyway、jOOQ 或依赖版本变化。现有 API 客户端需适配发现结果的新结构；历史同步失败可重新同步。
+- [x] 定向后端验证共 50 个单元测试类、518 项，以及 10 个真实 PostgreSQL 测试类、11 项，均零失败、错误或跳过。单元范围含 Provider HTTP/DNS、来源下载/解析、DoH/HTTP CONNECT/SOCKS5、LLM/元数据、存储签名、中继和发现；PostgreSQL 范围为 `LlmProviderConfigPostgresIT`、`MediaCloudCapabilityPostgresIT`、`MediaCapabilitySettingsPostgresIT`、`ComfyUiRemoteConnectionPostgresIT`、`ObjectStoragePostgresIT`、`RemoteFileStoragePostgresIT`、`SeedanceVideoReferencePostgresIT`、`OpenAiImage2PostgresIT`、`ArkSeedanceArchivePostgresIT`、`MiniMaxH3ArchivePostgresIT`。通过 Maven 定向 `-Dtest=... test` 和 `-Dit.test=... verify` 执行；先复现本地下载及自定义地址输入失败，再验证修复。非官方地址的旧拒绝断言改为保存/使用成功，异常路径改用合成的无效 URL；最终验证使用本地合成 HTTP/媒体和独立 PostgreSQL，不提供真实 Provider 成功调用证据。
+- [x] 5 个相关前端文件共 147 项通过；`pnpm api:generate`、`pnpm typecheck`、`pnpm lint`、`pnpm build`、`pnpm test:local-service-discovery` 及四个主要 Compose 入口配置检查通过。浏览器使用生产 CSS、1440/390px 和合成 API，覆盖发现/填入/取消/迟到结果、手工草稿、密钥保留及帮助弹层命中。独立代码复核的参考链接残留限制与 Ark/MiniMax 编码路径误拒已修正，复核未发现剩余问题。保留既有 Vite 配置加载器、大分块和 Mockito/JVM 提示。
+- [x] 合并回最新本地 develop，保留节点中上定位和画布子图复制改动；仅开发清单的追加记录冲突，保留两侧内容。ADR 使用 0079，避免与子图复制的 0078 重号；合约重新生成后无额外漂移。合并结果重新通过 19 类 88 项后端单元、3 类 11 项真实 PostgreSQL 专项、8 文件 245 项前端测试，以及类型检查、完整 lint/主题/四语言、生产构建和本地服务发现原生 Chrome 浏览器专项。浏览器使用生产 CSS、1440/390px 与合成 API，未运行全量或真实 Provider。
+- [ ] 未运行全量测试、真实模型/Provider、用户当前代理网络或实例的现场同步、部署升级验证；未推送或部署。上述本地合成 HTTP/代理与 PostgreSQL 结果不代表真实 Provider 可达或用户网络已接通。

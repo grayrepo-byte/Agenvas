@@ -13,7 +13,7 @@ import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitl
 const SERVICES = { OLLAMA: { name: "Ollama", port: 11434 }, COMFYUI: { name: "ComfyUI", port: 8188 } } as const;
 const STATUS_MESSAGES = {
   FOUND: "localServices.found", NOT_FOUND: "localServices.notFound", UNRESOLVED: "localServices.unresolved",
-  BLOCKED_ADDRESS: "localServices.blockedAddress", TIMEOUT: "localServices.timeout",
+  TIMEOUT: "localServices.timeout",
   UNEXPECTED_RESPONSE: "localServices.unexpectedResponse", AUTH_REQUIRED: "localServices.authRequired",
   UNSUPPORTED_RUNTIME: "localServices.unsupportedRuntime",
 } as const satisfies Record<LocalServiceDiscoveryResult["status"], MessageKey>;
@@ -68,7 +68,7 @@ export function LocalServiceDiscovery({ service, disabled = false, onSelect }: {
   if (error instanceof ApiError && error.status === HTTP_STATUS.UNAUTHORIZED) return <Navigate to="/login" replace />;
   const details = SERVICES[service];
   const result = data?.service === service && !disabled ? data : undefined;
-  const endpoint = result?.status === "FOUND" && result.policyAllowed ? result.endpoint : null;
+  const endpoint = result?.status === "FOUND" ? result.endpoint : null;
   return <Field className="col-span-full gap-2" data-disabled={disabled} aria-busy={isPending}>
     <FieldDescription>{t("localServices.scope", { "0": details.name, "1": details.port })}</FieldDescription>
     <div className="ui-form-actions">
@@ -93,14 +93,13 @@ export function LocalServiceDiscovery({ service, disabled = false, onSelect }: {
     {error ? <Notice tone="danger">{t(failureMessage(error))}</Notice> : null}
     {result ? <>
       {result.status === "FOUND" ? <div className="ui-form-actions">
-        <StatusBadge tone={result.policyAllowed ? "success" : "warning"}>{t(STATUS_MESSAGES.FOUND)}</StatusBadge>
+        <StatusBadge tone="success">{t(STATUS_MESSAGES.FOUND)}</StatusBadge>
         <span className="ui-muted">{t(RUNTIME_MESSAGES[result.runtime])}</span>
       </div> : <>
         <FieldDescription>{t(RUNTIME_MESSAGES[result.runtime])}</FieldDescription>
         {result.status === "NOT_FOUND" ? <EmptyState title={t(STATUS_MESSAGES.NOT_FOUND)} />
           : <Notice tone="warning">{t(STATUS_MESSAGES[result.status])}</Notice>}
       </>}
-      {result.status === "FOUND" && !result.policyAllowed ? <Notice tone="warning">{t("localServices.policyBlocked")}</Notice> : null}
       {endpoint ? <div className="ui-form-actions">
         <p className="ui-muted min-w-0 break-all">{endpoint}</p>
         <Button type="button" variant="outline" disabled={disabled || isPending} onClick={() => onSelect(endpoint)}>{t("localServices.fill")}</Button>

@@ -64,22 +64,17 @@ public class SeedreamClient {
 
     /** The loopback seam is constructor-only and cannot be selected by an administrator. */
     public SeedreamClient(ObjectMapper mapper, URI testOrigin) {
-        if (testOrigin != null && !("http".equals(testOrigin.getScheme())
-                && "127.0.0.1".equals(testOrigin.getHost()) && testOrigin.getPort() > 0 && testOrigin.getPort() <= 65535
-                && "".equals(testOrigin.getRawPath()) && testOrigin.getRawUserInfo() == null
-                && testOrigin.getRawQuery() == null && testOrigin.getRawFragment() == null))
-            throw new IllegalArgumentException("Unsupported Seedream test origin");
+        if (testOrigin != null) dev.agenvas.shared.security.ServiceEndpointPolicy.origin(testOrigin.toString());
         this.mapper = mapper;
         this.testOrigin = testOrigin;
-        this.http = PinnedHttpClients.pinned(FixedCloudDns.checked(Dns.SYSTEM, testOrigin != null),
+        this.http = PinnedHttpClients.pinned(Dns.SYSTEM,
                 Duration.ofSeconds(10), Duration.ofMinutes(5), Duration.ofMinutes(6));
     }
 
     public static String validatedOrigin(String origin) {
         if (origin == null || origin.isBlank()) return ORIGIN;
-        String normalized = origin.trim().replaceAll("/+$", "");
-        if (!ORIGIN.equals(normalized)) throw SeedreamModels.invalid();
-        return normalized;
+        try { return dev.agenvas.shared.security.ServiceEndpointPolicy.origin(origin); }
+        catch (IllegalArgumentException invalid) { throw SeedreamModels.invalid(); }
     }
 
     /** Only finite compiled fields are serialized; advanced editing JSON is rendered into prompt tags. */

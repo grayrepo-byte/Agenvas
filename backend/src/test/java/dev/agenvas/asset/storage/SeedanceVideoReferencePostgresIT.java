@@ -105,10 +105,7 @@ class SeedanceVideoReferencePostgresIT {
                                 .port(STORE.getAddress().getPort()).build();
                         return chain.proceed(chain.request().newBuilder().url(url).build());
                     }).build();
-            return new ObjectStorageClient(settings, clock, client) {
-                // Fake HTTP server is loopback; production signed input URLs require public DNS.
-                @Override public void requirePublic(StorageProfile profile) {}
-            };
+            return new ObjectStorageClient(settings, clock, client);
         }
     }
     @Test void localRelayAndCloudDirectSigningUseFrozenVersionsWithoutLeakingOrResubmitting() throws Exception {

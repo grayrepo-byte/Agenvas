@@ -154,14 +154,11 @@ try {
     await waitFor(() => document.body.innerText.includes("Cancel check"));
     await clickText("Cancel check");
     await waitFor(() => !document.body.innerText.includes("Cancel check"));
-    await page(() => { window.localServiceDiscoveryFixture.mode = "BLOCKED"; });
-    await clickText(find);
-    await waitFor(() => document.body.innerText.includes("this local connection is disabled"));
     await page(() => { window.localServiceDiscoveryFixture.finishPending(); });
     await new Promise((resolve) => setTimeout(resolve, 50));
-    assert.equal(await page(() => [...document.querySelectorAll("button")].some((button) => button.textContent === "Fill address")), false, "Late success must not replace blocked result");
+    assert.equal(await page(() => [...document.querySelectorAll("button")].some((button) => button.textContent === "Fill address")), false, "Cancelled success must not refill the draft");
     const llm = await inspectAndCapture(viewport, "llm");
-    assert.deepEqual(llm.requests, ["OLLAMA", "OLLAMA", "OLLAMA"]);
+    assert.deepEqual(llm.requests, ["OLLAMA", "OLLAMA"]);
 
     await page(() => {
       const provider = [...document.querySelectorAll("select")].find(select => [...select.options].some(option => option.value === "OPENROUTER"));
@@ -208,7 +205,7 @@ try {
     assert.deepEqual(comfy.requests, ["COMFYUI"]);
   }
   assert.deepEqual(runtimeErrors, []);
-  console.log("Local/model discovery browser passed in existing LLM settings and ComfyUI connection dialog: production CSS, 1440/390 layout, explicit model read, route capacity, output limit, manual override, preserved key, no autosave, help/check/cancel/fill, late-response suppression and blocked policy; synthetic API only");
+  console.log("Local/model discovery browser passed in existing LLM settings and ComfyUI connection dialog: production CSS, 1440/390 layout, explicit model read, route capacity, output limit, manual override, preserved key, no autosave, help/check/cancel/fill, late-response suppression; synthetic API only");
 } catch (error) {
   console.error(error);
   throw error;

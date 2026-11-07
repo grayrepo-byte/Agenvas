@@ -559,8 +559,8 @@ class ComfyUiClientTest {
                 "https://cdn.example.com/render.png?signature=synthetic%2Bvalue", Dns.SYSTEM);
         assertThat(first).isEqualTo(URI.create("https://comfy.example.com/archived/render.png?stage=synthetic-first"));
         assertThat(second).isEqualTo(URI.create("https://cdn.example.com/render.png?signature=synthetic%2Bvalue"));
-        assertThatThrownBy(() -> ComfyUiClient.checkedRedirect(origin, second,
-                "http://cdn.example.com/render.png", Dns.SYSTEM)).isInstanceOf(ComfyUiClient.ProtocolFailure.class);
+        assertThat(ComfyUiClient.checkedRedirect(origin, second,
+                "http://cdn.example.com/render.png", Dns.SYSTEM)).isEqualTo(URI.create("http://cdn.example.com/render.png"));
     }
 
     @Test
@@ -624,22 +624,20 @@ class ComfyUiClientTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"http://cdn.example.com/render.png", "https://cdn.example.com:444/render.png",
-            "https://user:synthetic-pass@cdn.example.com/render.png", "https://cdn.example.com/render.png#fragment",
-            "https://127.0.0.1/render.png", "https://0.0.0.0/render.png", "https://[::1]/render.png",
-            "https://[::]/render.png", "https://169.254.169.254/render.png", "https://168.63.129.16/render.png",
-            "https://10.0.0.1/render.png", "https://172.16.0.1/render.png", "https://192.168.0.1/render.png",
-            "https://224.0.0.1/render.png", "https://[fd00::1]/render.png", "https://[fe80::1]/render.png",
-            "https://127.1/render.png", "https://2130706433/render.png",
-            "https://[64:ff9b::a9fe:a9fe]/render.png", "https://[2002:a9fe:a9fe::1]/render.png",
-            "https://[2001:0:1::1]/render.png"})
-    void rejectsUnsafeForeignOutputRedirectBeforeOpeningRequest(String target) {
+    @ValueSource(strings = {"https://user:synthetic-pass@cdn.example.com/render.png", "https://cdn.example.com/render.png#fragment", "file:///render.png"})
+    void rejectsMalformedForeignOutputRedirectBeforeOpeningRequest(String target) {
         URI origin = URI.create("https://comfy.example.com" + SYNTHETIC_PROXY_PREFIX);
         URI current = URI.create(origin + "/view?filename=render.png");
-        assertThatThrownBy(() -> ComfyUiClient.checkedRedirect(origin, current, target,
-                ComfyUiClient.checkedRedirectDns(host -> List.of(InetAddress.getByName(host)))))
-                .isInstanceOf(ComfyUiClient.ProtocolFailure.class)
-                .hasMessage("ComfyUI redirect is unsafe");
+        assertThatThrownBy(() -> ComfyUiClient.checkedRedirect(origin, current, target, Dns.SYSTEM))
+                .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"http://localhost:8090/render.png", "http://10.0.0.1/render.png", "https://cdn.invalid:444/render.png", "http://169.254.169.254/render.png"})
+    void acceptsHttpResultRedirectsWithoutAnAddressOrPortAllowlist(String target) {
+        URI origin = URI.create("https://comfy.example.com");
+        assertThat(ComfyUiClient.checkedRedirect(origin, URI.create(origin + "/view"), target, Dns.SYSTEM))
+                .isEqualTo(URI.create(target));
     }
 
     @ParameterizedTest
@@ -654,40 +652,6 @@ class ComfyUiClientTest {
                 .hasMessage("ComfyUI redirect is unsafe");
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"127.0.0.1", "::1", "0.0.0.0", "::", "169.254.169.254", "fe80::1",
-            "224.0.0.1", "ff02::1", "10.0.0.1", "172.16.0.1", "192.168.0.1", "fc00::1", "fd00::1",
-            "168.63.129.16", "100.100.100.200", "64:ff9b::a9fe:a9fe", "64:ff9b:1::a9fe:a9fe",
-            "100::1", "2002:a9fe:a9fe::1", "2001:0:1::1"})
-    void rejectsPrivateAndSpecialForeignOutputDnsAnswers(String address) throws UnknownHostException {
-        InetAddress resolved = InetAddress.getByName(address);
-        Dns dns = ComfyUiClient.checkedRedirectDns(host -> List.of(resolved));
-        assertThatThrownBy(() -> dns.lookup("synthetic-cdn.example"))
-                .isInstanceOf(UnknownHostException.class);
-    }
-
-    @Test
-    void foreignOutputDnsChecksEveryAnswerAndRechecksLaterLookups() throws UnknownHostException {
-        InetAddress publicAddress = InetAddress.getByName("8.8.8.8");
-        InetAddress privateAddress = InetAddress.getByName("10.0.0.1");
-        assertThatThrownBy(() -> ComfyUiClient.checkedRedirectDns(host -> List.of(publicAddress, privateAddress))
-                .lookup("synthetic-cdn.example")).isInstanceOf(UnknownHostException.class);
-        AtomicInteger lookups = new AtomicInteger();
-        Dns dns = ComfyUiClient.checkedRedirectDns(host -> List.of(
-                lookups.incrementAndGet() == 1 ? publicAddress : privateAddress));
-        assertThat(dns.lookup("synthetic-cdn.example")).containsExactly(publicAddress);
-        assertThatThrownBy(() -> dns.lookup("synthetic-cdn.example")).isInstanceOf(UnknownHostException.class);
-        assertThat(lookups).hasValue(2);
-    }
-
-    @ParameterizedTest
-    @ValueSource(strings = {"8.8.8.8", "2606:4700:4700::1111", "198.18.0.1", "198.19.255.254", "2001:2::1"})
-    void acceptsPublicAndExistingFakeIpOutputDnsAnswers(String address) throws UnknownHostException {
-        InetAddress resolved = InetAddress.getByName(address);
-        assertThat(ComfyUiClient.checkedRedirectDns(host -> List.of(resolved)).lookup("synthetic-cdn.example"))
-                .containsExactly(resolved);
-    }
-
     @Test
     void refusesUnsafeRedirectTargetsForAllRoutes() throws IOException {
         HttpServer redirectTarget = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -698,7 +662,7 @@ class ComfyUiClientTest {
         });
         redirectTarget.start();
         try {
-            String target = "http://127.0.0.1:" + redirectTarget.getAddress().getPort()
+            String target = "http://synthetic-user:synthetic-password@127.0.0.1:" + redirectTarget.getAddress().getPort()
                     + "/private";
             server.createContext("/prompt", exchange -> {
                 exchange.getResponseHeaders().add("Location", target);
@@ -742,11 +706,10 @@ class ComfyUiClientTest {
     }
 
     @Test
-    void rejectsUnsafeSchemesAddressesAndPathsAtConstruction() {
-        for (String endpoint : new String[] {"http://localhost:8188", "http://127.0.0.1:8188/../path",
+    void rejectsMalformedSchemesAndPathsAtConstruction() {
+        for (String endpoint : new String[] {"http://127.0.0.1:8188/../path",
                 "http://user@127.0.0.1:8188", "http://127.0.0.1:8188?x=1",
-                "http://169.254.169.254:80/metadata",
-                "file:///etc/passwd", "https://169.254.169.254/proxy/key",
+                "file:///etc/passwd",
                 "https://comfy.example.com/proxy/%2e%2e", "https://comfy.example.com//proxy",
                 "https://comfy.example.com/proxy/key#fragment"}) {
             assertThatThrownBy(() -> new ComfyUiClient(new ComfyUiProperties(endpoint), mapper))

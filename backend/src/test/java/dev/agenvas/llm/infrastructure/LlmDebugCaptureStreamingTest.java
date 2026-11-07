@@ -9,7 +9,6 @@ import dev.agenvas.llm.application.ChatGateway;
 import dev.agenvas.llm.application.RunToolPolicy;
 import dev.agenvas.llm.application.ToolRegistry;
 import dev.agenvas.settings.application.LlmEndpointPolicy;
-import dev.agenvas.settings.application.LlmEndpointProperties;
 import dev.agenvas.shared.http.DebugHttpCapture;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -392,7 +391,7 @@ class LlmDebugCaptureStreamingTest {
     private static SpringAiChatGateway gateway(LocalServer server) {
         String endpoint = "http://127.0.0.1:" + server.port() + "/v1";
         SafeLlmTransport transport = new SafeLlmTransport(endpoint,
-                new LlmEndpointPolicy(new LlmEndpointProperties(true)));
+                new LlmEndpointPolicy());
         OpenAiChatModel model = OpenAiChatModel.builder().options(options(server))
                 .httpClientBuilderCustomizer(builder -> builder.interceptor(transport.interceptor()))
                 .build();

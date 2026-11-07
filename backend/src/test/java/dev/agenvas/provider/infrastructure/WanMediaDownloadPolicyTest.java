@@ -12,15 +12,13 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class WanMediaDownloadPolicyTest {
-    @Test void resultHostAdmissionUsesExactOfficialBucketsAndSecureUris() {
+    @Test void resultDownloadsAcceptAnyHttpHostAndValidPort() {
         var policy = new WanMediaDownloadPolicy();
-        policy.validate(URI.create("https://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/result.png?Expires=synthetic&Signature=synthetic"));
-        policy.validate(URI.create("https://dashscope-result-sh.oss-accelerate.aliyuncs.com/result.mp4"));
-        for (String invalid : List.of("http://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/a.png", "https://arbitrary.oss-cn-beijing.aliyuncs.com/a.png",
-                "https://dashscope-result-bj.oss-cn-beijing.aliyuncs.com.untrusted.example/a.png", "https://user@dashscope-result-bj.oss-cn-beijing.aliyuncs.com/a.png",
-                "https://dashscope-result-bj.oss-cn-beijing.aliyuncs.com:444/a.png", "https://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/../a.png",
-                "https://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/a.png#fragment", "https://127.0.0.1/a.png"))
-            assertThatThrownBy(() -> policy.validate(URI.create(invalid))).isInstanceOf(NativeMediaFailure.class);
+        for (String url : java.util.List.of("http://localhost:8090/result.mp4", "https://proxy.invalid:8443/result.mp4",
+                "http://169.254.169.254/result.mp4", "http://[::1]/result.mp4")) policy.validate(URI.create(url));
+        for (String url : java.util.List.of("file:///tmp/result.mp4", "https://user@localhost/result.mp4", "https://localhost/../result.mp4",
+                "https://localhost/result.mp4#fragment", "http://localhost:0/result.mp4"))
+            assertThatThrownBy(() -> policy.validate(URI.create(url))).isInstanceOf(NativeMediaFailure.class);
     }
     @Test void downloadHasNoCredentialsDoesNotFollowRedirectsAndMagicChecksMime() throws Exception {
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -35,7 +33,7 @@ class WanMediaDownloadPolicyTest {
         server.start();
         try {
             URI origin = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
-            var policy = WanMediaDownloadPolicy.forLoopbackTest(origin); var sink = new ByteArrayOutputStream();
+            var policy = new WanMediaDownloadPolicy(); var sink = new ByteArrayOutputStream();
             assertThat(policy.download(origin.resolve("/image"), sink, false)).isEqualTo("image/png");
             assertThat(sink.toByteArray()).isEqualTo(png);
             assertThatThrownBy(() -> policy.download(origin.resolve("/redirect"), new ByteArrayOutputStream(), false)).hasMessage("PROVIDER_RESULT_URL_INVALID");

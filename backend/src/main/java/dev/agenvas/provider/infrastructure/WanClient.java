@@ -36,7 +36,6 @@ public class WanClient {
     public static final String RESULT_EXPIRED = "WAN_RESULT_EXPIRED";
     public static final String IMAGE_PATH = "/api/v1/services/aigc/image-generation/generation";
     public static final String VIDEO_PATH = "/api/v1/services/aigc/video-generation/video-synthesis";
-    private static final Set<String> REGIONS = Set.of("cn-beijing", "ap-southeast-1", "ap-northeast-1", "eu-central-1", "us-east-1", "cn-hongkong");
     private static final Set<String> STATUSES = Set.of("PENDING", "RUNNING", "SUCCEEDED", "FAILED", "CANCELED", "UNKNOWN");
     private static final Set<String> AUTH_CODES = Set.of("InvalidApiKey", "invalid_api_key", "AccessDenied", "access_denied", "Forbidden");
     private static final Set<String> REFUSAL_CODES = Set.of("InvalidApiKey", "invalid_api_key", "AccessDenied", "access_denied",
@@ -52,36 +51,26 @@ public class WanClient {
     @Autowired public WanClient(ObjectMapper mapper) { this(mapper, null); }
     /** The loopback transport is available only through this explicit fake-provider test constructor. */
     public WanClient(ObjectMapper mapper, URI testOrigin) {
-        requireLoopback(testOrigin);
+        requireOrigin(testOrigin);
         this.mapper = mapper; this.testOrigin = testOrigin;
-        this.http = PinnedHttpClients.pinned(FixedCloudDns.checked(Dns.SYSTEM, testOrigin != null),
+        this.http = PinnedHttpClients.pinned(Dns.SYSTEM,
                 Duration.ofSeconds(10), Duration.ofSeconds(45), Duration.ofMinutes(3));
     }
-    static void requireLoopback(URI origin) {
-        if (origin != null && !("http".equals(origin.getScheme()) && "127.0.0.1".equals(origin.getHost())
-                && origin.getPort() > 0 && origin.getPort() <= 65535 && origin.getRawPath().isEmpty()
-                && origin.getRawUserInfo() == null && origin.getRawQuery() == null && origin.getRawFragment() == null))
-            throw new IllegalArgumentException("Invalid Wan test origin");
+    static void requireOrigin(URI origin) {
+        if (origin != null) dev.agenvas.shared.security.ServiceEndpointPolicy.origin(origin.toString());
     }
     public static String validatedOrigin(String value) {
         if (value == null || value.isBlank()) throw NativeMediaProfiles.invalid();
         String normalized = value.trim().replaceAll("/+$", "");
         URI origin;
         try { origin = URI.create(normalized); } catch (RuntimeException invalid) { throw NativeMediaProfiles.invalid(); }
-        String host = origin.getHost();
-        boolean workspace = host != null && !host.startsWith("trial.") && REGIONS.stream().anyMatch(region ->
-                host.matches("[A-Za-z0-9][A-Za-z0-9-]{0,62}\\." + java.util.regex.Pattern.quote(region) + "\\.maas\\.aliyuncs\\.com"));
-        if (!("http".equals(origin.getScheme()) || "https".equals(origin.getScheme()))
-                || origin.getPort() == 0 || origin.getPort() > 65535
-                || origin.getRawUserInfo() != null || origin.getRawQuery() != null || origin.getRawFragment() != null
-                || !origin.getRawPath().isEmpty() || !workspace)
-            throw NativeMediaProfiles.invalid();
+        try { dev.agenvas.shared.security.ServiceEndpointPolicy.validate(origin); }
+        catch (IllegalArgumentException invalid) { throw NativeMediaProfiles.invalid(); }
+        if (!origin.getRawPath().isEmpty()) throw NativeMediaProfiles.invalid();
         return normalized;
     }
     public static void validateOrigin(NativeMediaProtocol.Profile profile, String value) {
-        String origin = validatedOrigin(value);
-        if (!WanModels.video(profile) && !origin.matches("https?://[A-Za-z0-9][A-Za-z0-9-]{0,62}\\.(cn-beijing|ap-southeast-1)\\.maas\\.aliyuncs\\.com(?::[0-9]+)?"))
-            throw NativeMediaProfiles.invalid();
+        validatedOrigin(value);
     }
 
     /** Values are already normalized; only native fields from the compiled profile are serialized. */

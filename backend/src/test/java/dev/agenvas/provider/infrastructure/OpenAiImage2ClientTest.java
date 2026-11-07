@@ -574,19 +574,21 @@ class OpenAiImage2ClientTest {
     }
 
     @Test
-    void resultUrlsAndRedirectsCannotReachAnotherLocalService() throws IOException {
+    void resultUrlsAndRedirectsCanReachAnotherLocalServiceWithoutCredentials() throws IOException {
         AtomicInteger leaked = new AtomicInteger();
         HttpServer other = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        other.createContext("/admin", exchange -> { leaked.incrementAndGet(); respond(exchange, 200, "private"); });
+        other.createContext("/admin", exchange -> { leaked.incrementAndGet(); assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isNull(); respond(exchange, 200, "synthetic media"); });
         other.start();
         String forbidden = "http://127.0.0.1:" + other.getAddress().getPort() + "/admin";
         String origin = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1";
         try {
             server.createContext("/v1/images/generations", exchange -> respond(exchange, 200,
                     "{\"data\":[{\"url\":\"" + forbidden + "\"}]}"));
-            assertThatThrownBy(() -> client.generate("synthetic-key", OpenAiImage2Client.DEFAULT_MODEL,
-                    "ridge", "medium", "1024x1024", origin)).isInstanceOf(OpenAiImage2Client.Uncertain.class);
-            assertThat(leaked).hasValue(0);
+            try (var payload = client.generate("synthetic-key", OpenAiImage2Client.DEFAULT_MODEL,
+                    "ridge", "medium", "1024x1024", origin)) {
+                assertThat(new String(payload.stream().readAllBytes(), StandardCharsets.UTF_8)).isEqualTo("synthetic media");
+            }
+            assertThat(leaked).hasValue(1);
             server.removeContext("/v1/images/generations");
             server.createContext("/v1/images/generations", exchange -> respond(exchange, 200,
                     "{\"data\":[{\"url\":\"" + origin + "/jump\"}]}"));
@@ -594,9 +596,11 @@ class OpenAiImage2ClientTest {
                 exchange.getResponseHeaders().set("Location", forbidden);
                 exchange.sendResponseHeaders(302, -1); exchange.close();
             });
-            assertThatThrownBy(() -> client.generate("synthetic-key", OpenAiImage2Client.DEFAULT_MODEL,
-                    "ridge", "medium", "1024x1024", origin)).isInstanceOf(OpenAiImage2Client.Uncertain.class);
-            assertThat(leaked).hasValue(0);
+            try (var payload = client.generate("synthetic-key", OpenAiImage2Client.DEFAULT_MODEL,
+                    "ridge", "medium", "1024x1024", origin)) {
+                assertThat(new String(payload.stream().readAllBytes(), StandardCharsets.UTF_8)).isEqualTo("synthetic media");
+            }
+            assertThat(leaked).hasValue(2);
         } finally { other.stop(0); }
     }
 

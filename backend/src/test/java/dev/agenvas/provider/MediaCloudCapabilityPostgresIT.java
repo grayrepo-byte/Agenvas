@@ -69,8 +69,9 @@ class MediaCloudCapabilityPostgresIT {
         assertThat(catalog.candidates(Task.Kind.VIDEO_GENERATION, 4)).anyMatch(candidate -> candidate.binding().capabilityId().equals(capability.id()));
         assertThatThrownBy(() -> catalog.publishCapability(connection.id(), "Unsupported", "MINIMAX_H3", mapper.readTree("{\"model\":\"MiniMax-H3-Max\"}")))
                 .isInstanceOf(ApiProblemException.class);
-        assertThatThrownBy(() -> catalog.createConnection("h3-proxy", "Proxy", "MINIMAX", "https://proxy.example.com", "synthetic-key"))
-                .isInstanceOf(ApiProblemException.class);
+        var proxy = catalog.createConnection("h3-proxy", "Proxy", "MINIMAX", "http://localhost:8090", "synthetic-key");
+        assertThat(catalog.getConnectionVersion(proxy.id(), proxy.currentVersion()).orElseThrow().origin())
+                .isEqualTo("http://localhost:8090");
         var updated = catalog.updateConnection(connection.id(), connection.version(), "International", true, "https://api.minimax.io", null);
         assertThat(updated.currentVersion()).isEqualTo(connection.currentVersion() + 1);
         assertThat(catalog.getConnectionVersion(connection.id(), connection.currentVersion()).orElseThrow().origin()).isEqualTo("https://api.minimax.cn");
@@ -164,10 +165,11 @@ class MediaCloudCapabilityPostgresIT {
                 new CredentialCipher.Encrypted(changedVersion.credentialCiphertext(),
                         changedVersion.credentialNonce(), changedVersion.credentialKeyVersion())))
                 .isEqualTo("secret");
-        // ADR 0070 允许管理员显式选择公网/私网 HTTP(S)，云元数据地址与 URL 内凭据仍被拒。
-        assertThatThrownBy(() -> catalog.createConnection("cloud-bad-origin", "Bad",
-                "OPENAI", "http://169.254.169.254/v1", "secret"))
-                .isInstanceOf(ApiProblemException.class);
+        // Address allowlists are removed; malformed credential-bearing URLs remain invalid.
+        var special = catalog.createConnection("cloud-special-origin", "Special",
+                "OPENAI", "http://169.254.169.254/v1", "secret");
+        assertThat(catalog.getConnectionVersion(special.id(), special.currentVersion()).orElseThrow().origin())
+                .isEqualTo("http://169.254.169.254/v1");
         assertThatThrownBy(() -> catalog.createConnection("cloud-bad-origin-2", "Bad",
                 "OPENAI", "https://user:pass@images.example.com/v1", "secret"))
                 .isInstanceOf(ApiProblemException.class);
@@ -178,8 +180,9 @@ class MediaCloudCapabilityPostgresIT {
                 "GOOGLE", "http://192.168.1.10:8080", "secret");
         assertThat(catalog.getConnectionVersion(googlePrivate.id(), googlePrivate.currentVersion())
                 .orElseThrow().origin()).isEqualTo("http://192.168.1.10:8080");
-        assertThatThrownBy(() -> catalog.createConnection("cloud-google-origin", "Bad",
-                "GOOGLE", "http://[fd20:ce::254]:8080", "secret"))
-                .isInstanceOf(ApiProblemException.class);
+        var specialGoogle = catalog.createConnection("cloud-google-origin", "Special Google",
+                "GOOGLE", "http://[fd20:ce::254]:8080", "secret");
+        assertThat(catalog.getConnectionVersion(specialGoogle.id(), specialGoogle.currentVersion()).orElseThrow().origin())
+                .isEqualTo("http://[fd20:ce::254]:8080");
     }
 }

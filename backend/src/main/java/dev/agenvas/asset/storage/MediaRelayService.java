@@ -44,11 +44,10 @@ public class MediaRelayService {
         return profile;
     }
 
-    /** Validate before provider submission; the private archive endpoint need not be public in general. */
+    /** Check that the pinned connection and credentials are available before provider submission. */
     public void preflight(Asset asset, UUID pinnedProfile) {
         var original = storage.cloudObject(asset.objectKey());
         StorageProfile profile = original.isPresent() ? original.get().profile() : requirePinned(pinnedProfile);
-        cloud.requirePublic(profile);
         settings.credentials(profile);
     }
 
@@ -68,7 +67,6 @@ public class MediaRelayService {
             return cloud.signedGet(object.profile(), object.key(), URL_LIFETIME);
         }
         StorageProfile profile = requirePinned(pinnedProfile);
-        cloud.requirePublic(profile);
         UUID copyId = UUID.randomUUID();
         String key = (profile.keyPrefix().isEmpty() ? "" : profile.keyPrefix() + "/")
                 + RELAY_DIRECTORY + copyId + switch (asset.contentType()) {
@@ -95,7 +93,6 @@ public class MediaRelayService {
 
     public void preflightImage(UUID profileId) {
         StorageProfile profile = settings.requireProfile(profileId);
-        cloud.requirePublic(profile);
         settings.credentials(profile);
     }
 
@@ -113,7 +110,6 @@ public class MediaRelayService {
         };
         var reserved = reservations.reserve(profileId, extension);
         StorageProfile profile = reserved.profile();
-        cloud.requirePublic(profile);
         java.nio.file.Path file = null;
         try {
             file = java.nio.file.Files.createTempFile("agenvas-relay-", extension);

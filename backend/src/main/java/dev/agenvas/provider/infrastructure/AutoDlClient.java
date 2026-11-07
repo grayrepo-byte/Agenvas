@@ -31,10 +31,6 @@ public class AutoDlClient {
     private static final String TASKS = "/api/v1/comfyui/comfyui_workflow/";
     private static final int MAX_JSON_BYTES = 2 * 1024 * 1024;
     private static final long MAX_RESULT_BYTES = 500L * 1024 * 1024;
-    private static final Set<String> RESULT_HOSTS = Set.of(
-            "cg-comfyui-prod.tos-cn-beijing.volces.com",
-            "codewithgpu-test-1310972338.cos.ap-beijing.myqcloud.com",
-            "codewithgpu.ks3-cn-beijing.ksyuncs.com");
     private final URI origin;
     private final OkHttpClient http;
     private final ObjectMapper mapper;
@@ -42,14 +38,10 @@ public class AutoDlClient {
     @Autowired public AutoDlClient(ObjectMapper mapper) { this(mapper, OFFICIAL); }
     /** Fixed loopback transport for protocol tests; no connection setting exposes this override. */
     public AutoDlClient(ObjectMapper mapper, URI origin) {
-        if (!OFFICIAL.equals(origin) && !("http".equals(origin.getScheme())
-                && "127.0.0.1".equals(origin.getHost()) && origin.getPort() > 0
-                && origin.getPort() <= 65535 && "".equals(origin.getRawPath())
-                && origin.getRawUserInfo() == null && origin.getRawQuery() == null
-                && origin.getRawFragment() == null)) throw new IllegalArgumentException("Invalid AutoDL origin");
+        dev.agenvas.shared.security.ServiceEndpointPolicy.origin(origin.toString());
         this.origin = origin;
         this.mapper = mapper;
-        http = PinnedHttpClients.pinned(FixedCloudDns.checked(Dns.SYSTEM, !OFFICIAL.equals(origin)),
+        http = PinnedHttpClients.pinned(Dns.SYSTEM,
                 Duration.ofSeconds(10), Duration.ofSeconds(30), Duration.ofMinutes(2));
     }
     public String create(String key, String workflowId, ObjectNode body) {
@@ -133,12 +125,9 @@ public class AutoDlClient {
     public MediaPayload downloadVideo(String address) {
         URI url;
         try { url = URI.create(address); } catch (IllegalArgumentException invalid) { throw new ResultRejected(); }
-        boolean loopback = !OFFICIAL.equals(origin) && origin.getHost().equals(url.getHost())
-                && origin.getScheme().equals(url.getScheme()) && origin.getPort() == url.getPort();
-        if (!loopback && !("https".equals(url.getScheme()) && url.getHost() != null && RESULT_HOSTS.contains(url.getHost())
-                && (url.getPort() == -1 || url.getPort() == 443))
-                || url.getRawUserInfo() != null || url.getRawFragment() != null
-                || url.getRawPath() == null || !url.getRawPath().startsWith("/comfyui/outputs/")
+        try { dev.agenvas.shared.security.ServiceEndpointPolicy.downloadDns(url, Dns.SYSTEM); }
+        catch (java.net.UnknownHostException invalid) { throw new ResultRejected(); }
+        if (url.getRawPath() == null || !url.getRawPath().startsWith("/comfyui/outputs/")
                 || url.getRawPath().contains("..") || url.getRawPath().contains("%")) throw new ResultRejected();
         try {
             Response response = http.newCall(new Request.Builder().url(url.toString()).get().build()).execute();

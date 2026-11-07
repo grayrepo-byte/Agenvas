@@ -901,7 +901,7 @@ public class MediaCapabilityService {
                                 || path.contains("\\") || path.contains("//"))) {
                     throw invalid(ApiMessage.of("api.media-capability-service.the-base-url-must-be-the-public-https-api-root"));
                 }
-                ServiceEndpointPolicy.validate(uri, true);
+                ServiceEndpointPolicy.validate(uri);
                 return uri.toASCIIString().replaceAll("/+$", "");
             } catch (IllegalArgumentException invalidUri) {
                 throw invalid(ApiMessage.of("api.media-capability-service.base-url-is-invalid"));

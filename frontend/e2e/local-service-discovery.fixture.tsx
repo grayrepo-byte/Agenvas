@@ -12,12 +12,12 @@ import "../src/styles.css";
 // This fixture is not a product route and never contacts a backend or model.
 setLocale("en");
 const fixture: {
-  mode: "FOUND" | "BLOCKED" | "DELAYED"; requests: LocalServiceKind[]; writes: number; metadataReads: number;
+  mode: "FOUND" | "DELAYED"; requests: LocalServiceKind[]; writes: number; metadataReads: number;
   finishPending: () => void;
 } = { mode: "FOUND", requests: [], writes: 0, metadataReads: 0, finishPending: () => {} };
 Object.assign(window, { localServiceDiscoveryFixture: fixture });
-function response(service: LocalServiceKind, policyAllowed: boolean) {
-  const result: LocalServiceDiscoveryResult = { service, runtime: "CONTAINER", status: "FOUND", policyAllowed,
+function response(service: LocalServiceKind) {
+  const result: LocalServiceDiscoveryResult = { service, runtime: "CONTAINER", status: "FOUND",
     endpoint: service === "OLLAMA" ? "http://host.docker.internal:11434/v1" : "http://192.168.65.254:8188" };
   return json(result);
 }
@@ -48,9 +48,9 @@ window.fetch = async (input, init) => {
   fixture.requests.push(service);
   if (fixture.mode === "DELAYED") {
     // Deliberately finish after abort to verify late-response suppression in the actual settings form.
-    return new Promise<Response>((resolve) => { fixture.finishPending = () => resolve(response(service, true)); });
+    return new Promise<Response>((resolve) => { fixture.finishPending = () => resolve(response(service)); });
   }
-  return response(service, fixture.mode === "FOUND");
+  return response(service);
 };
 const media = new URLSearchParams(location.search).get("surface") === "comfy";
 createRoot(document.getElementById("root")!).render(<QueryClientProvider client={createQueryClient()}>

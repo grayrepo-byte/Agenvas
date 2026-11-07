@@ -66,7 +66,7 @@ class PublicDownloadTlsTest {
     }
     private OkHttpClient client(PublicDownloadProperties.ProxyType type,int port)throws Exception {
         var p=new PublicDownloadProperties(null,List.of(),type,"127.0.0.1",port);
-        return new PublicDownloadHttpClients(p).create(Set.of(),Duration.ofSeconds(2),Duration.ofSeconds(3),Duration.ofSeconds(5)).newBuilder()
+        return new PublicDownloadHttpClients(p).create(Duration.ofSeconds(2),Duration.ofSeconds(3),Duration.ofSeconds(5)).newBuilder()
             .dns(host->List.of(InetAddress.getByName("185.199.108.133")))
             .socketFactory(new PublicDownloadSocketFactory(p,tls.getSocketFactory()))
             .sslSocketFactory(tls.getSocketFactory(),trust).protocols(List.of(Protocol.HTTP_1_1)).build();

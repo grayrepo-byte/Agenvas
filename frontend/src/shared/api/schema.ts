@@ -5274,11 +5274,9 @@ export interface components {
             /** @enum {string} */
             runtime: "CONTAINER" | "NATIVE" | "UNKNOWN";
             /** @enum {string} */
-            status: "FOUND" | "NOT_FOUND" | "UNRESOLVED" | "BLOCKED_ADDRESS" | "TIMEOUT" | "UNEXPECTED_RESPONSE" | "AUTH_REQUIRED" | "UNSUPPORTED_RUNTIME";
+            status: "FOUND" | "NOT_FOUND" | "UNRESOLVED" | "TIMEOUT" | "UNEXPECTED_RESPONSE" | "AUTH_REQUIRED" | "UNSUPPORTED_RUNTIME";
             /** @description Server-generated candidate; present only for FOUND, never credential-bearing */
             endpoint: string | null;
-            /** @description Existing endpoint policy permits the candidate; discovery never changes policy */
-            policyAllowed: boolean;
         };
         McpMediaUploadMetadata: {
             commandId: string;
@@ -5984,7 +5982,7 @@ export interface components {
             /** Format: int64 */
             version: number;
             connectionVersion: number;
-            /** @description COMFYUI base URL with its entire path redacted as /[configured-path], RUNNINGHUB HTTP or HTTPS root without a domain allowlist, or WAN official WorkspaceId.region.maas.aliyuncs.com HTTP/HTTPS root, or optional OPENAI/GOOGLE HTTP or HTTPS API base URL; Google video requires the official Gemini host. null uses the platform official endpoint. */
+            /** @description COMFYUI base URL with its entire path redacted as /[configured-path], RUNNINGHUB HTTP or HTTPS root without a domain allowlist, or WAN/KLING/MINIMAX compatible HTTP/HTTPS service root, or optional OPENAI/GOOGLE HTTP or HTTPS API base URL; Google native video accepts compatible hosts. null uses the platform official endpoint. */
             origin: string | null;
             keyMask: string | null;
             /** @enum {string} */
@@ -6367,7 +6365,7 @@ export interface components {
             name: string;
             /** @enum {string} */
             platform: "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE" | "AUTODL" | "RUNNINGHUB" | "MINIMAX" | "KLING" | "WAN";
-            /** @description Required full COMFYUI base URL (HTTP or HTTPS host/IP and port; literal IPv4 loopback is also supported), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. KLING selects only https://api-singapore.klingai.com or https://api-beijing.klingai.com with an API Key (AK/SK JWT is not supported). MINIMAX selects only https://api.minimax.cn (default) or https://api.minimax.io, without a path. Optional RUNNINGHUB HTTP or HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTP or HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
+            /** @description Required full COMFYUI base URL (HTTP or HTTPS host/IP and port; localhost, IPv4/IPv6, private and proxy Fake-IP addresses are supported), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. KLING accepts an HTTP or HTTPS service root with an API Key (AK/SK JWT is not supported). MINIMAX accepts an HTTP or HTTPS service root, defaulting to https://api.minimax.cn. Optional RUNNINGHUB HTTP or HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTP or HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
             origin?: string | null;
             /** @description Cloud API Key; KLING requires the official API Key, not an AK/SK-generated JWT. Empty on update preserves the pinned credential. */
             apiKey?: string | null;
@@ -6377,7 +6375,7 @@ export interface components {
             expectedVersion: number;
             name: string;
             enabled: boolean;
-            /** @description Required full COMFYUI base URL (HTTP or HTTPS host/IP and port; literal IPv4 loopback is also supported), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. KLING selects only https://api-singapore.klingai.com or https://api-beijing.klingai.com with an API Key (AK/SK JWT is not supported). MINIMAX selects only https://api.minimax.cn (default) or https://api.minimax.io, without a path. Optional RUNNINGHUB HTTP or HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTP or HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
+            /** @description Required full COMFYUI base URL (HTTP or HTTPS host/IP and port; localhost, IPv4/IPv6, private and proxy Fake-IP addresses are supported), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. KLING accepts an HTTP or HTTPS service root with an API Key (AK/SK JWT is not supported). MINIMAX accepts an HTTP or HTTPS service root, defaulting to https://api.minimax.cn. Optional RUNNINGHUB HTTP or HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTP or HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
             origin?: string | null;
             /** @description Cloud API Key; KLING requires the official API Key, not an AK/SK-generated JWT. Empty on update preserves the pinned credential. */
             apiKey?: string | null;

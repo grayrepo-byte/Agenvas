@@ -469,7 +469,7 @@ it("fills discovered Ollama only on selection and preserves its unsaved draft", 
       modelId: "saved-model", keyMask: "••••1234", toolCallingVerified: false, updatedAt: null })),
     http.get("/api/v1/settings/diagnostics", () => HttpResponse.json({ llmMode: "MOCK", mediaMode: "MOCK", imageConfigured: false, videoConfigured: false, recentErrors: [] })),
     http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
-    http.post("/api/v1/settings/local-services/discover", () => HttpResponse.json({ service: "OLLAMA", runtime: "CONTAINER", status: "FOUND", endpoint: "http://host.docker.internal:11434/v1", policyAllowed: true })),
+    http.post("/api/v1/settings/local-services/discover", () => HttpResponse.json({ service: "OLLAMA", runtime: "CONTAINER", status: "FOUND", endpoint: "http://host.docker.internal:11434/v1" })),
     http.put("/api/v1/settings/llm", async ({ request }) => { writes.push(await request.json()); return new HttpResponse(null, { status: 500 }); }),
   );
   render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><LlmSettingsPage /></MemoryRouter></QueryClientProvider>);

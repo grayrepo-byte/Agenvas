@@ -111,8 +111,7 @@ class SpringAiStreamingHttpTest {
         try {
             String endpoint = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1";
             SafeLlmTransport transport = new SafeLlmTransport(endpoint,
-                    new dev.agenvas.settings.application.LlmEndpointPolicy(
-                            new dev.agenvas.settings.application.LlmEndpointProperties(true)));
+                    new dev.agenvas.settings.application.LlmEndpointPolicy());
             OpenAiChatModel model = OpenAiChatModel.builder().options(OpenAiChatOptions.builder()
                     .baseUrl(endpoint)
                     .apiKey("synthetic-unusable-key").model(MODEL_ID).maxRetries(0)

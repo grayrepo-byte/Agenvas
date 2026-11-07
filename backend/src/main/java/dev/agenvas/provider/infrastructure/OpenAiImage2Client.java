@@ -88,7 +88,7 @@ public class OpenAiImage2Client {
     OpenAiImage2Client(ObjectMapper mapper, Duration readTimeout, Duration callTimeout) {
         this.mapper = mapper;
         // Each selected endpoint installs a scheme-aware pinned DNS policy before sending credentials.
-        this.http = PinnedHttpClients.pinned(FixedCloudDns.checked(Dns.SYSTEM, true),
+        this.http = PinnedHttpClients.pinned(Dns.SYSTEM,
                 CONNECT_TIMEOUT, readTimeout, callTimeout);
         // Result redirects are followed manually after destination and DNS validation, without credentials.
         this.downloads = PinnedHttpClients.pinned(Dns.SYSTEM,
@@ -97,7 +97,7 @@ public class OpenAiImage2Client {
 
     private OkHttpClient serviceClient(Request request) throws IOException {
         return http.newBuilder().dns(ServiceEndpointPolicy.dns(
-                request.url().uri(), Dns.SYSTEM, true)).build();
+                request.url().uri(), Dns.SYSTEM)).build();
     }
 
     public MediaPayload generate(String key, String model, String prompt, String quality,
@@ -315,7 +315,7 @@ public class OpenAiImage2Client {
                     return new MediaPayload(new ByteArrayInputStream(image), "image/" + outputFormat, metadata);
                 }
                 if (item.path("url").isTextual()) {
-                    MediaPayload downloaded = download(endpoint, item.path("url").asText(), outputFormat);
+                    MediaPayload downloaded = download(item.path("url").asText(), outputFormat);
                     return new MediaPayload(downloaded.stream(), downloaded.declaredContentType(), metadata);
                 }
                 LOGGER.warn("OpenAI image result payload missing status={} code={}", status,
@@ -388,8 +388,8 @@ public class OpenAiImage2Client {
         }
     }
 
-    /** Result URLs are untrusted; only the selected service or public HTTPS can supply bytes. */
-    private MediaPayload download(URI selected, String rawUrl, String outputFormat) {
+    /** Download HTTP(S) results with independent credential-free requests. */
+    private MediaPayload download(String rawUrl, String outputFormat) {
         URI url;
         try {
             url = URI.create(rawUrl);
@@ -408,7 +408,7 @@ public class OpenAiImage2Client {
         }
         for (int attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt++) {
             try {
-                return fetch(selected, url, outputFormat);
+                return fetch(url, outputFormat);
             } catch (IOException transientFailure) {
                 LOGGER.warn("OpenAI image download attempt {}/{} failed code={}",
                         attempt, DOWNLOAD_ATTEMPTS, ProviderFailureCodes.DOWNLOAD_FAILED);
@@ -420,10 +420,10 @@ public class OpenAiImage2Client {
     }
 
     /** Follow at most three result redirects, validating each destination before a socket is opened. */
-    private MediaPayload fetch(URI selected, URI url, String outputFormat) throws IOException {
+    private MediaPayload fetch(URI url, String outputFormat) throws IOException {
         for (int redirects = 0; redirects <= 3; redirects++) {
             okhttp3.Dns checked = ServiceEndpointPolicy.downloadDns(
-                    selected, url, Dns.SYSTEM, true);
+                    url, Dns.SYSTEM);
             Request request = new Request.Builder().url(url.toString()).get().build();
             try (Response response = downloads.newBuilder().dns(checked).build().newCall(request).execute()) {
                 if (response.isRedirect()) {
@@ -433,7 +433,6 @@ public class OpenAiImage2Client {
                     try {
                         okhttp3.HttpUrl resolved = request.url().resolve(location);
                         if (resolved == null) throw new IllegalArgumentException();
-                        ServiceEndpointPolicy.requireNoDowngrade(url, resolved.uri());
                         url = resolved.uri();
                     }
                     catch (IllegalArgumentException malformed) {
@@ -483,7 +482,7 @@ public class OpenAiImage2Client {
     static URI apiEndpoint(String baseUrl, String path) {
         URI base = baseUrl == null ? OFFICIAL_BASE
                 : URI.create(baseUrl + (baseUrl.endsWith("/") ? "" : "/"));
-        ServiceEndpointPolicy.validate(base, true);
+        ServiceEndpointPolicy.validate(base);
         return base.resolve(path);
     }
 

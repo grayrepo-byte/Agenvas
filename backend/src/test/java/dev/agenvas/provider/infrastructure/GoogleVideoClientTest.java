@@ -212,16 +212,16 @@ class GoogleVideoClientTest {
         client.download(null, "synthetic-key", "files/synthetic-video", target);
         assertThat(target.toByteArray()).isEqualTo(MP4_HEADER);
         assertThat(paths.getLast()).isEqualTo("/v1beta/files/synthetic-video:download?alt=media");
-        status = 302; location = "https://storage.googleapis.com.evil.invalid/result.mp4";
+        status = 302; location = "file:///result.mp4";
         assertThatThrownBy(() -> client.download(null, "synthetic-key", "files/synthetic-video", target))
                 .hasMessage(ProviderFailureCodes.RESULT_URL_INVALID);
         assertThat(paths).hasSize(4);
     }
-    @Test void downloadsCannotUseImageRelayOriginsSignedUrisOrUnrelatedGooglePaths() {
+    @Test void compatibleOriginsRetainFileProtocolPathsWithoutHostAllowlist() {
         assertThat(GoogleVideoClient.validatedOrigin("http://generativelanguage.googleapis.com/v1beta")).isEqualTo("http://generativelanguage.googleapis.com");
-        for (String bad : List.of("https://relay.example.invalid/v1beta", GoogleVideoClient.ORIGIN + "/unrelated"))
+        for (String bad : List.of("file:///v1beta", GoogleVideoClient.ORIGIN + "/unrelated"))
             assertThatThrownBy(() -> GoogleVideoClient.validatedOrigin(bad)).isInstanceOf(NativeMediaFailure.class);
-        for (String bad : List.of("https://generativelanguage.googleapis.com.evil.invalid/v1beta/files/synthetic",
+        for (String bad : List.of("file:///v1beta/files/synthetic",
                 "https://generativelanguage.googleapis.com/v1beta/files/synthetic?key=fake", "https://generativelanguage.googleapis.com/v1beta/models/synthetic",
                 "https://user@generativelanguage.googleapis.com/v1beta/files/synthetic", "https://storage.googleapis.com/object"))
             assertThatThrownBy(() -> GoogleVideoClient.fileName(bad)).isInstanceOf(NativeMediaFailure.class);

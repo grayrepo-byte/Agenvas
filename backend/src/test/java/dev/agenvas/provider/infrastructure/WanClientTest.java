@@ -127,17 +127,14 @@ class WanClientTest {
         assertThatThrownBy(() -> client.query(video, ORIGIN, "synthetic-key", "../other")).hasMessage("PROVIDER_PROTOCOL_INVALID");
         assertThat(methods).containsExactly("GET", "GET", "GET");
     }
-    @Test void officialWorkspaceRootsAreRegionAndProfileBound() {
-        WanClient.validateOrigin(image, "http://llm-synthetic.cn-beijing.maas.aliyuncs.com:8080");
-        assertThat(WanClient.validatedOrigin("http://llm-synthetic.cn-beijing.maas.aliyuncs.com")).startsWith("http://");
-        assertThat(WanClient.validatedOrigin(ORIGIN + "/")).isEqualTo(ORIGIN);
-        for (String region : List.of("cn-beijing", "ap-southeast-1", "ap-northeast-1", "eu-central-1", "us-east-1", "cn-hongkong"))
-            WanClient.validateOrigin(video, "https://llm-synthetic." + region + ".maas.aliyuncs.com");
-        assertThatThrownBy(() -> WanClient.validateOrigin(image, "https://llm-synthetic.us-east-1.maas.aliyuncs.com")).isInstanceOf(ApiProblemException.class);
-        for (String invalid : List.of("https://dashscope.aliyuncs.com", "https://dashscope-intl.aliyuncs.com", "https://trial.cn-beijing.maas.aliyuncs.com",
-                ORIGIN + "/api/v1", ORIGIN + "?apiKey=synthetic", "https://user@llm-synthetic.cn-beijing.maas.aliyuncs.com",
-                "https://llm-synthetic.cn-beijing.maas.aliyuncs.com.untrusted.example", "https://127.0.0.1"))
-            assertThatThrownBy(() -> WanClient.validatedOrigin(invalid)).isInstanceOf(ApiProblemException.class);
+    @Test void compatibleWorkspaceRootsDoNotNeedAnOfficialHostOrRegion() {
+        for (String url : List.of("http://localhost:8090", "https://proxy.invalid:8443", ORIGIN)) {
+            WanClient.validateOrigin(image, url);
+            WanClient.validateOrigin(video, url);
+            assertThat(WanClient.validatedOrigin(url + "/")).isEqualTo(url);
+        }
+        for (String url : List.of(ORIGIN + "/api/v1", ORIGIN + "?apiKey=synthetic", "https://user@localhost", "file:///tmp"))
+            assertThatThrownBy(() -> WanClient.validatedOrigin(url)).isInstanceOf(ApiProblemException.class);
     }
     private NativeMediaProtocol.Profile profile(String model) {
         return models.profiles().stream().filter(profile -> profile.model().equals(model) && profile.operation().equals("GENERATE"))

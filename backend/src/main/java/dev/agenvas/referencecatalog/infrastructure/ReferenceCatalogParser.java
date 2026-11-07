@@ -99,8 +99,8 @@ public class ReferenceCatalogParser {
     }
     private static String link(Source source,String commit,String value) {
         if (!value.contains(":")) return githubLink(source,commit,"public/"+path(value));
-        try { URI uri=URI.create(value); if(!"https".equals(uri.getScheme()) || uri.getHost()==null || uri.getUserInfo()!=null
-                || uri.getPort()!=-1 && uri.getPort()!=443 || uri.getHost().contains(":") || uri.getHost().matches("[0-9.]+")) throw invalid(); return uri.toASCIIString(); }
+        try { URI uri=URI.create(value); if(!("https".equals(uri.getScheme()) || "http".equals(uri.getScheme())) || uri.getHost()==null || uri.getUserInfo()!=null
+                || uri.getPort()==0 || uri.getPort()>65535) throw invalid(); return uri.toASCIIString(); }
         catch(IllegalArgumentException failure){throw invalid();}
     }
     private static String githubLink(Source source,String commit,String path) {

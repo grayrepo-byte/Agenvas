@@ -35,10 +35,9 @@ class ReferenceCatalogGitHubClientTest {
         ((java.util.Map<?,?>)ReflectionTestUtils.getField(client,"trees")).clear();mode.set("120000");assertThatThrownBy(()->client.inspectFile(source("main"),"a".repeat(40),"pose/originals/synthetic.png")).extracting("code").isEqualTo("REFERENCE_CATALOG_INVALID");
         ((java.util.Map<?,?>)ReflectionTestUtils.getField(client,"trees")).clear();truncated.set(true);assertThatThrownBy(()->client.inspectFile(source("main"),"a".repeat(40),"pose/originals/synthetic.png")).extracting("code").isEqualTo("REFERENCE_CATALOG_INVALID");
     }
-    @Test void strictTransportRejectsUnknownHostsAndDisablesProxyRedirectsAndRetries() throws Exception {
+    @Test void transportDisablesImplicitProxyRedirectsAndRetries() throws Exception {
         var client=new ReferenceCatalogGitHubClient();var http=(OkHttpClient)ReflectionTestUtils.getField(client,"http");
         assertThat(http.proxy()).isEqualTo(Proxy.NO_PROXY);assertThat(http.followRedirects()).isFalse();assertThat(http.followSslRedirects()).isFalse();assertThat(http.retryOnConnectionFailure()).isFalse();
-        assertThatThrownBy(()->http.dns().lookup("metadata.google.internal")).isInstanceOf(java.net.UnknownHostException.class);
     }
     @Test void rateLimitedResponseIsSanitizedAndUnsafeFilePathNeverDispatches(){
         var client=new ReferenceCatalogGitHubClient();var count=new AtomicInteger();

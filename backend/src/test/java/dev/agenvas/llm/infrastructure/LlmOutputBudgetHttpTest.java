@@ -25,7 +25,7 @@ class LlmOutputBudgetHttpTest {
         when(cipher.decrypt(any(), anyInt(), any())).thenReturn("synthetic-key");
         var config = new LlmProviderConfig(UUID.randomUUID(), 1, "http://127.0.0.1:1/v1", "synthetic",
                 new byte[]{1}, new byte[]{2}, 1, "masked", false, true, Instant.EPOCH);
-        var factory = new StoredChatModelFactory(cipher, new LlmEndpointPolicy(new LlmEndpointProperties(true)));
+        var factory = new StoredChatModelFactory(cipher, new LlmEndpointPolicy());
         assertThatCode(() -> new StoredLlmDiagnosticGateway(factory).open(config)).doesNotThrowAnyException();
         assertThat(config.modelPolicy()).isNull();
     }
@@ -39,7 +39,7 @@ class LlmOutputBudgetHttpTest {
                 1024, LlmModelPolicy.OutputParameter.MAX_TOKENS);
         var config = new LlmProviderConfig(UUID.randomUUID(), 1, "http://127.0.0.1:1/v1", "synthetic",
                 new byte[]{1}, new byte[]{2}, 1, "masked", true, true, Instant.EPOCH, policy);
-        var factory = new StoredChatModelFactory(cipher, new LlmEndpointPolicy(new LlmEndpointProperties(true)), null, null, metadata);
+        var factory = new StoredChatModelFactory(cipher, new LlmEndpointPolicy(), null, null, metadata);
         var budget = LlmRequestBudget.resolve(DirectorSettings.defaults(), policy);
         for (var observed : List.of(
                 new ModelCatalog.Model("synthetic", 32768, null, null, null, "original-digest", null),
@@ -77,7 +77,7 @@ class LlmOutputBudgetHttpTest {
             var policy = parameter == null ? null : LlmModelPolicy.manual(ModelCatalog.Provider.COMPATIBLE, 4096, null, 1024, parameter);
             var config = new LlmProviderConfig(UUID.randomUUID(), 1, "http://127.0.0.1:"+server.getAddress().getPort()+"/v1",
                     "synthetic", new byte[]{1}, new byte[]{2}, 1, "masked", true, true, Instant.EPOCH, policy);
-            var factory = new StoredChatModelFactory(cipher, new LlmEndpointPolicy(new LlmEndpointProperties(true)));
+            var factory = new StoredChatModelFactory(cipher, new LlmEndpointPolicy());
             var budget = LlmRequestBudget.resolve(DirectorSettings.defaults(), policy);
             factory.create(config, budget).call(List.of(new UserMessage("small synthetic request")), List.of(), Map.of());
             var sent = new ObjectMapper().readTree(body.get());

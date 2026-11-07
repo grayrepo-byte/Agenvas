@@ -50,7 +50,7 @@ public class LocalServiceProbe {
             .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION).build())
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
 
-    /** Internal result retains the pin only for existing-policy evaluation; never serialized to API. */
+    /** Internal result retains the resolved route; never serialized to API. */
     public record Detected(Status status, String endpoint, InetAddress address) {}
 
     /** Absolute monotonic budget survives resolvers that swallow thread interruption. */
@@ -95,7 +95,6 @@ public class LocalServiceProbe {
             if (runtime == Runtime.CONTAINER) {
                 List<InetAddress> answers = resolver.lookup(HOST_ALIAS);
                 if (answers.isEmpty()) return absent(Status.UNRESOLVED);
-                for (InetAddress answer : answers) if (!privateIpv4(answer)) return absent(Status.BLOCKED_ADDRESS);
                 address = answers.getFirst();
             } else address = InetAddress.getByAddress(new byte[]{127, 0, 0, 1});
         } catch (UnknownHostException unresolved) { return absent(Status.UNRESOLVED); }
@@ -125,6 +124,7 @@ public class LocalServiceProbe {
             JsonNode body = json.readTree(bytes);
             if (!matches(service, body)) return absent(Status.UNEXPECTED_RESPONSE);
             String candidateHost = service == Service.COMFYUI ? address.getHostAddress() : host;
+            if (candidateHost.contains(":")) candidateHost = "[" + candidateHost + "]";
             if (budget.expired()) return absent(Status.TIMEOUT);
             return new Detected(Status.FOUND, "http://" + candidateHost + ":" + port
                     + (service == Service.OLLAMA ? "/v1" : ""), address);
@@ -146,10 +146,4 @@ public class LocalServiceProbe {
 
     private static Detected absent(Status status) { return new Detected(status, null, null); }
 
-    private static boolean privateIpv4(InetAddress address) {
-        byte[] bytes = address.getAddress();
-        if (bytes.length != 4) return false;
-        int first = bytes[0] & 255, second = bytes[1] & 255;
-        return first == 10 || first == 172 && second >= 16 && second <= 31 || first == 192 && second == 168;
-    }
 }

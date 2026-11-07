@@ -44,7 +44,7 @@ public class SmbStorageClient implements RemoteStorageClient {
     private Handle connect(StorageProfile profile) throws IOException {
         URI endpoint = URI.create(profile.endpoint());
         // Resolve once and connect to that literal address, preventing a second unvalidated DNS lookup.
-        var addresses = ObjectStorageClient.checkedDns(Dns.SYSTEM).lookup(endpoint.getHost());
+        var addresses = Dns.SYSTEM.lookup(endpoint.getHost());
         var client = new SMBClient(SmbConfig.builder().withSigningRequired(true).withDfsEnabled(false)
                 .withTimeout(60, TimeUnit.SECONDS).withSoTimeout(60, TimeUnit.SECONDS).build());
         Connection connection = null;

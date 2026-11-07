@@ -22,7 +22,7 @@ public final class ComfyUiEndpoint {
                     || uri.getRawFragment() != null || uri.getPort() == 0 || uri.getPort() > MAX_PORT
                     || path == null || path.contains("..") || path.contains("%")
                     || path.contains("\\") || path.contains("//") || path.equals(HIDDEN_PATH)) throw invalid();
-            ServiceEndpointPolicy.validate(uri, true);
+            ServiceEndpointPolicy.validate(uri);
             return URI.create(uri.toASCIIString().replaceAll("/+$", ""));
         } catch (IllegalArgumentException failure) {
             throw invalid();

@@ -50,8 +50,7 @@ import org.testcontainers.utility.MountableFile;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.llm.mode=configured",
-        "agenvas.credentials.key-version=7",
-        "agenvas.settings.llm.allow-loopback-http=true"})
+        "agenvas.credentials.key-version=7"})
 class LlmProviderConfigPostgresIT {
 
     @Container
@@ -93,7 +92,7 @@ class LlmProviderConfigPostgresIT {
                 .andExpect(status().isForbidden());
         mvc.perform(put("/api/v1/settings/llm").with(auth).with(csrf())
                         .contentType("application/json")
-                        .content(request(0, "http://169.254.169.254/latest", firstKey)))
+                        .content(request(0, "http://user:synthetic-password@127.0.0.1/latest", firstKey)))
                 .andExpect(status().isBadRequest());
         mvc.perform(put("/api/v1/settings/llm").with(auth).with(csrf())
                         .contentType("application/json").content(firstRequest))

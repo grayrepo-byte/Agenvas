@@ -69,13 +69,13 @@ public class GoogleNanoBananaClient {
     GoogleNanoBananaClient(ObjectMapper mapper, Duration readTimeout, Duration callTimeout) {
         this.mapper = mapper;
         // Each selected endpoint installs a scheme-aware pinned DNS policy before sending credentials.
-        this.http = PinnedHttpClients.pinned(FixedCloudDns.checked(Dns.SYSTEM, true),
+        this.http = PinnedHttpClients.pinned(Dns.SYSTEM,
                 CONNECT_TIMEOUT, readTimeout, callTimeout);
     }
 
     private OkHttpClient serviceClient(Request request) throws IOException {
         return http.newBuilder().dns(ServiceEndpointPolicy.dns(
-                request.url().uri(), Dns.SYSTEM, true)).build();
+                request.url().uri(), Dns.SYSTEM)).build();
     }
 
     public MediaPayload generate(String key, String model, String origin, String prompt,
@@ -159,7 +159,7 @@ public class GoogleNanoBananaClient {
      */
     static URI apiEndpoint(String origin, String model) {
         URI target = origin == null || origin.isBlank() ? OFFICIAL : URI.create(origin);
-        ServiceEndpointPolicy.validate(target, true);
+        ServiceEndpointPolicy.validate(target);
         String path = target.getRawPath();
         URI base = path == null || path.isEmpty() || "/".equals(path)
                 ? target.resolve(DEFAULT_API_PATH)

@@ -114,9 +114,6 @@ services:
       AGENVAS_LLM_MODE: mock
       AGENVAS_LLM_SCHEDULER_ENABLED: "true"
       # Agent budgets are deployment settings; adjust to the selected model's actual context window.
-      AGENVAS_LLM_ALLOW_LOOPBACK_HTTP: "false"
-      AGENVAS_LLM_ALLOW_HTTP: "true"
-      AGENVAS_LLM_TRUSTED_HTTP_ORIGINS: ""
       AGENVAS_LOCAL_SERVICE_RUNTIME: "CONTAINER"
       AGENVAS_LOCAL_SERVICE_DISCOVERY_ENABLED: "true"
       AGENVAS_CREDENTIAL_MASTER_KEY_FILE: /run/agenvas/credentials/installation/credential-master-key

@@ -49,6 +49,11 @@ class ReferenceCatalogParserTest {
                 "variants":[{"id":"v","angle":"front","label":{"zh":"正面","en":"Front"},"original":"javascript:alert(1)"}]}
                 """;
         assertThatThrownBy(() -> parser.parse(source,"a".repeat(40),("{\"items\":["+entry+"]}").getBytes())).isInstanceOf(RuntimeException.class);
+        for (String url : java.util.List.of("http://127.0.0.1:8188/image.png", "http://[::1]:8090/image.png", "https://cdn.invalid:8443/image.png")) {
+            String valid = entry.replace("javascript:alert(1)", url);
+            assertThat(parser.parse(source, "a".repeat(40), ("{\"items\":[" + valid + "]}").getBytes())
+                    .entries().getFirst().variants().getFirst().externalUrl()).isEqualTo(url);
+        }
         String safe = entry.replace("javascript:alert(1)","https://example.com/original.png");
         assertThatThrownBy(() -> parser.parse(source,"a".repeat(40),("{\"items\":["+safe+","+safe+"]}").getBytes())).isInstanceOf(RuntimeException.class);
     }
