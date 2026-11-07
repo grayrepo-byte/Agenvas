@@ -1,8 +1,8 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { ReferenceImport } from "../../shared/api/referenceCatalog";
 import { setLocale } from "../../shared/i18n";
@@ -13,23 +13,24 @@ const base = "/api/v1/reference-catalog/private-images";
 const image = { id: "private-image", sourceId: "upstream", snapshotId: "snapshot", entryId: "pose", variantId: "front", sha256: "verified-sha", byteSize: 150, contentType: "image/png", width: 100, height: 150, previewUrl: `${base}/private-image/preview`, cached: true };
 const variant = { id: "front", label: "Front", availability: "LINK_ONLY", importAllowed: false, privateCacheAllowed: true, privateCacheDisabledReason: null, externalUrl: "https://example.com/original", sha256: null, previewUrl: null, cached: false };
 const entry = { sourceId: "upstream", snapshotId: "snapshot", id: "pose", kind: "POSE", title: "Selected pose", category: "Standing", tags: [], facets: {}, importAllowed: false, disabledReason: "REFERENCE_CATALOG_LINK_ONLY", variants: [variant] };
-function setup(options: { records?: object[]; privateAllowed?: boolean; reason?: string; placement?: { x: number; y: number } } = {}) {
+function setup(options: { records?: object[]; items?: object[]; privateAllowed?: boolean; reason?: string; placement?: { x: number; y: number } } = {}) {
   setLocale("en"); let indexReads = 0; const applied: ReferenceImport[] = [];
   server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "user", role: "USER" })),
     http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
     http.get("/api/v1/reference-catalog/sources", () => HttpResponse.json({ items: [] })),
-    http.get("/api/v1/reference-catalog", () => HttpResponse.json({ items: [{ ...entry, variants: [{ ...variant, privateCacheAllowed: options.privateAllowed ?? true, privateCacheDisabledReason: options.reason ?? null }] }], total: 1, offset: 0, limit: 50 })),
+    http.get("/api/v1/reference-catalog", () => HttpResponse.json({ items: options.items ?? [{ ...entry, variants: [{ ...variant, privateCacheAllowed: options.privateAllowed ?? true, privateCacheDisabledReason: options.reason ?? null }] }], total: options.items?.length ?? 1, offset: 0, limit: 50 })),
     http.get(base, ({ request }) => { indexReads++; expect(new URL(request.url).searchParams.get("sourceId")).toBe("upstream"); expect(new URL(request.url).searchParams.get("snapshotId")).toBe("snapshot"); return HttpResponse.json({ items: options.records ?? [] }); }));
   const client = createQueryClient();
-  render(<QueryClientProvider client={client}><ReferenceCatalog projectId="project" placement={options.placement} onApply={async (result) => { applied.push(result); }} /></QueryClientProvider>);
-  return { user: userEvent.setup(), applied, client, getIndexReads: () => indexReads };
+  const view = render(<QueryClientProvider client={client}><ReferenceCatalog projectId="project" placement={options.placement} onApply={async (result) => { applied.push(result); }} /></QueryClientProvider>);
+  return { user: userEvent.setup(), applied, client, view, getIndexReads: () => indexReads };
 }
-it("caches only the selected private image after an explicit action and never imports on cache", async () => {
+it("automatically loads and caches the catalog thumbnail without importing it", async () => {
   const { user, applied, getIndexReads } = setup(); const writes: Record<string, unknown>[] = [];
   server.use(http.post(base, async ({ request }) => { writes.push(await request.json() as Record<string, unknown>); return HttpResponse.json(image); }));
-  await screen.findByRole("button", { name: "Preview Selected pose" }); expect(getIndexReads()).toBe(0); expect(screen.queryByRole("img")).not.toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "Preview Selected pose" }));
-  await user.click(await screen.findByRole("button", { name: "Cache this image privately" }));
+  const card = await screen.findByRole("button", { name: "Preview Selected pose" });
+  await waitFor(() => expect(card.querySelector("img")).toHaveAttribute("src", image.previewUrl));
+  expect(getIndexReads()).toBe(1);
+  await user.click(card);
   expect(await screen.findByRole("img")).toHaveAttribute("src", image.previewUrl);
   expect(writes).toHaveLength(1); expect(writes[0]).toMatchObject({ sourceId: "upstream", snapshotId: "snapshot", entryId: "pose", variantId: "front" });
   expect(applied).toHaveLength(0); expect(screen.getByRole("button", { name: "Append as reference" })).toBeEnabled();
@@ -47,7 +48,10 @@ it.each([undefined, { x: 80, y: 80 }])("reuses an owner-indexed image and import
 it("replays a lost private-cache acknowledgement with the same selected image and key", async () => {
   const { user } = setup(); const writes: Record<string, unknown>[] = [];
   server.use(http.post(base, async ({ request }) => { writes.push(await request.json() as Record<string, unknown>); return writes.length === 1 ? HttpResponse.error() : HttpResponse.json(image); }));
-  await user.click(await screen.findByRole("button", { name: "Preview Selected pose" })); await user.click(await screen.findByRole("button", { name: "Cache this image privately" }));
+  await user.click(await screen.findByRole("button", { name: "Preview Selected pose" }));
+  await screen.findByRole("button", { name: "Retry private cache" });
+  await user.click(screen.getByRole("button", { name: "Close" }));
+  await user.click(screen.getByRole("button", { name: "Preview Selected pose" }));
   await user.click(await screen.findByRole("button", { name: "Retry private cache" })); await screen.findByRole("img");
   expect(writes).toHaveLength(2); expect(writes[0]).toEqual(writes[1]);
 });
@@ -80,8 +84,9 @@ it("recovers a lost private import with the same command instead of creating ano
 });
 it("never reuses a same-named variant from another immutable snapshot", async () => {
   const { user } = setup({ records: [{ ...image, snapshotId: "other-snapshot" }] });
+  server.use(http.post(base, async ({ request }) => { expect(await request.json()).toMatchObject({ snapshotId: "snapshot" }); return HttpResponse.error(); }));
   await user.click(await screen.findByRole("button", { name: "Preview Selected pose" }));
-  await waitFor(() => expect(screen.getByRole("button", { name: "Cache this image privately" })).toBeEnabled());
+  expect(await screen.findByRole("button", { name: "Retry private cache" })).toBeEnabled();
   expect(screen.queryByRole("img")).not.toBeInTheDocument(); expect(screen.getByRole("button", { name: "Append as reference" })).toBeDisabled();
 });
 it("recovers an owner-index read without creating or downloading a new private copy", async () => {
@@ -101,15 +106,82 @@ it("does not hotlink a remote URL supplied in an owner-cache record", async () =
 it("does not reuse another signed-in account's private cache projection", async () => {
   const { user, client } = setup({ records: [image] });
   await user.click(await screen.findByRole("button", { name: "Preview Selected pose" })); await screen.findByRole("img");
-  server.use(http.get(base, () => HttpResponse.json({ items: [] })));
+  server.use(http.get(base, () => HttpResponse.json({ items: [] })), http.post(base, () => HttpResponse.error()));
   act(() => client.setQueryData(["auth", "me"], { id: "other-user", role: "USER" }));
-  await waitFor(() => expect(screen.getByRole("button", { name: "Cache this image privately" })).toBeEnabled());
+  expect(await screen.findByRole("button", { name: "Retry private cache" })).toBeEnabled();
   expect(screen.queryByRole("img")).not.toBeInTheDocument(); expect(screen.getByRole("button", { name: "Append as reference" })).toBeDisabled();
 });
 it("offers old-snapshot private cache management to ordinary authenticated users", async () => {
   const { user } = setup();
-  server.use(http.get(base, ({ request }) => { expect(new URL(request.url).search).toBe(""); return HttpResponse.json({ items: [{ ...image, snapshotId: "old-snapshot" }] }); }));
+  server.use(http.get(base, () => HttpResponse.json({ items: [{ ...image, snapshotId: "old-snapshot" }] })), http.post(base, () => HttpResponse.json(image)));
   await user.click(await screen.findByRole("button", { name: "My private image cache" }));
   expect(await screen.findByRole("dialog", { name: "My private image cache" })).toBeInTheDocument();
   expect(await screen.findByText("old-snapshot")).toBeInTheDocument();
+});
+
+it("waits for a card to approach the viewport before downloading its image", async () => {
+  let reveal = () => {};
+  vi.stubGlobal("IntersectionObserver", class {
+    constructor(callback: (entries: { isIntersecting: boolean }[]) => void) { reveal = () => callback([{ isIntersecting: true }]); }
+    observe() {}
+    disconnect() {}
+  });
+  try {
+    const { getIndexReads } = setup(); let downloads = 0;
+    server.use(http.post(base, () => { downloads++; return HttpResponse.json(image); }));
+    const card = await screen.findByRole("button", { name: "Preview Selected pose" });
+    expect(getIndexReads()).toBe(0); expect(downloads).toBe(0);
+    act(reveal);
+    await waitFor(() => expect(card.querySelector("img")).toHaveAttribute("src", image.previewUrl));
+    expect(downloads).toBe(1);
+  } finally { vi.unstubAllGlobals(); }
+});
+
+it("automatically loads costume images when switching to the costume catalog", async () => {
+  const { user } = setup(); const downloads: Record<string, unknown>[] = [];
+  server.use(http.get("/api/v1/reference-catalog", ({ request }) => HttpResponse.json({ items: new URL(request.url).searchParams.get("kind") === "COSTUME" ? [{ ...entry, id: "costume", kind: "COSTUME", title: "Selected costume" }] : [], total: 1, offset: 0, limit: 50 })),
+    http.post(base, async ({ request }) => { downloads.push(await request.json() as Record<string, unknown>); return HttpResponse.json({ ...image, entryId: "costume" }); }));
+  await user.click(screen.getByRole("radio", { name: "Costumes" }));
+  const card = await screen.findByRole("button", { name: "Preview Selected costume" });
+  await waitFor(() => expect(card.querySelector("img")).toHaveAttribute("src", image.previewUrl));
+  expect(downloads).toHaveLength(1); expect(downloads[0]?.entryId).toBe("costume");
+});
+
+it("automatically caches a newly selected view without downloading other views", async () => {
+  const { user } = setup({ records: [image], items: [{ ...entry, variants: [variant, { ...variant, id: "back", label: "Back" }, { ...variant, id: "side", label: "Side" }] }] }); const downloads: Record<string, unknown>[] = [];
+  server.use(http.post(base, async ({ request }) => { downloads.push(await request.json() as Record<string, unknown>); return HttpResponse.json({ ...image, id: "back-image", variantId: "back", previewUrl: `${base}/back-image/preview` }); }));
+  await user.click(await screen.findByRole("button", { name: "Preview Selected pose" })); await screen.findByRole("img");
+  await user.click(screen.getByRole("radio", { name: "Back" }));
+  await waitFor(() => expect(screen.getByRole("img")).toHaveAttribute("src", `${base}/back-image/preview`));
+  expect(downloads).toHaveLength(1); expect(downloads[0]?.variantId).toBe("back");
+});
+
+it("limits concurrent downloads and shares an in-flight card download with the preview", async () => {
+  const { user } = setup({ items: Array.from({ length: 6 }, (_, i) => ({ ...entry, id: `pose-${i}`, title: `Pose ${i}` })) }); let release = () => {}; const gate = new Promise<void>((resolve) => { release = resolve; });
+  const downloads: Record<string, unknown>[] = []; let active = 0; let peak = 0;
+  server.use(http.post(base, async ({ request }) => {
+      const input = await request.json() as Record<string, unknown>; downloads.push(input); active++; peak = Math.max(peak, active);
+      await gate; active--; return HttpResponse.json({ ...image, id: `image-${input.entryId}`, entryId: input.entryId });
+    }));
+  try {
+    await waitFor(() => expect(downloads).toHaveLength(4));
+    await user.click(screen.getByRole("button", { name: "Preview Pose 0" }));
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: "Caching selected image…" })).toBeDisabled();
+  } finally { release(); }
+  await screen.findByRole("img"); await waitFor(() => expect(document.querySelectorAll(".reference-card-image img")).toHaveLength(6));
+  expect(downloads).toHaveLength(6); expect(peak).toBe(4);
+});
+
+it("does not start queued image downloads after leaving the catalog", async () => {
+  const { view, client } = setup({ items: Array.from({ length: 6 }, (_, i) => ({ ...entry, id: `pose-${i}`, title: `Pose ${i}` })) });
+  let release = () => {}; const gate = new Promise<void>((resolve) => { release = resolve; }); let downloads = 0; let completed = 0;
+  server.use(http.post(base, async ({ request }) => {
+    const input = await request.json() as Record<string, unknown>; downloads++;
+    await gate; completed++; return HttpResponse.json({ ...image, id: `image-${input.entryId}`, entryId: input.entryId });
+  }));
+  try { await waitFor(() => expect(downloads).toBe(4)); view.unmount(); }
+  finally { release(); }
+  await waitFor(() => expect(completed).toBe(4));
+  await waitFor(() => expect(client.isFetching()).toBe(0));
+  expect(downloads).toBe(4);
 });

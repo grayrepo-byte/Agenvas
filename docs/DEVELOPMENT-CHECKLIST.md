@@ -3872,3 +3872,19 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 5 个相关前端文件共 147 项通过；`pnpm api:generate`、`pnpm typecheck`、`pnpm lint`、`pnpm build`、`pnpm test:local-service-discovery` 及四个主要 Compose 入口配置检查通过。浏览器使用生产 CSS、1440/390px 和合成 API，覆盖发现/填入/取消/迟到结果、手工草稿、密钥保留及帮助弹层命中。独立代码复核的参考链接残留限制与 Ark/MiniMax 编码路径误拒已修正，复核未发现剩余问题。保留既有 Vite 配置加载器、大分块和 Mockito/JVM 提示。
 - [x] 合并回最新本地 develop，保留节点中上定位和画布子图复制改动；仅开发清单的追加记录冲突，保留两侧内容。ADR 使用 0079，避免与子图复制的 0078 重号；合约重新生成后无额外漂移。合并结果重新通过 19 类 88 项后端单元、3 类 11 项真实 PostgreSQL 专项、8 文件 245 项前端测试，以及类型检查、完整 lint/主题/四语言、生产构建和本地服务发现原生 Chrome 浏览器专项。浏览器使用生产 CSS、1440/390px 与合成 API，未运行全量或真实 Provider。
 - [ ] 未运行全量测试、真实模型/Provider、用户当前代理网络或实例的现场同步、部署升级验证；未推送或部署。上述本地合成 HTTP/代理与 PostgreSQL 结果不代表真实 Provider 可达或用户网络已接通。
+
+## 2026-11-07 参考图库图片自动加载
+
+- [x] Library 姿势／服装卡片接近可视区域时自动加载首个允许私有缓存的视角，详情选中视角自动加载；卡片与详情按账号、来源、不可变快照及视角复用同一次获取，最多四个并发下载。复用服务端持久缓存；失败手动重试使用原命令键，清理后的记录不立即重新下载，退出目录取消尚未开始的排队请求。仍使用现有来源准入与完整性检查，不自动导入项目或触发生成。
+- [x] 更新 `ReferenceCatalog`、`PrivateReferenceCache`、四语言说明、规格、来源指南及 [ADR 0080](adr/0080-automatic-reference-image-loading.md)；自动按需加载覆盖 ADR 0076 中必须单独点击缓存的旧规则。没有后端、API、生成代码、数据库迁移或依赖版本变化。
+- [x] `pnpm exec vitest run src/features/reference-catalog src/features/library/LibraryPage.test.tsx src/features/canvas/MediaDraftEditor.test.tsx src/features/canvas/WorkflowDraftControls.test.tsx --reporter=dot`：十个文件 255 项通过；新增排队取消断言后单独复验 `PrivateReferenceImage.test.tsx` 十九项通过。覆盖自动姿势／服装预览、视口触发、视角切换、并发上限、进行中请求复用、失败命令重放、快照／账号隔离及清理。编辑器 UNKNOWN 替换测试出现未匹配 `second-replacement/queue` 的 Mock GET 提示，测试本身通过；未将其计为无提示执行。
+- [x] `pnpm typecheck`、`pnpm lint`（主题／四语言／ESLint）、`pnpm build`、差异空白检查通过。`pnpm test:reference-catalog` 使用生产 CSS、合成几何图片和内存 API，通过 2560×1179、1440×900、390×844、844×390 四种真实 Chromium 窗口；覆盖自动私人图片加载、详情缓存复用、不自动创建项目副本及既有管理／清理。构建保留既有 Vite 配置加载器与大分块提示。
+- [ ] 未运行全量测试、后端测试、真实来源网络／图片下载、真实 Provider 或部署验证；前端模拟响应不作为真实来源已连通的证据，未推送或部署。
+
+## 2026-11-07 简化参考图库来源弹窗
+
+- [x] 「管理来源」只保留一个来源选择框及加载动作，移除仓库、分支、格式、清单路径、分发授权及缓存管理表单，宽度收敛为 460px。内置预设自动配置，首次加载自动添加来源；已有来源复用，所选停用来源自动启用，再以最新版本同步。成功关闭并切换到该来源，失败保留选择直接重试；丢失新增回执后重新读取来源恢复，不重复添加，同名 ID 冲突不覆盖其他来源。
+- [x] 既有自定义来源仍可选择；技术参数和分发授权通过现有管理 API 配置。缓存用量／预缓存任务／共享清理移至系统设置的系统模板页，个人缓存入口保持。同步规格、来源指南及 ADR 0075/0080，清理二十三条过时四语消息并新增三条加载状态消息；无后端、API、迁移、生成代码或依赖变更。
+- [x] `pnpm exec vitest run src/features/reference-catalog src/features/settings/SystemSettingsPage.test.tsx src/features/library/LibraryPage.test.tsx --reporter=dot`：十个文件 74 项通过，无未匹配 Mock 请求提示；含六项来源加载专项及原有图片自动缓存回归。`pnpm typecheck`、`pnpm build`、`pnpm lint`（主题／四语／ESLint）通过，保留既有 Vite 配置加载器与大分块提示。
+- [x] `pnpm test:reference-catalog` 使用合成图片与内存 API，通过 2560×1179、1440×900、390×844、844×390 四种 Chromium 窗口，验证弹窗只有一个选择框、没有文本输入或缓存面板，选择已配置来源并加载后自动关闭；自动缓存与预览复用继续通过。窄屏截图已目视检查，截图位于仓库外。
+- [ ] 全量测试、后端测试、真实来源网络／Provider 及部署验证未运行；未推送或部署。

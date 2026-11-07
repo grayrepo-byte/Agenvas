@@ -1,21 +1,28 @@
 # Reference catalog sources
 
 The reference catalog stores searchable metadata separately from image files.
-Administrators configure a GitHub repository and manually synchronize it, following
-the same source-management pattern as the third-party prompt catalog. No source is
-enabled or contacted automatically on installation.
+Administrators select a source and choose **Load**. The Open Pose Costume preset
+supplies repository, format, ref and manifest path automatically. The first load
+adds the source; later loads reuse it. Loading enables a disabled selected source
+and synchronizes its metadata, then closes the dialog and shows that source's
+catalog. Errors preserve the selection and last successful catalog for retry.
+Existing configured sources remain selectable. No source is enabled or contacted
+automatically on installation.
 
 ## Source configuration and local cache
 
-Choose the source format, repository owner/name, a branch, tag or exact commit,
-and a JSON path. Synchronization first resolves a mutable ref to a Git commit,
+Custom source formats, repository parameters and image-distribution approval can
+still be configured through the existing administrator API. These technical fields
+and cache-maintenance controls are absent from the source chooser; cache usage,
+prefetch and shared cleanup remain in System settings → System templates.
+Synchronization first resolves a mutable ref to a Git commit,
 downloads that commit's JSON, validates it and publishes a new immutable local
 snapshot. The previous successful snapshot remains available when the upstream
 request or validation fails. A commit hash identifies content; it does not prove
 image permission.
 
 Search, pagination, group/view selection and filters use the locally stored
-metadata. Refreshing the catalog reads that cache; the separate manual sync action
+metadata. Refreshing the catalog reads that cache; choosing Load in the source dialog
 contacts GitHub. Upstream images are not fetched by metadata synchronization.
 An exact 40-character commit can be used when GitHub's ref-resolution API is
 temporarily unavailable or rate limited. Error messages retain the previous cache
@@ -86,14 +93,20 @@ The original [pose](https://ai-pose-gallery.pages.dev/) and
 [costume](https://ai-costume-gallery.pages.dev/) galleries allow downloading
 individual original PNGs as creative references, including commercial work, while
 separately restricting bulk download and redistribution. These are different
-operations. A user can explicitly cache one eligible base pose or photographic
-costume view privately, preview it locally and import an independent project copy.
+operations. Eligible base pose and photographic costume cards automatically cache
+their first view privately as they approach the viewport. Opening or selecting a
+view also loads it automatically for preview and explicit project import.
 This is a limited implementation of individual reference use, not a claim that
 every file or whole-library download is permitted. Anime, depth and custom entries
 retain their external source links and specific unavailability explanations.
 
-Metadata synchronization and opening the catalog do not download images. This
-format has no whole-library prefetch, automatic image hotlinks, default bundled
+Metadata synchronization does not download images. Browsing loads only card
+previews near the viewport and selected views, reusing existing private copies.
+Cards and previews share requests with at most four concurrent downloads. Failures
+require explicit retry with the same command key. Retained uncached records,
+including copies cleared by the user, require explicit recaching. Queued downloads
+are canceled when their cards and previews unmount. See [ADR 0080](adr/0080-automatic-reference-image-loading.md).
+This format has no whole-library prefetch, automatic image hotlinks, default bundled
 images or public mirror. The generic distribution-approval checkbox cannot enable
 those operations for this format. An account's private cache index and preview
 require that account's authorization; another account cannot read its private
