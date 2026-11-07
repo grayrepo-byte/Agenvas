@@ -3943,5 +3943,7 @@
   "reference.loadingSource": "Loading source…",
   "reference.retryLoad": "Retry loading",
   "reference.omilicSource": "Omilic (recommended)",
-  "reference.refreshCatalog": "Refresh catalog"
+  "reference.refreshCatalog": "Refresh catalog",
+  "reference.searchPlaceholder": "Search names, codes or keywords",
+  "reference.classification": "Classification"
 }

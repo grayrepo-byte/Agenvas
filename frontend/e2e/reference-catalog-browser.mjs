@@ -212,6 +212,8 @@ try {
     await pointerClick('.reference-private-manager-dialog .ui-dialog-header button');
     await waitFor(() => !document.querySelector('.reference-private-manager-dialog'));
     await pointerClick('.reference-toolbar [role=radio]:nth-child(2)');
+    await waitFor(() => document.querySelector('.reference-card')?.getAttribute('aria-label') === 'Preview Synthetic private costume');
+    await page(() => document.querySelector('.reference-card')?.scrollIntoView({ block: 'start' }));
     await waitFor(() => document.querySelector('.reference-card-image img')?.naturalWidth === 240 && document.documentElement.dataset.privateDownloadCount === "1");
     await pointerClick('.reference-card');
     await waitFor(() => document.querySelector('.reference-preview-dialog img')?.naturalWidth === 240);
@@ -219,7 +221,36 @@ try {
     assert.equal(await page(() => document.documentElement.dataset.importCount), "1", "Automatic caching must not import another project image");
     console.log(JSON.stringify({ viewport, append: initial.button, sourceSettings: "visible", ownerCache: "old snapshot cleared" }));
   }
-  console.log(`Reference catalog browser regression passed: ${viewports.length} viewports, automatic private thumbnails, cache reuse, exact view import, metadata-only gating, source settings, owner old-snapshot cleanup`);
+  for (const viewport of [{ width: 2313, height: 694 }, { width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    await cdp("Emulation.setDeviceMetricsOverride", { ...viewport, deviceScaleFactor: 1, mobile: false });
+    await cdp("Page.navigate", { url: new URL(`${route}?page&locale=zh`, baseUrl).href });
+    await waitFor(() => document.querySelectorAll('.reference-card').length === 2);
+    const toolbar = await page(() => {
+      const filters = document.querySelector('.reference-filters');
+      const controls = [...filters.querySelectorAll('input[type=search], [role=combobox]')];
+      const labels = controls.map((control) => {
+        const label = document.querySelector(`label[for="${CSS.escape(control.id)}"]`);
+        return { text: label?.textContent.trim(), above: Boolean(label && label.getBoundingClientRect().bottom <= control.getBoundingClientRect().top + 1) };
+      });
+      const source = document.querySelector('.reference-source-choice [role=combobox]').getBoundingClientRect();
+      const manage = document.querySelector('.reference-source-settings-trigger').getBoundingClientRect();
+      const cache = document.querySelector('.reference-private-cache-trigger');
+      return { labels, overflow: document.documentElement.scrollWidth > innerWidth, manageNextToSource: manage.x >= source.right && Math.abs(manage.y - source.y) <= 1,
+        manageVisible: manage.width >= 80 && manage.height >= 32, cacheBorder: parseFloat(getComputedStyle(cache).borderTopWidth) };
+    });
+    assert.equal(toolbar.labels.length, 8);
+    assert.ok(toolbar.labels.every((label) => label.text && label.above), JSON.stringify(toolbar));
+    assert.equal(toolbar.overflow, false, 'Labeled reference filters must fit the page');
+    assert.equal(toolbar.manageNextToSource, true, 'Source management belongs beside the source picker');
+    assert.equal(toolbar.manageVisible, true, 'Source management needs a visible button-sized target');
+    assert.ok(toolbar.cacheBorder >= 1, 'Private cache needs a visible button boundary');
+    if (process.env.AGENVAS_E2E_SCREENSHOT_DIR) {
+      await mkdir(process.env.AGENVAS_E2E_SCREENSHOT_DIR, { recursive: true });
+      const shot = await cdp('Page.captureScreenshot', { format: 'png' });
+      await writeFile(join(process.env.AGENVAS_E2E_SCREENSHOT_DIR, `filters-${viewport.width}x${viewport.height}.png`), Buffer.from(shot.data, 'base64'));
+    }
+  }
+  console.log(`Reference catalog browser regression passed: ${viewports.length} picker viewports, 3 labeled page toolbars, automatic private thumbnails, cache reuse, exact view import, source settings, owner cleanup`);
 
 } finally {
   socket?.close();
