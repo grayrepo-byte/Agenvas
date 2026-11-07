@@ -53,6 +53,8 @@ class CanvasCopySupportTest {
         when(items.requireItem(owner, project, source)).thenReturn(card);
         when(artifacts.get(owner, project, artifactId)).thenReturn(view(artifactId, Artifact.Kind.IMAGE, null));
         when(drafts.get(owner, project, source)).thenReturn(original);
+        for (var input : original.mediaInputs()) when(artifacts.get(owner, project, input.artifactId()))
+                .thenReturn(view(input.artifactId(), Artifact.Kind.IMAGE, null));
         when(characters.prepareCanvasCopy(eq(owner), eq(project), eq(source), any())).thenReturn(mapper.createObjectNode().put("fixed", true));
         var prepared = service.prepareCloneWithinChange(owner, project, card, target);
         var copied = mapper.treeToValue(prepared.frozen().path("mediaDraft"), MediaDraft.class);
@@ -105,8 +107,8 @@ class CanvasCopySupportTest {
         previous.putObject("characters").putObject("binding").put("version", 4);
         service.restoreWithinChange(owner, project, card(target, artifactId, image), frozen, previous);
         verify(drafts).installCopyWithinChange(eq(owner), eq(project), eq(target),
-                argThat(value -> mapper.valueToTree(value).equals(frozen.path("mediaDraft"))), eq(6L));
-        verify(characters).installCanvasCopyWithinChange(owner, project, target, frozen.path("characters"), 5);
+                argThat(value -> mapper.valueToTree(value).equals(frozen.path("mediaDraft"))), eq(6L), eq(java.util.Set.of()));
+        verify(characters).installCanvasCopyWithinChange(owner, project, target, frozen.path("characters"), 5, List.of());
         verify(drafts, never()).get(any(), any(), any());
         verifyNoInteractions(items);
     }
@@ -146,7 +148,7 @@ class CanvasCopySupportTest {
     }
     private MediaDraft draft(UUID item, List<MediaDraft.InputSource> sources) {
         return new MediaDraft(project, item, "Persisted prompt", mapper.createObjectNode().put("width", 1024), null, null,
-                null, null, List.of(new MediaDraft.MediaInput(image, UUID.randomUUID(), MediaDraft.InputRole.REFERENCE,
+                null, null, List.of(new MediaDraft.MediaInput(image, artifactId, MediaDraft.InputRole.REFERENCE,
                         0, "#7C3AED", sources)), List.of(), MediaDraft.DisplayMode.RESULT, 8, now, now);
     }
     private ArtifactVersion textVersion(UUID artifact, JsonNode content) {

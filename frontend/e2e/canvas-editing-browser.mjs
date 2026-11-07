@@ -19,6 +19,7 @@ const motionOnly = process.argv.includes("--motion-only");
 const groupEntryOnly = process.argv.includes("--group-entry-only");
 const connectionDropOnly = process.argv.includes("--connection-drop-only");
 const selectAllOnly = process.argv.includes("--select-all-only");
+const subgraphCopyOnly = process.argv.includes("--subgraph-copy-only");
 const shortcutsOnly = process.argv.includes("--shortcuts-only");
 const emptyCreationOnly = process.argv.includes("--empty-creation-only");
 const initialGroupOnly = process.argv.includes("--initial-group-only");
@@ -116,7 +117,7 @@ async function ready(expected = connectionDropOnly ? 2 : groupEntryOnly ? 3 : dr
 }
 async function navigate(baseUrl, nextLocale = "zh", { motionLarge = false } = {}) {
   locale = nextLocale;
-  await cdp("Page.navigate", { url: new URL(`${route}?locale=${locale}${dragCase || motionOnly ? "&hand-drag=1" : ""}${groupEntryOnly ? "&group-entry=1" : ""}${connectionDropOnly ? "&connection-drop=1" : ""}${motionLarge ? "&motion-large=1" : ""}${editorCloseOnly || editorFocusOnly ? "&editor-close=1" : ""}${editorFocusOnly ? "&editor-focus=1" : ""}`, baseUrl).href });
+  await cdp("Page.navigate", { url: new URL(`${route}?locale=${locale}${dragCase || motionOnly ? "&hand-drag=1" : ""}${groupEntryOnly ? "&group-entry=1" : ""}${subgraphCopyOnly ? "&subgraph-copy=1" : ""}${connectionDropOnly ? "&connection-drop=1" : ""}${motionLarge ? "&motion-large=1" : ""}${editorCloseOnly || editorFocusOnly ? "&editor-close=1" : ""}${editorFocusOnly ? "&editor-focus=1" : ""}`, baseUrl).href });
   await ready(motionLarge ? 100 : undefined);
 }
 async function zoomToFirstCard() {
@@ -649,6 +650,43 @@ async function runSelectAllRegression(baseUrl) {
   assert.deepEqual((await evidence()).unexpected, []);
   console.log(`Canvas select all passed: native Cmd/Ctrl+A selects 100 nodes without document selection or writes; Cmd+A preserves native textarea selection and draft. Synthetic screenshots: ${screenshots}`);
 }
+async function runSubgraphCopyRegression(baseUrl) {
+  await navigate(baseUrl);
+  await selectFirstPair();
+  const reads = (await evidence()).requests.filter((request) => request.path.endsWith("/canvas/editor")).length;
+  await key("c", "KeyC", 4);
+  await waitFor((before) => window.__agenvasCanvasEditingFixture.evidence().requests.filter((request) => request.path.endsWith("/canvas/editor")).length > before, reads);
+  await pause(100);
+  await key("v", "KeyV", 4);
+  await waitFor(() => window.__agenvasCanvasEditingFixture.evidence().items.length === 102);
+  await waitForHistoryAction("canvas.edit.undo");
+  const saved = await evidence(), request = saved.edits.at(-1);
+  assert.equal(request.connectionCopies.length, 1);
+  assert.equal(request.connectionCopies[0].sourceConnectionId, "synthetic-internal-connection");
+  const copied = saved.connections.find((edge) => edge.id === request.connectionCopies[0].targetConnectionId);
+  assert.ok(copied);
+  assert.ok(request.copies.some((item) => item.targetItemId === copied.sourceCanvasItemId));
+  assert.ok(request.copies.some((item) => item.targetItemId === copied.targetCanvasItemId));
+  assert.notEqual(copied.sourceArtifactVersionId, "synthetic-card-0-v1");
+  assert.equal(saved.connections.length, 3);
+  await waitFor((id) => Boolean(document.querySelector(`[data-id=${JSON.stringify(`canvas-connection:${id}`)}]`)), copied.id);
+  await screenshot("subgraph-copy-internal-prompt-line");
+  await key("z", "KeyZ", 4);
+  await waitFor(() => window.__agenvasCanvasEditingFixture.evidence().items.length === 100);
+  assert.equal((await evidence()).connections.length, 2);
+  await waitForHistoryAction("canvas.edit.redo");
+  await key("Z", "KeyZ", 12);
+  await waitFor(() => window.__agenvasCanvasEditingFixture.evidence().items.length === 102);
+  assert.equal((await evidence()).connections.length, 3);
+  await waitForHistoryAction("canvas.edit.undo");
+  await key("v", "KeyV", 4);
+  await waitFor(() => window.__agenvasCanvasEditingFixture.evidence().items.length === 104);
+  const repeated = (await evidence()).edits.at(-1);
+  assert.notEqual(repeated.connectionCopies[0].targetConnectionId, request.connectionCopies[0].targetConnectionId);
+  assert.deepEqual(runtimeErrors, []);
+  assert.deepEqual((await evidence()).unexpected, []);
+  console.log(`Canvas subgraph copy passed: native Cmd+C/V, internal prompt version mapping, external edge filtering, repeated paste and undo/redo. Synthetic evidence: ${screenshots}`);
+}
 async function runShortcutRegression(baseUrl) {
   await navigate(baseUrl);
   await waitForStableViewport();
@@ -1048,6 +1086,7 @@ try {
   const baseUrl = server.resolvedUrls.local[0];
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   if (editorFocusOnly) await runEditorFocusRegression(baseUrl);
+  else if (subgraphCopyOnly) await runSubgraphCopyRegression(baseUrl);
   else if (editorCloseOnly) await runEditorCloseRegression(baseUrl);
   else if (initialGroupOnly) await runInitialGroupRegression(baseUrl);
   else if (emptyCreationOnly) await runEmptyCreationRegression(baseUrl);

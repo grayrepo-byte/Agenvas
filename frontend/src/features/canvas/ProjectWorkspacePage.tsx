@@ -638,11 +638,11 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const removeMediaConnection = useMutation({
     mutationFn: async (connection: CanvasConnection) => {
       if (connection.relationType !== "MEDIA_INPUT") {
-        return disconnectCanvasConnection(projectId, connection.id, {});
+        return disconnectCanvasConnection(projectId, connection.id, { expectedVersion: connection.version });
       }
       const targetDraft = await getMediaDraft(projectId, connection.targetCanvasItemId);
       return disconnectCanvasConnection(projectId, connection.id, {
-        expectedTargetDraftVersion: targetDraft.version,
+        expectedVersion: connection.version, expectedTargetDraftVersion: targetDraft.version,
       });
     },
     ...canvasMutationFeedback,

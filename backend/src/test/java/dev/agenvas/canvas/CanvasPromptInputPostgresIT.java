@@ -106,7 +106,7 @@ class CanvasPromptInputPostgresIT {
         assertThat(task.input().at("/mediaInput/prompt").asText()).isEqualTo("Local subject");
         assertThat(task.input().at("/mediaInput/promptInputs").size()).isEqualTo(3);
         var changed = artifacts.revise(owner.userId(), project.id(), first.artifact().id(), first.artifact().version(), "Style", content("New style"));
-        connections.disconnect(owner.userId(), project.id(), b.connection().id(), null);
+        connections.disconnect(owner.userId(), project.id(), b.connection().id(), b.connection().version(), null);
         var replay = direct.run(owner.userId(), project.id(), image.artifact().id(), target, saved.version(), "synthetic-frozen");
         assertThat(replay.id()).isEqualTo(task.id()); assertThat(replay.input().path("prompt").asText()).isEqualTo(expected);
         assertThat(drafts.get(owner.userId(), project.id(), target).prompt()).isEqualTo("Local subject");

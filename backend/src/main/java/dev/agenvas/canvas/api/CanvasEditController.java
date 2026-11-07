@@ -33,9 +33,11 @@ public class CanvasEditController {
             @PathVariable UUID receiptId, @RequestBody Replay request) {
         return EditorResponse.from(edits.replay(principal.userId(), projectId, receiptId, request));
     }
-    public record EditorResponse(List<CanvasController.CanvasItemResponse> items, List<Group> groups, Receipt receipt) {
+    public record EditorResponse(List<CanvasController.CanvasItemResponse> items, List<Group> groups, Receipt receipt,
+            List<CanvasConnectionController.ConnectionView> connections,
+            List<dev.agenvas.canvas.application.CanvasCharacterNodeModels.CharacterConnection> characterConnections) {
         static EditorResponse from(Editor editor) {
-            return new EditorResponse(editor.items().stream().map(CanvasController.CanvasItemResponse::from).toList(), editor.groups(), editor.receipt());
+            return new EditorResponse(editor.items().stream().map(CanvasController.CanvasItemResponse::from).toList(), editor.groups(), editor.receipt(), editor.connections().stream().map(CanvasConnectionController.ConnectionView::from).toList(), editor.characterConnections());
         }
     }
 }

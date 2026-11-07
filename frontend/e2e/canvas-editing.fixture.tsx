@@ -90,12 +90,24 @@ if (options.has("editor-close")) items = (["IMAGE", "VIDEO", "AUDIO", "TEXT"] as
 });
 let groups: CanvasGroup[] = options.has("initial-group") ? [{ id: "synthetic-initial-group", projectId,
   name: "Synthetic collapsed group", collapsed: true, version: 0 }] : [];
-const connections: ProjectSnapshot["connections"] = options.has("prompt-links") || options.has("hand-drag") || options.has("connection-drop") || options.has("empty-creation") || options.has("initial-group") || options.has("editor-close") ? [] : [
+let connections: ProjectSnapshot["connections"] = options.has("prompt-links") || options.has("hand-drag") || options.has("connection-drop") || options.has("empty-creation") || options.has("initial-group") || options.has("editor-close") ? [] : [
   { id: "synthetic-internal-connection", projectId, sourceCanvasItemId: items[0]!.id, targetCanvasItemId: items[1]!.id,
     sourceArtifactVersionId: items[0]!.selectedVersionId!, relationType: "MEDIA_DERIVATION", version: 0, createdAt: now, updatedAt: now },
   { id: "synthetic-external-connection", projectId, sourceCanvasItemId: items[1]!.id, targetCanvasItemId: items[2]!.id,
     sourceArtifactVersionId: items[1]!.selectedVersionId!, relationType: "MEDIA_DERIVATION", version: 0, createdAt: now, updatedAt: now },
 ];
+if (options.has("subgraph-copy")) {
+  for (const index of [1, 2]) {
+    const item = items[index]!;
+    item.artifact = { ...item.artifact, kind: "IMAGE", resourceDefaultVersionId: null, resourceDefaultVersion: null };
+    item.selectedVersion = null; item.selectedVersionId = null;
+  }
+  connections = [
+    { ...connections[0]!, relationType: "PROMPT_INPUT" },
+    { ...connections[1]!, relationType: "PROMPT_INPUT", sourceCanvasItemId: items[0]!.id,
+      sourceArtifactVersionId: items[0]!.artifact.resourceDefaultVersionId! },
+  ];
+}
 const requests: Array<{ method: string; path: string }> = [];
 const edits: CanvasEditRequest[] = [];
 const replays: CanvasEditReplayRequest[] = [];
@@ -141,7 +153,7 @@ let nextEditFailure: number | null = null;
 let nextTextFailure: number | null = null;
 let nextPlacementFailure: number | null = null;
 const copy = <T,>(value: T): T => structuredClone(value);
-const state = (): CanvasEditorState => copy({ items, groups });
+const state = (): CanvasEditorState => copy({ items, groups, connections, characterConnections: [] });
 const diagnostics = {
   select: (itemId: string) => { useCanvasStore.getState().setSelectedIds([itemId]); },
   evidence: () => copy({ items, groups, connections, requests, edits, replays, textSaves, placements, removals, unexpected,
@@ -217,19 +229,31 @@ function persistEdit(request: CanvasEditRequest): CanvasEditResponse | Response 
       zIndex: requestCopy.zIndex, groupId: requestCopy.groupId ?? null, locked: false, version: 0,
       selectedVersionId: artifact.resourceDefaultVersionId, selectedVersion: artifact.resourceDefaultVersion });
   }
+  for (const edgeCopy of request.connectionCopies ?? []) {
+    const source = connections.find((edge) => edge.id === edgeCopy.sourceConnectionId)!;
+    const sourceId = request.copies!.find((item) => item.sourceItemId === source.sourceCanvasItemId)!.targetItemId;
+    const targetId = request.copies!.find((item) => item.sourceItemId === source.targetCanvasItemId)!.targetItemId;
+    connections.push({ ...copy(source), id: edgeCopy.targetConnectionId, sourceCanvasItemId: sourceId,
+      targetCanvasItemId: targetId, sourceArtifactVersionId: source.relationType === "PROMPT_INPUT"
+        ? items.find((item) => item.id === sourceId)!.artifact.resourceDefaultVersionId! : source.sourceArtifactVersionId });
+  }
   const receipt: CanvasEditReceipt = { id: crypto.randomUUID(), operation: request.operation, state: "APPLIED", revision: 0 };
   const saved = { ...state(), receipt };
   receipts.set(receipt.id, { receipt, before, after: state() }); editCommands.set(request.commandId, copy(saved));
   return saved;
 }
 function restore(target: CanvasEditorState) {
+  connections = copy(target.connections ?? []);
   const current = new Map(items.map((item) => [item.id, item]));
   items = target.items.map((snapshot) => {
     if (!snapshot.artifact) throw new Error("Synthetic canvas fixture supports Artifact items only");
     const live = current.get(snapshot.id);
     if (!live) return copy({ ...snapshot, artifact: snapshot.artifact });
+    const changed = live.title !== snapshot.title || live.x !== snapshot.x || live.y !== snapshot.y
+      || live.width !== snapshot.width || live.height !== snapshot.height || live.zIndex !== snapshot.zIndex
+      || live.locked !== snapshot.locked || live.groupId !== snapshot.groupId;
     return { ...live, title: snapshot.title, x: snapshot.x, y: snapshot.y, width: snapshot.width, height: snapshot.height,
-      zIndex: snapshot.zIndex, locked: snapshot.locked, groupId: snapshot.groupId, version: live.version + 1 };
+      zIndex: snapshot.zIndex, locked: snapshot.locked, groupId: snapshot.groupId, version: live.version + Number(changed) };
   });
   const currentGroups = new Map(groups.map((group) => [group.id, group]));
   groups = target.groups.map((group) => ({ ...copy(group), version: (currentGroups.get(group.id)?.version ?? group.version) + 1 }));
