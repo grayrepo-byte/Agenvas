@@ -3888,3 +3888,14 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] `pnpm exec vitest run src/features/reference-catalog src/features/settings/SystemSettingsPage.test.tsx src/features/library/LibraryPage.test.tsx --reporter=dot`：十个文件 74 项通过，无未匹配 Mock 请求提示；含六项来源加载专项及原有图片自动缓存回归。`pnpm typecheck`、`pnpm build`、`pnpm lint`（主题／四语／ESLint）通过，保留既有 Vite 配置加载器与大分块提示。
 - [x] `pnpm test:reference-catalog` 使用合成图片与内存 API，通过 2560×1179、1440×900、390×844、844×390 四种 Chromium 窗口，验证弹窗只有一个选择框、没有文本输入或缓存面板，选择已配置来源并加载后自动关闭；自动缓存与预览复用继续通过。窄屏截图已目视检查，截图位于仓库外。
 - [ ] 全量测试、后端测试、真实来源网络／Provider 及部署验证未运行；未推送或部署。
+
+
+## 2026-11-07 参考图库优先站点与直接 JSON 目录
+
+- [x] 默认来源改为 Omilic，GitHub 保留为明确可选项；站点直接读取 `/data/catalog.json`，相对原图按站点根地址解析。GitHub 可变引用直接读取 raw JSON 及图片，不先解析提交或逐图请求 GitHub 目录树。已有本地 JSON 目录直接打开；仅首次加载或「刷新目录」取得远端 JSON，相同 JSON、标准化条目和提交身份复用已有快照及图片索引。
+- [x] 支持所选目录的自建 PNG 私人缓存，首次完整解码后冻结实际 SHA-256、内容身份、大小与尺寸；不使用 provenance 声明冒充文件摘要，历史固定提交的图片仍保持 Git proof。账号隔离、清理保护、项目独立副本、重放和恢复模式保持。加载失败没有历史目录时不再声称已有可用缓存，限流提示适用于所选来源。
+- [x] V56 增加 `source_type` 并为既有来源填入 GITHUB，目录提交可空、私人图片位置支持完整 URL；OpenAPI、Java、生成 TypeScript 与 jOOQ 同步。迁移保留旧来源、提交与快照；前后端和迁移须一起更新，旧版本不能解释站点来源。规格、领域词汇、来源指南与 ADR 0081 同步。
+- [x] 六类后端定向单元 19 项通过；六类真实 PostgreSQL 专项 21 项通过，含 V55→V56 数据保留、站点与 raw 请求、相同 JSON 快照复用、导入、清理、并发和恢复。`ReferenceCatalogSiteLiveIT` 显式 opt-in 实际读取站点 JSON 及用户指定的唯一一张公开 PNG，1024×1536 解码、缓存、重复选用与画布导入成功；下载客户端随后禁止网络，缓存预览与使用仍通过，GitHub 客户端调用为零，没有真实 Provider 或付费生成。真实 JSON/图片未进入仓库，测试素材目录已清理。
+- [x] 十个前端文件共 79 项通过，覆盖默认站点、主动选择 GitHub、已有目录不重取、明确刷新、停用来源先启用及自动图片加载。独立复核发现重新进入 Library 默认混合旧来源，已修正为优先已缓存站点并延后首次目录请求，新增出站 sourceId 回归；复核无剩余阻断。类型检查、完整 lint/四语/主题、生产构建、API 生成、真实 PostgreSQL jOOQ 重生、37 项 CI 规划/分片检查及差异空白检查通过。
+- [x] 生产 CSS 与合成 HTTP 的 Chromium 四种窗口通过，默认站点选择、缓存目录直接打开与自动图片预览正常，窄屏截图已目视检查；保留既有 Vite 配置加载器及大分块提示。
+- [ ] 全量测试、真实生成 Provider、用户运行实例的部署升级未运行；未推送或操作生产数据库。此次真实站点成功只证明本次选定 JSON 与图片路径，不保证所有远端图片和未来网络持续可达。

@@ -3930,7 +3930,7 @@
   "reference.network.proxyAuthRequired": "该代理要求身份认证，公开下载目前不支持此方式。请管理员配置可信且无需凭据的代理端点。",
   "reference.network.proxyError": "代理隧道建立失败。请管理员检查配置的 HTTP、HTTPS 或 SOCKS5 类型及数字地址支持。",
   "reference.network.tlsFailed": "TLS 校验失败。请管理员检查证书信任和主机名后重试，勿关闭校验。",
-  "reference.network.rateLimited": "GitHub 请求已达限额。本地缓存仍然可用，请稍后重试。",
+  "reference.network.rateLimited": "来源请求已达限额。已缓存图片仍可使用，请稍后重试。",
   "reference.network.unavailable": "暂时无法连接来源。本地缓存仍然可用，请检查网络后重试。",
   "media.promptInputs.count": "公共提示词 · {0}",
   "media.promptInputs.hint": "按连线建立顺序合并已保存的文本正文，再追加本地提示词；空白文本会跳过。运行时冻结内容，所选风格另行附加。",
@@ -3941,5 +3941,7 @@
   "media.promptInputs.tooLong": "合并后的提示词最多支持 {0} 个字符。",
   "reference.load": "加载",
   "reference.loadingSource": "正在加载来源…",
-  "reference.retryLoad": "重试加载"
+  "reference.retryLoad": "重试加载",
+  "reference.omilicSource": "Omilic（推荐）",
+  "reference.refreshCatalog": "刷新目录"
 }

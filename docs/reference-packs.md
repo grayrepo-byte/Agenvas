@@ -1,32 +1,32 @@
 # Reference catalog sources
 
 The reference catalog stores searchable metadata separately from image files.
-Administrators select a source and choose **Load**. The Open Pose Costume preset
-supplies repository, format, ref and manifest path automatically. The first load
-adds the source; later loads reuse it. Loading enables a disabled selected source
-and synchronizes its metadata, then closes the dialog and shows that source's
-catalog. Errors preserve the selection and last successful catalog for retry.
-Existing configured sources remain selectable. No source is enabled or contacted
-automatically on installation.
+Administrators choose **Omilic (recommended)** or **GitHub** and select **Load**.
+Omilic reads `https://omilic.com/data/catalog.json`. GitHub reads the configured
+Open Pose Costume JSON from raw content. Initial loading adds the source and
+fetches its complete JSON once. Later loads open the saved directory without
+contacting either upstream. Choose **Refresh catalog** to fetch new JSON. Identical
+JSON and normalized entries retain the current snapshot and image indexes. A
+failed refresh preserves the saved directory; sources stay separate when switched.
+No source is enabled or contacted automatically on installation.
 
 ## Source configuration and local cache
 
-Custom source formats, repository parameters and image-distribution approval can
-still be configured through the existing administrator API. These technical fields
-and cache-maintenance controls are absent from the source chooser; cache usage,
-prefetch and shared cleanup remain in System settings → System templates.
-Synchronization first resolves a mutable ref to a Git commit,
-downloads that commit's JSON, validates it and publishes a new immutable local
-snapshot. The previous successful snapshot remains available when the upstream
-request or validation fails. A commit hash identifies content; it does not prove
-image permission.
+Custom source formats, repository parameters and image-distribution approval remain
+available through the administrator API. Technical fields and cache-maintenance
+controls are absent from the source chooser; cache usage, prefetch and shared
+cleanup remain in System settings → System templates.
 
-Search, pagination, group/view selection and filters use the locally stored
-metadata. Refreshing the catalog reads that cache; choosing Load in the source dialog
-contacts GitHub. Upstream images are not fetched by metadata synchronization.
-An exact 40-character commit can be used when GitHub's ref-resolution API is
-temporarily unavailable or rate limited. Error messages retain the previous cache
-and do not expose upstream response bodies.
+`sourceType=OMILIC` selects website delivery; `GITHUB` selects the repository.
+Omitting it on creation keeps GitHub behavior for existing API callers. Website and
+mutable-ref Open Pose Costume snapshots store an exact JSON SHA-256 and no claimed
+Git commit. They do not resolve a commit through the GitHub API or walk Git trees
+before downloading each image. Authorized reference packs retain their existing
+fixed-commit and declared-file-hash verification.
+
+Search, pagination and filters use the saved JSON directory. Metadata loading
+never downloads all image files. Source settings use CAS; failed requests preserve
+the last successful snapshot and do not expose upstream response bodies.
 
 Source changes use an expected version. Source administration requires the ADMIN
 role; browsing requires a logged-in account. Project import additionally checks the
@@ -34,9 +34,11 @@ project owner and active state. Recovery mode permits reads and blocks writes.
 
 ## Open Pose & Costume format
 
-For the user-selected repository, configure:
+The default Omilic preset uses `sourceType: OMILIC` and `manifestPath: data/catalog.json`.
+For the GitHub alternative, configure:
 
 ```text
+sourceType: GITHUB
 format: OPEN_POSE_COSTUME
 owner: hongye007
 repository: open-pose-costume
@@ -72,12 +74,13 @@ Filters preserve upstream category, subject tag, visual style, base/custom
 collection, extended classification and available angle. The UI itself supports
 four languages; source descriptions retain their original Chinese/English data.
 
-Original metadata points mostly to the upstream galleries. Custom files use
+Omilic resolves relative image paths against its website root. Absolute original
+URLs remain the upstream gallery URLs declared in JSON. Custom files use
 relative `custom/...` paths under `public/`. The repository's `pose/covers`,
 `pose/originals`, `costume/covers` and `costume/originals` archives are a different
 layout. The private-cache operation below explicitly maps eligible base pose and
 photographic costume variants to their fixed-commit original PNG archive paths;
-it does not rewrite all source URLs or guess anime/depth/custom paths.
+custom images use their declared paths rather than guessing paths.
 
 ### Image rights are separate
 
@@ -97,8 +100,10 @@ operations. Eligible base pose and photographic costume cards automatically cach
 their first view privately as they approach the viewport. Opening or selecting a
 view also loads it automatically for preview and explicit project import.
 This is a limited implementation of individual reference use, not a claim that
-every file or whole-library download is permitted. Anime, depth and custom entries
-retain their external source links and specific unavailability explanations.
+every file or whole-library download is permitted. The selected catalog’s custom
+PNG references support individual private caching. Unsupported base anime and
+depth entries retain specific unavailability explanations. Website loading and
+private reference use do not grant redistribution rights.
 
 Metadata synchronization does not download images. Browsing loads only card
 previews near the viewport and selected views, reusing existing private copies.
@@ -160,9 +165,12 @@ use the fixed commit, GitHub source paths and bounded requests.
 Files must match their declared hash, size and content type, and pass the existing
 media decoder, image-size and pixel limits. Selected private archive images use
 the fixed Git tree's blob identity and size before recording the verified PNG's
-observed SHA-256. A provenance hash is never substituted for a file checksum.
-Catalog metadata cannot authorize
-arbitrary network endpoints, execute code, set model credentials or run generation.
+observed SHA-256. Website and mutable-ref JSON sources instead freeze the first
+validated image’s observed SHA-256, content identity, size and dimensions. The
+selected URL comes from its immutable JSON snapshot; later changed bytes cannot
+overwrite an accepted image. A provenance hash is never substituted for a file checksum.
+Catalog metadata cannot execute code, set model credentials or run generation.
+Image transport remains credential-free and subject to response and decoding limits.
 
 ## Image file cache and cleanup
 

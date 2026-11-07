@@ -3930,7 +3930,7 @@
   "reference.network.proxyAuthRequired": "This proxy requires authentication, which public downloads do not currently support. Ask the administrator for a trusted credential-free proxy endpoint.",
   "reference.network.proxyError": "The proxy tunnel failed. Ask the administrator to check the configured HTTP, HTTPS or SOCKS5 proxy type and numeric-address support.",
   "reference.network.tlsFailed": "TLS verification failed. Ask the administrator to check the certificate trust and hostname, then retry without disabling verification.",
-  "reference.network.rateLimited": "GitHub is rate limiting requests. The local cache remains available; retry later.",
+  "reference.network.rateLimited": "The source has reached its request limit. Cached images remain available. Try again later.",
   "reference.network.unavailable": "The source is temporarily unavailable. The local cache remains available; check connectivity and retry.",
   "media.promptInputs.count": "Shared prompts · {0}",
   "media.promptInputs.hint": "Saved text bodies are combined in connection creation order, followed by the local prompt. Blank text is skipped. Inputs freeze at acceptance; the selected style is appended separately.",
@@ -3941,5 +3941,7 @@
   "media.promptInputs.tooLong": "The combined prompt supports at most {0} characters.",
   "reference.load": "Load",
   "reference.loadingSource": "Loading source…",
-  "reference.retryLoad": "Retry loading"
+  "reference.retryLoad": "Retry loading",
+  "reference.omilicSource": "Omilic (recommended)",
+  "reference.refreshCatalog": "Refresh catalog"
 }

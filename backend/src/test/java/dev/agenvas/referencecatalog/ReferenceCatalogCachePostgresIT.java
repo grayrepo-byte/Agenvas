@@ -39,7 +39,7 @@ class ReferenceCatalogCachePostgresIT {
     static Path temp(){try{return Files.createTempDirectory("reference-cache-it-");}catch(Exception e){throw new IllegalStateException(e);}}
     @BeforeEach void setup(){if(owner==null)owner=identities.setup("cache-admin","synthetic-reference-password");jobs.clear(null,null,List.of());}
     Source source() throws Exception {
-        Source source=catalog.create("cache-"+UUID.randomUUID(),"Original fixture","fixture","repo","c".repeat(40),"reference-pack.json",Format.AGENVAS_REFERENCE_PACK,true);
+        Source source=catalog.create("cache-"+UUID.randomUUID(),"Original fixture","fixture","repo","c".repeat(40),"reference-pack.json",Format.AGENVAS_REFERENCE_PACK,true, SourceType.GITHUB);
         when(github.resolve(argThat(s->s!=null&&s.id().equals(source.id())))).thenReturn("c".repeat(40));
         when(github.file(argThat(s->s!=null&&s.id().equals(source.id())),eq("c".repeat(40)),eq("reference-pack.json"),anyInt())).thenReturn(Files.readAllBytes(Path.of("../examples/reference-pack/reference-pack.json")));
         when(github.file(argThat(s->s!=null&&s.id().equals(source.id())),eq("c".repeat(40)),startsWith("images/"),anyInt())).thenAnswer(i->{assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();return Files.readAllBytes(Path.of("../examples/reference-pack").resolve(i.getArgument(2,String.class)));});

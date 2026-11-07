@@ -9,7 +9,7 @@ import tools.jackson.databind.ObjectMapper;
 class ReferenceCatalogParserTest {
     private final ReferenceCatalogParser parser = new ReferenceCatalogParser(new ObjectMapper());
     private final Source source = new Source("fixture", "Synthetic metadata", "owner", "repo", "a".repeat(40), "public/data/catalog.json", Format.OPEN_POSE_COSTUME,
-            true, true, 0, null, "NEVER", null, null, null);
+            true, true, 0, null, "NEVER", null, null, null, SourceType.GITHUB);
     @Test void normalizesActualShapeWithoutConfusingProvenanceHashWithImageHash() {
         var result = parser.parse(source, "a".repeat(40), """
                 {"items":[{"id":"synthetic_pose","kind":"pose","code":"P1","title":{"zh":"合成站姿","en":"Synthetic standing"},
@@ -27,12 +27,12 @@ class ReferenceCatalogParserTest {
         assertThat(entry.facets()).containsEntry("style", "line-art");
         assertThat(entry.variants()).hasSize(1);
         assertThat(entry.variants().getFirst().sha256()).isNull();
-        assertThat(entry.variants().getFirst().path()).isNull();
-        assertThat(entry.variants().getFirst().externalUrl()).startsWith("https://github.com/owner/repo/blob/" + "a".repeat(40));
+        assertThat(entry.variants().getFirst().path()).isEqualTo("public/custom/pose/original.png");
+        assertThat(entry.variants().getFirst().externalUrl()).startsWith("https://raw.githubusercontent.com/owner/repo/" + "a".repeat(40));
     }
     @Test void originalSyntheticPackHasThreeEntriesAndSevenValidatedImages() throws Exception {
         Source pack = new Source("original", "Original fixture", "fixture", "repo", "a".repeat(40), "reference-pack.json", Format.AGENVAS_REFERENCE_PACK,
-                true, true, 0, null, "NEVER", null, null, null);
+                true, true, 0, null, "NEVER", null, null, null, SourceType.GITHUB);
         var parsed = parser.parse(pack, "a".repeat(40), java.nio.file.Files.readAllBytes(java.nio.file.Path.of("../examples/reference-pack/reference-pack.json")));
         assertThat(parsed.entries()).hasSize(3);
         assertThat(parsed.entries().stream().mapToInt(e -> e.variants().size()).sum()).isEqualTo(7);

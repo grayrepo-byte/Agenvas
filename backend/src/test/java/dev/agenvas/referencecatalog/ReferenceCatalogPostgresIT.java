@@ -54,7 +54,7 @@ class ReferenceCatalogPostgresIT {
     static Path temp(){try{return Files.createTempDirectory("reference-catalog-it-");}catch(Exception e){throw new IllegalStateException(e);}}
     @BeforeEach void setup(){if(owner==null)owner=identities.setup("reference-admin","synthetic-reference-password");mvc=webAppContextSetup(context).apply(springSecurity()).build();}
     Source source(boolean approved) throws Exception {
-        Source source=catalog.create("fixture-"+UUID.randomUUID(),"Original synthetic pack","fixture","repo","a".repeat(40),"reference-pack.json",Format.AGENVAS_REFERENCE_PACK,approved);
+        Source source=catalog.create("fixture-"+UUID.randomUUID(),"Original synthetic pack","fixture","repo","a".repeat(40),"reference-pack.json",Format.AGENVAS_REFERENCE_PACK,approved, SourceType.GITHUB);
         when(github.resolve(argThat(s->s!=null&&s.id().equals(source.id())))).thenAnswer(i->{assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();return "a".repeat(40);});
         byte[] manifest=Files.readAllBytes(Path.of("../examples/reference-pack/reference-pack.json"));
         when(github.file(argThat(s->s!=null&&s.id().equals(source.id())),eq("a".repeat(40)),eq("reference-pack.json"),anyInt())).thenAnswer(i->{assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();return manifest;});
@@ -108,7 +108,7 @@ class ReferenceCatalogPostgresIT {
         assertThatThrownBy(()->catalog.sync(s.id(),0)).isInstanceOf(ApiProblemException.class);
     }
     @Test void adminConfirmedUpstreamRemainsLinkOnlyAndSupportsBilingualTokenSearch() throws Exception {
-        Source source=catalog.create("metadata-"+UUID.randomUUID(),"Synthetic upstream","hongye007","open-pose-costume","b".repeat(40),null,Format.OPEN_POSE_COSTUME,true);
+        Source source=catalog.create("metadata-"+UUID.randomUUID(),"Synthetic upstream","hongye007","open-pose-costume","b".repeat(40),null,Format.OPEN_POSE_COSTUME,true, SourceType.GITHUB);
         when(github.resolve(argThat(x->x!=null&&x.id().equals(source.id())))).thenReturn("b".repeat(40));
         byte[] metadata="""
                 {"items":[{"id":"synthetic_pose","kind":"pose","code":"P1","title":{"zh":"合成站姿","en":"Synthetic standing"},

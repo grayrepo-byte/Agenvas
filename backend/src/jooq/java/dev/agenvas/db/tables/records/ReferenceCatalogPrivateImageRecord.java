@@ -125,7 +125,8 @@ public class ReferenceCatalogPrivateImageRecord extends UpdatableRecordImpl<Refe
     /**
      * Setter for
      * <code>public.reference_catalog_private_image.repository_path</code>.
-     * Server-derived fixed archive path; never a browser-supplied URL
+     * Immutable snapshot-derived image URL or repository path; never
+     * browser-supplied
      */
     public void setRepositoryPath(String value) {
         set(6, value);
@@ -134,7 +135,8 @@ public class ReferenceCatalogPrivateImageRecord extends UpdatableRecordImpl<Refe
     /**
      * Getter for
      * <code>public.reference_catalog_private_image.repository_path</code>.
-     * Server-derived fixed archive path; never a browser-supplied URL
+     * Immutable snapshot-derived image URL or repository path; never
+     * browser-supplied
      */
     public String getRepositoryPath() {
         return (String) get(6);
@@ -142,8 +144,8 @@ public class ReferenceCatalogPrivateImageRecord extends UpdatableRecordImpl<Refe
 
     /**
      * Setter for <code>public.reference_catalog_private_image.blob_sha</code>.
-     * Git blob object SHA1 verified from immutable commit tree before first
-     * image read
+     * Frozen image-content Git blob SHA1; live JSON sources observe it on
+     * validated first download, legacy sources verify it against a Git tree
      */
     public void setBlobSha(String value) {
         set(7, value);
@@ -151,8 +153,8 @@ public class ReferenceCatalogPrivateImageRecord extends UpdatableRecordImpl<Refe
 
     /**
      * Getter for <code>public.reference_catalog_private_image.blob_sha</code>.
-     * Git blob object SHA1 verified from immutable commit tree before first
-     * image read
+     * Frozen image-content Git blob SHA1; live JSON sources observe it on
+     * validated first download, legacy sources verify it against a Git tree
      */
     public String getBlobSha() {
         return (String) get(7);
@@ -160,7 +162,7 @@ public class ReferenceCatalogPrivateImageRecord extends UpdatableRecordImpl<Refe
 
     /**
      * Setter for <code>public.reference_catalog_private_image.byte_size</code>.
-     * Fixed Git tree size checked against decoded downloaded bytes
+     * Frozen validated image byte count
      */
     public void setByteSize(Long value) {
         set(8, value);
@@ -168,7 +170,7 @@ public class ReferenceCatalogPrivateImageRecord extends UpdatableRecordImpl<Refe
 
     /**
      * Getter for <code>public.reference_catalog_private_image.byte_size</code>.
-     * Fixed Git tree size checked against decoded downloaded bytes
+     * Frozen validated image byte count
      */
     public Long getByteSize() {
         return (Long) get(8);

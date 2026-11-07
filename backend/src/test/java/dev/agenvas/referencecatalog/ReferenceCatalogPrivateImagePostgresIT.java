@@ -39,7 +39,7 @@ class ReferenceCatalogPrivateImagePostgresIT {
     static Path temp(){try{return Files.createTempDirectory("reference-private-it-");}catch(Exception e){throw new IllegalStateException(e);}}
     @BeforeEach void setup(){if(owner==null){owner=identities.setup("private-admin","synthetic-reference-password");other=new AdminPrincipal(UUID.randomUUID(),"private-other");jdbc.sql("insert into app_user(id,login_name,password_hash,status,created_at) values (:id,'private-other','synthetic','DISABLED',now())").param("id",other.userId()).update();}jdbc.sql("update reference_catalog_private_image set enabled=false").update();shared.clear(null,null,List.of());}
     Source source() throws Exception {
-        Source source=catalog.create("private-"+UUID.randomUUID(),"Synthetic metadata shape","hongye007","open-pose-costume","d".repeat(40),null,Format.OPEN_POSE_COSTUME,false);
+        Source source=catalog.create("private-"+UUID.randomUUID(),"Synthetic metadata shape","hongye007","open-pose-costume","d".repeat(40),null,Format.OPEN_POSE_COSTUME,false, SourceType.GITHUB);
         when(github.resolve(argThat(s->s!=null&&s.id().equals(source.id())))).thenReturn("d".repeat(40));
         String metadata="""
                 {"items":[{"id":"synthetic_pose","kind":"pose","code":"P1","title":{"zh":"原创合成站姿","en":"Original synthetic pose"},"category":{"id":"standing","zh":"站姿","en":"Standing"},"series":{"zh":"测试","en":"Test"},"extended":false,"keywords":{"zh":"测试","en":"test"},"source":"https://ai-pose-gallery.pages.dev/","variants":[{"id":"synthetic_front","angle":"front","label":{"zh":"正面","en":"Front"},"original":"https://ai-pose-gallery.pages.dev/img/synthetic_front.png"}]}]}

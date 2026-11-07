@@ -22,15 +22,19 @@ const PAGE_SIZE = 50;
 type CatalogImportIntent = { kind: "SHARED"; request: ReferenceImportRequest } | { kind: "PRIVATE"; id: string; request: ReferencePrivateImportRequest };
 export function ReferenceCatalog({ projectId, onApply, onBusy, disabledReason, actionLabel, children, placement }: ReferenceCatalogProps) {
   const locale = useLocale(); const id = useId();
-  const [kind, setKind] = useState<ReferenceKind>("POSE"); const [query, setQuery] = useState(""); const [category, setCategory] = useState(""); const [sourceId, setSourceId] = useState("");
+  const [kind, setKind] = useState<ReferenceKind>("POSE"); const [query, setQuery] = useState(""); const [category, setCategory] = useState(""); const [sourceId, setSourceId] = useState<string | null>(null);
   const [privateManager, setPrivateManager] = useState(false);
   const [viewSelections, setViewSelections] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<ReferenceEntry | null>(null); const [manage, setManage] = useState(false);
   const [tag, setTag] = useState(""); const [style, setStyle] = useState(""); const [collection, setCollection] = useState(""); const [extended, setExtended] = useState(""); const [angle, setAngle] = useState("");
-  const filters = { kind, query, category, sourceId, tag, style, collection, angle, ...(extended ? { extended: extended === "true" } : {}), limit: PAGE_SIZE };
-  const list = useInfiniteQuery({ queryKey: ["reference-catalog", filters], queryFn: ({ pageParam }) => listReferenceEntries({ ...filters, offset: pageParam }), initialPageParam: 0,
-    getNextPageParam: (page) => page.offset + page.items.length < page.total ? page.offset + page.items.length : undefined, retry: false });
   const sources = useQuery({ queryKey: ["reference-catalog-sources"], queryFn: listReferenceSources, retry: false });
+  // Resolve the saved website before the first catalog read; a transient All
+  // query would start legacy GitHub image acquisitions before the default loads.
+  const activeSourceId = sourceId ?? sources.data?.items.find((source) => source.sourceType === "OMILIC" && source.enabled && source.currentSnapshotId)?.id ?? "";
+  const ready = sourceId !== null || Boolean(sources.data);
+  const filters = { kind, query, category, sourceId: activeSourceId, tag, style, collection, angle, ...(extended ? { extended: extended === "true" } : {}), limit: PAGE_SIZE };
+  const list = useInfiniteQuery({ queryKey: ["reference-catalog", filters], queryFn: ({ pageParam }) => listReferenceEntries({ ...filters, offset: pageParam }), initialPageParam: 0,
+    getNextPageParam: (page) => page.offset + page.items.length < page.total ? page.offset + page.items.length : undefined, retry: false, enabled: ready });
   const user = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser, retry: false });
   const entries = list.data?.pages.flatMap((page) => page.items) ?? [];
   const available = list.data?.pages[0]?.filters;
@@ -41,14 +45,14 @@ export function ReferenceCatalog({ projectId, onApply, onBusy, disabledReason, a
       {user.data?.role === "ADMIN" ? <Button className="reference-source-settings-trigger" type="button" variant="ghost" onClick={() => setManage(true)}>{t("reference.manageSources")}</Button> : null}
       {user.data?.id ? <Button className="reference-private-cache-trigger" size="content" type="button" variant="ghost" onClick={() => setPrivateManager(true)}>{t("reference.private.manage")}</Button> : null}</div>
     <div className="reference-filters"><Input id={`${id}-search`} type="search" maxLength={200} aria-label={t("reference.search")} placeholder={t("reference.search")} value={query} onChange={(event) => setQuery(event.target.value)} />
-      <Select aria-label={t("reference.source")} value={sourceId} onChange={(event) => setSourceId(event.target.value)}><option value="">{t("reference.all")}</option>{sources.data?.items.map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}</Select>
+      <Select aria-label={t("reference.source")} value={activeSourceId} onChange={(event) => setSourceId(event.target.value)}><option value="">{t("reference.all")}</option>{sources.data?.items.map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}</Select>
       <Select aria-label={t("reference.category")} value={category} onChange={(event) => setCategory(event.target.value)}><option value="">{t("reference.all")}</option>{categories.map((item) => <option key={item} value={item}>{referenceLabel(item, entries.find((entry) => entry.category === item)?.localizedCategory, locale)}</option>)}</Select>
       {([ ["reference.tag", tag, setTag, available?.tags ?? []], ["reference.style", style, setStyle, available?.styles ?? []], ["reference.collection", collection, setCollection, available?.collections ?? []], ["reference.angle", angle, setAngle, available?.angles ?? []] ] as const).map(([label, value, setter, choices]) => <Select key={label} aria-label={t(label)} value={value} onChange={(event) => setter(event.target.value)}><option value="">{t("reference.all")}</option>{[...new Set([value, ...choices])].filter(Boolean).map((choice) => <option key={choice} value={choice}>{referenceFacetLabel(choice)}</option>)}</Select>)}
       <Select aria-label={t("reference.extended")} value={extended} onChange={(event) => setExtended(event.target.value)}><option value="">{t("reference.all")}</option><option value="true">{t("reference.extended")}</option><option value="false">{t("reference.standard")}</option></Select>
-      <Button type="button" variant="ghost" disabled={list.isFetching} onClick={() => void list.refetch()}>{t("common.refresh")}</Button></div>
+      <Button type="button" variant="ghost" disabled={!ready || list.isFetching} onClick={() => void list.refetch()}>{t("common.refresh")}</Button></div>
     {children}
     {disabledReason ? <p className="reference-hint">{disabledReason}</p> : null}
-    {list.error || sources.error ? <Notice tone="danger"><p>{(list.error ?? sources.error)?.message}</p><Button type="button" variant="outline" onClick={() => { void list.refetch(); if (sources.error) void sources.refetch(); }}>{t("common.retry")}</Button></Notice> : null}
+    {list.error || sources.error ? <Notice tone="danger"><p>{(list.error ?? sources.error)?.message}</p><Button type="button" variant="outline" onClick={() => { if (sources.error) void sources.refetch(); else void list.refetch(); }}>{t("common.retry")}</Button></Notice> : null}
     {list.isPending ? <p role="status">{t("common.loading")}</p> : null}
     {list.isSuccess && !entries.length ? <p className="reference-empty">{t("reference.empty")}</p> : null}
     <div className="reference-grid">{entries.map((entry) => { const title = referenceLabel(entry.title, entry.localizedTitle, locale); return <Button key={`${entry.sourceId}:${entry.snapshotId}:${entry.id}`} className="reference-card" size="content" type="button" variant="outline" aria-label={t("reference.preview", { "0": title })} onClick={() => setSelected(entry)}>

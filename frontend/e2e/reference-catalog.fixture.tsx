@@ -9,7 +9,7 @@ import type { ReferenceEntry, ReferencePrivateImage, ReferenceSource } from "../
 import "../src/styles.css";
 
 setLocale("en");
-const source: ReferenceSource = { id: "synthetic", name: "Original geometric studies", owner: "example", repository: "original-studies", ref: "a".repeat(40),
+const source: ReferenceSource = { sourceType: "GITHUB", id: "synthetic", name: "Original geometric studies", owner: "example", repository: "original-studies", ref: "a".repeat(40),
   manifestPath: "reference-pack.json", format: "AGENVAS_REFERENCE_PACK", enabled: true, imageDistributionApproved: true, version: 1,
   currentSnapshotId: "00000000-0000-4000-8000-000000000001", resolvedCommit: "a".repeat(40), lastSyncStatus: "SUCCESS", lastSyncError: null, syncedAt: "2026-11-06T00:00:00Z" };
 const entry: ReferenceEntry = { id: "neutral", sourceId: source.id, snapshotId: source.currentSnapshotId!, kind: "POSE", title: "Synthetic neutral stance",

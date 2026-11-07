@@ -1,0 +1,12 @@
+alter table reference_catalog_source add column source_type varchar(20) not null default 'GITHUB';
+alter table reference_catalog_source add constraint reference_catalog_source_type check (source_type in ('OMILIC','GITHUB'));
+comment on column reference_catalog_source.source_type is 'Catalog and image delivery: Omilic website or GitHub repository; existing sources retain GitHub';
+comment on constraint reference_catalog_source_type on reference_catalog_source is 'Explicit supported catalog delivery sources';
+alter table reference_catalog_snapshot alter column commit_sha drop not null;
+comment on column reference_catalog_snapshot.commit_sha is 'Pinned Git commit when available; live JSON sources use null and retain exact manifest SHA256';
+alter table reference_catalog_private_image alter column repository_path type varchar(2048);
+comment on column reference_catalog_private_image.repository_path is 'Immutable snapshot-derived image URL or repository path; never browser-supplied';
+comment on column reference_catalog_private_image.blob_sha is 'Frozen image-content Git blob SHA1; live JSON sources observe it on validated first download, legacy sources verify it against a Git tree';
+comment on column reference_catalog_private_image.byte_size is 'Frozen validated image byte count';
+comment on table reference_catalog_source is 'Administrator-selected catalog delivery sources with cached immutable JSON snapshots';
+comment on constraint reference_catalog_private_image_proof on reference_catalog_private_image is 'Frozen content identity and byte count are absent or complete and bounded';

@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
 class ReferenceCatalogGitHubClientTest {
-    Source source(String ref){return new Source("fixture","Synthetic","owner","repo",ref,"reference-pack.json",Format.AGENVAS_REFERENCE_PACK,true,true,0,null,"NEVER",null,null,null);}
+    Source source(String ref){return new Source("fixture","Synthetic","owner","repo",ref,"reference-pack.json",Format.AGENVAS_REFERENCE_PACK,true,true,0,null,"NEVER",null,null,null, SourceType.GITHUB);}
     @Test void commitResolutionUsesBoundedShaMediaTypeAndAnExplicitCommitNeedsNoRequest(){
         var client=new ReferenceCatalogGitHubClient();var request=new AtomicReference<Request>();
         var fake=new OkHttpClient.Builder().addInterceptor(chain->{request.set(chain.request());return new Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")

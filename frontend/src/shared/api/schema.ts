@@ -5113,6 +5113,8 @@ export interface components {
         ReferenceCatalogKind: "POSE" | "COSTUME";
         /** @enum {string} */
         ReferenceCatalogFormat: "OPEN_POSE_COSTUME" | "AGENVAS_REFERENCE_PACK";
+        /** @enum {string} */
+        ReferenceCatalogSourceType: "OMILIC" | "GITHUB";
         ReferenceCatalogSource: {
             id: string;
             name: string;
@@ -5121,6 +5123,7 @@ export interface components {
             ref: string;
             manifestPath: string;
             format: components["schemas"]["ReferenceCatalogFormat"];
+            sourceType: components["schemas"]["ReferenceCatalogSourceType"];
             enabled: boolean;
             imageDistributionApproved: boolean;
             version: number;
@@ -5209,6 +5212,8 @@ export interface components {
             filters: components["schemas"]["ReferenceCatalogFilters"];
         };
         CreateReferenceCatalogSource: {
+            /** @default GITHUB */
+            sourceType: components["schemas"]["ReferenceCatalogSourceType"];
             id: string;
             name: string;
             owner: string;

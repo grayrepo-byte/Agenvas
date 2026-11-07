@@ -527,7 +527,8 @@ public class Tables {
     public static final ReferenceCatalogSnapshot REFERENCE_CATALOG_SNAPSHOT = ReferenceCatalogSnapshot.REFERENCE_CATALOG_SNAPSHOT;
 
     /**
-     * Admin registered public GitHub metadata sources; manual sync only
+     * Administrator-selected catalog delivery sources with cached immutable
+     * JSON snapshots
      */
     public static final ReferenceCatalogSource REFERENCE_CATALOG_SOURCE = ReferenceCatalogSource.REFERENCE_CATALOG_SOURCE;
 

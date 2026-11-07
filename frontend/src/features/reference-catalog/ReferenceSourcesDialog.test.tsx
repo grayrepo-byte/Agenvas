@@ -9,7 +9,7 @@ import { setLocale } from "../../shared/i18n";
 import { server } from "../../test/server";
 import { ReferenceSourcesDialog } from "./ReferenceSourcesDialog";
 
-const preset: ReferenceSource = { id: "open-pose-costume", name: "Open Pose Costume", owner: "hongye007", repository: "open-pose-costume", ref: "main", format: "OPEN_POSE_COSTUME", manifestPath: "public/data/catalog.json", enabled: true, imageDistributionApproved: false, version: 0, currentSnapshotId: null, resolvedCommit: null, lastSyncStatus: "NEVER", lastSyncError: null, syncedAt: null };
+const preset: ReferenceSource = { id: "omilic", name: "Omilic", owner: "hongye007", repository: "open-pose-costume", ref: "main", format: "OPEN_POSE_COSTUME", manifestPath: "data/catalog.json", sourceType: "OMILIC", enabled: true, imageDistributionApproved: false, version: 0, currentSnapshotId: null, resolvedCommit: null, lastSyncStatus: "NEVER", lastSyncError: null, syncedAt: null };
 function setup(initial: ReferenceSource[] = [], options: { failSync?: boolean; loseAddResponse?: boolean } = {}) {
   setLocale("en"); let items = initial; const creates: object[] = []; const syncs: { id: string; body: unknown }[] = []; const updates: object[] = [];
   server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
@@ -23,7 +23,7 @@ function setup(initial: ReferenceSource[] = [], options: { failSync?: boolean; l
     }),
     http.post("/api/v1/settings/reference-catalog/sources/:id/sync", async ({ request, params }) => {
       syncs.push({ id: String(params.id), body: await request.json() }); const source = items.find((source) => source.id === params.id)!;
-      return HttpResponse.json({ state: options.failSync ? "FAILED" : "SUCCESS", source: { ...source, currentSnapshotId: "snapshot", lastSyncError: options.failSync ? "REFERENCE_CATALOG_REMOTE_UNAVAILABLE" : null }, snapshotId: "snapshot", entryCount: 1, variantCount: 1 });
+      return HttpResponse.json({ state: options.failSync ? "FAILED" : "SUCCESS", source: { ...source, currentSnapshotId: options.failSync ? source.currentSnapshotId : "snapshot", lastSyncError: options.failSync ? "REFERENCE_CATALOG_REMOTE_UNAVAILABLE" : null }, snapshotId: "snapshot", entryCount: 1, variantCount: 1 });
     }));
   const onClose = vi.fn(); const onLoaded = vi.fn();
   render(<QueryClientProvider client={createQueryClient()}><ReferenceSourcesDialog onClose={onClose} onLoaded={onLoaded} /></QueryClientProvider>);
@@ -38,9 +38,9 @@ it("loads the selected preset in one action without technical configuration", as
   expect(creates).toHaveLength(0);
   await user.click(screen.getByRole("button", { name: "Load" }));
   await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
-  expect(creates).toEqual([{ id: "open-pose-costume", name: "Open Pose Costume", owner: "hongye007", repository: "open-pose-costume", ref: "main", format: "OPEN_POSE_COSTUME", manifestPath: "public/data/catalog.json", imageDistributionApproved: false }]);
-  expect(syncs).toEqual([{ id: "open-pose-costume", body: { expectedVersion: 0 } }]);
-  expect(onLoaded).toHaveBeenCalledWith(expect.objectContaining({ id: "open-pose-costume", currentSnapshotId: "snapshot" }));
+  expect(creates).toEqual([{ id: "omilic", name: "Omilic", owner: "hongye007", repository: "open-pose-costume", ref: "main", format: "OPEN_POSE_COSTUME", manifestPath: "data/catalog.json", imageDistributionApproved: false, sourceType: "OMILIC" }]);
+  expect(syncs).toEqual([{ id: "omilic", body: { expectedVersion: 0 } }]);
+  expect(onLoaded).toHaveBeenCalledWith(expect.objectContaining({ id: "omilic", currentSnapshotId: "snapshot" }));
 });
 
 it("reuses a configured preset with a different id and its current version", async () => {
@@ -51,10 +51,37 @@ it("reuses a configured preset with a different id and its current version", asy
   expect(syncs).toEqual([{ id: "my-existing-source", body: { expectedVersion: 7 } }]);
 });
 
+it("loads an existing local catalog during GitHub rate limiting without synchronizing it again", async () => {
+  const { user, creates, syncs, onClose, onLoaded } = setup([{ ...preset, currentSnapshotId: "cached-snapshot", lastSyncStatus: "FAILED", lastSyncError: "REFERENCE_CATALOG_REMOTE_RATE_LIMITED" }], { failSync: true });
+  await user.click(await screen.findByRole("button", { name: "Load" }));
+  await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+  expect(creates).toHaveLength(0); expect(syncs).toHaveLength(0);
+  expect(onLoaded).toHaveBeenCalledWith(expect.objectContaining({ currentSnapshotId: "cached-snapshot" }));
+});
+
+it("uses GitHub only when it is explicitly selected", async () => {
+  const { user, creates, syncs, onClose } = setup();
+  await waitFor(() => expect(screen.getByRole("button", { name: "Load" })).toBeEnabled());
+  await user.click(screen.getByRole("combobox", { name: "Source" }));
+  await user.click(screen.getByRole("option", { name: "GitHub" }));
+  await user.click(screen.getByRole("button", { name: "Load" }));
+  await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+  expect(creates).toEqual([expect.objectContaining({ id: "open-pose-costume", sourceType: "GITHUB", manifestPath: "public/data/catalog.json" })]);
+  expect(syncs[0]?.id).toBe("open-pose-costume");
+});
+
+it("fetches JSON again only when the user explicitly refreshes a cached catalog", async () => {
+  const { user, syncs, onClose } = setup([{ ...preset, currentSnapshotId: "cached-snapshot" }]);
+  await user.click(await screen.findByRole("button", { name: "Refresh catalog" }));
+  await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+  expect(syncs).toHaveLength(1);
+});
+
 it("retains an added source after a failed load and retries without adding it again", async () => {
   const { user, creates, syncs, onClose, succeed } = setup([], { failSync: true });
   await user.click(await screen.findByRole("button", { name: "Load" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("The last successful catalog remains available.");
+  expect(await screen.findByRole("alert")).toBeInTheDocument();
+  expect(screen.queryByText(/The last successful catalog remains available/)).not.toBeInTheDocument();
   expect(onClose).not.toHaveBeenCalled(); succeed();
   await user.click(screen.getByRole("button", { name: "Retry loading" }));
   await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
@@ -74,8 +101,8 @@ it("preserves an unrelated source that already uses the preset's default id", as
   const { user, creates, updates, syncs, onClose } = setup([{ ...preset, owner: "example", repository: "unrelated" }]);
   await user.click(await screen.findByRole("button", { name: "Load" }));
   await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
-  expect(creates).toEqual([expect.objectContaining({ id: "open-pose-costume-2", owner: "hongye007" })]);
-  expect(updates).toHaveLength(0); expect(syncs[0]?.id).toBe("open-pose-costume-2");
+  expect(creates).toEqual([expect.objectContaining({ id: "omilic-2", owner: "hongye007" })]);
+  expect(updates).toHaveLength(0); expect(syncs[0]?.id).toBe("omilic-2");
 });
 
 it("enables the selected existing source without changing its image rights", async () => {
@@ -84,4 +111,13 @@ it("enables the selected existing source without changing its image rights", asy
   await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
   expect(updates).toEqual([{ expectedVersion: 3, enabled: true, imageDistributionApproved: false }]);
   expect(syncs[0]?.body).toEqual({ expectedVersion: 4 });
+});
+
+it("enables a disabled source before opening its existing local directory", async () => {
+  const { user, updates, syncs, onLoaded } = setup([{ ...preset, enabled: false, currentSnapshotId: "cached-snapshot", version: 3 }]);
+  await user.click(await screen.findByRole("button", { name: "Load" }));
+  await waitFor(() => expect(onLoaded).toHaveBeenCalled());
+  expect(updates).toEqual([{ expectedVersion: 3, enabled: true, imageDistributionApproved: false }]);
+  expect(syncs).toHaveLength(0);
+  expect(onLoaded).toHaveBeenCalledWith(expect.objectContaining({ enabled: true }));
 });

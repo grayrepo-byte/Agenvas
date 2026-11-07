@@ -33,8 +33,13 @@ public class ReferenceCatalogGitHubClient {
     }
     public byte[] file(Source source,String commit,String file,int limit) {
         if(!commit.matches("[a-f0-9]{40}")) throw invalid();
+        return fileAtRef(source,commit,file,limit);
+    }
+    /** Open catalog JSON is already a complete directory; mutable refs need no commit-resolution API call. */
+    public byte[] fileAtRef(Source source,String revision,String file,int limit) {
         var url=new HttpUrl.Builder().scheme("https").host("raw.githubusercontent.com").addPathSegment(slug(source.owner()))
-                .addPathSegment(slug(source.repository())).addPathSegment(commit);
+                .addPathSegment(slug(source.repository()));
+        for(String part:ref(revision).split("/"))url.addPathSegment(part);
         for(String part:path(file).split("/")) url.addPathSegment(part);
         return read(url.build(),limit,"application/octet-stream");
     }

@@ -16,19 +16,22 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class ReferenceCatalogService {
     private final ReferenceCatalogRepository repository; private final ReferenceCatalogGitHubClient github;
     private final ReferenceCatalogParser parser; private final Clock clock; private final TransactionTemplate tx;
+    private final ReferenceCatalogSiteClient site;
     private final ReferenceCatalogImageCache cache; private final boolean recovery;
-    public ReferenceCatalogService(ReferenceCatalogRepository repository,ReferenceCatalogGitHubClient github,ReferenceCatalogParser parser,Clock clock,PlatformTransactionManager transactions,ReferenceCatalogImageCache cache,
+    public ReferenceCatalogService(ReferenceCatalogRepository repository,ReferenceCatalogGitHubClient github,ReferenceCatalogSiteClient site,ReferenceCatalogParser parser,Clock clock,PlatformTransactionManager transactions,ReferenceCatalogImageCache cache,
             @org.springframework.beans.factory.annotation.Value("${agenvas.recovery-mode:false}") boolean recovery){
-        this.repository=repository;this.github=github;this.parser=parser;this.clock=clock;this.tx=new TransactionTemplate(transactions);this.cache=cache;this.recovery=recovery;
+        this.repository=repository;this.github=github;this.site=site;this.parser=parser;this.clock=clock;this.tx=new TransactionTemplate(transactions);this.cache=cache;this.recovery=recovery;
     }
     public List<Source> sources(){return repository.sources();}
     public Source source(String id){return repository.source(id).orElseThrow(ReferenceCatalogService::missing);}
-    public Source create(String id,String name,String owner,String repo,String ref,String manifestPath,Format format,boolean approved){
+    public Source create(String id,String name,String owner,String repo,String ref,String manifestPath,Format format,boolean approved,SourceType sourceType){
+        SourceType type=sourceType==null?SourceType.GITHUB:sourceType;
         slug(id);slug(owner);slug(repo);ref(ref);
         if(name==null || name.isBlank() || name.length()>160 || format==null)throw invalid();
-        String file=manifestPath==null || manifestPath.isBlank() ? format==Format.OPEN_POSE_COSTUME?"public/data/catalog.json":"agenvas-reference-pack.json" : path(manifestPath);
+        if(type==SourceType.OMILIC && format!=Format.OPEN_POSE_COSTUME)throw invalid();
+        String file=manifestPath==null || manifestPath.isBlank() ? type==SourceType.OMILIC?"data/catalog.json":format==Format.OPEN_POSE_COSTUME?"public/data/catalog.json":"agenvas-reference-pack.json" : path(manifestPath);
         if(owner.equalsIgnoreCase("hongye007") && repo.equalsIgnoreCase("open-pose-costume") && format!=Format.OPEN_POSE_COSTUME)throw invalid();
-        Source s=new Source(id,name,owner,repo,ref,file,format,true,approved,0,null,"NEVER",null,null,null);
+        Source s=new Source(id,name,owner,repo,ref,file,format,true,approved,0,null,"NEVER",null,null,null,type);
         if(!repository.insert(s,clock.instant()))throw conflict();return source(id);
     }
     public Source update(String id,long expected,boolean enabled,boolean approved){
@@ -44,9 +47,15 @@ public class ReferenceCatalogService {
             return new SyncResult("RUNNING",source(id),selected.currentSnapshotId(),0,0);
         }
         try {
-            String commit=github.resolve(selected);
-            byte[] bytes=github.file(selected,commit,selected.manifestPath(),ReferenceCatalogParser.MAX_METADATA_BYTES);
-            Snapshot snapshot=parser.parse(selected,commit,bytes);
+            String commit;byte[] bytes;
+            if(selected.sourceType()==SourceType.OMILIC){commit=null;bytes=site.catalog(selected.manifestPath());}
+            else if(selected.format()==Format.OPEN_POSE_COSTUME && !selected.ref().matches("[a-fA-F0-9]{40}")){
+                commit=null;bytes=github.fileAtRef(selected,selected.ref(),selected.manifestPath(),ReferenceCatalogParser.MAX_METADATA_BYTES);
+            }else{commit=github.resolve(selected);bytes=github.file(selected,commit,selected.manifestPath(),ReferenceCatalogParser.MAX_METADATA_BYTES);}
+            var previous=selected.currentSnapshotId()==null?Optional.<Snapshot>empty():repository.snapshot(id,selected.currentSnapshotId());
+            // Identical JSON retains its snapshot identity and every image indexed by it.
+            Snapshot parsed=parser.parse(selected,commit,bytes);
+            Snapshot snapshot=previous.filter(s->s.manifestHash().equals(parsed.manifestHash()) && s.entries().equals(parsed.entries()) && java.util.Objects.equals(s.commit(),parsed.commit())).orElse(parsed);
             boolean published=Boolean.TRUE.equals(tx.execute(ignored -> repository.publish(id,expected,token,snapshot,clock.instant())));
             return new SyncResult(published?"SUCCESS":"SUPERSEDED",source(id),published?snapshot.id():source(id).currentSnapshotId(),
                     published?snapshot.entries().size():0,published?snapshot.entries().stream().mapToInt(e->e.variants().size()).sum():0);
