@@ -72,6 +72,21 @@
 .app-shell--settings .llm-settings-layout .llm-saved-summary { display: grid; grid-template-columns: minmax(80px, .7fr) minmax(0, 1.4fr) minmax(100px, 1fr); align-items: center; gap: 12px; min-height: 52px; padding: 8px 12px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: var(--ui-field); font-size: 11px; line-height: 1.5; }
 .llm-credential-note { margin: -6px 0 0; font-size: 11px; line-height: 1.6; }
 .llm-model-options { min-width: 0; }
+.llm-model-configuration { gap: 12px; }
+.llm-discovery-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 12px; }
+.llm-model-read { min-height: var(--ui-control-height-compact); gap: 8px; }
+.llm-model-read > span { font-size: var(--ui-text-sm); }
+.llm-capacity-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.llm-advanced-trigger[aria-expanded="true"] > svg:last-child { transform: rotate(180deg); }
+.llm-capacity-advanced { padding-top: 12px; border-top: 1px solid var(--ui-border); }
+.llm-capacity-advanced[hidden] { display: none; }
+.app-shell--settings .llm-capacity-overview .ui-summary-strip { margin: 0; }
+@media (min-width: 561px) {
+  .app-shell--settings .llm-capacity-overview .ui-summary-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .llm-discovery-controls { grid-template-columns: minmax(0, 1fr); }
+}
 .llm-model-options .ui-stack.ui-muted { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; font-size: 11px; }
 .llm-model-options .ui-stack.ui-muted > p { margin: 0; overflow-wrap: anywhere; }
 .llm-diagnostic-action { align-items: center; justify-content: space-between; gap: 8px; }

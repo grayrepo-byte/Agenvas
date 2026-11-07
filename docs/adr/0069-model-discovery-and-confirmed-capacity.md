@@ -45,6 +45,17 @@ frozen budgets or responses, backfill budgets during historical recovery, or
 automatically resubmit failed old tasks. This changes backend runtime behavior
 without an API or data migration.
 
+## Connection form — 2026-11-07 UI revision
+
+Keep the current draft's context, output limit and provenance badge visible on
+`/settings/providers`, showing the generic 1M default when capacity is unavailable.
+Existing provider and manual values take precedence. Put provider selection and the
+optional model-list read on the same row. Collapse advanced context/input/output
+limits, output parameter, automatic/manual selection and raw metadata by default.
+Collapsing preserves the draft without saving; a save validation failure expands
+the controls and retains input. The saved connection summary continues to show its
+saved snapshot. This UI change needs no new API or dependency.
+
 ## Consequences
 
 Old stored and environment-only connections can start new work without a capacity confirmation step. The generic default is an application choice rather than measured provider capacity. Existing frozen envelopes retain prior behavior. Provider metadata can be absent, stale or describe routing rather than measured capacity. Token estimates and Ollama preflight cannot guarantee absence of upstream silent truncation. Generation retains Spring AI's existing compatible chat protocol; native provider-only features are not implied.
