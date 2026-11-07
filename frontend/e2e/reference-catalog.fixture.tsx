@@ -21,6 +21,9 @@ const entry: ReferenceEntry = { id: "neutral", sourceId: source.id, snapshotId: 
     contentType: "image/png", availability: "AVAILABLE", importAllowed: true, disabledReason: null, cached: false, privateCacheAllowed: false, privateCacheDisabledReason: null })) };
 const data: ReferenceEntry[] = [entry, { ...entry, id: "links", title: "Metadata-only source", localizedTitle: { en: "Metadata-only source" }, importAllowed: false,
   disabledReason: "REFERENCE_CATALOG_LINK_ONLY", variants: entry.variants.map((v) => ({ ...v, previewUrl: null, externalUrl: "https://example.com/reference", importAllowed: false, availability: "LINK_ONLY", sha256: null })) }];
+const privateEntry: ReferenceEntry = { ...entry, id: "automatic-costume", kind: "COSTUME", title: "Synthetic private costume", localizedTitle: { en: "Synthetic private costume" }, importAllowed: false,
+  variants: entry.variants.slice(0, 1).map((view) => ({ ...view, previewUrl: null, sha256: null, importAllowed: false, availability: "LINK_ONLY", privateCacheAllowed: true })) };
+let privateDownloads = 0;
 let imports = 0;
 let privateImages: ReferencePrivateImage[] = [{ id: "00000000-0000-4000-8000-000000000002", sourceId: source.id,
   snapshotId: "00000000-0000-4000-8000-000000000003", entryId: "old-snapshot-geometric-study", variantId: "old-front-view",
@@ -32,7 +35,15 @@ globalThis.fetch = async (input, init) => {
   if (url.pathname === "/api/v1/auth/csrf") return Response.json({ headerName: "X-CSRF-TOKEN", token: "synthetic" });
   if (url.pathname === "/api/v1/settings/reference-catalog/cache") return Response.json({ quotaBytes: 536870912, usedBytes: 0, fileCount: 0, availableBytes: 536870912, protectedBytes: 0, protectedFileCount: 0 });
   if (url.pathname === "/api/v1/settings/reference-catalog/cache/jobs") return Response.json({ items: [] });
-  if (url.pathname === "/api/v1/reference-catalog/private-images") return Response.json({ items: privateImages });
+  if (url.pathname === "/api/v1/reference-catalog/private-images") {
+    if (init?.method === "POST") {
+      privateDownloads++; document.documentElement.dataset.privateDownloadCount = String(privateDownloads);
+      const saved: ReferencePrivateImage = { id: "synthetic-auto", sourceId: privateEntry.sourceId, snapshotId: privateEntry.snapshotId, entryId: privateEntry.id, variantId: privateEntry.variants[0]!.id,
+        sha256: "b".repeat(64), byteSize: 1024, contentType: "image/png", width: 240, height: 320, previewUrl: "/api/v1/reference-catalog/private-images/synthetic-auto/preview", cached: true };
+      privateImages.push(saved); return Response.json(saved);
+    }
+    return Response.json({ items: privateImages.filter((image) => (!url.searchParams.has("sourceId") || image.sourceId === url.searchParams.get("sourceId")) && (!url.searchParams.has("snapshotId") || image.snapshotId === url.searchParams.get("snapshotId"))) });
+  }
   if (url.pathname.startsWith("/api/v1/reference-catalog/private-images/") && init?.method === "DELETE") {
     const removed = privateImages.find((image) => url.pathname.endsWith(image.id));
     if (!removed) throw new Error("Unknown synthetic private image");
@@ -41,10 +52,14 @@ globalThis.fetch = async (input, init) => {
     return Response.json({ ...removed, cached: false });
   }
   if (url.pathname === "/api/v1/reference-catalog/sources") return Response.json({ items: [source] });
+  if (url.pathname === "/api/v1/settings/reference-catalog/sources/synthetic/sync") {
+    document.documentElement.dataset.sourceLoadCount = "1";
+    return Response.json({ state: "SUCCESS", source, snapshotId: source.currentSnapshotId, entryCount: 2, variantCount: 10 });
+  }
   if (url.pathname === "/api/v1/reference-catalog") {
     const query = (url.searchParams.get("query") ?? "").toLowerCase();
     const kind = url.searchParams.get("kind") ?? "POSE";
-    const items = data.filter((item) => item.title.toLowerCase().includes(query)).map((item) => ({ ...item, kind }));
+    const items = (kind === "COSTUME" ? [privateEntry] : data).filter((item) => item.title.toLowerCase().includes(query));
     return Response.json({ items, total: items.length, offset: 0, limit: 50, filters: { categories: ["standing"], tags: ["test"], styles: [], collections: ["builtin"], angles: ["front", "side", "high", "low", "diag"] } });
   }
   if (url.pathname.endsWith("/reference-catalog/import")) {

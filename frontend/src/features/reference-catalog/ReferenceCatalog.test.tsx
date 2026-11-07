@@ -57,22 +57,17 @@ it("retries a catalog read without losing filters", async () => {
   await user.click(screen.getByRole("button", { name: "Retry" }));
   expect(await screen.findByRole("button", { name: "Preview Walking" })).toBeInTheDocument();
 });
-it("requires explicit permission review and manual sync for a new source", async () => {
-  const user = setup([], true); const writes: Record<string, unknown>[] = [];
-  server.use(http.post("/api/v1/settings/reference-catalog/sources", async ({ request }) => {
-    writes.push(await request.json() as Record<string, unknown>);
-    return HttpResponse.json({ id: "pack", name: "My pack", owner: "me", repository: "pack", ref: "main", manifestPath: "manifest.json", enabled: true, version: 1, imageDistributionApproved: false });
-  }));
+it("loads a preset and immediately shows that source's catalog", async () => {
+  const user = setup([], true); let saved: object | null = null;
+  server.use(http.get("/api/v1/reference-catalog/sources", () => HttpResponse.json({ items: saved ? [saved] : [] })),
+    http.post("/api/v1/settings/reference-catalog/sources", async ({ request }) => {
+      saved = { ...await request.json() as object, enabled: true, version: 0 }; return HttpResponse.json(saved);
+    }),
+    http.post("/api/v1/settings/reference-catalog/sources/open-pose-costume/sync", () => HttpResponse.json({ state: "SUCCESS", source: { ...saved, currentSnapshotId: "snapshot" }, snapshotId: "snapshot", entryCount: 1, variantCount: 1 })));
   await user.click(await screen.findByRole("button", { name: "Manage sources" }));
-  const dialog = screen.getByRole("dialog", { name: "Reference sources" });
-  await user.type(within(dialog).getByLabelText("Source ID"), "pack");
-  await user.type(within(dialog).getByLabelText("Name"), "My pack");
-  await user.type(within(dialog).getByLabelText("GitHub owner"), "me");
-  await user.type(within(dialog).getByLabelText("Repository"), "pack");
-  await user.click(within(dialog).getByRole("button", { name: "Add source" }));
-  await waitFor(() => expect(writes).toHaveLength(1));
-  expect(writes[0]?.imageDistributionApproved).toBe(false);
-  expect(screen.getByText("Sources update only when an administrator chooses Sync. Failed syncs retain the last successful catalog.")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Load" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Reference sources" })).not.toBeInTheDocument());
+  expect(screen.getByRole("combobox", { name: "Source" })).toHaveTextContent("Open Pose Costume");
 });
 it("replays a lost import with the same intent and never generates or replaces input", async () => {
   setLocale("en"); let attempts = 0; const imports: Record<string, unknown>[] = []; let appliedVersion = "";
@@ -110,16 +105,7 @@ it("uses cached bilingual metadata and sends the real source facet filters", asy
   await waitFor(() => expect(requests.at(-1)?.searchParams.get("tag")).toBe("female"));
   expect(requests.at(-1)?.searchParams.get("style")).toBe("photo");
 });
-it("fills the actual repository metadata preset without fetching it", async () => {
-  const user = setup([], true); await user.click(await screen.findByRole("button", { name: "Manage sources" }));
-  await user.click(screen.getByRole("button", { name: "Fill Open Pose Costume preset" }));
-  expect(screen.getByLabelText("GitHub owner")).toHaveValue("hongye007");
-  expect(screen.getByLabelText("Repository")).toHaveValue("open-pose-costume");
-  expect(screen.getByLabelText("Manifest path")).toHaveValue("public/data/catalog.json");
-  expect(screen.getByRole("checkbox", { name: "I have verified permission to redistribute these image files." })).not.toBeChecked();
-  expect(screen.getByRole("checkbox", { name: "I have verified permission to redistribute these image files." })).toBeDisabled();
-});
-it("reports a failed manual sync returned with HTTP 200 and retains the prior catalog", async () => {
+it("reports a failed load returned with HTTP 200 and retains the prior catalog", async () => {
   setLocale("en"); const source = { id: "pack", name: "Original pack", owner: "me", repository: "pack", ref: "main", manifestPath: "manifest.json", format: "AGENVAS_REFERENCE_PACK", enabled: true, imageDistributionApproved: true, version: 4, currentSnapshotId: "snapshot", resolvedCommit: "original-commit", lastSyncStatus: "SUCCESS", lastSyncError: null, syncedAt: "2026-11-01T00:00:00Z" };
   server.use(...cacheReads(),
     http.get("/api/v1/auth/me", () => HttpResponse.json({ role: "ADMIN" })),
@@ -133,9 +119,11 @@ it("reports a failed manual sync returned with HTTP 200 and retains the prior ca
   );
   render(<QueryClientProvider client={createQueryClient()}><ReferenceCatalog /></QueryClientProvider>);
   const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "Manage sources" }));
-  await user.click(await screen.findByRole("button", { name: "Sync" }));
+  await user.click(screen.getByRole("combobox", { name: "Source" }));
+  await user.click(screen.getByRole("option", { name: "Original pack" }));
+  await user.click(screen.getByRole("button", { name: "Load" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("The last successful catalog remains available.");
-  expect(screen.queryByText("Sync completed.")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Retry loading" })).toBeEnabled();
   await user.click(screen.getByRole("button", { name: "Close" }));
   expect(screen.getByRole("button", { name: "Preview Walking" })).toBeInTheDocument();
 });
@@ -153,11 +141,12 @@ it("shows a preview error with a local retry", async () => {
   expect(screen.getByRole("img")).toHaveAttribute("src", variant.previewUrl);
 });
 
-it("exposes image cache management separately from metadata source configuration", async () => {
+it("keeps source loading separate from cache maintenance", async () => {
   const user = setup([], true); await user.click(await screen.findByRole("button", { name: "Manage sources" }));
-  expect(await screen.findByRole("heading", { name: "Local image cache" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Cache authorized images" })).toBeDisabled();
-  expect(await screen.findByText("0 / 1,000 bytes · 0 files")).toBeInTheDocument();
+  expect(screen.getAllByRole("combobox")).toHaveLength(1);
+  expect(screen.queryByRole("heading", { name: "Local image cache" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Cache authorized images" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Load" })).toBeEnabled();
 });
 it("labels a preview cached only when the server reports that exact variant as cached", async () => {
   const user = setup([{ ...entry, variants: [{ ...variant, cached: true }] }]);

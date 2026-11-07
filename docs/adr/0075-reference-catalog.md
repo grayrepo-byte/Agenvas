@@ -1,5 +1,9 @@
 # ADR 0075: Configurable pose and costume reference catalog
 
+> The source form is replaced by selecting and loading a preset or existing source
+> in [ADR 0080](0080-automatic-reference-image-loading.md). Technical configuration
+> remains available through the administrator API.
+
 Status: accepted for implementation by the user's explicit development request.
 
 The user selected `hongye007/open-pose-costume` and asked for the existing

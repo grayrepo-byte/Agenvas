@@ -2,6 +2,8 @@
 
 > 地址拦截、地址白名单及回环准入规则已由 [ADR 0079](0079-remove-outbound-address-checks.md) 替代；以下保留历史决策背景。
 
+> 浏览时必须手动缓存单图的规则已由 [ADR 0080](0080-automatic-reference-image-loading.md) 替代，改为可视卡片及选中视角自动按需加载。
+
 Status: accepted by the user's explicit image-cache requirement and decision to
 retain SSRF protection. Amends ADR 0075's metadata-only treatment of all selected
 source images.

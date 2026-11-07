@@ -25,7 +25,7 @@ const viewports = [
 const profile = await mkdtemp(join(tmpdir(), "agenvas-reference-catalog-"));
 const image = await readFile(new URL("../../examples/reference-pack/images/neutral-front.png", import.meta.url));
 const media = (server) => { server.middlewares.use((request, response, next) => {
-  if (!request.url?.startsWith("/api/v1/reference-catalog/synthetic-preview/")) return next();
+  if (!request.url?.startsWith("/api/v1/reference-catalog/synthetic-preview/") && request.url !== "/api/v1/reference-catalog/private-images/synthetic-auto/preview") return next();
   response.setHeader("Content-Type", "image/png"); response.end(image);
 }); };
 const config = { root, configFile: join(root, "vite.config.ts"), configLoader: "runner", cacheDir: join(profile, "vite-cache"),
@@ -179,13 +179,18 @@ try {
     await pointerClick('.reference-source-settings-trigger');
     await waitFor(() => Boolean(document.querySelector('.reference-sources-dialog')));
     assert.equal(await page(() => { const e = document.querySelector('.reference-sources-dialog'); return e.scrollWidth > e.clientWidth; }), false, "Source settings must fit viewport");
+    assert.deepEqual(await page(() => { const dialog = document.querySelector('.reference-sources-dialog'); return { selectors: dialog.querySelectorAll('[role=combobox]').length, textInputs: dialog.querySelectorAll('input').length, cachePanels: dialog.querySelectorAll('.reference-cache-manager').length }; }),
+      { selectors: 1, textInputs: 0, cachePanels: 0 }, "Loading a source must need only one choice");
     if (process.env.AGENVAS_E2E_SCREENSHOT_DIR) {
       await mkdir(process.env.AGENVAS_E2E_SCREENSHOT_DIR, { recursive: true });
       const shot = await cdp("Page.captureScreenshot", { format: "png" });
       await writeFile(join(process.env.AGENVAS_E2E_SCREENSHOT_DIR, `reference-${viewport.width}x${viewport.height}.png`), Buffer.from(shot.data, "base64"));
     }
-    await pointerClick('.reference-sources-dialog .ui-dialog-header button');
+    await pointerClick('.reference-sources-dialog [role=combobox]');
+    await pointerClick('[role=option][data-state=unchecked]');
+    await pointerClick('.reference-sources-dialog button[type=submit]');
     await waitFor(() => !document.querySelector('.reference-sources-dialog'));
+    assert.equal(await page(() => document.documentElement.dataset.sourceLoadCount), "1", "Selecting a source and loading it must finish in the same dialog");
     await pointerClick('.reference-private-cache-trigger');
     await waitFor(() => Boolean(document.querySelector('.reference-private-record')));
     const ownerCache = await page(() => {
@@ -204,9 +209,17 @@ try {
     await pointerClick('.reference-private-manager-dialog button[data-variant=destructive]');
     await waitFor(() => !document.querySelector('.reference-private-record'));
     assert.equal(await page(() => document.documentElement.dataset.privateClearCount), "1", "Only the explicitly selected owner record is cleared");
+    await pointerClick('.reference-private-manager-dialog .ui-dialog-header button');
+    await waitFor(() => !document.querySelector('.reference-private-manager-dialog'));
+    await pointerClick('.reference-toolbar [role=radio]:nth-child(2)');
+    await waitFor(() => document.querySelector('.reference-card-image img')?.naturalWidth === 240 && document.documentElement.dataset.privateDownloadCount === "1");
+    await pointerClick('.reference-card');
+    await waitFor(() => document.querySelector('.reference-preview-dialog img')?.naturalWidth === 240);
+    assert.equal(await page(() => document.documentElement.dataset.privateDownloadCount), "1", "Preview must reuse the automatically cached card image");
+    assert.equal(await page(() => document.documentElement.dataset.importCount), "1", "Automatic caching must not import another project image");
     console.log(JSON.stringify({ viewport, append: initial.button, sourceSettings: "visible", ownerCache: "old snapshot cleared" }));
   }
-  console.log(`Reference catalog browser regression passed: ${viewports.length} viewports, exact view import, metadata-only gating, source settings, owner old-snapshot cleanup`);
+  console.log(`Reference catalog browser regression passed: ${viewports.length} viewports, automatic private thumbnails, cache reuse, exact view import, metadata-only gating, source settings, owner old-snapshot cleanup`);
 
 } finally {
   socket?.close();
