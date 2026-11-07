@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ReferenceCatalog } from "../src/features/reference-catalog/ReferenceCatalog";
+import { SaveCostumeReferenceButton } from "../src/features/reference-catalog/SaveCostumeReferenceButton";
 import { ReferenceCatalogPage } from "../src/features/reference-catalog/ReferenceCatalogPage";
 import { Dialog } from "../src/shared/ui/Dialog";
 import { Button } from "../src/shared/ui/primitives/button";
@@ -13,6 +14,9 @@ setLocale(new URLSearchParams(location.search).get("locale") === "zh" ? "zh" : "
 const source: ReferenceSource = { sourceType: "GITHUB", id: "synthetic", name: "Original geometric studies", owner: "example", repository: "original-studies", ref: "a".repeat(40),
   manifestPath: "reference-pack.json", format: "AGENVAS_REFERENCE_PACK", enabled: true, imageDistributionApproved: true, version: 1,
   currentSnapshotId: "00000000-0000-4000-8000-000000000001", resolvedCommit: "a".repeat(40), lastSyncStatus: "SUCCESS", lastSyncError: null, syncedAt: "2026-11-06T00:00:00Z" };
+const preferredWebsite = new URLSearchParams(location.search).has("preferred");
+const websiteSource: ReferenceSource = { ...source, id: "omilic", name: "Synthetic website", sourceType: "OMILIC", format: "OPEN_POSE_COSTUME", manifestPath: "data/catalog.json" };
+const catalogReads: string[] = [];
 const entry: ReferenceEntry = { id: "neutral", sourceId: source.id, snapshotId: source.currentSnapshotId!, kind: "POSE", title: "Synthetic neutral stance",
   localizedTitle: { en: "Synthetic neutral stance", zh: "合成站姿测试" }, code: "TEST-01", category: "standing", localizedCategory: { en: "Standing", zh: "站姿" },
   series: { en: "Original geometric tests", zh: "原创几何测试" }, tags: ["test"], localizedTags: { test: { en: "Test", zh: "测试" } }, localizedKeywords: { en: "synthetic stance geometry", zh: "合成 站姿 几何" },
@@ -24,7 +28,13 @@ const data: ReferenceEntry[] = [entry, { ...entry, id: "links", title: "Metadata
   disabledReason: "REFERENCE_CATALOG_LINK_ONLY", variants: entry.variants.map((v) => ({ ...v, previewUrl: null, externalUrl: "https://example.com/reference", importAllowed: false, availability: "LINK_ONLY", sha256: null })) }];
 const privateEntry: ReferenceEntry = { ...entry, id: "automatic-costume", kind: "COSTUME", title: "Synthetic private costume", localizedTitle: { en: "Synthetic private costume" }, importAllowed: false,
   variants: entry.variants.slice(0, 1).map((view) => ({ ...view, previewUrl: null, sha256: null, importAllowed: false, availability: "LINK_ONLY", privateCacheAllowed: true })) };
+const websitePose: ReferenceEntry = { ...entry, sourceId: websiteSource.id, title: "Synthetic website pose", localizedTitle: {} };
+const websiteCostume: ReferenceEntry = { ...websitePose, id: "website-costume", kind: "COSTUME", title: "Synthetic website costume", variants: entry.variants.slice(0, 1) };
 let privateDownloads = 0;
+let costumeDeleted = false;
+let customCostume: ReferenceEntry = { ...entry, id: "00000000-0000-4000-8000-000000000004", snapshotId: "00000000-0000-4000-8000-000000000004",
+  sourceId: "self-created", kind: "COSTUME", origin: "SELF_CREATED", version: 0, title: "Synthetic self-created costume", localizedTitle: {},
+  variants: [{ ...entry.variants[0]!, id: "front", previewUrl: "/api/v1/reference-catalog/costumes/00000000-0000-4000-8000-000000000004/image", cached: true }] };
 let imports = 0;
 let privateImages: ReferencePrivateImage[] = [{ id: "00000000-0000-4000-8000-000000000002", sourceId: source.id,
   snapshotId: "00000000-0000-4000-8000-000000000003", entryId: "old-snapshot-geometric-study", variantId: "old-front-view",
@@ -53,7 +63,7 @@ globalThis.fetch = async (input, init) => {
     document.documentElement.dataset.privateClearCount = "1";
     return Response.json({ ...removed, cached: false });
   }
-  if (url.pathname === "/api/v1/reference-catalog/sources") return Response.json({ items: [source] });
+  if (url.pathname === "/api/v1/reference-catalog/sources") return Response.json({ items: preferredWebsite ? [websiteSource, source] : [source] });
   if (url.pathname === "/api/v1/settings/reference-catalog/sources/synthetic/sync") {
     document.documentElement.dataset.sourceLoadCount = "1";
     return Response.json({ state: "SUCCESS", source, snapshotId: source.currentSnapshotId, entryCount: 2, variantCount: 10 });
@@ -61,8 +71,31 @@ globalThis.fetch = async (input, init) => {
   if (url.pathname === "/api/v1/reference-catalog") {
     const query = (url.searchParams.get("query") ?? "").toLowerCase();
     const kind = url.searchParams.get("kind") ?? "POSE";
-    const items = (kind === "COSTUME" ? [privateEntry] : data).filter((item) => item.title.toLowerCase().includes(query));
+    catalogReads.push(url.search); document.documentElement.dataset.catalogReads = JSON.stringify(catalogReads);
+    const selectedSource = url.searchParams.get("sourceId");
+    const includeSelfCreated = url.searchParams.get("includeSelfCreated") === "true";
+    const candidates = kind === "COSTUME" ? [...(preferredWebsite ? [websiteCostume] : []), privateEntry, ...(costumeDeleted ? [] : [customCostume])]
+      : [...(preferredWebsite ? [websitePose] : []), ...data];
+    const items = candidates.filter((item) => item.title.toLowerCase().includes(query)
+      && (!selectedSource || item.sourceId === selectedSource || includeSelfCreated && item.origin === "SELF_CREATED"));
     return Response.json({ items, total: items.length, offset: 0, limit: 50, filters: { categories: ["standing"], tags: ["test"], styles: [], collections: ["builtin"], angles: ["front", "side", "high", "low", "diag"] } });
+  }
+  if (url.pathname === "/api/v1/projects/synthetic-project/reference-catalog/costumes") {
+    document.documentElement.dataset.costumeSaveCount = "1";
+    return Response.json(customCostume, { status: 201 });
+  }
+  if (url.pathname === `/api/v1/reference-catalog/costumes/${customCostume.id}`) {
+    if (!init?.method || init.method === "GET") return Response.json(customCostume);
+    if (init?.method === "DELETE") { costumeDeleted = true; return new Response(null, { status: 204 }); }
+    const body = JSON.parse(String(init?.body)) as { name: string; category: string; tags: string[] };
+    customCostume = { ...customCostume, title: body.name, category: body.category, tags: body.tags, version: (customCostume.version ?? 0) + 1 };
+    document.documentElement.dataset.costumeUpdateCount = "1";
+    return Response.json(customCostume);
+  }
+  if (url.pathname.endsWith(`/costumes/${customCostume.id}/import`)) {
+    document.documentElement.dataset.costumeImportCount = "1";
+    return Response.json({ artifactId: "owned-custom-artifact", canvasItemId: null, versionId: "owned-custom-version", assetId: "owned-custom-asset", title: customCostume.title,
+      contentType: "image/png", byteSize: 1024, width: 240, height: 320, thumbnailUrl: "/api/v1/reference-catalog/synthetic-preview/front" });
   }
   if (url.pathname.endsWith("/reference-catalog/import")) {
     const body = JSON.parse(String(init?.body ?? "{}")) as { variantId?: string };
@@ -77,6 +110,7 @@ function Fixture() {
   const [open, setOpen] = useState(false); const [busy, setBusy] = useState(false); const [applied, setApplied] = useState("");
   if (new URLSearchParams(location.search).has("page")) return <main className="app-page"><ReferenceCatalogPage /></main>;
   return <main className="app-page"><Button id="open-reference" onClick={() => setOpen(true)}>Open reference catalog</Button><output id="applied-reference">{applied}</output>
+    <SaveCostumeReferenceButton projectId="synthetic-project" canvasItemId="synthetic-item" sourceVersionId="synthetic-version" expectedCanvasItemVersion={0} sourceTitle="Synthetic outfit result" />
     {open ? <Dialog className="reference-picker-dialog" title="Reference catalog" busy={busy} onClose={() => setOpen(false)} onSubmit={(event) => event.preventDefault()}
       footer={<Button type="button" disabled={busy} onClick={() => setOpen(false)}>Close catalog</Button>}>
       <ReferenceCatalog projectId="synthetic-project" onBusy={setBusy} onApply={async (image) => { setApplied(image.versionId); }} />

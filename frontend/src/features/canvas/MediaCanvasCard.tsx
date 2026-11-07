@@ -29,6 +29,7 @@ import { Button } from "../../shared/ui/primitives/button";
 import { DropdownMenu,DropdownMenuContent,DropdownMenuGroup,DropdownMenuItem,DropdownMenuSub,DropdownMenuSubContent,DropdownMenuSubTrigger,DropdownMenuTrigger } from "../../shared/ui/primitives/dropdown-menu";
 import { Input } from "../../shared/ui/primitives/input";
 import { SaveToLibraryButton } from "../library/SaveToLibraryButton";
+import { SaveCostumeReferenceButton } from "../reference-catalog/SaveCostumeReferenceButton";
 import { ArtifactCardFrame } from "./ArtifactCardFrame";
 import { readContentText } from "./artifactContent";
 import { AudioPlayer } from "./AudioPlayer";
@@ -199,11 +200,11 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
       expectedCapabilityVersion: configured.capability.capabilityVersion });
   }
 
-  const operationImage = operationOpen === "SMART_EDIT" && smartEditSource ? smartEditSource
+  const operationImage = (operationOpen === "SMART_EDIT" || operationOpen === "COSTUME_EXTRACT") && smartEditSource ? smartEditSource
     : { versionId: item.selectedVersionId ?? "", canvasVersion: item.version, assetId: assetId ?? "", title: item.title };
 
   function chooseOperation(name: ImageTool, threeView: ThreeViewType | null = null) {
-    if (name === "SMART_EDIT" && item.selectedVersionId && assetId)
+    if ((name === "SMART_EDIT" || name === "COSTUME_EXTRACT") && item.selectedVersionId && assetId)
       setSmartEditSource({ versionId: item.selectedVersionId, canvasVersion: item.version, assetId, title: item.title });
     setMenuOpen(false);
     setThreeViewMenuOpen(false);
@@ -236,7 +237,12 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
           <Button variant="ghost" type="button" disabled={locked || Boolean(busy) || operation.isPending}
             onClick={() => setDirectorOpen(true)}><Cube data-icon="inline-start" />{t("director.title")}</Button>
           {assetId ? <>
+          {item.selectedVersionId ? <SaveCostumeReferenceButton projectId={artifact.projectId} canvasItemId={item.id}
+            sourceVersionId={item.selectedVersionId} expectedCanvasItemVersion={item.version} sourceTitle={item.title}
+            disabled={locked || Boolean(busy) || operation.isPending} /> : null}
           {reversePrompt.controls}
+          <Button variant="ghost" type="button" disabled={locked || Boolean(busy) || operation.isPending}
+            onClick={() => chooseOperation("COSTUME_EXTRACT")}><Scissors data-icon="inline-start" />{t("costume.extract")}</Button>
           <Button variant="ghost" type="button" disabled={!assetId || Boolean(busy) || operation.isPending}
             onClick={() => chooseOperation("SMART_EDIT")}><MagicWand size={17} />{t("media.card.smartEdit")}</Button>
           <Button variant="ghost" type="button" disabled={!assetId || Boolean(busy) || operation.isPending}

@@ -21,11 +21,13 @@ const viewports = [
   { width: 1440, height: 900 },
   { width: 390, height: 844 },
   { width: 844, height: 390 },
-].filter((viewport) => !process.argv.includes("--landscape-only") || viewport.width === 844);
+].filter(() => !process.argv.includes("--preferred-only")).filter((viewport) => !process.argv.includes("--landscape-only") || viewport.width === 844);
+const pageViewports = process.argv.includes("--preferred-only") ? [] : [{ width: 2313, height: 694 }, { width: 1440, height: 900 }, { width: 390, height: 844 }];
 const profile = await mkdtemp(join(tmpdir(), "agenvas-reference-catalog-"));
 const image = await readFile(new URL("../../examples/reference-pack/images/neutral-front.png", import.meta.url));
 const media = (server) => { server.middlewares.use((request, response, next) => {
-  if (!request.url?.startsWith("/api/v1/reference-catalog/synthetic-preview/") && request.url !== "/api/v1/reference-catalog/private-images/synthetic-auto/preview") return next();
+  if (!request.url?.startsWith("/api/v1/reference-catalog/synthetic-preview/") && request.url !== "/api/v1/reference-catalog/private-images/synthetic-auto/preview"
+      && !request.url?.match(/^\/api\/v1\/reference-catalog\/costumes\/[^/]+\/image$/)) return next();
   response.setHeader("Content-Type", "image/png"); response.end(image);
 }); };
 const config = { root, configFile: join(root, "vite.config.ts"), configLoader: "runner", cacheDir: join(profile, "vite-cache"),
@@ -219,9 +221,44 @@ try {
     await waitFor(() => document.querySelector('.reference-preview-dialog img')?.naturalWidth === 240);
     assert.equal(await page(() => document.documentElement.dataset.privateDownloadCount), "1", "Preview must reuse the automatically cached card image");
     assert.equal(await page(() => document.documentElement.dataset.importCount), "1", "Automatic caching must not import another project image");
+    await pointerClick('.reference-preview-dialog .ui-dialog-header button');
+    await waitFor(() => !document.querySelector('.reference-preview-dialog')
+      && document.activeElement === document.querySelector('.reference-card'));
+    assert.equal(await page(() => document.querySelectorAll('.reference-card').length), 1, 'Explicit external-source selection keeps its scope');
+    await pointerClick('.reference-source-choice [role=combobox]');
+    await pointerClick('[role=option][data-value=""]');
+    await waitFor(() => document.querySelectorAll('.reference-card').length === 2);
+    assert.equal(await page(() => document.querySelectorAll('.reference-card').length), 2, 'Self-created and external costumes share one list');
+    await pointerClick('.reference-card:last-child');
+    await waitFor(() => document.querySelector('.reference-preview-dialog img')?.naturalWidth === 240);
+    await pointerClick('.costume-reference-manager button:first-child');
+    await waitFor(() => Boolean(document.querySelector('.costume-reference-dialog')));
+    const customLayout = await page(() => {
+      const dialog = document.querySelector('.costume-reference-dialog');
+      return { overflow: dialog.scrollWidth > dialog.clientWidth, bottom: dialog.getBoundingClientRect().bottom };
+    });
+    assert.equal(customLayout.overflow, false, 'Custom costume editor must fit the viewport');
+    assert.ok(customLayout.bottom <= viewport.height + tolerance, 'Custom costume editor actions must remain accessible');
+    await page(() => {
+      const input = document.querySelector('.costume-reference-dialog input');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'Synthetic updated outfit');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await pointerClick('.costume-reference-dialog button[type=submit]');
+    await waitFor(() => !document.querySelector('.costume-reference-dialog') && document.documentElement.dataset.costumeUpdateCount === '1');
+    await pointerClick('.reference-preview-dialog button[type=submit]');
+    await waitFor(() => document.querySelector('#applied-reference').textContent === 'owned-custom-version');
+    assert.equal(await page(() => document.documentElement.dataset.costumeImportCount), '1', 'Self-created image imports through its own durable endpoint');
+    await pointerClick('.reference-picker-dialog .ui-dialog-header button');
+    await page(() => [...document.querySelectorAll('button')].find((button) => button.textContent === 'Save as costume reference').click());
+    await waitFor(() => Boolean(document.querySelector('.costume-reference-dialog')));
+    await pointerClick('.costume-reference-dialog button[type=submit]');
+    await waitFor(() => document.documentElement.dataset.costumeSaveCount === '1'
+      && document.querySelector('.costume-reference-dialog').textContent.includes('Costume reference saved.'));
+    assert.equal(await page(() => document.querySelector('.costume-reference-dialog').textContent.includes('Costume reference saved.')), true);
     console.log(JSON.stringify({ viewport, append: initial.button, sourceSettings: "visible", ownerCache: "old snapshot cleared" }));
   }
-  for (const viewport of [{ width: 2313, height: 694 }, { width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+  for (const viewport of pageViewports) {
     await cdp("Emulation.setDeviceMetricsOverride", { ...viewport, deviceScaleFactor: 1, mobile: false });
     await cdp("Page.navigate", { url: new URL(`${route}?page&locale=zh`, baseUrl).href });
     await waitFor(() => document.querySelectorAll('.reference-card').length === 2);
@@ -250,7 +287,36 @@ try {
       await writeFile(join(process.env.AGENVAS_E2E_SCREENSHOT_DIR, `filters-${viewport.width}x${viewport.height}.png`), Buffer.from(shot.data, 'base64'));
     }
   }
-  console.log(`Reference catalog browser regression passed: ${viewports.length} picker viewports, 3 labeled page toolbars, automatic private thumbnails, cache reuse, exact view import, source settings, owner cleanup`);
+  await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+  await cdp("Page.navigate", { url: new URL(`${route}?preferred`, baseUrl).href });
+  await pointerClick("#open-reference");
+  try { await waitFor(() => document.querySelectorAll('.reference-card').length === 1
+    && document.querySelector('.reference-card')?.getAttribute('aria-label') === 'Preview Synthetic website pose'); }
+  catch (failure) { console.log('Preferred directory diagnostic', await page(() => ({ url: location.href, reads: document.documentElement.dataset.catalogReads,
+    labels: [...document.querySelectorAll('.reference-card')].map((card) => card.getAttribute('aria-label')), source: document.querySelector('.reference-source-choice [role=combobox]')?.textContent,
+    text: document.body.textContent.slice(0, 600) }))); throw failure; }
+  await pointerClick('.reference-toolbar [role=radio]:nth-child(2)');
+  await waitFor(() => document.querySelectorAll('.reference-card').length === 2);
+  assert.deepEqual(await page(() => [...document.querySelectorAll('.reference-card')].map((card) => card.getAttribute('aria-label'))),
+    ['Preview Synthetic website costume', 'Preview Synthetic self-created costume'], 'Preferred website costumes include independently archived costumes');
+  const preferredReads = await page(() => JSON.parse(document.documentElement.dataset.catalogReads));
+  assert.ok(preferredReads.every((query) => new URLSearchParams(query).get('sourceId') === 'omilic'), 'Default reads must never transiently request All or legacy GitHub');
+  assert.equal(new URLSearchParams(preferredReads[0]).has('includeSelfCreated'), false, 'Pose scope stays unchanged');
+  assert.equal(new URLSearchParams(preferredReads.at(-1)).get('includeSelfCreated'), 'true', 'Only the automatic costume scope adds self-created entries');
+  assert.equal(await page(() => document.documentElement.dataset.privateDownloadCount), undefined, 'The default website must not start legacy image downloads');
+  await pointerClick('.reference-source-choice [role=combobox]');
+  await pointerClick('[role=option][data-value="synthetic"]');
+  await waitFor(() => document.querySelectorAll('.reference-card').length === 1
+    && document.querySelector('.reference-card')?.getAttribute('aria-label') === 'Preview Synthetic private costume');
+  assert.equal(await page(() => new URLSearchParams(JSON.parse(document.documentElement.dataset.catalogReads).at(-1)).has('includeSelfCreated')), false, 'Explicit source choices keep their original scope');
+  await pointerClick('.reference-source-choice [role=combobox]');
+  await pointerClick('[role=option][data-value="omilic"]');
+  await waitFor(() => document.querySelectorAll('.reference-card').length === 1
+    && document.querySelector('.reference-card')?.getAttribute('aria-label') === 'Preview Synthetic website costume');
+  await pointerClick('.reference-source-choice [role=combobox]');
+  await pointerClick('[role=option][data-value=""]');
+  await waitFor(() => document.querySelectorAll('.reference-card').length === 3);
+  console.log(`Reference catalog browser regression passed: ${viewports.length} picker viewports, ${pageViewports.length} labeled page toolbars, preferred website with unified costumes${viewports.length ? ", optional saving, metadata editing, automatic private thumbnails, exact imports, source and cache actions" : ""}`);
 
 } finally {
   socket?.close();

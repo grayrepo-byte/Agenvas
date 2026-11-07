@@ -46,6 +46,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -74,6 +75,7 @@ class ThreeViewPromptPostgresIT {
     private static final String SETTINGS_PATH = "/api/v1/settings/prompts";
     private static final Path STORAGE = temporaryStorage();
     private static final List<String> REQUESTS = new CopyOnWriteArrayList<>();
+    private static final List<List<String>> IMAGE_HASHES = new CopyOnWriteArrayList<>();
     private static final HttpServer SERVER = startServer();
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     private static AdminPrincipal owner;
@@ -109,6 +111,7 @@ class ThreeViewPromptPostgresIT {
         mvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
         REQUESTS.clear();
+        IMAGE_HASHES.clear();
     }
 
     @ParameterizedTest
@@ -191,6 +194,46 @@ class ThreeViewPromptPostgresIT {
         assertThat(REQUESTS.getLast()).isEqualTo(secondContent);
     }
 
+    @Test void costumeExtractionFreezesStyleAndSendsItAfterTheExactSource() throws Exception {
+        var connection = capabilities.createConnection("synthetic-costume", "Synthetic outfit provider", "OPENAI",
+                "http://127.0.0.1:" + SERVER.getAddress().getPort() + "/v1", "synthetic-image-key");
+        var capability = capabilities.publishCapability(connection.id(), "Synthetic outfit editing", "OPENAI_GPT_IMAGE_2", mapper.createObjectNode());
+        var function = functions.list().stream().filter(entry -> entry.operation() == MediaFunction.IMAGE_COSTUME_EXTRACT).findFirst().orElseThrow();
+        functions.update(MediaFunction.IMAGE_COSTUME_EXTRACT, function.version(), capability.id());
+        var project = projects.create(owner.userId(), "Synthetic outfit", Project.AspectRatio.LANDSCAPE_16_9);
+        var assetId = ImageAssetFixture.archive(assets, owner.userId(), project.id());
+        var image = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE, "Synthetic outfit source",
+                mapper.createObjectNode().put("assetId", assetId.toString()).put("sourceType", "UPLOAD"));
+        var card = dev.agenvas.support.CanvasMediaFixture.place(canvas, owner.userId(), project.id(), image.artifact().id());
+        var accepted = directMedia.runImageOperation(owner.userId(), project.id(), image.artifact().id(), card,
+                image.resourceDefaultVersion().id(), 0, ImageOperation.COSTUME_EXTRACT, "person on the left",
+                function.version() + 1, 1, List.of(), null, mapper.createObjectNode(), "synthetic-outfit-extraction");
+        var descriptor = accepted.input().at("/imageOperation/styleReference");
+        assertThat(descriptor.path("id").asText()).isEqualTo("costume-display-v1");
+        assertThat(descriptor.path("sha256").asText()).matches("[a-f0-9]{64}");
+        assertThat(accepted.input().at("/mediaInput/parameters/aspectRatio").asText()).isEqualTo("2:3");
+        assertThat(accepted.input().path("promptKey").asText()).isEqualTo("image.costume-extract");
+        String prompt = accepted.input().path("prompt").asText();
+        assertThat(prompt).contains("Image 1", "Image 2", "NEVER copy", "person on the left");
+        var preset = prompts.require("image.costume-extract", PromptService.Kind.FUNCTION);
+        save(preset, "Synthetic future extraction instructions");
+        var replay = directMedia.runImageOperation(owner.userId(), project.id(), image.artifact().id(), card,
+                image.resourceDefaultVersion().id(), 0, ImageOperation.COSTUME_EXTRACT, "person on the left",
+                function.version() + 1, 1, List.of(), null, mapper.createObjectNode(), "synthetic-outfit-extraction");
+        assertThat(replay.id()).isEqualTo(accepted.id());
+        assertThat(replay.inputHash()).isEqualTo(accepted.inputHash());
+        assertFrozenPrompt(replay, prompt);
+        assertThat(replay.input().at("/imageOperation/styleReference/sha256").asText()).isEqualTo(descriptor.path("sha256").asText());
+        assertThat(canvas.list(owner.userId(), project.id())).hasSize(2);
+        assertThat(worker.submitOnce("synthetic-outfit-worker")).isEqualTo(1);
+        assertThat(tasks.get(owner.userId(), project.id(), accepted.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(REQUESTS).containsExactly(prompt);
+        assertThat(IMAGE_HASHES).hasSize(1);
+        assertThat(IMAGE_HASHES.getFirst()).hasSize(2);
+        assertThat(IMAGE_HASHES.getFirst().get(1)).isEqualTo(descriptor.path("sha256").asText());
+        assertThat(IMAGE_HASHES.getFirst().get(0)).isNotEqualTo(IMAGE_HASHES.getFirst().get(1));
+    }
+
     private void assertFrozenPrompt(Task task, String expected) {
         assertThat(task.input().path("prompt").asText()).isEqualTo(expected);
         assertThat(task.input().path("mediaInput").path("prompt").asText()).isEqualTo(expected);
@@ -222,6 +265,16 @@ class ThreeViewPromptPostgresIT {
                 int contentEnd = multipart.indexOf("\r\n--", headersEnd + "\r\n\r\n".length());
                 if (field < 0 || headersEnd < 0 || contentEnd < 0) throw new IOException("Missing synthetic multipart prompt");
                 REQUESTS.add(multipart.substring(headersEnd + "\r\n\r\n".length(), contentEnd));
+                List<String> imageHashes = new java.util.ArrayList<>();
+                int offset = 0;
+                while ((offset = multipart.indexOf("name=\"image[]\"", offset)) >= 0) {
+                    int start = multipart.indexOf("\r\n\r\n", offset) + 4;
+                    int end = multipart.indexOf("\r\n--", start);
+                    byte[] png = multipart.substring(start, end).getBytes(StandardCharsets.ISO_8859_1);
+                    imageHashes.add(java.util.HexFormat.of().formatHex(digest(png)));
+                    offset = end;
+                }
+                IMAGE_HASHES.add(List.copyOf(imageHashes));
                 var bytes = new ByteArrayOutputStream();
                 ImageIO.write(new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB), "png", bytes);
                 byte[] response = ("{\"data\":[{\"b64_json\":\""
@@ -244,6 +297,11 @@ class ThreeViewPromptPostgresIT {
         } catch (IOException failure) {
             throw new ExceptionInInitializerError(failure);
         }
+    }
+
+    private static byte[] digest(byte[] bytes) {
+        try { return java.security.MessageDigest.getInstance("SHA-256").digest(bytes); }
+        catch (java.security.NoSuchAlgorithmException failure) { throw new IllegalStateException(failure); }
     }
 
     @AfterAll

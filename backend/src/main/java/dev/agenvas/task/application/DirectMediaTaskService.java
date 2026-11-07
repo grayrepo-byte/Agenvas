@@ -962,6 +962,10 @@ public class DirectMediaTaskService {
         }
         final int[] markupDimensions = markupAssetId != null && tasks.findDirectByStepKey(ownerId, projectId, commandKey).isEmpty()
                 ? validateImageMarkup(ownerId, projectId, sourceVersionId, markupAssetId) : null;
+        // Application media is materialized before the short acceptance transaction, just like masks.
+        final ObjectNode costumeStyle = operation == ImageOperation.COSTUME_EXTRACT
+                && tasks.findDirectByStepKey(ownerId, projectId, commandKey).isEmpty()
+                ? dev.agenvas.provider.application.CostumeExtractionReference.snapshot(mapper) : null;
         return events.recordChange(ownerId, projectId, () -> {
             Task prior = tasks.findDirectByStepKey(ownerId, projectId, commandKey).orElse(null);
             if (prior != null) {
@@ -1005,7 +1009,7 @@ public class DirectMediaTaskService {
             // Workflow fields own their scale; do not record an unseen local interpolation default.
             if (definition != null && operation == ImageOperation.UPSCALE) operationParameters.remove("scale");
             var inputPolicy = capabilities.inputPolicy(binding);
-            if (1 + normalizedReferenceIds.size() > inputPolicy.maxReferenceImages()) {
+            if (1 + normalizedReferenceIds.size() + (costumeStyle == null ? 0 : 1) > inputPolicy.maxReferenceImages()) {
                 throw invalid(ApiMessage.of("api.direct-media-task-service.the-selected-ai-image-capability-cannot-accept-this-many-reference"));
             }
             List<ArtifactVersion> referenceVersions = new ArrayList<>(
@@ -1044,7 +1048,7 @@ public class DirectMediaTaskService {
                     + "Remove the annotations from the finished image and preserve unmentioned details.";
             ObjectNode workflowParameters = imageWorkflowParameters(ownerId, projectId, source,
                     sourceVersionId, definition, requestedParameters, prompt);
-            String outputRatio = operation == ImageOperation.OUTPAINT || operation == ImageOperation.THREE_VIEW
+            String outputRatio = operation == ImageOperation.OUTPAINT || operation == ImageOperation.THREE_VIEW || operation == ImageOperation.COSTUME_EXTRACT
                     ? operationParameters.path("aspectRatio").asText()
                     : markupDimensions != null ? sourceAspectRatio(markupDimensions[0], markupDimensions[1], inputPolicy.supportedImageAspectRatios())
                     : sourceAspectRatio(ownerId, projectId, source, inputPolicy.supportedImageAspectRatios());
@@ -1091,6 +1095,7 @@ public class DirectMediaTaskService {
             else frozenOperation.put("maskAssetId", maskAssetId.toString());
             if (markupAssetId != null) frozenOperation.put("markupAssetId", markupAssetId.toString());
             frozenOperation.set("parameters", operationParameters.deepCopy());
+            if (costumeStyle != null) frozenOperation.set("styleReference", costumeStyle.deepCopy());
             freezeImageOperationMediaInput(input, artifactId, sourceVersionId, operationSettings,
                     new PreparedImageOperation(binding, definition, prompt, outputRatio,
                             transparentOutput, referenceVersions, workflowParameters));

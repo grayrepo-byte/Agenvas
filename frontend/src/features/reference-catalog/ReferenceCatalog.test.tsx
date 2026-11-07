@@ -168,3 +168,238 @@ it("labels a preview cached only when the server reports that exact variant as c
   await user.click(await screen.findByRole("button", { name: "Preview Walking" }));
   expect(screen.getByText("Cached locally on this server")).toBeInTheDocument();
 });
+
+const costume = { ...entry, id: "custom-costume", kind: "COSTUME", sourceId: "self-created", snapshotId: "custom-costume", origin: "SELF_CREATED", version: 3, title: "Saved outfit", tags: ["linen"], category: "Casual", variants: [{ ...variant, previewUrl: "/api/v1/reference-catalog/costumes/custom-costume/image" }] };
+it("browses saved and third-party costumes together without source-management tabs", async () => {
+  const user = setup([costume, { ...entry, kind: "COSTUME", title: "Third-party outfit" }], true);
+  await user.click(screen.getByRole("radio", { name: "Costumes" }));
+  expect(await screen.findByRole("button", { name: "Preview Saved outfit" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Preview Third-party outfit" })).toBeInTheDocument();
+  expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Preview Saved outfit" }));
+  expect(screen.getByRole("img")).toHaveAttribute("src", costume.variants[0]!.previewUrl);
+  expect(screen.getByRole("button", { name: "Edit costume details" })).toBeInTheDocument();
+});
+it("imports saved costumes by identity and CAS version with one stable replay command", async () => {
+  setLocale("en"); const requests: Record<string, unknown>[] = []; let applied = "";
+  server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ role: "ADMIN" })),
+    http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+    http.get("/api/v1/reference-catalog/sources", () => HttpResponse.json({ items: [] })),
+    http.get("/api/v1/reference-catalog", () => HttpResponse.json({ items: [costume], total: 1, offset: 0, limit: 50 })),
+    http.post("/api/v1/projects/project/reference-catalog/costumes/custom-costume/import", async ({ request }) => {
+      requests.push(await request.json() as Record<string, unknown>);
+      return requests.length === 1 ? HttpResponse.error() : HttpResponse.json({ versionId: "project-copy", assetId: "owned-image", title: costume.title });
+    }));
+  render(<QueryClientProvider client={createQueryClient()}><ReferenceCatalog projectId="project" placement={{ x: 80, y: 80 }} onApply={async (image) => { applied = image.versionId; }} /></QueryClientProvider>);
+  const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "Preview Saved outfit" }));
+  await user.click(screen.getByRole("button", { name: "Append as reference" })); await screen.findByRole("alert");
+  expect(applied).toBe(""); await user.click(screen.getByRole("button", { name: "Retry" }));
+  await waitFor(() => expect(applied).toBe("project-copy"));
+  expect(requests).toHaveLength(2); expect(requests[0]).toEqual(requests[1]);
+  expect(requests[0]).toMatchObject({ expectedVersion: 3, placement: { x: 80, y: 80 } });
+  expect(requests[0]).not.toHaveProperty("sourceId");
+});
+it("keeps costume metadata after a CAS conflict and deletes only after confirmation", async () => {
+  const user = setup([costume], true); const updates: Record<string, unknown>[] = []; const deletions: URL[] = [];
+  server.use(http.patch("/api/v1/reference-catalog/costumes/custom-costume", async ({ request }) => {
+    updates.push(await request.json() as Record<string, unknown>);
+    return HttpResponse.json({ title: "Details changed remotely", code: "VERSION_CONFLICT" }, { status: 409, headers: { "Content-Type": "application/problem+json" } });
+  }), http.delete("/api/v1/reference-catalog/costumes/custom-costume", ({ request }) => { deletions.push(new URL(request.url)); return new HttpResponse(null, { status: 204 }); }));
+  await user.click(await screen.findByRole("button", { name: "Preview Saved outfit" }));
+  await user.click(screen.getByRole("button", { name: "Edit costume details" }));
+  const name = screen.getByRole("textbox", { name: "Name" }); await user.clear(name); await user.type(name, "Edited linen outfit");
+  await user.click(screen.getByRole("button", { name: "Save details" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Your input has been kept");
+  expect(name).toHaveValue("Edited linen outfit"); expect(updates[0]).toMatchObject({ expectedVersion: 3, name: "Edited linen outfit", tags: ["linen"] });
+  await user.click(screen.getByRole("button", { name: "Cancel" }));
+  await user.click(screen.getByRole("button", { name: "Delete costume reference" })); expect(deletions).toHaveLength(0);
+  await user.click(screen.getByRole("button", { name: "Confirm deletion" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Saved outfit" })).not.toBeInTheDocument());
+  expect(deletions[0]?.searchParams.get("expectedVersion")).toBe("3");
+});
+it("reopens an uncertain costume import with its original command and reuses the imported image after a draft conflict", async () => {
+  setLocale("en"); const requests: Record<string, unknown>[] = []; let applied = 0;
+  server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ role: "ADMIN" })),
+    http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+    http.get("/api/v1/reference-catalog/sources", () => HttpResponse.json({ items: [] })),
+    http.get("/api/v1/reference-catalog", () => HttpResponse.json({ items: [costume], total: 1, offset: 0, limit: 50 })),
+    http.post("/api/v1/projects/project/reference-catalog/costumes/custom-costume/import", async ({ request }) => {
+      requests.push(await request.json() as Record<string, unknown>);
+      return requests.length === 1 ? HttpResponse.error() : HttpResponse.json({ versionId: "owned-copy", assetId: "owned-image", title: costume.title });
+    }));
+  render(<QueryClientProvider client={createQueryClient()}><ReferenceCatalog projectId="project" onApply={async () => { applied++; if (applied === 1) throw new Error("Draft changed; input kept"); }} /></QueryClientProvider>);
+  const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "Preview Saved outfit" }));
+  await user.click(screen.getByRole("button", { name: "Append as reference" })); await screen.findByRole("alert");
+  await user.click(screen.getByRole("button", { name: "Close" }));
+  await user.click(screen.getByRole("button", { name: "Preview Saved outfit" }));
+  await user.click(screen.getByRole("button", { name: "Retry" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Draft changed; input kept");
+  await user.click(screen.getByRole("button", { name: "Retry" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Saved outfit" })).not.toBeInTheDocument());
+  expect(requests).toHaveLength(2); expect(requests[0]).toEqual(requests[1]); expect(applied).toBe(2);
+});
+it("saves edited details on Enter without importing or applying the image", async () => {
+  const user = setup([costume], true); let saved = false;
+  server.use(http.patch("/api/v1/reference-catalog/costumes/custom-costume", async ({ request }) => {
+    const input = await request.json() as Record<string, unknown>; saved = true;
+    return HttpResponse.json({ ...costume, version: 4, title: input.name });
+  }));
+  await user.click(await screen.findByRole("button", { name: "Preview Saved outfit" }));
+  await user.click(screen.getByRole("button", { name: "Edit costume details" }));
+  await user.type(screen.getByRole("textbox", { name: "Name" }), " updated{Enter}");
+  await waitFor(() => expect(saved).toBe(true));
+  expect(screen.getByRole("dialog", { name: "Saved outfit updated" })).toBeInTheDocument();
+});
+it("allows a fresh costume import after a rejected CAS request and catalog refresh", async () => {
+  setLocale("en"); let current = costume; const requests: Record<string, unknown>[] = [];
+  server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ role: "ADMIN" })),
+    http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+    http.get("/api/v1/reference-catalog/sources", () => HttpResponse.json({ items: [] })),
+    http.get("/api/v1/reference-catalog", () => HttpResponse.json({ items: [current], total: 1, offset: 0, limit: 50 })),
+    http.post("/api/v1/projects/project/reference-catalog/costumes/custom-costume/import", async ({ request }) => {
+      requests.push(await request.json() as Record<string, unknown>);
+      return requests.length === 1 ? HttpResponse.json({ title: "Costume changed", code: "VERSION_CONFLICT" }, { status: 409, headers: { "Content-Type": "application/problem+json" } }) : HttpResponse.json({ versionId: "owned-copy" });
+    }));
+  render(<QueryClientProvider client={createQueryClient()}><ReferenceCatalog projectId="project" onApply={async () => {}} /></QueryClientProvider>);
+  const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "Preview Saved outfit" }));
+  await user.click(screen.getByRole("button", { name: "Append as reference" })); await screen.findByRole("alert");
+  await user.click(screen.getByRole("button", { name: "Close" })); current = { ...costume, version: 4 };
+  await user.click(screen.getByRole("button", { name: "Refresh" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled());
+  await user.click(screen.getByRole("button", { name: "Preview Saved outfit" }));
+  await user.click(screen.getByRole("button", { name: "Retry" }));
+  await waitFor(() => expect(requests).toHaveLength(2)); expect(requests[1]?.expectedVersion).toBe(4);
+  expect(requests[0]?.commandKey).not.toBe(requests[1]?.commandKey);
+});
+it("keeps saved-costume management restricted to the administrator", async () => {
+  const user = setup([costume]); await user.click(await screen.findByRole("button", { name: "Preview Saved outfit" }));
+  expect(screen.queryByRole("button", { name: "Edit costume details" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Delete costume reference" })).not.toBeInTheDocument();
+});
+
+it("refreshes the metadata CAS base in the open editor while preserving the local draft", async () => {
+  const user = setup([costume], true); const updates: Record<string, unknown>[] = [];
+  server.use(http.get("/api/v1/reference-catalog/costumes/custom-costume", () => HttpResponse.json({ ...costume, version: 4, title: "Changed remotely", tags: ["remote"] })),
+    http.patch("/api/v1/reference-catalog/costumes/custom-costume", async ({ request }) => {
+      const input = await request.json() as Record<string, unknown>; updates.push(input);
+      return input.expectedVersion === 3 ? HttpResponse.json({ title: "Details changed remotely", code: "VERSION_CONFLICT" }, { status: 409, headers: { "Content-Type": "application/problem+json" } })
+        : HttpResponse.json({ ...costume, version: 5, title: input.name });
+    }));
+  await user.click(await screen.findByRole("button", { name: "Preview Saved outfit" }));
+  await user.click(screen.getByRole("button", { name: "Edit costume details" }));
+  const name = screen.getByRole("textbox", { name: "Name" }); await user.clear(name); await user.type(name, "Local edits kept");
+  await user.click(screen.getByRole("button", { name: "Save details" })); await screen.findByRole("alert");
+  await user.click(screen.getByRole("button", { name: "Refresh details" }));
+  await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  expect(name).toHaveValue("Local edits kept"); expect(screen.getByRole("textbox", { name: "Tags" })).toHaveValue("linen");
+  await user.click(screen.getByRole("button", { name: "Save details" }));
+  expect(await screen.findByRole("dialog", { name: "Local edits kept" })).toBeInTheDocument();
+  expect(updates.map((input) => input.expectedVersion)).toEqual([3, 4]);
+});
+it("reconciles a lost successful metadata update by reading the exact next version", async () => {
+  const user = setup([costume], true); let current = costume; let updates = 0;
+  server.use(http.get("/api/v1/reference-catalog/costumes/custom-costume", () => HttpResponse.json(current)),
+    http.patch("/api/v1/reference-catalog/costumes/custom-costume", async ({ request }) => {
+      const input = await request.json() as Record<string, unknown>; updates++; current = { ...costume, version: 4, title: String(input.name) };
+      return HttpResponse.error();
+    }));
+  await user.click(await screen.findByRole("button", { name: "Preview Saved outfit" })); await user.click(screen.getByRole("button", { name: "Edit costume details" }));
+  await user.type(screen.getByRole("textbox", { name: "Name" }), " updated");
+  await user.click(screen.getByRole("button", { name: "Save details" })); await screen.findByRole("alert");
+  await user.click(screen.getByRole("button", { name: "Refresh details" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit costume details" })).not.toBeInTheDocument());
+  expect(screen.getByRole("dialog", { name: "Saved outfit updated" })).toBeInTheDocument(); expect(updates).toBe(1);
+});
+it("refreshes the deletion CAS base and retries deletion without reopening the preview", async () => {
+  const user = setup([costume], true); const deletions: string[] = [];
+  server.use(http.get("/api/v1/reference-catalog/costumes/custom-costume", () => HttpResponse.json({ ...costume, version: 4 })),
+    http.delete("/api/v1/reference-catalog/costumes/custom-costume", ({ request }) => {
+      const expected = new URL(request.url).searchParams.get("expectedVersion")!; deletions.push(expected);
+      return expected === "3" ? HttpResponse.json({ title: "Details changed remotely", code: "VERSION_CONFLICT" }, { status: 409, headers: { "Content-Type": "application/problem+json" } }) : new HttpResponse(null, { status: 204 });
+    }));
+  await user.click(await screen.findByRole("button", { name: "Preview Saved outfit" })); await user.click(screen.getByRole("button", { name: "Delete costume reference" }));
+  await user.click(screen.getByRole("button", { name: "Confirm deletion" })); await screen.findByRole("alert");
+  await user.click(screen.getByRole("button", { name: "Refresh details" }));
+  await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  await user.click(screen.getByRole("button", { name: "Confirm deletion" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Saved outfit" })).not.toBeInTheDocument()); expect(deletions).toEqual(["3", "4"]);
+});
+it("recognizes an already deleted entry after a lost deletion acknowledgement", async () => {
+  const user = setup([costume], true); let deletions = 0;
+  server.use(http.get("/api/v1/reference-catalog/costumes/custom-costume", () => HttpResponse.json({ title: "Not found", code: "NOT_FOUND" }, { status: 404, headers: { "Content-Type": "application/problem+json" } })),
+    http.delete("/api/v1/reference-catalog/costumes/custom-costume", () => { deletions++; return HttpResponse.error(); }));
+  await user.click(await screen.findByRole("button", { name: "Preview Saved outfit" })); await user.click(screen.getByRole("button", { name: "Delete costume reference" }));
+  await user.click(screen.getByRole("button", { name: "Confirm deletion" })); await screen.findByRole("alert");
+  await user.click(screen.getByRole("button", { name: "Refresh details" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Saved outfit" })).not.toBeInTheDocument()); expect(deletions).toBe(1);
+});
+it("refreshes a stale costume import inside the preview and retains its project copy after a draft conflict", async () => {
+  setLocale("en"); const requests: Record<string, unknown>[] = []; let applications = 0;
+  server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ role: "USER" })),
+    http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+    http.get("/api/v1/reference-catalog/sources", () => HttpResponse.json({ items: [] })),
+    http.get("/api/v1/reference-catalog", () => HttpResponse.json({ items: [costume], total: 1, offset: 0, limit: 50 })),
+    http.get("/api/v1/reference-catalog/costumes/custom-costume", () => HttpResponse.json({ ...costume, version: 4, title: "Current outfit" })),
+    http.post("/api/v1/projects/project/reference-catalog/costumes/custom-costume/import", async ({ request }) => {
+      const input = await request.json() as Record<string, unknown>; requests.push(input);
+      return input.expectedVersion === 3 ? HttpResponse.json({ title: "Costume changed", code: "VERSION_CONFLICT" }, { status: 409, headers: { "Content-Type": "application/problem+json" } }) : HttpResponse.json({ versionId: "owned-copy" });
+    }));
+  render(<QueryClientProvider client={createQueryClient()}><ReferenceCatalog projectId="project" onApply={async () => { applications++; if (applications === 1) throw new Error("Draft conflict; input kept"); }} /></QueryClientProvider>);
+  const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "Preview Saved outfit" }));
+  await user.click(screen.getByRole("button", { name: "Append as reference" })); await screen.findByRole("alert");
+  await user.click(screen.getByRole("button", { name: "Refresh details" }));
+  await screen.findByRole("dialog", { name: "Current outfit" });
+  await user.click(screen.getByRole("button", { name: "Retry" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Draft conflict; input kept");
+  await user.click(screen.getByRole("button", { name: "Retry" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Current outfit" })).not.toBeInTheDocument());
+  expect(requests.map((input) => input.expectedVersion)).toEqual([3, 4]); expect(requests[0]?.commandKey).not.toBe(requests[1]?.commandKey); expect(applications).toBe(2);
+});
+it("keeps refresh recovery available when an uncertain metadata editor is reopened", async () => {
+  const user = setup([costume], true);
+  server.use(http.patch("/api/v1/reference-catalog/costumes/custom-costume", () => HttpResponse.error()),
+    http.get("/api/v1/reference-catalog/costumes/custom-costume", () => HttpResponse.json({ ...costume, version: 4 })));
+  await user.click(await screen.findByRole("button", { name: "Preview Saved outfit" })); await user.click(screen.getByRole("button", { name: "Edit costume details" }));
+  await user.type(screen.getByRole("textbox", { name: "Name" }), " pending");
+  await user.click(screen.getByRole("button", { name: "Save details" })); await screen.findByRole("alert");
+  await user.click(screen.getByRole("button", { name: "Cancel" })); await user.click(screen.getByRole("button", { name: "Edit costume details" }));
+  await user.click(screen.getByRole("button", { name: "Refresh details" }));
+  await waitFor(() => expect(screen.getByRole("textbox", { name: "Name" })).toBeEnabled());
+  expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("Saved outfit pending");
+});
+it("combines saved website and self-created costumes by default without broadening explicit source filters", async () => {
+  const sources = ["OMILIC", "GITHUB"].map((sourceType) => ({ sourceType, id: sourceType.toLowerCase(), name: sourceType,
+    enabled: true, version: 1, currentSnapshotId: "snapshot" }));
+  const reads: URL[] = [];
+  const external = [{ ...entry, sourceId: "omilic", title: "Website pose" },
+    { ...entry, kind: "COSTUME", sourceId: "omilic", title: "Website outfit" },
+    { ...entry, kind: "COSTUME", sourceId: "github", title: "GitHub outfit" }];
+  const user = setup([], false, undefined, sources, (request) => {
+    const url = new URL(request.url); reads.push(url);
+    const source = url.searchParams.get("sourceId"); const includeSelfCreated = url.searchParams.get("includeSelfCreated") === "true";
+    const items = [...external, costume].filter((item) => item.kind === url.searchParams.get("kind")
+      && (!source || item.sourceId === source || includeSelfCreated && "origin" in item && item.origin === "SELF_CREATED"));
+    return HttpResponse.json({ items, total: items.length, offset: 0, limit: 50 });
+  });
+  await screen.findByRole("button", { name: "Preview Website pose" });
+  await user.click(screen.getByRole("radio", { name: "Costumes" }));
+  await screen.findByRole("button", { name: "Preview Website outfit" });
+  expect(await screen.findByRole("button", { name: "Preview Saved outfit" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Preview GitHub outfit" })).not.toBeInTheDocument();
+  expect(reads.every((url) => url.searchParams.get("sourceId") === "omilic")).toBe(true);
+  expect(reads[0]?.searchParams.has("includeSelfCreated")).toBe(false);
+  expect(reads.at(-1)?.searchParams.get("includeSelfCreated")).toBe("true");
+  await user.click(screen.getByRole("combobox", { name: "Source" })); await user.click(screen.getByRole("option", { name: "GITHUB" }));
+  await screen.findByRole("button", { name: "Preview GitHub outfit" });
+  expect(screen.queryByRole("button", { name: "Preview Saved outfit" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Preview Website outfit" })).not.toBeInTheDocument();
+  expect(reads.at(-1)?.searchParams.has("includeSelfCreated")).toBe(false);
+  await user.click(screen.getByRole("combobox", { name: "Source" })); await user.click(screen.getByRole("option", { name: "OMILIC" }));
+  await screen.findByRole("button", { name: "Preview Website outfit" });
+  expect(screen.queryByRole("button", { name: "Preview Saved outfit" })).not.toBeInTheDocument();
+  expect(reads.at(-1)?.searchParams.has("includeSelfCreated")).toBe(false);
+  await user.click(screen.getByRole("combobox", { name: "Source" })); await user.click(screen.getByRole("option", { name: "All" }));
+  expect(await screen.findByRole("button", { name: "Preview Saved outfit" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Preview Website outfit" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Preview GitHub outfit" })).toBeInTheDocument();
+});

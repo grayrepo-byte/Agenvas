@@ -23,6 +23,25 @@ class MediaFunctionServiceTest {
     private final MediaCapabilityService catalog = mock(MediaCapabilityService.class);
     private final MediaFunctionService service = new MediaFunctionService(repository, catalog, Clock.systemUTC());
 
+    @Test void costumeExtractionRequiresOpenAiWithTwoImageInputs() {
+        var function = MediaFunction.valueOf("IMAGE_COSTUME_EXTRACT");
+        UUID id = UUID.randomUUID();
+        for (String adapter : java.util.List.of(MediaAdapterRegistry.GOOGLE_NANO_BANANA_2,
+                MediaAdapterRegistry.COMFY_IMAGE_V1)) {
+            var binding = new MediaCapabilityBinding(UUID.randomUUID(), 1, id, 1, adapter, "a".repeat(64));
+            when(catalog.resolve(id, Task.Kind.IMAGE_GENERATION, 0)).thenReturn(binding);
+            when(catalog.inputPolicy(binding)).thenReturn(new MediaAdapterRegistry(java.util.List.of()).declaration(adapter));
+            assertThatThrownBy(() -> service.update(function, 0, id)).isInstanceOf(ApiProblemException.class)
+                    .extracting("code").isEqualTo("MEDIA_FUNCTION_INCOMPATIBLE");
+        }
+        var binding = new MediaCapabilityBinding(UUID.randomUUID(), 1, id, 1, MediaAdapterRegistry.OPENAI_GPT_IMAGE_2, "a".repeat(64));
+        when(catalog.resolve(id, Task.Kind.IMAGE_GENERATION, 0)).thenReturn(binding);
+        when(catalog.inputPolicy(binding)).thenReturn(new MediaAdapterRegistry(java.util.List.of()).declaration(binding.adapterId()));
+        when(repository.update(eq(function), eq(0L), eq(id), any())).thenReturn(true);
+        service.update(function, 0, id);
+        verify(repository).update(eq(function), eq(0L), eq(id), any());
+    }
+
     @Test void rejectsGenerationCapabilitiesWithoutVideoInput() {
         UUID id = UUID.randomUUID();
         var binding = new MediaCapabilityBinding(UUID.randomUUID(), 1, id, 1, "COMFY_VIDEO_V1", "a".repeat(64));

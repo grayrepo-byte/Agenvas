@@ -60,6 +60,15 @@ public class MediaFunctionService {
         boolean local = image != null && !image.cloud()
                 && MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(binding.adapterId());
         if (image != null) {
+            // This tool reserves its second image for the immutable display-style reference.
+            if (image == ImageOperation.COSTUME_EXTRACT) {
+                var policy = catalog.inputPolicy(binding);
+                if (!MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(binding.adapterId())
+                        || policy.maxReferenceImages() < 2 || !policy.supportedImageAspectRatios().contains("2:3")) {
+                    throw problem(HttpStatus.BAD_REQUEST, "MEDIA_FUNCTION_INCOMPATIBLE", ApiMessage.of("api.media-function.incompatible"));
+                }
+                return binding;
+            }
             if (local) return binding;
             var policy = catalog.inputPolicy(binding);
             boolean transparent = image == ImageOperation.REMOVE_BACKGROUND || image == ImageOperation.LAYER_SPLIT;

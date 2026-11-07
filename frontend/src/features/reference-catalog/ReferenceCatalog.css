@@ -53,3 +53,5 @@
 .reference-private-record dt { color: var(--ui-text-muted); }
 .reference-private-record dd { margin: 0; overflow-wrap: anywhere; }
 .reference-private-manager-dialog [data-slot="button"] { max-width: 100%; }
+
+.costume-reference-dialog .ui-dialog-body, .costume-reference-manager { display: flex; flex-direction: column; gap: var(--ui-space-4); min-width: 0; }

@@ -21,7 +21,8 @@ public class ReferenceCatalogController {
     @GetMapping("/reference-catalog") public ReferenceCatalogService.Page list(@RequestParam(required=false) Kind kind,@RequestParam(required=false) String sourceId,
             @RequestParam(defaultValue="") String query,@RequestParam(required=false) String category,@RequestParam(required=false) String tag,@RequestParam(required=false) String style,
             @RequestParam(required=false) String collection,@RequestParam(required=false) Boolean extended,@RequestParam(required=false) String angle,
-            @RequestParam(defaultValue="0") int offset,@RequestParam(defaultValue="50") int limit){return catalog.list(kind,sourceId,query,category,tag,style,collection,extended,angle,offset,limit);}
+            @RequestParam(defaultValue="0") int offset,@RequestParam(defaultValue="50") int limit,
+            @RequestParam(defaultValue="false") boolean includeSelfCreated){return catalog.list(kind,sourceId,query,category,tag,style,collection,extended,angle,offset,limit,includeSelfCreated);}
     public record Create(@NotBlank @Size(max=100) String id,@NotBlank @Size(max=160) String name,@NotBlank @Size(max=100) String owner,
             @NotBlank @Size(max=100) String repository,@NotBlank @Size(max=160) String ref,@Size(max=512) String manifestPath,@NotNull Format format,boolean imageDistributionApproved,SourceType sourceType){}
     public record Update(@NotNull @PositiveOrZero Long expectedVersion,@NotNull Boolean enabled,@NotNull Boolean imageDistributionApproved){}
