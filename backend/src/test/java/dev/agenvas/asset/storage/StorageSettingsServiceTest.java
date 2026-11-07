@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
 
 class StorageSettingsServiceTest {
     @Test void httpStorageEndpointsSupportPublicAndPrivateServicesWithoutAllowlist() {
-        for (String host : java.util.List.of("storage.example.com", "8.8.8.8", "192.168.1.50", "[fd12::1]")) {
+        for (String host : java.util.List.of("storage.example.com", "8.8.8.8", "192.168.1.50", "[fd12::1]", "localhost", "127.0.0.1", "169.254.169.254", "[fd00:ec2::254]")) {
             String origin = "http://" + host + ":9000";
             assertThat(StorageSettingsService.normalizeEndpoint(origin)).isEqualTo(origin);
             assertThat(RemoteFileSupport.endpoint(StorageProfile.Provider.WEBDAV, origin + "/dav"))
@@ -25,8 +25,8 @@ class StorageSettingsServiceTest {
 
     @Test void endpointsNeverCarryCredentialsPathsOrQueryStrings() {
         assertThat(StorageSettingsService.normalizeEndpoint(" https://s3.example.com/ ")).isEqualTo("https://s3.example.com");
-        for (String endpoint : new String[] { "http://169.254.169.254", "http://127.0.0.1:9000", "http://[fd00:ec2::254]:9000", "https://key@s3.example.com", "https://s3.example.com/bucket",
-                "https://s3.example.com?token=secret", "https://s3.example.com#fragment", "file:///tmp", "broken" })
+        for (String endpoint : new String[] { "https://key@s3.example.com", "https://s3.example.com/bucket",
+                "https://s3.example.com?token=secret", "https://s3.example.com#fragment", "file:///tmp", "http://localhost:0", "http://localhost:65536", "broken" })
             assertThatThrownBy(() -> StorageSettingsService.normalizeEndpoint(endpoint)).isInstanceOf(ApiProblemException.class);
     }
     @Test void concurrentUpdateFailsBeforeEncryptionOrPersistence() {
@@ -128,7 +128,7 @@ class StorageSettingsServiceTest {
         for (String endpoint : new String[] { "smb://nas.example.com", "smb://user:password@nas.example.com/media", "smb://nas.example.com/media/../other",
                 "smb://nas.example.com/media/%2e%2e", "smb://nas.example.com/media/%2fother", "smb://nas.example.com/media/%5cother", "smb://nas.example.com:0/media", "smb://nas.example.com/media/%0A%0D" })
             assertThatThrownBy(() -> RemoteFileSupport.endpoint(StorageProfile.Provider.SMB, endpoint)).isInstanceOf(ApiProblemException.class);
-        for (String endpoint : new String[] { "http://169.254.169.254/dav", "http://127.0.0.1/dav", "https://user@nas.example.com/dav", "https://nas.example.com/dav?token=secret", "https://nas.example.com/dav#part" })
+        for (String endpoint : new String[] { "https://user@nas.example.com/dav", "https://nas.example.com/dav?token=secret", "https://nas.example.com/dav#part" })
             assertThatThrownBy(() -> RemoteFileSupport.endpoint(StorageProfile.Provider.WEBDAV, endpoint)).isInstanceOf(ApiProblemException.class);
     }
     @Test void remoteUserPasswordsAreEncryptedAndCannotBeSelectedForRelay() {

@@ -1,5 +1,7 @@
 # ADR 0070: Operator-selected HTTP or HTTPS endpoints
 
+> 地址拦截、地址白名单及回环准入规则已由 [ADR 0079](0079-remove-outbound-address-checks.md) 替代；以下保留历史决策背景。
+
 Status: Accepted (2026-11-04). The user explicitly requested removing mandatory HTTPS for public and private configured endpoints. This supersedes ADR 0067's default HTTP rejection; existing exact-origin and loopback controls remain available.
 
 ## Decision

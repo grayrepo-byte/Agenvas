@@ -23,18 +23,18 @@ class LocalServiceProbeTest {
     private final LocalServiceDiscoveryProperties properties = new LocalServiceDiscoveryProperties(true,
             LocalServiceDiscoveryProperties.Mode.AUTO);
 
-    @Test void validatesAllDnsAnswersBeforeAnyConnection() throws Exception {
+    @Test void discoveryAcceptsEveryResolvedAddressWithoutANetworkAllowlist() throws Exception {
         for (String forbidden : List.of("8.8.8.8", "127.0.0.1", "169.254.169.254", "198.18.0.1", "::1", "fc00::1")) {
             AtomicInteger connections = new AtomicInteger();
-            var probe = new LocalServiceProbe(properties, host -> List.of(ip("192.168.65.254"), ip(forbidden)),
-                    () -> true, () -> "Linux", dns -> request -> { connections.incrementAndGet(); throw new AssertionError(); });
+            var probe = new LocalServiceProbe(properties, host -> List.of(ip(forbidden)),
+                    () -> true, () -> "Linux", dns -> request -> { connections.incrementAndGet(); return response(request, 200, "{\"version\":\"synthetic\"}"); });
             assertThat(probe.discover(Service.OLLAMA, Runtime.CONTAINER, new AtomicReference<>(), budget()).status())
-                    .isEqualTo(Status.BLOCKED_ADDRESS);
-            assertThat(connections).hasValue(0);
+                    .isEqualTo(Status.FOUND);
+            assertThat(connections).hasValue(1);
         }
     }
 
-    @Test void pinsOnlyOneCheckedAnswerAndUsesFixedCredentialFreeRequest() throws Exception {
+    @Test void pinsOneResolvedAnswerAndUsesFixedCredentialFreeRequest() throws Exception {
         AtomicInteger lookups = new AtomicInteger();
         AtomicInteger requests = new AtomicInteger();
         var probe = new LocalServiceProbe(properties, host -> {

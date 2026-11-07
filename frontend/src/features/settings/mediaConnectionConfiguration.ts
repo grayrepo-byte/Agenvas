@@ -7,8 +7,8 @@ export const mediaConnectionAddresses: Partial<Record<MediaConnection["platform"
   label: MessageKey; hint: MessageKey; placeholder?: string; fixed?: string; required?: boolean; requiresApiKey: boolean;
 }>> = {
   WAN: { label: "settings.mediaSettings.baseUrl", hint: "settings.mediaSettings.wanAddressHint", placeholder: "https://your-workspace.cn-beijing.maas.aliyuncs.com", required: true, requiresApiKey: true },
-  KLING: { label: "settings.mediaSettings.fixedApiUrl", hint: "settings.mediaSettings.klingAddressHint", requiresApiKey: true },
-  MINIMAX: { label: "settings.mediaSettings.minimaxAddressLabel", hint: "settings.mediaSettings.minimaxAddressHint", requiresApiKey: true },
+  KLING: { label: "settings.mediaSettings.baseUrl", hint: "settings.mediaSettings.klingAddressHint", placeholder: KLING_API_ORIGIN, requiresApiKey: true },
+  MINIMAX: { label: "settings.mediaSettings.minimaxAddressLabel", hint: "settings.mediaSettings.minimaxAddressHint", placeholder: "https://api.minimax.cn", requiresApiKey: true },
   COMFYUI: { label: "settings.mediaSettings.comfyUrl", hint: "settings.mediaSettings.comfyAddressHint", required: true, requiresApiKey: false },
   RUNNINGHUB: { label: "settings.mediaSettings.runningHubApi", hint: "settings.mediaSettings.runningHubAddressHint", placeholder: "https://www.runninghub.ai", requiresApiKey: true },
   OPENAI: { label: "settings.mediaSettings.baseUrl", hint: "settings.mediaSettings.openAiAddressHint", placeholder: "https://api.openai.com/v1", requiresApiKey: true },

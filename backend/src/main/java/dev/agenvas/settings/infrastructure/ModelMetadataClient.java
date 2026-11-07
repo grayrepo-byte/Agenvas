@@ -99,14 +99,10 @@ public class ModelMetadataClient implements AutoCloseable {
             String suppliedPath = uri.getRawPath() == null || uri.getRawPath().isEmpty() ? "/" : uri.getRawPath();
             // Avoid alternate numeric IP syntax and encoded dot-segments changing the admitted scope.
             if ((!suppliedHost.contains(":") && !base.host().equalsIgnoreCase(suppliedHost)) || !base.encodedPath().equals(suppliedPath)) throw failure("INVALID");
-            if (base.host().contains(":") || base.host().matches("[0-9.]+"))
-                policy.requireAllowedAddress(URI.create(endpoint), InetAddress.getByName(base.host()));
             var client = PinnedHttpClients.pinnedUncaptured(host -> {
                 if (!host.equalsIgnoreCase(base.host())) throw new UnknownHostException("Blocked metadata target");
                 List<InetAddress> answers = dns.lookup(host);
                 if (answers.isEmpty()) throw new UnknownHostException("No metadata address");
-                try { for (var answer : answers) policy.requireAllowedAddress(uri, answer); }
-                catch (RuntimeException blocked) { throw new UnknownHostException("Blocked metadata address"); }
                 return answers;
             }, Duration.ofSeconds(2), Duration.ofSeconds(3), deadline);
             String prefix = base.encodedPath().replaceAll("/+$", "");

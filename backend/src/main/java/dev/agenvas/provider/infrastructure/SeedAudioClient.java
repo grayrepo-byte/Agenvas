@@ -32,13 +32,9 @@ public final class SeedAudioClient {
     @Autowired
     public SeedAudioClient(ObjectMapper mapper) { this(mapper, OFFICIAL); }
     public SeedAudioClient(ObjectMapper mapper, URI origin) {
-        if (!OFFICIAL.equals(origin) && !("http".equals(origin.getScheme())
-                && "127.0.0.1".equals(origin.getHost()) && origin.getPort() > 0
-                && (origin.getRawPath() == null || origin.getRawPath().isEmpty())
-                && origin.getRawUserInfo() == null && origin.getRawQuery() == null
-                && origin.getRawFragment() == null)) throw new IllegalArgumentException("Unsupported speech origin");
+        dev.agenvas.shared.security.ServiceEndpointPolicy.origin(origin.toString());
         this.mapper = mapper; this.origin = origin;
-        http = PinnedHttpClients.pinned(FixedCloudDns.checked(Dns.SYSTEM, !OFFICIAL.equals(origin)),
+        http = PinnedHttpClients.pinned(Dns.SYSTEM,
                 Duration.ofSeconds(10), Duration.ofMinutes(5), Duration.ofMinutes(5));
     }
 

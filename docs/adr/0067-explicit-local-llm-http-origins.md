@@ -1,5 +1,7 @@
 # ADR 0067：显式准入本地 LLM HTTP Origin
 
+> 地址拦截、地址白名单及回环准入规则已由 [ADR 0079](0079-remove-outbound-address-checks.md) 替代；以下保留历史决策背景。
+
 状态：接受（2026-11-04）。根据外部实测反馈修复本地模型连接路径；保留默认安全边界。
 
 默认拒绝 HTTP 的决定已由 [ADR 0070](0070-operator-selected-http-endpoints.md) 按用户新要求替代；本 ADR 保留历史动机，精确 Origin 与独立回环开关继续有效。

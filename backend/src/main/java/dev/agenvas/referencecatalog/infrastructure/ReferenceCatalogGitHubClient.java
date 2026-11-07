@@ -19,7 +19,7 @@ public class ReferenceCatalogGitHubClient {
     public ReferenceCatalogGitHubClient() { this(new PublicDownloadHttpClients()); }
     @org.springframework.beans.factory.annotation.Autowired
     public ReferenceCatalogGitHubClient(PublicDownloadHttpClients clients) {
-        this.http=clients.create(java.util.Set.of("api.github.com","raw.githubusercontent.com"),
+        this.http=clients.create(
                 Duration.ofSeconds(10),Duration.ofSeconds(30),Duration.ofSeconds(60));
     }
     public String resolve(Source source) {

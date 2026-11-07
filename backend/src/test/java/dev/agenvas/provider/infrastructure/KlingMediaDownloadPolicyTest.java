@@ -40,19 +40,17 @@ class KlingMediaDownloadPolicyTest {
         });
         server.start();
         origin = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
-        downloads = KlingMediaDownloadPolicy.forLoopbackTest(origin);
+        downloads = new KlingMediaDownloadPolicy();
     }
     @AfterEach void stop() { server.stop(0); }
 
-    @Test void onlyAllowsOfficialHttpsHostsAndExactSubdomainBoundaries() {
-        var official = new KlingMediaDownloadPolicy();
-        official.validate(URI.create("https://h1.inkwai.com/output.png?signature=synthetic"));
-        official.validate(URI.create("https://cdn.klingai.com/output.mp4"));
-        for (String invalid : java.util.List.of("https://h2.inkwai.com/a.mp4", "https://evil-klingai.com/a.mp4",
-                "https://cdn.klingai.com.attacker.example/a.mp4", "http://cdn.klingai.com/a.mp4",
-                "https://cdn.klingai.com:444/a.mp4", "https://user@cdn.klingai.com/a.mp4",
-                "https://cdn.klingai.com/a.mp4#fragment", "https://cdn.klingai.com/../a.mp4", "https://127.0.0.1/a.mp4"))
-            assertThatThrownBy(() -> official.validate(URI.create(invalid))).isInstanceOf(KlingMediaDownloadPolicy.Rejected.class);
+    @Test void resultDownloadsAcceptAnyHttpHostAndValidPort() {
+        var policy = new KlingMediaDownloadPolicy();
+        for (String url : java.util.List.of("http://localhost:8090/result.mp4", "https://proxy.invalid:8443/result.mp4",
+                "http://169.254.169.254/result.mp4", "http://[::1]/result.mp4")) policy.validate(URI.create(url));
+        for (String url : java.util.List.of("file:///tmp/result.mp4", "https://user@localhost/result.mp4", "https://localhost/../result.mp4",
+                "https://localhost/result.mp4#fragment", "http://localhost:0/result.mp4"))
+            assertThatThrownBy(() -> policy.validate(URI.create(url))).isInstanceOf(KlingMediaDownloadPolicy.Rejected.class);
     }
 
     @Test void downloadsWithNoCredentialAndChecksEachMediaSignature() {

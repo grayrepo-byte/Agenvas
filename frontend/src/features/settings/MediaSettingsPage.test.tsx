@@ -96,9 +96,9 @@ describe("MediaSettingsPage", () => {
     await user.click(await screen.findByRole("button", { name: "添加连接" }));
     const dialog = screen.getByRole("dialog");
     await selectValue(within(dialog).getByRole("combobox", { name: "平台" }), "KLING");
-    const address = within(dialog).getByRole("combobox", { name: "固定 API 地址" });
-    expect(address).toHaveValue("https://api-singapore.klingai.com");
-    if (origin !== "https://api-singapore.klingai.com") await selectValue(address, origin);
+    const address = within(dialog).getByRole("textbox", { name: t("settings.mediaSettings.baseUrl") });
+    expect(address).toHaveValue("");
+    await user.type(address, origin);
     await user.type(within(dialog).getByRole("textbox", { name: "连接名称" }), "可灵连接");
     await user.type(within(dialog).getByLabelText("API Key"), "synthetic-kling-key");
     await user.click(within(dialog).getByRole("button", { name: "添加连接" }));
@@ -324,9 +324,9 @@ describe("MediaSettingsPage", () => {
     await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
     await user.click(await screen.findByRole("button", { name: "编辑连接" }));
     const dialog = screen.getByRole("dialog");
-    const address = within(dialog).getByRole("combobox", { name: "固定 API 地址" });
-    expect(address).toHaveValue(initialOrigin ?? "https://api-singapore.klingai.com");
-    if (origin !== (initialOrigin ?? "https://api-singapore.klingai.com")) await selectValue(address, origin);
+    const address = within(dialog).getByRole("textbox", { name: t("settings.mediaSettings.baseUrl") });
+    expect(address).toHaveValue(initialOrigin ?? "");
+    await user.clear(address); await user.type(address, origin);
     await user.click(within(dialog).getByRole("button", { name: "保存连接" }));
     await waitFor(() => expect(writes).toEqual([{ expectedVersion: 1, name: "OpenAI", enabled: true, origin, apiKey: null }]));
   });
@@ -379,9 +379,9 @@ describe("MediaSettingsPage", () => {
     await user.click(await screen.findByRole("button", { name: "添加连接" }));
     const dialog = screen.getByRole("dialog");
     await selectValue(within(dialog).getByRole("combobox", { name: "平台" }), "MINIMAX");
-    const address = within(dialog).getByRole("combobox", { name: "MiniMax API 地址" });
-    expect(address).toHaveValue("https://api.minimax.cn");
-    await selectValue(address, "https://api.minimax.io");
+    const address = within(dialog).getByRole("textbox", { name: "MiniMax API 地址" });
+    expect(address).toHaveValue("");
+    await user.type(address, "https://api.minimax.io");
     await user.type(within(dialog).getByRole("textbox", { name: "连接名称" }), "MiniMax");
     await user.type(within(dialog).getByLabelText("API Key"), "synthetic-h3-key");
     await user.click(within(dialog).getByRole("button", { name: "添加连接" }));
@@ -2130,7 +2130,7 @@ it.each([false, true])("fills ComfyUI explicitly without saving or losing the dr
     http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
     http.post("/api/v1/settings/local-services/discover", async ({ request }) => {
       expect(await request.json()).toEqual({ service: "COMFYUI" });
-      return HttpResponse.json({ service: "COMFYUI", runtime: "CONTAINER", status: "FOUND", endpoint: "http://192.168.65.254:8188", policyAllowed: true });
+      return HttpResponse.json({ service: "COMFYUI", runtime: "CONTAINER", status: "FOUND", endpoint: "http://192.168.65.254:8188" });
     }),
     http.post("/api/v1/settings/media-connections", async ({ request }) => { writes.push(await request.json()); return new HttpResponse(null, { status: 500 }); }),
     http.put("/api/v1/settings/media-connections/openai-1", async ({ request }) => { writes.push(await request.json()); return new HttpResponse(null, { status: 500 }); }),

@@ -69,8 +69,7 @@ import tools.jackson.databind.node.ObjectNode;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.library.worker-enabled=false",
-        "agenvas.skill.worker-enabled=false",
-        "agenvas.settings.llm.allow-loopback-http=true"})
+        "agenvas.skill.worker-enabled=false"})
 class ProjectExportManifestPostgresIT {
 
     @Container

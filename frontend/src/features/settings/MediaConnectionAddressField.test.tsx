@@ -33,6 +33,18 @@ describe("MediaConnectionAddressField", () => {
     expect(field).toHaveAccessibleDescription(translate("en", "settings.mediaSettings.comfyHostHint"));
   });
 
+  it.each(["KLING", "MINIMAX"] as const)("accepts a custom %s service address", async (platform) => {
+    const user = userEvent.setup();
+    function Draft() {
+      const [origin, setOrigin] = useState("");
+      return <MediaConnectionAddressField platform={platform} origin={origin} onChange={setOrigin} />;
+    }
+    render(<Draft />);
+    const field = screen.getByRole("textbox");
+    await user.type(field, "http://localhost:8090");
+    expect(field).toHaveValue("http://localhost:8090");
+  });
+
   it("keeps other platform placeholders and caller-provided descriptions", () => {
     render(<><p id="address-note">Connection guidance</p><MediaConnectionAddressField platform="OPENAI" origin=""
       onChange={vi.fn()} describedBy="address-note" /></>);

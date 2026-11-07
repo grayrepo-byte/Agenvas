@@ -81,15 +81,14 @@ class AutoDlClientTest {
         response = response.replace("completed", "surprise");
         assertThatThrownBy(() -> client.query("fake-token", ID)).isInstanceOf(AutoDlClient.ProtocolFailure.class);
     }
-    @Test void downloadsWithoutTokenAndRejectsUntrustedHostsPathsAndRedirects() throws IOException {
+    @Test void downloadsWithoutTokenAndRejectsMalformedPathsAndRedirects() throws IOException {
         String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/comfyui/outputs/test.mp4";
         response = "fake-media";
         try (var payload = client.downloadVideo(url)) {
             assertThat(new String(payload.stream().readAllBytes(), StandardCharsets.UTF_8)).isEqualTo(response);
         }
         assertThat(receivedAuthorization).isNull();
-        for (String bad : new String[] {"http://169.254.169.254/comfyui/outputs/x.mp4",
-                "https://example.com/comfyui/outputs/x.mp4", url.replace("outputs", "%2e%2e"),
+        for (String bad : new String[] {"file:///comfyui/outputs/x.mp4", url.replace("outputs", "%2e%2e"),
                 url.replace("/comfyui/outputs", "/private")})
             assertThatThrownBy(() -> client.downloadVideo(bad)).isInstanceOf(AutoDlClient.ResultRejected.class);
         int before = calls.get(); status = 302;

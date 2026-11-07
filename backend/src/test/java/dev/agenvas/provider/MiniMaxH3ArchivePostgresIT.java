@@ -259,7 +259,7 @@ class MiniMaxH3ArchivePostgresIT {
                             .isEqualTo("/v2/query/video_generation/" + TASK_ID);
                     int query = QUERIES.incrementAndGet();
                     String videoUrl = MALICIOUS_RESULT.get()
-                            ? "http://169.254.169.254/latest/meta-data"
+                            ? "file:///invalid-result.mp4"
                             : "http://127.0.0.1:" + server.getAddress().getPort()
                                     + (query == 1 || EXPIRED_UNREFRESHABLE.get()
                                             ? "/expired.mp4" : "/result.mp4");
@@ -308,8 +308,7 @@ class MiniMaxH3ArchivePostgresIT {
 
         @Bean @Primary
         MiniMaxMediaDownloadPolicy fakeMiniMaxDownloadPolicy() {
-            return MiniMaxMediaDownloadPolicy.forLoopbackTest(
-                    URI.create("http://127.0.0.1:" + SERVER.getAddress().getPort()));
+            return new MiniMaxMediaDownloadPolicy();
         }
     }
 

@@ -3841,3 +3841,11 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 复现并修复 ComfyUI 连接 Dialog 内帮助 Popover 被父对话框及遮罩挡住的问题：通用 Popover 从独立的 50 层改用公共 `--ui-z-popup`，与 Select/DropdownMenu/Tooltip 对齐。既有本机发现浏览器专项新增真实命中检查，先红后绿，并验证 Escape 只关闭帮助、保留未保存的父表单；生产 CSS 下 1440/390px 通过。同步设计系统说明，无 API、数据库、迁移、生成类型或依赖变化。
 - [x] 公共提示词浏览器专项通过，覆盖 1024px 的预览入口及图片/视频/音频连线、保存、刷新和断线。补齐旧画布合成夹具的反推任务列表空数组响应，避免新入口读取到错误的夹具数据结构。四个相关前端文件共 164 项单元通过；完整 lint/主题/四语言目录、类型检查、生产构建与差异空白检查通过。保留既有 Vite 配置加载器、大分块和 jsdom 媒体 pause 提示。
 - [ ] 未运行全量、后端、真实 Provider 或部署验证；本轮浏览器使用隔离合成数据与内存 API，临时排查脚本已移除，截图保存在仓库外。
+
+## 2026-11-07 移除地址安全检查与白名单
+
+- [x] 按用户决定删除共用 IP 分类器、云媒体 DNS 拦截、下载公网检查、CDN 主机/端口白名单、LLM HTTP Origin/回环准入开关和中继公网预检。模型、媒体、来源同步、存储、中继及本机发现均不再过滤私网、localhost、IPv4/IPv6、特殊用途或代理 Fake-IP 地址；保留 URL/协议路径、凭据作用域、鉴权、文件/响应限制及任务重试语义。可灵/MiniMax 改用既有 shadcn 地址输入框，可配置的 WAN/Google 原生视频不限定官方域名或区域。
+- [x] 删除本地发现的 `BLOCKED_ADDRESS` 和 `policyAllowed`，同步 OpenAPI、生成 TypeScript、四语言提示、Compose/环境示例、规格和网络指南；[ADR 0079](adr/0079-remove-outbound-address-checks.md) 替代旧地址策略。删除旧部署变量，不保留策略开关兼容层；没有数据库、Flyway、jOOQ 或依赖版本变化。现有 API 客户端需适配发现结果的新结构；历史同步失败可重新同步。
+- [x] 定向后端验证共 50 个单元测试类、518 项，以及 10 个真实 PostgreSQL 测试类、11 项，均零失败、错误或跳过。单元范围含 Provider HTTP/DNS、来源下载/解析、DoH/HTTP CONNECT/SOCKS5、LLM/元数据、存储签名、中继和发现；PostgreSQL 范围为 `LlmProviderConfigPostgresIT`、`MediaCloudCapabilityPostgresIT`、`MediaCapabilitySettingsPostgresIT`、`ComfyUiRemoteConnectionPostgresIT`、`ObjectStoragePostgresIT`、`RemoteFileStoragePostgresIT`、`SeedanceVideoReferencePostgresIT`、`OpenAiImage2PostgresIT`、`ArkSeedanceArchivePostgresIT`、`MiniMaxH3ArchivePostgresIT`。通过 Maven 定向 `-Dtest=... test` 和 `-Dit.test=... verify` 执行；先复现本地下载及自定义地址输入失败，再验证修复。非官方地址的旧拒绝断言改为保存/使用成功，异常路径改用合成的无效 URL；最终验证使用本地合成 HTTP/媒体和独立 PostgreSQL，不提供真实 Provider 成功调用证据。
+- [x] 5 个相关前端文件共 147 项通过；`pnpm api:generate`、`pnpm typecheck`、`pnpm lint`、`pnpm build`、`pnpm test:local-service-discovery` 及四个主要 Compose 入口配置检查通过。浏览器使用生产 CSS、1440/390px 和合成 API，覆盖发现/填入/取消/迟到结果、手工草稿、密钥保留及帮助弹层命中。独立代码复核的参考链接残留限制与 Ark/MiniMax 编码路径误拒已修正，复核未发现剩余问题。保留既有 Vite 配置加载器、大分块和 Mockito/JVM 提示。
+- [ ] 未运行全量测试、真实模型/Provider、用户当前代理网络或实例的现场同步、部署升级验证；未推送或部署。上述本地合成 HTTP/代理与 PostgreSQL 结果不代表真实 Provider 可达或用户网络已接通。

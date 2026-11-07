@@ -33,22 +33,17 @@ public class MiniMaxH3Client {
 
     /** Loopback override is only injectable by fake-service tests. */
     public MiniMaxH3Client(ObjectMapper mapper, URI testOrigin) {
-        if (testOrigin != null && !("http".equals(testOrigin.getScheme())
-                && "127.0.0.1".equals(testOrigin.getHost()) && testOrigin.getPort() > 0
-                && testOrigin.getPort() <= 65535 && "".equals(testOrigin.getRawPath())
-                && testOrigin.getRawUserInfo() == null && testOrigin.getRawQuery() == null
-                && testOrigin.getRawFragment() == null)) throw new IllegalArgumentException("Invalid MiniMax test origin");
+        if (testOrigin != null) dev.agenvas.shared.security.ServiceEndpointPolicy.origin(testOrigin.toString());
         this.mapper = mapper;
         this.testOrigin = testOrigin;
-        this.http = PinnedHttpClients.pinned(FixedCloudDns.checked(Dns.SYSTEM, testOrigin != null),
+        this.http = PinnedHttpClients.pinned(Dns.SYSTEM,
                 Duration.ofSeconds(10), Duration.ofSeconds(30), Duration.ofMinutes(2));
     }
 
     public static String validatedOrigin(String origin) {
         if (origin == null || origin.isBlank()) return CHINA;
-        String normalized = origin.trim().replaceAll("/+$", "");
-        if (!Set.of(CHINA, INTERNATIONAL).contains(normalized)) throw MiniMaxH3Protocol.invalid();
-        return normalized;
+        try { return dev.agenvas.shared.security.ServiceEndpointPolicy.origin(origin); }
+        catch (IllegalArgumentException invalid) { throw MiniMaxH3Protocol.invalid(); }
     }
 
     public record Reference(String type, String role, String url) {

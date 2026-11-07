@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-import dev.agenvas.provider.application.ComfyUiEndpointPolicy;
 import dev.agenvas.settings.application.LocalServiceDiscoveryService.Runtime;
 import dev.agenvas.settings.application.LocalServiceDiscoveryService.Service;
 import dev.agenvas.settings.application.LocalServiceDiscoveryService.Status;
@@ -29,21 +28,21 @@ class LocalServiceDiscoveryServiceTest {
     private final LocalServiceProbe probe = mock(LocalServiceProbe.class);
     private final MutableClock clock = new MutableClock();
 
-    @Test void foundDoesNotGrantLlmHttpPermissionAndComfyKeepsExistingPolicy() throws Exception {
+    @Test void foundServicesCanBeSelectedWithoutAddressPermissionSwitches() throws Exception {
         when(probe.runtime()).thenReturn(Runtime.NATIVE);
         when(probe.discover(eq(Service.OLLAMA), eq(Runtime.NATIVE), any(), any()))
                 .thenReturn(found("http://127.0.0.1:11434/v1", "127.0.0.1"));
         when(probe.discover(eq(Service.COMFYUI), eq(Runtime.NATIVE), any(), any()))
                 .thenReturn(found("http://127.0.0.1:8188", "127.0.0.1"));
-        try (var service = service(new LlmEndpointProperties(false), Duration.ofSeconds(1))) {
+        try (var service = service(Duration.ofSeconds(1))) {
             var ollama = service.discover(Service.OLLAMA);
             assertThat(ollama.status()).isEqualTo(Status.FOUND);
-            assertThat(ollama.policyAllowed()).isFalse();
+            assertThat(ollama.status()).isEqualTo(Status.FOUND);
             clock.advance();
-            assertThat(service.discover(Service.COMFYUI).policyAllowed()).isTrue();
+            assertThat(service.discover(Service.COMFYUI).status()).isEqualTo(Status.FOUND);
         }
-        try (var service = service(new LlmEndpointProperties(true), Duration.ofSeconds(1))) {
-            assertThat(service.discover(Service.OLLAMA).policyAllowed()).isTrue();
+        try (var service = service(Duration.ofSeconds(1))) {
+            assertThat(service.discover(Service.OLLAMA).status()).isEqualTo(Status.FOUND);
         }
     }
 
@@ -51,18 +50,8 @@ class LocalServiceDiscoveryServiceTest {
         when(probe.runtime()).thenReturn(Runtime.CONTAINER);
         when(probe.discover(eq(Service.OLLAMA), eq(Runtime.CONTAINER), any(), any()))
                 .thenReturn(found("http://host.docker.internal:11434/v1", "192.168.65.254"));
-        try (var service = service(new LlmEndpointProperties(false), Duration.ofSeconds(1))) {
-            assertThat(service.discover(Service.OLLAMA).policyAllowed()).isTrue();
-        }
-    }
-
-    @Test void exactDeploymentOriginAllowsThePinnedContainerCandidate() throws Exception {
-        when(probe.runtime()).thenReturn(Runtime.CONTAINER);
-        when(probe.discover(eq(Service.OLLAMA), eq(Runtime.CONTAINER), any(), any()))
-                .thenReturn(found("http://host.docker.internal:11434/v1", "192.168.65.254"));
-        try (var service = service(new LlmEndpointProperties(false,
-                List.of("http://host.docker.internal:11434")), Duration.ofSeconds(1))) {
-            assertThat(service.discover(Service.OLLAMA).policyAllowed()).isTrue();
+        try (var service = service(Duration.ofSeconds(1))) {
+            assertThat(service.discover(Service.OLLAMA).status()).isEqualTo(Status.FOUND);
         }
     }
 
@@ -79,7 +68,7 @@ class LocalServiceDiscoveryServiceTest {
                 return new LocalServiceProbe.Detected(Status.UNRESOLVED, null, null);
             } finally { exited.countDown(); }
         });
-        try (var service = service(new LlmEndpointProperties(false), Duration.ofMillis(100))) {
+        try (var service = service(Duration.ofMillis(100))) {
             assertThat(service.discover(Service.OLLAMA).status()).isEqualTo(Status.TIMEOUT);
             assertThat(started.await(1, TimeUnit.SECONDS)).isTrue();
             clock.advance();
@@ -94,23 +83,22 @@ class LocalServiceDiscoveryServiceTest {
     @Test void enforcesRequestIntervalAndDeploymentDisableWithoutNetwork() {
         when(probe.runtime()).thenReturn(Runtime.NATIVE);
         when(probe.discover(any(), any(), any(), any())).thenReturn(new LocalServiceProbe.Detected(Status.NOT_FOUND, null, null));
-        try (var service = service(new LlmEndpointProperties(false), Duration.ofSeconds(1))) {
+        try (var service = service(Duration.ofSeconds(1))) {
             assertThat(service.discover(Service.OLLAMA).status()).isEqualTo(Status.NOT_FOUND);
             assertBusy(() -> service.discover(Service.OLLAMA));
         }
         reset(probe);
         try (var disabled = new LocalServiceDiscoveryService(new LocalServiceDiscoveryProperties(false,
-                LocalServiceDiscoveryProperties.Mode.AUTO), probe, new LlmEndpointPolicy(new LlmEndpointProperties(false)),
-                new ComfyUiEndpointPolicy(), clock)) {
+                LocalServiceDiscoveryProperties.Mode.AUTO), probe, clock)) {
             assertThatThrownBy(() -> disabled.discover(Service.OLLAMA)).isInstanceOfSatisfying(ApiProblemException.class,
                     failure -> assertThat(failure.status()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE));
             verifyNoInteractions(probe);
         }
     }
 
-    private LocalServiceDiscoveryService service(LlmEndpointProperties llm, Duration deadline) {
+    private LocalServiceDiscoveryService service(Duration deadline) {
         return new LocalServiceDiscoveryService(new LocalServiceDiscoveryProperties(true,
-                LocalServiceDiscoveryProperties.Mode.AUTO), probe, new LlmEndpointPolicy(llm), new ComfyUiEndpointPolicy(), clock, deadline);
+                LocalServiceDiscoveryProperties.Mode.AUTO), probe, clock, deadline);
     }
     private static LocalServiceProbe.Detected found(String endpoint, String address) throws Exception {
         return new LocalServiceProbe.Detected(Status.FOUND, endpoint, InetAddress.getByName(address));

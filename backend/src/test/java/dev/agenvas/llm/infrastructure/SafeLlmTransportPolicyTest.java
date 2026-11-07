@@ -1,64 +1,31 @@
 package dev.agenvas.llm.infrastructure;
 
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
+import static org.assertj.core.api.Assertions.*;
+import com.sun.net.httpserver.HttpServer;
 import dev.agenvas.settings.application.LlmEndpointPolicy;
-import dev.agenvas.settings.application.LlmEndpointProperties;
-import dev.agenvas.shared.error.ApiProblemException;
 import java.net.InetAddress;
-import java.net.UnknownHostException;
+import java.net.InetSocketAddress;
 import java.util.List;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import org.junit.jupiter.api.Test;
 
-/** An operator HTTP exception never bypasses runtime origin, IP or pinned DNS checks. */
 class SafeLlmTransportPolicyTest {
-    @Test
-    void httpDnsCannotRebindToSpecialAddresses() {
-        String endpoint = "http://model.internal:11434/v1";
-        var policy = new LlmEndpointPolicy(new LlmEndpointProperties(false));
-        for (String blocked : List.of("127.0.0.1", "169.254.169.254", "fd00:ec2::254")) {
-            var transport = new SafeLlmTransport(endpoint, policy,
-                    host -> List.of(InetAddress.getByName("192.168.1.50"), InetAddress.getByName(blocked)));
+    @Test void configuredHostnameCanResolveToLoopbackAndCompleteTheRequest() throws Exception {
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            exchange.sendResponseHeaders(200, -1); exchange.close();
+        }); server.start();
+        try {
+            String endpoint = "http://model.invalid:" + server.getAddress().getPort() + "/v1";
+            var transport = new SafeLlmTransport(endpoint, new LlmEndpointPolicy(),
+                    ignored -> List.of(InetAddress.getByName("127.0.0.1")));
             var client = new OkHttpClient.Builder().addInterceptor(transport.interceptor()).build();
             var request = new Request.Builder().url(endpoint + "/chat/completions")
-                    .header("Authorization", "Bearer synthetic-local-key")
                     .post(RequestBody.create("{}", okhttp3.MediaType.get("application/json"))).build();
-            assertThatThrownBy(() -> client.newCall(request).execute()).as(blocked)
-                    .isInstanceOf(UnknownHostException.class).hasMessageContaining("blocked address");
-        }
-    }
-
-    @Test
-    void removingAnHttpOriginRevokesPersistedConfigurationsBeforeAnyRequest() {
-        var defaultPolicy = new LlmEndpointPolicy(new LlmEndpointProperties(false, List.of(), false));
-        assertThatThrownBy(() -> new SafeLlmTransport("http://192.168.1.50:11434/v1", defaultPolicy))
-                .isInstanceOf(ApiProblemException.class);
-    }
-
-    @Test
-    void rejectsMetadataIpLiteralsEvenWhenAnOperatorAccidentallyTrustsTheOrigin() {
-        var policy = new LlmEndpointPolicy(new LlmEndpointProperties(false,
-                List.of("http://169.254.169.254:11434")));
-        assertThatThrownBy(() -> new SafeLlmTransport("http://169.254.169.254:11434/v1", policy))
-                .isInstanceOf(ApiProblemException.class);
-    }
-
-    @Test
-    void rejectsTrustedHostDnsRebindingToMetadataBeforeNetworkConnection() {
-        String endpoint = "http://model.internal:11434/v1";
-        var policy = new LlmEndpointPolicy(new LlmEndpointProperties(false,
-                List.of("http://model.internal:11434")));
-        var transport = new SafeLlmTransport(endpoint, policy,
-                host -> List.of(InetAddress.getByName("192.168.1.50"),
-                        InetAddress.getByName("169.254.169.254")));
-        var client = new OkHttpClient.Builder().addInterceptor(transport.interceptor()).build();
-        var request = new Request.Builder().url(endpoint + "/chat/completions")
-                .header("Authorization", "Bearer synthetic-local-key")
-                .post(RequestBody.create("{}", okhttp3.MediaType.get("application/json"))).build();
-        assertThatThrownBy(() -> client.newCall(request).execute())
-                .isInstanceOf(UnknownHostException.class).hasMessageContaining("blocked address");
+            try (var response = client.newCall(request).execute()) { assertThat(response.code()).isEqualTo(200); }
+        } finally { server.stop(0); }
     }
 }

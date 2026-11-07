@@ -1,13 +1,11 @@
 package dev.agenvas.provider.infrastructure;
 
-import dev.agenvas.shared.security.EndpointAddressRules;
 import dev.agenvas.shared.security.ServiceEndpointPolicy;
 import dev.agenvas.shared.http.DebugHttpCapture;
 import dev.agenvas.shared.http.PinnedHttpClients;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.InetAddress;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.UnknownHostException;
@@ -52,8 +50,6 @@ public class ComfyUiClient {
     private static final Pattern PROMPT_ID = Pattern.compile("[A-Za-z0-9_-]+");
     private static final int MAX_REDIRECTS = 3;
     private static final int MAX_REDIRECT_LOCATION_CHARACTERS = 8192;
-    private static final int DEFAULT_HTTPS_PORT = 443;
-    private static final Pattern NUMERIC_HOST = Pattern.compile("[0-9.]+");
     private static final String HTTP_GET = "GET";
     private static final String HTTP_HEAD = "HEAD";
     private static final String HTTP_POST = "POST";
@@ -81,12 +77,12 @@ public class ComfyUiClient {
         this.mapper = mapper;
         this.client = PinnedHttpClients.pinned(serviceDns(origin),
                 CONNECT_TIMEOUT, REQUEST_TIMEOUT, REQUEST_TIMEOUT);
-        this.redirectClient = PinnedHttpClients.pinned(checkedRedirectDns(Dns.SYSTEM),
+        this.redirectClient = PinnedHttpClients.pinned(Dns.SYSTEM,
                 CONNECT_TIMEOUT, REQUEST_TIMEOUT, REQUEST_TIMEOUT);
     }
 
     private static Dns serviceDns(URI origin) {
-        try { return ServiceEndpointPolicy.dns(origin, Dns.SYSTEM, true); }
+        try { return ServiceEndpointPolicy.dns(origin, Dns.SYSTEM); }
         catch (UnknownHostException blocked) { throw new IllegalArgumentException("Invalid ComfyUI service address"); }
     }
 
@@ -345,7 +341,7 @@ public class ComfyUiClient {
         });
     }
 
-    /** Same-origin redirects retain administrator address rules; foreign targets must use public HTTPS. */
+    /** Resolve bounded result redirects while keeping configured path credentials on their original service. */
     static URI checkedRedirect(URI origin, URI current, String location, Dns redirectDns) {
         try {
             if (location == null || location.isBlank() || location.length() > MAX_REDIRECT_LOCATION_CHARACTERS)
@@ -362,19 +358,12 @@ public class ComfyUiClient {
             } else {
                 target = current.resolve(reference);
             }
-            ServiceEndpointPolicy.requireNoDowngrade(current, target);
-            if (target.getHost() == null || target.getRawUserInfo() != null || target.getRawFragment() != null)
-                throw new IllegalArgumentException();
+            ServiceEndpointPolicy.downloadDns(target, redirectDns);
             if (sameOrigin(origin, target)) {
                 // Validate the selected address and path, while retaining the target's own query/signature.
                 ComfyUiEndpoint.checked(target.getScheme() + "://" + target.getRawAuthority() + target.getRawPath());
             } else {
-                if (!"https".equals(target.getScheme()) || target.getPort() != -1 && target.getPort() != DEFAULT_HTTPS_PORT)
-                    throw new IllegalArgumentException();
                 rejectOriginPathSecrets(origin, target);
-                // Literal IP URLs bypass OkHttp DNS; resolve them through the same strict policy before a request.
-                if (NUMERIC_HOST.matcher(target.getHost()).matches() || target.getHost().contains(":"))
-                    redirectDns.lookup(target.getHost());
             }
             return target;
         } catch (IllegalArgumentException | UnknownHostException failure) {
@@ -394,25 +383,9 @@ public class ComfyUiClient {
         }
     }
 
-    static Dns checkedRedirectDns(Dns resolver) {
-        Dns checked = FixedCloudDns.checked(resolver, false);
-        return hostname -> {
-            List<InetAddress> addresses = checked.lookup(hostname);
-            for (InetAddress address : addresses) {
-                // Preserve the existing HTTPS fake-IP proxy compatibility; real private addresses stay blocked.
-                if (EndpointAddressRules.isPrivateNetwork(address)) {
-                    throw new UnknownHostException("ComfyUI redirect DNS returned blocked address");
-                }
-            }
-            return addresses;
-        };
-    }
-
     private static boolean sameOrigin(URI origin, URI target) {
         return ServiceEndpointPolicy.sameOrigin(origin, target);
     }
-
-
 
     /** 有界读取 JSON 响应；格式错误映射为不含原始上游正文的协议失败。 */
     private JsonNode readJson(TransportResponse response, int maximum) {

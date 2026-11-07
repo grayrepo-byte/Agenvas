@@ -1,6 +1,7 @@
 package dev.agenvas.provider.infrastructure;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.sun.net.httpserver.HttpServer;
@@ -84,9 +85,9 @@ class SeedAudioClientTest {
         }
     }
     @Test
-    void rejectsCustomOriginsAndInvalidAudioControls() {
-        assertThatThrownBy(() -> new SeedAudioClient(mapper, URI.create("https://evil.example")))
-                .isInstanceOf(IllegalArgumentException.class);
+    void acceptsCustomOriginsAndRejectsInvalidAudioControls() {
+        assertThatCode(() -> new SeedAudioClient(mapper, URI.create("http://localhost:8090")))
+                .doesNotThrowAnyException();
         for (String json : List.of("{\"speechRate\":101}", "{\"pitchRate\":13}", "{\"loudnessRate\":-51}", "{\"speaker\":\"bad\\nspeaker\"}"))
             assertThatThrownBy(() -> AudioGenerationParameters.parse(mapper.readTree(json)))
                     .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);

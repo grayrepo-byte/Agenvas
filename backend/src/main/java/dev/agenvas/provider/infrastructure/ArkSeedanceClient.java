@@ -37,17 +37,11 @@ public class ArkSeedanceClient {
 
     /** Loopback is admitted solely for the local fake-service tests. */
     public ArkSeedanceClient(ObjectMapper mapper, URI origin) {
-        if (!OFFICIAL.equals(origin) && !("http".equals(origin.getScheme())
-                && "127.0.0.1".equals(origin.getHost()) && origin.getPort() > 0
-                && (origin.getRawPath() == null || origin.getRawPath().isEmpty())
-                && origin.getRawUserInfo() == null && origin.getRawQuery() == null
-                && origin.getRawFragment() == null)) {
-            throw new IllegalArgumentException("Unsupported fixed Ark API origin");
-        }
+        dev.agenvas.shared.security.ServiceEndpointPolicy.origin(origin.toString());
         this.mapper = mapper;
         this.origin = origin;
         this.http = PinnedHttpClients.pinned(
-                FixedCloudDns.checked(Dns.SYSTEM, !OFFICIAL.equals(origin)),
+                Dns.SYSTEM,
                 Duration.ofSeconds(10), Duration.ofSeconds(10), Duration.ofMinutes(2));
     }
 

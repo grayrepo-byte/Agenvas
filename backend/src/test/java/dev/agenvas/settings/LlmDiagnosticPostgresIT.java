@@ -54,8 +54,7 @@ import tools.jackson.databind.ObjectMapper;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.llm.mode=configured",
-        "agenvas.llm.scheduler-enabled=false",
-        "agenvas.settings.llm.allow-loopback-http=true"})
+        "agenvas.llm.scheduler-enabled=false"})
 class LlmDiagnosticPostgresIT {
 
     @Container

@@ -68,14 +68,14 @@ class LocalServiceDiscoveryControllerTest {
             }
             verifyNoInteractions(discovery);
             when(discovery.discover(Service.OLLAMA)).thenReturn(new LocalServiceDiscoveryService.Result(
-                    Service.OLLAMA, Runtime.CONTAINER, Status.FOUND, "http://host.docker.internal:11434/v1", false));
+                    Service.OLLAMA, Runtime.CONTAINER, Status.FOUND, "http://host.docker.internal:11434/v1"));
             var result = mvc.perform(post(PATH).with(csrf()).with(user("admin").roles("ADMIN"))
                     .contentType("application/json").content("{\"service\":\"OLLAMA\"}"))
                     .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
                     .andExpect(jsonPath("$.service").value("OLLAMA")).andExpect(jsonPath("$.runtime").value("CONTAINER"))
-                    .andExpect(jsonPath("$.status").value("FOUND")).andExpect(jsonPath("$.policyAllowed").value(false))
+                    .andExpect(jsonPath("$.status").value("FOUND"))
                     .andReturn();
-            assertThat(new ObjectMapper().readTree(result.getResponse().getContentAsString()).size()).isEqualTo(5);
+            assertThat(new ObjectMapper().readTree(result.getResponse().getContentAsString()).size()).isEqualTo(4);
         }
     }
 

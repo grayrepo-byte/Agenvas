@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import com.sun.net.httpserver.HttpServer;
 import dev.agenvas.llm.application.LlmProtocolCodec;
 import dev.agenvas.settings.application.LlmEndpointPolicy;
-import dev.agenvas.settings.application.LlmEndpointProperties;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -53,7 +52,7 @@ class SafeLlmStreamingLimitHttpTest {
         server.start();
         String endpoint = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1";
         SafeLlmTransport transport = new SafeLlmTransport(endpoint,
-                new LlmEndpointPolicy(new LlmEndpointProperties(true)));
+                new LlmEndpointPolicy());
         OpenAiChatModel model = OpenAiChatModel.builder().options(OpenAiChatOptions.builder()
                 .baseUrl(endpoint).apiKey("synthetic-unusable-key").model("synthetic-limit-model")
                 .maxRetries(0).streamUsage(false).timeout(Duration.ofSeconds(TIMEOUT_SECONDS)).build())
@@ -90,7 +89,7 @@ class SafeLlmStreamingLimitHttpTest {
         });
         server.start();
         String endpoint = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1";
-        SafeLlmTransport transport = new SafeLlmTransport(endpoint, new LlmEndpointPolicy(new LlmEndpointProperties(true)));
+        SafeLlmTransport transport = new SafeLlmTransport(endpoint, new LlmEndpointPolicy());
         OpenAiChatModel model = OpenAiChatModel.builder().options(OpenAiChatOptions.builder()
                 .baseUrl(endpoint).apiKey("synthetic-unusable-key").model("synthetic-limit-model")
                 .maxRetries(0).streamUsage(false).timeout(Duration.ofSeconds(TIMEOUT_SECONDS)).build())
@@ -138,7 +137,7 @@ class SafeLlmStreamingLimitHttpTest {
         });
         server.start();
         String endpoint = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1";
-        SafeLlmTransport transport = new SafeLlmTransport(endpoint, new LlmEndpointPolicy(new LlmEndpointProperties(true)));
+        SafeLlmTransport transport = new SafeLlmTransport(endpoint, new LlmEndpointPolicy());
         OpenAiChatModel model = OpenAiChatModel.builder().options(OpenAiChatOptions.builder()
                 .baseUrl(endpoint).apiKey("synthetic-unusable-key").model("synthetic-limit-model")
                 .maxRetries(0).timeout(Duration.ofSeconds(TIMEOUT_SECONDS)).build())

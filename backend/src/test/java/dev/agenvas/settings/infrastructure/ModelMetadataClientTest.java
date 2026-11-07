@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.sun.net.httpserver.HttpServer;
 import dev.agenvas.settings.application.LlmEndpointPolicy;
-import dev.agenvas.settings.application.LlmEndpointProperties;
 import dev.agenvas.settings.application.ModelCatalog.Provider;
 import dev.agenvas.settings.application.ModelCatalog;
 import java.net.InetSocketAddress;
@@ -71,7 +70,7 @@ class ModelMetadataClientTest {
         } finally { server.stop(0); }
     }
 
-    private final LlmEndpointPolicy policy = new LlmEndpointPolicy(new LlmEndpointProperties(true));
+    private final LlmEndpointPolicy policy = new LlmEndpointPolicy();
 
     @Test void compatibleMetadataPreservesTenantPrefixAndBearerIsNeverInUrl() throws Exception {
         var paths = new ArrayList<String>(); var authorization = new ArrayList<String>();
@@ -120,22 +119,22 @@ class ModelMetadataClientTest {
         } finally { server.stop(0); }
     }
 
-    @Test void unapprovedHttpAndMetadataTargetsAreRejectedBeforeDispatch() {
+    @Test void malformedCredentialUrlsAreRejectedBeforeDispatch() {
         AtomicInteger lookups = new AtomicInteger();
         Dns resolver = host -> {
             lookups.incrementAndGet();
             throw new java.net.UnknownHostException("Synthetic resolver must not be reached");
         };
-        try (var client = new ModelMetadataClient(new LlmEndpointPolicy(new LlmEndpointProperties(false, List.of(), false)), resolver, Duration.ofSeconds(1))) {
-            for (String target : List.of("http://169.254.169.254/v1", "http://192.168.1.50/v1", "https://user:secret@example.com/v1"))
+        try (var client = new ModelMetadataClient(new LlmEndpointPolicy(), resolver, Duration.ofSeconds(1))) {
+            for (String target : List.of("https://user:secret@example.com/v1", "file:///v1"))
                 assertThatThrownBy(() -> client.fetch(Provider.COMPATIBLE, target, "synthetic-key", null))
                         .isInstanceOf(ModelMetadataClient.MetadataFailure.class).hasMessage("MODEL_METADATA_INVALID");
             assertThat(lookups).hasValue(0);
         }
     }
-    @Test void canonicalizationCannotTurnAnAliasOrEscapedPathIntoAnotherCredentialScope() {
+    @Test void canonicalizationCannotTurnAnEscapedPathIntoAnotherCredentialScope() {
         try (var client = new ModelMetadataClient(policy, Dns.SYSTEM, Duration.ofSeconds(1))) {
-            for (String target : List.of("https://2130706433/v1", "https://127.0.0.1/tenant/%2e%2e/v1"))
+            for (String target : List.of("https://127.0.0.1/tenant/%2e%2e/v1"))
                 assertThatThrownBy(() -> client.fetch(Provider.COMPATIBLE, target, "synthetic-key", null)).hasMessage("MODEL_METADATA_INVALID");
         }
     }
@@ -260,17 +259,13 @@ class ModelMetadataClientTest {
                     .hasMessage("MODEL_METADATA_INVALID");
         }
     }
-    @Test void excessiveDeclaredBodiesAndMixedMetadataDnsAreRejectedWithoutEchoingSecrets() throws Exception {
+    @Test void excessiveDeclaredBodiesAreRejectedWithoutEchoingSecrets() throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1/models", exchange -> { exchange.sendResponseHeaders(200, 8*1024*1024+1); exchange.close(); }); server.start();
         try (var client = new ModelMetadataClient(policy, Dns.SYSTEM, Duration.ofSeconds(2))) {
             assertThatThrownBy(() -> client.fetch(Provider.COMPATIBLE, endpoint(server)+"/v1", "synthetic-key", null)).hasMessage("MODEL_METADATA_TOO_LARGE");
         } finally { server.stop(0); }
-        Dns mixed = host -> List.of(java.net.InetAddress.getByName("10.0.0.5"), java.net.InetAddress.getByName("169.254.169.254"));
-        try (var client = new ModelMetadataClient(policy, mixed, Duration.ofSeconds(1))) {
-            assertThatThrownBy(() -> client.fetch(Provider.COMPATIBLE, "https://model.invalid/v1", "synthetic-key", null))
-                    .hasMessage("MODEL_METADATA_UNAVAILABLE");
-        }
+
     }
     @Test void paginationUsesOnlyOpaqueCursorOnTheOriginalGeminiPath() throws Exception {
         var paths = new ArrayList<String>();

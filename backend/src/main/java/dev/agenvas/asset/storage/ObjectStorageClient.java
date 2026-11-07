@@ -2,17 +2,13 @@ package dev.agenvas.asset.storage;
 
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.shared.error.ApiProblemException;
-import dev.agenvas.shared.security.EndpointAddressRules;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.InetAddress;
 import java.net.Proxy;
-import java.net.UnknownHostException;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
-import java.util.List;
 import okhttp3.Dns;
 import okhttp3.HttpUrl;
 import okhttp3.MediaType;
@@ -23,7 +19,7 @@ import okhttp3.Response;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
-/** Private object transport: DNS checked at connection time, no redirects or automatic PUT retries. */
+/** Private object transport: no redirects or automatic PUT retries. */
 @Component
 public class ObjectStorageClient implements RemoteStorageClient {
     private static final int CHECKSUM_BUFFER_BYTES = 8192;
@@ -36,24 +32,13 @@ public class ObjectStorageClient implements RemoteStorageClient {
 
     @org.springframework.beans.factory.annotation.Autowired
     public ObjectStorageClient(StorageSettingsService settings, Clock clock) {
-        this(settings, clock, new OkHttpClient.Builder().dns(checkedDns(Dns.SYSTEM))
+        this(settings, clock, new OkHttpClient.Builder().dns(Dns.SYSTEM)
                 .proxy(Proxy.NO_PROXY).followRedirects(false).followSslRedirects(false)
                 .retryOnConnectionFailure(false).connectTimeout(CONNECT_TIMEOUT)
                 .readTimeout(IO_TIMEOUT).writeTimeout(IO_TIMEOUT).callTimeout(CALL_TIMEOUT).build());
     }
     ObjectStorageClient(StorageSettingsService settings, Clock clock, OkHttpClient client) {
         this.settings = settings; this.clock = clock; this.client = client;
-    }
-    static Dns checkedDns(Dns resolver) {
-        return hostname -> {
-            List<InetAddress> addresses = resolver.lookup(hostname);
-            if (addresses.isEmpty()) throw new UnknownHostException("Object storage DNS is empty");
-            for (InetAddress address : addresses) {
-                if (!EndpointAddressRules.allowsService(address))
-                    throw new UnknownHostException("Object storage address is blocked");
-            }
-            return addresses;
-        };
     }
     static HttpUrl url(StorageProfile p, String key) {
         if (!p.provider().supportsRelay()) throw new IllegalArgumentException("File protocols cannot use object-store signing");
@@ -65,23 +50,7 @@ public class ObjectStorageClient implements RemoteStorageClient {
         else url.host(p.bucket() + "." + endpoint.host());
         return url.addPathSegments(key).build();
     }
-    /** Archive endpoints may be private; provider input endpoints must resolve entirely to public IPs. */
-    public void requirePublic(StorageProfile profile) {
-        try {
-            List<InetAddress> addresses = Dns.SYSTEM.lookup(url(profile, "probe").host());
-            if (addresses.isEmpty()) throw new UnknownHostException();
-            for (InetAddress address : addresses) if (!isPublic(address))
-                throw new UnknownHostException();
-        } catch (UnknownHostException failure) {
-            throw new ApiProblemException(HttpStatus.BAD_REQUEST, "MEDIA_RELAY_PUBLIC_ENDPOINT_REQUIRED",
-                    ApiMessage.of("api.media-relay.unavailable"), ApiMessage.of("api.media-relay.public-endpoint-required"), false);
-        }
-    }
-    static boolean isPublic(InetAddress address) {
-        return EndpointAddressRules.allowsPublicDownload(address);
-    }
     public String signedGet(StorageProfile profile, String key, Duration lifetime) {
-        requirePublic(profile);
         String[] credentials = settings.credentials(profile);
         return ObjectStorageSigner.presignGet(url(profile, key), profile, credentials[0], credentials[1],
                 key, clock.instant(), lifetime.toSeconds()).toString();
@@ -160,7 +129,7 @@ public class ObjectStorageClient implements RemoteStorageClient {
     }
     private Response execute(StorageProfile p, String key, Request request, String hash) throws IOException {
         OkHttpClient selected = client.newBuilder().dns(dev.agenvas.shared.security.ServiceEndpointPolicy.dns(
-                request.url().uri(), client.dns(), false)).build();
+                request.url().uri(), client.dns())).build();
         String[] credentials = settings.credentials(p);
         return selected.newCall(ObjectStorageSigner.sign(request, p, credentials[0], credentials[1],
                 key, hash, clock.instant())).execute();

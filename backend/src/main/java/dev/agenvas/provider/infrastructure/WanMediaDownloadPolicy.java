@@ -16,29 +16,23 @@ import okhttp3.Response;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-/** Exact documented Wan result buckets, bounded GETs, and no API credentials or redirects. */
+/** HTTP(S) Wan result URLs, bounded GETs, and no API credentials or redirects. */
 @Component
 public class WanMediaDownloadPolicy {
-    private static final Set<String> HOSTS = Set.of("dashscope-result-bj.oss-cn-beijing.aliyuncs.com",
-            "dashscope-result-sh.oss-accelerate.aliyuncs.com");
-    private final URI testOrigin;
     private final OkHttpClient http;
-    @Autowired public WanMediaDownloadPolicy() { this(null, Dns.SYSTEM); }
-    private WanMediaDownloadPolicy(URI testOrigin, Dns dns) {
-        WanClient.requireLoopback(testOrigin); this.testOrigin = testOrigin;
-        this.http = PinnedHttpClients.pinned(FixedCloudDns.checked(dns, testOrigin != null),
+
+    @Autowired
+    public WanMediaDownloadPolicy() {
+        this.http = PinnedHttpClients.pinned(Dns.SYSTEM,
                 Duration.ofSeconds(10), Duration.ofMinutes(2), Duration.ofMinutes(3));
     }
-    public static WanMediaDownloadPolicy forLoopbackTest(URI origin) { return new WanMediaDownloadPolicy(origin, Dns.SYSTEM); }
+
     public void validate(URI url) {
-        String host = url == null || url.getHost() == null ? "" : url.getHost().toLowerCase(Locale.ROOT);
-        boolean official = url != null && "https".equals(url.getScheme()) && (url.getPort() == -1 || url.getPort() == 443) && HOSTS.contains(host);
-        boolean testing = url != null && testOrigin != null && testOrigin.getScheme().equals(url.getScheme())
-                && testOrigin.getHost().equals(host) && testOrigin.getPort() == url.getPort();
-        String path = url == null ? null : url.getRawPath();
-        if ((!official && !testing) || url.getRawUserInfo() != null || url.getRawFragment() != null
-                || path == null || path.isEmpty() || path.contains("..") || path.contains("\\") || path.contains("//")
-                || path.contains("%")) throw new NativeMediaFailure("PROVIDER_RESULT_URL_INVALID");
+        try { dev.agenvas.shared.security.ServiceEndpointPolicy.downloadDns(url, Dns.SYSTEM); }
+        catch (IllegalArgumentException | NullPointerException | java.net.UnknownHostException invalid) { throw new NativeMediaFailure("PROVIDER_RESULT_URL_INVALID"); }
+        String path = url.getRawPath();
+        if (path == null || path.isEmpty() || path.contains("..") || path.contains("\\")
+                || path.contains("%") || path.contains("//")) throw new NativeMediaFailure("PROVIDER_RESULT_URL_INVALID");
     }
     public String download(URI url, OutputStream sink, boolean video) {
         validate(url);

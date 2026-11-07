@@ -11,10 +11,10 @@ import { server } from "../../test/server";
 import { LocalServiceDiscovery } from "./LocalServiceDiscovery";
 
 type Result = { service: "OLLAMA" | "COMFYUI"; runtime: "CONTAINER" | "NATIVE" | "UNKNOWN";
-  status: "FOUND" | "NOT_FOUND" | "UNRESOLVED" | "BLOCKED_ADDRESS" | "TIMEOUT" | "UNEXPECTED_RESPONSE" | "AUTH_REQUIRED" | "UNSUPPORTED_RUNTIME";
-  endpoint: string | null; policyAllowed: boolean };
+  status: "FOUND" | "NOT_FOUND" | "UNRESOLVED" | "TIMEOUT" | "UNEXPECTED_RESPONSE" | "AUTH_REQUIRED" | "UNSUPPORTED_RUNTIME";
+  endpoint: string | null };
 const found: Result = { service: "OLLAMA", runtime: "CONTAINER", status: "FOUND",
-  endpoint: "http://host.docker.internal:11434/v1", policyAllowed: true };
+  endpoint: "http://host.docker.internal:11434/v1" };
 
 function mount(props: Partial<Parameters<typeof LocalServiceDiscovery>[0]> = {}) {
   const select = vi.fn(); const client = createQueryClient();
@@ -65,21 +65,14 @@ describe("LocalServiceDiscovery", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(requests).toEqual([]);
   });
-  it("keeps policy-blocked addresses out of the form", async () => {
-    server.use(http.post("/api/v1/settings/local-services/discover", () => HttpResponse.json({ ...found, policyAllowed: false })));
-    const { select } = mount();
-    await userEvent.setup().click(screen.getByRole("button", { name: "Find Ollama on this machine" }));
-    expect(await screen.findByText(/local connection is disabled/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Fill address" })).not.toBeInTheDocument(); expect(select).not.toHaveBeenCalled();
-  });
   it.each([
     ["NOT_FOUND", "No service was found"], ["UNRESOLVED", "host address could not be resolved"],
-    ["BLOCKED_ADDRESS", "host address is outside the permitted local range"], ["TIMEOUT", "check timed out"],
+    ["TIMEOUT", "check timed out"],
     ["UNEXPECTED_RESPONSE", "response did not identify the expected service"], ["AUTH_REQUIRED", "service requires authentication"],
     ["UNSUPPORTED_RUNTIME", "deployment could not determine where to look"],
   ] as const)("explains %s without offering an address", async (status, message) => {
     server.use(http.post("/api/v1/settings/local-services/discover", () => HttpResponse.json({
-      ...found, runtime: status === "UNSUPPORTED_RUNTIME" ? "UNKNOWN" : "NATIVE", status, endpoint: null, policyAllowed: false,
+      ...found, runtime: status === "UNSUPPORTED_RUNTIME" ? "UNKNOWN" : "NATIVE", status, endpoint: null,
     })));
     mount(); await userEvent.setup().click(screen.getByRole("button", { name: "Find Ollama on this machine" }));
     expect(await screen.findByText(new RegExp(message))).toBeInTheDocument();

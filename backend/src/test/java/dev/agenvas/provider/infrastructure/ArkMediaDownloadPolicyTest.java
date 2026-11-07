@@ -22,13 +22,16 @@ class ArkMediaDownloadPolicyTest {
     private static final AtomicInteger PRIVATE_REDIRECT_HITS = new AtomicInteger();
     private static final URI ORIGIN = URI.create("http://127.0.0.1:"
             + SERVER.getAddress().getPort());
-    private final ArkMediaDownloadPolicy downloads = ArkMediaDownloadPolicy.forLoopbackTest(ORIGIN);
+    private final ArkMediaDownloadPolicy downloads = new ArkMediaDownloadPolicy();
 
     @AfterAll static void stop() { SERVER.stop(0); }
 
-    @Test void rejectsUnapprovedHostsSchemesAndCredentials() {
-        for (String url : List.of("http://169.254.169.254/video.mp4",
-                "https://127.0.0.1/video.mp4", "http://localhost/video.mp4",
+    @Test void signedResultPathsRetainEncodedCharacters() {
+        new ArkMediaDownloadPolicy().validate(URI.create("http://localhost:8090/video%20clip.mp4?signature=synthetic"));
+    }
+
+    @Test void rejectsMalformedPathsSchemesAndCredentials() {
+        for (String url : List.of("file:///video.mp4",
                 ORIGIN + "/../video.mp4", "http://user@127.0.0.1:"
                         + SERVER.getAddress().getPort() + "/video.mp4")) {
             assertThatThrownBy(() -> downloads.download(URI.create(url),
@@ -58,36 +61,6 @@ class ArkMediaDownloadPolicyTest {
                 new ByteArrayOutputStream(), 1024))
                 .isInstanceOf(ArkMediaDownloadPolicy.Rejected.class)
                 .hasMessage("ARK_MEDIA_INVALID_MP4");
-    }
-
-    /** 官方域名同样不能靠污染的 DNS 绕到被禁地址。私网不在被禁之列，见 ADR 0007。 */
-    @Test void refusesBlockedDnsAnswersEvenForOfficialName() {
-        Dns blockedAnswer = hostname -> List.of(InetAddress.getByName("169.254.169.254"));
-        ArkMediaDownloadPolicy official = new ArkMediaDownloadPolicy(
-                URI.create("https://ark-acg-cn-beijing.tos-cn-beijing.volces.com"),
-                blockedAnswer, false);
-        assertThatThrownBy(() -> official.download(URI.create(
-                "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/a.mp4"),
-                new ByteArrayOutputStream(), 1024))
-                .isInstanceOf(ArkMediaDownloadPolicy.TechnicalFailure.class);
-        for (String address : List.of("100.64.1.2", "192.0.2.3", "203.0.113.4",
-                "::1", "169.254.169.254")) {
-            Dns answer = hostname -> List.of(InetAddress.getByName(address));
-            assertThatThrownBy(() -> FixedCloudDns.checked(answer, false)
-                    .lookup("api.openai.com"))
-                    .isInstanceOf(UnknownHostException.class);
-        }
-    }
-
-    /** Private and proxy fake-ip answers are reachable targets for a self-hosted deployment. */
-    @Test void acceptsPrivateAndFakeIpAnswers() throws Exception {
-        for (String address : List.of("10.0.0.2", "192.168.1.50", "198.18.1.2",
-                "fc00::1", "2001:2::59")) {
-            Dns answer = hostname -> List.of(InetAddress.getByName(address));
-            assertThat(FixedCloudDns.checked(answer, false).lookup("api.openai.com"))
-                    .as("self-hosted address %s", address)
-                    .hasSize(1);
-        }
     }
 
     @Test void acceptsOnlyBoundedMp4BytesFromAllowedSource() {

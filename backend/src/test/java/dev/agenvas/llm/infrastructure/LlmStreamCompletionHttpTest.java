@@ -21,7 +21,6 @@ import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.settings.application.LlmEndpointPolicy;
-import dev.agenvas.settings.application.LlmEndpointProperties;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -209,7 +208,7 @@ class LlmStreamCompletionHttpTest {
     }
 
     private static SafeLlmTransport transport(HttpServer server) {
-        return new SafeLlmTransport(endpoint(server), new LlmEndpointPolicy(new LlmEndpointProperties(true)));
+        return new SafeLlmTransport(endpoint(server), new LlmEndpointPolicy());
     }
 
     private static String endpoint(HttpServer server) { return "http://127.0.0.1:" + server.getAddress().getPort() + "/v1"; }

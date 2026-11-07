@@ -143,7 +143,7 @@ It is not installed as a default external source and publishing it remains an
 explicit operator action.
 
 Only repository-relative safe paths are accepted for these image files. Downloads
-use the fixed commit, checked public GitHub destinations and bounded requests.
+use the fixed commit, GitHub source paths and bounded requests.
 Files must match their declared hash, size and content type, and pass the existing
 media decoder, image-size and pixel limits. Selected private archive images use
 the fixed Git tree's blob identity and size before recording the verified PNG's
@@ -179,7 +179,7 @@ Cached bytes are revalidated before use. Recovery mode can read verified cache
 hits but cannot initialize directories, download misses, acquire, clear or import.
 Source authorization is checked again for each access; caching never creates a
 permission bypass. See [public-download networking](public-download-networking.md)
-for supported safe proxy and DNS configuration.
+for explicit proxy and DNS configuration; address allowlists have been removed.
 
 ## Applying a single reference
 

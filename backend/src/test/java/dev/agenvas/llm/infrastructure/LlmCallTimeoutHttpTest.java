@@ -7,7 +7,6 @@ import com.sun.net.httpserver.HttpServer;
 import dev.agenvas.settings.application.CredentialCipher;
 import dev.agenvas.settings.application.CredentialProperties;
 import dev.agenvas.settings.application.LlmEndpointPolicy;
-import dev.agenvas.settings.application.LlmEndpointProperties;
 import dev.agenvas.settings.application.LlmProviderConfig;
 import dev.agenvas.shared.http.DebugHttpCapture;
 import java.io.OutputStream;
@@ -44,7 +43,7 @@ class LlmCallTimeoutHttpTest {
     private static final int STREAM_FRAGMENTS = 30;
     private static final long STREAM_INTERVAL_MILLIS = 40;
     private static final long SILENT_READ_MILLIS = 700;
-    private final LlmEndpointPolicy localPolicy = new LlmEndpointPolicy(new LlmEndpointProperties(true));
+    private final LlmEndpointPolicy localPolicy = new LlmEndpointPolicy();
     private final CredentialCipher cipher = new CredentialCipher(new CredentialProperties(
             Base64.getEncoder().encodeToString(new byte[32]), CONFIG_VERSION, null));
 

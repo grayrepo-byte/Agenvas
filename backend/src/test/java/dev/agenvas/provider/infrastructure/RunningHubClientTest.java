@@ -236,9 +236,9 @@ class RunningHubClientTest {
         } finally { Files.deleteIfExists(path); }
     }
     @Test void endpointAndDownloadBoundariesRejectUnsafeUrlShapesAndCredentialRedirects() {
-        for (String url : List.of("https://www.runninghub.ai/openapi", "https://user@www.runninghub.ai", "http://localhost:80", "https://www.runninghub.ai?apiKey=secret"))
+        for (String url : List.of("https://www.runninghub.ai/openapi", "https://user@www.runninghub.ai", "https://www.runninghub.ai?apiKey=secret"))
             assertThatThrownBy(() -> RunningHubClient.validatedOrigin(url)).isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
-        for (String url : List.of("http://169.254.169.254/file", "https://user@www.runninghub.ai/file", "https://example.com/file#fragment"))
+        for (String url : List.of("file:///file", "https://user@www.runninghub.ai/file", "https://example.com/file#fragment"))
             assertThatThrownBy(() -> RunningHubClient.validateDownload("https://www.runninghub.ai", url)).isInstanceOf(RunningHubClient.ProtocolFailure.class);
     }
     @Test void adminOriginsAndMediaUrlsDoNotUseADomainAllowlist() {

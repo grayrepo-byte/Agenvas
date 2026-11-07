@@ -128,11 +128,11 @@ class KlingClientTest {
         assertThatThrownBy(() -> client.queryImage(null, "synthetic-key", "image-1")).isInstanceOf(KlingClient.CredentialUnavailable.class);
     }
 
-    @Test void onlyOfficialRegionalApiRootsCanBeConfigured() {
+    @Test void acceptsCompatibleServiceRootsWithoutAnOfficialHostAllowlist() {
         assertThat(KlingClient.validatedOrigin(null)).isEqualTo(KlingClient.ORIGIN);
-        assertThat(KlingClient.validatedOrigin(KlingClient.ORIGIN + "/")).isEqualTo(KlingClient.ORIGIN);
-        assertThat(KlingClient.validatedOrigin(KlingClient.BEIJING_ORIGIN + "/")).isEqualTo(KlingClient.BEIJING_ORIGIN);
-        for (String invalid : List.of("https://api.klingai.com", KlingClient.ORIGIN + "/v1", "http://api-singapore.klingai.com", "https://user@api-singapore.klingai.com", KlingClient.BEIJING_ORIGIN + "/v1", "https://api-beijing.klingai.com.untrusted.example"))
-            assertThatThrownBy(() -> KlingClient.validatedOrigin(invalid)).isInstanceOf(ApiProblemException.class);
+        for (String url : List.of("http://localhost:8090", "https://proxy.invalid:8443", KlingClient.BEIJING_ORIGIN))
+            assertThat(KlingClient.validatedOrigin(url + "/")).isEqualTo(url);
+        for (String url : List.of("https://user:secret@localhost", "http://localhost/v1", "file:///tmp", "http://localhost:0"))
+            assertThatThrownBy(() -> KlingClient.validatedOrigin(url)).isInstanceOf(ApiProblemException.class);
     }
 }
