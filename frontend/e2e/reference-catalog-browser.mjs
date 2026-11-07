@@ -187,10 +187,10 @@ try {
       await writeFile(join(process.env.AGENVAS_E2E_SCREENSHOT_DIR, `reference-${viewport.width}x${viewport.height}.png`), Buffer.from(shot.data, "base64"));
     }
     await pointerClick('.reference-sources-dialog [role=combobox]');
-    await pointerClick('[role=option][data-state=unchecked]');
+    await pointerClick('[role=option][data-state=unchecked]:last-child');
     await pointerClick('.reference-sources-dialog button[type=submit]');
     await waitFor(() => !document.querySelector('.reference-sources-dialog'));
-    assert.equal(await page(() => document.documentElement.dataset.sourceLoadCount), "1", "Selecting a source and loading it must finish in the same dialog");
+    assert.equal(await page(() => document.documentElement.dataset.sourceLoadCount), undefined, "Loading an existing JSON directory must not synchronize it again");
     await pointerClick('.reference-private-cache-trigger');
     await waitFor(() => Boolean(document.querySelector('.reference-private-record')));
     const ownerCache = await page(() => {

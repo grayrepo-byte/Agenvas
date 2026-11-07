@@ -541,7 +541,8 @@ public class Public extends SchemaImpl {
     public final ReferenceCatalogSnapshot REFERENCE_CATALOG_SNAPSHOT = ReferenceCatalogSnapshot.REFERENCE_CATALOG_SNAPSHOT;
 
     /**
-     * Admin registered public GitHub metadata sources; manual sync only
+     * Administrator-selected catalog delivery sources with cached immutable
+     * JSON snapshots
      */
     public final ReferenceCatalogSource REFERENCE_CATALOG_SOURCE = ReferenceCatalogSource.REFERENCE_CATALOG_SOURCE;
 

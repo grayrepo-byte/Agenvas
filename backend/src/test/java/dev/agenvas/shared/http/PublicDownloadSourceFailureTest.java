@@ -10,7 +10,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 /** Synthetic response/exception classification only; no claim of live source synchronization. */
 class PublicDownloadSourceFailureTest {
-    private Source source(){return new Source("synthetic","Synthetic","owner","repo","a".repeat(40),"catalog.json",Format.OPEN_POSE_COSTUME,true,false,0,null,"NEVER",null,null,null);}
+    private Source source(){return new Source("synthetic","Synthetic","owner","repo","a".repeat(40),"catalog.json",Format.OPEN_POSE_COSTUME,true,false,0,null,"NEVER",null,null,null, SourceType.GITHUB);}
     @Test void sourceRetainsTypedDnsAndProxyReasonsWithoutPrivateDetails() {
         for(var reason:PublicDownloadException.Reason.values()) {
             var client=new ReferenceCatalogGitHubClient();

@@ -41,7 +41,7 @@ class ReferenceCatalogCacheRecoveryPostgresIT {
     @MockitoBean ReferenceCatalogGitHubClient github;
     @Test void recoveryPreviewReadsOnlyExistingCacheAndAllCacheControlsRemainReadOnly() throws Exception {
         var owner=identities.setup("cache-recovery","synthetic-reference-password");var auth=authentication(new UsernamePasswordAuthenticationToken(owner,null,List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
-        var mvc=webAppContextSetup(web).apply(springSecurity()).build();var source=catalog.create("recovery-fixture","Original fixture","fixture","repo","e".repeat(40),"pack.json",Format.AGENVAS_REFERENCE_PACK,true);
+        var mvc=webAppContextSetup(web).apply(springSecurity()).build();var source=catalog.create("recovery-fixture","Original fixture","fixture","repo","e".repeat(40),"pack.json",Format.AGENVAS_REFERENCE_PACK,true, SourceType.GITHUB);
         when(github.resolve(any())).thenReturn("e".repeat(40));when(github.file(any(),any(),eq("pack.json"),anyInt())).thenReturn(Files.readAllBytes(Path.of("../examples/reference-pack/reference-pack.json")));
         assertThat(catalog.sync(source.id(),0).state()).isEqualTo("SUCCESS");var entry=catalog.list(Kind.POSE,source.id(),"neutral",null,null,null,null,null,null,0,10).items().getFirst();var variant=entry.variants().getFirst();
         mvc.perform(get(variant.previewUrl()).with(auth)).andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value("REFERENCE_CATALOG_CACHE_MISS"));

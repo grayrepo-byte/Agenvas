@@ -1,5 +1,8 @@
 # ADR 0080: Simplify source loading and load reference images automatically
 
+> [ADR 0081](0081-site-first-reference-catalog.md) adds website-first delivery and
+> replaces repeated synchronization with loading the saved JSON directory.
+
 Accepted on 2026-11-07 at the user's request. Library pose and costume cards load
 their first private image as they approach the viewport when the source permits
 private caching; opening a view also acquires it automatically. This replaces
