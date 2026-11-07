@@ -11,6 +11,9 @@ import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
+import dev.agenvas.provider.domain.KlingModels;
+import dev.agenvas.provider.domain.NativeMediaProfiles;
+import dev.agenvas.provider.domain.NativeMediaProtocol;
 import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.settings.application.MediaStyleService;
@@ -425,11 +428,29 @@ public class MediaDraftService {
         List<MediaDraft.PromptMention> mentions = new ArrayList<>();
         for (JsonNode mention : frozen.path("mentions")) mentions.add(new MediaDraft.PromptMention(UUID.fromString(mention.path("versionId").asText()), MediaDraft.InputRole.valueOf(mention.path("role").asText())));
         MediaDraft draft = new MediaDraft(projectId, canvasItemId, frozen.path("prompt").asText(""),
-                singleOutputParameters(frozen.path("parameters"), false), kind == Artifact.Kind.VIDEO && frozen.path("durationSeconds").asInt() > 0 ? frozen.path("durationSeconds").asInt() : null,
+                frozenOutputParameters(kind, frozen), kind == Artifact.Kind.VIDEO && frozen.path("durationSeconds").asInt() > 0 ? frozen.path("durationSeconds").asInt() : null,
                 UUID.fromString(frozen.path("capabilityId").asText()), frozenStyleId(frozen), kind == Artifact.Kind.VIDEO ? parseMode(frozen.path("mode").asText()) : null,
                 List.copyOf(inputs), List.copyOf(mentions), MediaDraft.DisplayMode.DRAFT, 1, now, now);
         if (!artifacts.updateMediaDraft(draft, 0)) throw new IllegalStateException("New batch draft update failed");
         artifacts.replaceMediaInputs(projectId, canvasItemId, inputs, now);
+    }
+
+    private JsonNode frozenOutputParameters(Artifact.Kind kind, JsonNode frozen) {
+        JsonNode parameters = singleOutputParameters(frozen.path("parameters"), false);
+        if (kind != Artifact.Kind.IMAGE
+                || !(parameters.path(NativeMediaProtocol.VALUES_PROPERTY) instanceof ObjectNode values)) return parameters;
+        // Use the accepted protocol identity, so later capability edits cannot change the copy.
+        // A workflow field named n is arbitrary input and must never be treated as a native count.
+        JsonNode nativeProtocol = frozen.path("providerParameters").path("native");
+        JsonNode kling = frozen.path("providerParameters").path("kling");
+        if (nativeProtocol.isObject()) {
+            var selection = NativeMediaProfiles.resolve(nativeProtocol.path("adapterId").asText(), nativeProtocol);
+            selection.protocol().configureSingleOutputDraft(selection.profile(), values);
+        } else if (kling.isObject()) {
+            KlingModels.configureSingleOutputDraft(KlingModels.resolve(kling.path("model").asText(),
+                    kling.path("operation").asText(), Task.Kind.IMAGE_GENERATION), values);
+        }
+        return parameters;
     }
 
     private JsonNode singleOutputParameters(JsonNode parameters, boolean imageBatch) {

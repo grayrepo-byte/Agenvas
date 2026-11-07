@@ -5,6 +5,7 @@ import dev.agenvas.task.domain.Task;
 import java.util.List;
 import java.util.Set;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
 
 /** Compiled vendor contracts share draft mechanics while retaining native request and combination rules. */
 public interface NativeMediaProtocol {
@@ -25,6 +26,9 @@ public interface NativeMediaProtocol {
     default Set<String> reusableSlots(Profile profile) { return Set.of(); }
     /** Null means an unknown result count, settled from actual archived outputs. */
     Integer resultCount(Profile profile, JsonNode values);
+    /** Adjust only selectable batch controls on a copied result draft, never frozen task values.
+     * Operations with an intrinsic result set keep their declared behavior. */
+    default void configureSingleOutputDraft(Profile profile, ObjectNode values) {}
     default String renderMention(Profile profile, JsonNode values, String slot) { return "@" + slot; }
     default String resolutionTier(Profile profile, JsonNode values) {
         String value = values.path("resolution").asText("");

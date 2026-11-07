@@ -93,9 +93,11 @@ class NativeMediaPostgresIT {
             settings.putObject("defaultParameters").put("apiKey", "must-be-rejected");
             assertThatThrownBy(() -> catalog.publishCapability("bad-" + UUID.randomUUID(), connection.id(), "Bad defaults", p.profile().adapterId(), settings)).isInstanceOf(RuntimeException.class);
         }
-        assertThatThrownBy(() -> catalog.createConnection("bad-wan-" + UUID.randomUUID(), "Bad", "WAN", "https://attacker.invalid", "synthetic-key")).isInstanceOf(RuntimeException.class);
-        var incompatible = catalog.createConnection("bad-google-" + UUID.randomUUID(), "Gateway", "GOOGLE", "https://gateway.invalid", "synthetic-key");
-        assertThatThrownBy(() -> catalog.publishCapability("bad-google-cap-" + UUID.randomUUID(), incompatible.id(), "Video", "GOOGLE_VEO", mapper.createObjectNode())).isInstanceOf(RuntimeException.class);
+        // ADR 0079 permits compatible custom hosts; native field/credential validation still applies.
+        var customWan = catalog.createConnection("custom-wan-" + UUID.randomUUID(), "Synthetic gateway", "WAN", "https://synthetic-wan.invalid", "synthetic-key");
+        assertThat(catalog.publishCapability("custom-wan-cap-" + UUID.randomUUID(), customWan.id(), "Image", "WAN_IMAGE", mapper.createObjectNode()).connectionId()).isEqualTo(customWan.id());
+        var customGoogle = catalog.createConnection("custom-google-" + UUID.randomUUID(), "Synthetic gateway", "GOOGLE", "https://synthetic-google.invalid", "synthetic-key");
+        assertThat(catalog.publishCapability("custom-google-cap-" + UUID.randomUUID(), customGoogle.id(), "Video", "GOOGLE_VEO", mapper.createObjectNode()).connectionId()).isEqualTo(customGoogle.id());
     }
 
     @Test void synchronousGroupIsCheckpointedWithOriginalIdAndArchivesAllResultsOnce() throws Exception {
@@ -121,6 +123,25 @@ class NativeMediaPostgresIT {
         assertThat(ledger(accepted.id()).path("imageCount").asInt()).isEqualTo(3);
         verify(seedream, times(1)).create(any(), any(), any(), any(), any(), any());
         assertThat(worker.pollOnce("native-seedream-again")).isZero();
+        var extra = canvas.list(owner, f.project()).stream()
+                .filter(card -> !card.item().id().equals(f.card())).findFirst().orElseThrow();
+        var extraDraft = drafts.get(owner, f.project(), extra.item().id());
+        var nextParameters = direct.preflight(owner, f.project(), f.artifact(), extra.item().id(),
+                extraDraft.version()).safeSummary().path("parameters");
+        assertThat(nextParameters.at("/dynamicValues/sequential_image_generation").asText()).isEqualTo("disabled");
+        assertThat(direct.preflight(owner, f.project(), f.artifact(), extra.item().id(),
+                extraDraft.version()).outputCount()).isEqualTo(1);
+        assertThat(nextParameters.at("/dynamicValues/max_images").asInt()).isEqualTo(1);
+        var single = new ProviderResultManifest(1, List.of(manifest.results().getFirst()), null);
+        doReturn(new SeedreamClient.Created("seedream-single-request", single)).when(seedream).create(any(), any(), any(), any(), any(), any());
+        Task regenerated = direct.run(owner, f.project(), f.artifact(), extra.item().id(), extraDraft.version(), "seedream-extra-single");
+        assertThat(regenerated.input().path("expectedImageCount").asInt()).isEqualTo(1);
+        assertThat(worker.submitOnce("seedream-extra-submit")).isEqualTo(1);
+        due(regenerated.id());
+        assertThat(worker.pollOnce("seedream-extra-poll")).isEqualTo(1);
+        assertThat(task(f, regenerated.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(canvas.list(owner, f.project())).hasSize(3);
+        assertThat(task(f, accepted.id()).input().at("/mediaInput/parameters/dynamicValues/sequential_image_generation").asText()).isEqualTo("auto");
     }
 
     @Test void responseLossKeepsUnknownAndCannotCreateAnotherPaidRequestAutomatically() {
