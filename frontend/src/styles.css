@@ -332,9 +332,10 @@ button:disabled {
   box-shadow: none;
 }
 
-/* React Flow gives every NodeToolbar the same inline z-index. The editor's upward-opening
-   parameter panels must stay above the selected card's action toolbar at narrower widths. */
-.react-flow__node-toolbar.workspace-media-toolbar { z-index: 1002 !important; }
+/* NodeToolbar follows the selected node's elevated z-index, which can exceed 1002.
+   Keep the editor's stacking context and upward-opening parameters above node actions,
+   while global dialogs and their popup controls retain their own higher layers. */
+.react-flow__node-toolbar.workspace-media-toolbar { z-index: calc(var(--ui-z-dialog) - 1) !important; }
 
 .workspace-editor-content > .workspace-bottom-close { z-index: 2; top: 10px; right: 12px; }
 

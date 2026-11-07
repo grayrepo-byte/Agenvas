@@ -122,7 +122,7 @@ ESLint 在业务组件中拒绝原生可见 input、textarea 和用 Input 冒充
 
 画布四类内容的工具栏版本菜单复用 `features/canvas/CanvasVersionMenu.tsx` 与配套样式，统一数量摘要、富信息版本行、当前选用标记、创建时间、状态区和视口内滚动。`MediaVersionPicker` 提供图片/视频缩略图或音频图标，`TextVersionPicker` 提供正文摘要和来源；视频审片入口独立置底。查询、编号、脏草稿保护和 CAS 仍由各业务选择器负责，不将文字的资源默认版本和媒体的节点选用版本混为同一状态。
 
-引用来源菜单保留悬停入口，指针进入 Portal 后取消延迟关闭。参数/资源选择器包含专用编辑逻辑，仍使用 `ui-popover-surface`；画布通过 `isolation` 将 React Flow 工具栏限制在自身层级中，使 body Portal 的组件可正常显示。
+引用来源菜单保留悬停入口，指针进入 Portal 后取消延迟关闭。参数/资源选择器包含专用编辑逻辑，仍使用 `ui-popover-surface`；画布通过 `isolation` 将 React Flow 工具栏限制在自身层级中，使 body Portal 的组件可正常显示。选中节点编辑区的层叠上下文位于节点动作工具栏之上、公共 Dialog 层之下，向上展开的生成参数不会被随节点叠放顺序升高的动作工具栏遮挡。
 
 ESLint 禁止公共 Select 之外的原生 `<select>`，禁止以普通 `<div role="menu/listbox">` 新建菜单；必须复用上述组件。检查命令：在 `frontend` 执行 `./node_modules/.bin/eslint . --max-warnings=0`。
 
