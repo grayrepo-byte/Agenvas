@@ -138,7 +138,7 @@ window.fetch = async (input, init) => {
     } else value = { items: artifacts, nextCursor: null };
   }
   else if (path.endsWith("/skill-binding")) value = { agentVersion: 0, skills: [] };
-  else if (/\/(run|tasks|text-generations|media-styles|actions|plans)$/.test(path)) value = [];
+  else if (/\/(run|tasks|text-generations|image-prompts|media-styles|actions|plans)$/.test(path)) value = [];
   else value = { items: [], nextCursor: null };
   return Response.json(value);
 };

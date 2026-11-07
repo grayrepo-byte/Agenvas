@@ -46,6 +46,24 @@ async function clickText(text) {
   }, text);
 }
 
+// Popovers are portaled beside the page, so their presence alone cannot prove
+// they are visible above a containing connection dialog and its backdrop.
+async function assertHelpAboveDialog() {
+  const blocked = await page(() => {
+    const panel = document.querySelector('[data-slot="popover-content"]');
+    if (!panel) return ["missing help popover"];
+    const bounds = panel.getBoundingClientRect();
+    const result = [];
+    for (const fx of [0.2, 0.5, 0.8]) for (const fy of [0.2, 0.5, 0.8]) {
+      const x = Math.max(1, Math.min(innerWidth - 1, bounds.left + bounds.width * fx));
+      const y = Math.max(1, Math.min(innerHeight - 1, bounds.top + bounds.height * fy));
+      if (!panel.contains(document.elementFromPoint(x, y))) result.push({ x, y });
+    }
+    return result;
+  });
+  assert.deepEqual(blocked, [], "Local discovery help must receive pointer input above its parent dialog");
+}
+
 try {
   if (production) {
     await build({ ...config, logLevel: "warn", build: { outDir, emptyOutDir: true, rollupOptions: { input: join(root, route) } } });
@@ -108,6 +126,7 @@ try {
     assert.equal(await page(() => document.body.innerText.includes("Custom ports, other containers")), false, "Detailed help stays collapsed");
     await page(() => document.querySelector("button[aria-label='Local discovery help']").click());
     await waitFor(() => document.querySelector("[role='dialog']")?.innerText.includes("Custom ports, other containers"));
+    await assertHelpAboveDialog();
     await cdp("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape" });
     await cdp("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape" });
     await waitFor(() => !document.querySelector("[role='dialog']"));
@@ -167,6 +186,14 @@ try {
     await waitFor(() => [...document.querySelectorAll("button")].some((button) => button.textContent.trim() === "Add connection"));
     await clickText("Add connection");
     await waitFor(() => Boolean(document.querySelector("[role='dialog'] input[type='url']")));
+    await page(() => document.querySelector("button[aria-label='Local discovery help']").click());
+    await waitFor(() => Boolean(document.querySelector('[data-slot="popover-content"]')));
+    await assertHelpAboveDialog();
+    await cdp("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape" });
+    await cdp("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape" });
+    await waitFor(() => !document.querySelector('[data-slot="popover-content"]'));
+    assert.equal(await page(() => Boolean(document.querySelector('[data-slot="dialog-content"]'))), true,
+      "Closing help keeps the unsaved connection dialog open");
     const address = "[role='dialog'] input[type='url']";
     await fillInput("[role='dialog'] input[maxlength='160']", "Unsaved ComfyUI draft");
     await fillInput(address, "http://192.168.1.2:8188");
