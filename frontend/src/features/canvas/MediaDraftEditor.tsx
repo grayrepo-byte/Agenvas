@@ -1146,6 +1146,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       {(artifact.kind === "IMAGE" || artifact.kind === "VIDEO") ? <Button variant="ghost" className="media-draft-tab" type="button"
         disabled={!promptEnabled || templateBusy || save.isPending || run.isPending || commitAssetReferences.isPending || removeConnectedInput.isPending || libraryBusy || Boolean(error)}
         onClick={() => { setPopover(null); setReferenceSourcesOpen(false); setTemplateOpen(true); }}>{t("templates.entry")}</Button> : null}
+      {linkedPromptInputs ? <PromptInputPreview inputs={linkedPromptInputs}
+        combinedPrompt={composeLinkedPrompt(localPromptPreview)} /> : null}
       {isAudio && onOpenAgentConversation ? <Button variant="ghost" className="media-draft-tab"
         type="button" onClick={onOpenAgentConversation} disabled={openingAgentConversation}
         title={t("media.editor.openAudioAgent")}>{openingAgentConversation ? t("media.editor.opening") : t("media.editor.agentConversation")}</Button> : null}
@@ -1330,8 +1332,6 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       <Button type="button" variant="ghost" size="sm" onClick={() => {
         void promptConnections.refetch(); if (hasPromptConnections) void canvas.refetch();
       }}>{t("common.retry")}</Button></AlertDescription></Alert> : null}
-    {linkedPromptInputs ? <PromptInputPreview inputs={linkedPromptInputs}
-      combinedPrompt={composeLinkedPrompt(localPromptPreview)} /> : null}
     <PromptMentionEditor id={`${id}-prompt`}
       label={isAudio ? t("media.editor.audioPrompt") : artifact.kind === "IMAGE" ? t("media.editor.imagePrompt") : t("media.editor.videoPrompt")}
       placeholder={!promptEnabled ? t(declaredNativeInputs ? "media.creator.noPrompt" : "media.workflow.noPrompt") : promptField?.description || (isAudio ? t("media.editor.audioPromptPlaceholder") : artifact.kind === "IMAGE" ? t("media.editor.imagePromptPlaceholder") : t("media.editor.videoPromptPlaceholder"))}

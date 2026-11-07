@@ -4,10 +4,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "../../shared/ui/primiti
 import type { CanvasPromptInput } from "./canvasPromptInputs";
 import "./CanvasPromptInputs.css";
 
-/** A read-only disclosure: public text never becomes editable local draft content. */
+/** Header disclosure keeps shared sources out of the editable prompt area. */
 export function PromptInputPreview({ inputs, combinedPrompt }: { inputs: CanvasPromptInput[]; combinedPrompt: string }) {
   if (!inputs.length) return null;
-  return <Popover><PopoverTrigger asChild><Button type="button" variant="ghost" size="sm" className="media-draft-text-action">
+  return <Popover><PopoverTrigger asChild><Button type="button" variant="ghost" className="media-draft-tab">
     {t("media.promptInputs.count", { "0": inputs.length })}
   </Button></PopoverTrigger><PopoverContent className="canvas-prompt-inputs nodrag nopan nowheel" side="top" align="start">
     <p>{t("media.promptInputs.hint")}</p>

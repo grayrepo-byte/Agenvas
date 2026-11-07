@@ -41,7 +41,19 @@ async function at(location, clicks = 1) {
   for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) await cdp("Input.dispatchMouseEvent", {
     type, ...location, button: "left", clickCount: clicks });
 }
-async function click(selector, clicks = 1) { await at(await point(selector), clicks); }
+async function click(selector, clicks = 1) {
+  // Floating editors can still move after resize/selection; hit the settled control.
+  const deadline = Date.now() + 10000;
+  let location = await point(selector); let stable = 0;
+  while (Date.now() < deadline && stable < 3) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const next = await point(selector);
+    stable = Math.abs(next.x - location.x) < 0.5 && Math.abs(next.y - location.y) < 0.5 ? stable + 1 : 0;
+    location = next;
+  }
+  if (stable < 3) throw new Error(`Unstable control: ${selector}`);
+  await at(location, clicks);
+}
 async function named(text) {
   await waitFor((label) => [...document.querySelectorAll("button")].some((node) =>
     (node.textContent.trim() === label || node.getAttribute("aria-label") === label) && node.getBoundingClientRect().width > 0), text);
@@ -116,15 +128,28 @@ try {
   await waitFor((selector) => Boolean(document.querySelector(selector)), prompt);
   await setText(prompt, "Local subject");
   await waitFor(() => window.__agenvasCanvasEditingFixture.evidence().draftSaves.some((draft) => draft.prompt === "Local subject"));
+  const sharedTab = await page(() => {
+    const tab = [...document.querySelectorAll(".media-draft-header button")].find((node) => node.textContent.trim() === "公共提示词 · 2");
+    const template = tab?.previousElementSibling;
+    return { inHeader: Boolean(tab), followsTemplate: template?.textContent.trim() === "模板",
+      sameRow: tab && template ? Math.abs(tab.getBoundingClientRect().top - template.getBoundingClientRect().top) < 2 : false,
+      compact: tab ? tab.getBoundingClientRect().width < 180 : false };
+  });
+  assert.deepEqual(sharedTab, { inHeader: true, followsTemplate: true, sameRow: true, compact: true });
+  await shot("header-tab");
   await named("公共提示词 · 2");
   await waitFor(() => document.querySelector('[aria-label="合并预览"]')?.textContent === "Common revised\n\nSecondary tone\n\nLocal subject");
   await shot("combined-preview"); await key("Escape", "Escape"); await named("运行");
   await waitFor(() => window.__agenvasCanvasEditingFixture.evidence().generationRequests.length === 1);
   const request = (await evidence()).generationRequests[0].body;
   assert.equal(request.canvasItemId, "synthetic-card-2"); assert.equal(Object.hasOwn(request, "prompt"), false);
+  const priorDocument = await page(() => performance.timeOrigin);
   await cdp("Page.reload");
-  await waitFor(() => document.querySelectorAll(".react-flow__node-canvasCard").length === 5
-    && window.__agenvasCanvasEditingFixture?.evidence().connections.length === 4);
+  // A reload can return before the old document goes away. Wait for the new canvas.
+  await waitFor((previous) => performance.timeOrigin !== previous
+    && Boolean(document.querySelector('.react-flow__node[data-id="synthetic-card-2"] .artifact-card-title-icon'))
+    && document.querySelectorAll(".react-flow__node-canvasCard").length === 5
+    && window.__agenvasCanvasEditingFixture?.evidence().connections.length === 4, priorDocument);
   await click(`${card(2)} .artifact-card-title-icon`); await named("公共提示词 · 2");
   await waitFor(() => document.querySelector('[aria-label="合并预览"]')?.textContent === "Common revised\n\nSecondary tone\n\nLocal subject");
   await key("Escape", "Escape");
@@ -143,7 +168,7 @@ try {
   await waitFor(() => { const r = document.querySelector(".canvas-prompt-inputs")?.getBoundingClientRect(); return r && r.left >= 0 && r.right <= innerWidth && r.height <= innerHeight; });
   await shot("minimum-width-preview");
   assert.deepEqual(runtimeErrors, []); assert.deepEqual((await evidence()).unexpected, []);
-  console.log(`Shared prompt browser passed: image/video/audio drag connections, multiple sources, saved text edit, local edit, run request, reload, keyboard disconnect, 1024px preview. Synthetic screenshots: ${screenshots}`);
+  console.log(`Shared prompt browser passed: image/video/audio drag connections, multiple sources, saved text edit, local edit, run request, reload, keyboard disconnect, 1024px preview and compact header tab beside templates. Synthetic screenshots: ${screenshots}`);
 } catch (error) {
   if (socket) {
     await shot("failure");

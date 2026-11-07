@@ -166,7 +166,11 @@ describe("MediaDraftEditor", () => {
         title: "Public lighting", artifact: { id: "text-artifact", kind: "TEXT", resourceDefaultVersionId: version.id, resourceDefaultVersion: version } }] })),
       http.post(`${BASE}/run`, async () => { submitted = true; return HttpResponse.json(task("READY"), { status: 202 }); }),
     ] });
-    await screen.findByRole("button", { name: "公共提示词 · 1" });
+    const sharedTab = await screen.findByRole("button", { name: "公共提示词 · 1" });
+    const header = sharedTab.closest(".media-draft-header");
+    expect(header).not.toBeNull();
+    expect(sharedTab).toHaveClass("media-draft-tab");
+    expect(sharedTab.previousElementSibling).toBe(within(header as HTMLElement).getByRole("button", { name: "模板" }));
     expect(screen.getByRole("textbox", { name: "图片提示词" })).toHaveTextContent("");
     await userEvent.setup().click(screen.getByRole("button", { name: "公共提示词 · 1" }));
     expect(await screen.findByLabelText("合并预览")).toHaveTextContent("Common lighting");
