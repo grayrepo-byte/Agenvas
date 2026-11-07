@@ -10,6 +10,7 @@ import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
+import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.storyboard.application.StoryboardService;
@@ -27,6 +28,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
@@ -80,6 +83,7 @@ class OnDemandAgentPostgresIT {
     @Autowired JdbcClient jdbc;
     @Autowired ObjectMapper mapper;
     @Autowired ScriptedGateway gateway;
+    @Autowired MediaCapabilityService capabilities;
     private AdminPrincipal owner;
     private Project project;
     private AgentRun run;
@@ -103,6 +107,62 @@ class OnDemandAgentPostgresIT {
         step();
         assertThat(current().status()).isEqualTo(AgentRun.Status.SUCCEEDED);
         assertThat(toolCount()).isZero();
+        assertThat(artifactCount()).isZero();
+    }
+
+    @Test void mediaDiscoveryPagesThroughEveryPublishedCapabilityBeyondForty() {
+        var connection = capabilities.createConnection("Synthetic paged catalog", null);
+        for (int index = 0; index < 41; index++) capabilities.publishCapability(connection.id(), "Synthetic image " + index, "MOCK_IMAGE");
+        var expected = capabilities.publishedCandidates().stream().map(candidate -> candidate.binding().capabilityId().toString())
+                .collect(java.util.stream.Collectors.toSet());
+        var observed = new ArrayList<String>();
+        java.util.function.Consumer<JsonNode> collect = result -> {
+            assertThat(result.path("offset").asInt()).isEqualTo(observed.size());
+            assertThat(result.path("total").asInt()).isEqualTo(expected.size());
+            assertThat(result.path("capabilities").size()).isBetween(1, 20);
+            result.path("capabilities").forEach(entry -> observed.add(entry.path("capabilityId").asText()));
+        };
+        gateway.script.add(input -> call("load-media", "load_toolset", "{\"toolsets\":[\"MEDIA\"]}"));
+        gateway.script.add(input -> call("catalog-0", "list_media_capabilities", "{\"limit\":20}"));
+        gateway.script.add(input -> {
+            collect.accept(input.lastResult());
+            assertThat(input.lastResult().path("nextOffset").asInt()).isEqualTo(20);
+            return call("catalog-20", "list_media_capabilities", "{\"offset\":20,\"limit\":20}");
+        });
+        gateway.script.add(input -> {
+            collect.accept(input.lastResult());
+            assertThat(input.lastResult().path("nextOffset").asInt()).isEqualTo(40);
+            return call("catalog-40", "list_media_capabilities", "{\"offset\":40,\"limit\":20}");
+        });
+        gateway.script.add(input -> {
+            collect.accept(input.lastResult());
+            assertThat(input.lastResult().path("nextOffset").isNull()).isTrue();
+            return call("catalog-end", "list_media_capabilities", "{\"offset\":" + expected.size() + "}");
+        });
+        gateway.script.add(input -> {
+            assertThat(input.lastResult().path("capabilities")).isEmpty();
+            assertThat(input.lastResult().path("offset").asInt()).isEqualTo(expected.size());
+            assertThat(input.lastResult().path("nextOffset").isNull()).isTrue();
+            return new AssistantMessage("Read the complete published catalog; no media generated.");
+        });
+        for (int index = 0; index < 6; index++) step();
+        assertThat(observed).doesNotHaveDuplicates().containsExactlyInAnyOrderElementsOf(expected);
+        assertThat(current().status()).isEqualTo(AgentRun.Status.SUCCEEDED);
+        assertThat(artifactCount()).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{\"offset\":-1}", "{\"offset\":2147483648}", "{\"offset\":99999}",
+            "{\"limit\":0}", "{\"limit\":41}", "{\"offset\":1.5}", "{\"projectId\":\"spoof\"}"})
+    void malformedMediaCatalogPagesAreRejectedWithoutBusinessEffects(String arguments) {
+        gateway.script.add(input -> call("load-media", "load_toolset", "{\"toolsets\":[\"MEDIA\"]}"));
+        gateway.script.add(input -> call("bad-page", "list_media_capabilities", arguments));
+        gateway.script.add(input -> {
+            assertThat(input.messages().toString()).contains("TOOL_ARGUMENT_INVALID", "REJECTED");
+            return new AssistantMessage("Invalid catalog page was rejected.");
+        });
+        for (int index = 0; index < 3; index++) step();
+        assertThat(current().status()).isEqualTo(AgentRun.Status.SUCCEEDED);
         assertThat(artifactCount()).isZero();
     }
 

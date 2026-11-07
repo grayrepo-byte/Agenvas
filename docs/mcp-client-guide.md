@@ -63,7 +63,7 @@ MCP 是 Agenvas 的附加创作入口。外部客户端负责自己的对话和�
 | `list_projects` | `READ` | 发现本人项目；支持 `cursor`、`limit`、`includeArchived` 和名称过滤 |
 | `read_project_summary` | `READ` | 读取项目名称、画幅、状态和内容数量 |
 | `read_canvas` | `READ` | 分页读取节点、布局版本、内容版本引用和媒体草稿；完整草稿设置 `includeDrafts: true` |
-| `read_artifacts` | `READ` | 按 `versionIds` 读取精确内容版本；图片附受控预览，视频和音频返回元数据 |
+| `read_artifacts` | `READ` | 按 `versionIds` 读取精确内容版本；长文字用 `textOffset/textLimit` 分页；图片附受控预览，视频和音频返回元数据 |
 | `create_text` | `CONTENT_WRITE` | 原子创建文字产物与画布节点；输入 `title`、`text`，可选 `format` 和 `placement` |
 | `revise_artifact` | `CONTENT_WRITE` | 为文字追加不可变版本；输入 `artifactId`、当前 `expectedVersion` 和 `text` |
 | `manage_canvas_node` | `CONTENT_WRITE` | `RENAME`、`MOVE`、`RESIZE`；输入节点 ID、当前节点 `expectedVersion` 及动作字段 |
@@ -109,6 +109,12 @@ list_media_capabilities(projectId, kind=IMAGE)
 ```
 
 视频和音频沿相同流程使用对应能力。`patch` 的参数、视频模式、角色、mentions 和素材引用按能力及 Schema 填写；浏览器当前选中项不会自动成为外部客户端的输入。批量生成可能受理多个 Task，必须保留并查询完整集合。结果会通过原有项目事件更新网页画布；外部客户端通过查询继续自己的工作，不向内置导演会话注入消息。
+
+### 长文字与结构化标签
+
+普通 `read_artifacts` 批读仍有 24 KiB 单项正文上限，超限只返回预览。读取完整剧本时，指定同一个 `versionIds: [精确TEXT版本]`，添加 `textOffset: 0, textLimit: 4000`；后续逐页使用 `textPage.nextOffset`，直到其为 null。偏移与长度按 Unicode 码点计数，emoji 不会从代理对中间切开。每页 `content` 只包含本段，`textPage` 同时给出 offset/endOffset/total；必须覆盖全部范围，末页本身不能证明前页已读。不能将不同版本的页拼成同一份全文。分页不接受媒体版本或多个版本，每页重新鉴权。
+
+草稿 `mentions` 是提示词中 U+FFFC 标记的有序对应项，同一素材可以出现多次；不能按版本 ID 去重。输入和返回 Schema 最多允许 20,000 项，与正文长度的最大标记数一致，实际写请求继续受工具参数大小限制。`patch` 省略字段会保留原值：替换提示词并删除标签时，同时提交匹配的新 `mentions`，删除全部标签时提交 `mentions: []`。
 
 ### 上传本地媒体
 

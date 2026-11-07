@@ -77,7 +77,9 @@ public class InitialModelContextService {
 
     private static final String MEDIA_RULES = """
 
-            Read list_media_capabilities before choosing a generation capability. Prefer isDefault and
+            Read list_media_capabilities before choosing a generation capability. Follow nextOffset
+            until null when the full directory is needed; a page is not the complete catalog.
+            Prefer isDefault and
             defaultParameters/defaultDurationSeconds unless the user or required inputs need another;
             explain alternatives. Use published modes/inputs/resolutions/parameters only. Draft edits
             do not generate media. propose_media_generation creates a fixed batch requiring the

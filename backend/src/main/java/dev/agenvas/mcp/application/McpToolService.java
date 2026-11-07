@@ -49,6 +49,7 @@ public class McpToolService {
     private static final int MAX_IMAGE_BYTES = 4 * 1024 * 1024;
     private static final int MAX_INLINE_BYTES = 24 * 1024;
     private static final int MAX_TOTAL_INLINE_BYTES = 160 * 1024;
+    private static final int MAX_TEXT_PAGE = 4_000;
     private final McpToolPolicy policy;
     private final McpTokenService tokens;
     private final McpOperationRepository operations;
@@ -274,14 +275,21 @@ public class McpToolService {
         // Authorize the complete batch before opening a single private preview stream.
         List<ArtifactVersion> versions = input.path("versionIds").valueStream()
                 .map(id -> artifacts.requireVersionById(owner, project, UUID.fromString(id.asText()))).toList();
+        boolean textPageRequested = input.has("textOffset") || input.has("textLimit");
         long imageCount = versions.stream().filter(v -> artifacts.get(owner, project, v.artifactId())
                 .artifact().kind() == Artifact.Kind.IMAGE).count();
         if (imageCount > 1) throw McpToolPolicy.invalid();
         int inline = 0;
         for (ArtifactVersion version : versions) {
             ArtifactService.ArtifactView view = artifacts.get(owner, project, version.artifactId());
+            if (textPageRequested && view.artifact().kind() != Artifact.Kind.TEXT) throw McpToolPolicy.invalid();
             ObjectNode item = artifact(view, version);
             if (view.artifact().kind() == Artifact.Kind.TEXT) {
+                if (textPageRequested) {
+                    appendTextPage(item, version.content(), input.path("textOffset").asInt(0), input.path("textLimit").asInt(MAX_TEXT_PAGE));
+                    items.add(item);
+                    continue;
+                }
                 String content = version.content().toString();
                 int size = content.getBytes(StandardCharsets.UTF_8).length;
                 if (size <= MAX_INLINE_BYTES && inline + size <= MAX_TOTAL_INLINE_BYTES) {
@@ -309,6 +317,21 @@ public class McpToolService {
             items.add(item);
         }
         return new McpToolResponse(output, images);
+    }
+
+    /** Every page reauthorizes the same immutable version; offsets count code points, never UTF-16 units. */
+    private void appendTextPage(ObjectNode item, JsonNode content, int offset, int limit) {
+        if (!content.path("text").isTextual() || !content.path("format").isTextual())
+            throw new IllegalStateException("Text artifact content is malformed");
+        String text = content.path("text").asText();
+        int total = text.codePointCount(0, text.length());
+        if (offset > total) throw McpToolPolicy.invalid();
+        int end = offset + Math.min(limit, total - offset);
+        item.putObject("content").put("format", content.path("format").asText())
+                .put("text", text.substring(text.offsetByCodePoints(0, offset), text.offsetByCodePoints(0, end)));
+        item.put("contentTruncated", offset > 0 || end < total);
+        ObjectNode page = item.putObject("textPage").put("offset", offset).put("endOffset", end).put("total", total);
+        if (end < total) page.put("nextOffset", end); else page.putNull("nextOffset");
     }
 
     private ObjectNode write(McpPrincipal principal, UUID project, UUID operation, String name, JsonNode input) {

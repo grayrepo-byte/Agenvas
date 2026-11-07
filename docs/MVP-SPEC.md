@@ -301,6 +301,8 @@ LLM 调用、文件下载、视频生成、FFmpeg 运行都不放在数据库长
 
 首批 12 工具覆盖项目、目录、精确版本、文字、节点布局、媒体节点/草稿、能力和 Task 状态；目录 Schema 为 `contracts/mcp/tools.json`。文字来源为 `EXTERNAL_TOOL`，媒体来源通过可信 Task 与关联表追踪。锁定、占用、独立草稿 CAS、能力与用量规则继续执行。`UNKNOWN` 查询和归档恢复不重提生成；本版不提供外部重试/取消工具。
 
+MCP `read_artifacts` 保留有界批读；长文字用 `textOffset/textLimit` 读取单个精确 TEXT 版本，每页最多 4000 Unicode 码点。响应 `textPage` 给出 offset/endOffset/total/nextOffset，逐页重新检查当前账号与项目读权；新修订不改变已指定的历史版本。非 TEXT、混合批次、越界或畸形范围拒绝。预览或最后一页不代表已读完整正文。媒体草稿的 mentions 按提示词中的 U+FFFC 标记顺序一一对应，允许相同版本/用途重复出现；MCP 输入与各工具返回的标签上限均为 20,000，与提示词长度允许的最大标记数一致，实际写请求仍受 256 KiB 参数上限约束。
+
 精确 `/mcp` 与二进制上传 `/mcp/uploads` 使用独立无状态安全链并免 CSRF；网页登录/API 继续使用 Session 与 CSRF，MCP 凭据不能调用管理 REST。入口拒绝带 Origin 的浏览器调用；`/mcp` JSON 实际请求体上限 300 KiB、工具参数 256 KiB，每用户最多 4 个、进程 64 个在途请求。运维可通过 `AGENVAS_MCP_ENABLED=false` 关闭新入口；已受理任务继续执行。首版是手工 Bearer，最高协商 `2025-11-25`，不提供 OAuth 登录发现。
 
 媒体上传扩展增加 `prepare_media_upload`，与已有 `compose_video` 合计 14 个工具。准备工具要求 `READ + CONTENT_WRITE`，只返回同源 multipart 上传说明，不创建业务内容或命令预留；客户端用同一 Bearer POST `/mcp/uploads`，不传服务端路径、远程 URL 或内联字节。元数据限 16 KiB，包含稳定 `commandId`、项目、种类、标题、实际大小和 SHA-256；文件沿用实际媒体校验，图片/音频/视频分别限 20/50/500 MiB，请求总限 501 MiB。上传与 JSON 共享用户/进程在途限额，二进制由私有磁盘暂存。存储 I/O 与解码在事务外完成，短事务内复核授权并原子登记 Asset、`UPLOAD` 内容的 `EXTERNAL_TOOL` 版本、命令结果和项目事件；可选 placement 同时创建选用该精确版本的节点。重传原命令、元数据和文件只返回原结果，同键异参冲突；恢复模式及关闭 MCP 均拒绝新上传。上传不创建 Task、不要求生成权限，不触发模型。
@@ -1228,7 +1230,7 @@ Controller 与 Tool 使用同一组业务命令和权限规则。Tool 不直接�
 | `manage_canvas_node` | 节点 ID、expectedVersion 与 RENAME/MOVE/RESIZE/REMOVE/DUPLICATE 操作 | 复用画布应用服务；保护锁定与 CAS |
 | `update_media_draft` | 节点 ID、expectedVersion 与允许的媒体草稿字段及结构化 mentions | 保存图片/视频/音频草稿；显式替换引用时同事务清理旧连线，不调用媒体 Provider |
 | `read_task_status` | 本 Run 的 taskId 列表，最多 12 个 | 只读；正常进度由调度器查询，不让 LLM 反复轮询 |
-| `list_media_capabilities` | 无业务身份或连接地址参数 | 只读安全能力目录、输入契约与支持参数；不返回 endpoint 或 Key |
+| `list_media_capabilities` | 可选 offset/limit，默认 0/40、每页最多 40；无业务身份或连接地址参数 | 只读安全能力目录、输入契约与支持参数；返回 capabilities 与 offset/total/nextOffset，默认能力优先、其余按稳定 ID 排序，按游标可遍历全部发布能力；目录变化时从零重读，不返回 endpoint 或 Key |
 | `extract_audio` | 当前 VIDEO 节点 `canvasItemId`、精确 `sourceVersionId`、观察到的 `expectedCanvasItemVersion`，可选 WAV/MP3 与零起始音轨 `trackIndex` | 固定本地处理器提取音轨，创建音频及静音视频结果；持久等待归档结果后续接，不调用配置的云端功能路由 |
 | `trim_audio` | 当前 AUDIO 节点及精确来源版本、节点 CAS、整数毫秒 `startMs/endMs`，可选 WAV/MP3 | 同 Artifact 派生独立节点与不可变音频片段；持久等待完成后返回可作为 `AUDIO_REFERENCE` 的精确版本 |
 | `compose_video` | 基于已读取的分镜/台词编排有序精确视频和配音版本，可附镜内剧情锚点 | 直接受理本地零外部费用合成 Task；后台声音分析、自动定位、混音拼接；新协议等待归档终态后续接，停止导演不取消已受理合成 |
@@ -1238,6 +1240,8 @@ Controller 与 Tool 使用同一组业务命令和权限规则。Tool 不直接�
 | `arrange_items` | 1–6 个当前画布节点 ID、当前内容版本、预期布局版本；水平/垂直/网格 | 按项目权限与布局 CAS 排列，不修改内容或锁定节点 |
 
 Agent 的外部媒体生成只能提出媒体审批批次；本地 `extract_audio`、`trim_audio` 和 `compose_video` 仅处理已授权的现有素材，可以直接受理，不授予外部生成权限。提取与裁剪同时核对来源节点未锁定、当前选用版本和节点 CAS，Artifact 身份从已授权节点推导；函数路由不能把本地提音变成未经审批的云端调用。Agent 不能批准或绕过外部生成审批，也不能携带可复用为授权的“用户已确认”字段。每项输出只受理一个生成任务；批次统一批准或拒绝。Agent 只使用服务端安全目录中的能力以及本 Run 可见的同项目精确输入版本；不能传外部地址、任意工作流、脚本或请求模板。最终结果由后端续接，无须调用 `read_task_status` 等待生成或本地处理。
+
+能力目录分页通过新工具定义向新模型请求公开；既有 Run 已加载的工具 Schema 与规则仍按请求检查点冻结，不静默改写历史。需要新分页参数时，启动新 Run。MCP 客户端升级后应重新发现工具，以取得新增正文分页及修正后的标签 Schema。
 
 音色参考工作流为视频提音、依据已提供的媒体内容选择区间、裁出音频片段，再通过 `propose_media_generation` 将该精确版本作为 `AUDIO_REFERENCE` 提交给兼容视频能力。采样附件不产生可供 Provider 引用的音频产物，必须使用提取/裁剪后归档的版本；提音与裁剪不包含说话人识别、人声分离、降噪或音色训练。H3 原生带声视频合成时显式选择 `KEEP` 原声并允许空配音列表，避免默认 `MUTE` 移除对白。详见 [ADR 0053](adr/0053-builtin-agent-local-media-workflow.md)。
 

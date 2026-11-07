@@ -58,6 +58,27 @@ class McpToolPolicyTest {
         invalid("update_media_draft", "{" + base + ",\"expectedDraftVersion\":0,\"patch\":{\"endpoint\":\"https://invalid.example\"}}");
         policy.validate("update_media_draft", mapper.readTree("{" + base + ",\"expectedDraftVersion\":0,\"patch\":{\"prompt\":\"hello\",\"capabilityId\":null}}"));
     }
+    @Test void textPagesAreBoundedAndRequireOneExactVersion() {
+        var request = mapper.createObjectNode().put("projectId", project);
+        request.putArray("versionIds").add(project);
+        policy.validate("read_artifacts", request.deepCopy().put("textOffset", 0).put("textLimit", 4000));
+        for (var invalid : java.util.List.of(request.deepCopy().put("textOffset", -1),
+                request.deepCopy().put("textOffset", 2147483648L), request.deepCopy().put("textOffset", 1.5),
+                request.deepCopy().put("textLimit", 0), request.deepCopy().put("textLimit", 4001))) {
+            assertThatThrownBy(() -> policy.validate("read_artifacts", invalid)).isInstanceOf(ApiProblemException.class);
+        }
+        request.put("textOffset", 0);
+        ((tools.jackson.databind.node.ArrayNode) request.path("versionIds")).add(UUID.randomUUID().toString());
+        assertThatThrownBy(() -> policy.validate("read_artifacts", request)).isInstanceOf(ApiProblemException.class);
+    }
+    @Test void structuredMentionsPreserveRepeatedPositionsRatherThanDeduplicatingReferences() {
+        var request = mapper.createObjectNode().put("projectId", project).put("commandId", "tags")
+                .put("canvasItemId", project).put("expectedDraftVersion", 0);
+        var patch = request.putObject("patch").put("prompt", "\uFFFC and \uFFFC");
+        var mentions = patch.putArray("mentions");
+        for (int i = 0; i < 2; i++) mentions.addObject().put("versionId", project).put("role", "REFERENCE");
+        policy.validate("update_media_draft", request);
+    }
     private void invalid(String name, String json) {
         assertThatThrownBy(() -> policy.validate(name, mapper.readTree(json))).isInstanceOf(ApiProblemException.class);
     }
