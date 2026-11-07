@@ -1,9 +1,7 @@
 /* Beautiful UI Loading State adaptation; see beautiful-ui-LICENSE.txt. */
 .canvas-loading-state {
-  --canvas-loader-surface: #191919;
-  --canvas-loader-border: #353535;
-  --canvas-loader-ink: #f4f4f5;
-  --canvas-loader-muted: #a1a1aa;
+  --canvas-loader-ink: var(--ui-text);
+  --canvas-loader-muted: var(--ui-text-muted);
   --canvas-loader-cell-size: 4px;
   --canvas-loader-cell-gap: 1.5px;
   --canvas-loader-wave-duration: 650ms;
@@ -16,17 +14,13 @@
   width: fit-content;
   max-width: 100%;
   padding: 9px 12px;
-  border: 1px solid var(--canvas-loader-border);
-  border-radius: 10px;
-  background: var(--canvas-loader-surface);
+  border: 0;
+  background: transparent;
   color: var(--canvas-loader-ink);
 }
 
 .canvas-loading-state--compact {
   padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
 }
 
 .canvas-loading-state__grid {
