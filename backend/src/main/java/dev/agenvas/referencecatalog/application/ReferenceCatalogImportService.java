@@ -30,9 +30,11 @@ public class ReferenceCatalogImportService {
     private final ArtifactService artifacts; private final CanvasService canvas; private final ObjectMapper mapper; private final Clock clock;
     private final TransactionTemplate tx;
     private final ReferenceCatalogPrivateImageService privateImages;
+    private final dev.agenvas.referencecatalog.infrastructure.CustomCostumeRepository costumes;
+    private final dev.agenvas.asset.application.PrivateMediaArchive archive;
     public ReferenceCatalogImportService(ReferenceCatalogService catalog,ReferenceCatalogRepository repository,ProjectService projects,ProjectEventService events,
-            AssetService assets,ArtifactService artifacts,CanvasService canvas,ObjectMapper mapper,Clock clock,PlatformTransactionManager transactions,ReferenceCatalogPrivateImageService privateImages){
-        this.privateImages=privateImages;this.catalog=catalog;this.repository=repository;this.projects=projects;this.events=events;this.assets=assets;this.artifacts=artifacts;this.canvas=canvas;
+            AssetService assets,ArtifactService artifacts,CanvasService canvas,ObjectMapper mapper,Clock clock,PlatformTransactionManager transactions,ReferenceCatalogPrivateImageService privateImages,dev.agenvas.referencecatalog.infrastructure.CustomCostumeRepository costumes,dev.agenvas.asset.application.PrivateMediaArchive archive){
+        this.costumes=costumes;this.archive=archive;this.privateImages=privateImages;this.catalog=catalog;this.repository=repository;this.projects=projects;this.events=events;this.assets=assets;this.artifacts=artifacts;this.canvas=canvas;
         this.mapper=mapper;this.clock=clock;this.tx=new TransactionTemplate(transactions);
     }
     public record Placement(double x,double y){}
@@ -78,6 +80,30 @@ public class ReferenceCatalogImportService {
         UUID assetId=UUID.nameUUIDFromBytes(("agenvas:reference-catalog:v1:"+command.id()).getBytes(StandardCharsets.UTF_8));
         return assets.withPreparedUpload(owner,project,assetId,Asset.MediaKind.IMAGE,()->new ByteArrayInputStream(privateImages.read(owner,fixed.imageId())),
                 asset->publishPrepared(owner,project,commandKey,hash,command.id(),asset,fixed.sha256(),fixed.placement(),()->privateImages.title(owner,fixed.imageId())));
+    }
+    public record CostumeRequest(UUID entryId,long expectedVersion,Placement placement){}
+    /** Immutable accepted bytes/title outlive editing and soft deletion of their shared source entry. */
+    public record CostumeAccepted(dev.agenvas.asset.application.PrivateMediaArchive.Media media,String title,Placement placement){}
+    public ImportResponse importCostume(UUID owner,UUID project,UUID id,long expectedVersion,String commandKey,Placement placement){
+        if(id==null || expectedVersion<0 || commandKey==null || commandKey.isBlank() || commandKey.length()>200)throw invalid();validatePlacement(placement);
+        String hash=Sha256.hex(mapper.writeValueAsString(new CostumeRequest(id,expectedVersion,placement)));
+        var command=tx.execute(ignored->events.recordChange(owner,project,()->{
+            projects.requireActiveProject(owner,project);
+            var replay=repository.command(owner,project,commandKey,false);
+            if(replay.isPresent()){checkHash(replay.get(),hash);return ProjectEventService.Change.unchanged(replay.get());}
+            var costume=costumes.lock(id).orElseThrow(ReferenceCatalogService::missing);
+            if(costume.version()!=expectedVersion)throw ReferenceCatalogService.conflict();
+            var accepted=new CostumeAccepted(costume.media(),costume.name(),placement);
+            var created=new ReferenceCatalogRepository.Command(UUID.randomUUID(),hash,mapper.valueToTree(accepted),null);
+            repository.insertCommand(created,owner,project,commandKey,clock.instant());return ProjectEventService.Change.unchanged(created);
+        }).value());
+        if(command.result()!=null)return mapper.treeToValue(command.result(),ImportResponse.class);
+        var fixed=mapper.treeToValue(command.input(),CostumeAccepted.class);
+        UUID assetId=UUID.nameUUIDFromBytes(("agenvas:reference-catalog:v1:"+command.id()).getBytes(StandardCharsets.UTF_8));
+        return assets.withPreparedUpload(owner,project,assetId,Asset.MediaKind.IMAGE,()->{
+            try{return java.nio.file.Files.newInputStream(archive.file(fixed.media().ownerId(),fixed.media(),false));}
+            catch(java.io.IOException failure){throw new IllegalStateException("Cannot read archived costume",failure);}
+        },asset->publishPrepared(owner,project,commandKey,hash,command.id(),asset,fixed.media().sha256(),fixed.placement(),fixed::title));
     }
     private ImportResponse publishPrepared(UUID owner,UUID project,String key,String hash,UUID command,Asset asset,String expectedSha,Placement placement,java.util.function.Supplier<String> titleSupplier){
         return tx.execute(ignored->events.recordChange(owner,project,()->{

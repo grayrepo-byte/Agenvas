@@ -908,6 +908,147 @@ paths:
         Administrator-only and CSRF protected. Empty object explicitly selects the shared cache. Optional
         source/snapshot/entry selection narrows it. Active matching jobs are cancelled/fenced; active
         owner-private indexes and independent project media remain protected.
+  /api/v1/projects/{projectId}/reference-catalog/costumes:
+    post:
+      operationId: saveCostumeReference
+      summary: Save an exact image as an independently archived shared costume reference
+      tags: [Reference Catalog]
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SaveCostumeReferenceRequest'}
+      responses:
+        '201':
+          description: Successful response
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReferenceCatalogEntry'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/reference-catalog/costumes/{costumeId}:
+    get:
+      operationId: getCostumeReference
+      summary: Read current costume metadata to reconcile a stale edit or import
+      tags: [Reference Catalog]
+      parameters:
+        - name: costumeId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200':
+          description: Current visible costume reference
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReferenceCatalogEntry'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    patch:
+      operationId: updateCostumeReference
+      summary: Update self-created costume metadata with CAS
+      tags: [Reference Catalog]
+      parameters:
+        - name: costumeId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/UpdateCostumeReferenceRequest'}
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReferenceCatalogEntry'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+    delete:
+      operationId: deleteCostumeReference
+      summary: Remove a self-created reference without deleting project copies
+      tags: [Reference Catalog]
+      parameters:
+        - name: costumeId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: expectedVersion
+          in: query
+          required: true
+          schema: {type: integer, format: int64, minimum: 0}
+      responses:
+        '204':
+          description: Successful response
+        '400': {$ref: '#/components/responses/ValidationError'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/projects/{projectId}/reference-catalog/costumes/{costumeId}/import:
+    post:
+      operationId: importCostumeReference
+      summary: Copy a fixed self-created costume into an owned active project
+      tags: [Reference Catalog]
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: costumeId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ImportCostumeReferenceRequest'}
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReferenceCatalogImport'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/reference-catalog/costumes/{costumeId}/image:
+    get:
+      operationId: readCostumeReferenceImage
+      summary: Read independently archived costume bytes with authentication
+      tags: [Reference Catalog]
+      parameters:
+        - name: costumeId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200':
+          description: Costume image
+          content:
+            image/png: {schema: {type: string, format: binary}}
+            image/jpeg: {schema: {type: string, format: binary}}
+            image/webp: {schema: {type: string, format: binary}}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
   /api/v1/reference-catalog/sources:
     get:
       operationId: listReferenceCatalogSources
@@ -7207,6 +7348,43 @@ components:
           minimum: 0
         stats:
           $ref: '#/components/schemas/ReferenceCatalogCacheStats'
+    SaveCostumeReferenceRequest:
+      type: object
+      additionalProperties: false
+      required: [canvasItemId, sourceVersionId, expectedCanvasItemVersion, name, tags, commandKey]
+      properties:
+        canvasItemId: {type: string, format: uuid}
+        sourceVersionId: {type: string, format: uuid}
+        expectedCanvasItemVersion: {type: integer, format: int64, minimum: 0}
+        name: {type: string, minLength: 1, maxLength: 160}
+        category: {type: string, maxLength: 100}
+        tags:
+          type: array
+          maxItems: 32
+          uniqueItems: true
+          items: {type: string, minLength: 1, maxLength: 64}
+        commandKey: {type: string, minLength: 1, maxLength: 200}
+    UpdateCostumeReferenceRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, name, tags]
+      properties:
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+        name: {type: string, minLength: 1, maxLength: 160}
+        category: {type: string, maxLength: 100}
+        tags:
+          type: array
+          maxItems: 32
+          uniqueItems: true
+          items: {type: string, minLength: 1, maxLength: 64}
+    ImportCostumeReferenceRequest:
+      type: object
+      additionalProperties: false
+      required: [commandKey, expectedVersion]
+      properties:
+        commandKey: {type: string, minLength: 1, maxLength: 200}
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+        placement: {$ref: '#/components/schemas/ReferenceCatalogPlacement'}
     ReferenceCatalogKind:
       type: string
       enum:
@@ -7392,6 +7570,14 @@ components:
         - disabledReason
         - variants
       properties:
+        origin:
+          type: string
+          enum: [THIRD_PARTY, SELF_CREATED]
+          description: Internal provenance; both origins share the same costume browser.
+        version:
+          type: integer
+          format: int64
+          minimum: 0
         sourceId:
           type: string
         snapshotId:
@@ -10425,7 +10611,7 @@ components:
       enum: [DEPTH_MAP, EXTRACT_AUDIO, UPSCALE]
     MediaFunction:
       type: string
-      enum: [IMAGE_SMART_EDIT, IMAGE_RELIGHT, IMAGE_OUTPAINT, IMAGE_THREE_VIEW, IMAGE_LAYER_SPLIT, IMAGE_EXPRESSION_EDIT, IMAGE_REMOVE_BACKGROUND, IMAGE_OBJECT_REMOVE, IMAGE_VIEW_ANGLE, IMAGE_DEPTH_MAP, IMAGE_UPSCALE, IMAGE_RESIZE, IMAGE_CROP, IMAGE_ROTATE, IMAGE_FLIP_HORIZONTAL, IMAGE_FLIP_VERTICAL, VIDEO_DEPTH_MAP, VIDEO_EXTRACT_AUDIO, VIDEO_UPSCALE]
+      enum: [IMAGE_SMART_EDIT, IMAGE_COSTUME_EXTRACT, IMAGE_RELIGHT, IMAGE_OUTPAINT, IMAGE_THREE_VIEW, IMAGE_LAYER_SPLIT, IMAGE_EXPRESSION_EDIT, IMAGE_REMOVE_BACKGROUND, IMAGE_OBJECT_REMOVE, IMAGE_VIEW_ANGLE, IMAGE_DEPTH_MAP, IMAGE_UPSCALE, IMAGE_RESIZE, IMAGE_CROP, IMAGE_ROTATE, IMAGE_FLIP_HORIZONTAL, IMAGE_FLIP_VERTICAL, VIDEO_DEPTH_MAP, VIDEO_EXTRACT_AUDIO, VIDEO_UPSCALE]
     MediaFunctionSetting:
       type: object
       required: [operation, capabilityId, version]
@@ -10570,7 +10756,7 @@ components:
         expectedCanvasItemVersion: {type: integer, format: int64, minimum: 0}
         operation:
           type: string
-          enum: [SMART_EDIT, RELIGHT, OUTPAINT, THREE_VIEW, LAYER_SPLIT,
+          enum: [SMART_EDIT, COSTUME_EXTRACT, RELIGHT, OUTPAINT, THREE_VIEW, LAYER_SPLIT,
             EXPRESSION_EDIT, REMOVE_BACKGROUND, OBJECT_REMOVE, VIEW_ANGLE,
             DEPTH_MAP, UPSCALE, RESIZE, CROP, ROTATE, FLIP_HORIZONTAL, FLIP_VERTICAL]
         instruction: {type: [string, "null"], maxLength: 4000}

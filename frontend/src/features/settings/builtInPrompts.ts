@@ -7,6 +7,7 @@ const originalMetadata: Readonly<Record<string, { name: string; description: str
 // Purpose keys are immutable built-in consumer identities. Compare each original
 // seed field exactly so administrator metadata and all prompt content stay literal.
 const builtInPrompts: Readonly<Record<string, BuiltInPrompt>> = {
+  "image.costume-extract": { name: "costume.extract", description: "costume.promptDescription" },
   "agent.director": {
     name: "agent.defaults.director",
     description: "prompts.builtIn.director.description",

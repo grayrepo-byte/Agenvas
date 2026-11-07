@@ -1,5 +1,5 @@
 import type { components, paths } from "./schema";
-import { readJson, writeJson } from "./client";
+import { readJson, writeEmpty, writeJson } from "./client";
 import { t } from "../i18n";
 
 export type ReferenceKind = components["schemas"]["ReferenceCatalogKind"];
@@ -46,3 +46,22 @@ export function cachePrivateReferenceImage(request: ReferencePrivateCacheRequest
 export function clearPrivateReferenceImage(id: string): Promise<ReferencePrivateImage> { return writeJson(`/api/v1/reference-catalog/private-images/${encodeURIComponent(id)}`, { method: "DELETE" }); }
 export function importPrivateReferenceImage(projectId: string, id: string, request: ReferencePrivateImportRequest): Promise<ReferenceImport> { return writeJson(`/api/v1/projects/${encodeURIComponent(projectId)}/reference-catalog/private-images/${encodeURIComponent(id)}/import`, { method: "POST", body: JSON.stringify(request) }); }
 export function privateReferencePreviewUrl(image: ReferencePrivateImage): string | undefined { return image.cached && image.previewUrl.startsWith("/api/v1/reference-catalog/private-images/") ? image.previewUrl : undefined; }
+
+export type SaveCostumeReferenceRequest = components["schemas"]["SaveCostumeReferenceRequest"];
+export type UpdateCostumeReferenceRequest = components["schemas"]["UpdateCostumeReferenceRequest"];
+export type ImportCostumeReferenceRequest = components["schemas"]["ImportCostumeReferenceRequest"];
+export function saveCostumeReference(projectId: string, request: SaveCostumeReferenceRequest): Promise<ReferenceEntry> {
+  return writeJson(`/api/v1/projects/${encodeURIComponent(projectId)}/reference-catalog/costumes`, { method: "POST", body: JSON.stringify(request) }, t("costume.saveFailed"));
+}
+export function getCostumeReference(id: string): Promise<ReferenceEntry> {
+  return readJson(`/api/v1/reference-catalog/costumes/${encodeURIComponent(id)}`, t("reference.readFailed"));
+}
+export function updateCostumeReference(id: string, request: UpdateCostumeReferenceRequest): Promise<ReferenceEntry> {
+  return writeJson(`/api/v1/reference-catalog/costumes/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(request) }, t("costume.updateFailed"));
+}
+export function deleteCostumeReference(id: string, expectedVersion: number): Promise<void> {
+  return writeEmpty(`/api/v1/reference-catalog/costumes/${encodeURIComponent(id)}?expectedVersion=${expectedVersion}`, { method: "DELETE" });
+}
+export function importCostumeReference(projectId: string, id: string, request: ImportCostumeReferenceRequest): Promise<ReferenceImport> {
+  return writeJson(`/api/v1/projects/${encodeURIComponent(projectId)}/reference-catalog/costumes/${encodeURIComponent(id)}/import`, { method: "POST", body: JSON.stringify(request) }, t("reference.importFailed"));
+}

@@ -3888,3 +3888,15 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] `pnpm exec vitest run src/features/reference-catalog src/features/settings/SystemSettingsPage.test.tsx src/features/library/LibraryPage.test.tsx --reporter=dot`：十个文件 74 项通过，无未匹配 Mock 请求提示；含六项来源加载专项及原有图片自动缓存回归。`pnpm typecheck`、`pnpm build`、`pnpm lint`（主题／四语／ESLint）通过，保留既有 Vite 配置加载器与大分块提示。
 - [x] `pnpm test:reference-catalog` 使用合成图片与内存 API，通过 2560×1179、1440×900、390×844、844×390 四种 Chromium 窗口，验证弹窗只有一个选择框、没有文本输入或缓存面板，选择已配置来源并加载后自动关闭；自动缓存与预览复用继续通过。窄屏截图已目视检查，截图位于仓库外。
 - [ ] 全量测试、后端测试、真实来源网络／Provider 及部署验证未运行；未推送或部署。
+
+
+## 2026-11-07 服装提取与统一服装参考库
+
+- [x] 图片结果工具栏新增「服装提取」，复用现有 OpenAI 多图编辑与持久图片任务。固定打开时的来源和节点 CAS，支持可选提取说明，输出统一 2:3 竖幅去人物穿搭展示。第二张图片为应用内置合成样式参考，任务固定其身份、摘要和内置创作提示词版本；样式只约束背景、构图、光照和摆放，禁止复制参考服装。功能默认未绑定，管理员选择支持两图及 2:3 输出的 OpenAI 能力后使用。
+- [x] 任一归档图片可选「保存为服装参考」，名称、分类、标签和精确来源固定到幂等保存命令。自建服装与三方服装共用同一个浏览、搜索、筛选及参考应用列表，仅后台区分来源和归档生命周期；三方同步、停用、缓存清理，以及来源项目删除不影响已发布自建图片。沿用单管理员，没有新增用户列表或成员管理。
+- [x] 自建条目独立归档，保存/导入在文件 I/O 外使用短事务和稳定身份恢复；元数据更新与删除使用 CAS，删除隐藏目录并保留已接受转存所需内容，已导入项目副本不受影响。首版没有自动 GC，命令 pin 和软删除图片保留；未完成保存/重放仍要求来源项目活动。上述取舍见 [ADR 0082](adr/0082-costume-extraction-and-unified-catalog.md)。
+- [x] 同步 OpenAPI 功能/操作枚举、自建保存/读取/编辑/删除/图片/导入接口、生成 TypeScript、四语言、规格和领域词汇。新增 V57 功能/提示词初始化与 V58 自建目录/命令迁移；从隔离 PostgreSQL 17.11 空库执行最终迁移并重新生成 jOOQ，普通构建不连接生成数据库。没有升级依赖、修改既有迁移或部署现有实例。
+- [x] 五类定向后端单元测试 61 项通过：ImageOperationSpec、ImageOperationValidation、MediaFunctionService、CostumeExtractionReference 和 OpenAiImage2Adapter。四类真实 PostgreSQL 专项累计 20 项通过：ThreeViewPrompt 5、ImageOperationDerivation 1、CustomCostume 6、ReferenceCatalog 8；零失败、错误或跳过。使用定向 `-Dtest=... test/verify` 和 `-Pci-integration -Dit.test=... verify`，覆盖精确来源/样式请求顺序、提示词/摘要冻结和重放、CAS、并发、回执丢失、归档恢复、三方清理隔离、来源项目删除与登录/管理员/项目授权；外部协议响应由本地假 HTTP 提供，未调用真实 Provider。
+- [x] 定向前端两组累计 14 文件 207 项通过：画布图片工具/面板、功能设置与提示词标签 130 项，参考目录/入库/恢复 77 项。独立审阅发现陈旧元数据/导入版本缺少可见恢复入口，已用六项先失败后通过的测试补齐刷新核对、丢失 PATCH/DELETE 回执处理、草稿保留和已导入副本复用；未遗留审阅问题。
+- [x] `pnpm api:generate`、`pnpm typecheck`、`pnpm lint`（主题、四语言和 ESLint）、`pnpm build`、差异空白检查通过。真实 Chrome 使用生产 CSS 与合成图片/内存 API，通过 2560×1179、1440×900、390×844、844×390 四种窗口，覆盖统一服装目录、自建编辑、可选入库、精确图片导入和既有来源/缓存流程。构建保留既有 Vite 配置加载器及大分块提示；画布单测仍有既有音频内容请求未匹配和 jsdom pause 提示，未记为无提示执行。
+- [ ] 全量测试、真实 OpenAI 服装提取视觉质量、真实用户素材及部署升级验证未运行；合成参考图和假 HTTP 只能证明配置与流程，不能证明真实服装保真或输出一致性。未提交、推送或部署。

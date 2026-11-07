@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ReferenceCatalog } from "../src/features/reference-catalog/ReferenceCatalog";
+import { SaveCostumeReferenceButton } from "../src/features/reference-catalog/SaveCostumeReferenceButton";
 import { Dialog } from "../src/shared/ui/Dialog";
 import { Button } from "../src/shared/ui/primitives/button";
 import { setLocale } from "../src/shared/i18n";
@@ -24,6 +25,10 @@ const data: ReferenceEntry[] = [entry, { ...entry, id: "links", title: "Metadata
 const privateEntry: ReferenceEntry = { ...entry, id: "automatic-costume", kind: "COSTUME", title: "Synthetic private costume", localizedTitle: { en: "Synthetic private costume" }, importAllowed: false,
   variants: entry.variants.slice(0, 1).map((view) => ({ ...view, previewUrl: null, sha256: null, importAllowed: false, availability: "LINK_ONLY", privateCacheAllowed: true })) };
 let privateDownloads = 0;
+let costumeDeleted = false;
+let customCostume: ReferenceEntry = { ...entry, id: "00000000-0000-4000-8000-000000000004", snapshotId: "00000000-0000-4000-8000-000000000004",
+  sourceId: "self-created", kind: "COSTUME", origin: "SELF_CREATED", version: 0, title: "Synthetic self-created costume", localizedTitle: {},
+  variants: [{ ...entry.variants[0]!, id: "front", previewUrl: "/api/v1/reference-catalog/costumes/00000000-0000-4000-8000-000000000004/image", cached: true }] };
 let imports = 0;
 let privateImages: ReferencePrivateImage[] = [{ id: "00000000-0000-4000-8000-000000000002", sourceId: source.id,
   snapshotId: "00000000-0000-4000-8000-000000000003", entryId: "old-snapshot-geometric-study", variantId: "old-front-view",
@@ -59,8 +64,25 @@ globalThis.fetch = async (input, init) => {
   if (url.pathname === "/api/v1/reference-catalog") {
     const query = (url.searchParams.get("query") ?? "").toLowerCase();
     const kind = url.searchParams.get("kind") ?? "POSE";
-    const items = (kind === "COSTUME" ? [privateEntry] : data).filter((item) => item.title.toLowerCase().includes(query));
+    const items = (kind === "COSTUME" ? [privateEntry, ...(costumeDeleted ? [] : [customCostume])] : data).filter((item) => item.title.toLowerCase().includes(query));
     return Response.json({ items, total: items.length, offset: 0, limit: 50, filters: { categories: ["standing"], tags: ["test"], styles: [], collections: ["builtin"], angles: ["front", "side", "high", "low", "diag"] } });
+  }
+  if (url.pathname === "/api/v1/projects/synthetic-project/reference-catalog/costumes") {
+    document.documentElement.dataset.costumeSaveCount = "1";
+    return Response.json(customCostume, { status: 201 });
+  }
+  if (url.pathname === `/api/v1/reference-catalog/costumes/${customCostume.id}`) {
+    if (!init?.method || init.method === "GET") return Response.json(customCostume);
+    if (init?.method === "DELETE") { costumeDeleted = true; return new Response(null, { status: 204 }); }
+    const body = JSON.parse(String(init?.body)) as { name: string; category: string; tags: string[] };
+    customCostume = { ...customCostume, title: body.name, category: body.category, tags: body.tags, version: (customCostume.version ?? 0) + 1 };
+    document.documentElement.dataset.costumeUpdateCount = "1";
+    return Response.json(customCostume);
+  }
+  if (url.pathname.endsWith(`/costumes/${customCostume.id}/import`)) {
+    document.documentElement.dataset.costumeImportCount = "1";
+    return Response.json({ artifactId: "owned-custom-artifact", canvasItemId: null, versionId: "owned-custom-version", assetId: "owned-custom-asset", title: customCostume.title,
+      contentType: "image/png", byteSize: 1024, width: 240, height: 320, thumbnailUrl: "/api/v1/reference-catalog/synthetic-preview/front" });
   }
   if (url.pathname.endsWith("/reference-catalog/import")) {
     const body = JSON.parse(String(init?.body ?? "{}")) as { variantId?: string };
@@ -74,6 +96,7 @@ globalThis.fetch = async (input, init) => {
 function Fixture() {
   const [open, setOpen] = useState(false); const [busy, setBusy] = useState(false); const [applied, setApplied] = useState("");
   return <main className="app-page"><Button id="open-reference" onClick={() => setOpen(true)}>Open reference catalog</Button><output id="applied-reference">{applied}</output>
+    <SaveCostumeReferenceButton projectId="synthetic-project" canvasItemId="synthetic-item" sourceVersionId="synthetic-version" expectedCanvasItemVersion={0} sourceTitle="Synthetic outfit result" />
     {open ? <Dialog className="reference-picker-dialog" title="Reference catalog" busy={busy} onClose={() => setOpen(false)} onSubmit={(event) => event.preventDefault()}
       footer={<Button type="button" disabled={busy} onClick={() => setOpen(false)}>Close catalog</Button>}>
       <ReferenceCatalog projectId="synthetic-project" onBusy={setBusy} onApply={async (image) => { setApplied(image.versionId); }} />

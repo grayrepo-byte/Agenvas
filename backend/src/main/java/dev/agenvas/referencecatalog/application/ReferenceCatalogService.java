@@ -17,9 +17,10 @@ public class ReferenceCatalogService {
     private final ReferenceCatalogRepository repository; private final ReferenceCatalogGitHubClient github;
     private final ReferenceCatalogParser parser; private final Clock clock; private final TransactionTemplate tx;
     private final ReferenceCatalogImageCache cache; private final boolean recovery;
+    private final CustomCostumeRepository costumes;
     public ReferenceCatalogService(ReferenceCatalogRepository repository,ReferenceCatalogGitHubClient github,ReferenceCatalogParser parser,Clock clock,PlatformTransactionManager transactions,ReferenceCatalogImageCache cache,
-            @org.springframework.beans.factory.annotation.Value("${agenvas.recovery-mode:false}") boolean recovery){
-        this.repository=repository;this.github=github;this.parser=parser;this.clock=clock;this.tx=new TransactionTemplate(transactions);this.cache=cache;this.recovery=recovery;
+            @org.springframework.beans.factory.annotation.Value("${agenvas.recovery-mode:false}") boolean recovery,CustomCostumeRepository costumes){
+        this.costumes=costumes;this.repository=repository;this.github=github;this.parser=parser;this.clock=clock;this.tx=new TransactionTemplate(transactions);this.cache=cache;this.recovery=recovery;
     }
     public List<Source> sources(){return repository.sources();}
     public Source source(String id){return repository.source(id).orElseThrow(ReferenceCatalogService::missing);}
@@ -61,7 +62,7 @@ public class ReferenceCatalogService {
             String previewUrl,String sha256,Long byteSize,String contentType,String availability,boolean importAllowed,String disabledReason,boolean cached,boolean privateCacheAllowed,String privateCacheDisabledReason){}
     public record EntryView(String sourceId,UUID snapshotId,String id,Kind kind,String title,Map<String,String> localizedTitle,String code,
             String category,Map<String,String> localizedCategory,Map<String,String> series,List<String> tags,Map<String,Map<String,String>> localizedTags,Map<String,String> localizedKeywords,
-            Map<String,String> facets,String collection,boolean extended,String externalUrl,boolean importAllowed,String disabledReason,List<VariantView> variants){}
+            Map<String,String> facets,String collection,boolean extended,String externalUrl,boolean importAllowed,String disabledReason,List<VariantView> variants,Origin origin,long version){}
     public record Page(List<EntryView> items,long total,int offset,int limit,Filters filters){}
     public Page list(Kind kind,String sourceId,String query,String category,String tag,String style,String collection,Boolean extended,String angle,int offset,int limit){
         if(offset<0 || limit<1 || limit>100 || query==null || query.length()>200)throw invalid();
@@ -72,6 +73,8 @@ public class ReferenceCatalogService {
             Snapshot snapshot=repository.snapshot(source.id(),source.currentSnapshotId()).orElseThrow(ReferenceCatalogService::missing);
             for(Entry entry:snapshot.entries())if(kind==null || entry.kind()==kind)all.add(view(source,snapshot,entry));
         }
+        if(sourceId==null && (kind==null || kind==Kind.COSTUME))
+            all.addAll(costumes.list().stream().map(CustomCostumeService::view).toList());
         Filters filters=new Filters(distinct(all.stream().map(EntryView::category).toList()),distinct(all.stream().flatMap(e->e.tags().stream()).toList()),
                 distinct(all.stream().map(e->e.facets().getOrDefault("style","")).toList()),distinct(all.stream().map(EntryView::collection).toList()),
                 distinct(all.stream().flatMap(e->e.variants().stream().map(VariantView::angle)).toList()));
@@ -91,7 +94,7 @@ public class ReferenceCatalogService {
                     v.sha256(),v.byteSize(),v.contentType(),allowed?"AVAILABLE":"LINK_ONLY",allowed,allowed?null:disabled(source),cache.contains(v.sha256(),v.byteSize()),dev.agenvas.referencecatalog.domain.ReferenceCatalogPrivatePolicy.disabledReason(source,e)==null,dev.agenvas.referencecatalog.domain.ReferenceCatalogPrivatePolicy.disabledReason(source,e));}).toList();
         boolean allowed=variants.stream().anyMatch(VariantView::importAllowed);
         return new EntryView(source.id(),snapshot.id(),e.id(),e.kind(),e.title(),e.localizedTitle(),e.code(),e.category(),e.localizedCategory(),e.series(),e.tags(),e.localizedTags(),e.localizedKeywords(),
-                e.facets(),e.collection(),e.extended(),e.externalUrl(),allowed,allowed?null:disabled(source),variants);
+                e.facets(),e.collection(),e.extended(),e.externalUrl(),allowed,allowed?null:disabled(source),variants,Origin.THIRD_PARTY,0);
     }
     public record Selection(Source source,Snapshot snapshot,Entry entry,Variant variant){}
     public Selection metadataSelection(String sourceId,UUID snapshotId,String entryId,String variantId){

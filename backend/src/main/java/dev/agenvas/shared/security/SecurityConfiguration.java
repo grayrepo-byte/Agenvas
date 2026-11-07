@@ -51,6 +51,12 @@ public class SecurityConfiguration {
                                 "/actuator/health/liveness",
                                 "/actuator/health/readiness")
                         .permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.POST,
+                                "/api/v1/projects/*/reference-catalog/costumes").hasRole("ADMIN")
+                        .requestMatchers(org.springframework.http.HttpMethod.PATCH,
+                                "/api/v1/reference-catalog/costumes/*").hasRole("ADMIN")
+                        .requestMatchers(org.springframework.http.HttpMethod.DELETE,
+                                "/api/v1/reference-catalog/costumes/*").hasRole("ADMIN")
                         .requestMatchers("/api/v1/settings/llm/models", "/api/v1/settings/media-connections/**",
                                 "/api/v1/settings/media-connections",
                                 "/api/v1/settings/media-templates", "/api/v1/settings/media-templates/**",

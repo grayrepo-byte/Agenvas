@@ -1,7 +1,21 @@
 import { describe, expect, it } from "vitest";
 import { videoFunctionsFixture } from "../test/videoFunctionsFixture";
-import { videoFunctionChoices } from "./mediaFunctions";
+import { compatibleImageFunction, IMAGE_OPERATIONS, videoFunctionChoices } from "./mediaFunctions";
+import { imageFunctionsFixture } from "../test/imageFunctionsFixture";
 import { setLocale } from "./i18n";
+import type { MediaCapability } from "./api/client";
+
+describe("costume extraction function", () => {
+  it("offers only OpenAI with capacity for source and style and a 2:3 output", () => {
+    const capability = imageFunctionsFixture().connections[1]!.capabilities[0]!;
+    expect(IMAGE_OPERATIONS).toContain("COSTUME_EXTRACT");
+    const openAi: MediaCapability = { ...capability, adapterId: "OPENAI_GPT_IMAGE_2", maxReferenceImages: 2, supportedImageAspectRatios: ["2:3"] };
+    expect(compatibleImageFunction("COSTUME_EXTRACT", openAi)).toBe(true);
+    expect(compatibleImageFunction("COSTUME_EXTRACT", { ...openAi, maxReferenceImages: 1 })).toBe(false);
+    expect(compatibleImageFunction("COSTUME_EXTRACT", { ...openAi, adapterId: "GOOGLE_NANO_BANANA_2" })).toBe(false);
+    expect(compatibleImageFunction("COSTUME_EXTRACT", { ...openAi, supportedImageAspectRatios: ["1:1"] })).toBe(false);
+  });
+});
 
 describe("video function choices", () => {
   it("localizes an installed processor at display time and leaves its raw name and custom names intact", () => {

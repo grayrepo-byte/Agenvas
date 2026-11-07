@@ -411,6 +411,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/reference-catalog/costumes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Save an exact image as an independently archived shared costume reference */
+        post: operations["saveCostumeReference"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reference-catalog/costumes/{costumeId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read current costume metadata to reconcile a stale edit or import */
+        get: operations["getCostumeReference"];
+        put?: never;
+        post?: never;
+        /** Remove a self-created reference without deleting project copies */
+        delete: operations["deleteCostumeReference"];
+        options?: never;
+        head?: never;
+        /** Update self-created costume metadata with CAS */
+        patch: operations["updateCostumeReference"];
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/reference-catalog/costumes/{costumeId}/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Copy a fixed self-created costume into an owned active project */
+        post: operations["importCostumeReference"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reference-catalog/costumes/{costumeId}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read independently archived costume bytes with authentication */
+        get: operations["readCostumeReferenceImage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/reference-catalog/sources": {
         parameters: {
             query?: never;
@@ -5109,6 +5179,31 @@ export interface components {
             removedBytes: number;
             stats: components["schemas"]["ReferenceCatalogCacheStats"];
         };
+        SaveCostumeReferenceRequest: {
+            /** Format: uuid */
+            canvasItemId: string;
+            /** Format: uuid */
+            sourceVersionId: string;
+            /** Format: int64 */
+            expectedCanvasItemVersion: number;
+            name: string;
+            category?: string;
+            tags: string[];
+            commandKey: string;
+        };
+        UpdateCostumeReferenceRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+            name: string;
+            category?: string;
+            tags: string[];
+        };
+        ImportCostumeReferenceRequest: {
+            commandKey: string;
+            /** Format: int64 */
+            expectedVersion: number;
+            placement?: components["schemas"]["ReferenceCatalogPlacement"];
+        };
         /** @enum {string} */
         ReferenceCatalogKind: "POSE" | "COSTUME";
         /** @enum {string} */
@@ -5157,6 +5252,13 @@ export interface components {
             privateCacheDisabledReason: string | null;
         };
         ReferenceCatalogEntry: {
+            /**
+             * @description Internal provenance; both origins share the same costume browser.
+             * @enum {string}
+             */
+            origin?: "THIRD_PARTY" | "SELF_CREATED";
+            /** Format: int64 */
+            version?: number;
             sourceId: string;
             /** Format: uuid */
             snapshotId: string;
@@ -7074,7 +7176,7 @@ export interface components {
         /** @enum {string} */
         VideoOperation: "DEPTH_MAP" | "EXTRACT_AUDIO" | "UPSCALE";
         /** @enum {string} */
-        MediaFunction: "IMAGE_SMART_EDIT" | "IMAGE_RELIGHT" | "IMAGE_OUTPAINT" | "IMAGE_THREE_VIEW" | "IMAGE_LAYER_SPLIT" | "IMAGE_EXPRESSION_EDIT" | "IMAGE_REMOVE_BACKGROUND" | "IMAGE_OBJECT_REMOVE" | "IMAGE_VIEW_ANGLE" | "IMAGE_DEPTH_MAP" | "IMAGE_UPSCALE" | "IMAGE_RESIZE" | "IMAGE_CROP" | "IMAGE_ROTATE" | "IMAGE_FLIP_HORIZONTAL" | "IMAGE_FLIP_VERTICAL" | "VIDEO_DEPTH_MAP" | "VIDEO_EXTRACT_AUDIO" | "VIDEO_UPSCALE";
+        MediaFunction: "IMAGE_SMART_EDIT" | "IMAGE_COSTUME_EXTRACT" | "IMAGE_RELIGHT" | "IMAGE_OUTPAINT" | "IMAGE_THREE_VIEW" | "IMAGE_LAYER_SPLIT" | "IMAGE_EXPRESSION_EDIT" | "IMAGE_REMOVE_BACKGROUND" | "IMAGE_OBJECT_REMOVE" | "IMAGE_VIEW_ANGLE" | "IMAGE_DEPTH_MAP" | "IMAGE_UPSCALE" | "IMAGE_RESIZE" | "IMAGE_CROP" | "IMAGE_ROTATE" | "IMAGE_FLIP_HORIZONTAL" | "IMAGE_FLIP_VERTICAL" | "VIDEO_DEPTH_MAP" | "VIDEO_EXTRACT_AUDIO" | "VIDEO_UPSCALE";
         MediaFunctionSetting: {
             operation: components["schemas"]["MediaFunction"];
             /** Format: uuid */
@@ -7208,7 +7310,7 @@ export interface components {
             /** Format: int64 */
             expectedCanvasItemVersion: number;
             /** @enum {string} */
-            operation: "SMART_EDIT" | "RELIGHT" | "OUTPAINT" | "THREE_VIEW" | "LAYER_SPLIT" | "EXPRESSION_EDIT" | "REMOVE_BACKGROUND" | "OBJECT_REMOVE" | "VIEW_ANGLE" | "DEPTH_MAP" | "UPSCALE" | "RESIZE" | "CROP" | "ROTATE" | "FLIP_HORIZONTAL" | "FLIP_VERTICAL";
+            operation: "SMART_EDIT" | "COSTUME_EXTRACT" | "RELIGHT" | "OUTPAINT" | "THREE_VIEW" | "LAYER_SPLIT" | "EXPRESSION_EDIT" | "REMOVE_BACKGROUND" | "OBJECT_REMOVE" | "VIEW_ANGLE" | "DEPTH_MAP" | "UPSCALE" | "RESIZE" | "CROP" | "ROTATE" | "FLIP_HORIZONTAL" | "FLIP_VERTICAL";
             instruction?: string | null;
             /** Format: int64 */
             expectedFunctionVersion: number;
@@ -10171,6 +10273,179 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    saveCostumeReference: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveCostumeReferenceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceCatalogEntry"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getCostumeReference: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                costumeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current visible costume reference */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceCatalogEntry"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteCostumeReference: {
+        parameters: {
+            query: {
+                expectedVersion: number;
+            };
+            header?: never;
+            path: {
+                costumeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateCostumeReference: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                costumeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCostumeReferenceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceCatalogEntry"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    importCostumeReference: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                costumeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportCostumeReferenceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceCatalogImport"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    readCostumeReferenceImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                costumeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Costume image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                    "image/jpeg": string;
+                    "image/webp": string;
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     listReferenceCatalogSources: {

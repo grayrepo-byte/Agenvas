@@ -30,5 +30,9 @@
   "video.optimize-prompt": {
     "name": "视频提示词优化",
     "description": "优化视频草稿提示词，可选择固定版本的 Skill 文字方法；结果由用户确认回填。"
+  },
+  "image.costume-extract": {
+    "name": "服装提取",
+    "description": "提取原图穿搭，以固定参考图约束背景、光照和摆放，不复制参考图中的服装。"
   }
 }

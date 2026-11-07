@@ -25,6 +25,7 @@ type FunctionTab = typeof FUNCTION_TABS[number];
 const FUNCTION_FILTERS = ["all", "ready", "unconfigured"] as const;
 type FunctionFilter = typeof FUNCTION_FILTERS[number];
 const FUNCTION_ICONS: Record<MediaFunctionSetting["operation"], Icon> = {
+  IMAGE_COSTUME_EXTRACT: Scissors,
   IMAGE_SMART_EDIT: MagicWand, IMAGE_RELIGHT: Sun, IMAGE_OUTPAINT: ArrowsOut,
   IMAGE_THREE_VIEW: Cube, IMAGE_LAYER_SPLIT: Stack, IMAGE_EXPRESSION_EDIT: Smiley,
   IMAGE_REMOVE_BACKGROUND: Scissors, IMAGE_OBJECT_REMOVE: Eraser, IMAGE_VIEW_ANGLE: Cube,

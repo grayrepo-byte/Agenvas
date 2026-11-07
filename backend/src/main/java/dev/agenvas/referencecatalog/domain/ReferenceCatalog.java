@@ -10,6 +10,7 @@ public final class ReferenceCatalog {
     private ReferenceCatalog() {}
     public enum Format { OPEN_POSE_COSTUME, AGENVAS_REFERENCE_PACK }
     public enum Kind { POSE, COSTUME }
+    public enum Origin { THIRD_PARTY, SELF_CREATED }
     public record Source(String id, String name, String owner, String repository, String ref, String manifestPath,
             Format format, boolean enabled, boolean imageDistributionApproved, long version, UUID currentSnapshotId,
             String lastSyncStatus, String lastSyncError, Instant syncedAt, String resolvedCommit) {}

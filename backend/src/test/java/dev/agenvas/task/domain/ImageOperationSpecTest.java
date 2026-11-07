@@ -12,6 +12,18 @@ import tools.jackson.databind.node.ObjectNode;
 class ImageOperationSpecTest {
     private final ObjectMapper mapper = new ObjectMapper();
 
+    @Test void costumeExtractionUsesManagedPromptAndFixedPortraitLayout() {
+        var operation = ImageOperation.valueOf("COSTUME_EXTRACT");
+        var spec = parse(operation, mapper.createObjectNode().put("aspectRatio", "16:9"));
+        assertThat(operation.cloud()).isTrue();
+        assertThat(operation.instructionRequired()).isFalse();
+        assertThat(spec.promptKey()).isEqualTo("image.costume-extract");
+        assertThat(spec.parameters().path("aspectRatio").asText()).isEqualTo("2:3");
+        assertThat(spec.prompt("person on the left", "Extract only the outfit from Image 1."))
+                .contains("Extract only the outfit from Image 1.", "person on the left");
+        assertThat(spec.requiresTransparentOutput()).isFalse();
+    }
+
     @Test
     void declaresModelExtensionsAsCloudImageOperations() {
         assertThat(new ImageOperation[] {

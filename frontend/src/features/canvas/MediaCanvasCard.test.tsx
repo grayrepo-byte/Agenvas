@@ -54,6 +54,43 @@ function showCard(shownArtifact: Artifact = artifact, onCardClick = vi.fn()) {
 }
 
 describe("MediaCanvasCard", () => {
+  beforeEach(() => {
+    server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "synthetic-admin", username: "synthetic-admin", role: "ADMIN" })));
+  });
+
+  it("opens outfit extraction with a pinned source and preserves guidance on conflict", async () => {
+    let request: unknown;
+    const extractionSettings = imageFunctionsFixture();
+    extractionSettings.connections[1]!.capabilities[0]!.supportedImageAspectRatios = ["2:3"];
+    server.use(
+      http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({ displayMode: "RESULT", version: 0 })),
+      http.get("/api/v1/projects/project-1/assets/:assetId", ({ params }) => HttpResponse.json({ id: params.assetId, width: 1000, height: 1500 })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(extractionSettings)),
+      http.get("/api/v1/settings/media-functions", () => HttpResponse.json(imageFunctionSettings())),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+      http.post("/api/v1/projects/project-1/artifacts/image-1/image-operations", async ({ request: incoming }) => {
+        request = await incoming.json();
+        return HttpResponse.json({ title: "Conflict", detail: "synthetic source changed", code: "VERSION_CONFLICT", retryable: false },
+          { status: 409, headers: { "Content-Type": "application/problem+json" } });
+      }),
+    );
+    const shown: Artifact = { ...artifact, resourceDefaultVersionId: "image-version", resourceDefaultVersion: {
+      id: "image-version", versionNo: 1, schemaVersion: 1, content: { sourceType: "UPLOAD", assetId: "image-asset" },
+      inputReferences: [], createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
+    } };
+    const view = showCard(shown);
+    expect(await screen.findByRole("button", { name: "保存为服装参考" })).toBeVisible();
+    await clickControl(await screen.findByRole("button", { name: "服装提取" }));
+    const guidance = await screen.findByRole("textbox", { name: "提取说明（可选）" });
+    fireEvent.change(guidance, { target: { value: "左侧人物" } });
+    view.setItem({ ...itemFor(shown), version: 1, selectedVersionId: "new-version",
+      selectedVersion: { ...shown.resourceDefaultVersion!, id: "new-version", content: { sourceType: "UPLOAD", assetId: "new-asset" } } });
+    await clickControl(screen.getByRole("button", { name: "开始处理" }));
+    await waitFor(() => expect(request).toEqual(expect.objectContaining({ operation: "COSTUME_EXTRACT", sourceVersionId: "image-version",
+      expectedCanvasItemVersion: 0, instruction: "左侧人物", expectedFunctionVersion: 3, expectedCapabilityVersion: 1 })));
+    expect(await screen.findByText("synthetic source changed")).toBeVisible();
+    expect(guidance).toHaveValue("左侧人物");
+  });
   it.each([
     ["IMAGE", "RESULT"], ["VIDEO", "RESULT"], ["AUDIO", "RESULT"],
     ["IMAGE", "DRAFT"], ["VIDEO", "DRAFT"], ["AUDIO", "DRAFT"],

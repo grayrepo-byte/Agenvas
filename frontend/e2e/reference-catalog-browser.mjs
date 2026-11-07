@@ -25,7 +25,8 @@ const viewports = [
 const profile = await mkdtemp(join(tmpdir(), "agenvas-reference-catalog-"));
 const image = await readFile(new URL("../../examples/reference-pack/images/neutral-front.png", import.meta.url));
 const media = (server) => { server.middlewares.use((request, response, next) => {
-  if (!request.url?.startsWith("/api/v1/reference-catalog/synthetic-preview/") && request.url !== "/api/v1/reference-catalog/private-images/synthetic-auto/preview") return next();
+  if (!request.url?.startsWith("/api/v1/reference-catalog/synthetic-preview/") && request.url !== "/api/v1/reference-catalog/private-images/synthetic-auto/preview"
+      && !request.url?.match(/^\/api\/v1\/reference-catalog\/costumes\/[^/]+\/image$/)) return next();
   response.setHeader("Content-Type", "image/png"); response.end(image);
 }); };
 const config = { root, configFile: join(root, "vite.config.ts"), configLoader: "runner", cacheDir: join(profile, "vite-cache"),
@@ -217,9 +218,38 @@ try {
     await waitFor(() => document.querySelector('.reference-preview-dialog img')?.naturalWidth === 240);
     assert.equal(await page(() => document.documentElement.dataset.privateDownloadCount), "1", "Preview must reuse the automatically cached card image");
     assert.equal(await page(() => document.documentElement.dataset.importCount), "1", "Automatic caching must not import another project image");
+    await pointerClick('.reference-preview-dialog .ui-dialog-header button');
+    assert.equal(await page(() => document.querySelectorAll('.reference-card').length), 2, 'Self-created and external costumes share one list');
+    await pointerClick('.reference-card:last-child');
+    await waitFor(() => document.querySelector('.reference-preview-dialog img')?.naturalWidth === 240);
+    await pointerClick('.costume-reference-manager button:first-child');
+    await waitFor(() => Boolean(document.querySelector('.costume-reference-dialog')));
+    const customLayout = await page(() => {
+      const dialog = document.querySelector('.costume-reference-dialog');
+      return { overflow: dialog.scrollWidth > dialog.clientWidth, bottom: dialog.getBoundingClientRect().bottom };
+    });
+    assert.equal(customLayout.overflow, false, 'Custom costume editor must fit the viewport');
+    assert.ok(customLayout.bottom <= viewport.height + tolerance, 'Custom costume editor actions must remain accessible');
+    await page(() => {
+      const input = document.querySelector('.costume-reference-dialog input');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'Synthetic updated outfit');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await pointerClick('.costume-reference-dialog button[type=submit]');
+    await waitFor(() => !document.querySelector('.costume-reference-dialog') && document.documentElement.dataset.costumeUpdateCount === '1');
+    await pointerClick('.reference-preview-dialog button[type=submit]');
+    await waitFor(() => document.querySelector('#applied-reference').textContent === 'owned-custom-version');
+    assert.equal(await page(() => document.documentElement.dataset.costumeImportCount), '1', 'Self-created image imports through its own durable endpoint');
+    await pointerClick('.reference-picker-dialog .ui-dialog-header button');
+    await page(() => [...document.querySelectorAll('button')].find((button) => button.textContent === 'Save as costume reference').click());
+    await waitFor(() => Boolean(document.querySelector('.costume-reference-dialog')));
+    await pointerClick('.costume-reference-dialog button[type=submit]');
+    await waitFor(() => document.documentElement.dataset.costumeSaveCount === '1'
+      && document.querySelector('.costume-reference-dialog').textContent.includes('Costume reference saved.'));
+    assert.equal(await page(() => document.querySelector('.costume-reference-dialog').textContent.includes('Costume reference saved.')), true);
     console.log(JSON.stringify({ viewport, append: initial.button, sourceSettings: "visible", ownerCache: "old snapshot cleared" }));
   }
-  console.log(`Reference catalog browser regression passed: ${viewports.length} viewports, automatic private thumbnails, cache reuse, exact view import, metadata-only gating, source settings, owner old-snapshot cleanup`);
+  console.log(`Reference catalog browser regression passed: ${viewports.length} viewports, unified self-created costumes, metadata editing, optional save, exact image import and existing source/cache flows`);
 
 } finally {
   socket?.close();

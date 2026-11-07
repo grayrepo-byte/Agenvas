@@ -70,6 +70,7 @@ public final class ImageOperationSpec {
         if (!source.isObject()) throw invalid(ApiMessage.of("api.direct-media-task-service.image-processing-parameters-must-be-objects"));
         ObjectNode result = mapper.createObjectNode();
         switch (operation) {
+            case COSTUME_EXTRACT -> result.put("aspectRatio", "2:3");
             case DEPTH_MAP, SMART_EDIT, EXPRESSION_EDIT,
                     REMOVE_BACKGROUND, OBJECT_REMOVE, FLIP_HORIZONTAL, FLIP_VERTICAL -> { }
             case RELIGHT -> {
@@ -170,6 +171,7 @@ public final class ImageOperationSpec {
 
     /** A registered function key is selected by the validated operation, never by user input. */
     public String promptKey() {
+        if (operation == ImageOperation.COSTUME_EXTRACT) return "image.costume-extract";
         return operation == ImageOperation.THREE_VIEW
                 ? THREE_VIEW_DEFINITIONS.get(parameters.path("threeViewType").asText()).promptKey()
                 : null;
@@ -178,6 +180,8 @@ public final class ImageOperationSpec {
     /** Managed content is required for three views; other operations retain their fixed instructions. */
     public String prompt(String instruction, String managedContent) {
         return switch (operation) {
+            case COSTUME_EXTRACT -> Objects.requireNonNull(managedContent, "Costume extraction requires a managed prompt")
+                    + (instruction.isBlank() ? "" : " Extraction guidance: " + instruction);
             case SMART_EDIT -> "Edit the provided image according to this instruction. Preserve all "
                     + "unmentioned subjects, identity, composition, and visual style. Instruction: "
                     + instruction;

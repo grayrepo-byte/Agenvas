@@ -265,6 +265,14 @@ public class OpenAiImage2Adapter implements MediaAdapter {
             }
             result.add(png);
         }
+        if ("COSTUME_EXTRACT".equals(task.input().path("imageOperation").path("name").asText())) {
+            if (inputs.size() != 1 || markup != null)
+                throw new IllegalArgumentException("Costume extraction needs one source and its fixed style");
+            byte[] style = CostumeExtractionReference.read(task.input().path("imageOperation").path("styleReference"));
+            if (totalBytes + style.length > OpenAiImage2Client.MAX_REFERENCE_TOTAL_BYTES)
+                throw new IllegalArgumentException("Pinned reference PNG total size is invalid");
+            result.add(style);
+        }
         return List.copyOf(result);
     }
 
