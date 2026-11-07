@@ -3943,5 +3943,7 @@
   "reference.loadingSource": "正在加载来源…",
   "reference.retryLoad": "重试加载",
   "reference.omilicSource": "Omilic（推荐）",
-  "reference.refreshCatalog": "刷新目录"
+  "reference.refreshCatalog": "刷新目录",
+  "reference.searchPlaceholder": "搜索名称、编号或关键词",
+  "reference.classification": "扩展分类"
 }

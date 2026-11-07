@@ -3943,5 +3943,7 @@
   "reference.loadingSource": "Загрузка источника…",
   "reference.retryLoad": "Повторить загрузку",
   "reference.omilicSource": "Omilic (рекомендуется)",
-  "reference.refreshCatalog": "Обновить каталог"
+  "reference.refreshCatalog": "Обновить каталог",
+  "reference.searchPlaceholder": "Поиск по названию, коду или ключевым словам",
+  "reference.classification": "Классификация"
 }

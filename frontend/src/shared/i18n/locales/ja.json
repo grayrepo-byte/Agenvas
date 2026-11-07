@@ -3943,5 +3943,7 @@
   "reference.loadingSource": "ソースを読み込み中…",
   "reference.retryLoad": "再読み込み",
   "reference.omilicSource": "Omilic（推奨）",
-  "reference.refreshCatalog": "カタログを更新"
+  "reference.refreshCatalog": "カタログを更新",
+  "reference.searchPlaceholder": "名前・番号・キーワードで検索",
+  "reference.classification": "拡張分類"
 }

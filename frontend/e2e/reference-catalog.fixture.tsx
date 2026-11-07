@@ -2,13 +2,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ReferenceCatalog } from "../src/features/reference-catalog/ReferenceCatalog";
+import { ReferenceCatalogPage } from "../src/features/reference-catalog/ReferenceCatalogPage";
 import { Dialog } from "../src/shared/ui/Dialog";
 import { Button } from "../src/shared/ui/primitives/button";
 import { setLocale } from "../src/shared/i18n";
 import type { ReferenceEntry, ReferencePrivateImage, ReferenceSource } from "../src/shared/api/referenceCatalog";
 import "../src/styles.css";
 
-setLocale("en");
+setLocale(new URLSearchParams(location.search).get("locale") === "zh" ? "zh" : "en");
 const source: ReferenceSource = { sourceType: "GITHUB", id: "synthetic", name: "Original geometric studies", owner: "example", repository: "original-studies", ref: "a".repeat(40),
   manifestPath: "reference-pack.json", format: "AGENVAS_REFERENCE_PACK", enabled: true, imageDistributionApproved: true, version: 1,
   currentSnapshotId: "00000000-0000-4000-8000-000000000001", resolvedCommit: "a".repeat(40), lastSyncStatus: "SUCCESS", lastSyncError: null, syncedAt: "2026-11-06T00:00:00Z" };
@@ -32,6 +33,7 @@ let privateImages: ReferencePrivateImage[] = [{ id: "00000000-0000-4000-8000-000
 globalThis.fetch = async (input, init) => {
   const url = new URL(input instanceof Request ? input.url : String(input), location.origin);
   if (url.pathname === "/api/v1/auth/me") return Response.json({ id: "synthetic-user", username: "synthetic", role: "ADMIN" });
+  if (url.pathname === "/api/v1/projects") return Response.json({ items: [], nextCursor: null });
   if (url.pathname === "/api/v1/auth/csrf") return Response.json({ headerName: "X-CSRF-TOKEN", token: "synthetic" });
   if (url.pathname === "/api/v1/settings/reference-catalog/cache") return Response.json({ quotaBytes: 536870912, usedBytes: 0, fileCount: 0, availableBytes: 536870912, protectedBytes: 0, protectedFileCount: 0 });
   if (url.pathname === "/api/v1/settings/reference-catalog/cache/jobs") return Response.json({ items: [] });
@@ -73,6 +75,7 @@ globalThis.fetch = async (input, init) => {
 };
 function Fixture() {
   const [open, setOpen] = useState(false); const [busy, setBusy] = useState(false); const [applied, setApplied] = useState("");
+  if (new URLSearchParams(location.search).has("page")) return <main className="app-page"><ReferenceCatalogPage /></main>;
   return <main className="app-page"><Button id="open-reference" onClick={() => setOpen(true)}>Open reference catalog</Button><output id="applied-reference">{applied}</output>
     {open ? <Dialog className="reference-picker-dialog" title="Reference catalog" busy={busy} onClose={() => setOpen(false)} onSubmit={(event) => event.preventDefault()}
       footer={<Button type="button" disabled={busy} onClick={() => setOpen(false)}>Close catalog</Button>}>

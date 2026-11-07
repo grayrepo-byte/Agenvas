@@ -1,8 +1,25 @@
-.reference-catalog { display: flex; flex-direction: column; gap: var(--ui-space-4); min-width: 0; }
-.reference-toolbar, .reference-filters { display: flex; align-items: center; flex-wrap: wrap; gap: var(--ui-space-2); }
-.reference-toolbar { justify-content: space-between; }
-.reference-filters input { flex: 1 1 220px; }
-.reference-filters .ui-select { flex: 0 1 180px; }
+.reference-catalog { display: flex; flex-direction: column; gap: var(--ui-space-4); min-width: 0; container: reference-catalog / inline-size; }
+.reference-toolbar, .reference-toolbar-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--ui-space-2); }
+.reference-toolbar { justify-content: space-between; gap: var(--ui-space-3); }
+.reference-toolbar-actions { justify-content: flex-end; }
+.reference-filters { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); align-items: end; gap: var(--ui-space-3); }
+.reference-filters > [data-slot="field"] { min-width: 0; gap: var(--ui-space-2); }
+.reference-filters > .reference-search-field, .reference-filters > .reference-source-field { grid-column: span 3; }
+.reference-source-choice { display: flex; align-items: center; gap: var(--ui-space-2); }
+.reference-source-choice .ui-select { flex: 1; min-width: 0; }
+.reference-source-settings-trigger { flex: none; }
+@container reference-catalog (max-width: 1500px) {
+  .reference-filters > [data-slot="field"] { grid-column: span 2; }
+  .reference-filters > .reference-search-field, .reference-filters > .reference-source-field { grid-column: span 6; }
+}
+@container reference-catalog (max-width: 900px) {
+  .reference-filters > [data-slot="field"] { grid-column: span 4; }
+  .reference-filters > .reference-search-field, .reference-filters > .reference-source-field { grid-column: span 12; }
+}
+@container reference-catalog (max-width: 560px) {
+  .reference-filters > [data-slot="field"] { grid-column: span 6; }
+  .reference-filters > .reference-search-field, .reference-filters > .reference-source-field { grid-column: span 12; }
+}
 .reference-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: var(--ui-space-3); }
 .reference-card { display: flex; flex-direction: column; align-items: stretch; height: auto; padding: var(--ui-space-2); white-space: normal; text-align: start; gap: var(--ui-space-2); min-width: 0; }
 .reference-card-image { flex: none; display: flex; align-items: center; justify-content: center; aspect-ratio: 1; background: var(--ui-surface-raised); border-radius: var(--ui-radius-md); overflow: hidden; color: var(--ui-text-muted); }
@@ -15,7 +32,7 @@
 /* Keep the full image in scrollable content when the dialog has little vertical space. */
 .reference-preview-image { flex: none; display: flex; align-items: center; justify-content: center; min-height: 180px; background: var(--ui-surface-raised); padding: var(--ui-space-3); }
 .reference-preview-image img { max-height: 360px; max-width: 100%; object-fit: contain; }
-@media (max-width: 560px) { .reference-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .reference-filters .ui-select { flex: 1 1 120px; } }
+@media (max-width: 560px) { .reference-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .reference-toolbar-actions { justify-content: flex-start; } }
 .reference-picker-dialog { --ui-dialog-width: 1000px; }
 .reference-target { max-width: 360px; }
 .reference-preview-dialog .reference-views { width: auto; flex-wrap: wrap; align-self: flex-start; }
