@@ -229,7 +229,7 @@ describe("canvas keyboard ownership", () => {
     fireEvent(pane, shortcut);
     expect(shortcut.defaultPrevented).toBe(true);
     await waitFor(() => expect(flowProps.edges).toHaveLength(0));
-    expect(disconnected).toEqual([{ expectedTargetDraftVersion: 0 }]);
+    expect(disconnected).toEqual([{ expectedVersion: 0, expectedTargetDraftVersion: 0 }]);
     expect(flowProps.nodes).toHaveLength(items.length);
   });
 

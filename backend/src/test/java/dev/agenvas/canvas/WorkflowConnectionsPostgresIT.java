@@ -145,7 +145,7 @@ class WorkflowConnectionsPostgresIT {
         assertThat(connections.list(owner.userId(), project.id())).hasSize(2);
         assertThat(drafts.get(owner.userId(), project.id(), target).version()).isEqualTo(3);
         mvc.perform(post(base + "/" + created.path("connection").path("id").asText() + "/disconnect")
-                .with(auth).with(csrf()).contentType("application/json").content("{\"expectedTargetDraftVersion\":3}"))
+                .with(auth).with(csrf()).contentType("application/json").content("{\"expectedVersion\":0,\"expectedTargetDraftVersion\":3}"))
                 .andExpect(status().isOk());
         var disconnected = drafts.get(owner.userId(), project.id(), target);
         assertThat(disconnected.parameters().path("dynamicValues").has(slots.getFirst())).isFalse();

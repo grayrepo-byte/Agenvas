@@ -12,7 +12,7 @@ export const CANVAS_EDIT_ITEM_LIMIT = 100;
 const COPY_OFFSET = 32;
 type Copy = NonNullable<CanvasEditRequest["copies"]>[number];
 type Clipboard = { items: (Omit<Copy, "targetItemId" | "groupId"> & { sourceGroupId: string | null })[];
-  groups: CanvasGroup[] };
+  groups: CanvasGroup[]; connections: Omit<NonNullable<CanvasEditRequest["connectionCopies"]>[number], "targetConnectionId">[] };
 type GroupDialog = { mode: "create"; items: CanvasItem[] } | { mode: "rename"; group: CanvasGroup };
 
 /** Groups are server state; selection, clipboard and history remain local to this project session. */
@@ -122,6 +122,12 @@ export function useCanvasOrganization({ projectId, items, enabled, selectedIds, 
     });
     return {
       groups: copiedGroups,
+      connections: [
+        ...(fresh.connections ?? []).filter((edge) => requested.has(edge.sourceCanvasItemId) && requested.has(edge.targetCanvasItemId))
+          .map((edge) => ({ kind: "ARTIFACT" as const, sourceConnectionId: edge.id, expectedVersion: edge.version })),
+        ...(fresh.characterConnections ?? []).filter((edge) => requested.has(edge.sourceCanvasItemId) && requested.has(edge.targetCanvasItemId))
+          .map((edge) => ({ kind: "CHARACTER" as const, sourceConnectionId: edge.id, expectedVersion: edge.version })),
+      ],
       items: await Promise.all(sourceItems.map(async (item) => ({
         sourceItemId: item.id, expectedSourceVersion: item.version,
         expectedSourceContentVersion: item.artifact?.kind === "TEXT" ? item.artifact.resourceDefaultVersion?.id ?? null : null,
@@ -144,12 +150,14 @@ export function useCanvasOrganization({ projectId, items, enabled, selectedIds, 
       groupId: sourceGroupId ? groupIds.get(sourceGroupId) ?? null : null,
     }));
     const result = await editing.execute({ operation: "DUPLICATE", copies,
+      connectionCopies: buffer.connections.map((edge) => ({ ...edge, targetConnectionId: crypto.randomUUID() })),
       groupChanges: buffer.groups.map((group) => ({
         type: "UPSERT", groupId: groupIds.get(group.id)!, expectedVersion: 0,
         name: group.name, collapsed: group.collapsed,
       })) }, (saved) => {
         const ids = copies.map((copy) => copy.targetItemId).filter((id) => saved.items.some((item) => item.id === id));
-        select(groupIds.size ? [...groupIds.values()].map(canvasGroupNodeId) : ids);
+        const ungroupedIds = ids.filter((id) => !copies.find((copy) => copy.targetItemId === id)?.groupId);
+        select([...groupIds.values()].map(canvasGroupNodeId).concat(ungroupedIds));
       });
     pasteCount.current += 1;
     return result;

@@ -249,7 +249,7 @@ class MediaDraftReplacementPostgresIT {
         assertThat(saved.mentions()).hasSize(1);
         var lines = connections.list(owner.userId(), project.id());
         assertThat(lines).singleElement().satisfies(line -> assertThat(line.sourceArtifactVersionId()).isEqualTo(versions.get(kind)));
-        var disconnected = connections.disconnect(owner.userId(), project.id(), lines.getFirst().id(), saved.version()).draft();
+        var disconnected = connections.disconnect(owner.userId(), project.id(), lines.getFirst().id(), lines.getFirst().version(), saved.version()).draft();
         assertThat(disconnected.mediaInputs()).isEmpty();
         assertThat(disconnected.parameters().path("dynamicValues").has("source")).isFalse();
         assertThat(disconnected.mentions()).isEmpty();

@@ -5306,8 +5306,8 @@ paths:
       - {$ref: "#/components/parameters/ProjectId"}
     post:
       operationId: editCanvas
-      summary: Atomically edit presentation, groups or copy up to 100 independent content nodes
-      description: Command identities and request fingerprints are durable. The latest 100 receipt snapshots per project are retained; retries after their snapshot expires return CANVAS_EDIT_EXPIRED and never execute again. Copies freeze saved text/media/character state and inherit no tasks or connections. Group membership changes must explicitly include all changed nodes. Locked nodes may be renamed, unlocked or copied, but cannot move or change group. No provider calls are made.
+      summary: Atomically edit presentation, groups or copy up to 100 nodes with internal topology
+      description: Command identities and request fingerprints are durable. The latest 100 receipt snapshots per project are retained; retries after their snapshot expires return CANVAS_EDIT_EXPIRED and never execute again. Copies freeze saved text/media/character state and remap the complete selected internal topology. External edges, history and tasks are not copied; fixed external media inputs become manual. Group membership changes must explicitly include all changed nodes. Locked nodes may be renamed, unlocked or copied, but cannot move or change group. No provider calls are made.
       tags: [Canvas]
       requestBody:
         required: true
@@ -10768,7 +10768,9 @@ components:
     DisconnectCanvasConnectionRequest:
       type: object
       additionalProperties: false
+      required: [expectedVersion]
       properties:
+        expectedVersion: {type: integer, format: int64, minimum: 0, description: Rejects delayed deletion of an older connection incarnation after copy redo.}
         expectedTargetDraftVersion: {type: integer, format: int64, minimum: 0}
     CanvasConnectionResult:
       type: object
@@ -11800,6 +11802,8 @@ components:
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/CanvasItem"}}
         groups: {type: array, items: {$ref: "#/components/schemas/CanvasGroup"}}
+        connections: {type: array, items: {$ref: "#/components/schemas/CanvasConnection"}}
+        characterConnections: {type: array, items: {$ref: "#/components/schemas/CharacterNodeConnection"}}
         receipt: {type: "null"}
     CanvasEditResponse:
       type: object
@@ -11808,6 +11812,8 @@ components:
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/CanvasItem"}}
         groups: {type: array, items: {$ref: "#/components/schemas/CanvasGroup"}}
+        connections: {type: array, items: {$ref: "#/components/schemas/CanvasConnection"}}
+        characterConnections: {type: array, items: {$ref: "#/components/schemas/CharacterNodeConnection"}}
         receipt: {$ref: "#/components/schemas/CanvasEditReceipt"}
     CanvasEditItemChange:
       type: object
@@ -11850,6 +11856,15 @@ components:
         height: {type: number, minimum: 80, maximum: 2000}
         zIndex: {type: integer, minimum: -1000, maximum: 1000}
         groupId: {type: [string, "null"], format: uuid}
+    CanvasEditConnectionCopy:
+      type: object
+      additionalProperties: false
+      required: [kind, sourceConnectionId, targetConnectionId, expectedVersion]
+      properties:
+        kind: {type: string, enum: [ARTIFACT, CHARACTER]}
+        sourceConnectionId: {type: string, format: uuid}
+        targetConnectionId: {type: string, format: uuid}
+        expectedVersion: {type: integer, format: int64, minimum: 0}
     CanvasEditRequest:
       type: object
       additionalProperties: false
@@ -11860,6 +11875,11 @@ components:
         itemChanges: {type: array, maxItems: 100, items: {$ref: "#/components/schemas/CanvasEditItemChange"}}
         groupChanges: {type: array, maxItems: 100, items: {$ref: "#/components/schemas/CanvasEditGroupChange"}}
         copies: {type: array, maxItems: 100, items: {$ref: "#/components/schemas/CanvasEditCopy"}}
+        connectionCopies:
+          type: array
+          maxItems: 10000
+          description: Complete internal topology captured with the source selection. External edges are rejected. Source identities and versions are revalidated atomically; new target IDs must be unused.
+          items: {$ref: "#/components/schemas/CanvasEditConnectionCopy"}
     CanvasEditReplayRequest:
       type: object
       additionalProperties: false

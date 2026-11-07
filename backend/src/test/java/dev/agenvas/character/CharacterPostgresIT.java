@@ -332,7 +332,7 @@ class CharacterPostgresIT {
                 applied.binding().version(), connected.draft().version(), List.of(), ClearMode.REMOVE_OWNED, clear.previewHash()));
         var retained = cleared.draft().mediaInputs().stream().filter(input -> input.versionId().equals(portrait.resourceDefaultVersion().id())).findFirst().orElseThrow();
         assertThat(retained.sources()).extracting(MediaDraft.InputSource::type).containsExactly(MediaDraft.SourceType.CONNECTION);
-        connections.disconnect(owner, project.id(), connected.connection().id(), cleared.draft().version());
+        connections.disconnect(owner, project.id(), connected.connection().id(), connected.connection().version(), cleared.draft().version());
         var after = drafts.get(owner, project.id(), target);
         assertThat(after.mediaInputs()).extracting(MediaDraft.MediaInput::versionId).containsExactly(unrelated.resourceDefaultVersion().id());
         assertThat(after.prompt()).contains("Keep atmosphere").doesNotContain("Character: Aster");

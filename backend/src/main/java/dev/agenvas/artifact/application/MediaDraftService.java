@@ -365,12 +365,20 @@ public class MediaDraftService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public MediaDraft installCopyWithinChange(UUID ownerId, UUID projectId, UUID targetItemId,
             MediaDraft snapshot, long minimumVersion) {
+        return installCopyWithinChange(ownerId, projectId, targetItemId, snapshot, minimumVersion, Set.of());
+    }
+
+    /** The canvas application validates these private receipt edges before installing any source. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public MediaDraft installCopyWithinChange(UUID ownerId, UUID projectId, UUID targetItemId,
+            MediaDraft snapshot, long minimumVersion, Set<UUID> copiedConnectionIds) {
         projects.requireActiveProject(ownerId, projectId);
         requireMediaCanvas(ownerId, projectId, targetItemId);
         if (!snapshot.projectId().equals(projectId) || !snapshot.canvasItemId().equals(targetItemId)
                 || artifacts.findMediaDraft(projectId, targetItemId).isPresent()
                 || snapshot.mediaInputs().stream().flatMap(input -> input.sources().stream())
-                        .anyMatch(source -> source.type() != MediaDraft.SourceType.MANUAL || source.connectionId() != null)) {
+                        .anyMatch(source -> source.type() == MediaDraft.SourceType.MANUAL ? source.connectionId() != null
+                                : source.connectionId() == null || !copiedConnectionIds.contains(source.connectionId()))) {
             throw new IllegalStateException("Invalid canvas copy draft snapshot");
         }
         Instant now = clock.instant();

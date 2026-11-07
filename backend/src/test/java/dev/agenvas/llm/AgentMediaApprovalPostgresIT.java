@@ -569,7 +569,7 @@ class AgentMediaApprovalPostgresIT {
         assertThat(card.selectedVersion().frozenInput().at("/images/0/role").asText()).isEqualTo("START_FRAME");
         assertThat(modelWorker.runOnce(MODEL_WORKER)).isEqualTo(1);
         assertThat(currentRun(video).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
-        connections.disconnect(owner.userId(), video.project().id(), line.id(), preparedDraft.version());
+        connections.disconnect(owner.userId(), video.project().id(), line.id(), line.version(), preparedDraft.version());
         assertThat(drafts.get(owner.userId(), video.project().id(), videoCardId).mediaInputs()).isEmpty();
         assertThat(connections.list(owner.userId(), video.project().id())).noneMatch(value -> value.id().equals(line.id()));
         assertThat(canvas.list(owner.userId(), video.project().id()).stream()

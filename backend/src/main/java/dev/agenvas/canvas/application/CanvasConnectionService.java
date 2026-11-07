@@ -193,11 +193,14 @@ public class CanvasConnectionService {
 
     @Transactional
     public ConnectionResult disconnect(UUID ownerId, UUID projectId, UUID connectionId,
-            Long expectedTargetDraftVersion) {
+            long expectedVersion, Long expectedTargetDraftVersion) {
         return events.recordChange(ownerId, projectId, () -> {
             projects.requireActiveProject(ownerId, projectId);
             CanvasConnection connection = connections.find(ownerId, projectId, connectionId)
                     .orElseThrow(this::notFound);
+            // Redo restores the same identity with a new incarnation; delayed deletes must not cross it.
+            if (expectedVersion < 0 || connection.version() != expectedVersion)
+                throw conflict(ApiMessage.of("api.canvas-connection-service.the-connection-was-deleted-by-another-operation"));
             MediaDraft draft = null;
             if (connection.relationType() == CanvasConnection.RelationType.MEDIA_INPUT) {
                 if (expectedTargetDraftVersion == null) throw invalid(ApiMessage.of("api.canvas-connection-service.disconnected-media-is-missing-draft-versions"));
@@ -285,7 +288,7 @@ public class CanvasConnectionService {
         for (CanvasConnection edge : connections.list(ownerId, projectId)) {
             if (edge.relationType() == CanvasConnection.RelationType.PROMPT_INPUT
                     && edge.targetCanvasItemId().equals(targetCanvasItemId)) {
-                disconnect(ownerId, projectId, edge.id(), null);
+                disconnect(ownerId, projectId, edge.id(), edge.version(), null);
             }
         }
     }

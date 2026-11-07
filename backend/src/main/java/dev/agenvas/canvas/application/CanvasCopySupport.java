@@ -15,6 +15,9 @@ import dev.agenvas.storyboard.application.StoryboardSelectedMediaReadAccessServi
 import dev.agenvas.task.application.TaskCanvasOwnershipReadService;
 import java.time.Clock;
 import java.util.List;
+import java.util.Map;
+import java.util.ArrayList;
+import java.util.Set;
 import java.util.Objects;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -96,9 +99,15 @@ public class CanvasCopySupport {
         return guard;
     }
 
-    /** Allocates independent text content, or a manual-only fixed media draft and character state. */
+    /** Allocates independent text content, or a fixed media draft and character state. */
     @Transactional(propagation = Propagation.MANDATORY)
     public PreparedCopy prepareCloneWithinChange(UUID owner, UUID project, CanvasItem requested, UUID targetId) {
+        return prepareCloneWithinChange(owner, project, requested, targetId, Map.of(), Set.of());
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public PreparedCopy prepareCloneWithinChange(UUID owner, UUID project, CanvasItem requested, UUID targetId,
+            Map<UUID, UUID> copiedConnectionIds, Set<UUID> copiedCharacterIds) {
         projects.requireActiveProject(owner, project);
         CanvasItem source = items.requireItem(owner, project, requested.id());
         if (source.subjectType() == CanvasItem.SubjectType.CHARACTER) {
@@ -124,9 +133,21 @@ public class CanvasCopySupport {
         if (source.selectedVersionId() != null) artifacts.requireVersion(owner, project, source.subjectId(), source.selectedVersionId());
         MediaDraft sourceDraft = drafts.get(owner, project, source.id());
         var now = clock.instant();
-        List<MediaDraft.MediaInput> inputs = sourceDraft.mediaInputs().stream().map(input ->
-                new MediaDraft.MediaInput(input.versionId(), input.artifactId(), input.role(), input.order(), input.color(),
-                        List.of(new MediaDraft.InputSource(UUID.randomUUID(), MediaDraft.SourceType.MANUAL, null)))).toList();
+        List<MediaDraft.MediaInput> inputs = sourceDraft.mediaInputs().stream().map(input -> {
+            artifacts.requireVersion(owner, project, input.artifactId(), input.versionId());
+            if (artifacts.get(owner, project, input.artifactId()).artifact().archivedAt() != null) throw conflict();
+            List<MediaDraft.InputSource> sources = new ArrayList<>();
+            boolean manual = input.sources().isEmpty();
+            for (var sourceInput : input.sources()) {
+                UUID edge = sourceInput.type() == MediaDraft.SourceType.CONNECTION
+                        ? copiedConnectionIds.get(sourceInput.connectionId()) : null;
+                if (edge == null) manual = true;
+                else sources.add(new MediaDraft.InputSource(UUID.randomUUID(), MediaDraft.SourceType.CONNECTION, edge));
+            }
+            // Retain external exact media as ordinary saved input, without an external line.
+            if (manual) sources.add(new MediaDraft.InputSource(UUID.randomUUID(), MediaDraft.SourceType.MANUAL, null));
+            return new MediaDraft.MediaInput(input.versionId(), input.artifactId(), input.role(), input.order(), input.color(), List.copyOf(sources));
+        }).toList();
         MediaDraft draft = new MediaDraft(project, targetId, sourceDraft.prompt(), sourceDraft.parameters().deepCopy(),
                 sourceDraft.durationSeconds(), sourceDraft.capabilityId(), sourceDraft.styleId(), sourceDraft.videoInputMode(),
                 inputs, List.copyOf(sourceDraft.mentions()), sourceDraft.displayMode(), 1, now, now);
@@ -134,7 +155,12 @@ public class CanvasCopySupport {
         if (source.selectedVersionId() == null) frozen.putNull("selectedVersionId");
         else frozen.put("selectedVersionId", source.selectedVersionId().toString());
         frozen.set("mediaDraft", mapper.valueToTree(draft));
-        frozen.set("characters", characters.prepareCanvasCopy(owner, project, source.id(), draft));
+        frozen.set("copiedConnectionIds", mapper.valueToTree(inputs.stream().flatMap(input -> input.sources().stream())
+                .filter(input -> input.type() == MediaDraft.SourceType.CONNECTION).map(MediaDraft.InputSource::connectionId).toList()));
+        JsonNode binding = characters.prepareCanvasCopy(owner, project, source.id(), draft);
+        frozen.set("characters", binding);
+        frozen.set("nodeOwnedCharacters", mapper.valueToTree(binding == null || binding.isNull() ? List.of()
+                : characters.canvasCopyNodeOwnership(owner, project, source.id(), copiedCharacterIds)));
         return new PreparedCopy(source.subjectId(), source.selectedVersionId(), frozen);
     }
 
@@ -182,8 +208,22 @@ public class CanvasCopySupport {
         long minimumDraftVersion = previousGuard == null ? 1 : previousGuard.path("mediaDraft").path("version").asLong() + 1;
         long minimumBindingVersion = previousGuard == null ? 1
                 : previousGuard.path("characters").path("binding").path("version").asLong() + 1;
-        drafts.installCopyWithinChange(owner, project, target.id(), mapper.treeToValue(frozen.path("mediaDraft"), MediaDraft.class), minimumDraftVersion);
-        characters.installCanvasCopyWithinChange(owner, project, target.id(), frozen.path("characters"), minimumBindingVersion);
+        MediaDraft draft = mapper.treeToValue(frozen.path("mediaDraft"), MediaDraft.class);
+        Set<UUID> edgeIds = new java.util.HashSet<>();
+        for (var id : frozen.path("copiedConnectionIds")) edgeIds.add(UUID.fromString(id.asText()));
+        if (!edgeIds.isEmpty()) {
+            var topology = connections.list(owner, project);
+            for (var input : draft.mediaInputs()) for (var source : input.sources()) {
+                if (source.type() == MediaDraft.SourceType.CONNECTION && topology.stream().noneMatch(edge ->
+                        edge.id().equals(source.connectionId()) && edge.targetCanvasItemId().equals(target.id())
+                        && edge.sourceArtifactVersionId().equals(input.versionId())
+                        && edge.relationType() == dev.agenvas.canvas.domain.CanvasConnection.RelationType.MEDIA_INPUT)) throw conflict();
+            }
+        }
+        drafts.installCopyWithinChange(owner, project, target.id(), draft, minimumDraftVersion, edgeIds);
+        List<UUID> nodeOwned = new ArrayList<>();
+        for (var id : frozen.path("nodeOwnedCharacters")) nodeOwned.add(UUID.fromString(id.asText()));
+        characters.installCanvasCopyWithinChange(owner, project, target.id(), frozen.path("characters"), minimumBindingVersion, List.copyOf(nodeOwned));
     }
 
     private ObjectNode textGuard(UUID owner, UUID project, UUID artifactId) {

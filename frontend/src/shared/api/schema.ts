@@ -3713,8 +3713,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Atomically edit presentation, groups or copy up to 100 independent content nodes
-         * @description Command identities and request fingerprints are durable. The latest 100 receipt snapshots per project are retained; retries after their snapshot expires return CANVAS_EDIT_EXPIRED and never execute again. Copies freeze saved text/media/character state and inherit no tasks or connections. Group membership changes must explicitly include all changed nodes. Locked nodes may be renamed, unlocked or copied, but cannot move or change group. No provider calls are made.
+         * Atomically edit presentation, groups or copy up to 100 nodes with internal topology
+         * @description Command identities and request fingerprints are durable. The latest 100 receipt snapshots per project are retained; retries after their snapshot expires return CANVAS_EDIT_EXPIRED and never execute again. Copies freeze saved text/media/character state and remap the complete selected internal topology. External edges, history and tasks are not copied; fixed external media inputs become manual. Group membership changes must explicitly include all changed nodes. Locked nodes may be renamed, unlocked or copied, but cannot move or change group. No provider calls are made.
          */
         post: operations["editCanvas"];
         delete?: never;
@@ -7398,6 +7398,11 @@ export interface components {
             expectedTargetDraftVersion?: number;
         };
         DisconnectCanvasConnectionRequest: {
+            /**
+             * Format: int64
+             * @description Rejects delayed deletion of an older connection incarnation after copy redo.
+             */
+            expectedVersion: number;
             /** Format: int64 */
             expectedTargetDraftVersion?: number;
         };
@@ -8335,11 +8340,15 @@ export interface components {
         CanvasEditorState: {
             items: components["schemas"]["CanvasItem"][];
             groups: components["schemas"]["CanvasGroup"][];
+            connections?: components["schemas"]["CanvasConnection"][];
+            characterConnections?: components["schemas"]["CharacterNodeConnection"][];
             receipt?: null;
         };
         CanvasEditResponse: {
             items: components["schemas"]["CanvasItem"][];
             groups: components["schemas"]["CanvasGroup"][];
+            connections?: components["schemas"]["CanvasConnection"][];
+            characterConnections?: components["schemas"]["CharacterNodeConnection"][];
             receipt: components["schemas"]["CanvasEditReceipt"];
         };
         CanvasEditItemChange: {
@@ -8394,6 +8403,16 @@ export interface components {
             /** Format: uuid */
             groupId?: string | null;
         };
+        CanvasEditConnectionCopy: {
+            /** @enum {string} */
+            kind: "ARTIFACT" | "CHARACTER";
+            /** Format: uuid */
+            sourceConnectionId: string;
+            /** Format: uuid */
+            targetConnectionId: string;
+            /** Format: int64 */
+            expectedVersion: number;
+        };
         CanvasEditRequest: {
             /** Format: uuid */
             commandId: string;
@@ -8402,6 +8421,8 @@ export interface components {
             itemChanges?: components["schemas"]["CanvasEditItemChange"][];
             groupChanges?: components["schemas"]["CanvasEditGroupChange"][];
             copies?: components["schemas"]["CanvasEditCopy"][];
+            /** @description Complete internal topology captured with the source selection. External edges are rejected. Source identities and versions are revalidated atomically; new target IDs must be unused. */
+            connectionCopies?: components["schemas"]["CanvasEditConnectionCopy"][];
         };
         CanvasEditReplayRequest: {
             /** Format: uuid */
