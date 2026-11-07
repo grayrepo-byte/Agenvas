@@ -151,7 +151,6 @@ export function MediaFunctionSettingsPage() {
       const { entries } = group;
       const visibleCount = entries.filter(({ visible }) => visible).length;
       return <TabsContent key={group.tab} value={group.tab} forceMount hidden={selectedTab !== group.tab} className="media-function-panel">
-      {group.tab === "image" ? <p className="media-function-catalog-hint ui-muted">{t("media.functions.imageHint")}</p> : null}
       <div className="media-table-scroll media-function-list" tabIndex={0} role="region" aria-label={t(group.tab === "image" ? "media.functions.imageTools" : "media.functions.videoTools")}>
       <Table className="media-settings-table media-function-table" aria-label={t(group.tab === "image" ? "media.functions.imageTools" : "media.functions.videoTools")}>
       <TableHeader><TableRow>

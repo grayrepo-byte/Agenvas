@@ -1140,8 +1140,6 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         title: choice.title, thumbnailUrl: assetThumbnailUrl(artifact.projectId, choice.assetId) }] : [])}
       onApply={applyTemplate} onBusy={setTemplateBusy} onClose={() => setTemplateOpen(false)} /> : null}
     <div ref={referencePickerAnchorRef} className="media-draft-reference-picker-anchor">
-    <div className="studio-reference-heading"><strong>{t("canvas.studio.references")}</strong><span>{fields.mediaInputs.length}</span></div>
-    {!workflow && selectedReferences.length === 0 ? <p className="studio-reference-hint">{t("canvas.studio.referenceHint")}</p> : null}
     {!workflow ? <div className="media-draft-reference-row" aria-label={audioCapacity > 0 ? t("media.editor.mixedInputs") : t("media.editor.imageInputs")}>
       <div className="media-draft-popover-anchor">
         <Input ref={uploadInputRef} className="media-draft-upload-input" type="file"

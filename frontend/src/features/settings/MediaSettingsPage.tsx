@@ -706,7 +706,6 @@ export function MediaSettingsPage() {
   const hasFilters = Boolean(catalogQuery || catalogStatus !== "all" || selectedTab === "capabilities" && catalogKind !== "all");
   function resetFilters() { setCatalogQuery(""); setCatalogStatus("all"); setCatalogKind("all"); }
   return <PageShell title={t("settings.mediaSettings.title")}
-    description={t("settings.mediaWorkspace.intro")}
     actions={<><Button variant="outline" type="button" onClick={() => setCreating(true)}><PlugsConnected data-icon="inline-start" />{t("settings.mediaSettings.addConnection")}</Button>
       <Button type="button" disabled={!settings.data} onClick={() => setChooseConnection(true)}><Plus data-icon="inline-start" />{t("settings.mediaSettings.publishNewCapability")}</Button></>}>
     <div className="media-settings-page ui-stack">
@@ -731,7 +730,7 @@ export function MediaSettingsPage() {
         </TabsList>
         <Badge variant="outline" className="media-catalog-availability"><CheckCircle aria-hidden />{t("settings.mediaWorkspace.availableCount", { "0": availableCount })}</Badge></div>
         <div className="media-catalog-heading"><div><h2>{selectedTab === "capabilities" ? t("settings.mediaSettings.publishedCapabilities") : t("settings.mediaSettings.connections")}</h2>
-          <p>{selectedTab === "capabilities" ? t("settings.mediaWorkspace.catalogDescription") : t("settings.mediaWorkspace.connectionDescription")}</p></div>
+          </div>
           <span className="media-catalog-result-count" role="status">{t("settings.mediaWorkspace.showing", { "0": visibleCount, "1": selectedTab === "capabilities" ? capabilities.length : settings.data.connections.length })}</span></div>
         <FieldGroup className="media-catalog-toolbar"><Field className="media-catalog-search"><FieldLabel className="sr-only" htmlFor="media-catalog-search">{t("settings.catalog.search")}</FieldLabel><div className="ui-search-field" data-density="compact"><MagnifyingGlass aria-hidden /><Input density="compact" variant="ghost" id="media-catalog-search" placeholder={t("settings.catalog.searchPlaceholder")} value={catalogQuery} onChange={(event) => setCatalogQuery(event.target.value)} /></div></Field>
           {selectedTab === "capabilities" ? <Field><FieldLabel className="sr-only" htmlFor="media-catalog-kind">{t("settings.mediaWorkspace.allKinds")}</FieldLabel><Select id="media-catalog-kind" value={catalogKind} onChange={(event) => { const kind = CATALOG_KINDS.find((entry) => entry === event.target.value); if (kind) setCatalogKind(kind); }}>
@@ -774,7 +773,7 @@ export function MediaSettingsPage() {
           <div className="media-publish-choices">{settings.data.connections.filter((connection) => connection.enabled && connection.platform !== "LOCAL" && platformAdapters[connection.platform].length > 0).map((connection) => <Button className="media-publish-choice" variant="outline" type="button" key={connection.id} onClick={() => { setChooseConnection(false); setPublishingConnectionId(connection.id); }}><PlugsConnected aria-hidden /><span><strong>{connection.name}</strong><small>{connection.platform}</small></span><ArrowRight aria-hidden /></Button>)}</div>
           {!settings.data.connections.some((connection) => connection.enabled && connection.platform !== "LOCAL" && platformAdapters[connection.platform].length > 0) ? <EmptyState title={t("settings.catalog.noConnection")} action={<Button type="button" onClick={() => { setChooseConnection(false); setCreating(true); }}>{t("settings.mediaSettings.addConnection")}</Button>} /> : null}
         </Dialog> : null}
-        {creating ? <Dialog title={t("settings.mediaSettings.addConnection")} description={t("settings.mediaSettings.connectionHint")} busy={create.isPending}
+        {creating ? <Dialog title={t("settings.mediaSettings.addConnection")} busy={create.isPending}
           onClose={() => setCreating(false)} onSubmit={(event) => { event.preventDefault(); if (create.isPending) return; setError(""); create.mutate(); }}
           footer={<>
             <Button variant="outline"  type="button" disabled={create.isPending} onClick={() => setCreating(false)}>{t("common.cancel")}</Button>

@@ -11,7 +11,7 @@ import { FilmStrip, ImageSquare, MusicNotes, ShieldCheck, Sparkle, TextT } from 
 /** Public entry screens introduce the studio while keeping credentials in one compact panel. */
 export function AuthLayout({ title, description, children }: {
   title: string;
-  description: string;
+  description?: string;
   children: ReactNode;
 }) {
   useLocale();
@@ -34,7 +34,7 @@ export function AuthLayout({ title, description, children }: {
           </ul>
         </section>
         <section className="auth-card" aria-labelledby="auth-title">
-          <header className="auth-card-heading"><span className="auth-card-symbol" aria-hidden="true"><Sparkle size={24} weight="duotone" /></span><h1 id="auth-title">{title}</h1><p>{description}</p></header>
+          <header className="auth-card-heading"><span className="auth-card-symbol" aria-hidden="true"><Sparkle size={24} weight="duotone" /></span><h1 id="auth-title">{title}</h1>{description ? <p>{description}</p> : null}</header>
           {children}
         </section>
       </div>

@@ -35,17 +35,10 @@ body:has(.app-shell--studio) { min-width: 0; }
 .app-shell--studio.app-shell--collapsed .app-sidebar nav { gap: 14px; }
 
 .app-shell--studio .app-page-main { padding: 0 clamp(24px, 2.5vw, 40px) 32px; }
-.settings-workspace-topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 58px; border-bottom: 1px solid var(--settings-rule); }
-.settings-breadcrumb { display: flex; align-items: center; gap: 10px; min-width: 0; color: var(--ui-text-subtle); font-size: 12px; }
-.settings-breadcrumb > svg { flex: none; }
-.settings-breadcrumb > span:last-child { color: var(--ui-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.settings-workspace-trust { display: inline-flex; align-items: center; gap: 6px; flex: none; color: var(--ui-text-muted); font-size: 11px; }
-.settings-workspace-trust > svg { color: var(--ui-text-subtle); }
 .app-shell--studio .app-page-header { padding: 28px 0 24px; margin-bottom: 8px; border-bottom: 0; align-items: center; }
 .settings-page-heading { display: flex; align-items: flex-start; gap: 12px; }
 .settings-page-icon { display: grid; place-items: center; flex: none; width: 42px; height: 42px; margin-top: 1px; border: 1px solid var(--ui-accent-ring); border-radius: 12px; background: var(--ui-accent-subtle); color: var(--ui-accent-text); box-shadow: var(--ui-inset-highlight); }
 .app-shell--studio .settings-page-icon > svg { width: 23px; height: 23px; }
-.app-shell--studio .app-page-eyebrow { margin-bottom: 5px; font-size: 11px; letter-spacing: .07em; color: var(--ui-text-muted); }
 .app-shell--studio .app-page-header h1 { font-size: clamp(24px, 2.1vw, 28px); font-weight: 600; line-height: 1.25; letter-spacing: -.035em; }
 .app-shell--studio .app-page-description { max-width: 76ch; font-size: 13px; margin-top: 8px; line-height: 1.75; }
 .app-shell--studio .app-page-header > .ui-form-actions { flex-shrink: 0; }
@@ -146,7 +139,6 @@ body:has(.app-shell--studio) .ui-dialog-footer { padding: 14px 20px; background:
   .app-shell--studio .app-page-main { padding-inline: 24px; }
   .app-shell--studio .app-page-header { align-items: flex-start; flex-direction: column; gap: 20px; padding-top: 22px; }
   .settings-page-icon { width: 40px; height: 40px; border-radius: 11px; }
-  .settings-workspace-trust { display: none; }
   .app-shell--studio .ui-panel { padding: 18px; }
   .app-shell--studio .ui-summary-strip > div { padding: 14px 16px; }
   .app-shell--studio .ui-summary-strip dd:not(.ui-summary-detail) { font-size: 15px; }
@@ -172,13 +164,10 @@ body:has(.app-shell--studio) .ui-dialog-footer { padding: 14px 20px; background:
   .app-shell--studio .app-sidebar-footer > .app-nav-item { font-size: 0; padding: 6px; }
   .app-shell--studio .app-sidebar-footer > .app-nav-item .app-sidebar-copy { display: none; }
   .app-shell--studio .app-page-main { padding: 0 16px 32px; }
-  .settings-workspace-topbar { min-height: 49px; }
-  .settings-breadcrumb { font-size: 10px; gap: 8px; }
   .app-shell--studio .app-page-header { padding: 18px 0; margin-bottom: 4px; }
   .settings-page-heading { gap: 13px; }
   .settings-page-icon { width: 42px; height: 42px; margin-top: 3px; border-radius: 12px; }
   .settings-page-icon > svg { width: 23px; height: 23px; }
-  .app-shell--studio .app-page-eyebrow { font-size: 10px; margin-bottom: 6px; }
   .app-shell--studio .app-page-header h1 { font-size: 24px; }
   .app-shell--studio .app-page-description { font-size: 12px; margin-top: 8px; }
   .app-shell--studio .ui-summary-strip { margin-bottom: 16px; }
@@ -204,7 +193,6 @@ body:has(.app-shell--studio) .ui-dialog-footer { padding: 14px 20px; background:
 
 /* Administration shares the media catalog's density; creator workspaces keep their own spacing. */
 .app-shell--settings .app-page-header { padding: 18px 0; margin-bottom: 0; gap: 14px; }
-.app-shell--settings .app-page-eyebrow { display: none; }
 .app-shell--settings .app-page-header h1 { font-size: 24px; }
 .app-shell--settings .app-page-description { margin-top: 5px; font-size: 12px; line-height: 1.7; }
 .app-shell--settings .ui-panel { padding: 14px; border-radius: 12px; box-shadow: none; }

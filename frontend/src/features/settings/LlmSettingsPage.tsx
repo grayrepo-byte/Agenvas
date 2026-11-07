@@ -124,7 +124,7 @@ export function LlmSettingsPage() {
     return <Navigate to="/login" replace />;
   }
 
-  return <PageShell title={t("settings.providerTitle")} description={t("settings.llm.description")}>
+  return <PageShell title={t("settings.providerTitle")}>
     <div className="llm-workflow-intro"><p>{t("settings.llm.workflowHint")}</p>
       {snapshot ? <StatusBadge tone={hasUnsavedChanges ? "warning" : "neutral"}>{hasUnsavedChanges ? t("settings.llm.draftVersion", { "0": base?.version }) : t("settings.llm.savedState")}</StatusBadge> : null}
     </div>
@@ -202,7 +202,7 @@ export function LlmSettingsPage() {
         </Panel> : snapshot ? <Panel className="llm-diagnostics-panel" title={t("settings.llm.waitingConfiguration")} description={t("settings.llm.waitingConfigurationHint")}><ShieldCheck className="llm-waiting-icon" aria-hidden /></Panel> : null}
         <Notice title={t("settings.llm.configurationAndValidation")}>{t("settings.llm.realModelHint")}</Notice>
       </aside>
-      <Panel className="llm-media-panel" title={t("settings.llm.mediaConfiguration")} description={t("settings.llm.mediaManagementHint")}>
+      <Panel className="llm-media-panel" title={t("settings.llm.mediaConfiguration")}>
           <div className="llm-media-overview">
             <p className="ui-muted">{t("settings.llm.statusHint")}</p>
             {mediaStatus.isPending && !currentUser.isError ? <LoadingState compact label={t("settings.llm.mediaStatusLoading")} /> : null}

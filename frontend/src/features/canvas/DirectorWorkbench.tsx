@@ -235,7 +235,6 @@ export function DirectorWorkbench(props: Props) {
             <strong className="director-reference-title">{source.sourceTitle}</strong><p>{t("director.referenceDescription")}</p>
             <div className="director-reference-note"><ImageSquare aria-hidden /><p>{t("director.angleHint")}</p></div>
           </div>}
-          <p className="director-panel-footnote">{mode === "scene" ? t("director.sceneDescription") : t("director.angleActionHint")}</p>
         </aside>
         <section className="director-stage" aria-label={t("director.viewportLabel")}>
           <div className="director-stage-toolbar"><ToggleGroup type="single" value={viewMode} size="sm" className="director-view-switch" aria-label={t("director.viewMode")} disabled={busy}
@@ -285,7 +284,7 @@ export function DirectorWorkbench(props: Props) {
               {mode === "scene" ? <TabsTrigger value="object" disabled={busy}><Cube />{t("director.objectTab")}</TabsTrigger> : null}
             </TabsList>
             <TabsContent value="camera" className="director-property-content">
-              <div className="director-property-title"><span className="director-property-icon"><Camera /></span><div><h3>{t("director.cameraProperties")}</h3><p>{t("director.cameraDescription")}</p></div></div>
+              <div className="director-property-title"><span className="director-property-icon"><Camera /></span><div><h3>{t("director.cameraProperties")}</h3></div></div>
               <FieldGroup className="director-fields">
                 <div className="director-number-grid"><NumberField label={t("director.azimuth")} value={scene.camera.azimuth} min={-180} max={180} disabled={busy}
                   onChange={(azimuth) => cameraChange({ ...scene.camera, azimuth })} />
@@ -331,7 +330,7 @@ export function DirectorWorkbench(props: Props) {
           </Tabs>
           <div className="director-output-panel">
             {mode === "scene" ? <><div className="director-output-heading"><Camera aria-hidden /><strong>{t("director.captureDescription")}</strong></div>
-              <p>{t("director.localCaptureHint")}</p><p className="director-save-hint">{t("director.saveHint")}</p></>
+              <p className="director-save-hint">{t("director.saveHint")}</p></>
               : source.sourceVersionId ? <><div className="director-output-heading"><Sparkle aria-hidden /><strong>{t("director.generateAngle")}</strong></div>
                 <ImageFunctionConfiguration operation="VIEW_ANGLE" sourceVersionId={source.sourceVersionId} busy={busy} onClose={() => setMode("scene")}
                   onSubmit={(input) => angle.mutate(input)}>{({ controls,submit,submitDisabled }) => <>{controls}

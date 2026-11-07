@@ -79,7 +79,7 @@ export function ProjectsPage() {
   }
 
   return (
-    <PageShell title={t("common.project")} description={t("projects.description")} actions={<Button onClick={() => nameInput.current?.focus()} type="button"><Plus data-icon="inline-start" aria-hidden="true" />{t("projects.newProject")}</Button>}>
+    <PageShell title={t("common.project")} actions={<Button onClick={() => nameInput.current?.focus()} type="button"><Plus data-icon="inline-start" aria-hidden="true" />{t("projects.newProject")}</Button>}>
       <div className="projects-layout">
         <section className="projects-library" aria-label={t("projects.title")}>
           <div className="projects-list-heading"><h2>{t("projects.title")}</h2><StatusBadge>{t("projects.loadedCount", { "0": loadedProjects.length })}</StatusBadge>{query ? <span className="ui-muted">{t("projects.matchCount", { "0": visibleProjects.length })}</span> : null}</div>
@@ -96,7 +96,7 @@ export function ProjectsPage() {
           <div className="projects-grid">{visibleProjects.map((project) => <ProjectCard key={project.id} project={project} />)}</div>
           {projects.hasNextPage ? <div className="projects-load-more"><Button variant="outline"  disabled={projects.isFetching} onClick={() => void projects.fetchNextPage()} type="button">{projects.isFetchingNextPage ? t("projects.loading") : t("projects.loadMore")}</Button></div> : null}
         </section>
-        <Panel className="projects-create" title={t("projects.newProject")} description={t("projects.newProjectHint")} actions={<span className="projects-create-symbol" aria-hidden="true"><Plus size={19} /></span>}>
+        <Panel className="projects-create" title={t("projects.newProject")} actions={<span className="projects-create-symbol" aria-hidden="true"><Plus size={19} /></span>}>
           <div className="projects-create-preview"><ProjectFrame aspectRatio={aspectRatio} /><span>{ASPECT_LABELS[aspectRatio]}</span></div>
           <form className="ui-form" onSubmit={submit} aria-busy={create.isPending}>
             <FieldGroup className="projects-create-fields">

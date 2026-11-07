@@ -56,8 +56,7 @@
 .agent-chat-composer-actions { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .agent-chat-send { flex: none; border-radius: 10px; }
 .agent-chat-composer-hint { margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--chat-border); font-size: 9px; line-height: 1.5; color: var(--ui-text-subtle); }
-.agent-chat-run-status, .agent-chat-run-date, .agent-chat-eyebrow { color: var(--chat-muted); font-size: 10px; }
-.agent-chat-eyebrow { letter-spacing: .08em; }
+.agent-chat-run-status, .agent-chat-run-date { color: var(--chat-muted); font-size: 10px; }
 .agent-chat-run-date { text-align: center; }
 .agent-chat-tasks { display: flex; flex-direction: column; gap: 7px; }
 .agent-chat-section-heading { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }

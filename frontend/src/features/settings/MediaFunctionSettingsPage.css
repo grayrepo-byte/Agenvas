@@ -1,7 +1,6 @@
 .media-function-panel[hidden], .media-function-entry[hidden] { display: none; }
 .media-function-workspace { min-width: 0; }
 .app-shell--settings:has(.media-function-workspace) .app-page-header { padding: 18px 0; margin-bottom: 0; }
-.app-shell--settings:has(.media-function-workspace) .app-page-eyebrow { display: none; }
 .media-function-workspace > .media-catalog-topline { gap: 16px; }
 .media-function-results-summary { flex: none; color: var(--ui-text-subtle); font-size: 11px; font-variant-numeric: tabular-nums; }
 .media-function-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 18px; }

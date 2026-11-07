@@ -255,7 +255,6 @@ export function ComfyWorkflowEditor({ connectionId, adapterId, values, onChange,
       <div className="comfy-step-actions"><Button type="button" disabled={!!problem || invalidParameter} onClick={() => setStep("review")}>{t("settings.comfy.review")}</Button></div>
     </div> : null}
     {step === "review" && definition ? <div className="ui-stack comfy-review-step">
-      <p className="ui-muted">{t("settings.comfy.reviewHint")}</p>
       <Notice>{t("settings.comfy.summary", { "0": Object.keys(definition.graph).length, "1": definition.bindings.length, "2": definition.output.nodeId, "3": comfyReferenceCount(definition), "4": comfyReferenceCount(definition, "REFERENCE_VIDEO"), "5": comfyReferenceCount(definition, "REFERENCE_AUDIO") })}</Notice>
       <FieldSet className="comfy-review-section"><FieldLegend>{t("settings.comfy.mappedInputs")}</FieldLegend><FieldDescription>{t("settings.comfy.readOnlyBindings")}</FieldDescription>
       <ul className="comfy-binding-summary">{definition.bindings.map((binding) => <li key={`${binding.nodeId}:${binding.inputName}`}><code>#{binding.nodeId}.{binding.inputName}</code> ← {t(SOURCE_KEYS[binding.source])}{isComfyReferenceSource(binding.source) ? ` #${(binding.referenceIndex ?? 0) + 1}` : ""}</li>)}</ul>

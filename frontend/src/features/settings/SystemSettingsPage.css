@@ -1,9 +1,6 @@
 /* Compact category navigation and detail panels share the settings density. */
 .app-shell--settings .system-settings-workspace { display: grid; grid-template-columns: 180px minmax(0, 1fr); align-items: start; gap: 16px; min-width: 0; }
 .app-shell--settings .system-settings-navigation { position: sticky; top: 20px; min-width: 0; }
-.app-shell--settings .system-settings-navigation-intro { margin-bottom: 10px; }
-.app-shell--settings .system-settings-navigation-intro h2 { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--ui-text-secondary); }
-.app-shell--settings .system-settings-navigation-intro p { margin: 0; font-size: 11px; line-height: 1.8; color: var(--ui-text-muted); }
 .app-shell--settings .system-settings-tabs { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 5px; width: 100%; min-width: 0; max-width: none; height: auto; margin: 0; padding: 0; }
 .app-shell--settings .system-settings-tab { flex: none; align-items: center; gap: 8px; width: 100%; }
 .app-shell--settings .system-settings-tab > svg { margin-top: 0; }
@@ -69,7 +66,6 @@
 @media (max-width: 1050px) {
   .app-shell--settings .system-settings-workspace { grid-template-columns: minmax(0, 1fr); gap: 14px; }
   .app-shell--settings .system-settings-navigation { position: static; margin: 0; padding: 0; }
-  .app-shell--settings .system-settings-navigation-intro { display: none; }
   .app-shell--settings .system-settings-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .app-shell--settings .system-settings-tab > svg { margin: 0; }
 }

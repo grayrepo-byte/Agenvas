@@ -51,7 +51,7 @@ export function VideoPromptPresetsDialog({ prompt, maxLength, onApply, onClose }
   function resetResults() { setApplyRejected(false); setResultsResetCount((count) => count + 1); }
   function clearFilters() { setQuery(""); setCategory("all"); setScenario("all"); resetResults(); }
 
-  return <Dialog title={t("video.presets.title")} description={t("video.presets.description")} className="video-presets-dialog"
+  return <Dialog title={t("video.presets.title")} className="video-presets-dialog"
     onClose={onClose} onSubmit={(event) => { event.preventDefault(); }} footer={<>
       <div className="video-presets-footer-note"><span role={applyRejected ? "alert" : undefined}>{applyRejected ? t("video.presets.addFailed") : selected ? t("video.presets.length", { count: nextLength, max: maxLength }) : t("video.presets.noSelection")}</span>
         <small>{t("video.presets.appendHint")}</small></div>

@@ -62,7 +62,7 @@ import { Button } from "../../shared/ui/primitives/button";
 import { Tooltip,TooltipContent,TooltipProvider,TooltipTrigger } from "../../shared/ui/primitives/tooltip";
 import { Command,CommandGroup,CommandItem,CommandList } from "../../shared/ui/primitives/command";
 import { Separator } from "../../shared/ui/primitives/separator";
-import { Empty,EmptyContent,EmptyDescription,EmptyHeader,EmptyMedia,EmptyTitle } from "../../shared/ui/primitives/empty";
+import { Empty,EmptyContent,EmptyHeader,EmptyMedia,EmptyTitle } from "../../shared/ui/primitives/empty";
 import { Tabs,TabsContent,TabsList,TabsTrigger } from "../../shared/ui/primitives/tabs";
 import { ProjectResourceBrowser } from "./ProjectResourceBrowser";
 import { LibraryCanvasPicker } from "../library/LibraryCanvasPicker";
@@ -1591,7 +1591,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             <EmptyHeader>
               <EmptyMedia variant="icon"><Sparkle /></EmptyMedia>
               <EmptyTitle>{t("canvas.empty.title")}</EmptyTitle>
-              <EmptyDescription>{t("canvas.empty.description")}</EmptyDescription>
             </EmptyHeader>
             <EmptyContent>
               <Button onClick={openCenteredCreationMenu}><Plus data-icon="inline-start" />{t("canvas.empty.addFirst")}</Button>
