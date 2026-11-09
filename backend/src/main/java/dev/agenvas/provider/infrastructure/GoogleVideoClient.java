@@ -58,12 +58,9 @@ public class GoogleVideoClient {
 
     @Autowired public GoogleVideoClient(ObjectMapper mapper) { this(mapper, null); }
     public GoogleVideoClient(ObjectMapper mapper, URI testOrigin) {
-        if (testOrigin != null && !("http".equals(testOrigin.getScheme()) && "127.0.0.1".equals(testOrigin.getHost())
-                && testOrigin.getPort() > 0 && testOrigin.getPort() <= 65535 && "".equals(testOrigin.getRawPath())
-                && testOrigin.getRawQuery() == null && testOrigin.getRawFragment() == null && testOrigin.getRawUserInfo() == null))
-            throw new IllegalArgumentException("Invalid Google video test origin");
+        if (testOrigin != null) dev.agenvas.shared.security.ServiceEndpointPolicy.origin(testOrigin.toString());
         this.mapper = mapper; this.testOrigin = testOrigin;
-        this.http = PinnedHttpClients.pinned(FixedCloudDns.checked(Dns.SYSTEM, testOrigin != null),
+        this.http = PinnedHttpClients.pinned(Dns.SYSTEM,
                 Duration.ofSeconds(10), Duration.ofMinutes(8), Duration.ofMinutes(10));
     }
     /** Existing Google image base versions are accepted, but native video always chooses its fixed v1beta route. */
@@ -72,7 +69,7 @@ public class GoogleVideoClient {
         URI parsed;
         try { parsed = URI.create(origin); } catch (IllegalArgumentException invalid) { throw GoogleVideoModels.invalid(); }
         if (!("https".equals(parsed.getScheme()) || "http".equals(parsed.getScheme()))
-                || !"generativelanguage.googleapis.com".equals(parsed.getHost())
+                || parsed.getHost() == null
                 || parsed.getRawUserInfo() != null || parsed.getRawQuery() != null || parsed.getRawFragment() != null
                 || parsed.getPort() == 0 || parsed.getPort() > 65535
                 || !Set.of("", "/", "/v1", "/v1/", "/v1beta", "/v1beta/").contains(parsed.getRawPath()))
@@ -235,7 +232,7 @@ public class GoogleVideoClient {
         };
     }
 
-    /** The only authenticated download is the fixed Files route; a single GCS hop is credential-free. */
+    /** The only authenticated download is the fixed Files route; a single result redirect is credential-free. */
     public void download(String origin, String key, String name, OutputStream target) {
         if (!validFileName(name)) throw new NativeMediaFailure(ProviderFailureCodes.RESULT_URL_INVALID);
         Request request = new Request.Builder().url(endpoint(origin, "/v1beta/" + name + ":download?alt=media").toString())
@@ -245,8 +242,8 @@ public class GoogleVideoClient {
                 String location = response.header("Location");
                 URI redirect;
                 try { redirect = URI.create(location == null ? "" : location); } catch (IllegalArgumentException invalid) { throw resultUrl(); }
-                if (!"https".equals(redirect.getScheme()) || !"storage.googleapis.com".equals(redirect.getHost())
-                        || redirect.getRawUserInfo() != null || redirect.getRawFragment() != null || redirect.getPort() != -1
+                if (!("https".equals(redirect.getScheme()) || "http".equals(redirect.getScheme())) || redirect.getHost() == null
+                        || redirect.getRawUserInfo() != null || redirect.getRawFragment() != null || redirect.getPort() == 0 || redirect.getPort() > 65535
                         || redirect.toString().length() > 8192 || redirect.getRawPath() == null || redirect.getRawPath().length() < 2)
                     throw resultUrl();
                 dev.agenvas.shared.http.DebugHttpCapture.registerMediaRelayUrl(redirect.toString());
@@ -313,7 +310,7 @@ public class GoogleVideoClient {
     public static String fileName(String value) {
         URI uri;
         try { uri = URI.create(value); } catch (IllegalArgumentException invalid) { throw resultUrl(); }
-        if (!("https".equals(uri.getScheme()) || "http".equals(uri.getScheme())) || !"generativelanguage.googleapis.com".equals(uri.getHost())
+        if (!("https".equals(uri.getScheme()) || "http".equals(uri.getScheme())) || uri.getHost() == null
                 || uri.getRawUserInfo() != null || uri.getRawFragment() != null || uri.getPort() == 0 || uri.getPort() > 65535
                 || uri.getRawQuery() != null && !"alt=media".equals(uri.getRawQuery())) throw resultUrl();
         String path = uri.getRawPath();

@@ -63,9 +63,10 @@ export function SkillsPage() {
   const catalogueGroups = trash
     ? [{label:t("skills.trash"),items:loadedSkills}]
     : skillCatalogueGroups(loadedSkills);
-  return <PageShell title={t("skills.title")} description={t("skills.description")}>
-    <div className="skills-layout skills-workspace"><Panel title={trash ? t("skills.trash") : t("skills.active")} className="skills-sidebar" actions={list.data ? <Badge variant="secondary">{list.data.pages[0]?.total ?? 0}</Badge> : undefined}>
-      <ToggleGroup className="skills-catalogue-tabs" type="single" variant="outline" size="sm" value={trash ? "trash":"active"} onValueChange={(value)=>{if(value)setTrash(value==="trash");}} aria-label={t("skills.title")}><ToggleGroupItem value="active"><BookOpen aria-hidden />{t("skills.active")}</ToggleGroupItem><ToggleGroupItem value="trash"><Trash aria-hidden />{t("skills.trash")}</ToggleGroupItem></ToggleGroup>
+  return <PageShell title={t("skills.title")}>
+    <div className="skills-layout skills-workspace"><Panel className="skills-sidebar">
+      <div className="skills-catalogue-heading"><ToggleGroup className="skills-catalogue-tabs" type="single" variant="outline" size="sm" value={trash ? "trash":"active"} onValueChange={(value)=>{if(value)setTrash(value==="trash");}} aria-label={t("skills.title")}><ToggleGroupItem value="active"><BookOpen aria-hidden />{t("skills.active")}</ToggleGroupItem><ToggleGroupItem value="trash"><Trash aria-hidden />{t("skills.trash")}</ToggleGroupItem></ToggleGroup>
+        {list.data ? <Badge variant="secondary">{list.data.pages[0]?.total ?? 0}</Badge> : null}</div>
       <FieldGroup className="skills-search"><Field><FieldLabel className="sr-only" htmlFor="skill-search">{t("skills.search")}</FieldLabel><div className="skills-search-control ui-search-field" data-density="compact"><MagnifyingGlass aria-hidden /><Input variant="ghost" density="compact" id="skill-search" placeholder={t("skills.search")} value={query} onChange={(event)=>setQuery(event.target.value)} /></div></Field></FieldGroup>
       {!trash ? <SkillCategoryFilter value={category} onChange={setCategory} /> : null}
       {create.error ? <SkillError error={create.error} /> : null}
@@ -83,7 +84,7 @@ export function SkillsPage() {
       {list.hasNextPage ? <Button size="sm" disabled={list.isFetchingNextPage} onClick={()=>void list.fetchNextPage()}>{t("projects.loadMore")}</Button> : null}
       {!trash ? <FieldGroup className="skills-create-form"><Field><FieldLabel htmlFor="skill-create-name">{t("skills.name")}</FieldLabel><Input density="compact" id="skill-create-name" placeholder={t("skills.name")} maxLength={MAX_TITLE_LENGTH} value={newTitle} onChange={(event)=>setNewTitle(event.target.value)} />
         <Button size="sm" variant="outline" disabled={!newTitle.trim() || create.isPending} onClick={()=>create.mutate()}><Plus data-icon="inline-start" />{t("skills.new")}</Button></Field></FieldGroup> : null}
-    </Panel><div className="skills-detail">{opened.map((skill)=><div hidden={selected?.id!==skill.id} key={skill.id}><SkillEditor skill={skill} onSkillChanged={openSkill} /></div>)}{!selected ? <div className="skills-selection-empty"><EmptyState icon={<BookOpen />} title={t("skills.choose")} description={t("skills.emptyHint")} /></div> : null}</div></div>
+    </Panel><div className="skills-detail">{opened.map((skill)=><div hidden={selected?.id!==skill.id} key={skill.id}><SkillEditor skill={skill} onSkillChanged={openSkill} /></div>)}{!selected ? <div className="skills-selection-empty"><EmptyState icon={<BookOpen />} title={t("skills.choose")} /></div> : null}</div></div>
   </PageShell>;
 }
 export function SkillError({error,onRefresh}:{error:Error;onRefresh?:()=>void}) {
@@ -99,11 +100,11 @@ function BuiltinSkillViewer({skill}:{skill:CreativeSkill}) {
   const version=useQuery({queryKey:["skill-version",skill.id,skill.currentVersionId],queryFn:()=>getSkillVersion(skill.id,skill.currentVersionId!),enabled:Boolean(skill.currentVersionId)});
   const [tryOpen,setTryOpen]=useState(false);
   return <Panel title={labels.title} description={labels.description} className="skills-detail-panel skills-builtin-viewer" actions={<StatusBadge>{t("skills.builtin")}</StatusBadge>}>
-    <Notice><p>{t("skills.builtinHint")}</p>{skill.builtinSource ? <>
+    {skill.builtinSource ? <Notice>
       <p><a href={skill.builtinSource.repository} target="_blank" rel="noreferrer">{skill.builtinSource.name}</a>{" · "}
       <a href={skill.builtinSource.licenseUrl} target="_blank" rel="noreferrer">{skill.builtinSource.license}</a></p>
       {skill.builtinSource.license === H3_LICENSE ? <p>{t("skills.restrictedLicense")}</p> : null}
-    </> : null}</Notice>
+    </Notice> : null}
     {version.isPending ? <LoadingState label={t("common.loading")} /> : null}
     {version.error ? <SkillError error={version.error} onRefresh={()=>void version.refetch()} /> : null}
     {version.data ? <SkillVersionPreview version={version.data} actions={<Button size="sm" onClick={()=>setTryOpen(true)}><ArrowUpRight data-icon="inline-start" />{t("skills.try")}</Button>} /> : null}
@@ -219,7 +220,7 @@ function SkillEditorForm({skill,initial,onSkillChanged}:{skill:CreativeSkill;ini
     } catch (error) {setLocalError(error instanceof Error ? error : new Error(t("skills.resourceHint")));}
     finally {setResourceReads((current)=>current-1);}
   }
-  return <Panel className="skills-detail-panel skills-personal-editor" title={skill.title} description={readOnly ? t("skills.trash") : t("skills.edit")} actions={readOnly ? <Button size="sm" disabled={busy} onClick={()=>trashChange.mutate(false)}><ArrowCounterClockwise data-icon="inline-start" />{t("skills.restore")}</Button> : <><StatusBadge tone={dirty ? "warning" : "neutral"}>{dirty ? t("skills.unsaved") : t("skills.saved")}</StatusBadge><Button size="sm" variant="outline" disabled={busy || !dirty} onClick={()=>save.mutate(submission())}><FloppyDisk data-icon="inline-start" />{t("skills.save")}</Button><Button size="sm" disabled={busy || !title.trim()} onClick={()=>publish.mutate()}><UploadSimple data-icon="inline-start" />{t("skills.publish")}</Button><Button variant="ghost" size="icon-sm" aria-label={t("skills.moveToTrash")} title={t("skills.moveToTrash")} disabled={busy || dirty} onClick={()=>trashChange.mutate(true)}><Trash /></Button></>}>
+  return <Panel className="skills-detail-panel skills-personal-editor" title={skill.title} description={readOnly ? t("skills.trash") : undefined} actions={readOnly ? <Button size="sm" disabled={busy} onClick={()=>trashChange.mutate(false)}><ArrowCounterClockwise data-icon="inline-start" />{t("skills.restore")}</Button> : <><StatusBadge tone={dirty ? "warning" : "neutral"}>{dirty ? t("skills.unsaved") : t("skills.saved")}</StatusBadge><Button size="sm" variant="outline" disabled={busy || !dirty} onClick={()=>save.mutate(submission())}><FloppyDisk data-icon="inline-start" />{t("skills.save")}</Button><Button size="sm" disabled={busy || !title.trim()} onClick={()=>publish.mutate()}><UploadSimple data-icon="inline-start" />{t("skills.publish")}</Button><Button variant="ghost" size="icon-sm" aria-label={t("skills.moveToTrash")} title={t("skills.moveToTrash")} disabled={busy || dirty} onClick={()=>trashChange.mutate(true)}><Trash /></Button></>}>
     {readOnly ? <Notice>{t("skills.trashReadOnly")}</Notice> : null}
     {trashChange.error ? <SkillError error={trashChange.error} onRefresh={()=>refreshMetadata.mutate(undefined,{onSuccess:()=>trashChange.reset()})} /> : null}
     {refreshMetadata.error ? <SkillError error={refreshMetadata.error} onRefresh={()=>refreshMetadata.mutate()} /> : null}

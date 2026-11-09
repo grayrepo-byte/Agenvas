@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.sun.net.httpserver.HttpServer;
 import dev.agenvas.settings.application.LlmEndpointPolicy;
-import dev.agenvas.settings.application.LlmEndpointProperties;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -28,8 +27,7 @@ class SafeLlmTransportTest {
     private HttpServer server;
     private final AtomicInteger completions = new AtomicInteger();
     private final AtomicInteger redirects = new AtomicInteger();
-    private final LlmEndpointPolicy localPolicy = new LlmEndpointPolicy(
-            new LlmEndpointProperties(true));
+    private final LlmEndpointPolicy localPolicy = new LlmEndpointPolicy();
 
     @BeforeEach
     void start() throws IOException {
@@ -99,36 +97,6 @@ class SafeLlmTransportTest {
         assertThatThrownBy(() -> outer.newCall(post("http://127.0.0.1:1/v1/chat/completions"))
                 .execute()).isInstanceOf(IOException.class).hasMessageContaining("target differs");
         assertThat(completions).hasValue(0);
-    }
-
-    @Test
-    void rejectsPrivateDnsAnswerAtConnectionTime() throws Exception {
-        String base = "https://public.example/v1";
-        SafeLlmTransport transport = new SafeLlmTransport(base,
-                new LlmEndpointPolicy(new LlmEndpointProperties(false)),
-                host -> List.of(InetAddress.getByName("169.254.169.254")));
-        OkHttpClient outer = new OkHttpClient.Builder()
-                .addInterceptor(transport.interceptor()).build();
-        assertThatThrownBy(() -> outer.newCall(post(base + "/chat/completions")).execute())
-                .isInstanceOf(UnknownHostException.class)
-                .hasMessageContaining("blocked address");
-    }
-
-    @Test
-    void loopbackExceptionIsExactAndRequiresDeploymentOptIn() throws Exception {
-        LlmEndpointPolicy defaultPolicy = new LlmEndpointPolicy(new LlmEndpointProperties(false));
-        assertThatThrownBy(() -> defaultPolicy.normalize("https://127.0.0.1/v1"))
-                .isInstanceOf(RuntimeException.class);
-        assertThatThrownBy(() -> localPolicy.normalize("http://localhost/v1"))
-                .isInstanceOf(RuntimeException.class);
-        assertThat(localPolicy.normalize("http://127.0.0.1:8080/v1"))
-                .isEqualTo("http://127.0.0.1:8080/v1");
-        assertThatThrownBy(() -> localPolicy.requireAllowedAddress("public.example",
-                InetAddress.getByName("127.0.0.1")))
-                .isInstanceOf(RuntimeException.class);
-        assertThatThrownBy(() -> localPolicy.requireAllowedAddress("public.example",
-                InetAddress.getByName("100.64.0.1")))
-                .isInstanceOf(RuntimeException.class);
     }
 
     private Request post(String url) {

@@ -411,6 +411,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/reference-catalog/costumes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Save an exact image as an independently archived shared costume reference */
+        post: operations["saveCostumeReference"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reference-catalog/costumes/{costumeId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read current costume metadata to reconcile a stale edit or import */
+        get: operations["getCostumeReference"];
+        put?: never;
+        post?: never;
+        /** Remove a self-created reference without deleting project copies */
+        delete: operations["deleteCostumeReference"];
+        options?: never;
+        head?: never;
+        /** Update self-created costume metadata with CAS */
+        patch: operations["updateCostumeReference"];
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/reference-catalog/costumes/{costumeId}/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Copy a fixed self-created costume into an owned active project */
+        post: operations["importCostumeReference"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reference-catalog/costumes/{costumeId}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read independently archived costume bytes with authentication */
+        get: operations["readCostumeReferenceImage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/reference-catalog/sources": {
         parameters: {
             query?: never;
@@ -2641,7 +2711,10 @@ export interface paths {
          */
         get: operations["listDirectMediaTasks"];
         put?: never;
-        /** 固定已保存的媒体草稿，首个输出为当前节点追加版本，其余输出使用独立节点并受理 USER_DIRECT Task */
+        /**
+         * 固定已保存的媒体草稿，首个输出为当前节点追加版本，其余输出使用独立节点并受理 USER_DIRECT Task
+         * @description 用户显式提交当前已保存草稿。节点存在未取消的直连 UNKNOWN（无外部请求 ID）或已受理 BLOCKED 时，按当前模型、参数和素材创建独立新任务及用量预留，原任务状态、请求与费用记录保留，并原子记录替代关系；不会复制原任务输入或恢复原请求查询。其他占用仍返回已有任务，Agent 和 MCP 不借此替代未知任务。同键重放返回已受理任务，不重新生成。
+         */
         post: operations["runMediaDraft"];
         delete?: never;
         options?: never;
@@ -2730,7 +2803,7 @@ export interface paths {
         put?: never;
         /**
          * 固定选用图片版本、语言、功能提示词与文字模型，受理提示词反推任务
-         * @description 使用 TEXT_GENERATION Task 的 IMAGE_REVERSE_PROMPT 用途与输入 schema 5；成功后在同一租约及取消屏障事务中创建独立 TEXT 产物、不可变 TASK 版本和画布文字卡片，不修改媒体草稿或来源选用结果。校验来源节点 CAS 与精确版本归属，固定 image.reverse-prompt 正文与版本。相同键同请求重放，不重新读取配置；同节点有其他命令的活动任务时返回 409，不创建重复任务。Worker 发送固定版本的归档原图，关闭自动工具执行。成功 output 返回 prompt、sourceVersionId、mock、artifactId、artifactVersionId 和 canvasItemId（项目已删除时不创建节点并省略 canvasItemId）。标题冻结为请求语言，Mock 卡片标题明确标记。重复命令、查询和检查点恢复不会重复建卡；发布失败保留响应检查点，租约恢复只重试发布。历史 schema 3 继续只返回原反推文本，不自动补卡。Mock 明确标记为演示；真实模型须支持图片理解。沿用任务租约、公开状态事件、查询、取消、用量与响应检查点恢复。
+         * @description 使用 TEXT_GENERATION Task 的 IMAGE_REVERSE_PROMPT 用途与输入 schema 5；成功后在同一租约及取消屏障事务中创建独立 TEXT 产物、不可变 TASK 版本、来源图片右侧避碰的文字卡片及固定受理图片版本的 MEDIA_DERIVATION 连线，沿用来源当前分组，不修改媒体草稿或来源选用结果。来源移除时保留普通独立文字节点，不补建来源或悬空连线；项目归档不丢弃已受理结果。校验来源节点 CAS 与精确版本归属，固定 image.reverse-prompt 正文与版本。相同键同请求重放，不重新读取配置；同节点有其他命令的活动任务时返回 409，不创建重复任务。Worker 发送固定版本的归档原图，关闭自动工具执行。成功 output 返回 prompt、sourceVersionId、mock、artifactId、artifactVersionId 和 canvasItemId（项目已删除时不创建节点并省略 canvasItemId）。标题冻结为请求语言，Mock 卡片标题明确标记。重复命令、查询和检查点恢复不会重复建卡或连线；卡片或连线发布失败整体回滚，保留响应检查点，租约恢复只重试发布。历史 schema 3 继续只返回原反推文本，不自动补卡。Mock 明确标记为演示；真实模型须支持图片理解。沿用任务租约、公开状态事件、查询、取消、用量与响应检查点恢复。
          */
         post: operations["runImagePrompt"];
         delete?: never;
@@ -3713,8 +3786,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Atomically edit presentation, groups or copy up to 100 independent content nodes
-         * @description Command identities and request fingerprints are durable. The latest 100 receipt snapshots per project are retained; retries after their snapshot expires return CANVAS_EDIT_EXPIRED and never execute again. Copies freeze saved text/media/character state and inherit no tasks or connections. Group membership changes must explicitly include all changed nodes. Locked nodes may be renamed, unlocked or copied, but cannot move or change group. No provider calls are made.
+         * Atomically edit presentation, groups or copy up to 100 nodes with internal topology
+         * @description Command identities and request fingerprints are durable. The latest 100 receipt snapshots per project are retained; retries after their snapshot expires return CANVAS_EDIT_EXPIRED and never execute again. Copies freeze saved text/media/character state and remap the complete selected internal topology. External edges, history and tasks are not copied; fixed external media inputs become manual. Group membership changes must explicitly include all changed nodes. Locked nodes may be renamed, unlocked or copied, but cannot move or change group. No provider calls are made.
          */
         post: operations["editCanvas"];
         delete?: never;
@@ -5109,10 +5182,37 @@ export interface components {
             removedBytes: number;
             stats: components["schemas"]["ReferenceCatalogCacheStats"];
         };
+        SaveCostumeReferenceRequest: {
+            /** Format: uuid */
+            canvasItemId: string;
+            /** Format: uuid */
+            sourceVersionId: string;
+            /** Format: int64 */
+            expectedCanvasItemVersion: number;
+            name: string;
+            category?: string;
+            tags: string[];
+            commandKey: string;
+        };
+        UpdateCostumeReferenceRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+            name: string;
+            category?: string;
+            tags: string[];
+        };
+        ImportCostumeReferenceRequest: {
+            commandKey: string;
+            /** Format: int64 */
+            expectedVersion: number;
+            placement?: components["schemas"]["ReferenceCatalogPlacement"];
+        };
         /** @enum {string} */
         ReferenceCatalogKind: "POSE" | "COSTUME";
         /** @enum {string} */
         ReferenceCatalogFormat: "OPEN_POSE_COSTUME" | "AGENVAS_REFERENCE_PACK";
+        /** @enum {string} */
+        ReferenceCatalogSourceType: "OMILIC" | "GITHUB";
         ReferenceCatalogSource: {
             id: string;
             name: string;
@@ -5121,6 +5221,7 @@ export interface components {
             ref: string;
             manifestPath: string;
             format: components["schemas"]["ReferenceCatalogFormat"];
+            sourceType: components["schemas"]["ReferenceCatalogSourceType"];
             enabled: boolean;
             imageDistributionApproved: boolean;
             version: number;
@@ -5157,6 +5258,13 @@ export interface components {
             privateCacheDisabledReason: string | null;
         };
         ReferenceCatalogEntry: {
+            /**
+             * @description Internal provenance; both origins share the same costume browser.
+             * @enum {string}
+             */
+            origin?: "THIRD_PARTY" | "SELF_CREATED";
+            /** Format: int64 */
+            version?: number;
             sourceId: string;
             /** Format: uuid */
             snapshotId: string;
@@ -5209,6 +5317,8 @@ export interface components {
             filters: components["schemas"]["ReferenceCatalogFilters"];
         };
         CreateReferenceCatalogSource: {
+            /** @default GITHUB */
+            sourceType: components["schemas"]["ReferenceCatalogSourceType"];
             id: string;
             name: string;
             owner: string;
@@ -5274,11 +5384,9 @@ export interface components {
             /** @enum {string} */
             runtime: "CONTAINER" | "NATIVE" | "UNKNOWN";
             /** @enum {string} */
-            status: "FOUND" | "NOT_FOUND" | "UNRESOLVED" | "BLOCKED_ADDRESS" | "TIMEOUT" | "UNEXPECTED_RESPONSE" | "AUTH_REQUIRED" | "UNSUPPORTED_RUNTIME";
+            status: "FOUND" | "NOT_FOUND" | "UNRESOLVED" | "TIMEOUT" | "UNEXPECTED_RESPONSE" | "AUTH_REQUIRED" | "UNSUPPORTED_RUNTIME";
             /** @description Server-generated candidate; present only for FOUND, never credential-bearing */
             endpoint: string | null;
-            /** @description Existing endpoint policy permits the candidate; discovery never changes policy */
-            policyAllowed: boolean;
         };
         McpMediaUploadMetadata: {
             commandId: string;
@@ -5984,7 +6092,7 @@ export interface components {
             /** Format: int64 */
             version: number;
             connectionVersion: number;
-            /** @description COMFYUI base URL with its entire path redacted as /[configured-path], RUNNINGHUB HTTP or HTTPS root without a domain allowlist, or WAN official WorkspaceId.region.maas.aliyuncs.com HTTP/HTTPS root, or optional OPENAI/GOOGLE HTTP or HTTPS API base URL; Google video requires the official Gemini host. null uses the platform official endpoint. */
+            /** @description COMFYUI base URL with its entire path redacted as /[configured-path], RUNNINGHUB HTTP or HTTPS root without a domain allowlist, or WAN/KLING/MINIMAX compatible HTTP/HTTPS service root, or optional OPENAI/GOOGLE HTTP or HTTPS API base URL; Google native video accepts compatible hosts. null uses the platform official endpoint. */
             origin: string | null;
             keyMask: string | null;
             /** @enum {string} */
@@ -6367,7 +6475,7 @@ export interface components {
             name: string;
             /** @enum {string} */
             platform: "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE" | "AUTODL" | "RUNNINGHUB" | "MINIMAX" | "KLING" | "WAN";
-            /** @description Required full COMFYUI base URL (HTTP or HTTPS host/IP and port; literal IPv4 loopback is also supported), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. KLING selects only https://api-singapore.klingai.com or https://api-beijing.klingai.com with an API Key (AK/SK JWT is not supported). MINIMAX selects only https://api.minimax.cn (default) or https://api.minimax.io, without a path. Optional RUNNINGHUB HTTP or HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTP or HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
+            /** @description Required full COMFYUI base URL (HTTP or HTTPS host/IP and port; localhost, IPv4/IPv6, private and proxy Fake-IP addresses are supported), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. KLING accepts an HTTP or HTTPS service root with an API Key (AK/SK JWT is not supported). MINIMAX accepts an HTTP or HTTPS service root, defaulting to https://api.minimax.cn. Optional RUNNINGHUB HTTP or HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTP or HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
             origin?: string | null;
             /** @description Cloud API Key; KLING requires the official API Key, not an AK/SK-generated JWT. Empty on update preserves the pinned credential. */
             apiKey?: string | null;
@@ -6377,7 +6485,7 @@ export interface components {
             expectedVersion: number;
             name: string;
             enabled: boolean;
-            /** @description Required full COMFYUI base URL (HTTP or HTTPS host/IP and port; literal IPv4 loopback is also supported), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. KLING selects only https://api-singapore.klingai.com or https://api-beijing.klingai.com with an API Key (AK/SK JWT is not supported). MINIMAX selects only https://api.minimax.cn (default) or https://api.minimax.io, without a path. Optional RUNNINGHUB HTTP or HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTP or HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
+            /** @description Required full COMFYUI base URL (HTTP or HTTPS host/IP and port; localhost, IPv4/IPv6, private and proxy Fake-IP addresses are supported), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. KLING accepts an HTTP or HTTPS service root with an API Key (AK/SK JWT is not supported). MINIMAX accepts an HTTP or HTTPS service root, defaulting to https://api.minimax.cn. Optional RUNNINGHUB HTTP or HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTP or HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
             origin?: string | null;
             /** @description Cloud API Key; KLING requires the official API Key, not an AK/SK-generated JWT. Empty on update preserves the pinned credential. */
             apiKey?: string | null;
@@ -6900,7 +7008,7 @@ export interface components {
             /** Format: uuid */
             targetCanvasItemId: string;
             /** @enum {string} */
-            relationType: "MEDIA_INPUT" | "MEDIA_DERIVATION";
+            relationType: "MEDIA_INPUT" | "MEDIA_DERIVATION" | "PROMPT_INPUT";
             /** Format: uuid */
             sourceArtifactVersionId: string;
             /** Format: int64 */
@@ -7076,7 +7184,7 @@ export interface components {
         /** @enum {string} */
         VideoOperation: "DEPTH_MAP" | "EXTRACT_AUDIO" | "UPSCALE";
         /** @enum {string} */
-        MediaFunction: "IMAGE_SMART_EDIT" | "IMAGE_RELIGHT" | "IMAGE_OUTPAINT" | "IMAGE_THREE_VIEW" | "IMAGE_LAYER_SPLIT" | "IMAGE_EXPRESSION_EDIT" | "IMAGE_REMOVE_BACKGROUND" | "IMAGE_OBJECT_REMOVE" | "IMAGE_VIEW_ANGLE" | "IMAGE_DEPTH_MAP" | "IMAGE_UPSCALE" | "IMAGE_RESIZE" | "IMAGE_CROP" | "IMAGE_ROTATE" | "IMAGE_FLIP_HORIZONTAL" | "IMAGE_FLIP_VERTICAL" | "VIDEO_DEPTH_MAP" | "VIDEO_EXTRACT_AUDIO" | "VIDEO_UPSCALE";
+        MediaFunction: "IMAGE_SMART_EDIT" | "IMAGE_COSTUME_EXTRACT" | "IMAGE_RELIGHT" | "IMAGE_OUTPAINT" | "IMAGE_THREE_VIEW" | "IMAGE_LAYER_SPLIT" | "IMAGE_EXPRESSION_EDIT" | "IMAGE_REMOVE_BACKGROUND" | "IMAGE_OBJECT_REMOVE" | "IMAGE_VIEW_ANGLE" | "IMAGE_DEPTH_MAP" | "IMAGE_UPSCALE" | "IMAGE_RESIZE" | "IMAGE_CROP" | "IMAGE_ROTATE" | "IMAGE_FLIP_HORIZONTAL" | "IMAGE_FLIP_VERTICAL" | "VIDEO_DEPTH_MAP" | "VIDEO_EXTRACT_AUDIO" | "VIDEO_UPSCALE";
         MediaFunctionSetting: {
             operation: components["schemas"]["MediaFunction"];
             /** Format: uuid */
@@ -7210,7 +7318,7 @@ export interface components {
             /** Format: int64 */
             expectedCanvasItemVersion: number;
             /** @enum {string} */
-            operation: "SMART_EDIT" | "RELIGHT" | "OUTPAINT" | "THREE_VIEW" | "LAYER_SPLIT" | "EXPRESSION_EDIT" | "REMOVE_BACKGROUND" | "OBJECT_REMOVE" | "VIEW_ANGLE" | "DEPTH_MAP" | "UPSCALE" | "RESIZE" | "CROP" | "ROTATE" | "FLIP_HORIZONTAL" | "FLIP_VERTICAL";
+            operation: "SMART_EDIT" | "COSTUME_EXTRACT" | "RELIGHT" | "OUTPAINT" | "THREE_VIEW" | "LAYER_SPLIT" | "EXPRESSION_EDIT" | "REMOVE_BACKGROUND" | "OBJECT_REMOVE" | "VIEW_ANGLE" | "DEPTH_MAP" | "UPSCALE" | "RESIZE" | "CROP" | "ROTATE" | "FLIP_HORIZONTAL" | "FLIP_VERTICAL";
             instruction?: string | null;
             /** Format: int64 */
             expectedFunctionVersion: number;
@@ -7371,7 +7479,7 @@ export interface components {
             /** Format: uuid */
             targetCanvasItemId: string;
             /** @enum {string} */
-            relationType: "MEDIA_INPUT" | "MEDIA_DERIVATION";
+            relationType: "MEDIA_INPUT" | "MEDIA_DERIVATION" | "PROMPT_INPUT";
             /** Format: uuid */
             sourceArtifactVersionId: string;
             /** Format: int64 */
@@ -7384,6 +7492,7 @@ export interface components {
         CanvasConnectionList: {
             items: components["schemas"]["CanvasConnection"][];
         };
+        /** @description PROMPT_INPUT connects saved text to media nodes, follows saved text edits at acceptance, and needs no target draft version. sourceVersionId checks the text resource default at connection time. MEDIA_INPUT retains exact media version and draft CAS semantics. */
         CreateCanvasConnectionRequest: {
             /** Format: uuid */
             sourceCanvasItemId: string;
@@ -7391,12 +7500,17 @@ export interface components {
             targetCanvasItemId: string;
             /** Format: uuid */
             sourceVersionId: string;
-            /** @constant */
-            relationType: "MEDIA_INPUT";
+            /** @enum {string} */
+            relationType: "MEDIA_INPUT" | "PROMPT_INPUT";
             /** Format: int64 */
             expectedTargetDraftVersion?: number;
         };
         DisconnectCanvasConnectionRequest: {
+            /**
+             * Format: int64
+             * @description Rejects delayed deletion of an older connection incarnation after copy redo.
+             */
+            expectedVersion: number;
             /** Format: int64 */
             expectedTargetDraftVersion?: number;
         };
@@ -7520,9 +7634,23 @@ export interface components {
             order: number;
             kind: components["schemas"]["ArtifactKind"];
         };
+        FrozenPromptInput: {
+            /** Format: uuid */
+            connectionId: string;
+            /** Format: uuid */
+            canvasItemId: string;
+            /** Format: uuid */
+            artifactId: string;
+            /** Format: uuid */
+            versionId: string;
+            title: string;
+            text: string;
+        };
         /** @description Immutable input of a media Task and its result; schema 7 fixes applicable applied character snapshots without resolving later profile revisions. */
         MediaFrozenInput: {
             schemaVersion?: number;
+            /** @description Saved text bodies frozen in connection creation order (createdAt, then UUID); never reread by workers. */
+            promptInputs?: components["schemas"]["FrozenPromptInput"][];
             characterBindings?: components["schemas"]["CharacterSnapshot"][];
             characterContribution?: components["schemas"]["CharacterContribution"];
         } & {
@@ -8320,11 +8448,15 @@ export interface components {
         CanvasEditorState: {
             items: components["schemas"]["CanvasItem"][];
             groups: components["schemas"]["CanvasGroup"][];
+            connections?: components["schemas"]["CanvasConnection"][];
+            characterConnections?: components["schemas"]["CharacterNodeConnection"][];
             receipt?: null;
         };
         CanvasEditResponse: {
             items: components["schemas"]["CanvasItem"][];
             groups: components["schemas"]["CanvasGroup"][];
+            connections?: components["schemas"]["CanvasConnection"][];
+            characterConnections?: components["schemas"]["CharacterNodeConnection"][];
             receipt: components["schemas"]["CanvasEditReceipt"];
         };
         CanvasEditItemChange: {
@@ -8379,6 +8511,16 @@ export interface components {
             /** Format: uuid */
             groupId?: string | null;
         };
+        CanvasEditConnectionCopy: {
+            /** @enum {string} */
+            kind: "ARTIFACT" | "CHARACTER";
+            /** Format: uuid */
+            sourceConnectionId: string;
+            /** Format: uuid */
+            targetConnectionId: string;
+            /** Format: int64 */
+            expectedVersion: number;
+        };
         CanvasEditRequest: {
             /** Format: uuid */
             commandId: string;
@@ -8387,6 +8529,8 @@ export interface components {
             itemChanges?: components["schemas"]["CanvasEditItemChange"][];
             groupChanges?: components["schemas"]["CanvasEditGroupChange"][];
             copies?: components["schemas"]["CanvasEditCopy"][];
+            /** @description Complete internal topology captured with the source selection. External edges are rejected. Source identities and versions are revalidated atomically; new target IDs must be unused. */
+            connectionCopies?: components["schemas"]["CanvasEditConnectionCopy"][];
         };
         CanvasEditReplayRequest: {
             /** Format: uuid */
@@ -10139,6 +10283,179 @@ export interface operations {
             };
         };
     };
+    saveCostumeReference: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveCostumeReferenceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceCatalogEntry"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getCostumeReference: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                costumeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current visible costume reference */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceCatalogEntry"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteCostumeReference: {
+        parameters: {
+            query: {
+                expectedVersion: number;
+            };
+            header?: never;
+            path: {
+                costumeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateCostumeReference: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                costumeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCostumeReferenceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceCatalogEntry"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    importCostumeReference: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+                costumeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportCostumeReferenceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceCatalogImport"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    readCostumeReferenceImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                costumeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Costume image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                    "image/jpeg": string;
+                    "image/webp": string;
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     listReferenceCatalogSources: {
         parameters: {
             query?: never;
@@ -10178,6 +10495,8 @@ export interface operations {
             query?: {
                 kind?: components["schemas"]["ReferenceCatalogKind"];
                 sourceId?: string;
+                /** @description Include independent self-created costumes alongside an automatically preferred external source; explicit source selection normally leaves this false. */
+                includeSelfCreated?: boolean;
                 query?: string;
                 category?: string;
                 tag?: string;

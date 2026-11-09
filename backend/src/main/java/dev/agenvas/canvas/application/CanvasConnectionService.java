@@ -79,14 +79,19 @@ public class CanvasConnectionService {
                     sourceItemId);
             Artifact sourceArtifact = artifacts.get(ownerId, projectId,
                     source.subjectId()).artifact();
-            if (sourceArtifact.kind() != Artifact.Kind.IMAGE
+            boolean promptInput = relationType == CanvasConnection.RelationType.PROMPT_INPUT;
+            if (promptInput && sourceArtifact.kind() != Artifact.Kind.TEXT) {
+                throw invalid(ApiMessage.of("api.canvas-prompt.invalid-source"));
+            }
+            if (!promptInput && sourceArtifact.kind() != Artifact.Kind.IMAGE
                     && (!Set.of(Artifact.Kind.AUDIO, Artifact.Kind.VIDEO).contains(sourceArtifact.kind())
                         || relationType != CanvasConnection.RelationType.MEDIA_INPUT)) {
                 throw invalid(ApiMessage.of("api.canvas-connection-service.canvas-image-input-connections-must-originate-from-the-image-card"));
             }
-            if (sourceVersionId == null
-                    || !sourceVersionId.equals(source.selectedVersionId())) {
-                throw conflict(ApiMessage.of("api.canvas-connection-service.the-source-image-version-has-changed-during-dragging-please-reconnect"));
+            UUID currentSourceVersion = promptInput ? sourceArtifact.resourceDefaultVersionId() : source.selectedVersionId();
+            if (sourceVersionId == null || !sourceVersionId.equals(currentSourceVersion)) {
+                throw conflict(ApiMessage.of(promptInput ? "api.canvas-prompt.source-changed"
+                        : "api.canvas-connection-service.the-source-image-version-has-changed-during-dragging-please-reconnect"));
             }
             if (relationType == CanvasConnection.RelationType.MEDIA_DERIVATION) {
                 throw invalid(ApiMessage.of("api.canvas-connection-service.media-derived-lines-can-only-be-created-by-media-change"));
@@ -105,6 +110,12 @@ public class CanvasConnectionService {
             Instant now = clock.instant();
             CanvasConnection connection = new CanvasConnection(UUID.randomUUID(), projectId,
                     sourceItemId, targetItemId, relationType, sourceVersionId, 0, now, now);
+            if (promptInput) {
+                CanvasItem target = canvasItems.requireArtifactItem(ownerId, projectId, targetItemId);
+                if (artifacts.get(ownerId, projectId, target.subjectId()).artifact().kind() == Artifact.Kind.TEXT) {
+                    throw invalid(ApiMessage.of("api.canvas-prompt.invalid-target"));
+                }
+            }
             connections.create(connection);
             MediaDraft draft = null;
             if (relationType == CanvasConnection.RelationType.MEDIA_INPUT) {
@@ -119,7 +130,7 @@ public class CanvasConnectionService {
                 draft = drafts.addConnectionInputWithinChange(ownerId, projectId,
                         targetItemId, expectedTargetDraftVersion, sourceVersionId,
                         connection.id(), replaceManualSource, slotKey);
-            } else {
+            } else if (!promptInput) {
                 throw invalid(ApiMessage.of("api.canvas-connection-service.unsupported-canvas-wire-type"));
             }
             return ProjectEventService.Change.changed(new ConnectionResult(connection, draft),
@@ -157,13 +168,39 @@ public class CanvasConnectionService {
         return connection;
     }
 
+    /** A newly published text result records the task's image version, even after the source changes selection.
+     * The caller owns the project lock, fresh target and task lease fence; this does not create a media input.
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public CanvasConnection createImagePromptDerivationWithinChange(UUID ownerId, UUID projectId,
+            UUID sourceItemId, UUID targetItemId, UUID sourceVersionId) {
+        projects.getRetainedProject(ownerId, projectId);
+        CanvasItem source = canvasItems.requireArtifactItem(ownerId, projectId, sourceItemId);
+        CanvasItem target = canvasItems.requireArtifactItem(ownerId, projectId, targetItemId);
+        if (artifacts.get(ownerId, projectId, source.subjectId()).artifact().kind() != Artifact.Kind.IMAGE
+                || artifacts.get(ownerId, projectId, target.subjectId()).artifact().kind() != Artifact.Kind.TEXT) {
+            throw new IllegalArgumentException("Expected an image source and a new text result");
+        }
+        artifacts.requireVersion(ownerId, projectId, source.subjectId(), sourceVersionId);
+        Instant now = clock.instant();
+        CanvasConnection connection = new CanvasConnection(UUID.randomUUID(), projectId,
+                sourceItemId, targetItemId, CanvasConnection.RelationType.MEDIA_DERIVATION,
+                sourceVersionId, 0, now, now);
+        connections.create(connection);
+        events.append(ownerId, projectId, connectionEvent(connection, "canvas.connection.created"));
+        return connection;
+    }
+
     @Transactional
     public ConnectionResult disconnect(UUID ownerId, UUID projectId, UUID connectionId,
-            Long expectedTargetDraftVersion) {
+            long expectedVersion, Long expectedTargetDraftVersion) {
         return events.recordChange(ownerId, projectId, () -> {
             projects.requireActiveProject(ownerId, projectId);
             CanvasConnection connection = connections.find(ownerId, projectId, connectionId)
                     .orElseThrow(this::notFound);
+            // Redo restores the same identity with a new incarnation; delayed deletes must not cross it.
+            if (expectedVersion < 0 || connection.version() != expectedVersion)
+                throw conflict(ApiMessage.of("api.canvas-connection-service.the-connection-was-deleted-by-another-operation"));
             MediaDraft draft = null;
             if (connection.relationType() == CanvasConnection.RelationType.MEDIA_INPUT) {
                 if (expectedTargetDraftVersion == null) throw invalid(ApiMessage.of("api.canvas-connection-service.disconnected-media-is-missing-draft-versions"));
@@ -242,6 +279,16 @@ public class CanvasConnectionService {
             }
             if (!connections.delete(projectId, connection.id())) {
                 throw conflict(ApiMessage.of("api.canvas-connection-service.the-connection-was-deleted-by-another-operation"));
+            }
+        }
+    }
+
+    /** Explicit history reuse materializes frozen shared text and must remove its live sources. */
+    void clearTargetPromptConnectionsWithinChange(UUID ownerId, UUID projectId, UUID targetCanvasItemId) {
+        for (CanvasConnection edge : connections.list(ownerId, projectId)) {
+            if (edge.relationType() == CanvasConnection.RelationType.PROMPT_INPUT
+                    && edge.targetCanvasItemId().equals(targetCanvasItemId)) {
+                disconnect(ownerId, projectId, edge.id(), edge.version(), null);
             }
         }
     }

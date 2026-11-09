@@ -17,8 +17,6 @@
 .storage-connection-meta > span { display: inline-flex; align-items: center; gap: 4px; }
 .storage-connection-meta svg { width: 12px; height: 12px; flex: none; }
 .storage-connection-actions { display: flex; align-items: center; justify-content: flex-end; gap: 2px; }
-.storage-privacy-note { display: flex; align-items: flex-start; gap: 6px; margin: 8px 0 0; color: var(--ui-text-muted); font-size: var(--ui-text-xs); line-height: 1.7; }
-.storage-privacy-note > svg { width: 14px; height: 14px; flex: none; margin-top: 3px; }
 .storage-purpose-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: var(--ui-space-3); }
 .storage-purpose-panel { min-width: 0; }
 .storage-purpose-panel > [data-slot="field-group"] { gap: 10px; }

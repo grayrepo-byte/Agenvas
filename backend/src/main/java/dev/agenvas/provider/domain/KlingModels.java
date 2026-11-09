@@ -390,6 +390,13 @@ public final class KlingModels {
         return values.path("n").asInt(1);
     }
 
+    /** Extra image cards start with one output even when the capability defaults to a series. */
+    public static void configureSingleOutputDraft(Profile p, ObjectNode values) {
+        if (newVideo(p) || p.operation() == Operation.SUBJECT_COMPLETION) return;
+        values.put("n", 1);
+        if ("kling-v3-omni".equals(p.model())) values.put("result_type", "single");
+    }
+
     public static void validateMetadata(Profile p, String fieldKey, Asset asset) { validateMetadata(p, fieldKey, asset, N.objectNode()); }
     public static void validateMetadata(Profile p, String fieldKey, Asset asset, JsonNode values) {
         Field f = inputs(p).stream().filter(field -> field.key().equals(fieldKey) && field.media()).findFirst().orElseThrow(KlingProtocol::invalid);

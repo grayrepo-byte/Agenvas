@@ -139,7 +139,7 @@ class VersionedMediaInputPostgresIT {
         JsonNode disconnected = mapper.readTree(mvc.perform(post(base + "/canvas/connections/"
                         + connectionId + "/disconnect").with(auth).with(csrf())
                         .contentType("application/json")
-                        .content("{\"expectedTargetDraftVersion\":2}"))
+                        .content("{\"expectedVersion\":0,\"expectedTargetDraftVersion\":2}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(disconnected.path("draft").path("mediaInputs")).hasSize(2);
         assertThat(disconnected.path("draft").path("mediaInputs").get(0).path("sources")).hasSize(1);

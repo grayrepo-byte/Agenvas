@@ -59,19 +59,19 @@
   text-decoration: none; cursor: pointer;
   transition: background-color var(--ui-duration), border-color var(--ui-duration), color var(--ui-duration), box-shadow var(--ui-duration);
 }
-[data-slot="button"][data-variant="default"] { background: var(--ui-accent); color: var(--ui-accent-foreground); box-shadow: var(--ui-inset-highlight); }
-[data-slot="button"][data-variant="default"]:hover:not(:disabled) { background: var(--ui-accent-hover); }
-[data-slot="button"][data-variant="outline"] { border-color: var(--ui-border); background: var(--ui-surface); color: var(--ui-text-secondary); box-shadow: var(--ui-inset-highlight); }
-[data-slot="button"][data-variant="outline"]:hover:not(:disabled) { background: var(--ui-hover); border-color: var(--ui-border-strong); color: var(--ui-text); }
-[data-slot="button"][data-variant="secondary"] { background: var(--ui-selected); color: var(--ui-text-secondary); }
-[data-slot="button"][data-variant="secondary"]:hover:not(:disabled) { background: var(--ui-hover); color: var(--ui-text); }
-[data-slot="button"][data-variant="ghost"] { background: transparent; color: var(--ui-text-muted); }
-[data-slot="button"][data-variant="ghost"]:hover:not(:disabled) { background: var(--ui-hover); color: var(--ui-text); }
-[data-slot="button"]:is([data-variant="outline"], [data-variant="ghost"])[aria-pressed="true"] { border-color: var(--ui-accent-ring); background: var(--ui-accent-subtle); color: var(--ui-accent-text); }
-[data-slot="button"][data-variant="destructive"] { background: var(--ui-danger-fill); color: var(--ui-danger-foreground); }
-[data-slot="button"][data-variant="destructive"]:hover:not(:disabled) { background: color-mix(in srgb, var(--ui-danger-fill) 85%, black); }
-[data-slot="button"][data-variant="link"] { background: transparent; color: var(--ui-accent-text); box-shadow: none; }
-[data-slot="button"][data-variant="link"]:hover:not(:disabled) { text-decoration: underline; text-underline-offset: 4px; }
+[data-ui-button][data-variant="default"] { background: var(--ui-accent); color: var(--ui-accent-foreground); box-shadow: var(--ui-inset-highlight); }
+[data-ui-button][data-variant="default"]:hover:not(:disabled) { background: var(--ui-accent-hover); }
+[data-ui-button][data-variant="outline"] { border-color: var(--ui-border); background: transparent; color: var(--ui-text-secondary); box-shadow: none; }
+[data-ui-button][data-variant="outline"]:hover:not(:disabled) { background: var(--ui-hover); border-color: var(--ui-border-strong); color: var(--ui-text); }
+[data-ui-button][data-variant="secondary"] { background: var(--ui-selected); color: var(--ui-text-secondary); }
+[data-ui-button][data-variant="secondary"]:hover:not(:disabled) { background: var(--ui-hover); color: var(--ui-text); }
+[data-ui-button][data-variant="ghost"] { background: transparent; color: var(--ui-text-secondary); box-shadow: none; }
+[data-ui-button][data-variant="ghost"]:hover:not(:disabled) { background: var(--ui-hover); color: var(--ui-text); }
+[data-ui-button]:is([data-variant="outline"], [data-variant="ghost"])[aria-pressed="true"] { border-color: var(--ui-accent-ring); background: var(--ui-accent-subtle); color: var(--ui-accent-text); }
+[data-ui-button][data-variant="destructive"] { background: var(--ui-danger-fill); color: var(--ui-danger-foreground); }
+[data-ui-button][data-variant="destructive"]:hover:not(:disabled) { background: color-mix(in srgb, var(--ui-danger-fill) 85%, black); }
+[data-ui-button][data-variant="link"] { background: transparent; color: var(--ui-accent-text); box-shadow: none; }
+[data-ui-button][data-variant="link"]:hover:not(:disabled) { text-decoration: underline; text-underline-offset: 4px; }
 [data-slot="button"][data-size="sm"] { height: var(--ui-control-height-compact); padding-inline: 11px; font-size: var(--ui-text-sm); gap: 6px; }
 [data-slot="button"][data-size="xs"] { height: 24px; padding-inline: 7px; font-size: var(--ui-text-xs); gap: 4px; border-radius: var(--ui-radius-sm); }
 [data-slot="button"][data-size="lg"] { height: var(--ui-control-height); padding-inline: 20px; }
@@ -83,6 +83,37 @@
 [data-slot="button"][data-size="icon-lg"] { width: var(--ui-control-height); height: var(--ui-control-height); }
 [data-slot="button"] > svg { width: 16px; height: 16px; }
 [data-slot="button"][data-size$="xs"] > svg { width: 13px; height: 13px; }
+
+/* Shared by media previews, character nodes and thumbnail actions. Keep the hit
+   area independent of the painted feedback; bright media needs a dark contour.
+   Radix asChild triggers replace data-slot; data-ui-button keeps variant skins stable.
+   Domain trigger geometry remains independent of the ordinary button base/size rules. */
+[data-ui-button][data-variant="media-overlay"] {
+  position: relative; width: 44px; height: 44px; padding: 0; border: 0;
+  background: transparent; color: var(--ui-media-overlay-foreground); box-shadow: none;
+}
+[data-ui-button][data-variant="media-overlay"]:is(:hover, :active, :focus-visible, [data-state="open"], [aria-pressed="true"]) {
+  background: transparent; color: var(--ui-media-overlay-foreground); box-shadow: none;
+}
+[data-ui-button][data-variant="media-overlay"]::before {
+  content: ""; position: absolute; inset: 6px; border-radius: 50%; opacity: 0;
+  background: color-mix(in srgb, var(--ui-media-scrim) 40%, transparent);
+  transition: opacity var(--ui-duration), background-color var(--ui-duration);
+}
+[data-ui-button][data-variant="media-overlay"]:is(:hover:not(:disabled), :active:not(:disabled), :focus-visible, [data-state="open"], [aria-pressed="true"])::before { opacity: 1; }
+[data-ui-button][data-variant="media-overlay"]:is(:focus-visible, [data-state="open"], [aria-pressed="true"])::before {
+  background: color-mix(in srgb, var(--ui-media-scrim) 72%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ui-media-overlay-foreground) 80%, transparent);
+}
+[data-ui-button][data-variant="media-overlay"][data-tone="danger"]:hover:not(:disabled)::before { background: var(--ui-danger-fill); }
+[data-ui-button][data-variant="media-overlay"] > svg {
+  position: relative; width: 18px; height: 18px; paint-order: stroke fill;
+  stroke: var(--ui-media-scrim); stroke-width: 12px; stroke-linejoin: round;
+  filter: drop-shadow(0 1px 1px var(--ui-media-scrim));
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-ui-button][data-variant="media-overlay"]::before { transition: none; }
+}
 
 [data-slot="checkbox"] {
   display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px;
@@ -166,7 +197,7 @@
 [data-slot="field-description"] { margin: 0; color: var(--ui-text-muted); font-size: var(--ui-text-sm); line-height: 1.6; }
 [data-slot="field-error"] { color: var(--ui-danger); font-size: var(--ui-text-sm); line-height: 1.6; }
 [data-slot="field"][data-invalid="true"] > [data-slot="field-label"] { color: var(--ui-danger); }
-:is([data-slot="button"], [data-slot="input"], [data-slot="textarea"], [data-slot="checkbox"], [data-slot="switch"], [data-slot="select-trigger"], [data-slot="tabs-trigger"], [data-slot="toggle"], [data-slot="toggle-group-item"]):disabled { cursor: not-allowed; opacity: .45; }
+:is([data-ui-button], [data-slot="input"], [data-slot="textarea"], [data-slot="checkbox"], [data-slot="switch"], [data-slot="select-trigger"], [data-slot="tabs-trigger"], [data-slot="toggle"], [data-slot="toggle-group-item"]):disabled { cursor: not-allowed; opacity: .45; }
 @media (prefers-reduced-motion: reduce) {
-  :is([data-slot="button"], [data-slot="input"], [data-slot="textarea"], [data-slot="checkbox"], [data-slot="switch"], [data-slot="switch-thumb"], [data-slot="tabs-trigger"], [data-slot="toggle"], [data-slot="toggle-group-item"], .ui-search-field) { transition: none; }
+  :is([data-ui-button], [data-slot="input"], [data-slot="textarea"], [data-slot="checkbox"], [data-slot="switch"], [data-slot="switch-thumb"], [data-slot="tabs-trigger"], [data-slot="toggle"], [data-slot="toggle-group-item"], .ui-search-field) { transition: none; }
 }

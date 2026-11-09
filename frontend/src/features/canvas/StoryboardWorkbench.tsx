@@ -6,7 +6,7 @@ import { cn } from "cn";
 import { CaretDown, ArrowUp, FilmStrip, Plus, X } from "@/shared/ui/icons";
 import {
   ApiError, assetContentUrl, assetThumbnailUrl, getMediaDraft, getMediaSettings, getStoryboard, listArtifacts,
-  listArtifactVersions, listCanvasMediaVersions, listDirectMediaTasks, listStoryboardMediaApprovals,
+  listArtifactVersions, listCanvasConnections, listCanvasItems, listCanvasMediaVersions, listDirectMediaTasks, listStoryboardMediaApprovals,
   runMediaDraft, saveStoryboard, type ArtifactVersionList, type CanvasItem,
   type MediaDraft, type SaveStoryboardRequest,
 } from "../../shared/api/client";
@@ -28,6 +28,7 @@ import { LoadingState } from "../../shared/ui/LoadingState";
 import { AgentMediaApprovalCard } from "./AgentMediaApprovalCard";
 import { MediaPreviewDialog } from "./MediaPreviewDialog";
 import { readContentText } from "./artifactContent";
+import { composePromptInputs, projectPromptInputs } from "./canvasPromptInputs";
 import { MEDIA_TASK_REFRESH_INTERVAL_MS, occupiesMediaCard } from "./mediaTaskState";
 import {
   compositionNeedsReview, storyboardContentSignature, newStoryboardShot, parseStoryboardImport, productionNeedsReview,
@@ -128,7 +129,7 @@ function ProductionEditor({ projectId, role, production, items, review, disabled
   </section>;
 }
 
-type BatchEntry = { item: ArtifactCanvasItem; draft: MediaDraft; name: string; cost: string };
+type BatchEntry = { item: ArtifactCanvasItem; draft: MediaDraft; prompt: string; name: string; cost: string };
 type BatchResult = { name: string; state: "submitted" | "failed" | "uncertain"; detail: string };
 
 export function StoryboardWorkbench({ projectId, items, onClose, onOpenNode }: {
@@ -213,7 +214,11 @@ export function StoryboardWorkbench({ projectId, items, onClose, onOpenNode }: {
     const productions = selected.flatMap((entry) => entry.productions.filter((production) => production.role === batchRole).map((production) => ({ production, shot: entry })));
     const unique = [...new Map(productions.map((entry) => [entry.production.canvasItemId, entry])).values()];
     if (!unique.length || unique.length > STORYBOARD_BATCH_LIMIT) throw new Error(t("storyboard.batchLimit", { "0": STORYBOARD_BATCH_LIMIT }));
-    const settings = await getMediaSettings();
+    // Re-read saved topology and text for each preflight; props/cache may still contain disconnected or older sources.
+    const [settings, connections] = await Promise.all([getMediaSettings(), listCanvasConnections(projectId)]);
+    const promptItems = connections.items.some((edge) => edge.relationType === "PROMPT_INPUT"
+      && unique.some(({ production }) => production.canvasItemId === edge.targetCanvasItemId))
+      ? (await listCanvasItems(projectId)).items : [];
     return Promise.all(unique.map(async ({ production, shot: entry }) => {
       const item = items.find((candidate) => candidate.id === production.canvasItemId);
       if (!item || !hasCanvasArtifact(item)) throw new Error(t("storyboard.missingNode"));
@@ -221,12 +226,15 @@ export function StoryboardWorkbench({ projectId, items, onClose, onOpenNode }: {
       if (currentTasks.some(occupiesMediaCard)) throw new Error(`${entry.code}: ${t("storyboard.busyNode")}`);
       const capability = settings.connections.filter((connection) => connection.enabled).flatMap((connection) => connection.capabilities)
         .find((candidate) => candidate.id === currentDraft.capabilityId && candidate.enabled);
-      if (!capability || !currentDraft.prompt.trim()) throw new Error(`${entry.code}: ${t("storyboard.prepareNode")}`);
+      const promptInputs = projectPromptInputs(promptItems, connections.items, item.id);
+      if (promptInputs === null) throw new Error(`${entry.code}: ${t("media.promptInputs.failed")}`);
+      const prompt = composePromptInputs(promptInputs, currentDraft.prompt);
+      if (!capability || !prompt.trim()) throw new Error(`${entry.code}: ${t("storyboard.prepareNode")}`);
       const pricing = mediaDraftPricingInputs(capability, currentDraft, {
         imageCount: currentDraft.parameters.generationCount ?? 1, durationSeconds: currentDraft.durationSeconds,
         videoResolution: currentDraft.parameters.videoResolution,
       });
-      return { item, draft: currentDraft, name: `${entry.code} · ${entry.title} · ${t(ROLE_KEYS[production.role])}`,
+      return { item, draft: currentDraft, prompt, name: `${entry.code} · ${entry.title} · ${t(ROLE_KEYS[production.role])}`,
         cost: estimatedMediaCost(capability, pricing.imageCount, pricing.durationSeconds, pricing.videoResolution) };
     }));
   }, onSuccess: (entries) => { setBatchResults([]); setBatch(entries); }, retry: false });
@@ -416,7 +424,7 @@ export function StoryboardWorkbench({ projectId, items, onClose, onOpenNode }: {
       {batch ? <Dialog open onOpenChange={(open) => { if (!open && !submit.isPending) setBatch(null); }}><DialogContent className="storyboard-batch app-page" showCloseButton={!submit.isPending}
         onEscapeKeyDown={(event) => { if (submit.isPending) event.preventDefault(); }} onPointerDownOutside={(event) => event.preventDefault()}>
         <DialogHeader><DialogTitle>{t("storyboard.batchConfirm")}</DialogTitle><DialogDescription>{t("storyboard.batchCostHint")}</DialogDescription></DialogHeader>
-        <div className="storyboard-batch-list">{batch.map((entry) => <section key={entry.item.id}><strong>{entry.name}</strong><Badge variant="outline">{entry.cost}</Badge><p>{entry.draft.prompt}</p>
+        <div className="storyboard-batch-list">{batch.map((entry) => <section key={entry.item.id}><strong>{entry.name}</strong><Badge variant="outline">{entry.cost}</Badge><p>{entry.prompt}</p>
           <small>{t("storyboard.batchInputs", { "0": entry.draft.mediaInputs.length, "1": entry.draft.version })}</small></section>)}</div>
         <p>{t("storyboard.noAutoRetry")}</p><DialogFooter><Button variant="outline" disabled={submit.isPending} onClick={() => setBatch(null)}>{t("storyboard.cancel")}</Button>
           <Button disabled={submit.isPending} onClick={() => submit.mutate(batch)}>{t(submit.isPending ? "storyboard.submitting" : "storyboard.confirmPaidGeneration")}</Button></DialogFooter>

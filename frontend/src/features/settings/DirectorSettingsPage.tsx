@@ -113,7 +113,7 @@ export function DirectorSettingsPage() {
       <Panel className="director-settings-panel" title={t("settings.director.contextTitle")} description={t("settings.director.contextHint")}>{fields(CONTEXT_FIELDS)}</Panel>
       <Panel className="director-settings-panel" title={t("settings.director.recoveryTitle")} description={t("settings.director.recoveryHint")}>{fields(RECOVERY_FIELDS)}</Panel>
       <div className="director-settings-save">
-        <p className="ui-muted" role="status">{save.isSuccess && draft === null ? t("settings.director.saved") : t("settings.director.effectHint")}</p>
+        {save.isSuccess && draft === null ? <p className="ui-muted" role="status">{t("settings.director.saved")}</p> : null}
         <Button type="submit" disabled={disabled || conflict || !dirty || !valid}>{save.isPending ? t("common.savingProgress") : t("settings.director.save")}</Button>
       </div>
     </form> : null}

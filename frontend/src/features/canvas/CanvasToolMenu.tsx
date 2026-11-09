@@ -16,7 +16,7 @@ export function CanvasToolMenu({ tool, spaceHeld, onToolChange, onAdd, children 
   return <TooltipProvider delayDuration={350}>
     <div className="workspace-tool-rail">
       <ToolHint label={t("canvas.tools.addCard")}>
-        <Button size="icon-sm" aria-label={t("canvas.tools.addCard")}
+        <Button variant="ghost" size="icon-sm" aria-label={t("canvas.tools.addCard")}
           className="workspace-add-button" onClick={onAdd} type="button"><Plus /></Button>
       </ToolHint>
       <ToggleGroup type="single" value={activeTool} orientation="vertical" spacing={1}

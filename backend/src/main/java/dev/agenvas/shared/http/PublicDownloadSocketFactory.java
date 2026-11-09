@@ -1,6 +1,5 @@
 package dev.agenvas.shared.http;
 
-import dev.agenvas.shared.security.EndpointAddressRules;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
@@ -10,18 +9,18 @@ import javax.net.SocketFactory;
 import javax.net.ssl.*;
 import static dev.agenvas.shared.http.PublicDownloadException.Reason.*;
 
-/** A proxy carries an already validated numeric route; it never resolves the origin's hostname. */
+/** A proxy carries an resolved numeric route; it never resolves the origin's hostname. */
 final class PublicDownloadSocketFactory extends SocketFactory {
     private final PublicDownloadProperties properties;
     private final SSLSocketFactory proxyTls;
     PublicDownloadSocketFactory(PublicDownloadProperties properties){this(properties,(SSLSocketFactory)SSLSocketFactory.getDefault());}
     PublicDownloadSocketFactory(PublicDownloadProperties properties,SSLSocketFactory proxyTls){this.properties=properties;this.proxyTls=proxyTls;}
     @Override public Socket createSocket(){return new TunnelSocket();}
-    // Callers must resolve and check the entire origin answer set before selecting a numeric route.
-    @Override public Socket createSocket(String h,int p)throws IOException{throw new PublicDownloadException(DNS_BLOCKED);}
-    @Override public Socket createSocket(String h,int p,InetAddress l,int lp)throws IOException{throw new PublicDownloadException(DNS_BLOCKED);}
-    @Override public Socket createSocket(InetAddress h,int p)throws IOException{throw new PublicDownloadException(DNS_BLOCKED);}
-    @Override public Socket createSocket(InetAddress h,int p,InetAddress l,int lp)throws IOException{throw new PublicDownloadException(DNS_BLOCKED);}
+    // Callers must resolve the origin before selecting a numeric route.
+    @Override public Socket createSocket(String h,int p)throws IOException{throw new PublicDownloadException(DNS_FAILED);}
+    @Override public Socket createSocket(String h,int p,InetAddress l,int lp)throws IOException{throw new PublicDownloadException(DNS_FAILED);}
+    @Override public Socket createSocket(InetAddress h,int p)throws IOException{throw new PublicDownloadException(DNS_FAILED);}
+    @Override public Socket createSocket(InetAddress h,int p,InetAddress l,int lp)throws IOException{throw new PublicDownloadException(DNS_FAILED);}
 
     private final class TunnelSocket extends Socket {
         private volatile Socket delegate;
@@ -32,15 +31,14 @@ final class PublicDownloadSocketFactory extends SocketFactory {
         @Override public void connect(SocketAddress target,int timeout)throws IOException {
             if(closed)throw new SocketException("Socket is closed");
             if(connected)throw new SocketException("Socket is connected");
-            if(!(target instanceof InetSocketAddress numeric) || numeric.isUnresolved()
-                    || !EndpointAddressRules.allowsPublicDownload(numeric.getAddress()))throw new PublicDownloadException(DNS_BLOCKED);
+            if(!(target instanceof InetSocketAddress numeric) || numeric.isUnresolved())throw new PublicDownloadException(DNS_FAILED);
             origin=numeric;
             long deadline=System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(timeout>0?timeout:10_000);
             try {
                 InetAddress[] proxyAddresses;
                 try{proxyAddresses=InetAddress.getAllByName(properties.proxyHost());}
                 catch(UnknownHostException failure){throw new PublicDownloadException(PROXY_UNREACHABLE);}
-                if(proxyAddresses.length==0 || Arrays.stream(proxyAddresses).anyMatch(a->!proxyAddress(a)))throw new PublicDownloadException(PROXY_UNREACHABLE);
+                if(proxyAddresses.length==0)throw new PublicDownloadException(PROXY_UNREACHABLE);
                 var plain=new Socket(Proxy.NO_PROXY);delegate=plain;
                 if(closed){plain.close();throw new SocketException("Socket is closed");}
                 try{plain.connect(new InetSocketAddress(proxyAddresses[0],properties.proxyPort()),remaining(deadline));}
@@ -134,8 +132,5 @@ final class PublicDownloadSocketFactory extends SocketFactory {
         @Override public void shutdownOutput()throws IOException{stream().shutdownOutput();}
         @Override public boolean isInputShutdown(){return delegate!=null && delegate.isInputShutdown();}
         @Override public boolean isOutputShutdown(){return delegate!=null && delegate.isOutputShutdown();}
-    }
-    private static boolean proxyAddress(InetAddress address){
-        return address.isLoopbackAddress() || EndpointAddressRules.isPrivateNetwork(address) || EndpointAddressRules.allowsPublicDownload(address);
     }
 }

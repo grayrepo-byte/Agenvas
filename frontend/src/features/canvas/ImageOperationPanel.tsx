@@ -31,6 +31,7 @@ const EXPRESSIONS = [
   { key: "sad", icon: SmileySad }, { key: "angry", icon: SmileyAngry },
 ] as const;
 const INSTRUCTIONS: Partial<Record<ImageOperation, readonly [MessageKey, MessageKey, boolean?]>> = {
+  COSTUME_EXTRACT: ["costume.instruction", "costume.instructionPlaceholder"],
   OUTPAINT: ["media.card.additionalInstruction", "media.card.outpaintInstructionPlaceholder"],
   THREE_VIEW: ["media.card.subjectInstruction", "media.card.threeViewInstructionPlaceholder"],
   LAYER_SPLIT: ["media.card.layerInstruction", "media.card.layerInstructionPlaceholder"],
@@ -71,6 +72,7 @@ export function ImageOperationPanel({ operation, initialThreeViewType, capabilit
   const threeView = THREE_VIEW_OPTIONS.find((option) => option.value === threeViewType);
   const title = operation === "THREE_VIEW" ? threeView?.label ?? imageOperationLabel(operation) : imageOperationLabel(operation);
   const descriptions: Partial<Record<ImageOperation, MessageKey>> = {
+    COSTUME_EXTRACT: "costume.extractDescription",
     OUTPAINT: "media.tools.description.outpaint", THREE_VIEW: "media.tools.description.threeView",
     LAYER_SPLIT: "media.tools.description.layerSplit", EXPRESSION_EDIT: "media.tools.description.expressionEdit",
     REMOVE_BACKGROUND: "media.tools.description.removeBackground", OBJECT_REMOVE: "media.tools.description.objectRemove",

@@ -29,6 +29,7 @@ import { Button } from "../../shared/ui/primitives/button";
 import { DropdownMenu,DropdownMenuContent,DropdownMenuGroup,DropdownMenuItem,DropdownMenuSub,DropdownMenuSubContent,DropdownMenuSubTrigger,DropdownMenuTrigger } from "../../shared/ui/primitives/dropdown-menu";
 import { Input } from "../../shared/ui/primitives/input";
 import { SaveToLibraryButton } from "../library/SaveToLibraryButton";
+import { SaveCostumeReferenceButton } from "../reference-catalog/SaveCostumeReferenceButton";
 import { ArtifactCardFrame } from "./ArtifactCardFrame";
 import { readContentText } from "./artifactContent";
 import { AudioPlayer } from "./AudioPlayer";
@@ -38,7 +39,7 @@ import { DirectorWorkbench } from "./DirectorWorkbench";
 import { ImageOperationPanel } from "./ImageOperationPanel";
 import { THREE_VIEW_OPTIONS, type ThreeViewType } from "./imageOperationOptions";
 import { ImageResizePanel } from "./ImageResizePanel";
-import { ImageReversePromptDialog } from "./ImageReversePromptDialog";
+import { useImageReversePrompt } from "./useImageReversePrompt";
 import { CropPanel } from "./CropPanel";
 import { MediaPreviewDialog } from "./MediaPreviewDialog";
 import { MediaCardUpload } from "./MediaCardUpload";
@@ -80,10 +81,9 @@ const EXTENSIONS = [
 
 /** The media surface contains only the preview; editing and history live outside its bounds. */
 export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, locked, onEdit,
-  onDuplicate, onMakeMV, onComposeVideo, onEditVideo, onShowCard, compositionDisabledReason, children }: {
+  onDuplicate, onMakeMV, onComposeVideo, onEditVideo, compositionDisabledReason, children }: {
   artifact: Artifact; item: CanvasItem; selected: boolean; toolbarVisible?: boolean; locked: boolean; onEdit: () => void;
   onDuplicate?: () => void;
-  onShowCard?: (itemId: string, signal: AbortSignal) => Promise<boolean>;
   onComposeVideo?: () => void;
   onEditVideo?: () => void;
   compositionDisabledReason?: string | null;
@@ -94,7 +94,6 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
   const [threeViewMenuOpen, setThreeViewMenuOpen] = useState(false);
   const [operationOpen, setOperationOpen] = useState<ImageTool | null>(null);
   const [smartEditSource, setSmartEditSource] = useState<{ versionId: string; canvasVersion: number; assetId: string; title: string } | null>(null);
-  const [reversePrompt, setReversePrompt] = useState<{ assetId: string; sourceVersionId: string; expectedCanvasItemVersion: number; open: boolean } | null>(null);
   const [videoOperationOpen, setVideoOperationOpen] = useState<VideoOperation | null>(null);
   const [audioTrim, setAudioTrim] = useState<{ assetId: string; sourceVersionId: string; expectedCanvasItemVersion: number; durationMs: number } | null>(null);
   const videoCommand = useRef<{ payload: string; key: string; input: RunVideoOperationRequest } | null>(null);
@@ -126,6 +125,10 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
   const isImage = artifact.kind === "IMAGE";
   const isAudio = artifact.kind === "AUDIO";
   const isVideo = artifact.kind === "VIDEO";
+  const reversePrompt = useImageReversePrompt({ projectId: artifact.projectId, artifactId: artifact.id, canvasItemId: item.id,
+    request: isImage && assetId && item.selectedVersionId ? { canvasItemId: item.id, sourceVersionId: item.selectedVersionId,
+      expectedCanvasItemVersion: item.version } : null,
+    enabled: isImage && Boolean(assetId) && toolbarActive });
   const metadata = useQuery(assetMetadataQueryOptions(artifact.projectId, assetId));
   const audioDurationMs = metadata.data?.durationMs;
   const canTrimAudio = Number.isSafeInteger(audioDurationMs) && (audioDurationMs ?? 0) > 0;
@@ -176,7 +179,6 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
     setMenuOpen(false);
     setThreeViewMenuOpen(false);
     setOperationOpen(null);
-    setReversePrompt((current) => current?.open ? { ...current, open: false } : current);
     setVideoOperationOpen(null);
     setThreeViewType(null);
     // Keep tracking an in-flight submission even after its panel is dismissed.
@@ -198,11 +200,11 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
       expectedCapabilityVersion: configured.capability.capabilityVersion });
   }
 
-  const operationImage = operationOpen === "SMART_EDIT" && smartEditSource ? smartEditSource
+  const operationImage = (operationOpen === "SMART_EDIT" || operationOpen === "COSTUME_EXTRACT") && smartEditSource ? smartEditSource
     : { versionId: item.selectedVersionId ?? "", canvasVersion: item.version, assetId: assetId ?? "", title: item.title };
 
   function chooseOperation(name: ImageTool, threeView: ThreeViewType | null = null) {
-    if (name === "SMART_EDIT" && item.selectedVersionId && assetId)
+    if ((name === "SMART_EDIT" || name === "COSTUME_EXTRACT") && item.selectedVersionId && assetId)
       setSmartEditSource({ versionId: item.selectedVersionId, canvasVersion: item.version, assetId, title: item.title });
     setMenuOpen(false);
     setThreeViewMenuOpen(false);
@@ -226,7 +228,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
     titleIcon={isImage ? <ImageIcon size={16} /> : isAudio ? <MusicNotes size={16} /> : <VideoCamera size={16} />}
     className={isAudio && assetId ? "audio-canvas-card" : undefined}
     selected={selected} locked={locked} toolbarVisible={toolbarVisible} toolbarStage={assetId ? "result" : "draft"}
-    toolbarRaised={directorOpen || menuOpen || operationOpen !== null || videoOperationOpen !== null || Boolean(reversePrompt?.open) || audioTrim !== null}
+    toolbarRaised={directorOpen || menuOpen || operationOpen !== null || videoOperationOpen !== null || audioTrim !== null}
     editableTitle={{ projectId: artifact.projectId, item }}
     toolbarLabel={t("media.card.toolbarLabel")} toolbar={<>
         <MediaVersionPicker projectId={artifact.projectId} item={item} />
@@ -235,10 +237,12 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
           <Button variant="ghost" type="button" disabled={locked || Boolean(busy) || operation.isPending}
             onClick={() => setDirectorOpen(true)}><Cube data-icon="inline-start" />{t("director.title")}</Button>
           {assetId ? <>
-          <Button variant="ghost" type="button" disabled={!assetId || !item.selectedVersionId}
-            onClick={() => { if (assetId && item.selectedVersionId) setReversePrompt({ assetId,
-              sourceVersionId: item.selectedVersionId, expectedCanvasItemVersion: item.version, open: true }); }}>
-            <MagicWand data-icon="inline-start" />{t("image.reversePrompt.title")}</Button>
+          {item.selectedVersionId ? <SaveCostumeReferenceButton projectId={artifact.projectId} canvasItemId={item.id}
+            sourceVersionId={item.selectedVersionId} expectedCanvasItemVersion={item.version} sourceTitle={item.title}
+            disabled={locked || Boolean(busy) || operation.isPending} /> : null}
+          {reversePrompt.controls}
+          <Button variant="ghost" type="button" disabled={locked || Boolean(busy) || operation.isPending}
+            onClick={() => chooseOperation("COSTUME_EXTRACT")}><Scissors data-icon="inline-start" />{t("costume.extract")}</Button>
           <Button variant="ghost" type="button" disabled={!assetId || Boolean(busy) || operation.isPending}
             onClick={() => chooseOperation("SMART_EDIT")}><MagicWand size={17} />{t("media.card.smartEdit")}</Button>
           <Button variant="ghost" type="button" disabled={!assetId || Boolean(busy) || operation.isPending}
@@ -266,11 +270,6 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
             </DropdownMenuGroup></DropdownMenuContent>
           </DropdownMenu>
           </> : null}
-          {reversePrompt ? <ImageReversePromptDialog key={reversePrompt.sourceVersionId}
-            projectId={artifact.projectId} artifactId={artifact.id} title={item.title} assetId={reversePrompt.assetId}
-            request={{ canvasItemId: item.id, sourceVersionId: reversePrompt.sourceVersionId,
-              expectedCanvasItemVersion: reversePrompt.expectedCanvasItemVersion }}
-            open={reversePrompt.open} onShowCard={onShowCard} onClose={() => setReversePrompt((current) => current?.sourceVersionId === reversePrompt.sourceVersionId ? { ...current, open: false } : current)} /> : null}
           {operationOpen === "BRUSH_MARKUP" ? (assetId && item.selectedVersionId ? <BrushMarkupEditor
             key={item.id}
             projectId={artifact.projectId} canvasItemId={item.id}
@@ -407,6 +406,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
           {draft.error ? <p className="media-card-error" role="alert">{t("media.card.draftLoadFailed")}<Button variant="ghost" type="button" className="nodrag" onClick={() => void draft.refetch()}>{t("common.retry")}</Button></p> : null}
           {tasks.error ? <p className="media-card-error" role="alert">{t("media.card.statusUnavailable")}<Button variant="ghost" type="button" className="nodrag" onClick={() => void tasks.refetch()}>{t("media.card.retryStatus")}</Button></p> : null}
         </div>}
+      {isImage && selected ? reversePrompt.feedback : null}
   </ArtifactCardFrame>;
 }
 
@@ -436,7 +436,7 @@ function MediaPreview({ artifact, assetId, title, audioDescription, demo, select
         : <div className="media-card-empty"><ImageIcon size={36} /><span>{t("media.card.previewUnavailable")}</span>
           <Button variant="ghost" className="media-upload-button nodrag" type="button" onClick={() => setFailed(false)}>{t("media.card.retryPreview")}</Button></div>}
     {demo ? <span className="media-demo-badge">{t("media.card.mockAsset")}</span> : null}
-    <Button variant="ghost" size="icon-sm" className="media-expand-button nodrag nowheel nopan" type="button" aria-label={t("media.card.upscale")} title={t("media.card.upscale")}
+    <Button variant="media-overlay" size="icon-lg" className="media-expand-button nodrag nowheel nopan" type="button" aria-label={t("media.card.upscale")} title={t("media.card.upscale")}
         onPointerDown={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}
         onClick={(event) => { event.stopPropagation(); setExpanded(true); }}><ArrowsOutSimple size={19} /></Button>
     {expanded ? <MediaPreviewDialog kind="image" title={title} width={width} height={height}

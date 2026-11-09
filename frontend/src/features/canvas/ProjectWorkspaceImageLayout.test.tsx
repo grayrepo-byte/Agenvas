@@ -86,7 +86,7 @@ describe("workspace media dimensions", () => {
       http.get("/api/v1/projects/project-1", () => HttpResponse.json({ id: "project-1", name: "Images", status: "ACTIVE" })),
       http.get("/api/v1/projects/project-1/snapshot", () => HttpResponse.json({
         project: { id: "project-1", name: "Images", status: "ACTIVE" }, canvas: { items },
-        director: null, activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0,
+        connections: [], director: null, activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0,
       })),
       http.get("/api/v1/projects/project-1/canvas/items", () => HttpResponse.json({ items })),
       http.get("/api/v1/projects/project-1/canvas-items/:canvasItemId/media-draft", ({ params }) => HttpResponse.json({

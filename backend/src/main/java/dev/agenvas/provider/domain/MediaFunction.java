@@ -7,6 +7,7 @@ import dev.agenvas.task.domain.Task;
 /** Qualified tool identities keep image and video routes independent even when operation names match. */
 public enum MediaFunction {
     IMAGE_SMART_EDIT(ImageOperation.SMART_EDIT),
+    IMAGE_COSTUME_EXTRACT(ImageOperation.COSTUME_EXTRACT),
     IMAGE_RELIGHT(ImageOperation.RELIGHT),
     IMAGE_OUTPAINT(ImageOperation.OUTPAINT),
     IMAGE_THREE_VIEW(ImageOperation.THREE_VIEW),

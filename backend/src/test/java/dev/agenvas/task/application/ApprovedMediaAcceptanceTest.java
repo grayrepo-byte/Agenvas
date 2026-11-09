@@ -79,7 +79,7 @@ class ApprovedMediaAcceptanceTest {
         service = new DirectMediaTaskService(repository, drafts, artifacts, mock(AssetService.class),
                 cards, canvas, capabilities, events, usage,
                 mapper, Clock.fixed(NOW, ZoneOffset.UTC), mock(ProjectService.class), runs, styles, mock(dev.agenvas.asset.storage.MediaRelayService.class),
-                mock(dev.agenvas.settings.application.PromptService.class), mock(dev.agenvas.provider.application.MediaFunctionService.class), characterProvider, dev.agenvas.testing.CreationMessagesTestSupport.messages());
+                mock(dev.agenvas.settings.application.PromptService.class), mock(dev.agenvas.provider.application.MediaFunctionService.class), characterProvider, dev.agenvas.testing.CreationMessagesTestSupport.messages(), mock(dev.agenvas.canvas.application.CanvasPromptInputService.class));
         when(characters.frozenBindings(OWNER, PROJECT, CARD)).thenAnswer(call -> mapper.createArrayNode());
         when(characters.frozenContribution(OWNER, PROJECT, CARD)).thenReturn(
                 new dev.agenvas.character.application.CharacterModels.CharacterContribution(List.of(), "", null));

@@ -70,7 +70,7 @@ function MediaStyleForm({ initial, onPersisted, onClose }: {
   const preview = previewUrl ? { name: labels.name, thumbnailUrl: previewUrl }
     : knownStyle ? { ...knownStyle, name: labels.name } : null;
   if (error instanceof ApiError && error.status === HTTP_STATUS.UNAUTHORIZED) return <Navigate to="/login" replace />;
-  return <Dialog title={knownStyle ? t("styles.edit") : t("styles.add")} description={t("styles.formHint")}
+  return <Dialog title={knownStyle ? t("styles.edit") : t("styles.add")}
     onClose={onClose} busy={busy} className="media-style-form" onSubmit={(event) => {
       event.preventDefault();
       if (!busy && !conflict && !forbidden) save.mutate();

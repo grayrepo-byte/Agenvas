@@ -25,6 +25,7 @@ type WorkflowValuesProps = {
   definition: CreatorInputDefinition;
   values: Record<string, WorkflowValue>;
   prompt: string;
+  composePrompt?: (local: string) => string;
   durationSeconds: number | null | undefined;
   disabled?: boolean;
   onChange: (key: string, value: WorkflowValue | undefined) => void;
@@ -91,7 +92,7 @@ function WorkflowMediaSlot({ field, index, value, choices, canvasChoices, disabl
         {hasValue ? <MediaPreview choice={choice} kind={field.type} /> : undefined}
       </MediaReferenceSourceMenu>
       {hasValue ? <><span className="media-draft-reference-index pointer-events-none" aria-hidden="true">{index + 1}</span>
-        <Button type="button" variant="ghost" size="icon-xs" className="media-draft-reference-remove" disabled={locked}
+        <Button type="button" variant="media-overlay" data-tone="danger" size="icon-sm" className="media-draft-reference-remove" disabled={locked}
           aria-label={t("media.workflow.clearSlot", { "0": label })} onClick={() => onChange(field.key, undefined)}><X size={13} /></Button></> : null}
     </div>
     <span className="sr-only" id={labelId}>{label}{field.required ? " *" : ""}</span>
@@ -167,7 +168,7 @@ function WorkflowMediaAdd({ fields, emptyFields, props, onBusy }: {
 export function WorkflowMediaInputs(props: WorkflowMediaInputsProps) {
   useLocale();
   const uploads = useRef(new Set<string>());
-  const fields = activeWorkflowMediaFields(props.definition, props.values, props.prompt, props.durationSeconds);
+  const fields = activeWorkflowMediaFields(props.definition, props.values, props.prompt, props.durationSeconds, props.composePrompt);
   if (!fields.length) return null;
   const selectedFields = fields.filter((field) => {
     const value = workflowFieldValue(field, props.values, props.prompt, props.durationSeconds);
@@ -230,7 +231,7 @@ function parameterConstraints(field: CreatorInputField) {
 /** Edits persist through the draft's existing onChange path; closing needs no second save. */
 export function WorkflowParameterFields({ disabled = false, ...props }: WorkflowValuesProps) {
   useLocale();
-  const fields = evaluateWorkflowFields(props.definition, props.values, props.prompt, props.durationSeconds)
+  const fields = evaluateWorkflowFields(props.definition, props.values, props.prompt, props.durationSeconds, props.composePrompt)
     .activeFields.filter((field) => !isWorkflowMediaField(field) && field.source !== "PROMPT");
   return fields.length ? <Table className="workflow-parameters-table"><TableHeader><TableRow>
       <TableHead>{t("media.workflow.parameter")}</TableHead><TableHead>{t("media.workflow.value")}</TableHead><TableHead>{t("media.workflow.constraints")}</TableHead>

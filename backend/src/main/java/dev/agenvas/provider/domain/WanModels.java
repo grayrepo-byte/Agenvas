@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Set;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 /** The current Wan 2.7 image and Wan 3.0 video contracts, with finite native array fields. */
 public final class WanModels implements NativeMediaProtocol {
@@ -232,6 +233,9 @@ public final class WanModels implements NativeMediaProtocol {
         if (video(p)) return 1;
         if (values.path("enable_sequential").asBoolean(false)) return null;
         return values.path("n").asInt(1);
+    }
+    @Override public void configureSingleOutputDraft(Profile p, ObjectNode values) {
+        if (!video(p)) values.put("enable_sequential", false).put("n", 1);
     }
     @Override public String renderMention(Profile p, JsonNode values, String slot) {
         if ("first_frame".equals(slot)) return "首帧";

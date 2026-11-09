@@ -384,7 +384,8 @@
                                 ],
                                 "additionalProperties": false
                               },
-                              "maxItems": 100
+                              "maxItems": 20000,
+                              "description": "Ordered entry per U+FFFC prompt marker; the same exact version and role may appear repeatedly."
                             }
                           },
                           "required": [
@@ -647,7 +648,7 @@
     },
     {
       "name": "read_artifacts",
-      "description": "Read 1–12 exact immutable versions from the selected project. Text is bounded; at most one controlled image preview per call. No paths or download URLs.",
+      "description": "Read 1–12 exact immutable versions from the selected project. For long TEXT, request one version with textOffset/textLimit (up to 4000 Unicode code points) and follow textPage.nextOffset until null; a preview or last page alone is not the full source. At most one controlled image preview per call. No paths or download URLs.",
       "requiredScope": "READ",
       "inputSchema": {
         "type": "object",
@@ -665,6 +666,16 @@
             "maxItems": 12,
             "minItems": 1,
             "uniqueItems": true
+          },
+          "textOffset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "textLimit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4000
           }
         },
         "required": [
@@ -799,6 +810,45 @@
                 "composition": {
                   "type": "object",
                   "additionalProperties": true
+                },
+                "textPage": {
+                  "type": "object",
+                  "properties": {
+                    "offset": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 2147483647
+                    },
+                    "endOffset": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 2147483647
+                    },
+                    "total": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 2147483647
+                    },
+                    "nextOffset": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 2147483647
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "offset",
+                    "endOffset",
+                    "total",
+                    "nextOffset"
+                  ],
+                  "additionalProperties": false
                 }
               },
               "required": [
@@ -1103,7 +1153,8 @@
                           ],
                           "additionalProperties": false
                         },
-                        "maxItems": 100
+                        "maxItems": 20000,
+                        "description": "Ordered entry per U+FFFC prompt marker; the same exact version and role may appear repeatedly."
                       }
                     },
                     "required": [
@@ -1812,7 +1863,8 @@
                           ],
                           "additionalProperties": false
                         },
-                        "maxItems": 100
+                        "maxItems": 20000,
+                        "description": "Ordered entry per U+FFFC prompt marker; the same exact version and role may appear repeatedly."
                       }
                     },
                     "required": [
@@ -2213,7 +2265,8 @@
                           ],
                           "additionalProperties": false
                         },
-                        "maxItems": 100
+                        "maxItems": 20000,
+                        "description": "Ordered entry per U+FFFC prompt marker; the same exact version and role may appear repeatedly."
                       }
                     },
                     "required": [
@@ -2482,9 +2535,9 @@
                   ],
                   "additionalProperties": false
                 },
-                "maxItems": 100,
+                "maxItems": 20000,
                 "minItems": 0,
-                "uniqueItems": true
+                "description": "Ordered entry per U+FFFC prompt marker; the same exact version and role may appear repeatedly."
               }
             },
             "required": [],
@@ -2643,7 +2696,8 @@
                   ],
                   "additionalProperties": false
                 },
-                "maxItems": 100
+                "maxItems": 20000,
+                "description": "Ordered entry per U+FFFC prompt marker; the same exact version and role may appear repeatedly."
               }
             },
             "required": [

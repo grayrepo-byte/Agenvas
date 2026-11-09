@@ -9,6 +9,16 @@ import tools.jackson.databind.node.ObjectNode;
 
 class RunningHubDefinitionTest {
     private final ObjectMapper mapper = new ObjectMapper();
+    @Test void emptyOptionalPromptRemainsOmittedWithoutSharedText() {
+        ObjectNode source = schema();
+        source.putArray("fields").addObject().put("key", "prompt").put("label", "Prompt").put("nodeId", "1")
+                .put("fieldName", "text").put("type", "STRING").put("source", "PROMPT").put("required", false);
+        var definition = RunningHubDefinition.parse(mapper, source, Task.Kind.IMAGE_GENERATION);
+        assertThat(definition.values(mapper, mapper.createObjectNode(), "", null, true).has("prompt")).isFalse();
+        assertThat(definition.values(mapper, mapper.createObjectNode(), "", null, true, local -> "Shared").path("prompt").asText())
+                .isEqualTo("Shared");
+    }
+
     private ObjectNode schema() {
         return (ObjectNode) mapper.readTree("""
             {"schemaVersion":1,"protocolVersion":"V2","targetType":"WORKFLOW","targetId":"123",

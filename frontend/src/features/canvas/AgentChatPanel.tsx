@@ -18,7 +18,7 @@ import { Button } from "../../shared/ui/primitives/button";
 import { Input } from "../../shared/ui/primitives/input";
 import { Textarea } from "../../shared/ui/primitives/textarea";
 import { Badge } from "../../shared/ui/primitives/badge";
-import { Empty,EmptyDescription,EmptyHeader,EmptyTitle } from "../../shared/ui/primitives/empty";
+import { Empty,EmptyHeader,EmptyTitle } from "../../shared/ui/primitives/empty";
 import { Field,FieldGroup,FieldLabel } from "../../shared/ui/primitives/field";
 import { Alert,AlertDescription } from "../../shared/ui/primitives/alert";
 import { MessageScroller,MessageScrollerButton,MessageScrollerContent,MessageScrollerItem,MessageScrollerProvider,MessageScrollerViewport,useMessageScroller } from "../../shared/ui/primitives/message-scroller";
@@ -425,8 +425,7 @@ function AgentChatPanelContent({ data, headerActions }: { data: AgentChatPanelDa
           {conversationId && runs.error ? <><ChatError error={runs.error} /><Button variant="outline" size="sm" onClick={() => void runs.refetch()} type="button">{t("agent.chat.retryMessages")}</Button></> : null}
           {!displayedRuns.length && !preparing && conversations.isSuccess && (!conversationId || runs.isSuccess) ? <Empty className="agent-chat-empty">
             <EmptyHeader>
-              <span className="agent-chat-eyebrow">{t("agent.chat.emptyEyebrow")}</span>
-              <EmptyTitle>{t("agent.chat.emptyTitle")}</EmptyTitle><EmptyDescription>{t("agent.chat.emptyDescription")}</EmptyDescription>
+              <EmptyTitle>{t("agent.chat.emptyTitle")}</EmptyTitle>
             </EmptyHeader>
             <div className="agent-chat-suggestions">
               {([{ key: "organize", icon: Stack }, { key: "storyboard", icon: FilmStrip }, { key: "polish", icon: MagicWand }] as const).map(({ key: suggestion, icon: Icon }) => <Button variant="outline" key={suggestion}

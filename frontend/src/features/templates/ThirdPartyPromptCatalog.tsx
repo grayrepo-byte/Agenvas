@@ -88,7 +88,7 @@ export function ThirdPartyPromptCatalog({ kind, context, system = false }: {
       <span>{t("thirdParty.page", { "0": Math.floor(offset / 50) + 1, "1": Math.ceil(query.data.total / 50) })}</span>
       <Button type="button" variant="outline" disabled={busy || offset + 50 >= query.data.total} onClick={() => { setOffset(offset + 50); setSelected(null); }}>{t("thirdParty.next")}</Button>
     </div> : null}
-    {selected && data ? <Dialog title={data.title} description={data.description || t("templates.previewHint")} className="media-template-detail"
+    {selected && data ? <Dialog title={data.title} description={data.description || undefined} className="media-template-detail"
       busy={busy} onClose={() => { setSelected(null); setError(null); }} onSubmit={(event) => event.preventDefault()}
       footer={context ? <div className="media-template-detail-actions">
         {invalid ? <Notice tone="warning">{invalid}</Notice> : null}

@@ -1,4 +1,3 @@
-import { Select } from "../../shared/ui/Select";
 import { Question } from "@/shared/ui/icons";
 import { useId,useState } from "react";
 import type { MediaConnection } from "../../shared/api/client";
@@ -8,7 +7,6 @@ import { Button } from "../../shared/ui/primitives/button";
 import { Field,FieldDescription,FieldLabel } from "../../shared/ui/primitives/field";
 import { Input } from "../../shared/ui/primitives/input";
 import { Tooltip,TooltipContent,TooltipProvider,TooltipTrigger } from "../../shared/ui/primitives/tooltip";
-import { KLING_API_ORIGIN, KLING_API_ORIGINS } from "../../shared/kling";
 import { mediaConnectionAddresses } from "./mediaConnectionConfiguration";
 
 const ORIGIN_LIMIT = 500;
@@ -35,14 +33,9 @@ export function MediaConnectionAddressField({ platform, origin, onChange, descri
         <TooltipContent className="media-connection-address-tooltip" side="top"><p>{hint}</p></TooltipContent>
       </Tooltip></TooltipProvider>
     </div>
-    {platform === "KLING" ? <Select id={id} value={origin || KLING_API_ORIGIN} aria-describedby={descriptionIds} onChange={(event) => onChange(event.target.value)}>
-      {KLING_API_ORIGINS.map((address) => <option key={address} value={address}>{address}</option>)}
-    </Select> : platform === "MINIMAX" ? <Select id={id} value={origin || "https://api.minimax.cn"} aria-describedby={descriptionIds} onChange={(event) => onChange(event.target.value)}>
-      <option value="https://api.minimax.cn">https://api.minimax.cn</option>
-      <option value="https://api.minimax.io">https://api.minimax.io</option>
-    </Select> : <Input id={id} type="url" value={config.fixed ?? origin} readOnly={Boolean(config.fixed)} required={config.required}
+    <Input id={id} type="url" value={config.fixed ?? origin} readOnly={Boolean(config.fixed)} required={config.required}
       maxLength={ORIGIN_LIMIT} placeholder={platform === "COMFYUI" ? t("settings.mediaSettings.comfyAddressPlaceholder") : config.placeholder} aria-describedby={descriptionIds}
-      onChange={(event) => onChange(event.target.value)} />}
+      onChange={(event) => onChange(event.target.value)} />
     {platform === "COMFYUI" ? <FieldDescription id={hintId}>{t("settings.mediaSettings.comfyHostHint")}</FieldDescription>
       : !describedBy ? <span id={hintId} className="sr-only">{hint}</span> : null}
   </Field>;

@@ -13,6 +13,10 @@
 .controls-fixture output { color: var(--ui-text-muted); font-variant-numeric: tabular-nums; }
 .controls-fixture [data-slot="field-label"] output { margin-left: auto; }
 .controls-buttons, .controls-options { display: flex; flex-wrap: wrap; gap: var(--ui-space-2); }
+.controls-media-actions { display: flex; gap: var(--ui-space-3); }
+.controls-media-actions > div { display: flex; padding: var(--ui-space-2); border-radius: var(--ui-radius-md); }
+.controls-media-light { background: white; }
+.controls-media-dark { background: black; }
 .controls-action { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-3); margin-top: var(--ui-space-5); font-size: var(--ui-text-xs); }
 .controls-tab-copy { color: var(--ui-text-muted); font-size: var(--ui-text-sm); line-height: 1.75; margin: var(--ui-space-3) 0 0; }
 .controls-navigation { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: var(--ui-space-5); padding-top: var(--ui-space-5); margin-top: var(--ui-space-5); border-top: 1px solid var(--ui-border); }

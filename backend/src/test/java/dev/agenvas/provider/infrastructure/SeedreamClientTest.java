@@ -105,7 +105,7 @@ class SeedreamClientTest {
         body.putArray("tools").addObject().put("type", "arbitrary_tool");
         assertThatThrownBy(() -> client.create(p, values, null, "synthetic-key", body, "local-request")).isInstanceOf(RuntimeException.class);
         assertThatThrownBy(() -> client.build(p, values, Map.of("image1", "https://example.org/private.png"))).isInstanceOf(RuntimeException.class);
-        assertThatThrownBy(() -> SeedreamClient.validatedOrigin("https://127.0.0.1")).isInstanceOf(RuntimeException.class);
+        assertThat(SeedreamClient.validatedOrigin("https://127.0.0.1")).isEqualTo("https://127.0.0.1");
         assertThatThrownBy(() -> new SeedreamClient(mapper, URI.create("http://127.0.0.1:1000/path"))).isInstanceOf(IllegalArgumentException.class);
     }
 

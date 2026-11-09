@@ -289,7 +289,7 @@ public class CanvasService {
 
     /**
      * Creates one task-owned output branch beside a source card while the caller holds the
-     * project-event transaction. The source draft is copied, but its tasks and connections are not.
+     * project-event transaction. Copies the source inputs with a single-output count.
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public CanvasItem forkMediaOutputWithinChange(UUID ownerId, UUID projectId,
@@ -366,7 +366,7 @@ public class CanvasService {
             // Operation inputs live in the immutable Task, not in the result node's next draft.
             mediaDrafts.initializeWithinChange(projectId, targetItemId, false);
         } else {
-            mediaDrafts.duplicateWithinChange(ownerId, projectId, sourceItemId, targetItemId,
+            mediaDrafts.duplicateBatchOutputWithinChange(ownerId, projectId, sourceItemId, targetItemId,
                     expectedSourceDraftVersion);
         }
         ObjectNode payload = objectMapper.createObjectNode();
@@ -433,13 +433,33 @@ public class CanvasService {
         return placeGeneratedArtifact(ownerId, projectId, artifact, mediaSelection(artifact), groupId);
     }
 
-    /** Accepted text results survive removal of the source node and project archival. Deleted projects retain only the artifact. */
+    /** Publishes accepted image analysis beside its source, retaining the frozen version as removable lineage.
+     * Missing sources fall back to ordinary placement; archived projects may still receive accepted results.
+     */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
-    public CanvasItem placeTaskTextWithinChange(UUID ownerId, UUID projectId, UUID artifactId) {
+    public CanvasItem placeImagePromptTextWithinChange(UUID ownerId, UUID projectId, UUID artifactId,
+            UUID sourceItemId, UUID sourceVersionId) {
         if (projects.getRetainedProject(ownerId, projectId).status() == Project.Status.DELETED) return null;
         ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId, artifactId);
         if (artifact.artifact().kind() != Artifact.Kind.TEXT) throw new IllegalArgumentException("Expected a text task result");
-        return placeGeneratedArtifact(ownerId, projectId, artifact, null, null);
+        CanvasItem source = canvasItems.findForUpdate(ownerId, projectId, sourceItemId).orElse(null);
+        if (source == null) return placeGeneratedArtifact(ownerId, projectId, artifact, null, null);
+        List<CanvasItem> existing = canvasItems.list(ownerId, projectId);
+        OutputPosition position = findOutputPositionBeside(source, source.y(), OUTPUT_WIDTH,
+                OUTPUT_HEIGHT, OUTPUT_HEIGHT, existing);
+        int zIndex = nextOutputZIndex(existing);
+        validateGeometry(position.x(), position.y(), OUTPUT_WIDTH, OUTPUT_HEIGHT, zIndex);
+        if (overlapsAny(position.x(), position.y(), existing)) throw conflict();
+        CanvasItem placed = placement(UUID.randomUUID(), projectId, CanvasItem.SubjectType.ARTIFACT,
+                artifactId, null, artifact.artifact().title(), position.x(), position.y(),
+                OUTPUT_WIDTH, OUTPUT_HEIGHT, zIndex, source.groupId(), false);
+        if (!canvasItems.create(placed)) throw conflict();
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.putArray("itemIds").add(placed.id().toString());
+        events.append(ownerId, projectId, new ProjectEventService.EventDraft(
+                "canvas.items.changed", 1, projectId, 0, payload));
+        connections.createImagePromptDerivationWithinChange(ownerId, projectId, sourceItemId, placed.id(), sourceVersionId);
+        return placed;
     }
 
     private CanvasItem placeGeneratedArtifact(UUID ownerId, UUID projectId,

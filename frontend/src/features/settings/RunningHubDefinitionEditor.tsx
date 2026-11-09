@@ -465,7 +465,6 @@ function RunningHubWorkbench({ connectionId, adapterId, value, selectedNodeIds, 
             </div>
             </div>
           </div>
-          <p className="runninghub-inspector-hint">{t("settings.runningHub.parameterEditorHint")}</p>
           <div className="runninghub-field-evidence">
             <Badge variant="outline">{t(CONFIDENCE_KEYS[insight?.confidence ?? "UNVERIFIED"])}</Badge>
             {recommendedIdentities.has(runningHubFieldIdentity(item)) ? <Badge variant="secondary">{t("settings.runningHub.recommended")}</Badge> : null}
@@ -647,7 +646,7 @@ function RunningHubWorkbench({ connectionId, adapterId, value, selectedNodeIds, 
     <section data-workbench-section="inputs" id={`${sectionId}-inputs`} className="runninghub-workbench-section" aria-label={sections[1]!.label}>
     {sectionHeading(1)}
     <fieldset className="ui-stack runninghub-input-fields" disabled={imported.isPending} onInvalidCapture={revealInvalidParameter}><legend className="sr-only">{t("settings.runningHub.mappingTable")}</legend>
-      <div className="runninghub-input-intro"><p>{t("settings.runningHub.inputWorkspaceHint")}</p>
+      <div className="runninghub-input-intro">
         <div className="runninghub-scope-summary"><Badge variant="secondary">{t("settings.runningHub.exposedCount", { "0": exposedFields.length })}</Badge><Badge variant="outline">{t("settings.runningHub.fixedCount", { "0": selectedFixed.length })}</Badge></div>
       </div>
       <div className="runninghub-publish-scope">
@@ -713,7 +712,7 @@ function RunningHubWorkbench({ connectionId, adapterId, value, selectedNodeIds, 
               </li>;
             })}
           </ul>
-          {!matchingEntries.length ? <EmptyState title={t("settings.runningHub.noMatchingFields")} description={t("settings.runningHub.adjustSearchHint")} /> : null}
+          {!matchingEntries.length ? <EmptyState title={t("settings.runningHub.noMatchingFields")} /> : null}
           <div className="runninghub-catalog-footer">
             {pageCount > 1 ? <div className="runninghub-pagination" aria-label={t("settings.runningHub.parameterPages")}>
               <Button size="icon-sm" type="button" variant="outline" aria-label={t("settings.runningHub.previousPage")} disabled={currentPage === 0} onClick={() => setParameterPage(currentPage - 1)}><CaretRight className="rotate-180" /></Button>

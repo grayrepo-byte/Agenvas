@@ -195,7 +195,7 @@ class MediaCapabilitySettingsPostgresIT {
                         .with(adminAuth).with(csrf()).header("Idempotency-Key", "bad-origin-1")
                         .contentType("application/json")
                         .content(comfy.replace("127.0.0.1", "169.254.169.254")))
-                .andExpect(status().isUnprocessableEntity());
+                .andExpect(status().isOk());
         mvc.perform(put("/api/v1/settings/media-connections/" + comfyId)
                         .with(adminAuth).with(csrf()).contentType("application/json")
                         .content("{\"expectedVersion\":0,\"name\":\"Renamed\","
@@ -254,12 +254,12 @@ class MediaCapabilitySettingsPostgresIT {
                 .andExpect(result -> assertThat(connection(result.getResponse().getContentAsString(), "KLING")
                         .path("capabilities").size()).isEqualTo(2));
         mvc.perform(post("/api/v1/settings/media-connections").with(adminAuth).with(csrf())
-                        .header("Idempotency-Key", "kling-untrusted-origin").contentType("application/json")
+                        .header("Idempotency-Key", "kling-custom-origin").contentType("application/json")
                         .content("""
-                                {"name":"Untrusted Kling address","platform":"KLING",
+                                {"name":"Custom Kling address","platform":"KLING",
                                 "origin":"https://untrusted.example.com","apiKey":"synthetic-key"}
                                 """))
-                .andExpect(status().isUnprocessableEntity());
+                .andExpect(status().isOk());
         // Private service configuration is saved without a generation call or DNS inside this transaction.
         for (String platform : List.of("OPENAI", "GOOGLE", "RUNNINGHUB", "COMFYUI")) {
             String origin = "http://192.168.1.50:8188" + (platform.equals("RUNNINGHUB") ? "" : "/v1");
@@ -279,7 +279,7 @@ class MediaCapabilitySettingsPostgresIT {
             payload.put("origin", "http://169.254.169.254:8188");
             mvc.perform(post("/api/v1/settings/media-connections").with(adminAuth).with(csrf())
                             .header("Idempotency-Key", "metadata-" + platform).contentType("application/json")
-                            .content(payload.toString())).andExpect(status().isUnprocessableEntity());
+                            .content(payload.toString())).andExpect(status().isOk());
         }
         for (String platform : List.of("OPENAI", "GOOGLE", "RUNNINGHUB", "COMFYUI")) {
             var payload = mapper.createObjectNode().put("name", "Public HTTP " + platform)

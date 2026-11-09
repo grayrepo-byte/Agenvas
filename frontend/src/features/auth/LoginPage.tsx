@@ -31,7 +31,7 @@ export function LoginPage() {
   }
 
   return (
-    <AuthLayout title={t("auth.login.title")} description={t("auth.login.description")}>
+    <AuthLayout title={t("auth.login.title")}>
       <form className="ui-form" onSubmit={submit} aria-busy={loginRequest.isPending}>
         <AuthField label={t("auth.login.username")}><Input autoComplete="username" disabled={loginRequest.isPending} required value={loginName} onChange={(event) => setLoginName(event.target.value)} /></AuthField>
         <AuthField label={t("auth.login.password")}><Input autoComplete="current-password" disabled={loginRequest.isPending} required type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></AuthField>

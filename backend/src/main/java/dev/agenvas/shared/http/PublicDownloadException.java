@@ -6,7 +6,7 @@ import javax.net.ssl.SSLException;
 
 /** Stable public categories only. Never retain resolver/proxy bodies, addresses, credentials or prose. */
 public final class PublicDownloadException extends IOException {
-    public enum Reason { DNS_BLOCKED, DNS_FAILED, PROXY_UNREACHABLE, PROXY_AUTH_REQUIRED, PROXY_ERROR,
+    public enum Reason { INVALID_REQUEST, DNS_FAILED, PROXY_UNREACHABLE, PROXY_AUTH_REQUIRED, PROXY_ERROR,
         TLS_FAILED, REMOTE_RATE_LIMITED, REMOTE_UNAVAILABLE }
     private final Reason reason;
     public PublicDownloadException(Reason reason){super("PUBLIC_DOWNLOAD_"+reason.name());this.reason=reason;}

@@ -690,17 +690,17 @@ public class MediaCapabilityService {
                 .toList();
     }
 
-    /** Safe planning metadata shared by the Director's initial context and discovery tool. */
+    /** Complete safe catalog; callers bound the page sent to a model instead of hiding later capabilities. */
     public JsonNode planningCatalog() {
         var defaults = java.util.Arrays.stream(new Task.Kind[] { Task.Kind.IMAGE_GENERATION,
                 Task.Kind.VIDEO_GENERATION, Task.Kind.AUDIO_GENERATION })
                 .map(this::defaultCapabilityId).filter(java.util.Objects::nonNull)
                 .collect(java.util.stream.Collectors.toSet());
         var result = mapper.createArrayNode();
-        // Keep configured defaults visible even when the bounded catalog omits other entries.
+        // Defaults lead every fresh traversal; the stable ID tie-breaker keeps page boundaries deterministic.
         publishedCandidates().stream().sorted(java.util.Comparator.comparing(
-                (Candidate candidate) -> !defaults.contains(candidate.binding().capabilityId())))
-                .limit(40).forEach(candidate -> {
+                (Candidate candidate) -> !defaults.contains(candidate.binding().capabilityId()))
+                .thenComparing(candidate -> candidate.binding().capabilityId().toString())).forEach(candidate -> {
                     var entry = result.addObject().put("capabilityId", candidate.binding().capabilityId().toString())
                             .put("name", candidate.capabilityName()).put("connectionName", candidate.connectionName())
                             .put("kind", candidate.kind().name()).put("isDefault", defaults.contains(candidate.binding().capabilityId()))
@@ -722,7 +722,8 @@ public class MediaCapabilityService {
 
     /** Keep first-turn context bounded; exact input definitions are discovered on demand. */
     public JsonNode planningSummary() {
-        JsonNode result = planningCatalog();
+        var result = mapper.createArrayNode();
+        planningCatalog().valueStream().limit(40).forEach(result::add);
         for (JsonNode entry : result) {
             ((ObjectNode) entry).remove("fields");
             ((ObjectNode) entry).remove("inputPolicy");
@@ -901,7 +902,7 @@ public class MediaCapabilityService {
                                 || path.contains("\\") || path.contains("//"))) {
                     throw invalid(ApiMessage.of("api.media-capability-service.the-base-url-must-be-the-public-https-api-root"));
                 }
-                ServiceEndpointPolicy.validate(uri, true);
+                ServiceEndpointPolicy.validate(uri);
                 return uri.toASCIIString().replaceAll("/+$", "");
             } catch (IllegalArgumentException invalidUri) {
                 throw invalid(ApiMessage.of("api.media-capability-service.base-url-is-invalid"));

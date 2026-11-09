@@ -1,6 +1,5 @@
 package dev.agenvas.shared.http;
 
-import dev.agenvas.shared.security.EndpointAddressRules;
 import java.net.*;
 import java.io.IOException;
 import java.util.*;
@@ -8,7 +7,7 @@ import okhttp3.*;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.JsonNode;
 
-/** Explicit DNS-JSON resolver. Its TLS hostname and public bootstrap IPs are independently pinned. */
+/** Explicit DNS-JSON resolver. Its TLS hostname and configured bootstrap IPs are independently pinned. */
 final class PublicDownloadDoH implements Dns {
     private static final int MAX_DNS_BYTES=64*1024;
     private static final ObjectMapper JSON=new ObjectMapper();
@@ -76,8 +75,6 @@ final class PublicDownloadDoH implements Dns {
             List<InetAddress> result=addresses.getOrDefault(terminal,List.of());
             // A recursive resolver may prove CNAME -> NODATA with an authoritative SOA.
             if(result.isEmpty() && !aliases.isEmpty() && !nodata(root,terminal))throw invalidAnswer();
-            if(result.stream().anyMatch(address->!EndpointAddressRules.allowsPublicDownload(address)))
-                throw PublicDownloadException.dns(PublicDownloadException.Reason.DNS_BLOCKED);
             return List.copyOf(result);
         }catch(UnknownHostException failure){throw failure;}
         catch(Exception failure){throw invalidAnswer();}

@@ -3,15 +3,16 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import { ApiError, type AgentMediaApproval, type CanvasItem, type MediaDraft, type SaveStoryboardRequest, type Storyboard, type Task } from "../../shared/api/client";
-import { clickControl } from "../../test/controls";
+import { ApiError, type AgentMediaApproval, type CanvasConnection, type CanvasItem, type MediaDraft, type SaveStoryboardRequest, type Storyboard, type Task } from "../../shared/api/client";
+import { clickControl, selectValue } from "../../test/controls";
 import { videoFunctionCapability, videoFunctionsFixture } from "../../test/videoFunctionsFixture";
 import { nativeCapability, nativeProfiles } from "../../test/nativeProfiles";
 import { StoryboardWorkbench } from "./StoryboardWorkbench";
 import { newStoryboardShot, useStoryboardDraftStore } from "./storyboardDraft";
 
 const api = vi.hoisted(() => ({ getStoryboard: vi.fn(), saveStoryboard: vi.fn(), listStoryboardMediaApprovals: vi.fn(),
-  listDirectMediaTasks: vi.fn(), listCanvasMediaVersions: vi.fn(), getMediaDraft: vi.fn(), getMediaSettings: vi.fn(), runMediaDraft: vi.fn(), decideRunMediaApproval: vi.fn() }));
+  listDirectMediaTasks: vi.fn(), listCanvasMediaVersions: vi.fn(), listCanvasConnections: vi.fn(), listCanvasItems: vi.fn(),
+  getMediaDraft: vi.fn(), getMediaSettings: vi.fn(), runMediaDraft: vi.fn(), decideRunMediaApproval: vi.fn() }));
 vi.mock("../../shared/api/client", async (importOriginal) => ({ ...await importOriginal<typeof import("../../shared/api/client")>(), ...api }));
 const timestamp = "2026-10-23T10:00:00Z";
 const item: ArtifactCanvasItem = { id: "video-node", subjectType: "ARTIFACT", subjectId: "video-artifact", title: "Video production", x: 0, y: 0,
@@ -20,6 +21,12 @@ const item: ArtifactCanvasItem = { id: "video-node", subjectType: "ARTIFACT", su
     version: 1, createdAt: timestamp, updatedAt: timestamp, resourceDefaultVersion: null } };
 const mediaDraft: MediaDraft = { projectId: "test-project", canvasItemId: "video-node", prompt: "Synthetic saved prompt", parameters: {}, durationSeconds: 5,
   capabilityId: "capability-1", styleId: null, videoInputMode: "TEXT", mediaInputs: [], mentions: [], displayMode: "DRAFT", version: 4, createdAt: timestamp, updatedAt: timestamp };
+const sharedText: ArtifactCanvasItem = { ...item, id: "shared-text", subjectId: "shared-artifact", title: "Shared lighting",
+  selectedVersionId: null, artifact: { ...item.artifact, id: "shared-artifact", kind: "TEXT", resourceDefaultVersionId: "shared-latest",
+    resourceDefaultVersion: { id: "shared-latest", versionNo: 2, schemaVersion: 1, content: { text: "Common lighting", format: "PLAIN_TEXT" },
+      inputReferences: [], createdByKind: "USER", createdAt: timestamp } } };
+const promptConnection: CanvasConnection = { id: "prompt-link", projectId: "test-project", sourceCanvasItemId: "shared-text", targetCanvasItemId: item.id,
+  relationType: "PROMPT_INPUT", sourceArtifactVersionId: "shared-original", version: 0, createdAt: timestamp, updatedAt: timestamp };
 function mediaTask(status: Task["status"]): Task {
   return { id: "task-1", projectId: "test-project", runId: null, stepKey: "direct", kind: "VIDEO_GENERATION", status,
     cancelRequested: false, input: { canvasItemId: item.id }, providerRequestId: null, attemptNo: 1,
@@ -58,6 +65,7 @@ beforeEach(() => {
   api.getStoryboard.mockResolvedValue(storyboard()); api.listStoryboardMediaApprovals.mockResolvedValue({ items: [] });
   api.listDirectMediaTasks.mockResolvedValue([]); api.listCanvasMediaVersions.mockResolvedValue({ items: [] });
   api.getMediaDraft.mockResolvedValue(mediaDraft);
+  api.listCanvasConnections.mockResolvedValue({ items: [] }); api.listCanvasItems.mockResolvedValue({ items: [item, sharedText] });
   const settings = videoFunctionsFixture();
   settings.connections[0]!.capabilities = [videoFunctionCapability({ id: "capability-1", name: "Synthetic", supportedVideoInputModes: ["TEXT"], defaultVideoInputMode: "TEXT" })];
   api.getMediaSettings.mockResolvedValue(settings);
@@ -65,6 +73,131 @@ beforeEach(() => {
 });
 
 describe("storyboard workbench interaction", () => {
+  it.each([
+    { role: "VIDEO", local: "" }, { role: "KEYFRAME", local: "" },
+    { role: "VIDEO", local: " \n\t " }, { role: "KEYFRAME", local: " \n\t " },
+    { role: "VIDEO", local: "Local subject" }, { role: "KEYFRAME", local: "Local subject" },
+  ] as const)("allows $role batch generation with a connected saved public prompt and local '$local'", async ({ role, local }) => {
+    const productionItem: ArtifactCanvasItem = { ...item, artifact: { ...item.artifact, kind: role === "KEYFRAME" ? "IMAGE" : "VIDEO" } };
+    const base = storyboard(); base.shots[2]!.productions[0]!.role = role;
+    api.getStoryboard.mockResolvedValue(base);
+    const settings = videoFunctionsFixture();
+    settings.connections[0]!.capabilities = [videoFunctionCapability({ id: "capability-1", kind: role === "KEYFRAME" ? "IMAGE_GENERATION" : "VIDEO_GENERATION" })];
+    api.getMediaSettings.mockResolvedValue(settings);
+    const localDraft = { ...mediaDraft, prompt: local };
+    api.getMediaDraft.mockResolvedValue(localDraft);
+    api.listCanvasConnections.mockResolvedValue({ items: [promptConnection] });
+    show([productionItem]); await chooseThird();
+    if (role === "KEYFRAME") await selectValue(screen.getByRole("combobox", { name: "批量制作阶段" }), "KEYFRAME");
+    await clickControl(screen.getByRole("checkbox", { name: "选择镜头 SHOT-03" }));
+    await clickControl(screen.getByRole("button", { name: "预检选中镜头（1）" }));
+    const dialog = await screen.findByRole("dialog", { name: "确认本次媒体生成" });
+    expect(within(dialog).getByText(/Common lighting/)).toBeVisible();
+    if (local === "Local subject") expect(within(dialog).getByText(/Common lighting/)).toHaveTextContent("Common lighting Local subject");
+    expect(api.runMediaDraft).not.toHaveBeenCalled();
+    await clickControl(within(dialog).getByRole("button", { name: "确认费用并开始生成" }));
+    await screen.findByText("本次逐项提交结果");
+    expect(api.runMediaDraft).toHaveBeenCalledWith("test-project", "video-artifact",
+      { canvasItemId: "video-node", expectedDraftVersion: 4 }, expect.any(String));
+    expect(localDraft.prompt).toBe(local);
+  });
+
+  it.each(["", " \n\t "])("rejects a batch when public and local prompts are both empty or blank: '%s'", async (blank) => {
+    api.getMediaDraft.mockResolvedValue({ ...mediaDraft, prompt: blank });
+    api.listCanvasConnections.mockResolvedValue({ items: [promptConnection] });
+    api.listCanvasItems.mockResolvedValue({ items: [{ ...sharedText, artifact: { ...sharedText.artifact,
+      resourceDefaultVersion: { ...sharedText.artifact.resourceDefaultVersion!, content: { text: blank, format: "PLAIN_TEXT" } } } }] });
+    show(); await chooseThird();
+    await clickControl(screen.getByRole("checkbox", { name: "选择镜头 SHOT-03" }));
+    await clickControl(screen.getByRole("button", { name: "预检选中镜头（1）" }));
+    await screen.findByText(/SHOT-03: .*有效生成草稿/);
+    expect(screen.queryByRole("dialog", { name: "确认本次媒体生成" })).not.toBeInTheDocument();
+    expect(api.runMediaDraft).not.toHaveBeenCalled();
+  });
+
+  it("rechecks saved connections after canceling confirmation and blocks a disconnected public-only prompt", async () => {
+    api.getMediaDraft.mockResolvedValue({ ...mediaDraft, prompt: "" });
+    api.listCanvasConnections.mockResolvedValueOnce({ items: [promptConnection] }).mockResolvedValue({ items: [] });
+    show([item, sharedText]); await chooseThird();
+    await clickControl(screen.getByRole("checkbox", { name: "选择镜头 SHOT-03" }));
+    await clickControl(screen.getByRole("button", { name: "预检选中镜头（1）" }));
+    const dialog = await screen.findByRole("dialog", { name: "确认本次媒体生成" });
+    await clickControl(within(dialog).getByRole("button", { name: "取消" }));
+    await clickControl(screen.getByRole("button", { name: "预检选中镜头（1）" }));
+    await screen.findByText(/SHOT-03: .*有效生成草稿/);
+    expect(screen.queryByRole("dialog", { name: "确认本次媒体生成" })).not.toBeInTheDocument();
+    expect(api.runMediaDraft).not.toHaveBeenCalled();
+  });
+
+  it("preflights each selected node with its own public and local prompt, then submits the saved draft versions", async () => {
+    const base = storyboard();
+    base.shots[0]!.productions = [{ role: "VIDEO", canvasItemId: candidateItem.id, selectedVersionId: null, reviewedRevision: 1, needsReview: false }];
+    api.getStoryboard.mockResolvedValue(base);
+    const firstDraft = { ...mediaDraft, canvasItemId: candidateItem.id, prompt: "", version: 7 };
+    api.getMediaDraft.mockImplementation(async (_projectId: string, nodeId: string) => nodeId === candidateItem.id ? firstDraft : mediaDraft);
+    api.listCanvasConnections.mockResolvedValue({ items: [promptConnection, { ...promptConnection, id: "second-link", targetCanvasItemId: candidateItem.id }] });
+    show([item, candidateItem]); await chooseThird();
+    await clickControl(screen.getByRole("checkbox", { name: "选择镜头 SHOT-01" }));
+    await clickControl(screen.getByRole("checkbox", { name: "选择镜头 SHOT-03" }));
+    await clickControl(screen.getByRole("button", { name: "预检选中镜头（2）" }));
+    const dialog = await screen.findByRole("dialog", { name: "确认本次媒体生成" });
+    expect(within(dialog).getByText(/SHOT-01 · Shot 1/)).toBeVisible();
+    expect(within(dialog).getByText(/SHOT-03 · Shot 3/)).toBeVisible();
+    expect(api.runMediaDraft).not.toHaveBeenCalled();
+    await clickControl(within(dialog).getByRole("button", { name: "确认费用并开始生成" }));
+    await screen.findByText("本次逐项提交结果");
+    expect(api.runMediaDraft).toHaveBeenCalledTimes(2);
+    expect(api.runMediaDraft).toHaveBeenCalledWith("test-project", "candidate-artifact", { canvasItemId: "candidate-node", expectedDraftVersion: 7 }, expect.any(String));
+    expect(api.runMediaDraft).toHaveBeenCalledWith("test-project", "video-artifact", { canvasItemId: "video-node", expectedDraftVersion: 4 }, expect.any(String));
+    expect(firstDraft.prompt).toBe(""); expect(mediaDraft.prompt).toBe("Synthetic saved prompt");
+  });
+
+  it("fails closed when a connected saved text source is missing, even if the local prompt is nonempty", async () => {
+    api.listCanvasConnections.mockResolvedValue({ items: [promptConnection] });
+    api.listCanvasItems.mockResolvedValue({ items: [item] });
+    show([item, sharedText]); await chooseThird();
+    await clickControl(screen.getByRole("checkbox", { name: "选择镜头 SHOT-03" }));
+    await clickControl(screen.getByRole("button", { name: "预检选中镜头（1）" }));
+    await screen.findByText(/公共提示词读取失败/);
+    expect(screen.queryByRole("dialog", { name: "确认本次媒体生成" })).not.toBeInTheDocument();
+    expect(api.runMediaDraft).not.toHaveBeenCalled();
+  });
+
+  it.each(["connections", "text"] as const)("blocks and permits explicit preflight retry after a public %s read failure", async (failedRead) => {
+    api.listCanvasConnections.mockResolvedValue({ items: [promptConnection] });
+    const read = failedRead === "connections" ? api.listCanvasConnections : api.listCanvasItems;
+    read.mockRejectedValueOnce(new Error("Synthetic public input read failed"));
+    show([item, sharedText]); await chooseThird();
+    await clickControl(screen.getByRole("checkbox", { name: "选择镜头 SHOT-03" }));
+    await clickControl(screen.getByRole("button", { name: "预检选中镜头（1）" }));
+    await screen.findByText("Synthetic public input read failed");
+    expect(screen.queryByRole("dialog", { name: "确认本次媒体生成" })).not.toBeInTheDocument();
+    expect(api.runMediaDraft).not.toHaveBeenCalled();
+    await clickControl(screen.getByRole("button", { name: "预检选中镜头（1）" }));
+    const dialog = await screen.findByRole("dialog", { name: "确认本次媒体生成" });
+    expect(within(dialog).getByText("Common lighting Synthetic saved prompt")).toBeVisible();
+    expect(api.runMediaDraft).not.toHaveBeenCalled();
+    expect(mediaDraft.prompt).toBe("Synthetic saved prompt");
+  });
+
+  it("retains local-only keyframe generation without requiring a text source", async () => {
+    const base = storyboard(); base.shots[2]!.productions[0]!.role = "KEYFRAME";
+    api.getStoryboard.mockResolvedValue(base);
+    const settings = videoFunctionsFixture();
+    settings.connections[0]!.capabilities = [videoFunctionCapability({ id: "capability-1", kind: "IMAGE_GENERATION" })];
+    api.getMediaSettings.mockResolvedValue(settings);
+    const imageItem: ArtifactCanvasItem = { ...item, artifact: { ...item.artifact, kind: "IMAGE" } };
+    show([imageItem]); await chooseThird();
+    await selectValue(screen.getByRole("combobox", { name: "批量制作阶段" }), "KEYFRAME");
+    await clickControl(screen.getByRole("checkbox", { name: "选择镜头 SHOT-03" }));
+    await clickControl(screen.getByRole("button", { name: "预检选中镜头（1）" }));
+    const dialog = await screen.findByRole("dialog", { name: "确认本次媒体生成" });
+    expect(within(dialog).getByText("Synthetic saved prompt")).toBeVisible();
+    await clickControl(within(dialog).getByRole("button", { name: "确认费用并开始生成" }));
+    await screen.findByText("本次逐项提交结果");
+    expect(api.runMediaDraft).toHaveBeenCalledTimes(1);
+  });
+
   it("returns proposals and archived candidates to an unbound shot without automatically approving or choosing them", async () => {
     api.listStoryboardMediaApprovals.mockResolvedValue({ items: [linkedApproval("PENDING")] });
     api.listCanvasMediaVersions.mockResolvedValue(candidateHistory());

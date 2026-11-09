@@ -41,10 +41,15 @@ class CanvasEditServiceTest {
     private final Map<UUID, GroupState> groups = new LinkedHashMap<>();
     private final Map<UUID, ReceiptRow> receipts = new LinkedHashMap<>();
     private final Map<UUID, Command> commands = new LinkedHashMap<>();
+    private final CanvasSubgraphCopySupport topology = mock(CanvasSubgraphCopySupport.class);
     private final CanvasEditService service = new CanvasEditService(projects, events, canvas, items, repository,
-            copies, mock(ArtifactService.class), mock(MediaDraftService.class), new ObjectMapper(), Clock.fixed(now, ZoneOffset.UTC));
+            copies, mock(ArtifactService.class), mock(MediaDraftService.class), new ObjectMapper(), Clock.fixed(now, ZoneOffset.UTC), topology);
 
     @BeforeEach void setup() {
+        when(topology.current(any(), any())).thenReturn(CanvasSubgraphCopySupport.Graph.empty());
+        when(topology.prepare(any(), any(), any(), any())).thenReturn(new CanvasSubgraphCopySupport.Prepared(CanvasSubgraphCopySupport.Graph.empty(), Map.of()));
+        when(topology.remap(any(), any(), any(), any())).thenReturn(CanvasSubgraphCopySupport.Graph.empty());
+        when(topology.nextIncarnation(any())).thenAnswer(call -> call.getArgument(0));
         rows.put(id, item(0, false));
         when(events.recordChange(any(), any(), any())).thenAnswer(call -> {
             @SuppressWarnings("unchecked") Supplier<ProjectEventService.Change<Object>> mutation = call.getArgument(2);

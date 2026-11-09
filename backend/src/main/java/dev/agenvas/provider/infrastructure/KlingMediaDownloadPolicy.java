@@ -15,41 +15,22 @@ import okhttp3.Response;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-/** Downloads official result URLs without credentials, redirects or unbounded response bodies. */
+/** Downloads HTTP(S) result URLs without credentials, redirects or unbounded response bodies. */
 @Component
 public class KlingMediaDownloadPolicy {
-    private final URI testOrigin;
     private final OkHttpClient http;
 
-    @Autowired public KlingMediaDownloadPolicy() { this(null, Dns.SYSTEM); }
-
-    private KlingMediaDownloadPolicy(URI testOrigin, Dns dns) {
-        if (testOrigin != null && !("http".equals(testOrigin.getScheme())
-                && "127.0.0.1".equals(testOrigin.getHost()) && testOrigin.getPort() > 0
-                && testOrigin.getPort() <= 65535 && "".equals(testOrigin.getRawPath())
-                && testOrigin.getRawUserInfo() == null && testOrigin.getRawQuery() == null
-                && testOrigin.getRawFragment() == null))
-            throw new IllegalArgumentException("Invalid Kling download test origin");
-        this.testOrigin = testOrigin;
-        this.http = PinnedHttpClients.pinned(FixedCloudDns.checked(dns, testOrigin != null),
+    @Autowired
+    public KlingMediaDownloadPolicy() {
+        this.http = PinnedHttpClients.pinned(Dns.SYSTEM,
                 Duration.ofSeconds(10), Duration.ofMinutes(2), Duration.ofMinutes(3));
     }
 
-    /** This override is injectable only in fake-provider tests. */
-    public static KlingMediaDownloadPolicy forLoopbackTest(URI origin) {
-        return new KlingMediaDownloadPolicy(origin, Dns.SYSTEM);
-    }
-
     public void validate(URI url) {
-        String host = url == null || url.getHost() == null ? "" : url.getHost().toLowerCase(Locale.ROOT);
-        boolean official = "https".equalsIgnoreCase(url == null ? null : url.getScheme())
-                && (url.getPort() == -1 || url.getPort() == 443)
-                && ("h1.inkwai.com".equals(host) || host.endsWith(".klingai.com"));
-        boolean testing = testOrigin != null && url != null && testOrigin.getScheme().equals(url.getScheme())
-                && testOrigin.getHost().equals(host) && testOrigin.getPort() == url.getPort();
-        String path = url == null ? null : url.getRawPath();
-        if ((!official && !testing) || url.getRawUserInfo() != null || url.getRawFragment() != null
-                || path == null || path.isEmpty() || path.contains("..") || path.contains("\\")
+        try { dev.agenvas.shared.security.ServiceEndpointPolicy.downloadDns(url, Dns.SYSTEM); }
+        catch (IllegalArgumentException | NullPointerException | java.net.UnknownHostException invalid) { throw new Rejected("PROVIDER_RESULT_URL_INVALID"); }
+        String path = url.getRawPath();
+        if (path == null || path.isEmpty() || path.contains("..") || path.contains("\\")
                 || path.contains("%") || path.contains("//")) throw new Rejected("PROVIDER_RESULT_URL_INVALID");
     }
 

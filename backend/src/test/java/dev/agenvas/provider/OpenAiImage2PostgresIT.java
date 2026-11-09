@@ -277,44 +277,6 @@ class OpenAiImage2PostgresIT {
         assertThat(worker.submitOnce("openai-moderation-no-retry-worker")).isZero();
         assertThat(GENERATIONS).hasValue(generationsBeforeModeration + 1);
 
-        // Relay preflight precedes beginSubmission: release the lease without a paid request.
-        org.mockito.Mockito.doThrow(new IllegalStateException("synthetic non-public relay DNS"))
-                .when(objectStorage).requirePublic(org.mockito.ArgumentMatchers.any());
-        Fixture preflightFailed = fixture(owner.userId(), "Relay preflight fails", 1);
-        Task preflightTask = approve(owner.userId(), preflightFailed);
-        assertThat(worker.submitOnce("openai-relay-preflight-worker")).isEqualTo(1);
-        Task relayBlocked = tasks.get(owner.userId(), preflightFailed.project().id(), preflightTask.id());
-        assertThat(relayBlocked.status()).isEqualTo(Task.Status.BLOCKED);
-        assertThat(relayBlocked.errorCode()).isEqualTo(ProviderFailureCodes.MEDIA_RELAY_PREPARATION_FAILED);
-        assertThat(relayBlocked.leaseOwner()).isNull();
-        assertThat(jdbc.sql("select count(*) from provider_attempt where task_id=:task")
-                .param("task", preflightTask.id()).query(Integer.class).single()).isZero();
-        assertThat(jdbc.sql("select count(*) from call_log where task_id=:task")
-                .param("task", preflightTask.id()).query(Integer.class).single()).isZero();
-        assertThat(jdbc.sql("select count(*) from usage_ledger where task_id=:task and entry_type='RELEASE'")
-                .param("task", preflightTask.id()).query(Integer.class).single()).isEqualTo(1);
-        assertThat(EDITS).hasValue(editsBeforeFailure);
-
-        org.mockito.Mockito.doThrow(new dev.agenvas.shared.error.ApiProblemException(
-                org.springframework.http.HttpStatus.BAD_REQUEST, "MEDIA_RELAY_PUBLIC_ENDPOINT_REQUIRED",
-                dev.agenvas.shared.i18n.ApiMessage.of("api.media-relay.unavailable"),
-                dev.agenvas.shared.i18n.ApiMessage.of("api.media-relay.public-endpoint-required"), false))
-                .when(objectStorage).requirePublic(org.mockito.ArgumentMatchers.any());
-        Fixture privateEndpoint = fixture(owner.userId(), "Relay DNS public endpoint failure", 1);
-        Task privateEndpointTask = approve(owner.userId(), privateEndpoint);
-        assertThat(worker.submitOnce("openai-relay-dns-worker")).isEqualTo(1);
-        Task dnsBlocked = tasks.get(owner.userId(), privateEndpoint.project().id(), privateEndpointTask.id());
-        assertThat(dnsBlocked.status()).isEqualTo(Task.Status.BLOCKED);
-        assertThat(dnsBlocked.errorCode()).isEqualTo("MEDIA_RELAY_PUBLIC_ENDPOINT_REQUIRED");
-        assertThat(dnsBlocked.leaseOwner()).isNull();
-        assertThat(jdbc.sql("select count(*) from provider_attempt where task_id=:task")
-                .param("task", privateEndpointTask.id()).query(Integer.class).single()).isZero();
-        assertThat(jdbc.sql("select count(*) from call_log where task_id=:task")
-                .param("task", privateEndpointTask.id()).query(Integer.class).single()).isZero();
-        assertThat(jdbc.sql("select count(*) from usage_ledger where task_id=:task and entry_type='RELEASE'")
-                .param("task", privateEndpointTask.id()).query(Integer.class).single()).isEqualTo(1);
-        assertThat(EDITS).hasValue(editsBeforeFailure);
-
         verifyTokenBilling(owner.userId(), connection.id(), ability);
         verifyGifGeneration(owner, connection.id());
         verifyFrozenModerationAcrossTransports(owner.userId(), connection.id());
@@ -322,7 +284,6 @@ class OpenAiImage2PostgresIT {
 
     private void verifyFrozenModerationAcrossTransports(UUID owner, UUID connectionId) {
         // Restore the synthetic relay after the earlier failure-path scenarios.
-        org.mockito.Mockito.doNothing().when(objectStorage).requirePublic(org.mockito.ArgumentMatchers.any());
         org.mockito.Mockito.doNothing().when(objectStorage).put(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyString());
         UUID relayProfile = storageSettings.status().profiles().getFirst().id();

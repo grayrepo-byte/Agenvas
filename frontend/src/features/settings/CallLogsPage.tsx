@@ -99,7 +99,6 @@ export function CallLogsPage() {
           <TableHead scope="col" className="call-log-duration-column">{t("logs.calls.duration")}</TableHead><TableHead scope="col" className="call-log-result-column">{t("logs.calls.result")}</TableHead><TableHead scope="col" className="call-log-details-column"><span className="sr-only">{t("logs.calls.details")}</span></TableHead>
         </TableRow></TableHeader><TableBody>{data.items.map((log) => <CallLogRow key={log.id} log={log}
           onDetails={() => setSelectedId(log.id)} />)}</TableBody></Table>}
-      <p className="call-log-duration-hint ui-muted">{t("logs.calls.durationHint")}</p>
       <nav className="call-log-pagination" aria-label={t("logs.calls.paginationLabel")}>
         <span className="ui-muted">{t("logs.calls.pagination", { "0": data.page + 1, "1": Math.max(1, data.totalPages), "2": data.size })}</span>
         <div className="ui-form-actions"><Button variant="outline" size="sm" type="button" disabled={logs.isFetching || data.page === FIRST_PAGE}

@@ -40,7 +40,7 @@ export function ResourceBrowser() {
         <Select density="compact" id={`${id}-kind`} value={kind ?? ""} onChange={(event) => setKind(event.target.value ? event.target.value as MediaKind : undefined)}>
           <option value="">{t("common.allKinds")}</option>{MEDIA_ASSET_KINDS.map((value) => <option key={value} value={value}>{KIND_LABELS[value]}</option>)}
         </Select></Field>
-      <div className="library-filter-actions"><Button size="sm" variant="outline" type="button" disabled={list.isFetching} onClick={() => void list.refetch()}>{t("resources.refresh")}</Button></div>
+      <div className="library-filter-actions"><Button size="sm" variant="ghost" type="button" disabled={list.isFetching} onClick={() => void list.refetch()}>{t("resources.refresh")}</Button></div>
     </FieldGroup>
     {list.isPending ? <p role="status">{t("resources.loading")}</p> : null}
     {list.error ? <div role="alert">{list.error.message}<Button size="sm" variant="outline" type="button" disabled={list.isFetching}

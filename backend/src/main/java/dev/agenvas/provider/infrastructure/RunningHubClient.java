@@ -48,7 +48,7 @@ public final class RunningHubClient {
 
     public RunningHubClient(ObjectMapper mapper) {
         this.mapper = mapper;
-        http = PinnedHttpClients.pinned(FixedCloudDns.checked(Dns.SYSTEM, true), CONNECT_TIMEOUT, READ_TIMEOUT, CALL_TIMEOUT);
+        http = PinnedHttpClients.pinned(Dns.SYSTEM, CONNECT_TIMEOUT, READ_TIMEOUT, CALL_TIMEOUT);
     }
 
     /** Admin-configured API origin; request paths stay compiled and redirects stay disabled. */
@@ -56,7 +56,7 @@ public final class RunningHubClient {
         URI uri;
         try { uri = URI.create(origin == null || origin.isBlank() ? "https://www.runninghub.ai" : origin); }
         catch (IllegalArgumentException invalid) { throw RunningHubDefinition.invalid(ApiMessage.of("api.running-hub-client.runninghub-site-is-invalid")); }
-        try { ServiceEndpointPolicy.validate(uri, true); }
+        try { ServiceEndpointPolicy.validate(uri); }
         catch (IllegalArgumentException invalid) { throw RunningHubDefinition.invalid(ApiMessage.of("api.running-hub-client.please-enter-the-https-api-root-address-without-paths-credentials")); }
         if (!(uri.getRawPath().isEmpty() || "/".equals(uri.getRawPath())))
             throw RunningHubDefinition.invalid(ApiMessage.of("api.running-hub-client.please-enter-the-https-api-root-address-without-paths-credentials"));
@@ -182,7 +182,7 @@ public final class RunningHubClient {
         validateDownload(origin, url);
         try {
             Response response = http.newBuilder().dns(ServiceEndpointPolicy.downloadDns(
-                    URI.create(validatedOrigin(origin)), URI.create(url), Dns.SYSTEM, true)).build()
+                    URI.create(url), Dns.SYSTEM)).build()
                     .newCall(new Request.Builder().url(url).get().build()).execute();
             if (!response.isSuccessful() || response.body() == null) {
                 int status = response.code();
@@ -204,12 +204,9 @@ public final class RunningHubClient {
         URI uri;
         try { uri = URI.create(url); }
         catch (IllegalArgumentException invalid) { throw new ProtocolFailure(); }
-        String host = uri.getHost();
-        URI api = URI.create(validatedOrigin(origin));
-        boolean local = ServiceEndpointPolicy.sameOrigin(api, uri);
-        if (!(local || "https".equals(uri.getScheme()) && host != null && (uri.getPort() == -1 || uri.getPort() == 443))
-                || uri.getRawUserInfo() != null || uri.getRawFragment() != null || url.length() > 4096)
-            throw new ProtocolFailure();
+        try { ServiceEndpointPolicy.downloadDns(uri, Dns.SYSTEM); }
+        catch (java.net.UnknownHostException invalid) { throw new ProtocolFailure(); }
+        if (url.length() > 4096) throw new ProtocolFailure();
     }
 
     private Request post(String origin, String key, String path, JsonNode body) {
@@ -228,7 +225,7 @@ public final class RunningHubClient {
     private JsonNode json(Request request, boolean submission, Duration timeout) {
         okhttp3.Call call;
         try { call = http.newBuilder().dns(ServiceEndpointPolicy.dns(
-                request.url().uri(), Dns.SYSTEM, true)).build().newCall(request); }
+                request.url().uri(), Dns.SYSTEM)).build().newCall(request); }
         catch (IOException blocked) { throw new ProtocolFailure(); }
         call.timeout().timeout(timeout.toMillis(), TimeUnit.MILLISECONDS);
         Stage stage = stage(request);

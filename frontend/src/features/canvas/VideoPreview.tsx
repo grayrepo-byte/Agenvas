@@ -128,7 +128,7 @@ export function VideoPreview({ src, posterSrc, title, demo, width, height, conte
       <span className="video-preview-time">{timeLabel(position)} / {timeLabel(duration)}</span>
     </div> : null}
     {demo ? <span className="media-demo-badge">{t("media.card.mockVideo")}</span> : null}
-    <Button variant="ghost" size="icon-sm" type="button" className="media-expand-button nodrag nowheel nopan"
+    <Button variant="media-overlay" size="icon-lg" type="button" className="media-expand-button nodrag nowheel nopan"
       aria-label={t("media.card.openVideo")} title={t("media.card.openVideo")}
       onPointerDown={isolateControl} onMouseDown={isolateControl} onClick={(event) => {
         event.stopPropagation();

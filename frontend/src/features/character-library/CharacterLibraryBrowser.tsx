@@ -22,6 +22,6 @@ export function CharacterLibraryBrowser({ onSelect, disabled = false, allowArchi
       return <Button className="justify-start p-3" size="content" key={profile.id} type="button" variant="outline" disabled={disabled} onClick={() => onSelect(profile)} aria-label={profile.content.name}>
         {mediaId ? <img className="size-16 rounded object-cover" src={characterLibraryMediaUrl(mediaId, true)} alt="" /> : null}<span className="flex min-w-0 flex-col items-start gap-1"><strong className="truncate">{profile.content.name}</strong><span className="line-clamp-2 text-left text-xs text-muted-foreground">{profile.content.persona}</span><Badge variant="secondary">v{profile.version}</Badge>{profile.archived ? <Badge variant="outline">{cl("archived")}</Badge> : null}</span></Button>;
     })}</div>
-    {list.hasNextPage ? <Button type="button" variant="outline" disabled={list.isFetchingNextPage} onClick={() => { void list.fetchNextPage(); }}>{cl("loadMore")}</Button> : null}
+    {list.hasNextPage ? <Button type="button" variant="ghost" disabled={list.isFetchingNextPage} onClick={() => { void list.fetchNextPage(); }}>{cl("loadMore")}</Button> : null}
   </section>;
 }

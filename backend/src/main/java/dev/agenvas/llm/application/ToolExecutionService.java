@@ -262,12 +262,25 @@ public class ToolExecutionService {
         } catch (RuntimeException malformed) {
             throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
         }
-        if (input == null || !input.isObject() || !input.isEmpty()) {
+        if (input == null || !input.isObject() || !Set.of("offset", "limit").containsAll(input.propertyNames())) {
             throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
         }
+        for (String field : Set.of("offset", "limit")) {
+            if (input.has(field) && (!input.path(field).isIntegralNumber() || !input.path(field).canConvertToInt()))
+                throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
+        }
+        int offset = input.path("offset").asInt(0), limit = input.path("limit").asInt(40);
+        if (offset < 0 || limit < 1 || limit > 40)
+            throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
+        JsonNode catalog = capabilities.planningCatalog();
+        if (offset > catalog.size()) throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
+        int end = offset + Math.min(limit, catalog.size() - offset);
         var result = mapper.createObjectNode().put("status", ToolResultStatus.SUCCEEDED.name())
-                .put("operationId", operationId.toString()).put("userVisibleSummary", "已读取可用媒体能力");
-        result.set("capabilities", capabilities.planningCatalog());
+                .put("operationId", operationId.toString()).put("userVisibleSummary", "已读取可用媒体能力")
+                .put("offset", offset).put("total", catalog.size());
+        if (end < catalog.size()) result.put("nextOffset", end); else result.putNull("nextOffset");
+        var page = result.putArray("capabilities");
+        for (int index = offset; index < end; index++) page.add(catalog.get(index));
         return result;
     }
 

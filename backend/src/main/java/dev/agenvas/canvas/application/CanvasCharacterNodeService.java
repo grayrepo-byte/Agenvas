@@ -412,7 +412,7 @@ public class CanvasCharacterNodeService {
                 new NodeBindingPreview(hash, characterPreview, incoming), List.copyOf(fixed));
     }
 
-    /** Fixed copy contains only node configuration; logical edges are never copied. */
+    /** Installs fixed node configuration before subgraph topology is restored by the canvas editor. */
     @Transactional(propagation = Propagation.MANDATORY)
     public void installCopy(
             UUID owner, UUID project, UUID target, Selection selection, long version) {

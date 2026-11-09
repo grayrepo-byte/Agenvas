@@ -32,7 +32,7 @@ export function LibraryPage() {
   useLocale();
   const [selected, setSelected] = useState<LibraryEntry | null>(null);
   const [upload, setUpload] = useState(false);
-  return <PageShell title={t("common.asset")} description={t("library.page.description")} actions={<Button variant="default" type="button" onClick={() => setUpload(true)}><UploadSimple data-icon="inline-start" aria-hidden />{t("library.page.upload")}</Button>}>
+  return <PageShell title={t("common.asset")} actions={<Button variant="default" type="button" onClick={() => setUpload(true)}><UploadSimple data-icon="inline-start" aria-hidden />{t("library.page.upload")}</Button>}>
     <div className="library-page">
     <Tabs className="library-workspace" defaultValue="LIBRARY">
       <div className="library-navigation">

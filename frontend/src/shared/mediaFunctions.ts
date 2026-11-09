@@ -2,7 +2,7 @@ import type { MediaCapability, MediaSettings, MediaFunction, ImageOperation, Vid
 import { t } from "./i18n";
 import { mediaDisplayName } from "./mediaDisplayNames";
 
-export const IMAGE_OPERATIONS: readonly ImageOperation[] = ["SMART_EDIT", "RELIGHT", "OUTPAINT", "THREE_VIEW", "LAYER_SPLIT", "EXPRESSION_EDIT", "REMOVE_BACKGROUND", "OBJECT_REMOVE", "VIEW_ANGLE", "DEPTH_MAP", "UPSCALE", "RESIZE", "CROP", "ROTATE", "FLIP_HORIZONTAL", "FLIP_VERTICAL"];
+export const IMAGE_OPERATIONS: readonly ImageOperation[] = ["SMART_EDIT", "COSTUME_EXTRACT", "RELIGHT", "OUTPAINT", "THREE_VIEW", "LAYER_SPLIT", "EXPRESSION_EDIT", "REMOVE_BACKGROUND", "OBJECT_REMOVE", "VIEW_ANGLE", "DEPTH_MAP", "UPSCALE", "RESIZE", "CROP", "ROTATE", "FLIP_HORIZONTAL", "FLIP_VERTICAL"];
 export const LOCAL_IMAGE_OPERATIONS: readonly ImageOperation[] = ["DEPTH_MAP", "UPSCALE", "RESIZE", "CROP", "ROTATE", "FLIP_HORIZONTAL", "FLIP_VERTICAL"];
 export function imageFunction(operation: ImageOperation): MediaFunction { return `IMAGE_${operation}`; }
 export function videoFunction(operation: VideoOperation): MediaFunction { return `VIDEO_${operation}`; }
@@ -32,6 +32,7 @@ export function videoFunctionChoices(settings: MediaSettings, operation: VideoOp
 }
 
 const IMAGE_LABELS: Record<ImageOperation, Parameters<typeof t>[0]> = {
+  COSTUME_EXTRACT: "costume.extract",
   SMART_EDIT: "media.card.smartEdit", RELIGHT: "media.card.lighting", OUTPAINT: "media.card.outpaint",
   THREE_VIEW: "media.card.threeView", LAYER_SPLIT: "media.card.splitLayers", EXPRESSION_EDIT: "media.card.changeExpression",
   REMOVE_BACKGROUND: "media.card.removeBackground", OBJECT_REMOVE: "media.card.removeObject", VIEW_ANGLE: "media.card.changeAngle",
@@ -46,6 +47,8 @@ export function mediaFunctionLabel(operation: MediaFunction): string {
 
 export function compatibleImageFunction(operation: ImageOperation, capability: MediaCapability): boolean {
   if (!capability.enabled || capability.kind !== "IMAGE_GENERATION") return false;
+  if (operation === "COSTUME_EXTRACT") return capability.adapterId === "OPENAI_GPT_IMAGE_2"
+    && capability.maxReferenceImages >= 2 && capability.supportedImageAspectRatios.includes("2:3");
   if (LOCAL_IMAGE_OPERATIONS.includes(operation) && capability.adapterId === "LOCAL_IMAGE_PROCESSOR") return true;
   if (["RESIZE", "CROP", "ROTATE", "FLIP_HORIZONTAL", "FLIP_VERTICAL"].includes(operation)) return false;
   const transparent = operation === "REMOVE_BACKGROUND" || operation === "LAYER_SPLIT";

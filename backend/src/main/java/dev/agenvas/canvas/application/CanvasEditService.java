@@ -35,12 +35,14 @@ import tools.jackson.databind.ObjectMapper;
 public class CanvasEditService {
     public static final int MAX_ITEMS = 100;
     private static final int MAX_GROUPS = 100;
+    private static final int MAX_CONNECTIONS = 10_000;
     private final ProjectService projects;
     private final ProjectEventService events;
     private final CanvasService canvas;
     private final CanvasItemRepository items;
     private final CanvasEditRepository repository;
     private final CanvasCopySupport copies;
+    private final CanvasSubgraphCopySupport topology;
     private final ArtifactService artifacts;
     private final MediaDraftService drafts;
     private final ObjectMapper mapper;
@@ -48,10 +50,10 @@ public class CanvasEditService {
 
     public CanvasEditService(ProjectService projects, ProjectEventService events, CanvasService canvas,
             CanvasItemRepository items, CanvasEditRepository repository, CanvasCopySupport copies,
-            ArtifactService artifacts, MediaDraftService drafts, ObjectMapper mapper, Clock clock) {
+            ArtifactService artifacts, MediaDraftService drafts, ObjectMapper mapper, Clock clock, CanvasSubgraphCopySupport topology) {
         this.projects = projects; this.events = events; this.canvas = canvas; this.items = items;
         this.repository = repository; this.copies = copies; this.artifacts = artifacts;
-        this.drafts = drafts; this.mapper = mapper; this.clock = clock;
+        this.drafts = drafts; this.mapper = mapper; this.clock = clock; this.topology = topology;
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
@@ -129,29 +131,45 @@ public class CanvasEditService {
                         source.subjectId(), source.selectedVersionId(), source.title(), copy.x(), copy.y(), copy.width(),
                         copy.height(), copy.zIndex(), copy.groupId(), false, 0, clock.instant(), clock.instant()));
             }
+            var preparedTopology = copyRequests.isEmpty() ? null
+                    : topology.prepare(owner, project, copyRequests, list(request.connectionCopies()));
             validateMembership(currentItems, currentGroups, baselineItems, baselineGroups);
             // Persist group rows first so the same-project FK also protects copies and moves.
             persistGroups(project, beforeGroups, afterGroups);
             for (CanvasItem target : afterItems) update(owner, target);
             List<CopySnapshot> snapshots = new ArrayList<>();
+            Map<UUID, CanvasItem> copiedTargets = new HashMap<>();
             for (Copy copy : copyRequests) {
                 CanvasItem source = requireItem(owner, project, copy.sourceItemId());
-                var prepared = copies.prepareCloneWithinChange(owner, project, source, copy.targetItemId());
+                Set<UUID> internalCharacters = preparedTopology.source().characterConnections().stream()
+                        .filter(edge -> edge.targetCanvasItemId().equals(source.id()))
+                        .map(edge -> currentItems.get(edge.sourceCanvasItemId()).subjectId())
+                        .collect(java.util.stream.Collectors.toSet());
+                var prepared = copies.prepareCloneWithinChange(owner, project, source, copy.targetItemId(), preparedTopology.edgeIds(), internalCharacters);
                 CanvasItem layout = currentItems.get(copy.targetItemId());
                 CanvasItem target = new CanvasItem(layout.id(), project, layout.subjectType(), prepared.subjectId(),
                         prepared.selectedVersionId(), layout.title(), layout.x(), layout.y(), layout.width(), layout.height(),
                         layout.zIndex(), layout.groupId(), false, 0, clock.instant(), clock.instant());
                 if (!items.create(target)) throw conflict();
                 if (target.selectedVersionId() != null) items.addMediaVersion(project, target.id(), target.selectedVersionId(), clock.instant());
-                copies.installWithinChange(owner, project, target, prepared.frozen());
-                snapshots.add(new CopySnapshot(target, prepared.frozen(), copies.capture(owner, project, target)));
+                copiedTargets.put(source.id(), target);
+                snapshots.add(new CopySnapshot(target, prepared.frozen(), null));
             }
-                            // Freeze authoritative post-write versions for receipt diagnostics;
-                            // replay uses semantics.
+            var copiedTopology = preparedTopology == null ? CanvasSubgraphCopySupport.Graph.empty()
+                    : topology.remap(owner, project, preparedTopology, copiedTargets);
+            // Logical character edges reference the selection row; media sources reference edges.
+            for (CopySnapshot copy : snapshots) if (copy.item().subjectType() == CanvasItem.SubjectType.CHARACTER)
+                copies.installWithinChange(owner, project, copy.item(), copy.frozen());
+            topology.install(owner, project, copiedTopology);
+            for (CopySnapshot copy : snapshots) if (copy.item().subjectType() != CanvasItem.SubjectType.CHARACTER)
+                copies.installWithinChange(owner, project, copy.item(), copy.frozen());
+            snapshots = snapshots.stream().map(copy -> new CopySnapshot(copy.item(), copy.frozen(),
+                    copies.capture(owner, project, copy.item()))).toList();
+            // Freeze authoritative post-write versions for receipt diagnostics; replay uses semantics.
             afterItems = afterItems.stream().map(item -> requireItem(owner, project, item.id())).toList();
             afterGroups = refreshedGroups(project, afterGroups);
             Receipt receipt = new Receipt(request.commandId(), request.operation(), 0, ReceiptState.APPLIED);
-            History history = new History(List.copyOf(beforeItems), afterItems, List.copyOf(beforeGroups), afterGroups, List.copyOf(snapshots));
+            History history = new History(List.copyOf(beforeItems), afterItems, List.copyOf(beforeGroups), afterGroups, List.copyOf(snapshots), copiedTopology.connections(), copiedTopology.characterConnections());
             repository.insertReceipt(new ReceiptRow(project, receipt, history, clock.instant()));
             repository.insertCommand(project, request.commandId(), receipt.id(), hash);
             repository.prune(project);
@@ -216,24 +234,35 @@ public class CanvasEditService {
             validateMembership(currentItems, currentGroups, baselineItems, baselineGroups);
             persistGroups(project, expectedGroups, desiredGroups);
             for (CanvasItem target : replacements) update(owner, target);
+            var copiedTopology = new CanvasSubgraphCopySupport.Graph(history.connections(), history.characterConnections());
+            if (undo) topology.remove(project, copiedTopology);
+            else copiedTopology = topology.nextIncarnation(copiedTopology);
             List<CopySnapshot> nextCopies = new ArrayList<>();
             for (CopySnapshot copy : copySnapshots) {
                 if (undo) {
                     CanvasItem current = requireItem(owner, project, copy.item().id());
-                    // Capture proved no topology exists; do not perform destructive connection cleanup.
+                    // Guards proved all topology is exactly ours; only our frozen edges were removed.
                     if (!items.delete(owner, project, current.id(), current.version())) throw conflict();
                     nextCopies.add(copy);
                 } else {
                     if (!items.create(copy.item())) throw conflict();
                     if (copy.item().selectedVersionId() != null)
                         items.addMediaVersion(project, copy.item().id(), copy.item().selectedVersionId(), clock.instant());
-                    copies.restoreWithinChange(owner, project, copy.item(), copy.frozen(), copy.guard());
-                    nextCopies.add(new CopySnapshot(copy.item(), copy.frozen(), copies.capture(owner, project, copy.item())));
+                    nextCopies.add(copy);
                 }
+            }
+            if (!undo) {
+                for (CopySnapshot copy : nextCopies) if (copy.item().subjectType() == CanvasItem.SubjectType.CHARACTER)
+                    copies.restoreWithinChange(owner, project, copy.item(), copy.frozen(), copy.guard());
+                topology.install(owner, project, copiedTopology);
+                for (CopySnapshot copy : nextCopies) if (copy.item().subjectType() != CanvasItem.SubjectType.CHARACTER)
+                    copies.restoreWithinChange(owner, project, copy.item(), copy.frozen(), copy.guard());
+                nextCopies = nextCopies.stream().map(copy -> new CopySnapshot(copy.item(), copy.frozen(),
+                        copies.capture(owner, project, copy.item()))).toList();
             }
             Receipt next = new Receipt(receipt.id(), receipt.operation(), receipt.revision() + 1,
                     undo ? ReceiptState.UNDONE : ReceiptState.APPLIED);
-            History nextHistory = new History(history.beforeItems(), history.afterItems(), history.beforeGroups(), history.afterGroups(), List.copyOf(nextCopies));
+            History nextHistory = new History(history.beforeItems(), history.afterItems(), history.beforeGroups(), history.afterGroups(), List.copyOf(nextCopies), copiedTopology.connections(), copiedTopology.characterConnections());
             if (!repository.updateReceipt(new ReceiptRow(project, next, nextHistory, row.createdAt()), receipt.revision())) throw conflict();
             repository.insertCommand(project, request.commandId(), receiptId, hash);
             repository.prune(project);
@@ -253,8 +282,9 @@ public class CanvasEditService {
                 new ProjectEventService.EventDraft("canvas.edited", 1, receipt.id(), receipt.revision(), payload));
     }
     private Editor editor(UUID owner, UUID project, Receipt receipt) {
+        var graph = topology.current(owner, project);
         return new Editor(items.list(owner, project).stream().map(item -> canvas.toEntry(owner, item)).toList(),
-                activeGroups(project), receipt);
+                activeGroups(project), receipt, graph.connections(), graph.characterConnections());
     }
     private List<Group> activeGroups(UUID project) {
         return repository.groups(project).stream().filter(group -> !group.deleted()).map(GroupState::group).toList();
@@ -303,6 +333,14 @@ public class CanvasEditService {
         if (changes.size() + copy.size() > MAX_ITEMS || groups.size() > MAX_GROUPS || changes.isEmpty() && groups.isEmpty() && copy.isEmpty()) throw limit();
         if (request.operation() != Operation.DUPLICATE && !copy.isEmpty() || request.operation() == Operation.DISPLAY && !groups.isEmpty()) throw invalid();
         if (request.operation() == Operation.DUPLICATE && copy.isEmpty()) throw invalid();
+        var edges = list(request.connectionCopies());
+        if (edges.size() > MAX_CONNECTIONS) throw limit();
+        if (request.operation() != Operation.DUPLICATE && !edges.isEmpty()) throw invalid();
+        Set<UUID> sourceEdges = new HashSet<>(), targetEdges = new HashSet<>();
+        for (ConnectionCopy edge : edges) if (edge == null || edge.kind() == null || edge.sourceConnectionId() == null
+                || edge.targetConnectionId() == null || edge.expectedVersion() < 0
+                || !sourceEdges.add(edge.sourceConnectionId()) || !targetEdges.add(edge.targetConnectionId())) throw invalid();
+        for (UUID target : targetEdges) if (sourceEdges.contains(target)) throw invalid();
         Set<UUID> itemIds = new HashSet<>(); Set<UUID> groupIds = new HashSet<>(); Set<UUID> sourceIds = new HashSet<>();
         for (ItemChange change : changes) if (change == null || change.itemId() == null || change.expectedVersion() < 0 || !itemIds.add(change.itemId())) throw invalid();
         for (Copy value : copy) if (value == null || value.sourceItemId() == null || value.targetItemId() == null || value.expectedSourceVersion() < 0 ||

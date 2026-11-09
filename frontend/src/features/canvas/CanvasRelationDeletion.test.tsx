@@ -189,7 +189,7 @@ describe("canvas relation deletion", () => {
     expect(edge("canvas-connection:").deletable).toBeUndefined();
     await flowProps.onBeforeDelete!({ nodes: [], edges: [edge("canvas-connection:")] });
     await waitFor(() => expect(disconnectedConnections).toEqual([{
-      id: "connection-id", body: { expectedTargetDraftVersion: 0 },
+      id: "connection-id", body: { expectedVersion: 0, expectedTargetDraftVersion: 0 },
     }]));
     // 卡片被移除时，挂到它上面的关系线是级联来的，不能顺手删掉绑定或引用。
     await flowProps.onBeforeDelete!({ nodes: [{ id: "image-card",

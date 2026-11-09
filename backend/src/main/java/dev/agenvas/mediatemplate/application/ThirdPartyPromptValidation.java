@@ -81,7 +81,7 @@ public final class ThirdPartyPromptValidation {
         urls.forEach(ThirdPartyPromptValidation::url);
     }
     private static void optionalUrl(String value) { if (value == null) throw invalid(); if (!value.isEmpty()) url(value); }
-    /** Only public HTTP(S) destinations can be used; the transport also pins checked DNS answers. */
+    /** Validate HTTP(S) URL structure; destination addresses are resolved by the transport. */
     public static URI url(String value) {
         try {
             URI uri = URI.create(value);

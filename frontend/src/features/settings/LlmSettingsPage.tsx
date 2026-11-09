@@ -34,6 +34,7 @@ export function LlmSettingsPage() {
   const [draft, setDraft] = useState<ConfigurationDraft | null>(null);
   const [modelOptions, setModelOptions] = useState<ModelOptionsDraft | null>(null);
   const [capacityError, setCapacityError] = useState("");
+  const [capacityValidationAttempt, setCapacityValidationAttempt] = useState(0);
   const [apiKey, setApiKey] = useState("");
   const [keyInvalid, setKeyInvalid] = useState(false);
   const keyInput = useRef<HTMLInputElement>(null);
@@ -78,7 +79,11 @@ export function LlmSettingsPage() {
     }
     setKeyInvalid(false);
     const selection = modelSelection(options, modelId.trim());
-    if (!selection) { setCapacityError(t("modelConnection.capacityInvalid")); return; }
+    if (!selection) {
+      setCapacityError(t("modelConnection.capacityInvalid"));
+      setCapacityValidationAttempt(attempt => attempt + 1);
+      return;
+    }
     setCapacityError("");
     setSaving(true);
     setError("");
@@ -124,7 +129,7 @@ export function LlmSettingsPage() {
     return <Navigate to="/login" replace />;
   }
 
-  return <PageShell title={t("settings.providerTitle")} description={t("settings.llm.description")}>
+  return <PageShell title={t("settings.providerTitle")}>
     <div className="llm-workflow-intro"><p>{t("settings.llm.workflowHint")}</p>
       {snapshot ? <StatusBadge tone={hasUnsavedChanges ? "warning" : "neutral"}>{hasUnsavedChanges ? t("settings.llm.draftVersion", { "0": base?.version }) : t("settings.llm.savedState")}</StatusBadge> : null}
     </div>
@@ -166,7 +171,7 @@ export function LlmSettingsPage() {
                 {keyInvalid ? <FieldError id="llm-key-error">{t("settings.llm.keyValidationError")}</FieldError> : null}
               </Field>
               <div className="llm-model-options"><LlmModelOptions value={options} endpoint={endpoint} modelId={modelId} apiKey={apiKey} base={base}
-                disabled={busy} onSelectModel={value => editDraft("modelId", value)} onChange={value => {
+                disabled={busy} validationAttempt={capacityValidationAttempt} onSelectModel={value => editDraft("modelId", value)} onChange={value => {
                   if (base) setDraft(existing => existing ?? { base, endpoint, modelId });
                   setModelOptions(value); setCapacityError(""); setSaved(false); setAcknowledgedVersion(null);
                 }} /></div>
@@ -174,7 +179,7 @@ export function LlmSettingsPage() {
               {error ? <Notice tone="danger"><p>{error}</p><p>{t("settings.llm.keyClearedHint")}</p></Notice> : null}
               {saved ? <Notice tone="success">{t("settings.llm.saved")}</Notice> : null}
               <div className="ui-form-actions settings-save-bar">
-                {saving ? <LoadingState compact label={t("settings.llm.saving")} /> : <span className="ui-muted">{hasUnsavedChanges ? t("common.unsavedChanges") : t("settings.llm.toolValidationRequired")}</span>}
+                {saving ? <LoadingState compact label={t("settings.llm.saving")} /> : hasUnsavedChanges ? <span className="ui-muted">{t("common.unsavedChanges")}</span> : null}
                 <div className="ui-form-actions">
                   {hasUnsavedChanges ? <Button variant="ghost"  type="button" disabled={busy} onClick={() => {
                     setDraft(null); setModelOptions(null); setCapacityError(""); setApiKey(""); setKeyInvalid(false); setError(""); setSaved(false); setAcknowledgedVersion(null);
@@ -200,9 +205,8 @@ export function LlmSettingsPage() {
             <div className="ui-form-actions llm-diagnostic-action"><span className="ui-muted">{t("settings.llm.costConfirmationHint")}</span><Button variant="outline"  type="button" disabled={busy || !costAcknowledged || hasUnsavedChanges || hasRemoteUpdate} onClick={diagnose}>{diagnosing ? t("settings.llm.diagnosing") : t("settings.llm.runDiagnostic")}</Button></div>
           </div>
         </Panel> : snapshot ? <Panel className="llm-diagnostics-panel" title={t("settings.llm.waitingConfiguration")} description={t("settings.llm.waitingConfigurationHint")}><ShieldCheck className="llm-waiting-icon" aria-hidden /></Panel> : null}
-        <Notice title={t("settings.llm.configurationAndValidation")}>{t("settings.llm.realModelHint")}</Notice>
       </aside>
-      <Panel className="llm-media-panel" title={t("settings.llm.mediaConfiguration")} description={t("settings.llm.mediaManagementHint")}>
+      <Panel className="llm-media-panel" title={t("settings.llm.mediaConfiguration")}>
           <div className="llm-media-overview">
             <p className="ui-muted">{t("settings.llm.statusHint")}</p>
             {mediaStatus.isPending && !currentUser.isError ? <LoadingState compact label={t("settings.llm.mediaStatusLoading")} /> : null}

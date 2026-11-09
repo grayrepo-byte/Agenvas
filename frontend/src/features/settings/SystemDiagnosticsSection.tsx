@@ -23,26 +23,26 @@ export function SystemDiagnosticsSection({ enabled }: { enabled: boolean }) {
       {snapshot ? <>
         <div className="ui-toolbar"><StatusBadge>{t("settings.diagnostics.localChecks")}</StatusBadge><span className="ui-muted">{t("settings.diagnostics.checkedAt")}<time dateTime={snapshot.checkedAt}>{new Date(snapshot.checkedAt).toLocaleString(getFormatLocale())}</time></span>{diagnostics.isFetching ? <LoadingState compact label={t("settings.diagnostics.updating")} /> : null}</div>
         <div className="diagnostics-stats">
-          <StatusCard title={t("settings.diagnostics.database")} icon={<Database size={20} aria-hidden />} tone={snapshot.database === "AVAILABLE" ? "success" : "danger"} badge={snapshot.database === "AVAILABLE" ? t("settings.diagnostics.healthy") : t("settings.diagnostics.unavailable")} value={snapshot.database === "AVAILABLE" ? t("settings.diagnostics.readable") : t("settings.diagnostics.unavailable")} description={t("settings.diagnostics.databaseHint")} />
+          <StatusCard title={t("settings.diagnostics.database")} icon={<Database size={20} aria-hidden />} tone={snapshot.database === "AVAILABLE" ? "success" : "danger"} badge={snapshot.database === "AVAILABLE" ? t("settings.diagnostics.healthy") : t("settings.diagnostics.unavailable")} value={snapshot.database === "AVAILABLE" ? t("settings.diagnostics.readable") : t("settings.diagnostics.unavailable")} />
           <StatusCard title={t("settings.diagnostics.localDirectories")} icon={<HardDrives size={20} aria-hidden />} tone={snapshot.storage === "AVAILABLE" ? "success" : "warning"} badge={snapshot.storage === "AVAILABLE" ? t("settings.diagnostics.pathHealthy") : t("settings.diagnostics.needsInspection")} value={snapshot.storage === "AVAILABLE" ? t("settings.diagnostics.pathCheckHealthy") : t("settings.diagnostics.pathCheckFailed")} description={<>{t("settings.diagnostics.localScopeHint")}<Link to="/settings/storage">{t("settings.diagnostics.manageStorage")}</Link></>} />
-          <StatusCard title={t("models.text")} icon={<Cpu size={20} aria-hidden />} tone={snapshot.llmMode === "MOCK" ? "neutral" : snapshot.llmConfigured && snapshot.llmToolCallingVerified ? "success" : "warning"} badge={snapshot.llmMode === "MOCK" ? "Mock" : snapshot.llmConfigured && snapshot.llmToolCallingVerified ? t("settings.diagnostics.protocolVerified") : t("models.pendingValidation")} value={`${modeLabel(snapshot.llmMode)} · ${snapshot.llmConfigured ? t("common.configured") : t("models.unconfigured")}${snapshot.llmMode === "CONFIGURED" ? ` · ${snapshot.llmToolCallingVerified ? t("settings.diagnostics.toolsVerified") : t("settings.diagnostics.toolsUnverified")}` : ""}`} description={t("settings.diagnostics.savedConfigHint")} />
+          <StatusCard title={t("models.text")} icon={<Cpu size={20} aria-hidden />} tone={snapshot.llmMode === "MOCK" ? "neutral" : snapshot.llmConfigured && snapshot.llmToolCallingVerified ? "success" : "warning"} badge={snapshot.llmMode === "MOCK" ? "Mock" : snapshot.llmConfigured && snapshot.llmToolCallingVerified ? t("settings.diagnostics.protocolVerified") : t("models.pendingValidation")} value={`${modeLabel(snapshot.llmMode)} · ${snapshot.llmConfigured ? t("common.configured") : t("models.unconfigured")}${snapshot.llmMode === "CONFIGURED" ? ` · ${snapshot.llmToolCallingVerified ? t("settings.diagnostics.toolsVerified") : t("settings.diagnostics.toolsUnverified")}` : ""}`} />
           <StatusCard title={t("settings.diagnostics.mediaService")} icon={<Plugs size={20} aria-hidden />} tone={snapshot.mediaMode === "MOCK" ? "neutral" : snapshot.imageConfigured && snapshot.videoConfigured ? "success" : "warning"} badge={snapshot.mediaMode === "MOCK" ? "Mock" : t("settings.diagnostics.configurationStatus")} value={t("settings.llm.providerSummary", { "0": modeLabel(snapshot.mediaMode), "1": snapshot.imageConfigured ? t("common.configured") : t("models.unconfigured"), "2": snapshot.videoConfigured ? t("common.configured") : t("models.unconfigured") })} description={t("settings.diagnostics.configurationHint")} />
         </div>
       </> : null}
 {snapshot ? <Panel title={t("settings.diagnostics.recentIssues")} description={t("settings.diagnostics.issuePrivacyHint")}>
-          {snapshot.recentErrors.length === 0 ? <EmptyState icon={<CheckCircle size={28} aria-hidden />} title={t("settings.diagnostics.issuesEmpty")} description={t("settings.diagnostics.noRecentIssues")} /> :
+          {snapshot.recentErrors.length === 0 ? <EmptyState icon={<CheckCircle size={28} aria-hidden />} title={t("settings.diagnostics.issuesEmpty")} /> :
             <ul className="diagnostics-errors">{snapshot.recentErrors.map((item) => <li key={item.status}><StatusBadge tone={item.status === "FAILED" ? "danger" : "warning"}>{t("settings.diagnostics.issueCount", { "0": errorLabel(item.status), "1": item.count })}</StatusBadge><time dateTime={item.lastAt}>{t("settings.diagnostics.updated", { "0": new Date(item.lastAt).toLocaleString(getFormatLocale()) })}</time></li>)}</ul>}
         </Panel> : null}
   </div>;
 }
 
 function StatusCard({ title, value, icon, description, tone, badge }: {
-  title: string; value: string; icon: ReactNode; description: ReactNode; tone: "neutral" | "success" | "warning" | "danger"; badge: string;
+  title: string; value: string; icon: ReactNode; description?: ReactNode; tone: "neutral" | "success" | "warning" | "danger"; badge: string;
 }) {
   useLocale();
   return <Panel title={title} actions={<StatusBadge tone={tone}>{badge}</StatusBadge>}>
     <div className="diagnostics-stat-heading"><span className="ui-icon-tile">{icon}</span><p className="diagnostics-stat-value">{value}</p></div>
-    <p className="diagnostics-stat-note">{description}</p>
+    {description ? <p className="diagnostics-stat-note">{description}</p> : null}
   </Panel>;
 }
 

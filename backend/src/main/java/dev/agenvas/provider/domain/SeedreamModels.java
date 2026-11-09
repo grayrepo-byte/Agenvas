@@ -17,6 +17,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 /** Official Ark image contracts, including native group generation and layer decomposition. */
 public final class SeedreamModels implements NativeMediaProtocol {
@@ -161,6 +162,11 @@ public final class SeedreamModels implements NativeMediaProtocol {
     @Override public Integer resultCount(Profile profile, JsonNode values) {
         requireProfile(profile);
         return layers(profile) || "auto".equals(values.path("sequential_image_generation").asText()) ? null : 1;
+    }
+
+    @Override public void configureSingleOutputDraft(Profile profile, ObjectNode values) {
+        requireProfile(profile);
+        if (!proFamily(profile)) values.put("sequential_image_generation", "disabled").put("max_images", 1);
     }
 
     public static int maximumResults(Profile profile, JsonNode values) {

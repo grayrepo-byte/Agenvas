@@ -235,6 +235,8 @@ public class CharacterService {
         if (row == null) return tools.jackson.databind.node.NullNode.getInstance();
         ObjectNode guard = mapper.createObjectNode();
         guard.set("binding", mapper.valueToTree(row));
+        var nodeOwned = repository.nodeOwnedCharacters(project, item);
+        if (!nodeOwned.isEmpty()) guard.set("nodeOwnedCharacters", mapper.valueToTree(nodeOwned));
         var profiles = guard.putArray("profiles");
         row.snapshots().stream().map(CharacterSnapshot::characterId).distinct().sorted().forEach(id -> {
             CharacterProfile profile = repository.profile(project, id).orElse(null);
@@ -262,11 +264,24 @@ public class CharacterService {
                 source.snapshots(), state, true, null, null, null, clock.instant()));
     }
 
+    /** Only selected internal character sources retain logical-node removal ownership.
+     * External and manually applied roles remain independent fixed selections in the copy.
+     */
+    @Transactional(readOnly = true)
+    public List<UUID> canvasCopyNodeOwnership(UUID owner, UUID project, UUID sourceItem, Set<UUID> internalCharacters) {
+        projects.get(owner, project);
+        requireMedia(owner, project, sourceItem);
+        return repository.nodeOwnedCharacters(project, sourceItem).stream().filter(internalCharacters::contains).toList();
+    }
+
     /** Installs the already-frozen binding in the outer canvas event transaction without appending an event. */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public void installCanvasCopyWithinChange(UUID owner, UUID project, UUID targetItem,
-            JsonNode snapshot, long minimumVersion) {
-        if (snapshot == null || snapshot.isNull()) return;
+            JsonNode snapshot, long minimumVersion, List<UUID> nodeOwnedCharacters) {
+        if (snapshot == null || snapshot.isNull()) {
+            if (!nodeOwnedCharacters.isEmpty()) throw conflict();
+            return;
+        }
         projects.requireActiveProject(owner, project);
         requireMedia(owner, project, targetItem);
         BindingRow frozen = mapper.treeToValue(snapshot, BindingRow.class);
@@ -284,6 +299,10 @@ public class CharacterService {
         BindingRow restored = new BindingRow(project, targetItem, Math.max(frozen.version(), minimumVersion),
                 draft.version(), frozen.snapshots(), frozen.state(), true, null, null, null, clock.instant());
         if (!repository.saveBinding(restored, 0)) throw conflict();
+        Set<UUID> boundCharacters = frozen.snapshots().stream().map(CharacterSnapshot::characterId)
+                .collect(java.util.stream.Collectors.toSet());
+        if (!boundCharacters.containsAll(nodeOwnedCharacters)) throw conflict();
+        repository.nodeOwnedCharacters(project, targetItem, List.copyOf(nodeOwnedCharacters));
     }
 
     /** Restores accepted historical continuity on a late extra output without reading a live source binding. */

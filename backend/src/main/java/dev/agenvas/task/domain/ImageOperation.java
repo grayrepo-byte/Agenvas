@@ -5,6 +5,7 @@ import dev.agenvas.shared.i18n.ApiMessage;
 /** Image post-processing semantics; the configured function binding selects the compatible processor. */
 public enum ImageOperation {
     SMART_EDIT("creation.image.smart-edit", true, true),
+    COSTUME_EXTRACT("creation.image.costume-extract", true, false),
     RELIGHT("creation.image.relight", true, false),
     OUTPAINT("creation.image.outpaint", true, false),
     THREE_VIEW("creation.image.three-view", true, false),

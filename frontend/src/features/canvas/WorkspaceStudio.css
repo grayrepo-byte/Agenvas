@@ -5,28 +5,9 @@
   font-size: var(--ui-text-sm);
   font-weight: 600;
 }
-.workspace-shell .studio-reference-heading {
-  display: flex;
-  align-items: center;
-  gap: var(--ui-space-2);
-  margin-top: var(--ui-space-2);
-}
-.workspace-shell .studio-reference-heading strong {
-  color: var(--ui-text-secondary);
-  font-size: var(--ui-text-sm);
-  font-weight: 500;
-}
-.workspace-shell .studio-reference-heading > span,
-.workspace-shell .studio-reference-hint,
 .workspace-shell .studio-result-label {
   color: var(--ui-text-muted);
   font-size: var(--ui-text-xs);
-}
-.workspace-shell .studio-reference-hint {
-  margin: var(--ui-space-1) 0 0;
-  line-height: var(--ui-editor-line-height);
-}
-.workspace-shell .studio-result-label {
   padding-inline: var(--ui-space-2);
   white-space: nowrap;
 }

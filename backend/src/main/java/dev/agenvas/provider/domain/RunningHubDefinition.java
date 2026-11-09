@@ -257,9 +257,22 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
         return inputValues(mapper, fields, raw, prompt, seconds, executing);
     }
 
+    /** Compose linked prompts after per-field defaults, before required/length validation. */
+    public ObjectNode values(ObjectMapper mapper, JsonNode parameters, String prompt, Integer seconds,
+            boolean executing, java.util.function.UnaryOperator<String> composePrompt) {
+        JsonNode supplied = parameters == null ? mapper.createObjectNode() : parameters;
+        requireObject(supplied, Set.of(VALUES_PROPERTY));
+        return inputValues(mapper, fields, supplied.path(VALUES_PROPERTY), prompt, seconds, executing, composePrompt);
+    }
+
     /** Resolve declared fields only; draft callers may omit required inputs until execution. */
     public static ObjectNode inputValues(ObjectMapper mapper, List<Field> fields, JsonNode raw,
             String prompt, Integer seconds, boolean executing) {
+        return inputValues(mapper, fields, raw, prompt, seconds, executing, java.util.function.UnaryOperator.identity());
+    }
+
+    private static ObjectNode inputValues(ObjectMapper mapper, List<Field> fields, JsonNode raw,
+            String prompt, Integer seconds, boolean executing, java.util.function.UnaryOperator<String> composePrompt) {
         if (raw == null) raw = mapper.createObjectNode();
         if (!raw.isMissingNode() && !raw.isObject()) throw invalid(ApiMessage.of("api.running-hub-definition.dynamic-parameters-must-be-objects"));
         for (String key : raw.propertyNames()) if (fields.stream().noneMatch(field -> field.key().equals(key)))
@@ -272,6 +285,11 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
                 case PARAMETER -> raw.get(field.key());
             };
             if (executing && (value == null || value.isNull() || field.effectiveSource() == Source.PROMPT && value.isTextual() && value.asText().isBlank())) value = field.defaultValue();
+            if (field.effectiveSource() == Source.PROMPT) {
+                String composed = composePrompt.apply(value == null || value.isNull() ? "" : value.asText());
+                // Optional absent prompts must stay absent when no linked text contributes.
+                if (value != null && !value.isNull() || !composed.isEmpty()) value = mapper.valueToTree(composed);
+            }
             if (value != null && !value.isNull()) {
                 validateValue(field, value);
                 effective.set(field.key(), value.deepCopy());

@@ -214,11 +214,16 @@ try {
     await click(kind === "audio" ? '[role="dialog"]:last-of-type button[data-slot="dialog-close"]' : `.media-preview-dialog button[aria-label=${JSON.stringify(labels["media.preview.close"])}]`);
     await waitFor(() => !document.querySelector(".media-preview-dialog, audio"));
   }
+  await navigate(baseUrl, "?shared-prompts=1");
   await click('button[role="checkbox"][aria-label="选择镜头 SHOT-01"]');
   await click('button[role="checkbox"][aria-label="选择镜头 SHOT-02"]');
   await click('[data-storyboard-action="batchGenerate"]');
   await waitFor((text) => document.querySelector(".storyboard-batch")?.textContent.includes(text), message("batchConfirm"));
   assert.equal(await page(() => document.querySelectorAll(".storyboard-batch-list section").length), 2);
+  const promptPreviews = await page(() => [...document.querySelectorAll(".storyboard-batch-list section p")].map((element) => element.textContent));
+  assert.deepEqual(promptPreviews, ["合成剧本：林岚与陈河在天台交还信件。所有人物与素材为合成测试数据。",
+    "合成剧本：林岚与陈河在天台交还信件。所有人物与素材为合成测试数据。\n\nSynthetic frozen VIDEO prompt for SHOT-02 · VIDEO"],
+  "Batch confirmation shows saved public-only and combined public/local prompts");
   assert.equal((await evidence()).runs.length, 0, "Batch preflight and its cost preview issue no generation requests");
   await screenshot("storyboard-batch-explicit-cost-confirmation");
   await clickNamed(".storyboard-batch button", message("cancel"));
@@ -335,7 +340,7 @@ try {
     checks: process.argv.includes("--director-only") ? [] : [process.argv.includes("--desktop-only") ? "1440×900 in Chinese and Russian (desktop diagnostic run)" : "1440×900, 1024×768 and 390×844 in Chinese and Russian", "no horizontal overflow and reachable visible controls", "8 shots and 2 fixed character references",
       "third-shot dialogue/duration saved and reopened", "only changed-shot and composition review impact", "all paid selected versions retained",
       "real native image/video/audio decoding", "explicit immutable reference and historic result selection", "409 keeps draft until explicit reload", "approval tab is read-only until action",
-      "two-shot batch preflight/cancel make zero run requests and explicit confirmation freezes draft versions", "invalid JSON rejected and valid JSON imports creative fields only", "unauthorized read"] };
+      "public-only and mixed public/local prompts appear in two-shot batch confirmation; preflight/cancel make zero run requests and explicit confirmation freezes draft versions", "invalid JSON rejected and valid JSON imports creative fields only", "unauthorized read"] };
   result.checks.push("shot-linked approval and automatic archived result return preserve the paid selection until explicit choose and save",
     "late-result revision provenance remains pending review", "additional audio result uses its actual node kind",
     process.argv.includes("--desktop-only") ? "director candidates fit the Russian desktop layout" : "director candidates fit Russian desktop, tablet and mobile layouts");

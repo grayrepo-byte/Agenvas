@@ -117,7 +117,6 @@ export function SystemLogsPage() {
         </> : null}
         </div>
       </Panel>
-      <p className="ui-muted">{t("settings.systemLogs.scopeHint")}</p>
     </div>}
   </PageShell>;
 }

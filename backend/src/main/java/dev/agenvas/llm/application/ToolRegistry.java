@@ -286,8 +286,9 @@ public class ToolRegistry {
                         "Read status only for up to twelve tasks in this Run; ordinary progress "
                                 + "arrives through the scheduler, so do not repeatedly poll",
                         READ_TASK_STATUS_SCHEMA),
-                definition("list_media_capabilities", "List published media capabilities and supported inputs; "
-                        + "never infer unavailable capabilities", READ_PROJECT_SUMMARY_SCHEMA),
+                definition("list_media_capabilities", "Read published media capabilities and supported inputs in stable default-first order. "
+                        + "Use offset/limit (default and maximum 40) and follow nextOffset until null for the complete directory. "
+                        + "A page is not the full catalog; never infer unavailable capabilities. If the catalog changes, restart from offset zero.", PAGED_READ_SCHEMA),
                 definition("propose_media_generation", "Propose one fixed batch of image, video or audio generation. "
                         + "The server pauses this Run for user approval and archived outcomes. "
                         + "Never poll read_task_status for these tasks or claim user authorization. "

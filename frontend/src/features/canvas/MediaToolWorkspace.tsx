@@ -43,7 +43,7 @@ export function MediaToolImage({ src, title, aspectRatio, caption, children }: {
       </div>}
       {children}
     </div>
-    <p className="media-tool-preview-caption">{caption ?? t("media.tools.aiPreviewHint")}</p>
+    {caption ? <p className="media-tool-preview-caption">{caption}</p> : null}
   </>;
 }
 

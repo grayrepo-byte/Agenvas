@@ -77,9 +77,10 @@ public class ReferenceCatalogSnapshot extends TableImpl<ReferenceCatalogSnapshot
 
     /**
      * The column <code>public.reference_catalog_snapshot.commit_sha</code>.
-     * Pinned public GitHub commit
+     * Pinned Git commit when available; live JSON sources use null and retain
+     * exact manifest SHA256
      */
-    public final TableField<ReferenceCatalogSnapshotRecord, String> COMMIT_SHA = createField(DSL.name("commit_sha"), SQLDataType.VARCHAR(40).nullable(false), this, "Pinned public GitHub commit");
+    public final TableField<ReferenceCatalogSnapshotRecord, String> COMMIT_SHA = createField(DSL.name("commit_sha"), SQLDataType.VARCHAR(40), this, "Pinned Git commit when available; live JSON sources use null and retain exact manifest SHA256");
 
     /**
      * The column <code>public.reference_catalog_snapshot.manifest_hash</code>.

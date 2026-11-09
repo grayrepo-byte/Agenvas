@@ -16,6 +16,8 @@
 
 一个收费请求的组图、拆层或连续出图全部归档为同一任务的多个结果。结果身份、顺序和图层 metadata 固定后可恢复，追加节点不复制生成请求；自动数量按实际归档计数，视频按实际探测时长结算估算。万相视频将冻结输入视频秒数与实际输出秒数相加；未配置价格或未知输出数量/时长保持未知，不把估算宣称为供应商账单。
 
+额外图片结果卡片的下一次生成收敛为一个可选结果：万相关闭 `enable_sequential` 且 `n=1`，Seedream 支持组图的 profile 使用 `sequential_image_generation=disabled` 且 `max_images=1`。归一化在冻结参数副本上由各协议定义，保留其他创作参数、素材和风格；来源草稿与原任务/结果记录不修改。拆层属于固定整组输出，不添加不支持的组图字段；Google/万相视频及自定义工作流也不套用图片数量字段。见 [ADR 0017](0017-operation-specific-media-versioning.md)。
+
 结果下载遵守固定来源、DNS、重定向、大小、MIME 与实际媒体检查。Wan 仅允许已确认的精确结果桶，Seedream 使用内联结果避免任意 URL 下载；Google Key 只用于固定官方 API/Files 路径，单跳 GCS 请求重新校验并移除凭据。Veo 扩展先核对精确版本为数据库不可变 TASK 来源，再核对安全 `files/<id>` 及模型、连接/版本 metadata；用户正文不能通过复制 metadata 伪造来源。不将原始 URI、签名或 Key 放入公开产物内容。Omni 只解析 model_output 媒体，debug 采集去除 thought 与媒体 Base64。
 
 双向能力切换复用已有通用草稿迁移：兼容标量和精确素材版本保留，目标没有的字段/槽删除并同步清理结构化标签及输入连线；模型约束变化产生运行阻断而不覆盖用户草稿。无须为原生 API 新建画布交互方式；普通图像 ratio/resolution/count 控件与原生 size/组图参数互斥，视频时长按 profile source 决定。

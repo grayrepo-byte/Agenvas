@@ -11,6 +11,9 @@ import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
+import dev.agenvas.provider.domain.KlingModels;
+import dev.agenvas.provider.domain.NativeMediaProfiles;
+import dev.agenvas.provider.domain.NativeMediaProtocol;
 import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.settings.application.MediaStyleService;
@@ -33,7 +36,8 @@ import tools.jackson.databind.node.ObjectNode;
 /** Persists generation input separately from immutable media results. */
 @Service
 public class MediaDraftService {
-    private static final int MAX_PROMPT_LENGTH = 20_000;
+    /** Shared bound for saved local prompts and composed text-node inputs. */
+    public static final int MAX_PROMPT_LENGTH = 20_000;
     private static final int MIN_VIDEO_SECONDS = 1;
     // Drafts must survive switching away from longer workflows; execution checks the target protocol.
     private static final int MAX_VIDEO_SECONDS = MediaAdapterRegistry.RUNNINGHUB_MAX_VIDEO_SECONDS;
@@ -284,8 +288,23 @@ public class MediaDraftService {
                 && frozen.path("durationSeconds").canConvertToInt()
                 ? frozen.path("durationSeconds").intValue() : null;
         return save(ownerId, projectId, canvasItemId, expectedDraftVersion,
-                frozen.path("prompt").asText(""), frozen.path("parameters").deepCopy(),
+                restoredPrompt(frozen), frozen.path("parameters").deepCopy(),
                 durationSeconds, capabilityId, mode, inputs, mentions, frozenStyleId(frozen));
+    }
+
+    /** Explicit history reuse turns frozen public text into manual prompt content, without live links. */
+    private String restoredPrompt(JsonNode frozen) {
+        String local = frozen.path("prompt").asText("");
+        if (frozen.path("promptInputs").isEmpty()) return local;
+        if (local.isBlank() && frozen.hasNonNull("userRenderedPrompt")) return frozen.path("userRenderedPrompt").asText();
+        List<String> pieces = new ArrayList<>();
+        for (JsonNode source : frozen.path("promptInputs")) {
+            String text = source.path("text").asText("").strip();
+            if (!text.isEmpty()) pieces.add(text);
+        }
+        if (pieces.isEmpty()) return local;
+        if (!local.isBlank()) pieces.add(local.strip());
+        return String.join("\n\n", pieces);
     }
 
     private UUID frozenStyleId(JsonNode frozen) {
@@ -318,6 +337,21 @@ public class MediaDraftService {
     public MediaDraft duplicateWithinChange(UUID ownerId, UUID projectId,
             UUID sourceCanvasItemId, UUID targetCanvasItemId,
             long expectedSourceDraftVersion) {
+        return duplicateWithinChange(ownerId, projectId, sourceCanvasItemId,
+                targetCanvasItemId, expectedSourceDraftVersion, false);
+    }
+
+    /** Additional batch cards represent one output; generating from one starts with one image. */
+    public MediaDraft duplicateBatchOutputWithinChange(UUID ownerId, UUID projectId,
+            UUID sourceCanvasItemId, UUID targetCanvasItemId,
+            long expectedSourceDraftVersion) {
+        return duplicateWithinChange(ownerId, projectId, sourceCanvasItemId,
+                targetCanvasItemId, expectedSourceDraftVersion, true);
+    }
+
+    private MediaDraft duplicateWithinChange(UUID ownerId, UUID projectId,
+            UUID sourceCanvasItemId, UUID targetCanvasItemId,
+            long expectedSourceDraftVersion, boolean singleOutput) {
         MediaDraft source = get(ownerId, projectId, sourceCanvasItemId);
         if (source.version() != expectedSourceDraftVersion) {
             throw draftConflict(ApiMessage.of("api.media-draft-service.the-source-draft-has-changed-before-copying-please-save-and"));
@@ -332,7 +366,8 @@ public class MediaDraftService {
                                         MediaDraft.SourceType.MANUAL, null))))
                 .toList();
         MediaDraft duplicate = new MediaDraft(projectId, targetCanvasItemId,
-                source.prompt(), source.parameters().deepCopy(), source.durationSeconds(),
+                source.prompt(), singleOutput ? singleOutputParameters(source.parameters(), true)
+                        : source.parameters().deepCopy(), source.durationSeconds(),
                 source.capabilityId(), source.styleId(), source.videoInputMode(), inputs,
                 List.copyOf(source.mentions()), source.displayMode(), 1, now, now);
         if (!artifacts.updateMediaDraft(duplicate, 0)) {
@@ -349,12 +384,20 @@ public class MediaDraftService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public MediaDraft installCopyWithinChange(UUID ownerId, UUID projectId, UUID targetItemId,
             MediaDraft snapshot, long minimumVersion) {
+        return installCopyWithinChange(ownerId, projectId, targetItemId, snapshot, minimumVersion, Set.of());
+    }
+
+    /** The canvas application validates these private receipt edges before installing any source. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public MediaDraft installCopyWithinChange(UUID ownerId, UUID projectId, UUID targetItemId,
+            MediaDraft snapshot, long minimumVersion, Set<UUID> copiedConnectionIds) {
         projects.requireActiveProject(ownerId, projectId);
         requireMediaCanvas(ownerId, projectId, targetItemId);
         if (!snapshot.projectId().equals(projectId) || !snapshot.canvasItemId().equals(targetItemId)
                 || artifacts.findMediaDraft(projectId, targetItemId).isPresent()
                 || snapshot.mediaInputs().stream().flatMap(input -> input.sources().stream())
-                        .anyMatch(source -> source.type() != MediaDraft.SourceType.MANUAL || source.connectionId() != null)) {
+                        .anyMatch(source -> source.type() == MediaDraft.SourceType.MANUAL ? source.connectionId() != null
+                                : source.connectionId() == null || !copiedConnectionIds.contains(source.connectionId()))) {
             throw new IllegalStateException("Invalid canvas copy draft snapshot");
         }
         Instant now = clock.instant();
@@ -371,7 +414,7 @@ public class MediaDraftService {
         return restored;
     }
 
-    /** A batch result copies the accepted draft, never the user's newer working draft. */
+    /** A batch result copies the accepted inputs with a single-output count, never a newer draft. */
     public void initializeFrozenWithinChange(UUID projectId, UUID canvasItemId, Artifact.Kind kind, JsonNode frozen) {
         initializeWithinChange(projectId, canvasItemId, false);
         Instant now = clock.instant();
@@ -385,11 +428,39 @@ public class MediaDraftService {
         List<MediaDraft.PromptMention> mentions = new ArrayList<>();
         for (JsonNode mention : frozen.path("mentions")) mentions.add(new MediaDraft.PromptMention(UUID.fromString(mention.path("versionId").asText()), MediaDraft.InputRole.valueOf(mention.path("role").asText())));
         MediaDraft draft = new MediaDraft(projectId, canvasItemId, frozen.path("prompt").asText(""),
-                frozen.path("parameters").deepCopy(), kind == Artifact.Kind.VIDEO && frozen.path("durationSeconds").asInt() > 0 ? frozen.path("durationSeconds").asInt() : null,
+                frozenOutputParameters(kind, frozen), kind == Artifact.Kind.VIDEO && frozen.path("durationSeconds").asInt() > 0 ? frozen.path("durationSeconds").asInt() : null,
                 UUID.fromString(frozen.path("capabilityId").asText()), frozenStyleId(frozen), kind == Artifact.Kind.VIDEO ? parseMode(frozen.path("mode").asText()) : null,
                 List.copyOf(inputs), List.copyOf(mentions), MediaDraft.DisplayMode.DRAFT, 1, now, now);
         if (!artifacts.updateMediaDraft(draft, 0)) throw new IllegalStateException("New batch draft update failed");
         artifacts.replaceMediaInputs(projectId, canvasItemId, inputs, now);
+    }
+
+    private JsonNode frozenOutputParameters(Artifact.Kind kind, JsonNode frozen) {
+        JsonNode parameters = singleOutputParameters(frozen.path("parameters"), false);
+        if (kind != Artifact.Kind.IMAGE
+                || !(parameters.path(NativeMediaProtocol.VALUES_PROPERTY) instanceof ObjectNode values)) return parameters;
+        // Use the accepted protocol identity, so later capability edits cannot change the copy.
+        // A workflow field named n is arbitrary input and must never be treated as a native count.
+        JsonNode nativeProtocol = frozen.path("providerParameters").path("native");
+        JsonNode kling = frozen.path("providerParameters").path("kling");
+        if (nativeProtocol.isObject()) {
+            var selection = NativeMediaProfiles.resolve(nativeProtocol.path("adapterId").asText(), nativeProtocol);
+            selection.protocol().configureSingleOutputDraft(selection.profile(), values);
+        } else if (kling.isObject()) {
+            KlingModels.configureSingleOutputDraft(KlingModels.resolve(kling.path("model").asText(),
+                    kling.path("operation").asText(), Task.Kind.IMAGE_GENERATION), values);
+        }
+        return parameters;
+    }
+
+    private JsonNode singleOutputParameters(JsonNode parameters, boolean imageBatch) {
+        JsonNode copy = parameters.deepCopy();
+        // Only application-split image batches use this field. Preserve native/workflow controls.
+        // An explicit 1 also overrides a batch count inherited from capability defaults.
+        if (copy instanceof ObjectNode object && (imageBatch || object.has("generationCount"))) {
+            object.put("generationCount", 1);
+        }
+        return copy;
     }
 
     /** Adds one connection source without duplicating an already selected exact version. */

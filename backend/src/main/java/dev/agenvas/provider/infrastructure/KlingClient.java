@@ -29,7 +29,6 @@ import tools.jackson.databind.node.ObjectNode;
 public class KlingClient {
     public static final String ORIGIN = "https://api-singapore.klingai.com";
     public static final String BEIJING_ORIGIN = "https://api-beijing.klingai.com";
-    private static final Set<String> OFFICIAL_ORIGINS = Set.of(ORIGIN, BEIJING_ORIGIN);
     private static final String IMAGE_PATH = "/v1/images/generations";
     private static final Set<String> IMAGE_STATUSES = Set.of("submitted", "processing", "succeed", "failed");
     private static final Set<String> VIDEO_STATUSES = Set.of("submitted", "processing", "succeeded", "failed");
@@ -45,23 +44,17 @@ public class KlingClient {
 
     /** Runtime configuration cannot select this loopback override. */
     public KlingClient(ObjectMapper mapper, URI testOrigin) {
-        if (testOrigin != null && !("http".equals(testOrigin.getScheme())
-                && "127.0.0.1".equals(testOrigin.getHost()) && testOrigin.getPort() > 0
-                && testOrigin.getPort() <= 65535 && "".equals(testOrigin.getRawPath())
-                && testOrigin.getRawUserInfo() == null && testOrigin.getRawQuery() == null
-                && testOrigin.getRawFragment() == null))
-            throw new IllegalArgumentException("Invalid Kling test origin");
+        if (testOrigin != null) dev.agenvas.shared.security.ServiceEndpointPolicy.origin(testOrigin.toString());
         this.mapper = mapper;
         this.targetOrigin = testOrigin;
-        this.http = PinnedHttpClients.pinned(FixedCloudDns.checked(Dns.SYSTEM, testOrigin != null),
+        this.http = PinnedHttpClients.pinned(Dns.SYSTEM,
                 Duration.ofSeconds(10), Duration.ofSeconds(30), Duration.ofMinutes(2));
     }
 
     public static String validatedOrigin(String origin) {
         if (origin == null || origin.isBlank()) return ORIGIN;
-        String normalized = origin.trim().replaceAll("/+$", "");
-        if (!OFFICIAL_ORIGINS.contains(normalized)) throw KlingProtocol.invalid();
-        return normalized;
+        try { return dev.agenvas.shared.security.ServiceEndpointPolicy.origin(origin); }
+        catch (IllegalArgumentException invalid) { throw KlingProtocol.invalid(); }
     }
 
     public record Reference(String role, String base64) {

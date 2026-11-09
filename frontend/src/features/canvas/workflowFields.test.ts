@@ -8,6 +8,18 @@ const field: RunningHubField = {
 };
 
 describe("published workflow field rules", () => {
+  it("evaluates conditions and limits against combined prompt values without changing the local prompt", () => {
+    const definition: CreatorInputDefinition = { fields: [
+      { key: "prompt", label: "Prompt", type: "STRING", source: "PROMPT", required: true, advanced: false, maxLength: 6 },
+      { key: "conditional", label: "Conditional", type: "INTEGER", required: true, advanced: false,
+        enabledWhen: { field: "prompt", value: "Shared" } },
+    ] };
+    expect(workflowValidationErrors(definition, {}, "", null, [], () => "Shared")).toHaveLength(1);
+    expect(evaluateWorkflowFields(definition, {}, "", null, () => "Shared").activeFields.map((field) => field.key))
+      .toEqual(["prompt", "conditional"]);
+    expect(workflowValidationErrors(definition, {}, "", null, [], () => "Shared long")).toHaveLength(1);
+  });
+
   it("validates node-free provider fields using conditional defaults and typed duration choices", () => {
     const definition: CreatorInputDefinition = { fields: [
       { key: "prompt", label: "Prompt", type: "STRING", source: "PROMPT", required: true, advanced: false },

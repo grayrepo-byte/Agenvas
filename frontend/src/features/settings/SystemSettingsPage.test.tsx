@@ -27,6 +27,9 @@ describe("SystemSettingsPage", () => {
   it("loads system templates only in its tab and creates a typed administrator template", async () => {
     const reads = vi.fn(); const writes: unknown[] = [];
     server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/reference-catalog/sources", () => HttpResponse.json({ items: [] })),
+      http.get("/api/v1/settings/reference-catalog/cache", () => HttpResponse.json({ quotaBytes: 1000, usedBytes: 0, availableBytes: 1000, fileCount: 0, protectedBytes: 0, protectedFileCount: 0 })),
+      http.get("/api/v1/settings/reference-catalog/cache/jobs", () => HttpResponse.json({ items: [] })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ token: "synthetic", headerName: "X-CSRF-TOKEN" })),
       http.get("/api/v1/media-templates", ({ request }) => { reads(); expect(new URL(request.url).searchParams.get("scope")).toBe("SYSTEM"); return HttpResponse.json({ items: [] }); }),
       http.post("/api/v1/settings/media-templates", async ({ request }) => { const input = await request.json(); writes.push(input); return HttpResponse.json({
@@ -156,13 +159,16 @@ describe("SystemSettingsPage", () => {
   });
 
 });
-it("exposes local reference source configuration from system templates", async () => {
+it("keeps cache maintenance in system settings and opens a simple source chooser", async () => {
   server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
     http.get("/api/v1/media-templates", () => HttpResponse.json({ items: [] })),
     http.get("/api/v1/reference-catalog/sources", () => HttpResponse.json({ items: [] })),
     http.get("/api/v1/settings/reference-catalog/cache", () => HttpResponse.json({ quotaBytes: 1000, usedBytes: 0, availableBytes: 1000, fileCount: 0, protectedBytes: 0, protectedFileCount: 0 })),
     http.get("/api/v1/settings/reference-catalog/cache/jobs", () => HttpResponse.json({ items: [] })));
   render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/settings/system?tab=templates"]}><SystemSettingsPage /></MemoryRouter></QueryClientProvider>);
+  expect(await screen.findByRole("heading", { name: "本地图片缓存" })).toBeInTheDocument();
   const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "管理来源" }));
   expect(screen.getByRole("dialog", { name: "参考素材来源" })).toBeInTheDocument();
+  expect(screen.getAllByRole("combobox")).toHaveLength(1);
+  expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
 });

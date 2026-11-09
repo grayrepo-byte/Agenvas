@@ -15,7 +15,7 @@ public class ReferenceCatalogParser {
     private final ObjectMapper mapper;
     public ReferenceCatalogParser(ObjectMapper mapper) { this.mapper = mapper; }
     public Snapshot parse(Source source, String commit, byte[] data) {
-        if (data.length > MAX_METADATA_BYTES || !commit.matches("[a-f0-9]{40}")) throw invalid();
+        if (data.length > MAX_METADATA_BYTES || commit!=null && !commit.matches("[a-f0-9]{40}") || commit==null && source.format()!=Format.OPEN_POSE_COSTUME) throw invalid();
         try {
             JsonNode root = mapper.readTree(data);
             boolean upstream = source.format() == Format.OPEN_POSE_COSTUME;
@@ -51,10 +51,12 @@ public class ReferenceCatalogParser {
                     String angle = optional(variant,upstream ? "angle" : "view",80);
                     Map<String,String> label = upstream ? localized(variant.path("label")) : Map.of("en",text(variant,"label",160));
                     if (upstream) {
-                        String original = link(source,commit,text(variant,"original",2048));
+                        String originalValue=text(variant,"original",2048);
+                        String original = link(source,commit,originalValue);
                         // Validate supplied presentation links too, while never fetching or hotlinking them.
                         for (String field : List.of("thumbnail","image")) if (variant.has(field)) link(source,commit,text(variant,field,2048));
-                        parsed.add(new Variant(variantId,display(label),angle,angle,label,original,null,null,null,null));
+                        String file=!originalValue.contains(":")?path("public/"+path(originalValue)):null;
+                        parsed.add(new Variant(variantId,display(label),angle,angle,label,original,file,null,null,null));
                     } else {
                         String file = path(text(variant,"path",512)); String sha = text(variant,"sha256",64);
                         long bytes = variant.path("byteSize").asLong(-1); String type = text(variant,"contentType",80);
@@ -65,7 +67,7 @@ public class ReferenceCatalogParser {
                     }
                 }
                 String sourceLink = upstream ? text(item,"source",2048) : "";
-                String external = upstream && !sourceLink.equals("custom") ? link(source,commit,sourceLink) : githubLink(source,commit,source.manifestPath());
+                String external = upstream && !sourceLink.equals("custom") ? link(source,commit,sourceLink) : source.sourceType()==SourceType.OMILIC?ReferenceCatalogSiteClient.ORIGIN:githubLink(source,commit,source.manifestPath());
                 String collection = upstream && item.path("collection").asText().equals("custom") ? "custom" : "builtin";
                 if (upstream && !item.path("extended").isBoolean()) throw invalid();
                 entries.add(new Entry(id,kind,display(title),title,optional(item,"code",100),categoryId,category,
@@ -98,12 +100,13 @@ public class ReferenceCatalogParser {
         return List.copyOf(tags);
     }
     private static String link(Source source,String commit,String value) {
-        if (!value.contains(":")) return githubLink(source,commit,"public/"+path(value));
-        try { URI uri=URI.create(value); if(!"https".equals(uri.getScheme()) || uri.getHost()==null || uri.getUserInfo()!=null
-                || uri.getPort()!=-1 && uri.getPort()!=443 || uri.getHost().contains(":") || uri.getHost().matches("[0-9.]+")) throw invalid(); return uri.toASCIIString(); }
+        if (!value.contains(":")) return source.sourceType()==SourceType.OMILIC?ReferenceCatalogSiteClient.ORIGIN+path(value):rawLink(source,commit,"public/"+path(value));
+        try { URI uri=URI.create(value); if(!("https".equals(uri.getScheme()) || "http".equals(uri.getScheme())) || uri.getHost()==null || uri.getUserInfo()!=null
+                || uri.getPort()==0 || uri.getPort()>65535) throw invalid(); return uri.toASCIIString(); }
         catch(IllegalArgumentException failure){throw invalid();}
     }
     private static String githubLink(Source source,String commit,String path) {
-        return "https://github.com/"+source.owner()+"/"+source.repository()+"/blob/"+commit+"/"+path.replace(" ","%20");
+        return "https://github.com/"+source.owner()+"/"+source.repository()+"/blob/"+(commit==null?source.ref():commit)+"/"+path.replace(" ","%20");
     }
+    private static String rawLink(Source source,String commit,String path){return "https://raw.githubusercontent.com/"+source.owner()+"/"+source.repository()+"/"+(commit==null?source.ref():commit)+"/"+path.replace(" ","%20");}
 }

@@ -105,10 +105,7 @@ class SeedanceVideoReferencePostgresIT {
                                 .port(STORE.getAddress().getPort()).build();
                         return chain.proceed(chain.request().newBuilder().url(url).build());
                     }).build();
-            return new ObjectStorageClient(settings, clock, client) {
-                // Fake HTTP server is loopback; production signed input URLs require public DNS.
-                @Override public void requirePublic(StorageProfile profile) {}
-            };
+            return new ObjectStorageClient(settings, clock, client);
         }
     }
     @Test void localRelayAndCloudDirectSigningUseFrozenVersionsWithoutLeakingOrResubmitting() throws Exception {
@@ -154,7 +151,7 @@ class SeedanceVideoReferencePostgresIT {
                 libraryDraft.version());
         assertThat(linked.draft().mediaInputs()).hasSize(2).allSatisfy(input ->
                 assertThat(input.role()).isEqualTo(MediaDraft.InputRole.VIDEO_REFERENCE));
-        var disconnected = connections.disconnect(owner.userId(), project, linked.connection().id(), linked.draft().version());
+        var disconnected = connections.disconnect(owner.userId(), project, linked.connection().id(), linked.connection().version(), linked.draft().version());
         assertThat(disconnected.draft().mediaInputs()).hasSize(1);
         assertThat(PUTS).hasValue(0);
         assertThat(CREATES).hasValue(0);

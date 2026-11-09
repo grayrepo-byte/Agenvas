@@ -109,7 +109,6 @@ body:has(.app-shell--settings) .comfy-capability-dialog .ui-dialog-body { paddin
 /* Default choices are visible before the catalog, matching the creator's mental model. */
 .app-shell--settings .media-settings-page { gap: 18px; }
 .app-shell--settings:has(.media-settings-page) .app-page-header { padding: 18px 0; margin-bottom: 0; }
-.app-shell--settings:has(.media-settings-page) .app-page-eyebrow { display: none; }
 .app-shell--settings .media-defaults-section { padding: 0; border: 0; background: transparent; box-shadow: none; }
 .app-shell--settings .media-defaults-section > .ui-panel-header { margin-bottom: 10px; }
 .media-defaults-section > .ui-panel-header > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }

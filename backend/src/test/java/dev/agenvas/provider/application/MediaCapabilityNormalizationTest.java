@@ -88,6 +88,27 @@ class MediaCapabilityNormalizationTest {
         assertThat(result.toString()).doesNotContain("PRIVATE_ORIGIN", "PRIVATE_KEY", "PRIVATE_GRAPH");
     }
 
+    @Test void completePlanningCatalogKeepsEveryCapabilityWithStableDefaultFirstOrdering() {
+        var catalog = org.mockito.Mockito.spy(service);
+        var candidates = java.util.stream.IntStream.rangeClosed(1, 41).mapToObj(index -> {
+            var binding = new MediaCapabilityBinding(CONNECTION_ID, 1, new UUID(0, index), 1, "MOCK_IMAGE", "synthetic-hash");
+            return new MediaCapabilityService.Candidate(binding, "Synthetic connection", "Capability " + index,
+                    Task.Kind.IMAGE_GENERATION, 0, 0, false, mapper.createObjectNode());
+        }).toList();
+        org.mockito.Mockito.doReturn(candidates.reversed()).when(catalog).publishedCandidates();
+        org.mockito.Mockito.doReturn(null).when(catalog).defaultCapabilityId(any());
+        org.mockito.Mockito.doReturn(new UUID(0, 41)).when(catalog).defaultCapabilityId(Task.Kind.IMAGE_GENERATION);
+        org.mockito.Mockito.doReturn(new MediaAdapterRegistry(List.of()).declaration("MOCK_IMAGE"))
+                .when(catalog).inputPolicy(any(MediaCapabilityBinding.class));
+        org.mockito.Mockito.doReturn(null).when(catalog).runningHubDefinition(any(MediaCapabilityBinding.class));
+        JsonNode result = catalog.planningCatalog();
+        assertThat(result).hasSize(41);
+        assertThat(result.get(0).path("isDefault").asBoolean()).isTrue();
+        assertThat(result.get(1).path("capabilityId").asText()).isEqualTo(new UUID(0, 1).toString());
+        assertThat(result.get(40).path("capabilityId").asText()).isEqualTo(new UUID(0, 40).toString());
+        assertThat(catalog.planningSummary()).hasSize(40);
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"WAN_IMAGE", "WAN_VIDEO", "ARK_SEEDREAM_IMAGE", "GOOGLE_VEO",
             "GOOGLE_OMNI_VIDEO", "KLING_IMAGE", "KLING_VIDEO"})

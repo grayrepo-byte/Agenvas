@@ -83,7 +83,7 @@ public class CanvasConnectionRecord extends UpdatableRecordImpl<CanvasConnection
 
     /**
      * Setter for <code>public.canvas_connection.relation_type</code>.
-     * MEDIA_INPUT 是精确媒体输入，MEDIA_DERIVATION 是可移除来源提示
+     * MEDIA_INPUT 固定媒体版本；MEDIA_DERIVATION 为来源提示；PROMPT_INPUT 在生成受理时读取文本节点已保存正文
      */
     public void setRelationType(String value) {
         set(4, value);
@@ -91,7 +91,7 @@ public class CanvasConnectionRecord extends UpdatableRecordImpl<CanvasConnection
 
     /**
      * Getter for <code>public.canvas_connection.relation_type</code>.
-     * MEDIA_INPUT 是精确媒体输入，MEDIA_DERIVATION 是可移除来源提示
+     * MEDIA_INPUT 固定媒体版本；MEDIA_DERIVATION 为来源提示；PROMPT_INPUT 在生成受理时读取文本节点已保存正文
      */
     public String getRelationType() {
         return (String) get(4);
@@ -100,7 +100,7 @@ public class CanvasConnectionRecord extends UpdatableRecordImpl<CanvasConnection
     /**
      * Setter for
      * <code>public.canvas_connection.source_artifact_version_id</code>.
-     * 连线固定的来源版本
+     * 建立连线时的来源版本；PROMPT_INPUT 仅作建连审计，执行时冻结文本节点当时的正文版本
      */
     public void setSourceArtifactVersionId(UUID value) {
         set(5, value);
@@ -109,7 +109,7 @@ public class CanvasConnectionRecord extends UpdatableRecordImpl<CanvasConnection
     /**
      * Getter for
      * <code>public.canvas_connection.source_artifact_version_id</code>.
-     * 连线固定的来源版本
+     * 建立连线时的来源版本；PROMPT_INPUT 仅作建连审计，执行时冻结文本节点当时的正文版本
      */
     public UUID getSourceArtifactVersionId() {
         return (UUID) get(5);

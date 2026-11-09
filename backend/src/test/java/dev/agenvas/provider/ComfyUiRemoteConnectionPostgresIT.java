@@ -96,8 +96,8 @@ class ComfyUiRemoteConnectionPostgresIT {
         assertThat(decrypt(id, 1)).isEqualTo(endpoint);
         request.put("origin", "https://169.254.169.254/proxy/synthetic-path-key");
         mvc.perform(post("/api/v1/settings/media-connections").with(auth).with(csrf())
-                .header("Idempotency-Key", "blocked-comfy").contentType("application/json").content(request.toString()))
-                .andExpect(status().isUnprocessableEntity());
+                .header("Idempotency-Key", "special-address-comfy").contentType("application/json").content(request.toString()))
+                .andExpect(status().isOk());
     }
 
     private String decrypt(UUID id, int version) {

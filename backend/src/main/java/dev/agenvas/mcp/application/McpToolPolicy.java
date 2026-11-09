@@ -39,6 +39,8 @@ public class McpToolPolicy {
         if ("read_canvas".equals(name) && arguments.path("includeDrafts").asBoolean()
                 && arguments.path("limit").asInt(20) > 6) throw invalid();
         if ("update_media_draft".equals(name) && arguments.path("patch").isEmpty()) throw invalid();
+        if ("read_artifacts".equals(name) && (arguments.has("textOffset") || arguments.has("textLimit"))
+                && arguments.path("versionIds").size() != 1) throw invalid();
         if ("manage_canvas_node".equals(name)) {
             List<String> required = switch (arguments.path("action").asText()) {
                 case "RENAME" -> List.of("title"); case "MOVE" -> List.of("x", "y");

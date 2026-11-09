@@ -1,6 +1,5 @@
 package dev.agenvas.shared.http;
 
-import dev.agenvas.shared.security.EndpointAddressRules;
 import java.net.*;
 import java.time.Duration;
 import java.util.*;
@@ -27,41 +26,39 @@ public final class PublicDownloadHttpClients {
                 resolverUrl=null;bootstrap=List.of();
             }else{
                 URI uri=URI.create(properties.dohUrl());
-                if(!"https".equals(uri.getScheme()) || uri.getHost()==null || uri.getHost().contains(":") || uri.getHost().matches("[0-9.]+") || uri.getUserInfo()!=null || uri.getQuery()!=null || uri.getFragment()!=null
+                if(!"https".equals(uri.getScheme()) || uri.getHost()==null || uri.getUserInfo()!=null || uri.getQuery()!=null || uri.getFragment()!=null
                         || uri.getPort()==0 || uri.getPort()>65535 || properties.dohUrl().length()>1024
                         || properties.dohBootstrapAddresses().isEmpty() || properties.dohBootstrapAddresses().size()>8)throw new IllegalArgumentException();
                 resolverUrl=HttpUrl.get(uri);
                 var addresses=new ArrayList<InetAddress>();
                 for(String literal:properties.dohBootstrapAddresses()){
                     var address=PublicDownloadDoH.literal(literal);
-                    if(!EndpointAddressRules.allowsPublicDownload(address))throw new IllegalArgumentException();addresses.add(address);
+                    addresses.add(address);
                 }
                 bootstrap=List.copyOf(addresses);
             }
         }catch(Exception failure){throw new IllegalArgumentException("Invalid public-download deployment configuration");}
     }
-    public OkHttpClient create(Set<String> hosts,Duration connect,Duration read,Duration call){
-        Set<String> allowed=Set.copyOf(hosts);
+    public OkHttpClient create(Duration connect,Duration read,Duration call){
         SocketFactory sockets=properties.proxyType()==PublicDownloadProperties.ProxyType.DIRECT?null:new PublicDownloadSocketFactory(properties);
         Dns resolver=Dns.SYSTEM;
         if(resolverUrl!=null) {
             var builder=PinnedHttpClients.pinnedUncaptured(host->{
-                if(!host.equals(resolverUrl.host()))throw PublicDownloadException.dns(PublicDownloadException.Reason.DNS_BLOCKED);
+                if(!host.equals(resolverUrl.host()))throw PublicDownloadException.dns(PublicDownloadException.Reason.INVALID_REQUEST);
                 return bootstrap;
             },connect,read,call).newBuilder();
             builder.callTimeout(call.isZero() || call.compareTo(Duration.ofSeconds(10))>0?Duration.ofSeconds(10):call);
             if(sockets!=null)builder.socketFactory(sockets);
             resolver=new PublicDownloadDoH(builder.build(),resolverUrl);
         }
-        var builder=PinnedHttpClients.pinnedUncaptured(new PublicDownloadDns(resolver,allowed),connect,read,call).newBuilder();
+        var builder=PinnedHttpClients.pinnedUncaptured(new PublicDownloadDns(resolver),connect,read,call).newBuilder();
         if(sockets!=null)builder.socketFactory(sockets);
-        // Literal origins bypass OkHttp DNS; reject them here. GETs cannot carry ambient credentials.
+        // Catalogue GETs cannot carry ambient credentials.
         builder.addInterceptor(chain->{
-            var request=chain.request();String host=request.url().host();
-            if(!request.method().equals("GET") || host.contains(":") || host.matches("[0-9.]+")
-                    || !allowed.isEmpty() && !allowed.contains(host) || !request.url().username().isEmpty() || !request.url().password().isEmpty()
+            var request=chain.request();
+            if(!request.method().equals("GET") || !request.url().username().isEmpty() || !request.url().password().isEmpty()
                     || request.header("Authorization")!=null || request.header("Proxy-Authorization")!=null || request.header("Cookie")!=null)
-                throw new PublicDownloadException(PublicDownloadException.Reason.DNS_BLOCKED);
+                throw new PublicDownloadException(PublicDownloadException.Reason.INVALID_REQUEST);
             return chain.proceed(request);
         });
         return builder.build();

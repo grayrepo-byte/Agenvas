@@ -65,11 +65,10 @@ export function SystemSettingsPage() {
   const currentUser = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser, retry: false });
   const choose = (tab: SettingsTab) => { const next = new URLSearchParams(params); next.set("tab", tab); setParams(next); };
   if (currentUser.error instanceof ApiError && currentUser.error.status === HTTP_STATUS.UNAUTHORIZED) return <Navigate to="/login" replace />;
-  return <PageShell title={t("common.systemSettings")} description={t("settings.general.description") }>
+  return <PageShell title={t("common.systemSettings")}>
     {currentUser.isError ? <Notice tone="danger"><p>{t("settings.shared.sessionHint")}</p><Button variant="outline" type="button" disabled={currentUser.isFetching} onClick={() => { void currentUser.refetch(); }}>{t("common.retry")}</Button></Notice> : null}
     <Tabs className="system-settings-workspace" orientation="vertical" value={selected} onValueChange={(value) => { const tab = TABS.find((item) => item === value); if (tab) choose(tab); }}>
     <div className="system-settings-navigation">
-      <div className="system-settings-navigation-intro"><h2>{t("settings.general.categories")}</h2><p>{t("settings.general.navigationHint")}</p></div>
       <TabsList className="system-settings-tabs" variant="navigation" size="sm" aria-label={t("settings.general.categories")}>
         {TABS.map((tab) => {
           const CategoryIcon = TAB_ICONS[tab];

@@ -42,7 +42,8 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Admin registered public GitHub metadata sources; manual sync only
+ * Administrator-selected catalog delivery sources with cached immutable JSON
+ * snapshots
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class ReferenceCatalogSource extends TableImpl<ReferenceCatalogSourceRecord> {
@@ -172,12 +173,19 @@ public class ReferenceCatalogSource extends TableImpl<ReferenceCatalogSourceReco
      */
     public final TableField<ReferenceCatalogSourceRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "Creation time");
 
+    /**
+     * The column <code>public.reference_catalog_source.source_type</code>.
+     * Catalog and image delivery: Omilic website or GitHub repository; existing
+     * sources retain GitHub
+     */
+    public final TableField<ReferenceCatalogSourceRecord, String> SOURCE_TYPE = createField(DSL.name("source_type"), SQLDataType.VARCHAR(20).nullable(false).defaultValue(DSL.field(DSL.raw("'GITHUB'::character varying"), SQLDataType.VARCHAR)), this, "Catalog and image delivery: Omilic website or GitHub repository; existing sources retain GitHub");
+
     private ReferenceCatalogSource(Name alias, Table<ReferenceCatalogSourceRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private ReferenceCatalogSource(Name alias, Table<ReferenceCatalogSourceRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Admin registered public GitHub metadata sources; manual sync only"), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("Administrator-selected catalog delivery sources with cached immutable JSON snapshots"), TableOptions.table(), where);
     }
 
     /**
@@ -289,6 +297,7 @@ public class ReferenceCatalogSource extends TableImpl<ReferenceCatalogSourceReco
     public List<Check<ReferenceCatalogSourceRecord>> getChecks() {
         return Arrays.asList(
             Internal.createCheck(this, DSL.name("reference_catalog_source_format"), "(((format)::text = ANY ((ARRAY['OPEN_POSE_COSTUME'::character varying, 'AGENVAS_REFERENCE_PACK'::character varying])::text[])))", true),
+            Internal.createCheck(this, DSL.name("reference_catalog_source_type"), "(((source_type)::text = ANY ((ARRAY['OMILIC'::character varying, 'GITHUB'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("reference_catalog_source_version"), "((version >= 0))", true)
         );
     }

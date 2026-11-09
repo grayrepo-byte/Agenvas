@@ -1,4 +1,4 @@
-import { CaretRight,Cube,FilmStrip,FolderSimple,GearSix,HardDrives,ListMagnifyingGlass,PlugsConnected,Robot,ShieldCheck,SidebarSimple,SignOut,Sparkle,TerminalWindow,UserCircle } from "@/shared/ui/icons";
+import { CaretRight,Cube,FilmStrip,FolderSimple,GearSix,HardDrives,ListMagnifyingGlass,PlugsConnected,Robot,SidebarSimple,SignOut,Sparkle,TerminalWindow,UserCircle } from "@/shared/ui/icons";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { useEffect,useRef,type ReactNode } from "react";
 import { useCanvasStore } from "../../features/canvas/canvasStore";
@@ -113,15 +113,11 @@ export function PageShell({ title, description, actions, children }: {
         </Button></div>
     </aside>
     <main className="app-page-main" id="page-content" tabIndex={-1}>
-      {isStudio ? <div className="settings-workspace-topbar">
-        <div className="settings-breadcrumb"><PageIcon size={16} aria-hidden /><span>{t(isSettings ? "ui.pageShell.settings" : "ui.pageShell.workspace")}</span><CaretRight size={12} aria-hidden /><span>{title}</span></div>
-        <span className="settings-workspace-trust"><ShieldCheck size={15} aria-hidden />{t("settings.workspace.selfHosted")}</span>
-      </div> : null}
       <header className="app-page-header">
         {isStudio ? <div className="settings-page-heading"><div className="settings-page-icon"><PageIcon size={27} weight="duotone" aria-hidden /></div><div>
-          <p className="app-page-eyebrow">{t(isSettings ? "settings.workspace.eyebrow" : "ui.pageShell.workspace")}</p><h1>{title}</h1>
+          <h1>{title}</h1>
           {description ? <p className="app-page-description">{description}</p> : null}
-        </div></div> : <div><p className="app-page-eyebrow">Agenvas / {t("ui.pageShell.workspace")}</p>
+        </div></div> : <div>
           <h1>{title}</h1>{description ? <p className="app-page-description">{description}</p> : null}</div>}
         {actions ? <div className="ui-form-actions">{actions}</div> : null}
       </header>

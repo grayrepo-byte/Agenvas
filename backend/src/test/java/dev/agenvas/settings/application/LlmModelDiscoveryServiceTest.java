@@ -16,14 +16,14 @@ class LlmModelDiscoveryServiceTest {
     private final LlmProviderConfigRepository repository = mock(LlmProviderConfigRepository.class);
     private final CredentialCipher cipher = mock(CredentialCipher.class);
     private final LlmModelDiscoveryService service = new LlmModelDiscoveryService(client, repository, cipher,
-            new LlmEndpointPolicy(new LlmEndpointProperties(false)), Clock.fixed(Instant.EPOCH, ZoneOffset.UTC));
+            new LlmEndpointPolicy(), Clock.fixed(Instant.EPOCH, ZoneOffset.UTC));
     private final String endpoint = "https://10.0.0.5/v1";
 
     @Test void expiredPreviewCannotBeRelabelledAsFreshAutomaticMetadata() {
         var clock = mock(Clock.class);
         when(clock.instant()).thenReturn(Instant.EPOCH);
         var expiring = new LlmModelDiscoveryService(client, repository, cipher,
-                new LlmEndpointPolicy(new LlmEndpointProperties(false)), clock);
+                new LlmEndpointPolicy(), clock);
         when(client.fetch(ModelCatalog.Provider.OPENROUTER, endpoint, "synthetic-key", "model"))
                 .thenReturn(new ModelCatalog(List.of(new ModelCatalog.Model("model", 32000, null, 4096, null, null, null)), false));
         var preview = expiring.preview(new LlmModelDiscoveryService.PreviewRequest(ModelCatalog.Provider.OPENROUTER,

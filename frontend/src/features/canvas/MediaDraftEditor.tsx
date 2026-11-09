@@ -11,12 +11,12 @@ X
 } from "@/shared/ui/icons";
 import { useMutation,useQueries,useQuery,useQueryClient } from "@tanstack/react-query";
 import type { CSSProperties,FormEvent } from "react";
-import { lazy, Suspense, useCallback, useEffect,useId,useLayoutEffect,useRef,useState } from "react";
+import { lazy, Suspense, useCallback, useEffect,useId,useLayoutEffect,useMemo,useRef,useState } from "react";
 import {
 HTTP_STATUS,ApiError,assetContentUrl,cancelQueuedDirectMediaTask,createArtifact,getDirectMediaQueueStatus,
 assetThumbnailUrl,
 getMediaSettings,getAssetMetadata,
-listArtifactVersions,listArtifacts,listCanvasItems,listDirectMediaTasks,
+listArtifactVersions,listArtifacts,listCanvasItems,listCanvasConnections,listDirectMediaTasks,
 removeMediaDraftMediaInput,
 replaceMediaDraftInputs,
 runMediaDraft,saveMediaDraft,
@@ -59,11 +59,10 @@ import { WorkflowMediaInputs, WorkflowParametersDialog } from "./WorkflowDraftCo
 import { MediaReferenceSourceMenu } from "./MediaReferenceSourceMenu";
 import { activeWorkflowMediaFields, workflowDefinition, workflowDraftValues } from "./workflowDraft";
 import { EditorFeedbackRow } from "./EditorFeedbackRow";
-import { UnknownTaskRetryPanel } from "./UnknownTaskRetryPanel";
 import { VoiceLibrary } from "./VoiceLibrary";
 import { readContentText } from "./artifactContent";
 import { fieldsFromMediaDraft, useMediaDraftSession, useMediaDraftSessionLifecycle } from "./useMediaDraftSession";
-import { MEDIA_TASK_REFRESH_INTERVAL_MS,latestMediaTask,occupiesMediaCard,isMediaTaskRunning,isVideoCompositionTask,isAudioTrimTask } from "./mediaTaskState";
+import { MEDIA_TASK_REFRESH_INTERVAL_MS,latestMediaTask,occupiesMediaCard,canRegenerateMediaTask,isMediaTaskRunning,isVideoCompositionTask,isAudioTrimTask } from "./mediaTaskState";
 import { taskErrorDetail } from "./taskErrorMessages";
 import { getVoiceDisplayName, VOICES } from "./voiceCatalog";
 import { ASPECT_RATIO_OPTIONS, VIDEO_ASPECT_RATIO_OPTIONS, RESOLUTION_OPTIONS, QUALITY_OPTIONS,
@@ -78,6 +77,8 @@ import { CharacterBindingsDialog } from "../characters/CharacterBindingsDialog";
 import { encodeOptimizationPrompt, decodeOptimizationPrompt } from "./videoPromptOptimization";
 import { VideoPromptOptimizationDialog } from "./VideoPromptOptimizationDialog";
 import { appendVideoPrompt } from "./videoPromptAppend";
+import { PromptInputPreview } from "./PromptInputPreview";
+import { composePromptInputs, projectPromptInputs } from "./canvasPromptInputs";
 
 const VideoPromptPresetsDialog = lazy(() => import("./VideoPromptPresetsDialog")
   .then((module) => ({ default: module.VideoPromptPresetsDialog })));
@@ -174,7 +175,7 @@ function MediaReferenceThumbnail({ index, color, thumbnailUrl, accessibleLabel, 
     {thumbnailUrl ? <img src={thumbnailUrl} alt="" draggable={false} />
       : audio ? <MusicNotes className="media-draft-reference-fallback" size={25} aria-hidden="true" /> : <ImageSquare className="media-draft-reference-fallback" size={25} aria-hidden="true" />}
     <span className="media-draft-reference-index" aria-hidden="true">{index + 1}</span>
-    <Button variant="ghost" size="icon-xs" className="media-draft-reference-remove" type="button"
+    <Button variant="media-overlay" data-tone="danger" size="icon-sm" className="media-draft-reference-remove" type="button"
       aria-label={t("media.editor.removeNamedInput", { "0": accessibleLabel })} disabled={busy}
       title={connected ? t("media.editor.removeInputAndRelations") : t("media.editor.removeInput")}
       onClick={onRemove}><X size={13} /></Button>
@@ -285,11 +286,21 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   useLayoutEffect(() => { chosenCapabilityRef.current = chosenCapability; }, [chosenCapability]);
   const catalogApplication = useCatalogReferenceApplication({ projectId: artifact.projectId, canvasItemId, kind: artifact.kind,
     capability: chosenCapability, slotKey: workflowPickerFieldKey, colors: INPUT_COLORS, session, onApplied: () => setCatalogOpen(false) });
+  const promptConnections = useQuery({ queryKey: ["canvas-connections", artifact.projectId],
+    queryFn: () => listCanvasConnections(artifact.projectId) });
+  const hasPromptConnections = promptConnections.data?.items.some((edge) =>
+    edge.relationType === "PROMPT_INPUT" && edge.targetCanvasItemId === canvasItemId) ?? false;
   const canvas = useQuery({
     queryKey: ["canvas", artifact.projectId],
     queryFn: () => listCanvasItems(artifact.projectId),
-    enabled: popover === "canvasReferences" || Boolean(workflow),
+    enabled: popover === "canvasReferences" || Boolean(workflow) || hasPromptConnections,
   });
+
+  const linkedPromptInputs = useMemo(() => projectPromptInputs(canvas.data?.items ?? [], promptConnections.data?.items ?? [], canvasItemId),
+    [canvas.data?.items, promptConnections.data?.items, canvasItemId]);
+  const promptInputsLoading = promptConnections.isPending || hasPromptConnections && canvas.isPending;
+  const promptInputsError = promptConnections.error || hasPromptConnections && (canvas.error || linkedPromptInputs === null);
+  const composeLinkedPrompt = useCallback((local: string) => composePromptInputs(linkedPromptInputs ?? [], local), [linkedPromptInputs]);
 
   useEffect(() => {
     if (popover) setReferenceSourcesOpen(false);
@@ -454,8 +465,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       ]);
     },
   });
-  // Card-scoped history includes approved Agent work. Unknown outcomes keep their
-  // explicit retry controls; active requests lock edits through local archival.
+  // Card-scoped history includes approved Agent work. Active requests lock edits
+  // through local archival; unresolved direct requests allow an explicit new generation.
   const editorReadOnly = !isAudio && (run.isPending || !directTasks.isSuccess
     || Boolean(directTasks.data?.some(isMediaTaskRunning)));
   useEffect(() => {
@@ -565,9 +576,9 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     const promptField = workflow?.fields.find((field) => field.source === "PROMPT");
     const promptAvailable = !workflow || Boolean(fields && promptField
       && evaluateWorkflowFields(workflow, workflowDraftValues(chosenCapability, fields), fields.prompt,
-        mediaDraftDuration(fields, chosenCapability, workflow)).activeFields.includes(promptField));
+        mediaDraftDuration(fields, chosenCapability, workflow), composeLinkedPrompt).activeFields.includes(promptField));
     if (artifact.kind !== "VIDEO" || !fields || !promptAvailable) setCameraPresetsOpen(false);
-  }, [artifact.kind, cameraPresetsOpen, chosenCapability, fields, workflow]);
+  }, [artifact.kind, cameraPresetsOpen, chosenCapability, fields, workflow, composeLinkedPrompt]);
 
   if (!fields) return <div className="media-draft-editor media-draft-initial" aria-label={t("media.editor.title")}>
     {draft.error ? <div role="alert">{t("media.editor.draftFailed", { "0": draft.error.message })}<Button variant="ghost" className="media-draft-text-action" disabled={draft.isFetching}
@@ -614,15 +625,16 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   const selectedVoice = VOICES.find((voice) => voice.id === audioSpeaker);
   const audioMixValid = imageCount === 0 || audioCount === 0 && !audioSpeaker;
   const withinCapacity = fields.mediaInputs.length <= MAX_MEDIA_INPUTS && imageCount <= imageCapacity && audioCount <= audioCapacity && videoCount <= videoCapacity;
+  const combinedPrompt = composeLinkedPrompt(fields.prompt);
   const semanticInputsValid = isAudio ? withinCapacity && audioMixValid
-      && audioCount + (audioSpeaker ? 1 : 0) <= audioCapacity && fields.prompt.length <= MAX_AUDIO_PROMPT_LENGTH
+      && audioCount + (audioSpeaker ? 1 : 0) <= audioCapacity && Array.from(combinedPrompt).length <= MAX_AUDIO_PROMPT_LENGTH
     : artifact.kind === "IMAGE" ? withinCapacity && audioCount === 0 && videoCount === 0
     : effectiveMode === "TEXT" ? fields.mediaInputs.length === 0
       : effectiveMode === "START_END" ? Boolean(startFrame) && withinCapacity && audioCount === 0 && videoCount === 0
         && (chosenCapability?.supportsEndFrame || !endFrame)
       : effectiveMode === "GENERAL_REFERENCE" ? fields.mediaInputs.length > 0 && withinCapacity
         && (chosenCapability?.adapterId !== "ARK_SEEDANCE_2_I2V" || imageCount + videoCount > 0) : false;
-  const occupied = latestTask ? occupiesMediaCard(latestTask) : false;
+  const occupied = latestTask ? occupiesMediaCard(latestTask) && !canRegenerateMediaTask(latestTask) : false;
   const duration = mediaDraftDuration(fields, chosenCapability, workflow);
   const validDuration = duration != null && Number.isInteger(duration)
     && duration >= Math.max(MIN_VIDEO_SECONDS, chosenCapability?.minimumSeconds ?? MIN_VIDEO_SECONDS)
@@ -649,7 +661,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   const autodlInputsValid = !autodlWorkflow || imageCount >= autodlWorkflow.minimumImages
     && audioCount >= autodlWorkflow.minimumAudios
     && (autodlWorkflow.mode !== "START_END" || Boolean(endFrame))
-    && Array.from(fields.prompt).length <= autodlWorkflow.promptLimit;
+    && Array.from(combinedPrompt).length <= autodlWorkflow.promptLimit;
   const autodlRatioValid = !autodlWorkflow || autoDlRatioSupported(autodlWorkflow, autodlTier, videoParameters.aspectRatio);
   const videoModeSupported = artifact.kind !== "VIDEO" || effectiveMode !== null
     && (chosenCapability?.supportedVideoInputModes.includes(effectiveMode) ?? false);
@@ -664,13 +676,20 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   // Motion may trim its reference clip, so archived input duration only gives an upper estimate.
   const motionDurationUpperBound = chosenCapability?.settings.operation === "MOTION_CONTROL"
     && estimatePrice?.unit === "SECOND" && estimateDuration !== null && estimatedCost !== t("media.pricing.unknown");
-  const dynamicErrors = workflow ? workflowValidationErrors(workflow, workflowValues, fields.prompt, duration, imageChoices) : [];
-  const dynamicUsedVersions = workflow ? workflowUsedVersions(workflow, workflowValues, fields.prompt, duration) : new Set<string>();
-  const promptField = workflow?.fields.find((field) => field.source === "PROMPT");
-  const evaluatedWorkflow = workflow ? evaluateWorkflowFields(workflow, workflowValues, fields.prompt, duration) : undefined;
+  const dynamicErrors = workflow ? workflowValidationErrors(workflow, workflowValues, fields.prompt, duration, imageChoices, composeLinkedPrompt) : [];
+  const dynamicUsedVersions = workflow ? workflowUsedVersions(workflow, workflowValues, fields.prompt, duration, composeLinkedPrompt) : new Set<string>();
+  const evaluatedWorkflow = workflow ? evaluateWorkflowFields(workflow, workflowValues, fields.prompt, duration, composeLinkedPrompt) : undefined;
+  const promptField = workflow?.fields.find((field) => field.source === "PROMPT" && evaluatedWorkflow?.activeFields.includes(field))
+    ?? workflow?.fields.find((field) => field.source === "PROMPT");
   const promptEnabled = !workflow || Boolean(promptField && evaluatedWorkflow?.activeFields.includes(promptField));
-  const promptValue = promptField ? evaluatedWorkflow?.effectiveValues[promptField.key] : fields.prompt;
+  const promptValue = promptField ? workflowFieldValue(promptField, workflowValues, fields.prompt, duration) : fields.prompt;
   const displayedPrompt = promptEnabled && typeof promptValue === "string" ? promptValue : fields.prompt;
+  let previewMentionIndex = 0;
+  const localPromptPreview = displayedPrompt.replace(/\uFFFC/g, () => {
+    const mention = fields.mentions[previewMentionIndex++];
+    const reference = promptReferences.find((candidate) => candidate.versionId === mention?.versionId && candidate.role === mention.role);
+    return reference ? `@${reference.label}` : "";
+  });
   const cameraPresetsBusy = commitAssetReferences.isPending || removeConnectedInput.isPending
     || libraryBusy || templateBusy || characterOpen || characterBusy || uploading || workflowUploading;
 
@@ -679,10 +698,11 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     if (!latest || session.isReadOnly() || cameraPresetsBusy) return false;
     const currentPromptField = workflow?.fields.find((field) => field.source === "PROMPT");
     const evaluation = workflow ? evaluateWorkflowFields(workflow, workflowDraftValues(chosenCapability, latest),
-      latest.prompt, mediaDraftDuration(latest, chosenCapability, workflow)) : undefined;
+      latest.prompt, mediaDraftDuration(latest, chosenCapability, workflow), composeLinkedPrompt) : undefined;
     if (workflow && (!currentPromptField || !evaluation?.activeFields.includes(currentPromptField))) return false;
     // An untouched mapped default is visible in the editor and must survive appending a preset.
-    const effectivePrompt = currentPromptField ? evaluation?.effectiveValues[currentPromptField.key] : latest.prompt;
+    const effectivePrompt = currentPromptField ? workflowFieldValue(currentPromptField, workflowDraftValues(chosenCapability, latest),
+      latest.prompt, mediaDraftDuration(latest, chosenCapability, workflow)) : latest.prompt;
     const nextPrompt = appendVideoPrompt(typeof effectivePrompt === "string" ? effectivePrompt : latest.prompt, presetPrompt);
     if (nextPrompt.length > (currentPromptField?.maxLength ?? MAX_PROMPT_LENGTH)) return false;
     edit({ prompt: nextPrompt });
@@ -698,12 +718,12 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     validationMessages.push(...dynamicErrors);
     if (fields.mediaInputs.length > INPUT_COLORS.length || fields.mediaInputs.some((input) => !dynamicUsedVersions.has(input.versionId))) validationMessages.push(t("media.editor.unassignedSlots"));
   }
-  if (nativeInputs && chosenCapability) validationMessages.push(...nativeInputErrors(chosenCapability, workflowValues, fields.prompt, duration));
+  if (nativeInputs && chosenCapability) validationMessages.push(...nativeInputErrors(chosenCapability, workflowValues, combinedPrompt, duration));
   if (declaredNativeInputs && !withinCapacity) validationMessages.push(nativeInputs
     ? t("media.native.referenceLimits", { "0": imageCapacity, "1": videoCapacity, "2": audioCapacity })
     : t("media.creator.referenceLimits", { "0": imageCapacity, "1": videoCapacity }));
   if (!fullyDeclaredInputs) {
-    if (promptEnabled && !fields.prompt.trim()) validationMessages.push(t("media.editor.promptRequired"));
+    if (promptEnabled && !combinedPrompt.trim()) validationMessages.push(t("media.editor.promptRequired"));
     if (artifact.kind === "IMAGE" && !semanticInputsValid) validationMessages.push(t("media.editor.referenceLimits", { "0": imageCapacity, "1": audioCapacity }));
     if (!imageParametersSupported) validationMessages.push(t("media.editor.imageParametersUnsupported"));
     if (artifact.kind === "VIDEO" && !videoModeSupported) validationMessages.push(t("media.editor.unsupportedModeHint", { "0": VIDEO_MODE_OPTIONS.find((option) => option.value === effectiveMode)?.label }));
@@ -714,13 +734,18 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     if (artifact.kind === "VIDEO" && !validDuration) validationMessages.push(t("media.editor.durationValidation"));
     if (artifact.kind === "VIDEO" && !semanticInputsValid && !workflow) validationMessages.push(t("media.editor.invalidVideoInputs"));
   }
+  if (hasPromptConnections && !promptEnabled) validationMessages.push(t("media.promptInputs.unsupported"));
+  if (hasPromptConnections && isAudio && !fullyDeclaredInputs && Array.from(combinedPrompt).length > MAX_AUDIO_PROMPT_LENGTH)
+    validationMessages.push(t("media.promptInputs.tooLong", { "0": MAX_AUDIO_PROMPT_LENGTH }));
+  if (hasPromptConnections && combinedPrompt.length > MAX_PROMPT_LENGTH) validationMessages.push(t("media.promptInputs.tooLong", { "0": MAX_PROMPT_LENGTH }));
+  if (promptInputsError) validationMessages.push(t("media.promptInputs.failed"));
   if (fields.mediaInputs.length > 0 && !historyPending && (!resources.isSuccess || !allInputsAvailable)) validationMessages.push(t("media.editor.fixedVersionUnavailable"));
   // Draft validation is shown on submit; operational locks still disable the button.
   const canSubmit = !dirty && !save.isPending && !commitAssetReferences.isPending
     && !removeConnectedInput.isPending && !libraryBusy
     && !error && !run.isPending && !templateBusy && !uploading && !workflowUploading
     && directTasks.isSuccess && settings.isSuccess && Boolean(chosenCapability)
-    && !occupied && styleAvailable && !historyPending;
+    && !occupied && styleAvailable && !historyPending && !promptInputsLoading && !promptInputsError;
   const dimensionLabel = artifact.kind === "IMAGE"
     ? `${ASPECT_RATIO_LABELS[imageParameters.aspectRatio]} · ${imageParameters.resolution}`
     : `${ASPECT_RATIO_LABELS[videoParameters.aspectRatio]}${autodlWorkflow || minimax || klingVideo ? ` · ${videoResolutionLabel(autodlTier)}` : ""}`;
@@ -835,7 +860,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         const definition = workflowDefinition(current);
         const values = latest ? workflowDraftValues(current, latest) : {};
         const active = latest && definition ? activeWorkflowMediaFields(definition, values, latest.prompt,
-          latest.durationSeconds ?? current.settings.defaultDurationSeconds) : [];
+          latest.durationSeconds ?? current.settings.defaultDurationSeconds, composeLinkedPrompt) : [];
         const empty = active.find((candidate) => {
           const value = workflowFieldValue(candidate, values, latest?.prompt ?? "", latest?.durationSeconds ?? current.settings.defaultDurationSeconds);
           return candidate.type === field.type && (value === undefined || value === "");
@@ -1095,7 +1120,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         return true;
       }} /> : null}
     {workflow ? <WorkflowParametersDialog open={extendedParametersOpen} onOpenChange={setExtendedParametersOpen}
-      definition={workflow} values={workflowValues} prompt={fields.prompt} durationSeconds={duration}
+      definition={workflow} values={workflowValues} prompt={fields.prompt} composePrompt={composeLinkedPrompt} durationSeconds={duration}
       disabled={editorReadOnly || run.isPending} onChange={changeDynamicField} /> : null}
     <fieldset className="media-draft-controls" disabled={editorReadOnly}>
     <div className="media-draft-header">
@@ -1120,6 +1145,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       {(artifact.kind === "IMAGE" || artifact.kind === "VIDEO") ? <Button variant="ghost" className="media-draft-tab" type="button"
         disabled={!promptEnabled || templateBusy || save.isPending || run.isPending || commitAssetReferences.isPending || removeConnectedInput.isPending || libraryBusy || Boolean(error)}
         onClick={() => { setPopover(null); setReferenceSourcesOpen(false); setTemplateOpen(true); }}>{t("templates.entry")}</Button> : null}
+      {linkedPromptInputs ? <PromptInputPreview inputs={linkedPromptInputs}
+        combinedPrompt={composeLinkedPrompt(localPromptPreview)} /> : null}
       {isAudio && onOpenAgentConversation ? <Button variant="ghost" className="media-draft-tab"
         type="button" onClick={onOpenAgentConversation} disabled={openingAgentConversation}
         title={t("media.editor.openAudioAgent")}>{openingAgentConversation ? t("media.editor.opening") : t("media.editor.agentConversation")}</Button> : null}
@@ -1140,8 +1167,6 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         title: choice.title, thumbnailUrl: assetThumbnailUrl(artifact.projectId, choice.assetId) }] : [])}
       onApply={applyTemplate} onBusy={setTemplateBusy} onClose={() => setTemplateOpen(false)} /> : null}
     <div ref={referencePickerAnchorRef} className="media-draft-reference-picker-anchor">
-    <div className="studio-reference-heading"><strong>{t("canvas.studio.references")}</strong><span>{fields.mediaInputs.length}</span></div>
-    {!workflow && selectedReferences.length === 0 ? <p className="studio-reference-hint">{t("canvas.studio.referenceHint")}</p> : null}
     {!workflow ? <div className="media-draft-reference-row" aria-label={audioCapacity > 0 ? t("media.editor.mixedInputs") : t("media.editor.imageInputs")}>
       <div className="media-draft-popover-anchor">
         <Input ref={uploadInputRef} className="media-draft-upload-input" type="file"
@@ -1181,7 +1206,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
           onRemove={() => removeReference(input.versionId)} />)}
       </div>
     </div>
-    : <WorkflowMediaInputs definition={workflow} values={workflowValues} prompt={fields.prompt}
+    : <WorkflowMediaInputs definition={workflow} values={workflowValues} prompt={fields.prompt} composePrompt={composeLinkedPrompt}
       durationSeconds={duration} choices={imageChoices.map((choice) => ({ ...choice,
         thumbnailUrl: choice.kind === "AUDIO" ? undefined : assetThumbnailUrl(artifact.projectId, choice.assetId) }))}
       canvasChoices={canvasChoices.map((choice) => ({ id: choice.versionId, label: `${choice.title} · v${choice.versionNo}`,
@@ -1302,6 +1327,10 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
           <p>{t("media.editor.selectedCanvasVersionsHint")}</p>
         </div> : null}
     </div>
+    {promptInputsError ? <Alert variant="destructive"><AlertDescription>{t("media.promptInputs.failed")}
+      <Button type="button" variant="ghost" size="sm" onClick={() => {
+        void promptConnections.refetch(); if (hasPromptConnections) void canvas.refetch();
+      }}>{t("common.retry")}</Button></AlertDescription></Alert> : null}
     <PromptMentionEditor id={`${id}-prompt`}
       label={isAudio ? t("media.editor.audioPrompt") : artifact.kind === "IMAGE" ? t("media.editor.imagePrompt") : t("media.editor.videoPrompt")}
       placeholder={!promptEnabled ? t(declaredNativeInputs ? "media.creator.noPrompt" : "media.workflow.noPrompt") : promptField?.description || (isAudio ? t("media.editor.audioPromptPlaceholder") : artifact.kind === "IMAGE" ? t("media.editor.imagePromptPlaceholder") : t("media.editor.videoPromptPlaceholder"))}
@@ -1527,10 +1556,10 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         ? t("media.editor.queuePosition", { "0": queue.data.waitingAhead, "1": QUEUE_LABELS[queue.data.reason] })
         : t("tasks.status.queued")}</EditorFeedbackRow> : null}
       {cancel.error ? <EditorFeedbackRow tone="danger">{t("media.editor.cancelFailed", { "0": cancel.error.message })}</EditorFeedbackRow> : null}
-      {latestTask && (latestTask.status === "UNKNOWN" || latestTask.status === "BLOCKED" && Boolean(latestTask.providerRequestId))
-        ? latestTask.runId === null ? <UnknownTaskRetryPanel compact errorCode={latestTask.errorCode} providerFailure={latestTask.output?.providerFailure} taskStatus={latestTask.status}
-        projectId={artifact.projectId} taskId={latestTask.id} taskVersion={latestTask.version} />
-        : <EditorFeedbackRow tone="warning">{t("tasks.status.unknown")}</EditorFeedbackRow> : null}
+      {latestTask?.status === "UNKNOWN" ? <EditorFeedbackRow tone="warning" title={t("tasks.status.unknown")}>
+        {taskErrorDetail(latestTask.errorCode, latestTask.output?.providerFailure).replace(/^ · /, "")}
+        {canRegenerateMediaTask(latestTask) ? <> {t("media.editor.regenerateUnknownHint")}</> : null}
+      </EditorFeedbackRow> : null}
       {error ? <EditorFeedbackRow tone="danger" action={
         <Button variant="ghost" size="xs" disabled={editorReadOnly} onClick={() => void retry()} type="button">
           {error instanceof ApiError && error.status === HTTP_STATUS.CONFLICT ? t("media.editor.refreshVersion")

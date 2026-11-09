@@ -23,9 +23,12 @@ export function workflowFieldValue(field: CreatorInputField, values: Record<stri
 
 /** Presentation, validation and slot assignment use one set of effective conditional fields. */
 export function evaluateWorkflowFields(definition: WorkflowDefinition, values: Record<string, WorkflowValue>,
-  prompt: string, durationSeconds: number | null | undefined) {
-  const effectiveValues: Record<string, WorkflowValue | undefined> = Object.fromEntries(definition.fields.map((field) =>
-    [field.key, workflowFieldValue(field, values, prompt, durationSeconds)]));
+  prompt: string, durationSeconds: number | null | undefined,
+  composePrompt: (local: string) => string = (local) => local) {
+  const effectiveValues: Record<string, WorkflowValue | undefined> = Object.fromEntries(definition.fields.map((field) => {
+    const value = workflowFieldValue(field, values, prompt, durationSeconds);
+    return [field.key, field.source === "PROMPT" ? composePrompt(typeof value === "string" ? value : "") || value : value];
+  }));
   const activeFields = definition.fields.filter((field) => !field.enabledWhen
     || effectiveValues[field.enabledWhen.field] === field.enabledWhen.value);
   return { effectiveValues, activeFields };
@@ -63,8 +66,9 @@ function validWorkflowFieldValue(field: CreatorInputField, value: WorkflowValue,
 }
 
 export function workflowValidationErrors(definition: WorkflowDefinition, values: Record<string, WorkflowValue>,
-  prompt: string, durationSeconds: number | null | undefined, choices: WorkflowChoice[]) {
-  const { effectiveValues, activeFields } = evaluateWorkflowFields(definition, values, prompt, durationSeconds);
+  prompt: string, durationSeconds: number | null | undefined, choices: WorkflowChoice[],
+  composePrompt: (local: string) => string = (local) => local) {
+  const { effectiveValues, activeFields } = evaluateWorkflowFields(definition, values, prompt, durationSeconds, composePrompt);
   const errors: string[] = [];
   for (const field of activeFields) {
     const value = effectiveValues[field.key];
@@ -83,8 +87,8 @@ export function workflowValidationErrors(definition: WorkflowDefinition, values:
 
 /** Reused exact versions occupy several slots but appear once in the draft's reference list. */
 export function workflowUsedVersions(definition: WorkflowDefinition, values: Record<string, WorkflowValue>,
-  prompt: string, durationSeconds: number | null | undefined) {
-  const { effectiveValues, activeFields } = evaluateWorkflowFields(definition, values, prompt, durationSeconds);
+  prompt: string, durationSeconds: number | null | undefined, composePrompt?: (local: string) => string) {
+  const { effectiveValues, activeFields } = evaluateWorkflowFields(definition, values, prompt, durationSeconds, composePrompt);
   return new Set(activeFields.filter(isWorkflowMediaField)
     .map((field) => effectiveValues[field.key]).filter((value) => typeof value === "string"));
 }

@@ -136,6 +136,34 @@ try {
     assert.ok(dimensions.lineHeight >= 14 * 1.6, "Editor retains comfortable line spacing");
     assert.ok(dimensions.contentHeight >= 56, "Rich choice rows grow to fit both text lines");
     assert.equal(dimensions.overflow, false, `No horizontal overflow at ${viewport.width}px`);
+    for (const id of ['control-content-button', 'control-actions']) {
+      const outline = await page((id) => {
+        const style = getComputedStyle(document.getElementById(id));
+        return { background: style.backgroundColor, shadow: style.boxShadow };
+      }, id);
+      assert.equal(outline.background, 'rgba(0, 0, 0, 0)', `Transparent outline ${id}`);
+      assert.equal(outline.shadow, 'none', `No stacked outline shadow ${id}`);
+    }
+    const mediaAppearance = () => [...document.querySelectorAll('[data-variant="media-overlay"]')].map((button) => {
+      const style = getComputedStyle(button), icon = getComputedStyle(button.querySelector("svg"));
+      return { width: button.offsetWidth, height: button.offsetHeight, background: style.backgroundColor,
+        shadow: style.boxShadow, border: style.borderWidth, contour: icon.strokeWidth, label: button.getAttribute("aria-label") };
+    });
+    const media = await page(mediaAppearance);
+    assert.equal(media.length, 3);
+    for (const action of media) {
+      assert.equal(action.width, 44); assert.equal(action.height, 44);
+      assert.equal(action.background, "rgba(0, 0, 0, 0)"); assert.equal(action.border, "0px");
+      assert.equal(action.shadow, "none"); assert.equal(action.contour, "12px"); assert.ok(action.label);
+    }
+    await key("Tab", "Tab", 9);
+    await focus("control-media-light");
+    await waitFor(() => getComputedStyle(document.getElementById("control-media-light"), "::before").opacity === "1");
+    const mediaFocus = await page(() => {
+      const button = document.getElementById("control-media-light");
+      return { keyboard: button.matches(":focus-visible"), opacity: getComputedStyle(button, "::before").opacity };
+    });
+    assert.equal(mediaFocus.keyboard, true); assert.equal(mediaFocus.opacity, "1");
     // Shared search controls retain the system's neutral, internal focus cue.
     await key("Tab", "Tab", 9);
     await focus("control-search-input");

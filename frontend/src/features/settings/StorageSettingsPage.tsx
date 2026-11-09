@@ -7,7 +7,7 @@ import {
   type MediaRelaySettingsRequest, type CreateStorageProfileRequest, type StorageProfile, type StorageProvider, type StorageSettings,
 } from "../../shared/api/client";
 import { t, useLocale } from "../../shared/i18n";
-import { Archive, GlobeSimple, HardDrives, Key, LockSimple, PencilSimple, Plus, ShieldCheck, Trash } from "../../shared/ui/icons";
+import { Archive, GlobeSimple, HardDrives, Key, LockSimple, PencilSimple, Plus, Trash } from "../../shared/ui/icons";
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { EmptyState, Notice, Panel, StatusBadge } from "../../shared/ui/PagePrimitives";
 import { PageShell } from "../../shared/ui/PageShell";
@@ -174,7 +174,7 @@ export function StorageSettingsPage() {
       {errorNotice("page")}
       {message ? <Notice tone="success">{message}</Notice> : null}
       {snapshot ? <>
-        <Panel className="storage-directory-panel" title={t("settings.storage.directoryTitle")} description={t("settings.storage.directoryDescription")}
+        <Panel className="storage-directory-panel" title={t("settings.storage.directoryTitle")}
           actions={<StatusBadge>{t("settings.storage.connectionCount", { "0": snapshot.profiles.length })}</StatusBadge>}>
           {snapshot.profiles.length ? <div className="storage-connection-list">
             {snapshot.profiles.map((profile) => <section className="storage-connection-card" key={profile.id} aria-label={profile.name}>
@@ -202,7 +202,6 @@ export function StorageSettingsPage() {
               </div>
             </section>)}
           </div> : <EmptyState icon={<HardDrives aria-hidden />} title={t("settings.storage.connectionsEmpty")} />}
-          <p className="storage-privacy-note"><ShieldCheck aria-hidden />{t("settings.storage.credentialPrivacyHint")}</p>
         </Panel>
         <div className="storage-purpose-grid">
           <Panel className="storage-purpose-panel" title={t("settings.storage.defaultStorage")} description={t("settings.storage.archiveDescription")}
@@ -246,7 +245,7 @@ export function StorageSettingsPage() {
       </> : null}
     </div>
     {connectionEditor ? <Dialog className="storage-connection-dialog" title={t(editing ? "settings.storage.editConnection" : "settings.storage.addConnection")}
-      description={editing?.name ?? t("settings.storage.directoryDescription")} busy={busy} onClose={() => closeConnection()} onSubmit={submit}
+      description={editing?.name} busy={busy} onClose={() => closeConnection()} onSubmit={submit}
       footer={<><div className="storage-dialog-draft-status">{connectionDirty ? t("common.unsavedChanges") : null}</div>
         {connectionDirty ? <Button variant="ghost" type="button" disabled={busy} onClick={() => closeConnection(true)}>{t("settings.storage.discardDraft")}</Button> : null}
         <Button variant="outline" type="button" disabled={busy} onClick={() => closeConnection()}>{t("common.close")}</Button>

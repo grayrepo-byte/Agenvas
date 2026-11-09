@@ -36,7 +36,6 @@ createArtifact,
 createCanvasConnection,
 disconnectCanvasConnection,
 getCurrentUser,
-getCanvasEditor,
 getMediaDraft,
 getMediaSettings,
 getProject,
@@ -62,7 +61,7 @@ import { Button } from "../../shared/ui/primitives/button";
 import { Tooltip,TooltipContent,TooltipProvider,TooltipTrigger } from "../../shared/ui/primitives/tooltip";
 import { Command,CommandGroup,CommandItem,CommandList } from "../../shared/ui/primitives/command";
 import { Separator } from "../../shared/ui/primitives/separator";
-import { Empty,EmptyContent,EmptyDescription,EmptyHeader,EmptyMedia,EmptyTitle } from "../../shared/ui/primitives/empty";
+import { Empty,EmptyContent,EmptyHeader,EmptyMedia,EmptyTitle } from "../../shared/ui/primitives/empty";
 import { Tabs,TabsContent,TabsList,TabsTrigger } from "../../shared/ui/primitives/tabs";
 import { ProjectResourceBrowser } from "./ProjectResourceBrowser";
 import { LibraryCanvasPicker } from "../library/LibraryCanvasPicker";
@@ -90,7 +89,7 @@ import { CANVAS_POINTER_THRESHOLD,useCanvasInteraction } from "./canvasInteracti
 import { arrangeCanvas,CANVAS_ARRANGE_GAP } from "./arrangeCanvas";
 import {
 canvasConnectionForEdge,
-isCanvasConnectionValid,mediaInputConnection,mediaInputSource,projectCanvasRelations,
+isCanvasConnectionValid,mediaInputConnection,canvasInputSource,promptInputConnection,projectCanvasRelations,
 } from "./canvasRelations";
 import { CANVAS_SELECTION_MODE,useCanvasStore } from "./canvasStore";
 import { CANVAS_MAX_SIZE,imageNodeResizeBounds,projectImageNodeSize } from "./imageNodeLayout";
@@ -109,7 +108,7 @@ import { CanvasGroupRenameDialog } from "./CanvasGroupActions";
 import { canvasGroupCreationPoint, canvasGroupDropTarget, canvasGroupIdFromNodeId, canvasGroupNodeId,
   remapCollapsedCanvasEdges, type CanvasGroupMemberLayout, type CanvasGroupProjection } from "./canvasGroups";
 import { hasOpenCanvasEditingOverlay, resolveCanvasEditingShortcut } from "./canvasEditingShortcuts";
-import { CanvasEditingContext, canvasEditorKey, canvasItemPresentation } from "./useCanvasEditing";
+import { CanvasEditingContext, canvasItemPresentation } from "./useCanvasEditing";
 import { CANVAS_EDIT_ITEM_LIMIT, useCanvasOrganization } from "./useCanvasOrganization";
 import { connectedMediaModel, type ConnectedMediaModel } from "./connectedMediaModel";
 import { fieldsFromMediaDraft } from "./useMediaDraftSession";
@@ -119,7 +118,7 @@ type CreationKind = "TEXT" | "IMAGE" | "VIDEO" | "AUDIO";
 type CreationPoint = { x: number; y: number; groupId?: string };
 type UploadIntent = { file: File; point: CreationPoint; title: string; createKey: string; itemId: string;
   zIndex: number; assetId?: string; artifactId?: string };
-type ConnectionSource = NonNullable<ReturnType<typeof mediaInputSource>>;
+type ConnectionSource = NonNullable<ReturnType<typeof canvasInputSource>>;
 type CreationMenu = { x: number; y: number; point: CreationPoint; centerAtPoint: boolean;
   /** undefined is ordinary creation; null is a gesture without a usable media result. */
   connectionSource?: ConnectionSource | null };
@@ -172,7 +171,6 @@ type CanvasNodeData = {
   onMakeMV: (item: CanvasItem) => void;
   onComposeVideo: (item: CanvasItem) => void;
   onEditVideo: (item: CanvasItem) => void;
-  onShowCard: (itemId: string, signal: AbortSignal) => Promise<boolean>;
   compositionDisabledReason: string | null;
   mediaAspectRatio: number | undefined;
   dragging: boolean;
@@ -252,12 +250,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     const centerX = node.position.x + width / 2;
     const centerY = node.position.y + height / 2;
     const currentZoom = instance.getZoom();
-    if (node.data.item.artifact?.kind !== "TEXT") {
-      viewportMotion.center(centerX, centerY, currentZoom);
-      return;
-    }
-    // Wait for the text editor's four-line minimum to be measured. Reserve real
-    // screen space rather than making a taller prompt inside a clipped panel.
+    // Measure the mounted toolbar before placing any node in the upper canvas.
+    // Text also reserves its four-line editor; media focus keeps the user's zoom.
     editorFocusFrame.current = window.requestAnimationFrame(() => {
       editorFocusFrame.current = null;
       const selection = useCanvasStore.getState();
@@ -265,19 +259,22 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           || selection.selectedIds.length !== 1 || selection.selectedIds[0] !== node.id) return;
       const canvas = canvasElement.current?.querySelector(".react-flow");
       const bounds = canvas?.getBoundingClientRect();
-      const editor = canvas?.querySelector<HTMLElement>(".text-generation-editor");
+      const editor = node.data.item.artifact?.kind === "TEXT"
+        ? canvas?.querySelector<HTMLElement>(".text-generation-editor") : null;
       const anchor = [...canvas?.querySelectorAll<HTMLElement>(".react-flow__node") ?? []]
         .find(element => element.dataset.id === node.id);
       const actions = [...canvas?.querySelectorAll<HTMLElement>(".artifact-actions-toolbar") ?? []]
         .find(element => element.dataset.id === node.id);
-      if (!bounds?.width || !bounds.height || !editor?.scrollHeight || !anchor) {
+      if (!bounds?.width || !bounds.height || !anchor) {
         viewportMotion.center(centerX, centerY, currentZoom);
         return;
       }
       const target = calculateCanvasEditorViewport({ canvas: bounds, nodeSize: { width, height },
-        currentZoom, minZoom: CANVAS_MIN_ZOOM,
-        editorHeight: editor.scrollHeight + editor.offsetHeight - editor.clientHeight,
-        editorGap: TEXT_EDITOR_NODE_GAP,
+        // With no measured text editor, use the current zoom as the lower bound
+        // so positioning alone cannot resize media or a still-mounting text node.
+        currentZoom, minZoom: editor?.scrollHeight ? CANVAS_MIN_ZOOM : currentZoom,
+        editorHeight: editor?.scrollHeight ? editor.scrollHeight + editor.offsetHeight - editor.clientHeight : 0,
+        editorGap: editor ? TEXT_EDITOR_NODE_GAP : EDITOR_NODE_GAP,
         topToolbarSpace: actions ? Math.max(0, anchor.getBoundingClientRect().top - actions.getBoundingClientRect().top) : 0,
         margin: EDITOR_VIEWPORT_MARGIN });
       viewportMotion.center(centerX, centerY + target.centerOffsetY, target.zoom);
@@ -600,9 +597,14 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       // Creation updates the cache before React renders again; resolve its new target
       // from the confirmed projection rather than the previous render's item list.
       const items = queryClient.getQueryData<Canvas>(["canvas", projectId])?.items ?? [];
-      const media = mediaInputConnection(items, connection);
+      const prompt = promptInputConnection(items, connection);
+      const media = prompt ?? mediaInputConnection(items, connection);
       if (!media || (connection.sourceVersionId && media.sourceVersionId !== connection.sourceVersionId))
         throw new CanvasConnectionError(t("canvas.workspace.unsupportedConnection"));
+      if (prompt && !connection.initialModel) {
+        await createCanvasConnection(projectId, { ...prompt, relationType: "PROMPT_INPUT" });
+        return;
+      }
       let targetDraft = await getMediaDraft(projectId, media.targetCanvasItemId);
       // Initialize only the new, untouched draft. Retries keep confirmed saves and later user edits.
       if (connection.initialModel && targetDraft.version === 0 && targetDraft.mediaInputs.length === 0) {
@@ -611,8 +613,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         });
         queryClient.setQueryData(["media-draft", projectId, media.targetCanvasItemId], targetDraft);
       }
-      await createCanvasConnection(projectId, { ...media, relationType: "MEDIA_INPUT",
-        expectedTargetDraftVersion: targetDraft.version });
+      await createCanvasConnection(projectId, { ...media, relationType: prompt ? "PROMPT_INPUT" : "MEDIA_INPUT",
+        ...(prompt ? {} : { expectedTargetDraftVersion: targetDraft.version }) });
     },
     ...canvasMutationFeedback,
     onSuccess: async () => {
@@ -635,12 +637,12 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   });
   const removeMediaConnection = useMutation({
     mutationFn: async (connection: CanvasConnection) => {
-      if (connection.relationType === "MEDIA_DERIVATION") {
-        return disconnectCanvasConnection(projectId, connection.id, {});
+      if (connection.relationType !== "MEDIA_INPUT") {
+        return disconnectCanvasConnection(projectId, connection.id, { expectedVersion: connection.version });
       }
       const targetDraft = await getMediaDraft(projectId, connection.targetCanvasItemId);
       return disconnectCanvasConnection(projectId, connection.id, {
-        expectedTargetDraftVersion: targetDraft.version,
+        expectedVersion: connection.version, expectedTargetDraftVersion: targetDraft.version,
       });
     },
     ...canvasMutationFeedback,
@@ -800,7 +802,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     params: { nodeId: string | null; handleId: string | null }) => {
     connectionSource.current = params.nodeId
       ? { nodeId: params.nodeId, handleId: params.handleId,
-        media: mediaInputSource(canvas.data?.items ?? [], params.nodeId, params.handleId) }
+        media: canvasInputSource(canvas.data?.items ?? [], params.nodeId, params.handleId) }
       : null;
     trackConnectionTarget(null);
     setConnectGesture(true);
@@ -862,27 +864,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     const item = canvas.data?.items.find((candidate) => candidate.id === node.id);
     return item && !item.locked ? [{ id: item.id, groupId: item.groupId, ...node.position, ...effectiveNodeSize(item) }] : [];
   }), [canvas.data?.items, effectiveNodeSize]);
-  const showGeneratedCard = useCallback(async (itemId: string, signal: AbortSignal) => {
-    const item = queryClient.getQueryData<Canvas>(["canvas", projectId])?.items.find((candidate) => candidate.id === itemId);
-    if (item?.groupId) {
-      const editor = await queryClient.fetchQuery({ queryKey: canvasEditorKey(projectId),
-        queryFn: () => getCanvasEditor(projectId), staleTime: 0, retry: false });
-      if (signal.aborted) return false;
-      const currentItem = editor.items.find((candidate) => candidate.id === itemId);
-      const group = editor.groups.find((candidate) => candidate.id === currentItem?.groupId);
-      if (group?.collapsed) await editing.execute({ operation: "GROUP", groupChanges: [{ type: "UPSERT",
-        groupId: group.id, expectedVersion: group.version, name: group.name, collapsed: false }] });
-    }
-    if (signal.aborted) return false;
-    // Fit before selecting: selecting the target unmounts this source's toolbar and cancels its signal.
-    // The returned boolean distinguishes that completed navigation from an abandoned preparation.
-    return new Promise<boolean>((resolve) => window.requestAnimationFrame(() => {
-      if (signal.aborted) { resolve(false); return; }
-      viewportMotion.fit({ nodes: [{ id: itemId }], padding: 0.2, maxZoom: 1 });
-      setSelectedIds([itemId], CANVAS_SELECTION_MODE.SINGLE);
-      resolve(true);
-    }));
-  }, [queryClient, projectId, editing, setSelectedIds, viewportMotion]);
   const nodes = useMemo<WorkspaceNode[]>(
     () => [
       ...organization.projection.groups.map((entry): CanvasGroupFlowNode => ({
@@ -937,7 +918,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               onMakeMV: (item) => makeMV.mutate(item),
               onComposeVideo: (item) => requestVideoComposition([item]),
               onEditVideo: (item) => setVideoEditIds([item.id]),
-              onShowCard: showGeneratedCard,
               compositionDisabledReason,
               mediaAspectRatio: mediaRatios[item.id],
               dragging: draggingIds.includes(item.id),
@@ -969,7 +949,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       nodeActionsVisible,
       multiSelecting,
       requestVideoComposition,
-      showGeneratedCard,
       compositionDisabledReason,
       handleToggleSelection,
       effectiveNodeSize,
@@ -1591,7 +1570,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             <EmptyHeader>
               <EmptyMedia variant="icon"><Sparkle /></EmptyMedia>
               <EmptyTitle>{t("canvas.empty.title")}</EmptyTitle>
-              <EmptyDescription>{t("canvas.empty.description")}</EmptyDescription>
             </EmptyHeader>
             <EmptyContent>
               <Button onClick={openCenteredCreationMenu}><Plus data-icon="inline-start" />{t("canvas.empty.addFirst")}</Button>
@@ -1774,7 +1752,7 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
       {halo}
       {selectionControl}
       {artifact.kind === "IMAGE" || artifact.kind === "VIDEO" || artifact.kind === "AUDIO"
-        ? <MediaCanvasCard {...cardProps} onEdit={focusArtifactEditor} onShowCard={data.onShowCard}
+        ? <MediaCanvasCard {...cardProps} onEdit={focusArtifactEditor}
           onDuplicate={() => data.onDuplicate(data.item)} onMakeMV={() => data.onMakeMV(data.item)}
           onComposeVideo={() => data.onComposeVideo(data.item)} onEditVideo={() => data.onEditVideo(data.item)} compositionDisabledReason={data.compositionDisabledReason} />
         : <ContentCanvasCard {...cardProps} onDuplicate={() => data.onDuplicate(data.item)} />}

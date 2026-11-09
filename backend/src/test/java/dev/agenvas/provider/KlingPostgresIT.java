@@ -389,6 +389,24 @@ class KlingPostgresIT {
                 .param("id", done.id()).query(String.class).single());
         assertThat(settlement.path("imageCount").asInt()).isEqualTo(3);
         assertThat(Files.readAllBytes(archived(fixture, done))).isEqualTo(IMAGE_BYTES);
+        var extra = canvas.list(owner, fixture.project().id()).stream()
+                .filter(card -> !card.item().id().equals(fixture.canvasItemId())).findFirst().orElseThrow();
+        var extraDraft = drafts.get(owner, fixture.project().id(), extra.item().id());
+        assertThat(directMedia.preflight(owner, fixture.project().id(), extra.artifact().artifact().id(),
+                extra.item().id(), extraDraft.version()).outputCount()).isEqualTo(1);
+        Task regenerated = directMedia.run(owner, fixture.project().id(), fixture.card().artifact().id(),
+                extra.item().id(), extraDraft.version(), "native-extra-single-image");
+        assertThat(regenerated.input().path("expectedImageCount").asInt()).isEqualTo(1);
+        assertThat(worker.submitOnce("native-extra-submit")).isEqualTo(1);
+        assertThat(REQUESTS).hasSize(2);
+        assertThat(REQUESTS.getLast().body().path("n").asInt()).isEqualTo(1);
+        due(regenerated.id());
+        assertThat(worker.pollOnce("native-extra-poll")).isEqualTo(1);
+        assertThat(task(fixture, regenerated.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(canvas.list(owner, fixture.project().id())).hasSize(3);
+        assertThat(directMedia.preflight(owner, fixture.project().id(), fixture.card().artifact().id(),
+                fixture.canvasItemId(), fixture.draftVersion()).outputCount()).isEqualTo(3);
+        assertThat(task(fixture, accepted.id()).input().path("expectedImageCount").asInt()).isEqualTo(3);
     }
 
     @Test void turboUsesItsOwnPathAndSettingsAndOriginalId() throws Exception {
@@ -659,7 +677,7 @@ class KlingPostgresIT {
     }
     @TestConfiguration static class FakeClient {
         @Bean @Primary KlingClient fakeKlingClient(ObjectMapper mapper) { return new KlingClient(mapper, origin()); }
-        @Bean @Primary KlingMediaDownloadPolicy fakeKlingDownloadPolicy() { return KlingMediaDownloadPolicy.forLoopbackTest(origin()); }
+        @Bean @Primary KlingMediaDownloadPolicy fakeKlingDownloadPolicy() { return new KlingMediaDownloadPolicy(); }
         /** Synthetic URL signing only; this test neither uploads private data nor verifies an object-store connection. */
         @Bean @Primary MediaRelayService fakeMediaRelayService() {
             MediaRelayService relay = mock(MediaRelayService.class);

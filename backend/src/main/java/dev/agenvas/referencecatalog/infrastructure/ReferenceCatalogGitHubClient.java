@@ -19,7 +19,7 @@ public class ReferenceCatalogGitHubClient {
     public ReferenceCatalogGitHubClient() { this(new PublicDownloadHttpClients()); }
     @org.springframework.beans.factory.annotation.Autowired
     public ReferenceCatalogGitHubClient(PublicDownloadHttpClients clients) {
-        this.http=clients.create(java.util.Set.of("api.github.com","raw.githubusercontent.com"),
+        this.http=clients.create(
                 Duration.ofSeconds(10),Duration.ofSeconds(30),Duration.ofSeconds(60));
     }
     public String resolve(Source source) {
@@ -33,8 +33,13 @@ public class ReferenceCatalogGitHubClient {
     }
     public byte[] file(Source source,String commit,String file,int limit) {
         if(!commit.matches("[a-f0-9]{40}")) throw invalid();
+        return fileAtRef(source,commit,file,limit);
+    }
+    /** Open catalog JSON is already a complete directory; mutable refs need no commit-resolution API call. */
+    public byte[] fileAtRef(Source source,String revision,String file,int limit) {
         var url=new HttpUrl.Builder().scheme("https").host("raw.githubusercontent.com").addPathSegment(slug(source.owner()))
-                .addPathSegment(slug(source.repository())).addPathSegment(commit);
+                .addPathSegment(slug(source.repository()));
+        for(String part:ref(revision).split("/"))url.addPathSegment(part);
         for(String part:path(file).split("/")) url.addPathSegment(part);
         return read(url.build(),limit,"application/octet-stream");
     }

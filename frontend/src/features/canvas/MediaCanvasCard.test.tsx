@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { beforeEach,describe,expect,it,vi } from "vitest";
 import { MemoryRouter } from "react-router";
 import { createQueryClient } from "../../app/queryClient";
-import type { Artifact,CanvasItem } from "../../shared/api/client";
+import type { Artifact,CanvasItem,Task } from "../../shared/api/client";
 import { changeControl,clickControl,selectValue } from "../../test/controls";
 import { server } from "../../test/server";
 import { MediaCanvasCard } from "./MediaCanvasCard";
@@ -54,6 +54,43 @@ function showCard(shownArtifact: Artifact = artifact, onCardClick = vi.fn()) {
 }
 
 describe("MediaCanvasCard", () => {
+  beforeEach(() => {
+    server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "synthetic-admin", username: "synthetic-admin", role: "ADMIN" })));
+  });
+
+  it("opens outfit extraction with a pinned source and preserves guidance on conflict", async () => {
+    let request: unknown;
+    const extractionSettings = imageFunctionsFixture();
+    extractionSettings.connections[1]!.capabilities[0]!.supportedImageAspectRatios = ["2:3"];
+    server.use(
+      http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({ displayMode: "RESULT", version: 0 })),
+      http.get("/api/v1/projects/project-1/assets/:assetId", ({ params }) => HttpResponse.json({ id: params.assetId, width: 1000, height: 1500 })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(extractionSettings)),
+      http.get("/api/v1/settings/media-functions", () => HttpResponse.json(imageFunctionSettings())),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+      http.post("/api/v1/projects/project-1/artifacts/image-1/image-operations", async ({ request: incoming }) => {
+        request = await incoming.json();
+        return HttpResponse.json({ title: "Conflict", detail: "synthetic source changed", code: "VERSION_CONFLICT", retryable: false },
+          { status: 409, headers: { "Content-Type": "application/problem+json" } });
+      }),
+    );
+    const shown: Artifact = { ...artifact, resourceDefaultVersionId: "image-version", resourceDefaultVersion: {
+      id: "image-version", versionNo: 1, schemaVersion: 1, content: { sourceType: "UPLOAD", assetId: "image-asset" },
+      inputReferences: [], createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
+    } };
+    const view = showCard(shown);
+    expect(await screen.findByRole("button", { name: "保存为服装参考" })).toBeVisible();
+    await clickControl(await screen.findByRole("button", { name: "服装提取" }));
+    const guidance = await screen.findByRole("textbox", { name: "提取说明（可选）" });
+    fireEvent.change(guidance, { target: { value: "左侧人物" } });
+    view.setItem({ ...itemFor(shown), version: 1, selectedVersionId: "new-version",
+      selectedVersion: { ...shown.resourceDefaultVersion!, id: "new-version", content: { sourceType: "UPLOAD", assetId: "new-asset" } } });
+    await clickControl(screen.getByRole("button", { name: "开始处理" }));
+    await waitFor(() => expect(request).toEqual(expect.objectContaining({ operation: "COSTUME_EXTRACT", sourceVersionId: "image-version",
+      expectedCanvasItemVersion: 0, instruction: "左侧人物", expectedFunctionVersion: 3, expectedCapabilityVersion: 1 })));
+    expect(await screen.findByText("synthetic source changed")).toBeVisible();
+    expect(guidance).toHaveValue("左侧人物");
+  });
   it.each([
     ["IMAGE", "RESULT"], ["VIDEO", "RESULT"], ["AUDIO", "RESULT"],
     ["IMAGE", "DRAFT"], ["VIDEO", "DRAFT"], ["AUDIO", "DRAFT"],
@@ -537,26 +574,40 @@ describe("MediaCanvasCard", () => {
     expect(screen.queryByRole("button", { name: "卡片详情" })).not.toBeInTheDocument();
   });
 
-  it("opens reverse prompt for the displayed image and pins it across selection changes", async () => {
+  it("starts reverse prompt directly without a dialog and pins an uncertain request across selection changes", async () => {
+    const requests: unknown[] = [], keys: (string | null)[] = [];
     server.use(
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
       http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({ displayMode: "RESULT", version: 0 })),
       http.get("/api/v1/projects/project-1/artifacts/image-1/image-prompts", () => HttpResponse.json([])),
+      http.post("/api/v1/projects/project-1/artifacts/image-1/image-prompts", async ({ request }) => {
+        requests.push(await request.json()); keys.push(request.headers.get("Idempotency-Key"));
+        return keys.length === 1 ? new HttpResponse(null, { status: 502 }) : HttpResponse.json({
+          id: "reverse-task", projectId: "project-1", runId: null, stepKey: "reverse", kind: "TEXT_GENERATION", status: "READY",
+          cancelRequested: false, input: { sourceVersionId: "image-version", purpose: "IMAGE_REVERSE_PROMPT" }, output: null,
+          attemptNo: 1, nextActionAt: artifact.createdAt, version: 1, createdAt: artifact.createdAt, updatedAt: artifact.createdAt,
+        } satisfies Task);
+      }),
     );
     const image = { ...artifact, resourceDefaultVersionId: "image-version", resourceDefaultVersion: {
       id: "image-version", versionNo: 1, schemaVersion: 1, content: { assetId: "image-asset", sourceType: "UPLOAD" },
       inputReferences: [], createdByKind: "USER" as const, runId: null, createdAt: artifact.createdAt,
     } } satisfies Artifact;
     const view = showCard(image);
-    await waitFor(() => expect(screen.getByRole("button", { name: "提示词反推" })).toBeEnabled());
-    await clickControl(screen.getByRole("button", { name: "提示词反推" }));
-    const dialog = await screen.findByRole("dialog", { name: "提示词反推" });
-    expect(within(dialog).getByRole("img")).toHaveAttribute("src", "/api/v1/projects/project-1/assets/image-asset/content");
-    view.setItem({ ...itemFor(image), selectedVersionId: "new-version", selectedVersion: {
+    const reverse = await screen.findByRole("button", { name: "提示词反推" });
+    await waitFor(() => expect(reverse).toBeEnabled());
+    await clickControl(reverse);
+    await screen.findByText("尚未确认是否受理。重试会查询或重放同一请求。");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    view.setItem({ ...itemFor(image), version: 1, selectedVersionId: "new-version", selectedVersion: {
       ...image.resourceDefaultVersion, id: "new-version", content: { assetId: "new-asset", sourceType: "UPLOAD" },
     } });
-    expect(within(dialog).getByRole("img")).toHaveAttribute("src", "/api/v1/projects/project-1/assets/image-asset/content");
-    view.setToolbarState(false);
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "提示词反推" })).not.toBeInTheDocument());
+    await clickControl(screen.getByRole("button", { name: "重试" }));
+    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(requests).toEqual(Array(2).fill({ canvasItemId: "item-1", sourceVersionId: "image-version", expectedCanvasItemVersion: 0 }));
+    expect(keys[0]).toBeTruthy(); expect(keys[1]).toBe(keys[0]);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "取消" })).toBeEnabled();
   });
 
   it("submits depth extraction against the exact visible image version", async () => {
@@ -1221,7 +1272,7 @@ describe("MediaCanvasCard", () => {
     ])));
     showCard();
     expect(await screen.findByText("结果未知")).toBeInTheDocument();
-    expect(screen.queryByText("可在编辑区重试")).not.toBeInTheDocument();
+    expect(screen.queryByText("可在编辑区重新生成")).not.toBeInTheDocument();
     expect(screen.queryByText("正在生成")).not.toBeInTheDocument();
   });
 
@@ -1249,7 +1300,7 @@ describe("MediaCanvasCard", () => {
     ])));
     showCard();
     expect(await screen.findByText("结果未知")).toBeInTheDocument();
-    expect(screen.getByText("可在编辑区重试")).toBeInTheDocument();
+    expect(screen.getByText("可在编辑区重新生成")).toBeInTheDocument();
     expect(screen.queryByText("正在生成")).not.toBeInTheDocument();
   });
 

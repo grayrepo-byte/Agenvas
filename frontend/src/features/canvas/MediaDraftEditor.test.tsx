@@ -142,6 +142,44 @@ describe("MediaDraftEditor", () => {
     await waitFor(() => expect(Object.values(useCanvasStore.getState().mediaDraftRecoveries)
       .some((recovery) => recovery.saving)).toBe(false));
   });
+  it("keeps local text when loading shared sources fails and enables retry", async () => {
+    setup({ handlers: [http.get(`/api/v1/projects/${PROJECT_ID}/canvas/connections`, () =>
+      HttpResponse.json({ code: "UNAVAILABLE", retryable: true }, { status: 503 }), { once: true })] });
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("公共提示词读取失败");
+    expect(screen.getByRole("textbox", { name: "图片提示词" })).toHaveTextContent(initialDraft.prompt);
+    expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
+    await userEvent.setup().click(within(alert).getByRole("button", { name: "重试" }));
+    await waitFor(() => expect(screen.queryByText("公共提示词读取失败，请重试后运行。")).not.toBeInTheDocument());
+    expect(screen.getByRole("textbox", { name: "图片提示词" })).toHaveTextContent(initialDraft.prompt);
+  });
+
+  it("previews shared saved text while leaving the local prompt separate and permits upstream-only submit", async () => {
+    let submitted = false;
+    const version = { id: "text-latest", versionNo: 2, schemaVersion: 1, content: { text: "Common lighting", format: "PLAIN_TEXT" },
+      inputReferences: [], createdByKind: "USER", runId: null, createdAt: NOW };
+    setup({ draft: { ...initialDraft, prompt: "" }, handlers: [
+      http.get(`/api/v1/projects/${PROJECT_ID}/canvas/connections`, () => HttpResponse.json({ items: [{ id: "prompt-link",
+        projectId: PROJECT_ID, sourceCanvasItemId: "text-card", targetCanvasItemId: CANVAS_ITEM_ID,
+        relationType: "PROMPT_INPUT", sourceArtifactVersionId: "text-original", version: 0, createdAt: NOW, updatedAt: NOW }] })),
+      http.get(`/api/v1/projects/${PROJECT_ID}/canvas/items`, () => HttpResponse.json({ items: [{ id: "text-card", subjectId: "text-artifact",
+        title: "Public lighting", artifact: { id: "text-artifact", kind: "TEXT", resourceDefaultVersionId: version.id, resourceDefaultVersion: version } }] })),
+      http.post(`${BASE}/run`, async () => { submitted = true; return HttpResponse.json(task("READY"), { status: 202 }); }),
+    ] });
+    const sharedTab = await screen.findByRole("button", { name: "公共提示词 · 1" });
+    const header = sharedTab.closest(".media-draft-header");
+    expect(header).not.toBeNull();
+    expect(sharedTab).toHaveClass("media-draft-tab");
+    expect(sharedTab.previousElementSibling).toBe(within(header as HTMLElement).getByRole("button", { name: "模板" }));
+    expect(screen.getByRole("textbox", { name: "图片提示词" })).toHaveTextContent("");
+    await userEvent.setup().click(screen.getByRole("button", { name: "公共提示词 · 1" }));
+    expect(await screen.findByLabelText("合并预览")).toHaveTextContent("Common lighting");
+    expect(screen.getByText("Public lighting")).toBeInTheDocument();
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    await userEvent.setup().click(screen.getByRole("button", { name: "运行" }));
+    await waitFor(() => expect(submitted).toBe(true));
+  });
+
   it("omits the pose and costume catalog from ordinary audio reference sources", async () => {
     setup({ kind: "AUDIO", settings: audioSettings });
     const user = userEvent.setup();
@@ -2473,59 +2511,70 @@ describe("MediaDraftEditor", () => {
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
   });
 
-  it("keeps UNKNOWN blocked and offers a single retry control", async () => {
-    setup({ tasks: [task("UNKNOWN")] });
+  it.each(["FAILED", "UNKNOWN", "BLOCKED"] as const)("generates from the current model and saved inputs after %s without a separate retry", async (status) => {
+    const previous = { ...task(status), providerRequestId: status === "BLOCKED" ? "synthetic-accepted" : null,
+      errorCode: "SUBMISSION_UNKNOWN" };
+    const nextCapability: MediaCapability = { ...imageCapability, id: "next-image-capability", name: "切换生图",
+      supportedImageQualities: ["medium"], settings: { quality: "medium" } };
+    let submitted: unknown;
+    let submittedDraft: SaveMediaDraftRequest | undefined;
+    const state = setup({ tasks: [previous], draft: { ...initialDraft, capabilityId: imageCapability.id },
+      settings: { ...settings, connections: [{ ...settings.connections[0]!, capabilities: [imageCapability, nextCapability] }] }, handlers: [
+        http.post(`${BASE}/run`, async ({ request }) => {
+          submitted = await request.json();
+          submittedDraft = state.saves.at(-1);
+          const accepted = { ...task("READY"), id: "current-draft-task" };
+          state.setTasks([accepted]);
+          return HttpResponse.json(accepted);
+        }),
+        http.get(`/api/v1/projects/${PROJECT_ID}/tasks/current-draft-task/queue`, () =>
+          HttpResponse.json({ waitingAhead: 0, reason: "WAITING_WORKER" })),
+      ] });
+    const user = userEvent.setup();
     await screen.findByLabelText("图片提示词");
-    expect(await screen.findByRole("button", { name: "重试" })).toBeVisible();
-    expect(screen.getAllByText("结果未知").length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+    expect(screen.queryByRole("button", { name: "重试" })).not.toBeInTheDocument();
+    if (status === "UNKNOWN") expect(screen.getByText("结果未知")).toBeVisible();
+    else expect(screen.getByText(/生成未完成/)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "选择生成模型" }));
+    await user.click(screen.getByRole("menuitemradio", { name: /切换生图/ }));
+    const prompt = screen.getByRole("textbox", { name: "图片提示词" });
+    await user.clear(prompt);
+    await user.type(prompt, "Use the newly selected model");
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "运行" }));
+    await waitFor(() => expect(submitted).toEqual({ canvasItemId: CANVAS_ITEM_ID,
+      expectedDraftVersion: state.saves.length }));
+    expect(submittedDraft).toMatchObject({ capabilityId: nextCapability.id, prompt: "Use the newly selected model",
+      parameters: { quality: "medium" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeDisabled());
   });
 
-  it("uses a fresh retry command when the replacement is already UNKNOWN on the same card", async () => {
-    const writes: Array<{ task: string; key: string | null }> = [];
-    const next = { ...task("UNKNOWN"), id: "replacement-already-unknown" };
-    const state: ReturnType<typeof setup> = setup({ tasks: [task("UNKNOWN")], handlers: [
-      http.post(`/api/v1/projects/${PROJECT_ID}/tasks/:taskId/new-attempt`, ({ request, params }) => {
-        const current = { task: String(params.taskId), key: request.headers.get("Idempotency-Key") }; writes.push(current);
-        if (writes.some((entry) => entry.key === current.key && entry.task !== current.task)) return HttpResponse.json({ code: "UNKNOWN_RETRY_CONFLICT" }, { status: 409 });
-        state.setTasks(current.task === "task-direct" ? [next] : [{ ...task("READY"), id: "second-replacement" }]);
-        return HttpResponse.json({ ...task("READY"), id: current.task === "task-direct" ? next.id : "second-replacement" });
+  it("uses a new generation command when a replacement is already UNKNOWN on the same card", async () => {
+    const writes: Array<{ key: string | null; body: unknown }> = [];
+    const state = setup({ tasks: [task("UNKNOWN")], handlers: [
+      http.post(`${BASE}/run`, async ({ request }) => {
+        writes.push({ key: request.headers.get("Idempotency-Key"), body: await request.json() });
+        const accepted = { ...task(writes.length === 1 ? "UNKNOWN" : "READY"), id: `replacement-${writes.length}` };
+        state.setTasks([accepted]);
+        return HttpResponse.json(accepted);
       }),
-    ] });
-    const prompt = await screen.findByRole("textbox", { name: "图片提示词" }); const before = prompt.textContent;
-    await userEvent.click(await screen.findByRole("button", { name: "重试" }));
-    await waitFor(() => expect(state.client.getQueryData<Task[]>(["direct-media-tasks", PROJECT_ID, CANVAS_ITEM_ID])?.[0]?.id).toBe(next.id));
-    await waitFor(() => expect(screen.getByRole("button", { name: "重试" })).toBeEnabled());
-    await userEvent.click(screen.getByRole("button", { name: "重试" }));
-    await waitFor(() => expect(screen.queryByRole("button", { name: "重试" })).not.toBeInTheDocument());
-    expect(writes).toHaveLength(2); expect(writes[1]?.key).not.toBe(writes[0]?.key);
-    expect(prompt.textContent).toBe(before); expect(state.saves).toHaveLength(0);
-  });
-
-  it("creates a new task for an accepted blocked request while retaining its draft", async () => {
-    const blocked = { ...task("BLOCKED"), providerRequestId: "synthetic-accepted", version: 7,
-      errorCode: "PROVIDER_POLL_RETRY_EXHAUSTED" };
-    const replacement = { ...task("READY"), id: "replacement-task", attemptNo: 2 };
-    let calls = 0;
-    const state: ReturnType<typeof setup> = setup({ tasks: [blocked], handlers: [
-      http.post(`/api/v1/projects/${PROJECT_ID}/tasks/task-direct/new-attempt`, async ({ request }) => {
-        expect(await request.json()).toEqual({ expectedTaskVersion: 7 });
-        expect(request.headers.get("Idempotency-Key")).toBeTruthy();
-        calls++;
-        state.setTasks([replacement]);
-        return HttpResponse.json(replacement);
-      }),
-      http.get(`/api/v1/projects/${PROJECT_ID}/tasks/replacement-task/queue`, () =>
+      http.get(`/api/v1/projects/${PROJECT_ID}/tasks/replacement-2/queue`, () =>
         HttpResponse.json({ waitingAhead: 0, reason: "WAITING_WORKER" })),
     ] });
-    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeDisabled());
+    const user = userEvent.setup();
     const prompt = await screen.findByRole("textbox", { name: "图片提示词" });
-    const previous = prompt.textContent;
-    const retry = await screen.findByRole("button", { name: "重试" });
-    await userEvent.setup().click(retry);
-    await waitFor(() => expect(calls).toBe(1));
-    await waitFor(() => expect(screen.queryByRole("button", { name: "重试" })).not.toBeInTheDocument());
-    expect(prompt.textContent).toBe(previous);
+    const before = prompt.textContent;
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "运行" }));
+    await waitFor(() => expect(state.client.getQueryData<Task[]>(["direct-media-tasks", PROJECT_ID, CANVAS_ITEM_ID])?.[0]?.id).toBe("replacement-1"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "运行" }));
+    await waitFor(() => expect(writes).toHaveLength(2));
+    expect(writes[1]?.key).not.toBe(writes[0]?.key);
+    expect(writes[0]?.body).toEqual({ canvasItemId: CANVAS_ITEM_ID, expectedDraftVersion: 0 });
+    expect(writes[1]?.body).toEqual(writes[0]?.body);
+    expect(prompt.textContent).toBe(before);
     expect(state.saves).toHaveLength(0);
   });
 

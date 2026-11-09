@@ -28,6 +28,13 @@ export function occupiesMediaCard(task: Task): boolean {
     || task.status === "BLOCKED" && Boolean(task.providerRequestId);
 }
 
+/** A user can explicitly generate again from the current draft without replaying old inputs. */
+export function canRegenerateMediaTask(task: Task): boolean {
+  return task.runId === null && !task.cancelRequested
+    && (task.status === "UNKNOWN" && !task.providerRequestId
+      || task.status === "BLOCKED" && Boolean(task.providerRequestId));
+}
+
 export function latestMediaTask(tasks: readonly Task[] | undefined): Task | undefined {
   return tasks?.find(occupiesMediaCard) ?? tasks?.[0];
 }

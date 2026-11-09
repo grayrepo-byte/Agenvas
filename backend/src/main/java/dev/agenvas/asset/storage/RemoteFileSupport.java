@@ -33,9 +33,8 @@ final class RemoteFileSupport {
             }
             if (path.contains("//") || provider == StorageProfile.Provider.SMB && (path.isEmpty() || path.equals("/")))
                 throw new IllegalArgumentException();
-            if (web) dev.agenvas.shared.security.ServiceEndpointPolicy.dns(uri, okhttp3.Dns.SYSTEM, false);
             return uri.toASCIIString().replaceAll("/+$", "");
-        } catch (IllegalArgumentException | java.net.UnknownHostException failure) {
+        } catch (IllegalArgumentException failure) {
             throw StorageSettingsService.invalid(ApiMessage.of("api.remote-storage.invalid-endpoint"));
         }
     }

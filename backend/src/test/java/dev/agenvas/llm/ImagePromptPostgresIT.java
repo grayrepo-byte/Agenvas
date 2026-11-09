@@ -86,8 +86,7 @@ import tools.jackson.databind.ObjectMapper;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = {AgenvasApplication.class, ImagePromptPostgresIT.FakeConfig.class}, properties = {
-        "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false",
-        "agenvas.settings.llm.allow-loopback-http=true"})
+        "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class ImagePromptPostgresIT {
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     private static final Path STORAGE = temporaryRoot();
@@ -104,6 +103,7 @@ class ImagePromptPostgresIT {
     @Autowired ArtifactService artifacts;
     @Autowired AssetService assets;
     @Autowired CanvasService canvas;
+    @Autowired dev.agenvas.canvas.application.CanvasConnectionService connections;
     @Autowired ImagePromptTaskService prompts;
     @Autowired PromptService definitions;
     @Autowired TaskService tasks;
@@ -227,6 +227,14 @@ class ImagePromptPostgresIT {
         var resultItem = canvas.list(owner.userId(), source.project()).stream()
                 .filter(entry -> !entry.item().id().equals(source.item().id())).findFirst().orElseThrow();
         assertThat(resultItem.artifact().artifact().kind()).isEqualTo(dev.agenvas.artifact.domain.Artifact.Kind.TEXT);
+        assertThat(resultItem.item().x()).isEqualByComparingTo("344");
+        assertThat(resultItem.item().y()).isEqualByComparingTo("0");
+        assertThat(connections.list(owner.userId(), source.project())).singleElement().satisfies(connection -> {
+            assertThat(connection.relationType()).isEqualTo(dev.agenvas.canvas.domain.CanvasConnection.RelationType.MEDIA_DERIVATION);
+            assertThat(connection.sourceCanvasItemId()).isEqualTo(source.item().id());
+            assertThat(connection.targetCanvasItemId()).isEqualTo(resultItem.item().id());
+            assertThat(connection.sourceArtifactVersionId()).isEqualTo(source.version());
+        });
         var text = artifacts.get(owner.userId(), source.project(), resultItem.artifact().artifact().id());
         assertThat(text.resourceDefaultVersion().content().path("text").asText()).isEqualTo("Synthetic lakeside, soft morning light.");
         assertThat(text.resourceDefaultVersion().createdByKind()).isEqualTo(dev.agenvas.artifact.domain.ArtifactVersion.CreatedByKind.TASK);
@@ -245,6 +253,40 @@ class ImagePromptPostgresIT {
         definitions.update(changed.id(), changed.version(), definition.name(), definition.description(), definition.content());
     }
 
+    @Test void placesTextBesideTheCurrentSourceAndAvoidsOccupiedSpace() throws Exception {
+        var source = source();
+        var accepted = run(source, "near-source");
+        var blocker = artifacts.create(owner.userId(), source.project(), dev.agenvas.artifact.domain.Artifact.Kind.TEXT,
+                "Existing text", mapper.createObjectNode().put("format", "PLAIN_TEXT").put("text", "Existing work"));
+        canvas.apply(owner.userId(), source.project(), List.of(
+                new CanvasService.UpdateLayout(source.item().id(), source.item().version(), new BigDecimal("1200"),
+                        new BigDecimal("900"), source.item().width(), source.item().height(), 0, null),
+                new CanvasService.PlaceArtifact(UUID.randomUUID(), blocker.artifact().id(), new BigDecimal("1544"),
+                        new BigDecimal("900"), new BigDecimal("300"), new BigDecimal("300"), 1, null, false),
+                new CanvasService.PlaceArtifact(UUID.randomUUID(), blocker.artifact().id(), new BigDecimal("10000"),
+                        BigDecimal.ZERO, new BigDecimal("300"), new BigDecimal("300"), 2, null, false)));
+        worker.runOnce("near-source-worker");
+        var completed = tasks.get(owner.userId(), source.project(), accepted.id());
+        assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
+        var resultId = UUID.fromString(TaskController.TaskResponse.from(completed).output().path("canvasItemId").asText());
+        var result = canvas.list(owner.userId(), source.project()).stream()
+                .filter(entry -> entry.item().id().equals(resultId)).findFirst().orElseThrow().item();
+        assertThat(result.x()).isEqualByComparingTo("1544");
+        assertThat(result.y()).isEqualByComparingTo("1224");
+        assertThat(connections.list(owner.userId(), source.project())).singleElement()
+                .satisfies(connection -> assertThat(connection.targetCanvasItemId()).isEqualTo(resultId));
+    }
+
+    @Test void publishesAcceptedTextAndLineageAfterProjectArchival() throws Exception {
+        var source = source();
+        var accepted = run(source, "archived-source");
+        projects.archive(owner.userId(), source.project(), projects.get(owner.userId(), source.project()).version());
+        worker.runOnce("archived-source-worker");
+        assertThat(tasks.get(owner.userId(), source.project(), accepted.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(canvas.list(owner.userId(), source.project())).hasSize(2);
+        assertThat(connections.list(owner.userId(), source.project())).hasSize(1);
+    }
+
     @Test void dispatchKeepsPinnedOriginalAfterANewerVersionIsAddedAndNeedsNoThumbnail() throws Exception {
         var source = source();
         Task accepted = run(source, "pinned-original");
@@ -261,6 +303,10 @@ class ImagePromptPostgresIT {
         assertThat(completed.output().path("result").path("sourceVersionId").asText()).isEqualTo(source.version().toString());
         assertThat(((UserMessage) gateway.messages.getLast()).getMedia().getFirst().getDataAsByteArray()).isEqualTo(source.bytes());
         assertThat(artifacts.listVersions(owner.userId(), source.project(), source.artifact())).hasSize(2);
+        var textItem = UUID.fromString(TaskController.TaskResponse.from(completed).output().path("canvasItemId").asText());
+        assertThat(connections.list(owner.userId(), source.project()).stream()
+                .filter(connection -> connection.targetCanvasItemId().equals(textItem))).singleElement()
+                .satisfies(connection -> assertThat(connection.sourceArtifactVersionId()).isEqualTo(source.version()));
         assertThat(gateway.calls).isEqualTo(1);
     }
 
@@ -415,7 +461,6 @@ class ImagePromptPostgresIT {
         }
     }
 
-
     @Test void explicitRerunCreatesANewIndependentCardAndOldResultRemainsEditable() throws Exception {
         var source = source();
         var first = run(source, "first-card");
@@ -432,6 +477,7 @@ class ImagePromptPostgresIT {
                 .isEqualTo("User edited prompt");
         assertThat(run(source, "first-card").id()).isEqualTo(first.id());
         assertThat(canvas.list(owner.userId(), source.project())).hasSize(3);
+        assertThat(connections.list(owner.userId(), source.project())).hasSize(2);
         assertThat(gateway.calls).isEqualTo(2);
     }
 
@@ -455,29 +501,34 @@ class ImagePromptPostgresIT {
         assertThat(tasks.get(owner.userId(), source.project(), accepted.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
         assertThat(canvas.list(owner.userId(), source.project())).hasSize(2);
         assertThat(jdbc.sql("select count(*) from artifact where project_id=:project and kind='TEXT'").param("project", source.project()).query(Long.class).single()).isEqualTo(1);
+        assertThat(connections.list(owner.userId(), source.project())).hasSize(1);
         assertThat(gateway.calls).isZero();
     }
 
-    @Test void publicationFailureRollsBackAndRecoversCheckpointWithoutAnotherModelCall() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"canvas_item", "canvas_connection"})
+    void publicationFailureRollsBackAndRecoversCheckpointWithoutAnotherModelCall(String rejectedTable) throws Exception {
         var source = source();
         var accepted = run(source, "publication-recovery");
         jdbc.sql("create function synthetic_reject_prompt_card() returns trigger language plpgsql as $$ begin raise exception 'Synthetic placement failure'; end $$").update();
-        jdbc.sql("create trigger synthetic_reject_prompt_card before insert on canvas_item for each row execute function synthetic_reject_prompt_card()").update();
+        jdbc.sql("create trigger synthetic_reject_prompt_card before insert on " + rejectedTable + " for each row execute function synthetic_reject_prompt_card()").update();
         try {
             worker.runOnce("publication-failure-worker");
             var deferred = tasks.get(owner.userId(), source.project(), accepted.id());
             assertThat(deferred.status()).isEqualTo(Task.Status.RUNNING);
             assertThat(deferred.output().has("response")).isTrue();
             assertThat(canvas.list(owner.userId(), source.project())).hasSize(1);
+            assertThat(connections.list(owner.userId(), source.project())).isEmpty();
             assertThat(jdbc.sql("select count(*) from artifact where project_id=:project").param("project", source.project()).query(Long.class).single()).isEqualTo(1);
         } finally {
-            jdbc.sql("drop trigger synthetic_reject_prompt_card on canvas_item").update();
+            jdbc.sql("drop trigger synthetic_reject_prompt_card on " + rejectedTable).update();
             jdbc.sql("drop function synthetic_reject_prompt_card()").update();
         }
         jdbc.sql("update task set lease_until=now()-interval '1 second' where id=:id").param("id", accepted.id()).update();
         worker.runOnce("publication-recovery-worker");
         assertThat(tasks.get(owner.userId(), source.project(), accepted.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
         assertThat(canvas.list(owner.userId(), source.project())).hasSize(2);
+        assertThat(connections.list(owner.userId(), source.project())).hasSize(1);
         assertThat(gateway.calls).isEqualTo(1);
     }
 
@@ -497,6 +548,7 @@ class ImagePromptPostgresIT {
         assertThat(canvas.list(owner.userId(), source.project())).hasSize(1);
         assertThat(canvas.list(owner.userId(), source.project()).getFirst().artifact().resourceDefaultVersion().content().path("text").asText())
                 .isEqualTo("Retained prompt");
+        assertThat(connections.list(owner.userId(), source.project())).isEmpty();
         assertThat(gateway.calls).isZero();
     }
 

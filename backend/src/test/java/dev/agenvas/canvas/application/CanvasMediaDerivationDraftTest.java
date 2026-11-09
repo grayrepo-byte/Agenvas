@@ -192,7 +192,7 @@ class CanvasMediaDerivationDraftTest {
     void additionalBatchOutputsStillCopyTheDraftThatTheirGenerationUses() {
         CanvasItem result = canvas.forkMediaOutputWithinChange(owner, project, source, target, 5, 1);
         assertThat(result.title()).isEqualTo("Source");
-        verify(drafts).duplicateWithinChange(owner, project, source, target, 5);
+        verify(drafts).duplicateBatchOutputWithinChange(owner, project, source, target, 5);
         verify(drafts, never()).initializeWithinChange(any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
     }
 

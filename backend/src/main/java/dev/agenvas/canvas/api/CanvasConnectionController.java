@@ -54,14 +54,15 @@ public class CanvasConnectionController {
             @PathVariable UUID projectId, @PathVariable UUID connectionId,
             @Valid @RequestBody DisconnectRequest request) {
         return ConnectionResult.from(connections.disconnect(principal.userId(), projectId,
-                connectionId, request.expectedTargetDraftVersion()));
+                connectionId, request.expectedVersion(), request.expectedTargetDraftVersion()));
     }
 
     public record ConnectRequest(@NotNull UUID sourceCanvasItemId,
             @NotNull UUID targetCanvasItemId, @NotNull UUID sourceVersionId,
             @NotNull CanvasConnection.RelationType relationType,
             @PositiveOrZero Long expectedTargetDraftVersion) {}
-    public record DisconnectRequest(@PositiveOrZero Long expectedTargetDraftVersion) {}
+    public record DisconnectRequest(@NotNull @PositiveOrZero Long expectedVersion,
+            @PositiveOrZero Long expectedTargetDraftVersion) {}
     public record ConnectionList(List<ConnectionView> items) {}
     public record ConnectionResult(ConnectionView connection, MediaDraftView draft) {
         private static ConnectionResult from(CanvasConnectionService.ConnectionResult result) {

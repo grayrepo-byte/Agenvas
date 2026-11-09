@@ -25,6 +25,7 @@ type FunctionTab = typeof FUNCTION_TABS[number];
 const FUNCTION_FILTERS = ["all", "ready", "unconfigured"] as const;
 type FunctionFilter = typeof FUNCTION_FILTERS[number];
 const FUNCTION_ICONS: Record<MediaFunctionSetting["operation"], Icon> = {
+  IMAGE_COSTUME_EXTRACT: Scissors,
   IMAGE_SMART_EDIT: MagicWand, IMAGE_RELIGHT: Sun, IMAGE_OUTPAINT: ArrowsOut,
   IMAGE_THREE_VIEW: Cube, IMAGE_LAYER_SPLIT: Stack, IMAGE_EXPRESSION_EDIT: Smiley,
   IMAGE_REMOVE_BACKGROUND: Scissors, IMAGE_OBJECT_REMOVE: Eraser, IMAGE_VIEW_ANGLE: Cube,
@@ -151,7 +152,6 @@ export function MediaFunctionSettingsPage() {
       const { entries } = group;
       const visibleCount = entries.filter(({ visible }) => visible).length;
       return <TabsContent key={group.tab} value={group.tab} forceMount hidden={selectedTab !== group.tab} className="media-function-panel">
-      {group.tab === "image" ? <p className="media-function-catalog-hint ui-muted">{t("media.functions.imageHint")}</p> : null}
       <div className="media-table-scroll media-function-list" tabIndex={0} role="region" aria-label={t(group.tab === "image" ? "media.functions.imageTools" : "media.functions.videoTools")}>
       <Table className="media-settings-table media-function-table" aria-label={t(group.tab === "image" ? "media.functions.imageTools" : "media.functions.videoTools")}>
       <TableHeader><TableRow>
@@ -167,6 +167,5 @@ export function MediaFunctionSettingsPage() {
       </Table></div>
     </TabsContent>; })}
     </Tabs> : null}
-    <p className="ui-muted">{t("media.functions.compatibilityHint")}</p>
   </PageShell>;
 }

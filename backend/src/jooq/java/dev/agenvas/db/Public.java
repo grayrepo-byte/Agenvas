@@ -38,6 +38,8 @@ import dev.agenvas.db.tables.CharacterLibraryMedia;
 import dev.agenvas.db.tables.CharacterLibraryProfile;
 import dev.agenvas.db.tables.CharacterLibraryRevision;
 import dev.agenvas.db.tables.CreativeSkill;
+import dev.agenvas.db.tables.CustomCostumeReference;
+import dev.agenvas.db.tables.CustomCostumeSaveCommand;
 import dev.agenvas.db.tables.DirectorSettings;
 import dev.agenvas.db.tables.IdempotencyRecord;
 import dev.agenvas.db.tables.InstallationLock;
@@ -305,6 +307,18 @@ public class Public extends SchemaImpl {
     public final CreativeSkill CREATIVE_SKILL = CreativeSkill.CREATIVE_SKILL;
 
     /**
+     * Instance-shared self-created costume; independent permanent archive, soft
+     * deletion retains accepted transfer bytes
+     */
+    public final CustomCostumeReference CUSTOM_COSTUME_REFERENCE = CustomCostumeReference.CUSTOM_COSTUME_REFERENCE;
+
+    /**
+     * Durable save intention with pinned immutable source and public replay
+     * result; retained independently of source project
+     */
+    public final CustomCostumeSaveCommand CUSTOM_COSTUME_SAVE_COMMAND = CustomCostumeSaveCommand.CUSTOM_COSTUME_SAVE_COMMAND;
+
+    /**
      * 管理员维护的全局导演上下文、压缩与恢复设置；新请求读取当前值，已有检查点不改写
      */
     public final DirectorSettings DIRECTOR_SETTINGS = DirectorSettings.DIRECTOR_SETTINGS;
@@ -541,7 +555,8 @@ public class Public extends SchemaImpl {
     public final ReferenceCatalogSnapshot REFERENCE_CATALOG_SNAPSHOT = ReferenceCatalogSnapshot.REFERENCE_CATALOG_SNAPSHOT;
 
     /**
-     * Admin registered public GitHub metadata sources; manual sync only
+     * Administrator-selected catalog delivery sources with cached immutable
+     * JSON snapshots
      */
     public final ReferenceCatalogSource REFERENCE_CATALOG_SOURCE = ReferenceCatalogSource.REFERENCE_CATALOG_SOURCE;
 
@@ -711,6 +726,8 @@ public class Public extends SchemaImpl {
             CharacterLibraryProfile.CHARACTER_LIBRARY_PROFILE,
             CharacterLibraryRevision.CHARACTER_LIBRARY_REVISION,
             CreativeSkill.CREATIVE_SKILL,
+            CustomCostumeReference.CUSTOM_COSTUME_REFERENCE,
+            CustomCostumeSaveCommand.CUSTOM_COSTUME_SAVE_COMMAND,
             DirectorSettings.DIRECTOR_SETTINGS,
             IdempotencyRecord.IDEMPOTENCY_RECORD,
             InstallationLock.INSTALLATION_LOCK,

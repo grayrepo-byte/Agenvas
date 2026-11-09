@@ -29,8 +29,6 @@
 .runninghub-input-fields { min-width: 0; margin: 0; padding: 0; border: 0; }
 .runninghub-input-fields { gap: var(--ui-space-4); }
 .runninghub-input-intro { display: flex; align-items: center; justify-content: space-between; gap: var(--ui-space-4); }
-.runninghub-input-intro > p,
-.runninghub-inspector-hint { margin: 0; color: var(--ui-text-muted); font-size: var(--ui-text-sm); line-height: 1.7; }
 .runninghub-publish-scope { display: grid; grid-template-columns: 260px minmax(0, 1fr) auto; align-items: center; gap: var(--ui-space-2) var(--ui-space-3); padding: var(--ui-space-3) var(--ui-space-4); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: var(--ui-field); }
 .runninghub-node-picker { display: flex; flex-direction: row; align-items: center; gap: var(--ui-space-3); }
 .runninghub-node-picker > [data-slot="field-label"] { flex: none; width: auto; font-size: var(--ui-text-sm); color: var(--ui-text-secondary); }

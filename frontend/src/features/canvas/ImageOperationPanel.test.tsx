@@ -15,6 +15,17 @@ function show(overrides: Partial<Parameters<typeof ImageOperationPanel>[0]> = {}
 }
 
 describe("visual image operations", () => {
+  it("extracts an outfit with optional guidance and preserves it after failure", () => {
+    const view = show({ operation: "COSTUME_EXTRACT" });
+    const guidance = screen.getByRole("textbox", { name: "提取说明（可选）" });
+    fireEvent.click(screen.getByRole("button", { name: "开始处理" }));
+    expect(view.onSubmit).toHaveBeenLastCalledWith({}, "");
+    fireEvent.change(guidance, { target: { value: "左侧人物，保留鞋包" } });
+    view.rerender({ error: new Error("synthetic conflict") });
+    expect(guidance).toHaveValue("左侧人物，保留鞋包");
+    fireEvent.click(screen.getByRole("button", { name: "开始处理" }));
+    expect(view.onSubmit).toHaveBeenLastCalledWith({}, "左侧人物，保留鞋包");
+  });
   it("lets a preset become an editable instruction without generating on selection", async () => {
     const { onSubmit } = show();
     expect(screen.getByRole("button", { name: "开始处理" })).toBeDisabled();

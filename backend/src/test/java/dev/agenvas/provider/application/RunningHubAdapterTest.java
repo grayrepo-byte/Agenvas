@@ -162,9 +162,26 @@ class RunningHubAdapterTest {
                 .singleElement().satisfies(result -> assertThat(result.archiveEntry().name()).isEqualTo("a.mp4"));
     }
 
+    @Test void loopbackZipResultsUseTheConfiguredDownloadPolicy() throws Exception {
+        var client = mock(RunningHubClient.class);
+        byte[] archive = zip("video.mp4");
+        String url = "http://127.0.0.1/result.zip";
+        when(client.download("https://www.runninghub.ai", url))
+                .thenAnswer(ignored -> new MediaPayload(new ByteArrayInputStream(archive), "application/zip"));
+        var response = mapper.createObjectNode();
+        response.putArray("results").addObject().put("outputType", "zip").put("url", url);
+        assertThat(adapter(client, mock(JooqMediaCapabilityRepository.class))
+                .manifest(response, definition, "https://www.runninghub.ai").results())
+                .singleElement().satisfies(result -> {
+                    assertThat(result.url()).isEqualTo(url);
+                    assertThat(result.archiveEntry().name()).isEqualTo("video.mp4");
+                });
+        verify(client).download("https://www.runninghub.ai", url);
+    }
+
     @Test void invalidZipUrlsAndUnknownOutputTypesAreRejected() {
         var response = mapper.readTree("""
-            {"results":[{"nodeId":"157","outputType":"zip","url":"http://127.0.0.1/never-download.zip"},
+            {"results":[{"nodeId":"157","outputType":"zip","url":"http://user@127.0.0.1/never-download.zip"},
                         {"nodeId":"155","outputType":"mp4","url":"https://cdn.example.com/video.mp4"}]}
             """);
         assertThatThrownBy(() -> adapter.manifest(response, definition, "https://www.runninghub.ai"))
@@ -245,7 +262,7 @@ class RunningHubAdapterTest {
         var client = mock(RunningHubClient.class);
         var response = mapper.readTree("""
             {"results":[{"nodeId":"10","outputType":"mp4","url":"https://cdn.example.com/first.mp4"},
-                        {"nodeId":"11","outputType":"zip","url":"http://127.0.0.1/never-download.zip"}]}
+                        {"nodeId":"11","outputType":"zip","url":"http://user@127.0.0.1/never-download.zip"}]}
             """);
         assertThat(adapter(client, null).manifest(response, definition, "https://www.runninghub.ai").results())
                 .singleElement().satisfies(result -> {

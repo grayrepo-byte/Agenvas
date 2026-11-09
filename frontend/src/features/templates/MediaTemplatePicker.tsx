@@ -108,7 +108,7 @@ function MediaTemplateCatalog({ context, system = false, enabled = true }: {
         <span className="media-template-card-label"><strong>{template.name}</strong><small>{template.scope === "SYSTEM" ? t("templates.system") : t("templates.personal")} · {t("templates.imageCount", { "0": template.images.length })}</small></span>
       </Button>)}
     </div>
-    {selected ? <Dialog title={selected.name} className="media-template-detail" description={t("templates.previewHint")}
+    {selected ? <Dialog title={selected.name} className="media-template-detail"
       busy={busy} onClose={() => { setSelected(null); setError(null); }} onSubmit={(event) => event.preventDefault()}
       footer={<div className="media-template-detail-actions">
         {applyError ? <Notice tone="warning">{applyError}</Notice> : null}
@@ -153,7 +153,7 @@ export function MediaTemplatePicker(context: TemplatePickerContext) {
   useLocale();
   const [busy, setBusy] = useState(false);
   return <Dialog title={context.targetKind === "IMAGE" ? t("templates.imageTitle") : t("templates.videoTitle")}
-    description={t("templates.pickerHint")} className="media-template-picker" busy={busy} onClose={context.onClose} onSubmit={(event) => event.preventDefault()}>
+    className="media-template-picker" busy={busy} onClose={context.onClose} onSubmit={(event) => event.preventDefault()}>
     <MediaTemplateCatalog context={{ ...context, onBusy: (next) => { setBusy(next); context.onBusy(next); } }} />
   </Dialog>;
 }

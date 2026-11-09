@@ -77,6 +77,28 @@ class McpHttpPostgresIT {
                 Set.of(McpScope.READ, McpScope.CONTENT_WRITE, McpScope.MEDIA_GENERATE), 30));
     }
 
+    @Test void officialClientReadsEveryUnicodeTextPageUsingThePublishedSchema() {
+        try (var client = client(credential.token())) {
+            client.initialize();
+            String text = "文😀".repeat(4200);
+            JsonNode created = call(client, "create_text", command("unicode-text", Map.of("title", "Synthetic Unicode script", "text", text)));
+            String version = created.at("/artifact/versionId").asText();
+            StringBuilder restored = new StringBuilder();
+            int offset = 0;
+            do {
+                JsonNode item = call(client, "read_artifacts", Map.of("projectId", project.id().toString(),
+                        "versionIds", java.util.List.of(version), "textOffset", offset, "textLimit", 3999)).at("/items/0");
+                assertThat(item.at("/textPage/offset").asInt()).isEqualTo(offset);
+                restored.append(item.at("/content/text").asText());
+                if (item.at("/textPage/nextOffset").isNull()) break;
+                int next = item.at("/textPage/nextOffset").asInt();
+                assertThat(next).isGreaterThan(offset);
+                offset = next;
+            } while (true);
+            assertThat(restored.toString()).isEqualTo(text);
+        }
+    }
+
     @Test void officialClientDiscoversTheCatalogAndExercisesCreativeToolsAndUploadPreparation() {
         try (var client = client(credential.token())) {
             var initialized = client.initialize();

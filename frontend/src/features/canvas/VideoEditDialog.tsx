@@ -174,7 +174,7 @@ export function VideoEditDialog({ projectId, items, initialIds, onClose }: {
       <TooltipProvider delayDuration={300}>
         <header className="video-edit-header">
           <div className="video-edit-brand"><span className="video-edit-brand-icon"><Scissors aria-hidden="true" /></span>
-            <div><DialogTitle>{t("video.edit.title")}</DialogTitle><p>{t("video.edit.workspaceHint")}</p></div>
+            <div><DialogTitle>{t("video.edit.title")}</DialogTitle></div>
           </div>
           <div className="video-edit-header-actions"><Badge variant="outline">{t("video.edit.localProcessing")}</Badge>
             <IconAction label={t("common.close")} size="icon-sm" disabled={submit.isPending} onClick={onClose}><X /></IconAction>
@@ -186,7 +186,6 @@ export function VideoEditDialog({ projectId, items, initialIds, onClose }: {
         <div className="video-edit-workspace">
           <aside className="video-edit-sources" aria-label={t("video.edit.sequence")}>
             <div className="video-edit-panel-heading"><h3><FilmStrip aria-hidden="true" />{t("video.edit.sequence")}</h3><Badge variant="secondary">{shots.length} / 12</Badge></div>
-            <p className="video-edit-panel-hint">{t("video.edit.sequenceHint")}</p>
             <ol className="video-edit-clip-list">
               {shots.map((shot, index) => {
                 const source = videos.find((item) => item.selectedVersionId === shot.videoVersionId);

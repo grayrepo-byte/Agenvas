@@ -110,10 +110,11 @@ class MiniMaxH3ClientTest {
         server.createContext("/v2/query/video_generation/task-1", exchange -> respond(exchange, 404, "{}"));
         assertThatThrownBy(() -> client.query(null, "key", "task-1")).isInstanceOf(MiniMaxH3Client.TaskExpired.class);
     }
-    @Test void permitsOnlyTheTwoOfficialRegionalOrigins() {
+    @Test void acceptsCompatibleServiceRootsWithoutAnOfficialHostAllowlist() {
         assertThat(MiniMaxH3Client.validatedOrigin(null)).isEqualTo("https://api.minimax.cn");
-        assertThat(MiniMaxH3Client.validatedOrigin("https://api.minimax.io/")).isEqualTo("https://api.minimax.io");
-        for (String url : List.of("https://api.minimax.cn/v2", "https://user@api.minimax.cn", "https://proxy.example.com", "http://api.minimax.cn"))
+        for (String url : List.of("http://localhost:8090", "https://proxy.invalid:8443", "https://api.minimax.io"))
+            assertThat(MiniMaxH3Client.validatedOrigin(url + "/")).isEqualTo(url);
+        for (String url : List.of("https://api.minimax.cn/v2", "https://user@api.minimax.cn", "file:///tmp"))
             assertThatThrownBy(() -> MiniMaxH3Client.validatedOrigin(url)).isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
     }
     private static void respond(HttpExchange exchange, int status, String body) throws IOException {

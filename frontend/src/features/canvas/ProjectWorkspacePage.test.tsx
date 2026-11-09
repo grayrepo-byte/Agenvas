@@ -555,7 +555,7 @@ describe("ProjectWorkspacePage", () => {
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
       projectProjection("Legacy project"),
       http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({
-        project: { id: "project-1", name: "Legacy project", status: "ACTIVE" }, canvas: { items: [image] },
+        project: { id: "project-1", name: "Legacy project", status: "ACTIVE" }, canvas: { items: [image] }, connections: [],
         director: directorExists ? agent : null, activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0,
       })),
       http.put("/api/v1/projects/:projectId/director", () => { ensures(); return HttpResponse.json(agent); }),

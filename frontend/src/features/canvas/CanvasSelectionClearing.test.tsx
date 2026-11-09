@@ -9,7 +9,6 @@ import { afterEach,beforeEach,describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { CanvasEditRequest,CanvasItem,MediaDraft,ProjectSnapshot,SaveMediaDraftRequest } from "../../shared/api/client";
 import { server } from "../../test/server";
-import { imageFunctionsFixture } from "../../test/imageFunctionsFixture";
 import { CANVAS_POINTER_THRESHOLD } from "./canvasInteraction";
 import { canvasGroupNodeId } from "./canvasGroups";
 import { CANVAS_SELECTION_MODE,useCanvasStore } from "./canvasStore";
@@ -230,7 +229,7 @@ describe("canvas keyboard ownership", () => {
     fireEvent(pane, shortcut);
     expect(shortcut.defaultPrevented).toBe(true);
     await waitFor(() => expect(flowProps.edges).toHaveLength(0));
-    expect(disconnected).toEqual([{ expectedTargetDraftVersion: 0 }]);
+    expect(disconnected).toEqual([{ expectedVersion: 0, expectedTargetDraftVersion: 0 }]);
     expect(flowProps.nodes).toHaveLength(items.length);
   });
 
@@ -618,13 +617,13 @@ describe("node editor centering", () => {
     expect(focusProbe.fit).not.toHaveBeenCalled();
   });
 
-  it.each([0.6, 1.8])("centers initial, repeated, and switched editor clicks at zoom %s without changing node layouts", async (zoom) => {
+  it.each([0.6, 1.8])("focuses initial, repeated, and switched editor clicks in the upper canvas at zoom %s without changing node layouts", async (zoom) => {
     focusProbe.zoom = zoom;
     // Focus must use the current canvas projection, including unsaved layout and media dimensions.
     useCanvasStore.getState().updateDraft("image-card", { x: 120, y: 620, width: 420, height: 320 });
     const originalBounds = HTMLElement.prototype.getBoundingClientRect;
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-      return this.classList.contains("workspace-canvas")
+      return this.classList.contains("workspace-canvas") || this.classList.contains("react-flow")
         ? new DOMRect(0, 0, TEST_VIEWPORT.width, TEST_VIEWPORT.height)
         : originalBounds.call(this);
     });
@@ -675,8 +674,10 @@ describe("node editor centering", () => {
       for (const [itemId, layout] of layouts) expect(nodeElement(itemId)).toHaveStyle(layout);
       expect(useCanvasStore.getState().drafts).toBe(layoutDrafts);
       expect(focusProbe.center).toHaveBeenCalledTimes(centersBeforeClick + 1);
+      // At 1.8x the 320px media node needs its center at 304px for the 16px top margin.
+      const screenRise = id === "image-card" && zoom === 1.8 ? 146 : 150;
       expect(focusProbe.center).toHaveBeenLastCalledWith(
-        projected.position.x + width / 2, projected.position.y + height / 2,
+        projected.position.x + width / 2, projected.position.y + height / 2 + screenRise / zoom,
         expect.objectContaining({ zoom, duration: expect.any(Number), ease: expect.any(Function), interpolate: "linear" }));
       const duration = focusProbe.center.mock.lastCall?.[2]?.duration;
       expect(duration).toBeGreaterThanOrEqual(240);
@@ -714,15 +715,17 @@ describe("node editor centering", () => {
     expect(focusProbe.viewport).not.toHaveBeenCalled();
   });
 
-  it.each(["pointerDown", "wheel"] as const)("cancels a pending text editor focus on %s before the next frame", async (gesture) => {
+  it.each(["image-card", "text-card"].flatMap(id => ["pointerDown", "wheel"].map(gesture => ({ id, gesture } as const))))(
+    "cancels a pending $id editor focus on $gesture before the next frame", async ({ id, gesture }) => {
     await renderInteractiveFlow();
     const schedule = vi.spyOn(window, "requestAnimationFrame");
     const cancel = vi.spyOn(window, "cancelAnimationFrame");
-    fireEvent.click(nodeElement("text-card"));
+    fireEvent.click(nodeElement(id));
     expect(schedule).toHaveBeenCalled();
     const frame = schedule.mock.results.at(-1)?.value;
     expect(frame).toEqual(expect.any(Number));
-    fireEvent[gesture](nodeElement("image-card"));
+    if (gesture === "pointerDown") fireEvent.pointerDown(nodeElement("image-card"));
+    else fireEvent.wheel(nodeElement("image-card"));
     expect(cancel).toHaveBeenCalledWith(frame);
     await act(() => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())));
     expect(focusProbe.center).not.toHaveBeenCalled();
@@ -736,6 +739,7 @@ describe("node editor centering", () => {
     await renderInteractiveFlow();
     const node = nodeElement("image-card");
     fireEvent.click(node);
+    await act(() => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())));
     expect(focusProbe.center).toHaveBeenCalledOnce();
     const viewport = focusProbe.instance!.getViewport();
     const onPointerDown = vi.fn(() => {
@@ -756,6 +760,7 @@ describe("node editor centering", () => {
   it("keeps programmatic camera motion and gives user viewport movement immediate control", async () => {
     await renderInteractiveFlow();
     fireEvent.click(nodeElement("image-card"));
+    await act(() => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())));
     const viewport = focusProbe.instance!.getViewport();
     act(() => flowProps.onMoveStart?.(null, viewport));
     expect(focusProbe.viewport).not.toHaveBeenCalled();
@@ -1005,44 +1010,6 @@ describe("workspace selection with real React Flow", () => {
     expect(useCanvasStore.getState().selectionMode).toBe(CANVAS_SELECTION_MODE.MULTIPLE);
     expect(screen.getByRole("group", { name: "批量操作" })).toBeVisible();
     expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
-  });
-
-  it("reveals a reverse-prompt result inside a collapsed group before selecting it", async () => {
-    const grouped = items.map((item) => ({ ...item, groupId: item.id === "text-card" ? "result-group" : null,
-      ...(item.id === "image-card" ? { selectedVersionId: imageVersionId, selectedVersion: item.artifact?.resourceDefaultVersion ?? null } : {}) }));
-    let collapsed = true, writes = 0;
-    const groups = () => [{ id: "result-group", projectId: "project-1", name: "反推结果组", collapsed, version: collapsed ? 0 : 1 }];
-    server.use(
-      http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({ ...snapshot(), canvas: { items: grouped } })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: grouped })),
-      http.get("/api/v1/projects/:projectId/canvas/editor", () => HttpResponse.json({ items: grouped, groups: groups() })),
-      http.post("/api/v1/projects/:projectId/canvas/edits", async ({ request }) => {
-        const input = await request.json() as CanvasEditRequest;
-        expect(input).toMatchObject({ operation: "GROUP", groupChanges: [{ type: "UPSERT", groupId: "result-group", expectedVersion: 0, collapsed: false }] });
-        writes++; collapsed = false;
-        return HttpResponse.json({ items: grouped, groups: groups(), receipt: { id: input.commandId, operation: input.operation, revision: 0, state: "APPLIED" } });
-      }));
-    renderRealFlow = true;
-    await renderFlow(items.length + 1);
-    await waitFor(() => expect(nodeElement("text-card")).not.toBeVisible());
-    server.use(http.get("/api/v1/settings/media-functions", () => HttpResponse.json(imageFunctionsFixture())),
-      http.get("/api/v1/projects/project-1/artifacts/image-id/image-prompts", () => HttpResponse.json([{
-      id: "synthetic-reverse", projectId: "project-1", runId: null, stepKey: "reverse", kind: "TEXT_GENERATION", status: "SUCCEEDED",
-      cancelRequested: false, input: { schemaVersion: 5, purpose: "IMAGE_REVERSE_PROMPT", sourceVersionId: imageVersionId },
-      output: { prompt: "Saved prompt", mock: false, artifactId: "text-id", canvasItemId: "text-card" },
-      attemptNo: 1, nextActionAt: now, version: 2, createdAt: now, updatedAt: now,
-    }])));
-    act(() => useCanvasStore.getState().setSelectedIds(["image-card"]));
-    const reverse = await screen.findByRole("button", { name: "提示词反推" });
-    await waitFor(() => expect(reverse).toBeEnabled()); fireEvent.click(reverse);
-    fireEvent.click(await screen.findByRole("button", { name: "查看文字卡片" }));
-    await waitFor(() => expect(nodeElement("text-card")).toBeVisible());
-    await waitFor(() => expect(nodeElement("text-card")).toHaveClass("selected"));
-    expect(selectedIds()).toEqual(["text-card"]); expect(writes).toBe(1);
-    await waitFor(() => expect(focusProbe.fit).toHaveBeenCalledWith(expect.objectContaining({ nodes: [{ id: "text-card" }] })));
-    act(() => useCanvasStore.getState().setSelectedIds(["image-card"]));
-    await screen.findByRole("button", { name: "提示词反推" });
-    expect(screen.queryByRole("dialog", { name: "提示词反推" })).not.toBeInTheDocument();
   });
 
   it.each([false, true])("selects grouped nodes once with collapsed=%s and includes locked/offscreen cards", async (collapsed) => {

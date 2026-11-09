@@ -24,7 +24,7 @@ export function CharacterLibraryMediaPicker({ kind, onSelect, onClose }: { kind:
   const mediaId = transfer.data?.status === "SUCCEEDED" && typeof transfer.data.result?.mediaId === "string" ? transfer.data.result.mediaId : null;
   const frozen = transfer.frozen;
   const validFile = file && !isVideoFile(file) && (kind === "AUDIO" ? isAudioFile(file) : !isAudioFile(file) && (file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(file.name)));
-  return <Dialog title={cl("chooseMedia")} description={cl("identityHint")} busy={transfer.busy || transfer.unresolved} onClose={onClose} onSubmit={(event) => event.preventDefault()}
+  return <Dialog title={cl("chooseMedia")} busy={transfer.busy || transfer.unresolved} onClose={onClose} onSubmit={(event) => event.preventDefault()}
     footer={mediaId ? <Button type="button" onClick={() => { onSelect(mediaId); onClose(); }}>{cl("select")}</Button> : undefined}>
     <CharacterCommandState command={transfer} />
     <Tabs defaultValue="LOCAL"><TabsList><TabsTrigger value="LOCAL">{cl("local")}</TabsTrigger><TabsTrigger value="ASSETS">{cl("assets")}</TabsTrigger><TabsTrigger value="CANVAS">{cl("canvas")}</TabsTrigger></TabsList>

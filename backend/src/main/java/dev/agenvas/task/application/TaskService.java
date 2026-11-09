@@ -575,7 +575,9 @@ public class TaskService {
                 throw leaseLost();
             var artifact = artifacts.createTaskTextWithinChange(ownerId, lease.projectId(),
                     current.input().path("outputTitle").asText(), content);
-            var item = canvas.placeTaskTextWithinChange(ownerId, lease.projectId(), artifact.artifact().id());
+            var item = canvas.placeImagePromptTextWithinChange(ownerId, lease.projectId(), artifact.artifact().id(),
+                    UUID.fromString(current.input().path("canvasItemId").asText()),
+                    UUID.fromString(current.input().path("sourceVersionId").asText()));
             ObjectNode completed = (ObjectNode) output.deepCopy();
             ObjectNode summary = (ObjectNode) completed.path("result");
             summary.put("artifactId", artifact.artifact().id().toString());

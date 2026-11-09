@@ -908,6 +908,147 @@ paths:
         Administrator-only and CSRF protected. Empty object explicitly selects the shared cache. Optional
         source/snapshot/entry selection narrows it. Active matching jobs are cancelled/fenced; active
         owner-private indexes and independent project media remain protected.
+  /api/v1/projects/{projectId}/reference-catalog/costumes:
+    post:
+      operationId: saveCostumeReference
+      summary: Save an exact image as an independently archived shared costume reference
+      tags: [Reference Catalog]
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SaveCostumeReferenceRequest'}
+      responses:
+        '201':
+          description: Successful response
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReferenceCatalogEntry'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/reference-catalog/costumes/{costumeId}:
+    get:
+      operationId: getCostumeReference
+      summary: Read current costume metadata to reconcile a stale edit or import
+      tags: [Reference Catalog]
+      parameters:
+        - name: costumeId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200':
+          description: Current visible costume reference
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReferenceCatalogEntry'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    patch:
+      operationId: updateCostumeReference
+      summary: Update self-created costume metadata with CAS
+      tags: [Reference Catalog]
+      parameters:
+        - name: costumeId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/UpdateCostumeReferenceRequest'}
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReferenceCatalogEntry'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+    delete:
+      operationId: deleteCostumeReference
+      summary: Remove a self-created reference without deleting project copies
+      tags: [Reference Catalog]
+      parameters:
+        - name: costumeId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: expectedVersion
+          in: query
+          required: true
+          schema: {type: integer, format: int64, minimum: 0}
+      responses:
+        '204':
+          description: Successful response
+        '400': {$ref: '#/components/responses/ValidationError'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/projects/{projectId}/reference-catalog/costumes/{costumeId}/import:
+    post:
+      operationId: importCostumeReference
+      summary: Copy a fixed self-created costume into an owned active project
+      tags: [Reference Catalog]
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: costumeId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ImportCostumeReferenceRequest'}
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReferenceCatalogImport'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/reference-catalog/costumes/{costumeId}/image:
+    get:
+      operationId: readCostumeReferenceImage
+      summary: Read independently archived costume bytes with authentication
+      tags: [Reference Catalog]
+      parameters:
+        - name: costumeId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200':
+          description: Costume image
+          content:
+            image/png: {schema: {type: string, format: binary}}
+            image/jpeg: {schema: {type: string, format: binary}}
+            image/webp: {schema: {type: string, format: binary}}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
   /api/v1/reference-catalog/sources:
     get:
       operationId: listReferenceCatalogSources
@@ -977,6 +1118,13 @@ paths:
           required: false
           schema:
             type: string
+        - name: includeSelfCreated
+          in: query
+          required: false
+          description: Include independent self-created costumes alongside an automatically preferred external source; explicit source selection normally leaves this false.
+          schema:
+            type: boolean
+            default: false
         - name: query
           in: query
           required: false
@@ -4196,6 +4344,7 @@ paths:
     post:
       operationId: runMediaDraft
       summary: 固定已保存的媒体草稿，首个输出为当前节点追加版本，其余输出使用独立节点并受理 USER_DIRECT Task
+      description: 用户显式提交当前已保存草稿。节点存在未取消的直连 UNKNOWN（无外部请求 ID）或已受理 BLOCKED 时，按当前模型、参数和素材创建独立新任务及用量预留，原任务状态、请求与费用记录保留，并原子记录替代关系；不会复制原任务输入或恢复原请求查询。其他占用仍返回已有任务，Agent 和 MCP 不借此替代未知任务。同键重放返回已受理任务，不重新生成。
       tags: [Tasks]
       parameters:
         - name: Idempotency-Key
@@ -4314,7 +4463,7 @@ paths:
     post:
       operationId: runImagePrompt
       summary: 固定选用图片版本、语言、功能提示词与文字模型，受理提示词反推任务
-      description: 使用 TEXT_GENERATION Task 的 IMAGE_REVERSE_PROMPT 用途与输入 schema 5；成功后在同一租约及取消屏障事务中创建独立 TEXT 产物、不可变 TASK 版本和画布文字卡片，不修改媒体草稿或来源选用结果。校验来源节点 CAS 与精确版本归属，固定 image.reverse-prompt 正文与版本。相同键同请求重放，不重新读取配置；同节点有其他命令的活动任务时返回 409，不创建重复任务。Worker 发送固定版本的归档原图，关闭自动工具执行。成功 output 返回 prompt、sourceVersionId、mock、artifactId、artifactVersionId 和 canvasItemId（项目已删除时不创建节点并省略 canvasItemId）。标题冻结为请求语言，Mock 卡片标题明确标记。重复命令、查询和检查点恢复不会重复建卡；发布失败保留响应检查点，租约恢复只重试发布。历史 schema 3 继续只返回原反推文本，不自动补卡。Mock 明确标记为演示；真实模型须支持图片理解。沿用任务租约、公开状态事件、查询、取消、用量与响应检查点恢复。
+      description: 使用 TEXT_GENERATION Task 的 IMAGE_REVERSE_PROMPT 用途与输入 schema 5；成功后在同一租约及取消屏障事务中创建独立 TEXT 产物、不可变 TASK 版本、来源图片右侧避碰的文字卡片及固定受理图片版本的 MEDIA_DERIVATION 连线，沿用来源当前分组，不修改媒体草稿或来源选用结果。来源移除时保留普通独立文字节点，不补建来源或悬空连线；项目归档不丢弃已受理结果。校验来源节点 CAS 与精确版本归属，固定 image.reverse-prompt 正文与版本。相同键同请求重放，不重新读取配置；同节点有其他命令的活动任务时返回 409，不创建重复任务。Worker 发送固定版本的归档原图，关闭自动工具执行。成功 output 返回 prompt、sourceVersionId、mock、artifactId、artifactVersionId 和 canvasItemId（项目已删除时不创建节点并省略 canvasItemId）。标题冻结为请求语言，Mock 卡片标题明确标记。重复命令、查询和检查点恢复不会重复建卡或连线；卡片或连线发布失败整体回滚，保留响应检查点，租约恢复只重试发布。历史 schema 3 继续只返回原反推文本，不自动补卡。Mock 明确标记为演示；真实模型须支持图片理解。沿用任务租约、公开状态事件、查询、取消、用量与响应检查点恢复。
       tags: [Tasks]
       parameters:
         - name: Idempotency-Key
@@ -5306,8 +5455,8 @@ paths:
       - {$ref: "#/components/parameters/ProjectId"}
     post:
       operationId: editCanvas
-      summary: Atomically edit presentation, groups or copy up to 100 independent content nodes
-      description: Command identities and request fingerprints are durable. The latest 100 receipt snapshots per project are retained; retries after their snapshot expires return CANVAS_EDIT_EXPIRED and never execute again. Copies freeze saved text/media/character state and inherit no tasks or connections. Group membership changes must explicitly include all changed nodes. Locked nodes may be renamed, unlocked or copied, but cannot move or change group. No provider calls are made.
+      summary: Atomically edit presentation, groups or copy up to 100 nodes with internal topology
+      description: Command identities and request fingerprints are durable. The latest 100 receipt snapshots per project are retained; retries after their snapshot expires return CANVAS_EDIT_EXPIRED and never execute again. Copies freeze saved text/media/character state and remap the complete selected internal topology. External edges, history and tasks are not copied; fixed external media inputs become manual. Group membership changes must explicitly include all changed nodes. Locked nodes may be renamed, unlocked or copied, but cannot move or change group. No provider calls are made.
       tags: [Canvas]
       requestBody:
         required: true
@@ -7207,6 +7356,43 @@ components:
           minimum: 0
         stats:
           $ref: '#/components/schemas/ReferenceCatalogCacheStats'
+    SaveCostumeReferenceRequest:
+      type: object
+      additionalProperties: false
+      required: [canvasItemId, sourceVersionId, expectedCanvasItemVersion, name, tags, commandKey]
+      properties:
+        canvasItemId: {type: string, format: uuid}
+        sourceVersionId: {type: string, format: uuid}
+        expectedCanvasItemVersion: {type: integer, format: int64, minimum: 0}
+        name: {type: string, minLength: 1, maxLength: 160}
+        category: {type: string, maxLength: 100}
+        tags:
+          type: array
+          maxItems: 32
+          uniqueItems: true
+          items: {type: string, minLength: 1, maxLength: 64}
+        commandKey: {type: string, minLength: 1, maxLength: 200}
+    UpdateCostumeReferenceRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, name, tags]
+      properties:
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+        name: {type: string, minLength: 1, maxLength: 160}
+        category: {type: string, maxLength: 100}
+        tags:
+          type: array
+          maxItems: 32
+          uniqueItems: true
+          items: {type: string, minLength: 1, maxLength: 64}
+    ImportCostumeReferenceRequest:
+      type: object
+      additionalProperties: false
+      required: [commandKey, expectedVersion]
+      properties:
+        commandKey: {type: string, minLength: 1, maxLength: 200}
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+        placement: {$ref: '#/components/schemas/ReferenceCatalogPlacement'}
     ReferenceCatalogKind:
       type: string
       enum:
@@ -7217,6 +7403,11 @@ components:
       enum:
         - OPEN_POSE_COSTUME
         - AGENVAS_REFERENCE_PACK
+    ReferenceCatalogSourceType:
+      type: string
+      enum:
+        - OMILIC
+        - GITHUB
     ReferenceCatalogSource:
       type: object
       additionalProperties: false
@@ -7236,6 +7427,7 @@ components:
         - lastSyncError
         - syncedAt
         - resolvedCommit
+        - sourceType
       properties:
         id:
           type: string
@@ -7251,6 +7443,8 @@ components:
           type: string
         format:
           $ref: '#/components/schemas/ReferenceCatalogFormat'
+        sourceType:
+          $ref: '#/components/schemas/ReferenceCatalogSourceType'
         enabled:
           type: boolean
         imageDistributionApproved:
@@ -7392,6 +7586,14 @@ components:
         - disabledReason
         - variants
       properties:
+        origin:
+          type: string
+          enum: [THIRD_PARTY, SELF_CREATED]
+          description: Internal provenance; both origins share the same costume browser.
+        version:
+          type: integer
+          format: int64
+          minimum: 0
         sourceId:
           type: string
         snapshotId:
@@ -7524,6 +7726,9 @@ components:
         - format
         - imageDistributionApproved
       properties:
+        sourceType:
+          $ref: '#/components/schemas/ReferenceCatalogSourceType'
+          default: GITHUB
         id:
           type: string
           maxLength: 100
@@ -7706,7 +7911,7 @@ components:
     LocalServiceDiscoveryResult:
       type: object
       additionalProperties: false
-      required: [service, runtime, status, endpoint, policyAllowed]
+      required: [service, runtime, status, endpoint]
       properties:
         service:
           $ref: '#/components/schemas/LocalServiceKind'
@@ -7715,14 +7920,12 @@ components:
           enum: [CONTAINER, NATIVE, UNKNOWN]
         status:
           type: string
-          enum: [FOUND, NOT_FOUND, UNRESOLVED, BLOCKED_ADDRESS, TIMEOUT, UNEXPECTED_RESPONSE, AUTH_REQUIRED, UNSUPPORTED_RUNTIME]
+          enum: [FOUND, NOT_FOUND, UNRESOLVED, TIMEOUT, UNEXPECTED_RESPONSE, AUTH_REQUIRED, UNSUPPORTED_RUNTIME]
         endpoint:
           type: [string, 'null']
           maxLength: 500
           description: Server-generated candidate; present only for FOUND, never credential-bearing
-        policyAllowed:
-          type: boolean
-          description: Existing endpoint policy permits the candidate; discovery never changes policy
+
     McpMediaUploadMetadata:
       type: object
       additionalProperties: false
@@ -9058,7 +9261,7 @@ components:
         enabled: {type: boolean}
         version: {type: integer, format: int64, minimum: 0}
         connectionVersion: {type: integer, minimum: 1}
-        origin: {type: [string, "null"], description: "COMFYUI base URL with its entire path redacted as /[configured-path], RUNNINGHUB HTTP or HTTPS root without a domain allowlist, or WAN official WorkspaceId.region.maas.aliyuncs.com HTTP/HTTPS root, or optional OPENAI/GOOGLE HTTP or HTTPS API base URL; Google video requires the official Gemini host. null uses the platform official endpoint."}
+        origin: {type: [string, "null"], description: "COMFYUI base URL with its entire path redacted as /[configured-path], RUNNINGHUB HTTP or HTTPS root without a domain allowlist, or WAN/KLING/MINIMAX compatible HTTP/HTTPS service root, or optional OPENAI/GOOGLE HTTP or HTTPS API base URL; Google native video accepts compatible hosts. null uses the platform official endpoint."}
         keyMask: {type: [string, "null"]}
         connectivityStatus: {type: string, enum: [NOT_CHECKED]}
         realGenerationTested: {type: boolean}
@@ -9580,7 +9783,7 @@ components:
       properties:
         name: {type: string, minLength: 1, maxLength: 160}
         platform: {type: string, enum: [MOCK, COMFYUI, OPENAI, ARK, GOOGLE, VOLCENGINE, AUTODL, RUNNINGHUB, MINIMAX, KLING, WAN]}
-        origin: {type: [string, "null"], maxLength: 500, description: "Required full COMFYUI base URL (HTTP or HTTPS host/IP and port; literal IPv4 loopback is also supported), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. KLING selects only https://api-singapore.klingai.com or https://api-beijing.klingai.com with an API Key (AK/SK JWT is not supported). MINIMAX selects only https://api.minimax.cn (default) or https://api.minimax.io, without a path. Optional RUNNINGHUB HTTP or HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTP or HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image."}
+        origin: {type: [string, "null"], maxLength: 500, description: "Required full COMFYUI base URL (HTTP or HTTPS host/IP and port; localhost, IPv4/IPv6, private and proxy Fake-IP addresses are supported), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. KLING accepts an HTTP or HTTPS service root with an API Key (AK/SK JWT is not supported). MINIMAX accepts an HTTP or HTTPS service root, defaulting to https://api.minimax.cn. Optional RUNNINGHUB HTTP or HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTP or HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image."}
         apiKey: {type: [string, "null"], maxLength: 4096, writeOnly: true, description: "Cloud API Key; KLING requires the official API Key, not an AK/SK-generated JWT. Empty on update preserves the pinned credential."}
     UpdateMediaConnectionRequest:
       type: object
@@ -9590,7 +9793,7 @@ components:
         expectedVersion: {type: integer, format: int64, minimum: 0}
         name: {type: string, minLength: 1, maxLength: 160}
         enabled: {type: boolean}
-        origin: {type: [string, "null"], maxLength: 500, description: "Required full COMFYUI base URL (HTTP or HTTPS host/IP and port; literal IPv4 loopback is also supported), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. KLING selects only https://api-singapore.klingai.com or https://api-beijing.klingai.com with an API Key (AK/SK JWT is not supported). MINIMAX selects only https://api.minimax.cn (default) or https://api.minimax.io, without a path. Optional RUNNINGHUB HTTP or HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTP or HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image."}
+        origin: {type: [string, "null"], maxLength: 500, description: "Required full COMFYUI base URL (HTTP or HTTPS host/IP and port; localhost, IPv4/IPv6, private and proxy Fake-IP addresses are supported), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. KLING accepts an HTTP or HTTPS service root with an API Key (AK/SK JWT is not supported). MINIMAX accepts an HTTP or HTTPS service root, defaulting to https://api.minimax.cn. Optional RUNNINGHUB HTTP or HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTP or HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image."}
         apiKey: {type: [string, "null"], maxLength: 4096, writeOnly: true, description: "Cloud API Key; KLING requires the official API Key, not an AK/SK-generated JWT. Empty on update preserves the pinned credential."}
     CreateMediaCapabilityRequest:
       type: object
@@ -10186,7 +10389,7 @@ components:
         id: {type: string, format: uuid}
         sourceCanvasItemId: {type: string, format: uuid}
         targetCanvasItemId: {type: string, format: uuid}
-        relationType: {type: string, enum: [MEDIA_INPUT, MEDIA_DERIVATION]}
+        relationType: {type: string, enum: [MEDIA_INPUT, MEDIA_DERIVATION, PROMPT_INPUT]}
         sourceArtifactVersionId: {type: string, format: uuid}
         version: {type: integer, format: int64, minimum: 0}
     SetupStatus:
@@ -10427,7 +10630,7 @@ components:
       enum: [DEPTH_MAP, EXTRACT_AUDIO, UPSCALE]
     MediaFunction:
       type: string
-      enum: [IMAGE_SMART_EDIT, IMAGE_RELIGHT, IMAGE_OUTPAINT, IMAGE_THREE_VIEW, IMAGE_LAYER_SPLIT, IMAGE_EXPRESSION_EDIT, IMAGE_REMOVE_BACKGROUND, IMAGE_OBJECT_REMOVE, IMAGE_VIEW_ANGLE, IMAGE_DEPTH_MAP, IMAGE_UPSCALE, IMAGE_RESIZE, IMAGE_CROP, IMAGE_ROTATE, IMAGE_FLIP_HORIZONTAL, IMAGE_FLIP_VERTICAL, VIDEO_DEPTH_MAP, VIDEO_EXTRACT_AUDIO, VIDEO_UPSCALE]
+      enum: [IMAGE_SMART_EDIT, IMAGE_COSTUME_EXTRACT, IMAGE_RELIGHT, IMAGE_OUTPAINT, IMAGE_THREE_VIEW, IMAGE_LAYER_SPLIT, IMAGE_EXPRESSION_EDIT, IMAGE_REMOVE_BACKGROUND, IMAGE_OBJECT_REMOVE, IMAGE_VIEW_ANGLE, IMAGE_DEPTH_MAP, IMAGE_UPSCALE, IMAGE_RESIZE, IMAGE_CROP, IMAGE_ROTATE, IMAGE_FLIP_HORIZONTAL, IMAGE_FLIP_VERTICAL, VIDEO_DEPTH_MAP, VIDEO_EXTRACT_AUDIO, VIDEO_UPSCALE]
     MediaFunctionSetting:
       type: object
       required: [operation, capabilityId, version]
@@ -10572,7 +10775,7 @@ components:
         expectedCanvasItemVersion: {type: integer, format: int64, minimum: 0}
         operation:
           type: string
-          enum: [SMART_EDIT, RELIGHT, OUTPAINT, THREE_VIEW, LAYER_SPLIT,
+          enum: [SMART_EDIT, COSTUME_EXTRACT, RELIGHT, OUTPAINT, THREE_VIEW, LAYER_SPLIT,
             EXPRESSION_EDIT, REMOVE_BACKGROUND, OBJECT_REMOVE, VIEW_ANGLE,
             DEPTH_MAP, UPSCALE, RESIZE, CROP, ROTATE, FLIP_HORIZONTAL, FLIP_VERTICAL]
         instruction: {type: [string, "null"], maxLength: 4000}
@@ -10743,7 +10946,7 @@ components:
         projectId: {type: string, format: uuid}
         sourceCanvasItemId: {type: string, format: uuid}
         targetCanvasItemId: {type: string, format: uuid}
-        relationType: {type: string, enum: [MEDIA_INPUT, MEDIA_DERIVATION]}
+        relationType: {type: string, enum: [MEDIA_INPUT, MEDIA_DERIVATION, PROMPT_INPUT]}
         sourceArtifactVersionId: {type: string, format: uuid}
         version: {type: integer, format: int64, minimum: 0}
         createdAt: {type: string, format: date-time}
@@ -10755,6 +10958,7 @@ components:
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/CanvasConnection"}}
     CreateCanvasConnectionRequest:
+      description: "PROMPT_INPUT connects saved text to media nodes, follows saved text edits at acceptance, and needs no target draft version. sourceVersionId checks the text resource default at connection time. MEDIA_INPUT retains exact media version and draft CAS semantics."
       type: object
       additionalProperties: false
       required: [sourceCanvasItemId, targetCanvasItemId, sourceVersionId, relationType]
@@ -10762,12 +10966,14 @@ components:
         sourceCanvasItemId: {type: string, format: uuid}
         targetCanvasItemId: {type: string, format: uuid}
         sourceVersionId: {type: string, format: uuid}
-        relationType: {type: string, const: MEDIA_INPUT}
+        relationType: {type: string, enum: [MEDIA_INPUT, PROMPT_INPUT]}
         expectedTargetDraftVersion: {type: integer, format: int64, minimum: 0}
     DisconnectCanvasConnectionRequest:
       type: object
       additionalProperties: false
+      required: [expectedVersion]
       properties:
+        expectedVersion: {type: integer, format: int64, minimum: 0, description: Rejects delayed deletion of an older connection incarnation after copy redo.}
         expectedTargetDraftVersion: {type: integer, format: int64, minimum: 0}
     CanvasConnectionResult:
       type: object
@@ -10929,12 +11135,27 @@ components:
         role: {type: string, minLength: 1, maxLength: 64}
         order: {type: integer, minimum: 0}
         kind: {$ref: "#/components/schemas/ArtifactKind"}
+    FrozenPromptInput:
+      type: object
+      additionalProperties: false
+      required: [connectionId, canvasItemId, artifactId, versionId, title, text]
+      properties:
+        connectionId: {type: string, format: uuid}
+        canvasItemId: {type: string, format: uuid}
+        artifactId: {type: string, format: uuid}
+        versionId: {type: string, format: uuid}
+        title: {type: string}
+        text: {type: string}
     MediaFrozenInput:
       type: object
       additionalProperties: true
       description: Immutable input of a media Task and its result; schema 7 fixes applicable applied character snapshots without resolving later profile revisions.
       properties:
         schemaVersion: {type: integer, minimum: 1, maximum: 7}
+        promptInputs:
+          type: array
+          description: Saved text bodies frozen in connection creation order (createdAt, then UUID); never reread by workers.
+          items: {$ref: "#/components/schemas/FrozenPromptInput"}
         characterBindings:
           type: array
           items: {$ref: "#/components/schemas/CharacterSnapshot"}
@@ -11784,6 +12005,8 @@ components:
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/CanvasItem"}}
         groups: {type: array, items: {$ref: "#/components/schemas/CanvasGroup"}}
+        connections: {type: array, items: {$ref: "#/components/schemas/CanvasConnection"}}
+        characterConnections: {type: array, items: {$ref: "#/components/schemas/CharacterNodeConnection"}}
         receipt: {type: "null"}
     CanvasEditResponse:
       type: object
@@ -11792,6 +12015,8 @@ components:
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/CanvasItem"}}
         groups: {type: array, items: {$ref: "#/components/schemas/CanvasGroup"}}
+        connections: {type: array, items: {$ref: "#/components/schemas/CanvasConnection"}}
+        characterConnections: {type: array, items: {$ref: "#/components/schemas/CharacterNodeConnection"}}
         receipt: {$ref: "#/components/schemas/CanvasEditReceipt"}
     CanvasEditItemChange:
       type: object
@@ -11834,6 +12059,15 @@ components:
         height: {type: number, minimum: 80, maximum: 2000}
         zIndex: {type: integer, minimum: -1000, maximum: 1000}
         groupId: {type: [string, "null"], format: uuid}
+    CanvasEditConnectionCopy:
+      type: object
+      additionalProperties: false
+      required: [kind, sourceConnectionId, targetConnectionId, expectedVersion]
+      properties:
+        kind: {type: string, enum: [ARTIFACT, CHARACTER]}
+        sourceConnectionId: {type: string, format: uuid}
+        targetConnectionId: {type: string, format: uuid}
+        expectedVersion: {type: integer, format: int64, minimum: 0}
     CanvasEditRequest:
       type: object
       additionalProperties: false
@@ -11844,6 +12078,11 @@ components:
         itemChanges: {type: array, maxItems: 100, items: {$ref: "#/components/schemas/CanvasEditItemChange"}}
         groupChanges: {type: array, maxItems: 100, items: {$ref: "#/components/schemas/CanvasEditGroupChange"}}
         copies: {type: array, maxItems: 100, items: {$ref: "#/components/schemas/CanvasEditCopy"}}
+        connectionCopies:
+          type: array
+          maxItems: 10000
+          description: Complete internal topology captured with the source selection. External edges are rejected. Source identities and versions are revalidated atomically; new target IDs must be unused.
+          items: {$ref: "#/components/schemas/CanvasEditConnectionCopy"}
     CanvasEditReplayRequest:
       type: object
       additionalProperties: false

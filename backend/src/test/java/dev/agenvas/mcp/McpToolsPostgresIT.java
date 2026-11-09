@@ -3,6 +3,10 @@ package dev.agenvas.mcp;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import dev.agenvas.artifact.application.ArtifactService;
+import dev.agenvas.artifact.application.MediaDraftService;
+import dev.agenvas.artifact.domain.Artifact;
+import dev.agenvas.artifact.domain.MediaDraft;
+import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.mcp.application.McpTokenService;
@@ -17,6 +21,7 @@ import dev.agenvas.llm.application.DirectTextGenerationWorker;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.shared.error.ApiProblemException;
+import dev.agenvas.testing.ImageAssetFixture;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -24,6 +29,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,6 +43,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /** Real database evidence for independent MCP commands, shared CAS and authorized replay. */
@@ -60,6 +67,8 @@ class McpToolsPostgresIT {
     @Autowired DirectTextGenerationWorker textWorker;
     @Autowired TaskService tasks;
     @Autowired ArtifactService artifacts;
+    @Autowired AssetService assets;
+    @Autowired MediaDraftService drafts;
     @Autowired ObjectMapper mapper;
     @Autowired JdbcClient jdbc;
     UUID user;
@@ -72,6 +81,67 @@ class McpToolsPostgresIT {
 
     @Autowired dev.agenvas.character.application.CharacterService characters;
     @Autowired dev.agenvas.canvas.application.CanvasCharacterNodeService characterNodes;
+
+    @Test void longTextPagesPreserveUnicodeAndTheExactVersionAcrossRevisions() {
+        String text = "剧😀".repeat(4500) + "结尾";
+        JsonNode created = call(principal, "create_text", command("long-text").put("title", "Synthetic script").put("text", text)).data();
+        ObjectNode request = read();
+        request.putArray("versionIds").add(created.at("/artifact/versionId").asText());
+        assertThat(call(principal, "read_artifacts", request).data().at("/items/0/contentTruncated").asBoolean()).isTrue();
+        StringBuilder restored = new StringBuilder();
+        int offset = 0;
+        do {
+            JsonNode page = call(principal, "read_artifacts", request.deepCopy().put("textOffset", offset).put("textLimit", 3999))
+                    .data().at("/items/0");
+            assertThat(page.at("/textPage/offset").asInt()).isEqualTo(offset);
+            assertThat(page.at("/textPage/total").asInt()).isEqualTo(text.codePointCount(0, text.length()));
+            assertThat(page.path("versionId").asText()).isEqualTo(created.at("/artifact/versionId").asText());
+            restored.append(page.at("/content/text").asText());
+            if (offset == 0) call(principal, "revise_artifact", command("revise-long-text")
+                    .put("artifactId", created.at("/artifact/artifactId").asText())
+                    .put("expectedVersion", created.at("/artifact/expectedVersion").asLong()).put("text", "New revision"));
+            if (page.at("/textPage/nextOffset").isNull()) break;
+            int next = page.at("/textPage/nextOffset").asInt();
+            assertThat(next).isGreaterThan(offset);
+            offset = next;
+        } while (true);
+        assertThat(restored.toString()).isEqualTo(text);
+        JsonNode end = call(principal, "read_artifacts", request.deepCopy().put("textOffset", 9002)).data().at("/items/0");
+        assertThat(end.at("/content/text").asText()).isEmpty();
+        assertThat(end.at("/textPage/nextOffset").isNull()).isTrue();
+        assertCode("TOOL_ARGUMENT_INVALID", () -> call(principal, "read_artifacts", request.deepCopy().put("textOffset", 9003)));
+        ObjectNode batch = request.deepCopy().put("textOffset", 0);
+        ((ArrayNode) batch.path("versionIds")).add(UUID.randomUUID().toString());
+        assertCode("TOOL_ARGUMENT_INVALID", () -> call(principal, "read_artifacts", batch));
+        var foreign = token(createUser(), Set.of(McpScope.READ));
+        assertCode("RESOURCE_NOT_FOUND", () -> call(foreign, "read_artifacts", request.deepCopy().put("textOffset", 3999)));
+    }
+
+    @Test void repeatedPromptMentionsRoundTripAndLargeExistingDraftsMatchTheContract() {
+        UUID asset = ImageAssetFixture.archive(assets, user, project.id());
+        var source = artifacts.create(user, project.id(), Artifact.Kind.IMAGE, "Synthetic reference",
+                mapper.createObjectNode().put("sourceType", "UPLOAD").put("assetId", asset.toString()));
+        ObjectNode imagePage = read().put("textOffset", 0);
+        imagePage.putArray("versionIds").add(source.resourceDefaultVersion().id().toString());
+        assertCode("TOOL_ARGUMENT_INVALID", () -> call(principal, "read_artifacts", imagePage));
+        JsonNode node = call(principal, "create_media_node", command("mentions-node").put("kind", "IMAGE").put("title", "Repeated tags")).data();
+        UUID item = UUID.fromString(node.at("/node/canvasItemId").asText());
+        var role = MediaDraft.InputRole.REFERENCE;
+        UUID version = source.resourceDefaultVersion().id();
+        var mentions = IntStream.range(0, 101)
+                .mapToObj(index -> new MediaDraft.PromptMention(version, role)).toList();
+        var saved = drafts.save(user, project.id(), item, 0, "\uFFFC ".repeat(101), mapper.createObjectNode(), null, null, null,
+                List.of(new MediaDraftService.SaveMediaInput(version, role, "#7C3AED")), mentions, null);
+        assertThat(call(principal, "read_canvas", read().put("includeDrafts", true).put("limit", 6))
+                .data().at("/items/0/mediaDraft/mentions")).hasSize(101);
+        ObjectNode patch = mapper.createObjectNode().put("prompt", saved.prompt());
+        patch.set("mentions", mapper.valueToTree(mentions));
+        ObjectNode update = command("repeat-mentions").put("canvasItemId", item.toString()).put("expectedDraftVersion", saved.version());
+        update.set("patch", patch);
+        JsonNode result = call(principal, "update_media_draft", update).data();
+        assertThat(result.at("/draft/mentions")).hasSize(101);
+        assertThat(call(principal, "update_media_draft", update).data()).isEqualTo(result);
+    }
 
     @Test void readsCharacterCardsAsBoundedMetadataWithoutMediaReadPermission() {
         UUID characterId = UUID.randomUUID(), lookId = UUID.randomUUID(), itemId = UUID.randomUUID();

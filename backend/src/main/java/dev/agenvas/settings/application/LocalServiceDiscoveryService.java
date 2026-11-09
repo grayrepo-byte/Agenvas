@@ -1,19 +1,17 @@
 package dev.agenvas.settings.application;
 
-import dev.agenvas.provider.application.ComfyUiEndpointPolicy;
 import dev.agenvas.settings.infrastructure.LocalServiceProbe;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.i18n.ApiMessage;
 import jakarta.annotation.PreDestroy;
-import java.net.URI;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Objects;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
-import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -27,33 +25,29 @@ import org.springframework.http.HttpStatus;
 public class LocalServiceDiscoveryService implements AutoCloseable {
     public enum Service { OLLAMA, COMFYUI }
     public enum Runtime { CONTAINER, NATIVE, UNKNOWN }
-    public enum Status { FOUND, NOT_FOUND, UNRESOLVED, BLOCKED_ADDRESS, TIMEOUT,
+    public enum Status { FOUND, NOT_FOUND, UNRESOLVED, TIMEOUT,
         UNEXPECTED_RESPONSE, AUTH_REQUIRED, UNSUPPORTED_RUNTIME }
-    public record Result(Service service, Runtime runtime, Status status, String endpoint,
-            boolean policyAllowed) {}
+    public record Result(Service service, Runtime runtime, Status status, String endpoint) {}
 
     private final LocalServiceDiscoveryProperties properties;
     private final LocalServiceProbe probe;
-    private final LlmEndpointPolicy llmPolicy;
-    private final ComfyUiEndpointPolicy comfyPolicy;
     private final Clock clock;
     private final Duration deadline;
     private final ThreadPoolExecutor worker = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS,
-            new SynchronousQueue<>(), Thread.ofPlatform().daemon().name("local-service-discovery").factory());
+            new ArrayBlockingQueue<>(1), Thread.ofPlatform().daemon().name("local-service-discovery").factory());
     private final Semaphore capacity = new Semaphore(1);
     private final Object acceptanceLock = new Object();
     private Long lastAccepted;
 
     @Autowired
     public LocalServiceDiscoveryService(LocalServiceDiscoveryProperties properties, LocalServiceProbe probe,
-            LlmEndpointPolicy llmPolicy, ComfyUiEndpointPolicy comfyPolicy, Clock clock) {
-        this(properties, probe, llmPolicy, comfyPolicy, clock, Duration.ofSeconds(3));
+            Clock clock) {
+        this(properties, probe, clock, Duration.ofSeconds(3));
     }
 
     LocalServiceDiscoveryService(LocalServiceDiscoveryProperties properties, LocalServiceProbe probe,
-            LlmEndpointPolicy llmPolicy, ComfyUiEndpointPolicy comfyPolicy, Clock clock, Duration deadline) {
-        this.properties = properties; this.probe = probe; this.llmPolicy = llmPolicy;
-        this.comfyPolicy = comfyPolicy; this.clock = clock; this.deadline = deadline;
+            Clock clock, Duration deadline) {
+        this.properties = properties; this.probe = probe; this.clock = clock; this.deadline = deadline;
     }
 
     public Result discover(Service service) {
@@ -70,9 +64,16 @@ public class LocalServiceDiscoveryService implements AutoCloseable {
             try {
                 // Cancellation must not release this permit: an OS DNS lookup may ignore interruption.
                 worker.execute(() -> {
-                    try { completed.complete(probe.discover(service, runtime, activeCall, budget)); }
-                    catch (RuntimeException failure) { completed.completeExceptionally(failure); }
+                    LocalServiceProbe.Detected detected = null;
+                    RuntimeException failure = null;
+                    try { detected = probe.discover(service, runtime, activeCall, budget); }
+                    catch (RuntimeException unavailable) { failure = unavailable; }
                     finally { capacity.release(); }
+                    // Publish only after the actual probe relinquishes capacity. The bounded
+                    // queue bridges executor bookkeeping until this worker takes its next job;
+                    // the permit still rejects requests while DNS or HTTP is running.
+                    if (failure == null) completed.complete(detected);
+                    else completed.completeExceptionally(failure);
                 });
             } catch (RejectedExecutionException unavailable) {
                 capacity.release();
@@ -82,30 +83,17 @@ public class LocalServiceDiscoveryService implements AutoCloseable {
         }
         try {
             LocalServiceProbe.Detected found = completed.get(budget.remainingNanos(), TimeUnit.NANOSECONDS);
-            boolean allowed = found.status() == Status.FOUND && policyAllows(service, found);
-            return new Result(service, runtime, found.status(), found.endpoint(), allowed);
+            return new Result(service, runtime, found.status(), found.endpoint());
         } catch (TimeoutException timeout) {
             budget.cancel(); cancel(activeCall, completed);
-            return new Result(service, runtime, Status.TIMEOUT, null, false);
+            return new Result(service, runtime, Status.TIMEOUT, null);
         } catch (InterruptedException interrupted) {
             budget.cancel(); cancel(activeCall, completed);
             Thread.currentThread().interrupt();
-            return new Result(service, runtime, Status.TIMEOUT, null, false);
+            return new Result(service, runtime, Status.TIMEOUT, null);
         } catch (ExecutionException failure) {
             // Never expose or log DNS, transport or upstream exception text.
             throw problem(HttpStatus.SERVICE_UNAVAILABLE, "LOCAL_SERVICE_DISCOVERY_FAILED", "failed", true);
-        }
-    }
-
-    private boolean policyAllows(Service service, LocalServiceProbe.Detected found) {
-        if (service == Service.COMFYUI) return comfyPolicy.allows(found.endpoint());
-        URI endpoint = URI.create(found.endpoint());
-        try {
-            llmPolicy.requireAllowedOrigin(endpoint);
-            llmPolicy.requireAllowedAddress(endpoint, found.address());
-            return true;
-        } catch (ApiProblemException denied) {
-            return false;
         }
     }
 

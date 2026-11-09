@@ -26,7 +26,7 @@ public class WebDavStorageClient implements RemoteStorageClient {
     private final OkHttpClient client;
     @org.springframework.beans.factory.annotation.Autowired
     public WebDavStorageClient(StorageSettingsService settings) {
-        this(settings, new OkHttpClient.Builder().dns(ObjectStorageClient.checkedDns(Dns.SYSTEM))
+        this(settings, new OkHttpClient.Builder().dns(Dns.SYSTEM)
                 .proxy(Proxy.NO_PROXY).followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false)
                 .connectTimeout(Duration.ofSeconds(10)).readTimeout(Duration.ofSeconds(60))
                 .writeTimeout(Duration.ofSeconds(60)).callTimeout(Duration.ofMinutes(10)).build());
@@ -38,7 +38,7 @@ public class WebDavStorageClient implements RemoteStorageClient {
     }
     private Response execute(StorageProfile p, Request.Builder request) throws IOException {
         OkHttpClient selected = client.newBuilder().dns(dev.agenvas.shared.security.ServiceEndpointPolicy.dns(
-                request.build().url().uri(), client.dns(), false)).build();
+                request.build().url().uri(), client.dns())).build();
         String[] credentials = settings.credentials(p);
         return selected.newCall(request.header("Authorization", Credentials.basic(credentials[0], credentials[1], StandardCharsets.UTF_8))
                 .header("Accept-Encoding", "identity").build()).execute();

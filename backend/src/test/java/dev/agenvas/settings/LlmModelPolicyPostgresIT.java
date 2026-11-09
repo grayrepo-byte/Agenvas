@@ -17,7 +17,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class, properties = {"agenvas.llm.mode=configured", "agenvas.settings.llm.allow-loopback-http=true"})
+@SpringBootTest(classes = AgenvasApplication.class, properties = {"agenvas.llm.mode=configured"})
 class LlmModelPolicyPostgresIT {
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     @DynamicPropertySource static void properties(DynamicPropertyRegistry registry) {

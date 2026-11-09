@@ -21,6 +21,17 @@ import org.junit.jupiter.api.Test;
 class ThirdPartyPromptHttpClientTest {
     private static final String URL = "http://example.com/synthetic-feed";
 
+    @Test void defaultTransportDownloadsALocalLiteralSource() throws Exception {
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/feed", exchange -> {
+            byte[] bytes = "[]".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, bytes.length);
+            exchange.getResponseBody().write(bytes); exchange.close();
+        }); server.start();
+        try { assertThat(new ThirdPartyPromptHttpClient().feed("http://127.0.0.1:" + server.getAddress().getPort() + "/feed")).isEqualTo("[]"); }
+        finally { server.stop(0); }
+    }
+
     @Test void boundedSuccessUsesCredentialFreeGetWithoutVisitingAnyOtherAddress() {
         AtomicInteger requests = new AtomicInteger();
         var client = new ThirdPartyPromptHttpClient(new OkHttpClient.Builder().addInterceptor(chain -> {

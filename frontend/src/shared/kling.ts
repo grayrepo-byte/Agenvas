@@ -7,7 +7,6 @@ export const KLING_VIDEO_ADAPTER = "KLING_VIDEO_3";
 export const KLING_NATIVE_IMAGE_ADAPTER = "KLING_IMAGE";
 export const KLING_NATIVE_VIDEO_ADAPTER = "KLING_VIDEO";
 export const KLING_API_ORIGIN = "https://api-singapore.klingai.com";
-export const KLING_API_ORIGINS = [KLING_API_ORIGIN, "https://api-beijing.klingai.com"] as const;
 export const KLING_IMAGE_RESOLUTIONS = ["1K", "2K"] as const;
 export const KLING_IMAGE_ASPECT_RATIOS = ["AUTO", "16:9", "9:16", "1:1", "4:3", "3:4", "3:2", "2:3", "21:9"] as const;
 export const KLING_VIDEO_RESOLUTIONS = ["720p", "1080p", "2160p"] as const;

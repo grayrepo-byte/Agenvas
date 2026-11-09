@@ -23,7 +23,7 @@ import okio.BufferedSource;
 import okio.ForwardingSource;
 import okio.Okio;
 
-/** 限定模型请求只能访问已准入端点，并在连接时校验 DNS 解析结果。 */
+/** 将模型请求固定到配置的补全接口，保持凭据作用域。 */
 final class SafeLlmTransport {
 
     /** 为 SSE 重复封装预留四倍协议预算；32 MiB 原始字节限制仍在 SDK 解析前生效。 */
@@ -33,20 +33,20 @@ final class SafeLlmTransport {
     private final HttpUrl base;
     /** 固定的补全 API 路径；拒绝客户端请求其他端点。 */
     private final String completionPath;
-    /** 禁止代理、重定向和自动重试，并在连接时验证 DNS 的客户端。 */
+    /** 禁止隐式代理、重定向和自动重试的客户端。 */
     private final OkHttpClient client;
 
     /** 使用系统 DNS 构造生产传输层。
      * @param endpoint 管理员配置的 LLM 端点
-     * @param policy 检查主机名及解析地址是否允许访问的策略
+     * @param policy 检查 URL 格式的策略
      */
     SafeLlmTransport(String endpoint, LlmEndpointPolicy policy) {
         this(endpoint, policy, Dns.SYSTEM);
     }
 
-    /** 使用可替换解析器执行与生产一致的地址校验。
+    /** 使用可替换解析器连接配置的端点。
      * @param endpoint 已准入的 LLM 端点
-     * @param policy DNS 地址安全策略
+     * @param policy URL 格式校验策略
      * @param resolver 域名解析器；测试可注入混合或变化地址
      */
     SafeLlmTransport(String endpoint, LlmEndpointPolicy policy, Dns resolver) {
@@ -56,17 +56,8 @@ final class SafeLlmTransport {
     /** Separate whole-call and silent-read deadlines; HTTP tests can shorten either limit. */
     SafeLlmTransport(String endpoint, LlmEndpointPolicy policy, Dns resolver,
             Duration readTimeout, Duration modelTimeout) {
-        // Revoke persisted HTTP exceptions when the operator removes them and restarts.
         policy.requireAllowedOrigin(URI.create(endpoint));
         this.base = HttpUrl.get(endpoint);
-        // OkHttp bypasses custom Dns for IP literals, so validate them before credentials leave.
-        if (base.host().contains(":") || base.host().matches("[0-9.]+")) {
-            try {
-                policy.requireAllowedAddress(URI.create(endpoint), InetAddress.getByName(base.host()));
-            } catch (UnknownHostException invalid) {
-                throw new IllegalArgumentException("LLM endpoint has an invalid IP address");
-            }
-        }
         String path = base.encodedPath().replaceAll("/+$", "");
         this.completionPath = path + "/chat/completions";
         this.client = PinnedHttpClients.pinned(host -> {
@@ -75,13 +66,6 @@ final class SafeLlmTransport {
             }
             List<InetAddress> addresses = resolver.lookup(host);
             if (addresses.isEmpty()) throw new UnknownHostException("LLM DNS returned no addresses");
-            try {
-                for (InetAddress address : addresses) {
-                    policy.requireAllowedAddress(URI.create(endpoint), address);
-                }
-            } catch (RuntimeException unsafe) {
-                throw new UnknownHostException("LLM DNS returned a blocked address");
-            }
             return addresses;
         }, LlmCallTimeouts.CONNECT, readTimeout, modelTimeout);
     }
