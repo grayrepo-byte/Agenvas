@@ -46,6 +46,33 @@ class LocalServiceDiscoveryServiceTest {
         }
     }
 
+    @Test void completedProbesImmediatelyReleaseCapacityForTheNextAcceptedRequest() {
+        when(probe.runtime()).thenReturn(Runtime.NATIVE);
+        when(probe.discover(any(), any(), any(), any()))
+                .thenReturn(new LocalServiceProbe.Detected(Status.NOT_FOUND, null, null));
+        try (var service = service(Duration.ofSeconds(1))) {
+            for (int request = 0; request < 500; request++) {
+                assertThat(service.discover(Service.OLLAMA).status()).isEqualTo(Status.NOT_FOUND);
+                clock.advance();
+            }
+        }
+        verify(probe, times(500)).discover(any(), any(), any(), any());
+    }
+
+    @Test void failedProbeReleasesCapacityBeforePublishingItsFailure() {
+        when(probe.runtime()).thenReturn(Runtime.NATIVE);
+        when(probe.discover(any(), any(), any(), any()))
+                .thenThrow(new IllegalStateException("synthetic probe failure"))
+                .thenReturn(new LocalServiceProbe.Detected(Status.NOT_FOUND, null, null));
+        try (var service = service(Duration.ofSeconds(1))) {
+            assertThatThrownBy(() -> service.discover(Service.OLLAMA))
+                    .isInstanceOfSatisfying(ApiProblemException.class,
+                            failure -> assertThat(failure.status()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE));
+            clock.advance();
+            assertThat(service.discover(Service.OLLAMA).status()).isEqualTo(Status.NOT_FOUND);
+        }
+    }
+
     @Test void defaultPrivateHttpAllowsThePinnedContainerCandidate() throws Exception {
         when(probe.runtime()).thenReturn(Runtime.CONTAINER);
         when(probe.discover(eq(Service.OLLAMA), eq(Runtime.CONTAINER), any(), any()))

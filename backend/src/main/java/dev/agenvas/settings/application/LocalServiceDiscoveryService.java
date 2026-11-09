@@ -7,11 +7,11 @@ import jakarta.annotation.PreDestroy;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Objects;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
-import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -34,7 +34,7 @@ public class LocalServiceDiscoveryService implements AutoCloseable {
     private final Clock clock;
     private final Duration deadline;
     private final ThreadPoolExecutor worker = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS,
-            new SynchronousQueue<>(), Thread.ofPlatform().daemon().name("local-service-discovery").factory());
+            new ArrayBlockingQueue<>(1), Thread.ofPlatform().daemon().name("local-service-discovery").factory());
     private final Semaphore capacity = new Semaphore(1);
     private final Object acceptanceLock = new Object();
     private Long lastAccepted;
@@ -64,9 +64,16 @@ public class LocalServiceDiscoveryService implements AutoCloseable {
             try {
                 // Cancellation must not release this permit: an OS DNS lookup may ignore interruption.
                 worker.execute(() -> {
-                    try { completed.complete(probe.discover(service, runtime, activeCall, budget)); }
-                    catch (RuntimeException failure) { completed.completeExceptionally(failure); }
+                    LocalServiceProbe.Detected detected = null;
+                    RuntimeException failure = null;
+                    try { detected = probe.discover(service, runtime, activeCall, budget); }
+                    catch (RuntimeException unavailable) { failure = unavailable; }
                     finally { capacity.release(); }
+                    // Publish only after the actual probe relinquishes capacity. The bounded
+                    // queue bridges executor bookkeeping until this worker takes its next job;
+                    // the permit still rejects requests while DNS or HTTP is running.
+                    if (failure == null) completed.complete(detected);
+                    else completed.completeExceptionally(failure);
                 });
             } catch (RejectedExecutionException unavailable) {
                 capacity.release();

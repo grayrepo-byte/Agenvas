@@ -467,6 +467,10 @@ class CanvasCopySupportPostgresIT {
                 new CanvasService.PlaceArtifact(otherTarget, otherMedia.artifact().id(), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.valueOf(320), BigDecimal.valueOf(240), 0, null, false)));
         var foreign = connections.connect(owner, other.id(), otherSource, otherTarget, otherText.resourceDefaultVersion().id(),
                 CanvasConnection.RelationType.PROMPT_INPUT, null).connection();
+        // Compare persisted state on both sides, including PostgreSQL's timestamp precision.
+        var foreignBefore = connections.list(owner, other.id());
+        assertThat(foreignBefore).singleElement().satisfies(connection ->
+                assertThat(connection.id()).isEqualTo(foreign.id()));
         var localText = artifacts.create(owner, project.id(), Artifact.Kind.TEXT, "Local text", text("Local"));
         var source = place(localText.artifact().id()); var target = emptyMedia();
         var edge = connections.connect(owner, project.id(), source.id(), target.id(), localText.resourceDefaultVersion().id(),
@@ -482,7 +486,7 @@ class CanvasCopySupportPostgresIT {
         assertThat(items.find(owner, project.id(), copiedTarget)).isEmpty();
         assertThat(events.replayWindow(owner, project.id()).latestSequence()).isEqualTo(before);
         assertThat(jdbc.sql("select count(*) from artifact where project_id=:p").param("p", project.id()).query(Long.class).single()).isEqualTo(count);
-        assertThat(connections.list(owner, other.id())).containsExactly(foreign);
+        assertThat(connections.list(owner, other.id())).containsExactlyElementsOf(foreignBefore);
     }
 
     private Copy copyRequest(CanvasItem item, UUID target) {
