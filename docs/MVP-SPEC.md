@@ -2364,7 +2364,7 @@ CI 分层：代码 PR 执行前端验证、后端单测、全部四个 IT 分片
 
 镜像发布工作流（`ci.yml`）：只有 `v*.*.*` 版本标签的 push 上传 Docker Hub，PR、main 与手动运行不读取 Docker Hub 凭据且不推送镜像。标签任务构建 server/web 双架构，并拉取官方 `postgres:17.11-alpine`，各镜像只执行一次包/许可证 JSON 收集，再由 `trivy convert` 生成 CycloneDX；不重新启用漏洞扫描。SBOM/许可证证据保留 90 天，失败测试报告保留 7 天，待发布应用镜像工件保留 1 天。CI Gate 通过后下载并加载同一已记录清单的应用镜像，不重新构建，再推送当前运行的中间标签；全部架构推送成功后才创建最终应用多架构标签：`sha-<完整提交 SHA>`、稳定版本标签（无预发布后缀）的 latest、版本标签去除前导 v 后的版本。预发布版本保留后缀且不更新 latest。PostgreSQL 不自建、不推送，不沿用退役派生镜像的扫描排除。发布地址固定为 grayrepo，凭据为仓库 Secrets `DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`；缺失时明确失败。Docker Actions 固定到 commit。
 
-Docker Hub Overview 是独立的元数据同步工作流：`docs/dockerhub/server.md` 和 `web.md` 分别对应两个应用镜像。相关文档、Compose 或同步配置进入 main 后自动同步，也可在 main 手动重试，不依赖镜像构建、版本标签或发布完成。PR 只验证，不读取凭据；只有源仓库 main 的 push/手动运行可使用既有 Docker Hub Secrets 更新说明。同步 action 固定 commit，令牌更新描述所需权限由管理员明确授权配置，不能从推送成功推断。验证与维护见 [Docker Hub Overview](operations/dockerhub-overview.md)。
+Docker Hub Overview 由维护者在 Docker Hub 手动编辑，不通过 CI 自动同步。`docs/dockerhub/server.md` 和 `web.md` 分别保留两个应用镜像的英文说明，供手动编辑参考；修改这些文档不会覆盖 Docker Hub 页面。镜像发布工作流与凭据保持原有用途。维护方法见 [Docker Hub Overview](operations/dockerhub-overview.md)。
 
 真实模型冒烟是显式手动或受控触发，不在来自 fork 的 PR 中注入真实密钥，也不无限消耗真实 API 费用。
 

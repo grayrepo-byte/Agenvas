@@ -3974,10 +3974,18 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] MCP JSON 合约、客户端指南与规格同步；没有 OpenAPI/生成 TypeScript、数据库迁移或依赖变化。以上使用合成模型和素材，不调用真实 Provider。
 - [ ] 全量测试、真实模型工具选择与创作质量、外部客户端模型驱动对话及运行服务部署未运行。此前审查列出的其他功能接入缺口不属于本次三项缺陷修复，仍未接入。
 
-## 2026-11-09 Docker Hub Overview 自动同步
+## 2026-11-09 Docker Hub Overview 自动同步（2026-11-10 已取消）
 
 - [x] 为 `grayrepo/agenvas-server` 和 `grayrepo/agenvas-web` 分别添加英文 Overview，覆盖官方单文件 Compose 安装、三服务架构、amd64/arm64、端口、持久卷、自动密钥、版本标签与升级注意事项；使用绝对链接，安装命令与 README 一致。
 - [x] 独立 `Docker Hub Overview` 工作流监听 main 上相关文档、Compose、CI 配置与测试变化，支持 main 手动同步；PR 只验证，fork、标签及其他分支手动运行不取同步凭据。两个矩阵项独立更新短描述和 Overview，不依赖或修改原镜像构建/发布门禁，不创建版本或部署。
 - [x] 复用既有 Docker Hub Secret 名称，缺少任一凭据明确失败且不回显值；未读取、创建、更换或扩权凭据。维护指南明确 PAT 权限要求、错误重试方式和旧运行重试会使用旧提交的限制。
 - [x] 41 项 CI Python 测试通过，其中新增 4 项合成凭据预检测试先失败再通过；两个 workflow 的 actionlint、2 项 Compose 输出兼容测试、四个 Compose 入口回归与单文件配置解析、Markdown 安装块/绝对链接/围栏与大小检查、差异空白检查通过。对新增文件的常见凭据模式检查无命中；独立审查无阻塞项。
-- [ ] 本轮未运行全量应用测试、镜像构建/启动、GitHub 托管 CI、真实 Docker Hub 登录或说明同步；已在线核对上游 action 引用与参数，但未读取 Actions Secrets 存在性或实际令牌权限。两个 Docker Hub 页面是否更新须在工作流发布后逐项验收，不以本地检查替代。
+- [x] 后续 PR 与 main CI 通过，但两个说明更新任务均被 Docker Hub 拒绝。2026-11-10 用户取消自动同步，停止后续同步验收；下节记录停用与移除，英文文档保留为手动编辑参考。
+
+## 2026-11-10 取消 Docker Hub Overview 自动同步
+
+- [x] 按用户决定停用 GitHub 上的专用说明同步工作流，确认没有正在执行的同步任务；从源码删除该 workflow 和仅服务于它的凭据预检测试，不保留说明同步入口。
+- [x] 保留 server/web 两份英文 Markdown 供手动编辑参考，维护指南改为 Docker Hub 手动编辑；更新规格、历史状态和依赖基线，移除自动同步承诺及专用 action 依赖。
+- [x] 37 项剩余 CI Python 测试、现有 `ci.yml` 的 actionlint、文档链接/围栏检查与差异空白检查通过；确认 `.github` 中没有说明同步 action 或配置引用，镜像构建与版本标签发布工作流没有改动。
+- [x] 未读取或更改 Docker Hub 凭据，未访问或修改 Docker Hub 页面；develop 没有该同步配置，无需另行删除或改写。
+- [ ] 本次未在本机运行全量应用测试、构建、部署或真实供应商调用；仓库托管 CI 结果以本次 PR 为准。

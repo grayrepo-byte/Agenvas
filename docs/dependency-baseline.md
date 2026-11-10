@@ -166,9 +166,3 @@ CI 的 jOOQ 漂移检查不再占用固定 55432 端口；Docker 自动预留仅
 SMB 新增固定正式版 [`com.hierynomus:smbj:0.15.0`](https://github.com/hierynomus/smbj/releases/tag/v0.15.0)，使用 SMB2/3、强制签名、关闭 DFS 和带超时的会话。Maven 在 Spring Boot BOM 管理下解析传递依赖；WebDAV 复用 OkHttp 4.12.0，不引入 WebDAV SDK。协议根据 [RFC 4918](https://www.rfc-editor.org/rfc/rfc4918.html) 实现 MKCOL/PUT/MOVE/HEAD/GET/DELETE，发布禁止覆盖并核对 SHA-256。验证涵盖协议单元测试、真实 PostgreSQL 加模拟 WebDAV HTTP、现有对象存储与媒体中继回归，以及前端设置、四语言、类型、lint 和构建。真实 NAS/WebDAV 产品与大文件吞吐未验证；具体执行结果见开发清单。
 
 导演上下文预算复用 Spring AI 2.0.1 已解析的 `JTokkitTokenCountEstimator`（`spring-ai-commons` 及其既有传递依赖），不新增依赖或 Provider 专属压缩 API。估算包含文本、工具定义、参数、回复与媒体预留；25% 余量用于不同模型 tokenizer 的差异，不能当作真实计费用量。语义交接使用原 ChatGateway 与持久回合。编译、定向单元与真实 PostgreSQL 的长任务/恢复验证见开发清单；真实模型摘要质量和墙钟十几小时运行另行验收。
-
-## Docker Hub Overview 同步工具
-
-独立工作流使用 `peter-evans/dockerhub-description` v5，固定到 commit `1b9a80c056b620d92cedb9d9b5a223409c68ddfa`（[上游来源](https://github.com/peter-evans/dockerhub-description/tree/1b9a80c056b620d92cedb9d9b5a223409c68ddfa)）。不修改应用依赖或现有镜像发布工具。凭据预检测试只依赖 Python 标准库；Compose 检查复用 Runner 上的 Docker Compose。上游要求用于说明更新的 PAT 具备 Read/Write/Delete；现有推送令牌的权限未据此假定或扩展。
-
-已在线核对 v5 标签指向该 SHA，并确认其 action 输入和 PAT 权限要求；未读取 Actions Secrets 元数据、令牌权限或凭据值。实际同步必须以合并后的双镜像工作流结果和 Docker Hub 页面为准。本地检查与未验证范围见开发清单，操作方法见 [Overview 维护指南](operations/dockerhub-overview.md)。
