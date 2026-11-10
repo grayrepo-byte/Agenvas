@@ -69,4 +69,4 @@ Agenvas is a development build intended for a single self-hosting administrator.
 - [Issues](https://github.com/grayrepo-byte/Agenvas/issues)
 - [MIT license](https://github.com/grayrepo-byte/Agenvas/blob/main/LICENSE)
 
-This Overview is maintained in [docs/dockerhub/server.md](https://github.com/grayrepo-byte/Agenvas/blob/main/docs/dockerhub/server.md) and synchronized by GitHub Actions independently of image builds.
+This Overview is maintained in [docs/dockerhub/server.md](https://github.com/grayrepo-byte/Agenvas/blob/main/docs/dockerhub/server.md) as a reference for manually editing the Docker Hub Overview. GitHub Actions does not synchronize this text.
