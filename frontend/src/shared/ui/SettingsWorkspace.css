@@ -37,7 +37,7 @@ body:has(.app-shell--studio) { min-width: 0; }
 .app-shell--studio .app-page-main { padding: 0 clamp(24px, 2.5vw, 40px) 32px; }
 .app-shell--studio .app-page-header { padding: 28px 0 24px; margin-bottom: 8px; border-bottom: 0; align-items: center; }
 .settings-page-heading { display: flex; align-items: flex-start; gap: 12px; }
-.settings-page-icon { display: grid; place-items: center; flex: none; width: 42px; height: 42px; margin-top: 1px; border: 1px solid var(--ui-accent-ring); border-radius: 12px; background: var(--ui-accent-subtle); color: var(--ui-accent-text); box-shadow: var(--ui-inset-highlight); }
+.settings-page-icon { display: grid; place-items: center; flex: none; width: 42px; height: 42px; margin-top: 1px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--ui-accent-text); box-shadow: none; }
 .app-shell--studio .settings-page-icon > svg { width: 23px; height: 23px; }
 .app-shell--studio .app-page-header h1 { font-size: clamp(24px, 2.1vw, 28px); font-weight: 600; line-height: 1.25; letter-spacing: -.035em; }
 .app-shell--studio .app-page-description { max-width: 76ch; font-size: 13px; margin-top: 8px; line-height: 1.75; }
@@ -46,14 +46,14 @@ body:has(.app-shell--studio) { min-width: 0; }
 .app-shell--studio .app-page-content > :is(.ui-stack, [data-slot="tabs"], .settings-page-layout) { min-width: 0; }
 
 /* Read-only summaries are visually separate from the editable configuration beneath. */
-.app-shell--studio .ui-summary-strip { padding: 0; border-color: var(--settings-rule); border-radius: 14px; background: var(--settings-surface); margin-bottom: 18px; }
+.app-shell--studio .ui-summary-strip { padding: 0; border-color: transparent; border-radius: 0; background: transparent; margin-bottom: 18px; }
 .app-shell--studio .ui-stack > .ui-summary-strip { margin-bottom: 0; }
 .app-shell--studio .ui-summary-strip > div { position: relative; padding: 14px 24px; }
 .app-shell--studio .ui-summary-strip > div + div { border-color: var(--settings-rule); }
 .app-shell--studio .ui-summary-strip dt { font-size: 11px; letter-spacing: .04em; }
 .app-shell--studio .ui-summary-strip dd:not(.ui-summary-detail) { font-size: 16px; font-weight: 550; margin-top: 6px; line-height: 1.4; letter-spacing: -.02em; }
 .app-shell--studio .ui-summary-strip .ui-summary-detail { margin-top: 6px; font-size: 11px; line-height: 1.6; }
-.app-shell--studio .ui-panel { border-color: var(--settings-rule); border-radius: 14px; background: var(--settings-surface); box-shadow: var(--ui-panel-shadow); padding: 18px; }
+.app-shell--studio .ui-panel { border-color: transparent; border-radius: 12px; background: var(--settings-surface); box-shadow: none; padding: 18px; }
 .app-shell--studio .ui-panel-header { margin: 0 0 14px; gap: 12px; }
 .app-shell--studio .ui-panel-header h2 { font-size: 15px; font-weight: 550; letter-spacing: -.02em; }
 .app-shell--studio .ui-panel-header p { font-size: 12px; line-height: 1.7; margin-top: 5px; }
@@ -74,7 +74,7 @@ body:has(.app-shell--studio) { min-width: 0; }
 .app-shell--studio .settings-nav-link:hover > svg { transform: translate(2px, -2px); }
 .app-shell--studio .ui-notice { border-radius: 10px; font-size: 12px; line-height: 1.85; }
 .app-shell--studio .ui-badge { border-radius: 6px; padding: 3px 8px; font-size: 10px; line-height: 1.6; }
-.app-shell--studio .ui-badge--neutral { border-color: var(--settings-rule); }
+.app-shell--studio .ui-badge--neutral { border-color: transparent; }
 .app-shell--studio .ui-empty-state { border-color: var(--settings-rule); border-radius: 12px; padding: 52px 24px; background: var(--ui-field); }
 .app-shell--studio .ui-field { font-size: 13px; }
 .app-shell--studio .ui-field small { line-height: 1.8; }
@@ -85,7 +85,7 @@ body:has(.app-shell--studio) { min-width: 0; }
 .app-shell--studio .media-settings-table td { padding: 14px 14px; border-color: var(--settings-rule); }
 .app-shell--studio .media-settings-table tbody tr { transition: background-color 180ms; }
 .app-shell--studio .media-table-name { gap: 12px; }
-.app-shell--studio .media-table-name > svg { box-sizing: content-box; padding: 7px; border: 1px solid var(--settings-rule); border-radius: 10px; background: var(--ui-field); color: var(--ui-text-secondary); }
+.app-shell--studio .media-table-name > svg { box-sizing: content-box; padding: 7px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--ui-text-secondary); }
 .app-shell--studio .media-table-actions { flex-wrap: wrap; row-gap: 6px; }
 .app-shell--studio .media-table-endpoint { max-width: 260px; font-size: 11px; color: var(--ui-text-muted); }
 .app-shell--studio .storage-destinations { gap: 0; }

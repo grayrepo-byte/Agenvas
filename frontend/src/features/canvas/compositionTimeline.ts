@@ -1,20 +1,20 @@
 /** All edit and preview times use the exporter's 30 fps frame grid, never rounded per-clip milliseconds. */
 export const COMPOSITION_FPS = 30;
-export const COMPOSITION_MAX_FRAMES = COMPOSITION_FPS * 60;
+export const COMPOSITION_MAX_FRAMES = COMPOSITION_FPS * 600;
 export const COMPOSITION_MIN_SOURCE_MS = 100;
 export type CompositionSourceClip = {
   id: string; title: string; src: string; poster?: string; sourceDurationMs: number;
   sourceStartMs: number; sourceEndMs: number; speed: number; fadeMs: number;
 };
 export type CompositionTimelineClip = CompositionSourceClip & { startFrame: number; frames: number };
-export type CompositionTimeline = { clips: readonly CompositionTimelineClip[]; frames: number; valid: boolean };
+export type CompositionTimeline = { clips: readonly CompositionTimelineClip[]; frames: number; valid: boolean; maxFrames?: number };
 export type CompositionCaption = { id: string; text: string; startMs: number; endMs: number };
 export type CompositionAudio = { src: string; sourceStartMs: number; durationMs: number; volume: number };
 export type CompositionVoice = { id: string; src: string; startMs: number; endMs: number; trimStartMs: number; speed: number };
 export const frameTimeMs = (frame: number) => frame * 1000 / COMPOSITION_FPS;
 export const clipEndMs = (clip: CompositionTimelineClip) => frameTimeMs(clip.startFrame + clip.frames);
 export const clipStartMs = (clip: CompositionTimelineClip) => frameTimeMs(clip.startFrame);
-export function createCompositionTimeline(sources: readonly CompositionSourceClip[]): CompositionTimeline {
+export function createCompositionTimeline(sources: readonly CompositionSourceClip[], maxFrames = COMPOSITION_MAX_FRAMES): CompositionTimeline {
   let frames = 0;
   const clips: CompositionTimelineClip[] = [];
   for (const clip of sources) {
@@ -27,7 +27,7 @@ export function createCompositionTimeline(sources: readonly CompositionSourceCli
     }
     clips.push({ ...clip, frames: count, startFrame: frames }); frames += count;
   }
-  return { clips, frames, valid: clips.length > 0 && frames <= COMPOSITION_MAX_FRAMES };
+  return { clips, frames, maxFrames, valid: clips.length > 0 && Number.isSafeInteger(maxFrames) && maxFrames > 0 && maxFrames <= COMPOSITION_MAX_FRAMES && frames <= maxFrames };
 }
 export function compositionClipAt(timeline: CompositionTimeline, positionMs: number): CompositionTimelineClip | undefined {
   const frame = Math.max(0, Math.min(timeline.frames - 1, Math.floor(positionMs * COMPOSITION_FPS / 1000 + 1e-7)));
@@ -45,12 +45,12 @@ export function visibleCompositionCaptions(captions: readonly CompositionCaption
   return captions.filter((caption) => Math.floor(caption.startMs / 10) * 10 <= positionMs && Math.floor(caption.endMs / 10) * 10 > positionMs)
     .map((caption) => caption.text.trim().replaceAll('\\', '＼').replaceAll('{', '｛').replaceAll('}', '｝').replace(/\r\n?/g, '\n'));
 }
-export function compositionOutput(resolution: '720P' | '1080P', ratio: '16:9' | '9:16' | '1:1') {
-  const edge = resolution === '720P' ? 720 : 1080, wide = edge * 16 / 9;
+export function compositionOutput(resolution: '720P' | '1080P' | '2160P', ratio: '16:9' | '9:16' | '1:1') {
+  const edge = resolution === '720P' ? 720 : resolution === '1080P' ? 1080 : 2160, wide = edge * 16 / 9;
   return { width: ratio === '16:9' ? wide : edge, height: ratio === '9:16' ? wide : edge };
 }
 export function trimCompositionClip(timeline: CompositionTimeline, clip: CompositionTimelineClip, side: 'start' | 'end', sourceMs: number) {
-  const availableFrames = COMPOSITION_MAX_FRAMES - (timeline.frames - clip.frames);
+  const availableFrames = (timeline.maxFrames ?? COMPOSITION_MAX_FRAMES) - (timeline.frames - clip.frames);
   const minimum = Math.max(COMPOSITION_MIN_SOURCE_MS, Math.ceil(frameTimeMs(Math.ceil(clip.fadeMs * 2 * COMPOSITION_FPS / 1000)) * clip.speed));
   const maxSource = Math.max(minimum, Math.floor(frameTimeMs(availableFrames + 1) * clip.speed - 1e-6));
   const original = side === 'start' ? clip.sourceStartMs : clip.sourceEndMs;

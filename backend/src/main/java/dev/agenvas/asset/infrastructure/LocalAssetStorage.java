@@ -50,6 +50,12 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
     private static final long MAX_VIDEO_BYTES = dev.agenvas.asset.domain.MediaUploadLimits.VIDEO_BYTES;
     /** Covers provider video extension while retaining a finite archive/decode bound. */
     private static final int MAX_VIDEO_DURATION_MS = 600_000;
+    /** Local director imports have a narrower bound than archived provider MP4s. */
+    private static final long MAX_WEBM_BYTES = 48L * 1024 * 1024;
+    private static final int MAX_WEBM_SIDE = 960;
+    // Browser capture can include a final frame after the 120-second motion endpoint.
+    private static final int MAX_WEBM_DURATION_MS = 121_000;
+    private static final int MAX_WEBM_FRAMES = 7200;
     /** 图片与视频允许解码的最大像素面积。 */
     private static final long MAX_IMAGE_PIXELS = 40_000_000L;
     /** Bound every GIF frame and its logical canvas before allocating decoded buffers. */
@@ -323,6 +329,105 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
         } finally {
             cleanup(decoded);
         }
+    }
+
+    /** User imports may contain the director's bounded silent WebM; task archives remain MP4-only. */
+    public StoredVideo storeUploadedVideo(UUID projectId, UUID assetId, InputStream source) {
+        Path original = null;
+        Path converted = null;
+        try {
+            Path directory = prepareProjectDirectory(projectId);
+            original = Files.createTempFile(directory, ".video-upload-", ".bin");
+            byte[] header = source.readNBytes(4096);
+            boolean webm = hasWebmDocType(header);
+            InputStream complete = new java.io.SequenceInputStream(new java.io.ByteArrayInputStream(header), source);
+            copyBounded(complete, original, MessageDigest.getInstance("SHA-256"), webm ? MAX_WEBM_BYTES : MAX_VIDEO_BYTES);
+            if (!webm) {
+                try (InputStream input = Files.newInputStream(original)) {
+                    return storeVideo(projectId, assetId, input);
+                }
+            }
+            JsonNode probe = mapper.readTree(mediaTools.ffprobe(java.util.List.of(
+                    "-v", "error", "-protocol_whitelist", "file,pipe", "-max_pixels", "921600", "-show_entries",
+                    "stream=codec_type,codec_name,width,height:format=format_name,duration", "-of", "json", original.toString())));
+            JsonNode streams = probe.path("streams"), stream = streams.path(0);
+            int width = stream.path("width").asInt(), height = stream.path("height").asInt();
+            double duration = probe.path("format").path("duration").asDouble(Double.NaN);
+            if (!streams.isArray() || streams.size() != 1
+                    || !"video".equals(stream.path("codec_type").asText())
+                    || !java.util.Set.of("vp8", "vp9").contains(stream.path("codec_name").asText())
+                    || !"matroska,webm".equals(probe.path("format").path("format_name").asText())
+                    || width < 1 || height < 1 || width > MAX_WEBM_SIDE || height > MAX_WEBM_SIDE
+                    || (!Double.isNaN(duration) && (!Double.isFinite(duration) || duration <= 0 || duration * 1000 > MAX_WEBM_DURATION_MS)))
+                throw invalidWebm();
+            // MediaRecorder usually omits duration. Decode/count all frames under the existing
+            // tool deadline before conversion; compare counts afterwards so -t/-fs never publish a truncation.
+            long frames = countVideoFrames(original);
+            if (frames < 1 || frames > MAX_WEBM_FRAMES) throw invalidWebm();
+            converted = Files.createTempFile(directory, ".video-converted-", ".mp4");
+            mediaTools.ffmpeg(java.util.List.of("-hide_banner", "-loglevel", "error", "-xerror", "-nostdin",
+                    "-protocol_whitelist", "file,pipe", "-threads", "2", "-max_pixels", "921600", "-i", original.toString(),
+                    "-map", "0:v:0", "-an", "-sn", "-dn", "-map_metadata", "-1", "-t", "122",
+                    "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2", "-fps_mode", "passthrough",
+                    "-c:v", "libx264", "-threads", "2", "-preset", "ultrafast", "-crf", "23",
+                    "-pix_fmt", "yuv420p", "-fs", "50331648", "-movflags", "+faststart", "-y", converted.toString()));
+            VideoDetails details = inspectVideo(converted);
+            if (Files.size(converted) > MAX_WEBM_BYTES || details.durationMs() > MAX_WEBM_DURATION_MS
+                    || details.width() > MAX_WEBM_SIDE || details.height() > MAX_WEBM_SIDE
+                    || countVideoFrames(converted) != frames) throw invalidWebm();
+            try (InputStream input = Files.newInputStream(converted)) {
+                return storeVideo(projectId, assetId, input);
+            }
+        } catch (MediaToolRunner.MediaToolException failure) {
+            if (failure.invalidInput()) throw invalidWebm();
+            throw failure;
+        } catch (IOException | NoSuchAlgorithmException failure) {
+            throw new IllegalStateException("Private video import failed", failure);
+        } finally {
+            cleanup(original);
+            cleanup(converted);
+        }
+    }
+
+    private long countVideoFrames(Path file) {
+        JsonNode probe = mapper.readTree(mediaTools.ffprobe(java.util.List.of(
+                "-v", "error", "-protocol_whitelist", "file,pipe", "-threads", "2", "-max_pixels", "921600", "-select_streams", "v:0",
+                "-count_frames", "-show_entries", "stream=nb_read_frames", "-of", "json", file.toString())));
+        return probe.path("streams").path(0).path("nb_read_frames").asLong(-1);
+    }
+
+    private ApiProblemException invalidWebm() {
+        return invalid(ApiMessage.of("api.local-asset-storage.webm-import-limits"),
+                "ASSET_INVALID_VIDEO");
+    }
+
+    /** Read only the bounded EBML header, not a filename or MIME hint; Matroska is not WebM. */
+    private boolean hasWebmDocType(byte[] header) {
+        if (header.length < 5 || header[0] != 0x1a || header[1] != 0x45
+                || (header[2] & 255) != 0xdf || (header[3] & 255) != 0xa3) return false;
+        int[] offset = {4};
+        long length = ebmlNumber(header, offset, false);
+        if (length < 0 || length > header.length - offset[0]) return false;
+        int end = offset[0] + (int) length;
+        while (offset[0] < end) {
+            long id = ebmlNumber(header, offset, true);
+            long size = ebmlNumber(header, offset, false);
+            if (id < 0 || size < 0 || size > end - offset[0]) return false;
+            if (id == 0x4282) return size == 4 && header[offset[0]] == 'w'
+                    && header[offset[0] + 1] == 'e' && header[offset[0] + 2] == 'b' && header[offset[0] + 3] == 'm';
+            offset[0] += (int) size;
+        }
+        return false;
+    }
+
+    private long ebmlNumber(byte[] bytes, int[] offset, boolean keepMarker) {
+        if (offset[0] >= bytes.length) return -1;
+        int first = bytes[offset[0]++] & 255, mask = 128, width = 1;
+        while (mask != 0 && (first & mask) == 0) { mask >>= 1; width++; }
+        if (mask == 0 || width > (keepMarker ? 4 : 8) || width - 1 > bytes.length - offset[0]) return -1;
+        long result = keepMarker ? first : first & (mask - 1);
+        for (int index = 1; index < width; index++) result = (result << 8) | (bytes[offset[0]++] & 255);
+        return result;
     }
 
     public StoredVideo storeVideo(UUID projectId, UUID assetId, InputStream source) {

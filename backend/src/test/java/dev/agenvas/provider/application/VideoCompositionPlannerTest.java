@@ -64,7 +64,17 @@ class VideoCompositionPlannerTest {
     @Test void explicitOverlapAndOverlongTimelineAreRejected() {
         assertThatThrownBy(() -> planner.plan(List.of(shot(4000, null, List.of(line(1000, 1000), line(1000, 1500))))))
                 .isInstanceOf(VideoCompositionPlanner.DoesNotFit.class);
-        assertThatThrownBy(() -> planner.plan(List.of(shot(60_000, null, List.of()), shot(1000, null, List.of()))))
+        assertThatThrownBy(() -> planner.plan(List.of(shot(600_000, null, List.of()), shot(1000, null, List.of()))))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test void longerEditsKeepExactFramesBeyondTheOldShotAndMinuteLimits() {
+        var shots = java.util.stream.IntStream.range(0, 13).mapToObj(index -> shot(6000, null, List.of())).toList();
+        var plan = planner.plan(shots);
+        assertThat(plan.durationMs()).isEqualTo(78_000);
+        assertThat(plan.frames()).isEqualTo(2340);
+        assertThat(plan.shots().getLast().timelineStartMs()).isEqualTo(72_000);
+        assertThatThrownBy(() -> planner.plan(List.of(shot(Integer.MAX_VALUE, null, List.of()))))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 

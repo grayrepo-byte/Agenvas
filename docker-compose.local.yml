@@ -122,6 +122,10 @@ services:
       AGENVAS_PROVIDER_MODE: configured
       AGENVAS_DEPTH_MODEL: /opt/agenvas/models/depth-anything-v2-small-int8.onnx
       AGENVAS_STORAGE_ROOT: /opt/agenvas/data/assets
+      # Disk-backed private scratch avoids the small general-purpose tmpfs for long edits.
+      AGENVAS_VIDEO_COMPOSITION_LIMITS_SCRATCH_ROOT: /opt/agenvas/data/composition-scratch
+      # Keep the 1.5 GiB container conservative; enable 2160P only with suitable resources.
+      AGENVAS_VIDEO_COMPOSITION_LIMITS_MAX_RESOLUTION: ${AGENVAS_VIDEO_COMPOSITION_LIMITS_MAX_RESOLUTION:-1080P}
       AGENVAS_TASK_LEASE_DURATION: PT30M
       AGENVAS_RECOVERY_MODE: "false"
       AGENVAS_MCP_ENABLED: "true"
@@ -136,6 +140,7 @@ services:
       retries: 20
       start_period: 20s
     volumes:
+      - asr-models:/opt/agenvas/asr
       - asset-data:/opt/agenvas/data
       - credentials-data:/run/agenvas/credentials:ro
     ports:
@@ -189,3 +194,4 @@ volumes:
   postgres-data:
   asset-data:
   credentials-data:
+  asr-models:

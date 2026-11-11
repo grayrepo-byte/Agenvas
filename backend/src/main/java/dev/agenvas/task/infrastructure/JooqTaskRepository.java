@@ -592,7 +592,8 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
         return TASK.KIND.eq(Task.Kind.VIDEO_GENERATION.name())
                 .and(DSL.condition("jsonb_typeof({0}->'videoComposition') = 'object'", TASK.INPUT_JSON))
                 .or(TASK.KIND.eq(Task.Kind.AUDIO_GENERATION.name())
-                        .and(DSL.condition("jsonb_typeof({0}->'audioTrim') = 'object'", TASK.INPUT_JSON)));
+                        .and(DSL.condition("jsonb_typeof({0}->'audioTrim') = 'object'", TASK.INPUT_JSON)))
+                .or(TASK.KIND.eq(Task.Kind.SUBTITLE_TRANSCRIPTION.name()));
     }
 
     /** 按所有者、项目和任务 ID 读取，避免暴露其他项目资源。 */
@@ -722,6 +723,11 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
     public List<Task> claimDueTextGenerations(
             String workerId, int limit, Instant now, Instant leaseUntil) {
         return claimDueKind(workerId, limit, now, leaseUntil, Task.Kind.TEXT_GENERATION);
+    }
+
+    @Override
+    public List<Task> claimDueSubtitleTranscriptions(String workerId, int limit, Instant now, Instant leaseUntil) {
+        return claimDueKind(workerId, limit, now, leaseUntil, Task.Kind.SUBTITLE_TRANSCRIPTION);
     }
 
     @Override

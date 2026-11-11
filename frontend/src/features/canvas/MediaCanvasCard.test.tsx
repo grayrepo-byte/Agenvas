@@ -1377,7 +1377,7 @@ describe("MediaCanvasCard", () => {
     await clickControl(await screen.findByRole("button", { name: "上传视频" }));
     expect(pickerClick).toHaveBeenCalledOnce();
     const input = screen.getByLabelText("选择要上传的视频");
-    expect(input).toHaveAttribute("accept", "video/mp4");
+    expect(input).toHaveAttribute("accept", "video/mp4,video/webm");
     fireEvent.change(input, { target: { files: [] } });
     expect(screen.getByRole("button", { name: "上传视频" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "生成视频" })).not.toBeInTheDocument();

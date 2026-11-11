@@ -15,6 +15,37 @@ function show(overrides: Partial<Parameters<typeof ImageOperationPanel>[0]> = {}
 }
 
 describe("visual image operations", () => {
+  it("submits the four-part character sheet in 4:3 and preserves a manual ratio after failure", async () => {
+    const view = show({ operation: "THREE_VIEW" });
+    expect(screen.getByRole("radio", { name: "4:3" })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "开始处理" }));
+    expect(view.onSubmit).toHaveBeenLastCalledWith({ aspectRatio: "4:3", threeViewType: "CHARACTER" }, "");
+    await clickControl(screen.getByRole("radio", { name: "16:9" }));
+    view.rerender({ error: new Error("synthetic failure") });
+    expect(screen.getByRole("radio", { name: "16:9" })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "开始处理" }));
+    expect(view.onSubmit).toHaveBeenLastCalledWith({ aspectRatio: "16:9", threeViewType: "CHARACTER" }, "");
+  });
+
+  it("restores the character default when switching back from other view types", async () => {
+    const { onSubmit } = show({ operation: "THREE_VIEW", initialThreeViewType: "FACE" });
+    expect(screen.getByRole("radio", { name: "16:9" })).toBeChecked();
+    await clickControl(screen.getByRole("radio", { name: "角色三视图" }));
+    expect(screen.getByRole("radio", { name: "4:3" })).toBeChecked();
+    await clickControl(screen.getByRole("radio", { name: "场景宫格图" }));
+    expect(screen.getByRole("radio", { name: "1:1" })).toBeChecked();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("keeps the supported fallback when a character provider does not offer 4:3", () => {
+    const capability = imageFunctionsFixture().connections[1]!.capabilities[0]!;
+    const { onSubmit } = show({ operation: "THREE_VIEW", capabilities: [{ ...capability, supportedImageAspectRatios: ["16:9"] }] });
+    expect(screen.queryByRole("radio", { name: "4:3" })).not.toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "16:9" })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "开始处理" }));
+    expect(onSubmit).toHaveBeenCalledWith({ aspectRatio: "16:9", threeViewType: "CHARACTER" }, "");
+  });
+
   it("extracts an outfit with optional guidance and preserves it after failure", () => {
     const view = show({ operation: "COSTUME_EXTRACT" });
     const guidance = screen.getByRole("textbox", { name: "提取说明（可选）" });

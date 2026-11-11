@@ -1,7 +1,7 @@
 export const MEDIA_FILE_ACCEPT = {
   IMAGE: "image/png,image/jpeg,image/webp,image/gif",
   AUDIO: "audio/mpeg,audio/wav,audio/ogg",
-  VIDEO: "video/mp4",
+  VIDEO: "video/mp4,video/webm",
 } as const;
 
 const AUDIO_FILE_EXTENSION = /\.(mp3|wav|ogg)$/i;
@@ -12,5 +12,5 @@ export function isAudioFile(file: Pick<File, "type" | "name">): boolean {
 }
 
 export function isVideoFile(file: File): boolean {
-  return file.type.startsWith("video/") || /\.(mp4|mov)$/i.test(file.name);
+  return file.type.startsWith("video/") || /\.(mp4|mov|webm)$/i.test(file.name);
 }

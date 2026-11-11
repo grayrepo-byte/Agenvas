@@ -34,13 +34,24 @@ class McpToolPolicyTest {
     }
     @Test void compositionContractBoundsSourcesAndAllowsCompleteFrozenReferenceSummary() {
         var definition = policy.definition("compose_video");
-        assertThat(definition.at("/outputSchema/properties/tasks/items/properties/inputSummary/properties/inputVersionIds/maxItems").asInt()).isEqualTo(42);
+        assertThat(definition.at("/outputSchema/properties/tasks/items/properties/inputSummary/properties/inputVersionIds/maxItems").asInt()).isEqualTo(721);
         String composition = "{\"title\":\"Scene\",\"shots\":[{\"videoVersionId\":\"" + project
                 + "\",\"lines\":[{\"audioVersionId\":\"" + project + "\"}]}]}";
         String request = "{\"projectId\":\"" + project + "\",\"commandId\":\"compose\",\"composition\":" + composition + "}";
         policy.validate("compose_video", mapper.readTree(request));
         invalid("compose_video", request.replace("\"title\":\"Scene\"", "\"title\":\"" + "x".repeat(161) + "\""));
         invalid("compose_video", request.replace("\"lines\":", "\"url\":\"file:///private/input\",\"lines\":"));
+    }
+    @Test void compositionProtocolAcceptsLongEditsAndStillRejectsAbsoluteCeilingOverflow() {
+        var input = mapper.createObjectNode().put("projectId", project).put("commandId", "long-composition");
+        var composition = input.putObject("composition").put("title", "Long edit");
+        composition.putObject("output").put("resolution", "2160P");
+        var shots = composition.putArray("shots");
+        for (int i = 0; i < 120; i++) shots.addObject().put("videoVersionId", project).put("durationMs", 1000).putArray("lines");
+        composition.putArray("subtitles").addObject().put("text", "Late caption").put("startMs", 119000).put("endMs", 120000);
+        policy.validate("compose_video", input);
+        shots.add(shots.get(0).deepCopy());
+        assertThatThrownBy(() -> policy.validate("compose_video", input)).isInstanceOf(ApiProblemException.class);
     }
     @Test void rejectsIdentitySpoofingUnknownFieldsWrongTypesAndUnboundedBatches() {
         invalid("read_project_summary", "{\"projectId\":\"" + project + "\",\"userId\":\"spoof\"}");

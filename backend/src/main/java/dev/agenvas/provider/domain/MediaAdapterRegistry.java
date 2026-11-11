@@ -87,7 +87,7 @@ public final class MediaAdapterRegistry {
                     Set.of("GENERAL_REFERENCE"), "GENERAL_REFERENCE", false)),
             Map.entry(LOCAL_VIDEO_AUDIO_EXTRACTOR, audio(MediaPlatform.LOCAL)),
             Map.entry(LOCAL_AUDIO_TRIMMER, audio(MediaPlatform.LOCAL)),
-            Map.entry(LOCAL_VIDEO_COMPOSITOR, video(MediaPlatform.LOCAL, 1, 60, false, 0,
+            Map.entry(LOCAL_VIDEO_COMPOSITOR, video(MediaPlatform.LOCAL, 1, 600, false, 0,
                     Set.of("GENERAL_REFERENCE"), "GENERAL_REFERENCE", false)),
             Map.entry(RUNNINGHUB_IMAGE, runningHub(Task.Kind.IMAGE_GENERATION)),
             Map.entry(RUNNINGHUB_VIDEO, runningHub(Task.Kind.VIDEO_GENERATION)),

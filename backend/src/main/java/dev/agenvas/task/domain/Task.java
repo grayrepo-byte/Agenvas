@@ -67,7 +67,7 @@ public record Task(
     }
 
     /** Only fixed local editors can stop an active process; external generation keeps its existing boundary. */
-    public boolean isCancelableLocalProcessing() { return isVideoComposition() || isAudioTrim(); }
+    public boolean isCancelableLocalProcessing() { return isVideoComposition() || isAudioTrim() || kind == Kind.SUBTITLE_TRANSCRIPTION; }
 
     /** Local composition runs independently after acceptance; this is its trusted initiating conversation. */
     public UUID compositionRunId() {
@@ -145,7 +145,9 @@ public record Task(
         /** 根据输入图片生成并归档视频。 */
         VIDEO_GENERATION,
         /** Direct speech synthesis with immutable archived audio. */
-        AUDIO_GENERATION
+        AUDIO_GENERATION,
+        /** Local ASR over a fixed source version; no external submission or model billing. */
+        SUBTITLE_TRANSCRIPTION
     }
 
     /** 数据库任务状态，区分本地执行与外部副作用的核对边界。 */

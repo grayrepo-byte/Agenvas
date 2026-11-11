@@ -232,15 +232,15 @@ describe("WorkflowMediaInputs", () => {
     }
     render(<MixedUploadsHarness />);
     const input = screen.getByLabelText("选择本地图片、视频或音频");
-    expect(input).toHaveAttribute("accept", "image/png,image/jpeg,image/webp,image/gif,audio/mpeg,audio/wav,audio/ogg,video/mp4");
+    expect(input).toHaveAttribute("accept", "image/png,image/jpeg,image/webp,image/gif,audio/mpeg,audio/wav,audio/ogg,video/mp4,video/webm");
     fireEvent.change(input, { target: { files: [audio] } });
     await waitFor(() => expect(screen.getByRole("button", { name: "选择配音" })).toBeEnabled());
     expect(upload).toHaveBeenNthCalledWith(1, expect.objectContaining({ key: "sound" }), audio, { requireEmptySlot: true });
-    expect(input).toHaveAttribute("accept", "image/png,image/jpeg,image/webp,image/gif,video/mp4");
+    expect(input).toHaveAttribute("accept", "image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm");
     fireEvent.change(input, { target: { files: [firstImage] } });
     await waitFor(() => expect(screen.getByRole("button", { name: "选择首帧" })).toBeEnabled());
     expect(upload).toHaveBeenNthCalledWith(2, expect.objectContaining({ key: "first" }), firstImage, { requireEmptySlot: true });
-    expect(input).toHaveAttribute("accept", "image/png,image/jpeg,image/webp,image/gif,video/mp4");
+    expect(input).toHaveAttribute("accept", "image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm");
     fireEvent.change(input, { target: { files: [video] } });
     await waitFor(() => expect(screen.getByRole("button", { name: "选择参考视频" })).toBeEnabled());
     expect(upload).toHaveBeenNthCalledWith(3, expect.objectContaining({ key: "clip" }), video, { requireEmptySlot: true });

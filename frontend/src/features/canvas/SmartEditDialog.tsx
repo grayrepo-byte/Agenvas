@@ -476,13 +476,13 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
     </DialogContent>
     {pendingGuidance ? <Dialog title={t("image.smartEdit.changeGuidance")} onClose={() => setPendingGuidance(null)}
       onSubmit={(event) => { event.preventDefault(); applyGuidance(pendingGuidance); }}
-      footer={<><Button variant="outline" type="button" onClick={() => setPendingGuidance(null)}>{t("common.continueEditing")}</Button>
+      footer={<><Button variant="ghost" type="button" onClick={() => setPendingGuidance(null)}>{t("common.continueEditing")}</Button>
         <Button variant="destructive" type="submit">{t("common.discardChanges")}</Button></>}>
       <p>{t("image.smartEdit.changeGuidanceHint")}</p>
     </Dialog> : null}
     {confirmExit ? <Dialog title={t("common.unsavedChanges")} onClose={() => setConfirmExit(false)}
       onSubmit={(event) => { event.preventDefault(); onClose(); }}
-      footer={<><Button variant="outline" type="button" onClick={() => setConfirmExit(false)}>{t("common.continueEditing")}</Button>
+      footer={<><Button variant="ghost" type="button" onClick={() => setConfirmExit(false)}>{t("common.continueEditing")}</Button>
         <Button variant="destructive" type="submit">{t("common.discardChanges")}</Button></>}>
       <p>{t("image.smartEdit.discardHint")}</p>
     </Dialog> : null}

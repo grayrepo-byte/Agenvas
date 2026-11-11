@@ -10,6 +10,7 @@ const state = vi.hoisted(() => ({
   renders: [] as { selected: boolean; center: number[]; size: number[]; color: string }[],
   views: [] as { camera: string; position: number[]; aspect: number; far: number; rigVisible: boolean; frustumVisible: boolean;
     resizeVisible: boolean; moveVisible: boolean; rotateVisible: boolean }[],
+  pathVisible: [] as boolean[],
   renderCamera: null as PerspectiveCamera | null,
   world: null as Scene | null,
   frames: new Map<number, FrameRequestCallback>(),
@@ -31,6 +32,7 @@ vi.mock("three", async (importOriginal) => {
     dispose() {}
     forceContextLoss() { state.contextLost = true; }
     render(world: Scene, camera: PerspectiveCamera) {
+      state.pathVisible.push(world.getObjectByName("director-camera-path")?.visible ?? false);
       state.world = world;
       state.renderCamera = camera;
       world.updateMatrixWorld(true);
@@ -115,6 +117,7 @@ function mockCaptureContext(drawImage = vi.fn()) {
 }
 
 beforeEach(() => {
+  state.pathVisible = [];
   state.renders = []; state.views = []; state.world = null; state.renderCamera = null; state.frames.clear(); state.contextLost = false;
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
     const id = ++state.nextFrame; state.frames.set(id, callback); return id;
@@ -187,6 +190,54 @@ describe("director observation and shooting cameras", () => {
     flushFrames();
     expect(state.views.at(-1)).toEqual(observer);
     expect(state.renders.at(-1)?.selected).toBe(true);
+  });
+
+  it("renders an editable 3D camera path only in director view, excludes it from PNGs and releases replaced geometry", async () => {
+    const { renderer, scene } = setup();
+    scene.motion = { durationSeconds: 5, keyframes: [
+      { id: "a", name: "A", timeSeconds: 0, transition: "LINEAR", camera: scene.camera },
+      { id: "b", name: "B", timeSeconds: 5, transition: "SMOOTH", camera: { ...scene.camera, azimuth: 100 } },
+    ] };
+    renderer.update(scene); renderer.setViewMode("director"); flushFrames();
+    const path = state.world?.getObjectByName("director-camera-path") as import("three").LineSegments;
+    expect(path.geometry.getAttribute("position").count).toBe(64);
+    expect(path.visible).toBe(true);
+    const oldGeometry = path.geometry;
+    const release = vi.spyOn(oldGeometry, "dispose");
+    renderer.update({ ...scene, motion: { ...scene.motion, keyframes: scene.motion.keyframes.map((frame) => ({ ...frame, transition: "CUT" })) } });
+    expect(release).toHaveBeenCalledOnce();
+    expect(path.geometry.getAttribute("position").count).toBe(0);
+    renderer.update(scene);
+    mockCaptureContext();
+    await renderer.capture();
+    expect(state.pathVisible.at(-1)).toBe(false);
+    flushFrames();
+    expect(path.visible).toBe(true);
+    renderer.setViewMode("camera"); flushFrames();
+    expect(path.visible).toBe(false);
+    const dispose = vi.spyOn(path.geometry, "dispose");
+    renderer.dispose();
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(state.frames.size).toBe(0);
+  });
+
+  it("samples clean reference-video frames from the real 3D camera without changing the caller's scene", () => {
+    const { renderer, scene } = setup();
+    scene.motion = { durationSeconds: 1, keyframes: [
+      { id: "a", name: "Front", timeSeconds: 0, transition: "LINEAR", camera: { ...scene.camera, azimuth: 0 } },
+      { id: "b", name: "Side", timeSeconds: 1, transition: "LINEAR", camera: { ...scene.camera, azimuth: 90 } },
+    ] };
+    const original = structuredClone(scene);
+    renderer.update(scene, "box"); renderer.setViewMode("director");
+    renderer.renderReferenceFrame(0.5, 960, 540);
+    expect(state.views.at(-1)).toMatchObject({ camera: "director-shoot-camera", rigVisible: false, frustumVisible: false,
+      resizeVisible: false, moveVisible: false, rotateVisible: false });
+    const position = cameraPosition({ ...scene.camera, azimuth: 45 });
+    expect(state.views.at(-1)!.position[0]).toBeCloseTo(position.x);
+    expect(state.views.at(-1)!.position[2]).toBeCloseTo(position.z);
+    expect(state.pathVisible.at(-1)).toBe(false);
+    expect(state.frames.size).toBe(0);
+    expect(scene).toEqual(original);
   });
 
   it("restores director helpers after a capture copy fails", async () => {

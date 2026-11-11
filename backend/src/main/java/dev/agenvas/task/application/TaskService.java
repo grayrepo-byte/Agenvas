@@ -326,6 +326,13 @@ public class TaskService {
         return claimBatch(requestedWorkerId, requestedLimit, tasks::claimDueTextGenerations);
     }
 
+    /** Shares the normal lease, shutdown admission and fencing protocol with other durable tasks. */
+    @Transactional
+    public List<Task> claimSubtitleTranscriptions(String workerId, int limit) {
+        if (shutdownGate.isClosing()) return List.of();
+        return claimBatch(workerId, limit, tasks::claimDueSubtitleTranscriptions);
+    }
+
     /** Prepares one bounded lease; the gate still serializes the actual query with shutdown. */
     private List<Task> claimBatch(String requestedWorkerId, int requestedLimit, BatchClaim claim) {
         String workerId = validateWorkerId(requestedWorkerId);
@@ -1351,6 +1358,7 @@ public class TaskService {
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put("taskId", task.id().toString());
         payload.put("status", task.status().name());
+        if (task.kind() == Task.Kind.SUBTITLE_TRANSCRIPTION) payload.put("subtitleId", task.input().path("subtitleId").asText());
         payload.put("cancelRequested", task.cancelRequested());
         boolean localProcessing = tasks.mediaBinding(task.id()).map(binding ->
                 MediaAdapterRegistry.localProcessor(binding.adapterId())).orElse(false);

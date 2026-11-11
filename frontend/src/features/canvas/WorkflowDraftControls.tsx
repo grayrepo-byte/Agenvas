@@ -253,7 +253,7 @@ export function WorkflowParametersDialog({ open, onOpenChange, disabled = false,
   return <Dialog className="workflow-parameters-dialog nodrag nowheel nopan" title={t("media.workflow.extendedParameters")}
     description={disabled ? t("media.workflow.readOnlyParameters") : t("media.workflow.parametersHint")}
     onClose={() => onOpenChange(false)} onSubmit={(event) => { event.preventDefault(); onOpenChange(false); }}
-    footer={<Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t("common.close")}</Button>}>
+    footer={<Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>{t("common.close")}</Button>}>
     <WorkflowParameterFields {...props} disabled={disabled} />
   </Dialog>;
 }

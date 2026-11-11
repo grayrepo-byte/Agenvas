@@ -10,6 +10,11 @@ import tools.jackson.databind.JsonNode;
 /** A director scene is bounded local geometry, never a source of URLs or executable asset data. */
 final class DirectorSceneValidator {
     private static final Set<String> SCENE_FIELDS = Set.of("schemaVersion", "aspectRatio", "camera", "objects");
+    private static final Set<String> MOTION_SCENE_FIELDS = Set.of("schemaVersion", "aspectRatio", "camera", "objects", "motion");
+    private static final Set<String> MOTION_FIELDS = Set.of("durationSeconds", "keyframes");
+    private static final Set<String> KEYFRAME_FIELDS = Set.of("id", "name", "timeSeconds", "transition", "camera");
+    private static final Set<String> TRANSITIONS = Set.of("LINEAR", "SMOOTH", "CUT");
+    private static final int MOTION_VERSION = 3;
     private static final Set<String> CAMERA_FIELDS = Set.of("azimuth", "elevation", "distance", "target", "focalLength");
     private static final Set<String> OBJECT_FIELDS = Set.of("id", "name", "kind", "position", "rotation", "scale", "color");
     private static final Set<String> VECTOR_FIELDS = Set.of("x", "y", "z");
@@ -21,18 +26,14 @@ final class DirectorSceneValidator {
     private DirectorSceneValidator() {}
 
     static void validate(JsonNode scene) {
-        object(scene, SCENE_FIELDS);
+        if (scene == null || !scene.isObject()) throw invalid();
         JsonNode schemaVersion = scene.path("schemaVersion");
         if (!schemaVersion.isIntegralNumber() || !schemaVersion.canConvertToInt()
-                || (schemaVersion.asInt() != UNIFORM_SCALE_VERSION && schemaVersion.asInt() != AXIS_SCALE_VERSION)
+                || (schemaVersion.asInt() != UNIFORM_SCALE_VERSION && schemaVersion.asInt() != AXIS_SCALE_VERSION && schemaVersion.asInt() != MOTION_VERSION)
                 || !ASPECT_RATIOS.contains(text(scene.path("aspectRatio"), 4))) throw invalid();
-        JsonNode camera = scene.path("camera");
-        object(camera, CAMERA_FIELDS);
-        number(camera.path("azimuth"), -180, 180);
-        number(camera.path("elevation"), -80, 80);
-        number(camera.path("distance"), 1, 50);
-        number(camera.path("focalLength"), 18, 120);
-        vector(camera.path("target"));
+        object(scene, schemaVersion.asInt() == MOTION_VERSION ? MOTION_SCENE_FIELDS : SCENE_FIELDS);
+        camera(scene.path("camera"));
+        if (schemaVersion.asInt() == MOTION_VERSION) motion(scene.path("motion"));
         JsonNode objects = scene.path("objects");
         if (!objects.isArray() || objects.size() > 32) throw invalid();
         Set<String> ids = new HashSet<>();
@@ -52,6 +53,36 @@ final class DirectorSceneValidator {
                 for (String field : VECTOR_FIELDS) number(scale.path(field), 0.1, 5);
             }
             if (!text(item.path("color"), 7).matches("#[0-9a-fA-F]{6}")) throw invalid();
+        }
+    }
+
+    private static void camera(JsonNode camera) {
+        object(camera, CAMERA_FIELDS);
+        number(camera.path("azimuth"), -180, 180);
+        number(camera.path("elevation"), -80, 80);
+        number(camera.path("distance"), 1, 50);
+        number(camera.path("focalLength"), 18, 120);
+        vector(camera.path("target"));
+    }
+
+    /** A bounded ordered track is data, never executable animation or an external model reference. */
+    private static void motion(JsonNode motion) {
+        object(motion, MOTION_FIELDS);
+        number(motion.path("durationSeconds"), 1, 120);
+        JsonNode frames = motion.path("keyframes");
+        if (!frames.isArray() || frames.size() > 24) throw invalid();
+        Set<String> ids = new HashSet<>();
+        double previousTime = -1;
+        for (JsonNode frame : frames) {
+            object(frame, KEYFRAME_FIELDS);
+            if (!ids.add(text(frame.path("id"), 64))) throw invalid();
+            text(frame.path("name"), 80);
+            number(frame.path("timeSeconds"), 0, motion.path("durationSeconds").asDouble());
+            double time = frame.path("timeSeconds").asDouble();
+            if (time <= previousTime) throw invalid();
+            previousTime = time;
+            if (!TRANSITIONS.contains(text(frame.path("transition"), 6))) throw invalid();
+            camera(frame.path("camera"));
         }
     }
 

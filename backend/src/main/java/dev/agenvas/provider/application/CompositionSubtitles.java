@@ -13,7 +13,12 @@ final class CompositionSubtitles {
     private CompositionSubtitles() {}
 
     static void write(JsonNode subtitles, int durationMs, int width, int height, String fontFamily, Path scratch) throws IOException {
-        if (!subtitles.isArray() || subtitles.size() > 100) throw new IllegalArgumentException("Invalid subtitles");
+        write(subtitles, durationMs, width, height, fontFamily, scratch, VideoCompositionLimits.defaults());
+    }
+
+    static void write(JsonNode subtitles, int durationMs, int width, int height, String fontFamily, Path scratch,
+            VideoCompositionLimits limits) throws IOException {
+        if (!subtitles.isArray() || subtitles.size() > limits.maxSubtitles()) throw new IllegalArgumentException("Invalid subtitles");
         StringBuilder ass = new StringBuilder("[Script Info]\nScriptType: v4.00+\nScaledBorderAndShadow: yes\nWrapStyle: 0\n")
                 .append("PlayResX: ").append(width).append("\nPlayResY: ").append(height)
                 .append("\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")

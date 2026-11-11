@@ -32,7 +32,7 @@
 .app-shell--studio .library-page .library-navigation { justify-content:space-between; gap:8px 16px; padding-bottom:10px; margin-bottom:14px; border-bottom:1px solid var(--library-rule); }
 .app-shell--studio .library-page .library-workspace .library-navigation>[data-slot=tabs-list] { width:auto; margin:0; }
 .app-shell--studio .library-page .library-navigation [data-slot=tabs-trigger] { flex:none; }
-.app-shell--studio .library-page .library-controls { padding:14px; margin-bottom:20px; border:1px solid var(--library-rule); border-radius:12px; background:var(--ui-surface); }
+.app-shell--studio .library-page .library-controls { padding:14px 0; margin-bottom:20px; border:0; border-radius:0; background:transparent; }
 .app-shell--studio .library-page .library-categories { gap:4px; width:100%; margin:0 0 12px; padding-bottom:10px; border-bottom:1px solid var(--library-rule); }
 .app-shell--studio .library-page .library-category-count { min-width:17px; padding:0 4px; border-radius:4px; background:var(--ui-field); color:var(--ui-text-subtle); font-size:10px; font-variant-numeric:tabular-nums; }
 .app-shell--studio .library-page .library-filters { display:grid; grid-template-columns:minmax(160px,1fr) 128px 138px auto; align-items:end; gap:10px; margin:0; }
@@ -42,7 +42,7 @@
 .app-shell--studio .library-page .library-grid { grid-template-columns:repeat(auto-fill,minmax(196px,1fr)); align-items:start; gap:16px; }
 .app-shell--studio .library-page .library-grid:empty { display:none; }
 .app-shell--studio .library-page .library-card { border-color:var(--library-rule); border-radius:12px; background:var(--ui-surface); transition:border-color 180ms ease,box-shadow 180ms ease; }
-.app-shell--studio .library-page .library-card:hover { border-color:var(--ui-border-strong); box-shadow:var(--ui-panel-shadow); }
+.app-shell--studio .library-page .library-card:hover { border-color:var(--ui-border-strong); box-shadow:none; }
 .app-shell--studio .library-page .library-card:focus-within { border-color:var(--ui-focus-border); }
 .app-shell--studio .library-page .library-card>button:not(.library-favorite) { gap:0; padding:0 0 10px; border-radius:0; background:transparent; }
 .app-shell--studio .library-page .library-card-preview { position:relative; aspect-ratio:4/3; margin-bottom:12px; border-bottom:1px solid var(--library-rule); background:var(--ui-field); color:var(--ui-text-subtle); }

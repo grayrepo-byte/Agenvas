@@ -74,10 +74,10 @@ export function PromptManagementSection({ enabled }: { enabled: boolean }) {
         <Select aria-label={t("prompts.filter")} value={kind} onChange={(event) => setKind(event.target.value)}>
           <option value="">{t("prompts.all")}</option><option value="AGENT">{t("prompts.agent")}</option><option value="FUNCTION">{t("prompts.function")}</option>
         </Select>
-        <Button type="button" disabled={disabled} onClick={() => { select(NEW_PROMPT); setDrafts((old) => ({ ...old, [NEW_PROMPT]: old[NEW_PROMPT] ?? { ...blankDraft } })); }}>{t("prompts.create")}</Button>
+        <Button type="button" variant="ghost" disabled={disabled} onClick={() => { select(NEW_PROMPT); setDrafts((old) => ({ ...old, [NEW_PROMPT]: old[NEW_PROMPT] ?? { ...blankDraft } })); }}>{t("prompts.create")}</Button>
         {settings.isPending && enabled ? <LoadingState compact label={t("prompts.loading")} /> : null}
         {settings.isSuccess && !rows.length ? <EmptyState title={t("prompts.empty")} /> : null}
-        {rows.map((row) => <Button type="button" variant={selection === row.id ? "secondary" : "outline"} size="content" className="prompt-management-record justify-start text-left"
+        {rows.map((row) => <Button type="button" variant={selection === row.id ? "secondary" : "ghost"} size="content" className="prompt-management-record justify-start text-left"
           disabled={pending} key={row.id} onClick={() => select(row.id)} aria-pressed={selection === row.id} title={`${getPromptLabels(row).name} · ${row.key}${drafts[row.id] ? ` · ${t("prompts.unsaved")}` : ""}`}>
           <span className="min-w-0"><span className="block">{getPromptLabels(row).name}</span><span className="block break-all text-xs text-muted-foreground">{row.key}</span></span>
           {drafts[row.id] ? <StatusBadge tone="warning">{t("prompts.unsaved")}</StatusBadge> : null}

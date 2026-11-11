@@ -60,6 +60,8 @@ class AssetPublicationTest {
         when(repository.find(eq(PROJECT), any())).thenReturn(Optional.empty());
         when(storage.storeImage(eq(PROJECT), any(), any())).thenReturn(new LocalAssetStorage.StoredImage(
                 ORIGINAL, "image/png", 3, "synthetic-hash", 4, 3, THUMBNAIL, 2, "synthetic-preview-hash"));
+        when(storage.storeUploadedVideo(eq(PROJECT), any(), any())).thenReturn(new LocalAssetStorage.StoredVideo(
+                ORIGINAL, 3, "synthetic-hash", 4, 3, 1000, THUMBNAIL, 2, "synthetic-preview-hash"));
         when(storage.storeVideo(eq(PROJECT), any(), any())).thenReturn(new LocalAssetStorage.StoredVideo(
                 ORIGINAL, 3, "synthetic-hash", 4, 3, 1000, THUMBNAIL, 2, "synthetic-preview-hash"));
         when(storage.storeAudio(eq(PROJECT), any(), any())).thenReturn(new LocalAssetStorage.StoredAudio(

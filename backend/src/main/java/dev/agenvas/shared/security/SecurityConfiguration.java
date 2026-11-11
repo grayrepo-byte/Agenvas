@@ -58,6 +58,7 @@ public class SecurityConfiguration {
                         .requestMatchers(org.springframework.http.HttpMethod.DELETE,
                                 "/api/v1/reference-catalog/costumes/*").hasRole("ADMIN")
                         .requestMatchers("/api/v1/settings/llm/models", "/api/v1/settings/media-connections/**",
+                                "/api/v1/settings/local-asr", "/api/v1/settings/local-asr/**",
                                 "/api/v1/settings/media-connections",
                                 "/api/v1/settings/media-templates", "/api/v1/settings/media-templates/**",
                                 "/api/v1/settings/media-template-sources", "/api/v1/settings/media-template-sources/**",

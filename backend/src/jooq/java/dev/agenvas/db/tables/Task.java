@@ -15,6 +15,7 @@ import dev.agenvas.db.tables.MediaCapabilityVersion.MediaCapabilityVersionPath;
 import dev.agenvas.db.tables.MediaProviderConnectionVersion.MediaProviderConnectionVersionPath;
 import dev.agenvas.db.tables.Project.ProjectPath;
 import dev.agenvas.db.tables.ProviderAttempt.ProviderAttemptPath;
+import dev.agenvas.db.tables.SubtitleDraft.SubtitleDraftPath;
 import dev.agenvas.db.tables.TaskArtifactTarget.TaskArtifactTargetPath;
 import dev.agenvas.db.tables.TaskLateResult.TaskLateResultPath;
 import dev.agenvas.db.tables.TaskManualReplacement.TaskManualReplacementPath;
@@ -413,6 +414,19 @@ public class Task extends TableImpl<TaskRecord> {
         return _providerAttempt;
     }
 
+    private transient SubtitleDraftPath _subtitleDraft;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.subtitle_draft</code> table
+     */
+    public SubtitleDraftPath subtitleDraft() {
+        if (_subtitleDraft == null)
+            _subtitleDraft = new SubtitleDraftPath(this, null, Keys.SUBTITLE_DRAFT__FK_SUBTITLE_DRAFT_TASK.getInverseKey());
+
+        return _subtitleDraft;
+    }
+
     private transient TaskArtifactTargetPath _taskArtifactTarget;
 
     /**
@@ -466,12 +480,12 @@ public class Task extends TableImpl<TaskRecord> {
             Internal.createCheck(this, DSL.name("ck_task_attempt_positive"), "((attempt_no > 0))", true),
             Internal.createCheck(this, DSL.name("ck_task_completion"), "(((((status)::text = ANY ((ARRAY['SUCCEEDED'::character varying, 'FAILED'::character varying, 'CANCELED'::character varying])::text[])) AND (completed_at IS NOT NULL)) OR (((status)::text <> ALL ((ARRAY['SUCCEEDED'::character varying, 'FAILED'::character varying, 'CANCELED'::character varying])::text[])) AND (completed_at IS NULL))))", true),
             Internal.createCheck(this, DSL.name("ck_task_input_hash"), "((input_hash ~ '^[0-9a-f]{64}$'::text))", true),
-            Internal.createCheck(this, DSL.name("ck_task_kind"), "(((kind)::text = ANY ((ARRAY['AGENT_TURN'::character varying, 'TEXT_GENERATION'::character varying, 'IMAGE_GENERATION'::character varying, 'VIDEO_GENERATION'::character varying, 'AUDIO_GENERATION'::character varying])::text[])))", true),
+            Internal.createCheck(this, DSL.name("ck_task_kind"), "(((kind)::text = ANY ((ARRAY['AGENT_TURN'::character varying, 'TEXT_GENERATION'::character varying, 'IMAGE_GENERATION'::character varying, 'VIDEO_GENERATION'::character varying, 'AUDIO_GENERATION'::character varying, 'SUBTITLE_TRANSCRIPTION'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("ck_task_lease_epoch_non_negative"), "((lease_epoch >= 0))", true),
             Internal.createCheck(this, DSL.name("ck_task_lease_pair"), "((((lease_owner IS NULL) AND (lease_until IS NULL)) OR ((lease_owner IS NOT NULL) AND (lease_until IS NOT NULL))))", true),
             Internal.createCheck(this, DSL.name("ck_task_media_binding"), "((((capability_id IS NULL) AND (capability_version IS NULL) AND (connection_id IS NULL) AND (connection_version IS NULL)) OR ((capability_id IS NOT NULL) AND (capability_version IS NOT NULL) AND (connection_id IS NOT NULL) AND (connection_version IS NOT NULL))))", true),
             Internal.createCheck(this, DSL.name("ck_task_provider_result_manifest"), "(((provider_result_manifest IS NULL) OR COALESCE(((jsonb_typeof(provider_result_manifest) = 'object'::text) AND ((provider_result_manifest ->> 'schemaVersion'::text) = '1'::text) AND (jsonb_typeof((provider_result_manifest -> 'results'::text)) = 'array'::text) AND ((jsonb_array_length((provider_result_manifest -> 'results'::text)) >= 1) AND (jsonb_array_length((provider_result_manifest -> 'results'::text)) <=\nCASE\n    WHEN ((input_json ->> 'providerProtocol'::text) = 'NATIVE_MEDIA'::text) THEN 17\n    ELSE 16\nEND))), false)))", true),
-            Internal.createCheck(this, DSL.name("ck_task_run_scope"), "(((run_id IS NOT NULL) OR ((kind)::text = ANY ((ARRAY['TEXT_GENERATION'::character varying, 'IMAGE_GENERATION'::character varying, 'VIDEO_GENERATION'::character varying, 'AUDIO_GENERATION'::character varying])::text[]))))", true),
+            Internal.createCheck(this, DSL.name("ck_task_run_scope"), "(((run_id IS NOT NULL) OR ((kind)::text = ANY ((ARRAY['TEXT_GENERATION'::character varying, 'IMAGE_GENERATION'::character varying, 'VIDEO_GENERATION'::character varying, 'AUDIO_GENERATION'::character varying, 'SUBTITLE_TRANSCRIPTION'::character varying])::text[]))))", true),
             Internal.createCheck(this, DSL.name("ck_task_status"), "(((status)::text = ANY ((ARRAY['READY'::character varying, 'RUNNING'::character varying, 'SUBMITTING'::character varying, 'WAITING_PROVIDER'::character varying, 'UNKNOWN'::character varying, 'BLOCKED'::character varying, 'SUCCEEDED'::character varying, 'FAILED'::character varying, 'CANCELED'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("ck_task_step_key_not_blank"), "((length(btrim((step_key)::text)) > 0))", true),
             Internal.createCheck(this, DSL.name("ck_task_version_non_negative"), "((version >= 0))", true)

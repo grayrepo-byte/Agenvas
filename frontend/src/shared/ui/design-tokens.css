@@ -96,6 +96,9 @@
   --ui-focus-border: var(--ui-border-strong);
   --ui-focus-surface: var(--ui-hover);
   --ui-inset-highlight: inset 0 0 0 1px #ffffff04;
+  /* Quiet action surfaces preserve full-strength labels and hit targets. */
+  --ui-action-surface: color-mix(in srgb, var(--ui-selected) 45%, transparent);
+  --ui-action-border: color-mix(in srgb, var(--ui-border) 65%, transparent);
   --ui-duration: 150ms;
   /* Canvas surfaces and motion share one vocabulary; position/size never animate during drag. */
   --ui-canvas-bg: #141a23;

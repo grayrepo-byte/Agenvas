@@ -70,7 +70,7 @@ export function ThirdPartyPromptCatalog({ kind, context, system = false }: {
         {sources.data?.items.filter((source) => source.targetKind === kind).map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}</Select></Field>
       <Input type="search" value={search} disabled={busy} maxLength={160} aria-label={t("templates.search")} placeholder={t("templates.search")}
         onChange={(event) => { setSearch(event.target.value); reset(); }} />
-      <Button type="button" variant="outline" disabled={busy || query.isFetching} onClick={() => { reset(); void query.refetch(); void sources.refetch(); }}>{t("templates.refresh")}</Button>
+      <Button type="button" variant="ghost" disabled={busy || query.isFetching} onClick={() => { reset(); void query.refetch(); void sources.refetch(); }}>{t("templates.refresh")}</Button>
     </div>
     {query.isPending ? <LoadingState compact label={t("templates.loading")} /> : null}
     {query.error || sources.error ? <Notice tone="danger">{query.error?.message ?? sources.error?.message}</Notice> : null}
@@ -84,9 +84,9 @@ export function ThirdPartyPromptCatalog({ kind, context, system = false }: {
       </Button> : null;
     })}</div>
     {query.data && query.data.total > query.data.limit ? <div className="ui-form-actions">
-      <Button type="button" variant="outline" disabled={busy || offset === 0} onClick={() => { setOffset(Math.max(0, offset - 50)); setSelected(null); }}>{t("thirdParty.previous")}</Button>
+      <Button type="button" variant="ghost" disabled={busy || offset === 0} onClick={() => { setOffset(Math.max(0, offset - 50)); setSelected(null); }}>{t("thirdParty.previous")}</Button>
       <span>{t("thirdParty.page", { "0": Math.floor(offset / 50) + 1, "1": Math.ceil(query.data.total / 50) })}</span>
-      <Button type="button" variant="outline" disabled={busy || offset + 50 >= query.data.total} onClick={() => { setOffset(offset + 50); setSelected(null); }}>{t("thirdParty.next")}</Button>
+      <Button type="button" variant="ghost" disabled={busy || offset + 50 >= query.data.total} onClick={() => { setOffset(offset + 50); setSelected(null); }}>{t("thirdParty.next")}</Button>
     </div> : null}
     {selected && data ? <Dialog title={data.title} description={data.description || undefined} className="media-template-detail"
       busy={busy} onClose={() => { setSelected(null); setError(null); }} onSubmit={(event) => event.preventDefault()}
@@ -116,7 +116,7 @@ export function ThirdPartyPromptCatalog({ kind, context, system = false }: {
           <option value="">{t("templates.chooseSlot")}</option>{slots.map((slot) => <option key={slot.key} value={slot.key} disabled={imageSlots.some((key, pos) => key === slot.key && pos !== index)}>{workflowFieldLabel(slot)}</option>)}</Select></Field>) : null}
       </div>
     </Dialog> : null}
-    {query.error ? <Button type="button" variant="outline" disabled={busy || query.isFetching} onClick={() => void client.invalidateQueries({ queryKey: ["third-party-prompts"] })}>{t("templates.refresh")}</Button> : null}
+    {query.error ? <Button type="button" variant="ghost" disabled={busy || query.isFetching} onClick={() => void client.invalidateQueries({ queryKey: ["third-party-prompts"] })}>{t("templates.refresh")}</Button> : null}
   </div>;
 }
 

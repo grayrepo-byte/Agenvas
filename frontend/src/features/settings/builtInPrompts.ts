@@ -4,6 +4,8 @@ import seededMetadata from "./builtInPromptDefaults.json";
 
 type BuiltInPrompt = { name: MessageKey; description: MessageKey };
 const originalMetadata: Readonly<Record<string, { name: string; description: string }>> = seededMetadata;
+// A customized prompt body can retain the V6 description after the guarded default upgrade.
+const legacyCharacterDescription = seededMetadata["image.three-view.character"].legacyDescription;
 // Purpose keys are immutable built-in consumer identities. Compare each original
 // seed field exactly so administrator metadata and all prompt content stay literal.
 const builtInPrompts: Readonly<Record<string, BuiltInPrompt>> = {
@@ -48,6 +50,8 @@ export function getPromptLabels(prompt: Pick<PromptDefinition, "key" | "builtIn"
   const original = originalMetadata[prompt.key];
   return {
     name: defaults && prompt.name === original?.name ? t(defaults.name) : prompt.name,
-    description: defaults && prompt.description === original?.description ? t(defaults.description) : prompt.description,
+    description: defaults && prompt.description === original?.description ? t(defaults.description)
+      : defaults && prompt.key === "image.three-view.character" && prompt.description === legacyCharacterDescription
+        ? t("prompts.builtIn.characterViews.legacyDescription") : prompt.description,
   };
 }

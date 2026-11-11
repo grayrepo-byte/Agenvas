@@ -78,6 +78,13 @@ springdoc:
     enabled: ${AGENVAS_OPENAPI_ENABLED:false}
 
 agenvas:
+  subtitles:
+    local-asr:
+      executable: ${AGENVAS_SUBTITLES_LOCAL_ASR_EXECUTABLE:/opt/agenvas/bin/whisper-cli}
+      model: ${AGENVAS_SUBTITLES_LOCAL_ASR_MODEL:/opt/agenvas/asr/ggml-tiny-q5_1.bin}
+    managed:
+      root: ${AGENVAS_SUBTITLES_MANAGED_ROOT:/opt/agenvas/asr}
+
   mcp:
     enabled: ${AGENVAS_MCP_ENABLED:true}
   recovery-mode: ${AGENVAS_RECOVERY_MODE:false}

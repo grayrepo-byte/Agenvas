@@ -68,7 +68,7 @@ class LocalVideoCompositionRealMediaIT {
             JsonNode probe = mapper.readTree(tools.ffprobe(List.of("-v", "error", "-show_entries",
                     "stream=codec_type,width,height,duration:format=duration", "-of", "json", rendered.path().toString())));
             double actualDuration = probe.at("/format/duration").asDouble();
-            assertThat(actualDuration).isGreaterThan(0).isLessThanOrEqualTo(60.0);
+            assertThat(actualDuration).isGreaterThan(0).isLessThanOrEqualTo(600.0);
             JsonNode video = probe.path("streams").valueStream()
                     .filter(stream -> "video".equals(stream.path("codec_type").asText())).findFirst().orElseThrow();
             assertThat(video.path("width").asInt()).isEqualTo(1280);

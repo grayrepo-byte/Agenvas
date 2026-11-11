@@ -153,8 +153,9 @@ class ThreeViewPromptPostgresIT {
         var image = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE, "Synthetic source",
                 mapper.createObjectNode().put("assetId", assetId.toString()).put("sourceType", "UPLOAD"));
         var cardId = dev.agenvas.support.CanvasMediaFixture.place(canvas, owner.userId(), project.id(), image.artifact().id());
+        String aspectRatio = type.equals("CHARACTER") ? "4:3" : type.equals("SCENE_GRID") ? "1:1" : "16:9";
         var parameters = mapper.createObjectNode().put("threeViewType", type)
-                .put("aspectRatio", type.equals("SCENE_GRID") ? "1:1" : "16:9");
+                .put("aspectRatio", aspectRatio);
         String guidance = "retain synthetic accessories";
         Task accepted = directMedia.runImageOperation(owner.userId(), project.id(), image.artifact().id(),
                 cardId, image.resourceDefaultVersion().id(), 0, ImageOperation.THREE_VIEW, guidance,
@@ -163,6 +164,7 @@ class ThreeViewPromptPostgresIT {
         assertThat(accepted.input().path("promptKey").asText()).isEqualTo(key);
         assertThat(accepted.input().path("promptVersion").asLong()).isEqualTo(saved.path("version").asLong());
         assertFrozenPrompt(accepted, firstPrompt);
+        assertThat(accepted.input().at("/mediaInput/parameters/aspectRatio").asText()).isEqualTo(aspectRatio);
 
         String secondContent = "Synthetic managed " + type + " instruction B";
         var beforeSecondEdit = prompts.require(key, PromptService.Kind.FUNCTION);
@@ -172,6 +174,7 @@ class ThreeViewPromptPostgresIT {
                 functionVersion, 1, List.of(), null, parameters, "synthetic-first-views");
         assertThat(replay.id()).isEqualTo(accepted.id());
         assertFrozenPrompt(replay, firstPrompt);
+        assertThat(replay.input().at("/mediaInput/parameters/aspectRatio").asText()).isEqualTo(aspectRatio);
         assertThatThrownBy(() -> directMedia.runImageOperation(owner.userId(), project.id(), image.artifact().id(),
                 cardId, image.resourceDefaultVersion().id(), 0, ImageOperation.THREE_VIEW, "changed instruction",
                 functionVersion, 1, List.of(), null, parameters, "synthetic-first-views"))

@@ -22,7 +22,7 @@ describe('composition timeline', () => {
   it('does not silently skip invalid clips or permit a timeline over sixty seconds', () => {
     expect(createCompositionTimeline([clip('one', { speed: NaN })]).valid).toBe(false);
     expect(createCompositionTimeline([clip('one', { sourceEndMs: 10001 })]).clips).toHaveLength(0);
-    expect(createCompositionTimeline([clip('one', { sourceDurationMs: 120000, sourceEndMs: 120000 })]).valid).toBe(false);
+    expect(createCompositionTimeline([clip('one', { sourceDurationMs: 120000, sourceEndMs: 120000 })], 1800).valid).toBe(false);
   });
   it('clamps trim handles to the source, minimum interval, fades and remaining output frame budget', () => {
     const timeline = createCompositionTimeline([clip('one', { sourceStartMs: 0, sourceEndMs: 10000, speed: 2 }), clip('two', { sourceStartMs: 0, sourceEndMs: 6000 })]);
@@ -33,10 +33,19 @@ describe('composition timeline', () => {
     const withFade = createCompositionTimeline([clip('fade', { fadeMs: 55 })]);
     const trim = trimCompositionClip(withFade, withFade.clips[0]!, 'end', 1010);
     expect(createCompositionTimeline([clip('fade', { fadeMs: 55, sourceEndMs: trim.endMs })]).valid).toBe(true);
-    const bounded = createCompositionTimeline([clip('a', { sourceDurationMs: 120000, sourceStartMs: 0, sourceEndMs: 10000 }), clip('b', { sourceDurationMs: 120000, sourceStartMs: 0, sourceEndMs: 49000 })]);
+    const bounded = createCompositionTimeline([clip('a', { sourceDurationMs: 120000, sourceStartMs: 0, sourceEndMs: 10000 }), clip('b', { sourceDurationMs: 120000, sourceStartMs: 0, sourceEndMs: 49000 })], 1800);
     const next = trimCompositionClip(bounded, bounded.clips[0]!, 'end', 100000);
-    const result = createCompositionTimeline([{ ...bounded.clips[0]!, sourceEndMs: next.endMs }, bounded.clips[1]!]);
+    const result = createCompositionTimeline([{ ...bounded.clips[0]!, sourceEndMs: next.endMs }, bounded.clips[1]!], 1800);
     expect(result.frames).toBe(1800); expect(result.valid).toBe(true);
+  });
+  it('previews longer edits and uses the server frame budget for trimming', () => {
+    const timeline = createCompositionTimeline([clip('long', { sourceStartMs: 0, sourceDurationMs: 180000, sourceEndMs: 120000 })], 3600);
+    expect(timeline.valid).toBe(true);
+    expect(timeline.frames).toBe(3600);
+    const trim = trimCompositionClip(timeline, timeline.clips[0]!, 'end', 180000);
+    expect(trim.endMs).toBe(120000);
+    expect(createCompositionTimeline([clip('over', { sourceStartMs: 0, sourceDurationMs: 180000, sourceEndMs: 120034 })], 3600).valid).toBe(false);
+    expect(compositionOutput('2160P', '16:9')).toEqual({ width: 3840, height: 2160 });
   });
   it('uses export fade, caption centiseconds, literal ASS characters and output dimensions', () => {
     const timeline = createCompositionTimeline([clip('one', { fadeMs: 200 })]), current = timeline.clips[0]!;

@@ -51,6 +51,7 @@ import dev.agenvas.db.tables.LibraryImport;
 import dev.agenvas.db.tables.LlmProviderConfig;
 import dev.agenvas.db.tables.LlmProviderConfigCounter;
 import dev.agenvas.db.tables.LlmTurn;
+import dev.agenvas.db.tables.LocalAsrInstallation;
 import dev.agenvas.db.tables.McpAccessToken;
 import dev.agenvas.db.tables.McpOperation;
 import dev.agenvas.db.tables.McpOperationTask;
@@ -98,6 +99,7 @@ import dev.agenvas.db.tables.StorageProfile;
 import dev.agenvas.db.tables.StorageSettings;
 import dev.agenvas.db.tables.Storyboard;
 import dev.agenvas.db.tables.StoryboardRevision;
+import dev.agenvas.db.tables.SubtitleDraft;
 import dev.agenvas.db.tables.Task;
 import dev.agenvas.db.tables.TaskArtifactTarget;
 import dev.agenvas.db.tables.TaskLateResult;
@@ -360,6 +362,12 @@ public class Tables {
     public static final LlmTurn LLM_TURN = LlmTurn.LLM_TURN;
 
     /**
+     * Explicit administrator consent and durable bounded local speech model
+     * download state
+     */
+    public static final LocalAsrInstallation LOCAL_ASR_INSTALLATION = LocalAsrInstallation.LOCAL_ASR_INSTALLATION;
+
+    /**
      * User-owned revocable MCP credentials; only the secret hash is stored,
      * never a project-specific grant.
      */
@@ -606,6 +614,11 @@ public class Tables {
      * 追加式分镜板修订，冻结镜头、精确版本引用与人工复核状态
      */
     public static final StoryboardRevision STORYBOARD_REVISION = StoryboardRevision.STORYBOARD_REVISION;
+
+    /**
+     * 固定媒体版本的可校正字幕草稿；识别原始结果保存在不可变的任务终态输出中
+     */
+    public static final SubtitleDraft SUBTITLE_DRAFT = SubtitleDraft.SUBTITLE_DRAFT;
 
     /**
      * 持久执行单元；短事务认领、租约及 fencing epoch 保护所有状态写入

@@ -103,7 +103,7 @@ public class AssetService {
             }
             case VIDEO -> {
                 requireActivePreparation(stillActive);
-                var file = storage.recoverVideo(project, id).orElseGet(() -> readImport(source, input -> storage.storeVideo(project, id, input)));
+                var file = storage.recoverVideo(project, id).orElseGet(() -> readImport(source, input -> storage.storeUploadedVideo(project, id, input)));
                 yield new Asset(id, project, kind, file.objectKey(), "video/mp4", file.byteSize(),
                         file.sha256(), file.width(), file.height(), file.durationMs(), file.thumbnailKey(),
                         file.thumbnailByteSize(), file.thumbnailSha256(), now());
@@ -378,7 +378,7 @@ public class AssetService {
     public Asset archiveVideo(UUID ownerId, UUID projectId, InputStream input) {
         projects.requireActiveProject(ownerId, projectId);
         UUID assetId = UUID.randomUUID();
-        LocalAssetStorage.StoredVideo stored = storage.storeVideo(projectId, assetId, input);
+        LocalAssetStorage.StoredVideo stored = storage.storeUploadedVideo(projectId, assetId, input);
         return publishVideo(ownerId, projectId, assetId, stored, false);
     }
 

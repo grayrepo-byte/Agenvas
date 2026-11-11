@@ -3049,7 +3049,7 @@
                         "type": "string",
                         "format": "uuid"
                       },
-                      "maxItems": 42
+                      "maxItems": 721
                     },
                     "capabilityId": {
                       "type": "string",
@@ -3286,7 +3286,7 @@
                         "type": "string",
                         "format": "uuid"
                       },
-                      "maxItems": 42
+                      "maxItems": 721
                     },
                     "capabilityId": {
                       "type": "string",
@@ -3332,7 +3332,7 @@
     },
     {
       "name": "compose_video",
-      "description": "Compose existing authorized videos and dubbing locally. First read storyboard text and immutable generationPrompt/media durations; match shots and dialogue semantically, never by canvas/file order. Supply ordered exact versions. Omit line startMs for automatic source-audio activity alignment; explicit starts are story anchors. Worker analyzes energy/silence (not speech recognition), trims audio conservatively, allows at most 1.15x tempo and fails rather than truncate speech. Unreliable activity falls back with warnings. Max 12 shots, 30 lines, 60 seconds; output 1280x720 30fps. MUTE by default; BACKGROUND retains 15% original dialogue too. Rationale is a short public editing explanation, not private reasoning. No provider generation or approval. Returns queued Task; query status and read result composition timeline, do not claim success immediately. Also supports zero-voice trimming/joining, KEEP original audio, source clips up to 10 minutes, shot speed 0.5–2 and fadeMs 0–500, pinned music with volume/source offset, timed subtitles, and output 720P/1080P with 16:9/9:16/1:1. Final timeline remains at most 60 seconds, 30fps.",
+      "description": "Compose existing authorized videos and dubbing locally. First read storyboard text and immutable generationPrompt/media durations; match shots and dialogue semantically, never by canvas/file order. Supply ordered exact versions. Omit line startMs for automatic source-audio activity alignment; explicit starts are story anchors. Worker analyzes energy/silence (not speech recognition), trims audio conservatively, allows at most 1.15x tempo and fails rather than truncate speech. Unreliable activity falls back with warnings. Default deployment budget: 60 shots, 300 lines, 2000 captions, 600 seconds and 2 GiB sources; hard ceilings: 120 shots, 600 lines, 5000 captions, 600 seconds and 8 GiB sources. Output at most 500 MiB, 30fps; deployment may lower budgets. MUTE by default; BACKGROUND retains 15% original dialogue too. Rationale is a short public editing explanation, not private reasoning. No provider generation or approval. Returns queued Task; query status and read result composition timeline, do not claim success immediately. Also supports zero-voice trimming/joining, KEEP original audio, source clips up to 10 minutes, shot speed 0.5–2 and fadeMs 0–500, pinned music with volume/source offset, timed subtitles, and output 720P/1080P/2160P with 16:9/9:16/1:1. Current effective limits are available through the authenticated video-compositions/capabilities endpoint.",
       "requiredScope": "MEDIA_GENERATE",
       "inputSchema": {
         "type": "object",
@@ -3387,7 +3387,8 @@
                     "type": "string",
                     "enum": [
                       "720P",
-                      "1080P"
+                      "1080P",
+                      "2160P"
                     ],
                     "default": "720P"
                   },
@@ -3429,7 +3430,7 @@
               },
               "subtitles": {
                 "type": "array",
-                "maxItems": 100,
+                "maxItems": 5000,
                 "items": {
                   "type": "object",
                   "additionalProperties": false,
@@ -3447,12 +3448,12 @@
                     "startMs": {
                       "type": "integer",
                       "minimum": 0,
-                      "maximum": 59999
+                      "maximum": 599999
                     },
                     "endMs": {
                       "type": "integer",
                       "minimum": 1,
-                      "maximum": 60000
+                      "maximum": 600000
                     }
                   }
                 }
@@ -3460,7 +3461,7 @@
               "shots": {
                 "type": "array",
                 "minItems": 1,
-                "maxItems": 12,
+                "maxItems": 120,
                 "items": {
                   "type": "object",
                   "additionalProperties": false,
@@ -3483,7 +3484,7 @@
                       "type": "integer",
                       "minimum": 100,
                       "maximum": 600000,
-                      "description": "取源时长；省略时取素材剩余长度；成片时长按速度换算并受60秒总限约束"
+                      "description": "取源时长；省略时取素材剩余长度；成片时长按速度换算并受当前服务端成片预算约束"
                     },
                     "speed": {
                       "type": "number",
@@ -3500,7 +3501,7 @@
                     },
                     "lines": {
                       "type": "array",
-                      "maxItems": 30,
+                      "maxItems": 600,
                       "items": {
                         "type": "object",
                         "additionalProperties": false,
@@ -3515,7 +3516,7 @@
                           "startMs": {
                             "type": "integer",
                             "minimum": 0,
-                            "maximum": 59999,
+                            "maximum": 599999,
                             "description": "可选镜内锚点；省略时依声音活动自动排布"
                           }
                         }
@@ -3696,7 +3697,7 @@
                         "type": "string",
                         "format": "uuid"
                       },
-                      "maxItems": 42
+                      "maxItems": 721
                     },
                     "capabilityId": {
                       "type": "string",

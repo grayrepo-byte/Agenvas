@@ -353,6 +353,38 @@ class CanvasMediaContextPostgresIT {
         mvc.perform(post(directorUrl).with(auth).with(csrf()).contentType("application/json")
                         .content(mismatchedVersionRequest.toString()))
                 .andExpect(status().isBadRequest());
+        // Timed cameras use the same immutable scene archive and exact command identity as static captures.
+        var motionScene = axisScene.deepCopy().put("schemaVersion", 3);
+        var track = motionScene.putObject("motion").put("durationSeconds", 5).putArray("keyframes");
+        var startCamera = track.addObject().put("id", "start").put("name", "Front")
+                .put("timeSeconds", 0).put("transition", "LINEAR");
+        startCamera.set("camera", motionScene.path("camera").deepCopy());
+        var endCamera = track.addObject().put("id", "end").put("name", "Side")
+                .put("timeSeconds", 5).put("transition", "SMOOTH");
+        endCamera.set("camera", ((tools.jackson.databind.node.ObjectNode) motionScene.path("camera").deepCopy()).put("azimuth", 90));
+        UUID motionTarget = UUID.randomUUID();
+        var motionRequest = directorRequest.deepCopy().put("targetItemId", motionTarget.toString());
+        motionRequest.set("directorScene", motionScene);
+        JsonNode motionSaved = mapper.readTree(mvc.perform(post(directorUrl).with(auth).with(csrf())
+                        .contentType("application/json").content(motionRequest.toString()))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        assertThat(savedDirectorScene(read(mvc, auth, base + "/canvas/items"), motionTarget)).isEqualTo(motionScene);
+        assertThat(savedDirectorScene(read(mvc, auth, base + "/snapshot").path("canvas"), motionTarget)).isEqualTo(motionScene);
+        JsonNode motionReplay = mapper.readTree(mvc.perform(post(directorUrl).with(auth).with(csrf())
+                        .contentType("application/json").content(motionRequest.toString()))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        assertThat(motionReplay.path("selectedVersionId")).isEqualTo(motionSaved.path("selectedVersionId"));
+        var changedMotion = motionRequest.deepCopy();
+        ((tools.jackson.databind.node.ObjectNode) changedMotion.path("directorScene").path("motion").path("keyframes").get(1))
+                .put("timeSeconds", 4);
+        mvc.perform(post(directorUrl).with(auth).with(csrf()).contentType("application/json").content(changedMotion.toString()))
+                .andExpect(status().isConflict());
+        var invalidMotion = changedMotion.put("targetItemId", UUID.randomUUID().toString());
+        ((tools.jackson.databind.node.ObjectNode) invalidMotion.path("directorScene").path("motion").path("keyframes").get(1))
+                .put("timeSeconds", 0);
+        mvc.perform(post(directorUrl).with(auth).with(csrf()).contentType("application/json").content(invalidMotion.toString()))
+                .andExpect(status().isBadRequest());
+
         JsonNode legacyReplayAfterV2 = mapper.readTree(mvc.perform(post(directorUrl)
                         .with(auth).with(csrf()).contentType("application/json").content(directorRequest.toString()))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());

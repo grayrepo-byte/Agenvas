@@ -55,7 +55,7 @@ export function VideoPromptPresetsDialog({ prompt, maxLength, onApply, onClose }
     onClose={onClose} onSubmit={(event) => { event.preventDefault(); }} footer={<>
       <div className="video-presets-footer-note"><span role={applyRejected ? "alert" : undefined}>{applyRejected ? t("video.presets.addFailed") : selected ? t("video.presets.length", { count: nextLength, max: maxLength }) : t("video.presets.noSelection")}</span>
         <small>{t("video.presets.appendHint")}</small></div>
-      <Button type="button" variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
+      <Button type="button" variant="ghost" onClick={onClose}>{t("common.cancel")}</Button>
       <Button type="button" disabled={!selected || tooLong} onClick={() => { if (selected && !tooLong) { if (onApply(selected.prompt)) onClose(); else setApplyRejected(true); } }}>
         <ArrowRight data-icon="inline-start" />{t("video.presets.apply")}
       </Button>

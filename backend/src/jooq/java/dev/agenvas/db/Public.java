@@ -51,6 +51,7 @@ import dev.agenvas.db.tables.LibraryImport;
 import dev.agenvas.db.tables.LlmProviderConfig;
 import dev.agenvas.db.tables.LlmProviderConfigCounter;
 import dev.agenvas.db.tables.LlmTurn;
+import dev.agenvas.db.tables.LocalAsrInstallation;
 import dev.agenvas.db.tables.McpAccessToken;
 import dev.agenvas.db.tables.McpOperation;
 import dev.agenvas.db.tables.McpOperationTask;
@@ -98,6 +99,7 @@ import dev.agenvas.db.tables.StorageProfile;
 import dev.agenvas.db.tables.StorageSettings;
 import dev.agenvas.db.tables.Storyboard;
 import dev.agenvas.db.tables.StoryboardRevision;
+import dev.agenvas.db.tables.SubtitleDraft;
 import dev.agenvas.db.tables.Task;
 import dev.agenvas.db.tables.TaskArtifactTarget;
 import dev.agenvas.db.tables.TaskLateResult;
@@ -374,6 +376,12 @@ public class Public extends SchemaImpl {
     public final LlmTurn LLM_TURN = LlmTurn.LLM_TURN;
 
     /**
+     * Explicit administrator consent and durable bounded local speech model
+     * download state
+     */
+    public final LocalAsrInstallation LOCAL_ASR_INSTALLATION = LocalAsrInstallation.LOCAL_ASR_INSTALLATION;
+
+    /**
      * User-owned revocable MCP credentials; only the secret hash is stored,
      * never a project-specific grant.
      */
@@ -622,6 +630,11 @@ public class Public extends SchemaImpl {
     public final StoryboardRevision STORYBOARD_REVISION = StoryboardRevision.STORYBOARD_REVISION;
 
     /**
+     * 固定媒体版本的可校正字幕草稿；识别原始结果保存在不可变的任务终态输出中
+     */
+    public final SubtitleDraft SUBTITLE_DRAFT = SubtitleDraft.SUBTITLE_DRAFT;
+
+    /**
      * 持久执行单元；短事务认领、租约及 fencing epoch 保护所有状态写入
      */
     public final Task TASK = Task.TASK;
@@ -739,6 +752,7 @@ public class Public extends SchemaImpl {
             LlmProviderConfig.LLM_PROVIDER_CONFIG,
             LlmProviderConfigCounter.LLM_PROVIDER_CONFIG_COUNTER,
             LlmTurn.LLM_TURN,
+            LocalAsrInstallation.LOCAL_ASR_INSTALLATION,
             McpAccessToken.MCP_ACCESS_TOKEN,
             McpOperation.MCP_OPERATION,
             McpOperationTask.MCP_OPERATION_TASK,
@@ -786,6 +800,7 @@ public class Public extends SchemaImpl {
             StorageSettings.STORAGE_SETTINGS,
             Storyboard.STORYBOARD,
             StoryboardRevision.STORYBOARD_REVISION,
+            SubtitleDraft.SUBTITLE_DRAFT,
             Task.TASK,
             TaskArtifactTarget.TASK_ARTIFACT_TARGET,
             TaskLateResult.TASK_LATE_RESULT,

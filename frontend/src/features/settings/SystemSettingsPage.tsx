@@ -21,6 +21,8 @@ import { MediaStyleSettingsSection } from "./MediaStyleSettingsSection";
 import { ReferenceSourcesSettings } from "../reference-catalog/ReferenceSourcesSettings";
 import { SystemMediaTemplatesSection } from "../templates/MediaTemplatePicker";
 
+import { LocalAsrSettingsSection } from "./LocalAsrSettingsSection";
+
 const TABS = ["general", "prompts", "styles", "security", "logs", "diagnostics", "templates"] as const;
 type SettingsTab = typeof TABS[number];
 const FIRST_TAB = 0;
@@ -80,13 +82,13 @@ export function SystemSettingsPage() {
     </div>
     <div className="system-settings-content">
     {TABS.map((tab) => <TabsContent key={tab} value={tab} forceMount className="system-settings-panel ui-stack" data-category={tab} hidden={selected !== tab}>
-      {tab === "general" ? <Panel className="system-settings-language-panel">
+      {tab === "general" ? <><Panel className="system-settings-language-panel">
         <div className="system-settings-language-intro">
           <span className="system-settings-language-symbol" aria-hidden><Translate weight="light" /></span>
           <div><h2>{t("settings.general.language")}</h2><p>{t("settings.general.languageHint")}</p></div>
         </div>
         <div className="system-settings-language-control"><LanguageSelect /></div>
-      </Panel> : null}
+      </Panel><LocalAsrSettingsSection enabled={currentUser.data?.role === "ADMIN" && selected === tab} /></> : null}
       {tab === "styles" ? <MediaStyleSettingsSection enabled={currentUser.isSuccess && selected === tab} /> : null}
       {tab === "prompts" ? <PromptManagementSection enabled={currentUser.isSuccess && selected === tab} /> : null}
       {tab === "security" ? <><PasswordChangeSection /><McpTokensSection key={currentUser.data?.id} userId={currentUser.data?.id} enabled={currentUser.isSuccess && selected === tab} /></> : null}

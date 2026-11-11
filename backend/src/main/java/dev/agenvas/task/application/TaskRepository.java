@@ -147,6 +147,9 @@ public interface TaskRepository {
     List<Task> claimDueTextGenerations(String workerId, int limit, Instant now,
             Instant leaseUntil);
 
+    /** Dedicated local ASR worker; recovery can repeat local inference without external side effects. */
+    List<Task> claimDueSubtitleTranscriptions(String workerId, int limit, Instant now, Instant leaseUntil);
+
     /** 在产物写入前保存完整模型响应；重启后相同任务不得再次调用模型。 */
     boolean checkpointTextResponse(UUID taskId, String workerId, long leaseEpoch,
             JsonNode response, Instant now);

@@ -8,6 +8,13 @@ import type { CanvasItem, VideoCompositionRequest } from "../../shared/api/clien
 import { selectValue } from "../../test/controls";
 import { server } from "../../test/server";
 import { VideoEditDialog } from "./VideoEditDialog";
+import { t } from "../../shared/i18n";
+import type { SubtitleDraft } from "./subtitles/subtitlesApi";
+const { subtitleDownloads } = vi.hoisted(() => ({ subtitleDownloads: [] as { text: string; format: string }[] }));
+vi.mock("./subtitles/subtitleExchange", async (original) => ({ ...await original<typeof import("./subtitles/subtitleExchange")>(),
+  downloadSubtitleFile: (text: string, format: string) => subtitleDownloads.push({ text, format }) }));
+let subtitleDrafts: SubtitleDraft[] = [];
+let subtitleSaveFailure = false;
 
 function item(id: string, kind: "VIDEO" | "AUDIO" = "VIDEO"): CanvasItem {
   return { id, subjectType: "ARTIFACT", subjectId: `artifact-${id}`, title: id, x: 0, y: 0, width: 640, height: 360,
@@ -19,7 +26,23 @@ function item(id: string, kind: "VIDEO" | "AUDIO" = "VIDEO"): CanvasItem {
 }
 const items = [item("video-1"), item("video-2"), item("video-unused"), item("audio-1", "AUDIO")];
 
+const capabilities = { maxDurationMs: 600000, maxFrames: 18000, maxShots: 60, maxLines: 300, maxSubtitles: 2000,
+  maxSourceDurationMs: 600000, maxSourceBytes: 2147483648, maxOutputBytes: 524288000, frameRate: 30,
+  timeoutSeconds: 900, resolutions: ["720P", "1080P", "2160P"] };
 beforeEach(() => {
+  subtitleDrafts = []; subtitleSaveFailure = false; subtitleDownloads.length = 0;
+  server.use(http.get("/api/v1/projects/project-1/subtitles", ({ request }) => { const ids = new URL(request.url).searchParams.getAll("sourceVersionId"); return HttpResponse.json(subtitleDrafts.filter((draft) => ids.includes(draft.sourceVersionId))); }),
+    http.get("/api/v1/projects/project-1/subtitles/capabilities", () => HttpResponse.json({ availability: "NOT_CONFIGURED", maxCues: 5000, maxFileBytes: 2097152, maxSourceDurationMs: 600000 })),
+    http.put("/api/v1/projects/project-1/subtitles/:id", async ({ params, request }) => {
+      const draft = subtitleDrafts.find((value) => value.id === params.id);
+      const body = await request.json() as { expectedVersion: number; cues: SubtitleDraft["cues"] };
+      if (subtitleSaveFailure) return HttpResponse.json({ code: "SAVE_FAILED", detail: "Synthetic save failure" }, { status: 503, headers: { 'Content-Type': 'application/problem+json' } });
+      if (!draft || body.expectedVersion !== draft.version) return HttpResponse.json({ code: "SUBTITLE_VERSION_CONFLICT", detail: "Conflict" }, { status: 409 });
+      const saved = { ...draft, version: draft.version + 1, cues: body.cues };
+      subtitleDrafts = subtitleDrafts.map((value) => value.id === draft.id ? saved : value);
+      return HttpResponse.json(saved);
+    }));
+  server.use(http.get("/api/v1/projects/project-1/video-compositions/capabilities", () => HttpResponse.json(capabilities)));
   vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
@@ -39,14 +62,47 @@ function setup({ initialIds = ["video-1"], duration = 6000, metadataFailure = fa
   }));
   const client = createQueryClient(); client.setDefaultOptions({ queries: { retry: false } });
   const close = vi.fn();
-  render(<QueryClientProvider client={client}><VideoEditDialog projectId="project-1" items={items} initialIds={initialIds} onClose={close} /></QueryClientProvider>);
-  return { close, reads };
+  const rendered = render(<QueryClientProvider client={client}><VideoEditDialog projectId="project-1" items={items} initialIds={initialIds} onClose={close} /></QueryClientProvider>);
+  return { close, reads, unmount: rendered.unmount };
 }
 function setNumber(name: string, value: number, root: HTMLElement = screen.getByRole("dialog")) {
   fireEvent.change(within(root).getByRole("spinbutton", { name }), { target: { value: String(value) } });
 }
 
 describe("VideoEditDialog", () => {
+  it("reads server budgets and permits a longer edit and 4K output", async () => {
+    setup({ duration: 90000 });
+    await waitFor(() => expect(screen.getByRole("button", { name: "导出 MP4" })).toBeEnabled());
+    await userEvent.setup().click(screen.getByRole("tab", { name: "导出" }));
+    await selectValue(screen.getByRole("combobox", { name: "输出分辨率" }), "2160P");
+    expect(screen.getByRole("button", { name: "导出 MP4" })).toBeEnabled();
+    expect(screen.getByText(/2000.*2048.*500/)).toBeVisible();
+  });
+  it("blocks export when capabilities fail and retries without losing the draft", async () => {
+    let calls = 0;
+    server.use(http.get("/api/v1/projects/project-1/video-compositions/capabilities", () => ++calls === 1
+      ? HttpResponse.json({ detail: "Unavailable" }, { status: 503 }) : HttpResponse.json(capabilities)));
+    setup();
+    await screen.findByRole("alert");
+    expect(screen.getByRole("button", { name: "导出 MP4" })).toBeDisabled();
+    await userEvent.setup().click(screen.getByRole("tab", { name: "导出" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "成片名称" }), { target: { value: "保留长片草稿" } });
+    await userEvent.setup().click(screen.getByRole("button", { name: "重试读取" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "导出 MP4" })).toBeEnabled());
+    expect(screen.getByRole("textbox", { name: "成片名称" })).toHaveValue("保留长片草稿");
+  });
+  it("keeps a bounded caption editor and retains edits across caption pages", async () => {
+    setup();
+    await waitFor(() => expect(screen.getByRole("button", { name: "导出 MP4" })).toBeEnabled());
+    await userEvent.setup().click(screen.getByRole("tab", { name: "字幕" }));
+    fireEvent.click(screen.getByRole("button", { name: "添加字幕" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "字幕正文" }), { target: { value: "保留的第一句" } });
+    for (let i = 0; i < 50; i++) fireEvent.click(screen.getByRole("button", { name: "添加字幕" }));
+    expect(screen.getAllByRole("textbox", { name: "字幕正文" })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "上一页字幕" }));
+    expect(screen.getAllByRole("textbox", { name: "字幕正文" })).toHaveLength(50);
+    expect(screen.getByDisplayValue("保留的第一句")).toBeVisible();
+  });
   it("moves initial keyboard focus into the editor and keeps Tab navigation inside it", async () => {
     setup();
     const user = userEvent.setup();
@@ -130,6 +186,7 @@ describe("VideoEditDialog", () => {
   });
 
   it("cuts a short interval from a long source and refuses invalid speed, subtitle and music ranges", async () => {
+    server.use(http.get("/api/v1/projects/project-1/video-compositions/capabilities", () => HttpResponse.json({ ...capabilities, maxDurationMs: 60000, maxFrames: 1800 })));
     setup({ duration: 120000 }); const user = userEvent.setup();
     await waitFor(() => expect(screen.getByRole("spinbutton", { name: "出点（秒）" })).toHaveValue(120));
     const submit = screen.getByRole("button", { name: "导出 MP4" }); expect(submit).toBeDisabled();
@@ -267,4 +324,150 @@ describe("VideoEditDialog", () => {
     fireEvent.pointerUp(handle, { pointerId: 1 });
   });
 
+});
+
+function sourceSubtitle(versionId: string, durationMs: number): SubtitleDraft {
+  return { id: `subtitle-${versionId}`, projectId: "project-1", sourceVersionId: versionId, sourceDurationMs: durationMs,
+    language: "zh", cues: [{ text: "Synthetic recognized 中文", startMs: 1000, endMs: 3000 }], version: 0, taskId: null, updatedAt: "2026-11-01T00:00:00Z" };
+}
+
+describe("persistent source subtitles in the composition editor", () => {
+  it("saves corrected source text and exports the same late timeline positions to SRT, VTT and the composition request", async () => {
+    subtitleDrafts = [sourceSubtitle("version-video-2", 4000)];
+    const accepted: VideoCompositionRequest[] = [];
+    server.use(http.post("/api/v1/projects/project-1/video-compositions", async ({ request }) => {
+      accepted.push(await request.json() as VideoCompositionRequest);
+      return HttpResponse.json({ detail: "Synthetic acceptance failure" }, { status: 503 });
+    }));
+    setup({ initialIds: ["video-1", "video-2"], duration: 90000 });
+    await waitFor(() => expect(screen.getByRole("button", { name: t("video.edit.submit") })).toBeEnabled());
+    await userEvent.setup().click(screen.getByRole("tab", { name: t("video.edit.captionsTab") }));
+    await selectValue(screen.getByRole("combobox", { name: t("subtitle.source") }), "version-video-2");
+    await screen.findByDisplayValue("Synthetic recognized 中文");
+    fireEvent.change(screen.getByRole("textbox", { name: t("subtitle.ctext", { index: 1 }) }), { target: { value: "Corrected 中文" } });
+    fireEvent.change(screen.getByRole("spinbutton", { name: t("subtitle.start", { index: 1 }) }), { target: { value: "1500" } });
+    fireEvent.change(screen.getByRole("spinbutton", { name: t("subtitle.end", { index: 1 }) }), { target: { value: "3500" } });
+    await userEvent.setup().click(screen.getByRole("button", { name: t("subtitle.exportTimelineSrt") }));
+    await waitFor(() => expect(subtitleDownloads).toHaveLength(1));
+    expect(subtitleDownloads[0]).toEqual({ format: "SRT", text: "1\n00:01:31,500 --> 00:01:33,500\nCorrected 中文\n\n" });
+    await userEvent.setup().click(screen.getByRole("button", { name: t("subtitle.exportTimelineVtt") }));
+    await waitFor(() => expect(subtitleDownloads).toHaveLength(2));
+    expect(subtitleDownloads[1]?.text).toBe("WEBVTT\n\n00:01:31.500 --> 00:01:33.500\nCorrected 中文\n\n");
+    await userEvent.setup().click(screen.getByRole("button", { name: t("video.edit.submit") }));
+    await waitFor(() => expect(accepted).toHaveLength(1));
+    expect(accepted[0]?.subtitles).toEqual([{ text: "Corrected 中文", startMs: 91500, endMs: 93500 }]);
+    await userEvent.setup().click(screen.getByRole("button", { name: t("video.edit.selectClip", { "0": 2, "1": "video-2" }) }));
+    setNumber(t("video.edit.speed"), 2);
+    const second = screen.getByRole("listitem", { name: `${t("video.edit.clip")} 2` });
+    await userEvent.setup().click(within(second).getByRole("button", { name: t("video.edit.moveUp") }));
+    await userEvent.setup().click(screen.getByRole("button", { name: t("video.edit.submit") }));
+    await waitFor(() => expect(accepted).toHaveLength(2));
+    expect(accepted[1]?.shots[0]?.videoVersionId).toBe("version-video-2");
+    expect(accepted[1]?.subtitles).toEqual([{ text: "Corrected 中文", startMs: 750, endMs: 1750 }]);
+  });
+
+  it("blocks 2001 projected captions without discarding corrections and submits all 2000 at the budget", async () => {
+    subtitleDrafts = [{ ...sourceSubtitle("version-video-1", 6000), cues: Array.from({ length: 2000 }, (_, index) => ({
+      text: `Caption ${index + 1}`, startMs: 1000, endMs: 3000,
+    })) }];
+    const accepted: VideoCompositionRequest[] = [];
+    server.use(http.post("/api/v1/projects/project-1/video-compositions", async ({ request }) => {
+      accepted.push(await request.json() as VideoCompositionRequest);
+      return HttpResponse.json({ id: "fixture-task", status: "READY" });
+    }));
+    setup();
+    const user = userEvent.setup();
+    await waitFor(() => expect(screen.getByRole("button", { name: t("video.edit.submit") })).toBeEnabled());
+    await user.click(screen.getByRole("tab", { name: t("video.edit.captionsTab") }));
+    fireEvent.change(screen.getByRole("textbox", { name: t("subtitle.ctext", { index: 1 }) }), { target: { value: "Keep corrected boundary" } });
+    await user.click(screen.getByRole("button", { name: t("subtitle.add") }));
+    fireEvent.change(screen.getByRole("textbox", { name: t("subtitle.ctext", { index: 2001 }) }), { target: { value: "One beyond the budget" } });
+    const submit = screen.getByRole("button", { name: t("video.edit.submit") });
+    expect(submit).toBeDisabled();
+    expect(screen.getByDisplayValue("One beyond the budget")).toBeVisible();
+    expect(accepted).toEqual([]);
+    await user.click(screen.getByRole("button", { name: t("subtitle.remove", { index: 2001 }) }));
+    expect(submit).toBeEnabled();
+    await user.click(submit);
+    await waitFor(() => expect(accepted).toHaveLength(1));
+    expect(accepted[0]?.subtitles).toHaveLength(2000);
+    expect(accepted[0]?.subtitles?.[0]).toEqual({ text: "Keep corrected boundary", startMs: 1000, endMs: 3000 });
+    expect(accepted[0]?.subtitles?.[1999]).toEqual({ text: "Caption 2000", startMs: 1000, endMs: 3000 });
+  });
+
+  it("keeps manual blank-line captions editable but blocks every export until the exchange text is valid", async () => {
+    setup();
+    const user = userEvent.setup();
+    await waitFor(() => expect(screen.getByRole("button", { name: t("video.edit.submit") })).toBeEnabled());
+    await user.click(screen.getByRole("tab", { name: t("video.edit.captionsTab") }));
+    await user.click(screen.getByRole("button", { name: "添加字幕" }));
+    const text = screen.getByRole("textbox", { name: "字幕正文" });
+    fireEvent.change(text, { target: { value: "甲\n\n乙" } });
+    expect(text).toHaveValue("甲\n\n乙");
+    for (const label of [t("video.edit.submit"), t("subtitle.exportTimelineSrt"), t("subtitle.exportTimelineVtt")]) {
+      expect(screen.getByRole("button", { name: label })).toBeDisabled();
+    }
+    fireEvent.change(text, { target: { value: "甲\n乙" } });
+    for (const label of [t("video.edit.submit"), t("subtitle.exportTimelineSrt"), t("subtitle.exportTimelineVtt")]) {
+      expect(screen.getByRole("button", { name: label })).toBeEnabled();
+    }
+  });
+
+  it("projects source tabs to the same normalized text in SRT, VTT and MP4 without altering the source", async () => {
+    subtitleDrafts = [{ ...sourceSubtitle("version-video-1", 6000), cues: [{ text: "甲\t乙", startMs: 1000, endMs: 3000 }] }];
+    const accepted: VideoCompositionRequest[] = [];
+    server.use(http.post("/api/v1/projects/project-1/video-compositions", async ({ request }) => {
+      accepted.push(await request.json() as VideoCompositionRequest); return HttpResponse.json({ id: "fixture-task", status: "READY" });
+    }));
+    setup();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: t("video.edit.captionsTab") }));
+    await waitFor(() => expect(screen.getByRole("button", { name: t("video.edit.submit") })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: t("subtitle.exportTimelineSrt") }));
+    await user.click(screen.getByRole("button", { name: t("subtitle.exportTimelineVtt") }));
+    await waitFor(() => expect(subtitleDownloads).toHaveLength(2));
+    expect(subtitleDownloads[0]?.text).toBe("1\n00:00:01,000 --> 00:00:03,000\n甲 乙\n\n");
+    expect(subtitleDownloads[1]?.text).toBe("WEBVTT\n\n00:00:01.000 --> 00:00:03.000\n甲 乙\n\n");
+    await user.click(screen.getByRole("button", { name: t("video.edit.submit") }));
+    await waitFor(() => expect(accepted).toHaveLength(1));
+    expect(accepted[0]?.subtitles).toEqual([{ text: "甲 乙", startMs: 1000, endMs: 3000 }]);
+    expect(subtitleDrafts[0]?.cues[0]?.text).toBe("甲\t乙");
+  });
+
+  it("uses actual planned voice trim and speed for recognized audio subtitles", async () => {
+    subtitleDrafts = [{ ...sourceSubtitle("version-audio-1", 10000), cues: [{ text: "Controlled voice caption", startMs: 250, endMs: 750 }] }];
+    const accepted: VideoCompositionRequest[] = [];
+    server.use(http.post("/api/v1/projects/project-1/video-compositions/preview", async ({ request }) => {
+      const body = await request.json() as VideoCompositionRequest;
+      return HttpResponse.json({ durationMs: 6000, frames: 180, fontFamily: "Noto Sans CJK SC", shots: [{ videoVersionId: "version-video-1", timelineStartMs: 0, durationMs: 6000,
+        lines: body.shots[0]?.lines.length ? [{ audioVersionId: "version-audio-1", startMs: 2000, endMs: 3000, trimStartMs: 100, trimEndMs: 1200, speed: 1.1 }] : [] }] });
+    }), http.post("/api/v1/projects/project-1/video-compositions", async ({ request }) => {
+      accepted.push(await request.json() as VideoCompositionRequest); return HttpResponse.json({ id: "fixture-task", status: "READY" });
+    }));
+    setup();
+    await userEvent.setup().click(screen.getByRole("tab", { name: t("video.edit.audioTab") }));
+    await userEvent.setup().click(screen.getByRole("button", { name: t("video.edit.addVoice") }));
+    await waitFor(() => expect(screen.getByRole("button", { name: t("video.edit.submit") })).toBeEnabled());
+    await userEvent.setup().click(screen.getByRole("button", { name: t("video.edit.submit") }));
+    await waitFor(() => expect(accepted).toHaveLength(1));
+    expect(accepted[0]?.subtitles).toEqual([{ text: "Controlled voice caption", startMs: 2136, endMs: 2590 }]);
+  });
+  it("keeps corrected subtitles open on save failure and reloads them after a successful close", async () => {
+    subtitleDrafts = [sourceSubtitle("version-video-1", 6000)];
+    const first = setup();
+    await userEvent.setup().click(screen.getByRole("tab", { name: t("video.edit.captionsTab") }));
+    await screen.findByDisplayValue("Synthetic recognized 中文");
+    fireEvent.change(screen.getByRole("textbox", { name: t("subtitle.ctext", { index: 1 }) }), { target: { value: "Keep on close" } });
+    subtitleSaveFailure = true;
+    await userEvent.setup().click(screen.getByRole("button", { name: t("common.close") }));
+    await screen.findAllByText("Synthetic save failure");
+    expect(first.close).not.toHaveBeenCalled();
+    expect(screen.getByDisplayValue("Keep on close")).toBeVisible();
+    subtitleSaveFailure = false;
+    await userEvent.setup().click(screen.getByRole("button", { name: t("common.close") }));
+    await waitFor(() => expect(first.close).toHaveBeenCalledOnce());
+    first.unmount(); setup();
+    await userEvent.setup().click(screen.getByRole("tab", { name: t("video.edit.captionsTab") }));
+    await screen.findByDisplayValue("Keep on close");
+  });
 });

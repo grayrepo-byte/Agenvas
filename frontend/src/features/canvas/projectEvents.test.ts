@@ -150,6 +150,20 @@ describe("project event subscription", () => {
     stop();
   });
 
+  it("delivers subtitle corrections once and recovers a missed correction with the project cursor", async () => {
+    const stream = new FakeStream(), changes: ProjectEvent[] = [], recovered: ProjectSnapshot[] = [];
+    const stop = subscribeProjectEvents(projectId, 0, { onChange: (value) => changes.push(value),
+      onSnapshot: (value) => recovered.push(value), onStatus: () => {} }, {
+      open: () => stream, loadSnapshot: async () => snapshot(4),
+      schedule: (callback) => setTimeout(callback, 5000), clearSchedule: clearTimeout });
+    const saved = { ...event(1, 1), type: "subtitle.draft.changed", payload: { subtitleId: aggregateId } };
+    stream.emit(saved); stream.emit(saved);
+    expect(changes).toEqual([saved]);
+    stream.emit({ ...saved, seq: 4, aggregateVersion: 3 });
+    await vi.waitFor(() => expect(recovered).toEqual([snapshot(4)]));
+    stop();
+  });
+
   it("delivers approvals and every assistant stream event through the existing project cursor", () => {
     const stream = new FakeStream();
     const changes: ProjectEvent[] = [];

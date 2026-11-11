@@ -7,7 +7,9 @@ import java.util.UUID;
 /** Deterministic timing after the Agent has assigned exact video/audio versions to shots. */
 final class VideoCompositionPlanner {
     static final int FPS = 30;
-    static final int MAX_DURATION_MS = 60_000;
+    private final VideoCompositionLimits limits;
+    VideoCompositionPlanner() { this(VideoCompositionLimits.defaults()); }
+    VideoCompositionPlanner(VideoCompositionLimits limits) { this.limits = limits; }
     static final double MAX_SPEED = 1.15;
     private static final int GAP_MS = 100;
     private static final int TAIL_MS = 40;
@@ -26,18 +28,18 @@ final class VideoCompositionPlanner {
     }
 
     Plan plan(List<Shot> shots) {
-        if (shots.isEmpty() || shots.size() > 12 || shots.stream().mapToInt(s -> s.lines().size()).sum() > 30)
+        if (shots.isEmpty() || shots.size() > limits.maxShots() || shots.stream().mapToLong(s -> s.lines().size()).sum() > limits.maxLines())
             throw new IllegalArgumentException("Invalid composition bounds");
         List<PlacedShot> output = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
         int totalFrames = 0;
         for (int shotIndex = 0; shotIndex < shots.size(); shotIndex++) {
             Shot shot = shots.get(shotIndex);
-            if (!Double.isFinite(shot.speed()) || shot.speed() < 0.5 || shot.speed() > 2 || shot.durationMs() < 1)
+            if (!Double.isFinite(shot.speed()) || shot.speed() < 0.5 || shot.speed() > 2 || shot.durationMs() < 1 || shot.durationMs() > VideoCompositionLimits.SOURCE_DURATION_MS)
                 throw new IllegalArgumentException("Invalid shot speed or source duration");
-            int frames = (int) Math.floor(shot.durationMs() * FPS / (1000 * shot.speed()));
+            int frames = (int) Math.floor(shot.durationMs() * (double) FPS / (1000 * shot.speed()));
             int duration = frames * 1000 / FPS;
-            if (frames < 1 || totalFrames + frames > MAX_DURATION_MS * FPS / 1000 || shot.sourceStartMs() < 0)
+            if (frames < 1 || (long) totalFrames + frames > limits.maxFrames() || shot.sourceStartMs() < 0)
                 throw new IllegalArgumentException("Invalid composition duration");
             if (Math.abs(duration - shot.durationMs() / shot.speed()) > 0.001)
                 warnings.add("SHOT_" + (shotIndex + 1) + "_ROUNDED_TO_VIDEO_FRAME");

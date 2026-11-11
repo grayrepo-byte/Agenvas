@@ -135,6 +135,10 @@ export function cancelVideoPromptOptimization(projectId: string, canvasItemId: s
 }
 export type VideoCompositionRequest = components["schemas"]["VideoCompositionRequest"];
 export type VideoCompositionPreview = components["schemas"]["VideoCompositionPreview"];
+export type VideoCompositionCapabilities = components["schemas"]["VideoCompositionCapabilities"];
+export function getVideoCompositionCapabilities(projectId: string, signal?: AbortSignal): Promise<VideoCompositionCapabilities> {
+  return readJson(`/api/v1/projects/${projectId}/video-compositions/capabilities`, t("video.edit.capabilitiesFailed"), signal);
+}
 /** Read-only analysis shares export authorization and never creates a task or reserves usage. */
 export function previewVideoComposition(projectId: string, input: VideoCompositionRequest, signal?: AbortSignal): Promise<VideoCompositionPreview> {
   return writeJson(`/api/v1/projects/${projectId}/video-compositions/preview`, {
@@ -1029,15 +1033,23 @@ export async function listRunTasks(projectId: string, runId: string): Promise<Ta
     t("api.errors.runTasksUnavailable"));
 }
 
-export async function readJson<T>(path: string, fallbackMessage: string): Promise<T> {
+export async function readJson<T>(path: string, fallbackMessage: string, signal?: AbortSignal): Promise<T> {
   const response = await apiFetch(path, {
-    credentials: "same-origin",
+    credentials: "same-origin", signal,
     headers: { Accept: "application/json" },
   });
   if (!response.ok) {
     throw await apiError(response, fallbackMessage);
   }
   return (await response.json()) as T;
+}
+
+/** Authenticated text artifacts use the same ProblemDetail and session handling as JSON reads. */
+export async function readText(path: string, fallbackMessage: string, signal?: AbortSignal): Promise<string> {
+  const response = await apiFetch(path, { credentials: "same-origin", signal,
+    headers: { Accept: "text/vtt, application/x-subrip, application/problem+json" } });
+  if (!response.ok) throw await apiError(response, fallbackMessage);
+  return response.text();
 }
 
 export async function writeJson<T>(path: string, init: RequestInit,

@@ -13,7 +13,7 @@
 .media-template-card { position: relative; display: flex; height: 210px; flex-direction: column; align-items: stretch; justify-content: flex-end; gap: 0; padding: 0; overflow: hidden; white-space: normal; text-align: left; }
 .media-template-card > img { width: 100%; min-height: 0; flex: 1; object-fit: cover; }
 .media-template-card-prompt { flex: 1; overflow: hidden; padding: var(--ui-space-4); font-weight: normal; color: var(--ui-text-muted); white-space: pre-wrap; }
-.media-template-card-label { display: flex; flex-direction: column; gap: var(--ui-space-1); padding: var(--ui-space-3); background: var(--ui-surface-raised); }
+.media-template-card-label { display: flex; flex-direction: column; gap: var(--ui-space-1); padding: var(--ui-space-3); background: transparent; }
 .media-template-card-label strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .media-template-card-label small { color: var(--ui-text-muted); }
 .media-template-preview { display: flex; flex-direction: column; gap: var(--ui-space-4); }

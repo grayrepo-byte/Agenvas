@@ -65,6 +65,9 @@ public class ConfiguredAssetStorage implements AssetStorage {
     @Override public StoredImage storeImage(UUID project, UUID asset, InputStream source) {
         return store(project, asset, IMAGE_KIND, () -> Archive.from(local.storeImage(project, asset, source))).image();
     }
+    @Override public StoredVideo storeUploadedVideo(UUID project, UUID asset, InputStream source) {
+        return store(project, asset, VIDEO_KIND, () -> Archive.from(local.storeUploadedVideo(project, asset, source))).video();
+    }
     @Override public StoredVideo storeVideo(UUID project, UUID asset, InputStream source) {
         return store(project, asset, VIDEO_KIND, () -> Archive.from(local.storeVideo(project, asset, source))).video();
     }

@@ -79,7 +79,7 @@ export function ProjectsPage() {
   }
 
   return (
-    <PageShell title={t("common.project")} actions={<Button onClick={() => nameInput.current?.focus()} type="button"><Plus data-icon="inline-start" aria-hidden="true" />{t("projects.newProject")}</Button>}>
+    <PageShell title={t("common.project")} actions={<Button variant="ghost" onClick={() => nameInput.current?.focus()} type="button"><Plus data-icon="inline-start" aria-hidden="true" />{t("projects.newProject")}</Button>}>
       <div className="projects-layout">
         <section className="projects-library" aria-label={t("projects.title")}>
           <div className="projects-list-heading"><h2>{t("projects.title")}</h2><StatusBadge>{t("projects.loadedCount", { "0": loadedProjects.length })}</StatusBadge>{query ? <span className="ui-muted">{t("projects.matchCount", { "0": visibleProjects.length })}</span> : null}</div>

@@ -58,7 +58,7 @@ public class MediaToolRunner {
     public void ffmpegExport(List<String> arguments, Path workDirectory, Duration timeout,
             BooleanSupplier shouldCancel, Runnable onTick) {
         if (timeout == null || timeout.isNegative() || timeout.isZero()
-                || timeout.compareTo(Duration.ofMinutes(3)) > 0
+                || timeout.compareTo(Duration.ofHours(1)) > 0
                 || workDirectory == null || !workDirectory.isAbsolute()
                 || !Files.isDirectory(workDirectory, LinkOption.NOFOLLOW_LINKS)
                 || shouldCancel == null || onTick == null) {
@@ -68,8 +68,23 @@ public class MediaToolRunner {
                 shouldCancel, onTick, false);
     }
 
+    /** Composition probes share the job deadline, cancellation and heartbeat instead of starting a new timeout. */
+    public String ffprobeExport(List<String> arguments, Path workDirectory, Duration timeout,
+            BooleanSupplier shouldCancel, Runnable onTick) {
+        if (timeout == null || timeout.isNegative() || timeout.isZero() || timeout.compareTo(Duration.ofHours(1)) > 0
+                || workDirectory == null || !workDirectory.isAbsolute()
+                || !Files.isDirectory(workDirectory, LinkOption.NOFOLLOW_LINKS) || shouldCancel == null || onTick == null)
+            throw new IllegalArgumentException("Invalid bounded probe process settings");
+        return probe(arguments, workDirectory, timeout, shouldCancel, onTick);
+    }
+
     /** 将 ffprobe 输出写入受大小限制的本地临时文件，不接受远端 URL 作为读取目标。 */
     public String ffprobe(List<String> arguments) {
+        return probe(arguments, null, properties.timeout(), null, null);
+    }
+
+    private String probe(List<String> arguments, Path workDirectory, Duration timeout,
+            BooleanSupplier shouldCancel, Runnable onTick) {
         Path output;
         try {
             output = Files.createTempFile("agenvas-probe-", ".json");
@@ -77,8 +92,7 @@ public class MediaToolRunner {
             throw new IllegalStateException("Cannot create media probe output", exception);
         }
         try {
-            execute(properties.ffprobe(), arguments, null, output, properties.timeout(), null, null,
-                    true);
+            execute(properties.ffprobe(), arguments, workDirectory, output, timeout, shouldCancel, onTick, true);
             if (Files.size(output) > 16_384) {
                 throw new IllegalStateException("Media probe output exceeded the limit");
             }

@@ -41,13 +41,13 @@
 .reference-cache-manager p { margin: 0; overflow-wrap: anywhere; }
 .reference-cache-target { display: flex; align-items: flex-end; flex-wrap: wrap; gap: var(--ui-space-2); }
 .reference-cache-target > [data-slot="field"] { flex: 1 1 240px; min-width: 0; max-width: 420px; }
-.reference-cache-job { border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); padding: var(--ui-space-3); }
+.reference-cache-job { border-top: 1px solid var(--ui-border); padding: var(--ui-space-3) 0; }
 .reference-private-cache { display: flex; flex-direction: column; flex: none; gap: var(--ui-space-3); min-width: 0; border-top: 1px solid var(--ui-border); padding-top: var(--ui-space-3); }
 .reference-private-cache p { margin: 0; overflow-wrap: anywhere; }
 .reference-private-cache [data-slot="button"], .reference-cache-manager [data-slot="button"] { max-width: 100%; }
 .reference-private-manager-dialog { --ui-dialog-width: 860px; }
 .reference-private-records { display: flex; flex-direction: column; gap: var(--ui-space-3); margin-block: var(--ui-space-4); }
-.reference-private-record { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-3); padding: var(--ui-space-3); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); }
+.reference-private-record { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-3); padding: var(--ui-space-3) 0; border-top: 1px solid var(--ui-border); }
 .reference-private-record dl { flex: 1 1 260px; min-width: 0; margin: 0; }
 .reference-private-record dl > div { display: grid; grid-template-columns: minmax(80px, 1fr) minmax(0, 3fr); gap: var(--ui-space-2); }
 .reference-private-record dt { color: var(--ui-text-muted); }

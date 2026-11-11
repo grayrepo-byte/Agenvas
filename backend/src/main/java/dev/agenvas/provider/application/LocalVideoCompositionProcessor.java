@@ -26,7 +26,8 @@ import tools.jackson.databind.ObjectMapper;
 /** Resolves frozen project inputs, renders outside transactions, and archives one immutable result. */
 @Component
 public class LocalVideoCompositionProcessor {
-    private static final long MAX_SOURCE_BYTES = 1024L * 1024 * 1024;
+    private final VideoCompositionLimits limits;
+    private final java.util.concurrent.Semaphore renders = new java.util.concurrent.Semaphore(1, true);
     private final ArtifactService artifacts;
     private final AssetService assets;
     private final LocalVideoCompositionRenderer renderer;
@@ -34,9 +35,9 @@ public class LocalVideoCompositionProcessor {
     private final ObjectMapper mapper;
 
     public LocalVideoCompositionProcessor(ArtifactService artifacts, AssetService assets,
-            LocalVideoCompositionRenderer renderer, TaskService tasks, ObjectMapper mapper) {
+            LocalVideoCompositionRenderer renderer, TaskService tasks, ObjectMapper mapper, VideoCompositionLimits limits) {
         this.artifacts = artifacts; this.assets = assets; this.renderer = renderer;
-        this.tasks = tasks; this.mapper = mapper;
+        this.tasks = tasks; this.mapper = mapper; this.limits = limits;
     }
 
     String preflight(AttemptContext context) {
@@ -46,13 +47,25 @@ public class LocalVideoCompositionProcessor {
 
     Submission submit(AttemptContext context) {
         Path scratch = null;
+        boolean acquired = false;
         try {
+            long deadline = System.nanoTime() + limits.timeout().toNanos();
+            while (!(acquired = renders.tryAcquire(1, java.util.concurrent.TimeUnit.SECONDS))) {
+                if (tasks.get(context.ownerId(), context.lease().projectId(), context.lease().id()).cancelRequested())
+                    throw new CancellationException();
+                tasks.heartbeat(context.lease().id(), context.lease().leaseOwner(), context.lease().leaseEpoch());
+                if (System.nanoTime() >= deadline) return new Submission.Rejected("LOCAL_VIDEO_COMPOSITION_TIMEOUT");
+            }
             var sources = resolve(context);
-            scratch = Files.createTempDirectory("agenvas-video-composition-",
+            scratch = Files.createTempDirectory(scratchRoot(), "agenvas-video-composition-",
                     PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
             var rendered = renderer.render(context.lease().input().path("videoComposition"), sources, scratch,
                     () -> tasks.get(context.ownerId(), context.lease().projectId(), context.lease().id()).cancelRequested(),
-                    () -> tasks.heartbeat(context.lease().id(), context.lease().leaseOwner(), context.lease().leaseEpoch()));
+                    () -> {
+                        if (System.nanoTime() >= deadline)
+                            throw new MediaToolRunner.MediaToolException("Composition timed out", false, null);
+                        tasks.heartbeat(context.lease().id(), context.lease().leaseOwner(), context.lease().leaseEpoch());
+                    });
             if (tasks.get(context.ownerId(), context.lease().projectId(), context.lease().id()).cancelRequested())
                 throw new CancellationException();
             var asset = assets.archiveTaskVideo(context.ownerId(), context.lease().projectId(), context.lease().id(), () -> {
@@ -64,6 +77,9 @@ public class LocalVideoCompositionProcessor {
             content.withObject("parameters").put("local", true).put("operation", "VIDEO_COMPOSITION")
                     .set("videoComposition", rendered.schedule());
             return new Submission.CompletedArtifact(content);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return new Submission.Rejected("LOCAL_VIDEO_COMPOSITION_CANCELED");
         } catch (VideoCompositionPlanner.DoesNotFit overflow) {
             return new Submission.Rejected("VIDEO_COMPOSITION_AUDIO_OVERFLOW");
         } catch (CancellationException canceled) {
@@ -83,6 +99,7 @@ public class LocalVideoCompositionProcessor {
                     org.slf4j.LoggerFactory.getLogger(LocalVideoCompositionProcessor.class).warn("Video composition scratch cleanup failed");
                 }
             }
+            if (acquired) renders.release();
         }
     }
 
@@ -95,7 +112,7 @@ public class LocalVideoCompositionProcessor {
         Path scratch = null;
         try {
             var sources = resolve(owner, project, composition, mediaInput);
-            scratch = Files.createTempDirectory("agenvas-video-preview-",
+            scratch = Files.createTempDirectory(scratchRoot(), "agenvas-video-preview-",
                     PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
             return renderer.preview(composition, sources, scratch);
         } catch (VideoCompositionPlanner.DoesNotFit overflow) {
@@ -126,7 +143,7 @@ public class LocalVideoCompositionProcessor {
 
     private Map<UUID, LocalVideoCompositionRenderer.Source> resolve(UUID owner, UUID project, JsonNode composition, JsonNode mediaInput) {
         if (!composition.isObject() || !composition.path("shots").isArray() || composition.path("shots").isEmpty()
-                || composition.path("shots").size() > 12 || !Set.of("MUTE", "BACKGROUND", "KEEP").contains(composition.path("originalAudioMode").asText()))
+                || composition.path("shots").size() > limits.maxShots() || !Set.of("MUTE", "BACKGROUND", "KEEP").contains(composition.path("originalAudioMode").asText()))
             throw new IllegalArgumentException("Invalid frozen composition");
         Map<UUID, Artifact.Kind> required = new HashMap<>();
         int lineCount = 0;
@@ -138,7 +155,7 @@ public class LocalVideoCompositionProcessor {
             integer(shot, "sourceStartMs", 0, 599_999);
             double speed = shot.path("speed").asDouble(1);
             if (!Double.isFinite(speed) || speed < 0.5 || speed > 2) throw new IllegalArgumentException("Invalid shot speed");
-            int frames = (int) Math.floor(duration * VideoCompositionPlanner.FPS / (1000 * speed));
+            int frames = (int) Math.floor(duration * (double) VideoCompositionPlanner.FPS / (1000 * speed));
             if (frames < 1) throw new IllegalArgumentException("Invalid output shot length");
             int outputDuration = frames * 1000 / VideoCompositionPlanner.FPS;
             int fade = shot.has("fadeMs") ? integer(shot, "fadeMs", 0, 500) : 0;
@@ -151,7 +168,7 @@ public class LocalVideoCompositionProcessor {
                 if (line.hasNonNull("startMs")) integer(line, "startMs", 0, outputDuration - 1);
             }
         }
-        if (lineCount > 30 || totalFrames > 60 * VideoCompositionPlanner.FPS) throw new IllegalArgumentException("Composition bounds exceeded");
+        if (lineCount > limits.maxLines() || totalFrames > limits.maxFrames()) throw new IllegalArgumentException("Composition bounds exceeded");
         JsonNode music = composition.path("music");
         if (music.isObject()) requireKind(required, UUID.fromString(music.path("audioVersionId").asText()), Artifact.Kind.AUDIO);
         Map<UUID, LocalVideoCompositionRenderer.Source> resolved = new HashMap<>();
@@ -171,7 +188,7 @@ public class LocalVideoCompositionProcessor {
                     || asset.durationMs() < 1 || asset.durationMs() > 600_000 || asset.byteSize() < 1)
                 throw new IllegalArgumentException("Invalid composition source");
             if (assetIds.add(asset.id())) bytes = Math.addExact(bytes, asset.byteSize());
-            if (bytes > MAX_SOURCE_BYTES) throw new IllegalArgumentException("Composition source byte bound exceeded");
+            if (bytes > limits.maxSourceBytes()) throw new IllegalArgumentException("Composition source byte bound exceeded");
             resolved.put(id, new LocalVideoCompositionRenderer.Source(file.path(), asset.durationMs()));
         }
         for (JsonNode shot : composition.path("shots")) {
@@ -188,6 +205,11 @@ public class LocalVideoCompositionProcessor {
         }
         return Map.copyOf(resolved);
     }
+    private Path scratchRoot() throws IOException {
+        Files.createDirectories(limits.scratchRoot());
+        return limits.scratchRoot();
+    }
+
     private static void requireKind(Map<UUID, Artifact.Kind> required, UUID id, Artifact.Kind kind) {
         Artifact.Kind previous = required.putIfAbsent(id, kind);
         if (previous != null && previous != kind) throw new IllegalArgumentException("Composition source kind mismatch");

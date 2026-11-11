@@ -6,6 +6,7 @@ const supportedTypes = [
   "artifact.version.created",
   "artifact.resource_default_version.changed",
   "media.draft.changed",
+  "subtitle.draft.changed",
   "asset.ready",
   "canvas.items.changed",
   "canvas.edited",

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { execFileSync, spawn } from "node:child_process";
+import { chmod, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,6 +16,7 @@ const config = { root, configFile: join(root, "vite.config.ts") };
 const outDir = join(profile, "build");
 const pending = new Map();
 const runtimeErrors = [];
+let videoEvidence;
 let server, chrome, socket, nextId = 0;
 const pause = () => new Promise((resolve) => setTimeout(resolve, 50));
 function cdp(method, params = {}) {
@@ -151,6 +152,10 @@ try {
     }
     await screenshot(`workbench-${viewport.width}x${viewport.height}`);
     await checkControlReachability();
+    await clickNamed('[role="tab"]', "运镜");
+    await checkControlReachability();
+    await screenshot(`workbench-motion-${viewport.width}x${viewport.height}`);
+    await clickNamed('[role="tab"]', "摄影机");
     await click('button[aria-label="添加物体"]');
     await clickNamed('[role="menuitem"]', "方体");
     await clickNamed('[role="tab"]', "物体");
@@ -237,12 +242,158 @@ try {
   assert.equal(angleEvidence.angles[0].parameters.viewAngle, "RIGHT_THREE_QUARTER");
   assert.ok(angleEvidence.angles[0].instruction.includes("following camera direction"));
   assert.equal(angleEvidence.uploads.length, 4, "Angle submission does not recapture or upload a fake source frame");
+  // Actual 3D rendering + synthetic HTTP: record, play, export, archive and restore a two-camera take.
+  await cdp("Page.navigate", { url: new URL(`${route}?restore`, baseUrl).href }); await ready();
+  await cdp("Browser.setDownloadBehavior", { behavior: "allow", downloadPath: screenshots });
+  await clickNamed('[role="tab"]', "运镜");
+  await clickNamed("button", "记录当前机位");
+  await click('[role="slider"][aria-label="运镜预览位置"]');
+  await cdp("Input.dispatchKeyEvent", { type: "keyDown", key: "End", code: "End" });
+  await cdp("Input.dispatchKeyEvent", { type: "keyUp", key: "End", code: "End" });
+  await clickNamed('[role="tab"]', "摄影机");
+  await click('input[aria-label="水平角度 (°)"]');
+  await page(() => document.querySelector('input[aria-label="水平角度 (°)"]').select());
+  await cdp("Input.insertText", { text: "90" });
+  await cdp("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab" });
+  await cdp("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab" });
+  await clickNamed('[role="tab"]', "运镜");
+  await clickNamed("button", "记录当前机位");
+  await click('input[aria-label="时长 (秒)"]');
+  await page(() => document.querySelector('input[aria-label="时长 (秒)"]').select());
+  await cdp("Input.insertText", { text: "1" });
+  await cdp("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab" });
+  await cdp("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab" });
+  await clickNamed("button", "回到起点");
+  await clickNamed("button", "播放");
+  await waitFor(() => Number(document.querySelector(".director-motion-panel").dataset.motionTime) > 0.15);
+  assert.equal(await page((selector) => document.querySelector(selector).disabled, captureButton), true, "Capture pauses during playback");
+  await clickNamed("button", "暂停");
+  const pausedTime = await page(() => Number(document.querySelector(".director-motion-panel").dataset.motionTime));
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  assert.equal(await page(() => Number(document.querySelector(".director-motion-panel").dataset.motionTime)), pausedTime, "Pause freezes playback");
+  await screenshot("motion-paused-3d-path");
+  await clickNamed("button", "播放");
+  await waitFor(() => document.querySelector(".director-motion-panel").dataset.motionTime === "1"
+    && document.querySelector(".director-motion-panel").dataset.motionPlaying === "false");
+  await clickNamed("button", "导出当前参考 PNG");
+  const frameFile = join(screenshots, "director-frame-1.00s.png");
+  let png;
+  for (let retry = 0; retry < 100; retry++) {
+    try { png = await readFile(frameFile); break; } catch { await pause(); }
+  }
+  assert.ok(png?.length > 1000, "Reference download contains real PNG bytes");
+  assert.equal(png.readUInt32BE(16), 1600); assert.equal(png.readUInt32BE(20), 900);
+  assert.deepEqual(await page(() => {
+    const evidence = JSON.parse(document.querySelector("#director-browser-evidence").textContent);
+    return { uploads: evidence.uploads.length, scenes: evidence.scenes.length, angles: evidence.angles.length };
+  }), { uploads: 0, scenes: 0, angles: 0 }, "Playback and reference export make no model/upload calls");
+  await click('button[aria-label="场景文件"]');
+  await clickNamed('[role="menuitem"]', "导出场景");
+  let exported;
+  for (let retry = 0; retry < 100; retry++) {
+    try { exported = JSON.parse(await readFile(join(screenshots, "director-scene.json"), "utf8")); break; } catch { await pause(); }
+  }
+  assert.equal(exported.schemaVersion, 3);
+  assert.deepEqual(exported.motion.keyframes.map((frame) => [frame.timeSeconds, frame.camera.azimuth]), [[0, 25], [1, 90]]);
+  await click(captureButton);
+  await waitFor(() => !document.querySelector(".director-workbench"));
+  const take = await page(() => JSON.parse(document.querySelector("#director-browser-evidence").textContent).scenes.at(-1).directorScene);
+  assert.equal(take.schemaVersion, 3); assert.equal(take.camera.azimuth, 90);
+  assert.deepEqual(take.motion.keyframes.map((frame) => [frame.timeSeconds, frame.camera.azimuth]), [[0, 25], [1, 90]]);
+  await click("#open-director-fixture"); await ready();
+  await clickNamed('[role="tab"]', "运镜");
+  assert.equal(await page(() => document.querySelectorAll(".director-motion-key").length), 2, "Saved track reopens");
+  assert.equal(await page(() => document.querySelector(".director-motion-panel").dataset.motionPlaying), "false", "Reopened take starts paused");
+  await clickNamed("button", "播放");
+  await waitFor(() => document.querySelector(".director-motion-panel").dataset.motionTime === "1");
+  await clickNamed("button", "播放");
+  await waitFor(() => Number(document.querySelector(".director-motion-panel").dataset.motionTime) < 0.5);
+  await clickNamed("button", "暂停");
+  await screenshot("motion-restored-replayed");
+  await clickNamed("button", "播放");
+  await page(() => document.querySelector("canvas").getContext("webgl2").getExtension("WEBGL_lose_context").loseContext());
+  await waitFor(() => document.querySelector(".director-motion-panel").dataset.motionPlaying === "false");
+  await clickNamed("button", "重试 3D 预览"); await ready();
+  assert.equal(await page(() => document.querySelectorAll(".director-motion-key").length), 2, "Context loss preserves camera keys");
+  assert.equal(await page(() => document.querySelector(".director-motion-panel").dataset.motionPlaying), "false", "Context recovery starts paused");
+  // Actual MediaRecorder bytes, independently decoded below with local FFmpeg/FFprobe.
+  await page(() => {
+    const original = HTMLCanvasElement.prototype.captureStream;
+    const tracks = [];
+    window.directorRecordedTracks = tracks;
+    HTMLCanvasElement.prototype.captureStream = function (rate) {
+      const stream = original.call(this, rate); tracks.push(...stream.getTracks()); return stream;
+    };
+  });
+  await clickNamed("button", "导出参考视频（WebM）");
+  await waitFor(() => Boolean(document.querySelector('[role="progressbar"]')));
+  assert.equal(await page(() => document.querySelector('button[aria-label="关闭"]').disabled), false, "Export can be closed and cancelled");
+  await clickNamed("button", "取消视频导出");
+  await waitFor(() => !document.querySelector('[role="progressbar"]'));
+  assert.equal(await page(() => window.directorRecordedTracks.every((track) => track.readyState === "ended")), true, "Cancelled recording releases its tracks");
+  assert.equal(await readFile(join(screenshots, "director-motion-reference.webm")).then(() => true, () => false), false, "Cancellation does not download partial video");
+  await clickNamed("button", "导出参考视频（WebM）");
+  await waitFor(() => Boolean(document.querySelector('[role="progressbar"]')));
+  await click('button[aria-label="关闭"]');
+  await waitFor(() => !document.querySelector(".director-workbench"));
+  assert.equal(await page(() => window.directorRecordedTracks.every((track) => track.readyState === "ended")), true, "Closing releases the recording tracks");
+  await click("#open-director-fixture"); await ready();
+  await clickNamed('[role="tab"]', "运镜");
+  await page(() => { window.directorOriginalRecorder = window.MediaRecorder; window.MediaRecorder = undefined; });
+  await clickNamed("button", "导出参考视频（WebM）");
+  await waitFor(() => document.querySelector('[role="alert"]')?.textContent.includes("不支持本地 WebM"));
+  await page(() => { window.MediaRecorder = window.directorOriginalRecorder; });
+  const beforeExport = await page(() => document.querySelector(".director-motion-panel").dataset.motionTime);
+  await clickNamed("button", "导出参考视频（WebM）");
+  await waitFor(() => Boolean(document.querySelector('[role="progressbar"]')));
+  await screenshot("video-export-progress");
+  await waitFor(() => !document.querySelector('[role="progressbar"]') && document.body.textContent.includes("参考视频已下载"));
+  const videoPath = join(screenshots, "director-motion-reference.webm");
+  let webm;
+  for (let retry = 0; retry < 100; retry++) {
+    try { webm = await readFile(videoPath); break; } catch { await pause(); }
+  }
+  assert.equal(webm.subarray(0, 4).toString("hex"), "1a45dfa3", "Downloaded bytes are an actual WebM container");
+  const probe = JSON.parse(execFileSync(process.env.AGENVAS_E2E_FFPROBE ?? "ffprobe",
+    ["-v", "error", "-select_streams", "v:0", "-show_streams", "-show_format", "-show_packets", "-of", "json", videoPath], { encoding: "utf8" }));
+  assert.ok(probe.format.format_name.includes("webm"));
+  assert.ok(["vp8", "vp9"].includes(probe.streams[0].codec_name));
+  assert.equal(probe.streams[0].width, 960); assert.equal(probe.streams[0].height, 540);
+  const duration = Number(probe.packets.at(-1).pts_time) - Number(probe.packets[0].pts_time);
+  assert.ok(duration > 0.75 && duration < 1.5, `One-second take has a bounded recorded duration: ${duration}`);
+  assert.ok(probe.packets.length >= 8, "The clip contains multiple encoded frames");
+  const decoded = execFileSync(process.env.AGENVAS_E2E_FFMPEG ?? "ffmpeg",
+    ["-v", "error", "-i", videoPath, "-an", "-vf", "fps=4,scale=64:64", "-f", "framemd5", "-"], { encoding: "utf8" });
+  const hashes = decoded.split("\n").filter((line) => line.trim() && !line.startsWith("#")).map((line) => line.split(",").at(-1).trim());
+  assert.ok(hashes.length >= 3 && new Set(hashes).size >= 3, "Decoded frames show changing 3D camera imagery");
+  assert.equal(await page(() => window.directorRecordedTracks.every((track) => track.readyState === "ended")), true, "Successful recording releases its tracks");
+  assert.equal(await page(() => document.querySelector(".director-motion-panel").dataset.motionTime), beforeExport, "Video export preserves preview position");
+  await rename(videoPath, join(screenshots, "director-motion-reference-first.webm"));
+  await clickNamed("button", "导出参考视频（WebM）");
+  await waitFor(() => Boolean(document.querySelector('[role="progressbar"]')));
+  await waitFor(() => !document.querySelector('[role="progressbar"]'));
+  let repeated;
+  for (let retry = 0; retry < 100; retry++) {
+    try { repeated = await readFile(videoPath); break; } catch { await pause(); }
+  }
+  assert.ok(repeated?.length > 1000, "A repeated export downloads a fresh video");
+  assert.equal(await page(() => window.directorRecordedTracks.every((track) => track.readyState === "ended")), true);
+  videoEvidence = { filename: join(screenshots, "director-motion-reference-first.webm"), format: probe.format.format_name, codec: probe.streams[0].codec_name,
+    width: 960, height: 540, packetDurationSeconds: duration, frames: probe.packets.length, uniqueDecodedFrames: new Set(hashes).size, bytes: webm.length };
+  await writeFile(join(screenshots, "video-evidence.json"), JSON.stringify(videoEvidence, null, 2), { mode: 0o600 });
+  assert.deepEqual(await page(() => {
+    const evidence = JSON.parse(document.querySelector("#director-browser-evidence").textContent);
+    return { uploads: evidence.uploads.length, scenes: evidence.scenes.length, angles: evidence.angles.length };
+  }), { uploads: 1, scenes: 1, angles: 0 }, "WebM export makes no additional upload or model calls");
   assert.deepEqual(runtimeErrors, [], "No uncaught browser errors");
-  console.log(JSON.stringify({ result: "passed", renderer: "Chrome WebGL (SwiftShader allowed)", screenshots,
+  console.log(JSON.stringify({ result: "passed", renderer: "Chrome WebGL (SwiftShader allowed)", screenshots, videoEvidence,
     checks: ["three viewport sizes", "reachable object and camera controls", "angle configuration", "dirty close", "director observation preserves the scene camera",
       "view switching does not submit requests", "camera view mouse orbit synchronization",
       "WebGL loss and retained-draft retry", "four exact PNG dimensions with actual colored scene pixels", "scene upload metadata",
-      "explicit existing angle task submission with exact source and camera guidance"] }, null, 2));
+      "explicit existing angle task submission with exact source and camera guidance",
+      "named 3D camera keys, smooth motion, pause/repeat", "actual local reference PNG and reusable scene JSON without API calls",
+      "v3 track archival and restore (synthetic HTTP)", "actual WebM export decoded by FFprobe/FFmpeg",
+      "video export cancel/close/repeat/unsupported recovery and released tracks"] }, null, 2));
 } finally {
   socket?.close();
   if (chrome && chrome.exitCode === null) {

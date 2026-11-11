@@ -13,7 +13,7 @@ import './VideoCompositionPlayer.css';
 
 export function VideoCompositionPlayer({ controller, model, captions, resolution, aspectRatio, disabled = false, fontFamily = 'Noto Sans CJK SC' }: {
   controller: CompositionPlayback; model: CompositionPlaybackModel; captions: readonly CompositionCaption[];
-  resolution: '720P' | '1080P'; aspectRatio: '16:9' | '9:16' | '1:1'; disabled?: boolean; fontFamily?: string;
+  resolution: '720P' | '1080P' | '2160P'; aspectRatio: '16:9' | '9:16' | '1:1'; disabled?: boolean; fontFamily?: string;
 }) {
   useLocale();
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot);

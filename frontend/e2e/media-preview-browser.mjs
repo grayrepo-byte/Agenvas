@@ -12,6 +12,7 @@ const chromePath = process.env.AGENVAS_E2E_CHROME
   ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const route = "/e2e/media-preview.html";
 const production = !process.argv.includes("--dev");
+const editOnly = process.argv.includes("--video-edit-only");
 const timeoutMs = 15_000;
 const pollMs = 50;
 const tolerance = 1;
@@ -160,6 +161,19 @@ async function screenshot(name) {
 
 async function respondToSyntheticFailure({ requestId, request }) {
   const pathname = new URL(request.url).pathname;
+  if (pathname === "/api/v1/projects/review/subtitles" || pathname === "/api/v1/projects/review/subtitles/capabilities") {
+    const value = pathname.endsWith("capabilities") ? { availability: "NOT_CONFIGURED", maxCues: 5000, maxFileBytes: 2097152, maxSourceDurationMs: 600000 } : [];
+    await cdp("Fetch.fulfillRequest", { requestId, responseCode: 200, body: Buffer.from(JSON.stringify(value)).toString("base64"), responseHeaders: [{ name: "Content-Type", value: "application/json" }] });
+    return;
+  }
+  if (pathname === "/api/v1/projects/review/video-compositions/capabilities") {
+    const value = { maxDurationMs: 600000, maxFrames: 18000, maxShots: 60, maxLines: 300, maxSubtitles: 2000,
+      maxSourceDurationMs: 600000, maxSourceBytes: 2147483648, maxOutputBytes: 524288000,
+      frameRate: 30, timeoutSeconds: 900, resolutions: ["720P", "1080P", "2160P"] };
+    await cdp("Fetch.fulfillRequest", { requestId, responseCode: 200, body: Buffer.from(JSON.stringify(value)).toString("base64"),
+      responseHeaders: [{ name: "Content-Type", value: "application/json" }] });
+    return;
+  }
   if (pathname === "/api/v1/projects/review/video-compositions/preview") {
     const requestBody = JSON.parse(request.postData);
     // Voice-free analysis uses fixed, normal-speed prefixes; this fixture never simulates speech planning.
@@ -263,6 +277,8 @@ try {
     { urlPattern: "*/api/v1/projects/review/assets/*", requestStage: "Request" },
     { urlPattern: "*/api/v1/projects/review/video-compositions", requestStage: "Request" },
     { urlPattern: "*/api/v1/projects/review/video-compositions/preview", requestStage: "Request" },
+    { urlPattern: "*/api/v1/projects/review/video-compositions/capabilities", requestStage: "Request" },
+    { urlPattern: "*/api/v1/projects/review/subtitles*", requestStage: "Request" },
     { urlPattern: "*/api/v1/auth/csrf", requestStage: "Request" }] });
   const baseUrl = server.resolvedUrls.local[0];
   for (const viewport of viewports) {
@@ -279,6 +295,7 @@ try {
       });
       return { image: fixture.dataset.image.split(",")[1], video: dataUrl.split(",")[1] };
     });
+    if (!editOnly) {
     await open("#image-open", "image");
     const before = await layout(viewport, "image", 16 / 9);
     await screenshot(`image-${viewport.width}x${viewport.height}`);
@@ -382,6 +399,7 @@ try {
     await pointerClick(".video-comparison-dialog button[aria-label='关闭窗口']");
     await waitFor(() => !document.querySelector(".video-comparison-dialog"));
     assert.ok(await page(() => window.closedComparisonVideos.every((element) => !element.isConnected && element.paused)), "Closing comparison stops both videos");
+    }
     await pointerClick("#edit-open");
     await waitFor(() => document.querySelectorAll(".video-edit-dialog video").length === 1
       && document.querySelector(".video-edit-dialog video").readyState >= 2);
@@ -394,6 +412,9 @@ try {
     await waitFor(() => document.querySelector(".video-edit-dialog video").currentTime >= 0.2);
     await pointerClick(".video-edit-clip[aria-label='片段 2'] button[aria-label='上移']");
     assert.ok(await page(() => document.querySelector(".video-edit-clip[aria-label='片段 1'] .video-edit-clip-select").textContent.includes("Synthetic 2")), "Clip ordering must update the precise source");
+    await pointerClick(".video-edit-dialog [data-slot='dialog-footer'] button:first-child");
+    await waitFor(() => document.querySelector(".video-edit-inspector")?.textContent.includes("2000"));
+    assert.ok(await page(() => document.querySelector(".video-edit-status").textContent.includes("10:00")), "Server duration budget must replace the old one-minute label");
     const { data: editScreenshot } = await cdp("Page.captureScreenshot", { format: "png" });
     await writeFile(join(screenshots, `edit-${viewport.width}x${viewport.height}.png`), Buffer.from(editScreenshot, "base64"), { mode: 0o600 });
     assert.ok(await page(() => {
@@ -406,9 +427,9 @@ try {
     assert.deepEqual(compositions.at(-1).shots.map((shot) => shot.videoVersionId), ["v2", "v1"]);
     assert.equal(compositions.at(-1).shots[1].sourceStartMs, 200);
     assert.deepEqual(compositions.at(-1).shots.map((shot) => shot.lines), [[], []], "A real clip edit must allow zero voice tracks");
-    console.log(`Media preview passed at ${viewport.width}x${viewport.height}`);
+    console.log(`${editOnly ? "Video editor" : "Media preview"} passed at ${viewport.width}x${viewport.height}`);
   }
-  for (const kind of ["image", "video"]) {
+  if (!editOnly) for (const kind of ["image", "video"]) {
     await pointerClick(`#retry-${kind}-open`);
     await waitFor(() => Boolean(document.querySelector(".media-preview-error[role='alert']")));
     await pointerClick(".media-preview-retry");
@@ -423,7 +444,7 @@ try {
     await pointerClick(close);
     await closed(`#retry-${kind}-open`);
   }
-  console.log(`Media preview browser checks passed (3 viewports, image/portrait/animated GIF/video, zoom, fullscreen, keyboard, playback and retry). Private screenshots: ${screenshots}`);
+  console.log(`${editOnly ? "Video editor browser checks passed (3 viewports, real synthetic video decode, trim, order, server limits and export acceptance)" : "Media preview browser checks passed (3 viewports, image/portrait/animated GIF/video, zoom, fullscreen, keyboard, playback and retry)"}. Private screenshots: ${screenshots}`);
 } finally {
   socket?.close();
   if (chrome && chrome.exitCode == null) {

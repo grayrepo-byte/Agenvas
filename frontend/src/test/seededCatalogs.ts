@@ -20,6 +20,15 @@ export const seededPrompts: PromptDefinition[] = [...[promptSeeds, viewSeeds, re
     name: name!, description: description!, content: "Existing creative instructions.", builtIn: true, version: 1,
     createdAt: "2026-10-03T00:00:00Z", updatedAt: "2026-10-03T00:00:00Z" }));
 
+// Keep both catalog generations: customized bodies can retain the V6 metadata.
+const characterUpgrade = migration("V61__character_view_prompt_style_flexible.sql");
+export const upgradedCharacterPrompt: PromptDefinition = {
+  ...seededPrompts.find((prompt) => prompt.key === "image.three-view.character")!,
+  description: characterUpgrade.match(/\$description\$([\s\S]*?)\$description\$/)![1]!,
+  content: characterUpgrade.match(/\$content\$([\s\S]*?)\$content\$/)![1]!,
+  version: 2,
+};
+
 export const seededStyles: MediaStyle[] = [...styleSeeds
   .matchAll(/VALUES \('(00000000-0000-4000-8000-00000000030[1-8])', '([^']+)', '([^']+)', '([^']+)',/g)]
   .map(([, id, name, category, promptSuffix]) => ({ id: id!, name: name!, category: category!, promptSuffix: promptSuffix!,

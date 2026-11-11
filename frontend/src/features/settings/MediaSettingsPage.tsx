@@ -411,7 +411,7 @@ function CapabilityRow({ connectionId, connectionName, connectionOrigin, capabil
         {isDefault ? <StatusBadge>{t("settings.mediaSettings.default")}</StatusBadge> : null}
       </div></TableCell>
       <TableCell><div className="media-table-actions">
-        <Button variant="outline" size="sm" type="button" disabled={rowBusy} onClick={() => setEditing(true)}>{t("settings.mediaSettings.editCapability")}</Button>
+        <Button variant="ghost" size="sm" type="button" disabled={rowBusy} onClick={() => setEditing(true)}>{t("settings.mediaSettings.editCapability")}</Button>
         <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" type="button" disabled={rowBusy} aria-label={t("settings.mediaWorkspace.moreActions", { "0": capability.name })}><DotsThree /></Button></DropdownMenuTrigger>
           <DropdownMenuContent align="end"><DropdownMenuGroup>
             <DropdownMenuItem disabled={!connectionEnabled || !capability.enabled || isDefault} onSelect={() => act("default", capability)}>{t("settings.mediaSettings.setDefault")}</DropdownMenuItem>
@@ -618,7 +618,7 @@ function ConnectionRow({ connection, settings, apply, hidden, publishOpen, onPub
       <TableCell data-label={t("settings.mediaWorkspace.credentialsColumn")}><span className="media-cell-text">{connection.keyMask || (systemManaged ? t("media.functions.localMedia") : t("common.configured"))}</span></TableCell>
       <TableCell><StatusBadge tone={connection.enabled ? "success" : "warning"}>{connection.enabled ? t("settings.mediaSettings.enabled") : t("settings.mediaSettings.disabled")}</StatusBadge></TableCell>
       <TableCell>{systemManaged ? <span className="ui-muted">{t("settings.mediaSettings.administration")}</span> : <div className="media-table-actions">
-        <Button variant="outline" size="sm" type="button" disabled={busy} onClick={() => setDialog("connection")}>{t("settings.mediaSettings.editConnection")}</Button>
+        <Button variant="ghost" size="sm" type="button" disabled={busy} onClick={() => setDialog("connection")}>{t("settings.mediaSettings.editConnection")}</Button>
         <Button variant="ghost" size="sm" type="button" disabled={busy || !connection.enabled || !availableAdapters.length}
           onClick={onPublish}>{t("settings.mediaSettings.publishCapability")}</Button>
         <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" type="button" disabled={busy} aria-label={t("settings.mediaWorkspace.moreActions", { "0": connection.name })}><DotsThree /></Button></DropdownMenuTrigger>

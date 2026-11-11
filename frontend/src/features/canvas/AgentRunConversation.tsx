@@ -26,6 +26,7 @@ const TASK_STATUS: Record<Task["status"], "running" | "pending" | "completed" | 
   FAILED: "failed", CANCELED: "canceled",
 };
 const TASK_LABELS: Record<Task["kind"], string> = {
+  get SUBTITLE_TRANSCRIPTION() { return t("subtitle.recognize"); },
   get AGENT_TURN() { return t("agent.run.modelCall"); }, get TEXT_GENERATION() { return t("text.generate"); },
   get IMAGE_GENERATION() { return t("agent.run.generateImage"); }, get AUDIO_GENERATION() { return t("agent.run.generateAudio"); }, get VIDEO_GENERATION() { return t("media.generateVideo"); },
 };

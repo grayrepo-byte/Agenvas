@@ -75,6 +75,7 @@ describe("project cache callbacks", () => {
     { type: "agent.run.changed", prefixes: ["snapshot", ...historyPrefixes] },
     { type: "project.changed", prefixes: ["projects"] },
     { type: "media.draft.changed", prefixes: ["media-draft", "canvas-connections", "project-characters"] },
+    { type: "subtitle.draft.changed", prefixes: ["subtitle-drafts"] },
     { type: "character.profile.changed", prefixes: ["canvas", "project-characters"] },
     { type: "character.bindings.changed", prefixes: ["project-characters"] },
     { type: "usage.changed", prefixes: ["project-usage"] },
@@ -160,7 +161,7 @@ describe("project cache callbacks", () => {
     const refreshedPrefixes = [
       ...historyPrefixes, "run-tasks", "direct-media-tasks", "media-draft", "canvas-media-versions", "project-usage",
       "storyboard", "storyboard-revisions", "storyboard-media-approvals", "project-characters", "canvas-editor", "project-resources",
-      "artifacts", "artifact-versions",
+      "artifacts", "artifact-versions", "subtitle-drafts", "task",
     ];
     const refreshedKeys = refreshedPrefixes.map((prefix) => [prefix, projectId, "scope-1"]);
     const unchangedKeys = [

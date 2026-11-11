@@ -4,6 +4,7 @@ import {
   PerspectiveCamera, Plane, PlaneGeometry, Raycaster, Scene, SphereGeometry, TorusGeometry, Vector2, Vector3, WebGLRenderer,
 } from "three";
 import { cameraPosition, DIRECTOR_CAPTURE_SIZES, type DirectorObject, type DirectorScene } from "./directorScene";
+import { directorCameraAtTime, directorCameraPath } from "./directorMotion";
 import { DIRECTOR_RESIZE_AXES, resizeDirectorObject, type DirectorLocalBounds, type DirectorResizeHandle } from "./directorResize";
 import { moveDirectorObject, rotateDirectorObject, wrapDirectorRotation, type DirectorMoveAxis } from "./directorTransform";
 
@@ -23,6 +24,8 @@ export interface DirectorRenderer {
   resize(width: number, height: number): void;
   setDisabled(disabled: boolean): void;
   capture(): Promise<File>;
+  /** Dedicated export canvases only: draw the sampled camera without editor helpers or PNG encoding. */
+  renderReferenceFrame(timeSeconds: number, width: number, height: number): void;
   dispose(): void;
 }
 
@@ -251,6 +254,11 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
     material.depthWrite = false;
   }
   world.add(cameraRig, cameraFrustum);
+  const cameraPath = new LineSegments(new BufferGeometry(), new LineBasicMaterial({ toneMapped: false }));
+  cameraPath.name = "director-camera-path";
+  cameraPath.visible = false;
+  world.add(cameraPath);
+  let pathMotion: DirectorScene["motion"] | null = null;
   const raycaster = new Raycaster();
   let scene = initialScene;
   let viewMode: DirectorViewMode = "camera";
@@ -293,6 +301,7 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
     const themeAccent = getComputedStyle(canvas).getPropertyValue("--ui-accent").trim();
     const accent = new Color().setStyle(themeAccent || getComputedStyle(canvas).color);
     cameraFrustum.setColors(accent, accent, accent, accent, accent);
+    cameraPath.material.color.copy(accent);
     cameraRig.traverse((object) => {
       if (object instanceof Mesh && object.material instanceof MeshBasicMaterial) object.material.color.copy(accent);
     });
@@ -397,6 +406,15 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
   const update = (nextScene: DirectorScene, selectedObjectId?: string) => {
     if (disposed || unavailable) return;
     scene = nextScene;
+    if (pathMotion !== nextScene.motion) {
+      const points = directorCameraPath(nextScene).flatMap((path) => path.slice(1).flatMap((point, index) => {
+        const previous = path[index]!;
+        return [new Vector3(previous.x, previous.y, previous.z), new Vector3(point.x, point.y, point.z)];
+      }));
+      cameraPath.geometry.dispose();
+      cameraPath.geometry = new BufferGeometry().setFromPoints(points);
+      pathMotion = nextScene.motion;
+    }
     const transformingId = drag && drag.kind !== "orbit" ? drag.original.id : undefined;
     if (drag && transformingId && (selectedObjectId !== transformingId || !nextScene.objects.some((object) => object.id === transformingId))) {
       const pointerId = drag.id; drag = null;
@@ -782,6 +800,7 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
       drag = null;
       viewMode = mode;
       cameraRig.visible = mode === "director";
+      cameraPath.visible = mode === "director";
       cameraFrustum.visible = mode === "director";
       invalidate();
     },
@@ -816,6 +835,16 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
       }
       syncSelection(); invalidate();
     },
+    renderReferenceFrame(timeSeconds, outputWidth, outputHeight) {
+      if (disposed || unavailable) throw new Error("DIRECTOR_VIEWPORT_UNAVAILABLE");
+      if (frame !== null) cancelAnimationFrame(frame);
+      frame = null;
+      capturing = true;
+      cameraRig.visible = false; cameraPath.visible = false; cameraFrustum.visible = false;
+      scene = { ...scene, camera: directorCameraAtTime(scene, timeSeconds) };
+      renderer.setPixelRatio(1); renderer.setSize(outputWidth, outputHeight, false);
+      renderNow(true);
+    },
     async capture() {
       if (disposed || unavailable || renderer.getContext().isContextLost()) throw new Error("DIRECTOR_VIEWPORT_UNAVAILABLE");
       finishObjectTransform(false);
@@ -828,6 +857,7 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
       if (!context) throw new Error("DIRECTOR_CAPTURE_FAILED");
       const selectionVisible = selection.visible;
       const rigVisible = cameraRig.visible;
+      const pathVisible = cameraPath.visible;
       const frustumVisible = cameraFrustum.visible;
       const handlesVisible = resizeHandles.visible;
       const moveVisible = moveHandles.visible;
@@ -840,6 +870,7 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
         moveHandles.visible = false;
         rotateHandles.visible = false;
         cameraRig.visible = false;
+        cameraPath.visible = false;
         cameraFrustum.visible = false;
         renderer.setPixelRatio(1);
         renderer.setSize(size.width, size.height, false);
@@ -849,6 +880,7 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
         capturing = false;
         selection.visible = selectionVisible;
         cameraRig.visible = rigVisible;
+        cameraPath.visible = pathVisible;
         cameraFrustum.visible = frustumVisible;
         resizeHandles.visible = handlesVisible;
         moveHandles.visible = moveVisible;

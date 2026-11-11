@@ -999,4 +999,4 @@ button:disabled {
 /* Media history belongs to the node whose toolbar opens this menu. */
 .media-version-picker { position: relative; }
 
-.media-toolbar-divider { width: 1px; height: 24px; flex: 0 0 1px; margin: 0 4px; background: var(--ui-border-strong); }
+.media-toolbar-divider { width: 1px; height: 18px; flex: 0 0 1px; margin: 0 4px; background: var(--ui-border); }

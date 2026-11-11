@@ -23,7 +23,7 @@
 .ui-dialog-header p { margin: var(--ui-space-1) 0 0; color: var(--ui-text-muted); font-size: var(--ui-text-sm); }
 .ui-dialog-form { display: flex; flex-direction: column; min-height: 0; }
 .ui-dialog-body { padding: var(--ui-space-6); min-height: 0; overflow: auto; overscroll-behavior: contain; }
-.ui-dialog-footer { display: flex; flex-direction: row; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: var(--ui-space-2); flex: none; padding: var(--ui-space-4) var(--ui-space-6); border-top: 1px solid var(--ui-border); background: var(--ui-surface-raised); }
+.ui-dialog-footer { display: flex; flex-direction: row; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: var(--ui-space-2); flex: none; padding: var(--ui-space-4) var(--ui-space-6); border-top: 1px solid var(--ui-action-border); background: transparent; }
 @media (max-width: 560px) {
   .ui-dialog.app-page { width: min(var(--ui-dialog-width, 660px), calc(100% - var(--ui-space-4))); max-height: min(680px, calc(100dvh - var(--ui-space-4))); }
   .ui-dialog-header, .ui-dialog-body { padding: var(--ui-space-4); }

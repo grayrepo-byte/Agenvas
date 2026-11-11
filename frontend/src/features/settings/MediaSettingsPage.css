@@ -19,7 +19,7 @@
 .media-config-section h3, .media-config-section p { grid-column: 1 / -1; margin: 0; }
 .media-config-section h3 { color: var(--ui-text-secondary); font-size: var(--ui-text-md); font-weight: 500; }
 .media-config-section p { font-size: var(--ui-text-sm); line-height: 1.7; }
-.media-api-help { grid-column: 1 / -1; min-width: 0; padding: var(--ui-space-3); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: var(--ui-field); color: var(--ui-text-secondary); font-size: var(--ui-text-sm); line-height: 1.7; }
+.media-api-help { grid-column: 1 / -1; min-width: 0; padding: var(--ui-space-3) 0; border: 0; border-top: 1px solid var(--ui-border); border-radius: 0; background: transparent; color: var(--ui-text-secondary); font-size: var(--ui-text-sm); line-height: 1.7; }
 .media-api-help > strong { font-weight: 500; }
 .media-api-help p, .media-api-help dl { margin: var(--ui-space-2) 0 0; }
 .media-api-help dl > div + div { margin-top: var(--ui-space-2); }
@@ -114,7 +114,7 @@ body:has(.app-shell--settings) .comfy-capability-dialog .ui-dialog-body { paddin
 .media-defaults-section > .ui-panel-header > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
 .app-shell--settings .media-defaults-section > .ui-panel-header p { margin: 0; }
 .media-defaults-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-.media-default-card { position: relative; display: flex; flex-direction: column; min-width: 0; padding: 10px 48px 10px 14px; border: 1px solid var(--ui-border); border-radius: 12px; background: linear-gradient(140deg, color-mix(in srgb, var(--ui-accent) 4%, var(--ui-surface)), var(--ui-surface)); }
+.media-default-card { position: relative; display: flex; flex-direction: column; min-width: 0; padding: 10px 48px 10px 14px; border: 1px solid var(--ui-border); border-radius: 12px; background: transparent; }
 .media-default-card[data-state="empty"] { border-style: dashed; background: color-mix(in srgb, var(--ui-surface) 65%, transparent); }
 .media-default-card-heading { display: flex; align-items: center; gap: 8px; min-height: 22px; color: var(--ui-text-secondary); font-size: 12px; }
 .media-default-card-heading > .ui-badge { margin-left: auto; }
@@ -130,7 +130,7 @@ body:has(.app-shell--settings) .comfy-capability-dialog .ui-dialog-body { paddin
 .media-defaults-section > .ui-notice { margin-top: 14px; }
 
 /* The catalog is one contained workspace; filters never unmount draft editors. */
-.app-shell--settings .media-catalog { gap: 0; border: 1px solid var(--ui-border); border-radius: 14px; background: var(--ui-surface); overflow: clip; }
+.app-shell--settings .media-catalog { gap: 0; border: 0; border-radius: 0; background: transparent; overflow: clip; }
 .media-catalog-topline { align-items: center; padding: 0 22px; border-bottom: 1px solid var(--ui-border); }
 .app-shell--settings .media-catalog .media-catalog-topline [data-slot="tabs-list"] { align-self: stretch; height: auto; gap: 24px; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; }
 .app-shell--settings .media-catalog .media-catalog-topline [data-slot="tabs-list"] > [data-slot="tabs-trigger"] { position: relative; flex: none; gap: 8px; min-height: 42px; padding: 8px 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; color: var(--ui-text-muted); font-size: 13px; }

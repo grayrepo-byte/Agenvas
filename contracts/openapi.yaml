@@ -1473,7 +1473,7 @@ paths:
         原生客户端调用 prepare_media_upload 后，以同一 Bearer 令牌 POST metadata JSON part 和 file 二进制 part。要求 READ +
         CONTENT_WRITE；不接受 Session、Origin 或本地文件路径。实际大小与 SHA-256 必须匹配；同 commandId
         同参数重放返回原结果，异参返回409。默认只创建项目资源，提供 placement 时同时放置节点。图片20 MiB、音频50 MiB、MP4视频500 MiB，请求总限501
-        MiB，实际解码与像素/时长限制沿用普通上传。恢复模式与关闭MCP时拒绝，不触发生成。
+        MiB；无声WebM沿用普通上传的48MiB/960px/7200帧/121秒边界，转为真实MP4归档。实际解码与像素/时长限制沿用普通上传。恢复模式与关闭MCP时拒绝，不触发生成。
       tags:
         - MCP
       security:
@@ -3989,7 +3989,8 @@ paths:
       - {$ref: "#/components/parameters/ProjectId"}
     post:
       operationId: uploadVideoAsset
-      summary: 上传并校验私有 MP4 视频素材（最大 500 MiB）
+      summary: 上传并校验私有视频素材（MP4 或受控无声 WebM）
+      description: MP4 最大500MiB、10分钟、40MP；无声VP8/VP9 WebM 最大48MiB、每边960px、7200帧、容器121秒（含编码尾容差），完整校验后转换为真实MP4归档。
       tags: [Assets]
       requestBody:
         required: true
@@ -4581,6 +4582,292 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
         "422": {$ref: "#/components/responses/ValidationError"}
+  /api/v1/settings/local-asr:
+    get:
+      operationId: getLocalAsrSettings
+      tags: [Settings]
+      responses:
+        "200":
+          description: Administrator-only local ASR state; no network work on GET or enable
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LocalAsrSettings"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    put:
+      operationId: updateLocalAsrSettings
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/LocalAsrSettingsRequest"}
+      responses:
+        "200":
+          description: Administrator-only local ASR state; no network work on GET or enable
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LocalAsrSettings"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/settings/local-asr/download:
+    post:
+      operationId: downloadLocalAsrModel
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/LocalAsrVersionRequest"}
+      responses:
+        "200":
+          description: Administrator-only local ASR state; no network work on GET or enable
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LocalAsrSettings"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/settings/local-asr/cancel:
+    post:
+      operationId: cancelLocalAsrDownload
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/LocalAsrCancelRequest"}
+      responses:
+        "200":
+          description: Administrator-only local ASR state; no network work on GET or enable
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LocalAsrSettings"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/settings/local-asr/check:
+    post:
+      operationId: checkLocalAsrModel
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/LocalAsrVersionRequest"}
+      responses:
+        "200":
+          description: Administrator-only local ASR state; no network work on GET or enable
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LocalAsrSettings"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/subtitles:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - {$ref: "#/components/parameters/ProjectId"}
+    get:
+      operationId: listSubtitleDrafts
+      description: Complete drafts only. Aggregate limit 10000 cues and 8 MiB of UTF-8 JSON including metadata allowance. Exceeding either limit returns 413, never a partial list.
+      tags: [Subtitles]
+      parameters:
+        - name: sourceVersionId
+          in: query
+          required: true
+          schema: {type: array, minItems: 1, maxItems: 100, items: {type: string, format: uuid}}
+      responses:
+        "200":
+          description: Fixed-source editable subtitle draft or accepted local recognition task
+          content:
+            application/json:
+              schema: {type: array, maxItems: 100, items: {$ref: "#/components/schemas/SubtitleDraft"}}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413":
+          description: SUBTITLE_BATCH_TOO_LARGE; reduce the requested sources. No partial drafts are returned.
+          content:
+            application/problem+json:
+              schema: {$ref: "#/components/schemas/Problem"}
+    post:
+      operationId: createSubtitleDraft
+      tags: [Subtitles]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateSubtitleDraftRequest"}
+      responses:
+        "200":
+          description: Fixed-source editable subtitle draft or accepted local recognition task
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SubtitleDraft"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/subtitles/capabilities:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - {$ref: "#/components/parameters/ProjectId"}
+    get:
+      operationId: getSubtitleCapabilities
+      tags: [Subtitles]
+      responses:
+        "200":
+          description: Fixed-source editable subtitle draft or accepted local recognition task
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SubtitleCapabilities"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/subtitles/{id}:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - {$ref: "#/components/parameters/ProjectId"}
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getSubtitleDraft
+      tags: [Subtitles]
+      responses:
+        "200":
+          description: Fixed-source editable subtitle draft or accepted local recognition task
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SubtitleDraft"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+    put:
+      operationId: saveSubtitleDraft
+      tags: [Subtitles]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SaveSubtitleDraftRequest"}
+      responses:
+        "200":
+          description: Fixed-source editable subtitle draft or accepted local recognition task
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SubtitleDraft"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/subtitles/{id}/import:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - {$ref: "#/components/parameters/ProjectId"}
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: importSubtitleFile
+      tags: [Subtitles]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ImportSubtitleFileRequest"}
+      responses:
+        "200":
+          description: Fixed-source editable subtitle draft or accepted local recognition task
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SubtitleDraft"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/subtitles/{id}/recognition:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - {$ref: "#/components/parameters/ProjectId"}
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: recognizeSubtitles
+      tags: [Subtitles]
+      parameters:
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 160}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/RecognizeSubtitlesRequest"}
+      responses:
+        "200":
+          description: Fixed-source editable subtitle draft or accepted local recognition task
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Task"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "503":
+          description: Local ASR is not configured or unavailable; no model is downloaded and no media is uploaded
+          content:
+            application/problem+json:
+              schema: {$ref: "#/components/schemas/Problem"}
+  /api/v1/projects/{projectId}/subtitles/{id}/recognition/cancel:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - {$ref: "#/components/parameters/ProjectId"}
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: cancelSubtitleRecognition
+      tags: [Subtitles]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CancelSubtitleRecognitionRequest"}
+      responses:
+        "200":
+          description: Fixed-source editable subtitle draft or accepted local recognition task
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Task"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/subtitles/{id}/export:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - {$ref: "#/components/parameters/ProjectId"}
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: exportSubtitleFile
+      tags: [Subtitles]
+      parameters:
+        - {name: format, in: query, required: true, schema: {type: string, enum: [SRT, VTT]}}
+      responses:
+        "200":
+          description: Source-time subtitles, UTF-8 plain text; timing edits are preserved
+          content:
+            application/x-subrip:
+              schema: {type: string}
+            text/vtt:
+              schema: {type: string}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/projects/{projectId}/video-compositions:
     parameters:
       - {$ref: "#/components/parameters/AcceptLanguage"}
@@ -4588,7 +4875,7 @@ paths:
     post:
       operationId: composeVideo
       summary: 按分镜和台词对应关系智能排布配音并本地合成
-      description: 固定有序视频片段与配音精确版本，后台分析原片和配音的声音能量/静音区间并自动适配。声音活动不等于语音识别；无可靠窗口时回退时长排布并记录警告。最多12镜、30句、总时长60秒，素材总大小1GiB，单个音视频最多10分钟。最多1.15倍保音高加速，无法完整容纳时失败，不截断配音。输出720p/1080p、16:9/9:16/1:1、30fps的新视频节点，逐镜向下对齐整帧（少于34ms）并记录实际时间表；支持零配音、取源裁切、0.5–2倍视频速度、首尾淡黑、定时字幕与背景音乐；默认去除原声，KEEP保留完整原声，BACKGROUND保留15%原声（包括原对白）。本地处理无Provider费用，复用Task查询/取消/显式重试；同键异参冲突。
+      description: 固定有序视频片段与配音精确版本，后台分析原片和配音的声音能量/静音区间并自动适配。声音活动不等于语音识别；无可靠窗口时回退时长排布并记录警告。预算由 capabilities 端点提供，默认60镜、300句、2000条字幕、10分钟和2GiB源素材；绝对上界为120镜、600句、5000条字幕、10分钟和8GiB源素材。单个音视频最多10分钟，输出最多500MiB。最多1.15倍保音高加速，无法完整容纳时失败，不截断配音。输出720p/1080p/2160p（受服务端配置约束）、16:9/9:16/1:1、30fps的新视频节点，逐镜向下对齐整帧（少于34ms）并记录实际时间表；支持零配音、取源裁切、0.5–2倍视频速度、首尾淡黑、定时字幕与背景音乐；默认去除原声，KEEP保留完整原声，BACKGROUND保留15%原声（包括原对白）。本地处理无Provider费用，复用Task查询/取消/显式重试；同键异参冲突。
       tags: [Tasks]
       parameters:
         - name: Idempotency-Key
@@ -4611,6 +4898,22 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/video-compositions/capabilities:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - {$ref: "#/components/parameters/ProjectId"}
+    get:
+      operationId: getVideoCompositionCapabilities
+      summary: 读取当前服务端本地成片预算与可用输出规格
+      tags: [Tasks]
+      responses:
+        "200":
+          description: 受部署配置和绝对协议上界约束的有效预算，不包含本机路径
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/VideoCompositionCapabilities"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/projects/{projectId}/video-compositions/preview:
     parameters:
       - {$ref: "#/components/parameters/AcceptLanguage"}
@@ -6080,7 +6383,7 @@ paths:
       operationId: "uploadLibraryEntry"
       responses:
         "202":
-          description: "Accepted local transfer. PNG/JPEG/WebP:20 MiB/40 MP; MP3/WAV/OGG Opus:50 MiB/10min; decoded MP4:50 MiB/40 MP/60sec."
+          description: "Accepted local transfer. PNG/JPEG/WebP:20 MiB/40 MP; MP3/WAV/OGG Opus:50 MiB/10min; decoded MP4:500 MiB/40 MP/10min. Silent VP8/VP9 WebM imports:48 MiB/960px per edge/7200 frames/121sec including encoding tail; validated and converted to MP4."
           content:
             application/json:
               schema:
@@ -10638,40 +10941,173 @@ components:
         operation: {$ref: "#/components/schemas/MediaFunction"}
         capabilityId: {type: [string, "null"], format: uuid}
         version: {type: integer, format: int64, minimum: 0}
+    VideoCompositionCapabilities:
+      type: object
+      additionalProperties: false
+      required: [maxDurationMs, maxFrames, maxShots, maxLines, maxSubtitles, maxSourceDurationMs, maxSourceBytes, maxOutputBytes, frameRate, timeoutSeconds, resolutions]
+      properties:
+        maxDurationMs: {type: integer, minimum: 100, maximum: 600000}
+        maxFrames: {type: integer, minimum: 3, maximum: 18000}
+        maxShots: {type: integer, minimum: 1, maximum: 120}
+        maxLines: {type: integer, minimum: 0, maximum: 600}
+        maxSubtitles: {type: integer, minimum: 0, maximum: 5000}
+        maxSourceDurationMs: {type: integer, const: 600000}
+        maxSourceBytes: {type: integer, format: int64, minimum: 1, maximum: 8589934592}
+        maxOutputBytes: {type: integer, format: int64, minimum: 1024, maximum: 524288000}
+        frameRate: {type: integer, const: 30}
+        timeoutSeconds: {type: number, exclusiveMinimum: 0, maximum: 3600}
+        resolutions:
+          type: array
+          minItems: 1
+          maxItems: 3
+          uniqueItems: true
+          items: {type: string, enum: [720P, 1080P, 2160P]}
     VideoCompositionPreview:
       type: object
       additionalProperties: false
       required: [durationMs, frames, fontFamily, shots]
       properties:
-        durationMs: {type: integer, minimum: 1, maximum: 60000}
-        frames: {type: integer, minimum: 1, maximum: 1800}
+        durationMs: {type: integer, minimum: 1, maximum: 600000}
+        frames: {type: integer, minimum: 1, maximum: 18000}
         fontFamily: {type: string, minLength: 1, maxLength: 80}
         shots:
           type: array
           minItems: 1
-          maxItems: 12
+          maxItems: 120
           items:
             type: object
             additionalProperties: false
             required: [videoVersionId, timelineStartMs, durationMs, lines]
             properties:
               videoVersionId: {type: string, format: uuid}
-              timelineStartMs: {type: integer, minimum: 0, maximum: 59999}
-              durationMs: {type: integer, minimum: 1, maximum: 60000}
+              timelineStartMs: {type: integer, minimum: 0, maximum: 599999}
+              durationMs: {type: integer, minimum: 1, maximum: 600000}
               lines:
                 type: array
-                maxItems: 30
+                maxItems: 600
                 items:
                   type: object
                   additionalProperties: false
                   required: [audioVersionId, startMs, endMs, trimStartMs, trimEndMs, speed]
                   properties:
                     audioVersionId: {type: string, format: uuid}
-                    startMs: {type: integer, minimum: 0, maximum: 59999}
-                    endMs: {type: integer, minimum: 1, maximum: 60000}
+                    startMs: {type: integer, minimum: 0, maximum: 599999}
+                    endMs: {type: integer, minimum: 1, maximum: 600000}
                     trimStartMs: {type: integer, minimum: 0, maximum: 599999}
                     trimEndMs: {type: integer, minimum: 1, maximum: 600000}
                     speed: {type: number, minimum: 1, maximum: 1.15}
+    LocalAsrVersionRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion]
+      properties:
+        expectedVersion: {type: integer, format: int64, minimum: 1}
+    LocalAsrSettingsRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, enabled]
+      properties:
+        expectedVersion: {type: integer, format: int64, minimum: 1}
+        enabled: {type: boolean}
+    LocalAsrCancelRequest:
+      type: object
+      additionalProperties: false
+      required: [operationId]
+      properties:
+        operationId: {type: string, format: uuid}
+    LocalAsrSettings:
+      type: object
+      additionalProperties: false
+      required: [enabled, version, state, operationId, downloadedBytes, totalBytes, errorCode, readiness, modelId, engineVersion, source, sha256, license, memory, mode]
+      properties:
+        enabled: {type: boolean}
+        version: {type: integer, format: int64, minimum: 1}
+        state: {type: string, enum: [MISSING, QUEUED, DOWNLOADING, VERIFYING, READY, FAILED, CANCELED]}
+        operationId: {type: [string, 'null'], format: uuid}
+        downloadedBytes: {type: integer, format: int64, minimum: 0}
+        totalBytes: {type: integer, format: int64, minimum: 0, description: Zero in operator-provided manual mode}
+        errorCode: {type: [string, 'null']}
+        readiness: {type: string, enum: [DISABLED, ENGINE_UNAVAILABLE, MODEL_MISSING, RESOURCE_LIMITED, AVAILABLE]}
+        modelId: {type: string}
+        engineVersion: {type: string}
+        source: {type: string, format: uri}
+        sha256: {type: [string, 'null'], pattern: '^[0-9a-f]{64}$'}
+        license: {type: string, enum: [MIT, OPERATOR_PROVIDED]}
+        mode: {type: string, enum: [MANAGED, MANUAL]}
+        memory:
+          type: object
+          additionalProperties: false
+          required: [admitted, limitBytes, usedBytes]
+          properties:
+            admitted: {type: boolean}
+            limitBytes: {type: [integer, 'null'], format: int64}
+            usedBytes: {type: [integer, 'null'], format: int64}
+    SubtitleCue:
+      type: object
+      additionalProperties: false
+      required: [text, startMs, endMs]
+      properties:
+        text: {type: string, minLength: 1, maxLength: 500}
+        startMs: {type: integer, minimum: 0, maximum: 599999}
+        endMs: {type: integer, minimum: 1, maximum: 600000}
+    SubtitleDraft:
+      type: object
+      additionalProperties: false
+      description: Correctable draft bound to an immutable source version; times are source milliseconds, not composition positions
+      required: [id, projectId, sourceVersionId, sourceDurationMs, language, cues, version, taskId, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        projectId: {type: string, format: uuid}
+        sourceVersionId: {type: string, format: uuid}
+        sourceDurationMs: {type: integer, minimum: 1, maximum: 600000}
+        language: {type: string, pattern: '^(auto|[a-z]{2,3})$'}
+        cues: {type: array, maxItems: 5000, items: {$ref: "#/components/schemas/SubtitleCue"}}
+        version: {type: integer, format: int64, minimum: 0}
+        taskId: {type: [string, 'null'], format: uuid}
+        updatedAt: {type: string, format: date-time}
+    CreateSubtitleDraftRequest:
+      type: object
+      additionalProperties: false
+      required: [sourceVersionId]
+      properties:
+        sourceVersionId: {type: string, format: uuid}
+    SaveSubtitleDraftRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, cues]
+      properties:
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+        cues: {type: array, maxItems: 5000, items: {$ref: "#/components/schemas/SubtitleCue"}}
+    ImportSubtitleFileRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, format, contents]
+      properties:
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+        format: {type: string, enum: [SRT, VTT]}
+        contents: {type: string, maxLength: 2097152, description: UTF-8 subtitle file, also limited to 2 MiB in bytes}
+    RecognizeSubtitlesRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, language]
+      properties:
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+        language: {type: string, pattern: '^(auto|[a-z]{2,3})$'}
+    CancelSubtitleRecognitionRequest:
+      type: object
+      additionalProperties: false
+      required: [taskId]
+      properties:
+        taskId: {type: string, format: uuid}
+    SubtitleCapabilities:
+      type: object
+      additionalProperties: false
+      required: [availability, maxSourceDurationMs, maxCues, maxFileBytes]
+      properties:
+        availability: {type: string, enum: [AVAILABLE, DISABLED, ENGINE_UNAVAILABLE, MODEL_MISSING, RESOURCE_LIMITED, NOT_CONFIGURED, EXECUTABLE_UNAVAILABLE, MODEL_UNAVAILABLE]}
+        maxSourceDurationMs: {type: integer, minimum: 1, maximum: 600000}
+        maxCues: {type: integer, minimum: 1, maximum: 5000}
+        maxFileBytes: {type: integer, minimum: 1, maximum: 2097152}
     VideoCompositionRequest:
       type: object
       additionalProperties: false
@@ -10684,7 +11120,7 @@ components:
           type: object
           additionalProperties: false
           properties:
-            resolution: {type: string, enum: [720P, 1080P], default: 720P}
+            resolution: {type: string, enum: [720P, 1080P, 2160P], default: 720P}
             aspectRatio: {type: string, enum: ['16:9', '9:16', '1:1'], default: '16:9'}
         music:
           type: object
@@ -10696,19 +11132,19 @@ components:
             volume: {type: number, minimum: 0, maximum: 1, default: 0.2}
         subtitles:
           type: array
-          maxItems: 100
+          maxItems: 5000
           items:
             type: object
             additionalProperties: false
             required: [text, startMs, endMs]
             properties:
               text: {type: string, minLength: 1, maxLength: 500}
-              startMs: {type: integer, minimum: 0, maximum: 59999}
-              endMs: {type: integer, minimum: 1, maximum: 60000}
+              startMs: {type: integer, minimum: 0, maximum: 599999}
+              endMs: {type: integer, minimum: 1, maximum: 600000}
         shots:
           type: array
           minItems: 1
-          maxItems: 12
+          maxItems: 120
           items:
             type: object
             additionalProperties: false
@@ -10720,19 +11156,19 @@ components:
                 type: integer
                 minimum: 100
                 maximum: 600000
-                description: 取源时长；省略时取素材剩余长度；成片时长按速度换算并受60秒总限约束
+                description: 取源时长；省略时取素材剩余长度；成片时长按速度换算并受当前服务端成片预算约束
               speed: {type: number, minimum: 0.5, maximum: 2, default: 1}
               fadeMs: {type: integer, minimum: 0, maximum: 500, default: 0, description: 每镜开头及结尾的淡黑时长，不重叠镜头}
               lines:
                 type: array
-                maxItems: 30
+                maxItems: 600
                 items:
                   type: object
                   additionalProperties: false
                   required: [audioVersionId]
                   properties:
                     audioVersionId: {type: string, format: uuid}
-                    startMs: {type: integer, minimum: 0, maximum: 59999, description: 可选镜内锚点；省略时依声音活动自动排布}
+                    startMs: {type: integer, minimum: 0, maximum: 599999, description: 可选镜内锚点；省略时依声音活动自动排布}
     RunAudioTrimRequest:
       type: object
       additionalProperties: false
@@ -11048,10 +11484,11 @@ components:
           description: 仅 DIRECTOR_3D 必填；保存到结果版本的 frozenInput.directorScene，用于重新打开导演台。
         content: {$ref: "#/components/schemas/WritableArtifactContent"}
     DirectorScene:
-      description: 新场景使用 v2 三轴缩放；v1 统一缩放场景保留原样提交与重放，不改写既有版本。
+      description: 新场景使用 v3 三轴缩放与有界相机运镜；v1/v2 保留原样提交与重放，不改写既有版本。
       oneOf:
         - {$ref: "#/components/schemas/DirectorSceneV1"}
         - {$ref: "#/components/schemas/DirectorSceneV2"}
+        - {$ref: "#/components/schemas/DirectorSceneV3"}
     DirectorSceneV1:
       type: object
       additionalProperties: false
@@ -11076,6 +11513,43 @@ components:
           type: array
           maxItems: 32
           items: {$ref: "#/components/schemas/DirectorObjectV2"}
+    DirectorSceneV3:
+      type: object
+      additionalProperties: false
+      required: [schemaVersion, aspectRatio, camera, objects, motion]
+      properties:
+        schemaVersion: {type: integer, enum: [3]}
+        aspectRatio: {type: string, enum: ["16:9", "9:16", "1:1", "4:3"]}
+        camera: {$ref: "#/components/schemas/DirectorCamera"}
+        objects:
+          type: array
+          maxItems: 32
+          items: {$ref: "#/components/schemas/DirectorObjectV2"}
+        motion: {$ref: "#/components/schemas/DirectorCameraMotion"}
+    DirectorCameraMotion:
+      type: object
+      additionalProperties: false
+      required: [durationSeconds, keyframes]
+      description: 本地真实 3D 摄影机预演。关键帧 ID 唯一，时间严格递增且不超过 durationSeconds；首尾之外保持端点机位。不是 Provider 视频轨迹输入。
+      properties:
+        durationSeconds: {type: number, minimum: 1, maximum: 120}
+        keyframes:
+          type: array
+          maxItems: 24
+          items: {$ref: "#/components/schemas/DirectorCameraKeyframe"}
+    DirectorCameraKeyframe:
+      type: object
+      additionalProperties: false
+      required: [id, name, timeSeconds, transition, camera]
+      properties:
+        id: {type: string, minLength: 1, maxLength: 64, pattern: '\S'}
+        name: {type: string, minLength: 1, maxLength: 80, pattern: '\S'}
+        timeSeconds: {type: number, minimum: 0, maximum: 120}
+        transition:
+          type: string
+          enum: [LINEAR, SMOOTH, CUT]
+          description: 到达此机位的过渡。SMOOTH 为 smoothstep；CUT 在目标时刻切换；方位角走最短弧，长弧通过中间关键帧表达。
+        camera: {$ref: "#/components/schemas/DirectorCamera"}
     DirectorCamera:
       type: object
       additionalProperties: false
@@ -11686,7 +12160,7 @@ components:
         settings: {$ref: "#/components/schemas/FixedMediaAdapterSettings"}
     TaskKind:
       type: string
-      enum: [AGENT_TURN, TEXT_GENERATION, IMAGE_GENERATION, VIDEO_GENERATION, AUDIO_GENERATION]
+      enum: [AGENT_TURN, TEXT_GENERATION, IMAGE_GENERATION, VIDEO_GENERATION, AUDIO_GENERATION, SUBTITLE_TRANSCRIPTION]
     TaskStatus:
       type: string
       enum: [READY, RUNNING, SUBMITTING, WAITING_PROVIDER, UNKNOWN, BLOCKED, SUCCEEDED, FAILED, CANCELED]
@@ -11742,10 +12216,17 @@ components:
             内部上下文压缩完成时 contextCompacted=true；不包含 assistantText、assistantStream 或交接摘要正文。
             媒体故障或恢复中可包含有界 providerFailure 诊断；成功后使用实际归档结果，不保留旧故障正文。
             TEXT_GENERATION 的 IMAGE_REVERSE_PROMPT 用途成功时返回 prompt、sourceVersionId、mock；schema 5 另有 artifactId、artifactVersionId 及 canvasItemId（已删除项目省略节点 ID），schema 3 保持结果文本而不补卡；VIDEO_PROMPT_OPTIMIZATION 仅返回 prompt、mock，其他状态 output=null；不返回请求、模型完整响应或私有推理。
+            SUBTITLE_TRANSCRIPTION 成功时返回固定 subtitleId/sourceVersionId、sourceDurationMs、language、可校正 cues、draft=true 和 applied；applied=false 表示识别期间人工校正或任务身份已改变，原识别结果保留而不覆盖草稿。
           oneOf:
             - type: object
               additionalProperties: true
               properties:
+                subtitleId: {type: string, format: uuid}
+                sourceDurationMs: {type: integer, minimum: 1, maximum: 600000}
+                language: {type: string, pattern: '^(auto|[a-z]{2,3})$'}
+                cues: {type: array, maxItems: 5000, items: {$ref: "#/components/schemas/SubtitleCue"}}
+                applied: {type: boolean, description: Only true when the unchanged pinned subtitle draft received the recognition result}
+                draft: {type: boolean, const: true, description: Recognition output requires human review}
                 prompt: {type: string, description: 反推或优化的原始提示词；文字卡片的后续编辑从产物版本读取。}
                 sourceVersionId: {type: string, format: uuid, description: 反推时固定的来源图片版本。}
                 mock: {type: boolean}

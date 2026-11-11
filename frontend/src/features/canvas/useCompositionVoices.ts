@@ -16,7 +16,7 @@ export function useCompositionVoices(projectId: string, shots: VideoCompositionR
   useEffect(() => { const timer = window.setTimeout(() => setSettled(payload), 350); return () => window.clearTimeout(timer); }, [payload]);
   const plan = useQuery({ queryKey: ['video-composition-preview', projectId, settled],
     queryFn: ({ signal }) => previewVideoComposition(projectId, { title: 'Preview', originalAudioMode: 'MUTE', shots: JSON.parse(settled) as VideoCompositionRequest['shots'] }, signal),
-    enabled: enabled && payload === settled, staleTime: 30_000, retry: false, refetchOnWindowFocus: false,
+    enabled: enabled && payload === settled, staleTime: 30_000, gcTime: 0, retry: false, refetchOnWindowFocus: false,
   });
   const current = enabled && payload === settled;
   const voices: CompositionVoice[] = hasVoices && current && plan.data ? plan.data.shots.flatMap((shot, shotIndex) => shot.lines.flatMap((line, index) => {
@@ -26,5 +26,6 @@ export function useCompositionVoices(projectId: string, shots: VideoCompositionR
       endMs: shot.timelineStartMs + line.endMs, trimStartMs: line.trimStartMs, speed: line.speed }] : [];
   })) : [];
   return { voices, pending: enabled && (!current || plan.isPending || plan.isFetching), error: current ? plan.error : null,
-    blocked: !current || plan.isPending || !!plan.error, retry: plan.refetch, fontFamily: plan.data?.fontFamily };
+    blocked: !current || plan.isPending || !!plan.error, retry: plan.refetch, fontFamily: plan.data?.fontFamily,
+    plan: current ? plan.data : undefined };
 }

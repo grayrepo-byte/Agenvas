@@ -144,6 +144,22 @@ try {
       assert.equal(outline.background, 'rgba(0, 0, 0, 0)', `Transparent outline ${id}`);
       assert.equal(outline.shadow, 'none', `No stacked outline shadow ${id}`);
     }
+    const quietActions = await page(() => {
+      const primary = document.getElementById("control-button");
+      const secondary = document.querySelector('[data-ui-button][data-variant="secondary"]');
+      const selectedTab = document.querySelector('[data-slot="tabs-trigger"][data-state="active"]');
+      return {
+        primaryShadow: getComputedStyle(primary).boxShadow,
+        secondaryShadow: getComputedStyle(secondary).boxShadow,
+        tabShadow: getComputedStyle(selectedTab).boxShadow,
+        primaryColor: getComputedStyle(primary).color,
+        primaryBackground: getComputedStyle(primary).backgroundColor,
+      };
+    });
+    assert.equal(quietActions.primaryShadow, "none", "Primary action stays flat");
+    assert.equal(quietActions.secondaryShadow, "none", "Secondary action has no raised shadow");
+    assert.equal(quietActions.tabShadow, "none", "Selected tabs do not create nested raised cards");
+    assert.notEqual(quietActions.primaryColor, quietActions.primaryBackground, "Primary label retains its distinct foreground");
     const mediaAppearance = () => [...document.querySelectorAll('[data-variant="media-overlay"]')].map((button) => {
       const style = getComputedStyle(button), icon = getComputedStyle(button.querySelector("svg"));
       return { width: button.offsetWidth, height: button.offsetHeight, background: style.backgroundColor,

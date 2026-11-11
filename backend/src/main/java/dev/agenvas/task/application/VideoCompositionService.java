@@ -8,6 +8,8 @@ import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.provider.application.MediaCapabilityService;
+import dev.agenvas.provider.application.VideoCompositionLimits;
+import dev.agenvas.provider.application.LocalVideoCompositionProcessor;
 import dev.agenvas.shared.crypto.Sha256;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.i18n.ApiMessage;
@@ -29,7 +31,7 @@ import tools.jackson.databind.node.ObjectNode;
 @Service
 public class VideoCompositionService {
     public static final UUID CAPABILITY_ID = UUID.fromString("00000000-0000-4000-8000-000000000205");
-    public static final int MAX_DURATION_MS = 60_000;
+    private final VideoCompositionLimits limits;
     private final TaskRepository tasks;
     private final ArtifactService artifacts;
     private final AssetService assets;
@@ -41,15 +43,16 @@ public class VideoCompositionService {
     private final UsageService usage;
     private final ObjectMapper mapper;
     private final Clock clock;
-    private final dev.agenvas.provider.application.LocalVideoCompositionProcessor processor;
+    private final LocalVideoCompositionProcessor processor;
 
     public VideoCompositionService(TaskRepository tasks, ArtifactService artifacts, AssetService assets,
             CanvasService canvas, MediaDraftService drafts, ProjectService projects,
             MediaCapabilityService catalog, ProjectEventService events, UsageService usage,
-            ObjectMapper mapper, Clock clock, dev.agenvas.provider.application.LocalVideoCompositionProcessor processor) {
+            ObjectMapper mapper, Clock clock, LocalVideoCompositionProcessor processor,
+            VideoCompositionLimits limits) {
         this.tasks = tasks; this.artifacts = artifacts; this.assets = assets; this.canvas = canvas;
         this.drafts = drafts; this.projects = projects; this.catalog = catalog; this.events = events;
-        this.usage = usage; this.mapper = mapper; this.clock = clock; this.processor = processor;
+        this.usage = usage; this.mapper = mapper; this.clock = clock; this.processor = processor; this.limits = limits;
     }
 
     public Task run(UUID owner, UUID project, JsonNode request, String commandKey) {
@@ -131,8 +134,24 @@ public class VideoCompositionService {
         return processor.preview(owner, project, prepared.composition(), prepared.frozen());
     }
 
+    /** Only public budget values are returned; local scratch paths never reach the browser. */
+    public JsonNode capabilities(UUID owner, UUID project) {
+        projects.requireActiveProject(owner, project);
+        var result = mapper.createObjectNode().put("maxDurationMs", limits.maxDurationMs())
+                .put("maxFrames", limits.maxFrames()).put("maxShots", limits.maxShots()).put("maxLines", limits.maxLines())
+                .put("maxSubtitles", limits.maxSubtitles()).put("maxSourceDurationMs", 600_000)
+                .put("maxSourceBytes", limits.maxSourceBytes()).put("maxOutputBytes", limits.maxOutputBytes())
+                .put("frameRate", 30).put("timeoutSeconds", limits.timeout().toMillis() / 1000.0);
+        result.set("resolutions", mapper.valueToTree(limits.resolutions()));
+        return result;
+    }
+
     private record Prepared(ObjectNode composition, ObjectNode frozen, int durationMs) {}
     private Prepared prepare(UUID owner, UUID project, ObjectNode request) {
+        if (request.path("shots").size() > limits.maxShots()
+                || request.path("shots").valueStream().mapToLong(shot -> shot.path("lines").size()).sum() > limits.maxLines()
+                || request.path("subtitles").size() > limits.maxSubtitles()
+                || !limits.resolutions().contains(request.path("output").path("resolution").asText("720P"))) throw invalid();
         ObjectNode composition = request.deepCopy();
         ObjectNode frozen = mapper.createObjectNode();
         frozen.put("mode", "GENERAL_REFERENCE").put("prompt", request.path("rationale").asText())
@@ -155,7 +174,7 @@ public class VideoCompositionService {
             if (shot.path("fadeMs").asInt() * 2 > outputLength) throw invalid();
             totalFrames += outputFrames;
             duration = totalFrames * 1000 / 30;
-            if (duration > MAX_DURATION_MS) throw invalid();
+            if (duration > limits.maxDurationMs()) throw invalid();
             for (JsonNode line : shot.path("lines")) {
                 source(owner, project, uuid(line, "audioVersionId"), Artifact.Kind.AUDIO,
                         audios, seenAudios, seenAssets, bytes);
@@ -179,8 +198,9 @@ public class VideoCompositionService {
         if (artifacts.get(owner, project, version.artifactId()).artifact().archivedAt() != null) throw invalid();
         var asset = assets.metadata(owner, project, UUID.fromString(version.content().path("assetId").asText()));
         if (asset.durationMs() == null || asset.durationMs() < 1 || asset.durationMs() > 600_000) throw invalid();
-        if (seenAssets.add(asset.id())) bytes[0] += asset.byteSize();
-        if (bytes[0] > 1024L * 1024 * 1024) throw invalid();
+        if (asset.byteSize() < 1) throw invalid();
+        if (seenAssets.add(asset.id())) bytes[0] = Math.addExact(bytes[0], asset.byteSize());
+        if (bytes[0] > limits.maxSourceBytes()) throw invalid();
         if (seen.add(versionId)) refs.addObject().put("versionId", versionId.toString()).put("artifactId", version.artifactId().toString())
                 .put("role", kind == Artifact.Kind.VIDEO ? "VIDEO_REFERENCE" : "AUDIO_REFERENCE").put("order", refs.size() - 1);
         return asset;
@@ -193,7 +213,7 @@ public class VideoCompositionService {
         String mode = raw.has("originalAudioMode") ? string(raw, "originalAudioMode", 20, true) : "MUTE";
         if (!Set.of("MUTE", "BACKGROUND", "KEEP").contains(mode)) throw invalid();
         JsonNode shots = raw.path("shots");
-        if (!shots.isArray() || shots.isEmpty() || shots.size() > 12) throw invalid();
+        if (!shots.isArray() || shots.isEmpty() || shots.size() > VideoCompositionLimits.SHOT_CEILING) throw invalid();
         ObjectNode request = mapper.createObjectNode().put("title", title).put("rationale", rationale).put("originalAudioMode", mode);
         ArrayNode output = request.putArray("shots"); int lines = 0;
         for (JsonNode shot : shots) {
@@ -203,12 +223,12 @@ public class VideoCompositionService {
             if (shot.has("durationMs")) target.put("durationMs", integer(shot, "durationMs", 100, 600_000));
             double speed = shot.has("speed") ? number(shot, "speed", 0.5, 2) : 1;
             target.put("speed", speed).put("fadeMs", shot.has("fadeMs") ? integer(shot, "fadeMs", 0, 500) : 0);
-            if (!shot.path("lines").isArray() || (lines += shot.path("lines").size()) > 30) throw invalid();
+            if (!shot.path("lines").isArray() || (lines += shot.path("lines").size()) > VideoCompositionLimits.LINE_CEILING) throw invalid();
             ArrayNode targetLines = target.putArray("lines");
             for (JsonNode line : shot.path("lines")) {
                 fields(line, Set.of("audioVersionId", "startMs"));
                 ObjectNode item = targetLines.addObject().put("audioVersionId", uuid(line, "audioVersionId").toString());
-                if (line.has("startMs")) item.put("startMs", integer(line, "startMs", 0, MAX_DURATION_MS - 1));
+                if (line.has("startMs")) item.put("startMs", integer(line, "startMs", 0, VideoCompositionLimits.DURATION_CEILING_MS - 1));
             }
         }
         if (raw.has("output")) {
@@ -216,7 +236,7 @@ public class VideoCompositionService {
             fields(config, Set.of("resolution", "aspectRatio"));
             String resolution = config.has("resolution") ? string(config, "resolution", 5, true) : "720P";
             String aspect = config.has("aspectRatio") ? string(config, "aspectRatio", 5, true) : "16:9";
-            if (!Set.of("720P", "1080P").contains(resolution) || !Set.of("16:9", "9:16", "1:1").contains(aspect)) throw invalid();
+            if (!Set.of("720P", "1080P", "2160P").contains(resolution) || !Set.of("16:9", "9:16", "1:1").contains(aspect)) throw invalid();
             request.putObject("output").put("resolution", resolution).put("aspectRatio", aspect);
         }
         if (raw.has("music")) {
@@ -227,12 +247,12 @@ public class VideoCompositionService {
                     .put("volume", music.has("volume") ? number(music, "volume", 0, 1) : 0.2);
         }
         if (raw.has("subtitles")) {
-            if (!raw.path("subtitles").isArray() || raw.path("subtitles").size() > 100) throw invalid();
+            if (!raw.path("subtitles").isArray() || raw.path("subtitles").size() > VideoCompositionLimits.SUBTITLE_CEILING) throw invalid();
             ArrayNode captions = request.putArray("subtitles");
             for (JsonNode subtitle : raw.path("subtitles")) {
                 fields(subtitle, Set.of("text", "startMs", "endMs"));
-                int start = integer(subtitle, "startMs", 0, MAX_DURATION_MS - 1);
-                int end = integer(subtitle, "endMs", 1, MAX_DURATION_MS);
+                int start = integer(subtitle, "startMs", 0, VideoCompositionLimits.DURATION_CEILING_MS - 1);
+                int end = integer(subtitle, "endMs", 1, VideoCompositionLimits.DURATION_CEILING_MS);
                 if (end <= start) throw invalid();
                 String text = string(subtitle, "text", 500, true);
                 if (text.codePoints().anyMatch(c -> Character.isISOControl(c) && c != '\n')) throw invalid();

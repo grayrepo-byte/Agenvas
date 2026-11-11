@@ -7,9 +7,14 @@ import { createQueryClient } from "../../app/queryClient";
 import { clickControl,changeControl } from "../../test/controls";
 import { imageFunctionsFixture,imageFunctionSettings } from "../../test/imageFunctionsFixture";
 import { server } from "../../test/server";
+import { DirectorVideoExportError } from "./directorVideoExport";
 import { DirectorWorkbench } from "./DirectorWorkbench";
 import { createDirectorScene,type DirectorObject,type DirectorScene } from "./directorScene";
 
+const video = vi.hoisted(() => ({ export: vi.fn() }));
+vi.mock("./directorVideoExport", async (importOriginal) => ({
+  ...await importOriginal<typeof import("./directorVideoExport")>(), exportDirectorVideo: video.export,
+}));
 const viewport = vi.hoisted(() => ({ captures: vi.fn(), fail: false,
   objectChange: null as ((id: string, object: DirectorObject) => void) | null,
   selectCamera: null as (() => void) | null }));
@@ -54,6 +59,7 @@ function mockUpload() {
 
 describe("DirectorWorkbench", () => {
   beforeEach(() => {
+    video.export.mockReset();
     viewport.captures.mockClear(); viewport.fail = false; viewport.objectChange = null; viewport.selectCamera = null; props.onClose.mockClear();
     server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })));
   });
@@ -87,6 +93,188 @@ describe("DirectorWorkbench", () => {
     expect(requests[0]).toMatchObject({ purpose: "DIRECTOR_3D", expectedVersion: 2, sourceVersionId: "version-1",
       directorScene: expectedScene, content: { sourceType: "UPLOAD", assetId: "capture-asset" } });
     expect(uploads()).toBe(1); expect(viewport.captures).toHaveBeenCalledOnce();
+  });
+
+  it("plays and seeks real camera poses without modifying saved keys; pause, replay and unmount release the clock", async () => {
+    const frames = new Map<number, FrameRequestCallback>(); let nextFrame = 0;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((fn) => { const id = ++nextFrame; frames.set(id, fn); return id; });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => { frames.delete(id); });
+    const tick = (time: number) => act(() => { const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach((fn) => fn(time)); });
+    const initial = createDirectorScene();
+    initial.motion = { durationSeconds: 1, keyframes: [
+      { id: "first", name: "Front", timeSeconds: 0, transition: "LINEAR", camera: { ...initial.camera, azimuth: 0 } },
+      { id: "last", name: "Side", timeSeconds: 1, transition: "LINEAR", camera: { ...initial.camera, azimuth: 90 } },
+    ] };
+    const original = structuredClone(initial);
+    const { view } = show({ initialScene: initial });
+    const readScene = (): DirectorScene => JSON.parse(screen.getByLabelText("scene-state").textContent ?? "null");
+    await clickControl(screen.getByRole("tab", { name: "运镜" }));
+    await clickControl(screen.getByRole("button", { name: "播放" }));
+    tick(1000); tick(1500);
+    expect(readScene().camera.azimuth).toBe(45);
+    expect(readScene().motion).toEqual(original.motion);
+    expect(screen.getByRole("button", { name: "拍摄到画布" })).toBeDisabled();
+    await clickControl(screen.getByRole("button", { name: "暂停" }));
+    expect(frames.size).toBe(0);
+    await clickControl(screen.getByRole("button", { name: "播放" }));
+    tick(2000); tick(2500);
+    expect(readScene().camera.azimuth).toBe(90);
+    expect(screen.getByRole("button", { name: "播放" })).toBeEnabled();
+    expect(frames.size).toBe(0);
+    await clickControl(screen.getByRole("button", { name: "播放" }));
+    tick(3000);
+    expect(readScene().camera.azimuth).toBe(0);
+    view.unmount();
+    expect(frames.size).toBe(0);
+    expect(initial).toEqual(original);
+    const reopened = show({ initialScene: original });
+    await clickControl(screen.getByRole("tab", { name: "运镜" }));
+    expect(screen.getByRole("button", { name: "播放" })).toBeEnabled();
+    const restoredPose = readScene().camera;
+    tick(4000); tick(9000);
+    expect(readScene().camera).toEqual(restoredPose);
+    await clickControl(screen.getByRole("button", { name: "播放" }));
+    tick(10000);
+    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+    fireEvent(document, new Event("visibilitychange"));
+    expect(screen.getByRole("button", { name: "播放" })).toBeEnabled();
+    hidden.mockRestore();
+    reopened.view.unmount();
+  });
+
+  it("records named cameras, edits their timing, and freezes the sampled PNG pose with its complete track on save", async () => {
+    let requestBody: unknown; mockUpload();
+    server.use(http.post("/api/v1/projects/project-1/canvas-items/item-1/upload-version", async ({ request }) => {
+      requestBody = await request.json(); return HttpResponse.json({ id: "motion-node" });
+    }));
+    show();
+    const readScene = (): DirectorScene => JSON.parse(screen.getByLabelText("scene-state").textContent ?? "null");
+    await clickControl(screen.getByRole("tab", { name: "运镜" }));
+    await clickControl(screen.getByRole("button", { name: "记录当前机位" }));
+    expect(readScene().motion.keyframes).toHaveLength(1);
+    fireEvent.keyDown(screen.getByRole("slider", { name: "运镜预览位置" }), { key: "End" });
+    await clickControl(screen.getByRole("tab", { name: "摄影机" }));
+    await changeControl(screen.getByRole("spinbutton", { name: "水平角度 (°)" }), { target: { value: "90" } });
+    await clickControl(screen.getByRole("tab", { name: "运镜" }));
+    await clickControl(screen.getByRole("button", { name: "记录当前机位" }));
+    await changeControl(screen.getByLabelText("机位名称"), { target: { value: "Side shot" } });
+    expect(readScene().motion.keyframes.map((frame) => [frame.name, frame.timeSeconds, frame.camera.azimuth]))
+      .toEqual([["机位 1", 0, 25], ["Side shot", 5, 90]]);
+    await changeControl(screen.getByRole("spinbutton", { name: "时长 (秒)" }), { target: { value: "10" } });
+    expect(readScene().motion.keyframes[1]?.timeSeconds).toBe(10);
+    await changeControl(screen.getByRole("spinbutton", { name: "关键帧时间 (秒)" }), { target: { value: "8" } });
+    await clickControl(screen.getByRole("tab", { name: "摄影机" }));
+    await changeControl(screen.getByRole("spinbutton", { name: "水平角度 (°)" }), { target: { value: "120" } });
+    await clickControl(screen.getByRole("tab", { name: "运镜" }));
+    await clickControl(screen.getByRole("button", { name: "更新为当前摄影机" }));
+    expect(readScene().motion.keyframes[1]).toMatchObject({ timeSeconds: 8, camera: { azimuth: 120 } });
+    await clickControl(screen.getByRole("radio", { name: "Side shot (8.00s)" }));
+    const expected = readScene();
+    await clickControl(screen.getByRole("button", { name: "拍摄到画布" }));
+    await waitFor(() => expect(requestBody).toMatchObject({ directorScene: expected }));
+    expect(props.onClose).toHaveBeenCalledOnce();
+  });
+
+  it("makes seeking after a failed capture an explicit new photo instead of reusing the previous pose", async () => {
+    const initial = createDirectorScene();
+    initial.motion = { durationSeconds: 5, keyframes: [
+      { id: "a", name: "A", timeSeconds: 0, transition: "LINEAR", camera: initial.camera },
+      { id: "b", name: "B", timeSeconds: 5, transition: "LINEAR", camera: { ...initial.camera, azimuth: 90 } },
+    ] };
+    const requests: { targetItemId: string; directorScene: DirectorScene }[] = []; mockUpload();
+    server.use(http.post("/api/v1/projects/project-1/canvas-items/item-1/upload-version", async ({ request }) => {
+      requests.push(await request.json() as typeof requests[number]);
+      return requests.length === 1 ? HttpResponse.json({ detail: "Synthetic response loss" }, { status: 503 }) : HttpResponse.json({ id: "new-photo" });
+    }));
+    show({ initialScene: initial });
+    await clickControl(screen.getByRole("button", { name: "拍摄到画布" }));
+    await screen.findByRole("button", { name: "重试保存" });
+    await clickControl(screen.getByRole("tab", { name: "运镜" }));
+    fireEvent.keyDown(screen.getByRole("slider", { name: "运镜预览位置" }), { key: "End" });
+    await clickControl(screen.getByRole("button", { name: "拍摄到画布" }));
+    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(requests[1]!.targetItemId).not.toBe(requests[0]!.targetItemId);
+    expect(requests.map((request) => request.directorScene.camera.azimuth)).toEqual([25, 90]);
+    expect(viewport.captures).toHaveBeenCalledTimes(2);
+  });
+
+  it("edits subjects from the sampled camera, recalls a selected camera again, and resets an emptied take", async () => {
+    const initial = createDirectorScene();
+    initial.motion = { durationSeconds: 5, keyframes: [
+      { id: "a", name: "Front", timeSeconds: 0, transition: "LINEAR", camera: { ...initial.camera, azimuth: 0 } },
+      { id: "b", name: "Side", timeSeconds: 5, transition: "SMOOTH", camera: { ...initial.camera, azimuth: 90 } },
+    ] };
+    show({ initialScene: initial });
+    const readScene = (): DirectorScene => JSON.parse(screen.getByLabelText("scene-state").textContent ?? "null");
+    await clickControl(screen.getByRole("tab", { name: "运镜" }));
+    await clickControl(screen.getByRole("radio", { name: "Side (5.00s)" }));
+    const actor = initial.objects[0]!;
+    act(() => viewport.objectChange?.(actor.id, { ...actor, position: { x: 2, y: 0, z: 0 } }));
+    expect(readScene().camera.azimuth).toBe(90);
+    expect(readScene().objects[0]?.position.x).toBe(2);
+    await clickControl(screen.getByRole("tab", { name: "摄影机" }));
+    await changeControl(screen.getByRole("spinbutton", { name: "水平角度 (°)" }), { target: { value: "120" } });
+    await clickControl(screen.getByRole("tab", { name: "运镜" }));
+    await clickControl(screen.getByRole("radio", { name: "Side (5.00s)" }));
+    expect(readScene().camera.azimuth).toBe(90);
+    await clickControl(screen.getByRole("button", { name: "删除关键帧" }));
+    await clickControl(screen.getByRole("radio", { name: "Front (0.00s)" }));
+    await clickControl(screen.getByRole("button", { name: "删除关键帧" }));
+    expect(readScene().motion.keyframes).toEqual([]);
+    await clickControl(screen.getByRole("button", { name: "记录当前机位" }));
+    expect(readScene().motion.keyframes[0]).toMatchObject({ timeSeconds: 0, camera: { azimuth: 0 } });
+  });
+
+  it("keeps video export local, reports progress and cancellation, and releases an export on close or unmount", async () => {
+    const initial = createDirectorScene();
+    initial.motion.keyframes = [
+      { id: "a", name: "A", timeSeconds: 0, transition: "LINEAR", camera: initial.camera },
+      { id: "b", name: "B", timeSeconds: 5, transition: "LINEAR", camera: { ...initial.camera, azimuth: 90 } },
+    ];
+    const signals: AbortSignal[] = [];
+    video.export.mockImplementation((_scene: DirectorScene, options: { signal: AbortSignal; onProgress: (percent: number) => void }) => {
+      signals.push(options.signal); options.onProgress(25);
+      return new Promise<File>((_resolve, reject) => options.signal.addEventListener("abort", () => reject(new DirectorVideoExportError("CANCELLED"))));
+    });
+    const { view } = show({ initialScene: initial });
+    await clickControl(screen.getByRole("tab", { name: "运镜" }));
+    const state = screen.getByLabelText("scene-state").textContent;
+    await clickControl(screen.getByRole("button", { name: "导出参考视频（WebM）" }));
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "25");
+    expect(screen.getByRole("button", { name: "拍摄到画布" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "关闭" })).toBeEnabled();
+    await clickControl(screen.getByRole("button", { name: "取消视频导出" }));
+    await screen.findByText("已取消视频导出。");
+    expect(signals[0]!.aborted).toBe(true);
+    expect(screen.getByLabelText("scene-state").textContent).toBe(state);
+    await clickControl(screen.getByRole("button", { name: "导出参考视频（WebM）" }));
+    await clickControl(screen.getByRole("button", { name: "关闭" }));
+    expect(signals[1]!.aborted).toBe(true); expect(props.onClose).toHaveBeenCalledOnce();
+    await screen.findByText("已取消视频导出。");
+    await clickControl(screen.getByRole("button", { name: "导出参考视频（WebM）" }));
+    view.unmount(); expect(signals[2]!.aborted).toBe(true);
+  });
+
+  it("reports unsupported video export and allows a successful retry to download and revoke its local URL", async () => {
+    const initial = createDirectorScene();
+    initial.motion.keyframes = [
+      { id: "a", name: "A", timeSeconds: 0, transition: "LINEAR", camera: initial.camera },
+      { id: "b", name: "B", timeSeconds: 5, transition: "LINEAR", camera: { ...initial.camera, azimuth: 90 } },
+    ];
+    video.export.mockRejectedValueOnce(new DirectorVideoExportError("UNSUPPORTED"));
+    show({ initialScene: initial });
+    await clickControl(screen.getByRole("tab", { name: "运镜" }));
+    await clickControl(screen.getByRole("button", { name: "导出参考视频（WebM）" }));
+    await screen.findByText(/此浏览器不支持本地 WebM 导出/);
+    const url = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:synthetic-webm");
+    const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const download = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    video.export.mockResolvedValueOnce(new File(["synthetic webm"], "director-motion-reference.webm", { type: "video/webm" }));
+    await clickControl(screen.getByRole("button", { name: "导出参考视频（WebM）" }));
+    await screen.findByText("参考视频已下载。");
+    expect(url).toHaveBeenCalledOnce(); expect(download).toHaveBeenCalledOnce();
+    await waitFor(() => expect(revoke).toHaveBeenCalledWith("blob:synthetic-webm"));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("pins the source across refresh and retains scene changes on CAS conflict", async () => {
@@ -269,7 +457,8 @@ describe("DirectorWorkbench", () => {
 
   it("opens a legacy uniform scene with equivalent axes and closes without inventing unsaved changes", async () => {
     const initial = createDirectorScene();
-    const legacy = { ...initial, schemaVersion: 1, objects: initial.objects.map((object) => ({ ...object, scale: 1.6 })) };
+    const old: Partial<DirectorScene> = structuredClone(initial); delete old.motion;
+    const legacy = { ...old, schemaVersion: 1, objects: initial.objects.map((object) => ({ ...object, scale: 1.6 })) };
     show({ initialScene: legacy });
     await clickControl(screen.getByRole("tab", { name: "物体" }));
     for (const label of ["宽 X (倍)", "高 Y (倍)", "深 Z (倍)"]) expect(screen.getByRole("spinbutton", { name: label })).toHaveValue(1.6);

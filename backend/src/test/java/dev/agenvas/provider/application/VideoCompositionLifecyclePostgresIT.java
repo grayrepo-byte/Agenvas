@@ -169,7 +169,9 @@ class VideoCompositionLifecyclePostgresIT {
         Fixture fixture = fixture();
         Task accepted = compositions.run(owner.userId(), fixture.project(), request(fixture), "renderer-cancel");
         CountDownLatch entered = new CountDownLatch(1), proceed = new CountDownLatch(1);
+        var scratch = new java.util.concurrent.atomic.AtomicReference<Path>();
         doAnswer(invocation -> {
+            scratch.set(invocation.getArgument(2));
             entered.countDown();
             if (!proceed.await(20, TimeUnit.SECONDS)) throw new IllegalStateException("Test renderer gate timed out");
             return invocation.callRealMethod();
@@ -185,8 +187,31 @@ class VideoCompositionLifecyclePostgresIT {
         Task completed = tasks.get(owner.userId(), fixture.project(), accepted.id());
         assertThat(completed.status()).isEqualTo(Task.Status.CANCELED);
         assertThat(completed.output()).isNull();
+        assertThat(scratch.get()).isNotNull();
+        assertThat(Files.exists(scratch.get())).isFalse();
         assertThat(usage.listProject(owner.userId(), fixture.project())).filteredOn(e -> e.taskId().equals(accepted.id()))
                 .extracting(UsageEntry::entryType).contains(UsageEntry.EntryType.RELEASE);
+    }
+
+    @Test void resourceAndTimeoutFailuresRemovePrivateScratchAndDoNotArchivePartialResults() throws Exception {
+        for (boolean timeout : List.of(false, true)) {
+            Fixture fixture = fixture();
+            Task accepted = compositions.run(owner.userId(), fixture.project(), request(fixture), "resource-failure");
+            var scratch = new java.util.concurrent.atomic.AtomicReference<Path>();
+            doAnswer(invocation -> {
+                Path path = invocation.getArgument(2); scratch.set(path);
+                Files.write(path.resolve("partial.f32"), new byte[4096]);
+                if (timeout) throw new MediaToolRunner.MediaToolException("Composition timed out", false, null);
+                throw new IllegalStateException("Composition scratch bound exceeded");
+            }).when(renderer).render(any(), any(), any(), any(), any());
+            assertThat(worker.submitOnce("resource-failure-worker")).isEqualTo(1);
+            var failed = tasks.get(owner.userId(), fixture.project(), accepted.id());
+            assertThat(failed.status()).isEqualTo(Task.Status.FAILED);
+            assertThat(failed.errorCode()).isEqualTo(timeout ? "LOCAL_VIDEO_COMPOSITION_TIMEOUT" : "LOCAL_VIDEO_COMPOSITION_FAILED");
+            assertThat(failed.output()).isNull();
+            assertThat(Files.exists(scratch.get())).isFalse();
+            assertThat(artifacts.get(owner.userId(), fixture.project(), UUID.fromString(accepted.input().path("artifactId").asText())).resourceDefaultVersion()).isNull();
+        }
     }
 
     @Test void explicitRetryOfDirectorCompositionHasZeroCostAndNewUserIdentity() throws Exception {

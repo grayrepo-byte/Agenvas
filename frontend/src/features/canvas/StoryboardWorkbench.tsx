@@ -118,7 +118,7 @@ function ProductionEditor({ projectId, role, production, items, review, disabled
     {!production && onPrepare ? <Button variant="outline" size="sm" disabled={disabled || preparing} onClick={onPrepare}>{t(preparing ? "storyboard.preparingNode" : "storyboard.prepareProduction", { "0": t(ROLE_KEYS[role]) })}</Button> : null}
     {history.error ? <ReadError error={history.error} retry={() => void history.refetch()} /> : null}
     {item ? <div className="storyboard-inline">
-      <Button variant="outline" size="sm" disabled={disabled} onClick={() => onOpenNode(item)}>{t("storyboard.openNode")}</Button>
+      <Button variant="ghost" size="sm" disabled={disabled} onClick={() => onOpenNode(item)}>{t("storyboard.openNode")}</Button>
       <Button variant="ghost" size="sm" disabled={!selected} onClick={() => setPreview(selected ?? null)}>{t("storyboard.preview")}</Button>
       {review && production ? <Button variant="outline" size="sm" disabled={disabled} onClick={() => onChange({ ...production, confirmReviewed: true })}>{t("storyboard.confirmReview")}</Button> : null}
     </div> : null}
@@ -315,7 +315,7 @@ export function StoryboardWorkbench({ projectId, items, onClose, onOpenNode }: {
       <header className="storyboard-header"><DialogHeader><DialogTitle><FilmStrip aria-hidden />{t("storyboard.title")}</DialogTitle>
         <DialogDescription id="storyboard-description">{t("storyboard.description")}</DialogDescription></DialogHeader>
         <div className="storyboard-inline"><Badge variant="outline">{t(draft?.dirty ? "storyboard.unsaved" : "storyboard.saved")}</Badge>
-          <Button data-storyboard-action="reload" variant="outline" disabled={busy || board.isFetching} onClick={() => draft?.dirty ? setConfirm("reload") : void refresh()}>{t("storyboard.loadLatest")}</Button>
+          <Button data-storyboard-action="reload" variant="ghost" disabled={busy || board.isFetching} onClick={() => draft?.dirty ? setConfirm("reload") : void refresh()}>{t("storyboard.loadLatest")}</Button>
           <Button data-storyboard-action="save" disabled={busy || !draft?.dirty} onClick={() => save.mutate()}>{t(save.isPending ? "storyboard.saving" : "storyboard.save")}</Button>
           <Button data-storyboard-action="close" variant="ghost" size="icon" aria-label={t("ui.dialog.close")} disabled={busy} onClick={() => draft?.dirty ? setConfirm("close") : onClose()}><X /></Button>
         </div></header>
@@ -331,8 +331,8 @@ export function StoryboardWorkbench({ projectId, items, onClose, onOpenNode }: {
         <div className="storyboard-toolbar"><TabsList><TabsTrigger value="shots">{t("storyboard.shots", { "0": shots.length })}</TabsTrigger>
           <TabsTrigger value="approvals">{t("storyboard.approvals", { "0": approvals.data?.items.filter((entry) => entry.status === "PENDING").length ?? 0 })}</TabsTrigger></TabsList>
           <div className="storyboard-inline"><span>{t("storyboard.totalDuration", { "0": shots.reduce((sum, entry) => sum + entry.durationSeconds, 0) })}</span>
-            <Button data-storyboard-action="import" variant="outline" size="sm" disabled={busy} onClick={() => { setImportOpen(true); setImportShots(null); }}>{t("storyboard.import")}</Button>
-            <Button size="sm" disabled={busy || shots.length >= STORYBOARD_MAX_SHOTS} onClick={addShot}><Plus data-icon="inline-start" />{t("storyboard.addShot")}</Button></div>
+            <Button data-storyboard-action="import" variant="ghost" size="sm" disabled={busy} onClick={() => { setImportOpen(true); setImportShots(null); }}>{t("storyboard.import")}</Button>
+            <Button variant="secondary" size="sm" disabled={busy || shots.length >= STORYBOARD_MAX_SHOTS} onClick={addShot}><Plus data-icon="inline-start" />{t("storyboard.addShot")}</Button></div>
         </div>
         <TabsContent value="shots" className="storyboard-shots-tab">
           <div className="storyboard-summary">{(Object.keys(STATUS_KEYS) as ShotStatus[]).map((status) => <span key={status}><Status value={status} /><strong>{statusCounts[status] ?? 0}</strong></span>)}</div>
@@ -349,8 +349,8 @@ export function StoryboardWorkbench({ projectId, items, onClose, onOpenNode }: {
           </aside>
           <div className="storyboard-editor" ref={editorRef}>{shot ? <fieldset disabled={busy} className="storyboard-shot-editor">
             <div className="storyboard-editor-heading"><div><h2>{shot.code} · {shot.title || t("storyboard.untitled")}</h2><Status value={statusOf(shot)} /></div>
-              <div className="storyboard-inline"><Button variant="outline" size="icon-sm" disabled={shots[0]?.id === shot.id} aria-label={t("storyboard.moveUp")} onClick={() => moveShot(-1)}><ArrowUp /></Button>
-                <Button variant="outline" size="icon-sm" disabled={shots.at(-1)?.id === shot.id} aria-label={t("storyboard.moveDown")} onClick={() => moveShot(1)}><CaretDown /></Button>
+              <div className="storyboard-inline"><Button variant="ghost" size="icon-sm" disabled={shots[0]?.id === shot.id} aria-label={t("storyboard.moveUp")} onClick={() => moveShot(-1)}><ArrowUp /></Button>
+                <Button variant="ghost" size="icon-sm" disabled={shots.at(-1)?.id === shot.id} aria-label={t("storyboard.moveDown")} onClick={() => moveShot(1)}><CaretDown /></Button>
                 <Button variant="outline" size="sm" onClick={() => setConfirm("delete")}>{t("storyboard.delete")}</Button></div></div>
             <FieldGroup className="storyboard-creative-fields">
               {(["code", "scene", "title"] as const).map((key) => <Labeled key={key} label={t(`storyboard.field.${key}`)}>{(id) => <Input id={id} value={shot[key]} aria-label={t(`storyboard.field.${key}`)} maxLength={key === "code" ? 80 : 200} onChange={(event) => patchShot({ [key]: event.target.value })} />}</Labeled>)}
@@ -360,9 +360,9 @@ export function StoryboardWorkbench({ projectId, items, onClose, onOpenNode }: {
               {(["description", "dialogue"] as const).map((key) => <Labeled key={key} label={t(`storyboard.field.${key}`)}>{(id) => <Textarea id={id} aria-label={t(`storyboard.field.${key}`)} value={shot[key]} rows={4} maxLength={20000} onChange={(event) => patchShot({ [key]: event.target.value })} />}</Labeled>)}
             </FieldGroup>
             <section className="storyboard-reference-section"><h3>{t("storyboard.sourceAndReferences")}</h3><p>{t("storyboard.exactVersionHint")}</p>
-              <div className="storyboard-inline"><Button variant="outline" size="sm" onClick={() => setPicker("source")}>{t("storyboard.chooseSource")}</Button>
+              <div className="storyboard-inline"><Button variant="ghost" size="sm" onClick={() => setPicker("source")}>{t("storyboard.chooseSource")}</Button>
                 {shot.sourceVersionId ? <><code>{shot.sourceVersionId}</code><Button variant="ghost" size="sm" onClick={() => patchShot({ sourceVersionId: null })}>{t("storyboard.remove")}</Button></> : null}</div>
-              <div className="storyboard-inline"><Button variant="outline" size="sm" onClick={() => setPicker("reference")}>{t("storyboard.chooseReference")}</Button>
+              <div className="storyboard-inline"><Button variant="ghost" size="sm" onClick={() => setPicker("reference")}>{t("storyboard.chooseReference")}</Button>
                 {shot.referenceVersionIds.map((id) => <span className="storyboard-reference-chip" key={id}><code>{id}</code><Button variant="ghost" size="icon-sm" aria-label={t("storyboard.removeReference", { "0": id })}
                   onClick={() => patchShot({ referenceVersionIds: shot.referenceVersionIds.filter((value) => value !== id) })}><X /></Button></span>)}</div></section>
             {shot.productions.some((production) => productionNeedsReview(shot, production, shotBase, approvals.data?.items)) ? <Alert><AlertDescription>{t("storyboard.impactHint")}</AlertDescription></Alert> : null}
@@ -405,7 +405,7 @@ export function StoryboardWorkbench({ projectId, items, onClose, onOpenNode }: {
       {confirm ? <Dialog open onOpenChange={(open) => { if (!open) setConfirm(null); }}><DialogContent className="app-page">
         <DialogHeader><DialogTitle>{t(confirm === "delete" ? "storyboard.deleteConfirm" : "storyboard.discardConfirm")}</DialogTitle>
           <DialogDescription>{t(confirm === "delete" ? "storyboard.deleteHint" : "storyboard.discardHint")}</DialogDescription></DialogHeader>
-        <DialogFooter><Button variant="outline" onClick={() => setConfirm(null)}>{t("storyboard.cancel")}</Button><Button onClick={() => {
+        <DialogFooter><Button variant="ghost" onClick={() => setConfirm(null)}>{t("storyboard.cancel")}</Button><Button onClick={() => {
           const choice = confirm; setConfirm(null);
           if (choice === "delete" && shot) { change((input) => ({ ...input, shots: input.shots.filter((entry) => entry.id !== shot.id) })); setSelectedIds((current) => current.filter((id) => id !== shot.id)); }
           else if (choice === "reload") void refresh();
@@ -417,7 +417,7 @@ export function StoryboardWorkbench({ projectId, items, onClose, onOpenNode }: {
         <FieldGroup><Labeled label={t("storyboard.importJson")}>{(id) => <Textarea id={id} rows={12} value={importText} onChange={(event) => { setImportText(event.target.value); setImportShots(null); setImportError(false); }} />}</Labeled></FieldGroup>
         {importError ? <Alert variant="destructive"><AlertDescription>{t("storyboard.importInvalid")}</AlertDescription></Alert> : null}
         {importShots ? <p>{t("storyboard.importPreview", { "0": importShots.length })} {importShots.map((entry) => entry.code).join(" · ")}</p> : null}
-        <DialogFooter><Button variant="outline" onClick={() => { setImportText(IMPORT_EXAMPLE); setImportShots(null); setImportError(false); }}>{t("storyboard.example")}</Button>
+        <DialogFooter><Button variant="ghost" onClick={() => { setImportText(IMPORT_EXAMPLE); setImportShots(null); setImportError(false); }}>{t("storyboard.example")}</Button>
           <Button variant="outline" onClick={() => { try { const parsed = validateImport(); setImportShots(parsed); setImportError(false); } catch { setImportError(true); } }}>{t("storyboard.validateImport")}</Button>
           <Button disabled={!importShots} onClick={() => { if (!importShots) return; try { const fresh = validateImport(); change((input) => ({ ...input, shots: [...input.shots, ...fresh] })); setActiveId(fresh[0]!.id); setImportOpen(false); } catch { setImportError(true); } }}>{t("storyboard.applyImport")}</Button></DialogFooter>
       </DialogContent></Dialog> : null}
@@ -426,7 +426,7 @@ export function StoryboardWorkbench({ projectId, items, onClose, onOpenNode }: {
         <DialogHeader><DialogTitle>{t("storyboard.batchConfirm")}</DialogTitle><DialogDescription>{t("storyboard.batchCostHint")}</DialogDescription></DialogHeader>
         <div className="storyboard-batch-list">{batch.map((entry) => <section key={entry.item.id}><strong>{entry.name}</strong><Badge variant="outline">{entry.cost}</Badge><p>{entry.prompt}</p>
           <small>{t("storyboard.batchInputs", { "0": entry.draft.mediaInputs.length, "1": entry.draft.version })}</small></section>)}</div>
-        <p>{t("storyboard.noAutoRetry")}</p><DialogFooter><Button variant="outline" disabled={submit.isPending} onClick={() => setBatch(null)}>{t("storyboard.cancel")}</Button>
+        <p>{t("storyboard.noAutoRetry")}</p><DialogFooter><Button variant="ghost" disabled={submit.isPending} onClick={() => setBatch(null)}>{t("storyboard.cancel")}</Button>
           <Button disabled={submit.isPending} onClick={() => submit.mutate(batch)}>{t(submit.isPending ? "storyboard.submitting" : "storyboard.confirmPaidGeneration")}</Button></DialogFooter>
       </DialogContent></Dialog> : null}
     </DialogContent>

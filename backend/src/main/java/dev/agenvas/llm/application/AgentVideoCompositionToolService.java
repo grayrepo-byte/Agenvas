@@ -41,13 +41,13 @@ public class AgentVideoCompositionToolService {
         }
         requireFields(request, REQUEST_FIELDS);
         JsonNode shots = request.path("shots");
-        if (!shots.isArray() || shots.isEmpty() || shots.size() > 12) throw invalid();
+        if (!shots.isArray() || shots.isEmpty() || shots.size() > dev.agenvas.provider.application.VideoCompositionLimits.SHOT_CEILING) throw invalid();
         int lineCount = 0;
         for (JsonNode shot : shots) {
             requireFields(shot, SHOT_FIELDS);
             requireSource(context, run, shot.path("videoVersionId"), Artifact.Kind.VIDEO);
             JsonNode lines = shot.path("lines");
-            if (!lines.isArray() || (lineCount += lines.size()) > 30) throw invalid();
+            if (!lines.isArray() || (lineCount += lines.size()) > dev.agenvas.provider.application.VideoCompositionLimits.LINE_CEILING) throw invalid();
             for (JsonNode line : lines) {
                 requireFields(line, LINE_FIELDS);
                 requireSource(context, run, line.path("audioVersionId"), Artifact.Kind.AUDIO);

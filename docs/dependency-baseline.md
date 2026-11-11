@@ -166,3 +166,10 @@ CI 的 jOOQ 漂移检查不再占用固定 55432 端口；Docker 自动预留仅
 SMB 新增固定正式版 [`com.hierynomus:smbj:0.15.0`](https://github.com/hierynomus/smbj/releases/tag/v0.15.0)，使用 SMB2/3、强制签名、关闭 DFS 和带超时的会话。Maven 在 Spring Boot BOM 管理下解析传递依赖；WebDAV 复用 OkHttp 4.12.0，不引入 WebDAV SDK。协议根据 [RFC 4918](https://www.rfc-editor.org/rfc/rfc4918.html) 实现 MKCOL/PUT/MOVE/HEAD/GET/DELETE，发布禁止覆盖并核对 SHA-256。验证涵盖协议单元测试、真实 PostgreSQL 加模拟 WebDAV HTTP、现有对象存储与媒体中继回归，以及前端设置、四语言、类型、lint 和构建。真实 NAS/WebDAV 产品与大文件吞吐未验证；具体执行结果见开发清单。
 
 导演上下文预算复用 Spring AI 2.0.1 已解析的 `JTokkitTokenCountEstimator`（`spring-ai-commons` 及其既有传递依赖），不新增依赖或 Provider 专属压缩 API。估算包含文本、工具定义、参数、回复与媒体预留；25% 余量用于不同模型 tokenizer 的差异，不能当作真实计费用量。语义交接使用原 ChatGateway 与持久回合。编译、定向单元与真实 PostgreSQL 的长任务/恢复验证见开发清单；真实模型摘要质量和墙钟十几小时运行另行验收。
+
+
+## 可选托管 ASR 构建清单（尚未实构建）
+
+服务器 Dockerfile 现声明 whisper.cpp v1.9.5、Git提交 `d1be6fde11ac6e0407606b4e42fe72d34add8037` 的 Linux CPU 源码构建，沿用现有固定 Maven/Temurin Ubuntu 镜像。构建关闭本机指令、GPU、OpenMP、隐式下载及server；不新增Maven/前端运行依赖。Tiny Q5_1多语言模型单独按管理员明确请求下载，固定修订、字节数、SHA-256和MIT许可见[ADR 0086](adr/0086-managed-local-asr-model-download.md)。初稿1.8.3并无真实验收依据，最终核验官方1.9.5仍支持现有CLI参数后保持已讨论的1.9.5。
+
+本轮只运行Java/TypeScript定向检查、真实PostgreSQL、受控下载流及C启动器的本机语法检查；没有执行Git源码获取、apt工具链安装、Linux引擎构建或真实模型下载/加载。编译工具链使用固定基础镜像中的Ubuntu包源，尚未做到二进制逐字节可复现，也未测具体下载量。amd64/arm64构建、原生依赖、512MiB地址限制下模型加载及1536MB应用并行峰值仍须真实验收，不能把此构建声明视为已验证的镜像。

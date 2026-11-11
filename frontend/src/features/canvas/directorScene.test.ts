@@ -25,7 +25,9 @@ describe("director scene persistence", () => {
 
   it("upgrades scalar v1 objects into detached v2 axes without changing their appearance or archived data", () => {
     const current = createDirectorScene();
-    const legacy = { ...current, schemaVersion: 1, objects: current.objects.map((item) => ({ ...item, scale: 2.5 })) };
+    const old = structuredClone(current) as Partial<typeof current>;
+    delete old.motion;
+    const legacy = { ...old, schemaVersion: 1, objects: current.objects.map((item) => ({ ...item, scale: 2.5 })) };
     const parsed = parseDirectorScene(legacy);
     expect(parsed).toEqual({ ...current, objects: current.objects.map((item) => ({ ...item, scale: { x: 2.5, y: 2.5, z: 2.5 } })) });
     expect(legacy.schemaVersion).toBe(1);
@@ -67,7 +69,7 @@ describe("director scene persistence", () => {
   });
 
   it.each([
-    null, [], {}, { ...createDirectorScene(), schemaVersion: 3 },
+    null, [], {}, { ...createDirectorScene(), schemaVersion: 4 },
     { ...createDirectorScene(), aspectRatio: "21:9" },
     { ...createDirectorScene(), objects: Array.from({ length: 33 }, (_, i) => ({ ...createDirectorScene().objects[0], id: String(i) })) },
   ])("rejects unsupported or oversized scene data: %j", (value) => {

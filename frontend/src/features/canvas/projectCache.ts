@@ -94,6 +94,8 @@ export function projectCacheCallbacks(queryClient: QueryClient, projectId: strin
         invalidate("direct-media-tasks", "direct-media-queue", "storyboard-media-approvals");
       }
       if (event.type === "media.draft.changed") invalidate("media-draft", "canvas-connections");
+      if (event.type === "subtitle.draft.changed") invalidate("subtitle-drafts");
+      if (event.type === "task.status.changed" && typeof event.payload.subtitleId === "string") invalidate("subtitle-drafts", "task");
       if (event.type === "usage.changed") invalidate("project-usage");
       // Character review depends on the current draft and exact selected result, not
       // just profile mutations. Reconnect recovery refreshes the same projection below.
@@ -112,7 +114,7 @@ export function projectCacheCallbacks(queryClient: QueryClient, projectId: strin
       // A missed event may have changed any of them while the stream was unavailable.
       invalidate(...HISTORY_QUERY_PREFIXES, "run-tasks", "direct-media-tasks", "media-draft",
         "canvas-media-versions", "project-usage", "storyboard", "storyboard-revisions",
-        "storyboard-media-approvals", "project-characters", "canvas-editor", "project-resources", "artifacts", "artifact-versions");
+        "storyboard-media-approvals", "project-characters", "canvas-editor", "project-resources", "artifacts", "artifact-versions", "subtitle-drafts", "task");
     },
   };
 }

@@ -71,18 +71,37 @@ RUN --mount=type=cache,id=agenvas-maven,target=/root/.m2-cache,sharing=locked \
         -Donnxruntime.native.path=/workspace/onnxruntime-native; \
     fi
 
+# Source is content-pinned and compiled for the target Linux architecture. No model is fetched here.
+FROM maven:3.9.12-eclipse-temurin-21-noble@sha256:c3c9d3ac4ce8431a3995c0318b8d390f448e693dd4fabc16e9b68d2e1f3d7b46 AS whisper-build
+ENV WHISPER_COMMIT=d1be6fde11ac6e0407606b4e42fe72d34add8037
+RUN apt-get update && apt-get install --yes --no-install-recommends cmake g++ git ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && git init /workspace/whisper \
+    && git -C /workspace/whisper remote add origin https://github.com/ggml-org/whisper.cpp.git \
+    && git -C /workspace/whisper fetch --depth 1 origin "${WHISPER_COMMIT}" \
+    && git -C /workspace/whisper checkout --detach FETCH_HEAD \
+    && test "$(git -C /workspace/whisper rev-parse HEAD)" = "${WHISPER_COMMIT}" \
+    && cmake -S /workspace/whisper -B /workspace/whisper/build -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_SHARED_LIBS=OFF -DGGML_NATIVE=OFF -DGGML_OPENMP=OFF -DGGML_BACKEND_DL=OFF \
+        -DGGML_SSE42=OFF -DGGML_AVX=OFF -DGGML_AVX2=OFF -DGGML_BMI2=OFF -DGGML_FMA=OFF -DGGML_F16C=OFF \
+        -DWHISPER_BUILD_IS_DEV=OFF \
+        -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_SERVER=OFF -DWHISPER_CURL=OFF \
+    && cmake --build /workspace/whisper/build --target whisper-cli --parallel 2
+COPY deploy/docker/asr-launcher.c /workspace/asr-launcher.c
+RUN cc -O2 -Wall -Wextra -Werror /workspace/asr-launcher.c -o /workspace/asr-launcher
+
 FROM eclipse-temurin:21.0.9_10-jre-noble@sha256:d3eb69add1874bc785382d6282db53a67841f602a1139dee6c4a1221d8c56568 AS runtime
 
 RUN sed -i 's|http://ports.ubuntu.com|https://ports.ubuntu.com|g' /etc/apt/sources.list.d/ubuntu.sources \
     && apt-get -o Acquire::Retries=5 -o APT::Update::Error-Mode=any update \
     && apt-get upgrade --yes \
-    && apt-get install --yes --no-install-recommends ffmpeg fonts-noto-cjk \
+    && apt-get install --yes --no-install-recommends ffmpeg fonts-noto-cjk libstdc++6 \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 101 agenvas \
     && useradd --system --uid 100 --gid agenvas --home-dir /opt/agenvas \
         --shell /usr/sbin/nologin agenvas \
     && mkdir -p /opt/agenvas/data /opt/agenvas/tmp /opt/agenvas/models \
-        /opt/agenvas/lib/onnxruntime \
+        /opt/agenvas/lib/onnxruntime /opt/agenvas/lib/whisper /opt/agenvas/bin /opt/agenvas/asr \
         /opt/agenvas/licenses/depth-anything-v2-small \
     && chown -R agenvas:agenvas /opt/agenvas
 
@@ -95,6 +114,10 @@ COPY --from=build --chown=agenvas:agenvas /workspace/depth-model/LICENSE \
     /opt/agenvas/licenses/depth-anything-v2-small/LICENSE
 COPY --from=build --chown=agenvas:agenvas /workspace/onnxruntime-native/ \
     /opt/agenvas/lib/onnxruntime/
+
+COPY --from=whisper-build --chown=agenvas:agenvas /workspace/whisper/build/bin/whisper-cli /opt/agenvas/lib/whisper/whisper-cli
+COPY --from=whisper-build --chown=agenvas:agenvas /workspace/asr-launcher /opt/agenvas/bin/whisper-cli
+COPY --from=whisper-build /workspace/whisper/LICENSE /opt/agenvas/licenses/whisper.cpp/LICENSE
 
 COPY --chmod=755 deploy/docker/server-entrypoint.sh /usr/local/bin/agenvas-entrypoint
 

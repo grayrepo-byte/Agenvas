@@ -14,9 +14,10 @@ setLocale(resolveLocale(new URL(location.href).searchParams.get("locale")) ?? "z
 const workflowFixture = new URL(location.href).searchParams.has("workflow");
 const restoreFixture = new URL(location.href).searchParams.has("restore");
 const legacyFixture = new URL(location.href).searchParams.has("legacy");
-const legacyBase = createDirectorScene();
+const legacyBase: Partial<ReturnType<typeof createDirectorScene>> = createDirectorScene();
+delete legacyBase.motion;
 const legacyScene = legacyFixture ? { ...legacyBase, schemaVersion: 1,
-  objects: legacyBase.objects.map((object) => ({ ...object, name: "旧版人偶", scale: 1.6 })) } : undefined;
+  objects: legacyBase.objects!.map((object) => ({ ...object, name: "旧版人偶", scale: 1.6 })) } : undefined;
 const mediaSettings = imageFunctionsFixture();
 if (workflowFixture) {
   const capability = imageWorkflowCapability();

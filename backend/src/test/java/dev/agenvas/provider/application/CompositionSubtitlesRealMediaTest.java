@@ -59,6 +59,8 @@ class CompositionSubtitlesRealMediaTest {
         request.putArray("shots").addObject().put("videoVersionId", sourceId.toString()).put("sourceStartMs", 0)
                 .put("durationMs", 2000).putArray("lines");
         request.putArray("subtitles").addObject().put("text", "Visible text {\\p1}\\N safe").put("startMs", 0).put("endMs", 2000);
+        for (int i = 0; i < 100; i++) request.withArray("subtitles").addObject().put("text", "Caption " + i)
+                .put("startMs", i * 10).put("endMs", i * 10 + 100);
         Path scratch = Files.createDirectory(temp.resolve("render"));
         var result = renderer.render(request, Map.of(sourceId, new LocalVideoCompositionRenderer.Source(source, 2000)),
                 scratch, () -> false, () -> {});

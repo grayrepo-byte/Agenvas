@@ -37,6 +37,85 @@ class LocalVideoCompositionRendererTest {
         renderer = new LocalVideoCompositionRenderer(tools, mapper);
     }
 
+    @Test void thirteenClipsExportBeyondOneMinuteAndRetainEveryFrame() throws Exception {
+        Path source = video("long-source.mp4", "5", false, null);
+        UUID id = UUID.randomUUID();
+        ObjectNode request = request("MUTE");
+        for (int i = 0; i < 13; i++) addShot(request, id, 5000);
+        var result = renderer.render(request, Map.of(id, source(source, 5000)), scratch("long-edit"), () -> false, () -> {});
+        assertThat(result.schedule().path("durationMs").asInt()).isEqualTo(65_000);
+        assertThat(result.schedule().path("shots")).hasSize(13);
+        var probe = mapper.readTree(tools.ffprobe(List.of("-v", "error", "-count_frames", "-show_entries",
+                "stream=codec_type,nb_read_frames", "-of", "json", result.path().toString())));
+        assertThat(probe.path("streams").get(0).path("nb_read_frames").asInt()).isEqualTo(1950);
+        tools.ffmpeg(List.of("-v", "error", "-xerror", "-i", result.path().toString(), "-f", "null", "-"));
+    }
+
+    @Test void fourKSampleKeepsExactFrames() throws Exception {
+        Path source = video("4k-source.mp4", "0.1", false, null);
+        UUID id = UUID.randomUUID();
+        ObjectNode request = request("MUTE");
+        addShot(request, id, 100);
+        request.putObject("output").put("resolution", "2160P").put("aspectRatio", "16:9");
+        var result = renderer.render(request, Map.of(id, source(source, 100)), scratch("4k-output"), () -> false, () -> {});
+        assertThat(result.schedule().path("width").asInt()).isEqualTo(3840);
+        assertThat(result.schedule().path("height").asInt()).isEqualTo(2160);
+        assertThat(result.schedule().path("durationMs").asInt()).isEqualTo(100);
+        tools.ffmpeg(List.of("-v", "error", "-xerror", "-i", result.path().toString(), "-f", "null", "-"));
+    }
+
+    @Test void scratchOutputAndDeadlineBudgetsRejectIncompleteWork() throws Exception {
+        Path source = video("budget-source.mp4", "1", false, null);
+        UUID id = UUID.randomUUID();
+        ObjectNode request = request("MUTE");
+        addShot(request, id, 1000);
+        var sources = Map.of(id, source(source, 1000));
+        var smallScratch = VideoCompositionLimitsTest.configured(Map.of("agenvas.video-composition.limits.max-scratch-bytes", "1048576"));
+        Path full = scratch("full");
+        Files.write(full.resolve("filled"), new byte[1048577]);
+        assertThatThrownBy(() -> new LocalVideoCompositionRenderer(tools, mapper, new VideoCompositionRenderProperties(null), smallScratch)
+                .render(request, sources, full, () -> false, () -> {})).isInstanceOf(IllegalStateException.class)
+                .hasMessage("Composition scratch bound exceeded");
+        var smallOutput = VideoCompositionLimitsTest.configured(Map.of("agenvas.video-composition.limits.max-output-bytes", "1024"));
+        assertThatThrownBy(() -> new LocalVideoCompositionRenderer(tools, mapper, new VideoCompositionRenderProperties(null), smallOutput)
+                .render(request, sources, scratch("small-output"), () -> false, () -> {})).isInstanceOf(IllegalStateException.class);
+        var shortDeadline = VideoCompositionLimitsTest.configured(Map.of("agenvas.video-composition.limits.timeout", "PT0.001S"));
+        assertThatThrownBy(() -> new LocalVideoCompositionRenderer(tools, mapper, new VideoCompositionRenderProperties(null), shortDeadline)
+                .render(request, sources, scratch("deadline"), () -> false, () -> {})).isInstanceOf(MediaToolRunner.MediaToolException.class)
+                .hasMessageContaining("timed out");
+    }
+
+    @Test void manyLateDialoguesMixWithoutTimelineSizedDelayBuffers() throws Exception {
+        Path source = video("late-source.mp4", "180", false, null);
+        Path voice = audio("late-voice.wav", "0.5", "1");
+        UUID id = UUID.randomUUID(), audioId = UUID.randomUUID();
+        var request = request("MUTE");
+        var lines = addShot(request, id, 180_000).withArray("lines");
+        for (int i = 0; i < 10; i++) lines.addObject().put("audioVersionId", audioId.toString()).put("startMs", 165_000 + i * 1000);
+        var result = renderer.render(request, Map.of(id, source(source, 180_000), audioId, source(voice, 500)),
+                scratch("late-mix"), () -> false, () -> {});
+        assertThat(result.schedule().path("durationMs").asInt()).isEqualTo(180_000);
+        assertThat(result.schedule().at("/shots/0/lines")).hasSize(10);
+        var pcm = decodeAudio(result.path(), "late-result.pcm");
+        assertThat(rms(pcm, 164000, 164500)).isLessThan(.0001);
+        assertThat(rms(pcm, 165100, 165400)).isGreaterThan(.02);
+        assertThat(rms(pcm, 174100, 174400)).isGreaterThan(.02);
+        assertThat(rms(pcm, 174700, 175000)).isLessThan(.0001);
+    }
+
+    @Test void nearScratchBudgetNeverTurnsAWholeDialogueIntoAShortSuccessfulLine() throws Exception {
+        var limits = VideoCompositionLimitsTest.configured(Map.of("agenvas.video-composition.limits.max-scratch-bytes", "1048576"));
+        var bounded = new LocalVideoCompositionRenderer(tools, mapper, new VideoCompositionRenderProperties(null), limits);
+        Path video = video("near-budget.mp4", "2", false, null);
+        Path voice = audio("whole-line.wav", "1", "1");
+        UUID id = UUID.randomUUID(), audioId = UUID.randomUUID();
+        var request = request("MUTE");
+        addShot(request, id, 2000).withArray("lines").addObject().put("audioVersionId", audioId.toString());
+        assertThatThrownBy(() -> bounded.render(request, Map.of(id, source(video, 2000), audioId, source(voice, 1000)),
+                scratch("near-budget"), () -> false, () -> {})).isInstanceOf(IllegalStateException.class)
+                .hasMessage("Composition scratch bound exceeded");
+    }
+
     @Test void originalSoundWindowsPlaceWholeTrimmedLinesAndMuteOriginalAudio() throws Exception {
         Path source = video("source.mp4", "6", true, "if(between(t,1,2)+between(t,4,5),1,0)");
         Path voice = audio("voice.wav", "0.9", "if(between(t,0.2,0.7),1,0)");

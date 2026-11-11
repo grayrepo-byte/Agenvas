@@ -126,6 +126,50 @@ class VideoCompositionPostgresIT {
         assertThat(readable.toString()).doesNotContain("objectKey", "mcpTokenId", "file://");
     }
 
+    @Test void longCompositionPreviewsAcceptsReplaysAndArchivesBeyondTheOldMinuteLimit() throws Exception {
+        var fixture = fixture();
+        ObjectNode request = request(fixture);
+        var template = request.path("shots").get(0).deepCopy();
+        ((ObjectNode) template).putArray("lines");
+        request.putArray("shots");
+        for (int i = 0; i < 21; i++) request.withArray("shots").add(template.deepCopy());
+        var preview = compositions.preview(owner.userId(), fixture.project(), request);
+        assertThat(preview.path("frames").asInt()).isEqualTo(1890);
+        assertThat(preview.path("durationMs").asInt()).isEqualTo(63_000);
+        var accepted = compositions.run(owner.userId(), fixture.project(), request, "long-edit");
+        assertThat(compositions.run(owner.userId(), fixture.project(), request, "long-edit").id()).isEqualTo(accepted.id());
+        assertThat(worker.submitOnce("long-edit-worker")).isEqualTo(1);
+        var completed = tasks.get(owner.userId(), fixture.project(), accepted.id());
+        assertThat(completed.status()).withFailMessage("Composition failed: %s", completed.errorCode()).isEqualTo(Task.Status.SUCCEEDED);
+        var result = artifacts.requireMediaVersionForTask(owner.userId(), fixture.project(),
+                UUID.fromString(completed.output().path("artifactVersionId").asText()), Artifact.Kind.VIDEO);
+        var output = assets.get(owner.userId(), fixture.project(), UUID.fromString(result.content().path("assetId").asText()));
+        assertThat(output.asset().durationMs()).isEqualTo(63_000);
+        assertThat(result.content().at("/parameters/videoComposition/shots")).hasSize(21);
+        mediaTools.ffmpeg(List.of("-v", "error", "-xerror", "-i", output.path().toString(), "-f", "null", "-"));
+    }
+
+    @Test void capabilitiesAreAuthorizedAndExposeOnlyTheCurrentPublicBudget() throws Exception {
+        var fixture = fixture();
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup(webContext)
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
+        var auth = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(owner, "unused",
+                List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN")));
+        String url = "/api/v1/projects/" + fixture.project() + "/video-compositions/capabilities";
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(url))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isUnauthorized());
+        var response = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(url)
+                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(auth)))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk()).andReturn();
+        var budget = mapper.readTree(response.getResponse().getContentAsString());
+        assertThat(budget.propertyNames()).containsExactlyInAnyOrder("maxDurationMs", "maxFrames", "maxShots", "maxLines", "maxSubtitles",
+                "maxSourceDurationMs", "maxSourceBytes", "maxOutputBytes", "frameRate", "timeoutSeconds", "resolutions");
+        assertThat(budget.path("maxDurationMs").asInt()).isEqualTo(600_000);
+        assertThat(budget.path("maxShots").asInt()).isEqualTo(60);
+        assertThat(budget.path("maxSubtitles").asInt()).isEqualTo(2000);
+        assertThat(budget.toString()).doesNotContain("scratchRoot", "fontFamily", "file:");
+    }
+
     @Test void invalidAndForeignSourcesRollbackBeforeCreatingOutput() throws Exception {
         var fixture = fixture();
         ObjectNode tooLong = request(fixture);

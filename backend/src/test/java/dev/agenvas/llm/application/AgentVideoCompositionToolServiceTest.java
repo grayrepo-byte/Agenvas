@@ -112,11 +112,11 @@ class AgentVideoCompositionToolServiceTest {
         assertThatThrownBy(() -> tools.compose(context, run, UUID.randomUUID(), "not json"))
                 .isInstanceOf(ApiProblemException.class).extracting("code").isEqualTo("TOOL_ARGUMENT_INVALID");
         ObjectNode tooManyShots = request();
-        for (int index = 0; index < 12; index++) tooManyShots.withArray("shots").add(request().at("/shots/0"));
+        for (int index = 0; index < 120; index++) tooManyShots.withArray("shots").add(request().at("/shots/0"));
         assertInvalid(tooManyShots);
         allow(video, Artifact.Kind.VIDEO);
         ObjectNode tooManyLines = request();
-        for (int index = 0; index < 30; index++) ((ObjectNode) tooManyLines.at("/shots/0"))
+        for (int index = 0; index < 600; index++) ((ObjectNode) tooManyLines.at("/shots/0"))
                 .withArray("lines").addObject().put("audioVersionId", audio.toString());
         assertInvalid(tooManyLines);
         verifyNoInteractions(compositions);

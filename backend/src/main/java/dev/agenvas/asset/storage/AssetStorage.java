@@ -15,6 +15,8 @@ public interface AssetStorage {
     java.util.List<String> PREPARED_IMAGE_ORIGINAL_SUFFIXES = java.util.List.of(".png", ".jpg", ".webp", ".gif");
     String PREPARED_IMAGE_THUMBNAIL_SUFFIX = ".thumb.png";
     StoredImage storeImage(UUID projectId, UUID assetId, InputStream source);
+    /** Imports MP4 or bounded silent WebM, always archiving validated MP4. */
+    StoredVideo storeUploadedVideo(UUID projectId, UUID assetId, InputStream source);
     StoredVideo storeVideo(UUID projectId, UUID assetId, InputStream source);
     StoredAudio storeAudio(UUID projectId, UUID assetId, InputStream source);
     Optional<StoredImage> recoverImage(UUID projectId, UUID assetId);

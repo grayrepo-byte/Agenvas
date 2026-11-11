@@ -7,7 +7,7 @@
 .settings-status-line { display: flex; align-items: flex-start; gap: 10px; font-size: var(--ui-text-md); line-height: 1.6; }
 .settings-status-line svg { flex: none; color: var(--muted); }
 .settings-mode-summary { font-size: var(--ui-text-md); line-height: 1.8; }
-.settings-nav-link { display: flex; align-items: center; justify-content: space-between; gap: var(--ui-space-3); padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; font-size: var(--ui-text-md); transition: background-color 150ms, border-color 150ms; }
+.settings-nav-link { display: flex; align-items: center; justify-content: space-between; gap: var(--ui-space-3); padding: 12px 14px; border: 1px solid transparent; border-radius: 10px; font-size: var(--ui-text-md); transition: background-color 150ms, border-color 150ms; }
 .settings-nav-link:hover { background: var(--ui-hover); border-color: var(--ui-border-strong); }
 .diagnostics-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ui-space-4); }
 .diagnostics-stat-heading { display: flex; align-items: center; gap: 10px; }

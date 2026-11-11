@@ -24,6 +24,15 @@ class CompositionSubtitlesTest {
         assertThat(ass.lines().filter(line -> line.startsWith("Dialogue:"))).hasSize(1);
     }
 
+    @Test void writesLongerCaptionListsBeyondOneMinute() throws Exception {
+        var captions = mapper.createArrayNode();
+        for (int i = 0; i < 101; i++) captions.addObject().put("text", "Caption " + i)
+                .put("startMs", i * 1000).put("endMs", (i + 1) * 1000);
+        CompositionSubtitles.write(captions, 101_000, 1920, 1080, "Noto Sans CJK SC", scratch);
+        assertThat(Files.readString(scratch.resolve(CompositionSubtitles.FILE_NAME)).lines()
+                .filter(line -> line.startsWith("Dialogue:"))).hasSize(101);
+    }
+
     @Test void rejectsSubtitlesOutsideTheActualTimelineAndUnsafeServerFontNames() {
         var captions = mapper.createArrayNode();
         captions.addObject().put("text", "caption").put("startMs", 0).put("endMs", 2001);

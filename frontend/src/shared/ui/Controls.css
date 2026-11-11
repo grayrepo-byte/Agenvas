@@ -59,11 +59,11 @@
   text-decoration: none; cursor: pointer;
   transition: background-color var(--ui-duration), border-color var(--ui-duration), color var(--ui-duration), box-shadow var(--ui-duration);
 }
-[data-ui-button][data-variant="default"] { background: var(--ui-accent); color: var(--ui-accent-foreground); box-shadow: var(--ui-inset-highlight); }
+[data-ui-button][data-variant="default"] { background: var(--ui-accent); color: var(--ui-accent-foreground); box-shadow: none; }
 [data-ui-button][data-variant="default"]:hover:not(:disabled) { background: var(--ui-accent-hover); }
-[data-ui-button][data-variant="outline"] { border-color: var(--ui-border); background: transparent; color: var(--ui-text-secondary); box-shadow: none; }
+[data-ui-button][data-variant="outline"] { border-color: var(--ui-action-border); background: transparent; color: var(--ui-text-secondary); box-shadow: none; }
 [data-ui-button][data-variant="outline"]:hover:not(:disabled) { background: var(--ui-hover); border-color: var(--ui-border-strong); color: var(--ui-text); }
-[data-ui-button][data-variant="secondary"] { background: var(--ui-selected); color: var(--ui-text-secondary); }
+[data-ui-button][data-variant="secondary"] { background: var(--ui-action-surface); color: var(--ui-text-secondary); box-shadow: none; }
 [data-ui-button][data-variant="secondary"]:hover:not(:disabled) { background: var(--ui-hover); color: var(--ui-text); }
 [data-ui-button][data-variant="ghost"] { background: transparent; color: var(--ui-text-secondary); box-shadow: none; }
 [data-ui-button][data-variant="ghost"]:hover:not(:disabled) { background: var(--ui-hover); color: var(--ui-text); }
@@ -144,7 +144,7 @@
 [data-slot="tabs-list"] {
   display: inline-flex; flex-direction: row; align-items: center; justify-content: flex-start; width: fit-content; max-width: 100%;
   height: var(--ui-control-height); padding: 3px; gap: 3px;
-  border: 1px solid var(--ui-border); border-radius: var(--ui-radius-lg); background: var(--ui-field);
+  border: 1px solid transparent; border-radius: var(--ui-radius-lg); background: var(--ui-action-surface);
 }
 [data-slot="tabs-trigger"] {
   position: relative; display: inline-flex; align-items: center; justify-content: center; flex: 1 0 auto;
@@ -154,7 +154,7 @@
   transition: background-color var(--ui-duration), color var(--ui-duration), border-color var(--ui-duration);
 }
 [data-slot="tabs-trigger"]:hover:not(:disabled) { color: var(--ui-text); background: var(--ui-hover); }
-[data-slot="tabs-trigger"][data-state="active"] { border-color: var(--ui-border); background: var(--ui-surface-raised); color: var(--ui-text); box-shadow: var(--ui-panel-shadow); }
+[data-slot="tabs-trigger"][data-state="active"] { border-color: transparent; background: var(--ui-hover); color: var(--ui-text); box-shadow: none; }
 [data-slot="tabs-trigger"]::after { content: none; }
 [data-slot="tabs-trigger"] svg { width: 16px; height: 16px; flex: none; }
 [data-slot="tabs-list"][data-orientation="horizontal"]:not([data-variant="navigation"]) { overflow-x: auto; }
@@ -200,4 +200,13 @@
 :is([data-ui-button], [data-slot="input"], [data-slot="textarea"], [data-slot="checkbox"], [data-slot="switch"], [data-slot="select-trigger"], [data-slot="tabs-trigger"], [data-slot="toggle"], [data-slot="toggle-group-item"]):disabled { cursor: not-allowed; opacity: .45; }
 @media (prefers-reduced-motion: reduce) {
   :is([data-ui-button], [data-slot="input"], [data-slot="textarea"], [data-slot="checkbox"], [data-slot="switch"], [data-slot="switch-thumb"], [data-slot="tabs-trigger"], [data-slot="toggle"], [data-slot="toggle-group-item"], .ui-search-field) { transition: none; }
+}
+
+/* Keyboard-only contour, independent of low-emphasis resting fills. Media
+   overlays retain their own high-contrast inner circle over image content. */
+[data-ui-button]:not([data-variant="media-overlay"]):focus-visible,
+[data-slot="tabs-trigger"]:focus-visible:not(:disabled),
+[data-slot="toggle"]:focus-visible:not(:disabled),
+[data-slot="toggle-group-item"]:focus-visible:not(:disabled) {
+  box-shadow: inset 0 0 0 1.5px var(--ui-focus-border);
 }

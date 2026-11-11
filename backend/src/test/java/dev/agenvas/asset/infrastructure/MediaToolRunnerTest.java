@@ -41,6 +41,20 @@ class MediaToolRunnerTest {
     }
 
     @Test
+    void longExportsRemainBoundedAndPlanningProbesShareCancellationAndDeadline() {
+        Path touch = binary("touch");
+        var runner = new MediaToolRunner(new MediaToolsProperties(touch, binary("sleep"), Duration.ofSeconds(20)));
+        runner.ffmpegExport(List.of("long-budget"), workDirectory, Duration.ofMinutes(15), () -> false, () -> {});
+        assertThat(Files.exists(workDirectory.resolve("long-budget"))).isTrue();
+        assertThatThrownBy(() -> runner.ffmpegExport(List.of("over-ceiling"), workDirectory, Duration.ofMinutes(61), () -> false, () -> {}))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> runner.ffprobeExport(List.of("20"), workDirectory, Duration.ofMillis(50), () -> false, () -> {}))
+                .isInstanceOf(MediaToolRunner.MediaToolException.class).hasMessageContaining("timed out");
+        assertThatThrownBy(() -> runner.ffprobeExport(List.of("20"), workDirectory, Duration.ofSeconds(5), () -> true, () -> {}))
+                .isInstanceOf(CancellationException.class);
+    }
+
+    @Test
     void exportNonzeroExitDoesNotPretendThatPinnedMediaWasInvalid() {
         Path failureBinary = binary("false");
         MediaToolRunner runner = new MediaToolRunner(new MediaToolsProperties(
