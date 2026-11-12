@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterAll;
@@ -97,13 +98,22 @@ class StoredLlmGatewayPostgresIT {
                 List.of(), Map.of(), pinned);
         assertThat(historical.configVersion()).isEqualTo(1);
         assertThat(CALLS).hasValue(2);
+
+        // Named inactive edits and explicit service switches cannot redirect a pinned request.
+        UUID connectionId = UUID.randomUUID();
+        var independent = configs.saveConnection(connectionId, "Independent", 0, endpoint, "independent-model", "independent-synthetic-key", null);
+        assertThat(gateway.configVersion()).isEqualTo(2);
+        configs.activate(connectionId, independent.version(), 2);
+        ChatGateway.Exchange afterSwitch = gateway.call(List.of(new UserMessage("Still the original request")), List.of(), Map.of(), pinned);
+        assertThat(afterSwitch.configVersion()).isEqualTo(1);
         assertThat(AUTHORIZATION.get()).isEqualTo("Bearer stored-secret-key-1234");
-        assertThat(REQUEST.get()).contains("\"model\":\"stored-model-a\"")
-                .doesNotContain("stored-secret-key-5678");
+        assertThat(REQUEST.get()).contains("\"model\":\"stored-model-a\"");
+        assertThat(CALLS).hasValue(3);
+        assertThat(REQUEST.get()).doesNotContain("stored-secret-key-5678");
         assertThatThrownBy(() -> gateway.call(List.of(new UserMessage("No switch")),
                 List.of(), Map.of(), new ChatGateway.ConfigIdentity("environment", 1)))
                 .isInstanceOf(IllegalStateException.class);
-        assertThat(CALLS).hasValue(2);
+        assertThat(CALLS).hasValue(3);
     }
 
     /** Minimal OpenAI-compatible response; no application tool is executed by the server. */

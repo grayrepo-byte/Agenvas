@@ -48,6 +48,7 @@ import dev.agenvas.db.tables.LibraryCommand;
 import dev.agenvas.db.tables.LibraryEntry;
 import dev.agenvas.db.tables.LibraryFile;
 import dev.agenvas.db.tables.LibraryImport;
+import dev.agenvas.db.tables.LlmConnection;
 import dev.agenvas.db.tables.LlmProviderConfig;
 import dev.agenvas.db.tables.LlmProviderConfigCounter;
 import dev.agenvas.db.tables.LlmTurn;
@@ -345,6 +346,12 @@ public class Tables {
      * 素材库导入到项目的版本及原条目来源审计
      */
     public static final LibraryImport LIBRARY_IMPORT = LibraryImport.LIBRARY_IMPORT;
+
+    /**
+     * Stable named LLM connections pointing to their latest immutable runtime
+     * snapshot
+     */
+    public static final LlmConnection LLM_CONNECTION = LlmConnection.LLM_CONNECTION;
 
     /**
      * 不可变 LLM 连接版本与加密凭据；激活标记选择当前配置

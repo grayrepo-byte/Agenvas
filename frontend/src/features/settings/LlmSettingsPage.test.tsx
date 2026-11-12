@@ -2,515 +2,267 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
-import type { LlmSettings } from "../../shared/api/client";
 import { MemoryRouter } from "react-router";
+import { beforeEach, describe, expect, it } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
+import { type LlmConnection, type LlmConnections, type SaveLlmConnectionRequest } from "../../shared/api/client";
 import { setLocale, t } from "../../shared/i18n";
 import { server } from "../../test/server";
 import { LlmSettingsPage } from "./LlmSettingsPage";
-const manualSelection = { provider: "COMPATIBLE", mode: "MANUAL", contextWindowTokens: 16384,
-  inputLimitTokens: null, maxOutputTokens: 2048, outputParameter: "MAX_TOKENS" } as const;
-async function confirmCapacity() {
-  const advanced = screen.getByRole("button", { name: t("modelConnection.advanced") });
-  if (advanced.getAttribute("aria-expanded") === "false") await userEvent.setup().click(advanced);
-  fireEvent.change(screen.getByLabelText("确认的上下文窗口"), { target: { value: "16384" } });
-  fireEvent.change(screen.getByLabelText("请求最大输出"), { target: { value: "2048" } });
-}
 
-function unconfiguredLlmSettings() {
+const FIRST = "00000000-0000-4000-8000-000000000001";
+const SECOND = "00000000-0000-4000-8000-000000000002";
+const primary: LlmConnection = { id: FIRST, name: "日常创作", version: 4, endpoint: "https://primary.example/v1", modelId: "model-a", keyMask: "••••one1", toolCallingVerified: true, updatedAt: "2026-11-07T00:00:00Z", modelPolicy: null };
+const secondary: LlmConnection = { ...primary, id: SECOND, name: "备用服务", version: 7, endpoint: "https://secondary.example/v1", modelId: "model-b", keyMask: "••••two2", toolCallingVerified: false };
+const initial: LlmConnections = { items: [primary, secondary], activeConnectionId: FIRST, activeVersion: 4 };
+const key = ["settings", "llm", "connections"];
+beforeEach(() => setLocale("zh"));
+
+function mount(value: LlmConnections = initial) {
+  const store = { value: structuredClone(value) };
   server.use(
-    http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
-    http.get("/api/v1/settings/llm", () => HttpResponse.json({ configured: false, version: 0,
-      endpoint: null, modelId: null, keyMask: null, toolCallingVerified: false, updatedAt: null })),
-    http.get("/api/v1/settings/diagnostics", () => HttpResponse.json({ llmMode: "MOCK", mediaMode: "MOCK",
-      imageConfigured: false, videoConfigured: false, recentErrors: [] })),
+    http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
     http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+    http.get("/api/v1/settings/llm/connections", () => HttpResponse.json(store.value)),
+    http.get("/api/v1/settings/diagnostics", () => HttpResponse.json({ llmMode: "CONFIGURED", mediaMode: "MOCK", recentErrors: [] })),
   );
+  const client = createQueryClient();
+  render(<QueryClientProvider client={client}><MemoryRouter><LlmSettingsPage /></MemoryRouter></QueryClientProvider>);
+  return { store, client };
+}
+async function edit(name = primary.name) {
+  const row = await screen.findByRole("row", { name: new RegExp(name) });
+  await userEvent.click(within(row).getByRole("button", { name: "编辑" }));
+  return screen.findByRole("dialog", { name: "编辑连接" });
+}
+function edited(values: Partial<SaveLlmConnectionRequest>, base = secondary): LlmConnection {
+  return { ...base, name: values.name ?? base.name, endpoint: values.endpoint ?? base.endpoint,
+    modelId: values.modelId ?? base.modelId, version: base.version + 1, toolCallingVerified: false };
 }
 
-describe("LlmSettingsPage", () => {
-  it("saves the selected discovered model and its server-bound automatic policy together", async () => {
-    setLocale("en"); unconfiguredLlmSettings();
-    const writes: unknown[] = [];
-    const previewId = "00000000-0000-4000-8000-000000000001";
-    server.use(http.post("/api/v1/settings/llm/models", () => HttpResponse.json({ id: previewId,
-      partial: false, checkedAt: "2026-11-04T00:00:00Z", models: [{ id: "model-b", contextWindowTokens: 32768,
-        deploymentContextTokens: 16384, inputLimitTokens: null, outputLimitTokens: 2048, runtimeContextTokens: null, digest: null }] })),
-    http.put("/api/v1/settings/llm", async ({ request }) => { writes.push(await request.json());
-      return HttpResponse.json({ configured: true, version: 1, endpoint: "https://router.example/v1", modelId: "model-b",
-        keyMask: "masked", toolCallingVerified: false, updatedAt: null }); }));
-    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><LlmSettingsPage /></MemoryRouter></QueryClientProvider>);
-    const user = userEvent.setup();
-    await user.type(await screen.findByRole("textbox", { name: t("settings.llm.endpoint") }), "https://router.example/v1");
-    fireEvent.change(screen.getByLabelText(t("settings.llm.apiKey")), { target: { value: "synthetic-key" } });
-    await user.click(screen.getByRole("combobox", { name: t("modelConnection.provider") }));
-    await user.click(screen.getByRole("option", { name: "OpenRouter" }));
-    await user.click(screen.getByRole("button", { name: "Read model list" }));
-    await user.click(await screen.findByRole("combobox", { name: "Fetched models" }));
-    await user.click(screen.getByRole("option", { name: "model-b" }));
-    await user.click(screen.getByRole("button", { name: t("modelConnection.advanced") }));
-    await waitFor(() => expect(screen.getByLabelText("Confirmed context window")).toHaveValue(16384));
-    expect(writes).toEqual([]);
-    await user.click(screen.getByRole("button", { name: "Save configuration" }));
-    await waitFor(() => expect(writes).toEqual([{ expectedVersion: 0, endpoint: "https://router.example/v1",
-      modelId: "model-b", apiKey: "synthetic-key", modelSelection: { provider: "OPENROUTER", mode: "AUTO",
-        previewId, maxOutputTokens: 2048, outputParameter: "MAX_TOKENS" } }]));
+describe("LLM connection management", () => {
+  it("shows multiple saved services and current selection without a permanent form or discovery controls", async () => {
+    mount();
+    expect(await screen.findByRole("row", { name: /备用服务/ })).toHaveTextContent("model-b");
+    expect(screen.getByRole("row", { name: /日常创作/ })).toHaveTextContent("当前使用");
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "查找本机 Ollama" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(screen.queryByText(t("settings.llm.costConfirmationHint"))).not.toBeInTheDocument();
   });
 
-  it.each([false, true])("saves the generic million-token default without manual capacity entry (metadata failure: %s)", async failed => {
-    unconfiguredLlmSettings(); const writes: unknown[] = [];
-    server.use(http.post("/api/v1/settings/llm/models", () => new HttpResponse(null, { status: 502 })));
-    server.use(http.put("/api/v1/settings/llm", async ({ request }) => { writes.push(await request.json());
-      return HttpResponse.json({ configured: true, version: 1, endpoint: "https://api.example.com/v1", modelId: "model-a",
-        keyMask: "masked", toolCallingVerified: false, updatedAt: null }); }));
-    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><LlmSettingsPage /></MemoryRouter></QueryClientProvider>);
-    const user = userEvent.setup();
-    await user.type(await screen.findByRole("textbox", { name: "端点地址" }), "https://api.example.com/v1");
-    await user.type(screen.getByRole("textbox", { name: "模型 ID" }), "model-a");
-    fireEvent.change(screen.getByLabelText("API Key（每次修改均需重新输入）"), { target: { value: "synthetic-key" } });
-    if (failed) {
-      await user.click(screen.getByRole("button", { name: t("modelConnection.read") }));
-      await screen.findByText(t("modelConnection.failed"));
+  it("keeps optional model settings collapsed without losing edited capacity", async () => {
+    mount(); const dialog = await edit();
+    expect(within(dialog).queryByLabelText("确认的上下文窗口")).not.toBeInTheDocument();
+    const user = userEvent.setup(); const toggle = within(dialog).getByRole("button", { name: "模型发现与高级设置" });
+    await user.click(toggle); await user.click(within(dialog).getByRole("button", { name: "高级设置" })); const context = within(dialog).getByLabelText("确认的上下文窗口");
+    fireEvent.change(context, { target: { value: "65536" } });
+    await user.click(toggle); expect(context).not.toBeVisible();
+    await user.click(toggle); expect(context).toHaveValue(65536);
+    expect(within(dialog).getByLabelText("API Key")).toHaveValue("");
+  });
+
+  it("probes local Ollama only on request and fills the address without changing other fields", async () => {
+    mount(); let probes = 0;
+    server.use(http.post("/api/v1/settings/local-services/discover", () => { probes++; return HttpResponse.json({ service: "OLLAMA", runtime: "CONTAINER", status: "FOUND", endpoint: "http://host.docker.internal:11434/v1", policyAllowed: true }); }));
+    const dialog = await edit(); const user = userEvent.setup();
+    fireEvent.change(within(dialog).getByLabelText("模型 ID"), { target: { value: "draft-model" } });
+    await user.click(within(dialog).getByRole("button", { name: "连接帮助" }));
+    expect(probes).toBe(0);
+    await user.click(screen.getByRole("button", { name: "查找本机 Ollama" }));
+    expect(within(dialog).getByLabelText("端点地址")).toHaveValue(primary.endpoint);
+    await user.click(await screen.findByRole("button", { name: "填入地址" }));
+    expect(within(dialog).getByLabelText("端点地址")).toHaveValue("http://host.docker.internal:11434/v1");
+    expect(within(dialog).getByLabelText("模型 ID")).toHaveValue("draft-model");
+    expect(within(dialog).getByLabelText("API Key")).toHaveValue("");
+    expect(probes).toBe(1);
+  });
+
+  it("edits an inactive connection with a blank key without changing the active service", async () => {
+    const { store } = mount(); const writes: unknown[] = [];
+    server.use(http.put(`/api/v1/settings/llm/connections/${SECOND}`, async ({ request }) => {
+      const input = await request.json() as SaveLlmConnectionRequest; writes.push(input);
+      const saved = edited(input); store.value.items = [primary, saved]; return HttpResponse.json(saved);
+    }));
+    const dialog = await edit(secondary.name);
+    const apiKey = within(dialog).getByLabelText("API Key");
+    expect(apiKey).not.toBeRequired(); expect(apiKey).toHaveValue("");
+    expect(apiKey).toHaveAttribute("placeholder", expect.stringContaining(secondary.keyMask));
+    fireEvent.change(within(dialog).getByLabelText("连接名称"), { target: { value: "备用已改名" } });
+    await userEvent.click(within(dialog).getByRole("button", { name: "保存配置" }));
+    await waitFor(() => expect(writes).toEqual([{ expectedVersion: 7, name: "备用已改名", endpoint: secondary.endpoint, modelId: secondary.modelId }]));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(await screen.findByRole("row", { name: /日常创作/ })).toHaveTextContent("当前使用");
+    expect(screen.getByRole("row", { name: /备用已改名/ })).not.toHaveTextContent("当前使用");
+  });
+
+  it.each(["ollama", "space key", "非ascii-key", "x".repeat(4097)])("rejects a non-empty invalid replacement key while preserving the draft", async invalid => {
+    mount(); let writes = 0;
+    server.use(http.put("/api/v1/settings/llm/connections/:id", () => { writes++; return new HttpResponse(null, { status: 500 }); }));
+    const dialog = await edit(); const input = within(dialog).getByLabelText("API Key");
+    fireEvent.change(input, { target: { value: invalid } });
+    // Exercise the application guard as well as native form validation.
+    if (invalid.length > 4096) input.closest("form")!.noValidate = true;
+    await userEvent.click(within(dialog).getByRole("button", { name: "保存配置" }));
+    expect(input).toHaveValue(invalid); expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(writes).toBe(0);
+  });
+
+  it("requires a key for a new connection and retains a stable identity across failed saves", async () => {
+    mount({ items: [], activeConnectionId: null, activeVersion: 0 });
+    await screen.findByText("添加第一个 LLM 服务");
+    await userEvent.click(screen.getAllByRole("button", { name: "新增连接" })[0]!);
+    const dialog = await screen.findByRole("dialog", { name: "新增连接" });
+    fireEvent.change(within(dialog).getByLabelText("连接名称"), { target: { value: "新连接" } });
+    fireEvent.change(within(dialog).getByLabelText("端点地址"), { target: { value: "https://new.example/v1" } });
+    fireEvent.change(within(dialog).getByLabelText("模型 ID"), { target: { value: "model-new" } });
+    const keyInput = within(dialog).getByLabelText("API Key"); expect(keyInput).toBeRequired();
+    const ids: string[] = []; const writes: SaveLlmConnectionRequest[] = [];
+    server.use(http.put("/api/v1/settings/llm/connections/:id", async ({ request, params }) => { ids.push(String(params.id)); writes.push(await request.json() as SaveLlmConnectionRequest); return HttpResponse.json({ title: "Not saved", detail: "Synthetic network failure", code: "TEST", retryable: true }, { status: 503 }); }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "保存配置" })); expect(writes).toEqual([]);
+    for (let i = 0; i < 2; i++) {
+      fireEvent.change(keyInput, { target: { value: "synthetic-key" } });
+      await userEvent.click(within(dialog).getByRole("button", { name: "保存配置" }));
+      await waitFor(() => expect(writes).toHaveLength(i + 1));
+      await waitFor(() => expect(keyInput).toHaveValue(""));
     }
-    await user.click(screen.getByRole("button", { name: "保存配置" }));
-    await waitFor(() => expect(writes).toEqual([{ expectedVersion: 0, endpoint: "https://api.example.com/v1",
-      modelId: "model-a", apiKey: "synthetic-key", modelSelection: { provider: "COMPATIBLE", mode: "MANUAL",
-        contextWindowTokens: 1_000_000, inputLimitTokens: null, maxOutputTokens: 4096, outputParameter: "MAX_TOKENS" } }]));
+    expect(ids[0]).toBe(ids[1]); expect(writes.every(input => input.expectedVersion === 0)).toBe(true);
+    expect(within(dialog).getByLabelText("连接名称")).toHaveValue("新连接");
   });
-  it.each(["modelId", "endpoint", "apiKey"] as const)("uses the generic default when editing %s on a saved automatic connection", async field => {
-    setLocale("en"); unconfiguredLlmSettings(); const writes: unknown[] = [];
-    const policy = { provider: "COMPATIBLE", source: "PROVIDER_REPORTED", contextWindowTokens: 32000,
-      inputLimitTokens: null, maxOutputTokens: 2048, outputParameter: "MAX_TOKENS", theoreticalContextTokens: 32000,
-      reportedOutputTokens: 2048, runtimeContextTokens: null, modelDigest: null, checkedAt: "2026-11-04T00:00:00Z" } as const;
-    const saved: LlmSettings = { configured: true, version: 7, endpoint: "https://provider.example/v1", modelId: "model-a",
-      keyMask: "masked", toolCallingVerified: false, updatedAt: null, modelPolicy: policy };
-    server.use(http.get("/api/v1/settings/llm", () => HttpResponse.json(saved)),
-      http.put("/api/v1/settings/llm", async ({ request }) => { writes.push(await request.json());
-        return HttpResponse.json({ ...saved, version: 8, modelPolicy: { ...policy, source: "MANUAL", contextWindowTokens: 1_000_000 } }); }));
-    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><LlmSettingsPage /></MemoryRouter></QueryClientProvider>);
-    await userEvent.setup().click(await screen.findByRole("button", { name: t("modelConnection.advanced") }));
-    expect(screen.getByLabelText(t("modelConnection.context"))).toHaveValue(32000);
-    const fields = { modelId: t("settings.llm.modelId"), endpoint: t("settings.llm.endpoint"), apiKey: t("settings.llm.apiKey") };
-    const changed = { modelId: "custom-model", endpoint: "https://different.example/v1", apiKey: "synthetic-key" };
-    fireEvent.change(screen.getByLabelText(fields[field]), { target: { value: changed[field] } });
-    await waitFor(() => expect(screen.getByLabelText(t("modelConnection.context"))).toHaveValue(1_000_000));
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: t("settings.llm.revert") }));
-    expect(screen.getByLabelText(t("modelConnection.context"))).toHaveValue(32000);
-    expect(screen.getByRole("button", { name: t("common.saveConfig") })).toBeDisabled();
-    fireEvent.change(screen.getByLabelText(fields[field]), { target: { value: changed[field] } });
-    if (field !== "apiKey") fireEvent.change(screen.getByLabelText(fields.apiKey), { target: { value: "synthetic-key" } });
-    await user.click(screen.getByRole("button", { name: t("common.saveConfig") }));
-    await waitFor(() => expect(writes).toEqual([{ expectedVersion: 7,
-      endpoint: field === "endpoint" ? changed.endpoint : saved.endpoint,
-      modelId: field === "modelId" ? changed.modelId : saved.modelId, apiKey: "synthetic-key",
-      modelSelection: { provider: "COMPATIBLE", mode: "MANUAL", contextWindowTokens: 1_000_000,
-        inputLimitTokens: null, maxOutputTokens: 2048, outputParameter: "MAX_TOKENS" } }]));
-  });
-  it("opens collapsed advanced fields after an invalid save and keeps them open while fixing the draft", async () => {
-    setLocale("en"); unconfiguredLlmSettings();
-    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><LlmSettingsPage /></MemoryRouter></QueryClientProvider>);
-    const user = userEvent.setup();
-    await user.type(await screen.findByLabelText(t("settings.llm.endpoint")), "https://provider.example/v1");
-    await user.type(screen.getByLabelText(t("settings.llm.modelId")), "model-a");
-    fireEvent.change(screen.getByLabelText(t("settings.llm.apiKey")), { target: { value: "synthetic-key" } });
-    const advanced = screen.getByRole("button", { name: t("modelConnection.advanced") });
-    await user.click(advanced);
-    fireEvent.change(screen.getByLabelText(t("modelConnection.output")), { target: { value: "0" } });
-    await user.click(advanced);
-    await user.click(screen.getByRole("button", { name: "Save configuration" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(t("modelConnection.capacityInvalid"));
-    expect(advanced).toHaveAttribute("aria-expanded", "true");
-    await user.click(advanced);
-    expect(advanced).toHaveAttribute("aria-expanded", "false");
-    await user.click(screen.getByRole("button", { name: "Save configuration" }));
-    expect(advanced).toHaveAttribute("aria-expanded", "true");
-    fireEvent.change(screen.getByLabelText(t("modelConnection.output")), { target: { value: "4096" } });
-    expect(advanced).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByLabelText(t("modelConnection.output"))).toHaveValue(4096);
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-  });
-  it.each([
-    ["the usual six-character Ollama placeholder", "ollama", false],
-    ["spaces", "local key", false],
-    ["non-ASCII characters", "not-ascii-凭证", false],
-    ["more than 4096 characters even with native validation bypassed", "x".repeat(4097), true],
-  ] as const)("identifies API Key validation for %s without sending or discarding the draft", async (_description, invalidKey, bypassNative) => {
-    unconfiguredLlmSettings();
-    const submitted: unknown[] = [];
-    server.use(http.put("/api/v1/settings/llm", async ({ request }) => {
-      submitted.push(await request.json());
-      return new HttpResponse(null, { status: 500 });
+
+  it("switches using both target and active CAS versions without a model call", async () => {
+    const { store } = mount(); const intents: unknown[] = [];
+    server.use(http.post(`/api/v1/settings/llm/connections/${SECOND}/activate`, async ({ request }) => {
+      intents.push(await request.json()); store.value = { items: [primary, { ...secondary, version: 8 }], activeConnectionId: SECOND, activeVersion: 8 }; return HttpResponse.json(store.value);
     }));
-    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><LlmSettingsPage /></MemoryRouter></QueryClientProvider>);
-    const user = userEvent.setup();
-    const endpoint = await screen.findByRole("textbox", { name: "端点地址" });
-    const model = screen.getByRole("textbox", { name: "模型 ID" });
-    const key = screen.getByLabelText("API Key（每次修改均需重新输入）");
-    await user.type(endpoint, "https://api.example.com");
-    await user.type(model, "model-a");
-    fireEvent.change(key, { target: { value: invalidKey } });
-    if (bypassNative) key.closest("form")!.noValidate = true;
-    await user.click(screen.getByRole("button", { name: "保存配置" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("API Key 必须为 8–4096 个不含空格的可打印 ASCII 字符。");
-    expect(key).toHaveAttribute("aria-invalid", "true");
-    expect(key).toHaveAccessibleDescription(/API Key 必须为 8–4096/);
-    expect(key).toHaveValue(invalidKey);
-    expect(endpoint).toHaveValue("https://api.example.com");
-    expect(model).toHaveValue("model-a");
-    expect(submitted).toEqual([]);
-    expect(screen.queryByText("密钥输入已清空，重试前请重新输入。")).not.toBeInTheDocument();
+    const row = await screen.findByRole("row", { name: /备用服务/ });
+    await userEvent.click(within(row).getByRole("button", { name: "设为当前" }));
+    await waitFor(() => expect(intents).toEqual([{ expectedVersion: 7, expectedActiveVersion: 4 }]));
+    await waitFor(() => expect(screen.getByRole("row", { name: /备用服务/ })).toHaveTextContent("当前使用"));
+    expect(screen.getByRole("row", { name: /日常创作/ })).not.toHaveTextContent("当前使用");
   });
 
-  it.each([
-    ["the minimum length", "abcdefgh"],
-    ["the maximum length", "x".repeat(4096)],
-    ["the documented Ollama placeholder", "ollama-local"],
-  ])("accepts %s and clears the key only after submitting it", async (_description, validKey) => {
-    unconfiguredLlmSettings();
-    const submitted: unknown[] = [];
-    server.use(http.put("/api/v1/settings/llm", async ({ request }) => {
-      submitted.push(await request.json());
-      return HttpResponse.json({ configured: true, version: 1, endpoint: "https://api.example.com",
-        modelId: "model-a", keyMask: "••••test", toolCallingVerified: false, updatedAt: null });
+  it("creates an additional connection without replacing either saved service or activating it", async () => {
+    const { store } = mount(); const writes: SaveLlmConnectionRequest[] = []; let activations = 0;
+    server.use(http.put("/api/v1/settings/llm/connections/:id", async ({ request, params }) => {
+      const input = await request.json() as SaveLlmConnectionRequest; writes.push(input);
+      const added: LlmConnection = { ...secondary, id: String(params.id), name: input.name, endpoint: input.endpoint, modelId: input.modelId, version: 8, keyMask: "••••new1" };
+      store.value.items.push(added); return HttpResponse.json(added);
+    }), http.post("/api/v1/settings/llm/connections/:id/activate", () => { activations++; return HttpResponse.json(store.value); }));
+    await screen.findByRole("row", { name: /备用服务/ });
+    await userEvent.click(screen.getByRole("button", { name: "新增连接" }));
+    const dialog = await screen.findByRole("dialog", { name: "新增连接" });
+    fireEvent.change(within(dialog).getByLabelText("连接名称"), { target: { value: "第三个服务" } });
+    fireEvent.change(within(dialog).getByLabelText("端点地址"), { target: { value: "https://third.example/v1" } });
+    fireEvent.change(within(dialog).getByLabelText("模型 ID"), { target: { value: "model-c" } });
+    fireEvent.change(within(dialog).getByLabelText("API Key"), { target: { value: "synthetic-new-key" } });
+    await userEvent.click(within(dialog).getByRole("button", { name: "保存配置" }));
+    expect(await screen.findByRole("row", { name: /第三个服务/ })).not.toHaveTextContent("当前使用");
+    expect(screen.getByRole("row", { name: /日常创作/ })).toHaveTextContent("当前使用");
+    expect(screen.getByRole("row", { name: /备用服务/ })).toBeInTheDocument();
+    expect(activations).toBe(0); expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatchObject({ expectedVersion: 0, apiKey: "synthetic-new-key", modelSelection: { mode: "MANUAL", contextWindowTokens: 1_000_000 } });
+  });
+
+  it("replaces a credential only when a new non-empty key is submitted", async () => {
+    const { store } = mount(); const writes: SaveLlmConnectionRequest[] = [];
+    server.use(http.put(`/api/v1/settings/llm/connections/${SECOND}`, async ({ request }) => {
+      const input = await request.json() as SaveLlmConnectionRequest; writes.push(input);
+      const saved = { ...edited(input), keyMask: "••••next" }; store.value.items = [primary, saved]; return HttpResponse.json(saved);
     }));
-    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><LlmSettingsPage /></MemoryRouter></QueryClientProvider>);
-    const user = userEvent.setup();
-    await user.type(await screen.findByRole("textbox", { name: "端点地址" }), "https://api.example.com");
-    await user.type(screen.getByRole("textbox", { name: "模型 ID" }), "model-a");
-    const key = screen.getByLabelText("API Key（每次修改均需重新输入）");
-    expect(key).toHaveValue("");
-    expect(key).toHaveAccessibleDescription(/ollama-local/);
-    fireEvent.change(key, { target: { value: "ollama" } });
-    await user.click(screen.getByRole("button", { name: "保存配置" }));
-    expect(await screen.findByRole("alert")).toBeInTheDocument();
-    fireEvent.change(key, { target: { value: validKey } });
-    await confirmCapacity();
-    expect(key).not.toHaveAttribute("aria-invalid", "true");
-    await user.click(screen.getByRole("button", { name: "保存配置" }));
-    expect(await screen.findByText("配置已加密保存，密钥输入已清空。")).toBeInTheDocument();
-    expect(key).toHaveValue("");
-    expect(submitted).toEqual([{ expectedVersion: 0, endpoint: "https://api.example.com", modelId: "model-a", apiKey: validKey, modelSelection: manualSelection }]);
+    const dialog = await edit(secondary.name);
+    fireEvent.change(within(dialog).getByLabelText("API Key"), { target: { value: "synthetic-next" } });
+    await userEvent.click(within(dialog).getByRole("button", { name: "保存配置" }));
+    await waitFor(() => expect(writes[0]).toMatchObject({ expectedVersion: 7, apiKey: "synthetic-next" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    const reopened = await edit(secondary.name);
+    expect(within(reopened).getByLabelText("API Key")).toHaveValue("");
+    expect(within(reopened).getByLabelText("API Key")).toHaveAttribute("placeholder", expect.stringContaining("••••next"));
   });
 
-  it.each(["http://127.0.0.1:11434/v1", "https://api.example.com"])("explains provider-dependent diagnostic charges for %s and requires consent", async (endpoint) => {
-    setLocale("en");
-    unconfiguredLlmSettings();
-    server.use(http.get("/api/v1/settings/llm", () => HttpResponse.json({ configured: true, version: 1,
-      endpoint, modelId: "model-a", keyMask: "••••test", toolCallingVerified: false, updatedAt: null })));
-    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><LlmSettingsPage /></MemoryRouter></QueryClientProvider>);
-    const consent = await screen.findByRole("checkbox", { name: "I understand this diagnostic sends real model requests and may incur charges" });
-    expect(consent).not.toBeChecked();
-    expect(screen.getByText("Charges depend on your provider or proxy, including for local endpoints. Confirm before each diagnostic.")).toBeVisible();
-    expect(screen.getByRole("button", { name: t("settings.llm.runDiagnostic") })).toBeDisabled();
+  it("retains the current service after a switch failure and retries the same intent", async () => {
+    mount(); const intents: unknown[] = [];
+    server.use(http.post(`/api/v1/settings/llm/connections/${SECOND}/activate`, async ({ request }) => { intents.push(await request.json()); return HttpResponse.json({ title: "Unavailable", detail: "Try again", code: "TEST", retryable: true }, { status: 503 }); }));
+    await userEvent.click(within(await screen.findByRole("row", { name: /备用服务/ })).getByRole("button", { name: "设为当前" }));
+    await screen.findByRole("alert"); await userEvent.click(screen.getByRole("button", { name: "重试" }));
+    await waitFor(() => expect(intents).toHaveLength(2)); expect(intents[1]).toEqual(intents[0]);
+    expect(screen.getByRole("row", { name: /日常创作/ })).toHaveTextContent("当前使用");
   });
 
-  it("discards unsaved fields and credentials without saving or diagnosing", async () => {
-    const writes: unknown[] = [];
-    server.use(
-      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
-      http.get("/api/v1/settings/llm", () => HttpResponse.json({
-        configured: true, version: 4, endpoint: "https://api.example.com", modelId: "model-a",
-        keyMask: "••••7890", toolCallingVerified: false, updatedAt: "2026-09-23T00:00:00Z",
-      })),
-      http.get("/api/v1/settings/diagnostics", () => HttpResponse.json({
-        checkedAt: "2026-09-24T00:00:00Z", database: "AVAILABLE", storage: "AVAILABLE",
-        llmMode: "MOCK", llmConfigured: true, llmToolCallingVerified: false,
-        mediaMode: "MOCK", imageConfigured: true, videoConfigured: true, recentErrors: [],
-      })),
-      http.put("/api/v1/settings/llm", async ({ request }) => { writes.push(await request.json()); return new HttpResponse(null, { status: 500 }); }),
-      http.post("/api/v1/settings/llm/diagnose", async ({ request }) => { writes.push(await request.json()); return new HttpResponse(null, { status: 500 }); }),
-    );
-    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><LlmSettingsPage /></MemoryRouter></QueryClientProvider>);
-    const user = userEvent.setup();
-    const model = await screen.findByRole("textbox", { name: "模型 ID" });
-    expect(screen.getByText("所有修改已保存")).toBeInTheDocument();
-    const consent = screen.getByRole("checkbox", { name: "我了解此次诊断会发送真实模型请求，并可能产生费用" });
-    await user.click(consent);
-    await user.clear(model); await user.type(model, "draft-model");
-    const key = screen.getByLabelText("API Key（每次修改均需重新输入）");
-    await user.type(key, "unsaved-secret");
-    expect(screen.getByText("有未保存的修改")).toBeInTheDocument();
-    expect(screen.getByText("正在编辑 · 基于 v4")).toBeInTheDocument();
-    expect(screen.getByText("model-a")).toBeInTheDocument();
-    expect(consent).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "撤销修改" }));
-    expect(model).toHaveValue("model-a");
-    expect(key).toHaveValue("");
-    expect(consent).not.toBeChecked();
-    expect(screen.getByRole("button", { name: "执行可能计费的诊断" })).toBeDisabled();
-    expect(screen.queryByText("有未保存的修改")).not.toBeInTheDocument();
-    expect(screen.getByText("所有修改已保存")).toBeInTheDocument();
-    expect(writes).toEqual([]);
+  it("requires separate diagnostic consent and targets the selected inactive connection", async () => {
+    const { store } = mount(); const requests: unknown[] = [];
+    server.use(http.post(`/api/v1/settings/llm/connections/${SECOND}/diagnose`, async ({ request }) => { requests.push(await request.json());
+      const verified = { ...secondary, toolCallingVerified: true }; store.value.items = [primary, verified]; return HttpResponse.json(verified); }));
+    const row = await screen.findByRole("row", { name: /备用服务/ }); const user = userEvent.setup();
+    await user.click(within(row).getByRole("button", { name: "诊断" }));
+    let dialog = await screen.findByRole("dialog", { name: "工具协议诊断" });
+    expect(requests).toEqual([]); expect(within(dialog).getByRole("button", { name: "执行可能计费的诊断" })).toBeDisabled();
+    await user.click(within(dialog).getByRole("checkbox")); await user.click(within(dialog).getByRole("button", { name: "取消" }));
+    await user.click(within(row).getByRole("button", { name: "诊断" })); dialog = await screen.findByRole("dialog", { name: "工具协议诊断" });
+    expect(within(dialog).getByRole("checkbox")).not.toBeChecked();
+    await user.click(within(dialog).getByRole("checkbox")); await user.click(within(dialog).getByRole("button", { name: "执行可能计费的诊断" }));
+    await waitFor(() => expect(requests).toEqual([{ expectedVersion: 7, acknowledgeCost: true }]));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByRole("row", { name: /日常创作/ })).toHaveTextContent("当前使用");
   });
 
-  it("submits the key once, clears its field, and displays only the server mask", async () => {
-    const submitted: unknown[] = [];
-    server.use(
-      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
-      http.get("/api/v1/settings/llm", () => HttpResponse.json({
-        configured: false, version: 0, endpoint: null, modelId: null,
-        keyMask: null, toolCallingVerified: false, updatedAt: null,
-      })),
-      http.get("/api/v1/settings/diagnostics", () => HttpResponse.json({
-        checkedAt: "2026-09-24T00:00:00Z", database: "AVAILABLE", storage: "AVAILABLE",
-        llmMode: "MOCK", llmConfigured: true, llmToolCallingVerified: false,
-        mediaMode: "CONFIGURED", imageConfigured: true, videoConfigured: false,
-        recentErrors: [],
-      })),
-      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
-      http.put("/api/v1/settings/llm", async ({ request }) => {
-        submitted.push(await request.json());
-        return HttpResponse.json({
-          configured: true, version: 1, endpoint: "https://api.example.com", modelId: "model-a",
-          keyMask: "••••7890", toolCallingVerified: false, updatedAt: "2026-09-23T00:00:00Z",
-        });
-      }),
-    );
-
-    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><LlmSettingsPage /></MemoryRouter></QueryClientProvider>);
-    const user = userEvent.setup();
-    await user.type(await screen.findByRole("textbox", { name: "端点地址" }), "https://api.example.com");
-    expect(screen.getByText("保存配置后可验证")).toBeInTheDocument();
-    await user.type(screen.getByRole("textbox", { name: "模型 ID" }), "model-a");
-    const keyInput = screen.getByLabelText("API Key（每次修改均需重新输入）") as HTMLInputElement;
-    await user.type(keyInput, "secret-7890");
-    await confirmCapacity();
-    await user.click(screen.getByRole("button", { name: "保存配置" }));
-
-    expect(await within(screen.getByRole("region", { name: "LLM 配置" })).findByRole("status")).toHaveTextContent("配置已加密保存");
-    expect(keyInput).toHaveValue("");
-    expect(screen.getByText(/密钥 ••••7890/)).toBeInTheDocument();
-    expect(document.body).not.toHaveTextContent("secret-7890");
-    expect(submitted).toEqual([{ expectedVersion: 0, endpoint: "https://api.example.com", modelId: "model-a", apiKey: "secret-7890", modelSelection: manualSelection }]);
-    expect(screen.queryByText("保存配置后可验证")).not.toBeInTheDocument();
-    expect(screen.getByText(/已配置模型模式 · 图片已配置 · 视频未配置/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "查看系统诊断" })).toHaveAttribute("href", "/settings/general?tab=diagnostics");
+  it("invalidates diagnostic consent when another editor changes that connection", async () => {
+    const { client } = mount(); const row = await screen.findByRole("row", { name: /备用服务/ });
+    await userEvent.click(within(row).getByRole("button", { name: "诊断" })); const dialog = await screen.findByRole("dialog", { name: "工具协议诊断" });
+    await userEvent.click(within(dialog).getByRole("checkbox"));
+    act(() => client.setQueryData(key, { ...initial, items: [primary, { ...secondary, version: 9 }] }));
+    await waitFor(() => expect(within(dialog).getByRole("checkbox")).not.toBeChecked());
+    expect(within(dialog).getByRole("button", { name: "执行可能计费的诊断" })).toBeDisabled();
+    await userEvent.click(within(dialog).getByRole("button", { name: "载入最新配置" }));
+    expect(within(dialog).getByRole("checkbox")).not.toBeChecked();
   });
 
-  it("requires visible cost consent and updates the verified state after a full probe", async () => {
-    const submitted: unknown[] = [];
-    server.use(
-      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
-      http.get("/api/v1/settings/llm", () => HttpResponse.json({
-        configured: true, version: 4, endpoint: "https://api.example.com", modelId: "model-a",
-        keyMask: "••••7890", toolCallingVerified: false, updatedAt: "2026-09-23T00:00:00Z",
-      })),
-      http.get("/api/v1/settings/diagnostics", () => HttpResponse.json({
-        checkedAt: "2026-09-24T00:00:00Z", database: "AVAILABLE", storage: "AVAILABLE",
-        llmMode: "CONFIGURED", llmConfigured: true, llmToolCallingVerified: false,
-        mediaMode: "MOCK", imageConfigured: true, videoConfigured: true,
-        recentErrors: [],
-      })),
-      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
-      http.post("/api/v1/settings/llm/diagnose", async ({ request }) => {
-        submitted.push(await request.json());
-        return HttpResponse.json({
-          configured: true, version: 4, endpoint: "https://api.example.com", modelId: "model-a",
-          keyMask: "••••7890", toolCallingVerified: true, updatedAt: "2026-09-23T00:00:00Z",
-        });
-      }),
-    );
-
-    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><LlmSettingsPage /></MemoryRouter></QueryClientProvider>);
-    const user = userEvent.setup();
-    const diagnose = await screen.findByRole("button", { name: "执行可能计费的诊断" });
-    expect(diagnose).toBeDisabled();
-    await user.click(screen.getByRole("checkbox", { name: "我了解此次诊断会发送真实模型请求，并可能产生费用" }));
-    await user.click(diagnose);
-
-    expect(await screen.findByText("已验证完整工具协议。")).toBeInTheDocument();
-    expect(screen.getByText(/完整工具往返已验证/)).toBeInTheDocument();
-    expect(submitted).toEqual([{ expectedVersion: 4, acknowledgeCost: true }]);
-    expect(diagnose).toBeDisabled();
+  it("recovers a diagnostic server conflict even when the local catalog has not refreshed", async () => {
+    const { store } = mount(); const attempts: unknown[] = [];
+    server.use(http.post(`/api/v1/settings/llm/connections/${SECOND}/diagnose`, async ({ request }) => {
+      attempts.push(await request.json());
+      const latest = { ...secondary, version: 9 };
+      store.value.items = [primary, latest];
+      return attempts.length === 1
+        ? HttpResponse.json({ title: "Conflict", detail: "Read the latest connection", code: "PROVIDER_CONFIG_VERSION_CONFLICT", retryable: false }, { status: 409 })
+        : HttpResponse.json({ ...latest, toolCallingVerified: true });
+    }));
+    const row = await screen.findByRole("row", { name: /备用服务/ });
+    await userEvent.click(within(row).getByRole("button", { name: "诊断" }));
+    const dialog = await screen.findByRole("dialog", { name: "工具协议诊断" });
+    await userEvent.click(within(dialog).getByRole("checkbox"));
+    await userEvent.click(within(dialog).getByRole("button", { name: "执行可能计费的诊断" }));
+    const refresh = await within(dialog).findByRole("button", { name: "载入最新配置" });
+    await userEvent.click(refresh);
+    await waitFor(() => expect(dialog).toHaveAccessibleDescription(/v9/));
+    expect(within(dialog).getByRole("checkbox")).not.toBeChecked();
+    expect(within(dialog).getByRole("button", { name: "执行可能计费的诊断" })).toBeDisabled();
+    await userEvent.click(within(dialog).getByRole("checkbox"));
+    await userEvent.click(within(dialog).getByRole("button", { name: "执行可能计费的诊断" }));
+    await waitFor(() => expect(attempts).toEqual([{ expectedVersion: 7, acknowledgeCost: true }, { expectedVersion: 9, acknowledgeCost: true }]));
   });
 
-  it("preserves a draft and its CAS base when a newer setting arrives, then explicitly loads the latest", async () => {
-    const original: LlmSettings = {
-      configured: true, version: 4, endpoint: "https://api.example.com", modelId: "model-a",
-      keyMask: "••••7890", toolCallingVerified: false, updatedAt: "2026-09-23T00:00:00Z",
-    };
-    const latest: LlmSettings = { ...original, version: 5, modelId: "remote-model" };
-    let current = original;
-    const submitted: unknown[] = [];
-    server.use(
-      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
-      http.get("/api/v1/settings/llm", () => HttpResponse.json(current)),
-      http.get("/api/v1/settings/diagnostics", () => HttpResponse.json({
-        checkedAt: "2026-09-24T00:00:00Z", database: "AVAILABLE", storage: "AVAILABLE",
-        llmMode: "MOCK", llmConfigured: true, llmToolCallingVerified: false,
-        mediaMode: "MOCK", imageConfigured: true, videoConfigured: true, recentErrors: [],
-      })),
-      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
-      http.put("/api/v1/settings/llm", async ({ request }) => {
-        submitted.push(await request.json());
-        return HttpResponse.json({ title: "Conflict", status: 409, code: "VERSION_CONFLICT", detail: "配置已更新，请核对。" }, { status: 409, headers: { "Content-Type": "application/problem+json" } });
-      }),
-    );
-    const queryClient = createQueryClient();
-    render(<QueryClientProvider client={queryClient}><MemoryRouter><LlmSettingsPage /></MemoryRouter></QueryClientProvider>);
-    const user = userEvent.setup();
-    const modelInput = await screen.findByRole("textbox", { name: "模型 ID" });
-    await user.clear(modelInput);
-    await user.type(modelInput, "local-draft");
-    const keyInput = screen.getByLabelText("API Key（每次修改均需重新输入）");
-    await user.type(keyInput, "local-secret");
-    await confirmCapacity();
-    current = latest;
-    act(() => { queryClient.setQueryData(["settings", "llm"], latest); });
-    expect(await screen.findByText("已有更新的配置")).toBeInTheDocument();
-    expect(modelInput).toHaveValue("local-draft");
-    expect(screen.getByRole("button", { name: "执行可能计费的诊断" })).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "保存配置" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("配置已更新，请核对。");
-    expect(submitted).toEqual([{ expectedVersion: 4, endpoint: original.endpoint, modelId: "local-draft", apiKey: "local-secret", modelSelection: manualSelection }]);
-    expect(keyInput).toHaveValue("");
-    expect(modelInput).toHaveValue("local-draft");
-    await user.click(screen.getByRole("button", { name: "载入最新配置" }));
-    expect(modelInput).toHaveValue("remote-model");
-    expect(screen.queryByText("已有更新的配置")).not.toBeInTheDocument();
+  it("preserves dirty fields and the pinned version across background reads until an explicit conflict refresh", async () => {
+    const { store, client } = mount(); const dialog = await edit(secondary.name); const writes: unknown[] = [];
+    fireEvent.change(within(dialog).getByLabelText("模型 ID"), { target: { value: "unsaved-model" } });
+    store.value.items = [primary, { ...secondary, version: 9, modelId: "remote-model" }];
+    act(() => client.setQueryData(key, store.value));
+    expect(within(dialog).getByLabelText("模型 ID")).toHaveValue("unsaved-model");
+    server.use(http.put(`/api/v1/settings/llm/connections/${SECOND}`, async ({ request }) => { writes.push(await request.json()); return HttpResponse.json({ title: "Conflict", detail: "Reload configuration", code: "PROVIDER_CONFIG_VERSION_CONFLICT", retryable: false }, { status: 409 }); }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "保存配置" }));
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0]).toMatchObject({ expectedVersion: 7, modelId: "unsaved-model" });
+    expect(within(dialog).getByLabelText("模型 ID")).toHaveValue("unsaved-model");
+    await userEvent.click(await within(dialog).findByRole("button", { name: "载入最新配置" }));
+    await waitFor(() => expect(within(dialog).getByLabelText("模型 ID")).toHaveValue("remote-model"));
   });
 
-  it("retries a failed configuration read without leaving the settings page", async () => {
-    let shouldFail = true;
-    server.use(
-      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
-      http.get("/api/v1/settings/llm", () => shouldFail ? HttpResponse.json({ status: 503, title: "Unavailable" }, { status: 503 }) : HttpResponse.json({
-        configured: false, version: 0, endpoint: null, modelId: null, keyMask: null, toolCallingVerified: false, updatedAt: null,
-      })),
-      http.get("/api/v1/settings/diagnostics", () => HttpResponse.json({
-        checkedAt: "2026-09-24T00:00:00Z", database: "AVAILABLE", storage: "AVAILABLE",
-        llmMode: "MOCK", llmConfigured: true, llmToolCallingVerified: false,
-        mediaMode: "MOCK", imageConfigured: true, videoConfigured: true, recentErrors: [],
-      })),
-    );
-    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><LlmSettingsPage /></MemoryRouter></QueryClientProvider>);
-    expect(await screen.findByRole("alert")).toHaveTextContent("读取配置失败");
-    shouldFail = false;
-    await userEvent.setup().click(screen.getByRole("button", { name: "重新读取配置" }));
-    expect(await screen.findByRole("textbox", { name: "端点地址" })).toHaveValue("");
-    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  it("asks before discarding a dirty editor and preserves the input when editing continues", async () => {
+    mount(); const dialog = await edit();
+    fireEvent.change(within(dialog).getByLabelText("连接名称"), { target: { value: "未保存" } });
+    await userEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+    const confirmation = await screen.findByRole("dialog", { name: "放弃未保存的修改？" });
+    await userEvent.click(within(confirmation).getByRole("button", { name: "继续编辑" }));
+    expect(within(dialog).getByLabelText("连接名称")).toHaveValue("未保存");
   });
-
-
-  it("invalidates cost consent and diagnostic success when the saved configuration version changes", async () => {
-    const original: LlmSettings = {
-      configured: true, version: 4, endpoint: "https://api.example.com", modelId: "model-a",
-      keyMask: "••••7890", toolCallingVerified: false, updatedAt: "2026-09-23T00:00:00Z",
-    };
-    const latest: LlmSettings = { ...original, version: 5, endpoint: "https://new.example.com", modelId: "model-b" };
-    const submitted: unknown[] = [];
-    server.use(
-      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
-      http.get("/api/v1/settings/llm", () => HttpResponse.json(original)),
-      http.get("/api/v1/settings/diagnostics", () => HttpResponse.json({
-        checkedAt: "2026-09-24T00:00:00Z", database: "AVAILABLE", storage: "AVAILABLE",
-        llmMode: "CONFIGURED", llmConfigured: true, llmToolCallingVerified: false,
-        mediaMode: "MOCK", imageConfigured: true, videoConfigured: true, recentErrors: [],
-      })),
-      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
-      http.post("/api/v1/settings/llm/diagnose", async ({ request }) => {
-        submitted.push(await request.json());
-        return HttpResponse.json({ ...latest, toolCallingVerified: true });
-      }),
-    );
-    const queryClient = createQueryClient();
-    render(<QueryClientProvider client={queryClient}><MemoryRouter><LlmSettingsPage /></MemoryRouter></QueryClientProvider>);
-    const user = userEvent.setup();
-    const consent = await screen.findByRole("checkbox", { name: "我了解此次诊断会发送真实模型请求，并可能产生费用" });
-    const diagnose = screen.getByRole("button", { name: "执行可能计费的诊断" });
-    await user.click(consent);
-    expect(diagnose).toBeEnabled();
-    act(() => { queryClient.setQueryData(["settings", "llm"], latest); });
-    await waitFor(() => expect(consent).not.toBeChecked());
-    expect(diagnose).toBeDisabled();
-    expect(submitted).toHaveLength(0);
-    await user.click(consent);
-    await user.click(diagnose);
-    expect(await screen.findByText("已验证完整工具协议。")).toBeInTheDocument();
-    expect(submitted).toEqual([{ expectedVersion: 5, acknowledgeCost: true }]);
-    act(() => { queryClient.setQueryData(["settings", "llm"], { ...latest, version: 6 }); });
-    await waitFor(() => expect(screen.queryByText("已验证完整工具协议。")).not.toBeInTheDocument());
-    expect(screen.getByText(/当前版本 6：尚未验证/)).toBeInTheDocument();
-    expect(consent).not.toBeChecked();
-    expect(diagnose).toBeDisabled();
-  });
-
-  it("refreshes a diagnostic conflict, preserves the edit base, and lets the user diagnose the latest version", async () => {
-    const original: LlmSettings = {
-      configured: true, version: 4, endpoint: "https://api.example.com", modelId: "model-a",
-      keyMask: "••••7890", toolCallingVerified: false, updatedAt: "2026-09-23T00:00:00Z",
-    };
-    const latest: LlmSettings = { ...original, version: 5, modelId: "remote-model" };
-    let current = original;
-    const submitted: unknown[] = [];
-    server.use(
-      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
-      http.get("/api/v1/settings/llm", () => HttpResponse.json(current)),
-      http.get("/api/v1/settings/diagnostics", () => HttpResponse.json({
-        checkedAt: "2026-09-24T00:00:00Z", database: "AVAILABLE", storage: "AVAILABLE",
-        llmMode: "CONFIGURED", llmConfigured: true, llmToolCallingVerified: false,
-        mediaMode: "MOCK", imageConfigured: true, videoConfigured: true, recentErrors: [],
-      })),
-      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
-      http.post("/api/v1/settings/llm/diagnose", async ({ request }) => {
-        const input = await request.json() as { expectedVersion: number };
-        submitted.push(input);
-        if (input.expectedVersion !== latest.version) {
-          current = latest;
-          return HttpResponse.json({ title: "Conflict", status: 409, code: "PROVIDER_CONFIG_CHANGED", detail: "配置已变更，请重新读取。" }, { status: 409, headers: { "Content-Type": "application/problem+json" } });
-        }
-        return HttpResponse.json({ ...latest, toolCallingVerified: true });
-      }),
-    );
-    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><LlmSettingsPage /></MemoryRouter></QueryClientProvider>);
-    const user = userEvent.setup();
-    const modelInput = await screen.findByRole("textbox", { name: "模型 ID" });
-    // Restoring the value leaves a pinned edit base; a conflict must not silently replace it.
-    await user.type(modelInput, "x{Backspace}");
-    await user.click(screen.getByRole("checkbox", { name: "我了解此次诊断会发送真实模型请求，并可能产生费用" }));
-    await user.click(screen.getByRole("button", { name: "执行可能计费的诊断" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("配置已变更，请重新读取。");
-    expect(await screen.findByText("已有更新的配置")).toBeInTheDocument();
-    expect(modelInput).toHaveValue("model-a");
-    expect(submitted).toEqual([{ expectedVersion: 4, acknowledgeCost: true }]);
-    await user.click(screen.getByRole("button", { name: "载入最新配置" }));
-    expect(modelInput).toHaveValue("remote-model");
-    const diagnose = screen.getByRole("button", { name: "执行可能计费的诊断" });
-    expect(diagnose).toBeDisabled();
-    await user.click(screen.getByRole("checkbox", { name: "我了解此次诊断会发送真实模型请求，并可能产生费用" }));
-    await user.click(diagnose);
-    expect(await screen.findByText("已验证完整工具协议。")).toBeInTheDocument();
-    expect(submitted).toEqual([{ expectedVersion: 4, acknowledgeCost: true }, { expectedVersion: 5, acknowledgeCost: true }]);
-  });
-
-});
-
-
-it("fills discovered Ollama only on selection and preserves its unsaved draft", async () => {
-  const writes: unknown[] = [];
-  server.use(
-    http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
-    http.get("/api/v1/settings/llm", () => HttpResponse.json({ configured: true, version: 4, endpoint: "https://api.example.com",
-      modelId: "saved-model", keyMask: "••••1234", toolCallingVerified: false, updatedAt: null })),
-    http.get("/api/v1/settings/diagnostics", () => HttpResponse.json({ llmMode: "MOCK", mediaMode: "MOCK", imageConfigured: false, videoConfigured: false, recentErrors: [] })),
-    http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
-    http.post("/api/v1/settings/local-services/discover", () => HttpResponse.json({ service: "OLLAMA", runtime: "CONTAINER", status: "FOUND", endpoint: "http://host.docker.internal:11434/v1" })),
-    http.put("/api/v1/settings/llm", async ({ request }) => { writes.push(await request.json()); return new HttpResponse(null, { status: 500 }); }),
-  );
-  render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><LlmSettingsPage /></MemoryRouter></QueryClientProvider>);
-  const user = userEvent.setup(); const endpoint = await screen.findByRole("textbox", { name: "端点地址" });
-  const model = screen.getByRole("textbox", { name: "模型 ID" });
-  await user.clear(model); await user.type(model, "draft-model");
-  const key = screen.getByLabelText("API Key（每次修改均需重新输入）"); await user.type(key, "draft-secret");
-  const form = endpoint.closest("form")!;
-  expect(within(form).getByRole("button", { name: "保存配置" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "执行可能计费的诊断" })).toBeInTheDocument();
-  await user.click(within(form).getByRole("button", { name: "查找本机 Ollama" }));
-  const fill = await screen.findByRole("button", { name: "填入地址" });
-  expect(endpoint).toHaveValue("https://api.example.com"); await user.click(fill);
-  expect(endpoint).toHaveValue("http://host.docker.internal:11434/v1");
-  expect(model).toHaveValue("draft-model"); expect(key).toHaveValue("draft-secret");
-  expect(screen.getByText("正在编辑 · 基于 v4")).toBeInTheDocument(); expect(writes).toEqual([]);
 });

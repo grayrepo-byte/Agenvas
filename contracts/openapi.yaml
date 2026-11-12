@@ -3201,21 +3201,24 @@ paths:
       - {$ref: "#/components/parameters/AcceptLanguage"}
     get:
       operationId: getLlmSettings
-      summary: 读取管理员模型配置的脱敏状态
+      summary: 读取管理员当前活动模型配置的脱敏状态
+      description: 仅接受管理员网页登录 Session；返回 Cache-Control no-store，不包含凭证明文或密文。
       tags: [Settings]
       responses:
         "200":
           description: 配置状态，不包含凭证明文或密文
           headers:
             Cache-Control:
-              schema: {type: string}
+              schema: {type: string, const: no-store}
           content:
             application/json:
               schema: {$ref: "#/components/schemas/LlmSettings"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
     put:
       operationId: replaceLlmSettings
-      summary: 用完整新凭证替换活动模型配置版本
+      summary: 保存当前活动模型连接并追加配置版本
+      description: 仅接受管理员网页登录 Session 与 CSRF 校验。已有连接的 apiKey 缺省、null、空字符串或纯空白时保留服务端旧密钥；首次配置必须提供有效密钥。非空密钥由服务端校验 8–4096 个可打印 ASCII 字符。密钥只单次提交到服务端，不返回浏览器或记录到日志。
       tags: [Settings]
       requestBody:
         required: true
@@ -3227,7 +3230,7 @@ paths:
           description: 新版本的脱敏状态
           headers:
             Cache-Control:
-              schema: {type: string}
+              schema: {type: string, const: no-store}
           content:
             application/json:
               schema: {$ref: "#/components/schemas/LlmSettings"}
@@ -3235,6 +3238,131 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "409": {$ref: "#/components/responses/Conflict"}
+        "503": {$ref: "#/components/responses/Unavailable"}
+  /api/v1/settings/llm/connections:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+    get:
+      operationId: listLlmConnections
+      summary: 读取管理员已保存模型连接及当前活动连接
+      description: 仅接受管理员网页登录 Session；只返回连接最新版本的脱敏元数据，不返回凭证明文或密文。空目录的 activeConnectionId 为 null，activeVersion 为 0。
+      tags: [Settings]
+      responses:
+        "200":
+          description: 已保存连接目录与活动配置版本；Cache-Control no-store
+          headers:
+            Cache-Control:
+              schema: {type: string, const: no-store}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LlmConnections"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /api/v1/settings/llm/connections/{id}:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    put:
+      operationId: saveLlmConnection
+      summary: 独立创建或 CAS 保存一个命名模型连接
+      description: 仅接受管理员网页登录 Session 与 CSRF 校验。expectedVersion 为 0 时以客户端生成的固定 id 新建连接，大于 0 时须匹配该连接最新版本；保存不切换当前活动连接。已有连接的 apiKey 缺省、null、空字符串或纯空白时保留服务端旧密钥，新建必须提供有效密钥；非空密钥由服务端校验 8–4096 个可打印 ASCII 字符。凭证只单次提交到服务端，不返回浏览器或记录到日志。
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SaveLlmConnectionRequest"}
+      responses:
+        "200":
+          description: 已保存连接的脱敏最新版本；Cache-Control no-store
+          headers:
+            Cache-Control:
+              schema: {type: string, const: no-store}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LlmConnection"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "503": {$ref: "#/components/responses/Unavailable"}
+  /api/v1/settings/llm/connections/{id}/activate:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: activateLlmConnection
+      summary: 显式切换当前活动模型连接
+      description: 仅接受管理员网页登录 Session 与 CSRF 校验。须同时匹配目标连接最新版本与全局 activeVersion；切换追加全局不可变配置版本并更新目标连接最新版本，保留其已有工具协议验证结果。目标已是当前活动连接时可原样返回，不调用模型。既有任务继续使用已固定的历史配置。
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ActivateLlmConnectionRequest"}
+      responses:
+        "200":
+          description: 连接目录与当前活动配置版本；Cache-Control no-store
+          headers:
+            Cache-Control:
+              schema: {type: string, const: no-store}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LlmConnections"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "503": {$ref: "#/components/responses/Unavailable"}
+  /api/v1/settings/llm/connections/{id}/diagnose:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: diagnoseLlmConnection
+      summary: 独立验证指定已保存模型连接的工具协议
+      description: 仅接受管理员网页登录 Session 与 CSRF 校验。显式确认可能计费后，对 expectedVersion 对应的连接版本执行最多两次工具协议诊断；连接无需处于活动状态，诊断不切换活动连接。成功仅在连接最新版本仍匹配时记入验证结果；并发修改返回冲突，不把旧诊断标记到新配置。不自动重试，已验证且未变更的配置不重复调用。调用日志沿用现有 DIAGNOSTIC 权限与 debug 正文规则，不记录凭证。
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/DiagnoseLlmRequest"}
+      responses:
+        "200":
+          description: 完成诊断后的脱敏连接状态；Cache-Control no-store
+          headers:
+            Cache-Control:
+              schema: {type: string, const: no-store}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LlmConnection"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "422":
+          description: 模型未完成完整工具协议
+          content:
+            application/problem+json:
+              schema: {$ref: "#/components/schemas/Problem"}
+        "502":
+          description: 模型连接或调用失败
+          content:
+            application/problem+json:
+              schema: {$ref: "#/components/schemas/Problem"}
         "503": {$ref: "#/components/responses/Unavailable"}
   /api/v1/settings/diagnostics:
     parameters:
@@ -3257,6 +3385,7 @@ paths:
     post:
       operationId: previewLlmModels
       summary: 管理员读取模型列表和容量元数据，不运行推理或保存配置
+      description: 仅接受管理员网页登录 Session 与 CSRF 校验。SAVED 使用 connectionId 指定连接的最新版本和服务端凭证，并校验 expectedVersion；DRAFT 可使用修改后的 endpoint，apiKey 缺省、null、空字符串或纯空白时从该连接保留服务端密钥。缺省 connectionId 沿用当前活动配置语义。密钥不返回浏览器或记录到日志。
       tags: [Settings]
       requestBody:
         required: true
@@ -3266,12 +3395,17 @@ paths:
       responses:
         '200':
           description: 有界模型列表；未知容量为 null，预览十分钟有效且绑定原连接和凭据
+          headers:
+            Cache-Control:
+              schema: {type: string, const: no-store}
           content:
             application/json:
               schema: {$ref: '#/components/schemas/LlmModelPreview'}
         '400': {$ref: '#/components/responses/ValidationError'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
         '429':
           description: 元数据读取正在进行
           content:
@@ -3287,13 +3421,14 @@ paths:
           content:
             application/problem+json:
               schema: {$ref: '#/components/schemas/Problem'}
+        '503': {$ref: '#/components/responses/Unavailable'}
   /api/v1/settings/llm/diagnose:
     parameters:
       - {$ref: "#/components/parameters/AcceptLanguage"}
     post:
       operationId: diagnoseLlmSettings
-      summary: 管理员显式发起最多两次可能计费的工具协议诊断
-      description: 每次实际调用记录为无项目的 DIAGNOSTIC 日志，默认仅记录安全元数据；开启系统 debug 后按现有权限采集正文。第一轮必须返回唯一且 nonce 精确匹配的探针调用，第二轮必须仅返回工具结果的 proof（允许首尾空白）。失败详情说明具体阶段，显式 Token 截断不验证工具能力。不自动重试，已验证且未变更的配置不重复调用。
+      summary: 管理员对当前活动配置显式发起最多两次可能计费的工具协议诊断
+      description: 仅接受管理员网页登录 Session 与 CSRF 校验。每次实际调用记录为无项目的 DIAGNOSTIC 日志，默认仅记录安全元数据；开启系统 debug 后按现有权限采集正文，不记录凭证。第一轮必须返回唯一且 nonce 精确匹配的探针调用，第二轮必须仅返回工具结果的 proof（允许首尾空白）。失败详情说明具体阶段，显式 Token 截断不验证工具能力。不自动重试，已验证且未变更的配置不重复调用。
       tags: [Settings]
       requestBody:
         required: true
@@ -3305,7 +3440,7 @@ paths:
           description: 完成诊断后的脱敏配置状态
           headers:
             Cache-Control:
-              schema: {type: string}
+              schema: {type: string, const: no-store}
           content:
             application/json:
               schema: {$ref: "#/components/schemas/LlmSettings"}
@@ -3323,6 +3458,7 @@ paths:
           content:
             application/problem+json:
               schema: {$ref: "#/components/schemas/Problem"}
+        "503": {$ref: "#/components/responses/Unavailable"}
   /api/v1/settings/autodl-workflows:
     get:
       operationId: listAutoDlWorkflows
@@ -10284,13 +10420,66 @@ components:
     ReplaceLlmSettingsRequest:
       type: object
       additionalProperties: false
-      required: [expectedVersion, endpoint, modelId, apiKey]
+      required: [expectedVersion, endpoint, modelId]
       properties:
         expectedVersion: {type: integer, minimum: 0}
         endpoint: {type: string, minLength: 1, maxLength: 500, format: uri}
         modelId: {type: string, minLength: 1, maxLength: 160}
-        apiKey: {type: string, minLength: 8, maxLength: 4096, writeOnly: true}
+        apiKey:
+          type: [string, 'null']
+          maxLength: 4096
+          writeOnly: true
+          description: 缺省、null、空字符串或纯空白时保留已有服务端密钥；首次配置必须提供有效密钥。非空密钥由服务端校验 8–4096 个可打印 ASCII 字符，不返回浏览器或写入日志。
         modelSelection: {$ref: '#/components/schemas/LlmModelSelection'}
+    LlmConnections:
+      type: object
+      additionalProperties: false
+      required: [items, activeConnectionId, activeVersion]
+      properties:
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/LlmConnection'}
+        activeConnectionId: {type: [string, 'null'], format: uuid}
+        activeVersion: {type: integer, minimum: 0}
+    LlmConnection:
+      type: object
+      additionalProperties: false
+      required: [id, name, version, endpoint, modelId, keyMask, toolCallingVerified, updatedAt, modelPolicy]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string, maxLength: 120}
+        version: {type: integer, minimum: 1}
+        endpoint: {type: string, maxLength: 500}
+        modelId: {type: string, maxLength: 160}
+        keyMask: {type: string, maxLength: 16}
+        toolCallingVerified: {type: boolean}
+        updatedAt: {type: string, format: date-time}
+        modelPolicy:
+          anyOf:
+            - {$ref: '#/components/schemas/LlmModelPolicy'}
+            - {type: 'null'}
+    SaveLlmConnectionRequest:
+      type: object
+      additionalProperties: false
+      required: [name, expectedVersion, endpoint, modelId]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        expectedVersion: {type: integer, minimum: 0, description: '0 使用路径固定 id 新建；大于 0 必须匹配该连接最新版本。'}
+        endpoint: {type: string, minLength: 1, maxLength: 500, format: uri}
+        modelId: {type: string, minLength: 1, maxLength: 160}
+        apiKey:
+          type: [string, 'null']
+          maxLength: 4096
+          writeOnly: true
+          description: 缺省、null、空字符串或纯空白时保留该连接已有服务端密钥；新建连接必须提供有效密钥。非空密钥由服务端校验 8–4096 个可打印 ASCII 字符，不返回浏览器或写入日志。
+        modelSelection: {$ref: '#/components/schemas/LlmModelSelection'}
+    ActivateLlmConnectionRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, expectedActiveVersion]
+      properties:
+        expectedVersion: {type: integer, minimum: 1}
+        expectedActiveVersion: {type: integer, minimum: 0}
     LlmModelProvider:
       type: string
       enum: [COMPATIBLE, OPENAI, OPENROUTER, GEMINI, ANTHROPIC, OLLAMA]
@@ -10346,8 +10535,16 @@ components:
         provider: {$ref: '#/components/schemas/LlmModelProvider'}
         credentialMode: {type: string, enum: [DRAFT, SAVED]}
         expectedVersion: {type: integer, minimum: 0}
+        connectionId:
+          type: [string, 'null']
+          format: uuid
+          description: 指定已保存连接的最新版本与服务端密钥；缺省或 null 时使用当前活动配置语义，不切换活动连接。
         endpoint: {type: [string, 'null'], maxLength: 500}
-        apiKey: {type: [string, 'null'], minLength: 8, maxLength: 4096, writeOnly: true}
+        apiKey:
+          type: [string, 'null']
+          maxLength: 4096
+          writeOnly: true
+          description: DRAFT 中缺省、null、空字符串或纯空白时保留指定连接的服务端密钥；非空密钥由服务端校验 8–4096 个可打印 ASCII 字符。不返回浏览器或写入日志。
         modelId: {type: [string, 'null'], maxLength: 160}
     LlmModelPreview:
       type: object

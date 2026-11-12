@@ -35,6 +35,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -65,6 +66,7 @@ class LlmDiagnosticPostgresIT {
     private static final AtomicBoolean RETURN_TOOL = new AtomicBoolean(true);
     private static final AtomicBoolean IGNORE_TOOL_RESULT = new AtomicBoolean();
     private static final AtomicReference<String> AUTHORIZATION = new AtomicReference<>();
+    private static final AtomicReference<Runnable> NEXT_REQUEST = new AtomicReference<>();
     private static final HttpServer SERVER = fakeModel();
 
     @DynamicPropertySource
@@ -95,6 +97,40 @@ class LlmDiagnosticPostgresIT {
     @Autowired private CallLogService callLogs;
     @Autowired private CallLogRetentionService retention;
     @Autowired private JdbcClient jdbc;
+    @Autowired private dev.agenvas.settings.application.LlmDiagnosticService diagnostics;
+    @Autowired private dev.agenvas.settings.application.LlmProviderConfigRepository configsRepository;
+
+    @BeforeEach void resetConnectionState() {
+        jdbc.sql("delete from llm_connection").update();
+        jdbc.sql("delete from llm_provider_config").update();
+        jdbc.sql("update llm_provider_config_counter set current_version=0").update();
+        jdbc.sql("delete from call_log").update();
+        CALLS.set(0); RETURN_TOOL.set(true); IGNORE_TOOL_RESULT.set(false); NEXT_REQUEST.set(null);
+    }
+
+    @Test void inactiveDiagnosisCannotVerifyAHeadEditedDuringItsNetworkProbeAndActivationKeepsEarnedVerification() {
+        UUID id = UUID.randomUUID();
+        String endpoint = "http://127.0.0.1:" + SERVER.getAddress().getPort() + "/v1";
+        var saved = configs.saveConnection(id, "Inactive", 0, endpoint, "diagnostic-model", "synthetic-connection-key", capacity());
+        assertThatThrownBy(() -> diagnostics.diagnoseConnection(id, saved.version(), false))
+                .isInstanceOfSatisfying(ApiProblemException.class, problem -> assertThat(problem.status().value()).isEqualTo(400));
+        assertThat(CALLS).hasValue(0);
+        NEXT_REQUEST.set(() -> configs.saveConnection(id, "Edited during probe", saved.version(), endpoint, "diagnostic-model", null, null));
+        assertThatThrownBy(() -> diagnostics.diagnoseConnection(id, saved.version(), true))
+                .isInstanceOfSatisfying(ApiProblemException.class, problem -> assertThat(problem.code()).isEqualTo("PROVIDER_CONFIG_VERSION_CONFLICT"));
+        assertThat(CALLS).hasValue(2);
+        assertThat(configsRepository.findVersion(saved.version()).orElseThrow().toolCallingVerified()).isFalse();
+        var edited = configs.connection(id);
+        assertThat(edited.toolCallingVerified()).isFalse();
+        assertThat(configs.connections().activeConnectionId()).isNull();
+        var verified = diagnostics.diagnoseConnection(id, edited.version(), true);
+        assertThat(verified.toolCallingVerified()).isTrue();
+        assertThat(CALLS).hasValue(4);
+        var active = configs.activate(id, verified.version(), 0);
+        assertThat(active.activeVersion()).isGreaterThan(verified.version());
+        assertThat(configs.status().toolCallingVerified()).isTrue();
+        assertThat(CALLS).hasValue(4);
+    }
 
     @Test
     void requiresAdminCsrfCostConsentAndExactTwoRoundProtocol() throws Exception {
@@ -225,6 +261,8 @@ class LlmDiagnosticPostgresIT {
         try {
             HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.createContext("/v1/chat/completions", exchange -> {
+                Runnable callback = NEXT_REQUEST.getAndSet(null);
+                if (callback != null) callback.run();
                 AUTHORIZATION.set(exchange.getRequestHeaders().getFirst("Authorization"));
                 String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
                 JsonNode request = new ObjectMapper().readTree(body);

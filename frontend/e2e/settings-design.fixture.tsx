@@ -14,7 +14,7 @@ import { LibraryPage } from "../src/features/library/LibraryPage";
 import { SkillsPage } from "../src/features/skills/SkillsPage";
 import { workspaceDesignResponse } from "./workspace-design-data";
 import type {
-  CallDebug, CallLog, CallLogRetentionSettings, DebugSettings, DirectorSettings, LlmModelMetadata, LlmModelPolicy,
+  CallDebug, CallLog, CallLogRetentionSettings, DebugSettings, DirectorSettings, LlmConnection, LlmModelMetadata, LlmModelPolicy,
   LlmModelPreview, LlmModelProvider, LlmSettings, MediaCapability, MediaConnection,
   MediaFunctionSetting, MediaSettings, MediaStyle, MediaTemplate, PromptDefinition, StorageProfile, StorageProvider, StorageSettings,
   SystemLogSnapshot,
@@ -39,7 +39,8 @@ import "../src/styles.css";
  * Open /e2e/settings-design.html?route=/settings/providers (or another settings route).
  */
 const now = "2026-10-20T08:30:00Z";
-setLocale("zh");
+const fixtureLocale = new URLSearchParams(location.search).get("locale");
+setLocale(fixtureLocale === "en" || fixtureLocale === "ja" || fixtureLocale === "ru" ? fixtureLocale : "zh");
 const requestedRoute = new URLSearchParams(window.location.search).get("route");
 const routes = new Set(["providers", "llm", "director", "media", "functions", "storage", "calls", "logs", "general"].map((route) => `/settings/${route}`));
 routes.add("/library"); routes.add("/skills");
@@ -60,6 +61,18 @@ const llmModels: LlmModelMetadata[] = [
 ];
 let nextLlmPreview = 1;
 const llmPreviews = new Map<string, { response: LlmModelPreview; provider: LlmModelProvider; version: number; endpoint: string }>();
+const firstLlmId = "00000000-0000-4000-8000-000000000101";
+const secondLlmId = "00000000-0000-4000-8000-000000000102";
+let activeLlmId: string | null = firstLlmId;
+let llmCounter = 5;
+let llmConnections: LlmConnection[] = [
+  { id: firstLlmId, name: "日常创作", version: 4, endpoint: llm.endpoint!, modelId: llm.modelId!, keyMask: llm.keyMask!, toolCallingVerified: false, updatedAt: now, modelPolicy: null },
+  { id: secondLlmId, name: "本地 Ollama", version: 5, endpoint: "http://host.docker.internal:11434/v1", modelId: "local-creative-model", keyMask: "••••DEMO", toolCallingVerified: true, updatedAt: now, modelPolicy: null },
+];
+const providerFixture = { writes: 0, activations: 0, diagnosticCalls: 0, metadataReads: 0, localProbes: 0, retainedKeySaves: 0 };
+Object.assign(window, { providerConnectionsFixture: providerFixture });
+const connectionCatalog = () => ({ items: llmConnections, activeConnectionId: activeLlmId,
+  activeVersion: llmConnections.find(connection => connection.id === activeLlmId)?.version ?? 0 });
 let retention: CallLogRetentionSettings = { retentionDays: 90, version: 2 };
 let debug: DebugSettings = { debugMode: false, version: 1 };
 let director: DirectorSettings = { contextWindowTokens: 1_000_000, compactionThresholdPercent: 50,
@@ -201,6 +214,29 @@ function positiveInteger(value: unknown, maximum: number): value is number {
 
 /** Synthetic model metadata only; preview scope retains no credential and never contacts a Provider. */
 function llmResponse(path: string, method: string, body: Record<string, unknown>): Response {
+  if (path === "/api/v1/settings/llm/connections") return Response.json(connectionCatalog());
+  if (path.startsWith("/api/v1/settings/llm/connections/")) {
+    const [id, action] = path.slice("/api/v1/settings/llm/connections/".length).split("/");
+    const before = llmConnections.find(connection => connection.id === id);
+    if (!id || (before?.version ?? 0) !== body.expectedVersion) return error("Synthetic connection changed.", 409, "PROVIDER_CONFIG_VERSION_CONFLICT");
+    let result: LlmConnection;
+    if (method === "PUT" && !action) {
+      const newKey = stringField(body, "apiKey");
+      if (!before && newKey.length < 8) return error("New connections require a key.", 400);
+      providerFixture.writes++;
+      if (before && !newKey.trim()) providerFixture.retainedKeySaves++;
+      result = { id, name: stringField(body, "name"), endpoint: stringField(body, "endpoint"), modelId: stringField(body, "modelId"),
+        keyMask: newKey.trim() ? "••••" + newKey.slice(-4) : before!.keyMask, version: ++llmCounter, toolCallingVerified: false, updatedAt: now, modelPolicy: null };
+    } else if (method === "POST" && action === "activate" && before) {
+      if (body.expectedActiveVersion !== connectionCatalog().activeVersion) return error("Synthetic active connection changed.", 409);
+      result = { ...before, version: ++llmCounter }; activeLlmId = id; providerFixture.activations++;
+    } else if (method === "POST" && action === "diagnose" && before && body.acknowledgeCost === true) {
+      result = { ...before, toolCallingVerified: true }; providerFixture.diagnosticCalls++;
+    } else return error("Unsupported synthetic connection command.", 400);
+    llmConnections = before ? llmConnections.map(connection => connection.id === id ? result : connection) : [...llmConnections, result];
+    if (activeLlmId === id) llm = { ...result, configured: true };
+    return Response.json(action === "activate" ? connectionCatalog() : result);
+  }
   if (path === "/api/v1/settings/llm" && method === "GET") return Response.json(llm);
   const discovering = path === "/api/v1/settings/llm/models" && method === "POST";
   if (!discovering && (path !== "/api/v1/settings/llm" || method !== "PUT")) return error("此合成模型操作未实现。", 405);
@@ -374,7 +410,7 @@ window.fetch = async (input, init) => {
     director = { ...updated, version: director.version + 1 };
     return Response.json(director);
   }
-  if (path === "/api/v1/settings/llm" || path === "/api/v1/settings/llm/models") return llmResponse(path, method, body);
+  if (path === "/api/v1/settings/llm" || path.startsWith("/api/v1/settings/llm/connections") || path === "/api/v1/settings/llm/models") return llmResponse(path, method, body);
   if (path === "/api/v1/settings/llm/diagnose") { llm = { ...llm, toolCallingVerified: true }; return Response.json(llm); }
   if (path === "/api/v1/settings/diagnostics") return Response.json({
     checkedAt: now, database: "AVAILABLE", storage: "AVAILABLE", llmMode: "CONFIGURED", llmConfigured: llm.configured,

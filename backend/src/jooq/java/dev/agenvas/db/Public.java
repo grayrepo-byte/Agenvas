@@ -48,6 +48,7 @@ import dev.agenvas.db.tables.LibraryCommand;
 import dev.agenvas.db.tables.LibraryEntry;
 import dev.agenvas.db.tables.LibraryFile;
 import dev.agenvas.db.tables.LibraryImport;
+import dev.agenvas.db.tables.LlmConnection;
 import dev.agenvas.db.tables.LlmProviderConfig;
 import dev.agenvas.db.tables.LlmProviderConfigCounter;
 import dev.agenvas.db.tables.LlmTurn;
@@ -359,6 +360,12 @@ public class Public extends SchemaImpl {
      * 素材库导入到项目的版本及原条目来源审计
      */
     public final LibraryImport LIBRARY_IMPORT = LibraryImport.LIBRARY_IMPORT;
+
+    /**
+     * Stable named LLM connections pointing to their latest immutable runtime
+     * snapshot
+     */
+    public final LlmConnection LLM_CONNECTION = LlmConnection.LLM_CONNECTION;
 
     /**
      * 不可变 LLM 连接版本与加密凭据；激活标记选择当前配置
@@ -749,6 +756,7 @@ public class Public extends SchemaImpl {
             LibraryEntry.LIBRARY_ENTRY,
             LibraryFile.LIBRARY_FILE,
             LibraryImport.LIBRARY_IMPORT,
+            LlmConnection.LLM_CONNECTION,
             LlmProviderConfig.LLM_PROVIDER_CONFIG,
             LlmProviderConfigCounter.LLM_PROVIDER_CONFIG_COUNTER,
             LlmTurn.LLM_TURN,

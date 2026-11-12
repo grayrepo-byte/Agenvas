@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router";
 import { createQueryClient } from "../src/app/queryClient";
 import { LlmSettingsPage } from "../src/features/settings/LlmSettingsPage";
 import { MediaSettingsPage } from "../src/features/settings/MediaSettingsPage";
-import type { LocalServiceDiscoveryResult, LocalServiceKind } from "../src/shared/api/client";
+import type { LlmConnections, LocalServiceDiscoveryResult, LocalServiceKind } from "../src/shared/api/client";
 import { setLocale } from "../src/shared/i18n";
 import "../src/styles.css";
 
@@ -16,6 +16,10 @@ const fixture: {
   finishPending: () => void;
 } = { mode: "FOUND", requests: [], writes: 0, metadataReads: 0, finishPending: () => {} };
 Object.assign(window, { localServiceDiscoveryFixture: fixture });
+const llmConnections: LlmConnections = { items: [{ id: "845560a3-948c-48f1-8518-25313f07cdeb", name: "Synthetic local connection",
+  version: 4, endpoint: "https://manual.example.com/ollama", modelId: "saved-model", keyMask: "••••1234",
+  toolCallingVerified: false, updatedAt: "2026-11-04T00:00:00Z", modelPolicy: null }],
+  activeConnectionId: "845560a3-948c-48f1-8518-25313f07cdeb", activeVersion: 4 };
 function response(service: LocalServiceKind) {
   const result: LocalServiceDiscoveryResult = { service, runtime: "CONTAINER", status: "FOUND",
     endpoint: service === "OLLAMA" ? "http://host.docker.internal:11434/v1" : "http://192.168.65.254:8188" };
@@ -27,6 +31,7 @@ window.fetch = async (input, init) => {
   const method = init?.method ?? "GET";
   if (url.pathname === "/api/v1/auth/me") return json({ id: "synthetic-owner", loginName: "Synthetic administrator", role: "ADMIN" });
   if (url.pathname === "/api/v1/auth/csrf") return json({ token: "synthetic", headerName: "X-CSRF-TOKEN" });
+  if (url.pathname === "/api/v1/settings/llm/connections" && method === "GET") return json(llmConnections);
   if (url.pathname === "/api/v1/settings/llm" && method === "GET") return json({ configured: true, version: 4,
     endpoint: "https://manual.example.com/ollama", modelId: "saved-model", keyMask: "••••1234", toolCallingVerified: false, updatedAt: null });
   if (url.pathname === "/api/v1/settings/diagnostics" && method === "GET") return json({ checkedAt: "2026-11-04T00:00:00Z",

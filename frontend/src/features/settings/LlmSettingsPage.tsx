@@ -1,221 +1,145 @@
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
-import { ArrowUpRight,FloppyDisk,ShieldCheck } from "@/shared/ui/icons";
-import { useQuery,useQueryClient } from "@tanstack/react-query";
-import { useRef,useState,type FormEvent } from "react";
-import { Link,Navigate } from "react-router";
-import { HTTP_STATUS,ApiError,diagnoseLlmSettings,getCurrentUser,getLlmSettings,getSystemDiagnostics,replaceLlmSettings,type LlmSettings } from "../../shared/api/client";
-import { t,useLocale } from "../../shared/i18n";
+import { ArrowUpRight, CheckCircle, Plus, PlugsConnected, ShieldCheck } from "@/shared/ui/icons";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { Link, Navigate } from "react-router";
+import { activateLlmConnection, ApiError, diagnoseLlmConnection, getCurrentUser, getSystemDiagnostics, HTTP_STATUS,
+  listLlmConnections, type LlmConnection, type LlmConnections } from "../../shared/api/client";
+import { t, useLocale } from "../../shared/i18n";
+import { Dialog } from "../../shared/ui/Dialog";
 import { LoadingState } from "../../shared/ui/LoadingState";
-import { Notice,Panel,StatusBadge } from "../../shared/ui/PagePrimitives";
+import { EmptyState, Notice, Panel, StatusBadge } from "../../shared/ui/PagePrimitives";
 import { PageShell } from "../../shared/ui/PageShell";
 import { Button } from "../../shared/ui/primitives/button";
 import { Checkbox } from "../../shared/ui/primitives/checkbox";
-import { Input } from "../../shared/ui/primitives/input";
-import { LocalServiceDiscovery } from "./LocalServiceDiscovery";
+import { LlmConnectionEditor } from "./LlmConnectionEditor";
 import "./SettingsPages.css";
-import { LlmModelOptions } from "./LlmModelOptions";
-import { fallbackModelOptions, modelOptionsFromPolicy, modelSelection, type ModelOptionsDraft } from "./llmModelConfiguration";
-import { LLM_API_KEY_MAX_LENGTH, LLM_API_KEY_MIN_LENGTH, LLM_API_KEY_PATTERN, validLlmApiKey } from "./llmApiKey";
+import "./LlmSettingsPage.css";
 
+const CONNECTIONS_KEY = ["settings", "llm", "connections"] as const;
 
-type ConfigurationDraft = { base: LlmSettings; endpoint: string; modelId: string };
-
-/** The edit base stays pinned while typing; background reads cannot replace a draft or its CAS version. */
+/** Named connections are editable heads; selecting one changes only future requests. */
 export function LlmSettingsPage() {
   useLocale();
-  const queryClient = useQueryClient();
-  const currentUser = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser, retry: false });
-  const settings = useQuery({
-    queryKey: ["settings", "llm"], queryFn: getLlmSettings, enabled: currentUser.isSuccess, retry: false,
+  const client = useQueryClient();
+  const user = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser, retry: false });
+  const connections = useQuery({ queryKey: CONNECTIONS_KEY, queryFn: listLlmConnections, enabled: user.isSuccess, retry: false });
+  const mode = useQuery({ queryKey: ["settings", "diagnostics"], queryFn: getSystemDiagnostics, enabled: user.isSuccess, retry: false });
+  const [editor, setEditor] = useState<{ id: string; connection: LlmConnection | null } | null>(null);
+  const [diagnostic, setDiagnostic] = useState<LlmConnection | null>(null);
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [diagnosticReading, setDiagnosticReading] = useState(false);
+  const [diagnosticRefreshError, setDiagnosticRefreshError] = useState("");
+  const [feedback, setFeedback] = useState("");
+  const catalog = connections.data;
+  const active = catalog?.items.find(item => item.id === catalog.activeConnectionId);
+  const diagnosticLatest = catalog?.items.find(item => item.id === diagnostic?.id);
+  const diagnosticChanged = !!diagnostic && diagnosticLatest?.version !== diagnostic.version;
+
+  async function acceptCatalog(value: LlmConnections) {
+    await client.cancelQueries({ queryKey: CONNECTIONS_KEY });
+    client.setQueryData(CONNECTIONS_KEY, value);
+    void client.invalidateQueries({ queryKey: ["settings", "llm"], exact: true });
+    void client.invalidateQueries({ queryKey: ["settings", "diagnostics"] });
+  }
+  async function acceptConnection(value: LlmConnection) {
+    await client.cancelQueries({ queryKey: CONNECTIONS_KEY });
+    client.setQueryData<LlmConnections>(CONNECTIONS_KEY, current => current ? { ...current,
+      items: current.items.some(item => item.id === value.id)
+        ? current.items.map(item => item.id === value.id && item.version <= value.version ? value : item)
+        : [...current.items, value],
+      activeVersion: current.activeConnectionId === value.id ? Math.max(current.activeVersion, value.version) : current.activeVersion,
+    } : undefined);
+    void client.invalidateQueries({ queryKey: ["settings", "llm"] });
+    void client.invalidateQueries({ queryKey: ["settings", "diagnostics"] });
+  }
+  const activate = useMutation({
+    mutationFn: (intent: { id: string; expectedVersion: number; expectedActiveVersion: number }) =>
+      activateLlmConnection(intent.id, { expectedVersion: intent.expectedVersion, expectedActiveVersion: intent.expectedActiveVersion }),
+    onMutate: () => client.cancelQueries({ queryKey: CONNECTIONS_KEY }),
+    onSuccess: async value => { await acceptCatalog(value); setFeedback(t("settings.llm.connections.switched")); }, retry: false,
   });
-  const mediaStatus = useQuery({
-    queryKey: ["settings", "diagnostics"], queryFn: getSystemDiagnostics, enabled: currentUser.isSuccess, retry: false,
+  const diagnose = useMutation({
+    mutationFn: (target: LlmConnection) => diagnoseLlmConnection(target.id, { expectedVersion: target.version, acknowledgeCost: true }),
+    onMutate: () => client.cancelQueries({ queryKey: CONNECTIONS_KEY }),
+    onSuccess: async value => { await acceptConnection(value); setFeedback(t("settings.llm.protocolVerified")); setDiagnostic(null); },
+    onSettled: () => setAcknowledged(false), retry: false,
   });
-  const [draft, setDraft] = useState<ConfigurationDraft | null>(null);
-  const [modelOptions, setModelOptions] = useState<ModelOptionsDraft | null>(null);
-  const [capacityError, setCapacityError] = useState("");
-  const [capacityValidationAttempt, setCapacityValidationAttempt] = useState(0);
-  const [apiKey, setApiKey] = useState("");
-  const [keyInvalid, setKeyInvalid] = useState(false);
-  const keyInput = useRef<HTMLInputElement>(null);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [saved, setSaved] = useState(false);
-  const [acknowledgedVersion, setAcknowledgedVersion] = useState<number | null>(null);
-  const [diagnosing, setDiagnosing] = useState(false);
-  const [diagnosticError, setDiagnosticError] = useState("");
-  const [diagnosedVersion, setDiagnosedVersion] = useState<number | null>(null);
-  const snapshot = settings.data;
-  const costAcknowledged = !!snapshot && acknowledgedVersion === snapshot.version;
-  const diagnosed = !!snapshot?.toolCallingVerified && diagnosedVersion === snapshot.version;
-  const base = draft?.base ?? snapshot;
-  const endpoint = draft?.endpoint ?? snapshot?.endpoint ?? "";
-  const modelId = draft?.modelId ?? snapshot?.modelId ?? "";
-  const hasRemoteUpdate = !!draft && !!snapshot && draft.base.version !== snapshot.version;
-  const options = modelOptions ?? modelOptionsFromPolicy(base?.modelPolicy);
-  const hasUnsavedChanges = endpoint !== (snapshot?.endpoint ?? "") || modelId !== (snapshot?.modelId ?? "") || apiKey !== "" || modelOptions !== null;
-  const busy = saving || diagnosing;
-
-  /** Only user edits invalidate automatic capacity; undo and server refresh keep their saved policy. */
-  function invalidateAutomaticOptions() {
-    if (options.mode === "AUTO" && !options.manualOverride) setModelOptions(fallbackModelOptions(options));
-  }
-
-  function editDraft(field: "endpoint" | "modelId", value: string) {
-    if (!base) return;
-    if (value !== (field === "endpoint" ? endpoint : modelId)) invalidateAutomaticOptions();
-    setDraft({ base, endpoint, modelId, [field]: value });
-    setSaved(false);
-    setAcknowledgedVersion(null);
-  }
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!base || busy) return;
-    if (!validLlmApiKey(apiKey)) {
-      setKeyInvalid(true);
-      keyInput.current?.focus();
-      return;
-    }
-    setKeyInvalid(false);
-    const selection = modelSelection(options, modelId.trim());
-    if (!selection) {
-      setCapacityError(t("modelConnection.capacityInvalid"));
-      setCapacityValidationAttempt(attempt => attempt + 1);
-      return;
-    }
-    setCapacityError("");
-    setSaving(true);
-    setError("");
-    setSaved(false);
+  const diagnosticBlocked = diagnosticChanged || diagnose.error instanceof ApiError && diagnose.error.status === HTTP_STATUS.CONFLICT;
+  const busy = activate.isPending || diagnose.isPending || diagnosticReading;
+  function openDiagnostic(target: LlmConnection) { diagnose.reset(); setAcknowledged(false); setDiagnosticRefreshError(""); setDiagnostic(target); }
+  async function refreshDiagnostic() {
+    if (!diagnostic || busy) return;
+    setDiagnosticReading(true); setAcknowledged(false); setDiagnosticRefreshError("");
     try {
-      const result = await replaceLlmSettings({ expectedVersion: base.version, endpoint: endpoint.trim(), modelId: modelId.trim(), apiKey, modelSelection: selection });
-      queryClient.setQueryData(["settings", "llm"], result);
-      setDraft(null);
-      setModelOptions(null);
-      setSaved(true);
-      setDiagnosedVersion(null);
-      setAcknowledgedVersion(null);
-    } catch (cause) {
-      setError(cause instanceof ApiError ? cause.message : t("settings.shared.saveFailed"));
-      if (cause instanceof ApiError && cause.status === HTTP_STATUS.CONFLICT) void settings.refetch();
-    } finally {
-      setApiKey("");
-      setSaving(false);
-    }
+      // A server conflict can precede any cache update; explicitly read the target again.
+      await client.cancelQueries({ queryKey: CONNECTIONS_KEY });
+      const latest = await client.fetchQuery({ queryKey: CONNECTIONS_KEY, queryFn: listLlmConnections, staleTime: 0 });
+      const target = latest.items.find(item => item.id === diagnostic.id);
+      if (!target) { setDiagnosticRefreshError(t("settings.llm.connections.missing")); return; }
+      setDiagnostic(target); diagnose.reset();
+    } catch (cause) { setDiagnosticRefreshError(cause instanceof Error ? cause.message : t("settings.llm.loadFailed")); }
+    finally { setDiagnosticReading(false); }
   }
 
-  async function diagnose() {
-    if (!snapshot?.configured || busy || !costAcknowledged || hasUnsavedChanges || hasRemoteUpdate) return;
-    setDiagnosing(true);
-    setDiagnosticError("");
-    setDiagnosedVersion(null);
-    try {
-      const result = await diagnoseLlmSettings({ expectedVersion: snapshot.version, acknowledgeCost: true });
-      queryClient.setQueryData(["settings", "llm"], result);
-      if (result.version === snapshot.version && result.toolCallingVerified) setDiagnosedVersion(result.version);
-    } catch (cause) {
-      setDiagnosticError(cause instanceof ApiError ? cause.message : t("settings.llm.diagnosticFailed"));
-      if (cause instanceof ApiError && cause.status === HTTP_STATUS.CONFLICT) void settings.refetch();
-    } finally {
-      setAcknowledgedVersion(null);
-      setDiagnosing(false);
-    }
-  }
+  if ([user.error, connections.error, mode.error, activate.error, diagnose.error].some(error => error instanceof ApiError && error.status === HTTP_STATUS.UNAUTHORIZED)) return <Navigate to="/login" replace />;
 
-  if ((currentUser.error instanceof ApiError && currentUser.error.status === HTTP_STATUS.UNAUTHORIZED)
-      || (settings.error instanceof ApiError && settings.error.status === HTTP_STATUS.UNAUTHORIZED)
-      || (mediaStatus.error instanceof ApiError && mediaStatus.error.status === HTTP_STATUS.UNAUTHORIZED)) {
-    return <Navigate to="/login" replace />;
-  }
-
-  return <PageShell title={t("settings.providerTitle")}>
-    <div className="llm-workflow-intro"><p>{t("settings.llm.workflowHint")}</p>
-      {snapshot ? <StatusBadge tone={hasUnsavedChanges ? "warning" : "neutral"}>{hasUnsavedChanges ? t("settings.llm.draftVersion", { "0": base?.version }) : t("settings.llm.savedState")}</StatusBadge> : null}
+  return <PageShell title={t("settings.providerTitle")} actions={<Button type="button" disabled={busy || !catalog}
+    onClick={() => { setFeedback(""); setEditor({ id: crypto.randomUUID(), connection: null }); }}><Plus data-icon="inline-start" />{t("settings.llm.connections.add")}</Button>}>
+    <div className="provider-workspace">
+      {user.isPending || user.isSuccess && connections.isPending ? <LoadingState label={t("settings.llm.loading")} /> : null}
+      {user.isError || connections.isError ? <Notice tone="danger" title={t("settings.llm.loadFailed")}>
+        <p>{t("settings.llm.settingsUnavailable")}</p><Button variant="outline" type="button" disabled={user.isFetching || connections.isFetching}
+          onClick={() => { if (user.isError) void user.refetch(); else void connections.refetch(); }}>{t("settings.llm.refreshSettings")}</Button>
+      </Notice> : null}
+      {feedback ? <Notice tone="success">{feedback}</Notice> : null}
+      {mode.isError ? <Notice tone="warning"><p>{t("settings.llm.connections.modeUnavailable")}</p><Button variant="ghost" type="button" disabled={mode.isFetching} onClick={() => { void mode.refetch(); }}>{t("common.retryRead")}</Button></Notice> : null}
+      {activate.error ? <Notice tone="danger"><p>{activate.error.message}</p><div className="ui-form-actions">
+        <Button type="button" variant="outline" disabled={busy} onClick={() => { if (activate.variables) activate.mutate(activate.variables); }}>{t("common.retry")}</Button>
+        <Button type="button" variant="ghost" disabled={connections.isFetching} onClick={() => { void connections.refetch().then(result => { if (!result.error) activate.reset(); }); }}>{t("settings.shared.refreshConfig")}</Button>
+      </div></Notice> : null}
+      {catalog ? <Panel className="provider-catalog">
+        <div className="provider-current">
+          <PlugsConnected aria-hidden />
+          <div><span className="ui-muted">{t("settings.llm.connections.current")}</span><strong>{active?.name ?? t("settings.llm.connections.noActive")}</strong></div>
+          {active ? <span className="provider-current-model" title={active.modelId}>{active.modelId}</span> : null}
+          {mode.data?.llmMode === "MOCK" ? <StatusBadge>{t("models.mockMode")}</StatusBadge> : null}
+        </div>
+        {catalog.items.length ? <div className="provider-table-scroll"><table className="provider-table">
+          <caption className="sr-only">{t("settings.llm.connections.saved")}</caption>
+          <thead><tr><th>{t("common.name")}</th><th>{t("settings.llm.endpoint")}</th><th>{t("settings.llm.modelId")}</th><th>{t("settings.llm.protocol")}</th><th className="provider-actions-heading">{t("settings.llm.connections.actions")}</th></tr></thead>
+          <tbody>{catalog.items.map(connection => <tr key={connection.id} data-active={connection.id === catalog.activeConnectionId}>
+            <td><div className="provider-name"><strong>{connection.name}</strong>{connection.id === catalog.activeConnectionId ? <StatusBadge tone="success">{t("settings.llm.connections.active")}</StatusBadge> : null}</div></td>
+            <td><span className="provider-endpoint" title={connection.endpoint}>{connection.endpoint}</span></td>
+            <td><span className="provider-model" title={connection.modelId}>{connection.modelId}</span></td>
+            <td><span className="provider-verification" data-verified={connection.toolCallingVerified}>{connection.toolCallingVerified ? <CheckCircle aria-hidden /> : <ShieldCheck aria-hidden />}{connection.toolCallingVerified ? t("settings.llm.verified") : t("models.pendingValidation")}</span></td>
+            <td><div className="provider-row-actions">
+              {connection.id !== catalog.activeConnectionId ? <Button variant="outline" size="sm" type="button" disabled={busy} onClick={() => { setFeedback(""); activate.mutate({ id: connection.id, expectedVersion: connection.version, expectedActiveVersion: catalog.activeVersion }); }}>{t("settings.llm.connections.use")}</Button> : null}
+              <Button variant="ghost" size="sm" type="button" disabled={busy} onClick={() => { setFeedback(""); setEditor({ id: connection.id, connection }); }}>{t("settings.llm.connections.editAction")}</Button>
+              <Button variant="ghost" size="sm" type="button" disabled={busy} onClick={() => openDiagnostic(connection)}>{t("settings.llm.connections.test")}</Button>
+            </div></td>
+          </tr>)}</tbody>
+        </table></div> : <EmptyState icon={<PlugsConnected />} title={t("settings.llm.connections.empty")} action={<Button type="button" onClick={() => setEditor({ id: crypto.randomUUID(), connection: null })}>{t("settings.llm.connections.add")}</Button>} />}
+        {catalog.items.length && !active ? <p className="provider-no-active">{t("settings.llm.connections.chooseActive")}</p> : null}
+      </Panel> : null}
+      <footer className="provider-related"><span>{t("settings.llm.connections.mediaHint")}</span><div>
+        <Button asChild variant="ghost" size="sm"><Link to="/settings/media">{t("settings.llm.manageMedia")}<ArrowUpRight data-icon="inline-end" /></Link></Button>
+        <Button asChild variant="ghost" size="sm"><Link to="/settings/general?tab=diagnostics">{t("settings.llm.viewDiagnostics")}<ArrowUpRight data-icon="inline-end" /></Link></Button>
+      </div></footer>
     </div>
-    <div className="settings-page-layout llm-settings-layout">
-      <div className="ui-stack">
-        {currentUser.isPending || currentUser.isSuccess && settings.isPending ? <LoadingState label={t("settings.llm.loading")} /> : null}
-        {currentUser.isError ? <Notice tone="danger" title={t("settings.llm.loadFailed")}><p>{t("settings.shared.sessionHint")}</p><Button variant="outline" type="button" disabled={currentUser.isFetching} onClick={() => { void currentUser.refetch(); }}>{t("common.retry")}</Button></Notice> : null}
-        {settings.isError ? <Notice tone="danger" title={t("settings.llm.loadFailed")}>
-          <p>{t("settings.llm.settingsUnavailable")}</p>
-          <Button variant="outline"  type="button" disabled={settings.isFetching} onClick={() => { void settings.refetch(); }}>{t("settings.llm.refreshSettings")}</Button>
-        </Notice> : null}
-        {snapshot ? <>
-          <p className="settings-step-label">{t("settings.llm.connectionStep")}</p>
-          <Panel className="llm-editor-panel" title={t("settings.llm.llmConfiguration")} description={t("settings.llm.endpointHint")} actions={<StatusBadge tone={snapshot.configured ? "success" : "neutral"}>{snapshot.configured ? t("common.configured") : t("models.unconfigured")}</StatusBadge>}>
-            <form className="ui-form llm-configuration-form" onSubmit={submit} aria-busy={saving}>
-              <div className="settings-config-summary llm-saved-summary">
-                <span className="ui-muted">{t("settings.llm.savedConnection")}</span>
-                {snapshot.configured ? <strong className="llm-saved-model"><span className="llm-saved-model-id" title={snapshot.modelId ?? undefined}>{snapshot.modelId}</span><span className="llm-saved-endpoint" title={snapshot.endpoint ?? undefined}>{snapshot.endpoint}</span></strong> : null}
-                <span>{snapshot.configured ? t("settings.llm.savedVersion", { "0": snapshot.version, "1": snapshot.keyMask ?? t("settings.llm.set") }) : t("settings.llm.modelMissing")}</span>
-              </div>
-              <p className="llm-credential-note ui-muted">{t("settings.llm.credentialsHint")}</p>
-              {hasRemoteUpdate ? <Notice tone="warning" title={t("settings.llm.conflictTitle")}>
-                <p>{t("settings.llm.conflictHint")}</p>
-                <Button variant="outline"  type="button" disabled={busy} onClick={() => { setDraft(null); setModelOptions(null); setCapacityError(""); setApiKey(""); setKeyInvalid(false); setError(""); setAcknowledgedVersion(null); }}>{t("settings.shared.refreshConfig")}</Button>
-              </Notice> : null}
-              <LocalServiceDiscovery service="OLLAMA" disabled={busy} onSelect={(value) => editDraft("endpoint", value)} />
-              <FieldGroup className="llm-connection-fields">
-              <Field><FieldLabel htmlFor="llm-endpoint">{t("settings.llm.endpoint")}</FieldLabel><Input id="llm-endpoint" autoComplete="off" required type="url" disabled={busy} value={endpoint} onChange={(event) => editDraft("endpoint", event.target.value)} placeholder="https://api.example.com" /></Field>
-              <Field><FieldLabel htmlFor="llm-model">{t("settings.llm.modelId")}</FieldLabel><Input id="llm-model" autoComplete="off" required disabled={busy} value={modelId} onChange={(event) => editDraft("modelId", event.target.value)} placeholder="model-name" /></Field>
-              </FieldGroup>
-              <Field className="llm-credential-field" data-invalid={keyInvalid || undefined}><FieldLabel htmlFor="llm-api-key">{t("settings.llm.apiKey")}</FieldLabel><Input ref={keyInput} id="llm-api-key" autoComplete="new-password" required type="password" disabled={busy} value={apiKey}
-                minLength={LLM_API_KEY_MIN_LENGTH} maxLength={LLM_API_KEY_MAX_LENGTH} pattern={LLM_API_KEY_PATTERN} title={t("settings.llm.keyValidationError")}
-                aria-invalid={keyInvalid || undefined} onInvalid={() => setKeyInvalid(true)} onChange={(event) => {
-                  if (base && !draft) setDraft({ base, endpoint, modelId });
-                  if (event.target.value !== apiKey) invalidateAutomaticOptions();
-                  setApiKey(event.target.value); setKeyInvalid(false); setError(""); setSaved(false); setAcknowledgedVersion(null);
-                }} aria-describedby={`llm-key-description${keyInvalid ? " llm-key-error" : ""}`} />
-                <FieldDescription id="llm-key-description">{t("settings.llm.keyEntryHint")}</FieldDescription>
-                {keyInvalid ? <FieldError id="llm-key-error">{t("settings.llm.keyValidationError")}</FieldError> : null}
-              </Field>
-              <div className="llm-model-options"><LlmModelOptions value={options} endpoint={endpoint} modelId={modelId} apiKey={apiKey} base={base}
-                disabled={busy} validationAttempt={capacityValidationAttempt} onSelectModel={value => editDraft("modelId", value)} onChange={value => {
-                  if (base) setDraft(existing => existing ?? { base, endpoint, modelId });
-                  setModelOptions(value); setCapacityError(""); setSaved(false); setAcknowledgedVersion(null);
-                }} /></div>
-              {capacityError ? <Notice tone="danger">{capacityError}</Notice> : null}
-              {error ? <Notice tone="danger"><p>{error}</p><p>{t("settings.llm.keyClearedHint")}</p></Notice> : null}
-              {saved ? <Notice tone="success">{t("settings.llm.saved")}</Notice> : null}
-              <div className="ui-form-actions settings-save-bar">
-                {saving ? <LoadingState compact label={t("settings.llm.saving")} /> : hasUnsavedChanges ? <span className="ui-muted">{t("common.unsavedChanges")}</span> : null}
-                <div className="ui-form-actions">
-                  {hasUnsavedChanges ? <Button variant="ghost"  type="button" disabled={busy} onClick={() => {
-                    setDraft(null); setModelOptions(null); setCapacityError(""); setApiKey(""); setKeyInvalid(false); setError(""); setSaved(false); setAcknowledgedVersion(null);
-                  }}>{t("settings.llm.revert")}</Button> : null}
-                  <Button variant="default"  disabled={busy || !hasUnsavedChanges} type="submit"><FloppyDisk data-icon="inline-start" aria-hidden />{saving ? t("common.savingProgress") : t("common.saveConfig")}</Button>
-                </div>
-              </div>
-            </form>
-          </Panel>
-        </> : null}
+    {editor ? <LlmConnectionEditor key={editor.id} id={editor.id} connection={editor.connection} onClose={() => setEditor(null)} onCatalog={acceptCatalog}
+      onSaved={async value => { await acceptConnection(value); setEditor(null); setFeedback(t("settings.llm.connections.savedMessage")); }} /> : null}
+    {diagnostic ? <Dialog compact title={t("settings.llm.protocolDiagnostics")} description={`${diagnostic.name} · ${diagnostic.modelId} · v${diagnostic.version}`}
+      busy={diagnose.isPending || diagnosticReading} onClose={() => { setDiagnostic(null); setAcknowledged(false); }} onSubmit={event => { event.preventDefault(); if (acknowledged && !diagnosticBlocked && !busy) diagnose.mutate(diagnostic); }}
+      footer={<><Button variant="outline" type="button" disabled={diagnose.isPending || diagnosticReading} onClick={() => { setDiagnostic(null); setAcknowledged(false); }}>{t("common.cancel")}</Button>
+        <Button type="submit" disabled={!acknowledged || diagnosticBlocked || busy}>{diagnose.isPending ? t("settings.llm.diagnosing") : t("settings.llm.runDiagnostic")}</Button></>}>
+      <div className="ui-stack"><p>{t("settings.llm.diagnosticScopeHint")}</p><p className="ui-muted">{t("settings.llm.savedConfigHint")}</p>
+        {diagnosticBlocked ? <Notice tone="warning"><p>{t("settings.llm.connections.diagnosticChanged")}</p><Button variant="outline" type="button" disabled={busy} onClick={() => { void refreshDiagnostic(); }}>{t("settings.shared.refreshConfig")}</Button></Notice> : null}
+        {diagnosticRefreshError ? <Notice tone="danger">{diagnosticRefreshError}</Notice> : null}
+        <label className="settings-consent"><Checkbox checked={acknowledged && !diagnosticBlocked} disabled={busy || diagnosticBlocked} onCheckedChange={value => setAcknowledged(value === true)} /><span>{t("settings.llm.confirmDiagnosticCost")}</span></label>
+        <p className="ui-muted">{t("settings.llm.costConfirmationHint")}</p>
+        {diagnose.error ? <Notice tone="danger">{diagnose.error.message}</Notice> : null}
+        {diagnose.isPending ? <LoadingState compact label={t("settings.llm.protocolChecking")} /> : null}
       </div>
-      <aside className="ui-stack llm-verification-column">
-        <p className="settings-step-label">{t("settings.llm.validationStep")}</p>
-        {snapshot?.configured ? <Panel className="llm-diagnostics-panel" title={t("settings.llm.protocolDiagnostics")} description={t("settings.llm.savedConfigHint")} actions={<StatusBadge tone={snapshot.toolCallingVerified ? "success" : "warning"}>{snapshot.toolCallingVerified ? t("settings.llm.verified") : t("models.pendingValidation")}</StatusBadge>}>
-          <div className="ui-stack">
-            <p className="settings-status-line"><ShieldCheck size={20} aria-hidden />{t("settings.llm.versionStatus", { "0": snapshot.version, "1": snapshot.toolCallingVerified ? t("settings.llm.toolRoundtripVerified") : t("settings.llm.toolsUnverified") })}</p>
-            <p className="ui-muted">{t("settings.llm.diagnosticScopeHint")}</p>
-            {hasUnsavedChanges || hasRemoteUpdate ? <Notice tone="warning">{t("settings.llm.saveBeforeDiagnostic")}</Notice> : null}
-            <label className="settings-consent"><Checkbox  checked={costAcknowledged} disabled={busy || hasUnsavedChanges || hasRemoteUpdate} onCheckedChange={(event) => setAcknowledgedVersion(event === true ? snapshot.version : null)} /><span>{t("settings.llm.confirmDiagnosticCost")}</span></label>
-            {diagnosticError ? <Notice tone="danger">{diagnosticError}</Notice> : null}
-            {diagnosed ? <Notice tone="success">{t("settings.llm.protocolVerified")}</Notice> : null}
-            {diagnosing ? <LoadingState compact label={t("settings.llm.protocolChecking")} /> : null}
-            <div className="ui-form-actions llm-diagnostic-action"><span className="ui-muted">{t("settings.llm.costConfirmationHint")}</span><Button variant="outline"  type="button" disabled={busy || !costAcknowledged || hasUnsavedChanges || hasRemoteUpdate} onClick={diagnose}>{diagnosing ? t("settings.llm.diagnosing") : t("settings.llm.runDiagnostic")}</Button></div>
-          </div>
-        </Panel> : snapshot ? <Panel className="llm-diagnostics-panel" title={t("settings.llm.waitingConfiguration")} description={t("settings.llm.waitingConfigurationHint")}><ShieldCheck className="llm-waiting-icon" aria-hidden /></Panel> : null}
-      </aside>
-      <Panel className="llm-media-panel" title={t("settings.llm.mediaConfiguration")}>
-          <div className="llm-media-overview">
-            <p className="ui-muted">{t("settings.llm.statusHint")}</p>
-            {mediaStatus.isPending && !currentUser.isError ? <LoadingState compact label={t("settings.llm.mediaStatusLoading")} /> : null}
-            {mediaStatus.isError ? <Notice tone="danger"><p>{t("settings.llm.mediaStatusFailed")}</p><Button variant="outline"  type="button" disabled={mediaStatus.isFetching} onClick={() => { void mediaStatus.refetch(); }}>{t("settings.llm.refreshMediaStatus")}</Button></Notice> : null}
-            {mediaStatus.data ? <p className="settings-mode-summary">{t("settings.llm.providerSummary", { "0": mediaStatus.data.mediaMode === "MOCK" ? t("models.mockMode") : t("settings.diagnostics.modelConfigured"), "1": mediaStatus.data.imageConfigured ? t("common.configured") : t("models.unconfigured"), "2": mediaStatus.data.videoConfigured ? t("common.configured") : t("models.unconfigured") })}</p> : null}
-            <Link className="settings-nav-link" to="/settings/media">{t("settings.llm.manageMedia")}<ArrowUpRight size={16} aria-hidden /></Link>
-            <Link className="settings-nav-link" to="/settings/general?tab=diagnostics">{t("settings.llm.viewDiagnostics")}<ArrowUpRight size={16} aria-hidden /></Link>
-          </div>
-        </Panel>
-    </div>
+    </Dialog> : null}
   </PageShell>;
 }

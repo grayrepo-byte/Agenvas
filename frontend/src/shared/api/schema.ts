@@ -1764,11 +1764,127 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** 读取管理员模型配置的脱敏状态 */
+        /**
+         * 读取管理员当前活动模型配置的脱敏状态
+         * @description 仅接受管理员网页登录 Session；返回 Cache-Control no-store，不包含凭证明文或密文。
+         */
         get: operations["getLlmSettings"];
-        /** 用完整新凭证替换活动模型配置版本 */
+        /**
+         * 保存当前活动模型连接并追加配置版本
+         * @description 仅接受管理员网页登录 Session 与 CSRF 校验。已有连接的 apiKey 缺省、null、空字符串或纯空白时保留服务端旧密钥；首次配置必须提供有效密钥。非空密钥由服务端校验 8–4096 个可打印 ASCII 字符。密钥只单次提交到服务端，不返回浏览器或记录到日志。
+         */
         put: operations["replaceLlmSettings"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/llm/connections": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 读取管理员已保存模型连接及当前活动连接
+         * @description 仅接受管理员网页登录 Session；只返回连接最新版本的脱敏元数据，不返回凭证明文或密文。空目录的 activeConnectionId 为 null，activeVersion 为 0。
+         */
+        get: operations["listLlmConnections"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/llm/connections/{id}": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 独立创建或 CAS 保存一个命名模型连接
+         * @description 仅接受管理员网页登录 Session 与 CSRF 校验。expectedVersion 为 0 时以客户端生成的固定 id 新建连接，大于 0 时须匹配该连接最新版本；保存不切换当前活动连接。已有连接的 apiKey 缺省、null、空字符串或纯空白时保留服务端旧密钥，新建必须提供有效密钥；非空密钥由服务端校验 8–4096 个可打印 ASCII 字符。凭证只单次提交到服务端，不返回浏览器或记录到日志。
+         */
+        put: operations["saveLlmConnection"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/llm/connections/{id}/activate": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 显式切换当前活动模型连接
+         * @description 仅接受管理员网页登录 Session 与 CSRF 校验。须同时匹配目标连接最新版本与全局 activeVersion；切换追加全局不可变配置版本并更新目标连接最新版本，保留其已有工具协议验证结果。目标已是当前活动连接时可原样返回，不调用模型。既有任务继续使用已固定的历史配置。
+         */
+        post: operations["activateLlmConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/llm/connections/{id}/diagnose": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 独立验证指定已保存模型连接的工具协议
+         * @description 仅接受管理员网页登录 Session 与 CSRF 校验。显式确认可能计费后，对 expectedVersion 对应的连接版本执行最多两次工具协议诊断；连接无需处于活动状态，诊断不切换活动连接。成功仅在连接最新版本仍匹配时记入验证结果；并发修改返回冲突，不把旧诊断标记到新配置。不自动重试，已验证且未变更的配置不重复调用。调用日志沿用现有 DIAGNOSTIC 权限与 debug 正文规则，不记录凭证。
+         */
+        post: operations["diagnoseLlmConnection"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1807,7 +1923,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 管理员读取模型列表和容量元数据，不运行推理或保存配置 */
+        /**
+         * 管理员读取模型列表和容量元数据，不运行推理或保存配置
+         * @description 仅接受管理员网页登录 Session 与 CSRF 校验。SAVED 使用 connectionId 指定连接的最新版本和服务端凭证，并校验 expectedVersion；DRAFT 可使用修改后的 endpoint，apiKey 缺省、null、空字符串或纯空白时从该连接保留服务端密钥。缺省 connectionId 沿用当前活动配置语义。密钥不返回浏览器或记录到日志。
+         */
         post: operations["previewLlmModels"];
         delete?: never;
         options?: never;
@@ -1831,8 +1950,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 管理员显式发起最多两次可能计费的工具协议诊断
-         * @description 每次实际调用记录为无项目的 DIAGNOSTIC 日志，默认仅记录安全元数据；开启系统 debug 后按现有权限采集正文。第一轮必须返回唯一且 nonce 精确匹配的探针调用，第二轮必须仅返回工具结果的 proof（允许首尾空白）。失败详情说明具体阶段，显式 Token 截断不验证工具能力。不自动重试，已验证且未变更的配置不重复调用。
+         * 管理员对当前活动配置显式发起最多两次可能计费的工具协议诊断
+         * @description 仅接受管理员网页登录 Session 与 CSRF 校验。每次实际调用记录为无项目的 DIAGNOSTIC 日志，默认仅记录安全元数据；开启系统 debug 后按现有权限采集正文，不记录凭证。第一轮必须返回唯一且 nonce 精确匹配的探针调用，第二轮必须仅返回工具结果的 proof（允许首尾空白）。失败详情说明具体阶段，显式 Token 截断不验证工具能力。不自动重试，已验证且未变更的配置不重复调用。
          */
         post: operations["diagnoseLlmSettings"];
         delete?: never;
@@ -6942,8 +7061,43 @@ export interface components {
             /** Format: uri */
             endpoint: string;
             modelId: string;
-            apiKey: string;
+            /** @description 缺省、null、空字符串或纯空白时保留已有服务端密钥；首次配置必须提供有效密钥。非空密钥由服务端校验 8–4096 个可打印 ASCII 字符，不返回浏览器或写入日志。 */
+            apiKey?: string | null;
             modelSelection?: components["schemas"]["LlmModelSelection"];
+        };
+        LlmConnections: {
+            items: components["schemas"]["LlmConnection"][];
+            /** Format: uuid */
+            activeConnectionId: string | null;
+            activeVersion: number;
+        };
+        LlmConnection: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            version: number;
+            endpoint: string;
+            modelId: string;
+            keyMask: string;
+            toolCallingVerified: boolean;
+            /** Format: date-time */
+            updatedAt: string;
+            modelPolicy: components["schemas"]["LlmModelPolicy"] | null;
+        };
+        SaveLlmConnectionRequest: {
+            name: string;
+            /** @description 0 使用路径固定 id 新建；大于 0 必须匹配该连接最新版本。 */
+            expectedVersion: number;
+            /** Format: uri */
+            endpoint: string;
+            modelId: string;
+            /** @description 缺省、null、空字符串或纯空白时保留该连接已有服务端密钥；新建连接必须提供有效密钥。非空密钥由服务端校验 8–4096 个可打印 ASCII 字符，不返回浏览器或写入日志。 */
+            apiKey?: string | null;
+            modelSelection?: components["schemas"]["LlmModelSelection"];
+        };
+        ActivateLlmConnectionRequest: {
+            expectedVersion: number;
+            expectedActiveVersion: number;
         };
         /** @enum {string} */
         LlmModelProvider: "COMPATIBLE" | "OPENAI" | "OPENROUTER" | "GEMINI" | "ANTHROPIC" | "OLLAMA";
@@ -6989,7 +7143,13 @@ export interface components {
             /** @enum {string} */
             credentialMode: "DRAFT" | "SAVED";
             expectedVersion: number;
+            /**
+             * Format: uuid
+             * @description 指定已保存连接的最新版本与服务端密钥；缺省或 null 时使用当前活动配置语义，不切换活动连接。
+             */
+            connectionId?: string | null;
             endpoint?: string | null;
+            /** @description DRAFT 中缺省、null、空字符串或纯空白时保留指定连接的服务端密钥；非空密钥由服务端校验 8–4096 个可打印 ASCII 字符。不返回浏览器或写入日志。 */
             apiKey?: string | null;
             modelId?: string | null;
         };
@@ -13593,7 +13753,7 @@ export interface operations {
             /** @description 配置状态，不包含凭证明文或密文 */
             200: {
                 headers: {
-                    "Cache-Control"?: string;
+                    "Cache-Control"?: "no-store";
                     [name: string]: unknown;
                 };
                 content: {
@@ -13601,6 +13761,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
         };
     };
     replaceLlmSettings: {
@@ -13625,7 +13786,7 @@ export interface operations {
             /** @description 新版本的脱敏状态 */
             200: {
                 headers: {
-                    "Cache-Control"?: string;
+                    "Cache-Control"?: "no-store";
                     [name: string]: unknown;
                 };
                 content: {
@@ -13636,6 +13797,170 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    listLlmConnections: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已保存连接目录与活动配置版本；Cache-Control no-store */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmConnections"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    saveLlmConnection: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveLlmConnectionRequest"];
+            };
+        };
+        responses: {
+            /** @description 已保存连接的脱敏最新版本；Cache-Control no-store */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmConnection"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    activateLlmConnection: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivateLlmConnectionRequest"];
+            };
+        };
+        responses: {
+            /** @description 连接目录与当前活动配置版本；Cache-Control no-store */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmConnections"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    diagnoseLlmConnection: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiagnoseLlmRequest"];
+            };
+        };
+        responses: {
+            /** @description 完成诊断后的脱敏连接状态；Cache-Control no-store */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmConnection"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description 模型未完成完整工具协议 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description 模型连接或调用失败 */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             503: components["responses"]["Unavailable"];
         };
     };
@@ -13683,6 +14008,7 @@ export interface operations {
             /** @description 有界模型列表；未知容量为 null，预览十分钟有效且绑定原连接和凭据 */
             200: {
                 headers: {
+                    "Cache-Control"?: "no-store";
                     [name: string]: unknown;
                 };
                 content: {
@@ -13692,6 +14018,8 @@ export interface operations {
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             /** @description 元数据读取正在进行 */
             429: {
                 headers: {
@@ -13710,6 +14038,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            503: components["responses"]["Unavailable"];
             /** @description 元数据读取超时，保留草稿 */
             504: {
                 headers: {
@@ -13743,7 +14072,7 @@ export interface operations {
             /** @description 完成诊断后的脱敏配置状态 */
             200: {
                 headers: {
-                    "Cache-Control"?: string;
+                    "Cache-Control"?: "no-store";
                     [name: string]: unknown;
                 };
                 content: {
@@ -13772,6 +14101,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            503: components["responses"]["Unavailable"];
         };
     };
     listAutoDlWorkflows: {

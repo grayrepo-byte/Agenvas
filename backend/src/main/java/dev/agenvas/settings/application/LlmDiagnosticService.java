@@ -76,6 +76,32 @@ public class LlmDiagnosticService {
         }
     }
 
+    /** Diagnose a selected saved connection without switching the service used by new work. */
+    public LlmProviderConfigService.ConnectionStatus diagnoseConnection(UUID id, int expectedVersion, boolean acknowledgeCost) {
+        if (!acknowledgeCost || expectedVersion < 1) {
+            throw new ApiProblemException(HttpStatus.BAD_REQUEST, "PROVIDER_DIAGNOSTIC_CONFIRMATION_REQUIRED",
+                    ApiMessage.of("api.llm-diagnostic-service.need-to-confirm-diagnostic-call"),
+                    ApiMessage.of("api.llm-diagnostic-service.please-confirm-that-this-diagnostic-makes-up-to-two-potentially"), false);
+        }
+        if (!inFlight.compareAndSet(false, true)) {
+            throw new ApiProblemException(HttpStatus.CONFLICT, "PROVIDER_DIAGNOSTIC_IN_PROGRESS",
+                    ApiMessage.of("api.llm-diagnostic-service.model-diagnostics-running"),
+                    ApiMessage.of("api.llm-diagnostic-service.please-wait-until-the-current-diagnosis-is-complete-and-try"), true);
+        }
+        try {
+            var head = repository.findConnection(id).orElseThrow(this::changed);
+            if (head.currentConfigVersion() != expectedVersion) throw changed();
+            var config = repository.findVersion(expectedVersion).orElseThrow(this::changed);
+            if (!config.toolCallingVerified()) {
+                probe(config);
+                if (!repository.markConnectionToolCallingVerified(id, expectedVersion)) throw changed();
+            }
+            var result = configs.connection(id);
+            if (result.version() != expectedVersion) throw changed();
+            return result;
+        } finally { inFlight.set(false); }
+    }
+
     /** 要求模型发起唯一探针调用，再将工具结果回填并验证第二轮文本响应。 */
     private void probe(LlmProviderConfig config) {
         String nonce = UUID.randomUUID().toString();

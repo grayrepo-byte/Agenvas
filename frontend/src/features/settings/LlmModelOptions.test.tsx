@@ -14,12 +14,12 @@ import { modelOptionsFromPolicy, type ModelOptionsDraft } from "./llmModelConfig
 const response = { id: "00000000-0000-4000-8000-000000000001", partial: false, checkedAt: "2026-11-04T00:00:00Z",
   models: [{ id: "model-a", contextWindowTokens: 32000, deploymentContextTokens: null, inputLimitTokens: null,
     outputLimitTokens: 2048, runtimeContextTokens: null, digest: null }] };
-function Harness({ endpoint = "https://provider.example/v1", apiKey = "synthetic-key", base }: { endpoint?: string; apiKey?: string; base?: api.LlmSettings } = {}) {
+function Harness({ endpoint = "https://provider.example/v1", apiKey = "synthetic-key", base, connectionId }: { endpoint?: string; apiKey?: string; base?: api.LlmSettings; connectionId?: string } = {}) {
   const [client] = useState(createQueryClient);
   const [value, setValue] = useState<ModelOptionsDraft>(modelOptionsFromPolicy(null));
   const [modelId, setModelId] = useState("model-a");
   return <QueryClientProvider client={client}><LlmModelOptions value={value} onChange={setValue} endpoint={endpoint}
-    apiKey={apiKey} base={base} modelId={modelId} onSelectModel={setModelId} disabled={false} />
+    apiKey={apiKey} base={base} connectionId={connectionId} modelId={modelId} onSelectModel={setModelId} disabled={false} />
     <output aria-label="draft">{JSON.stringify(value)}</output></QueryClientProvider>;
 }
 describe("model discovery in connection form", () => {

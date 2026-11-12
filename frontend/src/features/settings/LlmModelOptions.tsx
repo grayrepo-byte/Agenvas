@@ -9,7 +9,7 @@ import { Notice, StatusBadge, SummaryStrip } from "../../shared/ui/PagePrimitive
 import { Button } from "../../shared/ui/primitives/button";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
 import { Input } from "../../shared/ui/primitives/input";
-import { automaticModelOptions, DEFAULT_CONTEXT_WINDOW_TOKENS, fallbackModelOptions, modelOptionsFromPolicy, type ModelOptionsDraft } from "./llmModelConfiguration";
+import { DEFAULT_CONTEXT_WINDOW_TOKENS, automaticModelOptions, fallbackModelOptions, modelOptionsFromPolicy, type ModelOptionsDraft } from "./llmModelConfiguration";
 import { validLlmApiKey } from "./llmApiKey";
 
 const PROVIDERS: Record<LlmModelProvider, MessageKey> = {
@@ -18,16 +18,16 @@ const PROVIDERS: Record<LlmModelProvider, MessageKey> = {
 };
 const PARAMETERS = ["MAX_TOKENS", "MAX_COMPLETION_TOKENS"] as const;
 type Props = { value: ModelOptionsDraft; onChange: (value: ModelOptionsDraft) => void;
-  endpoint: string; apiKey: string; modelId: string; onSelectModel: (id: string) => void; disabled: boolean; validationAttempt?: number; base?: LlmSettings };
+  endpoint: string; apiKey: string; modelId: string; onSelectModel: (id: string) => void; disabled: boolean; validationAttempt?: number; connectionId?: string; base?: LlmSettings };
 
 /** Metadata only fills the existing connection draft; user overrides and CAS remain authoritative. */
 export function LlmModelOptions(props: Props) {
   useLocale();
-  const { value, endpoint, apiKey, modelId, disabled, base, onChange, onSelectModel } = props;
+  const { value, endpoint, apiKey, modelId, disabled, base, onChange, onSelectModel, connectionId } = props;
   const latest = useRef(props); latest.current = props;
   const sequence = useRef(0);
   const active = useRef<{ sequence: number; controller: AbortController; request: LlmModelPreviewRequest;
-    endpoint: string; key: string; modelId: string; provider: LlmModelProvider; version?: number } | null>(null);
+    endpoint: string; key: string; modelId: string; provider: LlmModelProvider; version?: number; connectionId?: string } | null>(null);
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -43,7 +43,7 @@ export function LlmModelOptions(props: Props) {
         const current = latest.current;
         if (pending.controller.signal.aborted || id !== sequence.current || current.endpoint !== pending.endpoint
           || current.apiKey !== pending.key || current.modelId !== pending.modelId || current.value.provider !== pending.provider
-          || current.base?.version !== pending.version) throw new DOMException("Canceled", "AbortError");
+          || current.base?.version !== pending.version || current.connectionId !== pending.connectionId) throw new DOMException("Canceled", "AbortError");
         return result;
       } finally { if (active.current?.sequence === id) active.current = null; }
     },
@@ -71,14 +71,16 @@ export function LlmModelOptions(props: Props) {
     if (current.value.previewId && !current.value.manualOverride)
       current.onChange(fallbackModelOptions(current.value));
     return () => { sequence.current++; active.current?.controller.abort(); active.current = null; };
-  }, [endpoint, apiKey, value.provider, base?.version, cancel]);
+  }, [endpoint, apiKey, value.provider, base?.version, connectionId, cancel]);
   useEffect(() => { if (disabled) cancel(); }, [disabled, cancel]);
 
   function load() {
     if (disabled || isPending) return;
     let request: LlmModelPreviewRequest;
-    if (validLlmApiKey(apiKey)) {
-      request = { provider: value.provider, credentialMode: "DRAFT", expectedVersion: base?.version ?? 0, endpoint: endpoint.trim(), apiKey, modelId: modelId.trim() || null };
+    if (validLlmApiKey(apiKey) || apiKey.trim() === "" && base?.configured && connectionId) {
+      // The server resolves the retained key from this connection, even for a draft endpoint.
+      request = { provider: value.provider, credentialMode: "DRAFT", expectedVersion: base?.version ?? 0, endpoint: endpoint.trim(),
+        ...(validLlmApiKey(apiKey) ? { apiKey } : {}), ...(connectionId ? { connectionId } : {}), modelId: modelId.trim() || null };
     } else if (apiKey === "" && base?.configured && endpoint === base.endpoint
       && value.provider === (base.modelPolicy?.provider ?? "COMPATIBLE")) {
       request = { provider: value.provider, credentialMode: "SAVED", expectedVersion: base.version, modelId: modelId.trim() || null };
@@ -86,7 +88,7 @@ export function LlmModelOptions(props: Props) {
     setError("");
     const id = ++sequence.current;
     active.current = { sequence: id, controller: new AbortController(), request, endpoint, key: apiKey,
-      modelId, provider: value.provider, version: base?.version };
+      modelId, provider: value.provider, version: base?.version, connectionId };
     mutate(id);
   }
   const selected = data?.models.find(item => item.id === modelId);

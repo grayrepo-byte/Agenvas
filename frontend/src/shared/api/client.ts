@@ -196,6 +196,10 @@ export type CreateRunRequest = components["schemas"]["CreateRunRequest"];
 export type Task = components["schemas"]["Task"];
 export type ManualUnknownAttemptRequest = components["schemas"]["ManualUnknownAttemptRequest"];
 export type LlmSettings = components["schemas"]["LlmSettings"];
+export type LlmConnections = components["schemas"]["LlmConnections"];
+export type LlmConnection = components["schemas"]["LlmConnection"];
+export type SaveLlmConnectionRequest = components["schemas"]["SaveLlmConnectionRequest"];
+export type ActivateLlmConnectionRequest = components["schemas"]["ActivateLlmConnectionRequest"];
 export type SystemDiagnostics = components["schemas"]["SystemDiagnostics"];
 export type CallLogCleanupResult = components["schemas"]["CallLogCleanupResult"];
 export type CleanupCallLogsRequest = NonNullable<paths["/api/v1/settings/call-log-retention/cleanup"]["post"]["requestBody"]>["content"]["application/json"];
@@ -423,6 +427,32 @@ export async function getCurrentUser(): Promise<CurrentUser> {
 export async function getLlmSettings(): Promise<LlmSettings> {
   return readJson<LlmSettings>("/api/v1/settings/llm", t("api.errors.modelSettingsUnavailable"));
 }
+
+/** Lists masked saved connections and the current active configuration version. */
+export async function listLlmConnections(): Promise<LlmConnections> {
+  return readJson<LlmConnections>("/api/v1/settings/llm/connections", t("api.errors.modelSettingsUnavailable"));
+}
+
+/** Saves a connection independently; an omitted or blank key keeps its server-side credential. */
+export async function saveLlmConnection(id: string, input: SaveLlmConnectionRequest): Promise<LlmConnection> {
+  return writeJson<LlmConnection>(`/api/v1/settings/llm/connections/${encodeURIComponent(id)}`, {
+    method: "PUT", body: JSON.stringify(input),
+  });
+}
+
+/** Explicitly switches the active connection after checking both connection and active versions. */
+export async function activateLlmConnection(id: string, input: ActivateLlmConnectionRequest): Promise<LlmConnections> {
+  return writeJson<LlmConnections>(`/api/v1/settings/llm/connections/${encodeURIComponent(id)}/activate`, {
+    method: "POST", body: JSON.stringify(input),
+  });
+}
+
+/** Runs the acknowledged billable probe against a saved connection without activating it. */
+export async function diagnoseLlmConnection(id: string, input: DiagnoseLlmRequest): Promise<LlmConnection> {
+  return writeJson<LlmConnection>(`/api/v1/settings/llm/connections/${encodeURIComponent(id)}/diagnose`, {
+    method: "POST", body: JSON.stringify(input),
+  });
+}
 export type LlmModelProvider = components["schemas"]["LlmModelProvider"];
 export type LlmModelPolicy = components["schemas"]["LlmModelPolicy"];
 export type LlmModelSelection = components["schemas"]["LlmModelSelection"];
@@ -523,7 +553,7 @@ export async function getSystemDiagnostics(): Promise<SystemDiagnostics> {
   return readJson<SystemDiagnostics>("/api/v1/settings/diagnostics", t("api.errors.diagnosticsUnavailable"));
 }
 
-/** Sends a replacement key once over the authenticated, CSRF-protected session. */
+/** Saves the active connection; any replacement key is sent once over the CSRF-protected session. */
 export async function replaceLlmSettings(input: ReplaceLlmSettingsRequest): Promise<LlmSettings> {
   return writeJson<LlmSettings>("/api/v1/settings/llm", {
     method: "PUT",

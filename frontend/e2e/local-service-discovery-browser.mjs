@@ -45,12 +45,19 @@ async function clickText(text) {
     button.click();
   }, text);
 }
+async function clickLabel(label) {
+  await page((label) => {
+    const button = [...document.querySelectorAll("button")].find((button) => button.getAttribute("aria-label") === label && !button.disabled);
+    if (!button) throw new Error(`Missing enabled button: ${label}`);
+    button.click();
+  }, label);
+}
 
 // Popovers are portaled beside the page, so their presence alone cannot prove
 // they are visible above a containing connection dialog and its backdrop.
 async function assertHelpAboveDialog() {
   const blocked = await page(() => {
-    const panel = document.querySelector('[data-slot="popover-content"]');
+    const panel = document.querySelector('[data-slot="popover-content"][aria-label="Local discovery help"]');
     if (!panel) return ["missing help popover"];
     const bounds = panel.getBoundingClientRect();
     const result = [];
@@ -120,19 +127,28 @@ try {
   for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
     await cdp("Emulation.setDeviceMetricsOverride", { ...viewport, deviceScaleFactor: 1, mobile: false });
     await cdp("Page.navigate", { url: new URL(route + "?surface=llm", baseUrl).href });
+    await waitFor(() => [...document.querySelectorAll("button")].some((button) => button.textContent.trim() === "Edit"));
+    assert.equal(await page(() => Boolean(document.getElementById("llm-endpoint"))), false, "Connection fields stay in the edit dialog");
+    assert.deepEqual(await page(() => window.localServiceDiscoveryFixture.requests), [], "No discovery on catalog mount");
+    await clickText("Edit");
     await waitFor(() => Boolean(document.getElementById("llm-endpoint")));
     await new Promise((resolve) => setTimeout(resolve, 50));
     assert.deepEqual(await page(() => window.localServiceDiscoveryFixture.requests), [], "No discovery on mount");
     assert.equal(await page(() => document.body.innerText.includes("Custom ports, other containers")), false, "Detailed help stays collapsed");
+    await clickLabel("Connection help");
     await page(() => document.querySelector("button[aria-label='Local discovery help']").click());
-    await waitFor(() => document.querySelector("[role='dialog']")?.innerText.includes("Custom ports, other containers"));
+    await waitFor(() => document.body.innerText.includes("Custom ports, other containers"));
     await assertHelpAboveDialog();
     await cdp("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape" });
     await cdp("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape" });
-    await waitFor(() => !document.querySelector("[role='dialog']"));
+    await waitFor(() => !document.querySelector("[data-slot='popover-content'][aria-label='Local discovery help']"));
+    assert.equal(await page(() => Boolean(document.getElementById("llm-endpoint"))), true, "Closing nested help keeps the editor mounted");
+    await clickLabel("Connection help");
+    await waitFor(() => !document.querySelector("[data-slot='popover-content'][aria-label='Connection help']"));
     await fillInput("#llm-model", "Unsaved model draft");
     await fillInput("#llm-api-key", "synthetic-placeholder");
     const find = "Find Ollama on this machine";
+    await clickLabel("Connection help");
     await clickText(find);
     await waitFor(() => [...document.querySelectorAll("button")].some((button) => button.textContent === "Fill address"));
     assert.equal(await page(() => document.getElementById("llm-endpoint").value), "https://manual.example.com/ollama", "Finding must not fill");
@@ -140,16 +156,12 @@ try {
     await waitFor(() => document.getElementById("llm-endpoint").value === "http://host.docker.internal:11434/v1");
     assert.equal(await page(() => document.getElementById("llm-model").value), "Unsaved model draft");
     assert.equal(await page(() => document.getElementById("llm-api-key").value), "synthetic-placeholder");
-    assert.deepEqual(await page(() => {
-      const panel = document.querySelector(".llm-diagnostics-panel");
-      const button = panel?.querySelector(".llm-diagnostic-action button");
-      const consent = panel?.querySelector('[role="checkbox"]');
-      return { label: button?.textContent, disabled: button?.disabled,
-        consentDisabled: consent?.disabled, consentChecked: consent?.getAttribute("aria-checked"),
-        costExplained: panel?.textContent.includes("Charges depend on your provider or proxy") };
-    }), { label: "Run potentially billable diagnostics", disabled: true,
-      consentDisabled: true, consentChecked: "false", costExplained: true }, "Unsaved discovery drafts keep diagnostics cost-protected");
+    assert.equal(await page(() => [...document.querySelector(".llm-connection-dialog").querySelectorAll("button")]
+      .some((button) => button.textContent.trim() === "Run potentially billable diagnostics")), false,
+    "Unsaved discovery drafts cannot be used for billable diagnostics in the editor");
+    assert.equal(await page(() => window.localServiceDiscoveryFixture.writes), 0, "Finding and filling never save or diagnose");
     await page(() => { window.localServiceDiscoveryFixture.mode = "DELAYED"; });
+    await clickLabel("Connection help");
     await clickText(find);
     await waitFor(() => document.body.innerText.includes("Cancel check"));
     await clickText("Cancel check");
@@ -160,6 +172,10 @@ try {
     const llm = await inspectAndCapture(viewport, "llm");
     assert.deepEqual(llm.requests, ["OLLAMA", "OLLAMA"]);
 
+    await clickLabel("Connection help");
+    await waitFor(() => !document.querySelector("[data-slot='popover-content'][aria-label='Connection help']"));
+    await clickText("Model discovery and advanced settings");
+    await waitFor(() => !document.getElementById("llm-advanced-settings").hidden);
     await page(() => {
       const provider = [...document.querySelectorAll("select")].find(select => [...select.options].some(option => option.value === "OPENROUTER"));
       Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(provider, "OPENROUTER");
@@ -168,6 +184,7 @@ try {
     await fillInput("#llm-endpoint", "https://router.example.invalid/api/v1");
     await fillInput("#llm-model", "synthetic-model");
     await clickText("Read model list");
+    await clickText("Advanced settings");
     await waitFor(() => document.getElementById("llm-context").value === "16384");
     assert.equal(await page(() => document.getElementById("llm-output-limit").value), "2048");
     assert.equal(await page(() => document.getElementById("llm-api-key").value), "synthetic-placeholder");
@@ -179,16 +196,34 @@ try {
     assert.equal(await page(() => document.getElementById("llm-context").value), "8192", "Reading metadata preserves manual overrides");
     assert.equal(await page(() => window.localServiceDiscoveryFixture.writes), 0, "Model reads never save or diagnose");
 
+    // Diagnostics now have their own saved-connection dialog, separate from the unsaved editor.
+    await clickText("Cancel");
+    await waitFor(() => document.body.innerText.includes("Discard unsaved changes?"));
+    await clickText("Discard changes");
+    await waitFor(() => !document.getElementById("llm-endpoint") && !document.querySelector("[role='dialog']"));
+    await clickText("Test");
+    await waitFor(() => document.querySelector("[role='dialog']")?.innerText.includes("Run potentially billable diagnostics"));
+    assert.deepEqual(await page(() => {
+      const dialog = document.querySelector("[role='dialog']");
+      const button = [...dialog.querySelectorAll("button")].find((button) => button.textContent.trim() === "Run potentially billable diagnostics");
+      const consent = dialog.querySelector('[role="checkbox"]');
+      return { label: button?.textContent, disabled: button?.disabled, consentChecked: consent?.getAttribute("aria-checked"),
+        costExplained: dialog.textContent.includes("Charges depend on your provider or proxy"),
+        savedVersion: dialog.textContent.includes("Synthetic local connection · saved-model · v4") };
+    }), { label: "Run potentially billable diagnostics", disabled: true, consentChecked: "false", costExplained: true, savedVersion: true },
+    "Diagnostics keep explicit cost consent and target only the saved connection version");
+    assert.equal(await page(() => window.localServiceDiscoveryFixture.writes), 0, "Opening saved-connection diagnostics never starts a probe");
+
     await cdp("Page.navigate", { url: new URL(route + "?surface=comfy", baseUrl).href });
     await waitFor(() => [...document.querySelectorAll("button")].some((button) => button.textContent.trim() === "Add connection"));
     await clickText("Add connection");
     await waitFor(() => Boolean(document.querySelector("[role='dialog'] input[type='url']")));
     await page(() => document.querySelector("button[aria-label='Local discovery help']").click());
-    await waitFor(() => Boolean(document.querySelector('[data-slot="popover-content"]')));
+    await waitFor(() => Boolean(document.querySelector('[data-slot="popover-content"][aria-label="Local discovery help"]')));
     await assertHelpAboveDialog();
     await cdp("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape" });
     await cdp("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape" });
-    await waitFor(() => !document.querySelector('[data-slot="popover-content"]'));
+    await waitFor(() => !document.querySelector('[data-slot="popover-content"][aria-label="Local discovery help"]'));
     assert.equal(await page(() => Boolean(document.querySelector('[data-slot="dialog-content"]'))), true,
       "Closing help keeps the unsaved connection dialog open");
     const address = "[role='dialog'] input[type='url']";
