@@ -25,6 +25,18 @@ class LlmProtocolCodecTest {
     private final LlmProtocolCodec codec = new LlmProtocolCodec(mapper);
 
     @Test
+    void budgetedRequestRemainsEqualAfterJsonStorageRoundTrip() {
+        for (long version : List.of(1L, (long) Integer.MAX_VALUE + 1)) {
+            var budget = new LlmRequestBudget(1, 32768, 4096, 28672, 1024, 4, 16384,
+                    dev.agenvas.settings.application.LlmModelPolicy.OutputParameter.MAX_TOKENS, version);
+            var request = codec.withBudget(codec.request(List.of(new UserMessage("hello")), List.of()), budget);
+            var stored = mapper.readTree(request.toString());
+            assertThat(stored).isEqualTo(request);
+            assertThat(codec.requestBudget(stored)).isEqualTo(budget);
+        }
+    }
+
+    @Test
     void restoresMediaContinuationLargerThanTheOldRequestLimit() {
         AssistantMessage assistant = AssistantMessage.builder().content("")
                 .toolCalls(List.of(new AssistantMessage.ToolCall(

@@ -22,6 +22,24 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class WhisperCppTranscriberTest {
+    @Test void realWhisperFrameTailIsClampedButLargeOrEmptyIntervalsAreRejected() {
+        var source = new WhisperCppTranscriber.Source(UUID.randomUUID(), Path.of("/tmp/test.wav"), 7998);
+        var track = WhisperCppTranscriber.decodeRecognitionOutput("1\n00:00:00,000 --> 00:00:08,060\nHello\n", source, "en");
+        assertThat(track.sourceDurationMs()).isEqualTo(7998);
+        assertThat(track.cues().getFirst().endMs()).isEqualTo(7998);
+        assertThat(WhisperCppTranscriber.decodeRecognitionOutput(
+                "1\n00:00:00,000 --> 00:00:08,098\nHello\n", source, "en").cues().getFirst().endMs()).isEqualTo(7998);
+        assertThatThrownBy(() -> WhisperCppTranscriber.decodeRecognitionOutput(
+                "1\n00:00:00,000 --> 00:00:08,099\nHello\n", source, "en"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> WhisperCppTranscriber.decodeRecognitionOutput(
+                "1\n00:00:00,000 --> 00:00:08,200\nHello\n", source, "en"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> WhisperCppTranscriber.decodeRecognitionOutput(
+                "1\n00:00:08,000 --> 00:00:08,060\nHello\n", source, "en"))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
     @TempDir Path temp;
 
     @Test void absentConfigurationReturnsNotConfiguredWithoutTryingToRunOrDownloadAnything() {
@@ -214,7 +232,7 @@ class WhisperCppTranscriberTest {
                 new LocalAsrProcessRunner() {
                     @Override public void run(Path executable, List<String> args, Path scratch, Duration timeout,
                             BooleanSupplier canceled, Runnable heartbeat) {
-                        try { Files.writeString(scratch.resolve("transcript.srt"), "1\n00:00:00,100 --> 00:00:01,100\noutside source\n"); }
+                        try { Files.writeString(scratch.resolve("transcript.srt"), "1\n00:00:00,100 --> 00:00:01,200\noutside source\n"); }
                         catch (Exception failure) { throw new AssertionError(failure); }
                     }
                 });

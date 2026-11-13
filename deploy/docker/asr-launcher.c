@@ -5,7 +5,11 @@
 #include <stdio.h>
 int main(int argc, char **argv) {
     (void)argc;
-    struct rlimit memory = {512ULL * 1024 * 1024, 512ULL * 1024 * 1024};
+    /* RLIMIT_AS bounds virtual mappings, not resident RAM. The pinned tiny model
+     * exceeds 512 MiB of virtual space on Linux arm64 during compute allocation.
+     * Cgroup admission and the single-job gate remain the physical-memory controls. */
+    const rlim_t max_address_space = 1024ULL * 1024 * 1024;
+    struct rlimit memory = {max_address_space, max_address_space};
     struct rlimit cpu = {1200, 1200};
     if (setrlimit(RLIMIT_AS, &memory) || setrlimit(RLIMIT_CPU, &cpu)) return 125;
     argv[0] = "/opt/agenvas/lib/whisper/whisper-cli";

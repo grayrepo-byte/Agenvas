@@ -3,6 +3,7 @@ package dev.agenvas.subtitle.application;
 import dev.agenvas.asset.infrastructure.MediaToolRunner;
 import dev.agenvas.subtitle.domain.SubtitleFiles;
 import dev.agenvas.subtitle.domain.SubtitleTrack;
+import dev.agenvas.subtitle.domain.SubtitleCue;
 import dev.agenvas.subtitle.infrastructure.LocalAsrProcessRunner;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -21,6 +22,7 @@ import org.springframework.stereotype.Component;
 /** Real local speech recognition; it never derives dialogue from volume, scripts or a cloud service. */
 @Component
 public class WhisperCppTranscriber {
+    private static final int MAX_RECOGNITION_TAIL_OVERRUN_MS = 100;
     public enum Availability { AVAILABLE, NOT_CONFIGURED, EXECUTABLE_UNAVAILABLE, MODEL_UNAVAILABLE }
     /** Paths are resolved by an authorized application service, never accepted from API/model input. */
     public record Source(UUID versionId, Path path, int durationMs) {}
@@ -32,6 +34,16 @@ public class WhisperCppTranscriber {
 
     public WhisperCppTranscriber(MediaToolRunner mediaTools, LocalAsrProperties properties, LocalAsrProcessRunner processes) {
         this.mediaTools = mediaTools; this.properties = properties; this.processes = processes;
+    }
+
+    /** Whisper frames can extend a final cue slightly beyond the decoded media boundary.
+     * Only native recognition gets this bounded tolerance; user-imported files stay strict. */
+    static SubtitleTrack decodeRecognitionOutput(String contents, Source source, String language) {
+        var decoded = SubtitleFiles.decode(contents, SubtitleFiles.Format.SRT,
+                source.versionId(), source.durationMs() + MAX_RECOGNITION_TAIL_OVERRUN_MS, language);
+        var cues = decoded.cues().stream().map(cue -> new SubtitleCue(cue.text(),
+                cue.startMs(), Math.min(cue.endMs(), source.durationMs()))).toList();
+        return new SubtitleTrack(source.versionId(), source.durationMs(), language, cues);
     }
 
     /** Checks local installation only; does not launch an engine, contact a registry or fetch weights. */
@@ -103,8 +115,7 @@ public class WhisperCppTranscriber {
                 throw new LocalAsrException(LocalAsrException.Code.INVALID_OUTPUT);
             SubtitleTrack result;
             try {
-                result = SubtitleFiles.decode(Files.readString(output), SubtitleFiles.Format.SRT,
-                        source.versionId(), source.durationMs(), language);
+                result = decodeRecognitionOutput(Files.readString(output), source, language);
             } catch (IllegalArgumentException invalid) { throw new LocalAsrException(LocalAsrException.Code.INVALID_OUTPUT); }
             tick.run();
             return result;

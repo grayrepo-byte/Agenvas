@@ -72,7 +72,11 @@ public class LlmProtocolCodec {
         return mapper.treeToValue(request.path("requestBudget"), LlmRequestBudget.class);
     }
     public ObjectNode withBudget(ObjectNode request, LlmRequestBudget budget) {
-        if (budget != null) request.set("requestBudget", mapper.valueToTree(budget));
+        if (budget != null) {
+            // Match JSON storage numeric types: valueToTree preserves Java long even
+            // when PostgreSQL/Jackson reads the same small integer as an IntNode.
+            request.set("requestBudget", mapper.readTree(mapper.writeValueAsBytes(budget)));
+        }
         requireBounded(request, MAX_REQUEST_BYTES);
         return request;
     }
