@@ -2,18 +2,29 @@ package dev.agenvas.provider.domain;
 
 /** Submission outcomes must be recorded by the task state machine, never by adapters. */
 public sealed interface Submission {
-    record Accepted(String requestId) implements Submission {}
+    record Accepted(String requestId) implements Submission {
+    }
     /** Synchronous multi-output responses are acknowledged together with their durable results. */
-    record AcceptedResults(String requestId, ProviderResultManifest manifest) implements Submission {}
-    record Completed(MediaPayload payload) implements Submission {}
-    record CompletedArtifact(tools.jackson.databind.JsonNode content) implements Submission {}
-    record CompletedResults(ProviderResultManifest manifest) implements Submission {}
-    record Pending(java.time.Instant nextActionAt) implements Submission {}
-    record Blocked(String code) implements Submission {}
+    record AcceptedResults(String requestId, ProviderResultManifest manifest) implements Submission {
+    }
+    record Completed(MediaPayload payload) implements Submission {
+    }
+    record CompletedArtifact(tools.jackson.databind.JsonNode content) implements Submission {
+    }
+    record CompletedResults(ProviderResultManifest manifest) implements Submission {
+    }
+    record Pending(java.time.Instant nextActionAt) implements Submission {
+    }
+    record Blocked(String code) implements Submission {
+    }
     record Rejected(String code, ProviderFailure providerFailure) implements Submission {
-        public Rejected(String code) { this(code, null); }
+        public Rejected(String code) {
+            this(code, null);
+        }
     }
     record Unknown(String code, ProviderFailure providerFailure) implements Submission {
-        public Unknown(String code) { this(code, null); }
+        public Unknown(String code) {
+            this(code, null);
+        }
     }
 }

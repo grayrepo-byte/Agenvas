@@ -47,12 +47,18 @@ class MockAgentTurnPostgresIT {
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private AgentRunService runs;
-    @Autowired private AgentTurnWorker worker;
-    @Autowired private JdbcClient jdbc;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private AgentInstanceService agents;
+    @Autowired
+    private AgentRunService runs;
+    @Autowired
+    private AgentTurnWorker worker;
+    @Autowired
+    private JdbcClient jdbc;
 
     @Test
     void completesAnAgentRunWithoutAnyToolSideEffect() {

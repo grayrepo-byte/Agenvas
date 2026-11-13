@@ -80,7 +80,8 @@ class ComfyUiImagePostgresIT {
         properties.add("spring.datasource.username", POSTGRES::getUsername);
         properties.add("spring.datasource.password", POSTGRES::getPassword);
         properties.add("agenvas.storage.root", STORAGE_ROOT::toString);
-        properties.add("agenvas.credentials.master-key-base64", () -> java.util.Base64.getEncoder().encodeToString(new byte[32]));
+        properties.add("agenvas.credentials.master-key-base64",
+                () -> java.util.Base64.getEncoder().encodeToString(new byte[32]));
     }
 
     @AfterAll
@@ -91,18 +92,30 @@ class ComfyUiImagePostgresIT {
     @Autowired
     private dev.agenvas.audit.application.CallLogService callLogs;
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private ArtifactService artifacts;
-    @Autowired private MediaDraftService drafts;
-    @Autowired private CanvasService canvas;
-    @Autowired private DirectMediaTaskService directMedia;
-    @Autowired private AssetService assets;
-    @Autowired private TaskService tasks;
-    @Autowired private MediaCapabilityService catalog;
-    @Autowired private MediaExecutionWorker mediaWorker;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private ObjectMapper mapper;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private ArtifactService artifacts;
+    @Autowired
+    private MediaDraftService drafts;
+    @Autowired
+    private CanvasService canvas;
+    @Autowired
+    private DirectMediaTaskService directMedia;
+    @Autowired
+    private AssetService assets;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private MediaCapabilityService catalog;
+    @Autowired
+    private MediaExecutionWorker mediaWorker;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private ObjectMapper mapper;
 
     @Test
     void approvedReferenceImageReachesFixedSamplerThenArchivesOriginalPrompt() throws Exception {
@@ -221,10 +234,10 @@ class ComfyUiImagePostgresIT {
                 .param("id", queuedSecond.id()).query(Integer.class).single()).isEqualTo(1);
         // 已结算的直连任务只留下 SETTLEMENT，不再产生 RELEASE（无重复释放）。
         assertThat(jdbc.sql("select count(*) from usage_ledger where task_id = :id "
-                        + "and entry_type = 'SETTLEMENT'")
+                + "and entry_type = 'SETTLEMENT'")
                 .param("id", queuedSecond.id()).query(Integer.class).single()).isEqualTo(1);
         assertThat(jdbc.sql("select count(*) from usage_ledger where task_id = :id "
-                        + "and entry_type = 'RELEASE'")
+                + "and entry_type = 'RELEASE'")
                 .param("id", queuedSecond.id()).query(Integer.class).single()).isZero();
 
         var rotatedConnection = catalog.getConnection(connection);

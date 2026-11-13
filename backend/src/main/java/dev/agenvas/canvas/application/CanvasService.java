@@ -140,14 +140,17 @@ public class CanvasService {
             validateGeometry(x, y, width, height, zIndex);
             CanvasItem source = canvasItems.findForUpdate(ownerId, projectId, sourceItemId)
                     .orElseThrow(this::notFound);
-            if (source.version() != expectedSourceVersion) throw conflict();
+            if (source.version() != expectedSourceVersion)
+                throw conflict();
             if (source.subjectType() == CanvasItem.SubjectType.CHARACTER) {
                 var selection = characterNodes.getObject().view(ownerId, source);
-                if (selection.version() != expectedSourceDraftVersion) throw conflict();
+                if (selection.version() != expectedSourceDraftVersion)
+                    throw conflict();
                 CanvasItem target = placement(targetItemId, projectId, CanvasItem.SubjectType.CHARACTER,
                         source.subjectId(), null, source.title(), x, y, width, height,
                         zIndex, source.groupId(), false);
-                if (!canvasItems.create(target)) throw conflict();
+                if (!canvasItems.create(target))
+                    throw conflict();
                 characterNodes.getObject().installCopy(ownerId, projectId, targetItemId, selection.selection(), 0);
                 ObjectNode payload = objectMapper.createObjectNode();
                 payload.putArray("itemIds").add(targetItemId.toString());
@@ -157,13 +160,15 @@ public class CanvasService {
             ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId,
                     source.subjectId());
             if (artifact.artifact().kind() == Artifact.Kind.TEXT) {
-                throw validation(ApiMessage.of("api.canvas-service.only-picture-and-video-cards-can-copy-working-branches"));
+                throw validation(
+                        ApiMessage.of("api.canvas-service.only-picture-and-video-cards-can-copy-working-branches"));
             }
             CanvasItem target = placement(targetItemId, projectId,
                     CanvasItem.SubjectType.ARTIFACT, source.subjectId(),
                     source.selectedVersionId(), source.title(), x, y, width, height,
                     zIndex, source.groupId(), false);
-            if (!canvasItems.create(target)) throw conflict();
+            if (!canvasItems.create(target))
+                throw conflict();
             rememberInitialMediaVersion(target);
             var draft = mediaDrafts.duplicateWithinChange(ownerId, projectId,
                     sourceItemId, targetItemId, expectedSourceDraftVersion);
@@ -184,7 +189,8 @@ public class CanvasService {
     }
 
     public record DuplicateResult(CanvasEntry item,
-            dev.agenvas.artifact.domain.MediaDraft draft) {}
+            dev.agenvas.artifact.domain.MediaDraft draft) {
+    }
 
     /** Lists this node's immutable results, excluding results owned by other work branches. */
     @Transactional(readOnly = true)
@@ -203,13 +209,15 @@ public class CanvasService {
         return events.recordChange(ownerId, projectId, () -> {
             projects.requireActiveProject(ownerId, projectId);
             CanvasItem item = requireMediaItem(ownerId, projectId, itemId, true);
-            if (item.version() != expectedVersion) throw conflict();
+            if (item.version() != expectedVersion)
+                throw conflict();
             if (!canvasItems.mediaVersionIds(ownerId, projectId, itemId).contains(versionId)) {
                 throw validation(ApiMessage.of("api.canvas-service.only-the-media-version-of-the-current-node-can-be"));
             }
             artifacts.requireVersion(ownerId, projectId, item.subjectId(), versionId);
             if (!canvasItems.selectVersion(ownerId, projectId, itemId, expectedVersion,
-                    versionId, clock.instant())) throw conflict();
+                    versionId, clock.instant()))
+                throw conflict();
             mediaDrafts.setDisplayModeWithinChange(projectId, itemId,
                     dev.agenvas.artifact.domain.MediaDraft.DisplayMode.RESULT);
             CanvasItem selected = canvasItems.find(ownerId, projectId, itemId).orElseThrow(this::notFound);
@@ -233,7 +241,8 @@ public class CanvasService {
     public boolean hasArtifactItem(UUID ownerId, UUID projectId, UUID itemId, UUID artifactId) {
         return canvasItems.find(ownerId, projectId, itemId)
                 .filter(item -> item.subjectType() == CanvasItem.SubjectType.ARTIFACT
-                        && item.subjectId().equals(artifactId)).isPresent();
+                        && item.subjectId().equals(artifactId))
+                .isPresent();
     }
 
     /**
@@ -263,18 +272,23 @@ public class CanvasService {
     public void recordTaskMediaVersionWithinChange(UUID ownerId, UUID projectId, UUID itemId,
             UUID artifactId, UUID versionId) {
         // A deleted project keeps Artifact audit results without changing its retired canvas projection.
-        if (projects.getRetainedProject(ownerId, projectId).status() == Project.Status.DELETED) return;
+        if (projects.getRetainedProject(ownerId, projectId).status() == Project.Status.DELETED)
+            return;
         CanvasItem item = canvasItems.findForUpdate(ownerId, projectId, itemId).orElse(null);
-        if (item == null) return;
-        if (!item.subjectId().equals(artifactId)) throw validation(ApiMessage.of("api.canvas-service.media-mission-objectives-do-not-match"));
+        if (item == null)
+            return;
+        if (!item.subjectId().equals(artifactId))
+            throw validation(ApiMessage.of("api.canvas-service.media-mission-objectives-do-not-match"));
         ArtifactVersion version = artifacts.requireVersion(ownerId, projectId, artifactId, versionId);
         canvasItems.addMediaVersion(projectId, itemId, versionId, version.createdAt());
     }
 
     private CanvasItem requireMediaItem(UUID ownerId, UUID projectId, UUID itemId, boolean lock) {
-        CanvasItem item = (lock ? canvasItems.findForUpdate(ownerId, projectId, itemId)
+        CanvasItem item = (lock
+                ? canvasItems.findForUpdate(ownerId, projectId, itemId)
                 : canvasItems.find(ownerId, projectId, itemId)).orElseThrow(this::notFound);
-        if (item.subjectType() != CanvasItem.SubjectType.ARTIFACT) throw notFound();
+        if (item.subjectType() != CanvasItem.SubjectType.ARTIFACT)
+            throw notFound();
         Artifact.Kind kind = artifacts.get(ownerId, projectId, item.subjectId()).artifact().kind();
         if (kind == Artifact.Kind.TEXT) {
             throw validation(ApiMessage.of("api.canvas-service.only-image-and-video-nodes-have-media-versions"));
@@ -283,8 +297,9 @@ public class CanvasService {
     }
 
     private void rememberInitialMediaVersion(CanvasItem item) {
-        if (item.selectedVersionId() != null) canvasItems.addMediaVersion(item.projectId(),
-                item.id(), item.selectedVersionId(), item.createdAt());
+        if (item.selectedVersionId() != null)
+            canvasItems.addMediaVersion(item.projectId(),
+                    item.id(), item.selectedVersionId(), item.createdAt());
     }
 
     /**
@@ -303,38 +318,51 @@ public class CanvasService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public CanvasItem placeTaskMediaOutputWithinChange(UUID ownerId, UUID projectId, UUID sourceItemId,
             UUID artifactId, int outputIndex, JsonNode frozenInput) {
-        if (projects.getRetainedProject(ownerId, projectId).status() == Project.Status.DELETED) return null;
+        if (projects.getRetainedProject(ownerId, projectId).status() == Project.Status.DELETED)
+            return null;
         // TaskService validates each protocol's count before placement; decomposition can include 16 extra layers.
-        if (outputIndex < 1 || outputIndex >= dev.agenvas.provider.domain.NativeMediaProtocol.MAX_RESULTS) throw validation(ApiMessage.of("api.canvas-service.the-result-sequence-number-is-invalid"));
+        if (outputIndex < 1 || outputIndex >= dev.agenvas.provider.domain.NativeMediaProtocol.MAX_RESULTS)
+            throw validation(ApiMessage.of("api.canvas-service.the-result-sequence-number-is-invalid"));
         CanvasItem source = canvasItems.findForUpdate(ownerId, projectId, sourceItemId).orElse(null);
-        if (source == null) return null;
+        if (source == null)
+            return null;
         var artifact = artifacts.get(ownerId, projectId, artifactId);
         List<CanvasItem> existing = canvasItems.list(ownerId, projectId);
         OutputPosition position = findOutputPositionBeside(source, source.y(), OUTPUT_WIDTH,
                 OUTPUT_HEIGHT, source.height(), existing);
         int zIndex = nextOutputZIndex(existing);
         validateGeometry(position.x(), position.y(), source.width(), source.height(), zIndex);
-        if (overlapsAny(position.x(), position.y(), existing)) throw validation(ApiMessage.of("api.canvas-service.there-are-no-available-locations-near-the-additional-results"));
+        if (overlapsAny(position.x(), position.y(), existing))
+            throw validation(
+                    ApiMessage.of("api.canvas-service.there-are-no-available-locations-near-the-additional-results"));
         CanvasItem item = placement(UUID.randomUUID(), projectId, CanvasItem.SubjectType.ARTIFACT,
-                artifactId, null, derivationTitle(source.title(), Integer.toString(outputIndex + 1)), position.x(), position.y(), source.width(), source.height(), zIndex, source.groupId(), false);
-        if (!canvasItems.create(item)) throw conflict();
-        if (source.subjectId().equals(artifactId)) mediaDrafts.initializeFrozenWithinChange(projectId, item.id(), artifact.artifact().kind(), frozenInput);
-        else mediaDrafts.initializeWithinChange(projectId, item.id(), false);
+                artifactId, null, derivationTitle(source.title(), Integer.toString(outputIndex + 1)), position.x(),
+                position.y(), source.width(), source.height(), zIndex, source.groupId(), false);
+        if (!canvasItems.create(item))
+            throw conflict();
+        if (source.subjectId().equals(artifactId))
+            mediaDrafts.initializeFrozenWithinChange(projectId, item.id(), artifact.artifact().kind(), frozenInput);
+        else
+            mediaDrafts.initializeWithinChange(projectId, item.id(), false);
         ObjectNode payload = objectMapper.createObjectNode();
         payload.putArray("itemIds").add(item.id().toString());
-        events.append(ownerId, projectId, new ProjectEventService.EventDraft("canvas.items.changed", 1, projectId, 0, payload));
+        events.append(ownerId, projectId,
+                new ProjectEventService.EventDraft("canvas.items.changed", 1, projectId, 0, payload));
         if (source.subjectId().equals(artifactId))
             characters.getObject().copyFrozenBindingsWithinChange(ownerId, projectId, item.id(), frozenInput);
         return item;
     }
 
-    private enum MediaOutputDraft { COPY_SOURCE, EMPTY }
+    private enum MediaOutputDraft {
+        COPY_SOURCE, EMPTY
+    }
 
     private CanvasItem createMediaOutputWithinChange(UUID ownerId, UUID projectId,
             UUID sourceItemId, UUID targetItemId, long expectedSourceDraftVersion,
             int outputIndex, MediaOutputDraft draftInitialization, String resultLabel) {
         if (outputIndex < 0 || outputIndex >= 4) {
-            throw validation(ApiMessage.of("api.canvas-service.the-media-output-sequence-number-must-be-between-0-and"));
+            throw validation(
+                    ApiMessage.of("api.canvas-service.the-media-output-sequence-number-must-be-between-0-and"));
         }
         projects.requireActiveProject(ownerId, projectId);
         CanvasItem source = canvasItems.findForUpdate(ownerId, projectId, sourceItemId)
@@ -345,23 +373,27 @@ public class CanvasService {
             throw validation(ApiMessage.of("api.canvas-service.only-images-and-videos-support-new-node-output"));
         }
         if (draftInitialization == MediaOutputDraft.EMPTY
-                && mediaDrafts.get(ownerId, projectId, sourceItemId).version()
-                        != expectedSourceDraftVersion) throw conflict();
+                && mediaDrafts.get(ownerId, projectId, sourceItemId).version() != expectedSourceDraftVersion)
+            throw conflict();
         List<CanvasItem> existing = canvasItems.list(ownerId, projectId);
         BigDecimal initialY = source.y().add(
                 source.height().add(OUTPUT_GAP).multiply(BigDecimal.valueOf(outputIndex)));
         OutputPosition position = findOutputPositionBeside(source, initialY,
                 OUTPUT_WIDTH, OUTPUT_HEIGHT, source.height(), existing);
-        if (overlapsAny(position.x(), position.y(), existing)) throw validation(ApiMessage.of("api.canvas-service.there-is-no-available-location-near-the-new-image-node"));
+        if (overlapsAny(position.x(), position.y(), existing))
+            throw validation(
+                    ApiMessage.of("api.canvas-service.there-is-no-available-location-near-the-new-image-node"));
         int zIndex = nextOutputZIndex(existing);
         validateGeometry(position.x(), position.y(), source.width(), source.height(), zIndex);
         CanvasItem target = placement(targetItemId, projectId,
                 CanvasItem.SubjectType.ARTIFACT, source.subjectId(), source.selectedVersionId(),
                 draftInitialization == MediaOutputDraft.EMPTY
-                        ? derivationTitle(source.title(), resultLabel) : source.title(),
+                        ? derivationTitle(source.title(), resultLabel)
+                        : source.title(),
                 position.x(), position.y(), source.width(), source.height(), zIndex,
                 source.groupId(), false);
-        if (!canvasItems.create(target)) throw conflict();
+        if (!canvasItems.create(target))
+            throw conflict();
         if (draftInitialization == MediaOutputDraft.EMPTY) {
             // Operation inputs live in the immutable Task, not in the result node's next draft.
             mediaDrafts.initializeWithinChange(projectId, targetItemId, false);
@@ -400,8 +432,8 @@ public class CanvasService {
         CanvasItem source = canvasItems.findForUpdate(ownerId, projectId, sourceItemId)
                 .orElseThrow(this::notFound);
         if (source.selectedVersionId() == null
-                || artifacts.get(ownerId, projectId, source.subjectId()).artifact().kind()
-                        != Artifact.Kind.VIDEO) throw conflict();
+                || artifacts.get(ownerId, projectId, source.subjectId()).artifact().kind() != Artifact.Kind.VIDEO)
+            throw conflict();
         String title = derivationTitle(source.title(), resultLabel);
         var audio = artifacts.create(ownerId, projectId, Artifact.Kind.AUDIO, title, null);
         List<CanvasItem> existing = canvasItems.list(ownerId, projectId);
@@ -409,11 +441,14 @@ public class CanvasService {
                 AUDIO_OUTPUT_HEIGHT, AUDIO_OUTPUT_HEIGHT, existing);
         int zIndex = nextOutputZIndex(existing);
         validateGeometry(position.x(), position.y(), AUDIO_OUTPUT_WIDTH, AUDIO_OUTPUT_HEIGHT, zIndex);
-        if (overlapsAny(position.x(), position.y(), AUDIO_OUTPUT_WIDTH, AUDIO_OUTPUT_HEIGHT, existing)) throw conflict();
+        if (overlapsAny(position.x(), position.y(), AUDIO_OUTPUT_WIDTH, AUDIO_OUTPUT_HEIGHT, existing))
+            throw conflict();
         CanvasItem target = placement(UUID.randomUUID(), projectId, CanvasItem.SubjectType.ARTIFACT,
-                audio.artifact().id(), null, title, position.x(), position.y(), AUDIO_OUTPUT_WIDTH, AUDIO_OUTPUT_HEIGHT, zIndex,
+                audio.artifact().id(), null, title, position.x(), position.y(), AUDIO_OUTPUT_WIDTH, AUDIO_OUTPUT_HEIGHT,
+                zIndex,
                 source.groupId(), false);
-        if (!canvasItems.create(target)) throw conflict();
+        if (!canvasItems.create(target))
+            throw conflict();
         mediaDrafts.initializeWithinChange(projectId, target.id(), false);
         connections.createMediaDerivationWithinChange(ownerId, projectId, sourceItemId,
                 target.id(), source.selectedVersionId());
@@ -439,26 +474,32 @@ public class CanvasService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public CanvasItem placeImagePromptTextWithinChange(UUID ownerId, UUID projectId, UUID artifactId,
             UUID sourceItemId, UUID sourceVersionId) {
-        if (projects.getRetainedProject(ownerId, projectId).status() == Project.Status.DELETED) return null;
+        if (projects.getRetainedProject(ownerId, projectId).status() == Project.Status.DELETED)
+            return null;
         ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId, artifactId);
-        if (artifact.artifact().kind() != Artifact.Kind.TEXT) throw new IllegalArgumentException("Expected a text task result");
+        if (artifact.artifact().kind() != Artifact.Kind.TEXT)
+            throw new IllegalArgumentException("Expected a text task result");
         CanvasItem source = canvasItems.findForUpdate(ownerId, projectId, sourceItemId).orElse(null);
-        if (source == null) return placeGeneratedArtifact(ownerId, projectId, artifact, null, null);
+        if (source == null)
+            return placeGeneratedArtifact(ownerId, projectId, artifact, null, null);
         List<CanvasItem> existing = canvasItems.list(ownerId, projectId);
         OutputPosition position = findOutputPositionBeside(source, source.y(), OUTPUT_WIDTH,
                 OUTPUT_HEIGHT, OUTPUT_HEIGHT, existing);
         int zIndex = nextOutputZIndex(existing);
         validateGeometry(position.x(), position.y(), OUTPUT_WIDTH, OUTPUT_HEIGHT, zIndex);
-        if (overlapsAny(position.x(), position.y(), existing)) throw conflict();
+        if (overlapsAny(position.x(), position.y(), existing))
+            throw conflict();
         CanvasItem placed = placement(UUID.randomUUID(), projectId, CanvasItem.SubjectType.ARTIFACT,
                 artifactId, null, artifact.artifact().title(), position.x(), position.y(),
                 OUTPUT_WIDTH, OUTPUT_HEIGHT, zIndex, source.groupId(), false);
-        if (!canvasItems.create(placed)) throw conflict();
+        if (!canvasItems.create(placed))
+            throw conflict();
         ObjectNode payload = objectMapper.createObjectNode();
         payload.putArray("itemIds").add(placed.id().toString());
         events.append(ownerId, projectId, new ProjectEventService.EventDraft(
                 "canvas.items.changed", 1, projectId, 0, payload));
-        connections.createImagePromptDerivationWithinChange(ownerId, projectId, sourceItemId, placed.id(), sourceVersionId);
+        connections.createImagePromptDerivationWithinChange(ownerId, projectId, sourceItemId, placed.id(),
+                sourceVersionId);
         return placed;
     }
 
@@ -470,7 +511,8 @@ public class CanvasService {
                 CanvasItem.SubjectType.ARTIFACT, artifact.artifact().id(),
                 selectedVersionId, artifact.artifact().title(), position.x(), position.y(),
                 OUTPUT_WIDTH, OUTPUT_HEIGHT, nextOutputZIndex(existing), groupId, false);
-        if (!canvasItems.create(placed)) throw new IllegalStateException("Generated CanvasItem id unexpectedly collided");
+        if (!canvasItems.create(placed))
+            throw new IllegalStateException("Generated CanvasItem id unexpectedly collided");
         initializeMediaDraft(projectId, placed, artifact);
         ObjectNode payload = objectMapper.createObjectNode();
         payload.putArray("itemIds").add(placed.id().toString());
@@ -494,7 +536,8 @@ public class CanvasService {
         ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId, artifactId);
         artifacts.requireVersion(ownerId, projectId, artifactId, versionId);
         if (artifact.artifact().kind() == Artifact.Kind.TEXT) {
-            throw validation(ApiMessage.of("api.canvas-connection-service.canvas-image-input-connections-must-originate-from-the-image-card"));
+            throw validation(ApiMessage.of(
+                    "api.canvas-connection-service.canvas-image-input-connections-must-originate-from-the-image-card"));
         }
         CanvasItem existing = canvasItems.list(ownerId, projectId).stream()
                 .filter(item -> !item.id().equals(excludeItemId)
@@ -515,8 +558,10 @@ public class CanvasService {
             artifacts.get(ownerId, projectId, artifactId);
             CanvasItem current = canvasItems.list(ownerId, projectId).stream()
                     .filter(item -> item.subjectId().equals(artifactId)).findFirst().orElse(null);
-            if (current != null) alreadyPresent.add(current);
-            else created.add(placeGeneratedArtifactWithinChange(ownerId, projectId, artifactId, groupId));
+            if (current != null)
+                alreadyPresent.add(current);
+            else
+                created.add(placeGeneratedArtifactWithinChange(ownerId, projectId, artifactId, groupId));
         }
         return new OutputPlacements(List.copyOf(created), List.copyOf(alreadyPresent));
     }
@@ -529,7 +574,8 @@ public class CanvasService {
     }
 
     /** Created nodes and unchanged reused nodes are reported separately for the tool ledger. */
-    public record OutputPlacements(List<CanvasItem> created, List<CanvasItem> alreadyPresent) {}
+    public record OutputPlacements(List<CanvasItem> created, List<CanvasItem> alreadyPresent) {
+    }
 
     /** Searches a vertical strip beside the source; callers retain their own failure precedence. */
     private OutputPosition findOutputPositionBeside(CanvasItem source, BigDecimal initialY,
@@ -563,8 +609,10 @@ public class CanvasService {
                 BigDecimal x = baseX.add(step.multiply(BigDecimal.valueOf(column)));
                 BigDecimal y = baseY.add(step.multiply(BigDecimal.valueOf(row)));
                 if (x.add(OUTPUT_WIDTH).compareTo(MAX_COORDINATE) > 0
-                        || y.add(OUTPUT_HEIGHT).compareTo(MAX_COORDINATE) > 0) continue;
-                if (!overlapsAny(x, y, existing)) return new OutputPosition(x, y);
+                        || y.add(OUTPUT_HEIGHT).compareTo(MAX_COORDINATE) > 0)
+                    continue;
+                if (!overlapsAny(x, y, existing))
+                    return new OutputPosition(x, y);
             }
         }
         throw validation(ApiMessage.of("api.canvas-service.there-is-no-free-location-for-generated-content"));
@@ -575,7 +623,8 @@ public class CanvasService {
                 .max().orElse(-1) + 1);
     }
 
-    private record OutputPosition(BigDecimal x, BigDecimal y) {}
+    private record OutputPosition(BigDecimal x, BigDecimal y) {
+    }
 
     /** 将输出卡片和间距一并计入碰撞检测，避免遮挡已有工作。 */
     private boolean overlaps(BigDecimal x, BigDecimal y, BigDecimal width,
@@ -586,7 +635,8 @@ public class CanvasService {
                 && y.add(height).add(OUTPUT_GAP).compareTo(existing.y()) > 0;
     }
 
-    private boolean overlapsAny(BigDecimal x, BigDecimal y, BigDecimal width, BigDecimal height, List<CanvasItem> existing) {
+    private boolean overlapsAny(BigDecimal x, BigDecimal y, BigDecimal width, BigDecimal height,
+            List<CanvasItem> existing) {
         return existing.stream().anyMatch(item -> overlaps(x, y, width, height, item));
     }
 
@@ -608,22 +658,22 @@ public class CanvasService {
     public List<CanvasEntry> apply(
             UUID ownerId, UUID projectId, List<? extends CanvasCommand> commands) {
         return events.recordChange(ownerId, projectId, () -> {
-                    List<CanvasItem> before = canvasItems.list(ownerId, projectId);
-                    List<CanvasEntry> result = applyLocked(ownerId, projectId, commands);
-                    List<CanvasItem> after = result.stream().map(CanvasEntry::item).toList();
-                    if (before.equals(after)) {
-                        return ProjectEventService.Change.unchanged(result);
-                    }
-                    ObjectNode payload = objectMapper.createObjectNode();
-                    ArrayNode itemIds = payload.putArray("itemIds");
-                    for (CanvasCommand command : commands) {
-                        itemIds.add(command.itemId().toString());
-                    }
-                    return ProjectEventService.Change.changed(
-                            result,
-                            new ProjectEventService.EventDraft(
-                                    "canvas.items.changed", 1, projectId, 0, payload));
-                })
+            List<CanvasItem> before = canvasItems.list(ownerId, projectId);
+            List<CanvasEntry> result = applyLocked(ownerId, projectId, commands);
+            List<CanvasItem> after = result.stream().map(CanvasEntry::item).toList();
+            if (before.equals(after)) {
+                return ProjectEventService.Change.unchanged(result);
+            }
+            ObjectNode payload = objectMapper.createObjectNode();
+            ArrayNode itemIds = payload.putArray("itemIds");
+            for (CanvasCommand command : commands) {
+                itemIds.add(command.itemId().toString());
+            }
+            return ProjectEventService.Change.changed(
+                    result,
+                    new ProjectEventService.EventDraft(
+                            "canvas.items.changed", 1, projectId, 0, payload));
+        })
                 .value();
     }
 
@@ -654,7 +704,8 @@ public class CanvasService {
             throw validation(ApiMessage.of("api.canvas-service.director-scene-purpose-required"));
         }
         if (markup && (sourceVersionId == null || targetItemId.equals(itemId))) {
-            throw validation(ApiMessage.of("api.canvas-service.brush-annotations-must-be-fixed-to-the-source-image-version"));
+            throw validation(
+                    ApiMessage.of("api.canvas-service.brush-annotations-must-be-fixed-to-the-source-image-version"));
         }
         if (!markup && !director && sourceVersionId != null) {
             throw validation(ApiMessage.of("api.canvas-service.ordinary-uploads-do-not-accept-source-versions"));
@@ -664,8 +715,10 @@ public class CanvasService {
             frozenInput.put("schemaVersion", 1);
             frozenInput.put("operation", uploadPurpose.name());
             frozenInput.put("sourceCanvasItemId", itemId.toString());
-            if (sourceVersionId != null) frozenInput.put("parentVersionId", sourceVersionId.toString());
-            if (director) frozenInput.set("directorScene", directorScene.deepCopy());
+            if (sourceVersionId != null)
+                frozenInput.put("parentVersionId", sourceVersionId.toString());
+            if (director)
+                frozenInput.set("directorScene", directorScene.deepCopy());
         }
         return events.recordChange(ownerId, projectId, () -> {
             projects.requireActiveProject(ownerId, projectId);
@@ -673,7 +726,8 @@ public class CanvasService {
                     .orElseThrow(this::notFound);
             CanvasItem replay = canvasItems.find(ownerId, projectId, targetItemId).orElse(null);
             if (replay != null && replay.selectedVersionId() != null) {
-                if (!replay.subjectId().equals(current.subjectId())) throw conflict();
+                if (!replay.subjectId().equals(current.subjectId()))
+                    throw conflict();
                 ArtifactVersion replayVersion = artifacts.requireVersion(ownerId, projectId,
                         replay.subjectId(), replay.selectedVersionId());
                 if (!replayVersion.content().equals(content)
@@ -685,16 +739,20 @@ public class CanvasService {
                 return ProjectEventService.Change.unchanged(toEntry(ownerId, replay));
             }
             boolean fillsCurrent = targetItemId.equals(itemId);
-            if (replay != null && !fillsCurrent) throw conflict();
-            if (current.version() != expectedVersion) throw conflict();
-            if (markup && !sourceVersionId.equals(current.selectedVersionId())) throw conflict();
+            if (replay != null && !fillsCurrent)
+                throw conflict();
+            if (current.version() != expectedVersion)
+                throw conflict();
+            if (markup && !sourceVersionId.equals(current.selectedVersionId()))
+                throw conflict();
             if (director && !java.util.Objects.equals(sourceVersionId, current.selectedVersionId())) {
                 throw conflict();
             }
             ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId,
                     current.subjectId());
             if (artifact.artifact().kind() == Artifact.Kind.TEXT) {
-                throw validation(ApiMessage.of("api.canvas-service.only-image-and-video-cards-can-be-uploaded-with-additional"));
+                throw validation(
+                        ApiMessage.of("api.canvas-service.only-image-and-video-cards-can-be-uploaded-with-additional"));
             }
             if (markup && artifact.artifact().kind() != Artifact.Kind.IMAGE) {
                 throw validation(ApiMessage.of("api.canvas-service.brush-annotation-only-supports-images"));
@@ -704,7 +762,8 @@ public class CanvasService {
             }
             CanvasItem target;
             if (fillsCurrent) {
-                if (current.selectedVersionId() != null) throw conflict();
+                if (current.selectedVersionId() != null)
+                    throw conflict();
                 target = current;
             } else {
                 var sourceDraft = mediaDrafts.get(ownerId, projectId, itemId);
@@ -778,7 +837,8 @@ public class CanvasService {
         Set<UUID> itemIds = new HashSet<>();
         for (CanvasCommand command : commands) {
             if (!itemIds.add(command.itemId())) {
-                throw validation(ApiMessage.of("api.canvas-service.the-same-batch-of-commands-cannot-modify-the-same-canvasitem"));
+                throw validation(ApiMessage
+                        .of("api.canvas-service.the-same-batch-of-commands-cannot-modify-the-same-canvasitem"));
             }
             switch (command) {
                 case PlaceArtifact place -> placeArtifact(ownerId, projectId, place);
@@ -795,15 +855,18 @@ public class CanvasService {
 
     /** 核验产物权限和坐标后创建卡片；客户端 ID 只允许完全相同的布局重放。 */
     private void placeArtifact(UUID ownerId, UUID projectId, PlaceArtifact command) {
-        if (command.groupId() != null && !canvasItems.groupExists(ownerId, projectId, command.groupId())) throw conflict();
+        if (command.groupId() != null && !canvasItems.groupExists(ownerId, projectId, command.groupId()))
+            throw conflict();
         if (command.groupId() != null) {
             // Direct creation uses this placement path too. Check under the project event lock,
             // but allow an identical placement retry even when the group has reached its limit.
             List<CanvasItem> existing = canvasItems.list(ownerId, projectId);
             if (existing.stream().noneMatch(item -> item.id().equals(command.itemId()))
-                    && existing.stream().filter(item -> command.groupId().equals(item.groupId())).count() >= MAX_GROUP_MEMBERS) {
+                    && existing.stream().filter(item -> command.groupId().equals(item.groupId()))
+                            .count() >= MAX_GROUP_MEMBERS) {
                 throw new ApiProblemException(HttpStatus.BAD_REQUEST, "CANVAS_EDIT_LIMIT",
-                        ApiMessage.of("api.canvas-controller.canvas-command-is-invalid"), ApiMessage.of("api.canvas-edit.limit"), false);
+                        ApiMessage.of("api.canvas-controller.canvas-command-is-invalid"),
+                        ApiMessage.of("api.canvas-edit.limit"), false);
             }
         }
         validateGeometry(
@@ -817,7 +880,8 @@ public class CanvasService {
         UUID selectedVersionId = mediaSelection(artifact);
         if (command.versionId() != null) {
             // A resource pick fixes an immutable media result without changing the shared default.
-            if (artifact.artifact().kind() == Artifact.Kind.TEXT || artifact.artifact().archivedAt() != null) throw conflict();
+            if (artifact.artifact().kind() == Artifact.Kind.TEXT || artifact.artifact().archivedAt() != null)
+                throw conflict();
             artifacts.requireVersion(ownerId, projectId, command.artifactId(), command.versionId());
             selectedVersionId = command.versionId();
         }
@@ -881,7 +945,7 @@ public class CanvasService {
             return true;
         }
         CanvasItem existing = canvasItems.findForUpdate(
-                        ownerId, requested.projectId(), requested.id())
+                ownerId, requested.projectId(), requested.id())
                 .orElseThrow(this::conflict);
         if (!samePlacement(existing, requested)) {
             throw conflict();
@@ -935,7 +999,8 @@ public class CanvasService {
             throw conflict();
         }
         if (command.groupId() != null && !java.util.Objects.equals(command.groupId(), current.groupId())
-                && !canvasItems.groupExists(ownerId, projectId, command.groupId())) throw conflict();
+                && !canvasItems.groupExists(ownerId, projectId, command.groupId()))
+            throw conflict();
         CanvasItem updated = current.withLayout(
                 command.x(), command.y(), command.width(), command.height(),
                 command.zIndex(), command.groupId());
@@ -982,10 +1047,10 @@ public class CanvasService {
         }
         connections.removeItemConnectionsWithinChange(ownerId, projectId, command.itemId());
         if (!canvasItems.delete(
-                        ownerId,
-                        projectId,
-                        command.itemId(),
-                        command.expectedVersion())) {
+                ownerId,
+                projectId,
+                command.itemId(),
+                command.expectedVersion())) {
             throw conflict();
         }
     }
@@ -1004,14 +1069,16 @@ public class CanvasService {
         if (artifact.artifact().kind() == Artifact.Kind.TEXT) {
             return null;
         }
-        if (item.selectedVersionId() == null) return null;
+        if (item.selectedVersionId() == null)
+            return null;
         return artifacts.requireVersion(ownerId, item.projectId(), item.subjectId(),
                 item.selectedVersionId());
     }
 
     private UUID mediaSelection(ArtifactService.ArtifactView artifact) {
         return artifact.artifact().kind() != Artifact.Kind.TEXT
-                ? artifact.artifact().resourceDefaultVersionId() : null;
+                ? artifact.artifact().resourceDefaultVersionId()
+                : null;
     }
 
     private void initializeMediaDraft(UUID projectId, CanvasItem item,
@@ -1070,7 +1137,8 @@ public class CanvasService {
                 || outside(height, MIN_HEIGHT, MAX_HEIGHT)
                 || zIndex < -MAX_Z_INDEX
                 || zIndex > MAX_Z_INDEX) {
-            throw validation(ApiMessage.of("api.canvas-service.canvas-coordinates-dimensions-or-levels-are-outside-the-allowed-range"));
+            throw validation(ApiMessage
+                    .of("api.canvas-service.canvas-coordinates-dimensions-or-levels-are-outside-the-allowed-range"));
         }
     }
 
@@ -1083,10 +1151,12 @@ public class CanvasService {
     private String derivationTitle(String sourceTitle, String resultLabel) {
         String suffix = DERIVATION_TITLE_SEPARATOR + validateTitle(resultLabel);
         int sourceEnd = Math.min(sourceTitle.length(), MAX_TITLE_LENGTH - suffix.length());
-        if (sourceEnd < 1) throw validation(ApiMessage.of("api.canvas-service.derive-operation-name-is-too-long"));
+        if (sourceEnd < 1)
+            throw validation(ApiMessage.of("api.canvas-service.derive-operation-name-is-too-long"));
         if (sourceEnd < sourceTitle.length()
                 && Character.isHighSurrogate(sourceTitle.charAt(sourceEnd - 1))
-                && Character.isLowSurrogate(sourceTitle.charAt(sourceEnd))) sourceEnd--;
+                && Character.isLowSurrogate(sourceTitle.charAt(sourceEnd)))
+            sourceEnd--;
         return sourceTitle.substring(0, sourceEnd).stripTrailing() + suffix;
     }
 
@@ -1163,7 +1233,8 @@ public class CanvasService {
             UUID groupId,
             boolean locked,
             UUID versionId)
-            implements CanvasCommand {
+            implements
+                CanvasCommand {
         /** Ordinary node creation uses the resource default, including empty media placeholders. */
         public PlaceArtifact(UUID itemId, UUID artifactId, BigDecimal x, BigDecimal y,
                 BigDecimal width, BigDecimal height, int zIndex, UUID groupId, boolean locked) {
@@ -1179,7 +1250,9 @@ public class CanvasService {
      * @param title 去除首尾空白后的新标题
      */
     public record UpdateTitle(UUID itemId, long expectedVersion, String title)
-            implements CanvasCommand {}
+            implements
+                CanvasCommand {
+    }
 
     /**
      * 整体替换一张卡片的布局字段。
@@ -1202,7 +1275,9 @@ public class CanvasService {
             BigDecimal height,
             int zIndex,
             UUID groupId)
-            implements CanvasCommand {}
+            implements
+                CanvasCommand {
+    }
 
     /**
      * 只切换布局锁，不改变卡片位置或产物内容。
@@ -1212,7 +1287,9 @@ public class CanvasService {
      * @param locked 新锁定状态
      */
     public record SetLocked(UUID itemId, long expectedVersion, boolean locked)
-            implements CanvasCommand {}
+            implements
+                CanvasCommand {
+    }
 
     /**
      * 删除展示卡片而保留产物。
@@ -1220,7 +1297,8 @@ public class CanvasService {
      * @param itemId 要删除的画布项
      * @param expectedVersion 客户端读取到的布局版本
      */
-    public record Remove(UUID itemId, long expectedVersion) implements CanvasCommand {}
+    public record Remove(UUID itemId, long expectedVersion) implements CanvasCommand {
+    }
 
     /**
      * 画布布局行及当前卡片类型所需的业务对象投影。
@@ -1237,6 +1315,7 @@ public class CanvasService {
                 CanvasItem item,
                 ArtifactService.ArtifactView artifact,
                 ArtifactVersion selectedVersion) {
-            this(item, artifact, selectedVersion, null);}
-}
+            this(item, artifact, selectedVersion, null);
+        }
+    }
 }

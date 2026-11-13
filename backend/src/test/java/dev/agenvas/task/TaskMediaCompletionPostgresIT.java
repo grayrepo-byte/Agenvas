@@ -51,16 +51,26 @@ class TaskMediaCompletionPostgresIT {
         registry.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private ArtifactService artifacts;
-    @Autowired private MediaDraftService drafts;
-    @Autowired private CanvasService canvas;
-    @Autowired private DirectMediaTaskService direct;
-    @Autowired private TaskService tasks;
-    @Autowired private AssetService assets;
-    @Autowired private ObjectMapper mapper;
-    @Autowired private JdbcClient jdbc;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private ArtifactService artifacts;
+    @Autowired
+    private MediaDraftService drafts;
+    @Autowired
+    private CanvasService canvas;
+    @Autowired
+    private DirectMediaTaskService direct;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private AssetService assets;
+    @Autowired
+    private ObjectMapper mapper;
+    @Autowired
+    private JdbcClient jdbc;
 
     @Test
     void aPrimaryInTheMiddleKeepsTheTargetAndTheAdditionalOutputOrder() {
@@ -80,7 +90,8 @@ class TaskMediaCompletionPostgresIT {
         assertThat(completed.output().path("providerUsage").path("syntheticUsage").asText()).isEqualTo("unknown");
         assertThat(card(fixture, fixture.cardId()).item().selectedVersionId()).isEqualTo(archived.versionId());
         assertThat(versionContent(fixture, completed.output())).isEqualTo(primary);
-        assertThat(canvas.listMediaVersions(fixture.owner().userId(), fixture.project().id(), fixture.cardId())).hasSize(1);
+        assertThat(canvas.listMediaVersions(fixture.owner().userId(), fixture.project().id(), fixture.cardId()))
+                .hasSize(1);
 
         JsonNode additional = completed.output().path("additionalResults");
         assertThat(additional).hasSize(2);
@@ -94,11 +105,16 @@ class TaskMediaCompletionPostgresIT {
         assertThat(secondCard.item().title()).isEqualTo("Synthetic outputs · 3");
         assertThat(secondCard.item().y()).isGreaterThan(firstCard.item().y());
         assertThat(secondCard.item().zIndex()).isGreaterThan(firstCard.item().zIndex());
-        assertThat(firstCard.item().selectedVersionId().toString()).isEqualTo(additional.get(0).path("artifactVersionId").asText());
-        assertThat(secondCard.item().selectedVersionId().toString()).isEqualTo(additional.get(1).path("artifactVersionId").asText());
-        assertThat(canvas.listMediaVersions(fixture.owner().userId(), fixture.project().id(), firstCard.item().id())).hasSize(1);
-        assertThat(canvas.listMediaVersions(fixture.owner().userId(), fixture.project().id(), secondCard.item().id())).hasSize(1);
-        assertThat(artifacts.listVersions(fixture.owner().userId(), fixture.project().id(), fixture.artifactId())).hasSize(3);
+        assertThat(firstCard.item().selectedVersionId().toString())
+                .isEqualTo(additional.get(0).path("artifactVersionId").asText());
+        assertThat(secondCard.item().selectedVersionId().toString())
+                .isEqualTo(additional.get(1).path("artifactVersionId").asText());
+        assertThat(canvas.listMediaVersions(fixture.owner().userId(), fixture.project().id(), firstCard.item().id()))
+                .hasSize(1);
+        assertThat(canvas.listMediaVersions(fixture.owner().userId(), fixture.project().id(), secondCard.item().id()))
+                .hasSize(1);
+        assertThat(artifacts.listVersions(fixture.owner().userId(), fixture.project().id(), fixture.artifactId()))
+                .hasSize(3);
         assertThat(settlements(fixture)).isEqualTo(1);
         assertThat(attemptStatus(fixture)).isEqualTo("ACCEPTED");
     }
@@ -115,7 +131,7 @@ class TaskMediaCompletionPostgresIT {
 
         // The primary version and first additional card have already been written in this transaction.
         assertThatThrownBy(() -> tasks.succeedWithArtifacts(fixture.lease(), fixture.workerId(),
-                        List.of(result(0, true, primary), result(1, false, firstExtra), result(2, false, invalid)), null))
+                List.of(result(0, true, primary), result(1, false, firstExtra), result(2, false, invalid)), null))
                 .isInstanceOfSatisfying(ApiProblemException.class,
                         problem -> assertThat(problem.code()).isEqualTo("VALIDATION_ERROR"));
 
@@ -166,7 +182,8 @@ class TaskMediaCompletionPostgresIT {
 
     private ObjectNode content(Fixture fixture, String prompt) {
         ObjectNode content = mapper.createObjectNode();
-        content.put("assetId", ImageAssetFixture.archive(assets, fixture.owner().userId(), fixture.project().id()).toString());
+        content.put("assetId",
+                ImageAssetFixture.archive(assets, fixture.owner().userId(), fixture.project().id()).toString());
         content.put("prompt", prompt);
         content.put("workflowVersion", "synthetic-v1");
         content.putObject("parameters");
@@ -215,7 +232,10 @@ class TaskMediaCompletionPostgresIT {
                 .param("project", projectId).query(Integer.class).single();
     }
 
-    private record Fixture(AdminPrincipal owner, Project project, UUID artifactId, UUID cardId, Task lease, String workerId) {}
+    private record Fixture(AdminPrincipal owner, Project project, UUID artifactId, UUID cardId, Task lease,
+            String workerId) {
+    }
     private record ArchiveCounts(int artifacts, int versions, int cards, int historyEntries, int assets,
-            int settlements, int events, long eventSeq) {}
+            int settlements, int events, long eventSeq) {
+    }
 }

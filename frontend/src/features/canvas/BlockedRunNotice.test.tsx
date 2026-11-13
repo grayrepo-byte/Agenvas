@@ -10,12 +10,18 @@ import { BlockedRunNotice } from "./BlockedRunNotice";
 describe("BlockedRunNotice", () => {
   it("explains incomplete transport without treating it as detected input truncation", async () => {
     setLocale("en");
-    server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () => HttpResponse.json([
-      { id: "incomplete-stream", kind: "AGENT_TURN", status: "FAILED", errorCode: "LLM_STREAM_INCOMPLETE" },
-    ])));
-    render(<QueryClientProvider client={createQueryClient()}>
-      <BlockedRunNotice projectId="project-1" runId="stream-run" status="FAILED" />
-    </QueryClientProvider>);
+    server.use(
+      http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () =>
+        HttpResponse.json([
+          { id: "incomplete-stream", kind: "AGENT_TURN", status: "FAILED", errorCode: "LLM_STREAM_INCOMPLETE" },
+        ]),
+      ),
+    );
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <BlockedRunNotice projectId="project-1" runId="stream-run" status="FAILED" />
+      </QueryClientProvider>,
+    );
     expect(await screen.findByText(/model stream ended without a completion signal/)).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("not retried automatically");
     expect(screen.getByRole("alert")).not.toHaveTextContent("input was truncated");
@@ -23,112 +29,177 @@ describe("BlockedRunNotice", () => {
 
   it("explains an explicitly truncated model response without claiming to detect silent input truncation", async () => {
     setLocale("en");
-    server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () => HttpResponse.json([
-      { id: "length-response", kind: "AGENT_TURN", status: "FAILED", errorCode: "LLM_OUTPUT_TRUNCATED" },
-    ])));
-    render(<QueryClientProvider client={createQueryClient()}>
-      <BlockedRunNotice projectId="project-1" runId="length-run" status="FAILED" />
-    </QueryClientProvider>);
+    server.use(
+      http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () =>
+        HttpResponse.json([
+          { id: "length-response", kind: "AGENT_TURN", status: "FAILED", errorCode: "LLM_OUTPUT_TRUNCATED" },
+        ]),
+      ),
+    );
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <BlockedRunNotice projectId="project-1" runId="length-run" status="FAILED" />
+      </QueryClientProvider>,
+    );
     expect(await screen.findByText(/No tools from this turn were executed/)).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("Existing results have been kept.");
     expect(screen.getByRole("alert")).not.toHaveTextContent("unknown status");
   });
 
   it("explains a fixed context budget failure without publishing task inputs", async () => {
-    server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () => HttpResponse.json([
-      { id: "context-budget", kind: "AGENT_TURN", status: "FAILED", errorCode: "AGENT_CONTEXT_BUDGET_EXCEEDED",
-        input: { prompt: "private-context-input" } },
-    ])));
-    render(<QueryClientProvider client={createQueryClient()}>
-      <BlockedRunNotice projectId="project-1" runId="context-run" status="FAILED" />
-    </QueryClientProvider>);
+    server.use(
+      http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () =>
+        HttpResponse.json([
+          {
+            id: "context-budget",
+            kind: "AGENT_TURN",
+            status: "FAILED",
+            errorCode: "AGENT_CONTEXT_BUDGET_EXCEEDED",
+            input: { prompt: "private-context-input" },
+          },
+        ]),
+      ),
+    );
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <BlockedRunNotice projectId="project-1" runId="context-run" status="FAILED" />
+      </QueryClientProvider>,
+    );
     expect(await screen.findByText(/固定指令、当前输入或附件无法放入已确认的上下文预算/)).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("减少附件、切换实际上下文更大的模型，或调整响应预留");
     expect(screen.getByRole("alert")).not.toHaveTextContent("private-context-input");
   });
   it("explains an unselected archived video conflict instead of a model outage", async () => {
-    server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () => HttpResponse.json([
-      { id: "done-video", kind: "VIDEO_GENERATION", status: "SUCCEEDED", output: { selected: false } },
-      { id: "placement-conflict", kind: "AGENT_TURN", status: "FAILED", errorCode: "ARTIFACT_VERSION_CONFLICT" },
-    ])));
-    render(<QueryClientProvider client={createQueryClient()}>
-      <BlockedRunNotice projectId="project-1" runId="placement-conflict" />
-    </QueryClientProvider>);
-    expect(await screen.findByText(/^Agent 引用的版本与卡片当前选用结果不一致/))
-      .toHaveTextContent("已生成的媒体仍保留在版本历史中");
+    server.use(
+      http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () =>
+        HttpResponse.json([
+          { id: "done-video", kind: "VIDEO_GENERATION", status: "SUCCEEDED", output: { selected: false } },
+          { id: "placement-conflict", kind: "AGENT_TURN", status: "FAILED", errorCode: "ARTIFACT_VERSION_CONFLICT" },
+        ]),
+      ),
+    );
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <BlockedRunNotice projectId="project-1" runId="placement-conflict" />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText(/^Agent 引用的版本与卡片当前选用结果不一致/)).toHaveTextContent(
+      "已生成的媒体仍保留在版本历史中",
+    );
     expect(screen.getByRole("alert")).toHaveTextContent("ARTIFACT_VERSION_CONFLICT");
     expect(screen.getByRole("alert")).not.toHaveTextContent("模型回合未能完成");
   });
 
   it("explains exhausted automatic retries and preserves completed media", async () => {
-    server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () => HttpResponse.json([
-      { id: "done-image", kind: "IMAGE_GENERATION", status: "SUCCEEDED" },
-      { id: "exhausted", kind: "AGENT_TURN", status: "FAILED", errorCode: "LLM_RETRY_EXHAUSTED" },
-    ])));
-    render(<QueryClientProvider client={createQueryClient()}>
-      <BlockedRunNotice projectId="project-1" runId="exhausted-run" status="FAILED" />
-    </QueryClientProvider>);
+    server.use(
+      http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () =>
+        HttpResponse.json([
+          { id: "done-image", kind: "IMAGE_GENERATION", status: "SUCCEEDED" },
+          { id: "exhausted", kind: "AGENT_TURN", status: "FAILED", errorCode: "LLM_RETRY_EXHAUSTED" },
+        ]),
+      ),
+    );
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <BlockedRunNotice projectId="project-1" runId="exhausted-run" status="FAILED" />
+      </QueryClientProvider>,
+    );
     expect(await screen.findByText(/^已达到本回合配置的重试次数或恢复期限/)).toHaveTextContent("本次运行已结束");
     expect(screen.getByRole("alert")).toHaveTextContent("已完成的媒体保留");
   });
   it("distinguishes a model response timeout after media succeeded without exposing private data", async () => {
-    server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () => HttpResponse.json([
-      { id: "completed-image", kind: "IMAGE_GENERATION", status: "SUCCEEDED" },
-      { id: "timed-out-turn", kind: "AGENT_TURN", status: "FAILED", errorCode: "LLM_CALL_TIMEOUT",
-        input: { prompt: "private-synthetic-input" } },
-    ])));
-    render(<QueryClientProvider client={createQueryClient()}>
-      <BlockedRunNotice projectId="project-1" runId="run-timeout" />
-    </QueryClientProvider>);
+    server.use(
+      http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () =>
+        HttpResponse.json([
+          { id: "completed-image", kind: "IMAGE_GENERATION", status: "SUCCEEDED" },
+          {
+            id: "timed-out-turn",
+            kind: "AGENT_TURN",
+            status: "FAILED",
+            errorCode: "LLM_CALL_TIMEOUT",
+            input: { prompt: "private-synthetic-input" },
+          },
+        ]),
+      ),
+    );
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <BlockedRunNotice projectId="project-1" runId="run-timeout" />
+      </QueryClientProvider>,
+    );
     expect(await screen.findByText(/^模型响应等待超时/)).toHaveTextContent("已完成的媒体保留");
     expect(screen.getByRole("alert")).toHaveTextContent("LLM_CALL_TIMEOUT");
     expect(screen.getByRole("alert")).not.toHaveTextContent("private-synthetic-input");
   });
 
   it("explains pinned model capability failure without showing private inputs", async () => {
-    server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () =>
-      HttpResponse.json([{ id: "task-1", kind: "AGENT_TURN", status: "FAILED",
-        errorCode: "LLM_CONFIG_UNAVAILABLE", input: { secret: "private-model-prompt" } }]),
-    ));
-    render(<QueryClientProvider client={createQueryClient()}>
-      <BlockedRunNotice projectId="project-1" runId="run-1" />
-    </QueryClientProvider>);
+    server.use(
+      http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () =>
+        HttpResponse.json([
+          {
+            id: "task-1",
+            kind: "AGENT_TURN",
+            status: "FAILED",
+            errorCode: "LLM_CONFIG_UNAVAILABLE",
+            input: { secret: "private-model-prompt" },
+          },
+        ]),
+      ),
+    );
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <BlockedRunNotice projectId="project-1" runId="run-1" />
+      </QueryClientProvider>,
+    );
     expect(await screen.findByText(/固定的模型配置或工具调用能力不可用/)).toBeInTheDocument();
     expect(screen.getByText(/不会擅自切换到另一个模型/)).toBeInTheDocument();
     expect(screen.queryByText(/private-model-prompt/)).not.toBeInTheDocument();
   });
 
   it("keeps an unknown media blocker generic instead of inventing a model failure", async () => {
-    server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () =>
-      HttpResponse.json([{ id: "task-2", kind: "IMAGE_GENERATION", status: "UNKNOWN",
-        errorCode: "PROVIDER_SUBMISSION_UNKNOWN" }]),
-    ));
-    render(<QueryClientProvider client={createQueryClient()}>
-      <BlockedRunNotice projectId="project-1" runId="run-2" />
-    </QueryClientProvider>);
+    server.use(
+      http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () =>
+        HttpResponse.json([
+          { id: "task-2", kind: "IMAGE_GENERATION", status: "UNKNOWN", errorCode: "PROVIDER_SUBMISSION_UNKNOWN" },
+        ]),
+      ),
+    );
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <BlockedRunNotice projectId="project-1" runId="run-2" />
+      </QueryClientProvider>,
+    );
     expect(await screen.findByText(/结果未知的任务/)).toBeInTheDocument();
     expect(screen.queryByText(/固定的模型配置或工具调用能力不可用/)).not.toBeInTheDocument();
   });
 
   it("explains the bounded structured-output repair failure", async () => {
-    server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () =>
-      HttpResponse.json([{ id: "task-3", kind: "AGENT_TURN", status: "FAILED",
-        errorCode: "MODEL_OUTPUT_INVALID" }]),
-    ));
-    render(<QueryClientProvider client={createQueryClient()}>
-      <BlockedRunNotice projectId="project-1" runId="run-3" />
-    </QueryClientProvider>);
+    server.use(
+      http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () =>
+        HttpResponse.json([{ id: "task-3", kind: "AGENT_TURN", status: "FAILED", errorCode: "MODEL_OUTPUT_INVALID" }]),
+      ),
+    );
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <BlockedRunNotice projectId="project-1" runId="run-3" />
+      </QueryClientProvider>,
+    );
     expect(await screen.findByText(/已达到配置的修复次数上限/)).toBeInTheDocument();
   });
 
   it("requires a new approval when an unsubmitted media task is stale", async () => {
-    server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () =>
-      HttpResponse.json([{ id: "task-4", kind: "IMAGE_GENERATION", status: "BLOCKED",
-        errorCode: "TASK_INPUT_STALE" }]),
-    ));
-    render(<QueryClientProvider client={createQueryClient()}>
-      <BlockedRunNotice projectId="project-1" runId="run-4" />
-    </QueryClientProvider>);
+    server.use(
+      http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () =>
+        HttpResponse.json([
+          { id: "task-4", kind: "IMAGE_GENERATION", status: "BLOCKED", errorCode: "TASK_INPUT_STALE" },
+        ]),
+      ),
+    );
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <BlockedRunNotice projectId="project-1" runId="run-4" />
+      </QueryClientProvider>,
+    );
     expect(await screen.findByText(/镜头、参考图或人工选定的关键帧版本已变化/)).toBeInTheDocument();
     expect(screen.getByText(/重新绑定当前镜头与所需素材后发起新 Run/)).toBeInTheDocument();
     expect(screen.getByText(/仍须分别由你审批/)).toBeInTheDocument();
@@ -136,13 +207,18 @@ describe("BlockedRunNotice", () => {
   });
 
   it("explains archived-project media blocking without claiming accepted work was canceled", async () => {
-    server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () =>
-      HttpResponse.json([{ id: "task-5", kind: "IMAGE_GENERATION", status: "BLOCKED",
-        errorCode: "TASK_PROJECT_ARCHIVED" }]),
-    ));
-    render(<QueryClientProvider client={createQueryClient()}>
-      <BlockedRunNotice projectId="project-1" runId="run-5" />
-    </QueryClientProvider>);
+    server.use(
+      http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () =>
+        HttpResponse.json([
+          { id: "task-5", kind: "IMAGE_GENERATION", status: "BLOCKED", errorCode: "TASK_PROJECT_ARCHIVED" },
+        ]),
+      ),
+    );
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <BlockedRunNotice projectId="project-1" runId="run-5" />
+      </QueryClientProvider>,
+    );
     expect(await screen.findByText(/项目已归档，尚未提交的媒体任务已阻断/)).toBeInTheDocument();
     expect(screen.getByText(/已受理的外部请求仍会核对/)).toBeInTheDocument();
     expect(screen.getByText(/TASK_PROJECT_ARCHIVED/)).toBeInTheDocument();

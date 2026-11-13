@@ -65,11 +65,13 @@ class ApprovedMediaAcceptanceTest {
     private final ProjectEventService events = mock(ProjectEventService.class);
     private final UsageService usage = mock(UsageService.class);
     private final AgentRunService runs = mock(AgentRunService.class);
-    private final dev.agenvas.character.application.CharacterService characters = mock(dev.agenvas.character.application.CharacterService.class);
-    private final org.springframework.beans.factory.ObjectProvider<dev.agenvas.character.application.CharacterService> characterProvider =
-            new org.springframework.beans.factory.support.StaticListableBeanFactory(java.util.Map.of("characters", characters))
-                    .getBeanProvider(dev.agenvas.character.application.CharacterService.class);
-    private final dev.agenvas.settings.application.MediaStyleService styles = mock(dev.agenvas.settings.application.MediaStyleService.class);
+    private final dev.agenvas.character.application.CharacterService characters = mock(
+            dev.agenvas.character.application.CharacterService.class);
+    private final org.springframework.beans.factory.ObjectProvider<dev.agenvas.character.application.CharacterService> characterProvider = new org.springframework.beans.factory.support.StaticListableBeanFactory(
+            java.util.Map.of("characters", characters))
+            .getBeanProvider(dev.agenvas.character.application.CharacterService.class);
+    private final dev.agenvas.settings.application.MediaStyleService styles = mock(
+            dev.agenvas.settings.application.MediaStyleService.class);
     private final MediaCapabilityBinding binding = new MediaCapabilityBinding(UUID.randomUUID(), 2,
             UUID.randomUUID(), 4, "MOCK_IMAGE", "a".repeat(64));
     private DirectMediaTaskService service;
@@ -78,8 +80,12 @@ class ApprovedMediaAcceptanceTest {
     void setUp() {
         service = new DirectMediaTaskService(repository, drafts, artifacts, mock(AssetService.class),
                 cards, canvas, capabilities, events, usage,
-                mapper, Clock.fixed(NOW, ZoneOffset.UTC), mock(ProjectService.class), runs, styles, mock(dev.agenvas.asset.storage.MediaRelayService.class),
-                mock(dev.agenvas.settings.application.PromptService.class), mock(dev.agenvas.provider.application.MediaFunctionService.class), characterProvider, dev.agenvas.testing.CreationMessagesTestSupport.messages(), mock(dev.agenvas.canvas.application.CanvasPromptInputService.class));
+                mapper, Clock.fixed(NOW, ZoneOffset.UTC), mock(ProjectService.class), runs, styles,
+                mock(dev.agenvas.asset.storage.MediaRelayService.class),
+                mock(dev.agenvas.settings.application.PromptService.class),
+                mock(dev.agenvas.provider.application.MediaFunctionService.class), characterProvider,
+                dev.agenvas.testing.CreationMessagesTestSupport.messages(),
+                mock(dev.agenvas.canvas.application.CanvasPromptInputService.class));
         when(characters.frozenBindings(OWNER, PROJECT, CARD)).thenAnswer(call -> mapper.createArrayNode());
         when(characters.frozenContribution(OWNER, PROJECT, CARD)).thenReturn(
                 new dev.agenvas.character.application.CharacterModels.CharacterContribution(List.of(), "", null));
@@ -96,7 +102,8 @@ class ApprovedMediaAcceptanceTest {
         when(capabilities.runningHubDefinition(binding)).thenReturn(null);
         when(capabilities.settings(binding)).thenReturn(mapper.createObjectNode());
         when(capabilities.parameters(eq(binding), any())).thenAnswer(call -> call.getArgument(1));
-        when(capabilities.inputPolicy(binding)).thenReturn(new MediaAdapterRegistry(List.of()).declaration("MOCK_IMAGE"));
+        when(capabilities.inputPolicy(binding))
+                .thenReturn(new MediaAdapterRegistry(List.of()).declaration("MOCK_IMAGE"));
         when(canvas.mediaSelectionEpoch(OWNER, PROJECT, CARD)).thenReturn(2L);
         when(events.recordChange(eq(OWNER), eq(PROJECT), any())).thenAnswer(call -> {
             Supplier<?> mutation = call.getArgument(2);
@@ -124,10 +131,12 @@ class ApprovedMediaAcceptanceTest {
     void proposalHashChangesWhenPromptOrResultSelectionChanges() {
         String original = service.preflight(OWNER, PROJECT, ARTIFACT, CARD, DRAFT_VERSION).frozenInputHash();
         when(canvas.mediaSelectionEpoch(OWNER, PROJECT, CARD)).thenReturn(3L);
-        assertThat(service.preflight(OWNER, PROJECT, ARTIFACT, CARD, DRAFT_VERSION).frozenInputHash()).isNotEqualTo(original);
+        assertThat(service.preflight(OWNER, PROJECT, ARTIFACT, CARD, DRAFT_VERSION).frozenInputHash())
+                .isNotEqualTo(original);
         when(canvas.mediaSelectionEpoch(OWNER, PROJECT, CARD)).thenReturn(2L);
         when(drafts.get(OWNER, PROJECT, CARD)).thenReturn(draft("A different landscape", 1));
-        assertThat(service.preflight(OWNER, PROJECT, ARTIFACT, CARD, DRAFT_VERSION).frozenInputHash()).isNotEqualTo(original);
+        assertThat(service.preflight(OWNER, PROJECT, ARTIFACT, CARD, DRAFT_VERSION).frozenInputHash())
+                .isNotEqualTo(original);
     }
 
     @Test
@@ -151,20 +160,24 @@ class ApprovedMediaAcceptanceTest {
         assertThat(task.input().path("mediaInput").path("characterBindings")).isEqualTo(applied);
         assertThat(task.input().at("/mediaInput/characterBindings/0/look/views/0/versionId").asText())
                 .isEqualTo(exactReference.toString());
-        assertThat(task.input().at("/mediaInput/characterContribution/versionIds/0").asText()).isEqualTo(exactReference.toString());
+        assertThat(task.input().at("/mediaInput/characterContribution/versionIds/0").asText())
+                .isEqualTo(exactReference.toString());
 
         // Mutating the catalog/service response later cannot change the accepted Task tree.
         snapshot.put("characterVersion", 3).put("description", "New red hair");
         assertThat(task.input().at("/mediaInput/characterBindings/0/characterVersion").asLong()).isEqualTo(2);
-        assertThat(task.input().at("/mediaInput/characterBindings/0/description").asText()).isEqualTo("Short silver hair");
+        assertThat(task.input().at("/mediaInput/characterBindings/0/description").asText())
+                .isEqualTo("Short silver hair");
         assertThat(service.preflight(OWNER, PROJECT, ARTIFACT, CARD, DRAFT_VERSION).frozenInputHash())
                 .isNotEqualTo(preflight.frozenInputHash());
     }
 
     @Test
     void characterSnapshotObjectOrderDoesNotInvalidateApproval() {
-        var first = mapper.createArrayNode().add(mapper.createObjectNode().put("name", "Aster").put("characterVersion", 2));
-        var reordered = mapper.createArrayNode().add(mapper.createObjectNode().put("characterVersion", 2).put("name", "Aster"));
+        var first = mapper.createArrayNode()
+                .add(mapper.createObjectNode().put("name", "Aster").put("characterVersion", 2));
+        var reordered = mapper.createArrayNode()
+                .add(mapper.createObjectNode().put("characterVersion", 2).put("name", "Aster"));
         when(characters.frozenBindings(OWNER, PROJECT, CARD)).thenReturn(first, reordered);
         assertThat(service.preflight(OWNER, PROJECT, ARTIFACT, CARD, DRAFT_VERSION).frozenInputHash())
                 .isEqualTo(service.preflight(OWNER, PROJECT, ARTIFACT, CARD, DRAFT_VERSION).frozenInputHash());
@@ -177,15 +190,17 @@ class ApprovedMediaAcceptanceTest {
         when(characters.frozenContribution(OWNER, PROJECT, CARD)).thenReturn(contribution);
         String before = service.preflight(OWNER, PROJECT, ARTIFACT, CARD, DRAFT_VERSION).frozenInputHash();
         when(characters.frozenContribution(OWNER, PROJECT, CARD)).thenReturn(
-                new dev.agenvas.character.application.CharacterModels.CharacterContribution(List.of(), contribution.promptBlock(), null));
-        assertThat(service.preflight(OWNER, PROJECT, ARTIFACT, CARD, DRAFT_VERSION).frozenInputHash()).isNotEqualTo(before);
+                new dev.agenvas.character.application.CharacterModels.CharacterContribution(List.of(),
+                        contribution.promptBlock(), null));
+        assertThat(service.preflight(OWNER, PROJECT, ARTIFACT, CARD, DRAFT_VERSION).frozenInputHash())
+                .isNotEqualTo(before);
     }
 
     @Test
     void staleDraftCannotPassPreflight() {
         assertThatThrownBy(() -> service.preflight(OWNER, PROJECT, ARTIFACT, CARD, DRAFT_VERSION - 1))
-                .isInstanceOfSatisfying(ApiProblemException.class, problem ->
-                        assertThat(problem.code()).isEqualTo("DIRECT_MEDIA_CONFLICT"));
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        problem -> assertThat(problem.code()).isEqualTo("DIRECT_MEDIA_CONFLICT"));
         verifyNoInteractions(usage, events);
     }
 
@@ -196,8 +211,10 @@ class ApprovedMediaAcceptanceTest {
         assertThat(task.runId()).isEqualTo(RUN);
         assertThat(task.approvedMedia()).isTrue();
         assertThat(task.input().path(Task.APPROVAL_INPUT_PROPERTY).asText()).isEqualTo(APPROVAL.toString());
-        assertThat(task.input().path("mediaInput").path("capabilityVersion").asInt()).isEqualTo(binding.capabilityVersion());
-        ArgumentCaptor<TaskRepository.ArtifactTarget> target = ArgumentCaptor.forClass(TaskRepository.ArtifactTarget.class);
+        assertThat(task.input().path("mediaInput").path("capabilityVersion").asInt())
+                .isEqualTo(binding.capabilityVersion());
+        ArgumentCaptor<TaskRepository.ArtifactTarget> target = ArgumentCaptor
+                .forClass(TaskRepository.ArtifactTarget.class);
         verify(repository).createArtifactTarget(target.capture());
         assertThat(target.getValue().canvasItemId()).isEqualTo(CARD);
         verify(repository).findAgentByStepKey(OWNER, PROJECT, RUN, "approved-command");
@@ -228,25 +245,30 @@ class ApprovedMediaAcceptanceTest {
         when(drafts.get(OWNER, PROJECT, extraCardId)).thenReturn(draft("Aster at the station", 2));
         when(canvas.forkMediaOutputWithinChange(eq(OWNER), eq(PROJECT), eq(CARD), any(), eq(DRAFT_VERSION), eq(1)))
                 .thenReturn(extraCard);
-        var applied = mapper.createArrayNode().add(mapper.createObjectNode().put("name", "Aster").put("characterVersion", 2));
+        var applied = mapper.createArrayNode()
+                .add(mapper.createObjectNode().put("name", "Aster").put("characterVersion", 2));
         when(characters.frozenBindings(OWNER, PROJECT, CARD)).thenReturn(applied);
 
         service.run(OWNER, PROJECT, ARTIFACT, CARD, DRAFT_VERSION, "character-image-batch");
 
-        ArgumentCaptor<tools.jackson.databind.JsonNode> copiedInput = ArgumentCaptor.forClass(tools.jackson.databind.JsonNode.class);
-        verify(characters).copyFrozenBindingsWithinChange(eq(OWNER), eq(PROJECT), eq(extraCardId), copiedInput.capture());
+        ArgumentCaptor<tools.jackson.databind.JsonNode> copiedInput = ArgumentCaptor
+                .forClass(tools.jackson.databind.JsonNode.class);
+        verify(characters).copyFrozenBindingsWithinChange(eq(OWNER), eq(PROJECT), eq(extraCardId),
+                copiedInput.capture());
         verify(characters, never()).copyFrozenBindingsWithinChange(eq(OWNER), eq(PROJECT), eq(CARD), any());
         ArgumentCaptor<Task> accepted = ArgumentCaptor.forClass(Task.class);
         verify(repository, org.mockito.Mockito.times(2)).create(accepted.capture());
-        assertThat(accepted.getAllValues()).allSatisfy(task ->
-                assertThat(task.input().path("mediaInput").path("characterBindings")).isEqualTo(applied));
-        assertThat(accepted.getAllValues().get(1).input().path("canvasItemId").asText()).isEqualTo(extraCardId.toString());
+        assertThat(accepted.getAllValues()).allSatisfy(
+                task -> assertThat(task.input().path("mediaInput").path("characterBindings")).isEqualTo(applied));
+        assertThat(accepted.getAllValues().get(1).input().path("canvasItemId").asText())
+                .isEqualTo(extraCardId.toString());
         assertThat(copiedInput.getValue()).isEqualTo(accepted.getAllValues().get(1).input().path("mediaInput"));
     }
 
     @Test
     void approvalCannotAttachAnUnrelatedOccupyingTask() {
-        when(repository.findOccupyingDirectMediaTask(PROJECT, CARD)).thenReturn(java.util.Optional.of(mock(Task.class)));
+        when(repository.findOccupyingDirectMediaTask(PROJECT, CARD))
+                .thenReturn(java.util.Optional.of(mock(Task.class)));
         assertThatThrownBy(() -> service.runApproved(OWNER, PROJECT, RUN, APPROVAL, ARTIFACT, CARD,
                 DRAFT_VERSION, "approved-command")).isInstanceOf(ApiProblemException.class);
         verify(repository, never()).create(any());
@@ -301,20 +323,24 @@ class ApprovedMediaAcceptanceTest {
         MediaCapabilityBinding comfy = new MediaCapabilityBinding(binding.connectionId(), binding.connectionVersion(),
                 binding.capabilityId(), binding.capabilityVersion(), "COMFY_IMAGE_V1", binding.mappingSha256());
         String userPrompt = "x".repeat(MediaAdapterRegistry.COMFY_MAX_PROMPT_LENGTH - 10);
-        var draft = new MediaDraft(PROJECT, CARD, userPrompt, mapper.createObjectNode(), null, binding.capabilityId(), styleId,
+        var draft = new MediaDraft(PROJECT, CARD, userPrompt, mapper.createObjectNode(), null, binding.capabilityId(),
+                styleId,
                 null, List.of(), List.of(), MediaDraft.DisplayMode.DRAFT, DRAFT_VERSION, NOW, NOW);
         when(drafts.get(OWNER, PROJECT, CARD)).thenReturn(draft);
-        when(styles.forGeneration(styleId, Artifact.Kind.IMAGE)).thenReturn(new dev.agenvas.settings.application.MediaStyleService.Snapshot(
-                styleId, 0, "Synthetic", "cinematic light"));
+        when(styles.forGeneration(styleId, Artifact.Kind.IMAGE))
+                .thenReturn(new dev.agenvas.settings.application.MediaStyleService.Snapshot(
+                        styleId, 0, "Synthetic", "cinematic light"));
         when(capabilities.forDraft(binding.capabilityId(), Task.Kind.IMAGE_GENERATION)).thenReturn(comfy);
         when(capabilities.resolve(binding.capabilityId(), Task.Kind.IMAGE_GENERATION, 0)).thenReturn(comfy);
         when(capabilities.runningHubDefinition(comfy)).thenReturn(null);
         when(capabilities.settings(comfy)).thenReturn(mapper.createObjectNode());
         when(capabilities.parameters(eq(comfy), any())).thenAnswer(call -> call.getArgument(1));
-        when(capabilities.inputPolicy(comfy)).thenReturn(new MediaAdapterRegistry(List.of()).declaration("COMFY_IMAGE_V1"));
+        when(capabilities.inputPolicy(comfy))
+                .thenReturn(new MediaAdapterRegistry(List.of()).declaration("COMFY_IMAGE_V1"));
         assertThatThrownBy(() -> service.preflight(OWNER, PROJECT, ARTIFACT, CARD, DRAFT_VERSION))
                 .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class)
-                .satisfies(error -> assertThat(((dev.agenvas.shared.error.ApiProblemException) error).code()).isEqualTo("MEDIA_STYLE_PROMPT_TOO_LONG"));
+                .satisfies(error -> assertThat(((dev.agenvas.shared.error.ApiProblemException) error).code())
+                        .isEqualTo("MEDIA_STYLE_PROMPT_TOO_LONG"));
         verify(repository, never()).create(any());
     }
 

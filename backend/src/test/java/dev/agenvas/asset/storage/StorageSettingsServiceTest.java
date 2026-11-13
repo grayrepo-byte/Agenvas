@@ -14,8 +14,10 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class StorageSettingsServiceTest {
-    @Test void httpStorageEndpointsSupportPublicAndPrivateServicesWithoutAllowlist() {
-        for (String host : java.util.List.of("storage.example.com", "8.8.8.8", "192.168.1.50", "[fd12::1]", "localhost", "127.0.0.1", "169.254.169.254", "[fd00:ec2::254]")) {
+    @Test
+    void httpStorageEndpointsSupportPublicAndPrivateServicesWithoutAllowlist() {
+        for (String host : java.util.List.of("storage.example.com", "8.8.8.8", "192.168.1.50", "[fd12::1]", "localhost",
+                "127.0.0.1", "169.254.169.254", "[fd00:ec2::254]")) {
             String origin = "http://" + host + ":9000";
             assertThat(StorageSettingsService.normalizeEndpoint(origin)).isEqualTo(origin);
             assertThat(RemoteFileSupport.endpoint(StorageProfile.Provider.WEBDAV, origin + "/dav"))
@@ -23,37 +25,50 @@ class StorageSettingsServiceTest {
         }
     }
 
-    @Test void endpointsNeverCarryCredentialsPathsOrQueryStrings() {
-        assertThat(StorageSettingsService.normalizeEndpoint(" https://s3.example.com/ ")).isEqualTo("https://s3.example.com");
-        for (String endpoint : new String[] { "https://key@s3.example.com", "https://s3.example.com/bucket",
-                "https://s3.example.com?token=secret", "https://s3.example.com#fragment", "file:///tmp", "http://localhost:0", "http://localhost:65536", "broken" })
-            assertThatThrownBy(() -> StorageSettingsService.normalizeEndpoint(endpoint)).isInstanceOf(ApiProblemException.class);
+    @Test
+    void endpointsNeverCarryCredentialsPathsOrQueryStrings() {
+        assertThat(StorageSettingsService.normalizeEndpoint(" https://s3.example.com/ "))
+                .isEqualTo("https://s3.example.com");
+        for (String endpoint : new String[]{"https://key@s3.example.com", "https://s3.example.com/bucket",
+                "https://s3.example.com?token=secret", "https://s3.example.com#fragment", "file:///tmp",
+                "http://localhost:0", "http://localhost:65536", "broken"})
+            assertThatThrownBy(() -> StorageSettingsService.normalizeEndpoint(endpoint))
+                    .isInstanceOf(ApiProblemException.class);
     }
-    @Test void concurrentUpdateFailsBeforeEncryptionOrPersistence() {
-        var repository = mock(StorageRepository.class); when(repository.lockVersion()).thenReturn(2);
-        var service = new StorageSettingsService(repository, mock(CredentialCipher.class), Clock.systemUTC(), mock(TaskStorageReferences.class));
+    @Test
+    void concurrentUpdateFailsBeforeEncryptionOrPersistence() {
+        var repository = mock(StorageRepository.class);
+        when(repository.lockVersion()).thenReturn(2);
+        var service = new StorageSettingsService(repository, mock(CredentialCipher.class), Clock.systemUTC(),
+                mock(TaskStorageReferences.class));
         assertThatThrownBy(() -> service.activate(1, null)).isInstanceOf(ApiProblemException.class)
                 .satisfies(f -> assertThat(((ApiProblemException) f).code()).isEqualTo("STORAGE_VERSION_CONFLICT"));
         verify(repository, never()).advance(anyInt(), any());
     }
-    @Test void storageSecretsUseSeparateAuthenticatedNamespace() {
-        var cipher = new CredentialCipher(new CredentialProperties(Base64.getEncoder().encodeToString(new byte[32]), 1, ""));
+    @Test
+    void storageSecretsUseSeparateAuthenticatedNamespace() {
+        var cipher = new CredentialCipher(
+                new CredentialProperties(Base64.getEncoder().encodeToString(new byte[32]), 1, ""));
         UUID id = UUID.randomUUID();
         var secret = cipher.encryptStorage(id, 1, "access-id\nsecret-value");
         assertThat(cipher.decryptStorage(id, 1, secret)).isEqualTo("access-id\nsecret-value");
         assertThatThrownBy(() -> cipher.decrypt(id, 1, secret)).isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> cipher.decryptStorage(id, 2, secret)).isInstanceOf(IllegalStateException.class);
-        assertThatThrownBy(() -> cipher.decryptStorage(UUID.randomUUID(), 1, secret)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> cipher.decryptStorage(UUID.randomUUID(), 1, secret))
+                .isInstanceOf(IllegalStateException.class);
     }
-    @Test void relaySelectionHasIndependentCasAndLeavesTheArchiveSelectorUntouched() {
+    @Test
+    void relaySelectionHasIndependentCasAndLeavesTheArchiveSelectorUntouched() {
         var repository = mock(StorageRepository.class);
         UUID archive = UUID.randomUUID(), relay = UUID.randomUUID();
         when(repository.lockVersion()).thenReturn(4);
-        var relayProfile = mock(StorageProfile.class); when(relayProfile.provider()).thenReturn(StorageProfile.Provider.S3);
+        var relayProfile = mock(StorageProfile.class);
+        when(relayProfile.provider()).thenReturn(StorageProfile.Provider.S3);
         when(repository.profile(relay)).thenReturn(java.util.Optional.of(relayProfile));
         when(repository.state()).thenReturn(new StorageRepository.State(5, archive, relay, true, true));
         when(repository.profiles()).thenReturn(java.util.List.of());
-        var service = new StorageSettingsService(repository, mock(CredentialCipher.class), Clock.systemUTC(), mock(TaskStorageReferences.class));
+        var service = new StorageSettingsService(repository, mock(CredentialCipher.class), Clock.systemUTC(),
+                mock(TaskStorageReferences.class));
         var result = service.activateRelay(4, relay, true, true);
         assertThat(result.activeProfileId()).isEqualTo(archive);
         assertThat(result.relayProfileId()).isEqualTo(relay);
@@ -64,109 +79,157 @@ class StorageSettingsServiceTest {
         verify(repository, never()).advanceRelay(3, null, true, true);
     }
 
-    @Test void editsKeepCredentialsWhenOmittedAndRetainTheConnectionIdentity() {
+    @Test
+    void editsKeepCredentialsWhenOmittedAndRetainTheConnectionIdentity() {
         var repository = mock(StorageRepository.class);
-        var cipher = spy(new CredentialCipher(new CredentialProperties(Base64.getEncoder().encodeToString(new byte[32]), 1, "")));
-        var old = profile(cipher, "oss-cn-chengdu"); var usage = mock(TaskStorageReferences.class);
+        var cipher = spy(new CredentialCipher(
+                new CredentialProperties(Base64.getEncoder().encodeToString(new byte[32]), 1, "")));
+        var old = profile(cipher, "oss-cn-chengdu");
+        var usage = mock(TaskStorageReferences.class);
         when(repository.lockVersion()).thenReturn(3);
         when(repository.lockProfile(old.id())).thenReturn(java.util.Optional.of(old));
         when(repository.state()).thenReturn(new StorageRepository.State(4, old.id(), old.id(), true, true));
         when(repository.profiles()).thenReturn(java.util.List.of());
         clearInvocations(cipher);
-        var service = new StorageSettingsService(repository,cipher,Clock.systemUTC(),usage);
-        service.update(3,old.id(),"修正连接",old.provider(),old.endpoint(),"cn-chengdu",old.bucket(),old.keyPrefix(),false,null,null);
+        var service = new StorageSettingsService(repository, cipher, Clock.systemUTC(), usage);
+        service.update(3, old.id(), "修正连接", old.provider(), old.endpoint(), "cn-chengdu", old.bucket(), old.keyPrefix(),
+                false, null, null);
         var updated = org.mockito.ArgumentCaptor.forClass(StorageProfile.class);
         verify(repository).updateProfile(updated.capture());
         assertThat(updated.getValue().region()).isEqualTo("cn-chengdu");
         assertThat(updated.getValue().credentials()).isSameAs(old.credentials());
         assertThat(updated.getValue().credentialVersion()).isEqualTo(old.credentialVersion());
         assertThat(updated.getValue().id()).isEqualTo(old.id());
-        verify(cipher,never()).encryptStorage(any(),anyInt(),any());
+        verify(cipher, never()).encryptStorage(any(), anyInt(), any());
     }
-    @Test void taskReferencesBlockRelocationAndDeletionButAllowRenamingAndCredentialRotation() {
+    @Test
+    void taskReferencesBlockRelocationAndDeletionButAllowRenamingAndCredentialRotation() {
         var repository = mock(StorageRepository.class);
-        var cipher = new CredentialCipher(new CredentialProperties(Base64.getEncoder().encodeToString(new byte[32]),1,""));
-        var old = profile(cipher); var usage = mock(TaskStorageReferences.class);
+        var cipher = new CredentialCipher(
+                new CredentialProperties(Base64.getEncoder().encodeToString(new byte[32]), 1, ""));
+        var old = profile(cipher);
+        var usage = mock(TaskStorageReferences.class);
         when(repository.lockVersion()).thenReturn(3);
         when(repository.lockProfile(old.id())).thenReturn(java.util.Optional.of(old));
-        when(repository.state()).thenReturn(new StorageRepository.State(4,null,null, true, true));
+        when(repository.state()).thenReturn(new StorageRepository.State(4, null, null, true, true));
         when(repository.profiles()).thenReturn(java.util.List.of(old));
         when(usage.referencesStorageProfile(old.id())).thenReturn(true);
-        var service = new StorageSettingsService(repository,cipher,Clock.systemUTC(),usage);
-        assertThatThrownBy(() -> service.delete(3,old.id())).isInstanceOf(ApiProblemException.class)
-                .satisfies(e -> assertThat(((ApiProblemException)e).code()).isEqualTo("STORAGE_PROFILE_IN_USE"));
-        assertThatThrownBy(() -> service.update(3,old.id(),"renamed",old.provider(),old.endpoint(),"cn-beijing",old.bucket(),
-                old.keyPrefix(),false,null,null)).isInstanceOf(ApiProblemException.class);
-        verify(repository,never()).deleteProfile(any()); verify(repository,never()).detachProfile(anyInt(),any());
-        service.update(3,old.id(),"renamed",old.provider(),old.endpoint(),old.region(),old.bucket(),old.keyPrefix(),false,"new-access-id","new-secret-value");
+        var service = new StorageSettingsService(repository, cipher, Clock.systemUTC(), usage);
+        assertThatThrownBy(() -> service.delete(3, old.id())).isInstanceOf(ApiProblemException.class)
+                .satisfies(e -> assertThat(((ApiProblemException) e).code()).isEqualTo("STORAGE_PROFILE_IN_USE"));
+        assertThatThrownBy(
+                () -> service.update(3, old.id(), "renamed", old.provider(), old.endpoint(), "cn-beijing", old.bucket(),
+                        old.keyPrefix(), false, null, null))
+                .isInstanceOf(ApiProblemException.class);
+        verify(repository, never()).deleteProfile(any());
+        verify(repository, never()).detachProfile(anyInt(), any());
+        service.update(3, old.id(), "renamed", old.provider(), old.endpoint(), old.region(), old.bucket(),
+                old.keyPrefix(), false, "new-access-id", "new-secret-value");
         var updated = org.mockito.ArgumentCaptor.forClass(StorageProfile.class);
         verify(repository).updateProfile(updated.capture());
         assertThat(updated.getValue().name()).isEqualTo("renamed");
         assertThat(updated.getValue().region()).isEqualTo(old.region());
-        assertThat(cipher.decryptStorage(old.id(),2,updated.getValue().credentials())).isEqualTo("new-access-id\nnew-secret-value");
+        assertThat(cipher.decryptStorage(old.id(), 2, updated.getValue().credentials()))
+                .isEqualTo("new-access-id\nnew-secret-value");
         assertThat(service.status().profiles().getFirst().inUse()).isTrue();
     }
-    @Test void staleDeletesAndIncompleteKeysCannotWriteAndOssRegionRejectsEndpointPrefix() {
-        var repository = mock(StorageRepository.class); when(repository.lockVersion()).thenReturn(3);
-        var cipher = new CredentialCipher(new CredentialProperties(Base64.getEncoder().encodeToString(new byte[32]),1,""));
+    @Test
+    void staleDeletesAndIncompleteKeysCannotWriteAndOssRegionRejectsEndpointPrefix() {
+        var repository = mock(StorageRepository.class);
+        when(repository.lockVersion()).thenReturn(3);
+        var cipher = new CredentialCipher(
+                new CredentialProperties(Base64.getEncoder().encodeToString(new byte[32]), 1, ""));
         var old = profile(cipher);
         when(repository.lockProfile(old.id())).thenReturn(java.util.Optional.of(old));
-        var service = new StorageSettingsService(repository,cipher,Clock.systemUTC(),mock(TaskStorageReferences.class));
-        assertThatThrownBy(() -> service.delete(2,old.id())).isInstanceOf(ApiProblemException.class);
-        verify(repository,never()).lockProfile(any());
-        assertThatThrownBy(() -> service.update(3,old.id(),old.name(),old.provider(),old.endpoint(),old.region(),old.bucket(),
-                old.keyPrefix(),false,"new-id",null)).isInstanceOf(ApiProblemException.class);
-        assertThatThrownBy(() -> service.create(3,"new",old.provider(),old.endpoint(),"oss-cn-chengdu",old.bucket(),"",false,
-                "new-id","new-secret")).isInstanceOf(ApiProblemException.class);
-        verify(repository,never()).updateProfile(any()); verify(repository,never()).insertProfile(any());
+        var service = new StorageSettingsService(repository, cipher, Clock.systemUTC(),
+                mock(TaskStorageReferences.class));
+        assertThatThrownBy(() -> service.delete(2, old.id())).isInstanceOf(ApiProblemException.class);
+        verify(repository, never()).lockProfile(any());
+        assertThatThrownBy(() -> service.update(3, old.id(), old.name(), old.provider(), old.endpoint(), old.region(),
+                old.bucket(),
+                old.keyPrefix(), false, "new-id", null)).isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> service.create(3, "new", old.provider(), old.endpoint(), "oss-cn-chengdu",
+                old.bucket(), "", false,
+                "new-id", "new-secret")).isInstanceOf(ApiProblemException.class);
+        verify(repository, never()).updateProfile(any());
+        verify(repository, never()).insertProfile(any());
     }
-    @Test void fileEndpointsAcceptBasePathsButRejectTraversalAndEmbeddedCredentials() {
-        assertThat(RemoteFileSupport.endpoint(StorageProfile.Provider.SMB, " smb://nas.example.com:445/media/archives/ "))
+    @Test
+    void fileEndpointsAcceptBasePathsButRejectTraversalAndEmbeddedCredentials() {
+        assertThat(
+                RemoteFileSupport.endpoint(StorageProfile.Provider.SMB, " smb://nas.example.com:445/media/archives/ "))
                 .isEqualTo("smb://nas.example.com:445/media/archives");
         assertThat(RemoteFileSupport.endpoint(StorageProfile.Provider.WEBDAV, "https://nas.example.com/dav/media/"))
                 .isEqualTo("https://nas.example.com/dav/media");
-        for (String endpoint : new String[] { "smb://nas.example.com", "smb://user:password@nas.example.com/media", "smb://nas.example.com/media/../other",
-                "smb://nas.example.com/media/%2e%2e", "smb://nas.example.com/media/%2fother", "smb://nas.example.com/media/%5cother", "smb://nas.example.com:0/media", "smb://nas.example.com/media/%0A%0D" })
-            assertThatThrownBy(() -> RemoteFileSupport.endpoint(StorageProfile.Provider.SMB, endpoint)).isInstanceOf(ApiProblemException.class);
-        for (String endpoint : new String[] { "https://user@nas.example.com/dav", "https://nas.example.com/dav?token=secret", "https://nas.example.com/dav#part" })
-            assertThatThrownBy(() -> RemoteFileSupport.endpoint(StorageProfile.Provider.WEBDAV, endpoint)).isInstanceOf(ApiProblemException.class);
+        for (String endpoint : new String[]{"smb://nas.example.com", "smb://user:password@nas.example.com/media",
+                "smb://nas.example.com/media/../other",
+                "smb://nas.example.com/media/%2e%2e", "smb://nas.example.com/media/%2fother",
+                "smb://nas.example.com/media/%5cother", "smb://nas.example.com:0/media",
+                "smb://nas.example.com/media/%0A%0D"})
+            assertThatThrownBy(() -> RemoteFileSupport.endpoint(StorageProfile.Provider.SMB, endpoint))
+                    .isInstanceOf(ApiProblemException.class);
+        for (String endpoint : new String[]{"https://user@nas.example.com/dav",
+                "https://nas.example.com/dav?token=secret", "https://nas.example.com/dav#part"})
+            assertThatThrownBy(() -> RemoteFileSupport.endpoint(StorageProfile.Provider.WEBDAV, endpoint))
+                    .isInstanceOf(ApiProblemException.class);
     }
-    @Test void remoteUserPasswordsAreEncryptedAndCannotBeSelectedForRelay() {
-        var repository = mock(StorageRepository.class); when(repository.lockVersion()).thenReturn(0);
-        when(repository.state()).thenReturn(new StorageRepository.State(0,null,null,true,true)); when(repository.profiles()).thenReturn(java.util.List.of());
-        var cipher = new CredentialCipher(new CredentialProperties(Base64.getEncoder().encodeToString(new byte[32]),1,""));
-        var service = new StorageSettingsService(repository,cipher,Clock.systemUTC(),mock(TaskStorageReferences.class));
-        service.create(0,"NAS",StorageProfile.Provider.SMB,"smb://nas.example.com/media","","","",false,"DOMAIN\\demo","合成 密码");
-        var captured = org.mockito.ArgumentCaptor.forClass(StorageProfile.class); verify(repository).insertProfile(captured.capture());
-        var smb = captured.getValue(); assertThat(service.credentials(smb)).containsExactly("DOMAIN\\demo","合成 密码");
-        assertThat(smb.region()).isEmpty(); assertThat(smb.bucket()).isEmpty();
+    @Test
+    void remoteUserPasswordsAreEncryptedAndCannotBeSelectedForRelay() {
+        var repository = mock(StorageRepository.class);
+        when(repository.lockVersion()).thenReturn(0);
+        when(repository.state()).thenReturn(new StorageRepository.State(0, null, null, true, true));
+        when(repository.profiles()).thenReturn(java.util.List.of());
+        var cipher = new CredentialCipher(
+                new CredentialProperties(Base64.getEncoder().encodeToString(new byte[32]), 1, ""));
+        var service = new StorageSettingsService(repository, cipher, Clock.systemUTC(),
+                mock(TaskStorageReferences.class));
+        service.create(0, "NAS", StorageProfile.Provider.SMB, "smb://nas.example.com/media", "", "", "", false,
+                "DOMAIN\\demo", "合成 密码");
+        var captured = org.mockito.ArgumentCaptor.forClass(StorageProfile.class);
+        verify(repository).insertProfile(captured.capture());
+        var smb = captured.getValue();
+        assertThat(service.credentials(smb)).containsExactly("DOMAIN\\demo", "合成 密码");
+        assertThat(smb.region()).isEmpty();
+        assertThat(smb.bucket()).isEmpty();
         when(repository.profile(smb.id())).thenReturn(java.util.Optional.of(smb));
-        assertThatThrownBy(() -> service.activateRelay(0,smb.id(),true,true)).isInstanceOf(ApiProblemException.class);
-        verify(repository,never()).advanceRelay(anyInt(),any(),anyBoolean(),anyBoolean());
-        assertThatThrownBy(() -> service.create(0,"DAV",StorageProfile.Provider.WEBDAV,"https://nas.example.com/dav","","","",false,"user:bad","password"))
+        assertThatThrownBy(() -> service.activateRelay(0, smb.id(), true, true))
                 .isInstanceOf(ApiProblemException.class);
-        assertThatThrownBy(() -> service.create(0,"DAV",StorageProfile.Provider.WEBDAV,"https://nas.example.com/dav","us-east-1","bucket","",false,"demo","password"))
+        verify(repository, never()).advanceRelay(anyInt(), any(), anyBoolean(), anyBoolean());
+        assertThatThrownBy(() -> service.create(0, "DAV", StorageProfile.Provider.WEBDAV, "https://nas.example.com/dav",
+                "", "", "", false, "user:bad", "password"))
+                .isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> service.create(0, "DAV", StorageProfile.Provider.WEBDAV, "https://nas.example.com/dav",
+                "us-east-1", "bucket", "", false, "demo", "password"))
                 .isInstanceOf(ApiProblemException.class);
     }
-    @Test void protocolChangesRequireNewCredentialsAndCannotInvalidateASelectedRelay() {
-        var repository = mock(StorageRepository.class); when(repository.lockVersion()).thenReturn(0);
-        var cipher = new CredentialCipher(new CredentialProperties(Base64.getEncoder().encodeToString(new byte[32]),1,""));
-        var old = profile(cipher); when(repository.lockProfile(old.id())).thenReturn(java.util.Optional.of(old));
-        when(repository.state()).thenReturn(new StorageRepository.State(0,null,null,true,true));
-        var service = new StorageSettingsService(repository,cipher,Clock.systemUTC(),mock(TaskStorageReferences.class));
-        assertThatThrownBy(() -> service.update(0,old.id(),"DAV",StorageProfile.Provider.WEBDAV,"https://nas.example.com/dav","","","",false,null,null))
+    @Test
+    void protocolChangesRequireNewCredentialsAndCannotInvalidateASelectedRelay() {
+        var repository = mock(StorageRepository.class);
+        when(repository.lockVersion()).thenReturn(0);
+        var cipher = new CredentialCipher(
+                new CredentialProperties(Base64.getEncoder().encodeToString(new byte[32]), 1, ""));
+        var old = profile(cipher);
+        when(repository.lockProfile(old.id())).thenReturn(java.util.Optional.of(old));
+        when(repository.state()).thenReturn(new StorageRepository.State(0, null, null, true, true));
+        var service = new StorageSettingsService(repository, cipher, Clock.systemUTC(),
+                mock(TaskStorageReferences.class));
+        assertThatThrownBy(() -> service.update(0, old.id(), "DAV", StorageProfile.Provider.WEBDAV,
+                "https://nas.example.com/dav", "", "", "", false, null, null))
                 .isInstanceOf(ApiProblemException.class);
-        when(repository.state()).thenReturn(new StorageRepository.State(0,null,old.id(),true,true));
-        assertThatThrownBy(() -> service.update(0,old.id(),"DAV",StorageProfile.Provider.WEBDAV,"https://nas.example.com/dav","","","",false,"demo","password"))
+        when(repository.state()).thenReturn(new StorageRepository.State(0, null, old.id(), true, true));
+        assertThatThrownBy(() -> service.update(0, old.id(), "DAV", StorageProfile.Provider.WEBDAV,
+                "https://nas.example.com/dav", "", "", "", false, "demo", "password"))
                 .isInstanceOf(ApiProblemException.class);
-        verify(repository,never()).updateProfile(any());
+        verify(repository, never()).updateProfile(any());
     }
     private static StorageProfile profile(CredentialCipher cipher) {
-        return profile(cipher,"cn-chengdu");
+        return profile(cipher, "cn-chengdu");
     }
     private static StorageProfile profile(CredentialCipher cipher, String region) {
-        UUID id=UUID.randomUUID();
-        return new StorageProfile(id,"cloud",StorageProfile.Provider.ALIYUN_OSS,"https://oss-cn-chengdu.aliyuncs.com",region,
-                "test-bucket","agenvas",false,1,cipher.encryptStorage(id,1,"test-id\ntest-secret"),"••••t-id",Instant.EPOCH);
+        UUID id = UUID.randomUUID();
+        return new StorageProfile(id, "cloud", StorageProfile.Provider.ALIYUN_OSS,
+                "https://oss-cn-chengdu.aliyuncs.com", region,
+                "test-bucket", "agenvas", false, 1, cipher.encryptStorage(id, 1, "test-id\ntest-secret"), "••••t-id",
+                Instant.EPOCH);
     }
 }

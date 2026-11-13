@@ -9,4 +9,5 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @ConfigurationProperties(prefix = "agenvas.credentials")
 public record CredentialProperties(String masterKeyBase64, int keyVersion,
-        String previousKeys) {}
+        String previousKeys) {
+}

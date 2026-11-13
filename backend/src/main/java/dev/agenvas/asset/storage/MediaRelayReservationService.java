@@ -15,7 +15,10 @@ public class MediaRelayReservationService {
 
     public MediaRelayReservationService(StorageRepository storage, StorageSettingsService settings,
             MediaRelayRepository copies, Clock clock) {
-        this.storage = storage; this.settings = settings; this.copies = copies; this.clock = clock;
+        this.storage = storage;
+        this.settings = settings;
+        this.copies = copies;
+        this.clock = clock;
     }
 
     @Transactional
@@ -31,5 +34,6 @@ public class MediaRelayReservationService {
         return new Reservation(profile, copy);
     }
 
-    public record Reservation(StorageProfile profile, MediaRelayRepository.Copy copy) {}
+    public record Reservation(StorageProfile profile, MediaRelayRepository.Copy copy) {
+    }
 }

@@ -24,13 +24,20 @@ public final class BuiltinSkillCatalogue {
     public static final String CARD_WORKFLOW_PATH = "references/agenvas-cards.md";
     private final List<Entry> entries;
     private final Map<String, Entry> byKey;
-    public enum Category { STORY, ADVERTISING, ANIMATION, EXPLAINER, MUSIC, PROMPT }
-    public record Source(String name, String repository, String revision, String license, String licenseUrl) {}
-    public record Entry(String key, String title, Category category, Source source, String bundleHash, SkillContent.Bundle bundle) {}
+    public enum Category {
+        STORY, ADVERTISING, ANIMATION, EXPLAINER, MUSIC, PROMPT
+    }
+    public record Source(String name, String repository, String revision, String license, String licenseUrl) {
+    }
+    public record Entry(String key, String title, Category category, Source source, String bundleHash,
+            SkillContent.Bundle bundle) {
+    }
     @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
     public record Manifest(String repository, String revision, String version, String license, String edition,
-            String sourceName, String licenseUrl, Category category, List<Definition> skills) {}
-    public record Definition(String name, String title, String description, Category category, List<String> resources) {}
+            String sourceName, String licenseUrl, Category category, List<Definition> skills) {
+    }
+    public record Definition(String name, String title, String description, Category category, List<String> resources) {
+    }
 
     public BuiltinSkillCatalogue(ObjectMapper mapper, SkillFormat format) {
         entries = COLLECTIONS.stream().flatMap(collection -> load(collection, mapper, format).stream()).toList();
@@ -39,7 +46,8 @@ public final class BuiltinSkillCatalogue {
     private List<Entry> load(String collection, ObjectMapper mapper, SkillFormat format) {
         var manifest = mapper.readValue(read(collection, "manifest.json"), Manifest.class);
         format.alias(manifest.edition());
-        var source = new Source(manifest.sourceName(), manifest.repository(), manifest.revision(), manifest.license(), manifest.licenseUrl());
+        var source = new Source(manifest.sourceName(), manifest.repository(), manifest.revision(), manifest.license(),
+                manifest.licenseUrl());
         var names = new HashSet<String>();
         return manifest.skills().stream().map(definition -> {
             format.alias(definition.name());
@@ -51,7 +59,8 @@ public final class BuiltinSkillCatalogue {
             String body = read(collection, directory + "SKILL.md");
             format.text(body, MAX_MAIN_LENGTH, true);
             var frontmatter = format.publishedFrontmatter(body);
-            if (!definition.name().equals(frontmatter.name()) || !definition.description().equals(frontmatter.description()))
+            if (!definition.name().equals(frontmatter.name())
+                    || !definition.description().equals(frontmatter.description()))
                 throw new IllegalStateException("Packaged Skill metadata does not match its main instructions");
             var paths = new HashSet<String>();
             var resources = definition.resources().stream().map(path -> {
@@ -64,19 +73,30 @@ public final class BuiltinSkillCatalogue {
                 return new SkillContent.PublishedResource(path, text, Sha256.hex(text));
             }).toList();
             // Creative text may lead to user-requested media through the existing approval/capability checks.
-            var bundle = new SkillContent.Bundle(SkillContent.SCHEMA_VERSION, definition.name(), definition.description(), body,
+            var bundle = new SkillContent.Bundle(SkillContent.SCHEMA_VERSION, definition.name(),
+                    definition.description(), body,
                     List.of(Artifact.Kind.TEXT, Artifact.Kind.IMAGE, Artifact.Kind.VIDEO, Artifact.Kind.AUDIO),
                     List.of(), resources, List.of());
             var category = definition.category() == null ? manifest.category() : definition.category();
-            if (category == null) throw new IllegalStateException("Packaged Skill category is missing");
-            return new Entry(collection + "/" + manifest.edition() + "/" + definition.name(), definition.title(), category, source,
+            if (category == null)
+                throw new IllegalStateException("Packaged Skill category is missing");
+            return new Entry(collection + "/" + manifest.edition() + "/" + definition.name(), definition.title(),
+                    category, source,
                     Sha256.hex(mapper.writeValueAsString(bundle)), bundle);
         }).toList();
     }
-    public List<Entry> entries() { return entries; }
-    public List<String> keys() { return entries.stream().map(Entry::key).toList(); }
-    public List<String> keys(Category category) { return entries.stream().filter(entry -> entry.category() == category).map(Entry::key).toList(); }
-    public Entry find(String key) { return key == null ? null : byKey.get(key); }
+    public List<Entry> entries() {
+        return entries;
+    }
+    public List<String> keys() {
+        return entries.stream().map(Entry::key).toList();
+    }
+    public List<String> keys(Category category) {
+        return entries.stream().filter(entry -> entry.category() == category).map(Entry::key).toList();
+    }
+    public Entry find(String key) {
+        return key == null ? null : byKey.get(key);
+    }
     private String read(String collection, String path) {
         try (var stream = new ClassPathResource("builtin-skills/" + collection + "/" + path).getInputStream()) {
             return new String(stream.readAllBytes(), StandardCharsets.UTF_8);

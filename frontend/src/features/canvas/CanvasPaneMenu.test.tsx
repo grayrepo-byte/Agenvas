@@ -1,11 +1,21 @@
-import { fireEvent,render,screen,waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe,expect,it,vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { CanvasPaneMenu } from "./CanvasPaneMenu";
 
 function setup(overrides: Partial<React.ComponentProps<typeof CanvasPaneMenu>> = {}) {
-  const props = { position: { x: 400, y: 200 }, onClose: vi.fn(), onAdd: vi.fn(), onUpload: vi.fn(),
-    onArrange: vi.fn(), uploading: false, creatingText: false, arranging: false, canArrange: true, ...overrides };
+  const props = {
+    position: { x: 400, y: 200 },
+    onClose: vi.fn(),
+    onAdd: vi.fn(),
+    onUpload: vi.fn(),
+    onArrange: vi.fn(),
+    uploading: false,
+    creatingText: false,
+    arranging: false,
+    canArrange: true,
+    ...overrides,
+  };
   render(<CanvasPaneMenu {...props} />);
   return props;
 }
@@ -27,8 +37,9 @@ describe("CanvasPaneMenu", () => {
     setup();
     await userEvent.setup().click(screen.getByRole("menuitem", { name: "添加" }));
     expect(screen.queryByRole("menuitem", { name: /Agent/ })).not.toBeInTheDocument();
-    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(
-      expect.arrayContaining(["图片", "视频", "文字", "音频"]));
+    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(
+      expect.arrayContaining(["图片", "视频", "文字", "音频"]),
+    );
   });
 
   it("opens the cascade on hover", async () => {
@@ -37,19 +48,22 @@ describe("CanvasPaneMenu", () => {
     expect(await screen.findByRole("menuitem", { name: "图片" })).toBeVisible();
   });
 
-  it.each(["上传", "一键整理"])("runs %s directly", async (label) => {
+  it.each(["上传", "一键整理"])("runs %s directly", async label => {
     const props = setup();
     await userEvent.setup().click(screen.getByRole("menuitem", { name: label }));
     expect(label === "上传" ? props.onUpload : props.onArrange).toHaveBeenCalledOnce();
   });
 
-  it.each([{ canArrange: false }, { arranging: true }])("disables unavailable or pending arrangement", async (overrides) => {
-    const props = setup(overrides);
-    const item = screen.getByRole("menuitem", { name: "一键整理" });
-    expect(item).toHaveAttribute("aria-disabled", "true");
-    fireEvent.click(item);
-    expect(props.onArrange).not.toHaveBeenCalled();
-  });
+  it.each([{ canArrange: false }, { arranging: true }])(
+    "disables unavailable or pending arrangement",
+    async overrides => {
+      const props = setup(overrides);
+      const item = screen.getByRole("menuitem", { name: "一键整理" });
+      expect(item).toHaveAttribute("aria-disabled", "true");
+      fireEvent.click(item);
+      expect(props.onArrange).not.toHaveBeenCalled();
+    },
+  );
 
   it("disables upload while a file is being uploaded", () => {
     const props = setup({ uploading: true });

@@ -22,29 +22,79 @@ const CONVERSATIONS_URL = `/api/v1/projects/${PROJECT_ID}/agents/${AGENT_ID}/con
 const NOW = "2026-09-26T10:00:00Z";
 const TASK_TEXT = "规划三个镜头，生成之前先给我检查。";
 const AGENT: Agent = {
-  id: AGENT_ID, projectId: PROJECT_ID, name: "创作助手", instruction: "依据当前画布提出创作计划。",
-  profileKey: "creator", profileVersion: 1, version: AGENT_VERSION, createdAt: NOW, updatedAt: NOW, };
+  id: AGENT_ID,
+  projectId: PROJECT_ID,
+  name: "创作助手",
+  instruction: "依据当前画布提出创作计划。",
+  profileKey: "creator",
+  profileVersion: 1,
+  version: AGENT_VERSION,
+  createdAt: NOW,
+  updatedAt: NOW,
+};
 const PREFLIGHT: RunPreflight = {
-  agentId: AGENT_ID, agentVersion: AGENT_VERSION, agentName: AGENT.name,
-  agentInstruction: AGENT.instruction, modelAvailable: true,
-  conversationId: CONVERSATION_ID, conversationVersion: 0, conversationTurnCount: 0, memoryTruncated: false, creativeSkills: [],
-  providerAdapter: "Mock", modelId: "mock-storyboard-v1", toolCalling: true,
-  policySnapshot: { schemaVersion: 7, toolPolicyVersion: 6, systemPromptVersion: 14, allowedTools: ["read_canvas"],
-    modelConfigSource: "mock", modelConfigVersion: 7, maxModelTurns: null,
-    maxToolExecutions: null },
+  agentId: AGENT_ID,
+  agentVersion: AGENT_VERSION,
+  agentName: AGENT.name,
+  agentInstruction: AGENT.instruction,
+  modelAvailable: true,
+  conversationId: CONVERSATION_ID,
+  conversationVersion: 0,
+  conversationTurnCount: 0,
+  memoryTruncated: false,
+  creativeSkills: [],
+  providerAdapter: "Mock",
+  modelId: "mock-storyboard-v1",
+  toolCalling: true,
+  policySnapshot: {
+    schemaVersion: 7,
+    toolPolicyVersion: 6,
+    systemPromptVersion: 14,
+    allowedTools: ["read_canvas"],
+    modelConfigSource: "mock",
+    modelConfigVersion: 7,
+    maxModelTurns: null,
+    maxToolExecutions: null,
+  },
 };
 
 function run(overrides: Partial<AgentRun> = {}): AgentRun {
-  return { id: "run-current", projectId: PROJECT_ID, agentInstanceId: AGENT_ID,
-    conversationId: CONVERSATION_ID, conversationTurn: 1, status: "QUEUED", instruction: TASK_TEXT, contextSnapshot: {
-      agentId: AGENT_ID, agentVersion: AGENT_VERSION, profileKey: "creator",
-      profileVersion: 1, }, policySnapshot: PREFLIGHT.policySnapshot, profileVersion: 1, nextStepIndex: 0,
-    version: 1, createdAt: NOW, updatedAt: NOW, ...overrides };
+  return {
+    id: "run-current",
+    projectId: PROJECT_ID,
+    agentInstanceId: AGENT_ID,
+    conversationId: CONVERSATION_ID,
+    conversationTurn: 1,
+    status: "QUEUED",
+    instruction: TASK_TEXT,
+    contextSnapshot: {
+      agentId: AGENT_ID,
+      agentVersion: AGENT_VERSION,
+      profileKey: "creator",
+      profileVersion: 1,
+    },
+    policySnapshot: PREFLIGHT.policySnapshot,
+    profileVersion: 1,
+    nextStepIndex: 0,
+    version: 1,
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...overrides,
+  };
 }
 
 function conversation(overrides: Partial<AgentConversation> = {}): AgentConversation {
-  return { id: CONVERSATION_ID, projectId: PROJECT_ID, agentInstanceId: AGENT_ID,
-    title: "当前创作会话", version: 0, turnCount: 0, createdAt: NOW, updatedAt: NOW, ...overrides };
+  return {
+    id: CONVERSATION_ID,
+    projectId: PROJECT_ID,
+    agentInstanceId: AGENT_ID,
+    title: "当前创作会话",
+    version: 0,
+    turnCount: 0,
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...overrides,
+  };
 }
 
 let storedConversations: AgentConversation[];
@@ -52,12 +102,12 @@ let storedRuns: AgentRun[];
 let currentConversationId: string | null;
 
 function persistRun(saved = run()) {
-  storedRuns = [...storedRuns.filter((item) => item.id !== saved.id), saved];
+  storedRuns = [...storedRuns.filter(item => item.id !== saved.id), saved];
   return HttpResponse.json(saved, { status: 202 });
 }
 function persistConversation(id = "conversation-new") {
   const created = conversation({ id, title: "新会话" });
-  storedConversations = [created, ...storedConversations.filter((item) => item.id !== created.id)];
+  storedConversations = [created, ...storedConversations.filter(item => item.id !== created.id)];
   currentConversationId = created.id;
   return HttpResponse.json(created, { status: 201 });
 }
@@ -66,13 +116,20 @@ function mountPanel(activeRun: AgentRun | null = null, overrides: Partial<AgentC
   const client = createQueryClient();
   client.setDefaultOptions({ queries: { retry: false } });
   const data: AgentChatPanelData = {
-    agent: AGENT, canvasNodeCount: 4, selectedNodeCount: 0,
-    projectId: PROJECT_ID, activeRun,
-    onUpdateAgent: vi.fn(), updatingAgent: false, ...overrides,
+    agent: AGENT,
+    canvasNodeCount: 4,
+    selectedNodeCount: 0,
+    projectId: PROJECT_ID,
+    activeRun,
+    onUpdateAgent: vi.fn(),
+    updatingAgent: false,
+    ...overrides,
   };
-  render(<QueryClientProvider client={client}>
-    <AgentChatPanel data={data} />
-  </QueryClientProvider>);
+  render(
+    <QueryClientProvider client={client}>
+      <AgentChatPanel data={data} />
+    </QueryClientProvider>,
+  );
   return client;
 }
 
@@ -100,11 +157,20 @@ it("retains unsaved Agent configuration across chat and settings tabs", async ()
 it("adopts a refreshed Agent configuration while the local fields are unchanged", async () => {
   const client = createQueryClient();
   const onUpdateAgent = vi.fn();
-  const data: AgentChatPanelData = { agent: AGENT, projectId: PROJECT_ID, activeRun: null,
-    canvasNodeCount: 0, selectedNodeCount: 0, onUpdateAgent, updatingAgent: false };
-  const panel = (agent: Agent) => <QueryClientProvider client={client}>
-    <AgentChatPanel data={{ ...data, agent }} />
-  </QueryClientProvider>;
+  const data: AgentChatPanelData = {
+    agent: AGENT,
+    projectId: PROJECT_ID,
+    activeRun: null,
+    canvasNodeCount: 0,
+    selectedNodeCount: 0,
+    onUpdateAgent,
+    updatingAgent: false,
+  };
+  const panel = (agent: Agent) => (
+    <QueryClientProvider client={client}>
+      <AgentChatPanel data={{ ...data, agent }} />
+    </QueryClientProvider>
+  );
   const view = render(panel(AGENT));
   const user = userEvent.setup();
   await readyComposer();
@@ -117,40 +183,52 @@ it("adopts a refreshed Agent configuration while the local fields are unchanged"
   expect(onUpdateAgent).toHaveBeenLastCalledWith(refreshed, refreshed.name, refreshed.instruction);
 });
 
-it.each(["refresh", "saved"] as const)("pins a dirty Agent configuration until its %s snapshot is adopted", async (resolution) => {
-  const client = createQueryClient();
-  const onUpdateAgent = vi.fn();
-  const data: AgentChatPanelData = { agent: AGENT, projectId: PROJECT_ID, activeRun: null,
-    canvasNodeCount: 0, selectedNodeCount: 0, onUpdateAgent, updatingAgent: false };
-  const panel = (agent: Agent) => <QueryClientProvider client={client}>
-    <AgentChatPanel data={{ ...data, agent }} />
-  </QueryClientProvider>;
-  const view = render(panel(AGENT));
-  const user = userEvent.setup();
-  await readyComposer();
-  await user.click(screen.getByRole("button", { name: "Agent 设置" }));
-  const name = screen.getByRole("textbox", { name: "名称" });
-  await user.clear(name);
-  await user.type(name, "本地未保存名称");
-  const remote = { ...AGENT, version: AGENT.version + 1, name: "远端导演", instruction: "远端长期指令" };
-  view.rerender(panel(remote));
-  expect(name).toHaveValue("本地未保存名称");
-  expect(screen.getByRole("textbox", { name: "创作系统提示词" })).toHaveValue(AGENT.instruction);
-  await user.click(screen.getByRole("button", { name: "保存配置" }));
-  expect(onUpdateAgent).toHaveBeenLastCalledWith(AGENT, "本地未保存名称", AGENT.instruction);
-  let adopted = remote;
-  if (resolution === "refresh") {
-    await user.click(screen.getByRole("button", { name: "载入最新版本" }));
-  } else {
-    adopted = { ...remote, version: remote.version + 1, name: "本地未保存名称", instruction: AGENT.instruction };
-    view.rerender(panel(adopted));
-  }
-  await waitFor(() => expect(screen.queryByRole("button", { name: "载入最新版本" })).not.toBeInTheDocument());
-  expect(name).toHaveValue(adopted.name);
-  expect(screen.getByRole("textbox", { name: "创作系统提示词" })).toHaveValue(adopted.instruction);
-  await user.click(screen.getByRole("button", { name: "保存配置" }));
-  expect(onUpdateAgent).toHaveBeenLastCalledWith(adopted, adopted.name, adopted.instruction);
-});
+it.each(["refresh", "saved"] as const)(
+  "pins a dirty Agent configuration until its %s snapshot is adopted",
+  async resolution => {
+    const client = createQueryClient();
+    const onUpdateAgent = vi.fn();
+    const data: AgentChatPanelData = {
+      agent: AGENT,
+      projectId: PROJECT_ID,
+      activeRun: null,
+      canvasNodeCount: 0,
+      selectedNodeCount: 0,
+      onUpdateAgent,
+      updatingAgent: false,
+    };
+    const panel = (agent: Agent) => (
+      <QueryClientProvider client={client}>
+        <AgentChatPanel data={{ ...data, agent }} />
+      </QueryClientProvider>
+    );
+    const view = render(panel(AGENT));
+    const user = userEvent.setup();
+    await readyComposer();
+    await user.click(screen.getByRole("button", { name: "Agent 设置" }));
+    const name = screen.getByRole("textbox", { name: "名称" });
+    await user.clear(name);
+    await user.type(name, "本地未保存名称");
+    const remote = { ...AGENT, version: AGENT.version + 1, name: "远端导演", instruction: "远端长期指令" };
+    view.rerender(panel(remote));
+    expect(name).toHaveValue("本地未保存名称");
+    expect(screen.getByRole("textbox", { name: "创作系统提示词" })).toHaveValue(AGENT.instruction);
+    await user.click(screen.getByRole("button", { name: "保存配置" }));
+    expect(onUpdateAgent).toHaveBeenLastCalledWith(AGENT, "本地未保存名称", AGENT.instruction);
+    let adopted = remote;
+    if (resolution === "refresh") {
+      await user.click(screen.getByRole("button", { name: "载入最新版本" }));
+    } else {
+      adopted = { ...remote, version: remote.version + 1, name: "本地未保存名称", instruction: AGENT.instruction };
+      view.rerender(panel(adopted));
+    }
+    await waitFor(() => expect(screen.queryByRole("button", { name: "载入最新版本" })).not.toBeInTheDocument());
+    expect(name).toHaveValue(adopted.name);
+    expect(screen.getByRole("textbox", { name: "创作系统提示词" })).toHaveValue(adopted.instruction);
+    await user.click(screen.getByRole("button", { name: "保存配置" }));
+    expect(onUpdateAgent).toHaveBeenLastCalledWith(adopted, adopted.name, adopted.instruction);
+  },
+);
 
 it("shows the fixed director identity and preserves the draft when returning from history or settings", async () => {
   mountPanel();
@@ -191,9 +269,14 @@ it("fills the script breakdown and storyboard shortcut as an editable draft with
   expect(storedRuns).toHaveLength(0);
 });
 
-it.each(["会话列表", "Agent 设置"])("returns to a clean chat when creating a session from %s", async (destination) => {
+it.each(["会话列表", "Agent 设置"])("returns to a clean chat when creating a session from %s", async destination => {
   let created = 0;
-  server.use(http.post(CONVERSATIONS_URL, () => { created++; return persistConversation(); }));
+  server.use(
+    http.post(CONVERSATIONS_URL, () => {
+      created++;
+      return persistConversation();
+    }),
+  );
   mountPanel();
   const user = userEvent.setup();
   await user.type(await readyComposer(), "旧会话草稿");
@@ -205,24 +288,36 @@ it.each(["会话列表", "Agent 设置"])("returns to a clean chat when creating
   expect(screen.getByRole("button", { name: "聊天" })).toHaveAttribute("aria-pressed", "true");
   expect(screen.getByRole("button", { name: "聊天" })).toHaveTextContent("新会话");
   await user.click(screen.getByRole("button", { name: "会话列表" }));
-  await user.click(within(screen.getByRole("region", { name: "会话列表" })).getByRole("button", { name: /当前创作会话/ }));
+  await user.click(
+    within(screen.getByRole("region", { name: "会话列表" })).getByRole("button", { name: /当前创作会话/ }),
+  );
   expect(await screen.findByRole("textbox", { name: "本次任务" })).toHaveValue("旧会话草稿");
 });
 
 beforeEach(() => {
   useCanvasStore.getState().setSelectedIds([]);
-  storedConversations = [conversation()]; storedRuns = []; currentConversationId = CONVERSATION_ID;
+  storedConversations = [conversation()];
+  storedRuns = [];
+  currentConversationId = CONVERSATION_ID;
   server.use(
-    http.get(CONVERSATIONS_URL, () => HttpResponse.json({ items: storedConversations, nextCursor: null, currentConversationId })),
+    http.get(CONVERSATIONS_URL, () =>
+      HttpResponse.json({ items: storedConversations, nextCursor: null, currentConversationId }),
+    ),
     http.post(CONVERSATIONS_URL, () => persistConversation()),
     http.post(`${CONVERSATIONS_URL}/:conversationId/select`, ({ params }) => {
-      const target = storedConversations.find((item) => item.id === params.conversationId);
+      const target = storedConversations.find(item => item.id === params.conversationId);
       if (!target) return HttpResponse.json({ title: "Missing conversation" }, { status: 404 });
-      currentConversationId = target.id; return HttpResponse.json(target);
+      currentConversationId = target.id;
+      return HttpResponse.json(target);
     }),
-    http.get(`${CONVERSATIONS_URL}/:conversationId/runs`, ({ params }) => HttpResponse.json({
-      items: storedRuns.filter((item) => item.conversationId === params.conversationId).sort((a, b) => b.conversationTurn - a.conversationTurn), nextCursor: null,
-    })),
+    http.get(`${CONVERSATIONS_URL}/:conversationId/runs`, ({ params }) =>
+      HttpResponse.json({
+        items: storedRuns
+          .filter(item => item.conversationId === params.conversationId)
+          .sort((a, b) => b.conversationTurn - a.conversationTurn),
+        nextCursor: null,
+      }),
+    ),
     http.get(RUNS_URL, () => HttpResponse.json({ items: [], nextCursor: null })),
     http.get(`${RUNS_URL}/:runId/tasks`, () => HttpResponse.json([])),
     http.get(`${RUNS_URL}/:runId/actions`, () => HttpResponse.json([])),
@@ -237,25 +332,52 @@ afterEach(() => {
 });
 
 describe("AgentChatPanel", () => {
-  it.each(["unmount", "project-change"])("does not create a composition Run when its preflight becomes invalid through %s", async (navigation) => {
-    let release!: (value: RunPreflight) => void;
-    const preflight = vi.spyOn(api, "getRunPreflight").mockImplementation(() => new Promise<RunPreflight>((resolve) => { release = resolve; }));
-    const create = vi.spyOn(api, "createRun").mockResolvedValue(run());
-    server.use(http.get("/api/v1/projects/project-2/agents/agent-1/conversations", () =>
-      HttpResponse.json({ items: [], currentConversationId: null, nextCursor: null })));
-    const client = createQueryClient();
-    const data: AgentChatPanelData = { agent: AGENT, projectId: PROJECT_ID, activeRun: null,
-      canvasNodeCount: 2, selectedNodeCount: 1, onUpdateAgent: vi.fn(), updatingAgent: false,
-      runRequest: { id: "leaving-composition", instruction: "自动配音合成", selectedItemIds: ["video"] } };
-    const view = render(<QueryClientProvider client={client}><AgentChatPanel data={data} /></QueryClientProvider>);
-    await waitFor(() => expect(preflight).toHaveBeenCalledOnce());
-    if (navigation === "unmount") view.unmount();
-    else view.rerender(<QueryClientProvider client={client}>
-      <AgentChatPanel data={{ ...data, projectId: "project-2", runRequest: null }} />
-    </QueryClientProvider>);
-    await act(async () => { release(PREFLIGHT); });
-    expect(create).not.toHaveBeenCalled();
-  });
+  it.each(["unmount", "project-change"])(
+    "does not create a composition Run when its preflight becomes invalid through %s",
+    async navigation => {
+      let release!: (value: RunPreflight) => void;
+      const preflight = vi.spyOn(api, "getRunPreflight").mockImplementation(
+        () =>
+          new Promise<RunPreflight>(resolve => {
+            release = resolve;
+          }),
+      );
+      const create = vi.spyOn(api, "createRun").mockResolvedValue(run());
+      server.use(
+        http.get("/api/v1/projects/project-2/agents/agent-1/conversations", () =>
+          HttpResponse.json({ items: [], currentConversationId: null, nextCursor: null }),
+        ),
+      );
+      const client = createQueryClient();
+      const data: AgentChatPanelData = {
+        agent: AGENT,
+        projectId: PROJECT_ID,
+        activeRun: null,
+        canvasNodeCount: 2,
+        selectedNodeCount: 1,
+        onUpdateAgent: vi.fn(),
+        updatingAgent: false,
+        runRequest: { id: "leaving-composition", instruction: "自动配音合成", selectedItemIds: ["video"] },
+      };
+      const view = render(
+        <QueryClientProvider client={client}>
+          <AgentChatPanel data={data} />
+        </QueryClientProvider>,
+      );
+      await waitFor(() => expect(preflight).toHaveBeenCalledOnce());
+      if (navigation === "unmount") view.unmount();
+      else
+        view.rerender(
+          <QueryClientProvider client={client}>
+            <AgentChatPanel data={{ ...data, projectId: "project-2", runRequest: null }} />
+          </QueryClientProvider>,
+        );
+      await act(async () => {
+        release(PREFLIGHT);
+      });
+      expect(create).not.toHaveBeenCalled();
+    },
+  );
 
   it("sends a workspace composition action once with its captured selection and preserves the chat draft", async () => {
     const requests: CreateRunRequest[] = [];
@@ -265,24 +387,40 @@ describe("AgentChatPanel", () => {
     server.use(
       http.post(`${RUNS_URL}/preflight`, async () => {
         checks++;
-        await new Promise<void>((resolve) => { finishPreflight = resolve; });
+        await new Promise<void>(resolve => {
+          finishPreflight = resolve;
+        });
         return HttpResponse.json(PREFLIGHT);
       }),
       http.post(RUNS_URL, async ({ request }) => {
-        const input = await request.json() as CreateRunRequest;
+        const input = (await request.json()) as CreateRunRequest;
         requests.push(input);
         return persistRun(run({ instruction: input.instruction }));
       }),
     );
     const client = createQueryClient();
-    const data: AgentChatPanelData = { agent: AGENT, projectId: PROJECT_ID, activeRun: null,
-      canvasNodeCount: 4, selectedNodeCount: 2, onUpdateAgent: vi.fn(), updatingAgent: false, onRunRequestHandled };
-    const renderPanel = (request?: AgentChatRunRequest) => <QueryClientProvider client={client}>
-      <AgentChatPanel data={{ ...data, runRequest: request }} />
-    </QueryClientProvider>;
+    const data: AgentChatPanelData = {
+      agent: AGENT,
+      projectId: PROJECT_ID,
+      activeRun: null,
+      canvasNodeCount: 4,
+      selectedNodeCount: 2,
+      onUpdateAgent: vi.fn(),
+      updatingAgent: false,
+      onRunRequestHandled,
+    };
+    const renderPanel = (request?: AgentChatRunRequest) => (
+      <QueryClientProvider client={client}>
+        <AgentChatPanel data={{ ...data, runRequest: request }} />
+      </QueryClientProvider>
+    );
     const view = render(renderPanel());
     await userEvent.setup().type(await readyComposer(), "原先还没发送的想法");
-    const request = { id: "composition-click", instruction: "根据分镜和台词自动配音合成", selectedItemIds: ["shot-two", "script", "voice-one"] };
+    const request = {
+      id: "composition-click",
+      instruction: "根据分镜和台词自动配音合成",
+      selectedItemIds: ["shot-two", "script", "voice-one"],
+    };
     view.rerender(renderPanel(request));
     await waitFor(() => expect(finishPreflight).toBeTypeOf("function"));
     act(() => useCanvasStore.getState().setSelectedIds(["later-selection"]));
@@ -301,15 +439,20 @@ describe("AgentChatPanel", () => {
     let checks = 0;
     const handled = vi.fn();
     server.use(
-      http.post(`${RUNS_URL}/preflight`, () => { checks++; return HttpResponse.json(PREFLIGHT); }),
+      http.post(`${RUNS_URL}/preflight`, () => {
+        checks++;
+        return HttpResponse.json(PREFLIGHT);
+      }),
       http.post(RUNS_URL, async ({ request }) => {
-        const input = await request.json() as CreateRunRequest;
+        const input = (await request.json()) as CreateRunRequest;
         requests.push({ key: request.headers.get("Idempotency-Key"), input });
         return requests.length === 1 ? HttpResponse.error() : persistRun(run({ instruction: input.instruction }));
       }),
     );
-    mountPanel(null, { runRequest: { id: "retry-composition", instruction: "自动配音合成", selectedItemIds: ["video"] },
-      onRunRequestHandled: handled });
+    mountPanel(null, {
+      runRequest: { id: "retry-composition", instruction: "自动配音合成", selectedItemIds: ["video"] },
+      onRunRequestHandled: handled,
+    });
     const retry = await screen.findByRole("button", { name: "发送配音合成任务" });
     await waitFor(() => expect(requests).toHaveLength(1));
     await waitFor(() => expect(retry).toBeEnabled());
@@ -328,22 +471,38 @@ describe("AgentChatPanel", () => {
     const handled = vi.fn();
     let checks = 0;
     server.use(
-      http.post(`${RUNS_URL}/preflight`, () => { checks++; return HttpResponse.json(PREFLIGHT); }),
+      http.post(`${RUNS_URL}/preflight`, () => {
+        checks++;
+        return HttpResponse.json(PREFLIGHT);
+      }),
       http.post(RUNS_URL, async ({ request }) => {
-        const input = await request.json() as CreateRunRequest;
+        const input = (await request.json()) as CreateRunRequest;
         requests.push({ key: request.headers.get("Idempotency-Key"), input });
         const saved = persistRun(run({ instruction: input.instruction }));
         return requests.length === 1 ? HttpResponse.error() : saved;
       }),
-      http.post(`${RUNS_URL}/:runId/cancel`, () => { cancels(); return HttpResponse.json(run({ status: "CANCELED" })); }),
+      http.post(`${RUNS_URL}/:runId/cancel`, () => {
+        cancels();
+        return HttpResponse.json(run({ status: "CANCELED" }));
+      }),
     );
     const client = createQueryClient();
-    const data: AgentChatPanelData = { agent: AGENT, projectId: PROJECT_ID, activeRun: null,
-      canvasNodeCount: 2, selectedNodeCount: 1, onUpdateAgent: vi.fn(), updatingAgent: false, onRunRequestHandled: handled };
+    const data: AgentChatPanelData = {
+      agent: AGENT,
+      projectId: PROJECT_ID,
+      activeRun: null,
+      canvasNodeCount: 2,
+      selectedNodeCount: 1,
+      onUpdateAgent: vi.fn(),
+      updatingAgent: false,
+      onRunRequestHandled: handled,
+    };
     const request = { id: "lost-composition", instruction: "自动配音合成", selectedItemIds: ["video"] };
-    const panel = (runRequest?: AgentChatRunRequest) => <QueryClientProvider client={client}>
-      <AgentChatPanel data={{ ...data, runRequest }} />
-    </QueryClientProvider>;
+    const panel = (runRequest?: AgentChatRunRequest) => (
+      <QueryClientProvider client={client}>
+        <AgentChatPanel data={{ ...data, runRequest }} />
+      </QueryClientProvider>
+    );
     const view = render(panel(request));
     expect(await screen.findByText(/关闭提示不会撤回已受理的任务/)).toBeVisible();
     await userEvent.setup().click(screen.getByRole("button", { name: "关闭提示" }));
@@ -364,14 +523,29 @@ describe("AgentChatPanel", () => {
   it("does not queue a composition action behind an active Run and allows dismissing it", async () => {
     const checks = vi.fn();
     const handled = vi.fn();
-    server.use(http.post(`${RUNS_URL}/preflight`, () => { checks(); return HttpResponse.json(PREFLIGHT); }));
+    server.use(
+      http.post(`${RUNS_URL}/preflight`, () => {
+        checks();
+        return HttpResponse.json(PREFLIGHT);
+      }),
+    );
     const client = createQueryClient();
-    const data: AgentChatPanelData = { agent: AGENT, projectId: PROJECT_ID, activeRun: run(), canvasNodeCount: 2,
-      selectedNodeCount: 1, onUpdateAgent: vi.fn(), updatingAgent: false,
-      runRequest: { id: "busy-composition", instruction: "自动配音合成", selectedItemIds: ["video"] }, onRunRequestHandled: handled };
-    const renderPanel = (activeRun: AgentRun | null) => <QueryClientProvider client={client}>
-      <AgentChatPanel data={{ ...data, activeRun }} />
-    </QueryClientProvider>;
+    const data: AgentChatPanelData = {
+      agent: AGENT,
+      projectId: PROJECT_ID,
+      activeRun: run(),
+      canvasNodeCount: 2,
+      selectedNodeCount: 1,
+      onUpdateAgent: vi.fn(),
+      updatingAgent: false,
+      runRequest: { id: "busy-composition", instruction: "自动配音合成", selectedItemIds: ["video"] },
+      onRunRequestHandled: handled,
+    };
+    const renderPanel = (activeRun: AgentRun | null) => (
+      <QueryClientProvider client={client}>
+        <AgentChatPanel data={{ ...data, activeRun }} />
+      </QueryClientProvider>
+    );
     const view = render(renderPanel(data.activeRun));
     await readyComposer();
     expect(await screen.findByRole("button", { name: "发送配音合成任务" })).toBeDisabled();
@@ -416,12 +590,14 @@ describe("AgentChatPanel", () => {
     const blocked = run({ status: "BLOCKED" });
     storedRuns = [blocked];
     let cancellations = 0;
-    server.use(http.post(`${RUNS_URL}/${blocked.id}/cancel`, () => {
-      cancellations++;
-      const canceled = { ...blocked, status: "CANCELED" as const, version: blocked.version + 1 };
-      storedRuns = [canceled];
-      return HttpResponse.json(canceled);
-    }));
+    server.use(
+      http.post(`${RUNS_URL}/${blocked.id}/cancel`, () => {
+        cancellations++;
+        const canceled = { ...blocked, status: "CANCELED" as const, version: blocked.version + 1 };
+        storedRuns = [canceled];
+        return HttpResponse.json(canceled);
+      }),
+    );
     mountPanel(blocked);
     const user = userEvent.setup();
     await user.type(await readyComposer(), "继续使用已完成图片创作");
@@ -437,11 +613,29 @@ describe("AgentChatPanel", () => {
   it("pins pending approval navigation outside scrolling content and clears it after a decision", async () => {
     const active = run({ status: "WAITING_TASKS" });
     storedRuns = [active];
-    const pending = { id: "approval-1", projectId: PROJECT_ID, runId: active.id,
-      operationId: "operation-1", status: "PENDING", version: 0, taskIds: [], result: null,
-      createdAt: NOW, expiresAt: "2026-09-27T10:00:00Z", executionDeadline: null,
-      outputs: [{ kind: "IMAGE", title: "合成图片", artifactId: "image-1", canvasItemId: "image-item-1",
-        draftVersion: 0, preview: { prompt: "合成图片", priceUnknown: true } }] };
+    const pending = {
+      id: "approval-1",
+      projectId: PROJECT_ID,
+      runId: active.id,
+      operationId: "operation-1",
+      status: "PENDING",
+      version: 0,
+      taskIds: [],
+      result: null,
+      createdAt: NOW,
+      expiresAt: "2026-09-27T10:00:00Z",
+      executionDeadline: null,
+      outputs: [
+        {
+          kind: "IMAGE",
+          title: "合成图片",
+          artifactId: "image-1",
+          canvasItemId: "image-item-1",
+          draftVersion: 0,
+          preview: { prompt: "合成图片", priceUnknown: true },
+        },
+      ],
+    };
     server.use(http.get(`${RUNS_URL}/${active.id}/media-approvals`, () => HttpResponse.json([pending])));
     const client = mountPanel(active);
     const review = await screen.findByRole("button", { name: "查看待审批 · 1 项" });
@@ -454,7 +648,9 @@ describe("AgentChatPanel", () => {
     body.scrollTo = scrollTo;
     await userEvent.setup().click(review);
     expect(document.activeElement).toHaveAttribute("data-media-approval-id", pending.id);
-    act(() => client.setQueryData(["run-media-approvals", PROJECT_ID, active.id], [{ ...pending, status: "APPROVED" }]));
+    act(() =>
+      client.setQueryData(["run-media-approvals", PROJECT_ID, active.id], [{ ...pending, status: "APPROVED" }]),
+    );
     await waitFor(() => expect(screen.queryByRole("button", { name: "查看待审批 · 1 项" })).not.toBeInTheDocument());
   });
 
@@ -465,10 +661,18 @@ describe("AgentChatPanel", () => {
     const panel = screen.getByRole("article", { name: "创作助手 导演对话" });
     const body = within(panel).getByRole("region", { name: "对话" });
     expect(body).not.toContainElement(screen.getByRole("form", { name: "发送新任务" }));
-    act(() => client.setQueryData<AssistantTurnStream[]>(runAssistantStreamKey(PROJECT_ID, current.id), [{
-      taskId: "stream-task", stepIndex: 0, streamEpoch: 1, chunkIndex: 1,
-      text: "正在收到的第一段回复", status: "STREAMING",
-    }]));
+    act(() =>
+      client.setQueryData<AssistantTurnStream[]>(runAssistantStreamKey(PROJECT_ID, current.id), [
+        {
+          taskId: "stream-task",
+          stepIndex: 0,
+          streamEpoch: 1,
+          chunkIndex: 1,
+          text: "正在收到的第一段回复",
+          status: "STREAMING",
+        },
+      ]),
+    );
     expect(await within(body).findByText("正在收到的第一段回复")).toBeInTheDocument();
     expect(body.querySelector(`[data-message-id="${current.id}"]`)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "停止" })).toBeEnabled();
@@ -479,13 +683,13 @@ describe("AgentChatPanel", () => {
     const requests: CreateRunRequest[] = [];
     server.use(
       http.post(`${RUNS_URL}/preflight`, async ({ request }) => {
-        expect(await request.json()).toMatchObject({agentId:AGENT_ID,skillSelection:{mode:"NONE",skills:[]}});
+        expect(await request.json()).toMatchObject({ agentId: AGENT_ID, skillSelection: { mode: "NONE", skills: [] } });
         checks++;
         return HttpResponse.json(PREFLIGHT);
       }),
       http.post(RUNS_URL, async ({ request }) => {
         expect(request.headers.get("Idempotency-Key")).toBeTruthy();
-        requests.push(await request.json() as CreateRunRequest);
+        requests.push((await request.json()) as CreateRunRequest);
         return persistRun();
       }),
     );
@@ -500,10 +704,18 @@ describe("AgentChatPanel", () => {
     expect(checks).toBe(1);
     expect(screen.queryByRole("region", { name: "运行前确认" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "确认开始" })).not.toBeInTheDocument();
-    expect(requests[0]).toEqual({ agentId: AGENT_ID, conversationId: CONVERSATION_ID, expectedConversationVersion: 0, instruction: TASK_TEXT,
-      expectedAgentVersion: AGENT_VERSION, expectedModelConfigSource: "mock",
-      expectedModelConfigVersion: 7, expectedSystemPromptVersion: 14,
-      selectedItemIds: ["selected-image-1"], skillSelection: {mode:"NONE",skills:[]} });
+    expect(requests[0]).toEqual({
+      agentId: AGENT_ID,
+      conversationId: CONVERSATION_ID,
+      expectedConversationVersion: 0,
+      instruction: TASK_TEXT,
+      expectedAgentVersion: AGENT_VERSION,
+      expectedModelConfigSource: "mock",
+      expectedModelConfigVersion: 7,
+      expectedSystemPromptVersion: 14,
+      selectedItemIds: ["selected-image-1"],
+      skillSelection: { mode: "NONE", skills: [] },
+    });
     await waitFor(() => expect(screen.getByRole("textbox", { name: "本次任务" })).toHaveValue(""));
     expect(screen.queryByRole("article", { name: "待发送" })).not.toBeInTheDocument();
   });
@@ -511,12 +723,19 @@ describe("AgentChatPanel", () => {
   it.each([
     { label: "missing model", preview: { modelAvailable: false }, message: "未配置 ChatModel，无法启动运行" },
     { label: "unsupported tools", preview: { toolCalling: false }, message: "当前模型未确认支持工具调用，无法运行。" },
-    { label: "missing policy version", preview: { policySnapshot: { ...PREFLIGHT.policySnapshot, systemPromptVersion: null } }, message: "运行配置已变化，请重新发送。" },
+    {
+      label: "missing policy version",
+      preview: { policySnapshot: { ...PREFLIGHT.policySnapshot, systemPromptVersion: null } },
+      message: "运行配置已变化，请重新发送。",
+    },
   ])("preserves the draft and blocks creation for $label", async ({ preview, message }) => {
     let creations = 0;
     server.use(
       http.post(`${RUNS_URL}/preflight`, () => HttpResponse.json({ ...PREFLIGHT, ...preview })),
-      http.post(RUNS_URL, () => { creations++; return persistRun(); }),
+      http.post(RUNS_URL, () => {
+        creations++;
+        return persistRun();
+      }),
     );
     mountPanel();
     const user = userEvent.setup();
@@ -531,10 +750,19 @@ describe("AgentChatPanel", () => {
     let checks = 0;
     let creations = 0;
     let release: (() => void) | undefined;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const gate = new Promise<void>(resolve => {
+      release = resolve;
+    });
     server.use(
-      http.post(`${RUNS_URL}/preflight`, async () => { checks++; await gate; return HttpResponse.json(PREFLIGHT); }),
-      http.post(RUNS_URL, () => { creations++; return persistRun(); }),
+      http.post(`${RUNS_URL}/preflight`, async () => {
+        checks++;
+        await gate;
+        return HttpResponse.json(PREFLIGHT);
+      }),
+      http.post(RUNS_URL, () => {
+        creations++;
+        return persistRun();
+      }),
     );
     mountPanel();
     const user = userEvent.setup();
@@ -559,7 +787,10 @@ describe("AgentChatPanel", () => {
     const requests: unknown[] = [];
     const keys: (string | null)[] = [];
     server.use(
-      http.post(`${RUNS_URL}/preflight`, () => { checks++; return HttpResponse.json(PREFLIGHT); }),
+      http.post(`${RUNS_URL}/preflight`, () => {
+        checks++;
+        return HttpResponse.json(PREFLIGHT);
+      }),
       http.post(RUNS_URL, async ({ request }) => {
         requests.push(await request.json());
         keys.push(request.headers.get("Idempotency-Key"));
@@ -586,8 +817,12 @@ describe("AgentChatPanel", () => {
   it("exposes startup errors outside the scrolling transcript and retains the draft", async () => {
     server.use(
       http.post(`${RUNS_URL}/preflight`, () => HttpResponse.json(PREFLIGHT)),
-      http.post(RUNS_URL, () => HttpResponse.json({ code: "INTERNAL_ERROR", detail: "服务端暂时无法完成请求。", retryable: true },
-        { status: 500, headers: { "Content-Type": "application/problem+json" } })),
+      http.post(RUNS_URL, () =>
+        HttpResponse.json(
+          { code: "INTERNAL_ERROR", detail: "服务端暂时无法完成请求。", retryable: true },
+          { status: 500, headers: { "Content-Type": "application/problem+json" } },
+        ),
+      ),
     );
     mountPanel();
     const user = userEvent.setup();
@@ -609,10 +844,21 @@ describe("AgentChatPanel", () => {
   it("pins a runtime failure above the composer when the transcript is scrolled away", async () => {
     const failed = run({ status: "FAILED" });
     storedRuns = [failed];
-    server.use(http.get(`${RUNS_URL}/${failed.id}/tasks`, () => HttpResponse.json([{
-      id: "failed-turn", kind: "AGENT_TURN", status: "FAILED", errorCode: "AGENT_TURN_FAILED",
-      input: {}, output: {}, attemptNo: 1,
-    }])));
+    server.use(
+      http.get(`${RUNS_URL}/${failed.id}/tasks`, () =>
+        HttpResponse.json([
+          {
+            id: "failed-turn",
+            kind: "AGENT_TURN",
+            status: "FAILED",
+            errorCode: "AGENT_TURN_FAILED",
+            input: {},
+            output: {},
+            attemptNo: 1,
+          },
+        ]),
+      ),
+    );
     mountPanel();
     await readyComposer();
     const card = screen.getByRole("article", { name: "创作助手 导演对话" });
@@ -634,14 +880,22 @@ describe("AgentChatPanel", () => {
     let cancellations = 0;
     let submissions = 0;
     server.use(
-      http.post(`${RUNS_URL}/${blocked.id}/cancel`, () => { cancellations++; return HttpResponse.json(blocked); }),
-      http.post(RUNS_URL, () => { submissions++; return persistRun(); }),
+      http.post(`${RUNS_URL}/${blocked.id}/cancel`, () => {
+        cancellations++;
+        return HttpResponse.json(blocked);
+      }),
+      http.post(RUNS_URL, () => {
+        submissions++;
+        return persistRun();
+      }),
     );
     const client = mountPanel(blocked);
     await userEvent.setup().type(await readyComposer(), "继续使用已完成图片创作");
     expect(await screen.findByRole("button", { name: "结束本次运行" })).toBeEnabled();
     storedRuns = [{ ...blocked, status: "FAILED", version: blocked.version + 1, updatedAt: "2026-09-26T10:00:01Z" }];
-    await act(() => client.invalidateQueries({ queryKey: ["conversation-runs", PROJECT_ID, AGENT_ID, CONVERSATION_ID] }));
+    await act(() =>
+      client.invalidateQueries({ queryKey: ["conversation-runs", PROJECT_ID, AGENT_ID, CONVERSATION_ID] }),
+    );
     await waitFor(() => expect(screen.getByRole("button", { name: "发送" })).toBeEnabled());
     expect(screen.getByRole("textbox", { name: "本次任务" })).toHaveValue("继续使用已完成图片创作");
     expect(screen.queryByRole("button", { name: "结束本次运行" })).not.toBeInTheDocument();
@@ -655,20 +909,39 @@ describe("AgentChatPanel", () => {
     const current = run({ status: "RUNNING" });
     storedRuns = [current];
     let failed = false;
-    server.use(http.get(`${RUNS_URL}/${current.id}/tasks`, () => HttpResponse.json([{
-      id: "changing-turn", kind: "AGENT_TURN", status: failed ? "FAILED" : "RUNNING",
-      errorCode: failed ? "AGENT_TURN_FAILED" : null, input: {}, output: {}, attemptNo: 1,
-    }])));
+    server.use(
+      http.get(`${RUNS_URL}/${current.id}/tasks`, () =>
+        HttpResponse.json([
+          {
+            id: "changing-turn",
+            kind: "AGENT_TURN",
+            status: failed ? "FAILED" : "RUNNING",
+            errorCode: failed ? "AGENT_TURN_FAILED" : null,
+            input: {},
+            output: {},
+            attemptNo: 1,
+          },
+        ]),
+      ),
+    );
     const client = mountPanel();
     await screen.findByRole("article", { name: "你" });
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     failed = true;
     storedRuns = [{ ...current, status: "BLOCKED", version: current.version + 1 }];
-    act(() => projectCacheCallbacks(client, PROJECT_ID).onChange({
-      projectId: PROJECT_ID, seq: 1, eventId: "event-failed-run", type: "agent.run.changed", schemaVersion: 1,
-      aggregateId: current.id, aggregateVersion: current.version + 1,
-      payload: { runId: current.id, status: "BLOCKED" }, occurredAt: NOW,
-    }));
+    act(() =>
+      projectCacheCallbacks(client, PROJECT_ID).onChange({
+        projectId: PROJECT_ID,
+        seq: 1,
+        eventId: "event-failed-run",
+        type: "agent.run.changed",
+        schemaVersion: 1,
+        aggregateId: current.id,
+        aggregateVersion: current.version + 1,
+        payload: { runId: current.id, status: "BLOCKED" },
+        occurredAt: NOW,
+      }),
+    );
     const error = await screen.findByRole("alert");
     await waitFor(() => expect(error).toHaveTextContent("模型回合未能完成"));
     expect(error.closest(".agent-chat-body")).toBeNull();
@@ -679,8 +952,14 @@ describe("AgentChatPanel", () => {
     let checks = 0;
     let creations = 0;
     server.use(
-      http.post(`${RUNS_URL}/preflight`, () => { checks++; return HttpResponse.json(PREFLIGHT); }),
-      http.post(RUNS_URL, () => { creations++; return persistRun(); }),
+      http.post(`${RUNS_URL}/preflight`, () => {
+        checks++;
+        return HttpResponse.json(PREFLIGHT);
+      }),
+      http.post(RUNS_URL, () => {
+        creations++;
+        return persistRun();
+      }),
     );
     mountPanel();
     const user = userEvent.setup();
@@ -702,8 +981,14 @@ describe("AgentChatPanel", () => {
     let checks = 0;
     let creations = 0;
     server.use(
-      http.post(`${RUNS_URL}/preflight`, () => { checks++; return HttpResponse.json(PREFLIGHT); }),
-      http.post(RUNS_URL, () => { creations++; return persistRun(); }),
+      http.post(`${RUNS_URL}/preflight`, () => {
+        checks++;
+        return HttpResponse.json(PREFLIGHT);
+      }),
+      http.post(RUNS_URL, () => {
+        creations++;
+        return persistRun();
+      }),
     );
     mountPanel(run({ id: "other-run", conversationId: "other-conversation", status: "RUNNING" }));
     const user = userEvent.setup();
@@ -731,13 +1016,21 @@ describe("AgentChatPanel", () => {
 
   it("restores a persisted conversation and prepends older turns in chronological order", async () => {
     const current = run({ id: "run-latest", conversationTurn: 2, status: "SUCCEEDED", instruction: "最新任务内容" });
-    const historical = run({ id: "run-old", conversationTurn: 1, status: "SUCCEEDED", instruction: "历史任务内容",
-      createdAt: "2026-09-25T10:00:00Z" });
-    server.use(http.get(`${CONVERSATIONS_URL}/${CONVERSATION_ID}/runs`, ({ request }) => {
-      const cursor = new URL(request.url).searchParams.get("cursor");
-      return HttpResponse.json(cursor ? { items: [historical], nextCursor: null }
-        : { items: [current], nextCursor: "older-page" });
-    }));
+    const historical = run({
+      id: "run-old",
+      conversationTurn: 1,
+      status: "SUCCEEDED",
+      instruction: "历史任务内容",
+      createdAt: "2026-09-25T10:00:00Z",
+    });
+    server.use(
+      http.get(`${CONVERSATIONS_URL}/${CONVERSATION_ID}/runs`, ({ request }) => {
+        const cursor = new URL(request.url).searchParams.get("cursor");
+        return HttpResponse.json(
+          cursor ? { items: [historical], nextCursor: null } : { items: [current], nextCursor: "older-page" },
+        );
+      }),
+    );
     mountPanel();
     const user = userEvent.setup();
     expect(await screen.findByRole("article", { name: "你" })).toHaveTextContent(current.instruction);
@@ -754,11 +1047,21 @@ describe("AgentChatPanel", () => {
     server.use(
       http.post(`${RUNS_URL}/preflight`, () => {
         checks++;
-        return checks === 1 ? HttpResponse.json(PREFLIGHT) : HttpResponse.json({
-          title: "核对失败", detail: "运行前配置当前不可用。", code: "PREFLIGHT_UNAVAILABLE",
-        }, { status: 503, headers: { "Content-Type": "application/problem+json" } });
+        return checks === 1
+          ? HttpResponse.json(PREFLIGHT)
+          : HttpResponse.json(
+              {
+                title: "核对失败",
+                detail: "运行前配置当前不可用。",
+                code: "PREFLIGHT_UNAVAILABLE",
+              },
+              { status: 503, headers: { "Content-Type": "application/problem+json" } },
+            );
       }),
-      http.post(RUNS_URL, () => { creations++; return persistRun(); }),
+      http.post(RUNS_URL, () => {
+        creations++;
+        return persistRun();
+      }),
     );
     mountPanel();
     const user = userEvent.setup();
@@ -781,7 +1084,9 @@ describe("AgentChatPanel", () => {
   it("preserves a new composer draft when the preceding run finishes submitting", async () => {
     let creations = 0;
     let releaseResponse: (() => void) | undefined;
-    const responseGate = new Promise<void>((resolve) => { releaseResponse = resolve; });
+    const responseGate = new Promise<void>(resolve => {
+      releaseResponse = resolve;
+    });
     server.use(
       http.post(`${RUNS_URL}/preflight`, () => HttpResponse.json(PREFLIGHT)),
       http.post(RUNS_URL, async () => {
@@ -817,7 +1122,8 @@ describe("AgentChatPanel", () => {
   });
 
   it("creates the first conversation before checking a first message and pins its identity", async () => {
-    storedConversations = []; currentConversationId = null;
+    storedConversations = [];
+    currentConversationId = null;
     const operations: string[] = [];
     server.use(
       http.post(CONVERSATIONS_URL, ({ request }) => {
@@ -827,12 +1133,15 @@ describe("AgentChatPanel", () => {
       }),
       http.post(`${RUNS_URL}/preflight`, async ({ request }) => {
         operations.push("preflight");
-        expect(await request.json()).toMatchObject({conversationId:"conversation-new"});
+        expect(await request.json()).toMatchObject({ conversationId: "conversation-new" });
         return HttpResponse.json({ ...PREFLIGHT, conversationId: "conversation-new" });
       }),
       http.post(RUNS_URL, async ({ request }) => {
         operations.push("create-run");
-        expect(await request.json()).toMatchObject({ conversationId: "conversation-new", expectedConversationVersion: 0 });
+        expect(await request.json()).toMatchObject({
+          conversationId: "conversation-new",
+          expectedConversationVersion: 0,
+        });
         return persistRun(run({ conversationId: "conversation-new" }));
       }),
     );
@@ -848,13 +1157,16 @@ describe("AgentChatPanel", () => {
     storedRuns = [first];
     storedConversations = [conversation({ version: 1, turnCount: 1 })];
     server.use(
-      http.post(`${RUNS_URL}/preflight`, () => HttpResponse.json({ ...PREFLIGHT,
-        conversationVersion: 1, conversationTurnCount: 1, memoryTruncated: true })),
+      http.post(`${RUNS_URL}/preflight`, () =>
+        HttpResponse.json({ ...PREFLIGHT, conversationVersion: 1, conversationTurnCount: 1, memoryTruncated: true }),
+      ),
       http.post(RUNS_URL, async ({ request }) => {
-        const body = await request.json() as CreateRunRequest;
+        const body = (await request.json()) as CreateRunRequest;
         expect(body).toMatchObject({ conversationId: CONVERSATION_ID, expectedConversationVersion: 1 });
         storedConversations = [conversation({ version: 2, turnCount: 2 })];
-        return persistRun(run({ id: "second-run", conversationTurn: 2, status: "SUCCEEDED", instruction: body.instruction }));
+        return persistRun(
+          run({ id: "second-run", conversationTurn: 2, status: "SUCCEEDED", instruction: body.instruction }),
+        );
       }),
     );
     mountPanel();
@@ -873,20 +1185,30 @@ describe("AgentChatPanel", () => {
   });
 
   it("does not submit an obsolete message when the first conversation is created after the draft changes", async () => {
-    storedConversations = []; currentConversationId = null;
+    storedConversations = [];
+    currentConversationId = null;
     let creating = false;
     let checked = false;
     const requests: CreateRunRequest[] = [];
     let releaseCreation: (() => void) | undefined;
-    const creationGate = new Promise<void>((resolve) => { releaseCreation = resolve; });
+    const creationGate = new Promise<void>(resolve => {
+      releaseCreation = resolve;
+    });
     server.use(
       http.post(CONVERSATIONS_URL, async () => {
-        creating = true; await creationGate; return persistConversation();
+        creating = true;
+        await creationGate;
+        return persistConversation();
       }),
       http.post(`${RUNS_URL}/preflight`, () => {
-        checked = true; return HttpResponse.json({ ...PREFLIGHT, conversationId: "conversation-new" });
+        checked = true;
+        return HttpResponse.json({ ...PREFLIGHT, conversationId: "conversation-new" });
       }),
-      http.post(RUNS_URL, async ({ request }) => { const body = await request.json() as CreateRunRequest; requests.push(body); return persistRun(run({ conversationId: "conversation-new", instruction: body.instruction })); }),
+      http.post(RUNS_URL, async ({ request }) => {
+        const body = (await request.json()) as CreateRunRequest;
+        requests.push(body);
+        return persistRun(run({ conversationId: "conversation-new", instruction: body.instruction }));
+      }),
     );
     mountPanel();
     const user = userEvent.setup();
@@ -911,12 +1233,17 @@ describe("AgentChatPanel", () => {
   it("keeps the old conversation and draft after creation failure, then preserves them when a new conversation opens", async () => {
     const createKeys: (string | null)[] = [];
     storedRuns = [run({ status: "SUCCEEDED" })];
-    server.use(http.post(CONVERSATIONS_URL, ({ request }) => {
-      createKeys.push(request.headers.get("Idempotency-Key"));
-      if (createKeys.length === 1) return HttpResponse.json({ title: "暂时失败", detail: "新会话未创建。" },
-        { status: 503, headers: { "Content-Type": "application/problem+json" } });
-      return persistConversation();
-    }));
+    server.use(
+      http.post(CONVERSATIONS_URL, ({ request }) => {
+        createKeys.push(request.headers.get("Idempotency-Key"));
+        if (createKeys.length === 1)
+          return HttpResponse.json(
+            { title: "暂时失败", detail: "新会话未创建。" },
+            { status: 503, headers: { "Content-Type": "application/problem+json" } },
+          );
+        return persistConversation();
+      }),
+    );
     mountPanel();
     const user = userEvent.setup();
     await screen.findByRole("article", { name: "你" });
@@ -948,10 +1275,16 @@ describe("AgentChatPanel", () => {
   it("keeps a switched conversation and its draft when a previous conversation's run returns late", async () => {
     let started = false;
     let releaseResponse: (() => void) | undefined;
-    const responseGate = new Promise<void>((resolve) => { releaseResponse = resolve; });
+    const responseGate = new Promise<void>(resolve => {
+      releaseResponse = resolve;
+    });
     server.use(
       http.post(`${RUNS_URL}/preflight`, () => HttpResponse.json(PREFLIGHT)),
-      http.post(RUNS_URL, async () => { started = true; await responseGate; return persistRun(); }),
+      http.post(RUNS_URL, async () => {
+        started = true;
+        await responseGate;
+        return persistRun();
+      }),
     );
     mountPanel();
     const user = userEvent.setup();
@@ -972,7 +1305,8 @@ describe("AgentChatPanel", () => {
   it("returns to the active run's conversation so its progress and stop control stay reachable", async () => {
     const active = run({ status: "RUNNING" });
     const selected = conversation({ id: "conversation-other", title: "另一会话" });
-    storedConversations = [selected, conversation()]; currentConversationId = selected.id;
+    storedConversations = [selected, conversation()];
+    currentConversationId = selected.id;
     storedRuns = [active];
     mountPanel(active);
     const user = userEvent.setup();
@@ -985,110 +1319,268 @@ describe("AgentChatPanel", () => {
   });
 });
 
-describe("Agent Skill submission",()=>{
-  const skillId="skill-example",skillVersionId="skill-version-example";
-  const version={id:skillVersionId,skillId,versionNumber:1,name:"warm-art",description:"Synthetic style guide",bundleHash:"synthetic-bundle",skillMd:"# Creative method",outputKinds:["IMAGE"],inputSlots:[],resources:[],assets:[],createdAt:NOW};
-  it("does not inject a saved default Skill without an explicit choice",async()=>{
-    const requests:CreateRunRequest[]=[];const preflights:unknown[]=[];
-    server.use(http.get(`/api/v1/projects/${PROJECT_ID}/agents/${AGENT_ID}/skill-binding`,()=>HttpResponse.json({agentVersion:AGENT_VERSION,skills:[{skillId,skillVersionId}]})),
-      http.get(`/api/v1/skills/${skillId}/versions/${skillVersionId}`,()=>HttpResponse.json(version)),
-      http.post(`${RUNS_URL}/preflight`,async({request})=>{preflights.push(await request.json());return HttpResponse.json(PREFLIGHT);}),
-      http.post(RUNS_URL,async({request})=>{requests.push(await request.json() as CreateRunRequest);return persistRun();}));
-    mountPanel();const user=userEvent.setup();await readyComposer();
-    const trigger=screen.getByRole("button",{name:"选择 Skill"});
+describe("Agent Skill submission", () => {
+  const skillId = "skill-example",
+    skillVersionId = "skill-version-example";
+  const version = {
+    id: skillVersionId,
+    skillId,
+    versionNumber: 1,
+    name: "warm-art",
+    description: "Synthetic style guide",
+    bundleHash: "synthetic-bundle",
+    skillMd: "# Creative method",
+    outputKinds: ["IMAGE"],
+    inputSlots: [],
+    resources: [],
+    assets: [],
+    createdAt: NOW,
+  };
+  it("does not inject a saved default Skill without an explicit choice", async () => {
+    const requests: CreateRunRequest[] = [];
+    const preflights: unknown[] = [];
+    server.use(
+      http.get(`/api/v1/projects/${PROJECT_ID}/agents/${AGENT_ID}/skill-binding`, () =>
+        HttpResponse.json({ agentVersion: AGENT_VERSION, skills: [{ skillId, skillVersionId }] }),
+      ),
+      http.get(`/api/v1/skills/${skillId}/versions/${skillVersionId}`, () => HttpResponse.json(version)),
+      http.post(`${RUNS_URL}/preflight`, async ({ request }) => {
+        preflights.push(await request.json());
+        return HttpResponse.json(PREFLIGHT);
+      }),
+      http.post(RUNS_URL, async ({ request }) => {
+        requests.push((await request.json()) as CreateRunRequest);
+        return persistRun();
+      }),
+    );
+    mountPanel();
+    const user = userEvent.setup();
+    await readyComposer();
+    const trigger = screen.getByRole("button", { name: "选择 Skill" });
     expect(trigger.closest(".agent-chat-composer-actions")).not.toBeNull();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    await user.type(screen.getByRole("textbox",{name:"本次任务"}),"创建一段文字");await user.click(screen.getByRole("button",{name:"发送"}));
-    await waitFor(()=>expect(requests).toHaveLength(1));expect(preflights).toEqual([expect.objectContaining({skillSelection:{mode:"NONE",skills:[]}})]);
-    await waitFor(()=>expect(requests).toHaveLength(1));expect(requests[0]?.skillSelection).toEqual({mode:"NONE",skills:[]});
+    await user.type(screen.getByRole("textbox", { name: "本次任务" }), "创建一段文字");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    await waitFor(() => expect(requests).toHaveLength(1));
+    expect(preflights).toEqual([expect.objectContaining({ skillSelection: { mode: "NONE", skills: [] } })]);
+    await waitFor(() => expect(requests).toHaveLength(1));
+    expect(requests[0]?.skillSelection).toEqual({ mode: "NONE", skills: [] });
   });
-  it("selects through the modal without submitting and sends the explicit selection",async()=>{
-    const preflights:Array<{skillSelection:unknown}>=[];const requests:CreateRunRequest[]=[];
+  it("selects through the modal without submitting and sends the explicit selection", async () => {
+    const preflights: Array<{ skillSelection: unknown }> = [];
+    const requests: CreateRunRequest[] = [];
     server.use(
-      http.get("/api/v1/skills",()=>HttpResponse.json({items:[{id:skillId,title:"温暖手绘",description:"Synthetic guide",currentVersionId:skillVersionId,trashed:false}],nextCursor:null,total:1})),
-      http.get(`/api/v1/skills/${skillId}/versions`,()=>HttpResponse.json([version])),
-      http.get(`/api/v1/skills/${skillId}/versions/${skillVersionId}`,()=>HttpResponse.json(version)),
-      http.post(`${RUNS_URL}/preflight`,async({request})=>{const input=await request.json() as {skillSelection:{mode:string}};preflights.push(input);
-        return HttpResponse.json({...PREFLIGHT,creativeSkills:input.skillSelection.mode==="VERSIONS"
-          ? [{skillId,skillVersionId,title:"温暖手绘",versionNumber:1,bundleHash:version.bundleHash,inputSlots:[],resources:[],assets:[]}]:[]});}),
-      http.post(RUNS_URL,async({request})=>{requests.push(await request.json() as CreateRunRequest);return persistRun();}));
-    mountPanel();const user=userEvent.setup();await user.type(await readyComposer(),"创建一段文字");
-    await user.click(screen.getByRole("button",{name:"选择 Skill"}));const dialog=await screen.findByRole("dialog");
-    await user.click(await within(dialog).findByRole("button",{name:"温暖手绘"}));
-    await waitFor(()=>expect(within(dialog).getByRole("button",{name:"使用 Skill"})).toBeEnabled());
-    await user.click(within(dialog).getByRole("button",{name:"使用 Skill"}));
-    expect(preflights).toHaveLength(0);expect(requests).toHaveLength(0);
-    await user.click(screen.getByRole("button",{name:"发送"}));
-    await waitFor(()=>expect(requests).toHaveLength(1));
-    await waitFor(()=>expect(screen.getByRole("textbox",{name:"本次任务"})).toHaveValue(""));
-    expect(preflights[0]?.skillSelection).toEqual({mode:"VERSIONS",skills:[{skillId,skillVersionId,inputs:[]}]});
-    expect(requests[0]?.skillSelection).toEqual({mode:"VERSIONS",skills:[{skillId,skillVersionId,inputs:[]}]});
-    await user.click(screen.getByRole("button",{name:"选择 Skill"}));
-    await user.click(within(await screen.findByRole("dialog")).getByRole("button",{name:"本次不使用 Skill"}));
-    expect(screen.queryByRole("button",{name:"确认开始"})).not.toBeInTheDocument();
-    await user.type(screen.getByRole("textbox",{name:"本次任务"}),"新的文字任务");
-    await user.click(screen.getByRole("button",{name:"发送"}));
-    await waitFor(()=>expect(requests).toHaveLength(2));expect(requests[1]?.skillSelection).toEqual({mode:"NONE",skills:[]});
+      http.get("/api/v1/skills", () =>
+        HttpResponse.json({
+          items: [
+            {
+              id: skillId,
+              title: "温暖手绘",
+              description: "Synthetic guide",
+              currentVersionId: skillVersionId,
+              trashed: false,
+            },
+          ],
+          nextCursor: null,
+          total: 1,
+        }),
+      ),
+      http.get(`/api/v1/skills/${skillId}/versions`, () => HttpResponse.json([version])),
+      http.get(`/api/v1/skills/${skillId}/versions/${skillVersionId}`, () => HttpResponse.json(version)),
+      http.post(`${RUNS_URL}/preflight`, async ({ request }) => {
+        const input = (await request.json()) as { skillSelection: { mode: string } };
+        preflights.push(input);
+        return HttpResponse.json({
+          ...PREFLIGHT,
+          creativeSkills:
+            input.skillSelection.mode === "VERSIONS"
+              ? [
+                  {
+                    skillId,
+                    skillVersionId,
+                    title: "温暖手绘",
+                    versionNumber: 1,
+                    bundleHash: version.bundleHash,
+                    inputSlots: [],
+                    resources: [],
+                    assets: [],
+                  },
+                ]
+              : [],
+        });
+      }),
+      http.post(RUNS_URL, async ({ request }) => {
+        requests.push((await request.json()) as CreateRunRequest);
+        return persistRun();
+      }),
+    );
+    mountPanel();
+    const user = userEvent.setup();
+    await user.type(await readyComposer(), "创建一段文字");
+    await user.click(screen.getByRole("button", { name: "选择 Skill" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(await within(dialog).findByRole("button", { name: "温暖手绘" }));
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "使用 Skill" })).toBeEnabled());
+    await user.click(within(dialog).getByRole("button", { name: "使用 Skill" }));
+    expect(preflights).toHaveLength(0);
+    expect(requests).toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    await waitFor(() => expect(requests).toHaveLength(1));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "本次任务" })).toHaveValue(""));
+    expect(preflights[0]?.skillSelection).toEqual({
+      mode: "VERSIONS",
+      skills: [{ skillId, skillVersionId, inputs: [] }],
+    });
+    expect(requests[0]?.skillSelection).toEqual({
+      mode: "VERSIONS",
+      skills: [{ skillId, skillVersionId, inputs: [] }],
+    });
+    await user.click(screen.getByRole("button", { name: "选择 Skill" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "本次不使用 Skill" }));
+    expect(screen.queryByRole("button", { name: "确认开始" })).not.toBeInTheDocument();
+    await user.type(screen.getByRole("textbox", { name: "本次任务" }), "新的文字任务");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(requests[1]?.skillSelection).toEqual({ mode: "NONE", skills: [] });
   });
-  it("saves a default binding through its independent endpoint without editing Agent instructions",async()=>{
-    let current={agentVersion:AGENT_VERSION,skills:[] as {skillId:string;skillVersionId:string}[]};const bindings:unknown[]=[];const onUpdateAgent=vi.fn();
-    server.use(http.get(`/api/v1/projects/${PROJECT_ID}/agents/${AGENT_ID}/skill-binding`,()=>HttpResponse.json(current)),
-      http.get("/api/v1/skills",()=>HttpResponse.json({items:[{id:skillId,title:"温暖手绘",description:"",currentVersionId:skillVersionId,trashed:false,version:1,createdAt:NOW,updatedAt:NOW}],nextCursor:null,total:1})),
-      http.get(`/api/v1/skills/${skillId}/versions`,()=>HttpResponse.json([{id:skillVersionId,skillId,versionNumber:1,name:"warm-art",description:"Synthetic guide",bundleHash:"synthetic",createdAt:NOW}])),
-      http.get(`/api/v1/skills/${skillId}/versions/${skillVersionId}`,()=>HttpResponse.json(version)),
-      http.put(`/api/v1/projects/${PROJECT_ID}/agents/${AGENT_ID}/skill-binding`,async({request})=>{bindings.push(await request.json());current={agentVersion:AGENT_VERSION+1,skills:[{skillId,skillVersionId}]};return HttpResponse.json(current);}));
-    mountPanel(null,{onUpdateAgent});const user=userEvent.setup();await readyComposer();await user.click(screen.getByRole("button",{name:"Agent 设置"}));
-    await user.click(screen.getByRole("combobox",{name:"选择 Skill"}));await user.click(await screen.findByRole("option",{name:"温暖手绘"}));
-    const versions=screen.getByRole("combobox",{name:"发布版本"});await waitFor(()=>expect(versions).toBeEnabled());await user.click(versions);await user.click(await screen.findByRole("option",{name:"版本 1"}));
-    await user.click(screen.getByRole("button",{name:"保存默认绑定"}));await waitFor(()=>expect(bindings).toHaveLength(1));expect(bindings[0]).toEqual({expectedAgentVersion:AGENT_VERSION,skills:[{skillId,skillVersionId}]});expect(onUpdateAgent).not.toHaveBeenCalled();
+  it("saves a default binding through its independent endpoint without editing Agent instructions", async () => {
+    let current = { agentVersion: AGENT_VERSION, skills: [] as { skillId: string; skillVersionId: string }[] };
+    const bindings: unknown[] = [];
+    const onUpdateAgent = vi.fn();
+    server.use(
+      http.get(`/api/v1/projects/${PROJECT_ID}/agents/${AGENT_ID}/skill-binding`, () => HttpResponse.json(current)),
+      http.get("/api/v1/skills", () =>
+        HttpResponse.json({
+          items: [
+            {
+              id: skillId,
+              title: "温暖手绘",
+              description: "",
+              currentVersionId: skillVersionId,
+              trashed: false,
+              version: 1,
+              createdAt: NOW,
+              updatedAt: NOW,
+            },
+          ],
+          nextCursor: null,
+          total: 1,
+        }),
+      ),
+      http.get(`/api/v1/skills/${skillId}/versions`, () =>
+        HttpResponse.json([
+          {
+            id: skillVersionId,
+            skillId,
+            versionNumber: 1,
+            name: "warm-art",
+            description: "Synthetic guide",
+            bundleHash: "synthetic",
+            createdAt: NOW,
+          },
+        ]),
+      ),
+      http.get(`/api/v1/skills/${skillId}/versions/${skillVersionId}`, () => HttpResponse.json(version)),
+      http.put(`/api/v1/projects/${PROJECT_ID}/agents/${AGENT_ID}/skill-binding`, async ({ request }) => {
+        bindings.push(await request.json());
+        current = { agentVersion: AGENT_VERSION + 1, skills: [{ skillId, skillVersionId }] };
+        return HttpResponse.json(current);
+      }),
+    );
+    mountPanel(null, { onUpdateAgent });
+    const user = userEvent.setup();
+    await readyComposer();
+    await user.click(screen.getByRole("button", { name: "Agent 设置" }));
+    await user.click(screen.getByRole("combobox", { name: "选择 Skill" }));
+    await user.click(await screen.findByRole("option", { name: "温暖手绘" }));
+    const versions = screen.getByRole("combobox", { name: "发布版本" });
+    await waitFor(() => expect(versions).toBeEnabled());
+    await user.click(versions);
+    await user.click(await screen.findByRole("option", { name: "版本 1" }));
+    await user.click(screen.getByRole("button", { name: "保存默认绑定" }));
+    await waitFor(() => expect(bindings).toHaveLength(1));
+    expect(bindings[0]).toEqual({ expectedAgentVersion: AGENT_VERSION, skills: [{ skillId, skillVersionId }] });
+    expect(onUpdateAgent).not.toHaveBeenCalled();
   });
 });
-
 
 it("pins retry feedback and restores send after exhausted retries despite a stale snapshot", async () => {
   const current = run({ status: "RUNNING" });
   storedRuns = [current];
-  server.use(http.get(`${RUNS_URL}/${current.id}/tasks`, () => HttpResponse.json([{
-    id: "model-retry-task", kind: "AGENT_TURN", status: "READY", nextActionAt: "2026-10-04T01:00:04Z",
-    attemptNo: 2, input: { schemaVersion: 1, stepIndex: 1 },
-    output: { modelRetry: { schemaVersion: 1, retryCount: 1, maxRetries: 10,
-      firstFailureAt: "2026-10-04T01:00:00Z", deadlineAt: "2026-10-04T01:05:00Z", lastErrorCode: "LLM_CALL_TIMEOUT" } },
-  }])));
+  server.use(
+    http.get(`${RUNS_URL}/${current.id}/tasks`, () =>
+      HttpResponse.json([
+        {
+          id: "model-retry-task",
+          kind: "AGENT_TURN",
+          status: "READY",
+          nextActionAt: "2026-10-04T01:00:04Z",
+          attemptNo: 2,
+          input: { schemaVersion: 1, stepIndex: 1 },
+          output: {
+            modelRetry: {
+              schemaVersion: 1,
+              retryCount: 1,
+              maxRetries: 10,
+              firstFailureAt: "2026-10-04T01:00:00Z",
+              deadlineAt: "2026-10-04T01:05:00Z",
+              lastErrorCode: "LLM_CALL_TIMEOUT",
+            },
+          },
+        },
+      ]),
+    ),
+  );
   const client = mountPanel(current);
   expect(await screen.findByText(/^下次重试：/)).toBeInTheDocument();
   expect(screen.getByText(/^下次重试：/).closest(".agent-chat-feedback")).not.toBeNull();
   expect(screen.getByRole("button", { name: "停止" })).toBeInTheDocument();
   storedRuns = [run({ status: "FAILED", updatedAt: "2026-10-04T01:05:00Z" })];
-  server.use(http.get(`${RUNS_URL}/${current.id}/tasks`, () => HttpResponse.json([{
-    id: "model-retry-task", kind: "AGENT_TURN", status: "FAILED", errorCode: "LLM_RETRY_EXHAUSTED",
-    input: { schemaVersion: 1, stepIndex: 1 },
-  }])));
+  server.use(
+    http.get(`${RUNS_URL}/${current.id}/tasks`, () =>
+      HttpResponse.json([
+        {
+          id: "model-retry-task",
+          kind: "AGENT_TURN",
+          status: "FAILED",
+          errorCode: "LLM_RETRY_EXHAUSTED",
+          input: { schemaVersion: 1, stepIndex: 1 },
+        },
+      ]),
+    ),
+  );
   await client.invalidateQueries({ queryKey: ["conversation-runs", PROJECT_ID] });
   await client.invalidateQueries({ queryKey: ["run-history-tasks", PROJECT_ID] });
   expect(await screen.findByRole("button", { name: "发送" })).toBeInTheDocument();
   expect(screen.queryByText(/^下次重试：/)).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "停止" })).not.toBeInTheDocument();
-  expect((await screen.findAllByText(/^已达到本回合配置的重试次数或恢复期限/)).some((element) =>
-    element.closest(".agent-chat-feedback"))).toBe(true);
+  expect(
+    (await screen.findAllByText(/^已达到本回合配置的重试次数或恢复期限/)).some(element =>
+      element.closest(".agent-chat-feedback"),
+    ),
+  ).toBe(true);
 });
-
 
 it("reports a failed active task read in the fixed feedback area", async () => {
   const current = run({ status: "RUNNING" });
   storedRuns = [current];
-  server.use(http.get(`${RUNS_URL}/${current.id}/tasks`, () =>
-    HttpResponse.json({ code: "SYNTHETIC_READ_FAILED" }, { status: 503 })));
+  server.use(
+    http.get(`${RUNS_URL}/${current.id}/tasks`, () =>
+      HttpResponse.json({ code: "SYNTHETIC_READ_FAILED" }, { status: 503 }),
+    ),
+  );
   mountPanel(current);
   const message = await screen.findByText("运行状态读取失败，可重新读取。");
   expect(message.closest(".agent-chat-feedback")).not.toBeNull();
   expect(screen.getByRole("button", { name: "停止" })).toBeInTheDocument();
 });
 
-
 it("localizes only the untouched empty-session title while retaining authored session titles", async () => {
   setLocale("en");
-  storedConversations = [conversation({ title: "新会话" }),
-    conversation({ id: "authored-session", title: "新会话", turnCount: 1 })];
+  storedConversations = [
+    conversation({ title: "新会话" }),
+    conversation({ id: "authored-session", title: "新会话", turnCount: 1 }),
+  ];
   mountPanel();
   await screen.findByRole("button", { name: "New session" });
   await userEvent.setup().click(screen.getByRole("button", { name: t("agent.chat.sessions") }));

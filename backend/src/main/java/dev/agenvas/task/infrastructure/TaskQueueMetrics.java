@@ -52,7 +52,7 @@ public class TaskQueueMetrics {
         register(meters, "UNKNOWN", unknown);
         register(meters, "BLOCKED", blocked);
         Gauge.builder("agenvas.tasks.ready.oldest.age.seconds", oldestReadyAgeSeconds,
-                        AtomicReference::get)
+                AtomicReference::get)
                 .description("Oldest due READY task age since last state update; -1 when unavailable")
                 .register(meters);
     }
@@ -78,10 +78,10 @@ public class TaskQueueMetrics {
         Field<Double> dueAgeSeconds = DSL.field("extract(epoch from ({0} - {1}))",
                 Double.class, now, TASK.UPDATED_AT);
         Field<Double> oldestReadyAgeSeconds = DSL.coalesce(
-                        DSL.max(DSL.greatest(DSL.inline(0.0), dueAgeSeconds))
-                                .filterWhere(TASK.STATUS.eq(Task.Status.READY.name())
-                                        .and(TASK.NEXT_ACTION_AT.le(now))),
-                        DSL.inline(0.0))
+                DSL.max(DSL.greatest(DSL.inline(0.0), dueAgeSeconds))
+                        .filterWhere(TASK.STATUS.eq(Task.Status.READY.name())
+                                .and(TASK.NEXT_ACTION_AT.le(now))),
+                DSL.inline(0.0))
                 .cast(Double.class);
         var row = dsl.select(ready, unknown, blocked, oldestReadyAgeSeconds)
                 .from(TASK)
@@ -122,5 +122,6 @@ public class TaskQueueMetrics {
      * @param blocked 等待恢复条件满足的任务数
      * @param oldestReadyAgeSeconds 最老到期 READY 任务等待秒数
      */
-    record Snapshot(long ready, long unknown, long blocked, double oldestReadyAgeSeconds) {}
+    record Snapshot(long ready, long unknown, long blocked, double oldestReadyAgeSeconds) {
+    }
 }

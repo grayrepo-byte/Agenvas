@@ -61,14 +61,22 @@ class AgentTurnRepairPostgresIT {
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private AgentRunService runs;
-    @Autowired private TaskService tasks;
-    @Autowired private AgentTurnWorker worker;
-    @Autowired private FakeGateway gateway;
-    @Autowired private JdbcClient jdbc;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private AgentInstanceService agents;
+    @Autowired
+    private AgentRunService runs;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private AgentTurnWorker worker;
+    @Autowired
+    private FakeGateway gateway;
+    @Autowired
+    private JdbcClient jdbc;
 
     @Test
     void repairsWholeInvalidRoundOnceAndBlocksAfterTwoFailedRepairs() {
@@ -109,7 +117,8 @@ class AgentTurnRepairPostgresIT {
         }
         assertThat(runs.get(owner.userId(), project.id(), exhausted.id()).status())
                 .isEqualTo(AgentRun.Status.FAILED);
-        assertThat(jdbc.sql("select active_run_id is null from project where id=:id").param("id", project.id()).query(Boolean.class).single()).isTrue();
+        assertThat(jdbc.sql("select active_run_id is null from project where id=:id").param("id", project.id())
+                .query(Boolean.class).single()).isTrue();
         assertThat(tasks.listByRun(owner.userId(), project.id(), exhausted.id()))
                 .extracting(Task::status)
                 .containsExactly(Task.Status.SUCCEEDED, Task.Status.SUCCEEDED, Task.Status.SUCCEEDED,
@@ -153,13 +162,19 @@ class AgentTurnRepairPostgresIT {
         private volatile boolean alwaysInvalid;
 
         @Override
-        public String configSource() { return "test-fake"; }
+        public String configSource() {
+            return "test-fake";
+        }
 
         @Override
-        public int configVersion() { return 1; }
+        public int configVersion() {
+            return 1;
+        }
 
         @Override
-        public Capabilities capabilities() { return new Capabilities(true, false, false); }
+        public Capabilities capabilities() {
+            return new Capabilities(true, false, false);
+        }
 
         int calls(UUID runId) {
             return callCounts.get(runId.toString()).get();
@@ -168,7 +183,8 @@ class AgentTurnRepairPostgresIT {
         @Override
         public Exchange call(List<Message> messages, List<ToolCallback> tools,
                 Map<String, Object> toolContext) {
-            if (onlyLoader(tools)) return load("TEXT");
+            if (onlyLoader(tools))
+                return load("TEXT");
             assertThat(tools.stream().map(tool -> tool.getToolDefinition().name())).contains("create_text");
             int count = callCounts.computeIfAbsent((String) toolContext.get("runId"),
                     ignored -> new AtomicInteger()).incrementAndGet();
@@ -182,8 +198,8 @@ class AgentTurnRepairPostgresIT {
                 assertThat(failedCalls.getResponses().stream().map(ToolResponseMessage.ToolResponse::id))
                         .containsExactlyElementsOf(rejected.getToolCalls().stream()
                                 .map(AssistantMessage.ToolCall::id).toList());
-                assertThat(failedCalls.getResponses()).allSatisfy(reply ->
-                        assertThat(reply.responseData()).contains("\"businessEffect\":false"));
+                assertThat(failedCalls.getResponses())
+                        .allSatisfy(reply -> assertThat(reply.responseData()).contains("\"businessEffect\":false"));
             }
             AssistantMessage response;
             if (alwaysInvalid) {

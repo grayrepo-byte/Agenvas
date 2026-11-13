@@ -62,36 +62,58 @@ import tools.jackson.databind.node.ObjectNode;
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class ImageFunctionPostgresIT {
-    @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
-    @TempDir static Path storage;
-    @DynamicPropertySource static void properties(DynamicPropertyRegistry registry) {
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    @TempDir
+    static Path storage;
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry registry) {
         registry.add("agenvas.storage.root", () -> storage.toString());
-        registry.add("agenvas.credentials.master-key-base64", () -> java.util.Base64.getEncoder().encodeToString(new byte[32]));
+        registry.add("agenvas.credentials.master-key-base64",
+                () -> java.util.Base64.getEncoder().encodeToString(new byte[32]));
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
     }
-    @Autowired IdentityService identities;
-    @Autowired ProjectService projects;
-    @Autowired ArtifactService artifacts;
-    @Autowired AssetService assets;
-    @Autowired CanvasService canvas;
-    @Autowired MediaDraftService drafts;
-    @Autowired DirectMediaTaskService direct;
-    @Autowired MediaFunctionService functions;
-    @Autowired MediaCapabilityService capabilities;
-    @Autowired MediaExecutionWorker worker;
-    @Autowired TaskService tasks;
-    @Autowired ObjectMapper mapper;
-    @Autowired WebApplicationContext webContext;
-    @Autowired dev.agenvas.usage.application.UsageService usage;
-    @Autowired JdbcClient jdbc;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    ProjectService projects;
+    @Autowired
+    ArtifactService artifacts;
+    @Autowired
+    AssetService assets;
+    @Autowired
+    CanvasService canvas;
+    @Autowired
+    MediaDraftService drafts;
+    @Autowired
+    DirectMediaTaskService direct;
+    @Autowired
+    MediaFunctionService functions;
+    @Autowired
+    MediaCapabilityService capabilities;
+    @Autowired
+    MediaExecutionWorker worker;
+    @Autowired
+    TaskService tasks;
+    @Autowired
+    ObjectMapper mapper;
+    @Autowired
+    WebApplicationContext webContext;
+    @Autowired
+    dev.agenvas.usage.application.UsageService usage;
+    @Autowired
+    JdbcClient jdbc;
     private static AdminPrincipal owner;
-    @BeforeEach void setup() {
-        if (owner == null) owner = identities.setup("synthetic-image-admin", "synthetic-image-password-123");
+    @BeforeEach
+    void setup() {
+        if (owner == null)
+            owner = identities.setup("synthetic-image-admin", "synthetic-image-password-123");
     }
 
-    @Test void keepsImageAndVideoRoutesAndGenerationDefaultsIndependent() {
+    @Test
+    void keepsImageAndVideoRoutesAndGenerationDefaultsIndependent() {
         assertThat(functions.list()).extracting(setting -> setting.operation())
                 .containsExactlyInAnyOrder(MediaFunction.values());
         var video = setting(MediaFunction.VIDEO_DEPTH_MAP);
@@ -102,8 +124,10 @@ class ImageFunctionPostgresIT {
             assertThat(setting(MediaFunction.VIDEO_DEPTH_MAP)).isEqualTo(video);
             assertThat(capabilities.defaultCapabilityId(Task.Kind.IMAGE_GENERATION)).isEqualTo(generationDefault);
             var source = source();
-            assertThatThrownBy(() -> run(source, ImageOperation.DEPTH_MAP, image.version() + 1, 1, mapper.createObjectNode(), "disabled-depth"))
-                    .isInstanceOf(ApiProblemException.class).extracting("code").isEqualTo("MEDIA_FUNCTION_UNCONFIGURED");
+            assertThatThrownBy(() -> run(source, ImageOperation.DEPTH_MAP, image.version() + 1, 1,
+                    mapper.createObjectNode(), "disabled-depth"))
+                    .isInstanceOf(ApiProblemException.class).extracting("code")
+                    .isEqualTo("MEDIA_FUNCTION_UNCONFIGURED");
             assertThat(canvas.list(owner.userId(), source.project())).hasSize(1);
         } finally {
             functions.update(MediaFunction.IMAGE_DEPTH_MAP, image.version() + 1, image.capabilityId());
@@ -121,15 +145,15 @@ class ImageFunctionPostgresIT {
                 draft.version(), "four-image-batch");
         var cards = canvas.list(owner.userId(), source.project());
         assertThat(cards).hasSize(count);
-        cards.stream().filter(card -> !card.item().id().equals(source.item())).forEach(card ->
-                assertThat(drafts.get(owner.userId(), source.project(), card.item().id())
+        cards.stream().filter(card -> !card.item().id().equals(source.item()))
+                .forEach(card -> assertThat(drafts.get(owner.userId(), source.project(), card.item().id())
                         .parameters().path("generationCount").asInt()).isEqualTo(1));
 
         String workerId = "synthetic-batch-failure";
         var leases = tasks.claimBoundMedia(workerId, count);
         assertThat(leases).hasSize(count);
-        assertThat(leases).allSatisfy(task ->
-                assertThat(task.input().path("generationCount").asInt()).isEqualTo(count));
+        assertThat(leases)
+                .allSatisfy(task -> assertThat(task.input().path("generationCount").asInt()).isEqualTo(count));
         Task failed = leases.stream().filter(task -> !task.id().equals(primary.id())).findFirst().orElseThrow();
         tasks.fail(failed, workerId, "PROVIDER_REJECTED");
         UUID failedItemId = UUID.fromString(failed.input().path("canvasItemId").asText());
@@ -153,7 +177,8 @@ class ImageFunctionPostgresIT {
                 .forEach(task -> tasks.fail(task, workerId, "PROVIDER_REJECTED"));
     }
 
-    @Test void selectsEverySuccessfulBatchOutputAndOverridesInheritedCountsOnExtraCards() {
+    @Test
+    void selectsEverySuccessfulBatchOutputAndOverridesInheritedCountsOnExtraCards() {
         var connection = capabilities.createConnection("Synthetic batch defaults", null);
         ObjectNode configuration = mapper.createObjectNode();
         configuration.putObject("defaultParameters").put("generationCount", 4);
@@ -167,7 +192,8 @@ class ImageFunctionPostgresIT {
                 "A red kite over a lake", mapper.createObjectNode(),
                 null, capability.id(), null, List.of(), List.of(), null);
         direct.run(owner.userId(), project.id(), image.artifact().id(), itemId, draft.version(), "empty-batch");
-        for (int index = 0; index < 4; index++) assertThat(worker.submitOnce("synthetic-batch-success")).isEqualTo(1);
+        for (int index = 0; index < 4; index++)
+            assertThat(worker.submitOnce("synthetic-batch-success")).isEqualTo(1);
 
         assertThat(canvas.list(owner.userId(), project.id())).hasSize(4).allSatisfy(card -> {
             assertThat(card.selectedVersion()).isNotNull();
@@ -178,19 +204,25 @@ class ImageFunctionPostgresIT {
         });
     }
 
-    @Test void rejectsStaleSettingAndCapabilityBeforeCreatingAnyResult() {
+    @Test
+    void rejectsStaleSettingAndCapabilityBeforeCreatingAnyResult() {
         var source = source();
         var setting = setting(MediaFunction.IMAGE_UPSCALE);
-        assertThatThrownBy(() -> run(source, ImageOperation.UPSCALE, setting.version() + 1, 1, mapper.createObjectNode(), "stale-setting"))
+        assertThatThrownBy(() -> run(source, ImageOperation.UPSCALE, setting.version() + 1, 1,
+                mapper.createObjectNode(), "stale-setting"))
                 .isInstanceOf(ApiProblemException.class).extracting("code").isEqualTo("MEDIA_FUNCTION_CONFLICT");
-        assertThatThrownBy(() -> run(source, ImageOperation.UPSCALE, setting.version(), 2, mapper.createObjectNode(), "stale-capability"))
+        assertThatThrownBy(() -> run(source, ImageOperation.UPSCALE, setting.version(), 2, mapper.createObjectNode(),
+                "stale-capability"))
                 .isInstanceOf(ApiProblemException.class).extracting("code").isEqualTo("MEDIA_CAPABILITY_CHANGED");
         assertThat(canvas.list(owner.userId(), source.project())).hasSize(1);
     }
 
-    @Test void freezesWorkflowAndSourceAndReplaysAfterTheRouteIsDisabled() {
-        var connection = capabilities.createConnection(UUID.randomUUID().toString(), "Synthetic image workflow", "RUNNINGHUB", null, "synthetic-runninghub-key");
-        var capability = capabilities.publishCapability(connection.id(), "Synthetic image upscale", "RUNNINGHUB_IMAGE", mapper.readTree("""
+    @Test
+    void freezesWorkflowAndSourceAndReplaysAfterTheRouteIsDisabled() {
+        var connection = capabilities.createConnection(UUID.randomUUID().toString(), "Synthetic image workflow",
+                "RUNNINGHUB", null, "synthetic-runninghub-key");
+        var capability = capabilities.publishCapability(connection.id(), "Synthetic image upscale", "RUNNINGHUB_IMAGE",
+                mapper.readTree("""
                 {"pricing":{"amount":"0.25","currency":"USD","unit":"IMAGE"},"runningHub":{
                 "schemaVersion":1,"protocolVersion":"V2","targetType":"WORKFLOW","targetId":"123",
                 "fields":[{"key":"source","label":"Source","type":"IMAGE","required":true,"nodeId":"1","fieldName":"image"},
@@ -206,20 +238,28 @@ class ImageFunctionPostgresIT {
         long version = previous.version() + 1;
         try {
             Task accepted = run(source, ImageOperation.UPSCALE, version, 1, parameters, "workflow-image");
-            assertThat(accepted.input().path("mediaInput").path("parameters").path("dynamicValues").path("source").asText()).isEqualTo(source.version().toString());
-            assertThat(accepted.input().path("mediaInput").path("parameters").path("dynamicValues").path("scale").asInt()).isEqualTo(4);
-            assertThat(accepted.input().path("mediaInput").path("runningHubContract").path("targetId").asText()).isEqualTo("123");
+            assertThat(accepted.input().path("mediaInput").path("parameters").path("dynamicValues").path("source")
+                    .asText()).isEqualTo(source.version().toString());
+            assertThat(
+                    accepted.input().path("mediaInput").path("parameters").path("dynamicValues").path("scale").asInt())
+                    .isEqualTo(4);
+            assertThat(accepted.input().path("mediaInput").path("runningHubContract").path("targetId").asText())
+                    .isEqualTo("123");
             assertThat(accepted.input().path("mediaPricing").path("amount").asText()).isEqualTo("0.25");
-            assertThat(usage.listProject(owner.userId(), source.project())).filteredOn(entry -> accepted.id().equals(entry.taskId()))
+            assertThat(usage.listProject(owner.userId(), source.project()))
+                    .filteredOn(entry -> accepted.id().equals(entry.taskId()))
                     .singleElement().satisfies(entry -> {
                         assertThat(entry.costSource()).isEqualTo("ADMIN_CONFIGURED");
                         assertThat(entry.estimatedCost()).isEqualByComparingTo("0.25");
                     });
-            assertThat(drafts.get(owner.userId(), source.project(), UUID.fromString(accepted.input().path("canvasItemId").asText())).prompt()).isEmpty();
+            assertThat(drafts.get(owner.userId(), source.project(),
+                    UUID.fromString(accepted.input().path("canvasItemId").asText())).prompt()).isEmpty();
             direct.cancelQueued(owner.userId(), source.project(), accepted.id());
             functions.update(MediaFunction.IMAGE_UPSCALE, version, null);
-            assertThat(run(source, ImageOperation.UPSCALE, version, 1, parameters, "workflow-image").id()).isEqualTo(accepted.id());
-            var changed = parameters.deepCopy(); changed.withObject("dynamicValues").put("scale", 2);
+            assertThat(run(source, ImageOperation.UPSCALE, version, 1, parameters, "workflow-image").id())
+                    .isEqualTo(accepted.id());
+            var changed = parameters.deepCopy();
+            changed.withObject("dynamicValues").put("scale", 2);
             assertThatThrownBy(() -> run(source, ImageOperation.UPSCALE, version, 1, changed, "workflow-image"))
                     .isInstanceOf(ApiProblemException.class).extracting("code").isEqualTo("DIRECT_MEDIA_CONFLICT");
             assertThat(canvas.list(owner.userId(), source.project())).hasSize(2);
@@ -229,59 +269,84 @@ class ImageFunctionPostgresIT {
         }
     }
 
-    @Test void nativeMarkupPinsAuthorizedPairRejectsMixedModesAndReplaysTheSameCommand() throws Exception {
-        var connection = capabilities.createConnection(UUID.randomUUID().toString(),"Synthetic markup","OPENAI",null,"synthetic-key");
-        var capability = capabilities.publishCapability(connection.id(),"Synthetic markup","OPENAI_GPT_IMAGE_2",
-                mapper.createObjectNode().put("model","gpt-image-2.6-flare"));
-        var previous=setting(MediaFunction.IMAGE_SMART_EDIT);
-        functions.update(MediaFunction.IMAGE_SMART_EDIT,previous.version(),capability.id());
-        var source=source(ImageAssetFixture.orientedJpeg(30,20,6));
-        var overlay=new BufferedImage(20,30,BufferedImage.TYPE_INT_ARGB); overlay.setRGB(0,0,0xffff0000);
-        var encoded=new ByteArrayOutputStream(); ImageIO.write(overlay,"png",encoded);
-        UUID markup=assets.archiveImage(owner.userId(),source.project(),new ByteArrayInputStream(encoded.toByteArray())).id();
-        long version=previous.version()+1;
+    @Test
+    void nativeMarkupPinsAuthorizedPairRejectsMixedModesAndReplaysTheSameCommand() throws Exception {
+        var connection = capabilities.createConnection(UUID.randomUUID().toString(), "Synthetic markup", "OPENAI", null,
+                "synthetic-key");
+        var capability = capabilities.publishCapability(connection.id(), "Synthetic markup", "OPENAI_GPT_IMAGE_2",
+                mapper.createObjectNode().put("model", "gpt-image-2.6-flare"));
+        var previous = setting(MediaFunction.IMAGE_SMART_EDIT);
+        functions.update(MediaFunction.IMAGE_SMART_EDIT, previous.version(), capability.id());
+        var source = source(ImageAssetFixture.orientedJpeg(30, 20, 6));
+        var overlay = new BufferedImage(20, 30, BufferedImage.TYPE_INT_ARGB);
+        overlay.setRGB(0, 0, 0xffff0000);
+        var encoded = new ByteArrayOutputStream();
+        ImageIO.write(overlay, "png", encoded);
+        UUID markup = assets
+                .archiveImage(owner.userId(), source.project(), new ByteArrayInputStream(encoded.toByteArray())).id();
+        long version = previous.version() + 1;
         try {
-            assertThatThrownBy(() -> direct.runImageOperation(owner.userId(),source.project(),source.artifact(),source.item(),source.version(),0,
-                    ImageOperation.SMART_EDIT,"blue vase",version,1,List.of(),markup,markup,mapper.createObjectNode(),"mixed-markup"))
+            assertThatThrownBy(() -> direct.runImageOperation(owner.userId(), source.project(), source.artifact(),
+                    source.item(), source.version(), 0,
+                    ImageOperation.SMART_EDIT, "blue vase", version, 1, List.of(), markup, markup,
+                    mapper.createObjectNode(), "mixed-markup"))
                     .isInstanceOf(ApiProblemException.class).extracting("code").isEqualTo("VALIDATION_ERROR");
-            assertThat(canvas.list(owner.userId(),source.project())).hasSize(1);
-            var mvc = MockMvcBuilders.webAppContextSetup(webContext).apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
-            var auth = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
-            var request = mapper.createObjectNode().put("canvasItemId",source.item().toString()).put("sourceVersionId",source.version().toString())
-                    .put("expectedCanvasItemVersion",0).put("operation","SMART_EDIT").put("instruction","blue vase")
-                    .put("expectedFunctionVersion",version).put("expectedCapabilityVersion",1).put("markupAssetId",markup.toString());
+            assertThat(canvas.list(owner.userId(), source.project())).hasSize(1);
+            var mvc = MockMvcBuilders.webAppContextSetup(webContext).apply(
+                    org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                    .build();
+            var auth = authentication(new UsernamePasswordAuthenticationToken(owner, null,
+                    List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+            var request = mapper.createObjectNode().put("canvasItemId", source.item().toString())
+                    .put("sourceVersionId", source.version().toString())
+                    .put("expectedCanvasItemVersion", 0).put("operation", "SMART_EDIT").put("instruction", "blue vase")
+                    .put("expectedFunctionVersion", version).put("expectedCapabilityVersion", 1)
+                    .put("markupAssetId", markup.toString());
             request.putObject("parameters");
-            var response = mvc.perform(post("/api/v1/projects/"+source.project()+"/artifacts/"+source.artifact()+"/image-operations")
-                    .with(auth).with(csrf()).header("Idempotency-Key","native-markup").contentType("application/json").content(request.toString()))
+            var response = mvc
+                    .perform(post("/api/v1/projects/" + source.project() + "/artifacts/" + source.artifact()
+                            + "/image-operations")
+                            .with(auth).with(csrf()).header("Idempotency-Key", "native-markup")
+                            .contentType("application/json").content(request.toString()))
                     .andExpect(status().isOk()).andReturn().getResponse();
-            Task task = tasks.get(owner.userId(),source.project(),UUID.fromString(mapper.readTree(response.getContentAsString()).path("id").asText()));
+            Task task = tasks.get(owner.userId(), source.project(),
+                    UUID.fromString(mapper.readTree(response.getContentAsString()).path("id").asText()));
             assertThat(task.input().at("/imageOperation/markupAssetId").asText()).isEqualTo(markup.toString());
-            assertThat(task.input().at("/mediaInput/images/0/versionId").asText()).isEqualTo(source.version().toString());
+            assertThat(task.input().at("/mediaInput/images/0/versionId").asText())
+                    .isEqualTo(source.version().toString());
             assertThat(task.input().at("/mediaInput/parameters/aspectRatio").asText()).isEqualTo("2:3");
             assertThat(task.input().path("prompt").asText()).contains("annotation layer", "Remove the annotations");
-            functions.update(MediaFunction.IMAGE_SMART_EDIT,version,null);
-            assertThat(direct.runImageOperation(owner.userId(),source.project(),source.artifact(),source.item(),source.version(),0,
-                    ImageOperation.SMART_EDIT,"blue vase",version,1,List.of(),null,markup,mapper.createObjectNode(),"native-markup").id()).isEqualTo(task.id());
-            assertThat(canvas.list(owner.userId(),source.project())).hasSize(2);
-            direct.cancelQueued(owner.userId(),source.project(),task.id());
-            var unsupported = capabilities.publishCapability(connection.id(),"Synthetic legacy image","OPENAI_GPT_IMAGE_2",
-                    mapper.createObjectNode().put("model","gpt-image-2"));
-            functions.update(MediaFunction.IMAGE_SMART_EDIT,version+1,unsupported.id());
-            assertThatThrownBy(() -> direct.runImageOperation(owner.userId(),source.project(),source.artifact(),source.item(),source.version(),0,
-                    ImageOperation.SMART_EDIT,"blue vase",version+2,1,List.of(),null,markup,mapper.createObjectNode(),"unsupported-markup"))
+            functions.update(MediaFunction.IMAGE_SMART_EDIT, version, null);
+            assertThat(direct.runImageOperation(owner.userId(), source.project(), source.artifact(), source.item(),
+                    source.version(), 0,
+                    ImageOperation.SMART_EDIT, "blue vase", version, 1, List.of(), null, markup,
+                    mapper.createObjectNode(), "native-markup").id()).isEqualTo(task.id());
+            assertThat(canvas.list(owner.userId(), source.project())).hasSize(2);
+            direct.cancelQueued(owner.userId(), source.project(), task.id());
+            var unsupported = capabilities.publishCapability(connection.id(), "Synthetic legacy image",
+                    "OPENAI_GPT_IMAGE_2",
+                    mapper.createObjectNode().put("model", "gpt-image-2"));
+            functions.update(MediaFunction.IMAGE_SMART_EDIT, version + 1, unsupported.id());
+            assertThatThrownBy(() -> direct.runImageOperation(owner.userId(), source.project(), source.artifact(),
+                    source.item(), source.version(), 0,
+                    ImageOperation.SMART_EDIT, "blue vase", version + 2, 1, List.of(), null, markup,
+                    mapper.createObjectNode(), "unsupported-markup"))
                     .isInstanceOf(ApiProblemException.class).extracting("code").isEqualTo("VALIDATION_ERROR");
-            assertThat(canvas.list(owner.userId(),source.project())).hasSize(2);
-            var other=source();
-            assertThatThrownBy(() -> direct.runImageOperation(owner.userId(),other.project(),other.artifact(),other.item(),other.version(),0,
-                    ImageOperation.SMART_EDIT,"blue vase",version,1,List.of(),null,markup,mapper.createObjectNode(),"foreign-markup"))
+            assertThat(canvas.list(owner.userId(), source.project())).hasSize(2);
+            var other = source();
+            assertThatThrownBy(() -> direct.runImageOperation(owner.userId(), other.project(), other.artifact(),
+                    other.item(), other.version(), 0,
+                    ImageOperation.SMART_EDIT, "blue vase", version, 1, List.of(), null, markup,
+                    mapper.createObjectNode(), "foreign-markup"))
                     .isInstanceOf(ApiProblemException.class).extracting("code").isEqualTo("ASSET_NOT_FOUND");
         } finally {
-            var current=setting(MediaFunction.IMAGE_SMART_EDIT);
-            functions.update(MediaFunction.IMAGE_SMART_EDIT,current.version(),previous.capabilityId());
+            var current = setting(MediaFunction.IMAGE_SMART_EDIT);
+            functions.update(MediaFunction.IMAGE_SMART_EDIT, current.version(), previous.capabilityId());
         }
     }
 
-    @Test void freezesSmartEditReferencesAndMaskAndReplaysWithoutAnotherAcceptance() throws Exception {
+    @Test
+    void freezesSmartEditReferencesAndMaskAndReplaysWithoutAnotherAcceptance() throws Exception {
         var connection = capabilities.createConnection(UUID.randomUUID().toString(),
                 "Synthetic smart editing", "OPENAI", null, "synthetic-smart-edit-key");
         var capability = capabilities.publishCapability(connection.id(), "Synthetic smart edit",
@@ -320,7 +385,8 @@ class ImageFunctionPostgresIT {
             assertThat(accepted.input().path("imageOperationRequest").path("parameters")).isEqualTo(parameters);
             var mediaInput = accepted.input().path("mediaInput");
             assertThat(mediaInput.propertyNames()).containsExactly("parentVersionId", "mode", "prompt",
-                    "renderedPrompt", "parameters", "capabilityId", "capabilityVersion", "images", "audios", "mentions");
+                    "renderedPrompt", "parameters", "capabilityId", "capabilityVersion", "images", "audios",
+                    "mentions");
             assertThat(mediaInput.path("parameters")).isEqualTo(mapper.readTree("""
                     {"aspectRatio":"1:1","resolution":"1K","quality":"high",
                      "transparentBackground":false,"generationCount":1}
@@ -329,16 +395,16 @@ class ImageFunctionPostgresIT {
             assertThat(images.size()).isEqualTo(3);
             assertThat(List.of(images.get(0).path("versionId").asText(), images.get(1).path("versionId").asText(),
                     images.get(2).path("versionId").asText())).containsExactly(source.version().toString(),
-                    references.get(0).toString(), references.get(1).toString());
+                            references.get(0).toString(), references.get(1).toString());
             assertThat(List.of(images.get(0).path("order").asInt(), images.get(1).path("order").asInt(),
                     images.get(2).path("order").asInt())).containsExactly(0, 1, 2);
             assertThat(mediaInput.path("prompt").asText()).isEqualTo(
                     "Edit the provided image according to this instruction. Preserve all "
-                    + "unmentioned subjects, identity, composition, and visual style. Instruction: change only the hat"
-                    + " Image 1 is the source to edit. Images 2 through 3 are additional visual references; "
-                    + "use only the traits explicitly requested and keep unrelated source content unchanged."
-                    + " Apply the requested change only in the transparent mask-guided area and "
-                    + "preserve every unmasked pixel as closely as possible.");
+                            + "unmentioned subjects, identity, composition, and visual style. Instruction: change only the hat"
+                            + " Image 1 is the source to edit. Images 2 through 3 are additional visual references; "
+                            + "use only the traits explicitly requested and keep unrelated source content unchanged."
+                            + " Apply the requested change only in the transparent mask-guided area and "
+                            + "preserve every unmasked pixel as closely as possible.");
             assertThat(mediaInput.path("renderedPrompt")).isEqualTo(mediaInput.path("prompt"));
             assertThat(accepted.input().path("imageRelayProfileId").isNull()).isTrue();
             assertThat(accepted.inputHash()).isEqualTo(Sha256.hex(accepted.input().toString()));
@@ -351,7 +417,8 @@ class ImageFunctionPostgresIT {
                     source.version(), 0, ImageOperation.SMART_EDIT, "change only the hat", functionVersion, 1,
                     references, mask, parameters, "smart-edit-snapshot").id()).isEqualTo(accepted.id());
             assertThatThrownBy(() -> direct.runImageOperation(owner.userId(), source.project(), source.artifact(),
-                    source.item(), source.version(), 0, ImageOperation.SMART_EDIT, "change only the hat", functionVersion, 1,
+                    source.item(), source.version(), 0, ImageOperation.SMART_EDIT, "change only the hat",
+                    functionVersion, 1,
                     List.of(references.get(1), references.get(0)), mask, parameters, "smart-edit-snapshot"))
                     .isInstanceOf(ApiProblemException.class).extracting("code").isEqualTo("DIRECT_MEDIA_CONFLICT");
             assertThat(canvas.list(owner.userId(), source.project())).hasSize(2);
@@ -361,42 +428,60 @@ class ImageFunctionPostgresIT {
             assertThat(jdbc.sql("select count(*) from project_event where project_id=:project")
                     .param("project", source.project()).query(Long.class).single()).isEqualTo(eventCount);
         } finally {
-            if (accepted != null) direct.cancelQueued(owner.userId(), source.project(), accepted.id());
+            if (accepted != null)
+                direct.cancelQueued(owner.userId(), source.project(), accepted.id());
             var current = setting(MediaFunction.IMAGE_SMART_EDIT);
             functions.update(MediaFunction.IMAGE_SMART_EDIT, current.version(), previous.capabilityId());
         }
     }
 
-    @Test void runsConfiguredLocalUpscaleWithoutChangingTheSource() {
+    @Test
+    void runsConfiguredLocalUpscaleWithoutChangingTheSource() {
         var source = source();
         var setting = setting(MediaFunction.IMAGE_UPSCALE);
-        var accepted = run(source, ImageOperation.UPSCALE, setting.version(), 1, mapper.createObjectNode().put("scale", 2), "local-image-upscale");
+        var accepted = run(source, ImageOperation.UPSCALE, setting.version(), 1,
+                mapper.createObjectNode().put("scale", 2), "local-image-upscale");
         assertThat(worker.submitOnce("synthetic-image-local-worker")).isEqualTo(1);
         var result = tasks.get(owner.userId(), source.project(), accepted.id());
         assertThat(result.status()).isEqualTo(Task.Status.SUCCEEDED);
-        assertThat(result.output().hasNonNull("artifactVersionId")).as("successful task result: %s", result.output()).isTrue();
+        assertThat(result.output().hasNonNull("artifactVersionId")).as("successful task result: %s", result.output())
+                .isTrue();
         var original = assets.get(owner.userId(), source.project(), source.asset()).asset();
-        var outputVersion = artifacts.requireImageVersionForTask(owner.userId(), source.project(), UUID.fromString(result.output().path("artifactVersionId").asText()));
-        assertThat(outputVersion.content().hasNonNull("assetId")).as("archived image content: %s", outputVersion.content()).isTrue();
-        var output = assets.get(owner.userId(), source.project(), UUID.fromString(outputVersion.content().path("assetId").asText())).asset();
+        var outputVersion = artifacts.requireImageVersionForTask(owner.userId(), source.project(),
+                UUID.fromString(result.output().path("artifactVersionId").asText()));
+        assertThat(outputVersion.content().hasNonNull("assetId"))
+                .as("archived image content: %s", outputVersion.content()).isTrue();
+        var output = assets.get(owner.userId(), source.project(),
+                UUID.fromString(outputVersion.content().path("assetId").asText())).asset();
         assertThat(output.width()).isEqualTo(original.width() * 2);
         assertThat(output.height()).isEqualTo(original.height() * 2);
-        assertThat(canvas.list(owner.userId(), source.project()).stream().filter(entry -> entry.item().id().equals(source.item())).findFirst().orElseThrow().item().selectedVersionId())
+        assertThat(canvas.list(owner.userId(), source.project()).stream()
+                .filter(entry -> entry.item().id().equals(source.item())).findFirst().orElseThrow().item()
+                .selectedVersionId())
                 .isEqualTo(source.version());
     }
 
-    @Test void imageHttpContractRequiresDisplayedVersionsAndRejectsClientProviderSelection() throws Exception {
+    @Test
+    void imageHttpContractRequiresDisplayedVersionsAndRejectsClientProviderSelection() throws Exception {
         var source = source();
-        var mvc = MockMvcBuilders.webAppContextSetup(webContext).apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
-        var auth = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+        var mvc = MockMvcBuilders.webAppContextSetup(webContext)
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build();
+        var auth = authentication(new UsernamePasswordAuthenticationToken(owner, null,
+                List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
         String url = "/api/v1/projects/" + source.project() + "/artifacts/" + source.artifact() + "/image-operations";
-        var request = mapper.createObjectNode().put("canvasItemId", source.item().toString()).put("sourceVersionId", source.version().toString())
-                .put("expectedCanvasItemVersion", 0).put("operation", "UPSCALE"); request.putObject("parameters").put("scale", 2);
-        mvc.perform(post(url).with(auth).with(csrf()).header("Idempotency-Key", "missing-route-versions").contentType("application/json").content(request.toString()))
+        var request = mapper.createObjectNode().put("canvasItemId", source.item().toString())
+                .put("sourceVersionId", source.version().toString())
+                .put("expectedCanvasItemVersion", 0).put("operation", "UPSCALE");
+        request.putObject("parameters").put("scale", 2);
+        mvc.perform(post(url).with(auth).with(csrf()).header("Idempotency-Key", "missing-route-versions")
+                .contentType("application/json").content(request.toString()))
                 .andExpect(status().isBadRequest());
         var setting = setting(MediaFunction.IMAGE_UPSCALE);
-        request.put("expectedFunctionVersion", setting.version()).put("expectedCapabilityVersion", 1).put("capabilityId", UUID.randomUUID().toString());
-        mvc.perform(post(url).with(auth).with(csrf()).header("Idempotency-Key", "client-provider").contentType("application/json").content(request.toString()))
+        request.put("expectedFunctionVersion", setting.version()).put("expectedCapabilityVersion", 1)
+                .put("capabilityId", UUID.randomUUID().toString());
+        mvc.perform(post(url).with(auth).with(csrf()).header("Idempotency-Key", "client-provider")
+                .contentType("application/json").content(request.toString()))
                 .andExpect(status().isBadRequest());
         assertThat(canvas.list(owner.userId(), source.project())).hasSize(1);
     }
@@ -404,18 +489,24 @@ class ImageFunctionPostgresIT {
     private dev.agenvas.provider.infrastructure.JooqMediaFunctionRepository.Setting setting(MediaFunction function) {
         return functions.list().stream().filter(entry -> entry.operation() == function).findFirst().orElseThrow();
     }
-    private record Source(UUID project, UUID artifact, UUID item, UUID version, UUID asset) {}
-    private Source source() { return source(ImageAssetFixture.encoded("png", 2, 2)); }
+    private record Source(UUID project, UUID artifact, UUID item, UUID version, UUID asset) {
+    }
+    private Source source() {
+        return source(ImageAssetFixture.encoded("png", 2, 2));
+    }
     private Source source(byte[] bytes) {
         var project = projects.create(owner.userId(), "Synthetic image tool", Project.AspectRatio.LANDSCAPE_16_9);
         var asset = assets.archiveImage(owner.userId(), project.id(), new ByteArrayInputStream(bytes)).id();
         var image = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE, "Synthetic image",
                 mapper.createObjectNode().put("assetId", asset.toString()).put("sourceType", "UPLOAD"));
-        UUID item = dev.agenvas.support.CanvasMediaFixture.place(canvas, owner.userId(), project.id(), image.artifact().id());
+        UUID item = dev.agenvas.support.CanvasMediaFixture.place(canvas, owner.userId(), project.id(),
+                image.artifact().id());
         return new Source(project.id(), image.artifact().id(), item, image.resourceDefaultVersion().id(), asset);
     }
-    private Task run(Source source, ImageOperation operation, long functionVersion, int capabilityVersion, ObjectNode parameters, String key) {
-        return direct.runImageOperation(owner.userId(), source.project(), source.artifact(), source.item(), source.version(), 0,
+    private Task run(Source source, ImageOperation operation, long functionVersion, int capabilityVersion,
+            ObjectNode parameters, String key) {
+        return direct.runImageOperation(owner.userId(), source.project(), source.artifact(), source.item(),
+                source.version(), 0,
                 operation, "", functionVersion, capabilityVersion, List.of(), null, parameters, key);
     }
 }

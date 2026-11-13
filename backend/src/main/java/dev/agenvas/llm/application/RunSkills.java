@@ -7,14 +7,16 @@ import tools.jackson.databind.JsonNode;
 
 /** Frozen availability and committed activation are separate: selection never implies use. */
 final class RunSkills {
-    private RunSkills() {}
+    private RunSkills() {
+    }
     static List<JsonNode> available(AgentRun run) {
         JsonNode selected = run.contextSnapshot().path("creativeSkills");
         return selected.isArray() ? StreamSupport.stream(selected.spliterator(), false).toList() : List.of();
     }
     static List<JsonNode> activated(AgentRun run, List<JsonNode> reads) {
-        return available(run).stream().filter(skill -> reads.stream().anyMatch(read ->
-                "SKILL.md".equals(read.path("path").asText())
-                && skill.path("skillVersionId").asText().equals(read.path("skillVersionId").asText()))).toList();
+        return available(run).stream()
+                .filter(skill -> reads.stream().anyMatch(read -> "SKILL.md".equals(read.path("path").asText())
+                        && skill.path("skillVersionId").asText().equals(read.path("skillVersionId").asText())))
+                .toList();
     }
 }

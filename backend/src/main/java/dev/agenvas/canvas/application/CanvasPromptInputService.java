@@ -50,11 +50,13 @@ public class CanvasPromptInputService {
     public static String compose(List<PromptInput> inputs, String localPrompt) {
         List<String> texts = inputs.stream().map(PromptInput::text).map(String::strip)
                 .filter(text -> !text.isEmpty()).toList();
-        if (texts.isEmpty()) return localPrompt;
+        if (texts.isEmpty())
+            return localPrompt;
         return Stream.concat(texts.stream(), Stream.of(localPrompt.strip()))
                 .filter(text -> !text.isEmpty()).collect(java.util.stream.Collectors.joining("\n\n"));
     }
 
     public record PromptInput(UUID connectionId, UUID canvasItemId, UUID artifactId,
-            UUID versionId, String title, String text) {}
+            UUID versionId, String title, String text) {
+    }
 }

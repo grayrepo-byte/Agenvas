@@ -102,8 +102,11 @@ class DirectorSceneValidatorTest {
                 s -> item(s).put("rotation", -181), s -> item(s).put("scale", 0.09),
                 s -> item(s).put("scale", 5.1),
                 s -> ((ArrayNode) s.path("objects")).add(item(s).deepCopy()),
-                s -> { for (int i = 1; i <= 32; i++) ((ArrayNode) s.path("objects"))
-                        .add(item(s).deepCopy().put("id", "item-" + i)); });
+                s -> {
+                    for (int i = 1; i <= 32; i++)
+                        ((ArrayNode) s.path("objects"))
+                                .add(item(s).deepCopy().put("id", "item-" + i));
+                });
         for (Consumer<ObjectNode> change : invalid) {
             ObjectNode scene = scene();
             change.accept(scene);
@@ -136,8 +139,11 @@ class DirectorSceneValidatorTest {
                 s -> ((ObjectNode) keyframe(s).path("camera")).put("distance", 0),
                 s -> frames(s).add(keyframe(s).deepCopy()),
                 s -> frames(s).add(keyframe(s).deepCopy().put("id", "different")),
-                s -> { for (int i = 1; i <= 24; i++) frames(s)
-                        .add(keyframe(s).deepCopy().put("id", "key-" + i).put("timeSeconds", i / 10.0)); });
+                s -> {
+                    for (int i = 1; i <= 24; i++)
+                        frames(s)
+                                .add(keyframe(s).deepCopy().put("id", "key-" + i).put("timeSeconds", i / 10.0));
+                });
         for (Consumer<ObjectNode> change : invalid) {
             ObjectNode scene = motionScene();
             change.accept(scene);
@@ -149,10 +155,12 @@ class DirectorSceneValidatorTest {
     @Test
     void motionPayloadAndValidationLimitsMatchTheOpenApiContract() {
         java.nio.file.Path directory = java.nio.file.Path.of("").toAbsolutePath();
-        while (directory != null && !java.nio.file.Files.exists(directory.resolve("contracts/openapi.yaml"))) directory = directory.getParent();
+        while (directory != null && !java.nio.file.Files.exists(directory.resolve("contracts/openapi.yaml")))
+            directory = directory.getParent();
         org.assertj.core.api.Assertions.assertThat(directory).isNotNull();
         var yaml = new org.springframework.beans.factory.config.YamlMapFactoryBean();
-        yaml.setResources(new org.springframework.core.io.FileSystemResource(directory.resolve("contracts/openapi.yaml")));
+        yaml.setResources(
+                new org.springframework.core.io.FileSystemResource(directory.resolve("contracts/openapi.yaml")));
         var document = yaml.getObject();
         var components = (java.util.Map<?, ?>) document.get("components");
         var schemas = (java.util.Map<?, ?>) components.get("schemas");
@@ -161,15 +169,19 @@ class DirectorSceneValidatorTest {
                 "DirectorCameraKeyframe", keyframe(scene)).entrySet()) {
             var schema = (java.util.Map<?, ?>) schemas.get(entry.getKey());
             org.assertj.core.api.Assertions.assertThat(entry.getValue().propertyNames())
-                    .containsExactlyInAnyOrderElementsOf(((List<?>) schema.get("required")).stream().map(String.class::cast).toList());
+                    .containsExactlyInAnyOrderElementsOf(
+                            ((List<?>) schema.get("required")).stream().map(String.class::cast).toList());
             org.assertj.core.api.Assertions.assertThat(schema.get("additionalProperties")).isEqualTo(false);
         }
-        var trackProperties = (java.util.Map<?, ?>) ((java.util.Map<?, ?>) schemas.get("DirectorCameraMotion")).get("properties");
+        var trackProperties = (java.util.Map<?, ?>) ((java.util.Map<?, ?>) schemas.get("DirectorCameraMotion"))
+                .get("properties");
         var duration = (java.util.Map<?, ?>) trackProperties.get("durationSeconds");
         org.assertj.core.api.Assertions.assertThat(duration.get("minimum")).isEqualTo(1);
         org.assertj.core.api.Assertions.assertThat(duration.get("maximum")).isEqualTo(120);
-        org.assertj.core.api.Assertions.assertThat(((java.util.Map<?, ?>) trackProperties.get("keyframes")).get("maxItems")).isEqualTo(24);
-        var keyProperties = (java.util.Map<?, ?>) ((java.util.Map<?, ?>) schemas.get("DirectorCameraKeyframe")).get("properties");
+        org.assertj.core.api.Assertions
+                .assertThat(((java.util.Map<?, ?>) trackProperties.get("keyframes")).get("maxItems")).isEqualTo(24);
+        var keyProperties = (java.util.Map<?, ?>) ((java.util.Map<?, ?>) schemas.get("DirectorCameraKeyframe"))
+                .get("properties");
         org.assertj.core.api.Assertions.assertThat(((java.util.Map<?, ?>) keyProperties.get("transition")).get("enum"))
                 .isEqualTo(List.of("LINEAR", "SMOOTH", "CUT"));
     }
@@ -182,9 +194,15 @@ class DirectorSceneValidatorTest {
         key.set("camera", camera(scene).deepCopy());
         return scene;
     }
-    private ObjectNode motion(ObjectNode scene) { return (ObjectNode) scene.path("motion"); }
-    private ArrayNode frames(ObjectNode scene) { return (ArrayNode) motion(scene).path("keyframes"); }
-    private ObjectNode keyframe(ObjectNode scene) { return (ObjectNode) frames(scene).get(0); }
+    private ObjectNode motion(ObjectNode scene) {
+        return (ObjectNode) scene.path("motion");
+    }
+    private ArrayNode frames(ObjectNode scene) {
+        return (ArrayNode) motion(scene).path("keyframes");
+    }
+    private ObjectNode keyframe(ObjectNode scene) {
+        return (ObjectNode) frames(scene).get(0);
+    }
 
     private void assertInvalid(ObjectNode scene) {
         assertThatThrownBy(() -> DirectorSceneValidator.validate(scene))
@@ -203,9 +221,15 @@ class DirectorSceneValidatorTest {
                 """);
     }
 
-    private ObjectNode camera(ObjectNode scene) { return (ObjectNode) scene.path("camera"); }
-    private ObjectNode item(ObjectNode scene) { return (ObjectNode) scene.path("objects").get(0); }
-    private ObjectNode scale(ObjectNode scene) { return (ObjectNode) item(scene).path("scale"); }
+    private ObjectNode camera(ObjectNode scene) {
+        return (ObjectNode) scene.path("camera");
+    }
+    private ObjectNode item(ObjectNode scene) {
+        return (ObjectNode) scene.path("objects").get(0);
+    }
+    private ObjectNode scale(ObjectNode scene) {
+        return (ObjectNode) item(scene).path("scale");
+    }
     private ObjectNode axisScene() {
         ObjectNode scene = scene().put("schemaVersion", 2);
         item(scene).set("scale", mapper.createObjectNode().put("x", 0.1).put("y", 5).put("z", 1.75));

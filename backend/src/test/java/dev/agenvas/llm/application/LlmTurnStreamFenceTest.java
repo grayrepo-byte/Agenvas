@@ -49,7 +49,8 @@ class LlmTurnStreamFenceTest {
     private final Task lease = mock(Task.class);
     private final AgentRun run = mock(AgentRun.class);
     private final JsonNode request = mapper.createObjectNode().put("schemaVersion", 1);
-    private final JsonNode response = codec.response(new ChatResponse(List.of(new Generation(new AssistantMessage("Visible answer")))));
+    private final JsonNode response = codec
+            .response(new ChatResponse(List.of(new Generation(new AssistantMessage("Visible answer")))));
 
     @BeforeEach
     void setup() {
@@ -57,13 +58,15 @@ class LlmTurnStreamFenceTest {
         when(lease.runId()).thenReturn(runId);
         when(lease.input()).thenReturn(mapper.createObjectNode().put("stepIndex", 0));
         when(events.recordChange(eq(owner), eq(project), any())).thenAnswer(call -> {
-            ProjectEventService.Change<?> change = ((Supplier<ProjectEventService.Change<?>>) call.getArgument(2)).get();
+            ProjectEventService.Change<?> change = ((Supplier<ProjectEventService.Change<?>>) call.getArgument(2))
+                    .get();
             return new ProjectEventService.RecordedChange<>(change.value(), null);
         });
         when(runs.find(owner, project, runId)).thenReturn(Optional.of(run));
         when(run.status()).thenReturn(AgentRun.Status.RUNNING);
         when(run.id()).thenReturn(runId);
-        when(run.policySnapshot()).thenReturn(mapper.createObjectNode().put("modelConfigVersion", 3).put("modelConfigSource", "mock"));
+        when(run.policySnapshot())
+                .thenReturn(mapper.createObjectNode().put("modelConfigVersion", 3).put("modelConfigSource", "mock"));
         when(run.nextStepIndex()).thenReturn(0);
         when(turns.find(project, runId, 0)).thenReturn(Optional.of(turn(LlmTurn.Status.REQUESTED, null)));
     }
@@ -114,7 +117,8 @@ class LlmTurnStreamFenceTest {
     void validLeaseCompletesPublicProjectionBeforeSavingProtocolAndSettlingUsage() {
         LlmTurn saved = turn(LlmTurn.Status.RESPONDED, response);
         when(turns.saveResponse(project, runId, 0, response, NOW)).thenReturn(true);
-        when(turns.find(project, runId, 0)).thenReturn(Optional.of(turn(LlmTurn.Status.REQUESTED, null)), Optional.of(saved));
+        when(turns.find(project, runId, 0)).thenReturn(Optional.of(turn(LlmTurn.Status.REQUESTED, null)),
+                Optional.of(saved));
         assertThat(save()).isEqualTo(saved);
         var order = inOrder(guard, tasks, turns, usage);
         order.verify(guard).requireActive(lease, "worker");
@@ -127,18 +131,25 @@ class LlmTurnStreamFenceTest {
 
     @Test
     void interruptedProjectionRefusesLateCheckpointBeforeResponseOrUsageWrites() {
-        doThrow(new IllegalStateException("Stream interrupted")).when(tasks).completeAgentStream(lease, "worker", "Visible answer");
+        doThrow(new IllegalStateException("Stream interrupted")).when(tasks).completeAgentStream(lease, "worker",
+                "Visible answer");
         assertThatThrownBy(this::save).isInstanceOf(IllegalStateException.class);
         verify(turns, never()).saveResponse(any(), any(), anyInt(), any(), any());
         verifyNoInteractions(usage);
     }
 
-    private LlmTurn save() { return service.saveResponseLeased(owner, project, runId, 0, 3, response, lease, "worker"); }
-    private LlmTurn turn(LlmTurn.Status status, JsonNode response) { return new LlmTurn(project, runId, 0, status, 3, request, response, NOW, null); }
+    private LlmTurn save() {
+        return service.saveResponseLeased(owner, project, runId, 0, 3, response, lease, "worker");
+    }
+    private LlmTurn turn(LlmTurn.Status status, JsonNode response) {
+        return new LlmTurn(project, runId, 0, status, 3, request, response, NOW, null);
+    }
     private static void assertConflict(Runnable action) {
         assertThatThrownBy(action::run).isInstanceOfSatisfying(ApiProblemException.class,
                 failure -> assertThat(failure.code()).isEqualTo("LLM_TURN_CONFLICT"));
     }
 
-    private enum InvalidScope { PROJECT, RUN, STEP }
+    private enum InvalidScope {
+        PROJECT, RUN, STEP
+    }
 }

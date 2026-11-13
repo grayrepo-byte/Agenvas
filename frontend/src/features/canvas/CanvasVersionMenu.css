@@ -31,7 +31,9 @@
   font-weight: 400;
 }
 
-.canvas-version-separator { background: var(--ui-border); }
+.canvas-version-separator {
+  background: var(--ui-border);
+}
 
 .canvas-version-list {
   display: flex;
@@ -52,7 +54,9 @@
   border: 1px solid transparent;
   border-radius: var(--ui-radius-md);
   background: transparent;
-  transition: background var(--ui-duration), border-color var(--ui-duration);
+  transition:
+    background var(--ui-duration),
+    border-color var(--ui-duration);
 }
 
 .canvas-version-option[aria-current="true"] {
@@ -65,9 +69,15 @@
   background: var(--ui-hover);
 }
 
-.canvas-version-option[aria-current="true"][data-highlighted] { border-color: var(--ui-accent); }
-.canvas-version-option[data-disabled] { opacity: .65; }
-.canvas-version-option[aria-current="true"][data-disabled] { opacity: 1; }
+.canvas-version-option[aria-current="true"][data-highlighted] {
+  border-color: var(--ui-accent);
+}
+.canvas-version-option[data-disabled] {
+  opacity: 0.65;
+}
+.canvas-version-option[aria-current="true"][data-disabled] {
+  opacity: 1;
+}
 
 .canvas-version-copy {
   display: flex;
@@ -77,8 +87,19 @@
   gap: var(--ui-space-1);
 }
 
-.canvas-version-heading { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: var(--ui-space-1) var(--ui-space-2); }
-.canvas-version-number { color: var(--ui-text); font-size: var(--ui-text-md); font-weight: 600; line-height: 1.4; }
+.canvas-version-heading {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ui-space-1) var(--ui-space-2);
+}
+.canvas-version-number {
+  color: var(--ui-text);
+  font-size: var(--ui-text-md);
+  font-weight: 600;
+  line-height: 1.4;
+}
 
 .canvas-version-selected {
   max-width: 100%;
@@ -93,7 +114,9 @@
   white-space: normal;
 }
 
-.canvas-version-selected > svg { color: inherit; }
+.canvas-version-selected > svg {
+  color: inherit;
+}
 
 .canvas-version-summary {
   display: -webkit-box;
@@ -116,7 +139,10 @@
   line-height: 1.5;
 }
 
-.canvas-version-footer { flex: none; padding: var(--ui-space-2); }
+.canvas-version-footer {
+  flex: none;
+  padding: var(--ui-space-2);
+}
 
 .canvas-version-hint {
   margin: 0;
@@ -127,7 +153,10 @@
   overflow-wrap: anywhere;
 }
 
-.canvas-version-status { flex: none; padding: var(--ui-space-2) var(--ui-space-4); }
+.canvas-version-status {
+  flex: none;
+  padding: var(--ui-space-2) var(--ui-space-4);
+}
 
 .canvas-version-alert {
   width: auto;
@@ -140,10 +169,24 @@
   background: var(--ui-danger-bg);
 }
 
-.canvas-version-alert [data-slot="alert-description"] { gap: var(--ui-space-1); color: var(--ui-danger); font-size: var(--ui-text-sm); }
-.canvas-version-alert button { height: auto; min-height: var(--ui-space-6); padding: var(--ui-space-1) var(--ui-space-2); color: var(--ui-text-secondary); font-size: var(--ui-text-xs); }
+.canvas-version-alert [data-slot="alert-description"] {
+  gap: var(--ui-space-1);
+  color: var(--ui-danger);
+  font-size: var(--ui-text-sm);
+}
+.canvas-version-alert button {
+  height: auto;
+  min-height: var(--ui-space-6);
+  padding: var(--ui-space-1) var(--ui-space-2);
+  color: var(--ui-text-secondary);
+  font-size: var(--ui-text-xs);
+}
 
-@media (prefers-reduced-motion: reduce) { .canvas-version-option { transition: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .canvas-version-option {
+    transition: none;
+  }
+}
 
 .canvas-version-notice {
   width: auto;
@@ -156,8 +199,21 @@
   background: var(--ui-warning-bg);
   color: var(--ui-warning);
 }
-.canvas-version-notice [data-slot="alert-description"] { color: inherit; font-size: var(--ui-text-sm); }
-.canvas-version-header > span:first-child { min-width: 0; overflow-wrap: anywhere; }
-.canvas-version-option--text { padding: var(--ui-space-3); }
+.canvas-version-notice [data-slot="alert-description"] {
+  color: inherit;
+  font-size: var(--ui-text-sm);
+}
+.canvas-version-header > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.canvas-version-option--text {
+  padding: var(--ui-space-3);
+}
 
-.canvas-version-empty { margin: 0; padding: var(--ui-space-4); color: var(--ui-text-muted); font-size: var(--ui-text-sm); }
+.canvas-version-empty {
+  margin: 0;
+  padding: var(--ui-space-4);
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-sm);
+}

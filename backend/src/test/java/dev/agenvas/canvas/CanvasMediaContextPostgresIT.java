@@ -50,12 +50,18 @@ class CanvasMediaContextPostgresIT {
         registry.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private AssetService assets;
-    @Autowired private WebApplicationContext context;
-    @Autowired private ObjectMapper mapper;
-    @Autowired private JdbcClient jdbc;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private AssetService assets;
+    @Autowired
+    private WebApplicationContext context;
+    @Autowired
+    private ObjectMapper mapper;
+    @Autowired
+    private JdbcClient jdbc;
 
     @Test
     void twoCardsKeepIndependentDraftsAndDisplayedVersions() throws Exception {
@@ -68,9 +74,9 @@ class CanvasMediaContextPostgresIT {
         String base = "/api/v1/projects/" + project.id();
 
         JsonNode resource = mapper.readTree(mvc.perform(post(base + "/artifacts")
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .header("Idempotency-Key", "branch-image")
-                        .content("{\"kind\":\"IMAGE\",\"title\":\"Shared image\",\"content\":null}"))
+                .with(auth).with(csrf()).contentType("application/json")
+                .header("Idempotency-Key", "branch-image")
+                .content("{\"kind\":\"IMAGE\",\"title\":\"Shared image\",\"content\":null}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         UUID artifactId = UUID.fromString(resource.path("id").asText());
         UUID firstVersion = addVersion(project.id(), artifactId, 1);
@@ -86,13 +92,13 @@ class CanvasMediaContextPostgresIT {
         String firstDraft = base + "/canvas-items/" + firstCard + "/media-draft";
         String secondDraft = base + "/canvas-items/" + secondCard + "/media-draft";
         mvc.perform(put(firstDraft).with(auth).with(csrf()).contentType("application/json")
-                        .content("{\"expectedVersion\":0,\"prompt\":\"first branch\"}"))
+                .content("{\"expectedVersion\":0,\"prompt\":\"first branch\"}"))
                 .andExpect(status().isOk());
         mvc.perform(put(secondDraft).with(auth).with(csrf()).contentType("application/json")
-                        .content("{\"expectedVersion\":0,\"prompt\":\"second branch\"}"))
+                .content("{\"expectedVersion\":0,\"prompt\":\"second branch\"}"))
                 .andExpect(status().isOk());
         mvc.perform(put(firstDraft).with(auth).with(csrf()).contentType("application/json")
-                        .content("{\"expectedVersion\":0,\"prompt\":\"stale overwrite\"}"))
+                .content("{\"expectedVersion\":0,\"prompt\":\"stale overwrite\"}"))
                 .andExpect(status().isConflict());
 
         JsonNode first = read(mvc, auth, firstDraft);
@@ -115,11 +121,11 @@ class CanvasMediaContextPostgresIT {
         assertThat(taskIds(read(mvc, auth, base + "/artifacts/" + artifactId
                 + "/run?canvasItemId=" + secondResultCard))).containsExactly(secondTask.path("id").asText());
         assertThat(jdbc.sql("select expected_current_version_id from task_artifact_target "
-                        + "where task_id=:taskId")
+                + "where task_id=:taskId")
                 .param("taskId", UUID.fromString(firstTask.path("id").asText()))
                 .query(UUID.class).single()).isEqualTo(firstVersion);
         assertThat(jdbc.sql("select expected_current_version_id from task_artifact_target "
-                        + "where task_id=:taskId")
+                + "where task_id=:taskId")
                 .param("taskId", UUID.fromString(secondTask.path("id").asText()))
                 .query(UUID.class).single()).isEqualTo(secondVersion);
         cancel(mvc, auth, base, firstTask.path("id").asText());
@@ -138,18 +144,18 @@ class CanvasMediaContextPostgresIT {
                 .isEqualTo(secondVersion.toString());
 
         assertThat(jdbc.sql("select count(*) from project_event where project_id=:projectId "
-                        + "and type='media.draft.changed' and payload_json->>'canvasItemId'=:itemId")
+                + "and type='media.draft.changed' and payload_json->>'canvasItemId'=:itemId")
                 .param("projectId", project.id()).param("itemId", firstCard.toString())
                 .query(Integer.class).single()).isEqualTo(1);
         UUID uploadAssetId = ImageAssetFixture.archive(assets, owner.userId(), project.id());
         UUID uploadTarget = UUID.randomUUID();
         JsonNode sourceBeforeUpload = read(mvc, auth, firstDraft);
         JsonNode uploaded = mapper.readTree(mvc.perform(post(base + "/canvas-items/"
-                        + firstCard + "/upload-version")
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .content("{\"targetItemId\":\"" + uploadTarget
-                                + "\",\"expectedVersion\":0,\"content\":{\"sourceType\":\"UPLOAD\","
-                                + "\"assetId\":\"" + uploadAssetId + "\"}}"))
+                + firstCard + "/upload-version")
+                .with(auth).with(csrf()).contentType("application/json")
+                .content("{\"targetItemId\":\"" + uploadTarget
+                        + "\",\"expectedVersion\":0,\"content\":{\"sourceType\":\"UPLOAD\","
+                        + "\"assetId\":\"" + uploadAssetId + "\"}}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         UUID uploadedVersion = UUID.fromString(uploaded.path("selectedVersionId").asText());
         assertThat(uploaded.path("title").asText()).isEqualTo("Shared image · 上传");
@@ -168,11 +174,11 @@ class CanvasMediaContextPostgresIT {
         assertThat(uploadDraft.path("displayMode").asText()).isEqualTo("RESULT");
         assertThat(read(mvc, auth, firstDraft)).isEqualTo(sourceBeforeUpload);
         JsonNode replayedUpload = mapper.readTree(mvc.perform(post(base + "/canvas-items/"
-                        + firstCard + "/upload-version")
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .content("{\"targetItemId\":\"" + uploadTarget
-                                + "\",\"expectedVersion\":0,\"content\":{\"sourceType\":\"UPLOAD\","
-                                + "\"assetId\":\"" + uploadAssetId + "\"}}"))
+                + firstCard + "/upload-version")
+                .with(auth).with(csrf()).contentType("application/json")
+                .content("{\"targetItemId\":\"" + uploadTarget
+                        + "\",\"expectedVersion\":0,\"content\":{\"sourceType\":\"UPLOAD\","
+                        + "\"assetId\":\"" + uploadAssetId + "\"}}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         assertThat(replayedUpload.path("selectedVersionId").asText())
                 .isEqualTo(uploadedVersion.toString());
@@ -184,9 +190,9 @@ class CanvasMediaContextPostgresIT {
                 .path("resourceDefaultVersionId").asText()).isEqualTo(secondVersion.toString());
 
         JsonNode emptyResource = mapper.readTree(mvc.perform(post(base + "/artifacts")
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .header("Idempotency-Key", "empty-upload-image")
-                        .content("{\"kind\":\"IMAGE\",\"title\":\"Empty upload\",\"content\":null}"))
+                .with(auth).with(csrf()).contentType("application/json")
+                .header("Idempotency-Key", "empty-upload-image")
+                .content("{\"kind\":\"IMAGE\",\"title\":\"Empty upload\",\"content\":null}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         UUID emptyArtifactId = UUID.fromString(emptyResource.path("id").asText());
         UUID emptyCard = UUID.randomUUID();
@@ -196,25 +202,25 @@ class CanvasMediaContextPostgresIT {
                 + "\",\"expectedVersion\":0,\"content\":{\"sourceType\":\"UPLOAD\","
                 + "\"assetId\":\"" + emptyUploadAssetId + "\"}}";
         JsonNode filledEmptyCard = mapper.readTree(mvc.perform(post(base + "/canvas-items/"
-                        + emptyCard + "/upload-version")
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .content(emptyUploadBody))
+                + emptyCard + "/upload-version")
+                .with(auth).with(csrf()).contentType("application/json")
+                .content(emptyUploadBody))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         assertThat(filledEmptyCard.path("id").asText()).isEqualTo(emptyCard.toString());
         assertThat(filledEmptyCard.path("selectedVersionId").isTextual()).isTrue();
         assertThat(jdbc.sql("select count(*) from canvas_item where project_id=:projectId "
-                        + "and subject_id=:artifactId")
+                + "and subject_id=:artifactId")
                 .param("projectId", project.id()).param("artifactId", emptyArtifactId)
                 .query(Integer.class).single()).isEqualTo(1);
         assertThat(jdbc.sql("select count(*) from canvas_connection where project_id=:projectId "
-                        + "and relation_type='MEDIA_DERIVATION' "
-                        + "and source_canvas_item_id=:itemId")
+                + "and relation_type='MEDIA_DERIVATION' "
+                + "and source_canvas_item_id=:itemId")
                 .param("projectId", project.id()).param("itemId", emptyCard)
                 .query(Integer.class).single()).isZero();
         JsonNode replayedEmptyUpload = mapper.readTree(mvc.perform(post(base + "/canvas-items/"
-                        + emptyCard + "/upload-version")
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .content(emptyUploadBody))
+                + emptyCard + "/upload-version")
+                .with(auth).with(csrf()).contentType("application/json")
+                .content(emptyUploadBody))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         assertThat(replayedEmptyUpload.path("selectedVersionId").asText())
                 .isEqualTo(filledEmptyCard.path("selectedVersionId").asText());
@@ -225,12 +231,13 @@ class CanvasMediaContextPostgresIT {
                 .put("expectedVersion", 0).put("purpose", "BRUSH_MARKUP")
                 .put("sourceVersionId", firstVersion.toString())
                 .set("content", mapper.createObjectNode().put("sourceType", "UPLOAD")
-                        .put("assetId", uploadAssetId.toString())).toString();
+                        .put("assetId", uploadAssetId.toString()))
+                .toString();
         Integer taskCount = jdbc.sql("select count(*) from task where project_id=:id")
                 .param("id", project.id()).query(Integer.class).single();
         JsonNode marked = mapper.readTree(mvc.perform(post(base + "/canvas-items/"
-                        + firstCard + "/upload-version").with(auth).with(csrf())
-                        .contentType("application/json").content(markupBody))
+                + firstCard + "/upload-version").with(auth).with(csrf())
+                .contentType("application/json").content(markupBody))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         assertThat(marked.path("title").asText()).isEqualTo("Shared image · 画笔标注");
         assertThat(marked.path("selectedVersion").path("createdByKind").asText()).isEqualTo("USER");
@@ -241,8 +248,8 @@ class CanvasMediaContextPostgresIT {
         assertThat(read(mvc, auth, base + "/canvas-items/" + markupTarget + "/media-draft")
                 .path("prompt").asText()).isEmpty();
         JsonNode markupReplay = mapper.readTree(mvc.perform(post(base + "/canvas-items/"
-                        + firstCard + "/upload-version").with(auth).with(csrf())
-                        .contentType("application/json").content(markupBody))
+                + firstCard + "/upload-version").with(auth).with(csrf())
+                .contentType("application/json").content(markupBody))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         assertThat(markupReplay.path("selectedVersionId")).isEqualTo(marked.path("selectedVersionId"));
         assertThat(jdbc.sql("select count(*) from task where project_id=:id")
@@ -252,20 +259,20 @@ class CanvasMediaContextPostgresIT {
         assertThat(read(mvc, auth, firstDraft)).isEqualTo(sourceBeforeUpload);
         // Same target with a different intent cannot replay an unrelated upload.
         mvc.perform(post(base + "/canvas-items/" + firstCard + "/upload-version")
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .content(markupBody.replace("BRUSH_MARKUP", "UPLOAD")))
+                .with(auth).with(csrf()).contentType("application/json")
+                .content(markupBody.replace("BRUSH_MARKUP", "UPLOAD")))
                 .andExpect(status().isBadRequest());
         String staleMarkup = markupBody.replace(markupTarget.toString(), UUID.randomUUID().toString())
                 .replace(firstVersion.toString(), secondVersion.toString());
         mvc.perform(post(base + "/canvas-items/" + firstCard + "/upload-version")
-                        .with(auth).with(csrf()).contentType("application/json").content(staleMarkup))
+                .with(auth).with(csrf()).contentType("application/json").content(staleMarkup))
                 .andExpect(status().isConflict());
         mvc.perform(post(base + "/artifacts/" + artifactId + "/image-operations")
-                        .with(auth).with(csrf()).header("Idempotency-Key", "old-ai-markup")
-                        .contentType("application/json")
-                        .content("{\"canvasItemId\":\"" + firstCard + "\",\"sourceVersionId\":\""
-                                + firstVersion + "\",\"expectedCanvasItemVersion\":0,"
-                                + "\"operation\":\"BRUSH_MARKUP\",\"parameters\":{}}"))
+                .with(auth).with(csrf()).header("Idempotency-Key", "old-ai-markup")
+                .contentType("application/json")
+                .content("{\"canvasItemId\":\"" + firstCard + "\",\"sourceVersionId\":\""
+                        + firstVersion + "\",\"expectedCanvasItemVersion\":0,"
+                        + "\"operation\":\"BRUSH_MARKUP\",\"parameters\":{}}"))
                 .andExpect(status().isBadRequest());
 
         // The director archives a local render and editable geometry without submitting a model Task.
@@ -285,8 +292,8 @@ class CanvasMediaContextPostgresIT {
                 .put("assetId", uploadAssetId.toString()));
         String directorUrl = base + "/canvas-items/" + firstCard + "/upload-version";
         JsonNode directed = mapper.readTree(mvc.perform(post(directorUrl)
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .content(directorRequest.toString()))
+                .with(auth).with(csrf()).contentType("application/json")
+                .content(directorRequest.toString()))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         assertThat(directed.path("title").asText()).isEqualTo("Shared image · 3D 导演台");
         assertThat(directed.path("selectedVersion").path("createdByKind").asText()).isEqualTo("USER");
@@ -299,15 +306,15 @@ class CanvasMediaContextPostgresIT {
         assertThat(directed.path("selectedVersion").path("frozenInput").path("directorScene"))
                 .isEqualTo(directorScene);
         JsonNode directorReplay = mapper.readTree(mvc.perform(post(directorUrl)
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .content(directorRequest.toString()))
+                .with(auth).with(csrf()).contentType("application/json")
+                .content(directorRequest.toString()))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         assertThat(directorReplay.path("selectedVersionId")).isEqualTo(directed.path("selectedVersionId"));
         var changedDirector = directorRequest.deepCopy();
         ((tools.jackson.databind.node.ObjectNode) changedDirector.path("directorScene").path("camera"))
                 .put("azimuth", 45);
         mvc.perform(post(directorUrl).with(auth).with(csrf()).contentType("application/json")
-                        .content(changedDirector.toString()))
+                .content(changedDirector.toString()))
                 .andExpect(status().isConflict());
 
         // V2 preserves independent dimensions; the immutable V1 command remains replayable verbatim.
@@ -319,7 +326,7 @@ class CanvasMediaContextPostgresIT {
         var axisRequest = directorRequest.deepCopy().put("targetItemId", axisTarget.toString());
         axisRequest.set("directorScene", axisScene);
         JsonNode axisSaved = mapper.readTree(mvc.perform(post(directorUrl)
-                        .with(auth).with(csrf()).contentType("application/json").content(axisRequest.toString()))
+                .with(auth).with(csrf()).contentType("application/json").content(axisRequest.toString()))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         assertThat(axisSaved.path("selectedVersion").path("frozenInput").path("directorScene"))
                 .isEqualTo(axisScene);
@@ -330,7 +337,7 @@ class CanvasMediaContextPostgresIT {
         assertThat(savedDirectorScene(read(mvc, auth, base + "/snapshot").path("canvas"), axisTarget))
                 .isEqualTo(axisScene);
         JsonNode axisReplay = mapper.readTree(mvc.perform(post(directorUrl)
-                        .with(auth).with(csrf()).contentType("application/json").content(axisRequest.toString()))
+                .with(auth).with(csrf()).contentType("application/json").content(axisRequest.toString()))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         assertThat(axisReplay.path("selectedVersionId")).isEqualTo(axisSaved.path("selectedVersionId"));
         for (String axis : List.of("x", "y", "z")) {
@@ -338,20 +345,20 @@ class CanvasMediaContextPostgresIT {
             ((tools.jackson.databind.node.ObjectNode) changedAxisRequest.path("directorScene")
                     .path("objects").get(0).path("scale")).put(axis, 3.5);
             mvc.perform(post(directorUrl).with(auth).with(csrf()).contentType("application/json")
-                            .content(changedAxisRequest.toString()))
+                    .content(changedAxisRequest.toString()))
                     .andExpect(status().isConflict());
         }
         var invalidAxisRequest = axisRequest.deepCopy().put("targetItemId", UUID.randomUUID().toString());
         ((tools.jackson.databind.node.ObjectNode) invalidAxisRequest.path("directorScene")
                 .path("objects").get(0).path("scale")).put("x", 0);
         mvc.perform(post(directorUrl).with(auth).with(csrf()).contentType("application/json")
-                        .content(invalidAxisRequest.toString()))
+                .content(invalidAxisRequest.toString()))
                 .andExpect(status().isBadRequest());
         var mismatchedVersionRequest = axisRequest.deepCopy().put("targetItemId", UUID.randomUUID().toString());
         ((tools.jackson.databind.node.ObjectNode) mismatchedVersionRequest.path("directorScene"))
                 .put("schemaVersion", 1);
         mvc.perform(post(directorUrl).with(auth).with(csrf()).contentType("application/json")
-                        .content(mismatchedVersionRequest.toString()))
+                .content(mismatchedVersionRequest.toString()))
                 .andExpect(status().isBadRequest());
         // Timed cameras use the same immutable scene archive and exact command identity as static captures.
         var motionScene = axisScene.deepCopy().put("schemaVersion", 3);
@@ -361,61 +368,68 @@ class CanvasMediaContextPostgresIT {
         startCamera.set("camera", motionScene.path("camera").deepCopy());
         var endCamera = track.addObject().put("id", "end").put("name", "Side")
                 .put("timeSeconds", 5).put("transition", "SMOOTH");
-        endCamera.set("camera", ((tools.jackson.databind.node.ObjectNode) motionScene.path("camera").deepCopy()).put("azimuth", 90));
+        endCamera.set("camera",
+                ((tools.jackson.databind.node.ObjectNode) motionScene.path("camera").deepCopy()).put("azimuth", 90));
         UUID motionTarget = UUID.randomUUID();
         var motionRequest = directorRequest.deepCopy().put("targetItemId", motionTarget.toString());
         motionRequest.set("directorScene", motionScene);
         JsonNode motionSaved = mapper.readTree(mvc.perform(post(directorUrl).with(auth).with(csrf())
-                        .contentType("application/json").content(motionRequest.toString()))
+                .contentType("application/json").content(motionRequest.toString()))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         assertThat(savedDirectorScene(read(mvc, auth, base + "/canvas/items"), motionTarget)).isEqualTo(motionScene);
-        assertThat(savedDirectorScene(read(mvc, auth, base + "/snapshot").path("canvas"), motionTarget)).isEqualTo(motionScene);
+        assertThat(savedDirectorScene(read(mvc, auth, base + "/snapshot").path("canvas"), motionTarget))
+                .isEqualTo(motionScene);
         JsonNode motionReplay = mapper.readTree(mvc.perform(post(directorUrl).with(auth).with(csrf())
-                        .contentType("application/json").content(motionRequest.toString()))
+                .contentType("application/json").content(motionRequest.toString()))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         assertThat(motionReplay.path("selectedVersionId")).isEqualTo(motionSaved.path("selectedVersionId"));
         var changedMotion = motionRequest.deepCopy();
-        ((tools.jackson.databind.node.ObjectNode) changedMotion.path("directorScene").path("motion").path("keyframes").get(1))
+        ((tools.jackson.databind.node.ObjectNode) changedMotion.path("directorScene").path("motion").path("keyframes")
+                .get(1))
                 .put("timeSeconds", 4);
-        mvc.perform(post(directorUrl).with(auth).with(csrf()).contentType("application/json").content(changedMotion.toString()))
+        mvc.perform(post(directorUrl).with(auth).with(csrf()).contentType("application/json")
+                .content(changedMotion.toString()))
                 .andExpect(status().isConflict());
         var invalidMotion = changedMotion.put("targetItemId", UUID.randomUUID().toString());
-        ((tools.jackson.databind.node.ObjectNode) invalidMotion.path("directorScene").path("motion").path("keyframes").get(1))
+        ((tools.jackson.databind.node.ObjectNode) invalidMotion.path("directorScene").path("motion").path("keyframes")
+                .get(1))
                 .put("timeSeconds", 0);
-        mvc.perform(post(directorUrl).with(auth).with(csrf()).contentType("application/json").content(invalidMotion.toString()))
+        mvc.perform(post(directorUrl).with(auth).with(csrf()).contentType("application/json")
+                .content(invalidMotion.toString()))
                 .andExpect(status().isBadRequest());
 
         JsonNode legacyReplayAfterV2 = mapper.readTree(mvc.perform(post(directorUrl)
-                        .with(auth).with(csrf()).contentType("application/json").content(directorRequest.toString()))
+                .with(auth).with(csrf()).contentType("application/json").content(directorRequest.toString()))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         assertThat(legacyReplayAfterV2.path("selectedVersionId")).isEqualTo(directed.path("selectedVersionId"));
         assertThat(legacyReplayAfterV2.path("selectedVersion").path("frozenInput").path("directorScene"))
                 .isEqualTo(directorScene);
 
         mvc.perform(post(directorUrl).with(auth).with(csrf()).contentType("application/json")
-                        .content(directorRequest.deepCopy().put("targetItemId", UUID.randomUUID().toString())
-                                .put("expectedVersion", 99).toString()))
+                .content(directorRequest.deepCopy().put("targetItemId", UUID.randomUUID().toString())
+                        .put("expectedVersion", 99).toString()))
                 .andExpect(status().isConflict());
         mvc.perform(post(directorUrl).with(auth).with(csrf()).contentType("application/json")
-                        .content(directorRequest.deepCopy().put("targetItemId", UUID.randomUUID().toString())
-                                .put("sourceVersionId", secondVersion.toString()).toString()))
+                .content(directorRequest.deepCopy().put("targetItemId", UUID.randomUUID().toString())
+                        .put("sourceVersionId", secondVersion.toString()).toString()))
                 .andExpect(status().isConflict());
         mvc.perform(post(directorUrl).with(auth).with(csrf()).contentType("application/json")
-                        .content(directorRequest.deepCopy().put("targetItemId", firstCard.toString()).toString()))
+                .content(directorRequest.deepCopy().put("targetItemId", firstCard.toString()).toString()))
                 .andExpect(status().isBadRequest());
         var outsider = authentication(new UsernamePasswordAuthenticationToken(
                 new AdminPrincipal(UUID.randomUUID(), "director-outsider"), null, List.of()));
         mvc.perform(post(directorUrl).with(outsider).with(csrf()).contentType("application/json")
-                        .content(directorRequest.toString()))
+                .content(directorRequest.toString()))
                 .andExpect(status().isNotFound());
         mvc.perform(post(directorUrl).with(csrf()).contentType("application/json")
-                        .content(directorRequest.toString()))
+                .content(directorRequest.toString()))
                 .andExpect(status().isUnauthorized());
         JsonNode savedDirector = read(mvc, auth, base + "/canvas/items");
         assertThat(selectedVersion(savedDirector, firstCard)).isEqualTo(firstVersion.toString());
         JsonNode directorNode = null;
         for (JsonNode node : savedDirector.path("items")) {
-            if (node.path("id").asText().equals(directorTarget.toString())) directorNode = node;
+            if (node.path("id").asText().equals(directorTarget.toString()))
+                directorNode = node;
         }
         assertThat(directorNode).isNotNull();
         assertThat(directorNode.path("selectedVersion").path("frozenInput").path("directorScene"))
@@ -425,14 +439,14 @@ class CanvasMediaContextPostgresIT {
         assertThat(directorDraft.path("mediaInputs").size()).isZero();
         assertThat(read(mvc, auth, firstDraft)).isEqualTo(sourceBeforeUpload);
         assertThat(jdbc.sql("select source_artifact_version_id from canvas_connection where project_id=:projectId "
-                        + "and relation_type='MEDIA_DERIVATION' and target_canvas_item_id=:target")
+                + "and relation_type='MEDIA_DERIVATION' and target_canvas_item_id=:target")
                 .param("projectId", project.id()).param("target", directorTarget)
                 .query(UUID.class).single()).isEqualTo(firstVersion);
 
         JsonNode directorResource = mapper.readTree(mvc.perform(post(base + "/artifacts")
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .header("Idempotency-Key", "empty-director-image")
-                        .content("{\"kind\":\"IMAGE\",\"title\":\"New scene\",\"content\":null}"))
+                .with(auth).with(csrf()).contentType("application/json")
+                .header("Idempotency-Key", "empty-director-image")
+                .content("{\"kind\":\"IMAGE\",\"title\":\"New scene\",\"content\":null}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         UUID directorArtifactId = UUID.fromString(directorResource.path("id").asText());
         UUID emptyDirector = UUID.randomUUID();
@@ -441,8 +455,8 @@ class CanvasMediaContextPostgresIT {
         emptyDirectorRequest.putNull("sourceVersionId");
         String emptyDirectorUrl = base + "/canvas-items/" + emptyDirector + "/upload-version";
         JsonNode filledDirector = mapper.readTree(mvc.perform(post(emptyDirectorUrl)
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .content(emptyDirectorRequest.toString()))
+                .with(auth).with(csrf()).contentType("application/json")
+                .content(emptyDirectorRequest.toString()))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         assertThat(filledDirector.path("id").asText()).isEqualTo(emptyDirector.toString());
         assertThat(filledDirector.path("title").asText()).isEqualTo("New scene");
@@ -450,8 +464,8 @@ class CanvasMediaContextPostgresIT {
         assertThat(filledDirector.path("selectedVersion").path("frozenInput").path("directorScene"))
                 .isEqualTo(axisScene);
         JsonNode emptyDirectorReplay = mapper.readTree(mvc.perform(post(emptyDirectorUrl)
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .content(emptyDirectorRequest.toString()))
+                .with(auth).with(csrf()).contentType("application/json")
+                .content(emptyDirectorRequest.toString()))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         assertThat(emptyDirectorReplay.path("selectedVersionId")).isEqualTo(filledDirector.path("selectedVersionId"));
         assertThat(jdbc.sql("select count(*) from canvas_item where project_id=:projectId and subject_id=:id")
@@ -460,27 +474,27 @@ class CanvasMediaContextPostgresIT {
         assertThat(jdbc.sql("select count(*) from task where project_id=:id")
                 .param("id", project.id()).query(Integer.class).single()).isEqualTo(taskCount);
         assertThat(jdbc.sql("select count(*) from canvas_connection where project_id=:projectId "
-                        + "and relation_type='MEDIA_DERIVATION' and source_canvas_item_id=:itemId")
+                + "and relation_type='MEDIA_DERIVATION' and source_canvas_item_id=:itemId")
                 .param("projectId", project.id()).param("itemId", emptyDirector)
                 .query(Integer.class).single()).isZero();
 
         JsonNode videoResource = mapper.readTree(mvc.perform(post(base + "/artifacts")
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .header("Idempotency-Key", "director-reject-video")
-                        .content("{\"kind\":\"VIDEO\",\"title\":\"Video\",\"content\":null}"))
+                .with(auth).with(csrf()).contentType("application/json")
+                .header("Idempotency-Key", "director-reject-video")
+                .content("{\"kind\":\"VIDEO\",\"title\":\"Video\",\"content\":null}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         UUID videoCard = UUID.randomUUID();
         place(mvc, auth, base, videoCard, UUID.fromString(videoResource.path("id").asText()), 5);
         mvc.perform(post(base + "/canvas-items/" + videoCard + "/upload-version")
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .content(emptyDirectorRequest.deepCopy().put("targetItemId", videoCard.toString()).toString()))
+                .with(auth).with(csrf()).contentType("application/json")
+                .content(emptyDirectorRequest.deepCopy().put("targetItemId", videoCard.toString()).toString()))
                 .andExpect(status().isBadRequest());
         assertThat(selectedVersion(read(mvc, auth, base + "/canvas/items"), videoCard)).isEmpty();
 
         mvc.perform(post(base + "/canvas/commands").with(auth).with(csrf())
-                        .contentType("application/json")
-                        .content("{\"commands\":[{\"type\":\"REMOVE\",\"itemId\":\""
-                                + firstCard + "\",\"expectedVersion\":0}]}"))
+                .contentType("application/json")
+                .content("{\"commands\":[{\"type\":\"REMOVE\",\"itemId\":\""
+                        + firstCard + "\",\"expectedVersion\":0}]}"))
                 .andExpect(status().isOk());
         assertThat(jdbc.sql("select canvas_item_id from task_artifact_target where task_id=:id")
                 .param("id", UUID.fromString(firstTask.path("id").asText()))
@@ -490,9 +504,9 @@ class CanvasMediaContextPostgresIT {
     private UUID addVersion(UUID projectId, UUID artifactId, int versionNo) {
         UUID versionId = UUID.randomUUID();
         jdbc.sql("insert into artifact_version(id,project_id,artifact_id,version_no,"
-                        + "schema_version,content_json,input_refs_json,created_by_kind,created_at) "
-                        + "values (:id,:projectId,:artifactId,:versionNo,1,cast(:content as jsonb),"
-                        + "cast('[]' as jsonb),'USER',now())")
+                + "schema_version,content_json,input_refs_json,created_by_kind,created_at) "
+                + "values (:id,:projectId,:artifactId,:versionNo,1,cast(:content as jsonb),"
+                + "cast('[]' as jsonb),'USER',now())")
                 .param("id", versionId).param("projectId", projectId)
                 .param("artifactId", artifactId).param("versionNo", versionNo)
                 .param("content", "{\"assetId\":\"" + UUID.randomUUID()
@@ -510,11 +524,11 @@ class CanvasMediaContextPostgresIT {
             org.springframework.test.web.servlet.request.RequestPostProcessor auth,
             String base, UUID itemId, UUID artifactId, int zIndex) throws Exception {
         mvc.perform(post(base + "/canvas/commands").with(auth).with(csrf())
-                        .contentType("application/json")
-                        .content("{\"commands\":[{\"type\":\"PLACE_ARTIFACT\",\"itemId\":\""
-                                + itemId + "\",\"artifactId\":\"" + artifactId
-                                + "\",\"x\":0,\"y\":0,\"width\":280,\"height\":240,"
-                                + "\"zIndex\":" + zIndex + ",\"locked\":false}]}"))
+                .contentType("application/json")
+                .content("{\"commands\":[{\"type\":\"PLACE_ARTIFACT\",\"itemId\":\""
+                        + itemId + "\",\"artifactId\":\"" + artifactId
+                        + "\",\"x\":0,\"y\":0,\"width\":280,\"height\":240,"
+                        + "\"zIndex\":" + zIndex + ",\"locked\":false}]}"))
                 .andExpect(status().isOk());
     }
 
@@ -522,10 +536,10 @@ class CanvasMediaContextPostgresIT {
             org.springframework.test.web.servlet.request.RequestPostProcessor auth,
             String base, UUID artifactId, UUID itemId, String key) throws Exception {
         return mapper.readTree(mvc.perform(post(base + "/artifacts/" + artifactId + "/run")
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .header("Idempotency-Key", key)
-                        .content("{\"canvasItemId\":\"" + itemId
-                                + "\",\"expectedDraftVersion\":1}"))
+                .with(auth).with(csrf()).contentType("application/json")
+                .header("Idempotency-Key", key)
+                .content("{\"canvasItemId\":\"" + itemId
+                        + "\",\"expectedDraftVersion\":1}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
     }
 
@@ -533,7 +547,7 @@ class CanvasMediaContextPostgresIT {
             org.springframework.test.web.servlet.request.RequestPostProcessor auth,
             String base, String taskId) throws Exception {
         mvc.perform(post(base + "/tasks/" + taskId + "/cancel-queued")
-                        .with(auth).with(csrf()))
+                .with(auth).with(csrf()))
                 .andExpect(status().isOk());
     }
 

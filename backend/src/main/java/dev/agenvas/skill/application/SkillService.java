@@ -43,27 +43,47 @@ public final class SkillService {
     private final Clock clock;
     private final TransactionTemplate tx;
     private final TransactionTemplate reads;
-    public SkillService(SkillRepository repository, SkillFormat format, BuiltinSkillCatalogue builtins, BuiltinSkillSearch builtinSearch, ObjectProvider<LibraryService> library,
+    public SkillService(SkillRepository repository, SkillFormat format, BuiltinSkillCatalogue builtins,
+            BuiltinSkillSearch builtinSearch, ObjectProvider<LibraryService> library,
             SkillAssetArchiveService archive, ObjectMapper mapper, Clock clock, PlatformTransactionManager manager) {
-        this.repository = repository; this.format = format; this.builtins = builtins; this.builtinSearch = builtinSearch; this.library = library; this.archive = archive;
-        this.mapper = mapper; this.clock = clock; tx = new TransactionTemplate(manager);
-        reads = new TransactionTemplate(manager); reads.setReadOnly(true);
+        this.repository = repository;
+        this.format = format;
+        this.builtins = builtins;
+        this.builtinSearch = builtinSearch;
+        this.library = library;
+        this.archive = archive;
+        this.mapper = mapper;
+        this.clock = clock;
+        tx = new TransactionTemplate(manager);
+        reads = new TransactionTemplate(manager);
+        reads.setReadOnly(true);
         reads.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
     }
-    public record SkillResponse(UUID id, String title, String description, boolean trashed, boolean builtin, UUID currentVersionId,
-            long version, Instant createdAt, Instant updatedAt, BuiltinSkillCatalogue.Category category, BuiltinSkillCatalogue.Source builtinSource) {}
-    public record Page(List<SkillResponse> items, String nextCursor, int total) {}
+    public record SkillResponse(UUID id, String title, String description, boolean trashed, boolean builtin,
+            UUID currentVersionId,
+            long version, Instant createdAt, Instant updatedAt, BuiltinSkillCatalogue.Category category,
+            BuiltinSkillCatalogue.Source builtinSource) {
+    }
+    public record Page(List<SkillResponse> items, String nextCursor, int total) {
+    }
     public record DraftResponse(UUID skillId, long version, String skillMd, List<Artifact.Kind> outputKinds,
-            List<SkillContent.InputSlot> inputSlots, List<SkillContent.Resource> resources, List<SkillContent.DraftAsset> assets) {}
+            List<SkillContent.InputSlot> inputSlots, List<SkillContent.Resource> resources,
+            List<SkillContent.DraftAsset> assets) {
+    }
     public record VersionSummary(UUID id, UUID skillId, long versionNumber, String name, String description,
-            String bundleHash, Instant createdAt) {}
+            String bundleHash, Instant createdAt) {
+    }
     public record AssetResponse(String alias, Artifact.Kind kind, String title, String contentHash,
-            SkillContent.Usage usage, boolean required, String purpose, String contentUrl, String thumbnailUrl) {}
+            SkillContent.Usage usage, boolean required, String purpose, String contentUrl, String thumbnailUrl) {
+    }
     public record VersionResponse(UUID id, UUID skillId, long versionNumber, String bundleHash, String name,
-            String description, String skillMd, List<Artifact.Kind> outputKinds, List<SkillContent.InputSlot> inputSlots,
-            List<SkillContent.PublishedResource> resources, List<AssetResponse> assets, Instant createdAt) {}
+            String description, String skillMd, List<Artifact.Kind> outputKinds,
+            List<SkillContent.InputSlot> inputSlots,
+            List<SkillContent.PublishedResource> resources, List<AssetResponse> assets, Instant createdAt) {
+    }
     public record OperationResponse(UUID id, UUID skillId, SkillContent.OperationStatus status, UUID resultVersionId,
-            String errorCode, String errorDetail) {}
+            String errorCode, String errorDetail) {
+    }
 
     public Page list(UUID owner, String query, boolean trash, String cursor) {
         return list(owner, query, trash, cursor, null);
@@ -76,10 +96,12 @@ public final class SkillService {
         var keys = category == null ? builtins.keys() : builtins.keys(category);
         var localizedMatches = builtinSearch.matching(query);
         return reads.execute(status -> {
-            var rows = repository.list(owner, query, trash, parsed, PAGE_SIZE + 1, keys, category == null, localizedMatches);
+            var rows = repository.list(owner, query, trash, parsed, PAGE_SIZE + 1, keys, category == null,
+                    localizedMatches);
             var items = rows.stream().limit(PAGE_SIZE).toList();
             String next = rows.size() > PAGE_SIZE ? cursor(items.getLast()) : null;
-            return new Page(items.stream().map(this::response).toList(), next, repository.count(owner, query, trash, keys, category == null, localizedMatches));
+            return new Page(items.stream().map(this::response).toList(), next,
+                    repository.count(owner, query, trash, keys, category == null, localizedMatches));
         });
     }
     public SkillResponse create(UUID owner, String title, String description) {
@@ -87,28 +109,37 @@ public final class SkillService {
         format.text(description, SkillFormat.MAX_DESCRIPTION_LENGTH, false);
         return tx.execute(status -> {
             Instant now = clock.instant();
-            var value = new SkillContent.Catalogue(UUID.randomUUID(), owner, title.strip(), description, null, null, null, 0, now, now);
+            var value = new SkillContent.Catalogue(UUID.randomUUID(), owner, title.strip(), description, null, null,
+                    null, 0, now, now);
             repository.create(value, new SkillContent.DraftContent(SkillContent.SCHEMA_VERSION, EMPTY_BODY,
                     List.of(Artifact.Kind.IMAGE), List.of(), List.of(), List.of()));
             return response(value);
         });
     }
-    public SkillResponse get(UUID owner, UUID skillId) { return response(require(owner, skillId, false)); }
-    public SkillResponse updateMetadata(UUID owner, UUID skillId, long expected, String title, String description, boolean trash) {
+    public SkillResponse get(UUID owner, UUID skillId) {
+        return response(require(owner, skillId, false));
+    }
+    public SkillResponse updateMetadata(UUID owner, UUID skillId, long expected, String title, String description,
+            boolean trash) {
         format.text(title, SkillFormat.MAX_TITLE_LENGTH, true);
         format.text(description, SkillFormat.MAX_DESCRIPTION_LENGTH, false);
         return tx.execute(status -> {
             var old = require(owner, skillId, true);
             editable(old);
-            if (old.version() != expected) throw conflict();
+            if (old.version() != expected)
+                throw conflict();
             Instant now = clock.instant();
             Instant trashedAt = trash ? old.trashedAt() == null ? now : old.trashedAt() : null;
-            if (!repository.metadata(owner, skillId, expected, title.strip(), description, trashedAt, now)) throw conflict();
+            if (!repository.metadata(owner, skillId, expected, title.strip(), description, trashedAt, now))
+                throw conflict();
             return response(require(owner, skillId, false));
         });
     }
     public DraftResponse getDraft(UUID owner, UUID skillId) {
-        return reads.execute(status -> { editable(require(owner, skillId, false)); return response(draft(owner, skillId, false)); });
+        return reads.execute(status -> {
+            editable(require(owner, skillId, false));
+            return response(draft(owner, skillId, false));
+        });
     }
     public DraftResponse saveDraft(UUID owner, UUID skillId, long expected, SkillContent.DraftContent content) {
         SkillContent.DraftContent checked = format.validateDraft(content);
@@ -117,9 +148,11 @@ public final class SkillService {
             editable(catalogue);
             active(catalogue);
             var old = draft(owner, skillId, true);
-            if (old.version() != expected) throw conflict();
+            if (old.version() != expected)
+                throw conflict();
             var fixed = fixSources(owner, checked);
-            if (!repository.saveDraft(owner, skillId, expected, fixed, clock.instant())) throw conflict();
+            if (!repository.saveDraft(owner, skillId, expected, fixed, clock.instant()))
+                throw conflict();
             return response(draft(owner, skillId, false));
         });
     }
@@ -129,7 +162,9 @@ public final class SkillService {
             return repository.versions(owner, skillId).stream().map(this::summary).toList();
         });
     }
-    public VersionResponse getVersion(UUID owner, UUID skillId, UUID versionId) { return response(getBundle(owner, skillId, versionId)); }
+    public VersionResponse getVersion(UUID owner, UUID skillId, UUID versionId) {
+        return response(getBundle(owner, skillId, versionId));
+    }
     /** Runtime recovery and historical sources may read an already fixed version after trashing its catalogue. */
     public SkillContent.Version getBundle(UUID owner, UUID skillId, UUID versionId) {
         return repository.version(owner, skillId, versionId).orElseThrow(this::notFound);
@@ -146,7 +181,8 @@ public final class SkillService {
     }
     private SkillContent.Catalogue availableCatalogue(UUID owner, UUID skillId) {
         var value = require(owner, skillId, false);
-        if (value.builtinKey() != null && !builtins.keys().contains(value.builtinKey())) throw notFound();
+        if (value.builtinKey() != null && !builtins.keys().contains(value.builtinKey()))
+            throw notFound();
         return value;
     }
     public SkillResponse copy(UUID owner, UUID skillId, UUID versionId, String title) {
@@ -155,7 +191,8 @@ public final class SkillService {
             editable(require(owner, skillId, false));
             var source = getBundle(owner, skillId, versionId);
             Instant now = clock.instant();
-            var copied = new SkillContent.Catalogue(UUID.randomUUID(), owner, title.strip(), source.bundle().description(),
+            var copied = new SkillContent.Catalogue(UUID.randomUUID(), owner, title.strip(),
+                    source.bundle().description(),
                     null, null, null, 0, now, now);
             repository.create(copied, copiedDraft(source));
             return response(copied);
@@ -168,7 +205,8 @@ public final class SkillService {
             var source = getBundle(owner, skillId, versionId);
             var old = draft(owner, skillId, true);
             if (old.version() != expectedDraftVersion || !repository.saveDraft(owner, skillId, expectedDraftVersion,
-                    copiedDraft(source), clock.instant())) throw conflict();
+                    copiedDraft(source), clock.instant()))
+                throw conflict();
             return response(draft(owner, skillId, false));
         });
     }
@@ -178,36 +216,48 @@ public final class SkillService {
         return tx.execute(status -> {
             editable(require(owner, skillId, false));
             var replay = repository.key(owner, key);
-            if (replay.isPresent()) return replay(replay.get(), hash);
+            if (replay.isPresent())
+                return replay(replay.get(), hash);
             active(require(owner, skillId, true));
             var current = draft(owner, skillId, true);
-            if (current.version() != expectedDraftVersion) throw conflict();
+            if (current.version() != expectedDraftVersion)
+                throw conflict();
             format.validateDraft(current.content());
             format.publishedFrontmatter(current.content().skillMd());
             Instant now = clock.instant();
             var operation = new SkillContent.PublishOperation(UUID.randomUUID(), owner, skillId, key, hash,
                     new SkillContent.PublishInput(SkillContent.SCHEMA_VERSION, expectedDraftVersion, current.content()),
-                    mapper.createObjectNode(), SkillContent.OperationStatus.ACCEPTED, 0, null, null, null, null, false, now, now);
-            if (!repository.reserve(operation)) return replay(repository.key(owner, key).orElseThrow(), hash);
+                    mapper.createObjectNode(), SkillContent.OperationStatus.ACCEPTED, 0, null, null, null, null, false,
+                    now, now);
+            if (!repository.reserve(operation))
+                return replay(repository.key(owner, key).orElseThrow(), hash);
             return response(operation);
         });
     }
-    public OperationResponse getOperation(UUID owner, UUID operationId) { return response(requireOperation(owner, operationId)); }
+    public OperationResponse getOperation(UUID owner, UUID operationId) {
+        return response(requireOperation(owner, operationId));
+    }
     public OperationResponse retry(UUID owner, UUID operationId) {
         return tx.execute(status -> {
             var value = requireOperation(owner, operationId);
             active(require(owner, value.skillId(), true));
-            if (value.status() == SkillContent.OperationStatus.FAILED && !repository.retry(owner, operationId, clock.instant())) throw conflict();
+            if (value.status() == SkillContent.OperationStatus.FAILED
+                    && !repository.retry(owner, operationId, clock.instant()))
+                throw conflict();
             return response(requireOperation(owner, operationId));
         });
     }
     /** Trusted Agent application service performs project ownership and Agent CAS in its outer event transaction. */
-    public List<SkillContent.Binding> getBindings(UUID owner, UUID project, UUID agent) { return repository.bindings(owner, project, agent); }
+    public List<SkillContent.Binding> getBindings(UUID owner, UUID project, UUID agent) {
+        return repository.bindings(owner, project, agent);
+    }
     public List<SkillContent.Binding> getAvailableBindings(UUID owner, UUID project, UUID agent) {
         return repository.availableBindings(owner, project, agent, builtins.keys());
     }
     /** Trusted export caller supplies the project scope and consistent read transaction. */
-    public List<SkillContent.Binding> getProjectBindings(UUID owner, UUID project) { return repository.projectBindings(owner, project); }
+    public List<SkillContent.Binding> getProjectBindings(UUID owner, UUID project) {
+        return repository.projectBindings(owner, project);
+    }
     public void saveBindings(UUID owner, UUID project, UUID agent, List<SkillContent.Binding> bindings) {
         // The owning Agent service validates fixed versions before its configuration CAS.
         tx.executeWithoutResult(status -> repository.saveBindings(owner, project, agent, bindings, clock.instant()));
@@ -215,14 +265,16 @@ public final class SkillService {
 
     public LibraryService.MediaFile file(UUID owner, UUID skillId, UUID versionId, String alias, boolean thumbnail) {
         var value = getBundle(owner, skillId, versionId);
-        var asset = value.bundle().assets().stream().filter(item -> item.alias().equals(alias)).findFirst().orElseThrow(this::notFound);
+        var asset = value.bundle().assets().stream().filter(item -> item.alias().equals(alias)).findFirst()
+                .orElseThrow(this::notFound);
         return archive.file(owner, asset.media(), thumbnail);
     }
 
     /** Claims are short transactions; decoder/file work is outside all database transactions. */
     public boolean processNext() {
         var claimed = tx.execute(status -> repository.claim(clock.instant(), clock.instant().plus(LEASE)));
-        if (claimed == null || claimed.isEmpty()) return false;
+        if (claimed == null || claimed.isEmpty())
+            return false;
         var operation = claimed.get();
         var progress = (ObjectNode) operation.progress().deepCopy();
         try {
@@ -231,27 +283,32 @@ public final class SkillService {
             publishBundle(operation, bundle);
         } catch (RuntimeException failure) {
             String code = failure instanceof ApiProblemException problem ? problem.code() : "SKILL_ARCHIVE_FAILED";
-            String detail = failure instanceof ApiProblemException problem ? mapper.writeValueAsString(problem.detail())
+            String detail = failure instanceof ApiProblemException problem
+                    ? mapper.writeValueAsString(problem.detail())
                     : mapper.writeValueAsString(ApiMessage.of("api.skill.archive-failed"));
-            tx.executeWithoutResult(status -> repository.finish(operation, SkillContent.OperationStatus.FAILED, null, code, detail, clock.instant()));
+            tx.executeWithoutResult(status -> repository.finish(operation, SkillContent.OperationStatus.FAILED, null,
+                    code, detail, clock.instant()));
         }
         return true;
     }
 
-    private List<SkillContent.PublishedAsset> publishedAssets(SkillContent.PublishOperation operation, ObjectNode progress) {
+    private List<SkillContent.PublishedAsset> publishedAssets(SkillContent.PublishOperation operation,
+            ObjectNode progress) {
         List<SkillContent.PublishedAsset> assets = new ArrayList<>();
         for (var binding : operation.input().draft().assets()) {
             PrivateMediaArchive.Media media;
             String title;
             if (binding.sourceVersionId() != null) {
                 var source = sourceAsset(operation.ownerId(), binding);
-                media = source.media(); title = source.title();
+                media = source.media();
+                title = source.title();
             } else {
                 var pinned = restorePin(operation, binding, progress);
                 title = pinned.title();
                 media = restoreArchive(operation, binding, pinned, progress);
             }
-            if (!media.sha256().equals(binding.contentHash())) throw referenceChanged();
+            if (!media.sha256().equals(binding.contentHash()))
+                throw referenceChanged();
             assets.add(new SkillContent.PublishedAsset(binding.alias(), Artifact.Kind.IMAGE, title, media.sha256(),
                     binding.usage(), binding.required(), binding.purpose(), media));
         }
@@ -262,21 +319,25 @@ public final class SkillService {
             SkillContent.DraftAsset binding, ObjectNode progress) {
         LibraryService.PinnedSkillAsset pinned;
         var pins = progress.withObject("pins");
-        if (pins.has(binding.alias())) pinned = mapper.treeToValue(pins.get(binding.alias()), LibraryService.PinnedSkillAsset.class);
+        if (pins.has(binding.alias()))
+            pinned = mapper.treeToValue(pins.get(binding.alias()), LibraryService.PinnedSkillAsset.class);
         else {
             pinned = tx.execute(status -> {
                 // Fence and lock the operation before creating its temporary hard link.
                 // A stale publisher must not recreate a pin after successful cleanup.
                 saveProgress(operation, progress);
-                var value = library.getObject().pinForSkill(operation.ownerId(), binding.libraryEntryId(), binding.expectedLibraryVersion(),
+                var value = library.getObject().pinForSkill(operation.ownerId(), binding.libraryEntryId(),
+                        binding.expectedLibraryVersion(),
                         pinId(operation.id(), binding.alias()));
-                if (!value.contentHash().equals(binding.contentHash())) throw referenceChanged();
+                if (!value.contentHash().equals(binding.contentHash()))
+                    throw referenceChanged();
                 pins.set(binding.alias(), mapper.valueToTree(value));
                 saveProgress(operation, progress);
                 return value;
             });
         }
-        if (pinned == null) throw new IllegalStateException("Skill pin transaction returned no result");
+        if (pinned == null)
+            throw new IllegalStateException("Skill pin transaction returned no result");
         return pinned;
     }
 
@@ -293,8 +354,11 @@ public final class SkillService {
 
     private SkillContent.Bundle buildBundle(SkillContent.DraftContent draft, List<SkillContent.PublishedAsset> assets) {
         var frontmatter = format.publishedFrontmatter(draft.skillMd());
-        var resources = draft.resources().stream().map(value -> new SkillContent.PublishedResource(value.path(), value.content(), Sha256.hex(value.content()))).toList();
-        return new SkillContent.Bundle(SkillContent.SCHEMA_VERSION, frontmatter.name(), frontmatter.description(), draft.skillMd(),
+        var resources = draft.resources().stream().map(
+                value -> new SkillContent.PublishedResource(value.path(), value.content(), Sha256.hex(value.content())))
+                .toList();
+        return new SkillContent.Bundle(SkillContent.SCHEMA_VERSION, frontmatter.name(), frontmatter.description(),
+                draft.skillMd(),
                 draft.outputKinds(), draft.inputSlots(), resources, List.copyOf(assets));
     }
 
@@ -307,113 +371,185 @@ public final class SkillService {
             var version = new SkillContent.Version(operation.id(), operation.ownerId(), operation.skillId(),
                     repository.nextVersion(operation.ownerId(), operation.skillId()), hash, bundle, now);
             repository.publish(version, skill.version());
-            if (!repository.finish(operation, SkillContent.OperationStatus.SUCCEEDED, version.id(), null, null, now)) throw new LeaseLost();
+            if (!repository.finish(operation, SkillContent.OperationStatus.SUCCEEDED, version.id(), null, null, now))
+                throw new LeaseLost();
         });
     }
 
     /** The successful command is itself a durable cleanup record for deterministic temporary links. */
     public boolean cleanupNext() {
         var pending = repository.cleanup();
-        if (pending.isEmpty()) return false;
+        if (pending.isEmpty())
+            return false;
         var operation = pending.get();
-        for (var asset : operation.input().draft().assets()) if (asset.libraryEntryId() != null)
-            archive.discardPin(operation.ownerId(), operation.ownerId() + "/" + pinId(operation.id(), asset.alias()) + ".pin");
+        for (var asset : operation.input().draft().assets())
+            if (asset.libraryEntryId() != null)
+                archive.discardPin(operation.ownerId(),
+                        operation.ownerId() + "/" + pinId(operation.id(), asset.alias()) + ".pin");
         tx.executeWithoutResult(status -> repository.cleaned(operation.ownerId(), operation.id()));
         return true;
     }
     private void saveProgress(SkillContent.PublishOperation operation, ObjectNode progress) {
         Instant now = clock.instant();
-        if (!repository.progress(operation, progress, now.plus(LEASE), now)) throw new LeaseLost();
+        if (!repository.progress(operation, progress, now.plus(LEASE), now))
+            throw new LeaseLost();
     }
     private SkillContent.DraftContent fixSources(UUID owner, SkillContent.DraftContent content) {
         var fixed = content.assets().stream().map(binding -> {
             String hash;
-            if (binding.libraryEntryId() != null) hash = library.getObject().skillAssetSource(owner, binding.libraryEntryId(), binding.expectedLibraryVersion()).contentHash();
-            else hash = sourceAsset(owner, binding).contentHash();
-            if (binding.contentHash() != null && !binding.contentHash().equals(hash)) throw referenceChanged();
-            return new SkillContent.DraftAsset(binding.alias(), binding.libraryEntryId(), binding.expectedLibraryVersion(), binding.sourceVersionId(),
+            if (binding.libraryEntryId() != null)
+                hash = library.getObject()
+                        .skillAssetSource(owner, binding.libraryEntryId(), binding.expectedLibraryVersion())
+                        .contentHash();
+            else
+                hash = sourceAsset(owner, binding).contentHash();
+            if (binding.contentHash() != null && !binding.contentHash().equals(hash))
+                throw referenceChanged();
+            return new SkillContent.DraftAsset(binding.alias(), binding.libraryEntryId(),
+                    binding.expectedLibraryVersion(), binding.sourceVersionId(),
                     binding.sourceAlias(), hash, binding.usage(), binding.required(), binding.purpose());
         }).toList();
-        return new SkillContent.DraftContent(SkillContent.SCHEMA_VERSION, content.skillMd(), content.outputKinds(), content.inputSlots(), content.resources(), fixed);
+        return new SkillContent.DraftContent(SkillContent.SCHEMA_VERSION, content.skillMd(), content.outputKinds(),
+                content.inputSlots(), content.resources(), fixed);
     }
     private SkillContent.PublishedAsset sourceAsset(UUID owner, SkillContent.DraftAsset binding) {
         var source = repository.version(owner, binding.sourceVersionId()).orElseThrow(this::notFound);
-        return source.bundle().assets().stream().filter(value -> value.alias().equals(binding.sourceAlias())).findFirst().orElseThrow(this::notFound);
+        return source.bundle().assets().stream().filter(value -> value.alias().equals(binding.sourceAlias()))
+                .findFirst().orElseThrow(this::notFound);
     }
     private SkillContent.DraftContent copiedDraft(SkillContent.Version source) {
         var bundle = source.bundle();
-        var assets = bundle.assets().stream().map(asset -> new SkillContent.DraftAsset(asset.alias(), null, null, source.id(), asset.alias(),
-                asset.contentHash(), asset.usage(), asset.required(), asset.purpose())).toList();
-        return new SkillContent.DraftContent(SkillContent.SCHEMA_VERSION, bundle.skillMd(), bundle.outputKinds(), bundle.inputSlots(),
-                bundle.resources().stream().map(resource -> new SkillContent.Resource(resource.path(), resource.content())).toList(), assets);
+        var assets = bundle.assets().stream()
+                .map(asset -> new SkillContent.DraftAsset(asset.alias(), null, null, source.id(), asset.alias(),
+                        asset.contentHash(), asset.usage(), asset.required(), asset.purpose()))
+                .toList();
+        return new SkillContent.DraftContent(SkillContent.SCHEMA_VERSION, bundle.skillMd(), bundle.outputKinds(),
+                bundle.inputSlots(),
+                bundle.resources().stream()
+                        .map(resource -> new SkillContent.Resource(resource.path(), resource.content())).toList(),
+                assets);
     }
     private String bundleHash(SkillContent.Bundle bundle) {
-        var safeAssets = bundle.assets().stream().map(asset -> List.of(asset.alias(), asset.kind(), asset.title(), asset.contentHash(),
-                asset.usage(), asset.required(), asset.purpose())).toList();
-        return Sha256.hex(mapper.writeValueAsString(List.of(bundle.schemaVersion(), bundle.name(), bundle.description(), bundle.skillMd(),
-                bundle.outputKinds(), bundle.inputSlots(), bundle.resources(), safeAssets)));
+        var safeAssets = bundle.assets().stream()
+                .map(asset -> List.of(asset.alias(), asset.kind(), asset.title(), asset.contentHash(),
+                        asset.usage(), asset.required(), asset.purpose()))
+                .toList();
+        return Sha256.hex(mapper.writeValueAsString(
+                List.of(bundle.schemaVersion(), bundle.name(), bundle.description(), bundle.skillMd(),
+                        bundle.outputKinds(), bundle.inputSlots(), bundle.resources(), safeAssets)));
     }
-    private UUID pinId(UUID operation, String alias) { return UUID.nameUUIDFromBytes(("agenvas:skill-pin:v1:" + operation + ":" + alias).getBytes(StandardCharsets.UTF_8)); }
-    private UUID fileId(UUID operation, String alias) { return UUID.nameUUIDFromBytes(("agenvas:skill-file:v1:" + operation + ":" + alias).getBytes(StandardCharsets.UTF_8)); }
-    private SkillContent.Catalogue require(UUID owner, UUID skill, boolean lock) { return repository.skill(owner, skill, lock).orElseThrow(this::notFound); }
+    private UUID pinId(UUID operation, String alias) {
+        return UUID.nameUUIDFromBytes(
+                ("agenvas:skill-pin:v1:" + operation + ":" + alias).getBytes(StandardCharsets.UTF_8));
+    }
+    private UUID fileId(UUID operation, String alias) {
+        return UUID.nameUUIDFromBytes(
+                ("agenvas:skill-file:v1:" + operation + ":" + alias).getBytes(StandardCharsets.UTF_8));
+    }
+    private SkillContent.Catalogue require(UUID owner, UUID skill, boolean lock) {
+        return repository.skill(owner, skill, lock).orElseThrow(this::notFound);
+    }
     private void editable(SkillContent.Catalogue value) {
-        if (value.builtinKey() != null) throw problem(HttpStatus.CONFLICT, "SKILL_BUILTIN_READ_ONLY", ApiMessage.of("api.skill.builtin-read-only"));
+        if (value.builtinKey() != null)
+            throw problem(HttpStatus.CONFLICT, "SKILL_BUILTIN_READ_ONLY", ApiMessage.of("api.skill.builtin-read-only"));
     }
     /** Unique owner/key insertion serializes concurrent first reads; rollback leaves no half-published catalogue. */
     private void ensureBuiltins(UUID owner) {
-        if (repository.builtinKeys(owner).containsAll(builtins.keys())) return;
+        if (repository.builtinKeys(owner).containsAll(builtins.keys()))
+            return;
         tx.executeWithoutResult(status -> {
             Instant now = clock.instant();
             for (var entry : builtins.entries()) {
-                UUID skillId = UUID.nameUUIDFromBytes(("agenvas:builtin-skill:" + owner + ":" + entry.key()).getBytes(StandardCharsets.UTF_8));
-                UUID versionId = UUID.nameUUIDFromBytes(("agenvas:builtin-skill-version:" + skillId + ":" + entry.bundleHash()).getBytes(StandardCharsets.UTF_8));
-                var catalogue = new SkillContent.Catalogue(skillId, owner, entry.title(), entry.bundle().description(), entry.key(), null, null, 0, now, now);
-                repository.registerBuiltin(catalogue, new SkillContent.Version(versionId, owner, skillId, 1, entry.bundleHash(), entry.bundle(), now));
+                UUID skillId = UUID.nameUUIDFromBytes(
+                        ("agenvas:builtin-skill:" + owner + ":" + entry.key()).getBytes(StandardCharsets.UTF_8));
+                UUID versionId = UUID
+                        .nameUUIDFromBytes(("agenvas:builtin-skill-version:" + skillId + ":" + entry.bundleHash())
+                                .getBytes(StandardCharsets.UTF_8));
+                var catalogue = new SkillContent.Catalogue(skillId, owner, entry.title(), entry.bundle().description(),
+                        entry.key(), null, null, 0, now, now);
+                repository.registerBuiltin(catalogue, new SkillContent.Version(versionId, owner, skillId, 1,
+                        entry.bundleHash(), entry.bundle(), now));
             }
         });
     }
-    private SkillContent.Draft draft(UUID owner, UUID skill, boolean lock) { return repository.draft(owner, skill, lock).orElseThrow(this::notFound); }
-    private SkillContent.PublishOperation requireOperation(UUID owner, UUID id) { return repository.operation(owner, id).orElseThrow(this::notFound); }
-    private void active(SkillContent.Catalogue value) { if (value.trashedAt() != null) throw problem(HttpStatus.CONFLICT, "SKILL_TRASHED", ApiMessage.of("api.skill.trashed")); }
+    private SkillContent.Draft draft(UUID owner, UUID skill, boolean lock) {
+        return repository.draft(owner, skill, lock).orElseThrow(this::notFound);
+    }
+    private SkillContent.PublishOperation requireOperation(UUID owner, UUID id) {
+        return repository.operation(owner, id).orElseThrow(this::notFound);
+    }
+    private void active(SkillContent.Catalogue value) {
+        if (value.trashedAt() != null)
+            throw problem(HttpStatus.CONFLICT, "SKILL_TRASHED", ApiMessage.of("api.skill.trashed"));
+    }
     private OperationResponse replay(SkillContent.PublishOperation value, String hash) {
-        if (!value.payloadHash().equals(hash)) throw problem(HttpStatus.CONFLICT, "IDEMPOTENCY_KEY_REUSED", ApiMessage.of("api.skill.key-conflict"));
+        if (!value.payloadHash().equals(hash))
+            throw problem(HttpStatus.CONFLICT, "IDEMPOTENCY_KEY_REUSED", ApiMessage.of("api.skill.key-conflict"));
         return response(value);
     }
     private SkillResponse response(SkillContent.Catalogue value) {
         var entry = builtins.find(value.builtinKey());
-        return new SkillResponse(value.id(), value.title(), value.description(), value.trashedAt() != null, value.builtinKey() != null,
+        return new SkillResponse(value.id(), value.title(), value.description(), value.trashedAt() != null,
+                value.builtinKey() != null,
                 value.currentVersionId(), value.version(), value.createdAt(), value.updatedAt(),
                 entry == null ? null : entry.category(), entry == null ? null : entry.source());
     }
-    private DraftResponse response(SkillContent.Draft value) { var content = value.content(); return new DraftResponse(value.skillId(), value.version(),
-            content.skillMd(), content.outputKinds(), content.inputSlots(), content.resources(), content.assets()); }
-    private VersionSummary summary(SkillContent.Version value) { return new VersionSummary(value.id(), value.skillId(), value.versionNumber(),
-            value.bundle().name(), value.bundle().description(), value.bundleHash(), value.createdAt()); }
+    private DraftResponse response(SkillContent.Draft value) {
+        var content = value.content();
+        return new DraftResponse(value.skillId(), value.version(),
+                content.skillMd(), content.outputKinds(), content.inputSlots(), content.resources(), content.assets());
+    }
+    private VersionSummary summary(SkillContent.Version value) {
+        return new VersionSummary(value.id(), value.skillId(), value.versionNumber(),
+                value.bundle().name(), value.bundle().description(), value.bundleHash(), value.createdAt());
+    }
     private VersionResponse response(SkillContent.Version value) {
         var bundle = value.bundle();
         var assets = bundle.assets().stream().map(asset -> {
             String path = "/api/v1/skills/" + value.skillId() + "/versions/" + value.id() + "/assets/" + asset.alias();
-            return new AssetResponse(asset.alias(), asset.kind(), asset.title(), asset.contentHash(), asset.usage(), asset.required(), asset.purpose(), path + "/file", path + "/thumbnail");
+            return new AssetResponse(asset.alias(), asset.kind(), asset.title(), asset.contentHash(), asset.usage(),
+                    asset.required(), asset.purpose(), path + "/file", path + "/thumbnail");
         }).toList();
-        return new VersionResponse(value.id(), value.skillId(), value.versionNumber(), value.bundleHash(), bundle.name(), bundle.description(),
-                bundle.skillMd(), bundle.outputKinds(), bundle.inputSlots(), bundle.resources(), assets, value.createdAt());
+        return new VersionResponse(value.id(), value.skillId(), value.versionNumber(), value.bundleHash(),
+                bundle.name(), bundle.description(),
+                bundle.skillMd(), bundle.outputKinds(), bundle.inputSlots(), bundle.resources(), assets,
+                value.createdAt());
     }
-    private OperationResponse response(SkillContent.PublishOperation value) { return new OperationResponse(value.id(), value.skillId(), value.status(),
-            value.resultVersionId(), value.errorCode(), value.errorDetail()); }
+    private OperationResponse response(SkillContent.PublishOperation value) {
+        return new OperationResponse(value.id(), value.skillId(), value.status(),
+                value.resultVersionId(), value.errorCode(), value.errorDetail());
+    }
     private SkillRepository.Cursor parseCursor(String cursor) {
-        if (cursor == null || cursor.isBlank()) return null;
+        if (cursor == null || cursor.isBlank())
+            return null;
         try {
-            String[] values = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8).split("\\|", -1);
-            if (values.length != 2) throw new IllegalArgumentException();
+            String[] values = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8).split("\\|",
+                    -1);
+            if (values.length != 2)
+                throw new IllegalArgumentException();
             return new SkillRepository.Cursor(Instant.parse(values[0]), UUID.fromString(values[1]));
-        } catch (RuntimeException invalid) { throw problem(HttpStatus.UNPROCESSABLE_ENTITY, "SKILL_INVALID_CURSOR", ApiMessage.of("api.skill.invalid-content")); }
+        } catch (RuntimeException invalid) {
+            throw problem(HttpStatus.UNPROCESSABLE_ENTITY, "SKILL_INVALID_CURSOR",
+                    ApiMessage.of("api.skill.invalid-content"));
+        }
     }
-    private String cursor(SkillContent.Catalogue value) { return Base64.getUrlEncoder().withoutPadding()
-            .encodeToString((value.updatedAt() + "|" + value.id()).getBytes(StandardCharsets.UTF_8)); }
-    private ApiProblemException notFound() { return problem(HttpStatus.NOT_FOUND, "SKILL_NOT_FOUND", ApiMessage.of("api.skill.not-found")); }
-    private ApiProblemException conflict() { return problem(HttpStatus.CONFLICT, "SKILL_VERSION_CONFLICT", ApiMessage.of("api.skill.conflict")); }
-    private ApiProblemException referenceChanged() { return problem(HttpStatus.CONFLICT, "SKILL_REFERENCE_CHANGED", ApiMessage.of("api.skill.reference-changed")); }
-    private ApiProblemException problem(HttpStatus status, String code, ApiMessage detail) { return new ApiProblemException(status, code,
-            ApiMessage.of("api.skill.operation-failed"), detail, status == HttpStatus.CONFLICT); }
-    private static final class LeaseLost extends RuntimeException {}
+    private String cursor(SkillContent.Catalogue value) {
+        return Base64.getUrlEncoder().withoutPadding()
+                .encodeToString((value.updatedAt() + "|" + value.id()).getBytes(StandardCharsets.UTF_8));
+    }
+    private ApiProblemException notFound() {
+        return problem(HttpStatus.NOT_FOUND, "SKILL_NOT_FOUND", ApiMessage.of("api.skill.not-found"));
+    }
+    private ApiProblemException conflict() {
+        return problem(HttpStatus.CONFLICT, "SKILL_VERSION_CONFLICT", ApiMessage.of("api.skill.conflict"));
+    }
+    private ApiProblemException referenceChanged() {
+        return problem(HttpStatus.CONFLICT, "SKILL_REFERENCE_CHANGED", ApiMessage.of("api.skill.reference-changed"));
+    }
+    private ApiProblemException problem(HttpStatus status, String code, ApiMessage detail) {
+        return new ApiProblemException(status, code,
+                ApiMessage.of("api.skill.operation-failed"), detail, status == HttpStatus.CONFLICT);
+    }
+    private static final class LeaseLost extends RuntimeException {
+    }
 }

@@ -6,9 +6,11 @@ import { clickControl } from "../../test/controls";
 import { AudioPlayer } from "./AudioPlayer";
 
 function showPlayer(description?: string) {
-  return render(<QueryClientProvider client={createQueryClient()}>
-    <AudioPlayer src="/test-audio.wav" title="秋日旁白" description={description} selected={false} />
-  </QueryClientProvider>);
+  return render(
+    <QueryClientProvider client={createQueryClient()}>
+      <AudioPlayer src="/test-audio.wav" title="秋日旁白" description={description} selected={false} />
+    </QueryClientProvider>,
+  );
 }
 
 describe("AudioPlayer", () => {
@@ -46,7 +48,12 @@ describe("AudioPlayer", () => {
 
   it("pauses a late play result after unmount", async () => {
     let resolve!: () => void;
-    vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(() => new Promise<void>((done) => { resolve = done; }));
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(
+      () =>
+        new Promise<void>(done => {
+          resolve = done;
+        }),
+    );
     const view = showPlayer();
     await clickControl(screen.getByRole("button", { name: "播放音频" }));
     view.unmount();
@@ -61,17 +68,24 @@ describe("AudioPlayer", () => {
     let paused = true;
     Object.defineProperty(audio, "paused", { get: () => paused });
     let resolveFirst!: () => void;
-    const firstPlay = new Promise<void>((resolve) => { resolveFirst = resolve; });
+    const firstPlay = new Promise<void>(resolve => {
+      resolveFirst = resolve;
+    });
     let attempts = 0;
     audio.play = vi.fn(() => {
-      paused = false; audio.dispatchEvent(new Event("play"));
+      paused = false;
+      audio.dispatchEvent(new Event("play"));
       return attempts++ === 0 ? firstPlay : Promise.resolve();
     });
-    audio.pause = vi.fn(() => { paused = true; });
+    audio.pause = vi.fn(() => {
+      paused = true;
+    });
     const toggle = screen.getByRole("button", { name: "播放音频" });
     fireEvent.click(toggle);
     fireEvent.click(toggle);
-    await act(async () => { fireEvent.click(toggle); });
+    await act(async () => {
+      fireEvent.click(toggle);
+    });
     // The browser queues pause events; the old event may arrive after playback has restarted.
     fireEvent.pause(audio);
     await act(async () => resolveFirst());

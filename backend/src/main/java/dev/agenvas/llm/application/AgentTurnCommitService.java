@@ -63,7 +63,8 @@ public class AgentTurnCommitService {
             AgentRunService runs, AgentTurnLeaseGuard leaseGuard,
             ProjectEventService events, ObjectMapper mapper,
             LlmTurnRepository turns, ToolExecutionRepository toolExecutions,
-            LlmProtocolCodec codec, AgentMediaOutcomeService mediaOutcomes, Clock clock, DirectorSettingsService settings) {
+            LlmProtocolCodec codec, AgentMediaOutcomeService mediaOutcomes, Clock clock,
+            DirectorSettingsService settings) {
         this.clock = clock;
         this.settings = settings;
         this.taskRepository = taskRepository;
@@ -129,7 +130,8 @@ public class AgentTurnCommitService {
             }
             AssistantMessage assistant = codec.selectedAssistant(turn.response());
             boolean compacting = AgentContextService.isCompaction(turn.request());
-            if (compacting && !assistant.getToolCalls().isEmpty()) throw new IllegalStateException("Compaction cannot execute tools");
+            if (compacting && !assistant.getToolCalls().isEmpty())
+                throw new IllegalStateException("Compaction cannot execute tools");
             Decision decision = compacting ? Decision.CONTINUE : decisionFor(lease, stepIndex, assistant);
             if (decision == Decision.CONTINUE
                     && mediaOutcomes.hasOutstanding(lease.projectId(), lease.runId(), stepIndex)) {
@@ -138,8 +140,10 @@ public class AgentTurnCommitService {
             ObjectNode output = mapper.createObjectNode();
             output.put("decision", decision.name());
             output.put("stepIndex", stepIndex);
-            if (compacting) output.put("contextCompacted", true);
-            else output.put("assistantText", assistant.getText() == null ? "" : assistant.getText());
+            if (compacting)
+                output.put("contextCompacted", true);
+            else
+                output.put("assistantText", assistant.getText() == null ? "" : assistant.getText());
             if (decision == Decision.CONTINUE || decision == Decision.WAIT) {
                 if (run.status() != AgentRun.Status.RUNNING) {
                     throw new IllegalStateException("Run state prevents model continuation");
@@ -155,7 +159,8 @@ public class AgentTurnCommitService {
                     // repairFromStep is deliberately absent: resume the saved handoff, not its repair prompt.
                     if (compacting && lease.input().has("repairAttempt")) {
                         input.set("repairAttempt", lease.input().get("repairAttempt"));
-                        input.put("maxRepairAttempts", lease.input().path("maxRepairAttempts").asInt(settings.get().maxRepairAttempts()));
+                        input.put("maxRepairAttempts",
+                                lease.input().path("maxRepairAttempts").asInt(settings.get().maxRepairAttempts()));
                     }
                     tasks.create(ownerId, lease.projectId(), lease.runId(),
                             "agent-turn-" + (stepIndex + 1), Task.Kind.AGENT_TURN, input, 1);
@@ -277,15 +282,19 @@ public class AgentTurnCommitService {
                 boolean ended = events.recordChange(candidate.ownerId(), candidate.projectId(), () -> {
                     AgentRun run = runs.get(candidate.ownerId(), candidate.projectId(), candidate.runId());
                     if (run.status() != AgentRun.Status.BLOCKED
-                            || !tasks.hasSettledAgentFailure(candidate.ownerId(), candidate.projectId(), candidate.runId(), run.nextStepIndex())
+                            || !tasks.hasSettledAgentFailure(candidate.ownerId(), candidate.projectId(),
+                                    candidate.runId(), run.nextStepIndex())
                             || mediaOutcomes.hasOutstanding(candidate.projectId(), candidate.runId()))
                         return ProjectEventService.Change.unchanged(false);
-                    runs.transition(candidate.ownerId(), candidate.projectId(), candidate.runId(), run.version(), AgentRun.Status.FAILED);
+                    runs.transition(candidate.ownerId(), candidate.projectId(), candidate.runId(), run.version(),
+                            AgentRun.Status.FAILED);
                     return ProjectEventService.Change.unchanged(true);
                 }).value();
-                if (ended) closed++;
+                if (ended)
+                    closed++;
             } catch (RuntimeException changed) {
-                LOGGER.warn("Failed Agent Run {} could not be settled: {}", candidate.runId(), changed.getClass().getSimpleName());
+                LOGGER.warn("Failed Agent Run {} could not be settled: {}", candidate.runId(),
+                        changed.getClass().getSimpleName());
             }
         }
         return closed;
@@ -368,8 +377,7 @@ public class AgentTurnCommitService {
         }
         for (AssistantMessage.ToolCall call : calls) {
             ToolExecution execution = toolExecutions.find(lease.projectId(), lease.runId(),
-                    stepIndex, call.id()).orElseThrow(() ->
-                            new IllegalStateException("Model tool result is missing"));
+                    stepIndex, call.id()).orElseThrow(() -> new IllegalStateException("Model tool result is missing"));
             if (execution.status() != ToolExecution.Status.COMPLETED
                     || execution.result() == null
                     || !execution.toolName().equals(call.name())) {

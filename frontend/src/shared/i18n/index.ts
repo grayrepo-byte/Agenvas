@@ -5,10 +5,15 @@ import ru from "./locales/ru.json";
 import ja from "./locales/ja.json";
 
 export const SUPPORTED_LOCALES = ["en", "zh", "ru", "ja"] as const;
-export type Locale = typeof SUPPORTED_LOCALES[number];
+export type Locale = (typeof SUPPORTED_LOCALES)[number];
 export const DEFAULT_LOCALE: Locale = "zh";
 export const LOCALE_STORAGE_KEY = "agenvas.locale.v1";
-const LANGUAGE_NAME_KEYS = { en: "locale.language.en", zh: "locale.language.zh", ru: "locale.language.ru", ja: "locale.language.ja" } as const;
+const LANGUAGE_NAME_KEYS = {
+  en: "locale.language.en",
+  zh: "locale.language.zh",
+  ru: "locale.language.ru",
+  ja: "locale.language.ja",
+} as const;
 const FORMAT_LOCALES: Record<Locale, string> = { en: "en-US", zh: "zh-CN", ru: "ru-RU", ja: "ja-JP" };
 /** Stable UI identities are independent of the wording in any locale. */
 export type MessageKey = keyof typeof zh;
@@ -21,14 +26,16 @@ type Parameter = string | number | bigint | boolean | null | undefined;
 export function resolveLocale(value: string | null | undefined): Locale | undefined {
   if (!value || !/^[a-z]{2}(?:[-_][a-z0-9]{2,8})*$/i.test(value)) return undefined;
   const language = value.toLowerCase().split(/[-_]/)[0];
-  return SUPPORTED_LOCALES.find((locale) => locale === language);
+  return SUPPORTED_LOCALES.find(locale => locale === language);
 }
 
 export function detectLocale(): Locale {
   try {
     const saved = resolveLocale(localStorage.getItem(LOCALE_STORAGE_KEY));
     if (saved) return saved;
-  } catch { /* A blocked preference store must not prevent the application from starting. */ }
+  } catch {
+    /* A blocked preference store must not prevent the application from starting. */
+  }
   for (const language of navigator.languages) {
     const supported = resolveLocale(language);
     if (supported) return supported;
@@ -37,12 +44,16 @@ export function detectLocale(): Locale {
 }
 
 let currentLocale = detectLocale();
-export function getLocale(): Locale { return currentLocale; }
-export function getFormatLocale(): string { return FORMAT_LOCALES[currentLocale]; }
+export function getLocale(): Locale {
+  return currentLocale;
+}
+export function getFormatLocale(): string {
+  return FORMAT_LOCALES[currentLocale];
+}
 function publish(locale: Locale) {
   currentLocale = locale;
   document.documentElement.lang = locale;
-  listeners.forEach((listener) => listener());
+  listeners.forEach(listener => listener());
 }
 
 /** Only a UI preference is stored; changing language never remounts routes or clears drafts. */
@@ -51,11 +62,13 @@ export function setLocale(locale: Locale): boolean {
   try {
     localStorage.setItem(LOCALE_STORAGE_KEY, locale);
     return true;
-  } catch { return false; }
+  } catch {
+    return false;
+  }
 }
 
 document.documentElement.lang = currentLocale;
-window.addEventListener("storage", (event) => {
+window.addEventListener("storage", event => {
   if (event.key === LOCALE_STORAGE_KEY || event.key === null) {
     publish(resolveLocale(event.newValue) ?? detectLocale());
   }
@@ -72,10 +85,15 @@ export function useLocale(): Locale {
 }
 
 /** Only registered semantic keys belong here; user and provider content stays literal. */
-export function translate(locale: Locale, message: MessageKey, parameters: Readonly<Record<string, Parameter>> = {}): string {
+export function translate(
+  locale: Locale,
+  message: MessageKey,
+  parameters: Readonly<Record<string, Parameter>> = {},
+): string {
   const template = catalogs[locale][message] ?? catalogs[DEFAULT_LOCALE][message];
   return template.replace(/\{(\w+)\}/g, (token, name: string) =>
-    Object.hasOwn(parameters, name) ? String(parameters[name] ?? "") : token);
+    Object.hasOwn(parameters, name) ? String(parameters[name] ?? "") : token,
+  );
 }
 
 export function t(message: MessageKey, parameters?: Readonly<Record<string, Parameter>>): string {
@@ -83,7 +101,9 @@ export function t(message: MessageKey, parameters?: Readonly<Record<string, Para
 }
 
 /** The picker uses the current interface language, including when English is selected. */
-export function localeName(locale: Locale): string { return t(LANGUAGE_NAME_KEYS[locale]); }
+export function localeName(locale: Locale): string {
+  return t(LANGUAGE_NAME_KEYS[locale]);
+}
 
 export function formatDate(value: string | Date, options?: Intl.DateTimeFormatOptions): string {
   return new Intl.DateTimeFormat(getFormatLocale(), options).format(new Date(value));

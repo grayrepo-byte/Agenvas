@@ -45,24 +45,35 @@ import tools.jackson.databind.ObjectMapper;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class)
 class LibraryPostgresIT {
-    @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     private static final Path STORAGE_ROOT = temporaryRoot();
-    @DynamicPropertySource static void properties(DynamicPropertyRegistry registry) {
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("agenvas.storage.root", STORAGE_ROOT::toString);
     }
-    @Autowired IdentityService identities;
-    @Autowired ProjectService projects;
-    @Autowired AssetService assets;
-    @Autowired MediaToolRunner mediaTools;
-    @Autowired ArtifactService artifacts;
-    @Autowired ObjectMapper mapper;
-    @Autowired WebApplicationContext context;
-    @Autowired org.springframework.jdbc.core.simple.JdbcClient jdbc;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    ProjectService projects;
+    @Autowired
+    AssetService assets;
+    @Autowired
+    MediaToolRunner mediaTools;
+    @Autowired
+    ArtifactService artifacts;
+    @Autowired
+    ObjectMapper mapper;
+    @Autowired
+    WebApplicationContext context;
+    @Autowired
+    org.springframework.jdbc.core.simple.JdbcClient jdbc;
 
-    @Test void savesTheDisplayedImageAsAnIndependentClassifiedAsset() throws Exception {
+    @Test
+    void savesTheDisplayedImageAsAnIndependentClassifiedAsset() throws Exception {
         AdminPrincipal owner = identities.setup("library-admin", "library-password-123");
         var auth = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of()));
         MockMvc mvc = webAppContextSetup(context).apply(springSecurity()).build();
@@ -102,18 +113,25 @@ class LibraryPostgresIT {
                 .param("id", hiddenTextId).param("owner", owner.userId()).update();
         UUID audioAssetId = AudioAssetFixture.archive(assets, mediaTools, owner.userId(), source.id());
         byte[] audioBytes = Files.readAllBytes(assets.get(owner.userId(), source.id(), audioAssetId).path());
-        JsonNode audioUpload = mapper.readTree(mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/v1/library/uploads")
-                .file(new org.springframework.mock.web.MockMultipartFile("file", "synthetic.wav", "audio/wav", audioBytes))
-                .param("kind", "AUDIO").param("name", "Synthetic audio").param("category", "OTHER").param("commandKey", "upload-audio")
-                .with(auth).with(csrf())).andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString());
+        JsonNode audioUpload = mapper.readTree(mvc
+                .perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .multipart("/api/v1/library/uploads")
+                        .file(new org.springframework.mock.web.MockMultipartFile("file", "synthetic.wav", "audio/wav",
+                                audioBytes))
+                        .param("kind", "AUDIO").param("name", "Synthetic audio").param("category", "OTHER")
+                        .param("commandKey", "upload-audio")
+                        .with(auth).with(csrf()))
+                .andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString());
         awaitCommand(mvc, owner, audioUpload.path("id").asText());
-        JsonNode media = mapper.readTree(mvc.perform(get("/api/v1/library/entries").with(auth).param("mediaOnly", "true"))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        JsonNode media = mapper
+                .readTree(mvc.perform(get("/api/v1/library/entries").with(auth).param("mediaOnly", "true"))
+                        .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(media.path("items").size()).isEqualTo(2);
         assertThat(media.path("total").asInt()).isEqualTo(2);
         assertThat(media.path("categoryCounts").path("OTHER").asInt()).isEqualTo(1);
-        JsonNode audioEntries = mapper.readTree(mvc.perform(get("/api/v1/library/entries").with(auth).param("mediaOnly", "true").param("kind", "AUDIO"))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        JsonNode audioEntries = mapper.readTree(
+                mvc.perform(get("/api/v1/library/entries").with(auth).param("mediaOnly", "true").param("kind", "AUDIO"))
+                        .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(audioEntries.path("total").asInt()).isEqualTo(1);
         assertThat(audioEntries.path("items").get(0).path("kind").asText()).isEqualTo("AUDIO");
         JsonNode allEntries = mapper.readTree(mvc.perform(get("/api/v1/library/entries").with(auth))
@@ -136,19 +154,22 @@ class LibraryPostgresIT {
                         "commandKey", "place-hotel", "x", 10, "y", 20))))
                 .andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString());
         awaitCommand(mvc, owner, imported.path("id").asText());
-        JsonNode replayedImport = mapper.readTree(mvc.perform(post("/api/v1/projects/" + target.id() + "/library-imports")
-                .with(auth).with(csrf()).contentType("application/json")
-                .content(mapper.writeValueAsString(Map.of("entryId", entryId, "expectedVersion", 0,
-                        "commandKey", "place-hotel", "x", 10, "y", 20))))
+        JsonNode replayedImport = mapper.readTree(mvc
+                .perform(post("/api/v1/projects/" + target.id() + "/library-imports")
+                        .with(auth).with(csrf()).contentType("application/json")
+                        .content(mapper.writeValueAsString(Map.of("entryId", entryId, "expectedVersion", 0,
+                                "commandKey", "place-hotel", "x", 10, "y", 20))))
                 .andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString());
         assertThat(replayedImport.path("id").asText()).isEqualTo(imported.path("id").asText());
         assertThat(replayedImport.path("status").asText()).isEqualTo("SUCCEEDED");
-        JsonNode targetCanvas = mapper.readTree(mvc.perform(get("/api/v1/projects/" + target.id() + "/canvas/items").with(auth))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        JsonNode targetCanvas = mapper
+                .readTree(mvc.perform(get("/api/v1/projects/" + target.id() + "/canvas/items").with(auth))
+                        .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(targetCanvas.path("items").size()).isEqualTo(1);
         JsonNode targetItem = targetCanvas.path("items").get(0);
         assertThat(targetItem.path("subjectId").asText()).isNotEqualTo(artifact.artifact().id().toString());
-        assertThat(targetItem.path("selectedVersion").path("content").path("sourceType").asText()).isEqualTo("LIBRARY_IMPORT");
+        assertThat(targetItem.path("selectedVersion").path("content").path("sourceType").asText())
+                .isEqualTo("LIBRARY_IMPORT");
         JsonNode draft = mapper.readTree(mvc.perform(get("/api/v1/projects/" + target.id() + "/canvas-items/"
                 + targetItem.path("id").asText() + "/media-draft").with(auth)).andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString());
@@ -158,15 +179,22 @@ class LibraryPostgresIT {
                 + targetItem.path("id").asText() + "/media-versions").with(auth)).andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString());
         assertThat(history.path("items").size()).isEqualTo(1);
-        JsonNode uploaded = mapper.readTree(mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/v1/library/uploads")
-                .file(new org.springframework.mock.web.MockMultipartFile("file", "hotel.png", "image/png", originalBytes))
-                .param("kind", "IMAGE").param("name", "直接上传").param("category", "CHARACTER").param("commandKey", "upload-hotel")
-                .with(auth).with(csrf())).andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString());
+        JsonNode uploaded = mapper.readTree(mvc
+                .perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .multipart("/api/v1/library/uploads")
+                        .file(new org.springframework.mock.web.MockMultipartFile("file", "hotel.png", "image/png",
+                                originalBytes))
+                        .param("kind", "IMAGE").param("name", "直接上传").param("category", "CHARACTER")
+                        .param("commandKey", "upload-hotel")
+                        .with(auth).with(csrf()))
+                .andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString());
         awaitCommand(mvc, owner, uploaded.path("id").asText());
         String referencePath = "/api/v1/projects/" + target.id() + "/canvas-items/"
                 + targetItem.path("id").asText() + "/library-references";
-        Map<String, Object> reference = Map.of("entryId", entryId, "expectedVersion", 0, "commandKey", "hotel-reference",
-                "role", "REFERENCE", "color", "#3B82F6", "draft", Map.of("expectedVersion", draft.path("version").asLong(),
+        Map<String, Object> reference = Map.of("entryId", entryId, "expectedVersion", 0, "commandKey",
+                "hotel-reference",
+                "role", "REFERENCE", "color", "#3B82F6", "draft",
+                Map.of("expectedVersion", draft.path("version").asLong(),
                         "prompt", "海边酒店", "parameters", Map.of(), "mediaInputs", List.of(), "mentions", List.of(),
                         "styleId", "00000000-0000-4000-8000-000000000301"));
         JsonNode referenceCommand = mapper.readTree(mvc.perform(post(referencePath).with(auth).with(csrf())
@@ -179,8 +207,9 @@ class LibraryPostgresIT {
         assertThat(withReference.path("mediaInputs").size()).isEqualTo(1);
         assertThat(withReference.path("prompt").asText()).isEqualTo("海边酒店");
         assertThat(withReference.path("styleId").asText()).isEqualTo("00000000-0000-4000-8000-000000000301");
-        JsonNode afterReferenceCanvas = mapper.readTree(mvc.perform(get("/api/v1/projects/" + target.id() + "/canvas/items").with(auth))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        JsonNode afterReferenceCanvas = mapper
+                .readTree(mvc.perform(get("/api/v1/projects/" + target.id() + "/canvas/items").with(auth))
+                        .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(afterReferenceCanvas.path("items").size()).isEqualTo(1);
         String entryPath = "/api/v1/library/entries/" + entryId;
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch(entryPath)
@@ -213,7 +242,8 @@ class LibraryPostgresIT {
         mvc.perform(get(entryPath).with(auth)).andExpect(status().isNotFound());
         // Imported bytes belong to the target project, even after permanent library removal.
         UUID targetAsset = UUID.fromString(targetItem.path("selectedVersion").path("content").path("assetId").asText());
-        assertThat(Files.readAllBytes(assets.get(owner.userId(), target.id(), targetAsset).path())).containsExactly(originalBytes);
+        assertThat(Files.readAllBytes(assets.get(owner.userId(), target.id(), targetAsset).path()))
+                .containsExactly(originalBytes);
     }
 
     private JsonNode awaitCommand(MockMvc mvc, AdminPrincipal owner, String id) {
@@ -228,7 +258,10 @@ class LibraryPostgresIT {
     }
 
     private static Path temporaryRoot() {
-        try { return Files.createTempDirectory("agenvas-library-test-"); }
-        catch (java.io.IOException failure) { throw new IllegalStateException(failure); }
+        try {
+            return Files.createTempDirectory("agenvas-library-test-");
+        } catch (java.io.IOException failure) {
+            throw new IllegalStateException(failure);
+        }
     }
 }

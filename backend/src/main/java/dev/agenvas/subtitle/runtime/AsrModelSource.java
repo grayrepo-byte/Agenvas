@@ -7,5 +7,8 @@ import java.io.IOException;
 @FunctionalInterface
 public interface AsrModelSource {
     InputStream open(ManagedAsrCatalog.Model model) throws IOException;
-    default InputStream open(ManagedAsrCatalog.Model model, Runnable check) throws IOException { check.run(); return open(model); }
+    default InputStream open(ManagedAsrCatalog.Model model, Runnable check) throws IOException {
+        check.run();
+        return open(model);
+    }
 }

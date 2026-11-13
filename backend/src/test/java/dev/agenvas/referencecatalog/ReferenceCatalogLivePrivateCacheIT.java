@@ -87,11 +87,16 @@ class ReferenceCatalogLivePrivateCacheIT {
         properties.add("agenvas.public-download.doh-bootstrap-addresses", () -> "1.1.1.1,1.0.0.1");
     }
 
-    @Autowired IdentityService identities;
-    @Autowired ProjectService projects;
-    @Autowired WebApplicationContext context;
-    @Autowired ObjectMapper mapper;
-    @Autowired JdbcClient jdbc;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    ProjectService projects;
+    @Autowired
+    WebApplicationContext context;
+    @Autowired
+    ObjectMapper mapper;
+    @Autowired
+    JdbcClient jdbc;
 
     @Test
     void realGitHubSelectedImageIsCachedThenPreviewedImportedAndClearedWithoutNetwork() throws Exception {
@@ -107,9 +112,11 @@ class ReferenceCatalogLivePrivateCacheIT {
                         "manifestPath", "public/data/catalog.json", "format", "OPEN_POSE_COSTUME",
                         "imageDistributionApproved", false))))
                 .andExpect(status().isCreated());
-        JsonNode sync = mapper.readTree(mvc.perform(post("/api/v1/settings/reference-catalog/sources/" + SOURCE + "/sync")
-                .with(authentication(auth)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"expectedVersion\":0}")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        JsonNode sync = mapper.readTree(mvc
+                .perform(post("/api/v1/settings/reference-catalog/sources/" + SOURCE + "/sync")
+                        .with(authentication(auth)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"expectedVersion\":0}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(sync.path("state").asText()).as("Real fixed-commit metadata synchronization").isEqualTo("SUCCESS");
         assertThat(sync.path("entryCount").asInt()).isEqualTo(3144);
         String snapshot = sync.path("snapshotId").asText();
@@ -118,7 +125,8 @@ class ReferenceCatalogLivePrivateCacheIT {
                 .with(authentication(auth))).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(page.path("items").get(0).path("variants").get(0).path("privateCacheAllowed").asBoolean()).isTrue();
         byte[] input = mapper.writeValueAsBytes(Map.of("sourceId", SOURCE, "snapshotId", snapshot,
-                "entryId", "full_single_P001", "variantId", "full_single_P001_front", "commandKey", "one-selected-private-image"));
+                "entryId", "full_single_P001", "variantId", "full_single_P001_front", "commandKey",
+                "one-selected-private-image"));
         JsonNode image = mapper.readTree(mvc.perform(post("/api/v1/reference-catalog/private-images")
                 .with(authentication(auth)).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(input))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
@@ -142,7 +150,7 @@ class ReferenceCatalogLivePrivateCacheIT {
         assertThat(replay.path("id").asText()).isEqualTo(imageId);
         var project = projects.create(owner.userId(), "Offline selected reference", Project.AspectRatio.LANDSCAPE_16_9);
         JsonNode imported = mapper.readTree(mvc.perform(post("/api/v1/projects/" + project.id()
-                        + "/reference-catalog/private-images/" + imageId + "/import")
+                + "/reference-catalog/private-images/" + imageId + "/import")
                 .with(authentication(auth)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"commandKey\":\"offline-project-copy\",\"placement\":{\"x\":40,\"y\":40}}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
@@ -155,10 +163,11 @@ class ReferenceCatalogLivePrivateCacheIT {
         assertThat(retained.path("removedFiles").asInt()).isZero();
         assertThat(retained.path("stats").path("protectedFileCount").asInt()).isEqualTo(1);
         JsonNode cleared = mapper.readTree(mvc.perform(delete("/api/v1/reference-catalog/private-images/" + imageId)
-                .with(authentication(auth)).with(csrf())).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+                .with(authentication(auth)).with(csrf())).andExpect(status().isOk()).andReturn().getResponse()
+                .getContentAsString());
         assertThat(cleared.path("cached").asBoolean()).isFalse();
         byte[] projectCopy = mvc.perform(get("/api/v1/projects/" + project.id() + "/assets/"
-                        + imported.path("assetId").asText() + "/content").with(authentication(auth)))
+                + imported.path("assetId").asText() + "/content").with(authentication(auth)))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray();
         assertThat(sha256(projectCopy)).isEqualTo(expectedHash);
         assertThat(BRIDGE.attempts()).as("No network after going offline").isEqualTo(attempts);
@@ -172,15 +181,19 @@ class ReferenceCatalogLivePrivateCacheIT {
     }
 
     private static Path temporaryStorage() {
-        try { return Files.createTempDirectory("agenvas-live-private-reference-"); }
-        catch (IOException failure) { throw new IllegalStateException(failure); }
+        try {
+            return Files.createTempDirectory("agenvas-live-private-reference-");
+        } catch (IOException failure) {
+            throw new IllegalStateException(failure);
+        }
     }
 
     @AfterAll
     static void cleanup() throws Exception {
         BRIDGE.close();
         try (var paths = Files.walk(STORAGE)) {
-            for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
+            for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
+                Files.deleteIfExists(path);
         }
     }
 
@@ -205,12 +218,19 @@ class ReferenceCatalogLivePrivateCacheIT {
                         try {
                             Socket socket = listener.accept();
                             accepted.incrementAndGet();
-                            if (!online) socket.close();
-                            else threads.submit(() -> bridge(socket));
-                        } catch (IOException closed) { break; }
+                            if (!online)
+                                socket.close();
+                            else
+                                threads.submit(() -> bridge(socket));
+                        } catch (IOException closed) {
+                            break;
+                        }
                     }
                 });
-            } catch (IOException failure) { threads.close(); throw new IllegalStateException(failure); }
+            } catch (IOException failure) {
+                threads.close();
+                throw new IllegalStateException(failure);
+            }
         }
 
         private void bridge(Socket client) {
@@ -222,21 +242,42 @@ class ReferenceCatalogLivePrivateCacheIT {
                 copy(client, upstream);
             } catch (IOException ignored) {
                 // Closed task-owned bridge sockets are the deliberate offline boundary.
-            } finally { sockets.remove(client); }
+            } finally {
+                sockets.remove(client);
+            }
         }
 
         private static void copy(Socket source, Socket destination) {
-            try { source.getInputStream().transferTo(destination.getOutputStream()); }
-            catch (IOException ignored) { /* Connection shutdown, no traffic recording. */ }
-            finally { try { destination.close(); } catch (IOException ignored) { /* Already closed. */ } }
+            try {
+                source.getInputStream().transferTo(destination.getOutputStream());
+            } catch (IOException ignored) {
+                /* Connection shutdown, no traffic recording. */ } finally {
+                try {
+                    destination.close();
+                } catch (IOException ignored) {
+                    /* Already closed. */ }
+            }
         }
 
-        int port() { return listener.getLocalPort(); }
-        int attempts() { return accepted.get(); }
+        int port() {
+            return listener.getLocalPort();
+        }
+        int attempts() {
+            return accepted.get();
+        }
         void offline() {
             online = false;
-            for (Socket socket : sockets) try { socket.close(); } catch (IOException ignored) { /* Closed. */ }
+            for (Socket socket : sockets)
+                try {
+                    socket.close();
+                } catch (IOException ignored) {
+                    /* Closed. */ }
         }
-        @Override public void close() throws Exception { offline(); listener.close(); threads.close(); }
+        @Override
+        public void close() throws Exception {
+            offline();
+            listener.close();
+            threads.close();
+        }
     }
 }

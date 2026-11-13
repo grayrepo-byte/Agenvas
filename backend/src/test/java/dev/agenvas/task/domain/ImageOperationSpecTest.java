@@ -12,7 +12,8 @@ import tools.jackson.databind.node.ObjectNode;
 class ImageOperationSpecTest {
     private final ObjectMapper mapper = new ObjectMapper();
 
-    @Test void costumeExtractionUsesManagedPromptAndFixedPortraitLayout() {
+    @Test
+    void costumeExtractionUsesManagedPromptAndFixedPortraitLayout() {
         var operation = ImageOperation.valueOf("COSTUME_EXTRACT");
         var spec = parse(operation, mapper.createObjectNode().put("aspectRatio", "16:9"));
         assertThat(operation.cloud()).isTrue();
@@ -26,7 +27,7 @@ class ImageOperationSpecTest {
 
     @Test
     void declaresModelExtensionsAsCloudImageOperations() {
-        assertThat(new ImageOperation[] {
+        assertThat(new ImageOperation[]{
                 ImageOperation.THREE_VIEW,
                 ImageOperation.LAYER_SPLIT,
                 ImageOperation.EXPRESSION_EDIT,
@@ -35,7 +36,7 @@ class ImageOperationSpecTest {
                 ImageOperation.VIEW_ANGLE
         }).allMatch(ImageOperation::cloud);
 
-        assertThat(new ImageOperation[] {
+        assertThat(new ImageOperation[]{
                 ImageOperation.EXPRESSION_EDIT,
                 ImageOperation.OBJECT_REMOVE
         }).allMatch(ImageOperation::instructionRequired);
@@ -61,7 +62,8 @@ class ImageOperationSpecTest {
         assertThat(angle.parameters().path("viewAngle").asText()).isEqualTo("RIGHT_THREE_QUARTER");
         assertThat(foreground.requiresTransparentOutput())
                 .isTrue();
-        assertThat(parse(ImageOperation.REMOVE_BACKGROUND, mapper.createObjectNode()).requiresTransparentOutput()).isTrue();
+        assertThat(parse(ImageOperation.REMOVE_BACKGROUND, mapper.createObjectNode()).requiresTransparentOutput())
+                .isTrue();
     }
 
     @Test
@@ -74,9 +76,11 @@ class ImageOperationSpecTest {
         assertThat(parse(ImageOperation.EXPRESSION_EDIT,
                 mapper.createObjectNode()).prompt("gentle smile", null)).contains("facial expression", "gentle smile");
         assertThat(parse(ImageOperation.REMOVE_BACKGROUND,
-                mapper.createObjectNode()).prompt("keep flowers", null)).contains("fully transparent background", "keep flowers");
+                mapper.createObjectNode()).prompt("keep flowers", null))
+                .contains("fully transparent background", "keep flowers");
         assertThat(parse(ImageOperation.OBJECT_REMOVE,
-                mapper.createObjectNode()).prompt("right-hand person", null)).contains("reconstruct", "right-hand person");
+                mapper.createObjectNode()).prompt("right-hand person", null))
+                .contains("reconstruct", "right-hand person");
         assertThat(parse(ImageOperation.VIEW_ANGLE, angle).prompt("same framing", null))
                 .contains("right profile view", "same framing");
         assertThat(parse(ImageOperation.LAYER_SPLIT, foreground).promptKey()).isNull();

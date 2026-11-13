@@ -71,10 +71,12 @@ public class JooqCanvasItemRepository implements CanvasItemRepository {
 
     @Override
     public boolean groupExists(UUID ownerId, UUID projectId, UUID groupId) {
-        if (groupId == null) return true;
+        if (groupId == null)
+            return true;
         return dsl.fetchExists(dsl.selectOne().from(CANVAS_GROUP).join(PROJECT)
                 .on(PROJECT.ID.eq(CANVAS_GROUP.PROJECT_ID)).where(CANVAS_GROUP.PROJECT_ID.eq(projectId))
-                .and(CANVAS_GROUP.ID.eq(groupId)).and(CANVAS_GROUP.DELETED.isFalse()).and(PROJECT.OWNER_ID.eq(ownerId)));
+                .and(CANVAS_GROUP.ID.eq(groupId)).and(CANVAS_GROUP.DELETED.isFalse())
+                .and(PROJECT.OWNER_ID.eq(ownerId)));
     }
 
     /** 新建画布项；重复 ID 不覆盖已有空间展示状态。 */
@@ -83,7 +85,8 @@ public class JooqCanvasItemRepository implements CanvasItemRepository {
         // Existing Agent output groups historically had only a UUID tag. Internal placement
         // now materializes their default metadata; external commands validate groupExists first.
         if (item.groupId() != null) {
-            dsl.insertInto(CANVAS_GROUP).set(CANVAS_GROUP.PROJECT_ID, item.projectId()).set(CANVAS_GROUP.ID, item.groupId())
+            dsl.insertInto(CANVAS_GROUP).set(CANVAS_GROUP.PROJECT_ID, item.projectId())
+                    .set(CANVAS_GROUP.ID, item.groupId())
                     .set(CANVAS_GROUP.NAME, "Group").set(CANVAS_GROUP.COLLAPSED, false).set(CANVAS_GROUP.DELETED, false)
                     .set(CANVAS_GROUP.VERSION, 0L).set(CANVAS_GROUP.CREATED_AT, atUtc(item.createdAt()))
                     .set(CANVAS_GROUP.UPDATED_AT, atUtc(item.updatedAt()))
@@ -102,13 +105,13 @@ public class JooqCanvasItemRepository implements CanvasItemRepository {
                 .set(CANVAS_ITEM.MEDIA_SELECTION_EPOCH, item.version())
                 .set(CANVAS_ITEM.TITLE, item.title())
                 .set(CANVAS_ITEM.ARTIFACT_ID, item.subjectType() == CanvasItem.SubjectType.ARTIFACT
-                                        ? item.subjectId()
-                                        : null)
-                        .set(
-                                CANVAS_ITEM.CHARACTER_ID,
-                                item.subjectType() == CanvasItem.SubjectType.CHARACTER
-                                        ? item.subjectId()
-                                        : null)
+                        ? item.subjectId()
+                        : null)
+                .set(
+                        CANVAS_ITEM.CHARACTER_ID,
+                        item.subjectType() == CanvasItem.SubjectType.CHARACTER
+                                ? item.subjectId()
+                                : null)
                 .set(CANVAS_ITEM.X, item.x())
                 .set(CANVAS_ITEM.Y, item.y())
                 .set(CANVAS_ITEM.WIDTH, item.width())
@@ -158,7 +161,8 @@ public class JooqCanvasItemRepository implements CanvasItemRepository {
                 .set(CANVAS_ITEM_MEDIA_VERSION.ARTIFACT_VERSION_ID, versionId)
                 .set(CANVAS_ITEM_MEDIA_VERSION.CREATED_AT, atUtc(createdAt))
                 .onConflict(CANVAS_ITEM_MEDIA_VERSION.CANVAS_ITEM_ID,
-                        CANVAS_ITEM_MEDIA_VERSION.ARTIFACT_VERSION_ID).doNothing().execute();
+                        CANVAS_ITEM_MEDIA_VERSION.ARTIFACT_VERSION_ID)
+                .doNothing().execute();
     }
 
     @Override

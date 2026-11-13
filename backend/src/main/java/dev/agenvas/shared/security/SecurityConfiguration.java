@@ -37,8 +37,7 @@ public class SecurityConfiguration {
             CsrfTokenRepository csrfTokenRepository,
             SecurityContextRepository securityContextRepository)
             throws Exception {
-        CsrfTokenRequestAttributeHandler csrfRequestHandler =
-                new CsrfTokenRequestAttributeHandler();
+        CsrfTokenRequestAttributeHandler csrfRequestHandler = new CsrfTokenRequestAttributeHandler();
         return http
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(
@@ -52,12 +51,16 @@ public class SecurityConfiguration {
                                 "/actuator/health/readiness")
                         .permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.POST,
-                                "/api/v1/projects/*/reference-catalog/costumes").hasRole("ADMIN")
+                                "/api/v1/projects/*/reference-catalog/costumes")
+                        .hasRole("ADMIN")
                         .requestMatchers(org.springframework.http.HttpMethod.PATCH,
-                                "/api/v1/reference-catalog/costumes/*").hasRole("ADMIN")
+                                "/api/v1/reference-catalog/costumes/*")
+                        .hasRole("ADMIN")
                         .requestMatchers(org.springframework.http.HttpMethod.DELETE,
-                                "/api/v1/reference-catalog/costumes/*").hasRole("ADMIN")
-                        .requestMatchers("/api/v1/settings/llm/models", "/api/v1/settings/llm/connections", "/api/v1/settings/llm/connections/**", "/api/v1/settings/media-connections/**",
+                                "/api/v1/reference-catalog/costumes/*")
+                        .hasRole("ADMIN")
+                        .requestMatchers("/api/v1/settings/llm/models", "/api/v1/settings/llm/connections",
+                                "/api/v1/settings/llm/connections/**", "/api/v1/settings/media-connections/**",
                                 "/api/v1/settings/local-asr", "/api/v1/settings/local-asr/**",
                                 "/api/v1/settings/media-connections",
                                 "/api/v1/settings/media-templates", "/api/v1/settings/media-templates/**",
@@ -72,7 +75,8 @@ public class SecurityConfiguration {
                                 "/api/v1/settings/prompts/**",
                                 "/api/v1/settings/system-logs", "/api/v1/settings/storage/**",
                                 "/api/v1/settings/local-services/discover",
-                                "/api/v1/call-logs/**", "/api/v1/settings/debug", "/api/v1/settings/call-log-retention", "/api/v1/settings/call-log-retention/**")
+                                "/api/v1/call-logs/**", "/api/v1/settings/debug", "/api/v1/settings/call-log-retention",
+                                "/api/v1/settings/call-log-retention/**")
                         .hasRole("ADMIN")
                         .anyRequest()
                         .authenticated())
@@ -148,7 +152,8 @@ public class SecurityConfiguration {
                         HttpStatus.FORBIDDEN,
                         "ACCESS_DENIED",
                         ApiMessage.of("api.security-configuration.request-denied"),
-                        ApiMessage.of("api.security-configuration.the-request-lacks-valid-permissions-or-csrf-credentials"),
+                        ApiMessage.of(
+                                "api.security-configuration.the-request-lacks-valid-permissions-or-csrf-credentials"),
                         false));
     }
 

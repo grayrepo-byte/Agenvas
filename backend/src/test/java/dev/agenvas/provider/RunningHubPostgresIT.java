@@ -64,49 +64,86 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 /** Real PostgreSQL, production adapters/archives and a local fake RunningHub. No real provider calls. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class, properties = { "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
+@SpringBootTest(classes = AgenvasApplication.class, properties = {"agenvas.llm.scheduler-enabled=false",
+        "agenvas.provider.media.scheduler-enabled=false"})
 class RunningHubPostgresIT {
-    @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
-    @TempDir static java.nio.file.Path storage;
-    @DynamicPropertySource static void properties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl); registry.add("spring.datasource.username", POSTGRES::getUsername);
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    @TempDir
+    static java.nio.file.Path storage;
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("agenvas.credentials.master-key-base64", () -> Base64.getEncoder().encodeToString(new byte[32]));
         registry.add("agenvas.storage.root", () -> storage.toString());
     }
-    @Autowired IdentityService identities;
-    @Autowired ProjectService projects;
-    @Autowired ArtifactService artifacts;
-    @Autowired MediaDraftService drafts;
-    @Autowired CanvasService canvas;
-    @Autowired AssetService assets;
-    @Autowired MediaCapabilityService catalog;
-    @Autowired MediaAdapterRegistry adapters;
-    @Autowired MediaExecutionWorker worker;
-    @Autowired dev.agenvas.provider.application.LocalVideoProcessor videoProcessor;
-    @Autowired DirectMediaTaskService direct;
-    @Autowired TaskService tasks;
-    @Autowired dev.agenvas.task.application.ManualUnknownRetryService retries;
-    @Autowired UsageService usage;
-    @Autowired CallLogService callLogs;
-    @Autowired MediaToolRunner mediaTools;
-    @Autowired JdbcClient jdbc;
-    @Autowired ObjectMapper mapper;
-    @Autowired WebApplicationContext webContext;
-    @Autowired dev.agenvas.provider.application.MediaFunctionService functions;
-    @Autowired dev.agenvas.task.application.VideoOperationService videoOperations;
-    @Autowired dev.agenvas.agent.application.AgentInstanceService agents;
-    @Autowired dev.agenvas.run.application.AgentRunService runs;
-    @Autowired dev.agenvas.llm.application.AgentTurnCommitService turnCommits;
-    @Autowired dev.agenvas.llm.application.AgentMediaApprovalService approvals;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    ProjectService projects;
+    @Autowired
+    ArtifactService artifacts;
+    @Autowired
+    MediaDraftService drafts;
+    @Autowired
+    CanvasService canvas;
+    @Autowired
+    AssetService assets;
+    @Autowired
+    MediaCapabilityService catalog;
+    @Autowired
+    MediaAdapterRegistry adapters;
+    @Autowired
+    MediaExecutionWorker worker;
+    @Autowired
+    dev.agenvas.provider.application.LocalVideoProcessor videoProcessor;
+    @Autowired
+    DirectMediaTaskService direct;
+    @Autowired
+    TaskService tasks;
+    @Autowired
+    dev.agenvas.task.application.ManualUnknownRetryService retries;
+    @Autowired
+    UsageService usage;
+    @Autowired
+    CallLogService callLogs;
+    @Autowired
+    MediaToolRunner mediaTools;
+    @Autowired
+    JdbcClient jdbc;
+    @Autowired
+    ObjectMapper mapper;
+    @Autowired
+    WebApplicationContext webContext;
+    @Autowired
+    dev.agenvas.provider.application.MediaFunctionService functions;
+    @Autowired
+    dev.agenvas.task.application.VideoOperationService videoOperations;
+    @Autowired
+    dev.agenvas.agent.application.AgentInstanceService agents;
+    @Autowired
+    dev.agenvas.run.application.AgentRunService runs;
+    @Autowired
+    dev.agenvas.llm.application.AgentTurnCommitService turnCommits;
+    @Autowired
+    dev.agenvas.llm.application.AgentMediaApprovalService approvals;
     private static UUID owner;
-    @BeforeEach void owner() { if (owner == null) owner = identities.setup("rh-admin", "runninghub-password-123").userId(); }
+    @BeforeEach
+    void owner() {
+        if (owner == null)
+            owner = identities.setup("rh-admin", "runninghub-password-123").userId();
+    }
 
-    @Test void invalidAgentProposalRollsBackDraftsAndReturnsARepairableInputError() throws Exception {
+    @Test
+    void invalidAgentProposalRollsBackDraftsAndReturnsARepairableInputError() throws Exception {
         try (var provider = new Fake(1, false, false)) {
             Fixture fixture = fixture(provider, Artifact.Kind.IMAGE, "AI_APP", false);
-            var agent = configureDirector(agents, owner, fixture.project().id(), "Synthetic creator", "Propose an image");
-            var run = runs.create(owner, fixture.project().id(), agent.id(), "Propose an image", "invalid-proposal-run").run();
+            var agent = configureDirector(agents, owner, fixture.project().id(), "Synthetic creator",
+                    "Propose an image");
+            var run = runs.create(owner, fixture.project().id(), agent.id(), "Propose an image", "invalid-proposal-run")
+                    .run();
             String worker = "proposal-input-test";
             Task lease = tasks.claimAgentTurns(worker, 1).getFirst();
             var started = turnCommits.start(lease, worker);
@@ -119,7 +156,8 @@ class RunningHubPostgresIT {
                     .param("project", fixture.project().id()).query(Long.class).single();
 
             assertThatThrownBy(() -> approvals.propose(new dev.agenvas.llm.application.TrustedToolContext(
-                            owner, fixture.project().id(), run.id()), started, UUID.randomUUID(), 0, "synthetic-call", request.toString()))
+                    owner, fixture.project().id(), run.id()), started, UUID.randomUUID(), 0, "synthetic-call",
+                    request.toString()))
                     .isInstanceOfSatisfying(dev.agenvas.shared.error.ApiProblemException.class,
                             problem -> assertThat(problem.code()).isEqualTo("TOOL_ARGUMENT_INVALID"));
             assertThat(jdbc.sql("select count(*) from artifact where project_id=:project")
@@ -131,36 +169,47 @@ class RunningHubPostgresIT {
         }
     }
 
-    @Test void cloudAudioSeparationArchivesBothOutputsAfterRecoveryWithoutAnotherSubmission() throws Exception {
+    @Test
+    void cloudAudioSeparationArchivesBothOutputsAfterRecoveryWithoutAnotherSubmission() throws Exception {
         try (var provider = new Fake(1, false, false)) {
             var audio = Files.createTempFile("rh-separated-audio-", ".wav");
             var video = Files.createTempFile("rh-source-video-", ".mp4");
             var operation = dev.agenvas.provider.domain.MediaFunction.VIDEO_EXTRACT_AUDIO;
-            var original = functions.list().stream().filter(setting -> setting.operation() == operation).findFirst().orElseThrow();
+            var original = functions.list().stream().filter(setting -> setting.operation() == operation).findFirst()
+                    .orElseThrow();
             try {
                 mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i",
                         "sine=frequency=440:sample_rate=48000", "-t", "1", "-y", audio.toString()));
                 mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i",
-                        "testsrc2=s=160x90:r=12", "-i", audio.toString(), "-t", "1", "-c:v", "libx264", "-c:a", "aac", "-y", video.toString()));
+                        "testsrc2=s=160x90:r=12", "-i", audio.toString(), "-t", "1", "-c:v", "libx264", "-c:a", "aac",
+                        "-y", video.toString()));
                 provider.zipOnly = true;
                 provider.failZipArchiveOnce = true;
-                provider.zipBytes = zip(new String[] { "audio.wav" }, new byte[][] { Files.readAllBytes(audio) });
+                provider.zipBytes = zip(new String[]{"audio.wav"}, new byte[][]{Files.readAllBytes(audio)});
                 var fixture = fixture(provider, Artifact.Kind.AUDIO, "WORKFLOW", true);
                 functions.update(operation, original.version(), fixture.capability);
                 var sourceAsset = assets.archiveTaskVideo(owner, fixture.project.id(), UUID.randomUUID(), () -> {
-                    try { return Files.newInputStream(video); } catch (java.io.IOException failure) { throw new IllegalStateException(failure); }
+                    try {
+                        return Files.newInputStream(video);
+                    } catch (java.io.IOException failure) {
+                        throw new IllegalStateException(failure);
+                    }
                 });
                 var source = artifacts.create(owner, fixture.project.id(), Artifact.Kind.VIDEO, "Cloud split source",
-                        mapper.createObjectNode().put("sourceType", "UPLOAD").put("assetId", sourceAsset.id().toString()));
+                        mapper.createObjectNode().put("sourceType", "UPLOAD").put("assetId",
+                                sourceAsset.id().toString()));
                 UUID sourceItem = place(fixture.project, source.artifact());
                 var task = videoOperations.run(owner, fixture.project.id(), source.artifact().id(), sourceItem,
                         source.resourceDefaultVersion().id(), 0, dev.agenvas.task.domain.VideoOperation.EXTRACT_AUDIO,
                         original.version() + 1, 1, "", mapper.createObjectNode(), "cloud-separation");
                 worker.submitOnce("cloud-split-submit");
-                due(task.id()); worker.pollOnce("cloud-split-poll-failure");
-                assertThat(tasks.get(owner, fixture.project.id(), task.id()).status()).isEqualTo(Task.Status.WAITING_PROVIDER);
                 due(task.id());
-                new MediaExecutionWorker(tasks, catalog, adapters, assets, mapper, callLogs, videoProcessor).pollOnce("cloud-split-recovery");
+                worker.pollOnce("cloud-split-poll-failure");
+                assertThat(tasks.get(owner, fixture.project.id(), task.id()).status())
+                        .isEqualTo(Task.Status.WAITING_PROVIDER);
+                due(task.id());
+                new MediaExecutionWorker(tasks, catalog, adapters, assets, mapper, callLogs, videoProcessor)
+                        .pollOnce("cloud-split-recovery");
                 var completed = tasks.get(owner, fixture.project.id(), task.id());
                 assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
                 assertThat(completed.output().path("selected").asBoolean()).isTrue();
@@ -169,20 +218,26 @@ class RunningHubPostgresIT {
                 assertThat(silent.path("selected").asBoolean()).isTrue();
                 var version = artifacts.requireMediaVersionForTask(owner, fixture.project.id(),
                         UUID.fromString(silent.path("artifactVersionId").asText()), Artifact.Kind.VIDEO);
-                var file = assets.get(owner, fixture.project.id(), UUID.fromString(version.content().path("assetId").asText()));
+                var file = assets.get(owner, fixture.project.id(),
+                        UUID.fromString(version.content().path("assetId").asText()));
                 assertThat(mapper.readTree(mediaTools.ffprobe(List.of("-v", "error", "-select_streams", "a",
-                        "-show_entries", "stream=index", "-of", "json", file.path().toString()))).path("streams")).isEmpty();
+                        "-show_entries", "stream=index", "-of", "json", file.path().toString()))).path("streams"))
+                        .isEmpty();
                 assertThat(provider.submits.get()).isEqualTo(1);
                 assertThat(provider.queries.get()).isEqualTo(1);
             } finally {
-                var current = functions.list().stream().filter(setting -> setting.operation() == operation).findFirst().orElseThrow();
-                if (!java.util.Objects.equals(current.capabilityId(), original.capabilityId())) functions.update(operation, current.version(), original.capabilityId());
-                Files.deleteIfExists(audio); Files.deleteIfExists(video);
+                var current = functions.list().stream().filter(setting -> setting.operation() == operation).findFirst()
+                        .orElseThrow();
+                if (!java.util.Objects.equals(current.capabilityId(), original.capabilityId()))
+                    functions.update(operation, current.version(), original.capabilityId());
+                Files.deleteIfExists(audio);
+                Files.deleteIfExists(video);
             }
         }
     }
 
-    @Test void archivesMultipleMediaOutputsReadsCompanionZipResumesFromManifestAndPreservesANewerDraft() throws Exception {
+    @Test
+    void archivesMultipleMediaOutputsReadsCompanionZipResumesFromManifestAndPreservesANewerDraft() throws Exception {
         try (var provider = new Fake(2, true, false)) {
             var fixture = fixture(provider, Artifact.Kind.IMAGE, "WORKFLOW", false);
             Task task = accept(fixture, "");
@@ -193,20 +248,29 @@ class RunningHubPostgresIT {
             ((ObjectNode) replacement.path("runningHub")).put("targetId", "456");
             catalog.updateCapability(previous.connection().id(), fixture.capability, previous.capability().version(),
                     "Changed after acceptance", true, "RUNNINGHUB_IMAGE", replacement);
-            assertThat(tasks.get(owner, fixture.project.id(), task.id()).status()).isEqualTo(Task.Status.WAITING_PROVIDER);
-            due(task.id()); worker.pollOnce("rh-poll");
-            assertThat(tasks.get(owner, fixture.project.id(), task.id()).status()).isEqualTo(Task.Status.WAITING_PROVIDER);
-            assertThat(jdbc.sql("select provider_result_manifest is not null from task where id=:id").param("id", task.id()).query(Boolean.class).single()).isTrue();
+            assertThat(tasks.get(owner, fixture.project.id(), task.id()).status())
+                    .isEqualTo(Task.Status.WAITING_PROVIDER);
+            due(task.id());
+            worker.pollOnce("rh-poll");
+            assertThat(tasks.get(owner, fixture.project.id(), task.id()).status())
+                    .isEqualTo(Task.Status.WAITING_PROVIDER);
+            assertThat(jdbc.sql("select provider_result_manifest is not null from task where id=:id")
+                    .param("id", task.id()).query(Boolean.class).single()).isTrue();
             var draft = drafts.get(owner, fixture.project.id(), fixture.card);
-            drafts.save(owner, fixture.project.id(), fixture.card, draft.version(), "new local draft", draft.parameters(), null,
+            drafts.save(owner, fixture.project.id(), fixture.card, draft.version(), "new local draft",
+                    draft.parameters(), null,
                     fixture.capability, null, List.of(), List.of(), null);
             // A fresh worker has no in-memory result state, and must not re-query/re-submit or re-download the ready first asset.
-            var restarted = new MediaExecutionWorker(tasks, catalog, adapters, assets, mapper, callLogs, videoProcessor);
-            due(task.id()); restarted.pollOnce("rh-restarted");
+            var restarted = new MediaExecutionWorker(tasks, catalog, adapters, assets, mapper, callLogs,
+                    videoProcessor);
+            due(task.id());
+            restarted.pollOnce("rh-restarted");
             var completed = tasks.get(owner, fixture.project.id(), task.id());
             assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
-            assertThat(provider.submits).hasValue(1); assertThat(provider.queries).hasValue(1);
-            assertThat(provider.firstDownloads).hasValue(1); assertThat(provider.secondDownloads).hasValue(2);
+            assertThat(provider.submits).hasValue(1);
+            assertThat(provider.queries).hasValue(1);
+            assertThat(provider.firstDownloads).hasValue(1);
+            assertThat(provider.secondDownloads).hasValue(2);
             assertThat(provider.zipDownloads).hasValue(0);
             assertThat(completed.output().path("additionalResults")).hasSize(1);
             assertThat(completed.output().path("selected").asBoolean()).isFalse();
@@ -219,7 +283,8 @@ class RunningHubPostgresIT {
         }
     }
 
-    @Test void explicitBlockedVideoRetryCreatesANewGenerationAndSelectsTheFirstResult() throws Exception {
+    @Test
+    void explicitBlockedVideoRetryCreatesANewGenerationAndSelectsTheFirstResult() throws Exception {
         try (var provider = new Fake(1, false, false)) {
             var file = Files.createTempFile("rh-selection-fixture", ".mp4");
             try {
@@ -227,19 +292,23 @@ class RunningHubPostgresIT {
                         "-i", "color=c=black:s=32x32:r=1", "-t", "1", "-pix_fmt", "yuv420p", "-y", file.toString()));
                 provider.firstType = "mp4";
                 provider.firstBytes = Files.readAllBytes(file);
-                provider.zipBytes = zip(new String[] { "companion.mp4" }, new byte[][] { provider.firstBytes });
+                provider.zipBytes = zip(new String[]{"companion.mp4"}, new byte[][]{provider.firstBytes});
                 var fixture = fixture(provider, Artifact.Kind.VIDEO, "AI_APP", false);
                 Task original = accept(fixture, "Synthetic video retry");
                 worker.submitOnce("rh-original-submit");
                 jdbc.sql("update task set status='BLOCKED', error_code='PROVIDER_POLL_RETRY_EXHAUSTED', "
-                                + "version=version+1 where id=:id").param("id", original.id()).update();
+                        + "version=version+1 where id=:id").param("id", original.id()).update();
                 Task blocked = tasks.get(owner, fixture.project.id(), original.id());
-                Task replacement = retries.create(owner, fixture.project.id(), original.id(), blocked.version(), "retry-blocked-video");
-                assertThat(retries.create(owner, fixture.project.id(), original.id(), blocked.version(), "retry-blocked-video").id())
+                Task replacement = retries.create(owner, fixture.project.id(), original.id(), blocked.version(),
+                        "retry-blocked-video");
+                assertThat(retries
+                        .create(owner, fixture.project.id(), original.id(), blocked.version(), "retry-blocked-video")
+                        .id())
                         .isEqualTo(replacement.id());
                 assertThat(provider.submits).hasValue(1);
                 worker.submitOnce("rh-replacement-submit");
-                due(replacement.id()); worker.pollOnce("rh-replacement-poll");
+                due(replacement.id());
+                worker.pollOnce("rh-replacement-poll");
                 Task completed = tasks.get(owner, fixture.project.id(), replacement.id());
                 assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
                 assertThat(completed.output().path("selected").asBoolean()).isTrue();
@@ -250,27 +319,38 @@ class RunningHubPostgresIT {
                 assertThat(canvas.list(owner, fixture.project.id())).hasSize(1);
                 assertThat(tasks.get(owner, fixture.project.id(), original.id())).isEqualTo(blocked);
                 assertThat(tasks.providerResultManifest(completed).orElseThrow().results()).hasSize(1);
-            } finally { Files.deleteIfExists(file); }
+            } finally {
+                Files.deleteIfExists(file);
+            }
         }
     }
 
-    @Test void zipOnlyOutputsBecomeResourcesAndResumeWithoutQueryingOrSubmittingAgain() throws Exception {
+    @Test
+    void zipOnlyOutputsBecomeResourcesAndResumeWithoutQueryingOrSubmittingAgain() throws Exception {
         try (var provider = new Fake(2, false, false)) {
             provider.zipOnly = true;
             provider.failZipArchiveOnce = true;
-            provider.zipBytes = zip(new String[] { "output/图片一.png", "output/图片二.png" }, new byte[][] { provider.imageBytes, provider.imageBytes });
+            provider.zipBytes = zip(new String[]{"output/图片一.png", "output/图片二.png"},
+                    new byte[][]{provider.imageBytes, provider.imageBytes});
             var fixture = fixture(provider, Artifact.Kind.IMAGE, "WORKFLOW", false);
-            Task task = accept(fixture, "ZIP results"); worker.submitOnce("rh-zip-submit");
-            due(task.id()); worker.pollOnce("rh-zip-first");
-            assertThat(tasks.get(owner, fixture.project.id(), task.id()).status()).isEqualTo(Task.Status.WAITING_PROVIDER);
+            Task task = accept(fixture, "ZIP results");
+            worker.submitOnce("rh-zip-submit");
+            due(task.id());
+            worker.pollOnce("rh-zip-first");
+            assertThat(tasks.get(owner, fixture.project.id(), task.id()).status())
+                    .isEqualTo(Task.Status.WAITING_PROVIDER);
             var manifest = tasks.providerResultManifest(task).orElseThrow();
             assertThat(manifest.results()).hasSize(2);
             assertThat(manifest.results().getFirst().archiveEntry().name()).isEqualTo("output/图片一.png");
             // Model a crash after the first member has already been published as a READY asset.
-            UUID archiveId = UUID.nameUUIDFromBytes(("agenvas:provider-output:v1:" + task.id() + ":0").getBytes(StandardCharsets.UTF_8));
-            var first = assets.archiveTaskImage(owner, fixture.project.id(), archiveId, () -> new ByteArrayInputStream(provider.imageBytes));
-            var restarted = new MediaExecutionWorker(tasks, catalog, adapters, assets, mapper, callLogs, videoProcessor);
-            due(task.id()); restarted.pollOnce("rh-zip-resumed");
+            UUID archiveId = UUID.nameUUIDFromBytes(
+                    ("agenvas:provider-output:v1:" + task.id() + ":0").getBytes(StandardCharsets.UTF_8));
+            var first = assets.archiveTaskImage(owner, fixture.project.id(), archiveId,
+                    () -> new ByteArrayInputStream(provider.imageBytes));
+            var restarted = new MediaExecutionWorker(tasks, catalog, adapters, assets, mapper, callLogs,
+                    videoProcessor);
+            due(task.id());
+            restarted.pollOnce("rh-zip-resumed");
             var completed = tasks.get(owner, fixture.project.id(), task.id());
             assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
             var primaryVersion = artifacts.requireMediaVersionForTask(owner, fixture.project.id(),
@@ -278,26 +358,35 @@ class RunningHubPostgresIT {
             assertThat(primaryVersion.content().path("assetId").asText()).isEqualTo(first.id().toString());
             assertThat(completed.output().path("additionalResults")).hasSize(1);
             var extraVersion = artifacts.requireMediaVersionForTask(owner, fixture.project.id(),
-                    UUID.fromString(completed.output().path("additionalResults").get(0).path("artifactVersionId").asText()), Artifact.Kind.IMAGE);
+                    UUID.fromString(
+                            completed.output().path("additionalResults").get(0).path("artifactVersionId").asText()),
+                    Artifact.Kind.IMAGE);
             UUID extraAsset = UUID.fromString(extraVersion.content().path("assetId").asText());
-            assertThat(assets.get(owner, fixture.project.id(), extraAsset).asset().mediaKind().name()).isEqualTo("IMAGE");
+            assertThat(assets.get(owner, fixture.project.id(), extraAsset).asset().mediaKind().name())
+                    .isEqualTo("IMAGE");
             assertThat(canvas.list(owner, fixture.project.id())).hasSize(2);
-            assertThat(provider.submits).hasValue(1); assertThat(provider.queries).hasValue(1);
-            assertThat(provider.zipDownloads).hasValue(3); assertThat(provider.firstDownloads).hasValue(0);
-            assertThat(mapper.writeValueAsString(completed)).doesNotContain(provider.origin(), ".zip", "图片一", "archiveEntry", "fake-runninghub-key");
+            assertThat(provider.submits).hasValue(1);
+            assertThat(provider.queries).hasValue(1);
+            assertThat(provider.zipDownloads).hasValue(3);
+            assertThat(provider.firstDownloads).hasValue(0);
+            assertThat(mapper.writeValueAsString(completed)).doesNotContain(provider.origin(), ".zip", "图片一",
+                    "archiveEntry", "fake-runninghub-key");
             assertThat(restarted.pollOnce("rh-zip-repeat")).isZero();
         }
     }
 
-    @Test void expiredRunningHubLinksRefreshTheOriginalTaskAndReuseArchivedAssetsAcrossReorderedResults() throws Exception {
+    @Test
+    void expiredRunningHubLinksRefreshTheOriginalTaskAndReuseArchivedAssetsAcrossReorderedResults() throws Exception {
         try (var provider = new Fake(2, false, false)) {
             provider.refreshExpiredLinks = true;
             provider.reorderRefreshed = true;
             var fixture = fixture(provider, Artifact.Kind.IMAGE, "WORKFLOW", false);
             Task task = accept(fixture, "Refresh existing output");
             worker.submitOnce("rh-refresh-submit");
-            UUID archiveId = UUID.nameUUIDFromBytes(("agenvas:provider-output:v1:" + task.id() + ":0").getBytes(StandardCharsets.UTF_8));
-            var first = assets.archiveTaskImage(owner, fixture.project.id(), archiveId, () -> new ByteArrayInputStream(provider.imageBytes));
+            UUID archiveId = UUID.nameUUIDFromBytes(
+                    ("agenvas:provider-output:v1:" + task.id() + ":0").getBytes(StandardCharsets.UTF_8));
+            var first = assets.archiveTaskImage(owner, fixture.project.id(), archiveId,
+                    () -> new ByteArrayInputStream(provider.imageBytes));
             due(task.id());
 
             assertThat(worker.pollOnce("rh-refresh-poll")).isEqualTo(1);
@@ -312,37 +401,53 @@ class RunningHubPostgresIT {
             assertThat(frozen.results()).extracting(ProviderResultManifest.Result::url).containsExactly(
                     provider.origin() + "/first.png?token=fresh", provider.origin() + "/second.png?token=fresh");
             assertThat(provider.queryTaskId.get()).isEqualTo("original-task");
-            assertThat(provider.submits).hasValue(1); assertThat(provider.queries).hasValue(2);
-            assertThat(provider.firstDownloads).hasValue(0); assertThat(provider.secondDownloads).hasValue(2);
-            assertThat(mapper.writeValueAsString(completed)).doesNotContain("token=", provider.origin(), "fake-runninghub-key");
+            assertThat(provider.submits).hasValue(1);
+            assertThat(provider.queries).hasValue(2);
+            assertThat(provider.firstDownloads).hasValue(0);
+            assertThat(provider.secondDownloads).hasValue(2);
+            assertThat(mapper.writeValueAsString(completed)).doesNotContain("token=", provider.origin(),
+                    "fake-runninghub-key");
         }
     }
 
-    @Test void refreshedZipLinksKeepFrozenMemberHashesAndRejectChangedBytesWithoutResubmitting() throws Exception {
-        for (boolean changed : new boolean[]{false, true}) try (var provider = new Fake(1, false, false)) {
-            provider.zipOnly = true; provider.refreshExpiredLinks = true;
-            provider.zipBytes = zip(new String[]{"result.png"}, new byte[][]{provider.imageBytes});
-            if (changed) provider.refreshedZipBytes = zip(new String[]{"result.png"}, new byte[][]{"changed bytes".getBytes(StandardCharsets.UTF_8)});
-            var fixture = fixture(provider, Artifact.Kind.IMAGE, "WORKFLOW", false);
-            Task task = accept(fixture, "Refresh existing ZIP"); worker.submitOnce("rh-refresh-zip-submit");
-            due(task.id()); worker.pollOnce("rh-refresh-zip-poll");
-            var completed = tasks.get(owner, fixture.project.id(), task.id());
-            assertThat(completed.status()).isEqualTo(changed ? Task.Status.BLOCKED : Task.Status.SUCCEEDED);
-            if (changed) assertThat(completed.errorCode()).isEqualTo("RUNNINGHUB_PROTOCOL_INVALID");
-            var frozen = tasks.providerResultManifest(task).orElseThrow();
-            assertThat(frozen.results().getFirst().archiveEntry().name()).isEqualTo("result.png");
-            assertThat(frozen.results().getFirst().archiveEntry().sha256()).isEqualTo(
-                    java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(provider.imageBytes)));
-            assertThat(provider.submits).hasValue(1); assertThat(provider.queries).hasValue(2);
-            assertThat(provider.queryTaskId.get()).isEqualTo("original-task");
-            assertThat(provider.zipDownloads).hasValue(3);
-        }
+    @Test
+    void refreshedZipLinksKeepFrozenMemberHashesAndRejectChangedBytesWithoutResubmitting() throws Exception {
+        for (boolean changed : new boolean[]{false, true})
+            try (var provider = new Fake(1, false, false)) {
+                provider.zipOnly = true;
+                provider.refreshExpiredLinks = true;
+                provider.zipBytes = zip(new String[]{"result.png"}, new byte[][]{provider.imageBytes});
+                if (changed)
+                    provider.refreshedZipBytes = zip(new String[]{"result.png"},
+                            new byte[][]{"changed bytes".getBytes(StandardCharsets.UTF_8)});
+                var fixture = fixture(provider, Artifact.Kind.IMAGE, "WORKFLOW", false);
+                Task task = accept(fixture, "Refresh existing ZIP");
+                worker.submitOnce("rh-refresh-zip-submit");
+                due(task.id());
+                worker.pollOnce("rh-refresh-zip-poll");
+                var completed = tasks.get(owner, fixture.project.id(), task.id());
+                assertThat(completed.status()).isEqualTo(changed ? Task.Status.BLOCKED : Task.Status.SUCCEEDED);
+                if (changed)
+                    assertThat(completed.errorCode()).isEqualTo("RUNNINGHUB_PROTOCOL_INVALID");
+                var frozen = tasks.providerResultManifest(task).orElseThrow();
+                assertThat(frozen.results().getFirst().archiveEntry().name()).isEqualTo("result.png");
+                assertThat(frozen.results().getFirst().archiveEntry().sha256()).isEqualTo(
+                        java.util.HexFormat.of().formatHex(
+                                java.security.MessageDigest.getInstance("SHA-256").digest(provider.imageBytes)));
+                assertThat(provider.submits).hasValue(1);
+                assertThat(provider.queries).hasValue(2);
+                assertThat(provider.queryTaskId.get()).isEqualTo("original-task");
+                assertThat(provider.zipDownloads).hasValue(3);
+            }
     }
 
-    @Test void providerDiagnosticsAndUrlRefreshUseEpochAndFrozenManifestCasWithoutChangingIdentity() throws Exception {
+    @Test
+    void providerDiagnosticsAndUrlRefreshUseEpochAndFrozenManifestCasWithoutChangingIdentity() throws Exception {
         try (var provider = new Fake(1, false, false)) {
             var fixture = fixture(provider, Artifact.Kind.IMAGE, "WORKFLOW", false);
-            Task task = accept(fixture, ""); worker.submitOnce("rh-checkpoint-submit"); due(task.id());
+            Task task = accept(fixture, "");
+            worker.submitOnce("rh-checkpoint-submit");
+            due(task.id());
             Task lease = tasks.claimBoundMediaPolls("rh-checkpoint-worker", 1).getFirst();
             var failure = new ProviderFailure(ProviderFailure.Stage.DOWNLOAD, ProviderFailure.Category.DOWNLOAD_EXPIRED,
                     403, null, null, null);
@@ -358,107 +463,156 @@ class RunningHubPostgresIT {
             tasks.checkpointProviderResults(lease, "rh-checkpoint-worker", original);
             tasks.refreshProviderResultUrls(lease, "rh-checkpoint-worker", original, refreshed);
             assertThat(tasks.providerResultManifest(lease)).contains(refreshed);
-            assertThatThrownBy(() -> tasks.refreshProviderResultUrls(lease, "rh-checkpoint-worker", original, refreshed))
+            assertThatThrownBy(
+                    () -> tasks.refreshProviderResultUrls(lease, "rh-checkpoint-worker", original, refreshed))
                     .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
             var changedHash = new ProviderResultManifest(1, List.of(new ProviderResultManifest.Result(0, "9",
                     RunningHubDefinition.OutputKind.IMAGE, true, provider.origin() + "/result.zip?other",
                     new ProviderResultManifest.ArchiveEntry("result.png", "b".repeat(64)))), null);
-            assertThatThrownBy(() -> tasks.refreshProviderResultUrls(lease, "rh-checkpoint-worker", refreshed, changedHash))
+            assertThatThrownBy(
+                    () -> tasks.refreshProviderResultUrls(lease, "rh-checkpoint-worker", refreshed, changedHash))
                     .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
             jdbc.sql("update task set lease_epoch=lease_epoch+1 where id=:id").param("id", task.id()).update();
             assertThat(tasks.recordProviderFailure(lease, "rh-checkpoint-worker", failure)).isFalse();
-            assertThatThrownBy(() -> tasks.refreshProviderResultUrls(lease, "rh-checkpoint-worker", refreshed, original))
+            assertThatThrownBy(
+                    () -> tasks.refreshProviderResultUrls(lease, "rh-checkpoint-worker", refreshed, original))
                     .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
             assertThat(tasks.providerResultManifest(lease)).contains(refreshed);
-            jdbc.sql("update task set lease_owner=null,lease_until=null,next_action_at=now()+interval '1 day' where id=:id").param("id", task.id()).update();
+            jdbc.sql(
+                    "update task set lease_owner=null,lease_until=null,next_action_at=now()+interval '1 day' where id=:id")
+                    .param("id", task.id()).update();
         }
     }
 
-    @Test void zipMixedMediaUsesExistingAssetValidationAndCreatesDifferentArtifactKinds() throws Exception {
+    @Test
+    void zipMixedMediaUsesExistingAssetValidationAndCreatesDifferentArtifactKinds() throws Exception {
         try (var provider = new Fake(2, false, false)) {
             var audio = Files.createTempFile("rh-zip-audio-", ".wav");
             try {
-                mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono", "-t", "1", "-y", audio.toString()));
-                provider.zipOnly = true; provider.secondType = "wav";
-                provider.zipBytes = zip(new String[] { "image.png", "audio.wav", "README.txt" },
-                        new byte[][] { provider.imageBytes, Files.readAllBytes(audio), "synthetic metadata".getBytes(StandardCharsets.UTF_8) });
+                mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i",
+                        "anullsrc=r=24000:cl=mono", "-t", "1", "-y", audio.toString()));
+                provider.zipOnly = true;
+                provider.secondType = "wav";
+                provider.zipBytes = zip(new String[]{"image.png", "audio.wav", "README.txt"},
+                        new byte[][]{provider.imageBytes, Files.readAllBytes(audio),
+                                "synthetic metadata".getBytes(StandardCharsets.UTF_8)});
                 var fixture = fixture(provider, Artifact.Kind.IMAGE, "AI_APP", false);
-                Task task = accept(fixture, "Mixed ZIP"); worker.submitOnce("rh-zip-mixed-submit");
-                due(task.id()); worker.pollOnce("rh-zip-mixed-poll");
+                Task task = accept(fixture, "Mixed ZIP");
+                worker.submitOnce("rh-zip-mixed-submit");
+                due(task.id());
+                worker.pollOnce("rh-zip-mixed-poll");
                 var completed = tasks.get(owner, fixture.project.id(), task.id());
                 assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
                 var extra = completed.output().path("additionalResults").get(0);
-                assertThat(artifacts.get(owner, fixture.project.id(), UUID.fromString(extra.path("artifactId").asText())).artifact().kind()).isEqualTo(Artifact.Kind.AUDIO);
+                assertThat(
+                        artifacts.get(owner, fixture.project.id(), UUID.fromString(extra.path("artifactId").asText()))
+                                .artifact().kind())
+                        .isEqualTo(Artifact.Kind.AUDIO);
                 var audioVersion = artifacts.requireMediaVersionForTask(owner, fixture.project.id(),
                         UUID.fromString(extra.path("artifactVersionId").asText()), Artifact.Kind.AUDIO);
-                assertThat(assets.get(owner, fixture.project.id(), UUID.fromString(audioVersion.content().path("assetId").asText())).asset().contentType()).isEqualTo("audio/wav");
-                assertThat(drafts.get(owner, fixture.project.id(), UUID.fromString(extra.path("canvasItemId").asText())).prompt()).isEmpty();
+                assertThat(assets.get(owner, fixture.project.id(),
+                        UUID.fromString(audioVersion.content().path("assetId").asText())).asset().contentType())
+                        .isEqualTo("audio/wav");
+                assertThat(drafts.get(owner, fixture.project.id(), UUID.fromString(extra.path("canvasItemId").asText()))
+                        .prompt()).isEmpty();
                 assertThat(canvas.list(owner, fixture.project.id())).hasSize(2);
-                assertThat(provider.zipDownloads).hasValue(2); assertThat(provider.submits).hasValue(1);
-            } finally { Files.deleteIfExists(audio); }
+                assertThat(provider.zipDownloads).hasValue(2);
+                assertThat(provider.submits).hasValue(1);
+            } finally {
+                Files.deleteIfExists(audio);
+            }
         }
     }
 
-    @Test void aPngFilenameInsideZipCannotBypassMediaDecodingOrCauseAnotherGeneration() throws Exception {
+    @Test
+    void aPngFilenameInsideZipCannotBypassMediaDecodingOrCauseAnotherGeneration() throws Exception {
         try (var provider = new Fake(1, false, false)) {
             provider.zipOnly = true;
-            provider.zipBytes = zip(new String[] { "fake.png" }, new byte[][] { "not an image".getBytes(StandardCharsets.UTF_8) });
+            provider.zipBytes = zip(new String[]{"fake.png"},
+                    new byte[][]{"not an image".getBytes(StandardCharsets.UTF_8)});
             var fixture = fixture(provider, Artifact.Kind.IMAGE, "WORKFLOW", false);
-            Task task = accept(fixture, ""); worker.submitOnce("rh-zip-invalid-submit");
-            due(task.id()); worker.pollOnce("rh-zip-invalid-poll");
-            assertThat(tasks.get(owner, fixture.project.id(), task.id()).status()).isEqualTo(Task.Status.WAITING_PROVIDER);
+            Task task = accept(fixture, "");
+            worker.submitOnce("rh-zip-invalid-submit");
+            due(task.id());
+            worker.pollOnce("rh-zip-invalid-poll");
+            assertThat(tasks.get(owner, fixture.project.id(), task.id()).status())
+                    .isEqualTo(Task.Status.WAITING_PROVIDER);
             assertThat(tasks.providerResultManifest(task)).isPresent();
-            due(task.id()); worker.pollOnce("rh-zip-invalid-retry");
-            assertThat(provider.submits).hasValue(1); assertThat(provider.queries).hasValue(1);
-            assertThat(artifacts.get(owner, fixture.project.id(), fixture.artifact.id()).resourceDefaultVersion()).isNull();
-            assertThat(jdbc.sql("select count(*) from asset where project_id=:project").param("project", fixture.project.id()).query(Integer.class).single()).isZero();
+            due(task.id());
+            worker.pollOnce("rh-zip-invalid-retry");
+            assertThat(provider.submits).hasValue(1);
+            assertThat(provider.queries).hasValue(1);
+            assertThat(artifacts.get(owner, fixture.project.id(), fixture.artifact.id()).resourceDefaultVersion())
+                    .isNull();
+            assertThat(jdbc.sql("select count(*) from asset where project_id=:project")
+                    .param("project", fixture.project.id()).query(Integer.class).single()).isZero();
         }
     }
 
-    @Test void zipVideoIsDecodedAndArchivedAsTheCurrentNodeResult() throws Exception {
+    @Test
+    void zipVideoIsDecodedAndArchivedAsTheCurrentNodeResult() throws Exception {
         try (var provider = new Fake(1, false, false)) {
             var video = Files.createTempFile("rh-zip-video-", ".mp4");
             try {
-                mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i", "color=c=blue:s=64x64:r=8", "-t", "1", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", "-y", video.toString()));
+                mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i",
+                        "color=c=blue:s=64x64:r=8", "-t", "1", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", "-y",
+                        video.toString()));
                 provider.zipOnly = true;
-                provider.zipBytes = zip(new String[] { "output/video.mp4" }, new byte[][] { Files.readAllBytes(video) });
+                provider.zipBytes = zip(new String[]{"output/video.mp4"}, new byte[][]{Files.readAllBytes(video)});
                 var fixture = fixture(provider, Artifact.Kind.VIDEO, "WORKFLOW", false);
-                Task task = accept(fixture, "Video ZIP"); worker.submitOnce("rh-zip-video-submit");
-                due(task.id()); worker.pollOnce("rh-zip-video-poll");
+                Task task = accept(fixture, "Video ZIP");
+                worker.submitOnce("rh-zip-video-submit");
+                due(task.id());
+                worker.pollOnce("rh-zip-video-poll");
                 var completed = tasks.get(owner, fixture.project.id(), task.id());
                 assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
                 assertThat(completed.output().path("selected").asBoolean()).isTrue();
                 var version = artifacts.requireMediaVersionForTask(owner, fixture.project.id(),
                         UUID.fromString(completed.output().path("artifactVersionId").asText()), Artifact.Kind.VIDEO);
-                var asset = assets.get(owner, fixture.project.id(), UUID.fromString(version.content().path("assetId").asText())).asset();
+                var asset = assets
+                        .get(owner, fixture.project.id(), UUID.fromString(version.content().path("assetId").asText()))
+                        .asset();
                 assertThat(asset.contentType()).isEqualTo("video/mp4");
-                assertThat(asset.width()).isEqualTo(64); assertThat(asset.height()).isEqualTo(64);
+                assertThat(asset.width()).isEqualTo(64);
+                assertThat(asset.height()).isEqualTo(64);
                 assertThat(asset.durationMs()).isEqualTo(1000);
-                assertThat(provider.submits).hasValue(1); assertThat(provider.queries).hasValue(1);
-                assertThat(provider.zipDownloads).hasValue(2); assertThat(canvas.list(owner, fixture.project.id())).hasSize(1);
-            } finally { Files.deleteIfExists(video); }
+                assertThat(provider.submits).hasValue(1);
+                assertThat(provider.queries).hasValue(1);
+                assertThat(provider.zipDownloads).hasValue(2);
+                assertThat(canvas.list(owner, fixture.project.id())).hasSize(1);
+            } finally {
+                Files.deleteIfExists(video);
+            }
         }
     }
 
     private static byte[] zip(String[] names, byte[][] contents) throws Exception {
         var bytes = new ByteArrayOutputStream();
         try (var zip = new ZipOutputStream(bytes)) {
-            for (int i = 0; i < names.length; i++) { zip.putNextEntry(new ZipEntry(names[i])); zip.write(contents[i]); zip.closeEntry(); }
+            for (int i = 0; i < names.length; i++) {
+                zip.putNextEntry(new ZipEntry(names[i]));
+                zip.write(contents[i]);
+                zip.closeEntry();
+            }
         }
         return bytes.toByteArray();
     }
 
-    @Test void lostSubmissionResponseIsUnknownAndNeverAutomaticallySubmittedAgain() throws Exception {
+    @Test
+    void lostSubmissionResponseIsUnknownAndNeverAutomaticallySubmittedAgain() throws Exception {
         try (var provider = new Fake(1, false, true)) {
             var fixture = fixture(provider, Artifact.Kind.IMAGE, "AI_APP", false);
-            Task task = accept(fixture, ""); worker.submitOnce("rh-unknown");
+            Task task = accept(fixture, "");
+            worker.submitOnce("rh-unknown");
             assertThat(tasks.get(owner, fixture.project.id(), task.id()).status()).isEqualTo(Task.Status.UNKNOWN);
-            assertThat(worker.submitOnce("rh-no-retry")).isZero(); assertThat(worker.pollOnce("rh-no-query")).isZero();
+            assertThat(worker.submitOnce("rh-no-retry")).isZero();
+            assertThat(worker.pollOnce("rh-no-query")).isZero();
             assertThat(provider.submits).hasValue(1);
         }
     }
 
-    @Test void changedCapabilityBlocksBeforeExternalSubmissionWithoutSwitchingToTheNewTarget() throws Exception {
+    @Test
+    void changedCapabilityBlocksBeforeExternalSubmissionWithoutSwitchingToTheNewTarget() throws Exception {
         try (var provider = new Fake(1, false, false)) {
             var fixture = fixture(provider, Artifact.Kind.IMAGE, "WORKFLOW", false);
             Task task = accept(fixture, "");
@@ -475,12 +629,15 @@ class RunningHubPostgresIT {
         }
     }
 
-    @Test void canceledLateBatchIsArchivedWithoutSelectingAnyResult() throws Exception {
+    @Test
+    void canceledLateBatchIsArchivedWithoutSelectingAnyResult() throws Exception {
         try (var provider = new Fake(2, false, false)) {
             var fixture = fixture(provider, Artifact.Kind.IMAGE, "WORKFLOW", false);
-            Task task = accept(fixture, ""); worker.submitOnce("rh-canceled-submit");
+            Task task = accept(fixture, "");
+            worker.submitOnce("rh-canceled-submit");
             jdbc.sql("update task set cancel_requested=true where id=:id").param("id", task.id()).update();
-            due(task.id()); worker.pollOnce("rh-canceled-poll");
+            due(task.id());
+            worker.pollOnce("rh-canceled-poll");
             var completed = tasks.get(owner, fixture.project.id(), task.id());
             assertThat(completed.status()).isEqualTo(Task.Status.CANCELED);
             var late = mapper.readTree(jdbc.sql("select output_json::text from task_late_result where task_id=:id")
@@ -492,53 +649,80 @@ class RunningHubPostgresIT {
         }
     }
 
-    @Test void mixedOutputsCreateTheCorrectIdentityAndStartWithABlankDraft() throws Exception {
+    @Test
+    void mixedOutputsCreateTheCorrectIdentityAndStartWithABlankDraft() throws Exception {
         try (var provider = new Fake(2, false, false)) {
             var file = Files.createTempFile("rh-audio-result", ".wav");
             try {
-                mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono", "-t", "1", "-y", file.toString()));
-                provider.secondType = "wav"; provider.secondBytes = Files.readAllBytes(file);
+                mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i",
+                        "anullsrc=r=24000:cl=mono", "-t", "1", "-y", file.toString()));
+                provider.secondType = "wav";
+                provider.secondBytes = Files.readAllBytes(file);
                 var fixture = fixture(provider, Artifact.Kind.IMAGE, "AI_APP", false);
-                Task task = accept(fixture, "source prompt"); worker.submitOnce("rh-mixed-submit");
-                due(task.id()); worker.pollOnce("rh-mixed-poll");
+                Task task = accept(fixture, "source prompt");
+                worker.submitOnce("rh-mixed-submit");
+                due(task.id());
+                worker.pollOnce("rh-mixed-poll");
                 var completed = tasks.get(owner, fixture.project.id(), task.id());
                 assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
                 var extra = completed.output().path("additionalResults").get(0);
-                assertThat(artifacts.get(owner, fixture.project.id(), UUID.fromString(extra.path("artifactId").asText())).artifact().kind()).isEqualTo(Artifact.Kind.AUDIO);
-                var extraDraft = drafts.get(owner, fixture.project.id(), UUID.fromString(extra.path("canvasItemId").asText()));
-                assertThat(extraDraft.prompt()).isEmpty(); assertThat(extraDraft.mediaInputs()).isEmpty();
-                assertThat(provider.submits).hasValue(1); assertThat(canvas.list(owner, fixture.project.id())).hasSize(2);
-            } finally { Files.deleteIfExists(file); }
+                assertThat(
+                        artifacts.get(owner, fixture.project.id(), UUID.fromString(extra.path("artifactId").asText()))
+                                .artifact().kind())
+                        .isEqualTo(Artifact.Kind.AUDIO);
+                var extraDraft = drafts.get(owner, fixture.project.id(),
+                        UUID.fromString(extra.path("canvasItemId").asText()));
+                assertThat(extraDraft.prompt()).isEmpty();
+                assertThat(extraDraft.mediaInputs()).isEmpty();
+                assertThat(provider.submits).hasValue(1);
+                assertThat(canvas.list(owner, fixture.project.id())).hasSize(2);
+            } finally {
+                Files.deleteIfExists(file);
+            }
         }
     }
 
-    @Test void aStaleWorkerCannotWriteThePrivateResultCheckpoint() throws Exception {
+    @Test
+    void aStaleWorkerCannotWriteThePrivateResultCheckpoint() throws Exception {
         try (var provider = new Fake(1, false, false)) {
             var fixture = fixture(provider, Artifact.Kind.IMAGE, "WORKFLOW", false);
-            Task task = accept(fixture, ""); worker.submitOnce("rh-fence-submit"); due(task.id());
-            assertThatThrownBy(() -> jdbc.sql("update task set provider_result_manifest='{\"results\":[{}]}'::jsonb where id=:id")
-                    .param("id", task.id()).update()).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+            Task task = accept(fixture, "");
+            worker.submitOnce("rh-fence-submit");
+            due(task.id());
+            assertThatThrownBy(
+                    () -> jdbc.sql("update task set provider_result_manifest='{\"results\":[{}]}'::jsonb where id=:id")
+                            .param("id", task.id()).update())
+                    .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
             Task lease = tasks.claimBoundMediaPolls("rh-old-worker", 1).getFirst();
             jdbc.sql("update task set lease_epoch=lease_epoch+1 where id=:id").param("id", task.id()).update();
             var manifest = new ProviderResultManifest(1, List.of(new ProviderResultManifest.Result(0, "9",
                     RunningHubDefinition.OutputKind.IMAGE, true, provider.origin() + "/first.png")), null);
             assertThatThrownBy(() -> tasks.checkpointProviderResults(lease, "rh-old-worker", manifest))
                     .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
-            assertThat(jdbc.sql("select provider_result_manifest is null from task where id=:id").param("id", task.id()).query(Boolean.class).single()).isTrue();
-            jdbc.sql("update task set status='WAITING_PROVIDER', lease_owner=null, lease_until=null where id=:id").param("id", task.id()).update();
-            due(task.id()); worker.pollOnce("rh-new-worker");
+            assertThat(jdbc.sql("select provider_result_manifest is null from task where id=:id").param("id", task.id())
+                    .query(Boolean.class).single()).isTrue();
+            jdbc.sql("update task set status='WAITING_PROVIDER', lease_owner=null, lease_until=null where id=:id")
+                    .param("id", task.id()).update();
+            due(task.id());
+            worker.pollOnce("rh-new-worker");
             assertThat(tasks.get(owner, fixture.project.id(), task.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
             assertThat(provider.submits).hasValue(1);
         }
     }
 
-    @Test void localDiscoveryPreviewRequiresAdminAndCsrfAndCannotGenerate() throws Exception {
+    @Test
+    void localDiscoveryPreviewRequiresAdminAndCsrfAndCannotGenerate() throws Exception {
         try (var provider = new Fake(1, false, false)) {
-            var connection = catalog.createConnection(UUID.randomUUID().toString(), "Preview", "RUNNINGHUB", provider.origin(), "fake-runninghub-key");
+            var connection = catalog.createConnection(UUID.randomUUID().toString(), "Preview", "RUNNINGHUB",
+                    provider.origin(), "fake-runninghub-key");
             var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup(webContext)
-                    .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
-            var auth = org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(
-                    new UsernamePasswordAuthenticationToken(new AdminPrincipal(owner, "rh-admin"), null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+                    .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers
+                            .springSecurity())
+                    .build();
+            var auth = org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                    .authentication(
+                            new UsernamePasswordAuthenticationToken(new AdminPrincipal(owner, "rh-admin"), null,
+                                    List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
             String url = "/api/v1/settings/media-connections/" + connection.id() + "/runninghub/preview";
             String body = """
                 {"targetType":"AI_APP","targetId":"123","kind":"VIDEO_GENERATION","source":{"nodeInfoList":[
@@ -552,14 +736,22 @@ class RunningHubPostgresIT {
                   {"nodeId":"5","fieldName":"megapixels","fieldType":"FLOAT","fieldValue":"1.5",
                    "fieldData":["FLOAT",{"min":0.1,"max":16,"default":1}]}]}}
                 """;
-            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(url).contentType("application/json").content(body)
-                    .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
-                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isUnauthorized());
-            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(url).contentType("application/json").content(body).with(auth))
-                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
-            var response = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(url).contentType("application/json").content(body).with(auth)
-                    .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
-                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk()).andReturn().getResponse().getContentAsString();
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(url)
+                    .contentType("application/json").content(body)
+                    .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                            .csrf()))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status()
+                            .isUnauthorized());
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(url)
+                    .contentType("application/json").content(body).with(auth))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
+            var response = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(url)
+                    .contentType("application/json").content(body).with(auth)
+                    .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                            .csrf()))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                    .andReturn().getResponse().getContentAsString();
             assertThat(mapper.readTree(response).path("recommendedFieldKeys").isArray()).isTrue();
             assertThat(mapper.readTree(response).has("targetName")).isTrue();
             assertThat(mapper.readTree(response).path("targetName").isNull()).isTrue();
@@ -567,10 +759,12 @@ class RunningHubPostgresIT {
             assertThat(mapper.readTree(response).path("recommendedFieldKeys").get(1).asText()).isEqualTo("input3");
             assertThat(mapper.readTree(response).path("definition").path("fields")).hasSize(6);
             assertThat(mapper.readTree(response).path("fieldInsights")).hasSize(6);
-            assertThat(mapper.readTree(response).path("fieldInsights").get(3).path("confidence").asText()).isEqualTo("DECLARED");
+            assertThat(mapper.readTree(response).path("fieldInsights").get(3).path("confidence").asText())
+                    .isEqualTo("DECLARED");
             assertThat(mapper.readTree(response).path("definition").path("fields").get(2).path("options")).isEmpty();
             assertThat(mapper.readTree(response).path("recommendedFieldKeys"))
-                    .extracting(tools.jackson.databind.JsonNode::asText).containsExactly("input2", "input3", "input4", "input5", "input6");
+                    .extracting(tools.jackson.databind.JsonNode::asText)
+                    .containsExactly("input2", "input3", "input4", "input5", "input6");
             var duration = mapper.readTree(response).path("definition").path("fields").get(3);
             assertThat(duration.path("type").asText()).isEqualTo("NUMBER");
             assertThat(duration.path("defaultValue").asDouble()).isEqualTo(12.5);
@@ -581,13 +775,15 @@ class RunningHubPostgresIT {
             var discoveryCalls = new AtomicInteger();
             var graph = mapper.readTree("{\"1\":{\"class_type\":\"Text\",\"inputs\":{\"text\":\"synthetic scene\"}}}");
             var appInputs = mapper.createArrayNode();
-            appInputs.addObject().put("nodeId", "1").put("fieldName", "text").put("fieldType", "STRING").put("fieldValue", "scene");
+            appInputs.addObject().put("nodeId", "1").put("fieldName", "text").put("fieldType", "STRING")
+                    .put("fieldValue", "scene");
             // Exercise the full automatic HTTP discovery path at the published field limit.
             for (int index = 2; index <= 1024; index++) {
                 var node = ((ObjectNode) graph).putObject(Integer.toString(index));
                 node.put("class_type", index == 2 ? "PrimitiveFloat" : "SyntheticSampler")
                         .putObject("inputs").put(index == 2 ? "value" : "steps", 20);
-                if (index == 2) node.putObject("_meta").put("title", "Float (Duration)");
+                if (index == 2)
+                    node.putObject("_meta").put("title", "Float (Duration)");
                 appInputs.addObject().put("nodeId", Integer.toString(index)).put("fieldName", "steps")
                         .put("fieldType", "INTEGER").put("fieldValue", 20);
             }
@@ -600,7 +796,9 @@ class RunningHubPostgresIT {
             for (var entry : java.util.Map.of(
                     "/api/webapp/detail", appResponse.toString(),
                     "/api/openapi/getJsonApiFormat", workflowResponse.toString(),
-                    "/api/portal/workflow/detail", "{\"code\":0,\"data\":{\"id\":\"123\",\"name\":\" Synthetic workflow \",\"owner\":{\"name\":\"Private owner\"}}}").entrySet()) {
+                    "/api/portal/workflow/detail",
+                    "{\"code\":0,\"data\":{\"id\":\"123\",\"name\":\" Synthetic workflow \",\"owner\":{\"name\":\"Private owner\"}}}")
+                    .entrySet()) {
                 provider.server.createContext(entry.getKey(), exchange -> {
                     discoveryCalls.incrementAndGet();
                     if (!entry.getKey().equals("/api/openapi/getJsonApiFormat"))
@@ -614,59 +812,75 @@ class RunningHubPostgresIT {
             for (String targetType : List.of("AI_APP", "WORKFLOW")) {
                 String automaticBody = mapper.createObjectNode().put("targetType", targetType).put("targetId", "123")
                         .put("kind", "IMAGE_GENERATION").toString();
-                String automatic = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(url)
+                String automatic = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .post(url)
                         .contentType("application/json").content(automaticBody).with(auth)
-                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                                .csrf()))
                         .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
-                        .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Cache-Control", "no-store"))
+                        .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                                .string("Cache-Control", "no-store"))
                         .andReturn().getResponse().getContentAsString();
                 var preview = mapper.readTree(automatic);
-                assertThat(preview.path("targetName").asText()).isEqualTo(targetType.equals("AI_APP") ? "Synthetic app" : "Synthetic workflow");
+                assertThat(preview.path("targetName").asText())
+                        .isEqualTo(targetType.equals("AI_APP") ? "Synthetic app" : "Synthetic workflow");
                 assertThat(preview.path("definition").path("fields")).hasSize(1024);
                 assertThat(preview.path("fieldInsights")).hasSize(1024);
                 if (targetType.equals("WORKFLOW")) {
-                    assertThat(preview.path("definition").path("fields").get(1).path("type").asText()).isEqualTo("NUMBER");
+                    assertThat(preview.path("definition").path("fields").get(1).path("type").asText())
+                            .isEqualTo("NUMBER");
                     assertThat(preview.path("recommendedFieldKeys")).extracting(tools.jackson.databind.JsonNode::asText)
                             .contains("input2");
                 }
-                assertThat(preview.path("definition").path("importSource").toString()).doesNotContain("Synthetic app", "Synthetic workflow");
+                assertThat(preview.path("definition").path("importSource").toString()).doesNotContain("Synthetic app",
+                        "Synthetic workflow");
                 assertThat(automatic).doesNotContain("Private owner", "fake-runninghub-key", "curl");
             }
             assertThat(discoveryCalls).hasValue(3);
-            assertThat(response).doesNotContain("fake-runninghub-key"); assertThat(provider.submits).hasValue(0); assertThat(provider.queries).hasValue(0);
+            assertThat(response).doesNotContain("fake-runninghub-key");
+            assertThat(provider.submits).hasValue(0);
+            assertThat(provider.queries).hasValue(0);
         }
     }
 
-    @Test void dottedOpenAndFixedBindingsSurviveSavingFreezingAndHttpSubmission() throws Exception {
-        for (String targetType : List.of("WORKFLOW", "AI_APP")) try (var provider = new Fake(1, false, false)) {
-            var fixture = fixture(provider, Artifact.Kind.IMAGE, targetType, false);
-            var original = catalog.capabilitySnapshot(fixture.capability);
-            ObjectNode settings = (ObjectNode) mapper.readTree(original.specJson()).path("settings").deepCopy();
-            ObjectNode definition = (ObjectNode) settings.path("runningHub");
-            definition.withArray("fields").addObject().put("key", "topP").put("label", "采样概率")
-                    .put("type", "NUMBER").put("nodeId", "516").put("fieldName", "sampling_mode.top_p").put("defaultValue", 0.9);
-            definition.putArray("fixedBindings").addObject().put("nodeId", "516")
-                    .put("fieldName", "sampling_mode.seed").put("value", 42);
-            catalog.updateCapability(original.connection().id(), fixture.capability, original.capability().version(),
-                    "Dotted bindings", true, "RUNNINGHUB_IMAGE", settings);
-            var parameters = mapper.createObjectNode();
-            parameters.putObject("dynamicValues").put("topP", 0.8);
-            var draft = drafts.save(owner, fixture.project.id(), fixture.card, 0, "", parameters, null,
-                    fixture.capability, null, List.of(), List.of(), null);
-            var task = direct.run(owner, fixture.project.id(), fixture.artifact.id(), fixture.card, draft.version(), UUID.randomUUID().toString());
-            assertThat(task.input().path("mediaInput").path("runningHubContract").path("fields").get(0).path("fieldName").asText())
-                    .isEqualTo("sampling_mode.top_p");
-            assertThat(worker.submitOnce("rh-dotted-binding")).isEqualTo(1);
-            assertThat(mapper.readTree(provider.submitted.get()).path("nodeInfoList")).isEqualTo(mapper.readTree("""
+    @Test
+    void dottedOpenAndFixedBindingsSurviveSavingFreezingAndHttpSubmission() throws Exception {
+        for (String targetType : List.of("WORKFLOW", "AI_APP"))
+            try (var provider = new Fake(1, false, false)) {
+                var fixture = fixture(provider, Artifact.Kind.IMAGE, targetType, false);
+                var original = catalog.capabilitySnapshot(fixture.capability);
+                ObjectNode settings = (ObjectNode) mapper.readTree(original.specJson()).path("settings").deepCopy();
+                ObjectNode definition = (ObjectNode) settings.path("runningHub");
+                definition.withArray("fields").addObject().put("key", "topP").put("label", "采样概率")
+                        .put("type", "NUMBER").put("nodeId", "516").put("fieldName", "sampling_mode.top_p")
+                        .put("defaultValue", 0.9);
+                definition.putArray("fixedBindings").addObject().put("nodeId", "516")
+                        .put("fieldName", "sampling_mode.seed").put("value", 42);
+                catalog.updateCapability(original.connection().id(), fixture.capability,
+                        original.capability().version(),
+                        "Dotted bindings", true, "RUNNINGHUB_IMAGE", settings);
+                var parameters = mapper.createObjectNode();
+                parameters.putObject("dynamicValues").put("topP", 0.8);
+                var draft = drafts.save(owner, fixture.project.id(), fixture.card, 0, "", parameters, null,
+                        fixture.capability, null, List.of(), List.of(), null);
+                var task = direct.run(owner, fixture.project.id(), fixture.artifact.id(), fixture.card, draft.version(),
+                        UUID.randomUUID().toString());
+                assertThat(task.input().path("mediaInput").path("runningHubContract").path("fields").get(0)
+                        .path("fieldName").asText())
+                        .isEqualTo("sampling_mode.top_p");
+                assertThat(worker.submitOnce("rh-dotted-binding")).isEqualTo(1);
+                assertThat(mapper.readTree(provider.submitted.get()).path("nodeInfoList")).isEqualTo(mapper.readTree("""
                 [{"nodeId":"516","fieldName":"sampling_mode.top_p","fieldValue":0.8},
                  {"nodeId":"516","fieldName":"sampling_mode.seed","fieldValue":42}]
                 """));
-            assertThat(tasks.get(owner, fixture.project.id(), task.id()).status()).isEqualTo(Task.Status.WAITING_PROVIDER);
-            assertThat(provider.submits).hasValue(1);
-        }
+                assertThat(tasks.get(owner, fixture.project.id(), task.id()).status())
+                        .isEqualTo(Task.Status.WAITING_PROVIDER);
+                assertThat(provider.submits).hasValue(1);
+            }
     }
 
-    @Test void savesImportedGraphInImmutableVersionsAndKeepsItOutOfCreatorAndTaskViews() throws Exception {
+    @Test
+    void savesImportedGraphInImmutableVersionsAndKeepsItOutOfCreatorAndTaskViews() throws Exception {
         try (var provider = new Fake(1, false, false)) {
             var fixture = fixture(provider, Artifact.Kind.IMAGE, "WORKFLOW", false);
             var original = catalog.capabilitySnapshot(fixture.capability);
@@ -682,40 +896,59 @@ class RunningHubPostgresIT {
             catalog.updateCapability(original.connection().id(), fixture.capability, original.capability().version(),
                     "Saved import", true, "RUNNINGHUB_IMAGE", settings);
             var updated = catalog.capabilitySnapshot(fixture.capability);
-            assertThat(catalog.administratorSettings(updated).path("runningHub").path("importSource")).isEqualTo(source);
-            assertThat(catalog.administratorSettings(updated).path("runningHub").path("fields").get(0).path("group").asText())
+            assertThat(catalog.administratorSettings(updated).path("runningHub").path("importSource"))
+                    .isEqualTo(source);
+            assertThat(catalog.administratorSettings(updated).path("runningHub").path("fields").get(0).path("group")
+                    .asText())
                     .isEqualTo("基础生成");
-            assertThat(mapper.readTree(original.specJson()).path("settings").path("runningHub").path("importSource").isNull()).isTrue();
+            assertThat(mapper.readTree(original.specJson()).path("settings").path("runningHub").path("importSource")
+                    .isNull()).isTrue();
             assertThat(catalog.candidates(Task.Kind.IMAGE_GENERATION, 0).stream()
-                    .filter(candidate -> candidate.binding().capabilityId().equals(fixture.capability)).findFirst().orElseThrow()
+                    .filter(candidate -> candidate.binding().capabilityId().equals(fixture.capability)).findFirst()
+                    .orElseThrow()
                     .settings().toString()).doesNotContain("importSource", "private-import-literal");
             Task task = accept(fixture, "");
             assertThat(dev.agenvas.task.api.TaskController.TaskResponse.from(task).input().toString())
                     .doesNotContain("private-import-literal", "SyntheticInput");
-            assertThat(task.input().path("mediaInput").path("runningHubContract").path("importSource").isNull()).isTrue();
-            assertThat(task.input().path("mediaInput").path("runningHubContract").path("fields").get(0).path("group").asText())
+            assertThat(task.input().path("mediaInput").path("runningHubContract").path("importSource").isNull())
+                    .isTrue();
+            assertThat(task.input().path("mediaInput").path("runningHubContract").path("fields").get(0).path("group")
+                    .asText())
                     .isEqualTo("基础生成");
             assertThat(provider.submits).hasValue(0);
         }
     }
 
-    @Test void videoReferenceIsAnExactAuthorizedSlotAndUnknownDurationHasUnknownSecondPricing() throws Exception {
+    @Test
+    void videoReferenceIsAnExactAuthorizedSlotAndUnknownDurationHasUnknownSecondPricing() throws Exception {
         try (var provider = new Fake(1, false, false)) {
             var fixture = fixture(provider, Artifact.Kind.VIDEO, "AI_APP", true);
             var file = Files.createTempFile("rh-video", ".mp4");
             try {
-                mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i", "color=c=blue:s=64x64:r=8", "-t", "1", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", "-y", file.toString()));
-                var asset = assets.archiveVideo(owner, fixture.project.id(), new ByteArrayInputStream(Files.readAllBytes(file)));
-                var reference = artifacts.create(owner, fixture.project.id(), Artifact.Kind.VIDEO, "Reference", mapper.createObjectNode().put("sourceType", "UPLOAD").put("assetId", asset.id().toString()));
+                mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i",
+                        "color=c=blue:s=64x64:r=8", "-t", "1", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", "-y",
+                        file.toString()));
+                var asset = assets.archiveVideo(owner, fixture.project.id(),
+                        new ByteArrayInputStream(Files.readAllBytes(file)));
+                var reference = artifacts.create(owner, fixture.project.id(), Artifact.Kind.VIDEO, "Reference",
+                        mapper.createObjectNode().put("sourceType", "UPLOAD").put("assetId", asset.id().toString()));
                 UUID version = reference.resourceDefaultVersion().id();
-                var parameters = mapper.createObjectNode(); parameters.putObject("dynamicValues").put("clip", version.toString());
-                var draft = drafts.save(owner, fixture.project.id(), fixture.card, 0, "", parameters, null, fixture.capability,
-                        MediaDraft.VideoInputMode.GENERAL_REFERENCE, List.of(new MediaDraftService.SaveMediaInput(version, MediaDraft.InputRole.VIDEO_REFERENCE, "#7C3AED")), List.of(), null);
-                var task = direct.run(owner, fixture.project.id(), fixture.artifact.id(), fixture.card, draft.version(), UUID.randomUUID().toString());
-                assertThat(task.input().path("mediaInput").path("videos").get(0).path("versionId").asText()).isEqualTo(version.toString());
+                var parameters = mapper.createObjectNode();
+                parameters.putObject("dynamicValues").put("clip", version.toString());
+                var draft = drafts.save(owner, fixture.project.id(), fixture.card, 0, "", parameters, null,
+                        fixture.capability,
+                        MediaDraft.VideoInputMode.GENERAL_REFERENCE,
+                        List.of(new MediaDraftService.SaveMediaInput(version, MediaDraft.InputRole.VIDEO_REFERENCE,
+                                "#7C3AED")),
+                        List.of(), null);
+                var task = direct.run(owner, fixture.project.id(), fixture.artifact.id(), fixture.card, draft.version(),
+                        UUID.randomUUID().toString());
+                assertThat(task.input().path("mediaInput").path("videos").get(0).path("versionId").asText())
+                        .isEqualTo(version.toString());
                 assertThat(task.input().has("durationSeconds")).isFalse();
                 var reservation = usage.listProject(owner, fixture.project.id()).getFirst();
-                assertThat(reservation.estimatedCost()).isNull(); assertThat(reservation.actualCost()).isNull();
+                assertThat(reservation.estimatedCost()).isNull();
+                assertThat(reservation.actualCost()).isNull();
                 assertThat(reservation.quantity().path("videoSeconds").isNull()).isTrue();
                 assertThat(worker.submitOnce("rh-video-reference")).isEqualTo(1);
                 var nodes = mapper.readTree(provider.submitted.get()).path("nodeInfoList");
@@ -723,64 +956,102 @@ class RunningHubPostgresIT {
                 assertThat(provider.uploads).hasValue(1);
                 // A resource can disappear after acceptance. Preflight must block before another upload/run.
                 UUID missingCard = place(fixture.project, fixture.artifact);
-                var missingDraft = drafts.save(owner, fixture.project.id(), missingCard, 0, "", parameters, null, fixture.capability,
-                        MediaDraft.VideoInputMode.GENERAL_REFERENCE, List.of(new MediaDraftService.SaveMediaInput(version, MediaDraft.InputRole.VIDEO_REFERENCE, "#7C3AED")), List.of(), null);
-                var missing = direct.run(owner, fixture.project.id(), fixture.artifact.id(), missingCard, missingDraft.version(), UUID.randomUUID().toString());
+                var missingDraft = drafts.save(owner, fixture.project.id(), missingCard, 0, "", parameters, null,
+                        fixture.capability,
+                        MediaDraft.VideoInputMode.GENERAL_REFERENCE,
+                        List.of(new MediaDraftService.SaveMediaInput(version, MediaDraft.InputRole.VIDEO_REFERENCE,
+                                "#7C3AED")),
+                        List.of(), null);
+                var missing = direct.run(owner, fixture.project.id(), fixture.artifact.id(), missingCard,
+                        missingDraft.version(), UUID.randomUUID().toString());
                 var archivedPath = assets.get(owner, fixture.project.id(), asset.id()).path();
                 Files.delete(archivedPath);
                 try {
                     worker.submitOnce("rh-missing-input");
-                    assertThat(tasks.get(owner, fixture.project.id(), missing.id()).status()).isEqualTo(Task.Status.BLOCKED);
-                    assertThat(tasks.get(owner, fixture.project.id(), missing.id()).errorCode()).isEqualTo("RUNNINGHUB_INPUT_UNAVAILABLE");
-                    assertThat(usage.listProject(owner, fixture.project.id())).anyMatch(entry -> missing.id().equals(entry.taskId())
-                            && entry.entryType() == dev.agenvas.usage.domain.UsageEntry.EntryType.RELEASE);
-                    assertThat(provider.submits).hasValue(1); assertThat(provider.uploads).hasValue(1);
-                } finally { Files.write(archivedPath, Files.readAllBytes(file)); }
+                    assertThat(tasks.get(owner, fixture.project.id(), missing.id()).status())
+                            .isEqualTo(Task.Status.BLOCKED);
+                    assertThat(tasks.get(owner, fixture.project.id(), missing.id()).errorCode())
+                            .isEqualTo("RUNNINGHUB_INPUT_UNAVAILABLE");
+                    assertThat(usage.listProject(owner, fixture.project.id()))
+                            .anyMatch(entry -> missing.id().equals(entry.taskId())
+                                    && entry.entryType() == dev.agenvas.usage.domain.UsageEntry.EntryType.RELEASE);
+                    assertThat(provider.submits).hasValue(1);
+                    assertThat(provider.uploads).hasValue(1);
+                } finally {
+                    Files.write(archivedPath, Files.readAllBytes(file));
+                }
                 // Another project cannot reuse the exact version, even with a valid named parameter value.
                 var other = projects.create(owner, "Other", Project.AspectRatio.SQUARE_1_1);
-                var otherArtifact = artifacts.create(owner, other.id(), Artifact.Kind.VIDEO, "Other card", null).artifact();
+                var otherArtifact = artifacts.create(owner, other.id(), Artifact.Kind.VIDEO, "Other card", null)
+                        .artifact();
                 UUID otherCard = place(other, otherArtifact);
-                assertThatThrownBy(() -> drafts.save(owner, other.id(), otherCard, 0, "", parameters, null, fixture.capability,
-                        MediaDraft.VideoInputMode.GENERAL_REFERENCE, List.of(new MediaDraftService.SaveMediaInput(version, MediaDraft.InputRole.VIDEO_REFERENCE, "#7C3AED")), List.of(), null)).isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
+                assertThatThrownBy(
+                        () -> drafts.save(owner, other.id(), otherCard, 0, "", parameters, null, fixture.capability,
+                                MediaDraft.VideoInputMode.GENERAL_REFERENCE,
+                                List.of(new MediaDraftService.SaveMediaInput(version,
+                                        MediaDraft.InputRole.VIDEO_REFERENCE, "#7C3AED")),
+                                List.of(), null))
+                        .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
                 // Isolate later tests from this accepted video fixture without pretending it completed.
-                jdbc.sql("update task set next_action_at=now() + interval '1 day' where id=:id").param("id", task.id()).update();
-            } finally { Files.deleteIfExists(file); }
+                jdbc.sql("update task set next_action_at=now() + interval '1 day' where id=:id").param("id", task.id())
+                        .update();
+            } finally {
+                Files.deleteIfExists(file);
+            }
         }
     }
 
-    private record Fixture(Project project, Artifact artifact, UUID card, UUID capability) {}
+    private record Fixture(Project project, Artifact artifact, UUID card, UUID capability) {
+    }
     private Fixture fixture(Fake provider, Artifact.Kind kind, String targetType, boolean videoSlot) {
         var project = projects.create(owner, "RunningHub " + UUID.randomUUID(), Project.AspectRatio.SQUARE_1_1);
         var artifact = artifacts.create(owner, project.id(), kind, "Result", null).artifact();
         UUID card = place(project, artifact);
-        var connection = catalog.createConnection(UUID.randomUUID().toString(), "RunningHub fixture", "RUNNINGHUB", provider.origin(), "fake-runninghub-key");
-        ObjectNode settings = mapper.createObjectNode(); ObjectNode definition = settings.putObject("runningHub");
-        definition.put("schemaVersion", 1).put("protocolVersion", "V2").put("targetType", targetType).put("targetId", "123");
+        var connection = catalog.createConnection(UUID.randomUUID().toString(), "RunningHub fixture", "RUNNINGHUB",
+                provider.origin(), "fake-runninghub-key");
+        ObjectNode settings = mapper.createObjectNode();
+        ObjectNode definition = settings.putObject("runningHub");
+        definition.put("schemaVersion", 1).put("protocolVersion", "V2").put("targetType", targetType).put("targetId",
+                "123");
         var fields = definition.putArray("fields");
-        if (videoSlot) fields.addObject().put("key", "clip").put("label", "参考视频").put("type", "VIDEO").put("required", true).put("nodeId", "1").put("fieldName", "video");
+        if (videoSlot)
+            fields.addObject().put("key", "clip").put("label", "参考视频").put("type", "VIDEO").put("required", true)
+                    .put("nodeId", "1").put("fieldName", "video");
         var outputs = definition.putArray("outputs");
-        outputs.addObject().put("kind", kind.name()).put("primary", true).put("maxCount", "wav".equals(provider.secondType) ? 1 : provider.resultCount);
-        if ("wav".equals(provider.secondType)) outputs.addObject().put("kind", "AUDIO").put("primary", false).put("maxCount", 1);
-        if (videoSlot) settings.putObject("pricing").put("amount", "0.5").put("currency", "CNY").put("unit", "SECOND");
-        var capability = catalog.publishCapability(connection.id(), "Different " + targetType, "RUNNINGHUB_" + kind, settings);
+        outputs.addObject().put("kind", kind.name()).put("primary", true).put("maxCount",
+                "wav".equals(provider.secondType) ? 1 : provider.resultCount);
+        if ("wav".equals(provider.secondType))
+            outputs.addObject().put("kind", "AUDIO").put("primary", false).put("maxCount", 1);
+        if (videoSlot)
+            settings.putObject("pricing").put("amount", "0.5").put("currency", "CNY").put("unit", "SECOND");
+        var capability = catalog.publishCapability(connection.id(), "Different " + targetType, "RUNNINGHUB_" + kind,
+                settings);
         return new Fixture(project, artifact, card, capability.id());
     }
     private UUID place(Project project, Artifact artifact) {
         UUID card = UUID.randomUUID();
-        canvas.apply(owner, project.id(), List.of(new CanvasService.PlaceArtifact(card, artifact.id(), BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("280"), new BigDecimal("240"), 0, null, false)));
+        canvas.apply(owner, project.id(), List.of(new CanvasService.PlaceArtifact(card, artifact.id(), BigDecimal.ZERO,
+                BigDecimal.ZERO, new BigDecimal("280"), new BigDecimal("240"), 0, null, false)));
         return card;
     }
     private Task accept(Fixture fixture, String prompt) {
-        var parameters = mapper.createObjectNode(); parameters.putObject("dynamicValues");
-        var draft = drafts.save(owner, fixture.project.id(), fixture.card, 0, prompt, parameters, null, fixture.capability, null, List.of(), List.of(), null);
-        return direct.run(owner, fixture.project.id(), fixture.artifact.id(), fixture.card, draft.version(), UUID.randomUUID().toString());
+        var parameters = mapper.createObjectNode();
+        parameters.putObject("dynamicValues");
+        var draft = drafts.save(owner, fixture.project.id(), fixture.card, 0, prompt, parameters, null,
+                fixture.capability, null, List.of(), List.of(), null);
+        return direct.run(owner, fixture.project.id(), fixture.artifact.id(), fixture.card, draft.version(),
+                UUID.randomUUID().toString());
     }
-    private void due(UUID taskId) { jdbc.sql("update task set next_action_at=now()-interval '1 second' where id=:id").param("id", taskId).update(); }
+    private void due(UUID taskId) {
+        jdbc.sql("update task set next_action_at=now()-interval '1 second' where id=:id").param("id", taskId).update();
+    }
 
     private static final class Fake implements AutoCloseable {
         final HttpServer server;
         final int resultCount;
-        final AtomicInteger submits = new AtomicInteger(), queries = new AtomicInteger(), firstDownloads = new AtomicInteger(), secondDownloads = new AtomicInteger(), uploads = new AtomicInteger();
+        final AtomicInteger submits = new AtomicInteger(), queries = new AtomicInteger(),
+                firstDownloads = new AtomicInteger(), secondDownloads = new AtomicInteger(),
+                uploads = new AtomicInteger();
         final AtomicInteger zipDownloads = new AtomicInteger();
         final AtomicReference<String> submitted = new AtomicReference<>();
         final AtomicReference<String> submissionPath = new AtomicReference<>();
@@ -795,46 +1066,77 @@ class RunningHubPostgresIT {
         volatile boolean zipOnly, failZipArchiveOnce, refreshExpiredLinks, reorderRefreshed;
         Fake(int resultCount, boolean failSecondOnce, boolean uncertain) throws Exception {
             this.resultCount = resultCount;
-            var bytes = new ByteArrayOutputStream(); ImageIO.write(new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB), "png", bytes);
+            var bytes = new ByteArrayOutputStream();
+            ImageIO.write(new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB), "png", bytes);
             imageBytes = bytes.toByteArray();
-            zipBytes = zip(new String[] { "README.txt" }, new byte[][] { "synthetic metadata".getBytes(StandardCharsets.UTF_8) });
+            zipBytes = zip(new String[]{"README.txt"},
+                    new byte[][]{"synthetic metadata".getBytes(StandardCharsets.UTF_8)});
             server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.createContext("/", exchange -> {
-                String path = exchange.getRequestURI().getPath(); byte[] response;
+                String path = exchange.getRequestURI().getPath();
+                byte[] response;
                 int status = 200;
                 if (path.startsWith("/openapi/v2/run/")) {
                     submissionPath.set(path);
-                    submits.incrementAndGet(); submitted.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
-                    status = uncertain ? 503 : 200; exchange.getResponseHeaders().set("Retry-After", "0");
+                    submits.incrementAndGet();
+                    submitted.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                    status = uncertain ? 503 : 200;
+                    exchange.getResponseHeaders().set("Retry-After", "0");
                     response = "{\"taskId\":\"original-task\",\"status\":\"QUEUED\"}".getBytes(StandardCharsets.UTF_8);
                 } else if (path.equals("/openapi/v2/query")) {
                     int query = queries.incrementAndGet();
-                    queryTaskId.set(new ObjectMapper().readTree(exchange.getRequestBody().readAllBytes()).path("taskId").asText());
+                    queryTaskId.set(new ObjectMapper().readTree(exchange.getRequestBody().readAllBytes()).path("taskId")
+                            .asText());
                     String suffix = refreshExpiredLinks ? "?token=" + (query > 1 ? "fresh" : "expired") : "";
-                    String first = "{\"nodeId\":\"9\",\"outputType\":\"" + firstType + "\",\"url\":\"" + origin() + "/first.png" + suffix + "\"}";
-                    String second = "{\"nodeId\":\"9\",\"outputType\":\"" + secondType + "\",\"url\":\"" + origin() + "/second.png" + suffix + "\"}";
+                    String first = "{\"nodeId\":\"9\",\"outputType\":\"" + firstType + "\",\"url\":\"" + origin()
+                            + "/first.png" + suffix + "\"}";
+                    String second = "{\"nodeId\":\"9\",\"outputType\":\"" + secondType + "\",\"url\":\"" + origin()
+                            + "/second.png" + suffix + "\"}";
                     response = ("{\"status\":\"SUCCESS\",\"results\":["
-                            + (zipOnly ? "" : (resultCount > 1 && reorderRefreshed && query > 1 ? second + "," + first
-                                    : first + (resultCount > 1 ? "," + second : "")) + ",")
-                            + "{\"nodeId\":\"99\",\"outputType\":\"zip\",\"url\":\"" + origin() + "/companion.zip" + suffix + "\"}"
-                            + "],\"usage\":{\"consumeMoney\":null,\"consumeCoins\":0.25,\"taskCostTime\":3}}").getBytes(StandardCharsets.UTF_8);
+                            + (zipOnly
+                                    ? ""
+                                    : (resultCount > 1 && reorderRefreshed && query > 1
+                                            ? second + "," + first
+                                            : first + (resultCount > 1 ? "," + second : "")) + ",")
+                            + "{\"nodeId\":\"99\",\"outputType\":\"zip\",\"url\":\"" + origin() + "/companion.zip"
+                            + suffix + "\"}"
+                            + "],\"usage\":{\"consumeMoney\":null,\"consumeCoins\":0.25,\"taskCostTime\":3}}")
+                            .getBytes(StandardCharsets.UTF_8);
                 } else if (path.equals("/task/openapi/upload")) {
-                    uploads.incrementAndGet(); exchange.getRequestBody().readAllBytes();
-                    response = "{\"code\":0,\"data\":{\"fileName\":\"input/reference.mp4\"}}".getBytes(StandardCharsets.UTF_8);
+                    uploads.incrementAndGet();
+                    exchange.getRequestBody().readAllBytes();
+                    response = "{\"code\":0,\"data\":{\"fileName\":\"input/reference.mp4\"}}"
+                            .getBytes(StandardCharsets.UTF_8);
                 } else {
-                    if (path.equals("/first.png")) firstDownloads.incrementAndGet();
-                    else if (path.equals("/companion.zip") && zipDownloads.incrementAndGet() == 2 && failZipArchiveOnce) status = 503;
-                    else if (path.equals("/second.png") && secondDownloads.incrementAndGet() == 1 && failSecondOnce) status = 503;
+                    if (path.equals("/first.png"))
+                        firstDownloads.incrementAndGet();
+                    else if (path.equals("/companion.zip") && zipDownloads.incrementAndGet() == 2 && failZipArchiveOnce)
+                        status = 503;
+                    else if (path.equals("/second.png") && secondDownloads.incrementAndGet() == 1 && failSecondOnce)
+                        status = 503;
                     if (refreshExpiredLinks && "token=expired".equals(exchange.getRequestURI().getRawQuery())
-                            && (!path.equals("/companion.zip") || zipDownloads.get() >= 2)) status = 403;
-                    response = path.equals("/companion.zip") ? refreshedZipBytes != null && "token=fresh".equals(exchange.getRequestURI().getRawQuery())
-                            ? refreshedZipBytes : zipBytes : path.equals("/second.png") && secondBytes != null
-                            ? secondBytes : path.equals("/first.png") && firstBytes != null ? firstBytes : imageBytes;
+                            && (!path.equals("/companion.zip") || zipDownloads.get() >= 2))
+                        status = 403;
+                    response = path.equals("/companion.zip")
+                            ? refreshedZipBytes != null && "token=fresh".equals(exchange.getRequestURI().getRawQuery())
+                                    ? refreshedZipBytes
+                                    : zipBytes
+                            : path.equals("/second.png") && secondBytes != null
+                                    ? secondBytes
+                                    : path.equals("/first.png") && firstBytes != null ? firstBytes : imageBytes;
                 }
-                exchange.sendResponseHeaders(status, response.length); exchange.getResponseBody().write(response); exchange.close();
-            }); server.start();
+                exchange.sendResponseHeaders(status, response.length);
+                exchange.getResponseBody().write(response);
+                exchange.close();
+            });
+            server.start();
         }
-        String origin() { return "http://127.0.0.1:" + server.getAddress().getPort(); }
-        @Override public void close() { server.stop(0); }
+        String origin() {
+            return "http://127.0.0.1:" + server.getAddress().getPort();
+        }
+        @Override
+        public void close() {
+            server.stop(0);
+        }
     }
 }

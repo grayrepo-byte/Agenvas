@@ -54,7 +54,8 @@ class LlmDiagnosticServiceTest {
         configure();
         when(gateway.call(any(), any(), any())).thenAnswer(invocation -> {
             List<org.springframework.ai.chat.messages.Message> messages = invocation.getArgument(0);
-            if (round == 1 || messages.size() > 2) throw LlmStreamIncompleteException.problem();
+            if (round == 1 || messages.size() > 2)
+                throw LlmStreamIncompleteException.problem();
             return toolResponse(messages);
         });
         assertThatThrownBy(() -> service.diagnose(1, true)).isInstanceOfSatisfying(ApiProblemException.class,
@@ -64,15 +65,18 @@ class LlmDiagnosticServiceTest {
                     assertThat(problem.detail().arguments()).containsExactly(Integer.toString(round));
                     assertThat(problem.retryable()).isFalse();
                 });
-        if (round == 1) assertLogOutcomes(CallLog.Status.FAILED);
-        else assertLogOutcomes(CallLog.Status.SUCCEEDED, CallLog.Status.FAILED);
+        if (round == 1)
+            assertLogOutcomes(CallLog.Status.FAILED);
+        else
+            assertLogOutcomes(CallLog.Status.SUCCEEDED, CallLog.Status.FAILED);
         var outcome = ArgumentCaptor.forClass(CallLogService.CallOutcome.class);
         verify(logs, times(round)).finish(any(), outcome.capture(), any(), anyLong());
         assertThat(outcome.getAllValues().getLast().errorCode()).isEqualTo("LLM_STREAM_INCOMPLETE");
         verify(configs, never()).markToolCallingVerified(anyInt());
     }
 
-    @Test void failedFirstProbeRecordsMetadataAndExplainsMissingToolWithoutSavingBodies() {
+    @Test
+    void failedFirstProbeRecordsMetadataAndExplainsMissingToolWithoutSavingBodies() {
         configure();
         when(gateway.call(any(), any(), any())).thenReturn(response(new AssistantMessage("No tool call")));
         assertThatThrownBy(() -> service.diagnose(1, true)).isInstanceOfSatisfying(ApiProblemException.class,
@@ -88,7 +92,8 @@ class LlmDiagnosticServiceTest {
         verify(configs, never()).markToolCallingVerified(anyInt());
     }
 
-    @Test void successfulRoundTripRecordsTwoCallsAndNeverInvokesBusinessTools() {
+    @Test
+    void successfulRoundTripRecordsTwoCallsAndNeverInvokesBusinessTools() {
         configure();
         answerProbe(false);
         service.diagnose(1, true);
@@ -106,7 +111,8 @@ class LlmDiagnosticServiceTest {
         });
     }
 
-    @Test void proofWithExtraUnrequestedTextFailsAtSecondRoundAndIsLogged() {
+    @Test
+    void proofWithExtraUnrequestedTextFailsAtSecondRoundAndIsLogged() {
         configure();
         answerProbe(true);
         assertThatThrownBy(() -> service.diagnose(1, true)).isInstanceOfSatisfying(ApiProblemException.class,
@@ -116,11 +122,13 @@ class LlmDiagnosticServiceTest {
         verify(configs, never()).markToolCallingVerified(anyInt());
     }
 
-    @Test void unavailableSecondCallExplainsWhichRoundAndDoesNotLeakRemoteMessage() {
+    @Test
+    void unavailableSecondCallExplainsWhichRoundAndDoesNotLeakRemoteMessage() {
         configure();
         when(gateway.call(any(), any(), any())).thenAnswer(invocation -> {
             List<org.springframework.ai.chat.messages.Message> messages = invocation.getArgument(0);
-            if (messages.size() > 2) throw new IllegalStateException("sk-private SECRET remote body");
+            if (messages.size() > 2)
+                throw new IllegalStateException("sk-private SECRET remote body");
             return toolResponse(messages);
         });
         assertThatThrownBy(() -> service.diagnose(1, true)).isInstanceOfSatisfying(ApiProblemException.class,
@@ -132,7 +140,8 @@ class LlmDiagnosticServiceTest {
         assertLogOutcomes(CallLog.Status.SUCCEEDED, CallLog.Status.FAILED);
     }
 
-    @Test void tokenLimitedProbeCannotVerifyToolSupport() {
+    @Test
+    void tokenLimitedProbeCannotVerifyToolSupport() {
         configure();
         when(gateway.call(any(), any(), any())).thenAnswer(invocation -> {
             ChatGateway.Exchange good = toolResponse(invocation.getArgument(0));
@@ -146,7 +155,8 @@ class LlmDiagnosticServiceTest {
         verify(configs, never()).markToolCallingVerified(anyInt());
     }
 
-    @Test void invalidToolTypeFailsBeforeSecondCallAndNeverVerifies() {
+    @Test
+    void invalidToolTypeFailsBeforeSecondCallAndNeverVerifies() {
         configure();
         when(gateway.call(any(), any(), any())).thenAnswer(invocation -> {
             var good = toolResponse(invocation.getArgument(0));
@@ -165,7 +175,8 @@ class LlmDiagnosticServiceTest {
     private void answerProbe(boolean extraText) {
         when(gateway.call(any(), any(), any())).thenAnswer(invocation -> {
             List<org.springframework.ai.chat.messages.Message> messages = invocation.getArgument(0);
-            if (messages.size() == 2) return toolResponse(messages);
+            if (messages.size() == 2)
+                return toolResponse(messages);
             var result = (ToolResponseMessage) messages.getLast();
             String proof = mapper.readTree(result.getResponses().getFirst().responseData()).path("proof").asText();
             return response(new AssistantMessage(extraText ? "The proof is " + proof : proof));

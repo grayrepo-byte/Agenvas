@@ -23,7 +23,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/projects/{projectId}/canvas-items/{canvasItemId}/video-prompt-optimizations")
 public class VideoPromptController {
     private final VideoPromptTaskService prompts;
-    public VideoPromptController(VideoPromptTaskService prompts) { this.prompts = prompts; }
+    public VideoPromptController(VideoPromptTaskService prompts) {
+        this.prompts = prompts;
+    }
 
     @GetMapping
     public ResponseEntity<List<TaskController.TaskResponse>> list(@AuthenticationPrincipal AdminPrincipal principal,
@@ -37,8 +39,10 @@ public class VideoPromptController {
             @PathVariable UUID projectId, @PathVariable UUID canvasItemId,
             @RequestHeader("Idempotency-Key") String key, @Valid @RequestBody VideoPromptTaskService.Request request,
             HttpServletRequest http) {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(TaskController.TaskResponse.from(prompts.run(
-                principal.userId(), projectId, canvasItemId, request, SupportedLocales.resolve(http).getLanguage(), key)));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(TaskController.TaskResponse.from(prompts.run(
+                        principal.userId(), projectId, canvasItemId, request,
+                        SupportedLocales.resolve(http).getLanguage(), key)));
     }
 
     @PostMapping("/{taskId}/cancel")

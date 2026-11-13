@@ -53,14 +53,15 @@ class CanvasMediaDerivationDraftTest {
     private final ProjectService projects = mock(ProjectService.class);
     private final CanvasConnectionService connections = mock(CanvasConnectionService.class);
     private final ProjectEventService events = mock(ProjectEventService.class);
-    private final dev.agenvas.character.application.CharacterService characters =
-            mock(dev.agenvas.character.application.CharacterService.class);
+    private final dev.agenvas.character.application.CharacterService characters = mock(
+            dev.agenvas.character.application.CharacterService.class);
     private final CanvasService canvas = new CanvasService(projects, artifacts,
             drafts, items, connections,
             events, new ObjectMapper(), Clock.systemUTC(),
-                    new org.springframework.beans.factory.support.StaticListableBeanFactory(java.util.Map.of("characters",
-                            characters))
-                            .getBeanProvider(dev.agenvas.character.application.CharacterService.class), dev.agenvas.testing.CreationMessagesTestSupport.messages());
+            new org.springframework.beans.factory.support.StaticListableBeanFactory(java.util.Map.of("characters",
+                    characters))
+                    .getBeanProvider(dev.agenvas.character.application.CharacterService.class),
+            dev.agenvas.testing.CreationMessagesTestSupport.messages());
 
     @BeforeEach
     void source() {
@@ -129,7 +130,8 @@ class CanvasMediaDerivationDraftTest {
             String suffix = CreationMessagesTestSupport.messages().text(ImageOperation.CROP.resultLabel());
             var result = canvas.forkMediaDerivationWithinChange(owner, project, source, target, 5, 0, suffix);
             assertThat(result.title()).isEqualTo(expected);
-            if (language.equals("en")) assertThat(result.title()).doesNotContainPattern("\\p{IsHan}");
+            if (language.equals("en"))
+                assertThat(result.title()).doesNotContainPattern("\\p{IsHan}");
         } finally {
             RequestContextHolder.resetRequestAttributes();
         }

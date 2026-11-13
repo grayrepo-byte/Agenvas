@@ -18,11 +18,14 @@ public final class MiniMaxH3Protocol {
     public static final long MAX_VIDEO_BYTES = 50_000_000;
     public static final long MAX_AUDIO_BYTES = 15_000_000;
     public static final int MAX_REFERENCE_DURATION_MS = 15_000;
-    private MiniMaxH3Protocol() {}
+    private MiniMaxH3Protocol() {
+    }
 
     public static String resolution(String requested) {
-        if (requested == null) return DEFAULT_RESOLUTION;
-        if (!RESOLUTIONS.contains(requested)) throw invalid();
+        if (requested == null)
+            return DEFAULT_RESOLUTION;
+        if (!RESOLUTIONS.contains(requested))
+            throw invalid();
         return requested;
     }
 
@@ -30,17 +33,20 @@ public final class MiniMaxH3Protocol {
         switch (asset.mediaKind()) {
             case IMAGE -> {
                 if (!Set.of("image/jpeg", "image/png", "image/webp").contains(asset.contentType())
-                        || asset.byteSize() > MAX_IMAGE_BYTES) throw invalid();
+                        || asset.byteSize() > MAX_IMAGE_BYTES)
+                    throw invalid();
                 dimensions(asset);
             }
             case VIDEO -> {
-                if (!"video/mp4".equals(asset.contentType()) || asset.byteSize() > MAX_VIDEO_BYTES) throw invalid();
+                if (!"video/mp4".equals(asset.contentType()) || asset.byteSize() > MAX_VIDEO_BYTES)
+                    throw invalid();
                 dimensions(asset);
                 duration(asset);
             }
             case AUDIO -> {
                 if (!Set.of("audio/mpeg", "audio/wav").contains(asset.contentType())
-                        || asset.byteSize() > MAX_AUDIO_BYTES) throw invalid();
+                        || asset.byteSize() > MAX_AUDIO_BYTES)
+                    throw invalid();
                 duration(asset);
             }
         }
@@ -48,14 +54,16 @@ public final class MiniMaxH3Protocol {
 
     private static void duration(Asset asset) {
         if (asset.durationMs() == null || asset.durationMs() < 2_000
-                || asset.durationMs() > MAX_REFERENCE_DURATION_MS) throw invalid();
+                || asset.durationMs() > MAX_REFERENCE_DURATION_MS)
+            throw invalid();
     }
 
     private static void dimensions(Asset asset) {
         if (asset.width() == null || asset.height() == null || asset.width() < 256 || asset.width() > 5760
                 || asset.height() < 256 || asset.height() > 5760
                 || (double) asset.width() / asset.height() < 0.4
-                || (double) asset.width() / asset.height() > 2.5) throw invalid();
+                || (double) asset.width() / asset.height() > 2.5)
+            throw invalid();
     }
 
     public static ApiProblemException invalid() {

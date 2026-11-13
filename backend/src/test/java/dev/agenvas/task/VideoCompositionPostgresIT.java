@@ -47,43 +47,69 @@ import tools.jackson.databind.node.ObjectNode;
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class VideoCompositionPostgresIT {
-    @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
-    @TempDir static Path storage;
-    @TempDir Path temp;
-    @DynamicPropertySource static void properties(DynamicPropertyRegistry r) {
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    @TempDir
+    static Path storage;
+    @TempDir
+    Path temp;
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry r) {
         r.add("agenvas.storage.root", () -> storage.toString());
-        r.add("agenvas.credentials.master-key-base64", () -> java.util.Base64.getEncoder().encodeToString(new byte[32]));
+        r.add("agenvas.credentials.master-key-base64",
+                () -> java.util.Base64.getEncoder().encodeToString(new byte[32]));
         r.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         r.add("spring.datasource.username", POSTGRES::getUsername);
         r.add("spring.datasource.password", POSTGRES::getPassword);
     }
-    @Autowired IdentityService identities;
-    @Autowired ProjectService projects;
-    @Autowired ArtifactService artifacts;
-    @Autowired AssetService assets;
-    @Autowired CanvasService canvas;
-    @Autowired VideoCompositionService compositions;
-    @Autowired org.jooq.DSLContext db;
-    @Autowired dev.agenvas.task.application.DirectMediaTaskService direct;
-    @Autowired org.springframework.web.context.WebApplicationContext webContext;
-    @Autowired MediaExecutionWorker worker;
-    @Autowired TaskService tasks;
-    @Autowired MediaToolRunner mediaTools;
-    @Autowired McpToolService mcp;
-    @Autowired McpToolPolicy contract;
-    @Autowired McpTokenService tokens;
-    @Autowired ObjectMapper mapper;
-    @Autowired org.springframework.jdbc.core.simple.JdbcClient jdbc;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    ProjectService projects;
+    @Autowired
+    ArtifactService artifacts;
+    @Autowired
+    AssetService assets;
+    @Autowired
+    CanvasService canvas;
+    @Autowired
+    VideoCompositionService compositions;
+    @Autowired
+    org.jooq.DSLContext db;
+    @Autowired
+    dev.agenvas.task.application.DirectMediaTaskService direct;
+    @Autowired
+    org.springframework.web.context.WebApplicationContext webContext;
+    @Autowired
+    MediaExecutionWorker worker;
+    @Autowired
+    TaskService tasks;
+    @Autowired
+    MediaToolRunner mediaTools;
+    @Autowired
+    McpToolService mcp;
+    @Autowired
+    McpToolPolicy contract;
+    @Autowired
+    McpTokenService tokens;
+    @Autowired
+    ObjectMapper mapper;
+    @Autowired
+    org.springframework.jdbc.core.simple.JdbcClient jdbc;
     static AdminPrincipal owner;
-    @BeforeEach void setup() {
-        if (owner == null) owner = identities.setup("composition-test", "synthetic-composition-password-123");
+    @BeforeEach
+    void setup() {
+        if (owner == null)
+            owner = identities.setup("composition-test", "synthetic-composition-password-123");
     }
 
-    @Test void mcpQueuesExactlyOnceAndRealWorkerArchivesCompositionWithFrozenSources() throws Exception {
+    @Test
+    void mcpQueuesExactlyOnceAndRealWorkerArchivesCompositionWithFrozenSources() throws Exception {
         var fixture = fixture();
         var principal = tokens.authenticate(tokens.create(owner.userId(), new McpTokenService.Create("Composition",
                 Set.of(McpScope.READ, McpScope.MEDIA_GENERATE), 30)).token());
-        ObjectNode args = mapper.createObjectNode().put("projectId", fixture.project().toString()).put("commandId", "compose-once");
+        ObjectNode args = mapper.createObjectNode().put("projectId", fixture.project().toString()).put("commandId",
+                "compose-once");
         args.set("composition", request(fixture));
         var response = mcp.execute(principal, "compose_video", args).data();
         contract.validateOutput("compose_video", response);
@@ -100,12 +126,14 @@ class VideoCompositionPostgresIT {
         assertThatThrownBy(() -> mcp.execute(principal, "compose_video", args.deepCopy().set("composition",
                 request(fixture).put("title", "Different")))).isInstanceOf(ApiProblemException.class)
                 .extracting("code").isEqualTo("MCP_COMMAND_CONFLICT");
-        var readOnly = tokens.authenticate(tokens.create(owner.userId(), new McpTokenService.Create("Reader", Set.of(McpScope.READ), 30)).token());
+        var readOnly = tokens.authenticate(
+                tokens.create(owner.userId(), new McpTokenService.Create("Reader", Set.of(McpScope.READ), 30)).token());
         assertThatThrownBy(() -> mcp.execute(readOnly, "compose_video", args)).isInstanceOf(ApiProblemException.class)
                 .extracting("code").isEqualTo("MCP_SCOPE_DENIED");
         assertThat(worker.submitOnce("composition-worker")).isEqualTo(1);
         Task completed = tasks.get(owner.userId(), fixture.project(), taskId);
-        assertThat(completed.status()).withFailMessage("Composition failed: %s", completed.errorCode()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(completed.status()).withFailMessage("Composition failed: %s", completed.errorCode())
+                .isEqualTo(Task.Status.SUCCEEDED);
         assertThat(completed.output().path("selected").asBoolean()).isTrue();
         var result = artifacts.requireMediaVersionForTask(owner.userId(), fixture.project(),
                 UUID.fromString(completed.output().path("artifactVersionId").asText()), Artifact.Kind.VIDEO);
@@ -113,7 +141,8 @@ class VideoCompositionPostgresIT {
         var plan = result.content().at("/parameters/videoComposition");
         assertThat(plan.path("durationMs").asInt()).isBetween(2950, 3000);
         assertThat(plan.at("/shots/0/lines/0/audioVersionId").asText()).isEqualTo(fixture.audio().toString());
-        var output = assets.get(owner.userId(), fixture.project(), UUID.fromString(result.content().path("assetId").asText()));
+        var output = assets.get(owner.userId(), fixture.project(),
+                UUID.fromString(result.content().path("assetId").asText()));
         assertThat(output.asset().width()).isEqualTo(1280);
         assertThat(output.asset().height()).isEqualTo(720);
         assertThat(output.asset().durationMs()).isBetween(2950, 3050);
@@ -126,51 +155,63 @@ class VideoCompositionPostgresIT {
         assertThat(readable.toString()).doesNotContain("objectKey", "mcpTokenId", "file://");
     }
 
-    @Test void longCompositionPreviewsAcceptsReplaysAndArchivesBeyondTheOldMinuteLimit() throws Exception {
+    @Test
+    void longCompositionPreviewsAcceptsReplaysAndArchivesBeyondTheOldMinuteLimit() throws Exception {
         var fixture = fixture();
         ObjectNode request = request(fixture);
         var template = request.path("shots").get(0).deepCopy();
         ((ObjectNode) template).putArray("lines");
         request.putArray("shots");
-        for (int i = 0; i < 21; i++) request.withArray("shots").add(template.deepCopy());
+        for (int i = 0; i < 21; i++)
+            request.withArray("shots").add(template.deepCopy());
         var preview = compositions.preview(owner.userId(), fixture.project(), request);
         assertThat(preview.path("frames").asInt()).isEqualTo(1890);
         assertThat(preview.path("durationMs").asInt()).isEqualTo(63_000);
         var accepted = compositions.run(owner.userId(), fixture.project(), request, "long-edit");
-        assertThat(compositions.run(owner.userId(), fixture.project(), request, "long-edit").id()).isEqualTo(accepted.id());
+        assertThat(compositions.run(owner.userId(), fixture.project(), request, "long-edit").id())
+                .isEqualTo(accepted.id());
         assertThat(worker.submitOnce("long-edit-worker")).isEqualTo(1);
         var completed = tasks.get(owner.userId(), fixture.project(), accepted.id());
-        assertThat(completed.status()).withFailMessage("Composition failed: %s", completed.errorCode()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(completed.status()).withFailMessage("Composition failed: %s", completed.errorCode())
+                .isEqualTo(Task.Status.SUCCEEDED);
         var result = artifacts.requireMediaVersionForTask(owner.userId(), fixture.project(),
                 UUID.fromString(completed.output().path("artifactVersionId").asText()), Artifact.Kind.VIDEO);
-        var output = assets.get(owner.userId(), fixture.project(), UUID.fromString(result.content().path("assetId").asText()));
+        var output = assets.get(owner.userId(), fixture.project(),
+                UUID.fromString(result.content().path("assetId").asText()));
         assertThat(output.asset().durationMs()).isEqualTo(63_000);
         assertThat(result.content().at("/parameters/videoComposition/shots")).hasSize(21);
         mediaTools.ffmpeg(List.of("-v", "error", "-xerror", "-i", output.path().toString(), "-f", "null", "-"));
     }
 
-    @Test void capabilitiesAreAuthorizedAndExposeOnlyTheCurrentPublicBudget() throws Exception {
+    @Test
+    void capabilitiesAreAuthorizedAndExposeOnlyTheCurrentPublicBudget() throws Exception {
         var fixture = fixture();
         var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup(webContext)
-                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build();
         var auth = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(owner, "unused",
                 List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN")));
         String url = "/api/v1/projects/" + fixture.project() + "/video-compositions/capabilities";
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(url))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isUnauthorized());
         var response = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(url)
-                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(auth)))
-                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk()).andReturn();
+                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                        .authentication(auth)))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                .andReturn();
         var budget = mapper.readTree(response.getResponse().getContentAsString());
-        assertThat(budget.propertyNames()).containsExactlyInAnyOrder("maxDurationMs", "maxFrames", "maxShots", "maxLines", "maxSubtitles",
-                "maxSourceDurationMs", "maxSourceBytes", "maxOutputBytes", "frameRate", "timeoutSeconds", "resolutions");
+        assertThat(budget.propertyNames()).containsExactlyInAnyOrder("maxDurationMs", "maxFrames", "maxShots",
+                "maxLines", "maxSubtitles",
+                "maxSourceDurationMs", "maxSourceBytes", "maxOutputBytes", "frameRate", "timeoutSeconds",
+                "resolutions");
         assertThat(budget.path("maxDurationMs").asInt()).isEqualTo(600_000);
         assertThat(budget.path("maxShots").asInt()).isEqualTo(60);
         assertThat(budget.path("maxSubtitles").asInt()).isEqualTo(2000);
         assertThat(budget.toString()).doesNotContain("scratchRoot", "fontFamily", "file:");
     }
 
-    @Test void invalidAndForeignSourcesRollbackBeforeCreatingOutput() throws Exception {
+    @Test
+    void invalidAndForeignSourcesRollbackBeforeCreatingOutput() throws Exception {
         var fixture = fixture();
         ObjectNode tooLong = request(fixture);
         ((ObjectNode) tooLong.at("/shots/0")).put("durationMs", 60000);
@@ -185,11 +226,14 @@ class VideoCompositionPostgresIT {
         assertThat(canvas.list(owner.userId(), foreign.id())).isEmpty();
     }
 
-    @Test void concurrentSameCommandCreatesOnlyOneTaskAndOutput() throws Exception {
+    @Test
+    void concurrentSameCommandCreatesOnlyOneTaskAndOutput() throws Exception {
         var fixture = fixture();
         try (var executor = java.util.concurrent.Executors.newFixedThreadPool(2)) {
-            var first = executor.submit(() -> compositions.run(owner.userId(), fixture.project(), request(fixture), "same-command"));
-            var second = executor.submit(() -> compositions.run(owner.userId(), fixture.project(), request(fixture), "same-command"));
+            var first = executor.submit(
+                    () -> compositions.run(owner.userId(), fixture.project(), request(fixture), "same-command"));
+            var second = executor.submit(
+                    () -> compositions.run(owner.userId(), fixture.project(), request(fixture), "same-command"));
             var task = first.get(15, java.util.concurrent.TimeUnit.SECONDS);
             assertThat(second.get(15, java.util.concurrent.TimeUnit.SECONDS).id()).isEqualTo(task.id());
             assertThat(canvas.list(owner.userId(), fixture.project())).hasSize(3);
@@ -197,70 +241,102 @@ class VideoCompositionPostgresIT {
         }
     }
 
-    @Test void previewRequiresAuthAndCsrfAndDoesNotCreateBusinessState() throws Exception {
+    @Test
+    void previewRequiresAuthAndCsrfAndDoesNotCreateBusinessState() throws Exception {
         var fixture = fixture();
         var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup(webContext)
-                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build();
         var auth = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(owner, "unused",
                 List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN")));
         String url = "/api/v1/projects/" + fixture.project() + "/video-compositions/preview";
         var post = org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(url)
                 .contentType("application/json").content(request(fixture).toString());
-        mvc.perform(post.with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
+        mvc.perform(post.with(
+                org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isUnauthorized());
-        mvc.perform(post.with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(auth))
-                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf().useInvalidToken()))
+        mvc.perform(post
+                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                        .authentication(auth))
+                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()
+                        .useInvalidToken()))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
         var tables = List.of("task", "artifact", "asset", "project_event");
         var counts = tables.stream().map(table -> db.fetchCount(org.jooq.impl.DSL.table(table))).toList();
-        var response = mvc.perform(post.with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(auth))
-                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
-                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk()).andReturn();
+        var response = mvc
+                .perform(post
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                                .authentication(auth))
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                                .csrf()))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                .andReturn();
         var plan = mapper.readTree(response.getResponse().getContentAsString());
         assertThat(plan.propertyNames()).containsExactlyInAnyOrder("durationMs", "frames", "fontFamily", "shots");
         assertThat(plan.path("frames").asInt()).isEqualTo(90);
         assertThat(plan.path("durationMs").asInt()).isEqualTo(3000);
         var shot = plan.path("shots").get(0);
-        assertThat(shot.propertyNames()).containsExactlyInAnyOrder("videoVersionId", "timelineStartMs", "durationMs", "lines");
+        assertThat(shot.propertyNames()).containsExactlyInAnyOrder("videoVersionId", "timelineStartMs", "durationMs",
+                "lines");
         assertThat(shot.path("videoVersionId").asText()).isEqualTo(fixture.video().toString());
         var line = shot.path("lines").get(0);
-        assertThat(line.propertyNames()).containsExactlyInAnyOrder("audioVersionId", "startMs", "endMs", "trimStartMs", "trimEndMs", "speed");
+        assertThat(line.propertyNames()).containsExactlyInAnyOrder("audioVersionId", "startMs", "endMs", "trimStartMs",
+                "trimEndMs", "speed");
         assertThat(line.path("startMs").asInt()).isBetween(900, 1100);
-        assertThat(tables.stream().map(table -> db.fetchCount(org.jooq.impl.DSL.table(table))).toList()).isEqualTo(counts);
+        assertThat(tables.stream().map(table -> db.fetchCount(org.jooq.impl.DSL.table(table))).toList())
+                .isEqualTo(counts);
         assertThat(canvas.list(owner.userId(), fixture.project())).hasSize(2);
         try (var executor = java.util.concurrent.Executors.newFixedThreadPool(2)) {
-            var first = executor.submit(() -> compositions.preview(owner.userId(), fixture.project(), request(fixture)));
-            var second = executor.submit(() -> compositions.preview(owner.userId(), fixture.project(), request(fixture)));
-            assertThat(first.get(30, java.util.concurrent.TimeUnit.SECONDS)).isEqualTo(second.get(30, java.util.concurrent.TimeUnit.SECONDS));
+            var first = executor
+                    .submit(() -> compositions.preview(owner.userId(), fixture.project(), request(fixture)));
+            var second = executor
+                    .submit(() -> compositions.preview(owner.userId(), fixture.project(), request(fixture)));
+            assertThat(first.get(30, java.util.concurrent.TimeUnit.SECONDS))
+                    .isEqualTo(second.get(30, java.util.concurrent.TimeUnit.SECONDS));
         }
-        assertThat(tables.stream().map(table -> db.fetchCount(org.jooq.impl.DSL.table(table))).toList()).isEqualTo(counts);
+        assertThat(tables.stream().map(table -> db.fetchCount(org.jooq.impl.DSL.table(table))).toList())
+                .isEqualTo(counts);
         var another = projects.create(owner.userId(), "Other preview project", Project.AspectRatio.LANDSCAPE_16_9);
-        assertThatThrownBy(() -> compositions.preview(owner.userId(), another.id(), request(fixture))).isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> compositions.preview(owner.userId(), another.id(), request(fixture)))
+                .isInstanceOf(ApiProblemException.class);
     }
 
-    @Test void restRequiresSessionAndCsrfAndUsesTheSameValidatedContract() throws Exception {
+    @Test
+    void restRequiresSessionAndCsrfAndUsesTheSameValidatedContract() throws Exception {
         var fixture = fixture();
         var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup(webContext)
-                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build();
         var auth = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(owner, "unused",
                 List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN")));
         String url = "/api/v1/projects/" + fixture.project() + "/video-compositions";
         var post = org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(url)
-                .header("Idempotency-Key", "rest-composition").contentType("application/json").content(request(fixture).toString());
-        mvc.perform(post.with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
+                .header("Idempotency-Key", "rest-composition").contentType("application/json")
+                .content(request(fixture).toString());
+        mvc.perform(post.with(
+                org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isUnauthorized());
-        mvc.perform(post.with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(auth))
-                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf().useInvalidToken()))
+        mvc.perform(post
+                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                        .authentication(auth))
+                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()
+                        .useInvalidToken()))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
-        var response = mvc.perform(post.with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(auth))
-                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
-                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk()).andReturn();
+        var response = mvc
+                .perform(post
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                                .authentication(auth))
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                                .csrf()))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                .andReturn();
         var accepted = mapper.readTree(response.getResponse().getContentAsString());
         assertThat(accepted.at("/input/videoComposition/shots")).hasSize(1);
         direct.cancelQueued(owner.userId(), fixture.project(), UUID.fromString(accepted.path("id").asText()));
     }
 
-    @Test void removingOutputBeforeCompletionKeepsResultHistoryWithoutRecreatingNode() throws Exception {
+    @Test
+    void removingOutputBeforeCompletionKeepsResultHistoryWithoutRecreatingNode() throws Exception {
         var fixture = fixture();
         Task task = compositions.run(owner.userId(), fixture.project(), request(fixture), "removed-output");
         UUID item = UUID.fromString(task.input().path("canvasItemId").asText());
@@ -272,11 +348,13 @@ class VideoCompositionPostgresIT {
         assertThat(canvas.list(owner.userId(), fixture.project())).hasSize(2);
     }
 
-    @Test void zeroDialoguePostproductionFreezesMusicSubtitlesAndOutputAndReplaysTheSameCommand() throws Exception {
+    @Test
+    void zeroDialoguePostproductionFreezesMusicSubtitlesAndOutputAndReplaysTheSameCommand() throws Exception {
         var fixture = fixture();
         ObjectNode request = postproduction(fixture);
         var accepted = compositions.run(owner.userId(), fixture.project(), request, "postproduction-freeze");
-        assertThat(compositions.run(owner.userId(), fixture.project(), request.deepCopy(), "postproduction-freeze").id())
+        assertThat(
+                compositions.run(owner.userId(), fixture.project(), request.deepCopy(), "postproduction-freeze").id())
                 .isEqualTo(accepted.id());
         var stored = tasks.get(owner.userId(), fixture.project(), accepted.id());
         assertThat(stored.input().at("/videoComposition/shots/0/lines")).isEmpty();
@@ -300,33 +378,39 @@ class VideoCompositionPostgresIT {
         direct.cancelQueued(owner.userId(), fixture.project(), accepted.id());
     }
 
-    @Test void zeroDialogueSpeedAndPortraitOutputRenderThroughThePersistentWorker() throws Exception {
+    @Test
+    void zeroDialogueSpeedAndPortraitOutputRenderThroughThePersistentWorker() throws Exception {
         var fixture = fixture();
         ObjectNode request = postproduction(fixture);
         request.remove("subtitles"); // libass pixel rendering has a separate deployment-binary test.
         var accepted = compositions.run(owner.userId(), fixture.project(), request, "postproduction-render");
         assertThat(worker.submitOnce("postproduction-render-worker")).isEqualTo(1);
         var completed = tasks.get(owner.userId(), fixture.project(), accepted.id());
-        assertThat(completed.status()).withFailMessage("Postproduction failed: %s", completed.errorCode()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(completed.status()).withFailMessage("Postproduction failed: %s", completed.errorCode())
+                .isEqualTo(Task.Status.SUCCEEDED);
         var version = artifacts.requireMediaVersionForTask(owner.userId(), fixture.project(),
                 UUID.fromString(completed.output().path("artifactVersionId").asText()), Artifact.Kind.VIDEO);
-        var output = assets.get(owner.userId(), fixture.project(), UUID.fromString(version.content().path("assetId").asText()));
+        var output = assets.get(owner.userId(), fixture.project(),
+                UUID.fromString(version.content().path("assetId").asText()));
         assertThat(output.asset().width()).isEqualTo(1080);
         assertThat(output.asset().height()).isEqualTo(1920);
         assertThat(output.asset().durationMs()).isEqualTo(1000);
         assertThat(version.inputReferences()).hasSize(2);
         assertThat(version.content().at("/parameters/videoComposition/shots/0/lines")).isEmpty();
-        assertThat(version.content().at("/parameters/videoComposition/music/audioVersionId").asText()).isEqualTo(fixture.audio().toString());
+        assertThat(version.content().at("/parameters/videoComposition/music/audioVersionId").asText())
+                .isEqualTo(fixture.audio().toString());
         mediaTools.ffmpeg(List.of("-v", "error", "-xerror", "-i", output.path().toString(), "-f", "null", "-"));
     }
 
-    @Test void postproductionRejectsFrameTimingAndUnauthorizedMusicAtomically() throws Exception {
+    @Test
+    void postproductionRejectsFrameTimingAndUnauthorizedMusicAtomically() throws Exception {
         var fixture = fixture();
         ObjectNode beyondOutput = postproduction(fixture);
         ((ObjectNode) beyondOutput.at("/subtitles/0")).put("endMs", 1001);
         assertInvalid(() -> compositions.run(owner.userId(), fixture.project(), beyondOutput, "bad-subtitle"));
         ObjectNode roundedOutput = postproduction(fixture);
-        ((ObjectNode) roundedOutput.at("/shots/0")).put("sourceStartMs", 0).put("durationMs", 100).put("speed", 1.15).put("fadeMs", 0);
+        ((ObjectNode) roundedOutput.at("/shots/0")).put("sourceStartMs", 0).put("durationMs", 100).put("speed", 1.15)
+                .put("fadeMs", 0);
         ((ObjectNode) roundedOutput.at("/subtitles/0")).put("endMs", 80);
         assertInvalid(() -> compositions.run(owner.userId(), fixture.project(), roundedOutput, "bad-rounded-subtitle"));
         ObjectNode invalidOffset = postproduction(fixture);
@@ -343,24 +427,31 @@ class VideoCompositionPostgresIT {
     }
 
     private int taskCount(UUID project) {
-        return jdbc.sql("select count(*) from task where project_id=:project").param("project", project).query(Integer.class).single();
+        return jdbc.sql("select count(*) from task where project_id=:project").param("project", project)
+                .query(Integer.class).single();
     }
 
     private ObjectNode postproduction(Fixture fixture) {
-        ObjectNode request = mapper.createObjectNode().put("title", "Synthetic postproduction").put("originalAudioMode", "KEEP");
-        request.putArray("shots").addObject().put("videoVersionId", fixture.video().toString()).put("sourceStartMs", 1000)
+        ObjectNode request = mapper.createObjectNode().put("title", "Synthetic postproduction").put("originalAudioMode",
+                "KEEP");
+        request.putArray("shots").addObject().put("videoVersionId", fixture.video().toString())
+                .put("sourceStartMs", 1000)
                 .put("durationMs", 2000).put("speed", 2).put("fadeMs", 100).putArray("lines");
         request.putObject("output").put("resolution", "1080P").put("aspectRatio", "9:16");
-        request.putObject("music").put("audioVersionId", fixture.audio().toString()).put("sourceStartMs", 100).put("volume", 0.25);
-        request.putArray("subtitles").addObject().put("text", "字幕 {\\p1}\\N is data").put("startMs", 0).put("endMs", 900);
+        request.putObject("music").put("audioVersionId", fixture.audio().toString()).put("sourceStartMs", 100)
+                .put("volume", 0.25);
+        request.putArray("subtitles").addObject().put("text", "字幕 {\\p1}\\N is data").put("startMs", 0).put("endMs",
+                900);
         return request;
     }
 
     private void assertInvalid(org.assertj.core.api.ThrowableAssert.ThrowingCallable action) {
-        assertThatThrownBy(action).isInstanceOf(ApiProblemException.class).extracting("code").isEqualTo("VIDEO_COMPOSITION_INVALID");
+        assertThatThrownBy(action).isInstanceOf(ApiProblemException.class).extracting("code")
+                .isEqualTo("VIDEO_COMPOSITION_INVALID");
     }
     private ObjectNode request(Fixture fixture) {
-        ObjectNode request = mapper.createObjectNode().put("title", "Synthetic dubbed scene").put("rationale", "Dialogue follows the established shot.");
+        ObjectNode request = mapper.createObjectNode().put("title", "Synthetic dubbed scene").put("rationale",
+                "Dialogue follows the established shot.");
         request.putArray("shots").addObject().put("videoVersionId", fixture.video().toString()).put("durationMs", 3000)
                 .putArray("lines").addObject().put("audioVersionId", fixture.audio().toString());
         return request;
@@ -368,23 +459,33 @@ class VideoCompositionPostgresIT {
     private Fixture fixture() throws Exception {
         var project = projects.create(owner.userId(), "Composition", Project.AspectRatio.LANDSCAPE_16_9);
         Path video = temp.resolve(UUID.randomUUID() + ".mp4"), audio = temp.resolve(UUID.randomUUID() + ".wav");
-        mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i", "color=c=blue:s=160x90:r=30:d=3",
-                "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=16000:duration=3", "-af", "volume='if(between(t,1,2),1,0)':eval=frame",
+        mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i",
+                "color=c=blue:s=160x90:r=30:d=3",
+                "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=16000:duration=3", "-af",
+                "volume='if(between(t,1,2),1,0)':eval=frame",
                 "-t", "3", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-y", video.toString()));
-        mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i", "sine=frequency=660:sample_rate=16000:duration=0.7",
+        mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i",
+                "sine=frequency=660:sample_rate=16000:duration=0.7",
                 "-af", "adelay=200:all=1,apad=pad_dur=0.2", "-c:a", "pcm_s16le", "-y", audio.toString()));
-        return new Fixture(project.id(), media(project.id(), video, Artifact.Kind.VIDEO), media(project.id(), audio, Artifact.Kind.AUDIO));
+        return new Fixture(project.id(), media(project.id(), video, Artifact.Kind.VIDEO),
+                media(project.id(), audio, Artifact.Kind.AUDIO));
     }
     private UUID media(UUID project, Path path, Artifact.Kind kind) {
         java.util.function.Supplier<java.io.InputStream> open = () -> {
-            try { return Files.newInputStream(path); } catch (java.io.IOException e) { throw new IllegalStateException(e); }
+            try {
+                return Files.newInputStream(path);
+            } catch (java.io.IOException e) {
+                throw new IllegalStateException(e);
+            }
         };
-        var asset = kind == Artifact.Kind.VIDEO ? assets.archiveTaskVideo(owner.userId(), project, UUID.randomUUID(), open)
+        var asset = kind == Artifact.Kind.VIDEO
+                ? assets.archiveTaskVideo(owner.userId(), project, UUID.randomUUID(), open)
                 : assets.archiveTaskAudio(owner.userId(), project, UUID.randomUUID(), open);
         var artifact = artifacts.create(owner.userId(), project, kind, "Synthetic " + kind,
                 mapper.createObjectNode().put("sourceType", "UPLOAD").put("assetId", asset.id().toString()));
         dev.agenvas.support.CanvasMediaFixture.place(canvas, owner.userId(), project, artifact.artifact().id());
         return artifact.resourceDefaultVersion().id();
     }
-    private record Fixture(UUID project, UUID video, UUID audio) {}
+    private record Fixture(UUID project, UUID video, UUID audio) {
+    }
 }

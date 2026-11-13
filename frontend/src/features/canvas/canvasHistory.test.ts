@@ -1,10 +1,19 @@
 import { describe, expect, it } from "vitest";
 import type { CanvasEditReceipt } from "../../shared/api/client";
-import { acknowledgeCanvasEdit, acknowledgeCanvasReplay, CANVAS_HISTORY_LIMIT, emptyCanvasHistory,
-  type CanvasHistoryEntry } from "./canvasHistory";
+import {
+  acknowledgeCanvasEdit,
+  acknowledgeCanvasReplay,
+  CANVAS_HISTORY_LIMIT,
+  emptyCanvasHistory,
+  type CanvasHistoryEntry,
+} from "./canvasHistory";
 
-const receipt = (id: string, revision = 0, state: CanvasEditReceipt["state"] = "APPLIED"): CanvasEditReceipt =>
-  ({ id, revision, state, operation: "DISPLAY" });
+const receipt = (id: string, revision = 0, state: CanvasEditReceipt["state"] = "APPLIED"): CanvasEditReceipt => ({
+  id,
+  revision,
+  state,
+  operation: "DISPLAY",
+});
 const entry = (id: string): CanvasHistoryEntry => ({ receipt: receipt(id), itemIds: ["item-" + id] });
 
 describe("acknowledged canvas history", () => {
@@ -45,7 +54,7 @@ describe("acknowledged canvas history", () => {
     const applied = acknowledgeCanvasEdit(emptyCanvasHistory(), entry("a"));
     const undone = acknowledgeCanvasReplay(applied, "UNDO", receipt("a", 1, "UNDONE"));
     const branched = acknowledgeCanvasEdit(undone, entry("b"));
-    expect(branched.undo.map((item) => item.receipt.id)).toEqual(["b"]);
+    expect(branched.undo.map(item => item.receipt.id)).toEqual(["b"]);
     expect(branched.redo).toEqual([]);
     expect(undone.redo).toHaveLength(1);
   });

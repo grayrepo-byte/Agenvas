@@ -30,8 +30,10 @@ public class LocalVideoCompositionRenderer {
     private static final int MIX_SAMPLE_RATE = 48_000;
     private static final int MIX_FRAME_BYTES = 8; // stereo float32, preserving headroom until the final limiter
     private final VideoCompositionLimits limits;
-    record Source(Path path, int durationMs) {}
-    record Result(Path path, ObjectNode schedule) {}
+    record Source(Path path, int durationMs) {
+    }
+    record Result(Path path, ObjectNode schedule) {
+    }
     private final MediaToolRunner tools;
     private final ObjectMapper mapper;
     private final VideoCompositionRenderProperties properties;
@@ -42,14 +44,19 @@ public class LocalVideoCompositionRenderer {
         this(tools, mapper, new VideoCompositionRenderProperties(null), VideoCompositionLimits.defaults());
     }
 
-    public LocalVideoCompositionRenderer(MediaToolRunner tools, ObjectMapper mapper, VideoCompositionRenderProperties properties) {
+    public LocalVideoCompositionRenderer(MediaToolRunner tools, ObjectMapper mapper,
+            VideoCompositionRenderProperties properties) {
         this(tools, mapper, properties, VideoCompositionLimits.defaults());
     }
 
     @Autowired
-    public LocalVideoCompositionRenderer(MediaToolRunner tools, ObjectMapper mapper, VideoCompositionRenderProperties properties,
+    public LocalVideoCompositionRenderer(MediaToolRunner tools, ObjectMapper mapper,
+            VideoCompositionRenderProperties properties,
             VideoCompositionLimits limits) {
-        this.tools = tools; this.mapper = mapper; this.properties = properties; this.limits = limits;
+        this.tools = tools;
+        this.mapper = mapper;
+        this.properties = properties;
+        this.limits = limits;
         this.planner = new VideoCompositionPlanner(limits);
     }
 
@@ -64,24 +71,30 @@ public class LocalVideoCompositionRenderer {
         List<String> graph = new ArrayList<>();
         String duration = decimal(plan.frames() / (double) VideoCompositionPlanner.FPS);
         ObjectNode schedule = mapper.createObjectNode().put("title", request.path("title").asText())
-                .put("rationale", request.path("rationale").asText()).put("originalAudioMode", request.path("originalAudioMode").asText("MUTE"))
-                .put("width", outputSettings.width()).put("height", outputSettings.height()).put("frameRate", VideoCompositionPlanner.FPS)
+                .put("rationale", request.path("rationale").asText())
+                .put("originalAudioMode", request.path("originalAudioMode").asText("MUTE"))
+                .put("width", outputSettings.width()).put("height", outputSettings.height())
+                .put("frameRate", VideoCompositionPlanner.FPS)
                 .put("durationMs", plan.durationMs());
-        schedule.putObject("output").put("resolution", outputSettings.resolution()).put("aspectRatio", outputSettings.aspectRatio());
+        schedule.putObject("output").put("resolution", outputSettings.resolution()).put("aspectRatio",
+                outputSettings.aspectRatio());
         var warnings = schedule.putArray("warnings");
         plan.warnings().forEach(warnings::add);
         boolean background = "BACKGROUND".equals(request.path("originalAudioMode").asText());
         boolean keepOriginal = background || "KEEP".equals(request.path("originalAudioMode").asText());
-        if (background) warnings.add("ORIGINAL_AUDIO_AT_0_15_INCLUDES_ANY_ORIGINAL_DIALOGUE");
+        if (background)
+            warnings.add("ORIGINAL_AUDIO_AT_0_15_INCLUDES_ANY_ORIGINAL_DIALOGUE");
         var shotResults = schedule.putArray("shots");
         // Normalize pictures serially. Keeping every 4K source decoder alive in one concat graph
         // makes memory scale with the shot count even though only one shot is visible.
         Path sequence = normalizePictures(request, plan, sources, scratch, outputSettings, budget);
-        arguments.addAll(List.of("-f", "concat", "-safe", "1", "-protocol_whitelist", "file,pipe", "-i", sequence.toString()));
+        arguments.addAll(
+                List.of("-f", "concat", "-safe", "1", "-protocol_whitelist", "file,pipe", "-i", sequence.toString()));
         Path audioBed = scratch.resolve("mix.f32");
         long bedBytes = (long) plan.frames() * (MIX_SAMPLE_RATE / VideoCompositionPlanner.FPS) * MIX_FRAME_BYTES;
         try (var bed = FileChannel.open(audioBed, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
-            bed.position(bedBytes - 1); bed.write(ByteBuffer.wrap(new byte[1]));
+            bed.position(bedBytes - 1);
+            bed.write(ByteBuffer.wrap(new byte[1]));
         }
         budget.check();
         int lineIndex = 0, lastDialogueEndMs = 0;
@@ -92,9 +105,12 @@ public class LocalVideoCompositionRenderer {
             int fadeMs = request.path("shots").get(shotIndex).path("fadeMs").asInt(0);
             if (keepOriginal && sourceHasAudio.get(shotIndex)) {
                 Path original = scratch.resolve("original.f32");
-                renderPcm(video.path(), "atrim=start=" + seconds(shot.sourceStartMs()) + ":duration=" + seconds(shot.sourceDurationMs())
-                        + ",asetpts=PTS-STARTPTS,atempo=" + decimal(shot.speed()) + ",aresample=48000,aformat=channel_layouts=stereo,volume="
-                        + (background ? "0.15" : "1") + ",atrim=duration=" + shotDuration, original, budget);
+                renderPcm(video.path(),
+                        "atrim=start=" + seconds(shot.sourceStartMs()) + ":duration=" + seconds(shot.sourceDurationMs())
+                                + ",asetpts=PTS-STARTPTS,atempo=" + decimal(shot.speed())
+                                + ",aresample=48000,aformat=channel_layouts=stereo,volume="
+                                + (background ? "0.15" : "1") + ",atrim=duration=" + shotDuration,
+                        original, budget);
                 mixPcm(audioBed, original, shot.timelineStartMs(), budget);
                 Files.delete(original);
             }
@@ -112,21 +128,26 @@ public class LocalVideoCompositionRenderer {
                 addInput(voiceArgs, require(sources, line.audioVersionId()).path());
                 voiceArgs.addAll(List.of("-map", "0:a:0", "-vn", "-af", "atrim=start=" + seconds(line.trimStartMs())
                         + ":end=" + seconds(line.trimEndMs()) + ",asetpts=PTS-STARTPTS,atempo=" + decimal(line.speed())
-                        + ",aresample=48000,aformat=channel_layouts=stereo", "-c:a", "pcm_f32le", "-f", "f32le", "-map_metadata", "-1", "-y", processed.toString()));
+                        + ",aresample=48000,aformat=channel_layouts=stereo", "-c:a", "pcm_f32le", "-f", "f32le",
+                        "-map_metadata", "-1", "-y", processed.toString()));
                 budget.run(voiceArgs);
                 int actualDuration = pcmDurationMs(processed);
                 int actualEnd = Math.addExact(line.startMs(), actualDuration);
                 int nextStart = Math.min(line.limitMs(), index + 1 == shot.lines().size()
-                        ? shot.durationMs() : shot.lines().get(index + 1).startMs());
+                        ? shot.durationMs()
+                        : shot.lines().get(index + 1).startMs());
                 // atempo may differ slightly from the duration estimate. Validate complete decoded audio;
                 // never fix overflow by truncating speech or by using -shortest.
-                if (line.startMs() < previousEnd || actualEnd > nextStart) throw new VideoCompositionPlanner.DoesNotFit();
+                if (line.startMs() < previousEnd || actualEnd > nextStart)
+                    throw new VideoCompositionPlanner.DoesNotFit();
                 previousEnd = actualEnd;
                 lastDialogueEndMs = Math.max(lastDialogueEndMs, shot.timelineStartMs() + actualEnd);
                 mixPcm(audioBed, processed, shot.timelineStartMs() + line.startMs(), budget);
                 Files.delete(processed);
-                lineResults.addObject().put("audioVersionId", line.audioVersionId().toString()).put("startMs", line.startMs())
-                        .put("endMs", actualEnd).put("trimStartMs", line.trimStartMs()).put("trimEndMs", line.trimEndMs())
+                lineResults.addObject().put("audioVersionId", line.audioVersionId().toString())
+                        .put("startMs", line.startMs())
+                        .put("endMs", actualEnd).put("trimStartMs", line.trimStartMs())
+                        .put("trimEndMs", line.trimEndMs())
                         .put("speed", line.speed()).put("alignmentEvidence", line.alignmentEvidence())
                         .put("placementLimitMs", line.limitMs());
             }
@@ -141,25 +162,32 @@ public class LocalVideoCompositionRenderer {
                 throw new IllegalArgumentException("Invalid music range or volume");
             Path musicPcm = scratch.resolve("music.f32");
             renderPcm(musicSource.path(), "atrim=start=" + seconds(start) + ":duration=" + duration
-                    + ",asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo,volume=" + decimal(volume), musicPcm, budget);
+                    + ",asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo,volume=" + decimal(volume),
+                    musicPcm, budget);
             mixPcm(audioBed, musicPcm, 0, budget);
             Files.delete(musicPcm);
-            schedule.putObject("music").put("audioVersionId", musicId.toString()).put("sourceStartMs", start).put("volume", volume);
+            schedule.putObject("music").put("audioVersionId", musicId.toString()).put("sourceStartMs", start)
+                    .put("volume", volume);
         }
         JsonNode subtitles = request.path("subtitles");
         boolean hasSubtitles = subtitles.isArray() && !subtitles.isEmpty();
         if (hasSubtitles) {
-            CompositionSubtitles.write(subtitles, plan.durationMs(), outputSettings.width(), outputSettings.height(), properties.fontFamily(), scratch, limits);
+            CompositionSubtitles.write(subtitles, plan.durationMs(), outputSettings.width(), outputSettings.height(),
+                    properties.fontFamily(), scratch, limits);
             schedule.set("subtitles", subtitles.deepCopy());
             schedule.put("subtitleFontFamily", properties.fontFamily());
-        } else schedule.putArray("subtitles");
-        graph.add(hasSubtitles ? "[0:v:0]ass=filename=" + CompositionSubtitles.FILE_NAME + "[video]" : "[0:v:0]null[video]");
+        } else
+            schedule.putArray("subtitles");
+        graph.add(hasSubtitles
+                ? "[0:v:0]ass=filename=" + CompositionSubtitles.FILE_NAME + "[video]"
+                : "[0:v:0]null[video]");
         arguments.addAll(List.of("-f", "f32le", "-ar", Integer.toString(MIX_SAMPLE_RATE), "-ac", "2",
                 "-protocol_whitelist", "file,pipe", "-i", audioBed.toString()));
         graph.add("[1:a:0]alimiter=limit=0.95:level=0:latency=1[audio]");
         Path output = scratch.resolve("composition.mp4");
         arguments.addAll(List.of("-filter_complex", String.join(";", graph), "-map", "[video]", "-map", "[audio]",
-                "-frames:v", Integer.toString(plan.frames()), "-t", duration, "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                "-frames:v", Integer.toString(plan.frames()), "-t", duration, "-c:v", "libx264", "-preset", "veryfast",
+                "-crf", "23",
                 "-pix_fmt", "yuv420p", "-threads", "2", "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2",
                 "-map_metadata", "-1", "-map_chapters", "-1", "-movflags", "+faststart", "-y", output.toString()));
         budget.run(arguments);
@@ -218,24 +246,35 @@ public class LocalVideoCompositionRenderer {
             long processed = 0;
             while (remaining > 0) {
                 int count = (int) Math.min(remaining, incoming.capacity());
-                incoming.clear().limit(count); existing.clear().limit(count);
-                readFully(source, incoming); bed.position(offset); readFully(bed, existing);
-                incoming.flip(); existing.flip();
+                incoming.clear().limit(count);
+                existing.clear().limit(count);
+                readFully(source, incoming);
+                bed.position(offset);
+                readFully(bed, existing);
+                incoming.flip();
+                existing.flip();
                 for (int index = 0; index < count; index += Float.BYTES) {
                     float value = existing.getFloat(index) + incoming.getFloat(index);
-                    if (!Float.isFinite(value)) throw new IllegalArgumentException("Invalid PCM samples");
+                    if (!Float.isFinite(value))
+                        throw new IllegalArgumentException("Invalid PCM samples");
                     existing.putFloat(index, value);
                 }
                 bed.position(offset);
-                while (existing.hasRemaining()) bed.write(existing);
-                offset += count; remaining -= count; processed += count;
-                if (processed % (8 * 1024 * 1024) == 0) budget.check();
+                while (existing.hasRemaining())
+                    bed.write(existing);
+                offset += count;
+                remaining -= count;
+                processed += count;
+                if (processed % (8 * 1024 * 1024) == 0)
+                    budget.check();
             }
         }
         budget.check();
     }
     private static void readFully(FileChannel channel, ByteBuffer buffer) throws IOException {
-        while (buffer.hasRemaining()) if (channel.read(buffer) < 0) throw new IOException("Incomplete private PCM file");
+        while (buffer.hasRemaining())
+            if (channel.read(buffer) < 0)
+                throw new IOException("Incomplete private PCM file");
     }
 
     private Path normalizePictures(JsonNode request, VideoCompositionPlanner.Plan plan, Map<UUID, Source> sources,
@@ -244,18 +283,26 @@ public class LocalVideoCompositionRenderer {
         for (int index = 0; index < plan.shots().size(); index++) {
             var shot = plan.shots().get(index);
             int fadeMs = request.path("shots").get(index).path("fadeMs").asInt(0);
-            if (fadeMs < 0 || fadeMs > 500 || fadeMs * 2 > shot.durationMs()) throw new IllegalArgumentException("Invalid shot fade");
-            String fade = fadeMs == 0 ? "" : ",fade=t=in:st=0:d=" + seconds(fadeMs)
-                    + ",fade=t=out:st=" + decimal(shot.frames() / 30.0 - fadeMs / 1000.0) + ":d=" + seconds(fadeMs);
+            if (fadeMs < 0 || fadeMs > 500 || fadeMs * 2 > shot.durationMs())
+                throw new IllegalArgumentException("Invalid shot fade");
+            String fade = fadeMs == 0
+                    ? ""
+                    : ",fade=t=in:st=0:d=" + seconds(fadeMs)
+                            + ",fade=t=out:st=" + decimal(shot.frames() / 30.0 - fadeMs / 1000.0) + ":d="
+                            + seconds(fadeMs);
             var args = arguments();
             addInput(args, require(sources, shot.videoVersionId()).path());
             Path segment = scratch.resolve("picture-" + index + ".mp4");
-            args.addAll(List.of("-an", "-vf", "trim=start=" + seconds(shot.sourceStartMs()) + ":duration=" + seconds(shot.sourceDurationMs())
-                    + ",setpts=(PTS-STARTPTS)/" + decimal(shot.speed()) + ",fps=30,trim=end_frame=" + shot.frames()
-                    + ",setpts=PTS-STARTPTS,scale=" + output.width() + ":" + output.height()
-                    + ":force_original_aspect_ratio=decrease:force_divisible_by=2,pad=" + output.width() + ":" + output.height()
-                    + ":(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p" + fade,
-                    "-frames:v", Integer.toString(shot.frames()), "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+            args.addAll(List.of("-an", "-vf",
+                    "trim=start=" + seconds(shot.sourceStartMs()) + ":duration=" + seconds(shot.sourceDurationMs())
+                            + ",setpts=(PTS-STARTPTS)/" + decimal(shot.speed()) + ",fps=30,trim=end_frame="
+                            + shot.frames()
+                            + ",setpts=PTS-STARTPTS,scale=" + output.width() + ":" + output.height()
+                            + ":force_original_aspect_ratio=decrease:force_divisible_by=2,pad=" + output.width() + ":"
+                            + output.height()
+                            + ":(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p" + fade,
+                    "-frames:v", Integer.toString(shot.frames()), "-c:v", "libx264", "-preset", "veryfast", "-crf",
+                    "18",
                     "-threads", "2", "-bf", "0", "-map_metadata", "-1", "-y", segment.toString()));
             budget.run(args);
             // A byte budget may terminate an encoder with exit zero; reject incomplete intermediates.
@@ -268,8 +315,10 @@ public class LocalVideoCompositionRenderer {
         return path;
     }
 
-    private record Prepared(VideoCompositionPlanner.Plan plan, List<Boolean> hasAudio) {}
-    private Prepared prepare(JsonNode request, Map<UUID, Source> sources, Path scratch, Budget budget) throws IOException {
+    private record Prepared(VideoCompositionPlanner.Plan plan, List<Boolean> hasAudio) {
+    }
+    private Prepared prepare(JsonNode request, Map<UUID, Source> sources, Path scratch, Budget budget)
+            throws IOException {
         List<VideoCompositionPlanner.Shot> requested = new ArrayList<>();
         Map<UUID, AudioActivityAnalyzer.Analysis> audioAnalysis = new HashMap<>();
         List<Boolean> sourceHasAudio = new ArrayList<>();
@@ -284,7 +333,9 @@ public class LocalVideoCompositionRenderer {
             boolean hasAudio = hasAudio(source.path(), budget);
             sourceHasAudio.add(hasAudio);
             AudioActivityAnalyzer.Analysis activity = hasAudio && !shot.path("lines").isEmpty()
-                    ? analyze(source.path(), start, duration, true, scratch.resolve("source-" + sequence++ + ".pcm"), budget) : null;
+                    ? analyze(source.path(), start, duration, true, scratch.resolve("source-" + sequence++ + ".pcm"),
+                            budget)
+                    : null;
             List<VideoCompositionPlanner.Line> lines = new ArrayList<>();
             for (JsonNode line : shot.path("lines")) {
                 UUID audio = UUID.fromString(line.path("audioVersionId").asText());
@@ -298,46 +349,57 @@ public class LocalVideoCompositionRenderer {
                 Integer anchor = line.hasNonNull("startMs") ? line.path("startMs").intValue() : null;
                 lines.add(new VideoCompositionPlanner.Line(audio, anchor, analyzed));
             }
-            requested.add(new VideoCompositionPlanner.Shot(video, start, duration, shot.path("speed").asDouble(1), activity, List.copyOf(lines)));
+            requested.add(new VideoCompositionPlanner.Shot(video, start, duration, shot.path("speed").asDouble(1),
+                    activity, List.copyOf(lines)));
         }
         var plan = planner.plan(requested);
         return new Prepared(plan, List.copyOf(sourceHasAudio));
     }
 
     JsonNode preview(JsonNode request, Map<UUID, Source> sources, Path scratch) throws IOException {
-        var plan = prepare(request, sources, scratch, new Budget(scratch, () -> Thread.currentThread().isInterrupted(), () -> {}, limits.previewTimeout())).plan();
-        ObjectNode response = mapper.createObjectNode().put("durationMs", plan.durationMs()).put("frames", plan.frames())
+        var plan = prepare(request, sources, scratch,
+                new Budget(scratch, () -> Thread.currentThread().isInterrupted(), () -> {
+                }, limits.previewTimeout())).plan();
+        ObjectNode response = mapper.createObjectNode().put("durationMs", plan.durationMs())
+                .put("frames", plan.frames())
                 .put("fontFamily", properties.fontFamily());
         var shots = response.putArray("shots");
         for (var shot : plan.shots()) {
             var output = shots.addObject().put("videoVersionId", shot.videoVersionId().toString())
                     .put("timelineStartMs", shot.timelineStartMs()).put("durationMs", shot.durationMs());
             var lines = output.putArray("lines");
-            for (var line : shot.lines()) lines.addObject().put("audioVersionId", line.audioVersionId().toString())
-                    .put("startMs", line.startMs()).put("endMs", line.endMs()).put("trimStartMs", line.trimStartMs())
-                    .put("trimEndMs", line.trimEndMs()).put("speed", line.speed());
+            for (var line : shot.lines())
+                lines.addObject().put("audioVersionId", line.audioVersionId().toString())
+                        .put("startMs", line.startMs()).put("endMs", line.endMs())
+                        .put("trimStartMs", line.trimStartMs())
+                        .put("trimEndMs", line.trimEndMs()).put("speed", line.speed());
         }
         return response;
     }
 
-    private record OutputSettings(String resolution, String aspectRatio, int width, int height) {}
+    private record OutputSettings(String resolution, String aspectRatio, int width, int height) {
+    }
 
     private OutputSettings outputSettings(JsonNode output) {
         String resolution = output.path("resolution").asText("720P"), ratio = output.path("aspectRatio").asText("16:9");
         if (!limits.resolutions().contains(resolution) || !Set.of("16:9", "9:16", "1:1").contains(ratio))
             throw new IllegalArgumentException("Invalid composition output");
         int edge = resolution.equals("720P") ? 720 : resolution.equals("1080P") ? 1080 : 2160, wide = edge * 16 / 9;
-        return new OutputSettings(resolution, ratio, ratio.equals("16:9") ? wide : edge, ratio.equals("9:16") ? wide : edge);
+        return new OutputSettings(resolution, ratio, ratio.equals("16:9") ? wide : edge,
+                ratio.equals("9:16") ? wide : edge);
     }
 
     private AudioActivityAnalyzer.Analysis analyze(Path path, int startMs, int durationMs, boolean sourceVideo,
             Path pcm, Budget budget) throws IOException {
         List<String> arguments = arguments();
         addInput(arguments, path);
-        String selection = sourceVideo ? "atrim=start=" + seconds(startMs) + ":duration=" + seconds(durationMs) + "," : "";
+        String selection = sourceVideo
+                ? "atrim=start=" + seconds(startMs) + ":duration=" + seconds(durationMs) + ","
+                : "";
         // Voice metadata is rounded to milliseconds; decode the full stream before exterior-silence
         // analysis so that the metadata value never becomes a speech-truncation boundary.
-        arguments.addAll(List.of("-map", "0:a:0", "-vn", "-af", selection + "asetpts=PTS-STARTPTS", "-ac", "1", "-ar", Integer.toString(AudioActivityAnalyzer.SAMPLE_RATE),
+        arguments.addAll(List.of("-map", "0:a:0", "-vn", "-af", selection + "asetpts=PTS-STARTPTS", "-ac", "1", "-ar",
+                Integer.toString(AudioActivityAnalyzer.SAMPLE_RATE),
                 "-c:a", "pcm_s16le", "-f", "s16le", "-y", pcm.toString()));
         try {
             budget.run(arguments);
@@ -346,7 +408,9 @@ public class LocalVideoCompositionRenderer {
             if (sourceVideo && Files.size(pcm) == 0)
                 return new AudioActivityAnalyzer.Analysis(durationMs, 0, durationMs, List.of(), false);
             return analyzer.analyze(Files.readAllBytes(pcm), sourceVideo);
-        } finally { Files.deleteIfExists(pcm); }
+        } finally {
+            Files.deleteIfExists(pcm);
+        }
     }
     private Source require(Map<UUID, Source> sources, UUID id) {
         Source source = sources.get(id);
@@ -355,21 +419,28 @@ public class LocalVideoCompositionRenderer {
         return source;
     }
     private boolean hasAudio(Path path, Budget budget) {
-        return probe(path, budget).path("streams").valueStream().anyMatch(s -> "audio".equals(s.path("codec_type").asText()));
+        return probe(path, budget).path("streams").valueStream()
+                .anyMatch(s -> "audio".equals(s.path("codec_type").asText()));
     }
     private JsonNode probe(Path path, Budget budget) {
         budget.check();
         return mapper.readTree(tools.ffprobeExport(List.of("-v", "error", "-protocol_whitelist", "file,pipe",
-                "-show_entries", "stream=codec_type,duration,nb_frames:format=duration", "-of", "json", path.toString()), budget.scratch, budget.remaining(), budget.canceled, budget::check));
+                "-show_entries", "stream=codec_type,duration,nb_frames:format=duration", "-of", "json",
+                path.toString()), budget.scratch, budget.remaining(), budget.canceled, budget::check));
     }
     private static List<String> arguments() {
-        return new ArrayList<>(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-threads", "2", "-filter_threads", "2", "-filter_complex_threads", "2"));
+        return new ArrayList<>(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-threads", "2",
+                "-filter_threads", "2", "-filter_complex_threads", "2"));
     }
     private static void addInput(List<String> arguments, Path path) {
         arguments.addAll(List.of("-protocol_whitelist", "file,pipe", "-i", path.toString()));
     }
-    private static String seconds(int millis) { return decimal(millis / 1000.0); }
-    private static String decimal(double value) { return String.format(Locale.ROOT, "%.6f", value); }
+    private static String seconds(int millis) {
+        return decimal(millis / 1000.0);
+    }
+    private static String decimal(double value) {
+        return String.format(Locale.ROOT, "%.6f", value);
+    }
 
     private final class Budget {
         private final Path scratch;
@@ -377,42 +448,58 @@ public class LocalVideoCompositionRenderer {
         private final Runnable heartbeat;
         private final long deadline;
         Budget(Path scratch, BooleanSupplier canceled, Runnable heartbeat, Duration timeout) {
-            this.scratch = scratch; this.canceled = canceled; this.heartbeat = heartbeat;
+            this.scratch = scratch;
+            this.canceled = canceled;
+            this.heartbeat = heartbeat;
             this.deadline = System.nanoTime() + timeout.toNanos();
         }
-        Duration remaining() { return Duration.ofNanos(Math.max(1, deadline - System.nanoTime())); }
+        Duration remaining() {
+            return Duration.ofNanos(Math.max(1, deadline - System.nanoTime()));
+        }
         void check() {
-            if (canceled.getAsBoolean()) throw new CancellationException();
-            if (System.nanoTime() >= deadline) throw new MediaToolRunner.MediaToolException("Composition timed out", false, null);
+            if (canceled.getAsBoolean())
+                throw new CancellationException();
+            if (System.nanoTime() >= deadline)
+                throw new MediaToolRunner.MediaToolException("Composition timed out", false, null);
             heartbeat.run();
             try (var paths = Files.list(scratch)) {
                 long bytes = 0;
-                for (Path path : paths.toList()) if (Files.isRegularFile(path)) bytes = Math.addExact(bytes, Files.size(path));
-                if (bytes > limits.maxScratchBytes()) throw new IllegalStateException("Composition scratch bound exceeded");
+                for (Path path : paths.toList())
+                    if (Files.isRegularFile(path))
+                        bytes = Math.addExact(bytes, Files.size(path));
+                if (bytes > limits.maxScratchBytes())
+                    throw new IllegalStateException("Composition scratch bound exceeded");
                 Path output = scratch.resolve("composition.mp4");
                 if (Files.exists(output) && Files.size(output) > limits.maxOutputBytes())
                     throw new IllegalStateException("Composition output bound exceeded");
                 if (Files.getFileStore(scratch).getUsableSpace() < limits.minFreeBytes())
                     throw new IllegalStateException("Insufficient composition scratch space");
-            } catch (IOException failure) { throw new IllegalStateException("Cannot inspect private composition scratch", failure); }
+            } catch (IOException failure) {
+                throw new IllegalStateException("Cannot inspect private composition scratch", failure);
+            }
         }
         void run(List<String> arguments) {
             check();
             try (var paths = Files.list(scratch)) {
                 long used = 0;
-                for (Path path : paths.toList()) if (Files.isRegularFile(path)) used = Math.addExact(used, Files.size(path));
+                for (Path path : paths.toList())
+                    if (Files.isRegularFile(path))
+                        used = Math.addExact(used, Files.size(path));
                 long maximum = Math.min(limits.maxScratchBytes() - used,
                         Files.getFileStore(scratch).getUsableSpace() - limits.minFreeBytes());
                 if (arguments.getLast().equals(scratch.resolve("composition.mp4").toString()))
                     maximum = Math.min(maximum, limits.maxOutputBytes());
-                if (maximum < 1) throw new IllegalStateException("Composition scratch budget exhausted");
+                if (maximum < 1)
+                    throw new IllegalStateException("Composition scratch budget exhausted");
                 var bounded = new ArrayList<>(arguments);
                 // -fs can end with exit zero. Only apply it to pictures, whose exact frame
                 // count is verified; never accept a byte-truncated PCM analysis as whole speech.
                 if (arguments.getLast().endsWith(".mp4"))
                     bounded.addAll(bounded.size() - 1, List.of("-fs", Long.toString(maximum)));
                 tools.ffmpegExport(bounded, scratch, remaining(), canceled, this::check);
-            } catch (IOException failure) { throw new IllegalStateException("Cannot inspect composition scratch", failure); }
+            } catch (IOException failure) {
+                throw new IllegalStateException("Cannot inspect composition scratch", failure);
+            }
             check();
         }
     }

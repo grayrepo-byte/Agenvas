@@ -55,15 +55,24 @@ class ShutdownGatePostgresIT {
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private AgentRunService runs;
-    @Autowired private TaskService tasks;
-    @Autowired private ShutdownGate gate;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private ObjectMapper mapper;
-    @Autowired private WebApplicationContext webContext;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private AgentInstanceService agents;
+    @Autowired
+    private AgentRunService runs;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private ShutdownGate gate;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private ObjectMapper mapper;
+    @Autowired
+    private WebApplicationContext webContext;
 
     @Test
     void closeSignalRejectsNewRunAndClaimsButLeavesReadyWorkDurable() throws Exception {
@@ -90,15 +99,16 @@ class ShutdownGatePostgresIT {
                 });
         var mvc = webAppContextSetup(webContext).apply(
                 org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers
-                        .springSecurity()).build();
+                        .springSecurity())
+                .build();
         mvc.perform(post("/api/v1/projects/" + project.id() + "/runs")
-                        .with(authentication(new UsernamePasswordAuthenticationToken(
-                                owner, null, List.of())))
-                        .with(csrf())
-                        .header("Idempotency-Key", "http-after-close")
-                        .contentType("application/json")
-                        .content("{\"agentId\":\"" + agent.id()
-                                + "\",\"instruction\":\"Another storyboard\"}"))
+                .with(authentication(new UsernamePasswordAuthenticationToken(
+                        owner, null, List.of())))
+                .with(csrf())
+                .header("Idempotency-Key", "http-after-close")
+                .contentType("application/json")
+                .content("{\"agentId\":\"" + agent.id()
+                        + "\",\"instruction\":\"Another storyboard\"}"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value("APPLICATION_STOPPING"));
 

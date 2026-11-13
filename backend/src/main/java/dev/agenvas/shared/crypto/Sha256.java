@@ -9,7 +9,8 @@ import java.util.HexFormat;
 public final class Sha256 {
     private static final String ALGORITHM = "SHA-256";
 
-    private Sha256() {}
+    private Sha256() {
+    }
 
     /** Hashes the original UTF-8 text without normalization and returns lowercase hexadecimal. */
     public static String hex(String value) {

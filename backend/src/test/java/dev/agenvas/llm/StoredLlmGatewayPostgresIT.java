@@ -59,9 +59,12 @@ class StoredLlmGatewayPostgresIT {
         SERVER.stop(0);
     }
 
-    @Autowired private LlmProviderConfigService configs;
-    @Autowired private ChatGateway gateway;
-    @Autowired private JdbcClient jdbc;
+    @Autowired
+    private LlmProviderConfigService configs;
+    @Autowired
+    private ChatGateway gateway;
+    @Autowired
+    private JdbcClient jdbc;
 
     @Test
     void decryptsStoredVersionOnlyAfterCapabilityVerificationAndCallsSelectedEndpoint() {
@@ -101,10 +104,12 @@ class StoredLlmGatewayPostgresIT {
 
         // Named inactive edits and explicit service switches cannot redirect a pinned request.
         UUID connectionId = UUID.randomUUID();
-        var independent = configs.saveConnection(connectionId, "Independent", 0, endpoint, "independent-model", "independent-synthetic-key", null);
+        var independent = configs.saveConnection(connectionId, "Independent", 0, endpoint, "independent-model",
+                "independent-synthetic-key", null);
         assertThat(gateway.configVersion()).isEqualTo(2);
         configs.activate(connectionId, independent.version(), 2);
-        ChatGateway.Exchange afterSwitch = gateway.call(List.of(new UserMessage("Still the original request")), List.of(), Map.of(), pinned);
+        ChatGateway.Exchange afterSwitch = gateway.call(List.of(new UserMessage("Still the original request")),
+                List.of(), Map.of(), pinned);
         assertThat(afterSwitch.configVersion()).isEqualTo(1);
         assertThat(AUTHORIZATION.get()).isEqualTo("Bearer stored-secret-key-1234");
         assertThat(REQUEST.get()).contains("\"model\":\"stored-model-a\"");

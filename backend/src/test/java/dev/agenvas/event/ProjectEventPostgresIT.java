@@ -46,15 +46,13 @@ import tools.jackson.databind.ObjectMapper;
 /** PostgreSQL evidence for transactional events, sequence serialization, and snapshot waterlines. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(
-        classes = AgenvasApplication.class)
+@SpringBootTest(classes = AgenvasApplication.class)
 class ProjectEventPostgresIT {
 
     private static final int CONCURRENT_EVENTS = 12;
 
     @Container
-    static final PostgreSQLContainer POSTGRES =
-            new PostgreSQLContainer("postgres:17.11-alpine");
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
 
     @DynamicPropertySource
     static void postgresProperties(DynamicPropertyRegistry properties) {
@@ -100,23 +98,23 @@ class ProjectEventPostgresIT {
 
         installRejectingTrigger();
         assertThatThrownBy(() -> runService.create(
-                        owner.userId(), project.id(), agent.id(), "Must roll back", "rollback-key"))
+                owner.userId(), project.id(), agent.id(), "Must roll back", "rollback-key"))
                 .isInstanceOf(RuntimeException.class);
         assertThat(count("agent_run", project.id())).isZero();
         assertThat(count("project_event", project.id())).isEqualTo(1);
         assertThat(jdbcClient.sql("select event_seq from project where id = :projectId")
-                        .param("projectId", project.id())
-                        .query(Long.class)
-                        .single())
+                .param("projectId", project.id())
+                .query(Long.class)
+                .single())
                 .isEqualTo(1);
         assertThat(jdbcClient.sql("select count(*) from idempotency_record")
-                        .query(Long.class)
-                        .single())
+                .query(Long.class)
+                .single())
                 .isZero();
         removeRejectingTrigger();
 
         AgentRun run = runService.create(
-                        owner.userId(), project.id(), agent.id(), "Create three shots", "rollback-key")
+                owner.userId(), project.id(), agent.id(), "Create three shots", "rollback-key")
                 .run();
         assertThat(concurrentAppend(owner.userId(), project.id())).hasSize(CONCURRENT_EVENTS);
         List<ProjectEvent> events = eventService.listAfter(owner.userId(), project.id(), 1, 100);
@@ -129,9 +127,9 @@ class ProjectEventPostgresIT {
         assertThat(events.get(1).type()).isEqualTo("agent.conversation.changed");
         assertThat(events.get(2).type()).isEqualTo("task.status.changed");
         assertThat(jdbcClient.sql("select event_seq from project where id = :projectId")
-                        .param("projectId", project.id())
-                        .query(Long.class)
-                        .single())
+                .param("projectId", project.id())
+                .query(Long.class)
+                .single())
                 .isEqualTo(CONCURRENT_EVENTS + 4L);
 
         Task task = taskService.create(
@@ -142,8 +140,7 @@ class ProjectEventPostgresIT {
                 Task.Kind.AGENT_TURN,
                 objectMapper.readTree("{\"step\":\"snapshot\"}"),
                 1);
-        ProjectSnapshotService.ProjectSnapshot snapshot =
-                snapshotService.snapshot(owner.userId(), project.id());
+        ProjectSnapshotService.ProjectSnapshot snapshot = snapshotService.snapshot(owner.userId(), project.id());
         assertThat(snapshot.snapshotSeq()).isEqualTo(CONCURRENT_EVENTS + 5L);
         assertThat(snapshot.activeRun().id()).isEqualTo(run.id());
         assertThat(snapshot.activeTasks()).extracting(Task::id).contains(task.id());
@@ -153,9 +150,9 @@ class ProjectEventPostgresIT {
         assertConcurrentSnapshotPairs(owner.userId());
         eventService.requireReplayableCursor(owner.userId(), project.id(), 0);
         assertThatThrownBy(() -> eventService.requireReplayableCursor(
-                        owner.userId(), project.id(), CONCURRENT_EVENTS + 100L))
-                .isInstanceOfSatisfying(ApiProblemException.class, problem ->
-                        assertThat(problem.code()).isEqualTo("VALIDATION_ERROR"));
+                owner.userId(), project.id(), CONCURRENT_EVENTS + 100L))
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        problem -> assertThat(problem.code()).isEqualTo("VALIDATION_ERROR"));
         jdbcClient.sql("""
                         update project_event
                         set occurred_at = now() - interval '31 days'
@@ -165,12 +162,12 @@ class ProjectEventPostgresIT {
                 .update();
         assertThat(eventService.pruneExpired(100)).isEqualTo(1);
         assertThatThrownBy(() -> eventService.requireReplayableCursor(
-                        owner.userId(), project.id(), 0))
-                .isInstanceOfSatisfying(ApiProblemException.class, problem ->
-                        assertThat(problem.code()).isEqualTo("EVENT_CURSOR_EXPIRED"));
+                owner.userId(), project.id(), 0))
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        problem -> assertThat(problem.code()).isEqualTo("EVENT_CURSOR_EXPIRED"));
         assertThat(jdbcClient.sql("select version from flyway_schema_history order by installed_rank desc limit 1")
-                        .query(String.class)
-                        .single())
+                .query(String.class)
+                .single())
                 .isEqualTo(MigrationVersions.latest());
     }
 
@@ -206,10 +203,9 @@ class ProjectEventPostgresIT {
     private void assertConcurrentSnapshotPairs(UUID ownerId) throws Exception {
         Project project = projectService.create(
                 ownerId, "Snapshot race", Project.AspectRatio.SQUARE_1_1);
-        AgentInstance agent =
-                agentService.ensureDirector(ownerId, project.id());
+        AgentInstance agent = agentService.ensureDirector(ownerId, project.id());
         AgentRun initial = runService.create(
-                        ownerId, project.id(), agent.id(), "Race", "snapshot-race")
+                ownerId, project.id(), agent.id(), "Race", "snapshot-race")
                 .run();
         AtomicBoolean writerDone = new AtomicBoolean(false);
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
@@ -231,8 +227,7 @@ class ProjectEventPostgresIT {
             Future<?> reader = executor.submit(() -> {
                 int reads = 0;
                 while (!writerDone.get() || reads < 30) {
-                    ProjectSnapshotService.ProjectSnapshot snapshot =
-                            snapshotService.snapshot(ownerId, project.id());
+                    ProjectSnapshotService.ProjectSnapshot snapshot = snapshotService.snapshot(ownerId, project.id());
                     // 偏移量含会话变更事件：Run 创建同时追加 Run、会话与首个 Task 三个事件。
                     assertThat(snapshot.snapshotSeq())
                             .isEqualTo(snapshot.activeRun().version() + 4);
@@ -246,8 +241,7 @@ class ProjectEventPostgresIT {
 
     private void assertRepeatableReadContract() throws NoSuchMethodException {
         Method method = ProjectSnapshotService.class.getMethod("snapshot", UUID.class, UUID.class);
-        Transactional transactional =
-                AnnotatedElementUtils.findMergedAnnotation(method, Transactional.class);
+        Transactional transactional = AnnotatedElementUtils.findMergedAnnotation(method, Transactional.class);
         assertThat(transactional).isNotNull();
         assertThat(transactional.isolation()).isEqualTo(Isolation.REPEATABLE_READ);
         assertThat(transactional.readOnly()).isTrue();

@@ -50,12 +50,18 @@ class VersionedMediaInputPostgresIT {
         registry.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private WebApplicationContext context;
-    @Autowired private ObjectMapper mapper;
-    @Autowired private MediaExecutionWorker worker;
-    @Autowired private JdbcClient jdbc;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private WebApplicationContext context;
+    @Autowired
+    private ObjectMapper mapper;
+    @Autowired
+    private MediaExecutionWorker worker;
+    @Autowired
+    private JdbcClient jdbc;
 
     @Test
     void freezesOrderedStartAndEndFramesWithoutLegacySingularFields() throws Exception {
@@ -64,7 +70,8 @@ class VersionedMediaInputPostgresIT {
                 Project.AspectRatio.LANDSCAPE_16_9);
         MockMvc mvc = webAppContextSetup(context).apply(
                 org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers
-                        .springSecurity()).build();
+                        .springSecurity())
+                .build();
         RequestPostProcessor auth = authentication(
                 new UsernamePasswordAuthenticationToken(owner, null, List.of()));
         String base = "/api/v1/projects/" + project.id();
@@ -84,28 +91,28 @@ class VersionedMediaInputPostgresIT {
                 {"versionId":"%s","role":"START_FRAME"},\
                 {"versionId":"%s","role":"END_FRAME"}]}
                 """.formatted(start.versionId(), end.versionId(),
-                        start.versionId(), end.versionId());
+                start.versionId(), end.versionId());
         String staleVersionId = UUID.randomUUID().toString();
         mvc.perform(put(draftPath).with(auth).with(csrf())
-                        .contentType("application/json")
-                        .content("{\"expectedVersion\":0,\"prompt\":\"Atomic batch\","
-                                + "\"mediaInputs\":[{\"versionId\":\"" + start.versionId()
-                                + "\",\"role\":\"START_FRAME\",\"color\":\"#7C3AED\"},"
-                                + "{\"versionId\":\"" + staleVersionId
-                                + "\",\"role\":\"END_FRAME\",\"color\":\"#0EA5E9\"}]}"))
+                .contentType("application/json")
+                .content("{\"expectedVersion\":0,\"prompt\":\"Atomic batch\","
+                        + "\"mediaInputs\":[{\"versionId\":\"" + start.versionId()
+                        + "\",\"role\":\"START_FRAME\",\"color\":\"#7C3AED\"},"
+                        + "{\"versionId\":\"" + staleVersionId
+                        + "\",\"role\":\"END_FRAME\",\"color\":\"#0EA5E9\"}]}"))
                 .andExpect(status().isBadRequest());
         JsonNode unchangedAfterRejectedBatch = mapper.readTree(mvc.perform(get(draftPath)
-                        .with(auth)).andExpect(status().isOk()).andReturn().getResponse()
+                .with(auth)).andExpect(status().isOk()).andReturn().getResponse()
                 .getContentAsString());
         assertThat(unchangedAfterRejectedBatch.path("version").asLong()).isZero();
         assertThat(unchangedAfterRejectedBatch.path("mediaInputs")).isEmpty();
         mvc.perform(put(draftPath).with(auth).with(csrf())
-                        .contentType("application/json")
-                        .content(input.replace("Move from \uFFFC to \uFFFC",
-                                "Move from @Start Frame to @End Frame")))
+                .contentType("application/json")
+                .content(input.replace("Move from \uFFFC to \uFFFC",
+                        "Move from @Start Frame to @End Frame")))
                 .andExpect(status().isBadRequest());
         JsonNode saved = mapper.readTree(mvc.perform(put(draftPath).with(auth).with(csrf())
-                        .contentType("application/json").content(input))
+                .contentType("application/json").content(input))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(saved.path("videoInputMode").asText()).isEqualTo("START_END");
         assertThat(saved.path("mediaInputs")).hasSize(2);
@@ -117,12 +124,12 @@ class VersionedMediaInputPostgresIT {
                 .isEqualTo("MANUAL");
 
         JsonNode connected = mapper.readTree(mvc.perform(post(base + "/canvas/connections")
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .content("{\"sourceCanvasItemId\":\"" + start.canvasItemId()
-                                + "\",\"targetCanvasItemId\":\"" + videoItemId
-                                + "\",\"sourceVersionId\":\"" + start.versionId()
-                                + "\",\"relationType\":\"MEDIA_INPUT\","
-                                + "\"expectedTargetDraftVersion\":1}"))
+                .with(auth).with(csrf()).contentType("application/json")
+                .content("{\"sourceCanvasItemId\":\"" + start.canvasItemId()
+                        + "\",\"targetCanvasItemId\":\"" + videoItemId
+                        + "\",\"sourceVersionId\":\"" + start.versionId()
+                        + "\",\"relationType\":\"MEDIA_INPUT\","
+                        + "\"expectedTargetDraftVersion\":1}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         String connectionId = connected.path("connection").path("id").asText();
         assertThat(connected.path("draft").path("mediaInputs").get(0).path("sources"))
@@ -130,16 +137,16 @@ class VersionedMediaInputPostgresIT {
         assertThat(connected.path("draft").path("mediaInputs").get(0).path("sources").get(1)
                 .path("type").asText()).isEqualTo("CONNECTION");
         JsonNode connectionSnapshot = mapper.readTree(mvc.perform(get(base + "/snapshot")
-                        .with(auth)).andExpect(status().isOk()).andReturn().getResponse()
+                .with(auth)).andExpect(status().isOk()).andReturn().getResponse()
                 .getContentAsString());
         assertThat(connectionSnapshot.path("connections")).hasSize(1);
         assertThat(connectionSnapshot.path("connections").get(0).path("id").asText())
                 .isEqualTo(connectionId);
 
         JsonNode disconnected = mapper.readTree(mvc.perform(post(base + "/canvas/connections/"
-                        + connectionId + "/disconnect").with(auth).with(csrf())
-                        .contentType("application/json")
-                        .content("{\"expectedVersion\":0,\"expectedTargetDraftVersion\":2}"))
+                + connectionId + "/disconnect").with(auth).with(csrf())
+                .contentType("application/json")
+                .content("{\"expectedVersion\":0,\"expectedTargetDraftVersion\":2}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(disconnected.path("draft").path("mediaInputs")).hasSize(2);
         assertThat(disconnected.path("draft").path("mediaInputs").get(0).path("sources")).hasSize(1);
@@ -153,61 +160,61 @@ class VersionedMediaInputPostgresIT {
         String removalDraftPath = base + "/canvas-items/" + removalTargetItemId
                 + "/media-draft";
         mvc.perform(put(removalDraftPath).with(auth).with(csrf())
-                        .contentType("application/json")
-                        .content("{\"expectedVersion\":0,\"prompt\":\"Reference ￼\","
-                                + "\"mediaInputs\":[{\"versionId\":\"" + start.versionId()
-                                + "\",\"role\":\"REFERENCE\",\"color\":\"#7C3AED\"}],"
-                                + "\"mentions\":[{\"versionId\":\"" + start.versionId()
-                                + "\",\"role\":\"REFERENCE\"}] }"))
+                .contentType("application/json")
+                .content("{\"expectedVersion\":0,\"prompt\":\"Reference ￼\","
+                        + "\"mediaInputs\":[{\"versionId\":\"" + start.versionId()
+                        + "\",\"role\":\"REFERENCE\",\"color\":\"#7C3AED\"}],"
+                        + "\"mentions\":[{\"versionId\":\"" + start.versionId()
+                        + "\",\"role\":\"REFERENCE\"}] }"))
                 .andExpect(status().isOk());
         mvc.perform(post(base + "/canvas/connections").with(auth).with(csrf())
-                        .contentType("application/json")
-                        .content("{\"sourceCanvasItemId\":\"" + start.canvasItemId()
-                                + "\",\"targetCanvasItemId\":\"" + removalTargetItemId
-                                + "\",\"sourceVersionId\":\"" + start.versionId()
-                                + "\",\"relationType\":\"MEDIA_INPUT\","
-                                + "\"expectedTargetDraftVersion\":1}"))
+                .contentType("application/json")
+                .content("{\"sourceCanvasItemId\":\"" + start.canvasItemId()
+                        + "\",\"targetCanvasItemId\":\"" + removalTargetItemId
+                        + "\",\"sourceVersionId\":\"" + start.versionId()
+                        + "\",\"relationType\":\"MEDIA_INPUT\","
+                        + "\"expectedTargetDraftVersion\":1}"))
                 .andExpect(status().isCreated());
         mvc.perform(post(base + "/canvas/connections").with(auth).with(csrf())
-                        .contentType("application/json")
-                        .content("{\"sourceCanvasItemId\":\"" + secondStartItemId
-                                + "\",\"targetCanvasItemId\":\"" + removalTargetItemId
-                                + "\",\"sourceVersionId\":\"" + start.versionId()
-                                + "\",\"relationType\":\"MEDIA_INPUT\","
-                                + "\"expectedTargetDraftVersion\":2}"))
+                .contentType("application/json")
+                .content("{\"sourceCanvasItemId\":\"" + secondStartItemId
+                        + "\",\"targetCanvasItemId\":\"" + removalTargetItemId
+                        + "\",\"sourceVersionId\":\"" + start.versionId()
+                        + "\",\"relationType\":\"MEDIA_INPUT\","
+                        + "\"expectedTargetDraftVersion\":2}"))
                 .andExpect(status().isCreated());
         String removeInputPath = removalDraftPath + "/media-inputs/" + start.versionId()
                 + "/remove";
         mvc.perform(post(removeInputPath).with(auth).with(csrf())
-                        .contentType("application/json").content("{\"expectedVersion\":2}"))
+                .contentType("application/json").content("{\"expectedVersion\":2}"))
                 .andExpect(status().isConflict());
         JsonNode removedInput = mapper.readTree(mvc.perform(post(removeInputPath)
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .content("{\"expectedVersion\":3}"))
+                .with(auth).with(csrf()).contentType("application/json")
+                .content("{\"expectedVersion\":3}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(removedInput.path("mediaInputs")).isEmpty();
         assertThat(removedInput.path("mentions")).isEmpty();
         assertThat(removedInput.path("prompt").asText()).isEqualTo("Reference ");
         JsonNode connectionsAfterInputRemoval = mapper.readTree(mvc.perform(
-                        get(base + "/canvas/connections").with(auth))
+                get(base + "/canvas/connections").with(auth))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(connectionsAfterInputRemoval.path("items")).isEmpty();
         assertThat(jdbc.sql("select count(*) from project_event where project_id=:projectId "
-                        + "and type='media.draft.changed' and aggregate_id=:canvasItemId "
-                        + "and aggregate_version=4 and payload_json->>'draftVersion'='4' "
-                        + "and payload_json->>'removedConnectionCount'='2'")
+                + "and type='media.draft.changed' and aggregate_id=:canvasItemId "
+                + "and aggregate_version=4 and payload_json->>'draftVersion'='4' "
+                + "and payload_json->>'removedConnectionCount'='2'")
                 .param("projectId", project.id())
                 .param("canvasItemId", UUID.fromString(removalTargetItemId))
                 .query(Long.class).single()).isEqualTo(1L);
 
         String duplicateItemId = UUID.randomUUID().toString();
         JsonNode duplicated = mapper.readTree(mvc.perform(post(base + "/canvas/items/"
-                        + videoItemId + "/duplicate").with(auth).with(csrf())
-                        .contentType("application/json")
-                        .content("{\"targetItemId\":\"" + duplicateItemId
-                                + "\",\"expectedSourceVersion\":0,"
-                                + "\"expectedSourceDraftVersion\":3,\"x\":960,\"y\":0,"
-                                + "\"width\":280,\"height\":240,\"zIndex\":1}"))
+                + videoItemId + "/duplicate").with(auth).with(csrf())
+                .contentType("application/json")
+                .content("{\"targetItemId\":\"" + duplicateItemId
+                        + "\",\"expectedSourceVersion\":0,"
+                        + "\"expectedSourceDraftVersion\":3,\"x\":960,\"y\":0,"
+                        + "\"width\":280,\"height\":240,\"zIndex\":1}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         assertThat(duplicated.path("item").path("id").asText()).isEqualTo(duplicateItemId);
         assertThat(duplicated.path("draft").path("mediaInputs")).hasSize(2);
@@ -218,7 +225,7 @@ class VersionedMediaInputPostgresIT {
         assertThat(duplicated.path("draft").path("mediaInputs").get(0).path("sources").get(0)
                 .path("type").asText()).isEqualTo("MANUAL");
         JsonNode duplicateConnections = mapper.readTree(mvc.perform(
-                        get(base + "/canvas/connections").with(auth))
+                get(base + "/canvas/connections").with(auth))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(duplicateConnections.path("items")).isEmpty();
 
@@ -226,46 +233,46 @@ class VersionedMediaInputPostgresIT {
         String cleanupTargetItemId = place(mvc, auth, base,
                 cleanupTarget.path("id").asText(), 1280);
         JsonNode cleanupConnection = mapper.readTree(mvc.perform(
-                        post(base + "/canvas/connections").with(auth).with(csrf())
+                post(base + "/canvas/connections").with(auth).with(csrf())
                         .contentType("application/json")
                         .content("{\"sourceCanvasItemId\":\"" + start.canvasItemId()
                                 + "\",\"targetCanvasItemId\":\"" + cleanupTargetItemId
                                 + "\",\"sourceVersionId\":\"" + start.versionId()
-                                + "\",\"relationType\":\"MEDIA_INPUT\"," 
+                                + "\",\"relationType\":\"MEDIA_INPUT\","
                                 + "\"expectedTargetDraftVersion\":0}"))
                 .andExpect(status().isCreated()).andReturn().getResponse()
                 .getContentAsString());
         JsonNode autosavedConnectionInput = mapper.readTree(mvc.perform(put(base
-                        + "/canvas-items/" + cleanupTargetItemId + "/media-draft")
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .content("{\"expectedVersion\":1,\"prompt\":\"\",\"mediaInputs\":["
-                                + "{\"versionId\":\"" + start.versionId()
-                                + "\",\"role\":\"REFERENCE\",\"color\":\""
-                                + cleanupConnection.path("draft").path("mediaInputs").get(0)
-                                        .path("color").asText()
-                                + "\"}]}"))
+                + "/canvas-items/" + cleanupTargetItemId + "/media-draft")
+                .with(auth).with(csrf()).contentType("application/json")
+                .content("{\"expectedVersion\":1,\"prompt\":\"\",\"mediaInputs\":["
+                        + "{\"versionId\":\"" + start.versionId()
+                        + "\",\"role\":\"REFERENCE\",\"color\":\""
+                        + cleanupConnection.path("draft").path("mediaInputs").get(0)
+                                .path("color").asText()
+                        + "\"}]}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(autosavedConnectionInput.path("mediaInputs").get(0).path("sources"))
                 .hasSize(1);
         assertThat(autosavedConnectionInput.path("mediaInputs").get(0).path("sources").get(0)
                 .path("type").asText()).isEqualTo("CONNECTION");
         mvc.perform(post(base + "/canvas/commands").with(auth).with(csrf())
-                        .contentType("application/json")
-                        .content("{\"commands\":[{\"type\":\"REMOVE\",\"itemId\":\""
-                                + start.canvasItemId() + "\",\"expectedVersion\":"
-                                + start.canvasItemVersion() + "}]}"))
+                .contentType("application/json")
+                .content("{\"commands\":[{\"type\":\"REMOVE\",\"itemId\":\""
+                        + start.canvasItemId() + "\",\"expectedVersion\":"
+                        + start.canvasItemVersion() + "}]}"))
                 .andExpect(status().isOk());
         JsonNode cleanedDraft = mapper.readTree(mvc.perform(get(base + "/canvas-items/"
-                        + cleanupTargetItemId + "/media-draft").with(auth))
+                + cleanupTargetItemId + "/media-draft").with(auth))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(cleanedDraft.path("mediaInputs")).isEmpty();
 
         JsonNode task = mapper.readTree(mvc.perform(post(base + "/artifacts/"
-                        + video.path("id").asText() + "/run").with(auth).with(csrf())
-                        .header("Idempotency-Key", "versioned-video-run")
-                        .contentType("application/json")
-                        .content("{\"canvasItemId\":\"" + videoItemId
-                                + "\",\"expectedDraftVersion\":3}"))
+                + video.path("id").asText() + "/run").with(auth).with(csrf())
+                .header("Idempotency-Key", "versioned-video-run")
+                .contentType("application/json")
+                .content("{\"canvasItemId\":\"" + videoItemId
+                        + "\",\"expectedDraftVersion\":3}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         JsonNode frozen = task.path("input").path("mediaInput");
         assertThat(task.path("input").path("prompt").asText())
@@ -284,7 +291,7 @@ class VersionedMediaInputPostgresIT {
 
         assertThat(worker.submitOnce("versioned-video-worker")).isEqualTo(1);
         JsonNode versions = mapper.readTree(mvc.perform(get(base + "/artifacts/"
-                        + video.path("id").asText() + "/versions").with(auth))
+                + video.path("id").asText() + "/versions").with(auth))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         JsonNode result = versions.path("items").get(0);
         assertThat(result.path("baseVersionId").isNull()).isTrue();
@@ -297,18 +304,18 @@ class VersionedMediaInputPostgresIT {
         assertThat(result.path("content").has("keyframeVersionId")).isFalse();
 
         mvc.perform(post(base + "/canvas/connections").with(auth).with(csrf())
-                        .contentType("application/json")
-                        .content("{\"sourceCanvasItemId\":\"" + end.canvasItemId()
-                                + "\",\"targetCanvasItemId\":\"" + videoItemId
-                                + "\",\"sourceVersionId\":\"" + end.versionId()
-                                + "\",\"relationType\":\"MEDIA_INPUT\"," 
-                                + "\"expectedTargetDraftVersion\":3}"))
+                .contentType("application/json")
+                .content("{\"sourceCanvasItemId\":\"" + end.canvasItemId()
+                        + "\",\"targetCanvasItemId\":\"" + videoItemId
+                        + "\",\"sourceVersionId\":\"" + end.versionId()
+                        + "\",\"relationType\":\"MEDIA_INPUT\","
+                        + "\"expectedTargetDraftVersion\":3}"))
                 .andExpect(status().isCreated());
         JsonNode restored = mapper.readTree(mvc.perform(post(draftPath
-                        + "/restore-version-inputs").with(auth).with(csrf())
-                        .contentType("application/json")
-                        .content("{\"versionId\":\"" + result.path("id").asText()
-                                + "\",\"expectedVersion\":4}"))
+                + "/restore-version-inputs").with(auth).with(csrf())
+                .contentType("application/json")
+                .content("{\"versionId\":\"" + result.path("id").asText()
+                        + "\",\"expectedVersion\":4}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(restored.path("prompt").asText())
                 .isEqualTo("Move from \uFFFC to \uFFFC");
@@ -317,25 +324,25 @@ class VersionedMediaInputPostgresIT {
         assertThat(restored.path("mediaInputs").get(0).path("sources").get(0)
                 .path("type").asText()).isEqualTo("MANUAL");
         JsonNode restoredConnections = mapper.readTree(mvc.perform(
-                        get(base + "/canvas/connections").with(auth))
+                get(base + "/canvas/connections").with(auth))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(restoredConnections.path("items")).isEmpty();
 
         mvc.perform(post(base + "/agents").with(auth).with(csrf())
-                        .contentType("application/json").content("{}"))
+                .contentType("application/json").content("{}"))
                 .andExpect(status().isNotFound());
         JsonNode agent = mapper.readTree(mvc.perform(put(base + "/director")
-                        .with(auth).with(csrf()))
+                .with(auth).with(csrf()))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(agent.has("bindings")).isFalse();
         assertThat(agent.has("outputGroupId")).isFalse();
         rejectRetiredAgentPlacement(mvc, auth, base, agent.path("id").asText(), 1600);
         mvc.perform(post(base + "/canvas/connections")
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .content("{\"sourceCanvasItemId\":\"" + end.canvasItemId()
-                                + "\",\"targetCanvasItemId\":\"" + videoItemId
-                                + "\",\"sourceVersionId\":\"" + end.versionId()
-                                + "\",\"relationType\":\"AGENT_IMAGE_INPUT\",\"expectedTargetAgentVersion\":0}"))
+                .with(auth).with(csrf()).contentType("application/json")
+                .content("{\"sourceCanvasItemId\":\"" + end.canvasItemId()
+                        + "\",\"targetCanvasItemId\":\"" + videoItemId
+                        + "\",\"sourceVersionId\":\"" + end.versionId()
+                        + "\",\"relationType\":\"AGENT_IMAGE_INPUT\",\"expectedTargetAgentVersion\":0}"))
                 .andExpect(status().isBadRequest());
         JsonNode contentCanvas = mapper.readTree(mvc.perform(get(base + "/canvas/items").with(auth))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
@@ -351,14 +358,14 @@ class VersionedMediaInputPostgresIT {
         String artifactId = artifact.path("id").asText();
         String itemId = place(mvc, auth, base, artifactId, x);
         mvc.perform(put(base + "/canvas-items/" + itemId + "/media-draft")
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .content("{\"expectedVersion\":0,\"prompt\":\"" + prompt + "\"}"))
+                .with(auth).with(csrf()).contentType("application/json")
+                .content("{\"expectedVersion\":0,\"prompt\":\"" + prompt + "\"}"))
                 .andExpect(status().isOk());
         JsonNode task = mapper.readTree(mvc.perform(post(base + "/artifacts/" + artifactId + "/run")
-                        .with(auth).with(csrf()).header("Idempotency-Key", "run-" + itemId)
-                        .contentType("application/json")
-                        .content("{\"canvasItemId\":\"" + itemId
-                                + "\",\"expectedDraftVersion\":1}"))
+                .with(auth).with(csrf()).header("Idempotency-Key", "run-" + itemId)
+                .contentType("application/json")
+                .content("{\"canvasItemId\":\"" + itemId
+                        + "\",\"expectedDraftVersion\":1}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         String resultItemId = task.path("input").path("canvasItemId").asText();
         assertThat(resultItemId).isEqualTo(itemId);
@@ -366,7 +373,7 @@ class VersionedMediaInputPostgresIT {
         JsonNode canvas = mapper.readTree(mvc.perform(get(base + "/canvas/items").with(auth))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         JsonNode card = java.util.stream.StreamSupport.stream(
-                        canvas.path("items").spliterator(), false)
+                canvas.path("items").spliterator(), false)
                 .filter(item -> resultItemId.equals(item.path("id").asText()))
                 .findFirst().orElseThrow();
         return new GeneratedImage(artifactId, resultItemId,
@@ -378,12 +385,12 @@ class VersionedMediaInputPostgresIT {
             GeneratedImage source, int x) throws Exception {
         String targetItemId = UUID.randomUUID().toString();
         mvc.perform(post(base + "/canvas/items/" + source.canvasItemId() + "/duplicate")
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .content("{\"targetItemId\":\"" + targetItemId
-                                + "\",\"expectedSourceVersion\":"
-                                + source.canvasItemVersion()
-                                + ",\"expectedSourceDraftVersion\":1,\"x\":" + x
-                                + ",\"y\":0,\"width\":280,\"height\":240,\"zIndex\":1}"))
+                .with(auth).with(csrf()).contentType("application/json")
+                .content("{\"targetItemId\":\"" + targetItemId
+                        + "\",\"expectedSourceVersion\":"
+                        + source.canvasItemVersion()
+                        + ",\"expectedSourceDraftVersion\":1,\"x\":" + x
+                        + ",\"y\":0,\"width\":280,\"height\":240,\"zIndex\":1}"))
                 .andExpect(status().isCreated());
         return targetItemId;
     }
@@ -391,10 +398,10 @@ class VersionedMediaInputPostgresIT {
     private JsonNode createArtifact(MockMvc mvc, RequestPostProcessor auth,
             String base, String kind, String title) throws Exception {
         return mapper.readTree(mvc.perform(post(base + "/artifacts").with(auth).with(csrf())
-                        .header("Idempotency-Key", "create-" + UUID.randomUUID())
-                        .contentType("application/json")
-                        .content("{\"kind\":\"" + kind + "\",\"title\":\"" + title
-                                + "\",\"content\":null}"))
+                .header("Idempotency-Key", "create-" + UUID.randomUUID())
+                .contentType("application/json")
+                .content("{\"kind\":\"" + kind + "\",\"title\":\"" + title
+                        + "\",\"content\":null}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
     }
 
@@ -402,11 +409,11 @@ class VersionedMediaInputPostgresIT {
             String base, String artifactId, int x) throws Exception {
         String itemId = UUID.randomUUID().toString();
         mvc.perform(post(base + "/canvas/commands").with(auth).with(csrf())
-                        .contentType("application/json")
-                        .content("{\"commands\":[{\"type\":\"PLACE_ARTIFACT\","
-                                + "\"itemId\":\"" + itemId + "\",\"artifactId\":\""
-                                + artifactId + "\",\"x\":" + x + ",\"y\":0,\"width\":280,"
-                                + "\"height\":240,\"zIndex\":0,\"locked\":false}]}"))
+                .contentType("application/json")
+                .content("{\"commands\":[{\"type\":\"PLACE_ARTIFACT\","
+                        + "\"itemId\":\"" + itemId + "\",\"artifactId\":\""
+                        + artifactId + "\",\"x\":" + x + ",\"y\":0,\"width\":280,"
+                        + "\"height\":240,\"zIndex\":0,\"locked\":false}]}"))
                 .andExpect(status().isOk());
         return itemId;
     }
@@ -415,14 +422,15 @@ class VersionedMediaInputPostgresIT {
             String base, String agentId, int x) throws Exception {
         String itemId = UUID.randomUUID().toString();
         mvc.perform(post(base + "/canvas/commands").with(auth).with(csrf())
-                        .contentType("application/json")
-                        .content("{\"commands\":[{\"type\":\"PLACE_AGENT\"," 
-                                + "\"itemId\":\"" + itemId + "\",\"agentId\":\""
-                                + agentId + "\",\"x\":" + x + ",\"y\":0,\"width\":460,"
-                                + "\"height\":600,\"zIndex\":0,\"locked\":false}]}"))
+                .contentType("application/json")
+                .content("{\"commands\":[{\"type\":\"PLACE_AGENT\","
+                        + "\"itemId\":\"" + itemId + "\",\"agentId\":\""
+                        + agentId + "\",\"x\":" + x + ",\"y\":0,\"width\":460,"
+                        + "\"height\":600,\"zIndex\":0,\"locked\":false}]}"))
                 .andExpect(status().isBadRequest());
     }
 
     private record GeneratedImage(String artifactId, String canvasItemId, String versionId,
-            long canvasItemVersion) {}
+            long canvasItemVersion) {
+    }
 }

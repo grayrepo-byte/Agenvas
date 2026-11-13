@@ -30,7 +30,8 @@ public class MediaDraftRestoreService {
             long versionAfterCleanup = connections.clearTargetMediaConnectionsWithinChange(
                     ownerId, projectId, canvasItemId, expectedDraftVersion);
             connections.clearTargetPromptConnectionsWithinChange(ownerId, projectId, canvasItemId);
-            MediaDraft saved = drafts.restoreVersionInputs(ownerId, projectId, canvasItemId, versionId, versionAfterCleanup);
+            MediaDraft saved = drafts.restoreVersionInputs(ownerId, projectId, canvasItemId, versionId,
+                    versionAfterCleanup);
             return ProjectEventService.Change.unchanged(saved);
         }).value();
     }
@@ -49,7 +50,8 @@ public class MediaDraftRestoreService {
             MediaDraft before = drafts.get(ownerId, projectId, canvasItemId);
             long version = expectedDraftVersion;
             if (!java.util.Objects.equals(before.capabilityId(), capabilityId)) {
-                java.util.Set<UUID> retained = mediaInputs == null ? java.util.Set.of()
+                java.util.Set<UUID> retained = mediaInputs == null
+                        ? java.util.Set.of()
                         : mediaInputs.stream().filter(java.util.Objects::nonNull)
                                 .map(MediaDraftService.SaveMediaInput::versionId)
                                 .collect(java.util.stream.Collectors.toSet());

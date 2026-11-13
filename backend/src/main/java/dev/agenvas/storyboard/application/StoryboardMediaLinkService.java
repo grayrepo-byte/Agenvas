@@ -28,10 +28,12 @@ public class StoryboardMediaLinkService {
     }
 
     @Transactional(readOnly = true)
-    public Frozen freezeWithFingerprint(UUID ownerId, UUID projectId, UUID shotId, int expectedRevision, Artifact.Kind kind) {
+    public Frozen freezeWithFingerprint(UUID ownerId, UUID projectId, UUID shotId, int expectedRevision,
+            Artifact.Kind kind) {
         projects.get(ownerId, projectId);
         Storyboard.Shot shot = shot(projectId, shotId);
-        if (shot == null || shot.revision() != expectedRevision) throw problem(false);
+        if (shot == null || shot.revision() != expectedRevision)
+            throw problem(false);
         Storyboard.Role role = switch (kind) {
             case IMAGE -> Storyboard.Role.KEYFRAME;
             case VIDEO -> Storyboard.Role.VIDEO;
@@ -52,13 +54,15 @@ public class StoryboardMediaLinkService {
         projects.get(ownerId, projectId);
         Storyboard.Shot shot = shot(projectId, link.shotId());
         if (shot == null || shot.revision() != link.shotRevision()
-                || expectedCreativeHash != null && !expectedCreativeHash.equals(fingerprint(shot))) throw problem(true);
+                || expectedCreativeHash != null && !expectedCreativeHash.equals(fingerprint(shot)))
+            throw problem(true);
     }
 
     private String fingerprint(Storyboard.Shot shot) {
         // The private creative fingerprint also fences delete/recreate reuse of a shot UUID.
         var fields = tools.jackson.databind.node.JsonNodeFactory.instance.arrayNode();
-        fields.add(shot.description()).add(shot.dialogue()).add(shot.durationSeconds().stripTrailingZeros().toPlainString());
+        fields.add(shot.description()).add(shot.dialogue())
+                .add(shot.durationSeconds().stripTrailingZeros().toPlainString());
         fields.add(shot.sourceVersionId() == null ? null : shot.sourceVersionId().toString());
         shot.referenceVersionIds().forEach(id -> fields.add(id.toString()));
         return dev.agenvas.shared.crypto.Sha256.hex(fields.toString());
@@ -80,6 +84,8 @@ public class StoryboardMediaLinkService {
                 ApiMessage.of("api.agent-media-approval.invalid-detail", "storyboard-shot-revision"), false);
     }
 
-    public record Link(UUID shotId, String shotCode, int shotRevision, Storyboard.Role role) {}
-    public record Frozen(Link link, String creativeHash) {}
+    public record Link(UUID shotId, String shotCode, int shotRevision, Storyboard.Role role) {
+    }
+    public record Frozen(Link link, String creativeHash) {
+    }
 }

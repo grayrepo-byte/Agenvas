@@ -19,7 +19,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/projects/{projectId}")
 public class CharacterController {
     private final CharacterService characters;
-    public CharacterController(CharacterService characters) { this.characters = characters; }
+    public CharacterController(CharacterService characters) {
+        this.characters = characters;
+    }
     @GetMapping("/characters")
     public CharacterIndex list(@AuthenticationPrincipal AdminPrincipal principal, @PathVariable UUID projectId) {
         return characters.list(principal.userId(), projectId);
@@ -36,7 +38,8 @@ public class CharacterController {
         return characters.save(principal.userId(), projectId, characterId, request);
     }
     @PostMapping("/characters/{characterId}/preview-change")
-    public CharacterChangePreview previewChange(@AuthenticationPrincipal AdminPrincipal principal, @PathVariable UUID projectId,
+    public CharacterChangePreview previewChange(@AuthenticationPrincipal AdminPrincipal principal,
+            @PathVariable UUID projectId,
             @PathVariable UUID characterId, @RequestBody SaveCharacter request) {
         return characters.previewChange(principal.userId(), projectId, characterId, request);
     }
@@ -46,12 +49,14 @@ public class CharacterController {
         return characters.archive(principal.userId(), projectId, characterId, request);
     }
     @PostMapping("/canvas-items/{canvasItemId}/character-bindings/preview")
-    public CharacterBindingPreview preview(@AuthenticationPrincipal AdminPrincipal principal, @PathVariable UUID projectId,
+    public CharacterBindingPreview preview(@AuthenticationPrincipal AdminPrincipal principal,
+            @PathVariable UUID projectId,
             @PathVariable UUID canvasItemId, @RequestBody PreviewCharacterBindings request) {
         return characters.preview(principal.userId(), projectId, canvasItemId, request);
     }
     @PostMapping("/canvas-items/{canvasItemId}/character-bindings/apply")
-    public CharacterBindingApplied apply(@AuthenticationPrincipal AdminPrincipal principal, @PathVariable UUID projectId,
+    public CharacterBindingApplied apply(@AuthenticationPrincipal AdminPrincipal principal,
+            @PathVariable UUID projectId,
             @PathVariable UUID canvasItemId, @RequestBody ApplyCharacterBindings request) {
         return characters.apply(principal.userId(), projectId, canvasItemId, request);
     }

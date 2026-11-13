@@ -8,8 +8,7 @@ import { build, createServer, preview } from "vite";
 
 /** Real CSS/layout regression without a backend, credentials or provider calls. */
 const root = fileURLToPath(new URL("../", import.meta.url));
-const chromePath = process.env.AGENVAS_E2E_CHROME
-  ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const chromePath = process.env.AGENVAS_E2E_CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const route = "/e2e/workflow-editor.html";
 // Verify the same bundled CSS and real modal isolation as the shipped frontend.
 const production = !process.argv.includes("--dev");
@@ -29,7 +28,7 @@ let chrome;
 let socket;
 let nextId = 0;
 const pending = new Map();
-const pause = () => new Promise((resolve) => setTimeout(resolve, pollMs));
+const pause = () => new Promise(resolve => setTimeout(resolve, pollMs));
 
 function cdp(method, params = {}) {
   const id = ++nextId;
@@ -42,10 +41,11 @@ function cdp(method, params = {}) {
 async function page(fn, ...args) {
   const result = await cdp("Runtime.evaluate", {
     expression: `(${fn.toString()})(...${JSON.stringify(args)})`,
-    awaitPromise: true, returnByValue: true,
+    awaitPromise: true,
+    returnByValue: true,
   });
-  if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description
-    ?? result.exceptionDetails.text);
+  if (result.exceptionDetails)
+    throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text);
   return result.result.value;
 }
 
@@ -58,29 +58,47 @@ async function waitFor(fn, ...args) {
   throw new Error(`Timed out waiting for editor feedback: ${await page(() => document.body.innerText)}`);
 }
 
-
 try {
   if (production) {
-    await build({ ...config, logLevel: "warn", build: {
-      outDir, emptyOutDir: true, rollupOptions: { input: join(root, route) },
-    } });
-    server = await preview({ ...config, build: { outDir },
-      preview: { host: "127.0.0.1", port: 0, open: false },
+    await build({
+      ...config,
+      logLevel: "warn",
+      build: {
+        outDir,
+        emptyOutDir: true,
+        rollupOptions: { input: join(root, route) },
+      },
     });
+    server = await preview({ ...config, build: { outDir }, preview: { host: "127.0.0.1", port: 0, open: false } });
   } else {
     server = await createServer({ ...config, server: { host: "127.0.0.1", port: 0, open: false } });
     await server.listen();
   }
-  chrome = spawn(chromePath, ["--headless=new", "--no-first-run",
-    "--no-default-browser-check", "--disable-background-networking",
-    "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"],
-  { stdio: ["ignore", "ignore", "pipe"] });
+  chrome = spawn(
+    chromePath,
+    [
+      "--headless=new",
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--disable-background-networking",
+      "--remote-debugging-port=0",
+      `--user-data-dir=${profile}`,
+      "about:blank",
+    ],
+    { stdio: ["ignore", "ignore", "pipe"] },
+  );
   const endpoint = await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("Chrome did not start")), timeoutMs);
-    chrome.once("error", (error) => { clearTimeout(timer); reject(error); });
-    chrome.stderr.on("data", (data) => {
+    chrome.once("error", error => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    chrome.stderr.on("data", data => {
       const match = data.toString().match(/DevTools listening on (ws:\/\/\S+)/);
-      if (match) { clearTimeout(timer); resolve(new URL(match[1]).origin.replace("ws:", "http:")); }
+      if (match) {
+        clearTimeout(timer);
+        resolve(new URL(match[1]).origin.replace("ws:", "http:"));
+      }
     });
   });
   const target = await (await fetch(`${endpoint}/json/new?about:blank`, { method: "PUT" })).json();
@@ -89,9 +107,10 @@ try {
     socket.addEventListener("open", resolve, { once: true });
     socket.addEventListener("error", reject, { once: true });
   });
-  socket.addEventListener("message", (event) => {
+  socket.addEventListener("message", event => {
     const message = JSON.parse(event.data);
-    if (message.method === "Runtime.exceptionThrown") console.error(message.params.exceptionDetails.exception?.description ?? message.params.exceptionDetails.text);
+    if (message.method === "Runtime.exceptionThrown")
+      console.error(message.params.exceptionDetails.exception?.description ?? message.params.exceptionDetails.text);
     const waiting = pending.get(message.id);
     if (!waiting) return;
     pending.delete(message.id);
@@ -112,17 +131,26 @@ try {
         const feedback = document.querySelector(".media-draft-feedback");
         const editor = document.querySelector(".media-draft-editor");
         const rows = [...feedback.querySelectorAll(".editor-feedback-row")];
-        return { text: feedback.innerText, height: feedback.clientHeight, scrollHeight: feedback.scrollHeight,
-          width: feedback.clientWidth, scrollWidth: feedback.scrollWidth,
+        return {
+          text: feedback.innerText,
+          height: feedback.clientHeight,
+          scrollHeight: feedback.scrollHeight,
+          width: feedback.clientWidth,
+          scrollWidth: feedback.scrollWidth,
           editorBottom: editor.getBoundingClientRect().bottom,
           generateDisabled: editor.querySelector(".media-draft-run").disabled,
           nestedCard: Boolean(feedback.querySelector(".agent-chat-panel")),
-          rows: rows.map(row => ({ width: row.getBoundingClientRect().width, height: row.getBoundingClientRect().height,
-            border: getComputedStyle(row).borderTopWidth, background: getComputedStyle(row).backgroundColor })),
+          rows: rows.map(row => ({
+            width: row.getBoundingClientRect().width,
+            height: row.getBoundingClientRect().height,
+            border: getComputedStyle(row).borderTopWidth,
+            background: getComputedStyle(row).backgroundColor,
+          })),
           buttons: [...feedback.querySelectorAll("button")].map(button => {
             const box = button.getBoundingClientRect();
             return { label: button.innerText, height: box.height, right: box.right, bottom: box.bottom };
-          }) };
+          }),
+        };
       });
       assert.equal(layout.nestedCard, false, "Feedback must not nest a chat card");
       assert.equal(layout.scrollWidth, layout.width, "Feedback must wrap without horizontal overflow");
@@ -159,16 +187,18 @@ try {
       }
     }
   }
-  console.log("Editor feedback layout passed: UNKNOWN / long reason / READY / FAILED / BLOCKED / accepted BLOCKED / RUNNING, four viewports, current-draft generation and text-only outcomes; synthetic only");
-
+  console.log(
+    "Editor feedback layout passed: UNKNOWN / long reason / READY / FAILED / BLOCKED / accepted BLOCKED / RUNNING, four viewports, current-draft generation and text-only outcomes; synthetic only",
+  );
 } finally {
   socket?.close();
   if (chrome && chrome.exitCode == null) {
-    const exited = new Promise((resolve) => chrome.once("exit", resolve));
+    const exited = new Promise(resolve => chrome.once("exit", resolve));
     chrome.kill();
     await exited;
   }
   if (server?.close) await server.close();
-  else if (server) await new Promise((resolve, reject) => server.httpServer.close((error) => error ? reject(error) : resolve()));
+  else if (server)
+    await new Promise((resolve, reject) => server.httpServer.close(error => (error ? reject(error) : resolve())));
   await rm(profile, { recursive: true, force: true });
 }

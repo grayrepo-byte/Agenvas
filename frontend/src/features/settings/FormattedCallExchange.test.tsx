@@ -1,31 +1,63 @@
-import { render,screen,within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe,expect,it,vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { CallDebug } from "../../shared/api/client";
 import { setLocale } from "../../shared/i18n";
-import { clickControl,selectValue } from "../../test/controls";
+import { clickControl, selectValue } from "../../test/controls";
 import { FormattedCallExchange } from "./FormattedCallExchange";
 import { RAW_PAGE_CHARS } from "./callLogFormatting";
 
-const request = { model: "fixture-model", stream: false, messages: [
-  { role: "system", content: "You write <script>safe text</script>." },
-  { role: "user", content: [{ type: "text", text: "Describe the scene." }, { type: "image_url", image_url: { url: "https://media.invalid/p.png" } }] },
-  { role: "assistant", tool_calls: [{ id: "call-a", function: { name: "readCanvas", arguments: '{"itemId":"card-1"}' } }] },
-  { role: "tool", tool_call_id: "call-a", content: '{"result":"A quiet sea"}' },
-] };
-const response = { id: "gen-123", model: "fixture-model", choices: [{ message: { role: "assistant", content: "The waves drift ashore." }, finish_reason: "stop" }], usage: { prompt_tokens: 28, completion_tokens: 9, total_tokens: 37, cost: "0.001" } };
-const exchange: CallDebug["exchanges"][number] = { method: "POST", url: "https://provider.invalid/v1/chat/completions", responseStatus: 200, responseIdentifiers: {},
+const request = {
+  model: "fixture-model",
+  stream: false,
+  messages: [
+    { role: "system", content: "You write <script>safe text</script>." },
+    {
+      role: "user",
+      content: [
+        { type: "text", text: "Describe the scene." },
+        { type: "image_url", image_url: { url: "https://media.invalid/p.png" } },
+      ],
+    },
+    {
+      role: "assistant",
+      tool_calls: [{ id: "call-a", function: { name: "readCanvas", arguments: '{"itemId":"card-1"}' } }],
+    },
+    { role: "tool", tool_call_id: "call-a", content: '{"result":"A quiet sea"}' },
+  ],
+};
+const response = {
+  id: "gen-123",
+  model: "fixture-model",
+  choices: [{ message: { role: "assistant", content: "The waves drift ashore." }, finish_reason: "stop" }],
+  usage: { prompt_tokens: 28, completion_tokens: 9, total_tokens: 37, cost: "0.001" },
+};
+const exchange: CallDebug["exchanges"][number] = {
+  method: "POST",
+  url: "https://provider.invalid/v1/chat/completions",
+  responseStatus: 200,
+  responseIdentifiers: {},
   requestBody: { content: JSON.stringify(request), encoding: "UTF8", truncated: false },
-  responseBody: { content: JSON.stringify(response), encoding: "UTF8", truncated: false } };
+  responseBody: { content: JSON.stringify(response), encoding: "UTF8", truncated: false },
+};
 
 describe("FormattedCallExchange", () => {
   it("keeps deeply nested serialized tool arguments readable without crashing the message dialog", async () => {
     const argumentsText = "[".repeat(10_000) + "0" + "]".repeat(10_000);
-    const requestBody = JSON.stringify({ messages: [{ role: "assistant", tool_calls: [
-      { function: { name: "nestedTool", arguments: argumentsText } },
-    ] }] });
-    render(<FormattedCallExchange exchange={{ ...exchange,
-      requestBody: { content: requestBody, encoding: "UTF8", truncated: false }, responseBody: null }} mode="formatted" llm />);
+    const requestBody = JSON.stringify({
+      messages: [{ role: "assistant", tool_calls: [{ function: { name: "nestedTool", arguments: argumentsText } }] }],
+    });
+    render(
+      <FormattedCallExchange
+        exchange={{
+          ...exchange,
+          requestBody: { content: requestBody, encoding: "UTF8", truncated: false },
+          responseBody: null,
+        }}
+        mode="formatted"
+        llm
+      />,
+    );
     await userEvent.setup().click(screen.getByRole("button", { name: "展开 Prompt" }));
     expect(screen.getByRole("dialog", { name: "Prompt" })).toHaveTextContent(argumentsText);
     expect(screen.getByText(argumentsText)).toBeVisible();
@@ -77,7 +109,13 @@ describe("FormattedCallExchange", () => {
   it("reports copy failure and absent response without faking completion", async () => {
     const user = userEvent.setup();
     vi.spyOn(navigator.clipboard, "writeText").mockRejectedValueOnce(new Error("blocked"));
-    render(<FormattedCallExchange exchange={{ ...exchange, responseBody: null, responseStatus: null }} mode="formatted" llm />);
+    render(
+      <FormattedCallExchange
+        exchange={{ ...exchange, responseBody: null, responseStatus: null }}
+        mode="formatted"
+        llm
+      />,
+    );
     expect(screen.getByRole("button", { name: "展开 Completion" })).toBeDisabled();
     expect(screen.getAllByText("未记录").length).toBeGreaterThan(0);
     await user.click(screen.getByRole("button", { name: "展开 Prompt" }));
@@ -86,12 +124,28 @@ describe("FormattedCallExchange", () => {
   });
 
   it("formats other JSON but retains unsupported and incomplete raw content", async () => {
-    const { rerender } = render(<FormattedCallExchange exchange={{ ...exchange, requestBody: { content: '{"size":1}', encoding: "UTF8", truncated: false }, responseBody: { content: "YWJj", encoding: "BASE64", truncated: true } }} mode="formatted" llm={false} />);
+    const { rerender } = render(
+      <FormattedCallExchange
+        exchange={{
+          ...exchange,
+          requestBody: { content: '{"size":1}', encoding: "UTF8", truncated: false },
+          responseBody: { content: "YWJj", encoding: "BASE64", truncated: true },
+        }}
+        mode="formatted"
+        llm={false}
+      />,
+    );
     expect(screen.getByText('{ "size": 1 }')).toBeInTheDocument();
     expect(screen.getByText("YWJj")).toBeInTheDocument();
     expect(screen.getByText(/这里只包含已采集部分/)).toBeInTheDocument();
     const content = "x".repeat(RAW_PAGE_CHARS) + "END";
-    rerender(<FormattedCallExchange exchange={{ ...exchange, requestBody: { content, encoding: "UTF8", truncated: false }, responseBody: null }} mode="raw" llm={false} />);
+    rerender(
+      <FormattedCallExchange
+        exchange={{ ...exchange, requestBody: { content, encoding: "UTF8", truncated: false }, responseBody: null }}
+        mode="raw"
+        llm={false}
+      />,
+    );
     expect(screen.queryByText(/END/)).not.toBeInTheDocument();
     await clickControl(screen.getByRole("button", { name: /加载更多正文/ }));
     expect(screen.getByText(/END/)).toBeInTheDocument();
@@ -109,12 +163,25 @@ describe("FormattedCallExchange", () => {
   it("distinguishes missing tool arguments from JSON null and preserves malformed arguments for copying", async () => {
     const user = userEvent.setup();
     const copy = vi.spyOn(navigator.clipboard, "writeText");
-    const body = { messages: [{ role: "assistant", tool_calls: [
-      { function: { name: "missing" } },
-      { function: { name: "explicitNull", arguments: "null" } },
-      { function: { name: "malformed", arguments: "broken{" } },
-    ] }] };
-    render(<FormattedCallExchange exchange={{ ...exchange, requestBody: { content: JSON.stringify(body), encoding: "UTF8", truncated: false } }} mode="formatted" llm />);
+    const body = {
+      messages: [
+        {
+          role: "assistant",
+          tool_calls: [
+            { function: { name: "missing" } },
+            { function: { name: "explicitNull", arguments: "null" } },
+            { function: { name: "malformed", arguments: "broken{" } },
+          ],
+        },
+      ],
+    };
+    render(
+      <FormattedCallExchange
+        exchange={{ ...exchange, requestBody: { content: JSON.stringify(body), encoding: "UTF8", truncated: false } }}
+        mode="formatted"
+        llm
+      />,
+    );
     await user.click(screen.getByRole("button", { name: "展开 Prompt" }));
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText("参数未记录")).toBeInTheDocument();

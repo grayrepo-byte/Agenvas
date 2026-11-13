@@ -9,7 +9,8 @@ import okhttp3.HttpUrl;
 
 /** HTTP(S) URL structure and request scope, without destination address restrictions. */
 public final class ServiceEndpointPolicy {
-    private ServiceEndpointPolicy() {}
+    private ServiceEndpointPolicy() {
+    }
 
     /** Validate URL/literal addresses without network I/O in configuration transactions. */
     public static void validate(URI uri) {
@@ -21,20 +22,26 @@ public final class ServiceEndpointPolicy {
                     || uri.getPort() == 0 || uri.getPort() > 65535 || uri.toString().length() > 500
                     || !("https".equals(uri.getScheme()) || "http".equals(uri.getScheme()))
                     || path.contains("..") || path.contains("%") || path.contains("\\") || path.contains("//")
-                    || uri.getRawAuthority().endsWith(":")) throw invalid();
+                    || uri.getRawAuthority().endsWith(":"))
+                throw invalid();
             HttpUrl parsed = HttpUrl.get(uri.toString());
             if ((!host.contains(":") && !parsed.host().equalsIgnoreCase(host))
-                    || !parsed.encodedPath().equals(path)) throw invalid();
-        } catch (IllegalArgumentException blocked) { throw invalid(); }
+                    || !parsed.encodedPath().equals(path))
+                throw invalid();
+        } catch (IllegalArgumentException blocked) {
+            throw invalid();
+        }
     }
 
     /** Keep credentials scoped to the selected host; use every resolver answer unchanged. */
     public static Dns dns(URI selected, Dns resolver) throws UnknownHostException {
         String host = HttpUrl.get(selected.toString()).host();
         return requested -> {
-            if (!host.equalsIgnoreCase(requested)) throw new UnknownHostException("Service host changed");
+            if (!host.equalsIgnoreCase(requested))
+                throw new UnknownHostException("Service host changed");
             List<InetAddress> answers = resolver.lookup(requested);
-            if (answers.isEmpty()) throw new UnknownHostException("Service DNS is empty");
+            if (answers.isEmpty())
+                throw new UnknownHostException("Service DNS is empty");
             return List.copyOf(answers);
         };
     }
@@ -44,7 +51,8 @@ public final class ServiceEndpointPolicy {
         if (target.getHost() == null || target.getRawUserInfo() != null || target.getRawFragment() != null
                 || target.getHost().contains("%") || target.getPort() == 0 || target.getPort() > 65535
                 || !("https".equalsIgnoreCase(target.getScheme()) || "http".equalsIgnoreCase(target.getScheme()))
-                || target.toString().length() > 8192) throw new UnknownHostException("Invalid result target");
+                || target.toString().length() > 8192)
+            throw new UnknownHostException("Invalid result target");
         return dns(target, resolver);
     }
 
@@ -52,7 +60,8 @@ public final class ServiceEndpointPolicy {
     public static String origin(String value) {
         URI uri = URI.create(value.trim());
         validate(uri);
-        if (!(uri.getRawPath().isEmpty() || "/".equals(uri.getRawPath()))) throw invalid();
+        if (!(uri.getRawPath().isEmpty() || "/".equals(uri.getRawPath())))
+            throw invalid();
         return uri.toASCIIString().replaceAll("/+$", "");
     }
 
@@ -62,8 +71,12 @@ public final class ServiceEndpointPolicy {
             HttpUrl secondUrl = HttpUrl.get(second.toString());
             return firstUrl.scheme().equals(secondUrl.scheme()) && firstUrl.host().equals(secondUrl.host())
                     && firstUrl.port() == secondUrl.port();
-        } catch (IllegalArgumentException invalid) { return false; }
+        } catch (IllegalArgumentException invalid) {
+            return false;
+        }
     }
 
-    private static IllegalArgumentException invalid() { return new IllegalArgumentException("Invalid service endpoint"); }
+    private static IllegalArgumentException invalid() {
+        return new IllegalArgumentException("Invalid service endpoint");
+    }
 }

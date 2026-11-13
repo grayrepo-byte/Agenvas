@@ -4,25 +4,106 @@ import { describe, expect, it, vi } from "vitest";
 import type { CreatorInputField, RunningHubDefinition } from "../../shared/api/client";
 import { changeControl, clickControl } from "../../test/controls";
 import type { WorkflowValue } from "./workflowFields";
-import { WorkflowMediaInputs, WorkflowParameterFields, WorkflowParametersDialog, type WorkflowMediaChoice } from "./WorkflowDraftControls";
+import {
+  WorkflowMediaInputs,
+  WorkflowParameterFields,
+  WorkflowParametersDialog,
+  type WorkflowMediaChoice,
+} from "./WorkflowDraftControls";
 
 const definition: RunningHubDefinition = {
-  schemaVersion: 1, protocolVersion: "V2", targetType: "WORKFLOW", targetId: "synthetic-workflow",
-  usePersonalQueue: false, addMetadata: false,
+  schemaVersion: 1,
+  protocolVersion: "V2",
+  targetType: "WORKFLOW",
+  targetId: "synthetic-workflow",
+  usePersonalQueue: false,
+  addMetadata: false,
   fields: [
-    { key: "prompt", label: "正面提示词", type: "STRING", nodeId: "1", fieldName: "text", source: "PROMPT", required: true, advanced: false },
+    {
+      key: "prompt",
+      label: "正面提示词",
+      type: "STRING",
+      nodeId: "1",
+      fieldName: "text",
+      source: "PROMPT",
+      required: true,
+      advanced: false,
+    },
     { key: "first", label: "首帧", type: "IMAGE", nodeId: "2", fieldName: "image", required: true, advanced: false },
     { key: "last", label: "尾帧", type: "IMAGE", nodeId: "3", fieldName: "image", required: false, advanced: false },
     { key: "sound", label: "配音", type: "AUDIO", nodeId: "4", fieldName: "audio", required: false, advanced: false },
-    { key: "mode", label: "模式", type: "SELECT", nodeId: "5", fieldName: "mode", required: true, advanced: false, defaultValue: 0,
-      options: [{ label: "默认", value: 0 }, { label: "自定义", value: 2 }, { label: "停用", value: false }] },
-    { key: "keepSound", label: "保留声音", type: "BOOLEAN", nodeId: "6", fieldName: "sound", required: true, advanced: false, defaultValue: false },
-    { key: "seed", label: "种子", type: "INTEGER", nodeId: "7", fieldName: "seed", required: true, advanced: true, defaultValue: 0, minimum: 0, maximum: 100 },
-    { key: "strength", label: "变化强度", type: "NUMBER", nodeId: "8", fieldName: "strength", required: true, advanced: true, minimum: 0, maximum: 1,
-      enabledWhen: { field: "mode", value: 2 } },
-    { key: "seconds", label: "时长", type: "INTEGER", nodeId: "9", fieldName: "duration", source: "DURATION_SECONDS", required: true, advanced: false },
-    { key: "lora", label: "LoRA", description: "附加风格", type: "STRING", nodeId: "10", fieldName: "name", required: false, advanced: false, maxLength: 20 },
-  ], outputs: [{ kind: "VIDEO", primary: true, maxCount: 1 }],
+    {
+      key: "mode",
+      label: "模式",
+      type: "SELECT",
+      nodeId: "5",
+      fieldName: "mode",
+      required: true,
+      advanced: false,
+      defaultValue: 0,
+      options: [
+        { label: "默认", value: 0 },
+        { label: "自定义", value: 2 },
+        { label: "停用", value: false },
+      ],
+    },
+    {
+      key: "keepSound",
+      label: "保留声音",
+      type: "BOOLEAN",
+      nodeId: "6",
+      fieldName: "sound",
+      required: true,
+      advanced: false,
+      defaultValue: false,
+    },
+    {
+      key: "seed",
+      label: "种子",
+      type: "INTEGER",
+      nodeId: "7",
+      fieldName: "seed",
+      required: true,
+      advanced: true,
+      defaultValue: 0,
+      minimum: 0,
+      maximum: 100,
+    },
+    {
+      key: "strength",
+      label: "变化强度",
+      type: "NUMBER",
+      nodeId: "8",
+      fieldName: "strength",
+      required: true,
+      advanced: true,
+      minimum: 0,
+      maximum: 1,
+      enabledWhen: { field: "mode", value: 2 },
+    },
+    {
+      key: "seconds",
+      label: "时长",
+      type: "INTEGER",
+      nodeId: "9",
+      fieldName: "duration",
+      source: "DURATION_SECONDS",
+      required: true,
+      advanced: false,
+    },
+    {
+      key: "lora",
+      label: "LoRA",
+      description: "附加风格",
+      type: "STRING",
+      nodeId: "10",
+      fieldName: "name",
+      required: false,
+      advanced: false,
+      maxLength: 20,
+    },
+  ],
+  outputs: [{ kind: "VIDEO", primary: true, maxCount: 1 }],
 };
 const choices: WorkflowMediaChoice[] = [
   { id: "image-v1", label: "合成图片 · v1", kind: "IMAGE", available: true, thumbnailUrl: "/synthetic-thumbnail.png" },
@@ -34,30 +115,95 @@ const canvasChoices: WorkflowMediaChoice[] = [
   { id: "image-canvas", label: "画布图片 · v3", title: "画布图片", kind: "IMAGE", available: true },
 ];
 
-function ValuesHarness({ dialog = false, initialValues = {} }: { dialog?: boolean; initialValues?: Record<string, WorkflowValue> }) {
+function ValuesHarness({
+  dialog = false,
+  initialValues = {},
+}: {
+  dialog?: boolean;
+  initialValues?: Record<string, WorkflowValue>;
+}) {
   const [values, setValues] = useState(initialValues);
   function change(key: string, value: WorkflowValue | undefined) {
-    setValues((previous) => { const next = { ...previous }; if (value === undefined) delete next[key]; else next[key] = value; return next; });
+    setValues(previous => {
+      const next = { ...previous };
+      if (value === undefined) delete next[key];
+      else next[key] = value;
+      return next;
+    });
   }
-  return <>{dialog ? <WorkflowParametersDialog open onOpenChange={() => {}} definition={definition} values={values} prompt="画面提示词" durationSeconds={45} onChange={change} />
-    : <WorkflowMediaInputs definition={definition} values={values} prompt="" durationSeconds={null} choices={choices} canvasChoices={canvasChoices} onChange={change} onChooseSource={() => {}} />}
-    <output data-testid="values">{JSON.stringify(values)}</output></>;
+  return (
+    <>
+      {dialog ? (
+        <WorkflowParametersDialog
+          open
+          onOpenChange={() => {}}
+          definition={definition}
+          values={values}
+          prompt="画面提示词"
+          durationSeconds={45}
+          onChange={change}
+        />
+      ) : (
+        <WorkflowMediaInputs
+          definition={definition}
+          values={values}
+          prompt=""
+          durationSeconds={null}
+          choices={choices}
+          canvasChoices={canvasChoices}
+          onChange={change}
+          onChooseSource={() => {}}
+        />
+      )}
+      <output data-testid="values">{JSON.stringify(values)}</output>
+    </>
+  );
 }
 
 describe("WorkflowMediaInputs", () => {
   it("shows fields enabled by the combined public prompt while keeping local prompt controls separate", () => {
-    const conditional = { ...definition, fields: [definition.fields[0]!, {
-      key: "detail", label: "Detail", type: "STRING" as const, required: true, advanced: false,
-      nodeId: "2", fieldName: "text", enabledWhen: { field: "prompt", value: "Shared\n\nLocal" },
-    }] };
-    render(<WorkflowParameterFields definition={conditional} values={{}} prompt="Local" durationSeconds={null}
-      composePrompt={(local) => `Shared\n\n${local}`} onChange={() => {}} />);
+    const conditional = {
+      ...definition,
+      fields: [
+        definition.fields[0]!,
+        {
+          key: "detail",
+          label: "Detail",
+          type: "STRING" as const,
+          required: true,
+          advanced: false,
+          nodeId: "2",
+          fieldName: "text",
+          enabledWhen: { field: "prompt", value: "Shared\n\nLocal" },
+        },
+      ],
+    };
+    render(
+      <WorkflowParameterFields
+        definition={conditional}
+        values={{}}
+        prompt="Local"
+        durationSeconds={null}
+        composePrompt={local => `Shared\n\n${local}`}
+        onChange={() => {}}
+      />,
+    );
     expect(screen.getByRole("textbox", { name: /^Detail/ })).toBeInTheDocument();
   });
-  it.each(["VIDEO", "AUDIO"] as const)("omits the image catalog from an opted-in %s workflow slot", async (kind) => {
+  it.each(["VIDEO", "AUDIO"] as const)("omits the image catalog from an opted-in %s workflow slot", async kind => {
     const field: CreatorInputField = { key: "source", label: "测试槽位", type: kind, required: false, advanced: false };
-    render(<WorkflowMediaInputs catalogEnabled definition={{ fields: [field] }} values={{ source: "saved-version" }} prompt="" durationSeconds={null}
-      choices={[{ id: "saved-version", label: "Saved media", kind, available: true }]} onChange={vi.fn()} onChooseSource={vi.fn()} />);
+    render(
+      <WorkflowMediaInputs
+        catalogEnabled
+        definition={{ fields: [field] }}
+        values={{ source: "saved-version" }}
+        prompt=""
+        durationSeconds={null}
+        choices={[{ id: "saved-version", label: "Saved media", kind, available: true }]}
+        onChange={vi.fn()}
+        onChooseSource={vi.fn()}
+      />,
+    );
     await clickControl(screen.getByRole("button", { name: "选择测试槽位" }));
     const menu = screen.getByRole("menu", { name: "图片来源" });
     expect(within(menu).queryByRole("menuitem", { name: "姿势与服装参考" })).not.toBeInTheDocument();
@@ -67,17 +213,48 @@ describe("WorkflowMediaInputs", () => {
   });
 
   it("keeps the image catalog available for an explicitly opted-in IMAGE workflow slot", async () => {
-    const field: CreatorInputField = { key: "source", label: "测试槽位", type: "IMAGE", required: false, advanced: false };
-    render(<WorkflowMediaInputs catalogEnabled definition={{ fields: [field] }} values={{ source: "saved-version" }} prompt="" durationSeconds={null}
-      choices={[{ id: "saved-version", label: "Saved image", kind: "IMAGE", available: true }]} onChange={vi.fn()} onChooseSource={vi.fn()} />);
+    const field: CreatorInputField = {
+      key: "source",
+      label: "测试槽位",
+      type: "IMAGE",
+      required: false,
+      advanced: false,
+    };
+    render(
+      <WorkflowMediaInputs
+        catalogEnabled
+        definition={{ fields: [field] }}
+        values={{ source: "saved-version" }}
+        prompt=""
+        durationSeconds={null}
+        choices={[{ id: "saved-version", label: "Saved image", kind: "IMAGE", available: true }]}
+        onChange={vi.fn()}
+        onChooseSource={vi.fn()}
+      />,
+    );
     await clickControl(screen.getByRole("button", { name: "选择测试槽位" }));
     expect(screen.getByRole("menuitem", { name: "姿势与服装参考" })).toBeEnabled();
   });
 
   it("omits the image catalog when a shared image workflow consumer has not opted in", async () => {
-    const field: CreatorInputField = { key: "source", label: "测试槽位", type: "IMAGE", required: false, advanced: false };
-    render(<WorkflowMediaInputs definition={{ fields: [field] }} values={{ source: "saved-version" }} prompt="" durationSeconds={null}
-      choices={[{ id: "saved-version", label: "Saved image", kind: "IMAGE", available: true }]} onChange={vi.fn()} onChooseSource={vi.fn()} />);
+    const field: CreatorInputField = {
+      key: "source",
+      label: "测试槽位",
+      type: "IMAGE",
+      required: false,
+      advanced: false,
+    };
+    render(
+      <WorkflowMediaInputs
+        definition={{ fields: [field] }}
+        values={{ source: "saved-version" }}
+        prompt=""
+        durationSeconds={null}
+        choices={[{ id: "saved-version", label: "Saved image", kind: "IMAGE", available: true }]}
+        onChange={vi.fn()}
+        onChooseSource={vi.fn()}
+      />,
+    );
     await clickControl(screen.getByRole("button", { name: "选择测试槽位" }));
     expect(screen.queryByRole("menuitem", { name: "姿势与服装参考" })).not.toBeInTheDocument();
   });
@@ -85,55 +262,137 @@ describe("WorkflowMediaInputs", () => {
   it("shows independent creator stages in published order without merging duplicate-purpose controls", () => {
     const fields = [
       { key: "baseRatio", label: "画幅", type: "STRING" as const, group: "基础生成", required: false, advanced: false },
-      { key: "finalRatio", label: "画幅", type: "STRING" as const, group: "放大输出", required: false, advanced: false },
+      {
+        key: "finalRatio",
+        label: "画幅",
+        type: "STRING" as const,
+        group: "放大输出",
+        required: false,
+        advanced: false,
+      },
       { key: "fps", label: "帧率", type: "INTEGER" as const, group: "基础生成", required: false, advanced: false },
     ];
     const onChange = vi.fn();
-    render(<WorkflowParameterFields definition={{ fields }} values={{ baseRatio: "16:9", finalRatio: "9:16", fps: 24 }} prompt="" durationSeconds={null} onChange={onChange} />);
+    render(
+      <WorkflowParameterFields
+        definition={{ fields }}
+        values={{ baseRatio: "16:9", finalRatio: "9:16", fps: 24 }}
+        prompt=""
+        durationSeconds={null}
+        onChange={onChange}
+      />,
+    );
     expect(screen.getAllByRole("columnheader", { name: "基础生成" })).toHaveLength(2);
     expect(screen.getByRole("columnheader", { name: "放大输出" })).toBeInTheDocument();
     const ratios = screen.getAllByRole("textbox", { name: "画幅" });
-    expect(ratios[0]).toHaveValue("16:9"); expect(ratios[1]).toHaveValue("9:16");
+    expect(ratios[0]).toHaveValue("16:9");
+    expect(ratios[1]).toHaveValue("9:16");
     fireEvent.change(ratios[1]!, { target: { value: "4:3" } });
     expect(onChange).toHaveBeenCalledWith("finalRatio", "4:3");
   });
   it("displays native creator parameter descriptions without graph mapping labels", () => {
-    const field: CreatorInputField = { key: "aspect_ratio", label: "Aspect ratio", type: "SELECT", required: false,
-      advanced: false, description: "Only used for text-to-video; the first frame determines image-to-video proportions.",
-      options: [{ label: "16:9", value: "16:9" }] };
-    render(<WorkflowParameterFields definition={{ fields: [field] }} values={{ aspect_ratio: "16:9" }} prompt=""
-      durationSeconds={null} onChange={vi.fn()} />);
+    const field: CreatorInputField = {
+      key: "aspect_ratio",
+      label: "Aspect ratio",
+      type: "SELECT",
+      required: false,
+      advanced: false,
+      description: "Only used for text-to-video; the first frame determines image-to-video proportions.",
+      options: [{ label: "16:9", value: "16:9" }],
+    };
+    render(
+      <WorkflowParameterFields
+        definition={{ fields: [field] }}
+        values={{ aspect_ratio: "16:9" }}
+        prompt=""
+        durationSeconds={null}
+        onChange={vi.fn()}
+      />,
+    );
     expect(screen.getByText(field.description!)).toBeVisible();
     expect(screen.getByRole("combobox", { name: "Aspect ratio" })).toHaveTextContent("16:9");
   });
-  it.each(["IMAGE", "VIDEO", "AUDIO"] as const)("uses the %s slot description for selection, clearing and unavailable-input feedback", async (kind) => {
-    const label = `来源${kind}`;
-    const field = { key: "source", label: "LoadMedia", description: label, type: kind, nodeId: "2", fieldName: "file", required: true, advanced: false };
-    const change = vi.fn();
-    render(<WorkflowMediaInputs definition={{ fields: [field] }} values={{ source: "saved-unavailable" }} prompt="" durationSeconds={null}
-      choices={[]} onChange={change} onChooseSource={vi.fn()} />);
-    expect(screen.getByRole("button", { name: `选择${label}` })).toHaveAttribute("title", expect.stringContaining("LoadMedia · 2.file"));
-    expect(screen.getByText(`${label} · 版本不可用`)).toBeInTheDocument();
-    expect(screen.queryByText(/LoadMedia/)).not.toBeInTheDocument();
-    await clickControl(screen.getByRole("button", { name: `清空${label}` }));
-    expect(change).toHaveBeenCalledWith("source", undefined);
-  });
+  it.each(["IMAGE", "VIDEO", "AUDIO"] as const)(
+    "uses the %s slot description for selection, clearing and unavailable-input feedback",
+    async kind => {
+      const label = `来源${kind}`;
+      const field = {
+        key: "source",
+        label: "LoadMedia",
+        description: label,
+        type: kind,
+        nodeId: "2",
+        fieldName: "file",
+        required: true,
+        advanced: false,
+      };
+      const change = vi.fn();
+      render(
+        <WorkflowMediaInputs
+          definition={{ fields: [field] }}
+          values={{ source: "saved-unavailable" }}
+          prompt=""
+          durationSeconds={null}
+          choices={[]}
+          onChange={change}
+          onChooseSource={vi.fn()}
+        />,
+      );
+      expect(screen.getByRole("button", { name: `选择${label}` })).toHaveAttribute(
+        "title",
+        expect.stringContaining("LoadMedia · 2.file"),
+      );
+      expect(screen.getByText(`${label} · 版本不可用`)).toBeInTheDocument();
+      expect(screen.queryByText(/LoadMedia/)).not.toBeInTheDocument();
+      await clickControl(screen.getByRole("button", { name: `清空${label}` }));
+      expect(change).toHaveBeenCalledWith("source", undefined);
+    },
+  );
   it("renders one shared add entry for ten empty workflow media slots", () => {
-    const tenSlots = { ...definition, fields: Array.from({ length: 10 }, (_, index) => ({
-      key: `reference_${index}`, label: `参考图 ${index + 1}`, type: "IMAGE" as const,
-      nodeId: String(index + 1), fieldName: "image", required: true, advanced: false,
-    })) };
-    render(<WorkflowMediaInputs definition={tenSlots} values={{}} prompt="" durationSeconds={null}
-      choices={choices} onChange={vi.fn()} onChooseSource={vi.fn()} />);
+    const tenSlots = {
+      ...definition,
+      fields: Array.from({ length: 10 }, (_, index) => ({
+        key: `reference_${index}`,
+        label: `参考图 ${index + 1}`,
+        type: "IMAGE" as const,
+        nodeId: String(index + 1),
+        fieldName: "image",
+        required: true,
+        advanced: false,
+      })),
+    };
+    render(
+      <WorkflowMediaInputs
+        definition={tenSlots}
+        values={{}}
+        prompt=""
+        durationSeconds={null}
+        choices={choices}
+        onChange={vi.fn()}
+        onChooseSource={vi.fn()}
+      />,
+    );
     expect(screen.getAllByRole("button")).toHaveLength(1);
     expect(screen.getByRole("button", { name: "添加参考素材" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: /^选择参考图/ })).not.toBeInTheDocument();
   });
 
   it("opens the shared add menu and keeps exact named slots for replacing selected inputs", async () => {
-    const choose = vi.fn(); const clear = vi.fn();
-    render(<WorkflowMediaInputs definition={definition} values={{ first: "image-v1", last: "image-v1" }} prompt="" durationSeconds={null}
-      choices={choices} canvasChoices={canvasChoices} onChange={clear} onChooseSource={choose} onUpload={vi.fn()} />);
+    const choose = vi.fn();
+    const clear = vi.fn();
+    render(
+      <WorkflowMediaInputs
+        definition={definition}
+        values={{ first: "image-v1", last: "image-v1" }}
+        prompt=""
+        durationSeconds={null}
+        choices={choices}
+        canvasChoices={canvasChoices}
+        onChange={clear}
+        onChooseSource={choose}
+        onUpload={vi.fn()}
+      />,
+    );
     expect(screen.getAllByRole("button", { name: /^选择/ })).toHaveLength(2);
     expect(screen.getAllByRole("button", { name: "添加参考素材" })).toHaveLength(1);
     expect(screen.getAllByRole("presentation")).toHaveLength(2);
@@ -142,10 +401,18 @@ describe("WorkflowMediaInputs", () => {
     const menu = screen.getByRole("menu", { name: "图片来源" });
     expect(menu).toHaveClass("media-draft-reference-sources");
     await clickControl(within(menu).getByRole("menuitem", { name: "从资源库选择" }));
-    expect(choose).toHaveBeenLastCalledWith(expect.objectContaining({ key: "first" }), "resources", screen.getByRole("button", { name: "选择首帧" }));
+    expect(choose).toHaveBeenLastCalledWith(
+      expect.objectContaining({ key: "first" }),
+      "resources",
+      screen.getByRole("button", { name: "选择首帧" }),
+    );
     await clickControl(screen.getByRole("button", { name: "选择尾帧" }));
     await clickControl(screen.getByRole("menuitem", { name: "从画布选择" }));
-    expect(choose).toHaveBeenLastCalledWith(expect.objectContaining({ key: "last" }), "canvas", screen.getByRole("button", { name: "选择尾帧" }));
+    expect(choose).toHaveBeenLastCalledWith(
+      expect.objectContaining({ key: "last" }),
+      "canvas",
+      screen.getByRole("button", { name: "选择尾帧" }),
+    );
     await clickControl(screen.getByRole("button", { name: "添加参考素材" }));
     await clickControl(screen.getByRole("menuitem", { name: "从我的资产选择" }));
     expect(choose).toHaveBeenLastCalledWith(null, "library", screen.getByRole("button", { name: "添加参考素材" }));
@@ -160,8 +427,21 @@ describe("WorkflowMediaInputs", () => {
   });
 
   it("uses defaults to hide inactive slots and keeps unavailable saved versions visible", () => {
-    const conditional = { ...definition, fields: definition.fields.map((field) => field.key === "last" ? { ...field, enabledWhen: { field: "mode", value: 2 } } : field) };
-    const props = { definition: conditional, values: { first: "missing-version", last: "image-v1" }, prompt: "", durationSeconds: null, choices, onChooseSource: vi.fn(), onChange: vi.fn() };
+    const conditional = {
+      ...definition,
+      fields: definition.fields.map(field =>
+        field.key === "last" ? { ...field, enabledWhen: { field: "mode", value: 2 } } : field,
+      ),
+    };
+    const props = {
+      definition: conditional,
+      values: { first: "missing-version", last: "image-v1" },
+      prompt: "",
+      durationSeconds: null,
+      choices,
+      onChooseSource: vi.fn(),
+      onChange: vi.fn(),
+    };
     const { rerender } = render(<WorkflowMediaInputs {...props} />);
     expect(screen.queryByRole("button", { name: "选择尾帧" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "选择首帧" })).toHaveAttribute("aria-invalid", "true");
@@ -169,7 +449,9 @@ describe("WorkflowMediaInputs", () => {
     rerender(<WorkflowMediaInputs {...props} values={{ first: "image-v1", last: "image-v1", mode: 2 }} />);
     expect(screen.getByRole("button", { name: "选择尾帧" })).toBeInTheDocument();
     expect(screen.queryByText("首帧 · 版本不可用")).not.toBeInTheDocument();
-    rerender(<WorkflowMediaInputs {...props} values={{ first: "image-v1", last: "image-v1", sound: "audio-v1", mode: 0 }} />);
+    rerender(
+      <WorkflowMediaInputs {...props} values={{ first: "image-v1", last: "image-v1", sound: "audio-v1", mode: 0 }} />,
+    );
     expect(screen.queryByRole("button", { name: "选择尾帧" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "选择配音" }).closest(".workflow-media-slot")).toHaveTextContent("3");
     expect(screen.getByRole("button", { name: "添加参考素材" })).toBeDisabled();
@@ -178,9 +460,27 @@ describe("WorkflowMediaInputs", () => {
   it("reports upload busy, preserves failures for retry and disables portal choices while locked", async () => {
     const uploaded = new File(["synthetic"], "reference.png", { type: "image/png" });
     let rejectUpload: ((reason: Error) => void) | undefined;
-    const upload = vi.fn().mockImplementationOnce(() => new Promise<void>((_resolve, reject) => { rejectUpload = reject; })).mockResolvedValue(undefined);
+    const upload = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            rejectUpload = reject;
+          }),
+      )
+      .mockResolvedValue(undefined);
     const onBusy = vi.fn();
-    const props = { definition, values: {}, prompt: "", durationSeconds: null, choices, onChooseSource: vi.fn(), onChange: vi.fn(), onUpload: upload, onBusy };
+    const props = {
+      definition,
+      values: {},
+      prompt: "",
+      durationSeconds: null,
+      choices,
+      onChooseSource: vi.fn(),
+      onChange: vi.fn(),
+      onUpload: upload,
+      onBusy,
+    };
     const { rerender } = render(<WorkflowMediaInputs {...props} />);
     await clickControl(screen.getByRole("button", { name: "添加参考素材" }));
     fireEvent.change(screen.getByLabelText("选择本地图片、视频或音频"), { target: { files: [uploaded] } });
@@ -188,10 +488,12 @@ describe("WorkflowMediaInputs", () => {
     expect(screen.getByRole("button", { name: "添加参考素材" })).toBeDisabled();
     rejectUpload?.(new Error("合成上传失败"));
     await waitFor(() => expect(onBusy).toHaveBeenLastCalledWith(false));
-    expect(screen.getAllByRole("alert").some((alert) => alert.textContent?.includes("合成上传失败"))).toBe(true);
+    expect(screen.getAllByRole("alert").some(alert => alert.textContent?.includes("合成上传失败"))).toBe(true);
     await clickControl(screen.getByRole("button", { name: "重试上传" }));
     await waitFor(() => expect(upload).toHaveBeenCalledTimes(2));
-    expect(upload).toHaveBeenLastCalledWith(expect.objectContaining({ key: "first" }), uploaded, { requireEmptySlot: true });
+    expect(upload).toHaveBeenLastCalledWith(expect.objectContaining({ key: "first" }), uploaded, {
+      requireEmptySlot: true,
+    });
     await waitFor(() => expect(screen.queryByText("合成上传失败")).not.toBeInTheDocument());
     upload.mockRejectedValueOnce(new Error("新的合成上传失败"));
     fireEvent.change(screen.getByLabelText("选择本地图片、视频或音频"), { target: { files: [uploaded] } });
@@ -208,51 +510,83 @@ describe("WorkflowMediaInputs", () => {
   it.each([
     { extension: "png", type: "image/png" },
     { extension: "gif", type: "image/gif" },
-  ])("routes mixed uploads including $type to the first compatible empty slot and narrows accepted types as slots fill", async ({ extension, type }) => {
-    const videoField = { key: "clip", label: "参考视频", type: "VIDEO" as const, nodeId: "11", fieldName: "video", required: false, advanced: false };
-    const mixedDefinition = { ...definition, fields: [...definition.fields, videoField] };
-    const firstImage = new File(["synthetic"], `first.${extension}`, { type });
-    const lastImage = new File(["synthetic"], `last.${extension}`, { type });
-    const audio = new File(["synthetic"], "sound.ogg", { type: "audio/ogg" });
-    const video = new File(["synthetic"], "clip.mp4", { type: "video/mp4" });
-    const uploadedChoices: WorkflowMediaChoice[] = [
-      { id: firstImage.name, label: "上传首帧", kind: "IMAGE", available: true },
-      { id: lastImage.name, label: "上传尾帧", kind: "IMAGE", available: true },
-      { id: audio.name, label: "上传音频", kind: "AUDIO", available: true },
-      { id: video.name, label: "上传视频", kind: "VIDEO", available: true },
-    ];
-    const upload = vi.fn().mockResolvedValue(undefined);
-    function MixedUploadsHarness() {
-      const [values, setValues] = useState<Record<string, WorkflowValue>>({});
-      return <WorkflowMediaInputs definition={mixedDefinition} values={values} prompt="" durationSeconds={null}
-        choices={uploadedChoices} onChooseSource={vi.fn()} onChange={vi.fn()} onUpload={async (field, file, options) => {
-          await upload(field, file, options);
-          setValues((previous) => ({ ...previous, [field.key]: file.name }));
-        }} />;
-    }
-    render(<MixedUploadsHarness />);
-    const input = screen.getByLabelText("选择本地图片、视频或音频");
-    expect(input).toHaveAttribute("accept", "image/png,image/jpeg,image/webp,image/gif,audio/mpeg,audio/wav,audio/ogg,video/mp4,video/webm");
-    fireEvent.change(input, { target: { files: [audio] } });
-    await waitFor(() => expect(screen.getByRole("button", { name: "选择配音" })).toBeEnabled());
-    expect(upload).toHaveBeenNthCalledWith(1, expect.objectContaining({ key: "sound" }), audio, { requireEmptySlot: true });
-    expect(input).toHaveAttribute("accept", "image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm");
-    fireEvent.change(input, { target: { files: [firstImage] } });
-    await waitFor(() => expect(screen.getByRole("button", { name: "选择首帧" })).toBeEnabled());
-    expect(upload).toHaveBeenNthCalledWith(2, expect.objectContaining({ key: "first" }), firstImage, { requireEmptySlot: true });
-    expect(input).toHaveAttribute("accept", "image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm");
-    fireEvent.change(input, { target: { files: [video] } });
-    await waitFor(() => expect(screen.getByRole("button", { name: "选择参考视频" })).toBeEnabled());
-    expect(upload).toHaveBeenNthCalledWith(3, expect.objectContaining({ key: "clip" }), video, { requireEmptySlot: true });
-    expect(input).toHaveAttribute("accept", "image/png,image/jpeg,image/webp,image/gif");
-    fireEvent.change(input, { target: { files: [lastImage] } });
-    await waitFor(() => expect(screen.getByRole("button", { name: "选择尾帧" })).toBeEnabled());
-    expect(upload).toHaveBeenNthCalledWith(4, expect.objectContaining({ key: "last" }), lastImage, { requireEmptySlot: true });
-    expect(upload).toHaveBeenCalledTimes(4);
-    expect(input).toHaveAttribute("accept", "");
-    expect(input).toBeDisabled();
-    expect(screen.getByRole("button", { name: "添加参考素材" })).toBeDisabled();
-  });
+  ])(
+    "routes mixed uploads including $type to the first compatible empty slot and narrows accepted types as slots fill",
+    async ({ extension, type }) => {
+      const videoField = {
+        key: "clip",
+        label: "参考视频",
+        type: "VIDEO" as const,
+        nodeId: "11",
+        fieldName: "video",
+        required: false,
+        advanced: false,
+      };
+      const mixedDefinition = { ...definition, fields: [...definition.fields, videoField] };
+      const firstImage = new File(["synthetic"], `first.${extension}`, { type });
+      const lastImage = new File(["synthetic"], `last.${extension}`, { type });
+      const audio = new File(["synthetic"], "sound.ogg", { type: "audio/ogg" });
+      const video = new File(["synthetic"], "clip.mp4", { type: "video/mp4" });
+      const uploadedChoices: WorkflowMediaChoice[] = [
+        { id: firstImage.name, label: "上传首帧", kind: "IMAGE", available: true },
+        { id: lastImage.name, label: "上传尾帧", kind: "IMAGE", available: true },
+        { id: audio.name, label: "上传音频", kind: "AUDIO", available: true },
+        { id: video.name, label: "上传视频", kind: "VIDEO", available: true },
+      ];
+      const upload = vi.fn().mockResolvedValue(undefined);
+      function MixedUploadsHarness() {
+        const [values, setValues] = useState<Record<string, WorkflowValue>>({});
+        return (
+          <WorkflowMediaInputs
+            definition={mixedDefinition}
+            values={values}
+            prompt=""
+            durationSeconds={null}
+            choices={uploadedChoices}
+            onChooseSource={vi.fn()}
+            onChange={vi.fn()}
+            onUpload={async (field, file, options) => {
+              await upload(field, file, options);
+              setValues(previous => ({ ...previous, [field.key]: file.name }));
+            }}
+          />
+        );
+      }
+      render(<MixedUploadsHarness />);
+      const input = screen.getByLabelText("选择本地图片、视频或音频");
+      expect(input).toHaveAttribute(
+        "accept",
+        "image/png,image/jpeg,image/webp,image/gif,audio/mpeg,audio/wav,audio/ogg,video/mp4,video/webm",
+      );
+      fireEvent.change(input, { target: { files: [audio] } });
+      await waitFor(() => expect(screen.getByRole("button", { name: "选择配音" })).toBeEnabled());
+      expect(upload).toHaveBeenNthCalledWith(1, expect.objectContaining({ key: "sound" }), audio, {
+        requireEmptySlot: true,
+      });
+      expect(input).toHaveAttribute("accept", "image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm");
+      fireEvent.change(input, { target: { files: [firstImage] } });
+      await waitFor(() => expect(screen.getByRole("button", { name: "选择首帧" })).toBeEnabled());
+      expect(upload).toHaveBeenNthCalledWith(2, expect.objectContaining({ key: "first" }), firstImage, {
+        requireEmptySlot: true,
+      });
+      expect(input).toHaveAttribute("accept", "image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm");
+      fireEvent.change(input, { target: { files: [video] } });
+      await waitFor(() => expect(screen.getByRole("button", { name: "选择参考视频" })).toBeEnabled());
+      expect(upload).toHaveBeenNthCalledWith(3, expect.objectContaining({ key: "clip" }), video, {
+        requireEmptySlot: true,
+      });
+      expect(input).toHaveAttribute("accept", "image/png,image/jpeg,image/webp,image/gif");
+      fireEvent.change(input, { target: { files: [lastImage] } });
+      await waitFor(() => expect(screen.getByRole("button", { name: "选择尾帧" })).toBeEnabled());
+      expect(upload).toHaveBeenNthCalledWith(4, expect.objectContaining({ key: "last" }), lastImage, {
+        requireEmptySlot: true,
+      });
+      expect(upload).toHaveBeenCalledTimes(4);
+      expect(input).toHaveAttribute("accept", "");
+      expect(input).toBeDisabled();
+      expect(screen.getByRole("button", { name: "添加参考素材" })).toBeDisabled();
+    },
+  );
 
   it("keeps the shared entry disabled at capacity and restores it after a named assignment is cleared", async () => {
     render(<ValuesHarness initialValues={{ first: "image-v1", last: "image-v1", sound: "audio-v1" }} />);
@@ -267,8 +601,18 @@ describe("WorkflowMediaInputs", () => {
   it("uploads replacements to the selected slot and preserves its exact file for retry", async () => {
     const file = new File(["synthetic"], "replacement.png", { type: "image/png" });
     const upload = vi.fn().mockRejectedValueOnce(new Error("合成替换失败")).mockResolvedValue(undefined);
-    render(<WorkflowMediaInputs definition={definition} values={{ last: "image-v1" }} prompt="" durationSeconds={null}
-      choices={choices} onChange={vi.fn()} onChooseSource={vi.fn()} onUpload={upload} />);
+    render(
+      <WorkflowMediaInputs
+        definition={definition}
+        values={{ last: "image-v1" }}
+        prompt=""
+        durationSeconds={null}
+        choices={choices}
+        onChange={vi.fn()}
+        onChooseSource={vi.fn()}
+        onUpload={upload}
+      />,
+    );
     fireEvent.change(screen.getByLabelText("上传尾帧"), { target: { files: [file] } });
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("合成替换失败"));
     await clickControl(screen.getByRole("button", { name: "重试上传" }));
@@ -279,8 +623,18 @@ describe("WorkflowMediaInputs", () => {
 
   it("reports a local file without a compatible empty slot and does not offer a retry", () => {
     const upload = vi.fn();
-    render(<WorkflowMediaInputs definition={definition} values={{ sound: "audio-v1" }} prompt="" durationSeconds={null}
-      choices={choices} onChange={vi.fn()} onChooseSource={vi.fn()} onUpload={upload} />);
+    render(
+      <WorkflowMediaInputs
+        definition={definition}
+        values={{ sound: "audio-v1" }}
+        prompt=""
+        durationSeconds={null}
+        choices={choices}
+        onChange={vi.fn()}
+        onChooseSource={vi.fn()}
+        onUpload={upload}
+      />,
+    );
     const audio = new File(["synthetic"], "extra.ogg", { type: "audio/ogg" });
     fireEvent.change(screen.getByLabelText("选择本地图片、视频或音频"), { target: { files: [audio] } });
     expect(upload).not.toHaveBeenCalled();
@@ -291,8 +645,25 @@ describe("WorkflowMediaInputs", () => {
   it("retains a failed shared upload when its empty slot is claimed during upload and retries after a slot is freed", async () => {
     const file = new File(["synthetic"], "new-reference.png", { type: "image/png" });
     let rejectUpload: ((failure: Error) => void) | undefined;
-    const upload = vi.fn().mockImplementationOnce(() => new Promise<void>((_resolve, reject) => { rejectUpload = reject; })).mockResolvedValue(undefined);
-    const props = { definition, values: {}, prompt: "", durationSeconds: null, choices, onChooseSource: vi.fn(), onChange: vi.fn(), onUpload: upload };
+    const upload = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            rejectUpload = reject;
+          }),
+      )
+      .mockResolvedValue(undefined);
+    const props = {
+      definition,
+      values: {},
+      prompt: "",
+      durationSeconds: null,
+      choices,
+      onChooseSource: vi.fn(),
+      onChange: vi.fn(),
+      onUpload: upload,
+    };
     const { rerender } = render(<WorkflowMediaInputs {...props} />);
     fireEvent.change(screen.getByLabelText("选择本地图片、视频或音频"), { target: { files: [file] } });
     rerender(<WorkflowMediaInputs {...props} values={{ first: "image-v1", last: "image-v1", sound: "audio-v1" }} />);
@@ -305,7 +676,9 @@ describe("WorkflowMediaInputs", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("合成满槽失败");
     await clickControl(screen.getByRole("button", { name: "重试上传" }));
     await waitFor(() => expect(upload).toHaveBeenCalledTimes(2));
-    expect(upload).toHaveBeenLastCalledWith(expect.objectContaining({ key: "first" }), file, { requireEmptySlot: true });
+    expect(upload).toHaveBeenLastCalledWith(expect.objectContaining({ key: "first" }), file, {
+      requireEmptySlot: true,
+    });
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
   });
 });
@@ -350,8 +723,18 @@ describe("WorkflowParametersDialog", () => {
 
   it("allows inspecting running-task values but disables every portal control and keeps close usable", async () => {
     const close = vi.fn();
-    render(<WorkflowParametersDialog open onOpenChange={close} definition={definition} values={{ mode: 2, strength: 0.75 }} prompt="" durationSeconds={20}
-      disabled onChange={vi.fn()} />);
+    render(
+      <WorkflowParametersDialog
+        open
+        onOpenChange={close}
+        definition={definition}
+        values={{ mode: 2, strength: 0.75 }}
+        prompt=""
+        durationSeconds={20}
+        disabled
+        onChange={vi.fn()}
+      />,
+    );
     const dialog = screen.getByRole("dialog", { name: "扩展参数" });
     for (const control of within(dialog).getAllByRole("combobox")) expect(control).toBeDisabled();
     for (const control of within(dialog).getAllByRole("spinbutton")) expect(control).toBeDisabled();

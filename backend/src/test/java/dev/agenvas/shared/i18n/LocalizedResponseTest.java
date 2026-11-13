@@ -33,7 +33,8 @@ class LocalizedResponseTest {
         var service = mock(LibraryService.class);
         var controller = new LibraryController(service, messages);
         UUID id = UUID.randomUUID();
-        var detail = ApiMessage.of("api.video-generation-parameters.video-generation-parameters-contain-an-unknown-field", "extra");
+        var detail = ApiMessage
+                .of("api.video-generation-parameters.video-generation-parameters-contain-an-unknown-field", "extra");
         var result = mapper.readTree("{\"text\":\"用户创作内容\"}");
         var command = new LibraryCommand(id, principal.userId(), "command", "hash", LibraryCommand.Kind.IMPORT,
                 mapper.createObjectNode(), LibraryCommand.Status.FAILED, 1, null, result, "VALIDATION_ERROR",
@@ -56,16 +57,24 @@ class LocalizedResponseTest {
         var service = mock(RunningHubImportService.class);
         var controller = new RunningHubImportController(service, messages);
         UUID connectionId = UUID.randomUUID();
-        var definition = new RunningHubDefinition(RunningHubDefinition.SCHEMA_VERSION, RunningHubDefinition.PROTOCOL_VERSION,
+        var definition = new RunningHubDefinition(RunningHubDefinition.SCHEMA_VERSION,
+                RunningHubDefinition.PROTOCOL_VERSION,
                 RunningHubDefinition.TargetType.WORKFLOW, "123", List.of(), List.of(),
                 List.of(new RunningHubDefinition.Output(null, RunningHubDefinition.OutputKind.IMAGE, true, 1)),
-                "default", false, false, null, "source-hash", List.of(new RunningHubDefinition.NodeOption("20", "保存图片")), null);
-        var warning = ApiMessage.of("api.running-hub-import-service.node-field-uses-an-unsupported-mapping-format-and-was-skipped", "6", "用户字段");
+                "default", false, false, null, "source-hash",
+                List.of(new RunningHubDefinition.NodeOption("20", "保存图片")), null);
+        var warning = ApiMessage.of(
+                "api.running-hub-import-service.node-field-uses-an-unsupported-mapping-format-and-was-skipped", "6",
+                "用户字段");
         var insight = new RunningHubImportService.FieldInsight("input1", "6", "text",
-                RunningHubImportService.Confidence.INFERRED, List.of(RunningHubImportService.InsightReason.PRIMARY_PROMPT));
-        when(service.preview(eq(connectionId), eq(definition.targetType()), eq("123"), eq(Task.Kind.IMAGE_GENERATION), any()))
-                .thenReturn(new RunningHubImportService.Preview(definition, List.of(warning), List.of(), "原始工作流名称", List.of(insight)));
-        var input = new RunningHubImportController.ImportRequest(definition.targetType(), "123", Task.Kind.IMAGE_GENERATION, mapper.createObjectNode());
+                RunningHubImportService.Confidence.INFERRED,
+                List.of(RunningHubImportService.InsightReason.PRIMARY_PROMPT));
+        when(service.preview(eq(connectionId), eq(definition.targetType()), eq("123"), eq(Task.Kind.IMAGE_GENERATION),
+                any()))
+                .thenReturn(new RunningHubImportService.Preview(definition, List.of(warning), List.of(), "原始工作流名称",
+                        List.of(insight)));
+        var input = new RunningHubImportController.ImportRequest(definition.targetType(), "123",
+                Task.Kind.IMAGE_GENERATION, mapper.createObjectNode());
         for (var locale : SupportedLocales.SUPPORTED) {
             var response = controller.preview(principal, connectionId, input, request(locale.toLanguageTag()));
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);

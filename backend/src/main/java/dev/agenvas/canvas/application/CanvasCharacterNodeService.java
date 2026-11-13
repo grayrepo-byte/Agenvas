@@ -72,100 +72,102 @@ public class CanvasCharacterNodeService {
     public CanvasService.CanvasEntry create(
             UUID owner, UUID project, UUID itemId, CreateNode request) {
         return events.recordChange(
-                        owner,
-                        project,
-                        () -> {
-                            projects.requireActiveProject(owner, project);
-                            if (request == null || itemId == null) throw invalid();
-                            var snapshot = snapshot(owner, project, request.selection(), true);
-                            canvas.getObject()
-                                    .validateGeometry(
-                                            request.x(),
-                                            request.y(),
-                                            request.width(),
-                                            request.height(),
-                                            request.zIndex());
-                            CanvasItem before =
-                                    items.findForUpdate(owner, project, itemId).orElse(null);
-                            if (before != null) {
-                                if (before.subjectType() != CanvasItem.SubjectType.CHARACTER)
-                                    throw conflict();
-                                NodeRow row = row(project, itemId);
-                                if (before.subjectType() != CanvasItem.SubjectType.CHARACTER
-                                        || before.version() != 0
-                                        || row.version() != 0
-                                        || !row.selection().equals(request.selection())
-                                        || !samePlacement(before, request)) throw conflict();
-                                return ProjectEventService.Change.unchanged(entry(owner, before));
-                            }
-                            validateGroup(owner, project, request.groupId());
-                            var now = clock.instant();
-                            CanvasItem item =
-                                    new CanvasItem(
-                                            itemId,
-                                            project,
-                                            CanvasItem.SubjectType.CHARACTER,
-                                            request.selection().characterId(),
-                                            null,
-                                            snapshot.name(),
-                                            request.x(),
-                                            request.y(),
-                                            request.width(),
-                                            request.height(),
-                                            request.zIndex(),
-                                            request.groupId(),
-                                            request.locked(),
-                                            0,
-                                            now,
-                                            now);
-                            if (!items.create(item)) throw conflict();
-                            repository.insert(project, itemId, request.selection(), 0);
-                            return changed(entry(owner, item), project, itemId, 0);
-                        })
+                owner,
+                project,
+                () -> {
+                    projects.requireActiveProject(owner, project);
+                    if (request == null || itemId == null)
+                        throw invalid();
+                    var snapshot = snapshot(owner, project, request.selection(), true);
+                    canvas.getObject()
+                            .validateGeometry(
+                                    request.x(),
+                                    request.y(),
+                                    request.width(),
+                                    request.height(),
+                                    request.zIndex());
+                    CanvasItem before = items.findForUpdate(owner, project, itemId).orElse(null);
+                    if (before != null) {
+                        if (before.subjectType() != CanvasItem.SubjectType.CHARACTER)
+                            throw conflict();
+                        NodeRow row = row(project, itemId);
+                        if (before.subjectType() != CanvasItem.SubjectType.CHARACTER
+                                || before.version() != 0
+                                || row.version() != 0
+                                || !row.selection().equals(request.selection())
+                                || !samePlacement(before, request))
+                            throw conflict();
+                        return ProjectEventService.Change.unchanged(entry(owner, before));
+                    }
+                    validateGroup(owner, project, request.groupId());
+                    var now = clock.instant();
+                    CanvasItem item = new CanvasItem(
+                            itemId,
+                            project,
+                            CanvasItem.SubjectType.CHARACTER,
+                            request.selection().characterId(),
+                            null,
+                            snapshot.name(),
+                            request.x(),
+                            request.y(),
+                            request.width(),
+                            request.height(),
+                            request.zIndex(),
+                            request.groupId(),
+                            request.locked(),
+                            0,
+                            now,
+                            now);
+                    if (!items.create(item))
+                        throw conflict();
+                    repository.insert(project, itemId, request.selection(), 0);
+                    return changed(entry(owner, item), project, itemId, 0);
+                })
                 .value();
     }
 
     @Transactional
     public CharacterNode update(UUID owner, UUID project, UUID itemId, UpdateSelection request) {
         return events.recordChange(
-                        owner,
-                        project,
-                        () -> {
-                            projects.requireActiveProject(owner, project);
-                            if (request == null
-                                    || request.expectedItemVersion() < 0
-                                    || request.expectedSelectionVersion() < 0) throw invalid();
-                            CanvasItem item = requireNode(owner, project, itemId, true);
-                            editable(item);
-                            if (item.version() != request.expectedItemVersion()) throw conflict();
-                            NodeRow before = row(project, itemId);
-                            snapshot(owner, project, request.selection(), true);
-                            if (!item.subjectId().equals(request.selection().characterId()))
-                                throw invalid();
-                            if (before.selection().equals(request.selection())
-                                    && (before.version() == request.expectedSelectionVersion()
-                                            || before.version()
-                                                    == request.expectedSelectionVersion() + 1))
-                                return ProjectEventService.Change.unchanged(view(owner, item));
-                            if (before.version() != request.expectedSelectionVersion()
-                                    || !repository.update(
-                                            project, itemId, request.selection(), before.version()))
-                                throw conflict();
-                            return changed(
-                                    view(owner, item), project, itemId, before.version() + 1);
-                        })
+                owner,
+                project,
+                () -> {
+                    projects.requireActiveProject(owner, project);
+                    if (request == null
+                            || request.expectedItemVersion() < 0
+                            || request.expectedSelectionVersion() < 0)
+                        throw invalid();
+                    CanvasItem item = requireNode(owner, project, itemId, true);
+                    editable(item);
+                    if (item.version() != request.expectedItemVersion())
+                        throw conflict();
+                    NodeRow before = row(project, itemId);
+                    snapshot(owner, project, request.selection(), true);
+                    if (!item.subjectId().equals(request.selection().characterId()))
+                        throw invalid();
+                    if (before.selection().equals(request.selection())
+                            && (before.version() == request.expectedSelectionVersion()
+                                    || before.version() == request.expectedSelectionVersion() + 1))
+                        return ProjectEventService.Change.unchanged(view(owner, item));
+                    if (before.version() != request.expectedSelectionVersion()
+                            || !repository.update(
+                                    project, itemId, request.selection(), before.version()))
+                        throw conflict();
+                    return changed(
+                            view(owner, item), project, itemId, before.version() + 1);
+                })
                 .value();
     }
 
     @Transactional(readOnly = true)
     public CharacterNode view(UUID owner, CanvasItem item) {
         projects.get(owner, item.projectId());
-        if (item.subjectType() != CanvasItem.SubjectType.CHARACTER) throw invalid();
+        if (item.subjectType() != CanvasItem.SubjectType.CHARACTER)
+            throw invalid();
         NodeRow row = row(item.projectId(), item.id());
         CharacterSnapshot fixed = snapshot(owner, item.projectId(), row.selection(), false);
-        boolean newer =
-                characters.currentProfile(owner, item.projectId(), item.subjectId()).version()
-                        > row.selection().characterVersion();
+        boolean newer = characters.currentProfile(owner, item.projectId(), item.subjectId()).version() > row.selection()
+                .characterVersion();
         return new CharacterNode(
                 item.id(),
                 row.selection(),
@@ -187,11 +189,11 @@ public class CanvasCharacterNodeService {
     @Transactional(readOnly = true)
     public CharacterConnection connectionReceipt(UUID owner, UUID project, UUID connectionId) {
         projects.get(owner, project);
-        var receipt =
-                repository
-                        .receipt(project, topologyCommand("connect", connectionId))
-                        .orElseThrow(this::notFound);
-        if (!connectionId.toString().equals(receipt.result().path("id").asText())) throw notFound();
+        var receipt = repository
+                .receipt(project, topologyCommand("connect", connectionId))
+                .orElseThrow(this::notFound);
+        if (!connectionId.toString().equals(receipt.result().path("id").asText()))
+            throw notFound();
         return mapper.treeToValue(receipt.result(), CharacterConnection.class);
     }
 
@@ -211,78 +213,76 @@ public class CanvasCharacterNodeService {
     @Transactional
     public CharacterConnection connect(UUID owner, UUID project, Connect request) {
         return events.recordChange(
-                        owner,
-                        project,
-                        () -> {
-                            projects.requireActiveProject(owner, project);
-                            if (request == null
-                                    || request.connectionId() == null
-                                    || request.sourceCanvasItemId() == null
-                                    || request.targetCanvasItemId() == null
-                                    || request.expectedSourceItemVersion() < 0
-                                    || request.expectedSourceSelectionVersion() < 0
-                                    || request.expectedTargetItemVersion() < 0) throw invalid();
-                            UUID receiptId = topologyCommand("connect", request.connectionId());
-                            String requestHash = digest(request);
-                            var replay = repository.receipt(project, receiptId).orElse(null);
-                            if (replay != null) {
-                                if (!requestHash.equals(replay.requestHash())) throw conflict();
-                                return ProjectEventService.Change.unchanged(
-                                        mapper.treeToValue(
-                                                replay.result(), CharacterConnection.class));
-                            }
-                            if (repository
-                                    .receipt(
-                                            project,
-                                            topologyCommand("disconnect", request.connectionId()))
-                                    .isPresent()) throw conflict();
-                            CanvasItem source =
-                                    requireNode(owner, project, request.sourceCanvasItemId(), true);
-                            CanvasItem target =
-                                    requireTarget(
-                                            owner, project, request.targetCanvasItemId(), true);
-                            editable(source);
-                            editable(target);
-                            if (source.version() != request.expectedSourceItemVersion()
-                                    || target.version() != request.expectedTargetItemVersion()
-                                    || row(project, source.id()).version()
-                                            != request.expectedSourceSelectionVersion())
-                                throw conflict();
-                            CharacterConnection desired =
-                                    new CharacterConnection(
-                                            request.connectionId(), source.id(), target.id(), 0);
-                            var edges = repository.connections(project);
-                            CharacterConnection prior =
-                                    edges.stream()
-                                            .filter(edge -> edge.id().equals(desired.id()))
-                                            .findFirst()
-                                            .orElse(null);
-                            if (prior != null) {
-                                if (!prior.equals(desired)) throw conflict();
-                                return ProjectEventService.Change.unchanged(prior);
-                            }
-                            if (edges.stream()
-                                            .anyMatch(
-                                                    edge ->
-                                                            edge.sourceCanvasItemId()
-                                                                            .equals(source.id())
-                                                                    && edge.targetCanvasItemId()
-                                                                            .equals(target.id()))
-                                    || edges.stream()
-                                                    .filter(
-                                                            edge ->
-                                                                    edge.targetCanvasItemId()
-                                                                            .equals(target.id()))
-                                                    .count()
-                                            >= MAX_TARGET_CHARACTERS) throw invalid();
-                            if (!repository.connect(project, desired)) throw conflict();
-                            repository.receipt(project, receiptId, requestHash, desired);
-                            return changed(
-                                    desired,
+                owner,
+                project,
+                () -> {
+                    projects.requireActiveProject(owner, project);
+                    if (request == null
+                            || request.connectionId() == null
+                            || request.sourceCanvasItemId() == null
+                            || request.targetCanvasItemId() == null
+                            || request.expectedSourceItemVersion() < 0
+                            || request.expectedSourceSelectionVersion() < 0
+                            || request.expectedTargetItemVersion() < 0)
+                        throw invalid();
+                    UUID receiptId = topologyCommand("connect", request.connectionId());
+                    String requestHash = digest(request);
+                    var replay = repository.receipt(project, receiptId).orElse(null);
+                    if (replay != null) {
+                        if (!requestHash.equals(replay.requestHash()))
+                            throw conflict();
+                        return ProjectEventService.Change.unchanged(
+                                mapper.treeToValue(
+                                        replay.result(), CharacterConnection.class));
+                    }
+                    if (repository
+                            .receipt(
                                     project,
-                                    source.id(),
-                                    row(project, source.id()).version());
-                        })
+                                    topologyCommand("disconnect", request.connectionId()))
+                            .isPresent())
+                        throw conflict();
+                    CanvasItem source = requireNode(owner, project, request.sourceCanvasItemId(), true);
+                    CanvasItem target = requireTarget(
+                            owner, project, request.targetCanvasItemId(), true);
+                    editable(source);
+                    editable(target);
+                    if (source.version() != request.expectedSourceItemVersion()
+                            || target.version() != request.expectedTargetItemVersion()
+                            || row(project, source.id()).version() != request.expectedSourceSelectionVersion())
+                        throw conflict();
+                    CharacterConnection desired = new CharacterConnection(
+                            request.connectionId(), source.id(), target.id(), 0);
+                    var edges = repository.connections(project);
+                    CharacterConnection prior = edges.stream()
+                            .filter(edge -> edge.id().equals(desired.id()))
+                            .findFirst()
+                            .orElse(null);
+                    if (prior != null) {
+                        if (!prior.equals(desired))
+                            throw conflict();
+                        return ProjectEventService.Change.unchanged(prior);
+                    }
+                    if (edges.stream()
+                            .anyMatch(
+                                    edge -> edge.sourceCanvasItemId()
+                                            .equals(source.id())
+                                            && edge.targetCanvasItemId()
+                                                    .equals(target.id()))
+                            || edges.stream()
+                                    .filter(
+                                            edge -> edge.targetCanvasItemId()
+                                                    .equals(target.id()))
+                                    .count() >= MAX_TARGET_CHARACTERS)
+                        throw invalid();
+                    if (!repository.connect(project, desired))
+                        throw conflict();
+                    repository.receipt(project, receiptId, requestHash, desired);
+                    return changed(
+                            desired,
+                            project,
+                            source.id(),
+                            row(project, source.id()).version());
+                })
                 .value();
     }
 
@@ -299,14 +299,14 @@ public class CanvasCharacterNodeService {
                     String requestHash = digest(List.of(id, request));
                     var replay = repository.receipt(project, receiptId).orElse(null);
                     if (replay != null) {
-                        if (!requestHash.equals(replay.requestHash())) throw conflict();
+                        if (!requestHash.equals(replay.requestHash()))
+                            throw conflict();
                         return ProjectEventService.Change.unchanged(null);
                     }
-                    CharacterConnection edge =
-                            repository.connections(project).stream()
-                                    .filter(e -> e.id().equals(id))
-                                    .findFirst()
-                                    .orElse(null);
+                    CharacterConnection edge = repository.connections(project).stream()
+                            .filter(e -> e.id().equals(id))
+                            .findFirst()
+                            .orElse(null);
                     if (edge == null) {
                         repository.receipt(project, receiptId, requestHash, true);
                         return ProjectEventService.Change.unchanged(null);
@@ -331,55 +331,55 @@ public class CanvasCharacterNodeService {
         if (request == null
                 || request.commandId() == null
                 || request.previewHash() == null
-                || !request.previewHash().matches("[a-f0-9]{64}")) throw invalid();
+                || !request.previewHash().matches("[a-f0-9]{64}"))
+            throw invalid();
         String hash = digest(List.of(target, request));
         return events.recordChange(
-                        owner,
-                        project,
-                        () -> {
-                            projects.requireActiveProject(owner, project);
-                            var prior =
-                                    repository.receipt(project, request.commandId()).orElse(null);
-                            if (prior != null) {
-                                if (!hash.equals(prior.requestHash())) throw conflict();
-                                return ProjectEventService.Change.unchanged(
-                                        mapper.treeToValue(
-                                                prior.result(), CharacterBindingApplied.class));
-                            }
-                            Prepared prepared =
-                                    prepare(owner, project, target, request.previewRequest());
-                            if (!prepared.preview().previewHash().equals(request.previewHash()))
-                                throw conflict();
-                            var result =
-                                    characters.applyFixedNodeBindings(
-                                            owner,
-                                            project,
-                                            target,
-                                            request.commandId(),
-                                            request.expectedBindingVersion(),
-                                            request.expectedDraftVersion(),
-                                            request.clearMode(),
-                                            prepared.snapshots(),
-                                            prepared.preview().characterPreview().previewHash());
-                            repository.receipt(project, request.commandId(), hash, result);
-                            return ProjectEventService.Change.unchanged(result);
-                        })
+                owner,
+                project,
+                () -> {
+                    projects.requireActiveProject(owner, project);
+                    var prior = repository.receipt(project, request.commandId()).orElse(null);
+                    if (prior != null) {
+                        if (!hash.equals(prior.requestHash()))
+                            throw conflict();
+                        return ProjectEventService.Change.unchanged(
+                                mapper.treeToValue(
+                                        prior.result(), CharacterBindingApplied.class));
+                    }
+                    Prepared prepared = prepare(owner, project, target, request.previewRequest());
+                    if (!prepared.preview().previewHash().equals(request.previewHash()))
+                        throw conflict();
+                    var result = characters.applyFixedNodeBindings(
+                            owner,
+                            project,
+                            target,
+                            request.commandId(),
+                            request.expectedBindingVersion(),
+                            request.expectedDraftVersion(),
+                            request.clearMode(),
+                            prepared.snapshots(),
+                            prepared.preview().characterPreview().previewHash());
+                    repository.receipt(project, request.commandId(), hash, result);
+                    return ProjectEventService.Change.unchanged(result);
+                })
                 .value();
     }
 
-    private record Prepared(NodeBindingPreview preview, List<CharacterSnapshot> snapshots) {}
+    private record Prepared(NodeBindingPreview preview, List<CharacterSnapshot> snapshots) {
+    }
 
     private Prepared prepare(UUID owner, UUID project, UUID targetId, Preview request) {
         if (request == null
                 || request.expectedBindingVersion() < 0
                 || request.expectedDraftVersion() < 0
-                || request.clearMode() == null) throw invalid();
+                || request.clearMode() == null)
+            throw invalid();
         CanvasItem target = requireTarget(owner, project, targetId, false);
         editable(target);
-        List<CharacterConnection> incoming =
-                repository.connections(project).stream()
-                        .filter(e -> e.targetCanvasItemId().equals(targetId))
-                        .toList();
+        List<CharacterConnection> incoming = repository.connections(project).stream()
+                .filter(e -> e.targetCanvasItemId().equals(targetId))
+                .toList();
         List<CharacterSnapshot> fixed = new ArrayList<>();
         List<Object> guards = new ArrayList<>();
         HashSet<UUID> seen = new HashSet<>();
@@ -389,7 +389,8 @@ public class CanvasCharacterNodeService {
             CanvasItem source = requireNode(owner, project, edge.sourceCanvasItemId(), false);
             editable(source);
             NodeRow node = row(project, source.id());
-            if (!seen.add(node.selection().characterId())) throw invalid();
+            if (!seen.add(node.selection().characterId()))
+                throw invalid();
             fixed.add(snapshot(owner, project, node.selection(), true));
             guards.add(
                     List.of(
@@ -398,15 +399,14 @@ public class CanvasCharacterNodeService {
                             node,
                             repository.topologyEpoch(project, source.id())));
         }
-        var characterPreview =
-                characters.previewFixedNodeBindings(
-                        owner,
-                        project,
-                        targetId,
-                        request.expectedBindingVersion(),
-                        request.expectedDraftVersion(),
-                        request.clearMode(),
-                        fixed);
+        var characterPreview = characters.previewFixedNodeBindings(
+                owner,
+                project,
+                targetId,
+                request.expectedBindingVersion(),
+                request.expectedDraftVersion(),
+                request.clearMode(),
+                fixed);
         String hash = digest(List.of(targetId, request, guards, characterPreview.previewHash()));
         return new Prepared(
                 new NodeBindingPreview(hash, characterPreview, incoming), List.copyOf(fixed));
@@ -430,9 +430,8 @@ public class CanvasCharacterNodeService {
                 mapper.valueToTree(
                         repository.connections(project).stream()
                                 .filter(
-                                        e ->
-                                                e.sourceCanvasItemId().equals(item.id())
-                                                        || e.targetCanvasItemId().equals(item.id()))
+                                        e -> e.sourceCanvasItemId().equals(item.id())
+                                                || e.targetCanvasItemId().equals(item.id()))
                                 .toList()));
         return guard;
     }
@@ -446,18 +445,18 @@ public class CanvasCharacterNodeService {
     }
 
     private CanvasItem requireNode(UUID owner, UUID project, UUID id, boolean lock) {
-        CanvasItem item =
-                (lock ? items.findForUpdate(owner, project, id) : items.find(owner, project, id))
-                        .orElseThrow(this::notFound);
-        if (item.subjectType() != CanvasItem.SubjectType.CHARACTER) throw invalid();
+        CanvasItem item = (lock ? items.findForUpdate(owner, project, id) : items.find(owner, project, id))
+                .orElseThrow(this::notFound);
+        if (item.subjectType() != CanvasItem.SubjectType.CHARACTER)
+            throw invalid();
         return item;
     }
 
     private CanvasItem requireTarget(UUID owner, UUID project, UUID id, boolean lock) {
-        CanvasItem item =
-                (lock ? items.findForUpdate(owner, project, id) : items.find(owner, project, id))
-                        .orElseThrow(this::notFound);
-        if (item.subjectType() != CanvasItem.SubjectType.ARTIFACT) throw invalid();
+        CanvasItem item = (lock ? items.findForUpdate(owner, project, id) : items.find(owner, project, id))
+                .orElseThrow(this::notFound);
+        if (item.subjectType() != CanvasItem.SubjectType.ARTIFACT)
+            throw invalid();
         var artifact = artifacts.get(owner, project, item.subjectId()).artifact();
         if (artifact.archivedAt() != null
                 || artifact.kind() != Artifact.Kind.IMAGE && artifact.kind() != Artifact.Kind.VIDEO)
@@ -473,27 +472,27 @@ public class CanvasCharacterNodeService {
                 || selection.viewVersionIds() == null
                 || selection.viewVersionIds().size() > MAX_SELECTED_VIEWS
                 || selection.viewVersionIds().stream().anyMatch(Objects::isNull)
-                || new HashSet<>(selection.viewVersionIds()).size()
-                        != selection.viewVersionIds().size()
-                || !selection.useAppearance() && !selection.useVoice()) throw invalid();
-        CharacterProfile revision =
-                characters.getRevision(
-                        owner, project, selection.characterId(), selection.characterVersion());
+                || new HashSet<>(selection.viewVersionIds()).size() != selection.viewVersionIds().size()
+                || !selection.useAppearance() && !selection.useVoice())
+            throw invalid();
+        CharacterProfile revision = characters.getRevision(
+                owner, project, selection.characterId(), selection.characterVersion());
         if (editable
                 && (revision.archived()
                         || characters
                                 .currentProfile(owner, project, selection.characterId())
-                                .archived())) throw invalid();
-        CharacterLook look =
-                selection.lookId() == null
-                        ? null
-                        : revision.content().looks().stream()
-                                .filter(l -> l.id().equals(selection.lookId()))
-                                .findFirst()
-                                .orElseThrow(this::invalid);
+                                .archived()))
+            throw invalid();
+        CharacterLook look = selection.lookId() == null
+                ? null
+                : revision.content().looks().stream()
+                        .filter(l -> l.id().equals(selection.lookId()))
+                        .findFirst()
+                        .orElseThrow(this::invalid);
         if (selection.useAppearance() && look == null && !revision.content().looks().isEmpty()
                 || selection.useVoice() && revision.content().voice() == null
-                || look == null && !selection.viewVersionIds().isEmpty()) throw invalid();
+                || look == null && !selection.viewVersionIds().isEmpty())
+            throw invalid();
         if (look != null) {
             CharacterLook base = look;
             List<CharacterView> selected = new ArrayList<>();
@@ -503,14 +502,13 @@ public class CanvasCharacterNodeService {
                                 .filter(v -> v.versionId().equals(id))
                                 .findFirst()
                                 .orElseThrow(this::invalid));
-            look =
-                    new CharacterLook(
-                            look.id(),
-                            look.name(),
-                            look.clothing(),
-                            look.expression(),
-                            look.description(),
-                            List.copyOf(selected));
+            look = new CharacterLook(
+                    look.id(),
+                    look.name(),
+                    look.clothing(),
+                    look.expression(),
+                    look.description(),
+                    List.copyOf(selected));
         }
         if (editable && selection.useAppearance() && look != null)
             for (CharacterView view : look.views())
@@ -534,13 +532,15 @@ public class CanvasCharacterNodeService {
     }
 
     private void validateGroup(UUID owner, UUID project, UUID groupId) {
-        if (groupId == null) return;
-        if (!items.groupExists(owner, project, groupId)) throw conflict();
-        long members =
-                items.list(owner, project).stream()
-                        .filter(item -> groupId.equals(item.groupId()))
-                        .count();
-        if (members >= MAX_GROUP_MEMBERS) throw conflict();
+        if (groupId == null)
+            return;
+        if (!items.groupExists(owner, project, groupId))
+            throw conflict();
+        long members = items.list(owner, project).stream()
+                .filter(item -> groupId.equals(item.groupId()))
+                .count();
+        if (members >= MAX_GROUP_MEMBERS)
+            throw conflict();
     }
 
     private boolean samePlacement(CanvasItem item, CreateNode r) {

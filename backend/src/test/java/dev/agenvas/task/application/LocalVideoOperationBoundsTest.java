@@ -16,7 +16,8 @@ class LocalVideoOperationBoundsTest {
     @Test
     void audioAcceptsAnArchivedTenMinuteVideoWhileDepthKeepsItsInferenceBudget() {
         var asset = video(600_000, 500L * 1024 * 1024, 7680, 4320);
-        assertThatCode(() -> LocalVideoOperationBounds.require(asset, VideoOperation.EXTRACT_AUDIO)).doesNotThrowAnyException();
+        assertThatCode(() -> LocalVideoOperationBounds.require(asset, VideoOperation.EXTRACT_AUDIO))
+                .doesNotThrowAnyException();
         assertThatThrownBy(() -> LocalVideoOperationBounds.require(asset, VideoOperation.DEPTH_MAP))
                 .isInstanceOfSatisfying(ApiProblemException.class,
                         failure -> assertThat(failure.detail().key()).isEqualTo("api.media-function.local-limits"));
@@ -27,7 +28,8 @@ class LocalVideoOperationBoundsTest {
         var asset = video(600_001, 1024, 16, 16);
         assertThatThrownBy(() -> LocalVideoOperationBounds.require(asset, VideoOperation.EXTRACT_AUDIO))
                 .isInstanceOfSatisfying(ApiProblemException.class,
-                        failure -> assertThat(failure.detail().key()).isEqualTo("api.media-function.local-audio-limits"));
+                        failure -> assertThat(failure.detail().key())
+                                .isEqualTo("api.media-function.local-audio-limits"));
     }
 
     @Test
@@ -45,6 +47,7 @@ class LocalVideoOperationBoundsTest {
 
     private Asset video(int duration, long bytes, int width, int height) {
         return new Asset(UUID.randomUUID(), UUID.randomUUID(), Asset.MediaKind.VIDEO,
-                "synthetic.mp4", "video/mp4", bytes, "synthetic", width, height, duration, null, null, null, Instant.EPOCH);
+                "synthetic.mp4", "video/mp4", bytes, "synthetic", width, height, duration, null, null, null,
+                Instant.EPOCH);
     }
 }

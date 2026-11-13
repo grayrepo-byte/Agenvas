@@ -73,7 +73,9 @@ public class AgentMediaApprovalService {
             MediaCapabilityService capabilities, DirectMediaTaskService mediaTasks,
             ProjectEventService events, ApplicationEventPublisher publisher,
             ObjectMapper mapper, Clock clock, ToolExecutionRepository toolLedger,
-            CanvasConnectionService connections, StoryboardMediaLinkService storyboardLinks, dev.agenvas.task.application.TaskService tasks, dev.agenvas.task.application.TaskOutputReadAccessService archivedOutputs) {
+            CanvasConnectionService connections, StoryboardMediaLinkService storyboardLinks,
+            dev.agenvas.task.application.TaskService tasks,
+            dev.agenvas.task.application.TaskOutputReadAccessService archivedOutputs) {
         this.approvals = approvals;
         this.runs = runs;
         this.artifacts = artifacts;
@@ -124,7 +126,8 @@ public class AgentMediaApprovalService {
                     throw conflict("AGENT_MEDIA_APPROVAL_CONFLICT", "run-unavailable");
                 }
                 List<OutputRequest> requests = new ArrayList<>();
-                for (JsonNode output : outputs) requests.add(parseOutput(context, run, output));
+                for (JsonNode output : outputs)
+                    requests.add(parseOutput(context, run, output));
                 List<ArtifactService.ArtifactView> created = new ArrayList<>();
                 for (OutputRequest request : requests) {
                     // An empty media identity has no content version or external side effect yet.
@@ -133,13 +136,15 @@ public class AgentMediaApprovalService {
                                 request.kind(), request.title(), null));
                     }
                 }
-                var placed = created.isEmpty() ? new CanvasService.OutputPlacements(List.of(), List.of())
+                var placed = created.isEmpty()
+                        ? new CanvasService.OutputPlacements(List.of(), List.of())
                         : canvas.placeArtifactsWithinChange(context.ownerId(), context.projectId(),
                                 created.stream().map(view -> view.artifact().id()).toList(), null);
                 ObjectNode frozenRequest = mapper.createObjectNode().put("schemaVersion", SCHEMA_VERSION);
                 frozenRequest.put("argumentHash", Sha256.hex(arguments));
                 JsonNode skillSource = freezeSkillSource(run);
-                if (skillSource != null) frozenRequest.set("creativeSkill", skillSource);
+                if (skillSource != null)
+                    frozenRequest.set("creativeSkill", skillSource);
                 var normalizedOutputs = frozenRequest.putArray("outputs");
                 ObjectNode targets = mapper.createObjectNode().put("schemaVersion", SCHEMA_VERSION);
                 var targetOutputs = targets.putArray("outputs");
@@ -154,7 +159,8 @@ public class AgentMediaApprovalService {
                         item = placed.created().stream().filter(card -> card.subjectId().equals(createdArtifactId))
                                 .findFirst().orElseThrow();
                     } else {
-                        if (!existingTargets.add(request.canvasItemId())) throw invalid("duplicate-target");
+                        if (!existingTargets.add(request.canvasItemId()))
+                            throw invalid("duplicate-target");
                         item = requireExistingTarget(context, run, request);
                         artifactId = item.subjectId();
                     }
@@ -166,7 +172,8 @@ public class AgentMediaApprovalService {
                     }
                     // A proposal declares a complete input set. Ordinary autosaves preserve
                     // connection-only inputs, so reconcile existing targets before replacing it.
-                    long draftVersion = createdByProposal ? initial.version()
+                    long draftVersion = createdByProposal
+                            ? initial.version()
                             : connections.clearTargetMediaConnectionsWithinChange(context.ownerId(),
                                     context.projectId(), item.id(), initial.version());
                     MediaDraft saved = drafts.save(context.ownerId(), context.projectId(), item.id(),
@@ -177,11 +184,13 @@ public class AgentMediaApprovalService {
                         CanvasItem source = canvas.ensureMediaReferenceWithinChange(context.ownerId(),
                                 context.projectId(), reference.artifactId(), reference.versionId(), null, item.id());
                         saved = connections.connectPreparedMediaInputWithinChange(context.ownerId(),
-                                context.projectId(), source.id(), item.id(), reference.versionId(), saved.version()).draft();
+                                context.projectId(), source.id(), item.id(), reference.versionId(), saved.version())
+                                .draft();
                     }
                     var preflight = approvedPreflight(context.ownerId(), context.projectId(),
                             artifactId, item.id(), saved.version(), skillSource);
-                    if (preflight.outputCount() != OUTPUTS_PER_REQUEST) throw invalid("single-output");
+                    if (preflight.outputCount() != OUTPUTS_PER_REQUEST)
+                        throw invalid("single-output");
                     ObjectNode normalized = request.original().deepCopy();
                     normalized.put("capabilityId", capabilityId.toString());
                     normalizedOutputs.add(normalized);
@@ -193,7 +202,8 @@ public class AgentMediaApprovalService {
                         target.set("storyboard", mapper.valueToTree(request.storyboard().link()));
                         target.put("storyboardCreativeHash", request.storyboard().creativeHash());
                     }
-                    if (!createdByProposal) target.put("itemVersion", item.version());
+                    if (!createdByProposal)
+                        target.put("itemVersion", item.version());
                     target.put("draftVersion", saved.version());
                     target.put("frozenInputHash", preflight.frozenInputHash());
                     target.set("binding", mapper.valueToTree(preflight.binding()));
@@ -204,7 +214,8 @@ public class AgentMediaApprovalService {
                         context.projectId(), context.runId(), stepIndex, toolCallId, operationId,
                         frozenRequest, targets, List.of(), null, AgentMediaApproval.Status.PENDING,
                         0, now, now.plus(APPROVAL_LIFETIME), null, null, null);
-                if (!approvals.insert(approval)) throw conflict("AGENT_MEDIA_APPROVAL_CONFLICT", "changed");
+                if (!approvals.insert(approval))
+                    throw conflict("AGENT_MEDIA_APPROVAL_CONFLICT", "changed");
                 appendEvent(context.ownerId(), approval);
                 return ProjectEventService.Change.unchanged(toolResult(approval));
             }).value();
@@ -233,7 +244,8 @@ public class AgentMediaApprovalService {
     /** Read-only project aggregation for the storyboard; decisions retain their original Run boundary. */
     @Transactional(readOnly = true)
     public List<ApprovalView> listForCanvasItems(UUID ownerId, UUID projectId, Set<UUID> itemIds) {
-        if (itemIds.isEmpty()) return List.of();
+        if (itemIds.isEmpty())
+            return List.of();
         return approvals.listByStoryboardTargets(ownerId, projectId, itemIds, Set.of(), 100).stream()
                 .map(this::view).toList();
     }
@@ -241,32 +253,43 @@ public class AgentMediaApprovalService {
     /** Linked proposals remain visible even before the user chooses a production node. */
     @Transactional(readOnly = true)
     public List<ApprovalView> listForStoryboard(UUID ownerId, UUID projectId, Set<UUID> itemIds, Set<UUID> shotIds) {
-        if (itemIds.isEmpty() && shotIds.isEmpty()) return List.of();
-        return approvals.listByStoryboardTargets(ownerId, projectId, itemIds, shotIds, 100).stream().map(this::view).toList();
+        if (itemIds.isEmpty() && shotIds.isEmpty())
+            return List.of();
+        return approvals.listByStoryboardTargets(ownerId, projectId, itemIds, shotIds, 100).stream().map(this::view)
+                .toList();
     }
 
     /** Frozen generation provenance prevents adopting an old result from silently clearing review. */
     @Transactional(readOnly = true)
     public java.util.Optional<Integer> storyboardResultRevision(UUID ownerId, UUID projectId,
             UUID shotId, UUID canvasItemId, UUID versionId) {
-        if (versionId == null) return java.util.Optional.empty();
+        if (versionId == null)
+            return java.util.Optional.empty();
         var archived = approvals.findStoryboardResultRevision(ownerId, projectId, shotId, canvasItemId, versionId);
-        if (archived.isPresent()) return archived;
+        if (archived.isPresent())
+            return archived;
         // A batch may still be running, or a canceled/UNKNOWN task may archive late.
         // Task-created immutable version provenance resolves that window without guessing by kind.
         var version = artifacts.requireVersionById(ownerId, projectId, versionId);
         if (version.createdByKind() != dev.agenvas.artifact.domain.ArtifactVersion.CreatedByKind.TASK
-                || !version.content().path("sourceTaskId").isTextual()) return java.util.Optional.empty();
+                || !version.content().path("sourceTaskId").isTextual())
+            return java.util.Optional.empty();
         UUID sourceTask;
-        try { sourceTask = UUID.fromString(version.content().path("sourceTaskId").asText()); }
-        catch (IllegalArgumentException invalidSource) { return java.util.Optional.empty(); }
+        try {
+            sourceTask = UUID.fromString(version.content().path("sourceTaskId").asText());
+        } catch (IllegalArgumentException invalidSource) {
+            return java.util.Optional.empty();
+        }
         var source = approvals.findByTaskId(projectId, sourceTask).orElse(null);
-        if (source == null || !source.ownerId().equals(ownerId)) return java.util.Optional.empty();
+        if (source == null || !source.ownerId().equals(ownerId))
+            return java.util.Optional.empty();
         int outputIndex = source.taskIds().indexOf(sourceTask);
-        if (outputIndex < 0 || outputIndex >= source.targets().path("outputs").size()) return java.util.Optional.empty();
+        if (outputIndex < 0 || outputIndex >= source.targets().path("outputs").size())
+            return java.util.Optional.empty();
         JsonNode link = source.targets().path("outputs").get(outputIndex).path("storyboard");
         return shotId.toString().equals(link.path("shotId").asText()) && link.path("shotRevision").asInt() > 0
-                ? java.util.Optional.of(link.path("shotRevision").asInt()) : java.util.Optional.empty();
+                ? java.util.Optional.of(link.path("shotRevision").asInt())
+                : java.util.Optional.empty();
     }
 
     @Transactional(readOnly = true)
@@ -281,10 +304,12 @@ public class AgentMediaApprovalService {
             long expectedVersion, int outputIndex, UUID capabilityId, JsonNode parameters,
             Integer durationSeconds, MediaDraft.VideoInputMode mode) {
         if (expectedVersion < 0 || outputIndex < 0 || capabilityId == null || parameters == null
-                || !parameters.isObject() || mode == null) throw invalid("revision");
+                || !parameters.isObject() || mode == null)
+            throw invalid("revision");
         return events.recordChange(ownerId, projectId, () -> {
             AgentRun run = runs.get(ownerId, projectId, runId);
-            AgentMediaApproval approval = approvals.findForUpdate(projectId, runId, approvalId).orElseThrow(this::notFound);
+            AgentMediaApproval approval = approvals.findForUpdate(projectId, runId, approvalId)
+                    .orElseThrow(this::notFound);
             if (approval.status() != AgentMediaApproval.Status.PENDING || approval.version() != expectedVersion
                     || !clock.instant().isBefore(approval.expiresAt())
                     || (run.status() != AgentRun.Status.RUNNING && run.status() != AgentRun.Status.WAITING_TASKS)
@@ -300,11 +325,13 @@ public class AgentMediaApprovalService {
             UUID artifactId = uuid(target.path("artifactId"));
             CanvasItem item = existingItem(ownerId, projectId, cardId);
             if (item.locked() || !item.subjectId().equals(artifactId)
-                    || !target.path("createdByProposal").asBoolean(true) && item.version() != target.path("itemVersion").asLong(-1))
+                    || !target.path("createdByProposal").asBoolean(true)
+                            && item.version() != target.path("itemVersion").asLong(-1))
                 throw conflict("AGENT_MEDIA_APPROVAL_STALE", "target-changed");
-            if (target.path("storyboard").isObject()) storyboardLinks.requireCurrent(ownerId, projectId,
-                    mapper.treeToValue(target.path("storyboard"), StoryboardMediaLinkService.Link.class),
-                    target.path("storyboardCreativeHash").asText(null));
+            if (target.path("storyboard").isObject())
+                storyboardLinks.requireCurrent(ownerId, projectId,
+                        mapper.treeToValue(target.path("storyboard"), StoryboardMediaLinkService.Link.class),
+                        target.path("storyboardCreativeHash").asText(null));
             MediaDraft before = drafts.get(ownerId, projectId, cardId);
             if (before.version() != target.path("draftVersion").asLong(-1))
                 throw conflict("AGENT_MEDIA_APPROVAL_STALE", "draft-changed");
@@ -325,22 +352,31 @@ public class AgentMediaApprovalService {
                 inputs.add(new MediaDraftService.SaveMediaInput(input.versionId(), role, input.color()));
             }
             var mentions = before.mentions().stream().map(mention -> new MediaDraft.PromptMention(mention.versionId(),
-                    inputs.stream().filter(input -> input.versionId().equals(mention.versionId())).findFirst().orElseThrow().role())).toList();
+                    inputs.stream().filter(input -> input.versionId().equals(mention.versionId())).findFirst()
+                            .orElseThrow().role()))
+                    .toList();
             MediaDraft saved = drafts.save(ownerId, projectId, cardId, before.version(), before.prompt(), parameters,
                     durationSeconds, capabilityId, mode, inputs, mentions, before.styleId());
-            var preflight = approvedPreflight(ownerId, projectId, artifactId, cardId, saved.version(), request.get("creativeSkill"));
-            if (preflight.outputCount() != OUTPUTS_PER_REQUEST) throw invalid("single-output");
+            var preflight = approvedPreflight(ownerId, projectId, artifactId, cardId, saved.version(),
+                    request.get("creativeSkill"));
+            if (preflight.outputCount() != OUTPUTS_PER_REQUEST)
+                throw invalid("single-output");
             ObjectNode output = (ObjectNode) request.path("outputs").get(outputIndex);
             output.put("capabilityId", capabilityId.toString()).put("videoInputMode", mode.name());
             output.set("parameters", saved.parameters().deepCopy());
-            if (durationSeconds == null) output.remove("durationSeconds"); else output.put("durationSeconds", durationSeconds);
+            if (durationSeconds == null)
+                output.remove("durationSeconds");
+            else
+                output.put("durationSeconds", durationSeconds);
             var sourceInputs = output.putArray("mediaInputs");
-            saved.mediaInputs().forEach(input -> sourceInputs.addObject().put("versionId", input.versionId().toString()).put("role", input.role().name()));
+            saved.mediaInputs().forEach(input -> sourceInputs.addObject().put("versionId", input.versionId().toString())
+                    .put("role", input.role().name()));
             target.put("draftVersion", saved.version()).put("frozenInputHash", preflight.frozenInputHash());
             target.set("binding", mapper.valueToTree(preflight.binding()));
             target.set("preview", preflight.safeSummary().deepCopy());
             AgentMediaApproval updated = approval.revise(request, targets);
-            if (!approvals.update(updated, expectedVersion)) throw conflict("AGENT_MEDIA_APPROVAL_CONFLICT", "changed");
+            if (!approvals.update(updated, expectedVersion))
+                throw conflict("AGENT_MEDIA_APPROVAL_CONFLICT", "changed");
             appendEvent(ownerId, updated);
             return ProjectEventService.Change.unchanged(view(updated));
         }).value();
@@ -373,7 +409,7 @@ public class AgentMediaApprovalService {
             }
             if ((run.status() != AgentRun.Status.RUNNING && run.status() != AgentRun.Status.WAITING_TASKS)
                     || (run.nextStepIndex() != approval.stepIndex()
-                        && run.nextStepIndex() != approval.stepIndex() + 1)) {
+                            && run.nextStepIndex() != approval.stepIndex() + 1)) {
                 throw conflict("AGENT_MEDIA_APPROVAL_CONFLICT", "run-unavailable");
             }
             Instant now = clock.instant();
@@ -391,7 +427,9 @@ public class AgentMediaApprovalService {
                 // versions through both revalidation and the atomic batch Task acceptance.
                 for (JsonNode target : approval.targets().path("outputs")) {
                     if (target.path("storyboard").isObject())
-                        storyboardLinks.requireCurrent(ownerId, projectId, mapper.treeToValue(target.path("storyboard"), StoryboardMediaLinkService.Link.class), target.path("storyboardCreativeHash").asText(null));
+                        storyboardLinks.requireCurrent(ownerId, projectId,
+                                mapper.treeToValue(target.path("storyboard"), StoryboardMediaLinkService.Link.class),
+                                target.path("storyboardCreativeHash").asText(null));
                     if (!target.path("createdByProposal").asBoolean(true)) {
                         CanvasItem existing = existingItem(ownerId, projectId, uuid(target.path("canvasItemId")));
                         if (existing.locked() || existing.version() != target.path("itemVersion").asLong(-1)
@@ -423,7 +461,8 @@ public class AgentMediaApprovalService {
                     Task task = approvedTask(ownerId, projectId, runId, approvalId,
                             uuid(target.path("artifactId")), uuid(target.path("canvasItemId")),
                             target.path("draftVersion").longValue(),
-                            "agent-media:" + approvalId + ":" + index++, approval.request().get("creativeSkill"), target.path("storyboard").isObject());
+                            "agent-media:" + approvalId + ":" + index++, approval.request().get("creativeSkill"),
+                            target.path("storyboard").isObject());
                     taskIds.add(task.id());
                 }
                 update = approval.transition(AgentMediaApproval.Status.APPROVED, taskIds,
@@ -436,7 +475,8 @@ public class AgentMediaApprovalService {
                 // Only this proposal's untouched placeholders are withdrawn. Direct generation
                 // is a separate user action, so its destination survives even before a result exists.
                 for (JsonNode target : approval.targets().path("outputs")) {
-                    if (!target.path("createdByProposal").asBoolean(true)) continue;
+                    if (!target.path("createdByProposal").asBoolean(true))
+                        continue;
                     UUID artifactId = uuid(target.path("artifactId"));
                     UUID itemId = uuid(target.path("canvasItemId"));
                     if (canvas.hasArtifactItem(ownerId, projectId, itemId, artifactId)
@@ -453,18 +493,23 @@ public class AgentMediaApprovalService {
     }
 
     private OutputRequest parseOutput(TrustedToolContext context, AgentRun run, JsonNode output) {
-        if (!(output instanceof ObjectNode object)) throw invalid("outputs");
+        if (!(output instanceof ObjectNode object))
+            throw invalid("outputs");
         allowOnly(object, OUTPUT_FIELDS);
         Artifact.Kind kind;
-        try { kind = Artifact.Kind.valueOf(text(object, "kind", MAX_TITLE_LENGTH, false)); }
-        catch (IllegalArgumentException failure) { throw invalid("kind"); }
+        try {
+            kind = Artifact.Kind.valueOf(text(object, "kind", MAX_TITLE_LENGTH, false));
+        } catch (IllegalArgumentException failure) {
+            throw invalid("kind");
+        }
         if (!Set.of(Artifact.Kind.IMAGE, Artifact.Kind.VIDEO, Artifact.Kind.AUDIO).contains(kind)) {
             throw invalid("kind");
         }
         String title = text(object, "title", MAX_TITLE_LENGTH, false).strip();
         String prompt = text(object, "prompt", MAX_PROMPT_LENGTH, true);
         JsonNode parameters = object.has("parameters") ? object.path("parameters") : mapper.createObjectNode();
-        if (!parameters.isObject()) throw invalid("parameters");
+        if (!parameters.isObject())
+            throw invalid("parameters");
         UUID capabilityId = object.hasNonNull("capabilityId") ? uuid(object.path("capabilityId")) : null;
         UUID canvasItemId = object.hasNonNull("canvasItemId") ? uuid(object.path("canvasItemId")) : null;
         Long expectedItemVersion = null;
@@ -478,12 +523,14 @@ public class AgentMediaApprovalService {
         Integer duration = null;
         if (object.hasNonNull("durationSeconds")) {
             JsonNode value = object.path("durationSeconds");
-            if (!value.isIntegralNumber() || !value.canConvertToInt()) throw invalid("durationSeconds");
+            if (!value.isIntegralNumber() || !value.canConvertToInt())
+                throw invalid("durationSeconds");
             duration = value.intValue();
         }
         MediaDraft.VideoInputMode mode = null;
         if (object.has("videoInputMode")) {
-            if (kind != Artifact.Kind.VIDEO) throw invalid("videoInputMode");
+            if (kind != Artifact.Kind.VIDEO)
+                throw invalid("videoInputMode");
             try {
                 mode = MediaDraft.VideoInputMode.valueOf(
                         text(object, "videoInputMode", MAX_TITLE_LENGTH, false));
@@ -493,14 +540,19 @@ public class AgentMediaApprovalService {
         }
         List<MediaDraftService.SaveMediaInput> inputs = new ArrayList<>();
         if (object.has("mediaInputs")) {
-            if (!object.path("mediaInputs").isArray()) throw invalid("mediaInputs");
+            if (!object.path("mediaInputs").isArray())
+                throw invalid("mediaInputs");
             for (JsonNode input : object.path("mediaInputs")) {
-                if (!(input instanceof ObjectNode reference)) throw invalid("mediaInputs");
+                if (!(input instanceof ObjectNode reference))
+                    throw invalid("mediaInputs");
                 allowOnly(reference, Set.of("versionId", "role"));
                 UUID versionId = uuid(reference.path("versionId"));
                 MediaDraft.InputRole role;
-                try { role = MediaDraft.InputRole.valueOf(text(reference, "role", MAX_TITLE_LENGTH, false)); }
-                catch (IllegalArgumentException failure) { throw invalid("role"); }
+                try {
+                    role = MediaDraft.InputRole.valueOf(text(reference, "role", MAX_TITLE_LENGTH, false));
+                } catch (IllegalArgumentException failure) {
+                    throw invalid("role");
+                }
                 // Model-selected IDs never widen the Run's explicit exact-version context.
                 artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(),
                         run.contextSnapshot(), context.runId(), versionId);
@@ -508,32 +560,41 @@ public class AgentMediaApprovalService {
             }
         }
         var activeSkills = RunSkills.activated(run, toolLedger.skillReads(run.projectId(), run.id()));
-        if (!activeSkills.isEmpty() && activeSkills.stream().noneMatch(skill ->
-                java.util.stream.StreamSupport.stream(skill.path("outputKinds").spliterator(), false)
-                        .anyMatch(allowed -> kind.name().equals(allowed.asText())))) throw invalid("skill-output-kind");
+        if (!activeSkills.isEmpty() && activeSkills.stream().noneMatch(
+                skill -> java.util.stream.StreamSupport.stream(skill.path("outputKinds").spliterator(), false)
+                        .anyMatch(allowed -> kind.name().equals(allowed.asText()))))
+            throw invalid("skill-output-kind");
         for (JsonNode skill : activeSkills) {
             boolean outputAllowed = false;
-            for (JsonNode allowed : skill.path("outputKinds")) if (kind.name().equals(allowed.asText())) outputAllowed = true;
+            for (JsonNode allowed : skill.path("outputKinds"))
+                if (kind.name().equals(allowed.asText()))
+                    outputAllowed = true;
             if (!outputAllowed) {
                 continue; // A combined catalogue can contain Skills for different output kinds.
             }
             for (JsonNode required : skill.path("inputs")) {
                 if (required.path("required").asBoolean() && "IMAGE".equals(required.path("kind").asText())
-                        && inputs.stream().noneMatch(media -> media.versionId().toString().equals(required.path("artifactVersionId").asText()))) {
+                        && inputs.stream().noneMatch(media -> media.versionId().toString()
+                                .equals(required.path("artifactVersionId").asText()))) {
                     throw invalid("skill-subject-input");
                 }
             }
         }
         return new OutputRequest(kind, title, prompt, parameters, duration, capabilityId, mode,
-                List.copyOf(inputs), object, canvasItemId, expectedItemVersion, expectedDraftVersion, parseStoryboardLink(context, object, kind));
+                List.copyOf(inputs), object, canvasItemId, expectedItemVersion, expectedDraftVersion,
+                parseStoryboardLink(context, object, kind));
     }
 
-    private StoryboardMediaLinkService.Frozen parseStoryboardLink(TrustedToolContext context, ObjectNode output, Artifact.Kind kind) {
-        if (!output.has("shotId") && !output.has("expectedShotRevision")) return null;
+    private StoryboardMediaLinkService.Frozen parseStoryboardLink(TrustedToolContext context, ObjectNode output,
+            Artifact.Kind kind) {
+        if (!output.has("shotId") && !output.has("expectedShotRevision"))
+            return null;
         JsonNode revision = output.path("expectedShotRevision");
-        if (!output.hasNonNull("shotId") || !revision.isIntegralNumber() || !revision.canConvertToInt() || revision.intValue() < 1)
+        if (!output.hasNonNull("shotId") || !revision.isIntegralNumber() || !revision.canConvertToInt()
+                || revision.intValue() < 1)
             throw invalid("storyboard-shot-revision");
-        return storyboardLinks.freezeWithFingerprint(context.ownerId(), context.projectId(), uuid(output.path("shotId")), revision.intValue(), kind);
+        return storyboardLinks.freezeWithFingerprint(context.ownerId(), context.projectId(),
+                uuid(output.path("shotId")), revision.intValue(), kind);
     }
 
     /** Existing destinations retain their identity, results and history, including on rejection. */
@@ -542,7 +603,8 @@ public class AgentMediaApprovalService {
         if (item.locked() || item.version() != request.expectedItemVersion()) {
             throw conflict("AGENT_MEDIA_APPROVAL_STALE", "target-changed");
         }
-        if (artifacts.get(context.ownerId(), context.projectId(), item.subjectId()).artifact().kind() != request.kind()) {
+        if (artifacts.get(context.ownerId(), context.projectId(), item.subjectId()).artifact().kind() != request
+                .kind()) {
             throw invalid("target-kind");
         }
         return item;
@@ -556,50 +618,65 @@ public class AgentMediaApprovalService {
 
     private long nonNegativeLong(JsonNode object, String field) {
         JsonNode value = object.path(field);
-        if (!value.isIntegralNumber() || !value.canConvertToLong() || value.longValue() < 0) throw invalid(field);
+        if (!value.isIntegralNumber() || !value.canConvertToLong() || value.longValue() < 0)
+            throw invalid(field);
         return value.longValue();
     }
 
-    private dev.agenvas.task.application.DirectMediaTaskService.MediaPreflight approvedPreflight(UUID owner, UUID project,
+    private dev.agenvas.task.application.DirectMediaTaskService.MediaPreflight approvedPreflight(UUID owner,
+            UUID project,
             UUID artifact, UUID card, long draftVersion, JsonNode skill) {
-        return skill == null ? mediaTasks.preflight(owner, project, artifact, card, draftVersion)
+        return skill == null
+                ? mediaTasks.preflight(owner, project, artifact, card, draftVersion)
                 : mediaTasks.preflightApproved(owner, project, artifact, card, draftVersion, skill);
     }
     private Task approvedTask(UUID owner, UUID project, UUID run, UUID approval, UUID artifact, UUID card,
             long draftVersion, String key, JsonNode skill, boolean requireExplicitSelection) {
-        if (requireExplicitSelection) return mediaTasks.runApproved(owner, project, run, approval,
-                artifact, card, draftVersion, key, skill, true);
-        return skill == null ? mediaTasks.runApproved(owner, project, run, approval, artifact, card, draftVersion, key)
+        if (requireExplicitSelection)
+            return mediaTasks.runApproved(owner, project, run, approval,
+                    artifact, card, draftVersion, key, skill, true);
+        return skill == null
+                ? mediaTasks.runApproved(owner, project, run, approval, artifact, card, draftVersion, key)
                 : mediaTasks.runApproved(owner, project, run, approval, artifact, card, draftVersion, key, skill);
     }
 
     private JsonNode freezeSkillSource(AgentRun run) {
         var reads = toolLedger.skillReads(run.projectId(), run.id());
         var active = RunSkills.activated(run, reads);
-        if (active.isEmpty()) return null;
+        if (active.isEmpty())
+            return null;
         var sources = mapper.createArrayNode();
         for (JsonNode source : active) {
             ObjectNode frozen = (ObjectNode) source.deepCopy();
             Set<String> used = new java.util.HashSet<>();
             var ranges = frozen.putArray("resourceReads");
-            var imageReads = dev.agenvas.skill.domain.SkillContent.AssetDelivery.LLM_CONTEXT.name().equals(source.path("assetDelivery").asText())
-                    ? frozen.putArray("assetReads") : null;
+            var imageReads = dev.agenvas.skill.domain.SkillContent.AssetDelivery.LLM_CONTEXT.name()
+                    .equals(source.path("assetDelivery").asText())
+                            ? frozen.putArray("assetReads")
+                            : null;
             for (JsonNode read : reads) {
-                boolean sameVersion = source.path("skillVersionId").asText().equals(read.path("skillVersionId").asText());
-                if (!sameVersion || "SKILL.md".equals(read.path("path").asText())) continue;
+                boolean sameVersion = source.path("skillVersionId").asText()
+                        .equals(read.path("skillVersionId").asText());
+                if (!sameVersion || "SKILL.md".equals(read.path("path").asText()))
+                    continue;
                 if (read.path("alias").isTextual()) {
-                    if (imageReads != null) imageReads.addObject().put("alias", read.path("alias").asText())
-                            .put("contentHash", read.path("contentHash").asText());
+                    if (imageReads != null)
+                        imageReads.addObject().put("alias", read.path("alias").asText())
+                                .put("contentHash", read.path("contentHash").asText());
                     continue;
                 }
-                if (!read.path("path").isTextual()) continue;
+                if (!read.path("path").isTextual())
+                    continue;
                 used.add(read.path("path").asText());
                 ranges.addObject().put("path", read.path("path").asText())
                         .put("contentHash", read.path("contentHash").asText())
-                        .put("offset", read.path("offset").asInt()).put("endOffset", read.path("endOffset").asInt()).put("total", read.path("total").asInt());
+                        .put("offset", read.path("offset").asInt()).put("endOffset", read.path("endOffset").asInt())
+                        .put("total", read.path("total").asInt());
             }
             var resources = frozen.putArray("resources");
-            for (JsonNode resource : source.path("resources")) if (used.contains(resource.path("path").asText())) resources.add(resource.deepCopy());
+            for (JsonNode resource : source.path("resources"))
+                if (used.contains(resource.path("path").asText()))
+                    resources.add(resource.deepCopy());
             sources.add(frozen);
         }
         ObjectNode result = mapper.createObjectNode().put("schemaVersion", 2);
@@ -609,26 +686,36 @@ public class AgentMediaApprovalService {
 
     private ObjectNode object(String arguments) {
         try {
-            if (mapper.readTree(arguments) instanceof ObjectNode object) return object;
-        } catch (RuntimeException failure) { throw invalid("json"); }
+            if (mapper.readTree(arguments) instanceof ObjectNode object)
+                return object;
+        } catch (RuntimeException failure) {
+            throw invalid("json");
+        }
         throw invalid("json");
     }
 
     private void allowOnly(ObjectNode input, Set<String> fields) {
-        for (String name : input.propertyNames()) if (!fields.contains(name)) throw invalid("fields");
+        for (String name : input.propertyNames())
+            if (!fields.contains(name))
+                throw invalid("fields");
     }
 
     private String text(JsonNode object, String field, int maxLength, boolean allowBlank) {
         JsonNode value = object.path(field);
         if (!value.isTextual() || value.asText().length() > maxLength
-                || !allowBlank && value.asText().isBlank()) throw invalid(field);
+                || !allowBlank && value.asText().isBlank())
+            throw invalid(field);
         return value.asText();
     }
 
     private UUID uuid(JsonNode value) {
-        if (!value.isTextual()) throw invalid("uuid");
-        try { return UUID.fromString(value.asText()); }
-        catch (IllegalArgumentException failure) { throw invalid("uuid"); }
+        if (!value.isTextual())
+            throw invalid("uuid");
+        try {
+            return UUID.fromString(value.asText());
+        } catch (IllegalArgumentException failure) {
+            throw invalid("uuid");
+        }
     }
 
     private void appendEvent(UUID ownerId, AgentMediaApproval approval) {
@@ -677,11 +764,13 @@ public class AgentMediaApprovalService {
                     request.path("title").asText(), uuid(target.path("artifactId")),
                     uuid(target.path("canvasItemId")), target.path("draftVersion").longValue(),
                     target.path("preview").deepCopy(), target.path("storyboard").isObject()
-                            ? mapper.treeToValue(target.path("storyboard"), StoryboardMediaLinkService.Link.class) : null));
+                            ? mapper.treeToValue(target.path("storyboard"), StoryboardMediaLinkService.Link.class)
+                            : null));
         }
         return new ApprovalView(approval.id(), approval.projectId(), approval.runId(),
                 approval.operationId(), approval.status(), approval.version(), List.copyOf(outputs),
-                approval.taskIds(), approval.result(), archivedResults(approval), approval.createdAt(), approval.expiresAt(),
+                approval.taskIds(), approval.result(), archivedResults(approval), approval.createdAt(),
+                approval.expiresAt(),
                 approval.executionDeadline());
     }
 
@@ -689,7 +778,8 @@ public class AgentMediaApprovalService {
         List<JsonNode> archived = new ArrayList<>();
         for (UUID taskId : approval.taskIds()) {
             Task task = tasks.get(approval.ownerId(), approval.projectId(), taskId);
-            if (task == null) continue;
+            if (task == null)
+                continue;
             for (JsonNode output : archivedOutputs.archivedOutputs(approval.ownerId(), approval.projectId(), taskId)) {
                 if (output.path("artifactVersionId").isTextual()
                         || output.path("additionalResults").isArray() && !output.path("additionalResults").isEmpty())
@@ -721,13 +811,19 @@ public class AgentMediaApprovalService {
             JsonNode parameters, Integer durationSeconds, UUID capabilityId,
             MediaDraft.VideoInputMode videoInputMode,
             List<MediaDraftService.SaveMediaInput> mediaInputs, ObjectNode original,
-            UUID canvasItemId, Long expectedItemVersion, Long expectedDraftVersion, StoryboardMediaLinkService.Frozen storyboard) {}
+            UUID canvasItemId, Long expectedItemVersion, Long expectedDraftVersion,
+            StoryboardMediaLinkService.Frozen storyboard) {
+    }
 
-    public enum Decision { APPROVE, REJECT }
+    public enum Decision {
+        APPROVE, REJECT
+    }
     public record ApprovalOutput(Artifact.Kind kind, String title, UUID artifactId,
-            UUID canvasItemId, long draftVersion, JsonNode preview, StoryboardMediaLinkService.Link storyboard) {}
+            UUID canvasItemId, long draftVersion, JsonNode preview, StoryboardMediaLinkService.Link storyboard) {
+    }
     public record ApprovalView(UUID id, UUID projectId, UUID runId, UUID operationId,
             AgentMediaApproval.Status status, long version, List<ApprovalOutput> outputs,
             List<UUID> taskIds, JsonNode result, List<JsonNode> archivedResults, Instant createdAt, Instant expiresAt,
-            Instant executionDeadline) {}
+            Instant executionDeadline) {
+    }
 }

@@ -12,11 +12,14 @@ import tools.jackson.databind.ObjectMapper;
 
 class MiniMaxH3ProtocolTest {
     private final ObjectMapper mapper = new ObjectMapper();
-    private final MediaAdapterRegistry.Declaration declaration = new MediaAdapterRegistry(List.of()).declaration("MINIMAX_H3");
+    private final MediaAdapterRegistry.Declaration declaration = new MediaAdapterRegistry(List.of())
+            .declaration("MINIMAX_H3");
 
-    @Test void declaresAllInputModesAndNormalizesResolutionDefaultsAndPrices() {
+    @Test
+    void declaresAllInputModesAndNormalizesResolutionDefaultsAndPrices() {
         assertThat(declaration.platform()).isEqualTo(MediaPlatform.MINIMAX);
-        assertThat(declaration.supportedVideoInputModes()).containsExactlyInAnyOrder("TEXT", "START_END", "GENERAL_REFERENCE");
+        assertThat(declaration.supportedVideoInputModes()).containsExactlyInAnyOrder("TEXT", "START_END",
+                "GENERAL_REFERENCE");
         assertThat(declaration.supportsEndFrame()).isTrue();
         assertThat(declaration.maxReferenceAudios()).isEqualTo(3);
         assertThat(declaration.maxReferenceVideos()).isEqualTo(3);
@@ -33,7 +36,8 @@ class MiniMaxH3ProtocolTest {
                 mapper.readTree("{\"defaultParameters\":{\"videoResolution\":\"480p\"}}"), mapper.createObjectNode()))
                 .isInstanceOf(ApiProblemException.class);
     }
-    @Test void validatesImageAudioVideoBoundsWithoutSeedancePixelMinimums() {
+    @Test
+    void validatesImageAudioVideoBoundsWithoutSeedancePixelMinimums() {
         MiniMaxH3Protocol.validateMetadata(asset(Asset.MediaKind.IMAGE, "image/png", 30_000_000L, 256, 256, null));
         MiniMaxH3Protocol.validateMetadata(asset(Asset.MediaKind.VIDEO, "video/mp4", 50_000_000L, 256, 256, 2000));
         MiniMaxH3Protocol.validateMetadata(asset(Asset.MediaKind.AUDIO, "audio/mpeg", 15_000_000L, null, null, 15000));
@@ -45,10 +49,12 @@ class MiniMaxH3ProtocolTest {
                 asset(Asset.MediaKind.AUDIO, "audio/flac", 1, null, null, 4000),
                 asset(Asset.MediaKind.AUDIO, "audio/wav", 1, null, null, 1999),
                 asset(Asset.MediaKind.AUDIO, "audio/wav", 1, null, null, 15001))) {
-            assertThatThrownBy(() -> MiniMaxH3Protocol.validateMetadata(invalid)).isInstanceOf(ApiProblemException.class);
+            assertThatThrownBy(() -> MiniMaxH3Protocol.validateMetadata(invalid))
+                    .isInstanceOf(ApiProblemException.class);
         }
     }
-    private static Asset asset(Asset.MediaKind kind, String mime, long bytes, Integer width, Integer height, Integer duration) {
+    private static Asset asset(Asset.MediaKind kind, String mime, long bytes, Integer width, Integer height,
+            Integer duration) {
         return new Asset(UUID.randomUUID(), UUID.randomUUID(), kind, "synthetic", mime, bytes, "a".repeat(64),
                 width, height, duration, null, null, null, Instant.now());
     }

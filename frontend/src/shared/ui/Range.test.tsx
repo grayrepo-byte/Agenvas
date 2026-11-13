@@ -8,9 +8,18 @@ describe("Range", () => {
     const change = vi.fn();
     function Brightness() {
       const [value, setValue] = useState(0);
-      return <Range aria-label="亮度" min={-100} max={100} value={value} onChange={(event) => {
-        change(event.target.valueAsNumber); setValue(event.target.valueAsNumber);
-      }} />;
+      return (
+        <Range
+          aria-label="亮度"
+          min={-100}
+          max={100}
+          value={value}
+          onChange={event => {
+            change(event.target.valueAsNumber);
+            setValue(event.target.valueAsNumber);
+          }}
+        />
+      );
     }
     render(<Brightness />);
     const input = screen.getByRole("slider", { name: "亮度" });
@@ -33,7 +42,11 @@ describe("Range", () => {
   });
 
   it("preserves form submission and synchronizes an uncontrolled form reset", async () => {
-    render(<form aria-label="参数"><Range aria-label="大小" name="size" min={0} max={100} defaultValue={20} /></form>);
+    render(
+      <form aria-label="参数">
+        <Range aria-label="大小" name="size" min={0} max={100} defaultValue={20} />
+      </form>,
+    );
     const form = screen.getByRole("form") as HTMLFormElement;
     const input = screen.getByRole("slider");
     fireEvent.input(input, { target: { value: "80" } });
@@ -45,8 +58,12 @@ describe("Range", () => {
   });
 
   it("keeps label, value text, fieldset disabling and degenerate bounds", () => {
-    render(<fieldset disabled><label htmlFor="seek">预览进度</label><Range id="seek" min={5} max={5} value={5}
-      variant="media" aria-valuetext="00:05 / 00:05" readOnly /></fieldset>);
+    render(
+      <fieldset disabled>
+        <label htmlFor="seek">预览进度</label>
+        <Range id="seek" min={5} max={5} value={5} variant="media" aria-valuetext="00:05 / 00:05" readOnly />
+      </fieldset>,
+    );
     const input = screen.getByRole("slider", { name: "预览进度" });
     expect(input).toBeDisabled();
     expect(input).toHaveAttribute("aria-valuetext", "00:05 / 00:05");

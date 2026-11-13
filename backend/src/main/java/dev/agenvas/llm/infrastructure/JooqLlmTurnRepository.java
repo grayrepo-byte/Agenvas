@@ -81,7 +81,8 @@ public class JooqLlmTurnRepository implements LlmTurnRepository {
                 row.getModelConfigVersion(),
                 mapper.readTree(row.getRequestJson().data()),
                 row.getResponseJson() == null
-                        ? null : mapper.readTree(row.getResponseJson().data()),
+                        ? null
+                        : mapper.readTree(row.getResponseJson().data()),
                 row.getCreatedAt().toInstant(),
                 Optional.ofNullable(row.getRespondedAt())
                         .map(OffsetDateTime::toInstant).orElse(null));

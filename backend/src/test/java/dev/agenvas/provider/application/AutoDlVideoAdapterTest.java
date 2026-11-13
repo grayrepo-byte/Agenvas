@@ -35,18 +35,19 @@ class AutoDlVideoAdapterTest {
             "synthetic-request-key", "synthetic-original-task");
     private final AutoDlVideoAdapter adapter = new AutoDlVideoAdapter(catalog, cipher, null, null,
             client, new ObjectMapper(), Clock.systemUTC());
-    private final MediaPayload payload = new MediaPayload(new ByteArrayInputStream(new byte[] {1}), "video/mp4");
+    private final MediaPayload payload = new MediaPayload(new ByteArrayInputStream(new byte[]{1}), "video/mp4");
 
     AutoDlVideoAdapterTest() {
         var version = new JooqMediaCapabilityRepository.ConnectionVersion(binding.connectionId(), 1,
-                "https://autodl.art", "origin-hash", new byte[] {1}, new byte[] {2}, 1, "fake");
+                "https://autodl.art", "origin-hash", new byte[]{1}, new byte[]{2}, 1, "fake");
         when(catalog.snapshotAt(binding.capabilityId(), 1, binding.connectionId(), 1))
                 .thenReturn(Optional.of(new JooqMediaCapabilityRepository.Snapshot(null, null, version,
                         binding.adapterId(), binding.mappingSha256(), null)));
         when(cipher.decryptMedia(eq(binding.connectionId()), eq(1), any())).thenReturn("fake-test-token");
     }
 
-    @Test void multipleVideosSelectTheFirstVideoAndIgnoreOtherMedia() {
+    @Test
+    void multipleVideosSelectTheFirstVideoAndIgnoreOtherMedia() {
         when(client.query("fake-test-token", context.originalRequestId())).thenReturn(success("first", "second"));
         when(client.downloadVideo("first")).thenReturn(payload);
 
@@ -57,7 +58,8 @@ class AutoDlVideoAdapterTest {
         verify(client, never()).create(any(), any(), any());
     }
 
-    @Test void expiredFirstVideoRefreshesOriginalTaskAndSelectsFirstRefreshedVideo() {
+    @Test
+    void expiredFirstVideoRefreshesOriginalTaskAndSelectsFirstRefreshedVideo() {
         when(client.query("fake-test-token", context.originalRequestId()))
                 .thenReturn(success("expired", "unused"), success("fresh", "also-unused"));
         when(client.downloadVideo("expired")).thenThrow(new AutoDlClient.ResultExpired());
@@ -70,14 +72,16 @@ class AutoDlVideoAdapterTest {
         verify(client, never()).create(any(), any(), any());
     }
 
-    @Test void noVideoStillReportsMissingOutput() {
+    @Test
+    void noVideoStillReportsMissingOutput() {
         when(client.query("fake-test-token", context.originalRequestId()))
                 .thenReturn(new AutoDlClient.TaskState("SUCCESS", List.of(new AutoDlClient.Result("image", "image"))));
         assertThat(adapter.reconcile(context)).isEqualTo(new Submission.Blocked("AUTODL_RESULT_MISSING_VIDEO"));
         verify(client, never()).downloadVideo(any());
     }
 
-    @Test void unchangedExpiredAddressDoesNotDownloadAnotherResultOrCreateTask() {
+    @Test
+    void unchangedExpiredAddressDoesNotDownloadAnotherResultOrCreateTask() {
         when(client.query("fake-test-token", context.originalRequestId())).thenReturn(success("expired", "unused"));
         when(client.downloadVideo("expired")).thenThrow(new AutoDlClient.ResultExpired());
         assertThat(adapter.reconcile(context)).isEqualTo(new Submission.Blocked("AUTODL_RESULT_EXPIRED"));

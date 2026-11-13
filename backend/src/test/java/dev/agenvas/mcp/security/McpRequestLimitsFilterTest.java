@@ -57,13 +57,18 @@ class McpRequestLimitsFilterTest {
         authenticate(user);
         var denied = new MockHttpServletResponse();
         var request = new MockHttpServletRequest("POST", "/mcp/uploads") {
-            @Override public ServletInputStream getInputStream() { throw new AssertionError("must not buffer upload bytes"); }
+            @Override
+            public ServletInputStream getInputStream() {
+                throw new AssertionError("must not buffer upload bytes");
+            }
         };
         filter.doFilter(request, denied, mustNotDispatch());
         assertThat(denied.getStatus()).isEqualTo(403);
         SecurityContextHolder.getContext().setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
-                new McpPrincipal(user, UUID.randomUUID(), Set.of(McpScope.READ, McpScope.CONTENT_WRITE)), null, List.of()));
-        filter.doFilter(request, new MockHttpServletResponse(), (original, response) -> assertThat(original).isSameAs(request));
+                new McpPrincipal(user, UUID.randomUUID(), Set.of(McpScope.READ, McpScope.CONTENT_WRITE)), null,
+                List.of()));
+        filter.doFilter(request, new MockHttpServletResponse(),
+                (original, response) -> assertThat(original).isSameAs(request));
         request.addHeader("Origin", "https://foreign.example");
         var origin = new MockHttpServletResponse();
         filter.doFilter(request, origin, mustNotDispatch());
@@ -77,10 +82,17 @@ class McpRequestLimitsFilterTest {
     @Test
     void binaryUploadsRejectOversizedDeclaredRequestsBeforeReading() throws Exception {
         SecurityContextHolder.getContext().setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
-                new McpPrincipal(UUID.randomUUID(), UUID.randomUUID(), Set.of(McpScope.READ, McpScope.CONTENT_WRITE)), null, List.of()));
+                new McpPrincipal(UUID.randomUUID(), UUID.randomUUID(), Set.of(McpScope.READ, McpScope.CONTENT_WRITE)),
+                null, List.of()));
         var request = new MockHttpServletRequest("POST", "/mcp/uploads") {
-            @Override public long getContentLengthLong() { return 501L * 1024 * 1024 + 1; }
-            @Override public ServletInputStream getInputStream() { throw new AssertionError("must reject before reading upload"); }
+            @Override
+            public long getContentLengthLong() {
+                return 501L * 1024 * 1024 + 1;
+            }
+            @Override
+            public ServletInputStream getInputStream() {
+                throw new AssertionError("must reject before reading upload");
+            }
         };
         var response = new MockHttpServletResponse();
         filter.doFilter(request, response, mustNotDispatch());
@@ -117,20 +129,38 @@ class McpRequestLimitsFilterTest {
         authenticate(UUID.randomUUID());
         for (int attempt = 0; attempt < 8; attempt++) {
             var declared = new MockHttpServletRequest("POST", "/mcp") {
-                @Override public long getContentLengthLong() { return MAX_BODY + 1L; }
-                @Override public ServletInputStream getInputStream() { throw new AssertionError("must reject before reading"); }
+                @Override
+                public long getContentLengthLong() {
+                    return MAX_BODY + 1L;
+                }
+                @Override
+                public ServletInputStream getInputStream() {
+                    throw new AssertionError("must reject before reading");
+                }
             };
             var response = new MockHttpServletResponse();
             filter.doFilter(declared, response, mustNotDispatch());
             assertThat(response.getStatus()).isEqualTo(413);
         }
         var broken = new MockHttpServletRequest("POST", "/mcp") {
-            @Override public ServletInputStream getInputStream() {
+            @Override
+            public ServletInputStream getInputStream() {
                 return new ServletInputStream() {
-                    @Override public int read() throws IOException { throw new IOException("synthetic disconnect"); }
-                    @Override public boolean isFinished() { return false; }
-                    @Override public boolean isReady() { return true; }
-                    @Override public void setReadListener(jakarta.servlet.ReadListener listener) {}
+                    @Override
+                    public int read() throws IOException {
+                        throw new IOException("synthetic disconnect");
+                    }
+                    @Override
+                    public boolean isFinished() {
+                        return false;
+                    }
+                    @Override
+                    public boolean isReady() {
+                        return true;
+                    }
+                    @Override
+                    public void setReadListener(jakarta.servlet.ReadListener listener) {
+                    }
                 };
             }
         };
@@ -138,7 +168,8 @@ class McpRequestLimitsFilterTest {
             assertThatThrownBy(() -> filter.doFilter(broken, new MockHttpServletResponse(), mustNotDispatch()))
                     .isInstanceOf(IOException.class);
         }
-        filter.doFilter(chunked(new byte[0]), new MockHttpServletResponse(), (a, b) -> {});
+        filter.doFilter(chunked(new byte[0]), new MockHttpServletResponse(), (a, b) -> {
+        });
     }
 
     @Test
@@ -159,16 +190,19 @@ class McpRequestLimitsFilterTest {
                 assertThat(rejected.getStatus()).isEqualTo(429);
                 assertThat(rejected.getHeader("Retry-After")).isEqualTo("1");
                 authenticate(UUID.randomUUID());
-                filter.doFilter(chunked(new byte[0]), new MockHttpServletResponse(), (a, b) -> {});
+                filter.doFilter(chunked(new byte[0]), new MockHttpServletResponse(), (a, b) -> {
+                });
             } finally {
                 release.countDown();
             }
-            for (Future<?> request : requests) request.get(10, TimeUnit.SECONDS);
+            for (Future<?> request : requests)
+                request.get(10, TimeUnit.SECONDS);
         } finally {
             release.countDown();
         }
         authenticate(busyUser);
-        filter.doFilter(chunked(new byte[0]), new MockHttpServletResponse(), (a, b) -> {});
+        filter.doFilter(chunked(new byte[0]), new MockHttpServletResponse(), (a, b) -> {
+        });
     }
 
     @Test
@@ -192,14 +226,16 @@ class McpRequestLimitsFilterTest {
             } finally {
                 release.countDown();
             }
-            for (Future<?> request : requests) request.get(10, TimeUnit.SECONDS);
+            for (Future<?> request : requests)
+                request.get(10, TimeUnit.SECONDS);
         } finally {
             release.countDown();
         }
         for (int request = 0; request < 65; request++) {
             authenticate(UUID.randomUUID());
             var response = new MockHttpServletResponse();
-            filter.doFilter(chunked(new byte[0]), response, (a, b) -> {});
+            filter.doFilter(chunked(new byte[0]), response, (a, b) -> {
+            });
             assertThat(response.getStatus()).isEqualTo(200);
         }
     }
@@ -212,10 +248,13 @@ class McpRequestLimitsFilterTest {
         authenticate(UUID.randomUUID());
         for (int attempt = 0; attempt < 65; attempt++) {
             assertThatThrownBy(() -> filter.doFilter(chunked(new byte[0]), new MockHttpServletResponse(),
-                    (a, b) -> { throw new jakarta.servlet.ServletException("synthetic failure"); }))
+                    (a, b) -> {
+                        throw new jakarta.servlet.ServletException("synthetic failure");
+                    }))
                     .isInstanceOf(jakarta.servlet.ServletException.class);
         }
-        filter.doFilter(chunked(new byte[0]), new MockHttpServletResponse(), (a, b) -> {});
+        filter.doFilter(chunked(new byte[0]), new MockHttpServletResponse(), (a, b) -> {
+        });
     }
 
     private void blockRequest(UUID userId, CountDownLatch entered, CountDownLatch release) {
@@ -244,8 +283,14 @@ class McpRequestLimitsFilterTest {
 
     private MockHttpServletRequest chunked(byte[] content) {
         var request = new MockHttpServletRequest("POST", "/mcp") {
-            @Override public int getContentLength() { return -1; }
-            @Override public long getContentLengthLong() { return -1; }
+            @Override
+            public int getContentLength() {
+                return -1;
+            }
+            @Override
+            public long getContentLengthLong() {
+                return -1;
+            }
         };
         request.addHeader("Transfer-Encoding", "chunked");
         request.setContent(content);
@@ -253,6 +298,8 @@ class McpRequestLimitsFilterTest {
     }
 
     private FilterChain mustNotDispatch() {
-        return (request, response) -> { throw new AssertionError("request must be rejected before dispatch"); };
+        return (request, response) -> {
+            throw new AssertionError("request must be rejected before dispatch");
+        };
     }
 }

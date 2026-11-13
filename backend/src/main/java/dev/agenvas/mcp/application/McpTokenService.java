@@ -85,10 +85,13 @@ public class McpTokenService {
         requireActiveUser(userId);
         StoredToken token = tokens.lock(tokenId)
                 .filter(found -> found.userId().equals(userId)).orElseThrow(this::notFound);
-        if (token.revokedAt() != null) return summary(token);
-        if (expectedVersion < 0 || token.version() != expectedVersion) throw versionConflict();
+        if (token.revokedAt() != null)
+            return summary(token);
+        if (expectedVersion < 0 || token.version() != expectedVersion)
+            throw versionConflict();
         Instant now = clock.instant();
-        if (!tokens.revoke(tokenId, expectedVersion, now)) throw versionConflict();
+        if (!tokens.revoke(tokenId, expectedVersion, now))
+            throw versionConflict();
         return summary(new StoredToken(token.id(), token.userId(), token.name(), token.secretHash(),
                 token.tokenHint(), token.scopes(), token.version() + 1,
                 token.createdAt(), token.expiresAt(), now, token.lastUsedAt()));
@@ -112,7 +115,8 @@ public class McpTokenService {
     /** Re-checks current state before discovery, reads and replay; an old session cannot extend grants. */
     @Transactional(readOnly = true)
     public McpPrincipal requireValidForRead(McpPrincipal principal) {
-        if (principal == null) throw unauthenticated();
+        if (principal == null)
+            throw unauthenticated();
         return requireValid(tokens.find(principal.tokenId()).orElseThrow(McpTokenService::unauthenticated),
                 principal.userId());
     }
@@ -123,7 +127,8 @@ public class McpTokenService {
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public McpPrincipal requireValidForWrite(McpPrincipal principal) {
-        if (principal == null) throw unauthenticated();
+        if (principal == null)
+            throw unauthenticated();
         return requireValid(tokens.lock(principal.tokenId()).orElseThrow(McpTokenService::unauthenticated),
                 principal.userId());
     }
@@ -147,7 +152,8 @@ public class McpTokenService {
         String id = rawToken.substring(PREFIX.length(), PREFIX.length() + UUID_LENGTH);
         try {
             UUID parsed = UUID.fromString(id);
-            if (!parsed.toString().equals(id)) throw unauthenticated();
+            if (!parsed.toString().equals(id))
+                throw unauthenticated();
             return parsed;
         } catch (IllegalArgumentException invalidId) {
             throw unauthenticated();
@@ -155,7 +161,8 @@ public class McpTokenService {
     }
 
     private void requireActiveUser(UUID userId) {
-        if (!identities.isActiveUser(userId)) throw unauthenticated();
+        if (!identities.isActiveUser(userId))
+            throw unauthenticated();
     }
 
     private Summary summary(StoredToken token) {
@@ -193,7 +200,8 @@ public class McpTokenService {
         }
     }
 
-    public record Create(String name, Set<McpScope> scopes, Integer expiresInDays) {}
+    public record Create(String name, Set<McpScope> scopes, Integer expiresInDays) {
+    }
 
     /** This one-time response must never be logged or cached. */
     public record Created(Summary credential, String token) {

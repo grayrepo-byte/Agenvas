@@ -48,7 +48,8 @@ import tools.jackson.databind.ObjectMapper;
 class ConfiguredChatGatewayBudgetTest {
     private static final ChatGateway.ConfigIdentity ENVIRONMENT = new ChatGateway.ConfigIdentity("environment", 7);
 
-    @Test void availableEnvironmentModelUsesLocalDefaultsWithoutAStoredPolicy() {
+    @Test
+    void availableEnvironmentModelUsesLocalDefaultsWithoutAStoredPolicy() {
         var gateway = gateway(new ProbeModel(), null);
 
         var budget = gateway.requestBudgetFor(ENVIRONMENT);
@@ -59,7 +60,8 @@ class ConfiguredChatGatewayBudgetTest {
         assertThat(budget.outputParameter()).isEqualTo(LlmModelPolicy.OutputParameter.MAX_TOKENS);
     }
 
-    @Test void environmentBudgetUsesSavedDirectorSettingsAndGenericOutputCeiling() {
+    @Test
+    void environmentBudgetUsesSavedDirectorSettingsAndGenericOutputCeiling() {
         var settings = mock(DirectorSettingsService.class);
         when(settings.get()).thenReturn(new DirectorSettings(65536, 50, 8192, 2048, 2, 60, 5, 30, 2, 12));
         var factory = new StoredChatModelFactory(null, null, null, settings, null);
@@ -72,25 +74,34 @@ class ConfiguredChatGatewayBudgetTest {
         assertThat(budget.directorVersion()).isEqualTo(12);
     }
 
-    @ParameterizedTest @CsvSource({"false,false", "false,true", "true,false", "true,true"})
+    @ParameterizedTest
+    @CsvSource({"false,false", "false,true", "true,false", "true,true"})
     void frozenEnvironmentBudgetReachesGenericModelWithoutExecutingTools(boolean withFactory, boolean streaming) {
         var model = new ProbeModel();
         var gateway = gateway(model, withFactory ? new StoredChatModelFactory(null, null) : null);
         ToolCallback tool = new ToolCallback() {
-            @Override public ToolDefinition getToolDefinition() {
+            @Override
+            public ToolDefinition getToolDefinition() {
                 return ToolDefinition.builder().name("read_project_summary").description("Read project summary")
                         .inputSchema("{\"type\":\"object\",\"properties\":{}}").build();
             }
-            @Override public String call(String input) { throw new AssertionError("Runtime owns tool execution"); }
+            @Override
+            public String call(String input) {
+                throw new AssertionError("Runtime owns tool execution");
+            }
         };
         var input = List.<Message>of(new UserMessage("Inspect the project"));
         var tools = List.of(tool);
         var context = Map.<String, Object>of("projectId", "trusted-project");
 
         ChatGateway.Exchange result = streaming
-                ? gateway.callStreaming(input, tools, context, ENVIRONMENT, frozenBudget(LlmModelPolicy.OutputParameter.MAX_TOKENS),
-                        ignored -> {}, false, ignored -> {})
-                : gateway.call(input, tools, context, ENVIRONMENT, frozenBudget(LlmModelPolicy.OutputParameter.MAX_TOKENS));
+                ? gateway.callStreaming(input, tools, context, ENVIRONMENT,
+                        frozenBudget(LlmModelPolicy.OutputParameter.MAX_TOKENS),
+                        ignored -> {
+                        }, false, ignored -> {
+                        })
+                : gateway.call(input, tools, context, ENVIRONMENT,
+                        frozenBudget(LlmModelPolicy.OutputParameter.MAX_TOKENS));
 
         assertThat(result.configVersion()).isEqualTo(7);
         assertThat(result.response().hasToolCalls()).isTrue();
@@ -105,7 +116,8 @@ class ConfiguredChatGatewayBudgetTest {
         assertThat(model.getOptions().getMaxTokens()).isEqualTo(9999);
     }
 
-    @ParameterizedTest @CsvSource({"false,false", "false,true", "true,false", "true,true"})
+    @ParameterizedTest
+    @CsvSource({"false,false", "false,true", "true,false", "true,true"})
     void frozenEnvironmentOutputIsSentAsOneWireParameter(boolean streaming, boolean completionTokens) throws Exception {
         var received = new AtomicReference<JsonNode>();
         var mapper = new ObjectMapper();
@@ -123,20 +135,26 @@ class ConfiguredChatGatewayBudgetTest {
         });
         server.start();
         try {
-            var options = OpenAiChatOptions.builder().baseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1")
+            var options = OpenAiChatOptions.builder()
+                    .baseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1")
                     .apiKey("synthetic-unusable-key").model("synthetic").timeout(Duration.ofSeconds(5)).maxRetries(0);
             // The frozen request must replace the opposite parameter from deployment defaults.
-            if (completionTokens) options.maxTokens(9999);
-            else options.maxCompletionTokens(9999);
+            if (completionTokens)
+                options.maxTokens(9999);
+            else
+                options.maxCompletionTokens(9999);
             var model = OpenAiChatModel.builder().options(options.build()).build();
             var gateway = gateway(model, new StoredChatModelFactory(null, null));
-            var parameter = completionTokens ? LlmModelPolicy.OutputParameter.MAX_COMPLETION_TOKENS
+            var parameter = completionTokens
+                    ? LlmModelPolicy.OutputParameter.MAX_COMPLETION_TOKENS
                     : LlmModelPolicy.OutputParameter.MAX_TOKENS;
             var input = List.<Message>of(new UserMessage("Small synthetic request"));
 
             var result = streaming
                     ? gateway.callStreaming(input, List.of(), Map.of(), ENVIRONMENT, frozenBudget(parameter),
-                            ignored -> {}, false, ignored -> {})
+                            ignored -> {
+                            }, false, ignored -> {
+                            })
                     : gateway.call(input, List.of(), Map.of(), ENVIRONMENT, frozenBudget(parameter));
 
             assertThat(result.response().getResult().getOutput().getText()).isEqualTo("done");
@@ -144,12 +162,16 @@ class ConfiguredChatGatewayBudgetTest {
             String other = completionTokens ? "max_tokens" : "max_completion_tokens";
             assertThat(received.get().path(field).asInt()).isEqualTo(512);
             assertThat(received.get().has(other)).isFalse();
-            assertThat(completionTokens ? model.getOptions().getMaxTokens() : model.getOptions().getMaxCompletionTokens())
+            assertThat(
+                    completionTokens ? model.getOptions().getMaxTokens() : model.getOptions().getMaxCompletionTokens())
                     .isEqualTo(9999);
-        } finally { server.stop(0); }
+        } finally {
+            server.stop(0);
+        }
     }
 
-    @Test void absentEnvironmentModelDoesNotGainABudgetOrDispatch() {
+    @Test
+    void absentEnvironmentModelDoesNotGainABudgetOrDispatch() {
         var gateway = gateway(null, new StoredChatModelFactory(null, null));
         var input = List.<Message>of(new UserMessage("hello"));
         var budget = frozenBudget(LlmModelPolicy.OutputParameter.MAX_TOKENS);
@@ -159,17 +181,21 @@ class ConfiguredChatGatewayBudgetTest {
         assertThatThrownBy(() -> gateway.call(input, List.of(), Map.of(), ENVIRONMENT, budget))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("No LLM ChatModel");
         assertThatThrownBy(() -> gateway.callStreaming(input, List.of(), Map.of(), ENVIRONMENT, budget,
-                ignored -> {}, false, ignored -> {}))
+                ignored -> {
+                }, false, ignored -> {
+                }))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("No LLM ChatModel");
     }
 
-    @Test void storedConfigurationReplacingEnvironmentRejectsBudgetAndFrozenCalls() {
+    @Test
+    void storedConfigurationReplacingEnvironmentRejectsBudgetAndFrozenCalls() {
         var model = new ProbeModel();
         var beans = new DefaultListableBeanFactory();
         beans.registerSingleton("environmentModel", model);
         var configs = mock(LlmProviderConfigRepository.class);
         when(configs.active()).thenReturn(Optional.of(new LlmProviderConfig(UUID.randomUUID(), 7,
-                "https://private.invalid", "stored-model", new byte[0], new byte[0], 1, "masked", true, true, Instant.EPOCH)));
+                "https://private.invalid", "stored-model", new byte[0], new byte[0], 1, "masked", true, true,
+                Instant.EPOCH)));
         var gateway = new ConfiguredChatGateway(beans.getBeanProvider(ChatModel.class), new LlmProperties(7, true),
                 configs, new StoredChatModelFactory(null, null));
         var input = List.<Message>of(new UserMessage("hello"));
@@ -180,15 +206,19 @@ class ConfiguredChatGatewayBudgetTest {
         assertThatThrownBy(() -> gateway.call(input, List.of(), Map.of(), ENVIRONMENT, budget))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("configuration changed");
         assertThatThrownBy(() -> gateway.callStreaming(input, List.of(), Map.of(), ENVIRONMENT, budget,
-                ignored -> {}, false, ignored -> {})).isInstanceOf(IllegalStateException.class)
+                ignored -> {
+                }, false, ignored -> {
+                })).isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("configuration changed");
         assertThat(model.prompts).isEmpty();
     }
 
     private static ConfiguredChatGateway gateway(ChatModel model, StoredChatModelFactory factory) {
         var beans = new DefaultListableBeanFactory();
-        if (model != null) beans.registerSingleton("environmentModel", model);
-        return new ConfiguredChatGateway(beans.getBeanProvider(ChatModel.class), new LlmProperties(7, true), null, factory);
+        if (model != null)
+            beans.registerSingleton("environmentModel", model);
+        return new ConfiguredChatGateway(beans.getBeanProvider(ChatModel.class), new LlmProperties(7, true), null,
+                factory);
     }
 
     private static LlmRequestBudget frozenBudget(LlmModelPolicy.OutputParameter parameter) {
@@ -197,14 +227,21 @@ class ConfiguredChatGatewayBudgetTest {
 
     private static final class ProbeModel implements ChatModel {
         private final List<Prompt> prompts = new ArrayList<>();
-        @Override public ToolCallingChatOptions getOptions() {
+        @Override
+        public ToolCallingChatOptions getOptions() {
             return ToolCallingChatOptions.builder().model("environment-model").maxTokens(9999).temperature(0.3).build();
         }
-        @Override public ChatResponse call(Prompt prompt) {
+        @Override
+        public ChatResponse call(Prompt prompt) {
             prompts.add(prompt);
             return new ChatResponse(List.of(new Generation(AssistantMessage.builder().content("")
-                    .toolCalls(List.of(new AssistantMessage.ToolCall("call-1", "function", "read_project_summary", "{}"))).build())));
+                    .toolCalls(
+                            List.of(new AssistantMessage.ToolCall("call-1", "function", "read_project_summary", "{}")))
+                    .build())));
         }
-        @Override public Flux<ChatResponse> stream(Prompt prompt) { return Flux.just(call(prompt)); }
+        @Override
+        public Flux<ChatResponse> stream(Prompt prompt) {
+            return Flux.just(call(prompt));
+        }
     }
 }

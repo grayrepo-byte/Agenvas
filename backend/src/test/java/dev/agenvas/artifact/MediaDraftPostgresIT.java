@@ -50,13 +50,20 @@ class MediaDraftPostgresIT {
         registry.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private WebApplicationContext context;
-    @Autowired private ObjectMapper mapper;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private MediaExecutionWorker worker;
-    @Autowired private TaskService taskService;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private WebApplicationContext context;
+    @Autowired
+    private ObjectMapper mapper;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private MediaExecutionWorker worker;
+    @Autowired
+    private TaskService taskService;
 
     @Test
     void emptyImageCardKeepsDraftAndRejectsStaleSave() throws Exception {
@@ -68,9 +75,9 @@ class MediaDraftPostgresIT {
         var auth = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of()));
         String base = "/api/v1/projects/" + project.id();
         JsonNode created = mapper.readTree(mvc.perform(post(base + "/artifacts")
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .header("Idempotency-Key", "draft-image-create")
-                        .content("{\"kind\":\"IMAGE\",\"title\":\"Concept\",\"content\":null}"))
+                .with(auth).with(csrf()).contentType("application/json")
+                .header("Idempotency-Key", "draft-image-create")
+                .content("{\"kind\":\"IMAGE\",\"title\":\"Concept\",\"content\":null}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         String artifactId = created.path("id").asText();
         assertThat(UUID.fromString(artifactId)).isNotNull();
@@ -101,8 +108,8 @@ class MediaDraftPostgresIT {
         String runPayload = "{\"canvasItemId\":\"" + canvasItemId
                 + "\",\"expectedDraftVersion\":1}";
         JsonNode run = mapper.readTree(mvc.perform(post(runPath).with(auth).with(csrf())
-                        .header("Idempotency-Key", "direct-image-1")
-                        .contentType("application/json").content(runPayload))
+                .header("Idempotency-Key", "direct-image-1")
+                .contentType("application/json").content(runPayload))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         UUID taskId = UUID.fromString(run.path("id").asText());
         assertThat(run.path("runId").isNull()).isTrue();
@@ -111,32 +118,32 @@ class MediaDraftPostgresIT {
         assertThat(jdbc.sql("select run_id is null from task where id=:id").param("id", taskId)
                 .query(Boolean.class).single()).isTrue();
         JsonNode duplicate = mapper.readTree(mvc.perform(post(runPath).with(auth).with(csrf())
-                        .header("Idempotency-Key", "direct-image-1")
-                        .contentType("application/json").content(runPayload))
+                .header("Idempotency-Key", "direct-image-1")
+                .contentType("application/json").content(runPayload))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(duplicate.path("id").asText()).isEqualTo(taskId.toString());
         String resultCanvasItemId = run.path("input").path("canvasItemId").asText();
         assertThat(resultCanvasItemId).isEqualTo(canvasItemId);
         String resultDraftPath = base + "/canvas-items/" + resultCanvasItemId + "/media-draft";
         JsonNode queue = mapper.readTree(mvc.perform(get(base + "/tasks/" + taskId + "/queue")
-                        .with(auth)).andExpect(status().isOk()).andReturn()
+                .with(auth)).andExpect(status().isOk()).andReturn()
                 .getResponse().getContentAsString());
         assertThat(queue.path("reason").asText()).isEqualTo("WAITING_WORKER");
         assertThat(queue.path("waitingAhead").asLong()).isZero();
         assertThat(worker.submitOnce("draft-integration-worker")).isEqualTo(1);
         JsonNode completed = mapper.readTree(mvc.perform(get(base + "/tasks/" + taskId)
-                        .with(auth)).andExpect(status().isOk()).andReturn()
+                .with(auth)).andExpect(status().isOk()).andReturn()
                 .getResponse().getContentAsString());
         assertThat(completed.path("status").asText()).isEqualTo("SUCCEEDED");
         JsonNode image = mapper.readTree(mvc.perform(get(base + "/artifacts/" + artifactId)
-                        .with(auth)).andExpect(status().isOk()).andReturn()
+                .with(auth)).andExpect(status().isOk()).andReturn()
                 .getResponse().getContentAsString());
         assertThat(image.path("resourceDefaultVersion").isNull()).isTrue();
         JsonNode completedCanvas = mapper.readTree(mvc.perform(get(base + "/canvas/items")
-                        .with(auth)).andExpect(status().isOk()).andReturn()
+                .with(auth)).andExpect(status().isOk()).andReturn()
                 .getResponse().getContentAsString());
         JsonNode completedCard = java.util.stream.StreamSupport.stream(
-                        completedCanvas.path("items").spliterator(), false)
+                completedCanvas.path("items").spliterator(), false)
                 .filter(item -> resultCanvasItemId.equals(item.path("id").asText()))
                 .findFirst().orElseThrow();
         assertThat(completedCard.path("selectedVersionId").isTextual()).isTrue();
@@ -154,10 +161,10 @@ class MediaDraftPostgresIT {
         assertThat(edited.path("displayMode").asText()).isEqualTo("RESULT");
         assertThat(edited.path("prompt").asText()).isEqualTo("Second concept");
         JsonNode retainedResult = mapper.readTree(mvc.perform(put(draftPath)
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .content("{\"expectedVersion\":" + edited.path("version").asLong()
-                                + ",\"prompt\":\"Next concept\",\"parameters\":{},"
-                                + "\"videoInputMode\":null,\"mediaInputs\":[],\"mentions\":[]}"))
+                .with(auth).with(csrf()).contentType("application/json")
+                .content("{\"expectedVersion\":" + edited.path("version").asLong()
+                        + ",\"prompt\":\"Next concept\",\"parameters\":{},"
+                        + "\"videoInputMode\":null,\"mediaInputs\":[],\"mentions\":[]}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(retainedResult.path("displayMode").asText()).isEqualTo("RESULT");
         JsonNode reloadedResult = mapper.readTree(mvc.perform(get(draftPath).with(auth))
@@ -169,16 +176,16 @@ class MediaDraftPostgresIT {
 
         // Only an explicit run switches the card face; the previous result stays selected.
         JsonNode nextRun = mapper.readTree(mvc.perform(post(runPath).with(auth).with(csrf())
-                        .header("Idempotency-Key", "direct-image-next-concept")
-                        .contentType("application/json").content("{\"canvasItemId\":\""
-                                + canvasItemId + "\",\"expectedDraftVersion\":"
-                                + reloadedResult.path("version").asLong() + "}"))
+                .header("Idempotency-Key", "direct-image-next-concept")
+                .contentType("application/json").content("{\"canvasItemId\":\""
+                        + canvasItemId + "\",\"expectedDraftVersion\":"
+                        + reloadedResult.path("version").asLong() + "}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         JsonNode runningDraft = mapper.readTree(mvc.perform(get(draftPath).with(auth))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(runningDraft.path("displayMode").asText()).isEqualTo("DRAFT");
         JsonNode retainedImage = mapper.readTree(mvc.perform(get(base + "/artifacts/" + artifactId)
-                        .with(auth)).andExpect(status().isOk()).andReturn()
+                .with(auth)).andExpect(status().isOk()).andReturn()
                 .getResponse().getContentAsString());
         assertThat(retainedImage.path("resourceDefaultVersionId").isNull()).isTrue();
         mvc.perform(post(base + "/tasks/" + nextRun.path("id").asText() + "/cancel-queued")
@@ -187,23 +194,23 @@ class MediaDraftPostgresIT {
         long canvasCountBeforeBatch = jdbc.sql("select count(*) from canvas_item where project_id=:projectId")
                 .param("projectId", project.id()).query(Long.class).single();
         JsonNode batchDraft = mapper.readTree(mvc.perform(put(draftPath).with(auth).with(csrf())
-                        .contentType("application/json")
-                        .content("{\"expectedVersion\":" + runningDraft.path("version").asLong()
-                                + ",\"prompt\":\"Two portrait studies\",\"parameters\":{"
-                                + "\"aspectRatio\":\"9:16\",\"resolution\":\"2K\","
-                                + "\"quality\":\"high\",\"transparentBackground\":false,"
-                                + "\"generationCount\":2},"
-                                + "\"videoInputMode\":null,\"mediaInputs\":[],\"mentions\":[]}"))
+                .contentType("application/json")
+                .content("{\"expectedVersion\":" + runningDraft.path("version").asLong()
+                        + ",\"prompt\":\"Two portrait studies\",\"parameters\":{"
+                        + "\"aspectRatio\":\"9:16\",\"resolution\":\"2K\","
+                        + "\"quality\":\"high\",\"transparentBackground\":false,"
+                        + "\"generationCount\":2},"
+                        + "\"videoInputMode\":null,\"mediaInputs\":[],\"mentions\":[]}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         JsonNode batchPrimary = mapper.readTree(mvc.perform(post(runPath).with(auth).with(csrf())
-                        .header("Idempotency-Key", "direct-image-two-new-nodes")
-                        .contentType("application/json").content("{\"canvasItemId\":\""
-                                + canvasItemId + "\",\"expectedDraftVersion\":"
-                                + batchDraft.path("version").asLong() + "}"))
+                .header("Idempotency-Key", "direct-image-two-new-nodes")
+                .contentType("application/json").content("{\"canvasItemId\":\""
+                        + canvasItemId + "\",\"expectedDraftVersion\":"
+                        + batchDraft.path("version").asLong() + "}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         List<UUID> batchTaskIds = jdbc.sql("select id from task where project_id=:projectId "
-                        + "and input_json->>'sourceCanvasItemId'=:source "
-                        + "and input_json->>'generationCount'='2'")
+                + "and input_json->>'sourceCanvasItemId'=:source "
+                + "and input_json->>'generationCount'='2'")
                 .param("projectId", project.id()).param("source", canvasItemId)
                 .query(UUID.class).list();
         assertThat(batchTaskIds).hasSize(2).contains(UUID.fromString(batchPrimary.path("id").asText()));
@@ -216,32 +223,32 @@ class MediaDraftPostgresIT {
         }
 
         JsonNode sameCardBatchDraft = mapper.readTree(mvc.perform(put(draftPath).with(auth).with(csrf())
-                        .contentType("application/json")
-                        .content("{\"expectedVersion\":" + batchDraft.path("version").asLong()
-                                + ",\"prompt\":\"Two alternatives in one history\",\"parameters\":{"
-                                + "\"aspectRatio\":\"1:1\",\"resolution\":\"1K\","
-                                + "\"quality\":\"medium\",\"transparentBackground\":false,"
-                                + "\"generationCount\":2},"
-                                + "\"videoInputMode\":null,\"mediaInputs\":[],\"mentions\":[]}"))
+                .contentType("application/json")
+                .content("{\"expectedVersion\":" + batchDraft.path("version").asLong()
+                        + ",\"prompt\":\"Two alternatives in one history\",\"parameters\":{"
+                        + "\"aspectRatio\":\"1:1\",\"resolution\":\"1K\","
+                        + "\"quality\":\"medium\",\"transparentBackground\":false,"
+                        + "\"generationCount\":2},"
+                        + "\"videoInputMode\":null,\"mediaInputs\":[],\"mentions\":[]}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         String sameCardKey = "direct-image-two-same-card";
         String sameCardBody = "{\"canvasItemId\":\"" + canvasItemId
                 + "\",\"expectedDraftVersion\":"
                 + sameCardBatchDraft.path("version").asLong() + "}";
         JsonNode sameCardPrimary = mapper.readTree(mvc.perform(post(runPath).with(auth).with(csrf())
-                        .header("Idempotency-Key", sameCardKey).contentType("application/json")
-                        .content(sameCardBody)).andExpect(status().isOk()).andReturn()
+                .header("Idempotency-Key", sameCardKey).contentType("application/json")
+                .content(sameCardBody)).andExpect(status().isOk()).andReturn()
                 .getResponse().getContentAsString());
         JsonNode sameCardReplay = mapper.readTree(mvc.perform(post(runPath).with(auth).with(csrf())
-                        .header("Idempotency-Key", sameCardKey).contentType("application/json")
-                        .content(sameCardBody)).andExpect(status().isOk()).andReturn()
+                .header("Idempotency-Key", sameCardKey).contentType("application/json")
+                .content(sameCardBody)).andExpect(status().isOk()).andReturn()
                 .getResponse().getContentAsString());
         assertThat(sameCardReplay.path("id").asText())
                 .isEqualTo(sameCardPrimary.path("id").asText());
         List<UUID> sameCardTaskIds = jdbc.sql("select id from task where project_id=:projectId "
-                        + "and input_json->>'sourceCanvasItemId'=:source "
-                        + "and input_json->>'generationCount'='2' "
-                        + "and input_json->>'prompt'='Two alternatives in one history'")
+                + "and input_json->>'sourceCanvasItemId'=:source "
+                + "and input_json->>'generationCount'='2' "
+                + "and input_json->>'prompt'='Two alternatives in one history'")
                 .param("projectId", project.id()).param("source", canvasItemId)
                 .query(UUID.class).list();
         assertThat(sameCardTaskIds).hasSize(2)
@@ -255,9 +262,9 @@ class MediaDraftPostgresIT {
         }
 
         JsonNode video = mapper.readTree(mvc.perform(post(base + "/artifacts")
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .header("Idempotency-Key", "draft-video-create")
-                        .content("{\"kind\":\"VIDEO\",\"title\":\"Clip\",\"content\":null}"))
+                .with(auth).with(csrf()).contentType("application/json")
+                .header("Idempotency-Key", "draft-video-create")
+                .content("{\"kind\":\"VIDEO\",\"title\":\"Clip\",\"content\":null}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         String videoId = video.path("id").asText();
         String videoItemId = place(mvc, auth, base, videoId);
@@ -282,10 +289,10 @@ class MediaDraftPostgresIT {
                         + "\"mentions\":[],\"durationSeconds\":5}"))
                 .andExpect(status().isOk());
         JsonNode videoTask = mapper.readTree(mvc.perform(post(base + "/artifacts/" + videoId
-                        + "/run").with(auth).with(csrf()).contentType("application/json")
-                        .header("Idempotency-Key", "draft-video-ready")
-                        .content("{\"canvasItemId\":\"" + videoItemId
-                                + "\",\"expectedDraftVersion\":2}"))
+                + "/run").with(auth).with(csrf()).contentType("application/json")
+                .header("Idempotency-Key", "draft-video-ready")
+                .content("{\"canvasItemId\":\"" + videoItemId
+                        + "\",\"expectedDraftVersion\":2}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(videoTask.path("input").path("mediaInput").path("images").get(0)
                 .path("versionId").asText())
@@ -300,9 +307,9 @@ class MediaDraftPostgresIT {
         for (int index = 0; index < 4; index++) {
             String name = "parallel-card-" + index;
             JsonNode card = mapper.readTree(mvc.perform(post(base + "/artifacts")
-                            .with(auth).with(csrf()).contentType("application/json")
-                            .header("Idempotency-Key", name)
-                            .content("{\"kind\":\"IMAGE\",\"title\":\"Parallel\",\"content\":null}"))
+                    .with(auth).with(csrf()).contentType("application/json")
+                    .header("Idempotency-Key", name)
+                    .content("{\"kind\":\"IMAGE\",\"title\":\"Parallel\",\"content\":null}"))
                     .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
             String cardId = card.path("id").asText();
             String itemId = place(mvc, auth, base, cardId);
@@ -313,16 +320,16 @@ class MediaDraftPostgresIT {
                             + "\"mediaInputs\":[],\"mentions\":[]}"))
                     .andExpect(status().isOk());
             JsonNode accepted = mapper.readTree(mvc.perform(post(base + "/artifacts/"
-                            + cardId + "/run").with(auth).with(csrf())
-                            .header("Idempotency-Key", name + "-run")
-                            .contentType("application/json")
-                            .content("{\"canvasItemId\":\"" + itemId
-                                    + "\",\"expectedDraftVersion\":1}"))
+                    + cardId + "/run").with(auth).with(csrf())
+                    .header("Idempotency-Key", name + "-run")
+                    .contentType("application/json")
+                    .content("{\"canvasItemId\":\"" + itemId
+                            + "\",\"expectedDraftVersion\":1}"))
                     .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
             lastQueued = UUID.fromString(accepted.path("id").asText());
         }
         JsonNode waiting = mapper.readTree(mvc.perform(get(base + "/tasks/" + lastQueued
-                        + "/queue").with(auth)).andExpect(status().isOk()).andReturn()
+                + "/queue").with(auth)).andExpect(status().isOk()).andReturn()
                 .getResponse().getContentAsString());
         assertThat(waiting.path("reason").asText()).isEqualTo("WAITING_WORKER");
         assertThat(waiting.path("waitingAhead").asInt()).isEqualTo(3);
@@ -332,7 +339,7 @@ class MediaDraftPostgresIT {
         }
         assertThat(taskService.claimBoundMedia("capacity-worker-last", 1)).isEmpty();
         JsonNode snapshot = mapper.readTree(mvc.perform(get(base + "/snapshot")
-                        .with(auth)).andExpect(status().isOk()).andReturn()
+                .with(auth)).andExpect(status().isOk()).andReturn()
                 .getResponse().getContentAsString());
         assertThat(snapshot.path("activeRun").isNull()).isTrue();
         assertThat(snapshot.path("activeTasks").size()).isEqualTo(4);
@@ -341,9 +348,9 @@ class MediaDraftPostgresIT {
                 Project.AspectRatio.LANDSCAPE_16_9);
         String otherBase = "/api/v1/projects/" + otherProject.id();
         JsonNode otherCard = mapper.readTree(mvc.perform(post(otherBase + "/artifacts")
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .header("Idempotency-Key", "capability-limited-card")
-                        .content("{\"kind\":\"IMAGE\",\"title\":\"Limited\",\"content\":null}"))
+                .with(auth).with(csrf()).contentType("application/json")
+                .header("Idempotency-Key", "capability-limited-card")
+                .content("{\"kind\":\"IMAGE\",\"title\":\"Limited\",\"content\":null}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         String otherId = otherCard.path("id").asText();
         String otherItemId = place(mvc, auth, otherBase, otherId);
@@ -354,11 +361,11 @@ class MediaDraftPostgresIT {
                         + "\"mediaInputs\":[],\"mentions\":[]}"))
                 .andExpect(status().isOk());
         JsonNode limitedTask = mapper.readTree(mvc.perform(post(otherBase + "/artifacts/"
-                        + otherId + "/run").with(auth).with(csrf())
-                        .header("Idempotency-Key", "capability-limited-run")
-                        .contentType("application/json")
-                        .content("{\"canvasItemId\":\"" + otherItemId
-                                + "\",\"expectedDraftVersion\":1}"))
+                + otherId + "/run").with(auth).with(csrf())
+                .header("Idempotency-Key", "capability-limited-run")
+                .contentType("application/json")
+                .content("{\"canvasItemId\":\"" + otherItemId
+                        + "\",\"expectedDraftVersion\":1}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(taskService.claimBoundMedia("capacity-worker-global", 1)).singleElement()
                 .extracting(task -> task.id().toString())
@@ -370,11 +377,11 @@ class MediaDraftPostgresIT {
             String base, String artifactId) throws Exception {
         String itemId = UUID.randomUUID().toString();
         mvc.perform(post(base + "/canvas/commands").with(auth).with(csrf())
-                        .contentType("application/json")
-                        .content("{\"commands\":[{\"type\":\"PLACE_ARTIFACT\","
-                                + "\"itemId\":\"" + itemId + "\",\"artifactId\":\""
-                                + artifactId + "\",\"x\":0,\"y\":0,\"width\":280,"
-                                + "\"height\":240,\"zIndex\":0,\"locked\":false}]}"))
+                .contentType("application/json")
+                .content("{\"commands\":[{\"type\":\"PLACE_ARTIFACT\","
+                        + "\"itemId\":\"" + itemId + "\",\"artifactId\":\""
+                        + artifactId + "\",\"x\":0,\"y\":0,\"width\":280,"
+                        + "\"height\":240,\"zIndex\":0,\"locked\":false}]}"))
                 .andExpect(status().isOk());
         return itemId;
     }

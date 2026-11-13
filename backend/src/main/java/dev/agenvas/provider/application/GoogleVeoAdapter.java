@@ -14,5 +14,8 @@ public class GoogleVeoAdapter extends GoogleVideoAdapter {
             GoogleVideoPreparedMedia references, MediaToolRunner tools, ObjectMapper mapper) {
         super(catalog, cipher, client, references, tools, mapper);
     }
-    @Override public String adapterId() { return GoogleVideoModels.VEO; }
+    @Override
+    public String adapterId() {
+        return GoogleVideoModels.VEO;
+    }
 }

@@ -55,8 +55,8 @@ import tools.jackson.databind.ObjectMapper;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = {AgenvasApplication.class,
         ConversationMemoryPostgresIT.FakeModelConfig.class}, properties = {
-        "agenvas.llm.mode=mock",
-        "agenvas.llm.scheduler-enabled=false"})
+                "agenvas.llm.mode=mock",
+                "agenvas.llm.scheduler-enabled=false"})
 class ConversationMemoryPostgresIT {
 
     @Container
@@ -69,18 +69,30 @@ class ConversationMemoryPostgresIT {
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private AgentRunService runs;
-    @Autowired private AgentConversationService conversations;
-    @Autowired private AgentTurnWorker worker;
-    @Autowired private ToolExecutionRepository ledger;
-    @Autowired private ConversationMemoryReader memoryReader;
-    @Autowired private InitialModelContextService initialContext;
-    @Autowired private LlmProtocolCodec codec;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private ObjectMapper mapper;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private AgentInstanceService agents;
+    @Autowired
+    private AgentRunService runs;
+    @Autowired
+    private AgentConversationService conversations;
+    @Autowired
+    private AgentTurnWorker worker;
+    @Autowired
+    private ToolExecutionRepository ledger;
+    @Autowired
+    private ConversationMemoryReader memoryReader;
+    @Autowired
+    private InitialModelContextService initialContext;
+    @Autowired
+    private LlmProtocolCodec codec;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private ObjectMapper mapper;
 
     @Test
     void publicHistoryIsFrozenIntoRealMessagesAndTruncatedWithoutLeakingPrivateProtocol() {
@@ -126,7 +138,7 @@ class ConversationMemoryPostgresIT {
         assertThat(memory.entries().getFirst().content()).isEqualTo(first.instruction());
         assertThat(memory.entries().getLast().role()).isEqualTo(Role.ASSISTANT);
         assertThat(memory.entries().getLast().content()).contains("公开回复：狐狸在青山旁。", "已提交业务动作记录",
-                        "[业务动作已完成] 已创建文字产物。", "历史运行状态记录：CANCELED")
+                "[业务动作已完成] 已创建文字产物。", "历史运行状态记录：CANCELED")
                 .doesNotContain("PRIVATE_", "argumentHash", "tool_call_id");
         assertThat(memory.truncated()).isFalse();
         assertThat(memory.priorRunCount()).isEqualTo(1);
@@ -157,7 +169,8 @@ class ConversationMemoryPostgresIT {
                           '\"之后才到达的公开内容\"'::jsonb) where run_id = :runId and status = 'SUCCEEDED'
                         """).param("runId", first.id()).update();
         assertThat(initialContext.assemble(owner.userId(), project.id(), second.id()))
-                .extracting(Message::getText).containsExactlyElementsOf(request.stream().map(Message::getText).toList());
+                .extracting(Message::getText)
+                .containsExactlyElementsOf(request.stream().map(Message::getText).toList());
         assertThat(worker.runOnce("memory-second-worker")).isEqualTo(1);
         JsonNode actualRequest = mapper.readTree(jdbc.sql("""
                         select request_json::text from llm_turn where run_id = :runId and step_index = 0
@@ -185,7 +198,7 @@ class ConversationMemoryPostgresIT {
                             update task set status = 'SUCCEEDED', output_json = cast(:output as jsonb)
                             where run_id = :runId and kind = 'AGENT_TURN'
                             """).param("runId", prior.id()).param("output", mapper.writeValueAsString(
-                            java.util.Map.of("assistantText", "回答😀".repeat(2_000)))).update();
+                    java.util.Map.of("assistantText", "回答😀".repeat(2_000)))).update();
             longHistory.add(prior.id());
         }
         ConversationMemory bounded = memoryReader.read(project.id(), longHistory);
@@ -195,7 +208,8 @@ class ConversationMemoryPostgresIT {
         assertThat(bounded.entries().getFirst().content()).isEqualTo(first.instruction());
         assertThat(bounded.entries().get(bounded.entries().size() - 2).content()).startsWith("历史第11轮：");
         assertThat(bounded.entries()).noneSatisfy(entry -> assertThat(entry.content()).startsWith("历史第0轮："));
-        assertThat(bounded.entries().stream().mapToInt(entry -> entry.content().codePointCount(0, entry.content().length())).sum())
+        assertThat(bounded.entries().stream()
+                .mapToInt(entry -> entry.content().codePointCount(0, entry.content().length())).sum())
                 .isLessThanOrEqualTo(ConversationMemoryReader.MAX_HISTORY_CODE_POINTS);
         for (var entry : bounded.entries()) {
             assertThat(entry.content()).doesNotContain("\uFFFD");
@@ -204,7 +218,8 @@ class ConversationMemoryPostgresIT {
                 if (Character.isHighSurrogate(value)) {
                     assertThat(offset + 1).isLessThan(entry.content().length());
                     assertThat(Character.isLowSurrogate(entry.content().charAt(++offset))).isTrue();
-                } else assertThat(Character.isLowSurrogate(value)).isFalse();
+                } else
+                    assertThat(Character.isLowSurrogate(value)).isFalse();
             }
         }
         assertThat(jdbc.sql("select count(*) from agent_run where project_id = :projectId")
@@ -233,8 +248,7 @@ class ConversationMemoryPostgresIT {
         /** 每回合调用一次的只读工具；读取不改变任何业务状态。 */
         private static final String TOOL_NAME = "read_project_summary";
         /** 调用序号，保证同一步内的 tool_call_id 稳定且唯一。 */
-        private final java.util.concurrent.atomic.AtomicInteger calls =
-                new java.util.concurrent.atomic.AtomicInteger();
+        private final java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
 
         @Override
         public Exchange call(List<Message> messages, List<ToolCallback> tools,

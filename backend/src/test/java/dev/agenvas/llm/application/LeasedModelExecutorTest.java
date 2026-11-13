@@ -62,7 +62,9 @@ class LeasedModelExecutorTest {
         try (Fixture fixture = new Fixture(); var execution = fixture.open()) {
             assertThat(execution.call(() -> "synthetic response", WAIT)).isEqualTo("synthetic response");
             IllegalArgumentException modelFailure = new IllegalArgumentException("Synthetic model error");
-            assertThatThrownBy(() -> execution.call(() -> { throw modelFailure; }, WAIT))
+            assertThatThrownBy(() -> execution.call(() -> {
+                throw modelFailure;
+            }, WAIT))
                     .isInstanceOf(ExecutionException.class).hasCause(modelFailure);
             execution.checkActive();
         }
@@ -286,7 +288,9 @@ class LeasedModelExecutorTest {
         CountDownLatch running = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         AtomicBoolean rejectedCallRan = new AtomicBoolean();
-        try (Fixture fixture = new Fixture(); var first = fixture.open(); var queued = fixture.open();
+        try (Fixture fixture = new Fixture();
+                var first = fixture.open();
+                var queued = fixture.open();
                 var excess = fixture.open()) {
             try {
                 Future<String> firstOwner = fixture.callers.submit(() -> first.call(() -> {
@@ -341,7 +345,8 @@ class LeasedModelExecutorTest {
 
                 for (Future<?> owner : List.of(firstOwner, queuedOwner)) {
                     assertThatThrownBy(() -> owner.get(5, TimeUnit.SECONDS))
-                            .isInstanceOf(ExecutionException.class).hasCauseInstanceOf(LeasedModelExecutor.Stopped.class);
+                            .isInstanceOf(ExecutionException.class)
+                            .hasCauseInstanceOf(LeasedModelExecutor.Stopped.class);
                 }
                 assertThatThrownBy(fixture::open).isInstanceOf(LeasedModelExecutor.Stopped.class);
                 assertThat(fixture.models.isShutdown()).isTrue();
@@ -394,8 +399,10 @@ class LeasedModelExecutorTest {
     void independentWorkerInstancesKeepIndependentModelCapacity() throws Exception {
         CountDownLatch running = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
-        try (Fixture blocked = new Fixture(); Fixture other = new Fixture();
-                var first = blocked.open(); var independent = other.open()) {
+        try (Fixture blocked = new Fixture();
+                Fixture other = new Fixture();
+                var first = blocked.open();
+                var independent = other.open()) {
             try {
                 Future<String> oldOwner = blocked.callers.submit(() -> first.call(() -> {
                     running.countDown();

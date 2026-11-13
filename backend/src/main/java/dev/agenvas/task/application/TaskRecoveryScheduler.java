@@ -8,8 +8,7 @@ import org.springframework.stereotype.Component;
 
 /** 定期扫描过期提交与取消租约；将不确定外部提交归为 UNKNOWN，不重新请求 Provider。 */
 @Component
-@ConditionalOnProperty(prefix = "agenvas", name = "recovery-mode",
-        havingValue = "false", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "agenvas", name = "recovery-mode", havingValue = "false", matchIfMissing = true)
 public class TaskRecoveryScheduler {
 
     /** 记录恢复数量或本轮扫描错误，不输出任务输入。 */

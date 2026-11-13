@@ -81,8 +81,8 @@ class MediaDraftConnectionsTest {
         assertThat(saved.mediaInputs()).singleElement().satisfies(input -> {
             assertThat(input.versionId()).isEqualTo(version);
             assertThat(input.role()).isEqualTo(MediaDraft.InputRole.REFERENCE);
-            assertThat(input.sources()).singleElement().satisfies(source ->
-                    assertThat(source.connectionId()).isEqualTo(connection));
+            assertThat(input.sources()).singleElement()
+                    .satisfies(source -> assertThat(source.connectionId()).isEqualTo(connection));
         });
         assertThat(saved.videoInputMode()).isEqualTo(MediaDraft.VideoInputMode.GENERAL_REFERENCE);
     }
@@ -183,8 +183,8 @@ class MediaDraftConnectionsTest {
                     mediaArtifact(sourceArtifact, kind), null));
             workflow(List.of(slot("source", RunningHubDefinition.FieldType.valueOf(kind.name()))));
             draft(mapper.createObjectNode(), List.of());
-            assertThat(connect("source").mediaInputs()).singleElement().satisfies(input ->
-                    assertThat(MediaDraftService.mediaKind(input.role())).isEqualTo(kind));
+            assertThat(connect("source").mediaInputs()).singleElement()
+                    .satisfies(input -> assertThat(MediaDraftService.mediaKind(input.role())).isEqualTo(kind));
         }
     }
 
@@ -192,7 +192,8 @@ class MediaDraftConnectionsTest {
     void comfyConnectionsPreserveLegacyPositionalSlotsAndBindTheNewSlot() {
         var settings = ComfyWorkflowFixture.settings(mapper, true, true);
         var graph = settings.path("comfyWorkflow").path("graph");
-        ((ObjectNode) graph).putObject("15").put("class_type", "LoadImage").putObject("inputs").put("image", "second.png");
+        ((ObjectNode) graph).putObject("15").put("class_type", "LoadImage").putObject("inputs").put("image",
+                "second.png");
         ((ObjectNode) graph.path("14").path("inputs")).putArray("secondReference").add("15").add(0);
         ((tools.jackson.databind.node.ArrayNode) settings.path("comfyWorkflow").path("bindings"))
                 .addObject().put("nodeId", "15").put("inputName", "image")
@@ -204,7 +205,8 @@ class MediaDraftConnectionsTest {
                 MediaDraft.InputRole.REFERENCE, 0, "#7C3AED", List.of(new MediaDraft.InputSource(
                         UUID.randomUUID(), MediaDraft.SourceType.MANUAL, null)))));
         var saved = service.addConnectionInputWithinChange(owner, project, item, 0, version, connection);
-        assertThat(saved.parameters().path("dynamicValues").path("reference_0").asText()).isEqualTo(previous.toString());
+        assertThat(saved.parameters().path("dynamicValues").path("reference_0").asText())
+                .isEqualTo(previous.toString());
         assertThat(saved.parameters().path("dynamicValues").path("reference_1").asText()).isEqualTo(version.toString());
     }
 
@@ -262,7 +264,8 @@ class MediaDraftConnectionsTest {
     private void workflow(List<RunningHubDefinition.Field> fields) {
         when(capabilities.declaredDraftInputs(capability)).thenReturn(fields);
         when(capabilities.declaredMediaSlotKeys(capability)).thenReturn(fields.stream()
-                .filter(RunningHubDefinition.Field::media).map(RunningHubDefinition.Field::key).collect(java.util.stream.Collectors.toSet()));
+                .filter(RunningHubDefinition.Field::media).map(RunningHubDefinition.Field::key)
+                .collect(java.util.stream.Collectors.toSet()));
         when(capabilities.runningHubDefinition(binding)).thenReturn(new RunningHubDefinition(1,
                 "V2", RunningHubDefinition.TargetType.WORKFLOW, "123456", fields, List.of(), List.of(),
                 "default", false, false, null, null, null, null));

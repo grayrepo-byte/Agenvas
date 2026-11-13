@@ -11,14 +11,38 @@ import "../src/styles.css";
 // Synthetic inputs exercise the real modal scroll lock without backend or credentials.
 const NODE_COUNT = 40;
 const initial: RunningHubDefinition = {
-  schemaVersion: 1, protocolVersion: "V2", targetType: "AI_APP", targetId: "123",
-  fields: [...Array.from({ length: NODE_COUNT }, (_, index): RunningHubDefinition["fields"][number] => ({
-    key: `reference${index + 1}`, label: `参考图${index + 1}`, type: "IMAGE",
-    // The last node contains unfinished mappings; unchecking it must bypass native validation.
-    nodeId: String(index + 1), fieldName: index === NODE_COUNT - 1 ? "" : "image", required: false, advanced: false,
-  })), { key: "manualSeed", label: "随机种子", type: "INTEGER", nodeId: "1", fieldName: "", defaultValue: 42, required: false, advanced: false }], outputs: [{ kind: "IMAGE", primary: true, maxCount: 1 }],
+  schemaVersion: 1,
+  protocolVersion: "V2",
+  targetType: "AI_APP",
+  targetId: "123",
+  fields: [
+    ...Array.from({ length: NODE_COUNT }, (_, index): RunningHubDefinition["fields"][number] => ({
+      key: `reference${index + 1}`,
+      label: `参考图${index + 1}`,
+      type: "IMAGE",
+      // The last node contains unfinished mappings; unchecking it must bypass native validation.
+      nodeId: String(index + 1),
+      fieldName: index === NODE_COUNT - 1 ? "" : "image",
+      required: false,
+      advanced: false,
+    })),
+    {
+      key: "manualSeed",
+      label: "随机种子",
+      type: "INTEGER",
+      nodeId: "1",
+      fieldName: "",
+      defaultValue: 42,
+      required: false,
+      advanced: false,
+    },
+  ],
+  outputs: [{ kind: "IMAGE", primary: true, maxCount: 1 }],
   fixedBindings: [{ nodeId: String(NODE_COUNT), fieldName: "", value: 8 }],
-  nodeOptions: [{ nodeId: "101", label: "预览图片" }, { nodeId: "102", label: `保存图片 · ${"较长输出节点名称".repeat(18)}` }],
+  nodeOptions: [
+    { nodeId: "101", label: "预览图片" },
+    { nodeId: "102", label: `保存图片 · ${"较长输出节点名称".repeat(18)}` },
+  ],
 };
 function Fixture() {
   const [open, setOpen] = useState(false);
@@ -26,18 +50,42 @@ function Fixture() {
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>();
   const [selectedFieldKeys, setSelectedFieldKeys] = useState<string[]>();
   const [published, setPublished] = useState<RunningHubDefinition>();
-  return <main className="app-page">
-    <Button onClick={() => setOpen(true)}>打开配置</Button>
-    <output hidden data-testid="published-definition">{published ? JSON.stringify(published) : ""}</output>
-    {open ? <Dialog title="合成 RunningHub 配置" className="runninghub-capability-dialog"
-      onClose={() => setOpen(false)} onSubmit={(event) => {
-        event.preventDefault(); setPublished(selectRunningHubNodes(definition, selectedNodeIds, selectedFieldKeys));
-      }} footer={<Button type="submit">保存合成配置</Button>}>
-      <RunningHubDefinitionEditor connectionId="synthetic" adapterId="RUNNINGHUB_IMAGE" value={definition}
-        selectedNodeIds={selectedNodeIds} selectedFieldKeys={selectedFieldKeys} onChange={(next, _kind, selection, fieldKeys) => {
-          setDefinition(next); setSelectedNodeIds(selection); setSelectedFieldKeys(fieldKeys);
-        }} />
-    </Dialog> : null}
-  </main>;
+  return (
+    <main className="app-page">
+      <Button onClick={() => setOpen(true)}>打开配置</Button>
+      <output hidden data-testid="published-definition">
+        {published ? JSON.stringify(published) : ""}
+      </output>
+      {open ? (
+        <Dialog
+          title="合成 RunningHub 配置"
+          className="runninghub-capability-dialog"
+          onClose={() => setOpen(false)}
+          onSubmit={event => {
+            event.preventDefault();
+            setPublished(selectRunningHubNodes(definition, selectedNodeIds, selectedFieldKeys));
+          }}
+          footer={<Button type="submit">保存合成配置</Button>}
+        >
+          <RunningHubDefinitionEditor
+            connectionId="synthetic"
+            adapterId="RUNNINGHUB_IMAGE"
+            value={definition}
+            selectedNodeIds={selectedNodeIds}
+            selectedFieldKeys={selectedFieldKeys}
+            onChange={(next, _kind, selection, fieldKeys) => {
+              setDefinition(next);
+              setSelectedNodeIds(selection);
+              setSelectedFieldKeys(fieldKeys);
+            }}
+          />
+        </Dialog>
+      ) : null}
+    </main>
+  );
 }
-createRoot(document.getElementById("root")!).render(<QueryClientProvider client={new QueryClient()}><Fixture /></QueryClientProvider>);
+createRoot(document.getElementById("root")!).render(
+  <QueryClientProvider client={new QueryClient()}>
+    <Fixture />
+  </QueryClientProvider>,
+);

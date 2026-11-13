@@ -63,11 +63,16 @@ class McpTokenPostgresIT {
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired McpTokenService tokens;
-    @Autowired JdbcClient jdbc;
-    @Autowired PlatformTransactionManager transactions;
-    @Autowired WebApplicationContext context;
-    @Autowired ObjectMapper mapper;
+    @Autowired
+    McpTokenService tokens;
+    @Autowired
+    JdbcClient jdbc;
+    @Autowired
+    PlatformTransactionManager transactions;
+    @Autowired
+    WebApplicationContext context;
+    @Autowired
+    ObjectMapper mapper;
     private MockMvc mvc;
     private UUID userId;
 
@@ -80,9 +85,9 @@ class McpTokenPostgresIT {
     @Test
     void oneTimeSecretIsNeverReturnedInMetadataAndAccessIsUserScoped() throws Exception {
         var response = mvc.perform(post("/api/v1/account/mcp-tokens")
-                        .with(authentication(webUser(userId))).with(csrf())
-                        .contentType("application/json")
-                        .content("{\"name\":\"External director\",\"scopes\":[\"READ\",\"MEDIA_GENERATE\"]}"))
+                .with(authentication(webUser(userId))).with(csrf())
+                .contentType("application/json")
+                .content("{\"name\":\"External director\",\"scopes\":[\"READ\",\"MEDIA_GENERATE\"]}"))
                 .andExpect(status().isCreated()).andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.credential.version").value(0))
                 .andReturn().getResponse().getContentAsString();
@@ -108,12 +113,12 @@ class McpTokenPostgresIT {
         jdbc.sql("update app_user set status='DISABLED' where status='ACTIVE'").update();
         jdbc.sql("update app_user set status='ACTIVE' where id=:id").param("id", userId).update();
         mvc.perform(post("/api/v1/account/mcp-tokens/" + tokenId + "/revoke")
-                        .with(authentication(webUser(userId))).with(csrf())
-                        .contentType("application/json").content("{\"expectedVersion\":0}"))
+                .with(authentication(webUser(userId))).with(csrf())
+                .contentType("application/json").content("{\"expectedVersion\":0}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.version").value(1));
         mvc.perform(post("/api/v1/account/mcp-tokens/" + tokenId + "/revoke")
-                        .with(authentication(webUser(userId))).with(csrf())
-                        .contentType("application/json").content("{\"expectedVersion\":0}"))
+                .with(authentication(webUser(userId))).with(csrf())
+                .contentType("application/json").content("{\"expectedVersion\":0}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.version").value(1));
         assertCode("MCP_UNAUTHENTICATED", () -> tokens.authenticate(rawToken));
         assertCode("MCP_UNAUTHENTICATED", () -> tokens.requireValidForRead(principal));
@@ -123,19 +128,19 @@ class McpTokenPostgresIT {
     void sessionAndBasicCannotAuthenticateMcpAndBearerCannotManageAccount() throws Exception {
         var created = createToken();
         mvc.perform(post("/mcp").with(authentication(webUser(userId)))
-                        .contentType("application/json").content("{}"))
+                .contentType("application/json").content("{}"))
                 .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("MCP_UNAUTHENTICATED"));
         mvc.perform(post("/mcp").header("Authorization", "Basic synthetic")
-                        .contentType("application/json").content("{}"))
+                .contentType("application/json").content("{}"))
                 .andExpect(status().isUnauthorized());
         mvc.perform(get("/api/v1/account/mcp-tokens").header("Authorization", "Bearer " + created.token()))
                 .andExpect(status().isUnauthorized());
         // No broad /mcp/** CSRF exemption: only the exact transport endpoint has its own chain.
         mvc.perform(post("/mcp/other").with(authentication(webUser(userId)))
-                        .header("Authorization", "Bearer " + created.token()).contentType("application/json").content("{}"))
+                .header("Authorization", "Bearer " + created.token()).contentType("application/json").content("{}"))
                 .andExpect(status().isForbidden());
         mvc.perform(post("/api/v1/account/mcp-tokens").with(authentication(webUser(userId)))
-                        .contentType("application/json").content("{\"name\":\"test\",\"scopes\":[\"READ\"]}"))
+                .contentType("application/json").content("{\"name\":\"test\",\"scopes\":[\"READ\"]}"))
                 .andExpect(status().isForbidden());
         var tokenPrincipal = tokens.authenticate(created.token());
         Authentication fabricated = UsernamePasswordAuthenticationToken.authenticated(tokenPrincipal, null,
@@ -150,7 +155,8 @@ class McpTokenPostgresIT {
         var principal = tokens.authenticate(created.token());
         assertThatThrownBy(() -> tokens.requireValidForWrite(principal))
                 .isInstanceOf(IllegalTransactionStateException.class);
-        jdbc.sql("update mcp_access_token set created_at=now()-interval '2 days', expires_at=now()-interval '1 day' where id=:id")
+        jdbc.sql(
+                "update mcp_access_token set created_at=now()-interval '2 days', expires_at=now()-interval '1 day' where id=:id")
                 .param("id", principal.tokenId()).update();
         assertCode("MCP_UNAUTHENTICATED", () -> tokens.authenticate(created.token()));
         assertCode("MCP_UNAUTHENTICATED", () -> tokens.requireValidForRead(principal));

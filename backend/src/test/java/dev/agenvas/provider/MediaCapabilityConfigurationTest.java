@@ -52,9 +52,11 @@ class MediaCapabilityConfigurationTest {
         ((ObjectNode) withCanonical.path("pricingByResolution")).putObject("720p")
                 .put("amount", "0.3").put("currency", "CNY").put("unit", "SECOND");
         assertThat(MediaCapabilityConfiguration.price(withCanonical, "720p").path("amount").asText()).isEqualTo("0.3");
-        assertThat(MediaCapabilityConfiguration.canonicalNativeResolutionPrices((ObjectNode) withCanonical.path("pricingByResolution"))
+        assertThat(MediaCapabilityConfiguration
+                .canonicalNativeResolutionPrices((ObjectNode) withCanonical.path("pricingByResolution"))
                 .path("720p").path("amount").asText()).isEqualTo("0.3");
-        var ordinary = (ObjectNode) legacy.deepCopy(); ordinary.remove("nativeInputs");
+        var ordinary = (ObjectNode) legacy.deepCopy();
+        ordinary.remove("nativeInputs");
         assertThat(MediaCapabilityConfiguration.price(ordinary, "720p").path("amount").asText()).isEqualTo("0.1");
     }
 
@@ -98,11 +100,12 @@ class MediaCapabilityConfigurationTest {
     @Test
     void videoReferencesCanBeDisabledOrNarrowedButCannotExceedProtocol() {
         var adapter = registry.declaration("ARK_SEEDANCE_2_I2V");
-        for (int limit : new int[] { 0, 1, 3 }) {
+        for (int limit : new int[]{0, 1, 3}) {
             var settings = normalize("ARK_SEEDANCE_2_I2V", "{\"maxReferenceVideos\":" + limit + "}");
             assertThat(MediaCapabilityConfiguration.policy(adapter, settings).maxReferenceVideos()).isEqualTo(limit);
         }
-        for (String json : List.of("{\"maxReferenceVideos\":4}", "{\"maxReferenceVideos\":-1}", "{\"maxReferenceVideos\":1.5}"))
+        for (String json : List.of("{\"maxReferenceVideos\":4}", "{\"maxReferenceVideos\":-1}",
+                "{\"maxReferenceVideos\":1.5}"))
             assertThatThrownBy(() -> normalize("ARK_SEEDANCE_2_I2V", json)).isInstanceOf(ApiProblemException.class);
         assertThatThrownBy(() -> normalize("COMFY_VIDEO_V1", "{\"maxReferenceVideos\":1}"))
                 .isInstanceOf(ApiProblemException.class);
@@ -140,8 +143,10 @@ class MediaCapabilityConfigurationTest {
                 "{\"maxReferenceAudios\":1}", "{\"maxReferenceVideos\":1}")) {
             assertThatThrownBy(() -> normalize("KLING_VIDEO_3", json)).isInstanceOf(ApiProblemException.class);
         }
-        assertThat(normalize("KLING_IMAGE_3", "{\"defaultParameters\":{\"resolution\":\"2K\",\"aspectRatio\":\"21:9\"}}")
-                .at("/defaultParameters/resolution").asText()).isEqualTo("2K");
+        assertThat(
+                normalize("KLING_IMAGE_3", "{\"defaultParameters\":{\"resolution\":\"2K\",\"aspectRatio\":\"21:9\"}}")
+                        .at("/defaultParameters/resolution").asText())
+                .isEqualTo("2K");
         for (String json : List.of("{\"defaultParameters\":{\"resolution\":\"4K\"}}",
                 "{\"defaultParameters\":{\"transparentBackground\":true}}", "{\"maxReferenceImages\":2}")) {
             assertThatThrownBy(() -> normalize("KLING_IMAGE_3", json)).isInstanceOf(ApiProblemException.class);
@@ -192,7 +197,8 @@ class MediaCapabilityConfigurationTest {
                 .maxReferenceImages()).isEqualTo(14);
     }
 
-    @Test void resolutionPricesUsePublishedTiersAndSameDecimalAndUnitRules() {
+    @Test
+    void resolutionPricesUsePublishedTiersAndSameDecimalAndUnitRules() {
         var source = mapper.readTree("""
                 {"workflowId":"minimax_h3_z0901","videoResolution":"480p","videoResolutions":["480p","768p"],
                 "pricing":{"amount":"1","currency":"CNY","unit":"VIDEO"},
@@ -209,7 +215,8 @@ class MediaCapabilityConfigurationTest {
                 "{\"768p\":{\"amount\":\"1\",\"currency\":\"CNY\",\"unit\":\"IMAGE\"}}",
                 "{\"768p\":{\"amount\":\"0.1234567\",\"currency\":\"CNY\",\"unit\":\"SECOND\"}}", "[]")) {
             ((ObjectNode) source).set("pricingByResolution", mapper.readTree(json));
-            assertThatThrownBy(() -> MediaCapabilityConfiguration.normalize(mapper, registry.declaration("AUTODL_COMFY_VIDEO"), source, target))
+            assertThatThrownBy(() -> MediaCapabilityConfiguration.normalize(mapper,
+                    registry.declaration("AUTODL_COMFY_VIDEO"), source, target))
                     .isInstanceOf(ApiProblemException.class);
         }
     }
@@ -217,7 +224,8 @@ class MediaCapabilityConfigurationTest {
     private ObjectNode normalize(String adapter, String json) {
         JsonNode source = mapper.readTree(json);
         ObjectNode target = dev.agenvas.provider.domain.NativeMediaProfiles.supports(adapter)
-                ? dev.agenvas.provider.domain.NativeMediaProfiles.normalizeSettings(adapter, source, mapper) : mapper.createObjectNode();
+                ? dev.agenvas.provider.domain.NativeMediaProfiles.normalizeSettings(adapter, source, mapper)
+                : mapper.createObjectNode();
         MediaCapabilityConfiguration.normalize(mapper, registry.declaration(adapter), source, target);
         return target;
     }

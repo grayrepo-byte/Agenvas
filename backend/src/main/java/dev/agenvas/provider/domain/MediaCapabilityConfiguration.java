@@ -16,30 +16,39 @@ import tools.jackson.databind.node.ObjectNode;
 /** Versioned administrator defaults, prices and narrower limits within a compiled protocol. */
 public final class MediaCapabilityConfiguration {
     public static final Set<String> FIELDS = Set.of("defaultParameters", "defaultDurationSeconds",
-            "minimumSeconds", "maximumSeconds", "maxReferenceImages", "maxReferenceAudios", "maxReferenceVideos", "pricing", "pricingByResolution", "tokenPricing");
+            "minimumSeconds", "maximumSeconds", "maxReferenceImages", "maxReferenceAudios", "maxReferenceVideos",
+            "pricing", "pricingByResolution", "tokenPricing");
     private static final Set<String> PRICE_FIELDS = Set.of("amount", "currency", "unit");
     private static final Set<String> CURRENCIES = Set.of("CNY", "USD");
     private static final String PRICE_PATTERN = "[0-9]{1,10}(\\.[0-9]{1,6})?";
 
-    private MediaCapabilityConfiguration() {}
+    private MediaCapabilityConfiguration() {
+    }
 
     public static void normalize(ObjectMapper mapper, MediaAdapterRegistry.Declaration adapter,
             JsonNode source, ObjectNode target) {
         var policy = policy(adapter, source);
-        for (String field : List.of("minimumSeconds", "maximumSeconds", "maxReferenceImages", "maxReferenceAudios", "maxReferenceVideos")) {
-            if (source.has(field)) target.set(field, source.get(field));
+        for (String field : List.of("minimumSeconds", "maximumSeconds", "maxReferenceImages", "maxReferenceAudios",
+                "maxReferenceVideos")) {
+            if (source.has(field))
+                target.set(field, source.get(field));
         }
         if (source.has("defaultDurationSeconds")) {
-            if (adapter.kind() != Task.Kind.VIDEO_GENERATION) throw invalid(ApiMessage.of("api.media-capability-configuration.picture-capabilities-do-not-accept-video-duration"));
+            if (adapter.kind() != Task.Kind.VIDEO_GENERATION)
+                throw invalid(ApiMessage
+                        .of("api.media-capability-configuration.picture-capabilities-do-not-accept-video-duration"));
             target.put("defaultDurationSeconds", integer(source, "defaultDurationSeconds",
                     policy.minimumSeconds(), policy.minimumSeconds(), policy.maximumSeconds()));
         }
         if (source.has("defaultParameters")) {
             JsonNode parameters = source.get("defaultParameters");
-            if (!parameters.isObject()) throw invalid(ApiMessage.of("api.media-capability-configuration.default-build-parameters-must-be-objects"));
+            if (!parameters.isObject())
+                throw invalid(
+                        ApiMessage.of("api.media-capability-configuration.default-build-parameters-must-be-objects"));
             if (target.has("nativeInputs") || adapter.platform() == MediaPlatform.KLING && target.has("operation")) {
                 // Kling owns native scalar defaults. The compiled profile validates them before this step.
-                if (!target.has("defaultParameters")) throw KlingProtocol.invalid();
+                if (!target.has("defaultParameters"))
+                    throw KlingProtocol.invalid();
             } else if (adapter.kind() == Task.Kind.IMAGE_GENERATION) {
                 ObjectNode imageParameters = (ObjectNode) parameters.deepCopy();
                 if (!imageParameters.has("quality") && source.has("quality")) {
@@ -51,15 +60,19 @@ public final class MediaCapabilityConfiguration {
                         adapter.supportsTransparentBackground());
                 target.set("defaultParameters", parsed.toJson(mapper));
             } else if (adapter.kind() == Task.Kind.AUDIO_GENERATION) {
-                target.set("defaultParameters", dev.agenvas.artifact.domain.AudioGenerationParameters.parse(parameters).toJson(mapper));
+                target.set("defaultParameters",
+                        dev.agenvas.artifact.domain.AudioGenerationParameters.parse(parameters).toJson(mapper));
             } else {
                 var parsed = VideoGenerationParameters.parse(parameters);
                 if (adapter.platform() == MediaPlatform.MINIMAX) {
-                    parsed = new VideoGenerationParameters(parsed.aspectRatio(), MiniMaxH3Protocol.resolution(parsed.videoResolution()));
+                    parsed = new VideoGenerationParameters(parsed.aspectRatio(),
+                            MiniMaxH3Protocol.resolution(parsed.videoResolution()));
                 } else if (adapter.platform() == MediaPlatform.KLING) {
-                    parsed = new VideoGenerationParameters(parsed.aspectRatio(), KlingProtocol.resolution(parsed.videoResolution()));
+                    parsed = new VideoGenerationParameters(parsed.aspectRatio(),
+                            KlingProtocol.resolution(parsed.videoResolution()));
                 } else if (parsed.videoResolution() != null)
-                    throw invalid(ApiMessage.of("api.auto-dl-workflows.this-workflow-does-not-support-this-resolution"));
+                    throw invalid(
+                            ApiMessage.of("api.auto-dl-workflows.this-workflow-does-not-support-this-resolution"));
                 target.set("defaultParameters", parsed.toJson(mapper));
             }
         }
@@ -69,11 +82,14 @@ public final class MediaCapabilityConfiguration {
                 throw invalid(ApiMessage.of("api.media-capability-configuration.invalid-token-pricing"));
             target.set("tokenPricing", ImageTokenPricing.normalize(mapper, source.get("tokenPricing")));
         }
-        if (source.has("pricing")) target.set("pricing", normalizePrice(mapper, adapter, source.get("pricing")));
+        if (source.has("pricing"))
+            target.set("pricing", normalizePrice(mapper, adapter, source.get("pricing")));
         if (source.has("pricingByResolution")) {
             JsonNode prices = source.get("pricingByResolution");
             // Resolution prices are limited to protocols declaring selectable tiers.
-            if (!target.has("nativeInputs") && !Set.of(MediaPlatform.AUTODL, MediaPlatform.MINIMAX, MediaPlatform.KLING).contains(adapter.platform())
+            if (!target.has("nativeInputs")
+                    && !Set.of(MediaPlatform.AUTODL, MediaPlatform.MINIMAX, MediaPlatform.KLING)
+                            .contains(adapter.platform())
                     || adapter.kind() != Task.Kind.VIDEO_GENERATION || !prices.isObject())
                 throw invalid(ApiMessage.of("api.auto-dl-workflows.this-workflow-does-not-support-this-resolution"));
             ObjectNode normalized = target.putObject("pricingByResolution");
@@ -82,22 +98,29 @@ public final class MediaCapabilityConfiguration {
                 if (target.has("nativeInputs")) {
                     priceTier = nativeResolutionTier(tier);
                     boolean supported = false;
-                    for (JsonNode field : target.path("nativeInputs")) if ("resolution".equals(field.path("key").asText()))
-                        for (JsonNode option : field.path("options"))
-                            if (priceTier.equals(nativeResolutionTier(option.path("value").asText()))) supported = true;
-                    if (!supported || normalized.has(priceTier)) throw NativeMediaProfiles.invalid();
-                } else if (adapter.platform() == MediaPlatform.MINIMAX) MiniMaxH3Protocol.resolution(tier);
+                    for (JsonNode field : target.path("nativeInputs"))
+                        if ("resolution".equals(field.path("key").asText()))
+                            for (JsonNode option : field.path("options"))
+                                if (priceTier.equals(nativeResolutionTier(option.path("value").asText())))
+                                    supported = true;
+                    if (!supported || normalized.has(priceTier))
+                        throw NativeMediaProfiles.invalid();
+                } else if (adapter.platform() == MediaPlatform.MINIMAX)
+                    MiniMaxH3Protocol.resolution(tier);
                 else if (adapter.platform() == MediaPlatform.KLING) {
                     KlingProtocol.resolution(tier);
                     if (target.has("operation")) {
                         var profile = KlingModels.resolve(target, adapter.kind());
                         String nativeTier = "2160p".equals(tier) ? "4k" : tier;
-                        boolean supported = KlingModels.inputs(profile).stream().filter(field -> "resolution".equals(field.key()))
-                                .anyMatch(field -> field.options().stream().anyMatch(option -> nativeTier.equals(option.value().asText())));
-                        if (!supported) throw KlingProtocol.invalid();
+                        boolean supported = KlingModels.inputs(profile).stream()
+                                .filter(field -> "resolution".equals(field.key()))
+                                .anyMatch(field -> field.options().stream()
+                                        .anyMatch(option -> nativeTier.equals(option.value().asText())));
+                        if (!supported)
+                            throw KlingProtocol.invalid();
                     }
-                }
-                else AutoDlWorkflows.selectedResolution(target, tier);
+                } else
+                    AutoDlWorkflows.selectedResolution(target, tier);
                 normalized.set(priceTier, normalizePrice(mapper, adapter, prices.get(tier)));
             }
         }
@@ -108,7 +131,8 @@ public final class MediaCapabilityConfiguration {
         JsonNode prices = settings.path("pricingByResolution");
         JsonNode tier = resolution == null ? null : prices.get(resolution);
         if (tier == null && resolution != null && prices.isObject()
-                && settings.path("nativeInputs").valueStream().anyMatch(field -> "resolution".equals(field.path("key").asText())))
+                && settings.path("nativeInputs").valueStream()
+                        .anyMatch(field -> "resolution".equals(field.path("key").asText())))
             tier = canonicalNativeResolutionPrices((ObjectNode) prices).get(nativeResolutionTier(resolution));
         return tier == null ? settings.get("pricing") : tier;
     }
@@ -125,20 +149,25 @@ public final class MediaCapabilityConfiguration {
         for (String key : prices.propertyNames()) {
             String canonical = nativeResolutionTier(key);
             if (!canonical.equals(key)) {
-                if (!prices.has(canonical)) result.set(canonical, prices.get(key).deepCopy());
+                if (!prices.has(canonical))
+                    result.set(canonical, prices.get(key).deepCopy());
                 result.remove(key);
             }
         }
         return result;
     }
 
-    private static ObjectNode normalizePrice(ObjectMapper mapper, MediaAdapterRegistry.Declaration adapter, JsonNode price) {
+    private static ObjectNode normalizePrice(ObjectMapper mapper, MediaAdapterRegistry.Declaration adapter,
+            JsonNode price) {
         if (!price.isObject() || !PRICE_FIELDS.equals(price.propertyNames()))
-            throw invalid(ApiMessage.of("api.media-capability-configuration.price-must-contain-amount-currency-and-unit"));
+            throw invalid(
+                    ApiMessage.of("api.media-capability-configuration.price-must-contain-amount-currency-and-unit"));
         if (!price.path("amount").isTextual() || !price.path("amount").asText().matches(PRICE_PATTERN)
                 || !CURRENCIES.contains(price.path("currency").asText()))
-            throw invalid(ApiMessage.of("api.media-capability-configuration.price-should-be-a-non-negative-decimal-amount-up-to"));
-        Set<String> units = adapter.kind() == Task.Kind.IMAGE_GENERATION ? Set.of("IMAGE")
+            throw invalid(ApiMessage
+                    .of("api.media-capability-configuration.price-should-be-a-non-negative-decimal-amount-up-to"));
+        Set<String> units = adapter.kind() == Task.Kind.IMAGE_GENERATION
+                ? Set.of("IMAGE")
                 : adapter.kind() == Task.Kind.AUDIO_GENERATION ? Set.of("AUDIO", "SECOND") : Set.of("VIDEO", "SECOND");
         if (!units.contains(price.path("unit").asText()))
             throw invalid(ApiMessage.of("api.media-capability-configuration.price-unit-does-not-match-media-type"));
@@ -159,22 +188,26 @@ public final class MediaCapabilityConfiguration {
                 adapter.defaultVideoInputMode(), adapter.supportsEndFrame(),
                 adapter.supportedImageAspectRatios(), adapter.supportedImageResolutions(),
                 adapter.supportedImageQualities(), adapter.supportsTransparentBackground(),
-                adapter.supportsImageMask(), integer(settings, "maxReferenceAudios", adapter.maxReferenceAudios(), 0, adapter.maxReferenceAudios()),
+                adapter.supportsImageMask(),
+                integer(settings, "maxReferenceAudios", adapter.maxReferenceAudios(), 0, adapter.maxReferenceAudios()),
                 integer(settings, "maxReferenceVideos", adapter.maxReferenceVideos(), 0, adapter.maxReferenceVideos()));
     }
 
     private static int integer(JsonNode source, String field, int fallback, int minimum, int maximum) {
         JsonNode value = source.get(field);
-        if (value == null) return fallback;
+        if (value == null)
+            return fallback;
         if (!value.isIntegralNumber() || !value.canConvertToInt()
                 || value.intValue() < minimum || value.intValue() > maximum) {
-            throw invalid(ApiMessage.of("api.media-capability-configuration.must-be-between-and", field, minimum, maximum));
+            throw invalid(
+                    ApiMessage.of("api.media-capability-configuration.must-be-between-and", field, minimum, maximum));
         }
         return value.intValue();
     }
 
     private static ApiProblemException invalid(ApiMessage detail) {
         return new ApiProblemException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "PROVIDER_UNSUPPORTED_INPUT", ApiMessage.of("api.media-capability-configuration.invalid-media-configuration"), detail, false);
+                "PROVIDER_UNSUPPORTED_INPUT",
+                ApiMessage.of("api.media-capability-configuration.invalid-media-configuration"), detail, false);
     }
 }

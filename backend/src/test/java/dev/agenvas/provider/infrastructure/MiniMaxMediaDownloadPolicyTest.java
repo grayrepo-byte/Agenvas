@@ -24,22 +24,32 @@ class MiniMaxMediaDownloadPolicyTest {
             + SERVER.getAddress().getPort());
     private final MiniMaxMediaDownloadPolicy downloads = new MiniMaxMediaDownloadPolicy();
 
-    @AfterAll static void stop() { SERVER.stop(0); }
-
-    @Test void signedResultPathsRetainEncodedCharacters() {
-        new MiniMaxMediaDownloadPolicy().validate(URI.create("http://localhost:8090/video%20clip.mp4?signature=synthetic"));
+    @AfterAll
+    static void stop() {
+        SERVER.stop(0);
     }
 
-    @Test void resultDownloadsAcceptAnyHttpHostAndValidPort() {
+    @Test
+    void signedResultPathsRetainEncodedCharacters() {
+        new MiniMaxMediaDownloadPolicy()
+                .validate(URI.create("http://localhost:8090/video%20clip.mp4?signature=synthetic"));
+    }
+
+    @Test
+    void resultDownloadsAcceptAnyHttpHostAndValidPort() {
         var policy = new MiniMaxMediaDownloadPolicy();
         for (String url : java.util.List.of("http://localhost:8090/result.mp4", "https://proxy.invalid:8443/result.mp4",
-                "http://169.254.169.254/result.mp4", "http://[::1]/result.mp4")) policy.validate(URI.create(url));
-        for (String url : java.util.List.of("file:///tmp/result.mp4", "https://user@localhost/result.mp4", "https://localhost/../result.mp4",
+                "http://169.254.169.254/result.mp4", "http://[::1]/result.mp4"))
+            policy.validate(URI.create(url));
+        for (String url : java.util.List.of("file:///tmp/result.mp4", "https://user@localhost/result.mp4",
+                "https://localhost/../result.mp4",
                 "https://localhost/result.mp4#fragment", "http://localhost:0/result.mp4"))
-            assertThatThrownBy(() -> policy.validate(URI.create(url))).isInstanceOf(MiniMaxMediaDownloadPolicy.Rejected.class);
+            assertThatThrownBy(() -> policy.validate(URI.create(url)))
+                    .isInstanceOf(MiniMaxMediaDownloadPolicy.Rejected.class);
     }
 
-    @Test void rejectsMalformedPathsSchemesAndCredentials() {
+    @Test
+    void rejectsMalformedPathsSchemesAndCredentials() {
         for (String url : List.of("file:///video.mp4",
                 ORIGIN + "/../video.mp4", "http://user@127.0.0.1:"
                         + SERVER.getAddress().getPort() + "/video.mp4")) {
@@ -49,7 +59,8 @@ class MiniMaxMediaDownloadPolicyTest {
         }
     }
 
-    @Test void blocksRedirectsWithoutContactingTheirTarget() {
+    @Test
+    void blocksRedirectsWithoutContactingTheirTarget() {
         assertThatThrownBy(() -> downloads.download(ORIGIN.resolve("/redirect"),
                 new ByteArrayOutputStream(), 1024))
                 .isInstanceOf(MiniMaxMediaDownloadPolicy.Rejected.class)
@@ -57,7 +68,8 @@ class MiniMaxMediaDownloadPolicyTest {
         assertThat(PRIVATE_REDIRECT_HITS).hasValue(0);
     }
 
-    @Test void boundsBytesAndChecksMimeAndMp4Signature() {
+    @Test
+    void boundsBytesAndChecksMimeAndMp4Signature() {
         assertThatThrownBy(() -> downloads.download(ORIGIN.resolve("/oversize"),
                 new ByteArrayOutputStream(), 16))
                 .isInstanceOf(MiniMaxMediaDownloadPolicy.Rejected.class)
@@ -72,7 +84,8 @@ class MiniMaxMediaDownloadPolicyTest {
                 .hasMessage("PROVIDER_PROTOCOL_INVALID");
     }
 
-    @Test void acceptsOnlyBoundedMp4BytesFromAllowedSource() {
+    @Test
+    void acceptsOnlyBoundedMp4BytesFromAllowedSource() {
         ByteArrayOutputStream result = new ByteArrayOutputStream();
         long size = downloads.download(ORIGIN.resolve("/good"), result, 1024);
         assertThat(size).isEqualTo(16);
@@ -110,7 +123,7 @@ class MiniMaxMediaDownloadPolicyTest {
     }
 
     private static byte[] validHeader() {
-        return new byte[] {0, 0, 0, 16, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm',
+        return new byte[]{0, 0, 0, 16, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm',
                 0, 0, 0, 0};
     }
 
@@ -118,6 +131,8 @@ class MiniMaxMediaDownloadPolicyTest {
             String type, byte[] bytes) throws IOException {
         exchange.getResponseHeaders().set("Content-Type", type);
         exchange.sendResponseHeaders(status, bytes.length);
-        try (var output = exchange.getResponseBody()) { output.write(bytes); }
+        try (var output = exchange.getResponseBody()) {
+            output.write(bytes);
+        }
     }
 }

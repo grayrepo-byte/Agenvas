@@ -54,7 +54,8 @@ public final class DebugHttpCapture implements AutoCloseable {
             "apikey", "authkey", "key", "secret", "clientsecret", "password", "credential", "credentials",
             "token", "accesstoken", "refreshtoken", "cookie", "setcookie", "headers",
             "signature", "sig", "xgoogsignature", "xamzsignature", "reasoning", "reasoningcontent",
-            "reasoningdetails", "reasoningtext", "encryptedcontent", "analysis", "thinking", "thought", "thoughts", "thoughtsignature");
+            "reasoningdetails", "reasoningtext", "encryptedcontent", "analysis", "thinking", "thought", "thoughts",
+            "thoughtsignature");
     private static final Set<String> PUBLIC_HEADERS = Set.of("accept", "content-type", "content-length",
             "user-agent", "host", "connection", "accept-encoding");
     private static final int MAX_IDENTIFIER_CHARS = 512;
@@ -70,8 +71,11 @@ public final class DebugHttpCapture implements AutoCloseable {
     private boolean closed;
     private final boolean preserveModelContent;
 
-    public enum Encoding { UTF8, BASE64, MULTIPART_JSON, OMITTED }
-    public record Body(String content, Encoding encoding, boolean truncated) {}
+    public enum Encoding {
+        UTF8, BASE64, MULTIPART_JSON, OMITTED
+    }
+    public record Body(String content, Encoding encoding, boolean truncated) {
+    }
     public record Exchange(String method, String url, Body requestBody, Integer responseStatus,
             Body responseBody, Map<String, String> responseIdentifiers) {
         public Exchange {
@@ -95,17 +99,25 @@ public final class DebugHttpCapture implements AutoCloseable {
     public static DebugHttpCapture openLlm(Consumer<List<Exchange>> checkpoint) {
         return new DebugHttpCapture(checkpoint, true);
     }
-    public static boolean enabled() { return ACTIVE.get() != null; }
+    public static boolean enabled() {
+        return ACTIVE.get() != null;
+    }
     /** Transports with path-based authentication register secrets before any checkpoint is published. */
     /** Relay GET signatures authorize private media and are never persisted, even in LLM debug bodies. */
     public static void registerMediaRelayUrl(String url) {
         DebugHttpCapture capture = ACTIVE.get();
-        if (capture != null) synchronized (capture) { capture.relayUrls.put(url, url.split("\\?", 2)[0] + "?[REDACTED]"); }
+        if (capture != null)
+            synchronized (capture) {
+                capture.relayUrls.put(url, url.split("\\?", 2)[0] + "?[REDACTED]");
+            }
     }
 
     public static void registerSecret(String secret) {
         DebugHttpCapture capture = ACTIVE.get();
-        if (capture != null) synchronized (capture) { capture.remember(secret); }
+        if (capture != null)
+            synchronized (capture) {
+                capture.remember(secret);
+            }
     }
     /** Applies the invocation's body policy to a semantic log, independently of network I/O. */
     public synchronized String sanitizeJson(String json) {
@@ -123,7 +135,8 @@ public final class DebugHttpCapture implements AutoCloseable {
     }
 
     private synchronized Map<String, String> bindRequest() {
-        if (closed) return Map.of();
+        if (closed)
+            return Map.of();
         if (requestToken == null) {
             requestToken = UUID.randomUUID().toString();
             REQUEST_CAPTURES.put(requestToken, this);
@@ -131,11 +144,17 @@ public final class DebugHttpCapture implements AutoCloseable {
         return Map.of(CAPTURE_HEADER, requestToken);
     }
 
-    @Override public synchronized void close() {
-        if (closed) return;
+    @Override
+    public synchronized void close() {
+        if (closed)
+            return;
         closed = true;
-        if (requestToken != null) REQUEST_CAPTURES.remove(requestToken, this);
-        if (previous == null) ACTIVE.remove(); else ACTIVE.set(previous);
+        if (requestToken != null)
+            REQUEST_CAPTURES.remove(requestToken, this);
+        if (previous == null)
+            ACTIVE.remove();
+        else
+            ACTIVE.set(previous);
     }
     private static String normalized(String name) {
         return name.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
@@ -148,25 +167,31 @@ public final class DebugHttpCapture implements AutoCloseable {
                 || value.startsWith("xtos") || value.startsWith("xoss");
     }
     private void remember(String value) {
-        if (value == null || value.isBlank()) return;
+        if (value == null || value.isBlank())
+            return;
         secrets.add(value);
-        if (value.startsWith("Bearer ") || value.startsWith("Basic ")) secrets.add(value.substring(value.indexOf(' ') + 1));
+        if (value.startsWith("Bearer ") || value.startsWith("Basic "))
+            secrets.add(value.substring(value.indexOf(' ') + 1));
         // Cookies may be echoed individually by a gateway; retain only their values for redaction.
         for (String cookie : value.split(";")) {
             int equals = cookie.indexOf('=');
-            if (equals >= 0 && equals + 1 < cookie.length()) secrets.add(cookie.substring(equals + 1).trim());
+            if (equals >= 0 && equals + 1 < cookie.length())
+                secrets.add(cookie.substring(equals + 1).trim());
         }
     }
     private String safeText(String value) {
         // Omit images before credential replacement: a secret occurring in Base64 would insert
         // [REDACTED], break the image match, and leave the rest of the payload in the log.
         value = value.replaceAll("(?i)data:image/[a-z0-9.+-]+;base64,[a-z0-9+/=]+", IMAGE_BYTES_OMITTED);
-        value = value.replaceAll("(?s)(\"input_audio\"\\s*:\\s*\\{[^}]*?\"data\"\\s*:\\s*\")[^\"]*", "$1[audio bytes omitted]");
-        for (String secret : secrets.stream().sorted((left, right) -> Integer.compare(right.length(), left.length())).toList()) {
+        value = value.replaceAll("(?s)(\"input_audio\"\\s*:\\s*\\{[^}]*?\"data\"\\s*:\\s*\")[^\"]*",
+                "$1[audio bytes omitted]");
+        for (String secret : secrets.stream().sorted((left, right) -> Integer.compare(right.length(), left.length()))
+                .toList()) {
             value = value.replace(secret, REDACTED);
         }
         if (!preserveModelContent) {
-            value = value.replaceAll("(?s)<(?:think|thinking|reasoning)>.*?(</(?:think|thinking|reasoning)>|$)", REDACTED);
+            value = value.replaceAll("(?s)<(?:think|thinking|reasoning)>.*?(</(?:think|thinking|reasoning)>|$)",
+                    REDACTED);
         }
         value = value.replaceAll("(?i)Bearer\\s+[A-Za-z0-9._~+/=-]+", "Bearer " + REDACTED)
                 .replaceAll("(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(-----END [A-Z ]*PRIVATE KEY-----|$)", REDACTED)
@@ -181,15 +206,22 @@ public final class DebugHttpCapture implements AutoCloseable {
         StringBuilder safe = null;
         int copied = 0;
         while (parameters.find()) {
-            if (parameters.start() < copied) continue;
+            if (parameters.start() < copied)
+                continue;
             String name;
-            try { name = URLDecoder.decode(parameters.group(2), StandardCharsets.UTF_8); }
-            catch (IllegalArgumentException malformedEncoding) { continue; }
-            if (!privateField(name)) continue;
+            try {
+                name = URLDecoder.decode(parameters.group(2), StandardCharsets.UTF_8);
+            } catch (IllegalArgumentException malformedEncoding) {
+                continue;
+            }
+            if (!privateField(name))
+                continue;
             int end = parameters.end();
             while (end < text.length() && text.charAt(end) != '&' && !Character.isWhitespace(text.charAt(end))
-                    && text.charAt(end) != '"' && text.charAt(end) != '<' && text.charAt(end) != '>') end++;
-            if (safe == null) safe = new StringBuilder(text.length());
+                    && text.charAt(end) != '"' && text.charAt(end) != '<' && text.charAt(end) != '>')
+                end++;
+            if (safe == null)
+                safe = new StringBuilder(text.length());
             safe.append(text, copied, parameters.end()).append(REDACTED);
             copied = end;
         }
@@ -199,23 +231,33 @@ public final class DebugHttpCapture implements AutoCloseable {
         if (node.isObject()) {
             ObjectNode object = (ObjectNode) node;
             // Gemini marks a whole content part as thought, rather than naming its text field.
-            if (!preserveModelContent && (object.path("thought").asBoolean(false) || "analysis".equals(object.path("channel").asText())
-                    || java.util.Set.of("thought", "thought_summary", "thinking", "reasoning").contains(object.path("type").asText()))) return MAPPER.getNodeFactory().textNode(REDACTED);
+            if (!preserveModelContent
+                    && (object.path("thought").asBoolean(false) || "analysis".equals(object.path("channel").asText())
+                            || java.util.Set.of("thought", "thought_summary", "thinking", "reasoning")
+                                    .contains(object.path("type").asText())))
+                return MAPPER.getNodeFactory().textNode(REDACTED);
             if (!preserveModelContent) {
                 String mime = object.path("mime_type").asText(object.path("mimeType").asText(""));
                 boolean media = java.util.Set.of("image", "video", "audio").contains(object.path("type").asText())
                         || mime.startsWith("image/") || mime.startsWith("video/") || mime.startsWith("audio/");
-                if (media && object.path("data").isTextual()) object.put("data", "[media bytes omitted]");
-                for (String key : java.util.List.of("b64_json", "bytesBase64Encoded")) if (object.path(key).isTextual()) object.put(key, "[media bytes omitted]");
+                if (media && object.path("data").isTextual())
+                    object.put("data", "[media bytes omitted]");
+                for (String key : java.util.List.of("b64_json", "bytesBase64Encoded"))
+                    if (object.path(key).isTextual())
+                        object.put(key, "[media bytes omitted]");
             }
             for (String name : object.propertyNames()) {
-                if (privateField(name)) object.put(name, REDACTED);
-                else object.set(name, scrub(object.get(name)));
+                if (privateField(name))
+                    object.put(name, REDACTED);
+                else
+                    object.set(name, scrub(object.get(name)));
             }
         } else if (node.isArray()) {
             var array = (tools.jackson.databind.node.ArrayNode) node;
-            for (int index = 0; index < array.size(); index++) array.set(index, scrub(array.get(index)));
-        } else if (node.isTextual()) return MAPPER.getNodeFactory().textNode(safeText(node.asText()));
+            for (int index = 0; index < array.size(); index++)
+                array.set(index, scrub(array.get(index)));
+        } else if (node.isTextual())
+            return MAPPER.getNodeFactory().textNode(safeText(node.asText()));
         return node;
     }
 
@@ -233,14 +275,17 @@ public final class DebugHttpCapture implements AutoCloseable {
                     && imageDataUri(image.path(URL_FIELD).asText())) {
                 ((ObjectNode) image).put(URL_FIELD, IMAGE_BYTES_OMITTED);
             }
-            for (String name : object.propertyNames()) object.set(name, omitLlmImages(object.get(name)));
+            for (String name : object.propertyNames())
+                object.set(name, omitLlmImages(object.get(name)));
         } else if (node.isArray()) {
             var array = (tools.jackson.databind.node.ArrayNode) node;
-            for (int index = 0; index < array.size(); index++) array.set(index, omitLlmImages(array.get(index)));
+            for (int index = 0; index < array.size(); index++)
+                array.set(index, omitLlmImages(array.get(index)));
         }
         if (node.isTextual()) {
             String text = node.asText();
-            for (var entry : relayUrls.entrySet()) text = text.replace(entry.getKey(), entry.getValue());
+            for (var entry : relayUrls.entrySet())
+                text = text.replace(entry.getKey(), entry.getValue());
             return MAPPER.getNodeFactory().textNode(text);
         }
         return node;
@@ -254,12 +299,15 @@ public final class DebugHttpCapture implements AutoCloseable {
     private Body body(byte[] bytes, String type, boolean truncated) {
         String contentType = type == null ? "" : type.toLowerCase(Locale.ROOT);
         int first = 0;
-        while (first < bytes.length && Character.isWhitespace((char) bytes[first])) first++;
+        while (first < bytes.length && Character.isWhitespace((char) bytes[first]))
+            first++;
         boolean looksLikeJson = first < bytes.length && (bytes[first] == '{' || bytes[first] == '[');
         if (contentType.contains("json") || looksLikeJson) {
             try {
                 JsonNode json = MAPPER.readTree(bytes);
-                String content = preserveModelContent ? omitLlmImages(json).toString() : safeText(scrub(json).toString());
+                String content = preserveModelContent
+                        ? omitLlmImages(json).toString()
+                        : safeText(scrub(json).toString());
                 return new Body(content, Encoding.UTF8, truncated);
             } catch (RuntimeException invalidJson) {
                 // Partial JSON cannot be safely traversed for the configured image/credential policy.
@@ -267,19 +315,25 @@ public final class DebugHttpCapture implements AutoCloseable {
             }
         }
         if (contentType.contains("event-stream")) {
-            if (!preserveModelContent) return new Body("[流式事件正文无法安全脱敏，已省略]", Encoding.OMITTED, truncated);
+            if (!preserveModelContent)
+                return new Body("[流式事件正文无法安全脱敏，已省略]", Encoding.OMITTED, truncated);
             var response = LlmSseResponse.aggregate(new String(bytes, StandardCharsets.UTF_8));
-            return body(response.content().getBytes(StandardCharsets.UTF_8), "application/json", truncated || response.partial());
+            return body(response.content().getBytes(StandardCharsets.UTF_8), "application/json",
+                    truncated || response.partial());
         }
         if (preserveModelContent) {
             boolean text = contentType.isEmpty() || contentType.startsWith("text/") || contentType.contains("xml")
                     || contentType.contains("x-www-form-urlencoded");
-            return new Body(text ? new String(bytes, StandardCharsets.UTF_8) : Base64.getEncoder().encodeToString(bytes),
+            return new Body(
+                    text ? new String(bytes, StandardCharsets.UTF_8) : Base64.getEncoder().encodeToString(bytes),
                     text ? Encoding.UTF8 : Encoding.BASE64, truncated);
         }
-        if (contentType.isEmpty() || contentType.startsWith("text/") || contentType.contains("xml") || contentType.contains("x-www-form-urlencoded")) {
+        if (contentType.isEmpty() || contentType.startsWith("text/") || contentType.contains("xml")
+                || contentType.contains("x-www-form-urlencoded")) {
             String text = safeText(new String(bytes, StandardCharsets.UTF_8));
-            text = text.replaceAll("(?i)(api[_-]?key|auth[_-]?key|password|secret|access[_-]?token|authorization|token)([=:\\s]+)[^&\\s<]+", "$1$2" + REDACTED);
+            text = text.replaceAll(
+                    "(?i)(api[_-]?key|auth[_-]?key|password|secret|access[_-]?token|authorization|token)([=:\\s]+)[^&\\s<]+",
+                    "$1$2" + REDACTED);
             return new Body(text, Encoding.UTF8, truncated);
         }
         // A gateway may echo a credential even in an incorrectly labelled/binary body.
@@ -293,7 +347,8 @@ public final class DebugHttpCapture implements AutoCloseable {
         HttpUrl.Builder builder = parsed.newBuilder().username("").password("").fragment(null);
         for (String name : parsed.queryParameterNames()) {
             if (privateField(name)) {
-                for (String value : parsed.queryParameterValues(name)) remember(value);
+                for (String value : parsed.queryParameterValues(name))
+                    remember(value);
                 builder.setQueryParameter(name, REDACTED);
             }
         }
@@ -302,7 +357,8 @@ public final class DebugHttpCapture implements AutoCloseable {
     private int begin(String method, String url, Body request) {
         String safeAddress = safeUrl(url);
         // The body has already been processed; never run text replacement over serialized LLM JSON.
-        Body safeRequest = request == null || preserveModelContent ? request
+        Body safeRequest = request == null || preserveModelContent
+                ? request
                 : new Body(safeText(request.content()), request.encoding(), request.truncated());
         exchanges.add(new Exchange(method, safeAddress, safeRequest, null, null, Map.of()));
         publish();
@@ -310,7 +366,8 @@ public final class DebugHttpCapture implements AutoCloseable {
     }
     private void response(int index, int status, Body body) {
         Exchange old = exchanges.get(index);
-        exchanges.set(index, new Exchange(old.method(), old.url(), old.requestBody(), status, body, old.responseIdentifiers()));
+        exchanges.set(index,
+                new Exchange(old.method(), old.url(), old.requestBody(), status, body, old.responseIdentifiers()));
         publish();
     }
     /** Save only fixed correlation fields, never an arbitrary response-header map. */
@@ -318,28 +375,37 @@ public final class DebugHttpCapture implements AutoCloseable {
         Map<String, String> identifiers = new java.util.TreeMap<>();
         for (String name : RESPONSE_IDENTIFIER_HEADERS) {
             String value = headers.get(name);
-            if (value == null || value.isBlank() || value.length() > MAX_IDENTIFIER_CHARS) continue;
-            if (!value.matches("[A-Za-z0-9._:/=;\\-]+") || secrets.stream().anyMatch(value::contains)) continue;
+            if (value == null || value.isBlank() || value.length() > MAX_IDENTIFIER_CHARS)
+                continue;
+            if (!value.matches("[A-Za-z0-9._:/=;\\-]+") || secrets.stream().anyMatch(value::contains))
+                continue;
             identifiers.put(name, value);
         }
         Exchange old = exchanges.get(index);
         exchanges.set(index, new Exchange(old.method(), old.url(), old.requestBody(), old.responseStatus(),
                 old.responseBody(), identifiers));
     }
-    private void publish() { checkpoint.accept(List.copyOf(exchanges)); }
+    private void publish() {
+        checkpoint.accept(List.copyOf(exchanges));
+    }
 
     private Body requestBody(RequestBody request) throws IOException {
-        if (request == null) return null;
-        if (request.isDuplex() || request.isOneShot()) return new Body("[流式请求正文已省略]", Encoding.OMITTED, false);
+        if (request == null)
+            return null;
+        if (request.isDuplex() || request.isOneShot())
+            return new Body("[流式请求正文已省略]", Encoding.OMITTED, false);
         if (request instanceof MultipartBody multipart) {
             var parts = MAPPER.createArrayNode();
             for (var part : multipart.parts()) {
                 // Only the standard field/file descriptor is kept, never arbitrary part headers.
                 String disposition = part.headers() == null ? null : part.headers().get("Content-Disposition");
                 Body value = requestBody(part.body());
-                String safeDisposition = disposition == null ? "" : preserveModelContent ? disposition : safeText(disposition);
+                String safeDisposition = disposition == null
+                        ? ""
+                        : preserveModelContent ? disposition : safeText(disposition);
                 boolean sensitive = !preserveModelContent
-                        && safeDisposition.matches("(?i).*name=\"(api[_-]?key|token|password|secret|authorization)\".*");
+                        && safeDisposition
+                                .matches("(?i).*name=\"(api[_-]?key|token|password|secret|authorization)\".*");
                 parts.addObject().put("field", safeDisposition).put("content", sensitive ? REDACTED : value.content())
                         .put("encoding", value.encoding().name()).put("truncated", value.truncated());
             }
@@ -351,7 +417,8 @@ public final class DebugHttpCapture implements AutoCloseable {
             return new Body("[请求正文超过 64 MiB 或长度未知，已省略]", Encoding.OMITTED, true);
         }
         request.writeTo(buffer);
-        return body(buffer.readByteArray(), request.contentType() == null ? null : request.contentType().toString(), false);
+        return body(buffer.readByteArray(), request.contentType() == null ? null : request.contentType().toString(),
+                false);
     }
 
     public static Interceptor interceptor() {
@@ -361,17 +428,24 @@ public final class DebugHttpCapture implements AutoCloseable {
             // Even an expired/unknown carrier is stripped, and must not fall back to another
             // invocation's ThreadLocal on a reused execution thread.
             DebugHttpCapture capture = token == null ? ACTIVE.get() : REQUEST_CAPTURES.get(token);
-            if (token != null) request = request.newBuilder().removeHeader(CAPTURE_HEADER).build();
-            if (capture == null) return chain.proceed(request);
+            if (token != null)
+                request = request.newBuilder().removeHeader(CAPTURE_HEADER).build();
+            if (capture == null)
+                return chain.proceed(request);
             int index;
             synchronized (capture) {
                 for (String name : request.headers().names()) {
-                    if (privateField(name) || !capture.preserveModelContent && !PUBLIC_HEADERS.contains(name.toLowerCase(Locale.ROOT)))
-                        for (String value : request.headers().values(name)) capture.remember(value);
+                    if (privateField(name)
+                            || !capture.preserveModelContent && !PUBLIC_HEADERS.contains(name.toLowerCase(Locale.ROOT)))
+                        for (String value : request.headers().values(name))
+                            capture.remember(value);
                 }
                 Body requestBody;
-                try { requestBody = capture.requestBody(request.body()); }
-                catch (IOException | RuntimeException failure) { requestBody = new Body("[请求正文采集失败]", Encoding.OMITTED, false); }
+                try {
+                    requestBody = capture.requestBody(request.body());
+                } catch (IOException | RuntimeException failure) {
+                    requestBody = new Body("[请求正文采集失败]", Encoding.OMITTED, false);
+                }
                 index = capture.begin(request.method(), request.url().toString(), requestBody);
             }
             // No capture monitor or database transaction is held while waiting for the Provider.
@@ -379,19 +453,23 @@ public final class DebugHttpCapture implements AutoCloseable {
             synchronized (capture) {
                 for (String name : response.headers().names()) {
                     if (privateField(name))
-                        for (String value : response.headers().values(name)) capture.remember(value);
+                        for (String value : response.headers().values(name))
+                            capture.remember(value);
                 }
                 capture.responseIdentifiers(index, response.headers());
                 capture.response(index, response.code(), null);
             }
             ResponseBody original = response.body();
-            if (original == null) return response;
+            if (original == null)
+                return response;
             Collector collector = new Collector(capture, index, response.code(),
                     original.contentType() == null ? null : original.contentType().toString());
             BufferedSource source = Okio.buffer(new ForwardingSource(original.source()) {
-                @Override public long read(Buffer sink, long byteCount) throws IOException {
+                @Override
+                public long read(Buffer sink, long byteCount) throws IOException {
                     long count = super.read(sink, byteCount);
-                    if (count == -1) collector.finish(false);
+                    if (count == -1)
+                        collector.finish(false);
                     else if (count > 0) {
                         Buffer copy = new Buffer();
                         long remaining = Math.max(0, MAX_BODY_BYTES - collector.bytes.size());
@@ -400,14 +478,28 @@ public final class DebugHttpCapture implements AutoCloseable {
                     }
                     return count;
                 }
-                @Override public void close() throws IOException {
-                    try { super.close(); } finally { collector.finish(true); }
+                @Override
+                public void close() throws IOException {
+                    try {
+                        super.close();
+                    } finally {
+                        collector.finish(true);
+                    }
                 }
             });
             return response.newBuilder().body(new ResponseBody() {
-                @Override public okhttp3.MediaType contentType() { return original.contentType(); }
-                @Override public long contentLength() { return original.contentLength(); }
-                @Override public BufferedSource source() { return source; }
+                @Override
+                public okhttp3.MediaType contentType() {
+                    return original.contentType();
+                }
+                @Override
+                public long contentLength() {
+                    return original.contentLength();
+                }
+                @Override
+                public BufferedSource source() {
+                    return source;
+                }
             }).build();
         };
     }
@@ -415,32 +507,47 @@ public final class DebugHttpCapture implements AutoCloseable {
     /** Non-OkHttp transports can join the same invocation scope and redaction policy. */
     public static int begin(String method, String url, byte[] bytes, String type) {
         DebugHttpCapture capture = ACTIVE.get();
-        if (capture == null) return NO_EXCHANGE;
+        if (capture == null)
+            return NO_EXCHANGE;
         synchronized (capture) {
             return capture.begin(method, url, bytes == null ? null : capture.body(bytes, type, false));
         }
     }
     public static InputStream responseStream(int index, int status, String type, InputStream stream) {
         DebugHttpCapture capture = ACTIVE.get();
-        if (capture == null || index < 0) return stream;
-        synchronized (capture) { capture.response(index, status, null); }
+        if (capture == null || index < 0)
+            return stream;
+        synchronized (capture) {
+            capture.response(index, status, null);
+        }
         Collector collector = new Collector(capture, index, status, type);
         return new FilterInputStream(stream) {
-            @Override public int read() throws IOException {
+            @Override
+            public int read() throws IOException {
                 int value = in.read();
-                if (value < 0) collector.finish(false);
-                else collector.add(new byte[] {(byte) value}, 1);
+                if (value < 0)
+                    collector.finish(false);
+                else
+                    collector.add(new byte[]{(byte) value}, 1);
                 return value;
             }
-            @Override public int read(byte[] bytes, int offset, int length) throws IOException {
+            @Override
+            public int read(byte[] bytes, int offset, int length) throws IOException {
                 int count = in.read(bytes, offset, length);
-                if (count < 0) collector.finish(false);
-                else if (count > 0) collector.add(java.util.Arrays.copyOfRange(bytes, offset,
-                        offset + Math.min(count, Math.max(0, MAX_BODY_BYTES - collector.bytes.size()))), count);
+                if (count < 0)
+                    collector.finish(false);
+                else if (count > 0)
+                    collector.add(java.util.Arrays.copyOfRange(bytes, offset,
+                            offset + Math.min(count, Math.max(0, MAX_BODY_BYTES - collector.bytes.size()))), count);
                 return count;
             }
-            @Override public void close() throws IOException {
-                try { super.close(); } finally { collector.finish(true); }
+            @Override
+            public void close() throws IOException {
+                try {
+                    super.close();
+                } finally {
+                    collector.finish(true);
+                }
             }
         };
     }
@@ -453,20 +560,26 @@ public final class DebugHttpCapture implements AutoCloseable {
         private long total;
         private boolean finished;
         private Collector(DebugHttpCapture capture, int index, int status, String type) {
-            this.capture = capture; this.index = index; this.status = status; this.type = type;
+            this.capture = capture;
+            this.index = index;
+            this.status = status;
+            this.type = type;
         }
         private synchronized void add(byte[] value, long count) {
-            if (finished) return;
+            if (finished)
+                return;
             total += count;
             int length = Math.min(value.length, Math.max(0, MAX_BODY_BYTES - bytes.size()));
             bytes.write(value, 0, length);
         }
         // The SDK may close a stream on a cancellation/timer thread while its reader is active.
         private synchronized void finish(boolean partial) {
-            if (finished) return;
+            if (finished)
+                return;
             finished = true;
             synchronized (capture) {
-                capture.response(index, status, capture.body(bytes.toByteArray(), type, partial || total > MAX_BODY_BYTES));
+                capture.response(index, status,
+                        capture.body(bytes.toByteArray(), type, partial || total > MAX_BODY_BYTES));
             }
         }
     }

@@ -12,7 +12,9 @@ import org.springframework.context.annotation.Configuration;
 /** Large uploads spool to the private persistent working volume instead of the small container /tmp. */
 @Configuration(proxyBeanMethods = false)
 public class MultipartWorkspaceConfiguration {
-    @Bean MultipartConfigElement multipartConfigElement(LocalAssetStorage local, MultipartProperties properties) throws IOException {
+    @Bean
+    MultipartConfigElement multipartConfigElement(LocalAssetStorage local, MultipartProperties properties)
+            throws IOException {
         var directory = local.checkedPath(".multipart/work").getParent();
         Files.createDirectories(directory);
         var factory = new MultipartConfigFactory();

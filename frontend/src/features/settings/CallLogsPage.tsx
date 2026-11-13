@@ -1,20 +1,48 @@
 import { Field, FieldError, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
-import { ArrowSquareOut,CaretLeft,CaretRight,ImageSquare,ListMagnifyingGlass,MagnifyingGlass,SpeakerHigh,TextT,Video,type Icon } from "@/shared/ui/icons";
-import { useQuery,useQueryClient } from "@tanstack/react-query";
+import {
+  ArrowSquareOut,
+  CaretLeft,
+  CaretRight,
+  ImageSquare,
+  ListMagnifyingGlass,
+  MagnifyingGlass,
+  SpeakerHigh,
+  TextT,
+  Video,
+  type Icon,
+} from "@/shared/ui/icons";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { cn } from "cn";
-import { useState,type FormEvent,type ReactNode } from "react";
-import { Link,Navigate,useSearchParams } from "react-router";
-import { HTTP_STATUS,ApiError,getCurrentUser,getTask,listCallLogs,type CallLog,type CallLogFilters,type Task } from "../../shared/api/client";
-import { getFormatLocale,t,useLocale } from "../../shared/i18n";
+import { useState, type FormEvent, type ReactNode } from "react";
+import { Link, Navigate, useSearchParams } from "react-router";
+import {
+  HTTP_STATUS,
+  ApiError,
+  getCurrentUser,
+  getTask,
+  listCallLogs,
+  type CallLog,
+  type CallLogFilters,
+  type Task,
+} from "../../shared/api/client";
+import { getFormatLocale, t, useLocale } from "../../shared/i18n";
 import { DateTimePicker } from "../../shared/ui/DateTimePicker";
 import { Dialog } from "../../shared/ui/Dialog";
 import { LoadingState } from "../../shared/ui/LoadingState";
-import { EmptyState,Notice,Panel,StatusBadge } from "../../shared/ui/PagePrimitives";
+import { EmptyState, Notice, Panel, StatusBadge } from "../../shared/ui/PagePrimitives";
 import { PageShell } from "../../shared/ui/PageShell";
 import { Button } from "../../shared/ui/primitives/button";
 import { Badge } from "../../shared/ui/primitives/badge";
 import { Input } from "../../shared/ui/primitives/input";
-import { Table,TableBody,TableCaption,TableCell,TableHead,TableHeader,TableRow } from "../../shared/ui/primitives/table";
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../../shared/ui/primitives/table";
 import { Select } from "../../shared/ui/Select";
 import { CallDebugDetails } from "./CallDebugDetails";
 import "./CallLogsPage.css";
@@ -22,14 +50,81 @@ import "./CallLogsPage.css";
 const PAGE_SIZE = 20;
 const FIRST_PAGE = 0;
 const BAD_REQUEST_STATUS = 400;
-const KIND_LABELS: Record<CallLog["kind"], string> = { get LLM() { return t("models.text"); }, get IMAGE() { return t("common.image"); }, get VIDEO() { return t("common.video"); }, get AUDIO() { return t("common.audio"); } };
-const STATUS_LABELS: Record<CallLog["status"], string> = { get RUNNING() { return t("logs.calls.calling"); }, get SUCCEEDED() { return t("logs.calls.success"); }, get FAILED() { return t("common.failed"); }, get UNKNOWN() { return t("common.unknown"); } };
-const OPERATION_LABELS: Record<CallLog["operation"], string> = { get CHAT() { return t("logs.calls.modelConversation"); }, get DIAGNOSTIC() { return t("logs.calls.toolDiagnostic"); }, get SUBMIT() { return t("logs.calls.submitGeneration"); }, get POLL() { return t("logs.calls.results"); }, get LEGACY() { return t("logs.calls.historicalTask"); } };
+const KIND_LABELS: Record<CallLog["kind"], string> = {
+  get LLM() {
+    return t("models.text");
+  },
+  get IMAGE() {
+    return t("common.image");
+  },
+  get VIDEO() {
+    return t("common.video");
+  },
+  get AUDIO() {
+    return t("common.audio");
+  },
+};
+const STATUS_LABELS: Record<CallLog["status"], string> = {
+  get RUNNING() {
+    return t("logs.calls.calling");
+  },
+  get SUCCEEDED() {
+    return t("logs.calls.success");
+  },
+  get FAILED() {
+    return t("common.failed");
+  },
+  get UNKNOWN() {
+    return t("common.unknown");
+  },
+};
+const OPERATION_LABELS: Record<CallLog["operation"], string> = {
+  get CHAT() {
+    return t("logs.calls.modelConversation");
+  },
+  get DIAGNOSTIC() {
+    return t("logs.calls.toolDiagnostic");
+  },
+  get SUBMIT() {
+    return t("logs.calls.submitGeneration");
+  },
+  get POLL() {
+    return t("logs.calls.results");
+  },
+  get LEGACY() {
+    return t("logs.calls.historicalTask");
+  },
+};
 const STATUS_TONES = { RUNNING: "neutral", SUCCEEDED: "success", FAILED: "danger", UNKNOWN: "warning" } as const;
 const KIND_ICONS: Record<CallLog["kind"], Icon> = { LLM: TextT, IMAGE: ImageSquare, VIDEO: Video, AUDIO: SpeakerHigh };
 const TASK_STATUS_LABELS: Record<Task["status"], string> = {
-  get READY() { return t("tasks.status.queued"); }, get SUBMITTING() { return t("logs.calls.submitting"); }, get RUNNING() { return t("tasks.status.running"); }, get WAITING_PROVIDER() { return t("logs.calls.waitingForExternal"); },
-  get SUCCEEDED() { return t("common.succeeded"); }, get FAILED() { return t("common.failed"); }, get UNKNOWN() { return t("common.unknown"); }, get BLOCKED() { return t("tasks.status.blocked"); }, get CANCELED() { return t("common.canceled"); },
+  get READY() {
+    return t("tasks.status.queued");
+  },
+  get SUBMITTING() {
+    return t("logs.calls.submitting");
+  },
+  get RUNNING() {
+    return t("tasks.status.running");
+  },
+  get WAITING_PROVIDER() {
+    return t("logs.calls.waitingForExternal");
+  },
+  get SUCCEEDED() {
+    return t("common.succeeded");
+  },
+  get FAILED() {
+    return t("common.failed");
+  },
+  get UNKNOWN() {
+    return t("common.unknown");
+  },
+  get BLOCKED() {
+    return t("tasks.status.blocked");
+  },
+  get CANCELED() {
+    return t("common.canceled");
+  },
 };
 
 function readFilters(params: URLSearchParams): CallLogFilters {
@@ -39,7 +134,10 @@ function readFilters(params: URLSearchParams): CallLogFilters {
   return {
     projectId: params.get("projectId") || undefined,
     kind: kind === "LLM" || kind === "IMAGE" || kind === "VIDEO" || kind === "AUDIO" ? kind : undefined,
-    status: status === "RUNNING" || status === "SUCCEEDED" || status === "FAILED" || status === "UNKNOWN" ? status : undefined,
+    status:
+      status === "RUNNING" || status === "SUCCEEDED" || status === "FAILED" || status === "UNKNOWN"
+        ? status
+        : undefined,
     traceId: params.get("traceId") || undefined,
     from: params.get("from") || undefined,
     to: params.get("to") || undefined,
@@ -57,15 +155,21 @@ export function CallLogsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const currentUser = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser, retry: false });
   const logs = useQuery({
-    queryKey: ["call-logs", filters], queryFn: () => listCallLogs(filters), enabled: currentUser.isSuccess, retry: false,
+    queryKey: ["call-logs", filters],
+    queryFn: () => listCallLogs(filters),
+    enabled: currentUser.isSuccess,
+    retry: false,
   });
   const forbidden = logs.error instanceof ApiError && logs.error.status === HTTP_STATUS.FORBIDDEN;
   const invalidFilters = logs.error instanceof ApiError && logs.error.status === BAD_REQUEST_STATUS;
-  if ((logs.error instanceof ApiError && logs.error.status === HTTP_STATUS.UNAUTHORIZED)
-    || (currentUser.error instanceof ApiError && currentUser.error.status === HTTP_STATUS.UNAUTHORIZED)) return <Navigate to="/login" replace />;
+  if (
+    (logs.error instanceof ApiError && logs.error.status === HTTP_STATUS.UNAUTHORIZED) ||
+    (currentUser.error instanceof ApiError && currentUser.error.status === HTTP_STATUS.UNAUTHORIZED)
+  )
+    return <Navigate to="/login" replace />;
   const data = forbidden ? undefined : logs.data;
-  const selectedLog = data?.items.find((log) => log.id === selectedId);
-  const selectedIndex = data?.items.findIndex((log) => log.id === selectedId) ?? -1;
+  const selectedLog = data?.items.find(log => log.id === selectedId);
+  const selectedIndex = data?.items.findIndex(log => log.id === selectedId) ?? -1;
   const setPage = (page: number) => {
     setSelectedId(null);
     const next = new URLSearchParams(params);
@@ -79,44 +183,185 @@ export function CallLogsPage() {
     setParams(next);
   };
 
-  return <PageShell title={t("common.callLogs")} description={t("logs.calls.description")}><div className="call-audit-workspace ui-stack">
-    {currentUser.isError ? <Notice tone="danger"><p>{t("settings.shared.sessionHint")}</p><Button variant="outline" type="button" disabled={currentUser.isFetching} onClick={() => { void currentUser.refetch(); }}>{t("common.retry")}</Button></Notice> : null}
-    <Panel className="call-audit-filter-panel" title={t("logs.calls.filterRecords")} description={t("logs.calls.filterTimeHint")}>
-      <CallLogFilterForm key={params.toString()} filters={filters} onApply={applyFilters} disabled={logs.isFetching || !currentUser.isSuccess} />
-    </Panel>
-    {logs.isPending && currentUser.isSuccess ? <LoadingState label={t("logs.calls.loading")} /> : null}
-    {logs.isError ? <Notice tone="danger" title={forbidden ? t("logs.calls.forbidden") : invalidFilters ? t("logs.calls.invalidFilter") : t("logs.calls.loadFailed")}>
-      <p>{forbidden ? t("logs.calls.forbiddenHint") : invalidFilters ? t("logs.calls.invalidFilterHint") : data ? t("logs.calls.staleRecordsHint") : t("logs.calls.serviceUnavailable")}</p>
-      <Button variant="outline"  type="button" disabled={logs.isFetching} onClick={() => void logs.refetch()}>{t("logs.calls.retryLogs")}</Button>
-    </Notice> : null}
-    {data ? <Panel title={t("logs.calls.records")} className="call-log-results"
-      actions={<><Badge variant="secondary">{t("logs.calls.recordCount", { "0": data.totalElements })}</Badge>
-        {logs.isFetching ? <LoadingState compact label={t("logs.calls.updating")} /> : null}</>}>
-      {data.items.length === 0 ? <EmptyState icon={<ListMagnifyingGlass size={27} />} title={t("logs.calls.empty")}
-        description={t("logs.calls.emptyHint")} /> :
-        <Table className="call-log-table"><TableCaption className="sr-only">{t("logs.calls.auditTitle")}</TableCaption><TableHeader><TableRow>
-          <TableHead scope="col" className="call-log-model-column">{t("common.model")}</TableHead><TableHead scope="col" className="call-log-type-column">{t("logs.calls.callType")}</TableHead><TableHead scope="col" className="call-log-operation-column">{t("logs.calls.operations")}</TableHead><TableHead scope="col" className="call-log-project-column">{t("common.project")}</TableHead><TableHead scope="col" className="call-log-time-column">{t("logs.calls.time")}</TableHead><TableHead scope="col" className="call-log-time-column">{t("logs.calls.responseTime")}</TableHead>
-          <TableHead scope="col" className="call-log-duration-column">{t("logs.calls.duration")}</TableHead><TableHead scope="col" className="call-log-result-column">{t("logs.calls.result")}</TableHead><TableHead scope="col" className="call-log-details-column"><span className="sr-only">{t("logs.calls.details")}</span></TableHead>
-        </TableRow></TableHeader><TableBody>{data.items.map((log) => <CallLogRow key={log.id} log={log}
-          onDetails={() => setSelectedId(log.id)} />)}</TableBody></Table>}
-      <nav className="call-log-pagination" aria-label={t("logs.calls.paginationLabel")}>
-        <span className="ui-muted">{t("logs.calls.pagination", { "0": data.page + 1, "1": Math.max(1, data.totalPages), "2": data.size })}</span>
-        <div className="ui-form-actions"><Button variant="outline" size="sm" type="button" disabled={logs.isFetching || data.page === FIRST_PAGE}
-          onClick={() => setPage(data.page - 1)}><CaretLeft data-icon="inline-start" aria-hidden />{t("logs.calls.previousPage")}</Button>
-          <Button variant="outline" size="sm" type="button" disabled={logs.isFetching || data.page + 1 >= data.totalPages}
-            onClick={() => setPage(data.page + 1)}>{t("logs.calls.nextPage")}<CaretRight data-icon="inline-end" aria-hidden /></Button></div>
-      </nav>
-    </Panel> : null}
-    {selectedLog && data ? <CallLogDetailDialog log={selectedLog} index={selectedIndex} count={data.items.length}
-      onAdjacent={(offset) => { const adjacent = data.items[selectedIndex + offset]; if (adjacent) setSelectedId(adjacent.id); }}
-      onClose={() => setSelectedId(null)} /> : null}
-  </div></PageShell>;
+  return (
+    <PageShell title={t("common.callLogs")} description={t("logs.calls.description")}>
+      <div className="call-audit-workspace ui-stack">
+        {currentUser.isError ? (
+          <Notice tone="danger">
+            <p>{t("settings.shared.sessionHint")}</p>
+            <Button
+              variant="outline"
+              type="button"
+              disabled={currentUser.isFetching}
+              onClick={() => {
+                void currentUser.refetch();
+              }}
+            >
+              {t("common.retry")}
+            </Button>
+          </Notice>
+        ) : null}
+        <Panel
+          className="call-audit-filter-panel"
+          title={t("logs.calls.filterRecords")}
+          description={t("logs.calls.filterTimeHint")}
+        >
+          <CallLogFilterForm
+            key={params.toString()}
+            filters={filters}
+            onApply={applyFilters}
+            disabled={logs.isFetching || !currentUser.isSuccess}
+          />
+        </Panel>
+        {logs.isPending && currentUser.isSuccess ? <LoadingState label={t("logs.calls.loading")} /> : null}
+        {logs.isError ? (
+          <Notice
+            tone="danger"
+            title={
+              forbidden
+                ? t("logs.calls.forbidden")
+                : invalidFilters
+                  ? t("logs.calls.invalidFilter")
+                  : t("logs.calls.loadFailed")
+            }
+          >
+            <p>
+              {forbidden
+                ? t("logs.calls.forbiddenHint")
+                : invalidFilters
+                  ? t("logs.calls.invalidFilterHint")
+                  : data
+                    ? t("logs.calls.staleRecordsHint")
+                    : t("logs.calls.serviceUnavailable")}
+            </p>
+            <Button variant="outline" type="button" disabled={logs.isFetching} onClick={() => void logs.refetch()}>
+              {t("logs.calls.retryLogs")}
+            </Button>
+          </Notice>
+        ) : null}
+        {data ? (
+          <Panel
+            title={t("logs.calls.records")}
+            className="call-log-results"
+            actions={
+              <>
+                <Badge variant="secondary">{t("logs.calls.recordCount", { "0": data.totalElements })}</Badge>
+                {logs.isFetching ? <LoadingState compact label={t("logs.calls.updating")} /> : null}
+              </>
+            }
+          >
+            {data.items.length === 0 ? (
+              <EmptyState
+                icon={<ListMagnifyingGlass size={27} />}
+                title={t("logs.calls.empty")}
+                description={t("logs.calls.emptyHint")}
+              />
+            ) : (
+              <Table className="call-log-table">
+                <TableCaption className="sr-only">{t("logs.calls.auditTitle")}</TableCaption>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead scope="col" className="call-log-model-column">
+                      {t("common.model")}
+                    </TableHead>
+                    <TableHead scope="col" className="call-log-type-column">
+                      {t("logs.calls.callType")}
+                    </TableHead>
+                    <TableHead scope="col" className="call-log-operation-column">
+                      {t("logs.calls.operations")}
+                    </TableHead>
+                    <TableHead scope="col" className="call-log-project-column">
+                      {t("common.project")}
+                    </TableHead>
+                    <TableHead scope="col" className="call-log-time-column">
+                      {t("logs.calls.time")}
+                    </TableHead>
+                    <TableHead scope="col" className="call-log-time-column">
+                      {t("logs.calls.responseTime")}
+                    </TableHead>
+                    <TableHead scope="col" className="call-log-duration-column">
+                      {t("logs.calls.duration")}
+                    </TableHead>
+                    <TableHead scope="col" className="call-log-result-column">
+                      {t("logs.calls.result")}
+                    </TableHead>
+                    <TableHead scope="col" className="call-log-details-column">
+                      <span className="sr-only">{t("logs.calls.details")}</span>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.items.map(log => (
+                    <CallLogRow key={log.id} log={log} onDetails={() => setSelectedId(log.id)} />
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+            <nav className="call-log-pagination" aria-label={t("logs.calls.paginationLabel")}>
+              <span className="ui-muted">
+                {t("logs.calls.pagination", { "0": data.page + 1, "1": Math.max(1, data.totalPages), "2": data.size })}
+              </span>
+              <div className="ui-form-actions">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  disabled={logs.isFetching || data.page === FIRST_PAGE}
+                  onClick={() => setPage(data.page - 1)}
+                >
+                  <CaretLeft data-icon="inline-start" aria-hidden />
+                  {t("logs.calls.previousPage")}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  disabled={logs.isFetching || data.page + 1 >= data.totalPages}
+                  onClick={() => setPage(data.page + 1)}
+                >
+                  {t("logs.calls.nextPage")}
+                  <CaretRight data-icon="inline-end" aria-hidden />
+                </Button>
+              </div>
+            </nav>
+          </Panel>
+        ) : null}
+        {selectedLog && data ? (
+          <CallLogDetailDialog
+            log={selectedLog}
+            index={selectedIndex}
+            count={data.items.length}
+            onAdjacent={offset => {
+              const adjacent = data.items[selectedIndex + offset];
+              if (adjacent) setSelectedId(adjacent.id);
+            }}
+            onClose={() => setSelectedId(null)}
+          />
+        ) : null}
+      </div>
+    </PageShell>
+  );
 }
 
-function CallLogFilterForm({ filters, onApply, disabled }: { filters: CallLogFilters; onApply: (params: URLSearchParams) => void; disabled: boolean }) {
+function CallLogFilterForm({
+  filters,
+  onApply,
+  disabled,
+}: {
+  filters: CallLogFilters;
+  onApply: (params: URLSearchParams) => void;
+  disabled: boolean;
+}) {
   useLocale();
   const [error, setError] = useState<string | null>(null);
-  const filterCount = [filters.projectId, filters.kind, filters.status, filters.traceId, filters.from, filters.to].filter(Boolean).length;
+  const filterCount = [
+    filters.projectId,
+    filters.kind,
+    filters.status,
+    filters.traceId,
+    filters.from,
+    filters.to,
+  ].filter(Boolean).length;
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (disabled) return;
@@ -135,32 +380,101 @@ function CallLogFilterForm({ filters, onApply, disabled }: { filters: CallLogFil
     setError(null);
     onApply(next);
   }
-  return <form className="call-log-filter-form ui-form" onSubmit={submit}>
-    <FieldGroup className="call-log-filters">
-      <Field><FieldLabel htmlFor="call-log-project">{t("logs.calls.projectId")}</FieldLabel>
-        <Input id="call-log-project" name="projectId" defaultValue={filters.projectId} placeholder={t("logs.calls.allProjects")} /></Field>
-      <Field><FieldLabel htmlFor="call-log-kind">{t("logs.calls.callType")}</FieldLabel>
-        <Select id="call-log-kind" name="kind" density="compact" defaultValue={filters.kind ?? ""}><option value="">{t("common.allKinds")}</option>
-          {Object.entries(KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></Field>
-      <Field><FieldLabel htmlFor="call-log-status">{t("logs.calls.status")}</FieldLabel>
-        <Select id="call-log-status" name="status" density="compact" defaultValue={filters.status ?? ""}><option value="">{t("logs.calls.allStatuses")}</option>
-          {Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></Field>
-      <Field><FieldLabel htmlFor="call-log-trace">Trace ID</FieldLabel>
-        <Input id="call-log-trace" name="traceId" defaultValue={filters.traceId} placeholder={t("logs.calls.traceSearchPlaceholder")} /></Field>
-      <Field data-invalid={Boolean(error)}><FieldLabel htmlFor="call-log-from">{t("logs.calls.startTime")}</FieldLabel>
-        <DateTimePicker id="call-log-from" name="from" label={t("logs.calls.startTime")} defaultValue={filters.from} invalid={Boolean(error)} describedBy={error ? "call-log-time-error" : undefined} /></Field>
-      <Field data-invalid={Boolean(error)}><FieldLabel htmlFor="call-log-to">{t("logs.calls.endTime")}</FieldLabel>
-        <DateTimePicker id="call-log-to" name="to" label={t("logs.calls.endTime")} defaultValue={filters.to} invalid={Boolean(error)} describedBy={error ? "call-log-time-error" : undefined} /></Field>
-    </FieldGroup>
-    {error ? <FieldError id="call-log-time-error">{error}</FieldError> : null}
-    <div className="call-log-filter-footer">
-      <div className="call-log-applied-filters"><span className="ui-muted" role="status">{filterCount ? t("logs.calls.filterCount", { "0": filterCount }) : t("logs.calls.allRecords")}</span>
-        <AppliedCallFilters filters={filters} />
+  return (
+    <form className="call-log-filter-form ui-form" onSubmit={submit}>
+      <FieldGroup className="call-log-filters">
+        <Field>
+          <FieldLabel htmlFor="call-log-project">{t("logs.calls.projectId")}</FieldLabel>
+          <Input
+            id="call-log-project"
+            name="projectId"
+            defaultValue={filters.projectId}
+            placeholder={t("logs.calls.allProjects")}
+          />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="call-log-kind">{t("logs.calls.callType")}</FieldLabel>
+          <Select id="call-log-kind" name="kind" density="compact" defaultValue={filters.kind ?? ""}>
+            <option value="">{t("common.allKinds")}</option>
+            {Object.entries(KIND_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="call-log-status">{t("logs.calls.status")}</FieldLabel>
+          <Select id="call-log-status" name="status" density="compact" defaultValue={filters.status ?? ""}>
+            <option value="">{t("logs.calls.allStatuses")}</option>
+            {Object.entries(STATUS_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="call-log-trace">Trace ID</FieldLabel>
+          <Input
+            id="call-log-trace"
+            name="traceId"
+            defaultValue={filters.traceId}
+            placeholder={t("logs.calls.traceSearchPlaceholder")}
+          />
+        </Field>
+        <Field data-invalid={Boolean(error)}>
+          <FieldLabel htmlFor="call-log-from">{t("logs.calls.startTime")}</FieldLabel>
+          <DateTimePicker
+            id="call-log-from"
+            name="from"
+            label={t("logs.calls.startTime")}
+            defaultValue={filters.from}
+            invalid={Boolean(error)}
+            describedBy={error ? "call-log-time-error" : undefined}
+          />
+        </Field>
+        <Field data-invalid={Boolean(error)}>
+          <FieldLabel htmlFor="call-log-to">{t("logs.calls.endTime")}</FieldLabel>
+          <DateTimePicker
+            id="call-log-to"
+            name="to"
+            label={t("logs.calls.endTime")}
+            defaultValue={filters.to}
+            invalid={Boolean(error)}
+            describedBy={error ? "call-log-time-error" : undefined}
+          />
+        </Field>
+      </FieldGroup>
+      {error ? <FieldError id="call-log-time-error">{error}</FieldError> : null}
+      <div className="call-log-filter-footer">
+        <div className="call-log-applied-filters">
+          <span className="ui-muted" role="status">
+            {filterCount ? t("logs.calls.filterCount", { "0": filterCount }) : t("logs.calls.allRecords")}
+          </span>
+          <AppliedCallFilters filters={filters} />
+        </div>
+        <div className="ui-form-actions">
+          <Button
+            variant="ghost"
+            size="sm"
+            type="button"
+            disabled={disabled}
+            onClick={() => {
+              setError(null);
+              onApply(new URLSearchParams());
+            }}
+          >
+            {t("logs.calls.clearFilters")}
+          </Button>
+          <Button variant="default" size="sm" type="submit" disabled={disabled}>
+            <MagnifyingGlass data-icon="inline-start" aria-hidden />
+            {t("logs.calls.filter")}
+          </Button>
+        </div>
       </div>
-      <div className="ui-form-actions"><Button variant="ghost" size="sm" type="button" disabled={disabled} onClick={() => { setError(null); onApply(new URLSearchParams()); }}>{t("logs.calls.clearFilters")}</Button>
-        <Button variant="default" size="sm" type="submit" disabled={disabled}><MagnifyingGlass data-icon="inline-start" aria-hidden />{t("logs.calls.filter")}</Button></div>
-    </div>
-  </form>;
+    </form>
+  );
 }
 
 /** These chips describe the applied server query, never an unsubmitted form draft. */
@@ -177,100 +491,287 @@ function AppliedCallFilters({ filters }: { filters: CallLogFilters }) {
     { label: t("logs.calls.startTime"), value: filters.from ? formatDate(filters.from) : undefined },
     { label: t("logs.calls.endTime"), value: filters.to ? formatDate(filters.to) : undefined },
   ];
-  return applied.filter((item) => item.value).map(({ label, value }) => <Badge variant="outline" className="call-log-applied-filter" key={label} title={`${label}: ${value}`}>
-    <span>{label}</span><span>{value}</span>
-  </Badge>);
+  return applied
+    .filter(item => item.value)
+    .map(({ label, value }) => (
+      <Badge variant="outline" className="call-log-applied-filter" key={label} title={`${label}: ${value}`}>
+        <span>{label}</span>
+        <span>{value}</span>
+      </Badge>
+    ));
 }
 
 function CallLogRow({ log, onDetails }: { log: CallLog; onDetails: () => void }) {
   useLocale();
   const KindIcon = KIND_ICONS[log.kind];
-  return <TableRow data-status={log.status}>
-      <TableCell className="call-log-model-cell" data-label={t("common.model")}><span className="call-log-model" title={log.model ?? t("logs.calls.modelNotRecorded")}>{log.model ?? t("logs.calls.modelNotRecorded")}</span></TableCell>
-      <TableCell className="call-log-type-cell" data-label={t("logs.calls.callType")}><span className="call-log-kind" title={KIND_LABELS[log.kind]}><KindIcon aria-hidden /><strong>{KIND_LABELS[log.kind]}</strong></span></TableCell>
-      <TableCell className="call-log-operation-cell" data-label={t("logs.calls.operations")}><div className="call-log-operation">
-        <span className="call-log-operation-label" title={OPERATION_LABELS[log.operation]}>{OPERATION_LABELS[log.operation]}</span>
-        <div className="call-log-badges">{log.mock ? <StatusBadge>{t("logs.calls.mock")}</StatusBadge> : null}
-          {log.historical ? <StatusBadge>{t("logs.calls.historicalRecord")}</StatusBadge> : null}</div></div></TableCell>
-      <TableCell className="call-log-project-cell" data-label={t("common.project")}>{log.projectId ? <Link className="call-log-project" title={log.projectTitle ?? undefined} to={`/projects/${encodeURIComponent(log.projectId)}`}><span>{log.projectTitle}</span><ArrowSquareOut aria-hidden /></Link> : <span>{t("logs.calls.systemDiagnostic")}</span>}</TableCell>
-      <TableCell className="call-log-start-cell" data-label={t("logs.calls.time")}><LogTime compact value={log.startedAt} /></TableCell>
-      <TableCell className="call-log-response-cell" data-label={t("logs.calls.responseTime")}><LogTime compact value={log.respondedAt} missing={log.status === "RUNNING" ? t("logs.calls.waitingForResponse") : t("common.notRecorded")} /></TableCell>
-      <TableCell className="call-log-duration-cell" data-label={t("logs.calls.duration")}>{log.durationMs === null ? t("common.notRecorded") : `${log.durationMs.toLocaleString(getFormatLocale())} ms`}</TableCell>
-      <TableCell className="call-log-status-cell" data-label={t("logs.calls.result")}><StatusBadge tone={STATUS_TONES[log.status]}>{STATUS_LABELS[log.status]}</StatusBadge></TableCell>
-      <TableCell className="call-log-toggle"><Button variant="ghost" size="icon-sm" type="button" aria-haspopup="dialog"
-        aria-label={t("logs.calls.detailsLabel", { "0": log.id })} title={t("logs.calls.details")} onClick={onDetails}><ArrowSquareOut data-icon="inline-start" aria-hidden /></Button></TableCell>
-    </TableRow>;
+  return (
+    <TableRow data-status={log.status}>
+      <TableCell className="call-log-model-cell" data-label={t("common.model")}>
+        <span className="call-log-model" title={log.model ?? t("logs.calls.modelNotRecorded")}>
+          {log.model ?? t("logs.calls.modelNotRecorded")}
+        </span>
+      </TableCell>
+      <TableCell className="call-log-type-cell" data-label={t("logs.calls.callType")}>
+        <span className="call-log-kind" title={KIND_LABELS[log.kind]}>
+          <KindIcon aria-hidden />
+          <strong>{KIND_LABELS[log.kind]}</strong>
+        </span>
+      </TableCell>
+      <TableCell className="call-log-operation-cell" data-label={t("logs.calls.operations")}>
+        <div className="call-log-operation">
+          <span className="call-log-operation-label" title={OPERATION_LABELS[log.operation]}>
+            {OPERATION_LABELS[log.operation]}
+          </span>
+          <div className="call-log-badges">
+            {log.mock ? <StatusBadge>{t("logs.calls.mock")}</StatusBadge> : null}
+            {log.historical ? <StatusBadge>{t("logs.calls.historicalRecord")}</StatusBadge> : null}
+          </div>
+        </div>
+      </TableCell>
+      <TableCell className="call-log-project-cell" data-label={t("common.project")}>
+        {log.projectId ? (
+          <Link
+            className="call-log-project"
+            title={log.projectTitle ?? undefined}
+            to={`/projects/${encodeURIComponent(log.projectId)}`}
+          >
+            <span>{log.projectTitle}</span>
+            <ArrowSquareOut aria-hidden />
+          </Link>
+        ) : (
+          <span>{t("logs.calls.systemDiagnostic")}</span>
+        )}
+      </TableCell>
+      <TableCell className="call-log-start-cell" data-label={t("logs.calls.time")}>
+        <LogTime compact value={log.startedAt} />
+      </TableCell>
+      <TableCell className="call-log-response-cell" data-label={t("logs.calls.responseTime")}>
+        <LogTime
+          compact
+          value={log.respondedAt}
+          missing={log.status === "RUNNING" ? t("logs.calls.waitingForResponse") : t("common.notRecorded")}
+        />
+      </TableCell>
+      <TableCell className="call-log-duration-cell" data-label={t("logs.calls.duration")}>
+        {log.durationMs === null ? t("common.notRecorded") : `${log.durationMs.toLocaleString(getFormatLocale())} ms`}
+      </TableCell>
+      <TableCell className="call-log-status-cell" data-label={t("logs.calls.result")}>
+        <StatusBadge tone={STATUS_TONES[log.status]}>{STATUS_LABELS[log.status]}</StatusBadge>
+      </TableCell>
+      <TableCell className="call-log-toggle">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          type="button"
+          aria-haspopup="dialog"
+          aria-label={t("logs.calls.detailsLabel", { "0": log.id })}
+          title={t("logs.calls.details")}
+          onClick={onDetails}
+        >
+          <ArrowSquareOut data-icon="inline-start" aria-hidden />
+        </Button>
+      </TableCell>
+    </TableRow>
+  );
 }
 
-function CallLogDetailDialog({ log, index, count, onAdjacent, onClose }: { log: CallLog; index: number; count: number; onAdjacent: (offset: number) => void; onClose: () => void }) {
+function CallLogDetailDialog({
+  log,
+  index,
+  count,
+  onAdjacent,
+  onClose,
+}: {
+  log: CallLog;
+  index: number;
+  count: number;
+  onAdjacent: (offset: number) => void;
+  onClose: () => void;
+}) {
   useLocale();
-  return <Dialog title={t("logs.calls.detailsTitle")} description={`${KIND_LABELS[log.kind]} · ${log.model ?? t("logs.calls.modelNotRecorded")}`}
-    className="call-log-dialog" onClose={onClose} onSubmit={(event) => event.preventDefault()}
-    footer={<div className="call-log-detail-footer"><span className="ui-muted" role="status">{t("logs.calls.recordPosition", { "0": index + 1, "1": count })}</span>
-      <div className="ui-form-actions"><Button variant="ghost" size="icon-sm" type="button" disabled={index <= 0} aria-label={t("logs.calls.previousRecord")} onClick={() => onAdjacent(-1)}><CaretLeft data-icon="inline-start" aria-hidden /></Button>
-        <Button variant="ghost" size="icon-sm" type="button" disabled={index + 1 >= count} aria-label={t("logs.calls.nextRecord")} onClick={() => onAdjacent(1)}><CaretRight data-icon="inline-start" aria-hidden /></Button>
-        <Button variant="outline" type="button" onClick={onClose}>{t("common.close")}</Button></div></div>}>
-    <div className="call-log-overview">
-      {log.projectId ? <Link className="call-log-project" to={`/projects/${encodeURIComponent(log.projectId)}`}><span>{log.projectTitle}</span><ArrowSquareOut aria-hidden /></Link> : <span>{t("logs.calls.systemDiagnostic")}</span>}
-      <div className="call-log-badges"><StatusBadge tone={STATUS_TONES[log.status]}>{STATUS_LABELS[log.status]}</StatusBadge>
-        {log.mock ? <StatusBadge>{t("logs.calls.mock")}</StatusBadge> : null}
-        {log.historical ? <StatusBadge>{t("logs.calls.historicalRecord")}</StatusBadge> : null}</div>
-    </div>
-    <CallLogDetails key={log.id} log={log} />
-  </Dialog>;
+  return (
+    <Dialog
+      title={t("logs.calls.detailsTitle")}
+      description={`${KIND_LABELS[log.kind]} · ${log.model ?? t("logs.calls.modelNotRecorded")}`}
+      className="call-log-dialog"
+      onClose={onClose}
+      onSubmit={event => event.preventDefault()}
+      footer={
+        <div className="call-log-detail-footer">
+          <span className="ui-muted" role="status">
+            {t("logs.calls.recordPosition", { "0": index + 1, "1": count })}
+          </span>
+          <div className="ui-form-actions">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              type="button"
+              disabled={index <= 0}
+              aria-label={t("logs.calls.previousRecord")}
+              onClick={() => onAdjacent(-1)}
+            >
+              <CaretLeft data-icon="inline-start" aria-hidden />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              type="button"
+              disabled={index + 1 >= count}
+              aria-label={t("logs.calls.nextRecord")}
+              onClick={() => onAdjacent(1)}
+            >
+              <CaretRight data-icon="inline-start" aria-hidden />
+            </Button>
+            <Button variant="outline" type="button" onClick={onClose}>
+              {t("common.close")}
+            </Button>
+          </div>
+        </div>
+      }
+    >
+      <div className="call-log-overview">
+        {log.projectId ? (
+          <Link className="call-log-project" to={`/projects/${encodeURIComponent(log.projectId)}`}>
+            <span>{log.projectTitle}</span>
+            <ArrowSquareOut aria-hidden />
+          </Link>
+        ) : (
+          <span>{t("logs.calls.systemDiagnostic")}</span>
+        )}
+        <div className="call-log-badges">
+          <StatusBadge tone={STATUS_TONES[log.status]}>{STATUS_LABELS[log.status]}</StatusBadge>
+          {log.mock ? <StatusBadge>{t("logs.calls.mock")}</StatusBadge> : null}
+          {log.historical ? <StatusBadge>{t("logs.calls.historicalRecord")}</StatusBadge> : null}
+        </div>
+      </div>
+      <CallLogDetails key={log.id} log={log} />
+    </Dialog>
+  );
 }
 
 function CallLogDetails({ log }: { log: CallLog }) {
   useLocale();
-  return <>
-    {log.historical ? <p className="ui-muted">{t("logs.calls.historicalFieldsHint")}</p> : null}
-    <dl className="call-log-timing">
-      <Detail label={t("logs.calls.time")} value={<LogTime value={log.startedAt} />} />
-      <Detail label={t("logs.calls.responseTime")} value={<LogTime value={log.respondedAt} missing={log.status === "RUNNING" ? t("logs.calls.waitingForResponse") : t("common.notRecorded")} />} />
-      <Detail label={t("logs.calls.duration")} value={log.durationMs === null ? null : `${log.durationMs.toLocaleString(getFormatLocale())} ms`} />
-      <Detail label={t("logs.calls.operations")} value={OPERATION_LABELS[log.operation]} />
-    </dl>
-    <dl className="call-log-metadata">
-      <Detail label={t("logs.calls.localTraceId")} value={log.traceId} /><Detail label={t(log.kind === "LLM" ? "logs.exchange.generationId" : "logs.calls.providerRequestId")} value={log.providerRequestId} />
-      <Detail label="Provider" value={log.provider} /><Detail label={t("common.model")} value={log.model} />
-      <Detail label={t("logs.calls.recordId")} value={log.id} /><Detail label="Run ID" value={log.runId} />
-      <Detail label="Task ID" value={log.taskId} /><Detail label={t("logs.calls.errorCode")} value={log.errorCode} />
-    </dl>
-    {!log.historical ? <CallDebugDetails id={log.id} kind={log.kind} generationId={log.kind === "LLM" ? log.providerRequestId : undefined} /> : null}
-    {log.taskId && log.projectId ? <CallLogTask projectId={log.projectId} taskId={log.taskId} /> : null}
-  </>;
+  return (
+    <>
+      {log.historical ? <p className="ui-muted">{t("logs.calls.historicalFieldsHint")}</p> : null}
+      <dl className="call-log-timing">
+        <Detail label={t("logs.calls.time")} value={<LogTime value={log.startedAt} />} />
+        <Detail
+          label={t("logs.calls.responseTime")}
+          value={
+            <LogTime
+              value={log.respondedAt}
+              missing={log.status === "RUNNING" ? t("logs.calls.waitingForResponse") : t("common.notRecorded")}
+            />
+          }
+        />
+        <Detail
+          label={t("logs.calls.duration")}
+          value={log.durationMs === null ? null : `${log.durationMs.toLocaleString(getFormatLocale())} ms`}
+        />
+        <Detail label={t("logs.calls.operations")} value={OPERATION_LABELS[log.operation]} />
+      </dl>
+      <dl className="call-log-metadata">
+        <Detail label={t("logs.calls.localTraceId")} value={log.traceId} />
+        <Detail
+          label={t(log.kind === "LLM" ? "logs.exchange.generationId" : "logs.calls.providerRequestId")}
+          value={log.providerRequestId}
+        />
+        <Detail label="Provider" value={log.provider} />
+        <Detail label={t("common.model")} value={log.model} />
+        <Detail label={t("logs.calls.recordId")} value={log.id} />
+        <Detail label="Run ID" value={log.runId} />
+        <Detail label="Task ID" value={log.taskId} />
+        <Detail label={t("logs.calls.errorCode")} value={log.errorCode} />
+      </dl>
+      {!log.historical ? (
+        <CallDebugDetails
+          id={log.id}
+          kind={log.kind}
+          generationId={log.kind === "LLM" ? log.providerRequestId : undefined}
+        />
+      ) : null}
+      {log.taskId && log.projectId ? <CallLogTask projectId={log.projectId} taskId={log.taskId} /> : null}
+    </>
+  );
 }
 
 /** Reads the related task for context only; this page never performs recovery. */
 function CallLogTask({ projectId, taskId }: { projectId: string; taskId: string }) {
   useLocale();
-  const task = useQuery({ queryKey: ["call-log-task", projectId, taskId], queryFn: () => getTask(projectId, taskId), retry: false });
+  const task = useQuery({
+    queryKey: ["call-log-task", projectId, taskId],
+    queryFn: () => getTask(projectId, taskId),
+    retry: false,
+  });
   const forbidden = task.error instanceof ApiError && task.error.status === HTTP_STATUS.FORBIDDEN;
-  if (task.error instanceof ApiError && task.error.status === HTTP_STATUS.UNAUTHORIZED) return <Navigate to="/login" replace />;
-  return <section className="call-log-task" aria-label={t("logs.calls.relatedTask")}>
-    <h3>{t("logs.calls.relatedTask")}</h3>
-    {task.isPending ? <LoadingState compact label={t("logs.calls.taskLoading")} /> : null}
-    {task.isError ? <Notice tone="danger" title={forbidden ? t("logs.calls.taskForbidden") : t("logs.calls.taskLoadFailed")}>
-      <p>{t("logs.calls.taskStatusUnavailable")}</p>
-      <Button variant="outline"  type="button" disabled={task.isFetching} onClick={() => void task.refetch()}>{t("logs.calls.retryTask")}</Button>
-    </Notice> : null}
-    {task.data && !task.isError ? <div className="ui-toolbar">
-      <span className="ui-muted">{t("logs.calls.currentStatus", { "0": TASK_STATUS_LABELS[task.data.status] })}</span>
-      <Button variant="outline" asChild><Link to={`/projects/${encodeURIComponent(projectId)}`}>{t("logs.calls.openProject")}<ArrowSquareOut data-icon="inline-end" aria-hidden /></Link></Button>
-    </div> : null}
-  </section>;
+  if (task.error instanceof ApiError && task.error.status === HTTP_STATUS.UNAUTHORIZED)
+    return <Navigate to="/login" replace />;
+  return (
+    <section className="call-log-task" aria-label={t("logs.calls.relatedTask")}>
+      <h3>{t("logs.calls.relatedTask")}</h3>
+      {task.isPending ? <LoadingState compact label={t("logs.calls.taskLoading")} /> : null}
+      {task.isError ? (
+        <Notice tone="danger" title={forbidden ? t("logs.calls.taskForbidden") : t("logs.calls.taskLoadFailed")}>
+          <p>{t("logs.calls.taskStatusUnavailable")}</p>
+          <Button variant="outline" type="button" disabled={task.isFetching} onClick={() => void task.refetch()}>
+            {t("logs.calls.retryTask")}
+          </Button>
+        </Notice>
+      ) : null}
+      {task.data && !task.isError ? (
+        <div className="ui-toolbar">
+          <span className="ui-muted">
+            {t("logs.calls.currentStatus", { "0": TASK_STATUS_LABELS[task.data.status] })}
+          </span>
+          <Button variant="outline" asChild>
+            <Link to={`/projects/${encodeURIComponent(projectId)}`}>
+              {t("logs.calls.openProject")}
+              <ArrowSquareOut data-icon="inline-end" aria-hidden />
+            </Link>
+          </Button>
+        </div>
+      ) : null}
+    </section>
+  );
 }
 
 function Detail({ label, value }: { label: string; value: ReactNode }) {
   useLocale();
-  return <div><dt>{label}</dt><dd>{value ?? <span className="ui-muted">{t("common.notRecorded")}</span>}</dd></div>;
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd>{value ?? <span className="ui-muted">{t("common.notRecorded")}</span>}</dd>
+    </div>
+  );
 }
 
-function LogTime({ value, missing = t("common.notRecorded"), compact = false }: { value: string | null; missing?: string; compact?: boolean }) {
+function LogTime({
+  value,
+  missing = t("common.notRecorded"),
+  compact = false,
+}: {
+  value: string | null;
+  missing?: string;
+  compact?: boolean;
+}) {
   useLocale();
   if (!value) return <span className="ui-muted">{missing}</span>;
   const date = new Date(value);
-  return <time className={cn("call-log-time", compact && "call-log-time--compact")} dateTime={value} title={date.toLocaleString(getFormatLocale())}>
-    {compact ? <><span>{date.toLocaleTimeString(getFormatLocale())}</span><span>{date.toLocaleDateString(getFormatLocale())}</span></> : date.toLocaleString(getFormatLocale())}
-  </time>;
+  return (
+    <time
+      className={cn("call-log-time", compact && "call-log-time--compact")}
+      dateTime={value}
+      title={date.toLocaleString(getFormatLocale())}
+    >
+      {compact ? (
+        <>
+          <span>{date.toLocaleTimeString(getFormatLocale())}</span>
+          <span>{date.toLocaleDateString(getFormatLocale())}</span>
+        </>
+      ) : (
+        date.toLocaleString(getFormatLocale())
+      )}
+    </time>
+  );
 }

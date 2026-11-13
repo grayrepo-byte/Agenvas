@@ -28,29 +28,42 @@ public final class GoogleVideoModels implements NativeMediaProtocol {
     public static final int OMNI_REFERENCE_IMAGES = 6;
     private static final JsonNodeFactory N = JsonNodeFactory.instance;
 
-    @Override public Set<String> adapterIds() { return Set.of(VEO, OMNI); }
-    @Override public List<Profile> profiles() {
+    @Override
+    public Set<String> adapterIds() {
+        return Set.of(VEO, OMNI);
+    }
+    @Override
+    public List<Profile> profiles() {
         List<Profile> profiles = new ArrayList<>();
         for (String model : VEO_MODELS) {
             profiles.add(new Profile(VEO, model, GENERATE, Task.Kind.VIDEO_GENERATION));
-            if (!model.contains("lite")) profiles.add(new Profile(VEO, model, EXTEND, Task.Kind.VIDEO_GENERATION));
+            if (!model.contains("lite"))
+                profiles.add(new Profile(VEO, model, EXTEND, Task.Kind.VIDEO_GENERATION));
         }
         for (String operation : List.of(GENERATE, EDIT, EXTEND))
             profiles.add(new Profile(OMNI, OMNI_MODEL, operation, Task.Kind.VIDEO_GENERATION));
         return List.copyOf(profiles);
     }
-    public static boolean veo(Profile p) { return VEO.equals(p.adapterId()); }
-    public static boolean lite(Profile p) { return p.model().contains("lite"); }
-    public static boolean extension(Profile p) { return EXTEND.equals(p.operation()); }
+    public static boolean veo(Profile p) {
+        return VEO.equals(p.adapterId());
+    }
+    public static boolean lite(Profile p) {
+        return p.model().contains("lite");
+    }
+    public static boolean extension(Profile p) {
+        return EXTEND.equals(p.operation());
+    }
     public static boolean present(JsonNode values, String key) {
         JsonNode value = values.path(key);
         return !value.isMissingNode() && !value.isNull() && (!value.isTextual() || !value.asText().isBlank());
     }
     public static void requireProfile(Profile p) {
-        if (!new GoogleVideoModels().profiles().contains(p)) throw invalid();
+        if (!new GoogleVideoModels().profiles().contains(p))
+            throw invalid();
     }
 
-    @Override public List<CreatorInputField> inputs(Profile p) {
+    @Override
+    public List<CreatorInputField> inputs(Profile p) {
         requireProfile(p);
         List<CreatorInputField> fields = new ArrayList<>();
         fields.add(text("prompt", "Prompt", true, 12000, RunningHubDefinition.Source.PROMPT, false));
@@ -58,17 +71,22 @@ public final class GoogleVideoModels implements NativeMediaProtocol {
             fields.add(select("durationSeconds", "Duration (seconds)", List.of(4, 6, 8), 8,
                     RunningHubDefinition.Source.DURATION_SECONDS));
             fields.add(select("aspectRatio", "Aspect ratio", List.of("16:9", "9:16"), "16:9", null));
-            fields.add(select("resolution", "Resolution", extension(p) ? List.of("720p")
+            fields.add(select("resolution", "Resolution", extension(p)
+                    ? List.of("720p")
                     : lite(p) ? List.of("720p", "1080p") : List.of("720p", "1080p", "4k"), "720p", null));
-            fields.add(select("personGeneration", "People generation", List.of("allow_all", "allow_adult"), null, null));
+            fields.add(
+                    select("personGeneration", "People generation", List.of("allow_all", "allow_adult"), null, null));
             fields.add(text("negativePrompt", "Negative prompt", false, 12000, null, true));
             fields.add(bool("enhancePrompt", "Enhance prompt", null));
             fields.add(integer("seed", "Seed", 0, 4294967295L, null));
-            if (extension(p)) fields.add(media("base_video", "Previous Veo video", true, true));
+            if (extension(p))
+                fields.add(media("base_video", "Previous Veo video", true, true));
             else {
                 fields.add(media("first_frame", "First frame", false, false));
                 fields.add(media("last_frame", "Last frame", false, false));
-                if (!lite(p)) for (int i = 1; i <= 3; i++) fields.add(media("image_" + i, "Reference image " + i, false, false));
+                if (!lite(p))
+                    for (int i = 1; i <= 3; i++)
+                        fields.add(media("image_" + i, "Reference image " + i, false, false));
             }
         } else {
             fields.add(select("aspect_ratio", "Aspect ratio", List.of("16:9", "9:16"), "16:9", null));
@@ -80,21 +98,28 @@ public final class GoogleVideoModels implements NativeMediaProtocol {
             fields.add(integer("seed", "Seed", Integer.MIN_VALUE, Integer.MAX_VALUE, null));
             fields.add(integer("max_output_tokens", "Maximum output tokens", 1, Integer.MAX_VALUE, null));
             if (GENERATE.equals(p.operation())) {
-                fields.add(select("task", "Generation task", List.of("auto", "text_to_video", "image_to_video", "reference_to_video"), "auto", null));
+                fields.add(select("task", "Generation task",
+                        List.of("auto", "text_to_video", "image_to_video", "reference_to_video"), "auto", null));
                 fields.add(media("first_frame", "First frame", false, false));
                 fields.add(media("last_frame", "Last frame", false, false));
-                for (int i = 1; i <= OMNI_REFERENCE_IMAGES; i++) fields.add(media("image_" + i, "Reference image " + i, false, false));
-                for (int i = 1; i <= 3; i++) fields.add(media("video_" + i, "Reference video " + i, false, true));
+                for (int i = 1; i <= OMNI_REFERENCE_IMAGES; i++)
+                    fields.add(media("image_" + i, "Reference image " + i, false, false));
+                for (int i = 1; i <= 3; i++)
+                    fields.add(media("video_" + i, "Reference video " + i, false, true));
             } else {
-                fields.add(media("base_video", "Video to " + p.operation().toLowerCase(java.util.Locale.ROOT), true, true));
-                for (int i = 1; i <= OMNI_REFERENCE_IMAGES; i++) fields.add(media("image_" + i, "Reference image " + i, false, false));
-                for (int i = 1; i <= 3; i++) fields.add(media("video_" + i, "Reference video " + i, false, true));
+                fields.add(media("base_video", "Video to " + p.operation().toLowerCase(java.util.Locale.ROOT), true,
+                        true));
+                for (int i = 1; i <= OMNI_REFERENCE_IMAGES; i++)
+                    fields.add(media("image_" + i, "Reference image " + i, false, false));
+                for (int i = 1; i <= 3; i++)
+                    fields.add(media("video_" + i, "Reference video " + i, false, true));
             }
         }
         return List.copyOf(fields);
     }
 
-    @Override public MediaAdapterRegistry.Declaration declaration(Profile p) {
+    @Override
+    public MediaAdapterRegistry.Declaration declaration(Profile p) {
         requireProfile(p);
         int images = (int) inputs(p).stream().filter(f -> f.type() == RunningHubDefinition.FieldType.IMAGE).count();
         int videos = (int) inputs(p).stream().filter(f -> f.type() == RunningHubDefinition.FieldType.VIDEO).count();
@@ -104,97 +129,148 @@ public final class GoogleVideoModels implements NativeMediaProtocol {
                 Set.of(), Set.of(), Set.of(), false, false, 0, videos);
     }
 
-    @Override public void validate(Profile p, JsonNode values, boolean complete) {
+    @Override
+    public void validate(Profile p, JsonNode values, boolean complete) {
         requireProfile(p);
-        if (!complete) return; // Persist an incomplete draft; full combinations are checked at acceptance.
+        if (!complete)
+            return; // Persist an incomplete draft; full combinations are checked at acceptance.
         int refs = count(values, "image_", veo(p) ? 3 : OMNI_REFERENCE_IMAGES);
         int videos = count(values, "video_", 3);
         boolean first = present(values, "first_frame"), last = present(values, "last_frame");
-        if (last && !first) throw invalid();
+        if (last && !first)
+            throw invalid();
         if (veo(p)) {
             int duration = values.path("durationSeconds").asInt(8);
-            if ((extension(p) || refs > 0 || !"720p".equals(values.path("resolution").asText("720p"))) && duration != 8) throw invalid();
+            if ((extension(p) || refs > 0 || !"720p".equals(values.path("resolution").asText("720p"))) && duration != 8)
+                throw invalid();
             String people = values.path("personGeneration").asText("");
-            if (!people.isEmpty() && (first || refs > 0) && !"allow_adult".equals(people)) throw invalid();
+            if (!people.isEmpty() && (first || refs > 0) && !"allow_adult".equals(people))
+                throw invalid();
         } else {
             String task = values.path("task").asText("auto");
             if (GENERATE.equals(p.operation())) {
                 if ("text_to_video".equals(task) && (first || refs > 0 || videos > 0)
                         || "image_to_video".equals(task) && (!first || refs > 0 || videos > 0)
-                        || "reference_to_video".equals(task) && (first || refs + videos == 0)) throw invalid();
+                        || "reference_to_video".equals(task) && (first || refs + videos == 0))
+                    throw invalid();
             }
         }
     }
 
-    @Override public void validateMetadata(Profile p, String slot, Asset asset, JsonNode values) {
+    @Override
+    public void validateMetadata(Profile p, String slot, Asset asset, JsonNode values) {
         requireProfile(p);
         boolean video = "base_video".equals(slot) || slot.startsWith("video_");
         if (asset.byteSize() < 1 || asset.width() == null || asset.height() == null
-                || asset.width() < 1 || asset.height() < 1 || asset.mediaKind() != (video ? Asset.MediaKind.VIDEO : Asset.MediaKind.IMAGE)
+                || asset.width() < 1 || asset.height() < 1
+                || asset.mediaKind() != (video ? Asset.MediaKind.VIDEO : Asset.MediaKind.IMAGE)
                 || !(video ? VIDEO_TYPES : IMAGE_TYPES).contains(asset.contentType())
-                || asset.byteSize() > (video ? MAX_INPUT_BYTES : MAX_IMAGE_BYTES)) throw invalid();
+                || asset.byteSize() > (video ? MAX_INPUT_BYTES : MAX_IMAGE_BYTES))
+            throw invalid();
         if (video) {
-            if (asset.durationMs() == null || asset.durationMs() < 1) throw invalid();
+            if (asset.durationMs() == null || asset.durationMs() < 1)
+                throw invalid();
             int maximum = veo(p) ? 141000 : slot.startsWith("video_") ? 3000 : 10000;
-            if (asset.durationMs() > maximum) throw invalid();
+            if (asset.durationMs() > maximum)
+                throw invalid();
             if (veo(p) && (asset.width() != 1280 || asset.height() != 720)
-                    && (asset.width() != 720 || asset.height() != 1280)) throw invalid();
+                    && (asset.width() != 720 || asset.height() != 1280))
+                throw invalid();
         }
     }
-    @Override public Integer resultCount(Profile p, JsonNode values) { requireProfile(p); return 1; }
-    @Override public Set<String> reusableSlots(Profile profile) {
+    @Override
+    public Integer resultCount(Profile p, JsonNode values) {
+        requireProfile(p);
+        return 1;
+    }
+    @Override
+    public Set<String> reusableSlots(Profile profile) {
         requireProfile(profile);
         // A loop may intentionally start and end on the same authorized image version.
         return GENERATE.equals(profile.operation()) ? Set.of("first_frame", "last_frame") : Set.of();
     }
-    @Override public void validateSource(Profile profile, String slot, ArtifactVersion version) {
+    @Override
+    public void validateSource(Profile profile, String slot, ArtifactVersion version) {
         requireProfile(profile);
         if (veo(profile) && extension(profile) && "base_video".equals(slot)
-                && (version == null || version.createdByKind() != ArtifactVersion.CreatedByKind.TASK)) throw invalid();
+                && (version == null || version.createdByKind() != ArtifactVersion.CreatedByKind.TASK))
+            throw invalid();
     }
-    @Override public boolean usesMediaUrl(Profile profile, CreatorInputField field) { return false; }
-    @Override public void validateProbe(Profile profile, String slot, JsonNode values, JsonNode probe) {
-        if (!"base_video".equals(slot) && !slot.startsWith("video_")) return;
+    @Override
+    public boolean usesMediaUrl(Profile profile, CreatorInputField field) {
+        return false;
+    }
+    @Override
+    public void validateProbe(Profile profile, String slot, JsonNode values, JsonNode probe) {
+        if (!"base_video".equals(slot) && !slot.startsWith("video_"))
+            return;
         double seconds = probe.path("format").path("duration").asDouble(-1);
         double maximum = veo(profile) ? 141 : slot.startsWith("video_") ? 3 : 10;
-        if (!Double.isFinite(seconds) || seconds <= 0 || seconds > maximum + 0.001) throw invalid();
+        if (!Double.isFinite(seconds) || seconds <= 0 || seconds > maximum + 0.001)
+            throw invalid();
     }
-    @Override public String renderMention(Profile p, JsonNode values, String slot) {
+    @Override
+    public String renderMention(Profile p, JsonNode values, String slot) {
         requireProfile(p);
         if (veo(p)) {
-            if ("first_frame".equals(slot)) return "first frame";
-            if ("last_frame".equals(slot)) return "last frame";
-            if ("base_video".equals(slot)) return "source video";
+            if ("first_frame".equals(slot))
+                return "first frame";
+            if ("last_frame".equals(slot))
+                return "last frame";
+            if ("base_video".equals(slot))
+                return "source video";
             int position = 1;
-            for (CreatorInputField field : inputs(p)) if (field.key().startsWith("image_") && present(values, field.key())) {
-                if (field.key().equals(slot)) return "reference image " + position;
-                position++;
-            }
+            for (CreatorInputField field : inputs(p))
+                if (field.key().startsWith("image_") && present(values, field.key())) {
+                    if (field.key().equals(slot))
+                        return "reference image " + position;
+                    position++;
+                }
             throw invalid();
         }
-        if ("first_frame".equals(slot)) return "<FIRST_FRAME>";
-        if ("last_frame".equals(slot)) return "<LAST_FRAME>";
-        if ("base_video".equals(slot)) return "<VIDEO_0>";
+        if ("first_frame".equals(slot))
+            return "<FIRST_FRAME>";
+        if ("last_frame".equals(slot))
+            return "<LAST_FRAME>";
+        if ("base_video".equals(slot))
+            return "<VIDEO_0>";
         String prefix = slot.startsWith("video_") ? "video_" : "image_";
         int position = 0;
-        for (CreatorInputField field : inputs(p)) if (field.key().startsWith(prefix) && present(values, field.key())) {
-            if (field.key().equals(slot)) return "<" + ("video_".equals(prefix) ? "VIDEO_REF_" : "IMAGE_REF_") + position + ">";
-            position++;
-        }
+        for (CreatorInputField field : inputs(p))
+            if (field.key().startsWith(prefix) && present(values, field.key())) {
+                if (field.key().equals(slot))
+                    return "<" + ("video_".equals(prefix) ? "VIDEO_REF_" : "IMAGE_REF_") + position + ">";
+                position++;
+            }
         throw invalid();
     }
-    public static NativeMediaFailure invalid() { return new NativeMediaFailure("PROVIDER_UNSUPPORTED_INPUT"); }
-    private static int count(JsonNode values, String prefix, int max) { int n = 0; for (int i = 1; i <= max; i++) if (present(values, prefix + i)) n++; return n; }
-    private static CreatorInputField text(String key, String label, boolean required, int max, RunningHubDefinition.Source source, boolean advanced) {
-        return new CreatorInputField(key, label, null, RunningHubDefinition.FieldType.STRING, required, null, null, null, max, List.of(), advanced, source, null);
+    public static NativeMediaFailure invalid() {
+        return new NativeMediaFailure("PROVIDER_UNSUPPORTED_INPUT");
+    }
+    private static int count(JsonNode values, String prefix, int max) {
+        int n = 0;
+        for (int i = 1; i <= max; i++)
+            if (present(values, prefix + i))
+                n++;
+        return n;
+    }
+    private static CreatorInputField text(String key, String label, boolean required, int max,
+            RunningHubDefinition.Source source, boolean advanced) {
+        return new CreatorInputField(key, label, null, RunningHubDefinition.FieldType.STRING, required, null, null,
+                null, max, List.of(), advanced, source, null);
     }
     private static CreatorInputField media(String key, String label, boolean required, boolean video) {
-        return new CreatorInputField(key, label, null, video ? RunningHubDefinition.FieldType.VIDEO : RunningHubDefinition.FieldType.IMAGE,
+        return new CreatorInputField(key, label, null,
+                video ? RunningHubDefinition.FieldType.VIDEO : RunningHubDefinition.FieldType.IMAGE,
                 required, null, null, null, null, List.of(), false, null, null);
     }
-    private static CreatorInputField select(String key, String label, List<?> options, Object defaultValue, RunningHubDefinition.Source source) {
-        var choices = options.stream().map(v -> new RunningHubDefinition.Option(v.toString(), v instanceof Integer i ? N.numberNode(i) : N.stringNode(v.toString()))).toList();
-        JsonNode selected = defaultValue == null ? null : defaultValue instanceof Integer i ? N.numberNode(i) : N.stringNode(defaultValue.toString());
+    private static CreatorInputField select(String key, String label, List<?> options, Object defaultValue,
+            RunningHubDefinition.Source source) {
+        var choices = options.stream().map(v -> new RunningHubDefinition.Option(v.toString(),
+                v instanceof Integer i ? N.numberNode(i) : N.stringNode(v.toString()))).toList();
+        JsonNode selected = defaultValue == null
+                ? null
+                : defaultValue instanceof Integer i ? N.numberNode(i) : N.stringNode(defaultValue.toString());
         return new CreatorInputField(key, label, null, RunningHubDefinition.FieldType.SELECT, false, selected,
                 null, null, null, choices, false, source, null);
     }
@@ -204,6 +280,7 @@ public final class GoogleVideoModels implements NativeMediaProtocol {
     }
     private static CreatorInputField integer(String key, String label, long min, long max, Long value) {
         return new CreatorInputField(key, label, null, RunningHubDefinition.FieldType.INTEGER, false,
-                value == null ? null : N.numberNode(value), BigDecimal.valueOf(min), BigDecimal.valueOf(max), null, List.of(), true, null, null);
+                value == null ? null : N.numberNode(value), BigDecimal.valueOf(min), BigDecimal.valueOf(max), null,
+                List.of(), true, null, null);
     }
 }

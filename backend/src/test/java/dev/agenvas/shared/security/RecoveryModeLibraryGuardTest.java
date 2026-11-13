@@ -25,15 +25,19 @@ class RecoveryModeLibraryGuardTest {
     @Configuration
     @EnableWebMvc
     @Import({RecoveryModeWriteGuard.class, Probe.class})
-    static class Config {}
+    static class Config {
+    }
 
     @RestController
     static class Probe {
         @RequestMapping({"/api/v1/character-library/profiles", "/api/v1/library/entries"})
-        String library() { return "readable"; }
+        String library() {
+            return "readable";
+        }
     }
 
-    @Autowired WebApplicationContext context;
+    @Autowired
+    WebApplicationContext context;
 
     @Test
     void accountLibrariesRemainReadableButWritesAreBlockedDuringRestore() throws Exception {

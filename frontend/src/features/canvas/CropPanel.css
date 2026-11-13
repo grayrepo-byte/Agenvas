@@ -44,12 +44,16 @@
   position: absolute;
   box-sizing: border-box;
   border: 2px solid #fff;
-  box-shadow: 0 0 0 9999px #0009, 0 0 0 1px #0005 inset;
+  box-shadow:
+    0 0 0 9999px #0009,
+    0 0 0 1px #0005 inset;
   line-height: normal;
   cursor: move;
 }
 
-.crop-selection.is-dragging { cursor: grabbing; }
+.crop-selection.is-dragging {
+  cursor: grabbing;
+}
 
 .crop-selection-surface,
 .crop-handle {
@@ -63,10 +67,17 @@
   touch-action: none;
 }
 
-.crop-selection-surface { inset: 7px; cursor: move; }
-.crop-selection-surface:focus-visible { outline: none; }
+.crop-selection-surface {
+  inset: 7px;
+  cursor: move;
+}
+.crop-selection-surface:focus-visible {
+  outline: none;
+}
 .crop-selection:has(> .crop-selection-surface:focus-visible) .crop-handle::after,
-.crop-handle:focus-visible::after { transform: scale(1.15); }
+.crop-handle:focus-visible::after {
+  transform: scale(1.15);
+}
 
 .crop-handle::after {
   position: absolute;
@@ -77,27 +88,76 @@
 }
 
 .crop-handle-n,
-.crop-handle-s { left: 50%; width: 42px; height: 22px; transform: translateX(-50%); cursor: ns-resize; }
-.crop-handle-n { top: -12px; }
-.crop-handle-s { bottom: -12px; }
+.crop-handle-s {
+  left: 50%;
+  width: 42px;
+  height: 22px;
+  transform: translateX(-50%);
+  cursor: ns-resize;
+}
+.crop-handle-n {
+  top: -12px;
+}
+.crop-handle-s {
+  bottom: -12px;
+}
 .crop-handle-n::after,
-.crop-handle-s::after { top: 8px; left: 8px; width: 26px; height: 5px; }
+.crop-handle-s::after {
+  top: 8px;
+  left: 8px;
+  width: 26px;
+  height: 5px;
+}
 
 .crop-handle-e,
-.crop-handle-w { top: 50%; width: 22px; height: 42px; transform: translateY(-50%); cursor: ew-resize; }
-.crop-handle-e { right: -12px; }
-.crop-handle-w { left: -12px; }
+.crop-handle-w {
+  top: 50%;
+  width: 22px;
+  height: 42px;
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+.crop-handle-e {
+  right: -12px;
+}
+.crop-handle-w {
+  left: -12px;
+}
 .crop-handle-e::after,
-.crop-handle-w::after { top: 8px; left: 8px; width: 5px; height: 26px; }
+.crop-handle-w::after {
+  top: 8px;
+  left: 8px;
+  width: 5px;
+  height: 26px;
+}
 
 .crop-handle-nw,
 .crop-handle-ne,
 .crop-handle-se,
-.crop-handle-sw { width: 28px; height: 28px; }
-.crop-handle-nw { top: -14px; left: -14px; cursor: nwse-resize; }
-.crop-handle-ne { top: -14px; right: -14px; cursor: nesw-resize; }
-.crop-handle-se { right: -14px; bottom: -14px; cursor: nwse-resize; }
-.crop-handle-sw { bottom: -14px; left: -14px; cursor: nesw-resize; }
+.crop-handle-sw {
+  width: 28px;
+  height: 28px;
+}
+.crop-handle-nw {
+  top: -14px;
+  left: -14px;
+  cursor: nwse-resize;
+}
+.crop-handle-ne {
+  top: -14px;
+  right: -14px;
+  cursor: nesw-resize;
+}
+.crop-handle-se {
+  right: -14px;
+  bottom: -14px;
+  cursor: nwse-resize;
+}
+.crop-handle-sw {
+  bottom: -14px;
+  left: -14px;
+  cursor: nesw-resize;
+}
 .crop-handle-nw::after,
 .crop-handle-ne::after,
 .crop-handle-se::after,
@@ -109,7 +169,10 @@
   border-radius: 2px;
 }
 
-.crop-handle:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
+.crop-handle:focus-visible {
+  outline: var(--ui-focus-width) solid var(--ui-focus);
+  outline-offset: var(--ui-focus-offset);
+}
 
 .crop-toolbar {
   display: flex;
@@ -137,11 +200,21 @@
   font-size: 13px;
 }
 
-.crop-toolbar button { border-radius: 999px; }
-.crop-toolbar-divider { width: 1px; height: 22px; background: var(--ui-border); }
-.crop-ratio-control { padding: 0 8px 0 12px; }
+.crop-toolbar button {
+  border-radius: 999px;
+}
+.crop-toolbar-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--ui-border);
+}
+.crop-ratio-control {
+  padding: 0 8px 0 12px;
+}
 
-.crop-toolbar .crop-confirm { min-width: 86px; }
+.crop-toolbar .crop-confirm {
+  min-width: 86px;
+}
 .crop-error {
   max-width: 520px;
   margin: -6px 0 0;
@@ -153,9 +226,20 @@
 }
 
 @media (max-width: 720px) {
-  .crop-backdrop { padding: 14px; }
-  .crop-dialog { max-width: calc(100vw - 28px); }
-  .crop-image-shell > img { max-width: calc(100vw - 28px); max-height: calc(100vh - 154px); }
-  .crop-toolbar { gap: 3px; }
-  .crop-ratio-control { padding-left: 8px; }
+  .crop-backdrop {
+    padding: 14px;
+  }
+  .crop-dialog {
+    max-width: calc(100vw - 28px);
+  }
+  .crop-image-shell > img {
+    max-width: calc(100vw - 28px);
+    max-height: calc(100vh - 154px);
+  }
+  .crop-toolbar {
+    gap: 3px;
+  }
+  .crop-ratio-control {
+    padding-left: 8px;
+  }
 }

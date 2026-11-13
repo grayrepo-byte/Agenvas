@@ -53,8 +53,8 @@ public class AssetService {
      * @param clock 提供可控的素材创建时间
      */
     public AssetService(ProjectService projects, AssetRepository assets,
-            @org.springframework.beans.factory.annotation.Qualifier("configuredAssetStorage")
-            dev.agenvas.asset.storage.AssetStorage storage, ProjectEventService events, ObjectMapper mapper,
+            @org.springframework.beans.factory.annotation.Qualifier("configuredAssetStorage") dev.agenvas.asset.storage.AssetStorage storage,
+            ProjectEventService events, ObjectMapper mapper,
             Clock clock) {
         this.projects = projects;
         this.assets = assets;
@@ -76,13 +76,17 @@ public class AssetService {
     public Asset prepareLibraryImport(UUID owner, UUID project, UUID id, Asset.MediaKind kind,
             Path source, BooleanSupplier stillActive) {
         return prepareLibraryImport(owner, project, id, kind, () -> {
-            try { return Files.newInputStream(source, LinkOption.NOFOLLOW_LINKS); }
-            catch (IOException failure) { throw new IllegalStateException("Cannot read library import", failure); }
+            try {
+                return Files.newInputStream(source, LinkOption.NOFOLLOW_LINKS);
+            } catch (IOException failure) {
+                throw new IllegalStateException("Cannot read library import", failure);
+            }
         }, stillActive);
     }
 
     /** Fetches remote inputs lazily under the fixed asset lock; recovery reuses archived bytes. */
-    public Asset prepareLibraryImport(UUID owner, UUID project, UUID id, Asset.MediaKind kind, Supplier<InputStream> source) {
+    public Asset prepareLibraryImport(UUID owner, UUID project, UUID id, Asset.MediaKind kind,
+            Supplier<InputStream> source) {
         return prepareLibraryImport(owner, project, id, kind, source, () -> true);
     }
     private Asset prepareLibraryImport(UUID owner, UUID project, UUID id, Asset.MediaKind kind,
@@ -96,21 +100,24 @@ public class AssetService {
         return switch (kind) {
             case IMAGE -> {
                 requireActivePreparation(stillActive);
-                var file = storage.recoverImage(project, id).orElseGet(() -> readImport(source, input -> storage.storeImage(project, id, input)));
+                var file = storage.recoverImage(project, id)
+                        .orElseGet(() -> readImport(source, input -> storage.storeImage(project, id, input)));
                 yield new Asset(id, project, kind, file.objectKey(), file.contentType(), file.byteSize(),
                         file.sha256(), file.width(), file.height(), null, file.thumbnailKey(),
                         file.thumbnailByteSize(), file.thumbnailSha256(), now());
             }
             case VIDEO -> {
                 requireActivePreparation(stillActive);
-                var file = storage.recoverVideo(project, id).orElseGet(() -> readImport(source, input -> storage.storeUploadedVideo(project, id, input)));
+                var file = storage.recoverVideo(project, id)
+                        .orElseGet(() -> readImport(source, input -> storage.storeUploadedVideo(project, id, input)));
                 yield new Asset(id, project, kind, file.objectKey(), "video/mp4", file.byteSize(),
                         file.sha256(), file.width(), file.height(), file.durationMs(), file.thumbnailKey(),
                         file.thumbnailByteSize(), file.thumbnailSha256(), now());
             }
             case AUDIO -> {
                 requireActivePreparation(stillActive);
-                var file = storage.recoverAudio(project, id).orElseGet(() -> readImport(source, input -> storage.storeAudio(project, id, input)));
+                var file = storage.recoverAudio(project, id)
+                        .orElseGet(() -> readImport(source, input -> storage.storeAudio(project, id, input)));
                 yield new Asset(id, project, kind, file.objectKey(), file.contentType(), file.byteSize(),
                         file.sha256(), null, null, file.durationMs(), null, null, null, now());
             }
@@ -160,12 +167,16 @@ public class AssetService {
     }
 
     private <T> T readImport(Supplier<InputStream> source, java.util.function.Function<InputStream, T> store) {
-        try (InputStream input = source.get()) { return store.apply(input); }
-        catch (IOException failure) { throw new IllegalStateException("Cannot close library import", failure); }
+        try (InputStream input = source.get()) {
+            return store.apply(input);
+        } catch (IOException failure) {
+            throw new IllegalStateException("Cannot close library import", failure);
+        }
     }
 
     private void requireActivePreparation(BooleanSupplier stillActive) {
-        if (!stillActive.getAsBoolean()) throw new IllegalStateException("Import preparation lease changed");
+        if (!stillActive.getAsBoolean())
+            throw new IllegalStateException("Import preparation lease changed");
     }
 
     /** Only rejected, unregistered imports may be removed; READY project content is never garbage. */
@@ -178,7 +189,8 @@ public class AssetService {
         if (prepared.thumbnailKey() != null && !storage.belongsToProject(prepared.thumbnailKey(), prepared.projectId()))
             throw new IllegalStateException("Thumbnail partition mismatch");
         storage.discard(prepared.objectKey());
-        if (prepared.thumbnailKey() != null) storage.discard(prepared.thumbnailKey());
+        if (prepared.thumbnailKey() != null)
+            storage.discard(prepared.thumbnailKey());
     }
 
     /**
@@ -189,13 +201,16 @@ public class AssetService {
     public boolean cleanupPreparedImport(UUID owner, Asset prepared) {
         projects.get(owner, prepared.projectId());
         Supplier<Boolean> cleanup = () -> {
-            if (assets.find(prepared.projectId(), prepared.id()).isPresent()) return true;
+            if (assets.find(prepared.projectId(), prepared.id()).isPresent())
+                return true;
             if (!storage.belongsToProject(prepared.objectKey(), prepared.projectId()))
                 throw new IllegalStateException("Import partition mismatch");
-            if (prepared.thumbnailKey() != null && !storage.belongsToProject(prepared.thumbnailKey(), prepared.projectId()))
+            if (prepared.thumbnailKey() != null
+                    && !storage.belongsToProject(prepared.thumbnailKey(), prepared.projectId()))
                 throw new IllegalStateException("Thumbnail partition mismatch");
             storage.discard(prepared.objectKey());
-            if (prepared.thumbnailKey() != null) storage.discard(prepared.thumbnailKey());
+            if (prepared.thumbnailKey() != null)
+                storage.discard(prepared.thumbnailKey());
             return true;
         };
         return switch (prepared.mediaKind()) {
@@ -209,7 +224,8 @@ public class AssetService {
     public boolean cleanupPlannedSkillImport(UUID owner, UUID project, UUID assetId) {
         projects.get(owner, project);
         return storage.withTaskImageLock(project, assetId, () -> {
-            if (assets.find(project, assetId).isPresent()) return true;
+            if (assets.find(project, assetId).isPresent())
+                return true;
             storage.discardPreparedImage(project, assetId);
             return true;
         });
@@ -220,8 +236,10 @@ public class AssetService {
             BooleanSupplier stillDiscardable) {
         projects.getRetainedProject(owner, project);
         return withMediaLock(project, assetId, kind, () -> {
-            if (!stillDiscardable.getAsBoolean()) return false;
-            if (assets.find(project, assetId).isPresent()) return true;
+            if (!stillDiscardable.getAsBoolean())
+                return false;
+            if (assets.find(project, assetId).isPresent())
+                return true;
             storage.discardPreparedMedia(project, assetId, kind);
             return true;
         });
@@ -247,8 +265,12 @@ public class AssetService {
         projects.requireActiveProject(ownerId, projectId);
         UUID id = UUID.randomUUID();
         var stored = storage.storeAudio(projectId, id, input);
-        try { return publishAudio(ownerId, projectId, id, stored, false); }
-        catch (RuntimeException failure) { storage.discard(stored.objectKey()); throw failure; }
+        try {
+            return publishAudio(ownerId, projectId, id, stored, false);
+        } catch (RuntimeException failure) {
+            storage.discard(stored.objectKey());
+            throw failure;
+        }
     }
 
     /** Recovery reads installed bytes only; no provider request is made. */
@@ -257,7 +279,8 @@ public class AssetService {
         UUID id = UUID.nameUUIDFromBytes(("agenvas:task-audio:v1:" + taskId).getBytes(StandardCharsets.UTF_8));
         return storage.withTaskAudioLock(projectId, id, () -> {
             var stored = storage.recoverAudio(projectId, id);
-            if (stored.isEmpty()) return java.util.Optional.empty();
+            if (stored.isEmpty())
+                return java.util.Optional.empty();
             var existing = assets.find(projectId, id);
             if (existing.isPresent()) {
                 Asset asset = existing.get();
@@ -285,11 +308,15 @@ public class AssetService {
                     throw new IllegalStateException("Audio bytes differ from READY metadata");
                 return asset;
             }
-            if (recovered.isPresent()) return publishAudio(ownerId, projectId, id, recovered.get(), true);
+            if (recovered.isPresent())
+                return publishAudio(ownerId, projectId, id, recovered.get(), true);
             try (InputStream input = download.get()) {
-                if (input == null) throw new IllegalStateException("Audio stream missing");
+                if (input == null)
+                    throw new IllegalStateException("Audio stream missing");
                 return publishAudio(ownerId, projectId, id, storage.storeAudio(projectId, id, input), true);
-            } catch (IOException failure) { throw new IllegalStateException("Cannot close audio stream", failure); }
+            } catch (IOException failure) {
+                throw new IllegalStateException("Cannot close audio stream", failure);
+            }
         });
     }
 
@@ -324,8 +351,8 @@ public class AssetService {
         var recovered = storage.recoverImage(projectId, assetId);
         var existing = assets.find(projectId, assetId);
         if (existing.isPresent()) {
-            LocalAssetStorage.StoredImage file = recovered.orElseThrow(() ->
-                    new IllegalStateException("Task image metadata exists without original file"));
+            LocalAssetStorage.StoredImage file = recovered
+                    .orElseThrow(() -> new IllegalStateException("Task image metadata exists without original file"));
             Asset asset = existing.get();
             if (!asset.objectKey().equals(file.objectKey())
                     || !asset.sha256().equals(file.sha256())
@@ -339,7 +366,8 @@ public class AssetService {
             return publishImage(ownerId, projectId, assetId, recovered.get(), true);
         }
         try (InputStream input = download.get()) {
-            if (input == null) throw new IllegalStateException("Image download returned no stream");
+            if (input == null)
+                throw new IllegalStateException("Image download returned no stream");
             LocalAssetStorage.StoredImage stored = storage.storeImage(projectId, assetId, input);
             // 数据库写入失败时保留任务键文件，后续轮询可核对文件并补交元数据。
             return publishImage(ownerId, projectId, assetId, stored, true);
@@ -350,7 +378,8 @@ public class AssetService {
 
     /** 使用带版本的命名空间派生任务图片 ID，避免与随机用户上传 ID 冲突。 */
     public static UUID taskImageAssetId(UUID taskId) {
-        if (taskId == null) throw new IllegalArgumentException("taskId is required");
+        if (taskId == null)
+            throw new IllegalArgumentException("taskId is required");
         return UUID.nameUUIDFromBytes(("agenvas:task-image:v1:" + taskId)
                 .getBytes(StandardCharsets.UTF_8));
     }
@@ -397,8 +426,8 @@ public class AssetService {
         var recovered = storage.recoverVideo(projectId, assetId);
         var existing = assets.find(projectId, assetId);
         if (existing.isPresent()) {
-            LocalAssetStorage.StoredVideo file = recovered.orElseThrow(() ->
-                    new IllegalStateException("Task video metadata exists without original file"));
+            LocalAssetStorage.StoredVideo file = recovered
+                    .orElseThrow(() -> new IllegalStateException("Task video metadata exists without original file"));
             Asset asset = existing.get();
             if (asset.mediaKind() != Asset.MediaKind.VIDEO
                     || !asset.objectKey().equals(file.objectKey())
@@ -413,7 +442,8 @@ public class AssetService {
             return publishVideo(ownerId, projectId, assetId, recovered.get(), true);
         }
         try (InputStream input = download.get()) {
-            if (input == null) throw new IllegalStateException("Video download returned no stream");
+            if (input == null)
+                throw new IllegalStateException("Video download returned no stream");
             LocalAssetStorage.StoredVideo stored = storage.storeVideo(projectId, assetId, input);
             return publishVideo(ownerId, projectId, assetId, stored, true);
         } catch (IOException failure) {
@@ -423,7 +453,8 @@ public class AssetService {
 
     /** 派生与图片及随机上传隔离的任务视频素材 ID。 */
     public static UUID taskVideoAssetId(UUID taskId) {
-        if (taskId == null) throw new IllegalArgumentException("taskId is required");
+        if (taskId == null)
+            throw new IllegalArgumentException("taskId is required");
         return UUID.nameUUIDFromBytes(("agenvas:task-video:v1:" + taskId)
                 .getBytes(StandardCharsets.UTF_8));
     }
@@ -457,8 +488,10 @@ public class AssetService {
     /** Uploads require an active project; accepted task output may finish after archival. */
     private Asset registerReadyAsset(UUID ownerId, Asset asset, boolean taskOutput) {
         return events.recordChange(ownerId, asset.projectId(), () -> {
-            if (taskOutput) projects.getRetainedProject(ownerId, asset.projectId());
-            else projects.requireActiveProject(ownerId, asset.projectId());
+            if (taskOutput)
+                projects.getRetainedProject(ownerId, asset.projectId());
+            else
+                projects.requireActiveProject(ownerId, asset.projectId());
             assets.insert(asset);
             return ProjectEventService.Change.changed(asset, assetReadyEvent(asset));
         }).value();
@@ -467,8 +500,8 @@ public class AssetService {
     private ProjectEventService.EventDraft assetReadyEvent(Asset asset) {
         return new ProjectEventService.EventDraft("asset.ready", ASSET_EVENT_SCHEMA_VERSION,
                 asset.id(), IMMUTABLE_ASSET_VERSION, mapper.createObjectNode()
-                .put("assetId", asset.id().toString()).put("contentType", asset.contentType())
-                .put("byteSize", asset.byteSize()));
+                        .put("assetId", asset.id().toString()).put("contentType", asset.contentType())
+                        .put("byteSize", asset.byteSize()));
     }
 
     /** 先核验项目所有权，再检查 READY 文件路径和字节大小后返回私有文件。 */
@@ -482,14 +515,17 @@ public class AssetService {
     public Asset metadata(UUID ownerId, UUID projectId, UUID assetId) {
         projects.get(ownerId, projectId);
         return assets.find(projectId, assetId).orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND,
-                "ASSET_NOT_FOUND", ApiMessage.of("api.asset-service.material-does-not-exist"), ApiMessage.of("api.asset-service.the-assets-in-this-project-were-not-found"), false));
+                "ASSET_NOT_FOUND", ApiMessage.of("api.asset-service.material-does-not-exist"),
+                ApiMessage.of("api.asset-service.the-assets-in-this-project-were-not-found"), false));
     }
 
     /** Authorize before accessing storage; metadata/HEAD never materialize a remote video. */
     public AssetContent content(UUID ownerId, UUID projectId, UUID assetId, boolean thumbnail) {
         Asset asset = metadata(ownerId, projectId, assetId);
         if (thumbnail && (asset.thumbnailKey() == null || asset.thumbnailByteSize() == null))
-            throw new ApiProblemException(HttpStatus.NOT_FOUND, "ASSET_THUMBNAIL_NOT_FOUND", ApiMessage.of("api.asset-service.preview-does-not-exist"), ApiMessage.of("api.asset-service.there-is-no-thumbnail-available-for-this-footage"), false);
+            throw new ApiProblemException(HttpStatus.NOT_FOUND, "ASSET_THUMBNAIL_NOT_FOUND",
+                    ApiMessage.of("api.asset-service.preview-does-not-exist"),
+                    ApiMessage.of("api.asset-service.there-is-no-thumbnail-available-for-this-footage"), false);
         String key = thumbnail ? asset.thumbnailKey() : asset.objectKey();
         long size = thumbnail ? asset.thumbnailByteSize() : asset.byteSize();
         String hash = thumbnail ? asset.thumbnailSha256() : asset.sha256();
@@ -502,7 +538,8 @@ public class AssetService {
         return storage.open(content.objectKey(), start, length, content.size());
     }
 
-    public record AssetContent(Asset asset, String objectKey, long size, String contentType) {}
+    public record AssetContent(Asset asset, String objectKey, long size, String contentType) {
+    }
 
     /** 向项目清单组装器返回已鉴权的素材记录，不返回磁盘路径。 */
     public List<Asset> listProjectAssets(UUID ownerId, UUID projectId) {
@@ -516,7 +553,9 @@ public class AssetService {
         Asset asset = metadata(ownerId, projectId, assetId);
         if (asset.mediaKind() != expectedKind) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "ARTIFACT_ASSET_KIND_INVALID",
-                    ApiMessage.of("api.asset-service.material-type-mismatch"), ApiMessage.of("api.asset-service.the-material-type-referenced-by-the-product-does-not-match"), false);
+                    ApiMessage.of("api.asset-service.material-type-mismatch"),
+                    ApiMessage.of("api.asset-service.the-material-type-referenced-by-the-product-does-not-match"),
+                    false);
         }
         return asset;
     }
@@ -527,9 +566,11 @@ public class AssetService {
         Asset asset = assets.find(projectId, assetId).orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND,
                 "ASSET_NOT_FOUND", ApiMessage.of("api.asset-service.material-does-not-exist"),
                 ApiMessage.of("api.asset-service.the-assets-in-this-project-were-not-found"), false));
-        if (asset.mediaKind() != expectedKind) throw new ApiProblemException(HttpStatus.BAD_REQUEST,
-                "ARTIFACT_ASSET_KIND_INVALID", ApiMessage.of("api.asset-service.material-type-mismatch"),
-                ApiMessage.of("api.asset-service.the-material-type-referenced-by-the-product-does-not-match"), false);
+        if (asset.mediaKind() != expectedKind)
+            throw new ApiProblemException(HttpStatus.BAD_REQUEST,
+                    "ARTIFACT_ASSET_KIND_INVALID", ApiMessage.of("api.asset-service.material-type-mismatch"),
+                    ApiMessage.of("api.asset-service.the-material-type-referenced-by-the-product-does-not-match"),
+                    false);
         return asset;
     }
 
@@ -553,6 +594,7 @@ public class AssetService {
      * @param asset 项目内可访问的素材记录
      * @param path 已规范化并核验大小的服务端文件路径，不得直接序列化给客户端
      */
-    public record AssetFile(Asset asset, Path path) {}
+    public record AssetFile(Asset asset, Path path) {
+    }
 
 }

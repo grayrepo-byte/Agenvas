@@ -59,7 +59,8 @@ public class JooqAgentMediaApprovalRepository implements AgentMediaApprovalRepos
     @Override
     public List<AgentMediaApproval> listByStoryboardTargets(UUID ownerId, UUID projectId,
             java.util.Set<UUID> itemIds, java.util.Set<UUID> shotIds, int limit) {
-        if (itemIds.isEmpty() && shotIds.isEmpty()) return List.of();
+        if (itemIds.isEmpty() && shotIds.isEmpty())
+            return List.of();
         List<org.jooq.Condition> matches = new ArrayList<>(itemIds.stream().map(id -> {
             var target = mapper.createObjectNode();
             target.putArray("outputs").addObject().put("canvasItemId", id.toString());
@@ -68,15 +69,16 @@ public class JooqAgentMediaApprovalRepository implements AgentMediaApprovalRepos
         for (UUID id : shotIds) {
             var target = mapper.createObjectNode();
             target.putArray("outputs").addObject().putObject("storyboard").put("shotId", id.toString());
-            matches.add(DSL.condition("{0} @> {1}", AGENT_MEDIA_APPROVAL.TARGET_JSON, JSONB.valueOf(target.toString())));
+            matches.add(
+                    DSL.condition("{0} @> {1}", AGENT_MEDIA_APPROVAL.TARGET_JSON, JSONB.valueOf(target.toString())));
         }
         return dsl.selectFrom(AGENT_MEDIA_APPROVAL)
                 .where(AGENT_MEDIA_APPROVAL.PROJECT_ID.eq(projectId))
                 .and(AGENT_MEDIA_APPROVAL.OWNER_ID.eq(ownerId))
                 .and(DSL.or(matches))
                 .orderBy(DSL.when(AGENT_MEDIA_APPROVAL.STATUS.eq(AgentMediaApproval.Status.PENDING.name()), 0)
-                                .when(AGENT_MEDIA_APPROVAL.STATUS.eq(AgentMediaApproval.Status.APPROVED.name()), 1)
-                                .otherwise(2),
+                        .when(AGENT_MEDIA_APPROVAL.STATUS.eq(AgentMediaApproval.Status.APPROVED.name()), 1)
+                        .otherwise(2),
                         AGENT_MEDIA_APPROVAL.CREATED_AT.desc(), AGENT_MEDIA_APPROVAL.ID.desc())
                 .limit(limit).fetch(this::map);
     }
@@ -108,7 +110,8 @@ public class JooqAgentMediaApprovalRepository implements AgentMediaApprovalRepos
                         || java.util.stream.StreamSupport.stream(item.path("additionalResults").spliterator(), false)
                                 .anyMatch(extra -> canvasItemId.toString().equals(extra.path("canvasItemId").asText())
                                         && versionId.toString().equals(extra.path("artifactVersionId").asText())))
-                .map(item -> item.at("/storyboard/shotRevision").asInt()).filter(revision -> revision > 0).min(Integer::compare);
+                .map(item -> item.at("/storyboard/shotRevision").asInt()).filter(revision -> revision > 0)
+                .min(Integer::compare);
     }
 
     @Override
@@ -126,8 +129,8 @@ public class JooqAgentMediaApprovalRepository implements AgentMediaApprovalRepos
                 .where(AGENT_MEDIA_APPROVAL.OWNER_ID.eq(ownerId))
                 .and(AGENT_MEDIA_APPROVAL.PROJECT_ID.eq(projectId))
                 .and(DSL.condition("jsonb_path_exists({0}, {3}::jsonpath, jsonb_build_object('item', {4}))"
-                                + " or jsonb_path_exists({1}, {3}::jsonpath, jsonb_build_object('item', {4}))"
-                                + " or jsonb_path_exists({2}, {3}::jsonpath, jsonb_build_object('item', {4}))",
+                        + " or jsonb_path_exists({1}, {3}::jsonpath, jsonb_build_object('item', {4}))"
+                        + " or jsonb_path_exists({2}, {3}::jsonpath, jsonb_build_object('item', {4}))",
                         AGENT_MEDIA_APPROVAL.REQUEST_JSON, AGENT_MEDIA_APPROVAL.TARGET_JSON,
                         AGENT_MEDIA_APPROVAL.RESULT_JSON, DSL.val(path), DSL.val(canvasItemId.toString()))));
     }
@@ -167,7 +170,8 @@ public class JooqAgentMediaApprovalRepository implements AgentMediaApprovalRepos
                 .and(AGENT_MEDIA_APPROVAL.STEP_INDEX.eq(stepIndex))
                 .and(AGENT_MEDIA_APPROVAL.STATUS.notIn(
                         AgentMediaApproval.Status.PENDING.name(),
-                        AgentMediaApproval.Status.APPROVED.name())).execute();
+                        AgentMediaApproval.Status.APPROVED.name()))
+                .execute();
     }
 
     @Override
@@ -192,7 +196,8 @@ public class JooqAgentMediaApprovalRepository implements AgentMediaApprovalRepos
                 .set(AGENT_MEDIA_APPROVAL.DECISION_KEY, approval.decisionKey())
                 .set(AGENT_MEDIA_APPROVAL.DECISION_HASH, approval.decisionHash())
                 .onConflict(AGENT_MEDIA_APPROVAL.RUN_ID, AGENT_MEDIA_APPROVAL.STEP_INDEX,
-                        AGENT_MEDIA_APPROVAL.TOOL_CALL_ID).doNothing().execute() == 1;
+                        AGENT_MEDIA_APPROVAL.TOOL_CALL_ID)
+                .doNothing().execute() == 1;
     }
 
     @Override

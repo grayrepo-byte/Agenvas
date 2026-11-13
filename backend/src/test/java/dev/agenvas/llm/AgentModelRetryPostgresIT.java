@@ -84,35 +84,56 @@ class AgentModelRetryPostgresIT {
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     @DynamicPropertySource
     static void postgresProperties(DynamicPropertyRegistry properties) {
-        if (!POSTGRES.isRunning()) POSTGRES.start();
+        if (!POSTGRES.isRunning())
+            POSTGRES.start();
         properties.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         properties.add("spring.datasource.username", POSTGRES::getUsername);
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private AgentRunService runs;
-    @Autowired private TaskService tasks;
-    @Autowired private AgentTurnWorker worker;
-    @Autowired private FakeGateway gateway;
-    @Autowired private RetryClock clock;
-    @Autowired private AgentTurnCommitService commits;
-    @Autowired private InitialModelContextService context;
-    @Autowired private LlmRoundService rounds;
-    @Autowired private ToolRegistry registry;
-    @Autowired private LlmProtocolCodec codec;
-    @Autowired private LlmTurnCheckpointService checkpoints;
-    @Autowired private ObjectMapper mapper;
-    @Autowired private JdbcClient jdbc;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private AgentInstanceService agents;
+    @Autowired
+    private AgentRunService runs;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private AgentTurnWorker worker;
+    @Autowired
+    private FakeGateway gateway;
+    @Autowired
+    private RetryClock clock;
+    @Autowired
+    private AgentTurnCommitService commits;
+    @Autowired
+    private InitialModelContextService context;
+    @Autowired
+    private LlmRoundService rounds;
+    @Autowired
+    private ToolRegistry registry;
+    @Autowired
+    private LlmProtocolCodec codec;
+    @Autowired
+    private LlmTurnCheckpointService checkpoints;
+    @Autowired
+    private ObjectMapper mapper;
+    @Autowired
+    private JdbcClient jdbc;
     private AdminPrincipal owner;
     private Project project;
     private AgentRun run;
-    @BeforeAll void setupOwner() {
+    @BeforeAll
+    void setupOwner() {
         owner = identities.setup("retry-admin", "retry-password-123");
     }
-    @BeforeEach void setupRun() {
-        jdbc.sql("update director_settings set recovery_window_minutes=5, max_model_retries=10, retry_max_delay_seconds=30").update();
+    @BeforeEach
+    void setupRun() {
+        jdbc.sql(
+                "update director_settings set recovery_window_minutes=5, max_model_retries=10, retry_max_delay_seconds=30")
+                .update();
         clock.ticking = false;
         // Exact completion-time assertions use PostgreSQL's persisted microsecond precision.
         clock.now = Instant.now().truncatedTo(ChronoUnit.MICROS);
@@ -127,9 +148,15 @@ class AgentModelRetryPostgresIT {
         var agent = configureDirector(agents, owner.userId(), project.id(), "Creator", "Answer");
         run = runs.create(owner.userId(), project.id(), agent.id(), "Answer", "retry-run").run();
     }
-    @AfterEach void stopAnyUnfinishedTestRun() { runs.cancel(owner.userId(), project.id(), run.id()); }
-    private Task task() { return tasks.listByRun(owner.userId(), project.id(), run.id()).getFirst(); }
-    @Test void transientTimeoutDefersThenRecoversWithoutRepeatingTheLogicalTurn() {
+    @AfterEach
+    void stopAnyUnfinishedTestRun() {
+        runs.cancel(owner.userId(), project.id(), run.id());
+    }
+    private Task task() {
+        return tasks.listByRun(owner.userId(), project.id(), run.id()).getFirst();
+    }
+    @Test
+    void transientTimeoutDefersThenRecoversWithoutRepeatingTheLogicalTurn() {
         assertThat(worker.runOnce("retry-worker")).isEqualTo(1);
         Task waiting = task();
         assertThat(waiting.status()).isEqualTo(Task.Status.READY);
@@ -143,7 +170,8 @@ class AgentModelRetryPostgresIT {
         assertThat(task().status()).isEqualTo(Task.Status.SUCCEEDED);
         assertThat(gateway.calls.get()).isEqualTo(2);
     }
-    @Test void tenRetriesThenAbandonAndReleaseTheProjectSlot() {
+    @Test
+    void tenRetriesThenAbandonAndReleaseTheProjectSlot() {
         gateway.failures = Integer.MAX_VALUE;
         for (int index = 0; index <= 10; index++) {
             assertThat(worker.runOnce("retry-worker")).isEqualTo(1);
@@ -161,7 +189,8 @@ class AgentModelRetryPostgresIT {
                 .param("id", project.id()).query(Boolean.class).single()).isTrue();
         assertThat(worker.runOnce("retry-worker")).isZero();
     }
-    @Test void restartAfterFiveMinuteDeadlineAbandonsWithoutAnotherRequest() {
+    @Test
+    void restartAfterFiveMinuteDeadlineAbandonsWithoutAnotherRequest() {
         worker.runOnce("first-worker");
         Instant firstFailure = Instant.parse(task().output().at("/modelRetry/firstFailureAt").asText());
         clock.now = firstFailure.plus(Duration.ofMinutes(5));
@@ -171,7 +200,8 @@ class AgentModelRetryPostgresIT {
         assertThat(task().completedAt()).isEqualTo(clock.instant());
         assertThat(runs.get(owner.userId(), project.id(), run.id()).status()).isEqualTo(AgentRun.Status.FAILED);
     }
-    @Test void stopDuringBackoffCancelsWithoutRetrying() {
+    @Test
+    void stopDuringBackoffCancelsWithoutRetrying() {
         worker.runOnce("retry-worker");
         Task waiting = task();
         runs.cancel(owner.userId(), project.id(), run.id());
@@ -180,7 +210,8 @@ class AgentModelRetryPostgresIT {
         assertThat(task().status()).isEqualTo(Task.Status.CANCELED);
         assertThat(gateway.calls).hasValue(1);
     }
-    @Test void oldStreamIsFencedAndNewAttemptDoesNotConcatenatePrefixes() {
+    @Test
+    void oldStreamIsFencedAndNewAttemptDoesNotConcatenatePrefixes() {
         worker.runOnce("retry-worker");
         Task waiting = task();
         assertThat(waiting.output().at("/assistantStream/status").asText()).isEqualTo("INTERRUPTED");
@@ -194,15 +225,17 @@ class AgentModelRetryPostgresIT {
         assertThat(task().output().at("/modelRetry/retryCount").asInt()).isEqualTo(1);
         assertThatThrownBy(() -> oldSink.accept("late after completion")).isInstanceOf(RuntimeException.class);
         assertThat(jdbc.sql("select count(*) from project_event where project_id=:id "
-                        + "and type='agent.turn.stream.interrupted'")
+                + "and type='agent.turn.stream.interrupted'")
                 .param("id", project.id()).query(Long.class).single()).isEqualTo(1);
     }
-    @Test void responseCheckpointWinningTimeoutRaceIsReplayedWithoutAnotherRequest() {
+    @Test
+    void responseCheckpointWinningTimeoutRaceIsReplayedWithoutAnotherRequest() {
         gateway.failures = 0;
         Task lease = tasks.claimAgentTurns("checkpoint-worker", 1).getFirst();
         AgentRun started = commits.start(lease, "checkpoint-worker");
         var response = rounds.callLeased(owner.userId(), project.id(), run.id(), 0,
-                context.assemble(owner.userId(), project.id(), run.id()), registry.modelDefinitions(started.policySnapshot()),
+                context.assemble(owner.userId(), project.id(), run.id()),
+                registry.modelDefinitions(started.policySnapshot()),
                 Map.of("projectId", project.id().toString(), "runId", run.id().toString()), lease, "checkpoint-worker");
         // The Future timed out just after the response transaction committed.
         assertThat(commits.modelFailed(lease, "checkpoint-worker", "LLM_CALL_TIMEOUT")).isEqualTo(response);
@@ -213,7 +246,8 @@ class AgentModelRetryPostgresIT {
         assertThat(gateway.calls).hasValue(1);
         assertThat(runs.get(owner.userId(), project.id(), run.id()).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
     }
-    @Test void inFlightRetryIsCutOffAtTheRemainingFiveMinuteBudget() {
+    @Test
+    void inFlightRetryIsCutOffAtTheRemainingFiveMinuteBudget() {
         worker.runOnce("retry-worker");
         clock.now = Instant.parse(task().output().at("/modelRetry/deadlineAt").asText()).minusSeconds(1);
         clock.tickStartedAt = System.nanoTime();
@@ -227,7 +261,8 @@ class AgentModelRetryPostgresIT {
         assertThat(task().errorCode()).isEqualTo("LLM_RETRY_EXHAUSTED");
         assertThat(runs.get(owner.userId(), project.id(), run.id()).status()).isEqualTo(AgentRun.Status.FAILED);
     }
-    @Test void unavailableModelIsNotAutomaticallyRetried() {
+    @Test
+    void unavailableModelIsNotAutomaticallyRetried() {
         gateway.toolCalling = false;
         worker.runOnce("retry-worker");
         assertThat(task().status()).isEqualTo(Task.Status.FAILED);
@@ -238,7 +273,8 @@ class AgentModelRetryPostgresIT {
         assertThat(jdbc.sql("select active_run_id is null from project where id=:id")
                 .param("id", project.id()).query(Boolean.class).single()).isTrue();
     }
-    @Test void continuationRetryDoesNotRepeatAnAlreadyCommittedTool() {
+    @Test
+    void continuationRetryDoesNotRepeatAnAlreadyCommittedTool() {
         gateway.createFirstTool = true;
         gateway.failures = 2;
         prepare(worker, jdbc, run.id());
@@ -279,7 +315,8 @@ class AgentModelRetryPostgresIT {
         if (status == LlmTurn.Status.RESPONDED) {
             tasks.startAgentStream(lease, "pre-upgrade-worker");
             checkpoints.saveResponseLeased(owner.userId(), project.id(), run.id(), 0, 1,
-                    codec.response(new ChatResponse(List.of(new Generation(new AssistantMessage("Saved before upgrade"))))),
+                    codec.response(
+                            new ChatResponse(List.of(new Generation(new AssistantMessage("Saved before upgrade"))))),
                     lease, "pre-upgrade-worker");
             // Simulate a process stopping after the response commit but before advancing the Run.
             jdbc.sql("update task set lease_until=:expired where id=:id")
@@ -296,8 +333,9 @@ class AgentModelRetryPostgresIT {
         assertThat(runs.get(owner.userId(), project.id(), run.id()).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
         assertThat(task().status()).isEqualTo(Task.Status.SUCCEEDED);
         assertThat(gateway.calls).hasValue(status == LlmTurn.Status.RESPONDED ? 0 : 1);
-        JsonNode persisted = mapper.readTree(jdbc.sql("select request_json::text from llm_turn where run_id=:id and step_index=0")
-                .param("id", run.id()).query(String.class).single());
+        JsonNode persisted = mapper
+                .readTree(jdbc.sql("select request_json::text from llm_turn where run_id=:id and step_index=0")
+                        .param("id", run.id()).query(String.class).single());
         assertThat(persisted).isEqualTo(frozenRequest);
         assertThat(jdbc.sql("select count(*) from llm_turn where run_id=:id")
                 .param("id", run.id()).query(Long.class).single()).isEqualTo(1);
@@ -332,17 +370,35 @@ class AgentModelRetryPostgresIT {
         }
         return request;
     }
-    @TestConfiguration static class FakeConfig {
-        @Bean @Primary FakeGateway fakeGateway() { return new FakeGateway(); }
-        @Bean @Primary RetryClock retryClock() { return new RetryClock(); }
+    @TestConfiguration
+    static class FakeConfig {
+        @Bean
+        @Primary
+        FakeGateway fakeGateway() {
+            return new FakeGateway();
+        }
+        @Bean
+        @Primary
+        RetryClock retryClock() {
+            return new RetryClock();
+        }
     }
     static class RetryClock extends Clock {
         volatile Instant now = Instant.now();
         volatile boolean ticking;
         volatile long tickStartedAt;
-        @Override public ZoneId getZone() { return ZoneOffset.UTC; }
-        @Override public Clock withZone(ZoneId zone) { return this; }
-        @Override public Instant instant() { return ticking ? now.plusNanos(System.nanoTime() - tickStartedAt) : now; }
+        @Override
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return this;
+        }
+        @Override
+        public Instant instant() {
+            return ticking ? now.plusNanos(System.nanoTime() - tickStartedAt) : now;
+        }
     }
     static class FakeGateway implements ChatGateway {
         final AtomicInteger calls = new AtomicInteger();
@@ -352,19 +408,34 @@ class AgentModelRetryPostgresIT {
         volatile boolean blockRequest;
         volatile Consumer<String> lastSink;
         volatile String expectedReadSchema;
-        @Override public Exchange callStreaming(List<Message> messages, List<ToolCallback> tools,
+        @Override
+        public Exchange callStreaming(List<Message> messages, List<ToolCallback> tools,
                 Map<String, Object> context, ConfigIdentity expected, Consumer<String> publicDelta,
                 boolean captureContent, Consumer<LlmStreamLog> log) {
             lastSink = publicDelta;
-            if (calls.get() < failures && !(createFirstTool && calls.get() == 0)) publicDelta.accept("Interrupted prefix");
-            return ChatGateway.super.callStreaming(messages, tools, context, expected, publicDelta, captureContent, log);
+            if (calls.get() < failures && !(createFirstTool && calls.get() == 0))
+                publicDelta.accept("Interrupted prefix");
+            return ChatGateway.super.callStreaming(messages, tools, context, expected, publicDelta, captureContent,
+                    log);
         }
-        @Override public String configSource() { return "test-fake"; }
-        @Override public int configVersion() { return 1; }
-        @Override public Capabilities capabilities() { return new Capabilities(toolCalling, false, false); }
-        @Override public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context) {
-            if (createFirstTool && onlyLoader(tools)) return load("TEXT");
-            if (createFirstTool) assertThat(tools).extracting(tool -> tool.getToolDefinition().name()).contains("create_text");
+        @Override
+        public String configSource() {
+            return "test-fake";
+        }
+        @Override
+        public int configVersion() {
+            return 1;
+        }
+        @Override
+        public Capabilities capabilities() {
+            return new Capabilities(toolCalling, false, false);
+        }
+        @Override
+        public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context) {
+            if (createFirstTool && onlyLoader(tools))
+                return load("TEXT");
+            if (createFirstTool)
+                assertThat(tools).extracting(tool -> tool.getToolDefinition().name()).contains("create_text");
             int attempt = calls.incrementAndGet();
             if (expectedReadSchema != null) {
                 var restored = tools.stream().map(ToolCallback::getToolDefinition)
@@ -373,14 +444,19 @@ class AgentModelRetryPostgresIT {
                 assertThat(restored.inputSchema()).isEqualTo(expectedReadSchema);
             }
             if (blockRequest) {
-                try { Thread.sleep(Duration.ofSeconds(10)); }
-                catch (InterruptedException stopped) { Thread.currentThread().interrupt(); }
+                try {
+                    Thread.sleep(Duration.ofSeconds(10));
+                } catch (InterruptedException stopped) {
+                    Thread.currentThread().interrupt();
+                }
                 throw new UncheckedIOException(new SocketTimeoutException("synthetic blocked request"));
             }
             if (createFirstTool && attempt == 1) {
                 var assistant = AssistantMessage.builder().content("")
-                        .toolCalls(List.of(new AssistantMessage.ToolCall("synthetic-create-1", "function", "create_text",
-                                "{\"title\":\"Opening\",\"text\":\"First shot\",\"format\":\"PLAIN_TEXT\"}"))).build();
+                        .toolCalls(
+                                List.of(new AssistantMessage.ToolCall("synthetic-create-1", "function", "create_text",
+                                        "{\"title\":\"Opening\",\"text\":\"First shot\",\"format\":\"PLAIN_TEXT\"}")))
+                        .build();
                 return new Exchange(1, new ChatResponse(List.of(new Generation(assistant))));
             }
             if (attempt <= failures) {

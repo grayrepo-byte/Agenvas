@@ -53,7 +53,8 @@ final class LeasedModelExecutor implements AutoCloseable {
 
     Execution open(Task lease, String workerId) {
         synchronized (lifecycle) {
-            if (closed) throw new Stopped("Model executor is closed");
+            if (closed)
+                throw new Stopped("Model executor is closed");
             Execution execution = new Execution(lease, workerId);
             executions.add(execution);
             try {
@@ -70,7 +71,8 @@ final class LeasedModelExecutor implements AutoCloseable {
     @Override
     public void close() {
         synchronized (lifecycle) {
-            if (closed) return;
+            if (closed)
+                return;
             closed = true;
             for (Execution execution : executions) {
                 execution.stop(new Stopped("Model executor is closed"));
@@ -114,7 +116,8 @@ final class LeasedModelExecutor implements AutoCloseable {
             });
             synchronized (lifecycle) {
                 checkActive();
-                if (call != null) throw new IllegalStateException("Model execution already has a call");
+                if (call != null)
+                    throw new IllegalStateException("Model execution already has a call");
                 call = future;
                 try {
                     models.execute(future);
@@ -144,21 +147,25 @@ final class LeasedModelExecutor implements AutoCloseable {
 
         void checkActive() {
             synchronized (lifecycle) {
-                if (stopped != null) throw stopped;
-                if (scopeClosed) throw new Stopped("Model execution is closed");
+                if (stopped != null)
+                    throw stopped;
+                if (scopeClosed)
+                    throw new Stopped("Model execution is closed");
             }
         }
 
         private void renewLease() {
             synchronized (lifecycle) {
-                if (scopeClosed || stopped != null) return;
+                if (scopeClosed || stopped != null)
+                    return;
             }
             try {
                 tasks.heartbeat(lease.id(), workerId, lease.leaseEpoch());
             } catch (RuntimeException unconfirmed) {
                 synchronized (lifecycle) {
                     // A renewal already in progress may fail after normal completion.
-                    if (scopeClosed || stopped != null) return;
+                    if (scopeClosed || stopped != null)
+                        return;
                     LOGGER.warn("Model lease heartbeat stopped for task {}: {}",
                             lease.id(), unconfirmed.getClass().getSimpleName());
                     stop(new Stopped("Lease heartbeat could not be confirmed", unconfirmed));
@@ -168,27 +175,34 @@ final class LeasedModelExecutor implements AutoCloseable {
 
         /** Called only under lifecycle; cancellation wakes waiters, but need not stop a provider. */
         private void stop(Stopped reason) {
-            if (scopeClosed || stopped != null) return;
+            if (scopeClosed || stopped != null)
+                return;
             stopped = reason;
-            if (heartbeat != null) heartbeat.cancel(false);
-            if (call != null) cancelCall(call);
+            if (heartbeat != null)
+                heartbeat.cancel(false);
+            if (call != null)
+                cancelCall(call);
         }
 
         private void cancelCall(FutureTask<?> future) {
             future.cancel(true);
             // ThreadPoolExecutor does not remove a canceled queued FutureTask automatically.
             models.remove(future);
-            if (call == future) call = null;
+            if (call == future)
+                call = null;
         }
 
         @Override
         public void close() {
             synchronized (lifecycle) {
-                if (scopeClosed) return;
+                if (scopeClosed)
+                    return;
                 scopeClosed = true;
                 executions.remove(this);
-                if (heartbeat != null) heartbeat.cancel(false);
-                if (call != null) cancelCall(call);
+                if (heartbeat != null)
+                    heartbeat.cancel(false);
+                if (call != null)
+                    cancelCall(call);
             }
         }
     }

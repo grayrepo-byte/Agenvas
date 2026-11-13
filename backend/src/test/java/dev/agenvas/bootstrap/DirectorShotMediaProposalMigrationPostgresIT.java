@@ -74,7 +74,8 @@ class DirectorShotMediaProposalMigrationPostgresIT {
             frozenStoryboard(db, firstProject);
             customBefore = scalar(db, "select to_jsonb(a)::text from agent_instance a where id=?", custom);
             functionsBefore = snapshot(db, "prompt_definition", "kind='FUNCTION'");
-            for (String table : List.of("agent_run", "agent_conversation", "task", "agent_media_approval", "storyboard", "storyboard_revision"))
+            for (String table : List.of("agent_run", "agent_conversation", "task", "agent_media_approval", "storyboard",
+                    "storyboard_revision"))
                 history.put(table, snapshot(db, table, "true"));
         }
 
@@ -82,14 +83,16 @@ class DirectorShotMediaProposalMigrationPostgresIT {
 
         try (Connection db = connection()) {
             String current = scalar(db, "select content from prompt_definition where key='agent.director'");
-            assertThat(current).contains("read_storyboard", "write_storyboard_shots", "propose_media_generation", "shotId", "expectedShotRevision", "分镜制作台候选", "用户显式批准生成并选用具体结果").isNotEqualTo(previous);
+            assertThat(current).contains("read_storyboard", "write_storyboard_shots", "propose_media_generation",
+                    "shotId", "expectedShotRevision", "分镜制作台候选", "用户显式批准生成并选用具体结果").isNotEqualTo(previous);
             assertThat(scalar(db, "select name from prompt_definition where key='agent.director'"))
                     .isEqualTo("Synthetic renamed global director");
             assertThat(scalar(db, "select description from prompt_definition where key='agent.director'"))
                     .isEqualTo("Synthetic retained global description");
             assertThat(scalar(db, "select version::text from prompt_definition where key='agent.director'"))
                     .isEqualTo("12");
-            assertThat(scalar(db, "select (updated_at>'2000-01-01T00:00:00Z')::text from prompt_definition where key='agent.director'"))
+            assertThat(scalar(db,
+                    "select (updated_at>'2000-01-01T00:00:00Z')::text from prompt_definition where key='agent.director'"))
                     .isEqualTo("true");
             assertDirector(db, firstProject, first, "Synthetic original director", 1, 8, current);
             assertDirector(db, renamedProject, renamed, "Synthetic renamed director", 9, 14, current);
@@ -99,8 +102,9 @@ class DirectorShotMediaProposalMigrationPostgresIT {
             assertThat(scalar(db, "select event_seq::text from project where id=?", emptyProject)).isEqualTo("4");
             assertThat(scalar(db, "select count(*)::text from project_event")).isEqualTo("2");
             assertThat(snapshot(db, "prompt_definition", "kind='FUNCTION'")).isEqualTo(functionsBefore);
-            for (var entry : history.entrySet()) assertThat(snapshot(db, entry.getKey(), "true"))
-                    .as("preserved frozen %s", entry.getKey()).isEqualTo(entry.getValue());
+            for (var entry : history.entrySet())
+                assertThat(snapshot(db, entry.getKey(), "true"))
+                        .as("preserved frozen %s", entry.getKey()).isEqualTo(entry.getValue());
             assertThat(scalar(db, "select count(*)::text from agent_instance")).isEqualTo("3");
         }
     }
@@ -125,7 +129,8 @@ class DirectorShotMediaProposalMigrationPostgresIT {
             assertThat(scalar(db, "select to_jsonb(p)::text from prompt_definition p where key='agent.director'"))
                     .isEqualTo(globalBefore);
             String current = scalar(db, "select instruction from agent_instance where id=?", agent);
-            assertThat(current).contains("read_storyboard", "write_storyboard_shots", "propose_media_generation", "shotId", "expectedShotRevision", "分镜制作台候选", "用户显式批准生成并选用具体结果");
+            assertThat(current).contains("read_storyboard", "write_storyboard_shots", "propose_media_generation",
+                    "shotId", "expectedShotRevision", "分镜制作台候选", "用户显式批准生成并选用具体结果");
             assertDirector(db, project, agent, "Synthetic independent project director", 4, 3, current);
         }
     }
@@ -143,14 +148,16 @@ class DirectorShotMediaProposalMigrationPostgresIT {
                     begin raise exception 'Synthetic event write failure'; end;
                     $$
                     """);
-            execute(db, "create trigger reject_storyboard_event before insert on project_event for each row execute function reject_storyboard_event()");
+            execute(db,
+                    "create trigger reject_storyboard_event before insert on project_event for each row execute function reject_storyboard_event()");
             for (String table : List.of("prompt_definition", "agent_instance", "project", "project_event"))
                 before.put(table, snapshot(db, table, "true"));
         }
         assertThatThrownBy(() -> migration("38").migrate()).hasStackTraceContaining("Synthetic event write failure");
         try (Connection db = connection()) {
-            for (var entry : before.entrySet()) assertThat(snapshot(db, entry.getKey(), "true"))
-                    .as("transactionally retained %s", entry.getKey()).isEqualTo(entry.getValue());
+            for (var entry : before.entrySet())
+                assertThat(snapshot(db, entry.getKey(), "true"))
+                        .as("transactionally retained %s", entry.getKey()).isEqualTo(entry.getValue());
             assertThat(scalar(db, "select version from flyway_schema_history order by installed_rank desc limit 1"))
                     .isEqualTo("37");
         }
@@ -164,7 +171,8 @@ class DirectorShotMediaProposalMigrationPostgresIT {
         try (Connection db = connection()) {
             before = snapshot(db, "prompt_definition", "true");
             assertThat(scalar(db, "select content from prompt_definition where key='agent.director'"))
-                    .contains("read_storyboard", "write_storyboard_shots", "propose_media_generation", "shotId", "expectedShotRevision", "分镜制作台候选", "用户显式批准生成并选用具体结果");
+                    .contains("read_storyboard", "write_storyboard_shots", "propose_media_generation", "shotId",
+                            "expectedShotRevision", "分镜制作台候选", "用户显式批准生成并选用具体结果");
             assertThat(scalar(db, "select count(*)::text from agent_instance")).isEqualTo("0");
             assertThat(scalar(db, "select count(*)::text from project_event")).isEqualTo("0");
         }
@@ -191,8 +199,9 @@ class DirectorShotMediaProposalMigrationPostgresIT {
             for (String table : List.of("prompt_definition", "agent_instance", "project", "project_event"))
                 before.put(table, snapshot(db, table, "true"));
             execute(db, resource("db/migration/V38__director_shot_media_proposals.sql"));
-            for (var entry : before.entrySet()) assertThat(snapshot(db, entry.getKey(), "true"))
-                    .as("idempotently retained %s", entry.getKey()).isEqualTo(entry.getValue());
+            for (var entry : before.entrySet())
+                assertThat(snapshot(db, entry.getKey(), "true"))
+                        .as("idempotently retained %s", entry.getKey()).isEqualTo(entry.getValue());
         }
     }
 
@@ -207,10 +216,12 @@ class DirectorShotMediaProposalMigrationPostgresIT {
             var clock = Clock.systemUTC();
             var mapper = new ObjectMapper();
             var projects = new ProjectService(new JooqProjectRepository(dsl), clock);
-            var events = new ProjectEventService(new JooqProjectEventRepository(dsl, mapper), clock, event -> {});
+            var events = new ProjectEventService(new JooqProjectEventRepository(dsl, mapper), clock, event -> {
+            });
             var directors = new AgentInstanceService(projects, new JooqAgentInstanceRepository(dsl), events,
                     mapper, clock, new PromptService(dsl, clock));
-            var project = projects.create(owner, "Synthetic new shot media project", Project.AspectRatio.LANDSCAPE_16_9);
+            var project = projects.create(owner, "Synthetic new shot media project",
+                    Project.AspectRatio.LANDSCAPE_16_9);
             assertThat(scalar(db, "select count(*)::text from agent_instance where project_id=?", project.id()))
                     .isEqualTo("0");
 
@@ -238,9 +249,12 @@ class DirectorShotMediaProposalMigrationPostgresIT {
             String instruction) throws SQLException {
         assertThat(scalar(db, "select instruction from agent_instance where id=?", agent)).isEqualTo(instruction);
         assertThat(scalar(db, "select name from agent_instance where id=?", agent)).isEqualTo(name);
-        assertThat(scalar(db, "select version::text from agent_instance where id=?", agent)).isEqualTo(Integer.toString(version));
-        assertThat(scalar(db, "select (updated_at>'2000-01-01T00:00:00Z')::text from agent_instance where id=?", agent)).isEqualTo("true");
-        assertThat(scalar(db, "select event_seq::text from project where id=?", project)).isEqualTo(Integer.toString(sequence));
+        assertThat(scalar(db, "select version::text from agent_instance where id=?", agent))
+                .isEqualTo(Integer.toString(version));
+        assertThat(scalar(db, "select (updated_at>'2000-01-01T00:00:00Z')::text from agent_instance where id=?", agent))
+                .isEqualTo("true");
+        assertThat(scalar(db, "select event_seq::text from project where id=?", project))
+                .isEqualTo(Integer.toString(sequence));
         assertThat(scalar(db, """
                 select count(*)::text from project_event where project_id=? and seq=? and type='agent.instance.changed'
                     and schema_version=1 and aggregate_id=? and aggregate_version=?
@@ -249,7 +263,8 @@ class DirectorShotMediaProposalMigrationPostgresIT {
     }
 
     private void owner(Connection db, UUID owner) throws SQLException {
-        execute(db, "insert into app_user(id,login_name,password_hash,status,created_at) values (?,?,'synthetic-hash','ACTIVE',now())",
+        execute(db,
+                "insert into app_user(id,login_name,password_hash,status,created_at) values (?,?,'synthetic-hash','ACTIVE',now())",
                 owner, "shot-media-" + owner);
     }
 
@@ -260,16 +275,19 @@ class DirectorShotMediaProposalMigrationPostgresIT {
                 """, project, owner, sequence);
     }
 
-    private void director(Connection db, UUID project, UUID agent, String name, String instruction, int version) throws SQLException {
+    private void director(Connection db, UUID project, UUID agent, String name, String instruction, int version)
+            throws SQLException {
         execute(db, """
                 insert into agent_instance(id,project_id,profile_key,profile_version,name,instruction,version,created_at,updated_at)
                 values (?,?,'creator',1,?,?,?,'2000-01-01T00:00:00Z','2000-01-01T00:00:00Z')
                 """, agent, project, name, instruction, version);
     }
 
-    private void frozenHistory(Connection db, UUID owner, UUID project, UUID agent, String instruction) throws SQLException {
+    private void frozenHistory(Connection db, UUID owner, UUID project, UUID agent, String instruction)
+            throws SQLException {
         UUID conversation = UUID.randomUUID(), run = UUID.randomUUID(), task = UUID.randomUUID();
-        execute(db, "insert into agent_conversation(id,project_id,agent_instance_id,title,created_at,updated_at) values (?,?,?,'Synthetic frozen conversation',now(),now())",
+        execute(db,
+                "insert into agent_conversation(id,project_id,agent_instance_id,title,created_at,updated_at) values (?,?,?,'Synthetic frozen conversation',now(),now())",
                 conversation, project, agent);
         execute(db, "update agent_instance set current_conversation_id=? where id=?", conversation, agent);
         execute(db, """
@@ -307,7 +325,8 @@ class DirectorShotMediaProposalMigrationPostgresIT {
                     .put("needsReview", revision > 1);
             board.putObject("composition").put("canvasItemId", filmItem.toString())
                     .put("selectedVersionId", filmVersion.toString()).put("needsReview", revision > 1);
-            execute(db, "insert into storyboard_revision(project_id,version,content_json,created_at) values (?,?,?::jsonb,now())",
+            execute(db,
+                    "insert into storyboard_revision(project_id,version,content_json,created_at) values (?,?,?::jsonb,now())",
                     project, revision, board.toString());
         }
     }
@@ -342,7 +361,9 @@ class DirectorShotMediaProposalMigrationPostgresIT {
     }
 
     private void execute(Connection db, String sql, Object... values) throws SQLException {
-        try (PreparedStatement statement = prepare(db, sql, values)) { statement.executeUpdate(); }
+        try (PreparedStatement statement = prepare(db, sql, values)) {
+            statement.executeUpdate();
+        }
     }
 
     private String scalar(Connection db, String sql, Object... values) throws SQLException {
@@ -354,7 +375,8 @@ class DirectorShotMediaProposalMigrationPostgresIT {
 
     private PreparedStatement prepare(Connection db, String sql, Object... values) throws SQLException {
         var statement = db.prepareStatement(sql);
-        for (int index = 0; index < values.length; index++) statement.setObject(index + 1, values[index]);
+        for (int index = 0; index < values.length; index++)
+            statement.setObject(index + 1, values[index]);
         return statement;
     }
 }

@@ -17,12 +17,14 @@ import tools.jackson.databind.node.ObjectNode;
 class TaskOutputReadAccessServiceTest {
     private final ObjectMapper mapper = new ObjectMapper();
     private final UUID owner = UUID.randomUUID(), project = UUID.randomUUID(), run = UUID.randomUUID();
-    private final UUID taskId = UUID.randomUUID(), artifact = UUID.randomUUID(), version = UUID.randomUUID(), node = UUID.randomUUID();
+    private final UUID taskId = UUID.randomUUID(), artifact = UUID.randomUUID(), version = UUID.randomUUID(),
+            node = UUID.randomUUID();
     private final TaskRepository tasks = mock(TaskRepository.class);
     private final CanvasItemQueryService items = mock(CanvasItemQueryService.class);
     private final TaskOutputReadAccessService service = new TaskOutputReadAccessService(tasks, items);
 
-    @Test void exactPrimaryAndAdditionalArchivesRequireTheirCurrentOwnedNode() {
+    @Test
+    void exactPrimaryAndAdditionalArchivesRequireTheirCurrentOwnedNode() {
         Task task = task(run, true);
         when(task.output()).thenReturn(output());
         assertThat(allows(run)).isTrue();
@@ -34,7 +36,8 @@ class TaskOutputReadAccessServiceTest {
         assertThat(allows(run)).isFalse();
     }
 
-    @Test void sameRunAndTrustedLinkedApprovalFlagAreMandatory() {
+    @Test
+    void sameRunAndTrustedLinkedApprovalFlagAreMandatory() {
         Task task = task(run, true);
         when(task.output()).thenReturn(output());
         assertThat(allows(UUID.randomUUID())).isFalse();
@@ -47,7 +50,8 @@ class TaskOutputReadAccessServiceTest {
         assertThat(allows(run)).isFalse();
     }
 
-    @Test void modelInputAndSimilarOutputIdsCannotGrantAnUnarchivedVersion() {
+    @Test
+    void modelInputAndSimilarOutputIdsCannotGrantAnUnarchivedVersion() {
         Task task = task(run, true);
         assertThat(allows(run)).isFalse();
         when(task.output()).thenReturn(output().put("artifactVersionId", UUID.randomUUID().toString()));
@@ -56,7 +60,8 @@ class TaskOutputReadAccessServiceTest {
         assertThat(allows(run)).isFalse();
     }
 
-    @Test void exactCanceledLateArchiveIsReadableWithoutReplacingItsOriginalTaskOutcome() {
+    @Test
+    void exactCanceledLateArchiveIsReadableWithoutReplacingItsOriginalTaskOutcome() {
         Task task = task(run, true);
         when(task.output()).thenReturn(mapper.createObjectNode().put("status", "CANCELED"));
         when(tasks.lateResults(owner, project, taskId)).thenReturn(List.of(output()));
@@ -80,6 +85,11 @@ class TaskOutputReadAccessServiceTest {
         when(items.artifactItems(owner, project, artifact)).thenReturn(List.of(item));
         return task;
     }
-    private ObjectNode output() { return mapper.createObjectNode().put("artifactId", artifact.toString()).put("artifactVersionId", version.toString()); }
-    private boolean allows(UUID taskRun) { return service.allows(owner, project, taskRun, taskId, artifact, version); }
+    private ObjectNode output() {
+        return mapper.createObjectNode().put("artifactId", artifact.toString()).put("artifactVersionId",
+                version.toString());
+    }
+    private boolean allows(UUID taskRun) {
+        return service.allows(owner, project, taskRun, taskId, artifact, version);
+    }
 }

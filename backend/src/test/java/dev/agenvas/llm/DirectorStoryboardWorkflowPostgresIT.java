@@ -70,8 +70,10 @@ class DirectorStoryboardWorkflowPostgresIT {
     private static final String REVIEW = "EP001 分镜审校";
     private static final String PROGRESS = "EP001 分镜制作进度";
 
-    @org.junit.jupiter.api.io.TempDir static java.nio.file.Path storage;
-    @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    @org.junit.jupiter.api.io.TempDir
+    static java.nio.file.Path storage;
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
 
     @DynamicPropertySource
     static void postgresProperties(DynamicPropertyRegistry properties) {
@@ -81,22 +83,34 @@ class DirectorStoryboardWorkflowPostgresIT {
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired IdentityService identities;
-    @Autowired ProjectService projects;
-    @Autowired AgentInstanceService agents;
-    @Autowired CanvasService canvas;
-    @Autowired AgentRunService runs;
-    @Autowired ArtifactService artifacts;
-    @Autowired InitialModelContextService initial;
-    @Autowired AgentTurnWorker worker;
-    @Autowired FakeGateway gateway;
-    @Autowired JdbcClient jdbc;
-    @Autowired ObjectMapper mapper;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    ProjectService projects;
+    @Autowired
+    AgentInstanceService agents;
+    @Autowired
+    CanvasService canvas;
+    @Autowired
+    AgentRunService runs;
+    @Autowired
+    ArtifactService artifacts;
+    @Autowired
+    InitialModelContextService initial;
+    @Autowired
+    AgentTurnWorker worker;
+    @Autowired
+    FakeGateway gateway;
+    @Autowired
+    JdbcClient jdbc;
+    @Autowired
+    ObjectMapper mapper;
 
     @Test
     void defaultDirectorWithNoSkillsReadsTheScriptSavesTheWorkflowAndRevisesImmutableCardsWithoutGenerating() {
         var owner = identities.setup("storyboard-workflow-admin", "storyboard-workflow-password-123");
-        var project = projects.create(owner.userId(), "Synthetic storyboard workflow", Project.AspectRatio.PORTRAIT_9_16);
+        var project = projects.create(owner.userId(), "Synthetic storyboard workflow",
+                Project.AspectRatio.PORTRAIT_9_16);
         var source = artifacts.create(owner.userId(), project.id(), Artifact.Kind.TEXT, SOURCE_TITLE,
                 mapper.createObjectNode().put("format", "MARKDOWN").put("text", SOURCE_TEXT));
         UUID sourceItem = UUID.randomUUID();
@@ -117,17 +131,20 @@ class DirectorStoryboardWorkflowPostgresIT {
         assertThat(systems).hasSize(2);
         assertThat(systems.getFirst()).contains("load_toolset", "NEXT model turn")
                 .doesNotContain("read_canvas", "Script breakdown", "SHOT-");
-        assertThat(systems.getLast()).isEqualTo(director.instruction()).contains("Script breakdown", "SHOT-", "continuity");
+        assertThat(systems.getLast()).isEqualTo(director.instruction()).contains("Script breakdown", "SHOT-",
+                "continuity");
         assertThat(messages).noneSatisfy(message -> assertThat(message.getText()).contains(SOURCE_TEXT));
 
-        for (int turn = 0; turn < 14; turn++) assertThat(worker.runOnce("storyboard-workflow-worker"))
-                .as("synthetic workflow turn %s", turn + 1).isEqualTo(1);
+        for (int turn = 0; turn < 14; turn++)
+            assertThat(worker.runOnce("storyboard-workflow-worker"))
+                    .as("synthetic workflow turn %s", turn + 1).isEqualTo(1);
 
         assertThat(runs.get(owner.userId(), project.id(), run.id()).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
         assertThat(gateway.calls.get()).isEqualTo(13);
         assertThat(jdbc.sql("select count(*) from tool_execution where run_id=:run and tool_name='load_toolset'")
                 .param("run", run.id()).query(Integer.class).single()).isEqualTo(1);
-        assertThat(gateway.saved.keySet()).containsExactly(BREAKDOWN, VISUAL, STORYBOARD, KEYFRAMES, MOTION, REVIEW, PROGRESS);
+        assertThat(gateway.saved.keySet()).containsExactly(BREAKDOWN, VISUAL, STORYBOARD, KEYFRAMES, MOTION, REVIEW,
+                PROGRESS);
         var entries = canvas.list(owner.userId(), project.id());
         assertThat(entries).hasSize(8);
         for (var saved : gateway.saved.values()) {
@@ -152,14 +169,16 @@ class DirectorStoryboardWorkflowPostgresIT {
         var progress = gateway.saved.get(PROGRESS);
         assertThat(progress.text()).contains(storyboard.versionId().toString(), "未生成媒体", "未验证真实模型质量");
         assertThat(artifacts.listVersions(owner.userId(), project.id(), progress.artifactId())).hasSize(2);
-        assertThat(artifacts.get(owner.userId(), project.id(), source.artifact().id()).resourceDefaultVersion().content().path("text").asText())
+        assertThat(artifacts.get(owner.userId(), project.id(), source.artifact().id()).resourceDefaultVersion()
+                .content().path("text").asText())
                 .isEqualTo(SOURCE_TEXT);
         assertThat(artifacts.listVersions(owner.userId(), project.id(), source.artifact().id())).hasSize(1);
         assertThat(jdbc.sql("select count(*) from task where project_id=:project and kind<>'AGENT_TURN'")
                 .param("project", project.id()).query(Integer.class).single()).isZero();
         assertThat(jdbc.sql("select count(*) from agent_media_approval where project_id=:project")
                 .param("project", project.id()).query(Integer.class).single()).isZero();
-        assertThat(jdbc.sql("select count(*) from tool_execution where run_id=:run and tool_name in ('read_skill','propose_media_generation')")
+        assertThat(jdbc.sql(
+                "select count(*) from tool_execution where run_id=:run and tool_name in ('read_skill','propose_media_generation')")
                 .param("run", run.id()).query(Integer.class).single()).isZero();
         // PostgreSQL JSONB may deserialize an originally constructed LongNode as an IntNode.
         // Normalize both representations while still comparing the entire frozen snapshot.
@@ -169,10 +188,15 @@ class DirectorStoryboardWorkflowPostgresIT {
 
     @TestConfiguration
     static class FakeConfig {
-        @Bean @Primary FakeGateway fakeGateway(ObjectMapper mapper) { return new FakeGateway(mapper); }
+        @Bean
+        @Primary
+        FakeGateway fakeGateway(ObjectMapper mapper) {
+            return new FakeGateway(mapper);
+        }
     }
 
-    private record SavedCard(UUID artifactId, UUID versionId, long expectedVersion, String text) {}
+    private record SavedCard(UUID artifactId, UUID versionId, long expectedVersion, String text) {
+    }
 
     /** Every dependency ID comes from the preceding committed receipt, never a fabricated identifier. */
     static class FakeGateway implements ChatGateway {
@@ -186,10 +210,21 @@ class DirectorStoryboardWorkflowPostgresIT {
         private String pendingTitle;
         private String pendingText;
 
-        FakeGateway(ObjectMapper mapper) { this.mapper = mapper; }
-        @Override public String configSource() { return "test-synthetic-storyboard"; }
-        @Override public int configVersion() { return 1; }
-        @Override public Capabilities capabilities() { return new Capabilities(true, false, false); }
+        FakeGateway(ObjectMapper mapper) {
+            this.mapper = mapper;
+        }
+        @Override
+        public String configSource() {
+            return "test-synthetic-storyboard";
+        }
+        @Override
+        public int configVersion() {
+            return 1;
+        }
+        @Override
+        public Capabilities capabilities() {
+            return new Capabilities(true, false, false);
+        }
 
         @Override
         public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> toolContext) {
@@ -200,7 +235,8 @@ class DirectorStoryboardWorkflowPostgresIT {
             assertThat(tools).extracting(tool -> tool.getToolDefinition().name())
                     .contains("read_canvas", "read_artifacts", "create_text", "revise_artifact");
             int turn = calls.incrementAndGet();
-            if (turn >= 4 && turn <= 10 || turn == 12 || turn == 13) captureSaved(messages);
+            if (turn >= 4 && turn <= 10 || turn == 12 || turn == 13)
+                captureSaved(messages);
             return switch (turn) {
                 case 1 -> tool(turn, "read_canvas", mapper.createObjectNode().put("limit", 40));
                 case 2 -> {
@@ -248,7 +284,8 @@ class DirectorStoryboardWorkflowPostgresIT {
                 case 10 -> read(turn, saved.get(STORYBOARD).versionId());
                 case 11 -> {
                     JsonNode current = reply(messages).path("data").get(0);
-                    assertThat(current.path("versionId").asText()).isEqualTo(saved.get(STORYBOARD).versionId().toString());
+                    assertThat(current.path("versionId").asText())
+                            .isEqualTo(saved.get(STORYBOARD).versionId().toString());
                     yield revise(turn, STORYBOARD, current.path("expectedVersion").asLong(),
                             originalStoryboardText.replace("轴线：门框—台阶", "轴线：门框内沿—门外台阶")
                                     + "\n修订：只明确同一轴线锚点措辞，SHOT-001/SHOT-002 镜号保持不变，职责与起止边界未改。"
@@ -274,14 +311,17 @@ class DirectorStoryboardWorkflowPostgresIT {
 
         private String progress(boolean revised) {
             var text = new StringBuilder("# 合成分镜制作进度\n实际覆盖：EP001-SC001–SC002\n来源：").append(sourceRef());
-            for (var entry : saved.entrySet()) if (!entry.getKey().equals(PROGRESS))
-                text.append('\n').append(entry.getKey()).append("：").append(ref(entry.getKey()));
+            for (var entry : saved.entrySet())
+                if (!entry.getKey().equals(PROGRESS))
+                    text.append('\n').append(entry.getKey()).append("：").append(ref(entry.getKey()));
             text.append("\n轴线措辞修订：").append(revised ? "已保存新分镜版本；提示词的镜头职责与边界未变，旧引用保留来源谱系。" : "待处理。");
             return text.append("\n素材缺项：人物/场景/道具参考图与目标媒体能力；只完成文字设计。")
                     .append("\n未生成媒体；未验证真实模型质量、真实表演与成片连续性。下一步按用户要求准备素材。").toString();
         }
 
-        private String sourceRef() { return sourceId + " / " + sourceVersion + " / 行1–7"; }
+        private String sourceRef() {
+            return sourceId + " / " + sourceVersion + " / 行1–7";
+        }
         private String ref(String title) {
             SavedCard card = saved.get(title);
             return card.artifactId() + " / " + card.versionId();
@@ -296,13 +336,15 @@ class DirectorStoryboardWorkflowPostgresIT {
         private Exchange create(int turn, String title, String text) {
             pendingTitle = title;
             pendingText = text;
-            return tool(turn, "create_text", mapper.createObjectNode().put("title", title).put("format", "MARKDOWN").put("text", text));
+            return tool(turn, "create_text",
+                    mapper.createObjectNode().put("title", title).put("format", "MARKDOWN").put("text", text));
         }
 
         private Exchange revise(int turn, String title, long expected, String text) {
             pendingTitle = title;
             pendingText = text;
-            ObjectNode args = mapper.createObjectNode().put("artifactId", saved.get(title).artifactId().toString()).put("expectedVersion", expected);
+            ObjectNode args = mapper.createObjectNode().put("artifactId", saved.get(title).artifactId().toString())
+                    .put("expectedVersion", expected);
             args.putObject("content").put("format", "MARKDOWN").put("text", text);
             return tool(turn, "revise_artifact", args);
         }
@@ -310,7 +352,8 @@ class DirectorStoryboardWorkflowPostgresIT {
         private void captureSaved(List<Message> messages) {
             JsonNode receipt = reply(messages);
             assertThat(receipt.path("status").asText()).isEqualTo("SUCCEEDED");
-            UUID artifact = receipt.path("createdIds").isEmpty() ? saved.get(pendingTitle).artifactId()
+            UUID artifact = receipt.path("createdIds").isEmpty()
+                    ? saved.get(pendingTitle).artifactId()
                     : UUID.fromString(receipt.path("createdIds").get(0).asText());
             UUID version = UUID.fromString(receipt.path("affectedVersions").path(artifact.toString()).asText());
             long expected = receipt.path("artifactVersions").path(artifact.toString()).asLong();
@@ -318,7 +361,8 @@ class DirectorStoryboardWorkflowPostgresIT {
         }
 
         private JsonNode reply(List<Message> messages) {
-            var reply = messages.stream().filter(ToolResponseMessage.class::isInstance).map(ToolResponseMessage.class::cast)
+            var reply = messages.stream().filter(ToolResponseMessage.class::isInstance)
+                    .map(ToolResponseMessage.class::cast)
                     .reduce((earlier, later) -> later).orElseThrow();
             return mapper.readTree(reply.getResponses().getLast().responseData());
         }

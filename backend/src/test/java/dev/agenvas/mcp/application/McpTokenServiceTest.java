@@ -39,7 +39,10 @@ class McpTokenServiceTest {
     @BeforeEach
     void persistence() {
         when(identities.isActiveUser(user)).thenReturn(true);
-        doAnswer(call -> { stored.set(call.getArgument(0)); return null; }).when(repository).insert(any());
+        doAnswer(call -> {
+            stored.set(call.getArgument(0));
+            return null;
+        }).when(repository).insert(any());
         when(repository.find(any())).thenAnswer(call -> Optional.ofNullable(stored.get())
                 .filter(token -> token.id().equals(call.getArgument(0))));
         when(repository.lock(any())).thenAnswer(call -> Optional.ofNullable(stored.get())
@@ -110,7 +113,8 @@ class McpTokenServiceTest {
     @Test
     void revalidatesPersistedScopesAndIdentityForReadsAndWrites() {
         var created = create(Set.of(McpScope.READ));
-        McpPrincipal fabricatedScopes = new McpPrincipal(user, created.credential().id(), EnumSet.allOf(McpScope.class));
+        McpPrincipal fabricatedScopes = new McpPrincipal(user, created.credential().id(),
+                EnumSet.allOf(McpScope.class));
         assertThat(service.requireValidForRead(fabricatedScopes).scopes()).containsExactly(McpScope.READ);
         assertThat(service.requireValidForWrite(fabricatedScopes).scopes()).containsExactly(McpScope.READ);
         var wrongOwner = new McpPrincipal(UUID.randomUUID(), created.credential().id(), Set.of(McpScope.READ));
@@ -133,7 +137,8 @@ class McpTokenServiceTest {
         assertThat(revoked.version()).isEqualTo(1);
         assertThat(revoked.revokedAt()).isEqualTo(CLOCK.instant());
         stored.set(new StoredToken(id, user, revoked.name(), stored.get().secretHash(), revoked.tokenHint(),
-                revoked.scopes(), revoked.version(), revoked.createdAt(), revoked.expiresAt(), revoked.revokedAt(), null));
+                revoked.scopes(), revoked.version(), revoked.createdAt(), revoked.expiresAt(), revoked.revokedAt(),
+                null));
         assertThat(service.revoke(user, id, 0)).isEqualTo(revoked);
         UUID otherUser = UUID.randomUUID();
         when(identities.isActiveUser(otherUser)).thenReturn(true);

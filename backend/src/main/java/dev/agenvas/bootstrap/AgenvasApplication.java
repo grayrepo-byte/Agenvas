@@ -19,10 +19,12 @@ public class AgenvasApplication {
         SystemLogBuffer logs = new SystemLogBuffer(Clock.systemUTC());
         SystemLogCapture capture = SystemLogCapture.install(logs);
         SpringApplication application = new SpringApplication(AgenvasApplication.class);
-        application.addInitializers(context ->
-                context.getBeanFactory().registerSingleton("systemLogBuffer", logs));
+        application.addInitializers(context -> context.getBeanFactory().registerSingleton("systemLogBuffer", logs));
         application.addListeners(new ApplicationListener<ContextClosedEvent>() {
-            @Override public void onApplicationEvent(ContextClosedEvent event) { capture.close(); }
+            @Override
+            public void onApplicationEvent(ContextClosedEvent event) {
+                capture.close();
+            }
         });
         try {
             application.run(args);

@@ -35,7 +35,8 @@ public class CanvasItemQueryService {
     public List<CanvasItem> artifactItems(UUID ownerId, UUID projectId, UUID artifactId) {
         return canvasItems.list(ownerId, projectId).stream()
                 .filter(item -> item.subjectType() == CanvasItem.SubjectType.ARTIFACT
-                        && item.subjectId().equals(artifactId)).toList();
+                        && item.subjectId().equals(artifactId))
+                .toList();
     }
 
     /** Content revisions deliberately exclude layout/title CAS so presentation undo composes. */
@@ -46,10 +47,12 @@ public class CanvasItemQueryService {
                 canvasItems.mediaVersionIds(ownerId, projectId, itemId));
     }
 
-    public record MediaCopyGuard(long mediaSelectionEpoch, List<UUID> mediaVersionIds) {}
+    public record MediaCopyGuard(long mediaSelectionEpoch, List<UUID> mediaVersionIds) {
+    }
 
     private ApiProblemException notFound() {
         return new ApiProblemException(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND",
-                ApiMessage.of("api.creative-artifact-tool-service.canvas-card-does-not-exist"), ApiMessage.of("api.canvas-service.the-canvas-card-does-not-exist-or-the-current-user"), false);
+                ApiMessage.of("api.creative-artifact-tool-service.canvas-card-does-not-exist"),
+                ApiMessage.of("api.canvas-service.the-canvas-card-does-not-exist-or-the-current-user"), false);
     }
 }

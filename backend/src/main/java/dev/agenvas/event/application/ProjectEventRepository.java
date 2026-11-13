@@ -30,5 +30,6 @@ public interface ProjectEventRepository {
      * @param latestSequence 当前已提交的最大项目事件序号
      * @param oldestRetainedSequence 当前仍可补发的最小序号；没有保留事件时为空
      */
-    record CursorBounds(long latestSequence, Long oldestRetainedSequence) {}
+    record CursorBounds(long latestSequence, Long oldestRetainedSequence) {
+    }
 }

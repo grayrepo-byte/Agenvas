@@ -21,54 +21,114 @@ const DRAFT_URL = `/api/v1/projects/${PROJECT_ID}/canvas-items/${ITEM_ID}/media-
 const RECOVERY_KEY = `${PROJECT_ID}:${ITEM_ID}`;
 const QUERY_KEY = ["media-draft", PROJECT_ID, ITEM_ID] as const;
 const artifact: Artifact = {
-  id: ARTIFACT_ID, projectId: PROJECT_ID, kind: "IMAGE", title: "Synthetic image",
-  resourceDefaultVersionId: null, resourceDefaultVersion: null, version: 0,
-  createdAt: NOW, updatedAt: NOW,
+  id: ARTIFACT_ID,
+  projectId: PROJECT_ID,
+  kind: "IMAGE",
+  title: "Synthetic image",
+  resourceDefaultVersionId: null,
+  resourceDefaultVersion: null,
+  version: 0,
+  createdAt: NOW,
+  updatedAt: NOW,
 };
 const initialDraft: MediaDraft = {
-  projectId: PROJECT_ID, canvasItemId: ITEM_ID, prompt: "Initial prompt", parameters: {},
-  durationSeconds: null, capabilityId: null, styleId: null, videoInputMode: null,
-  mediaInputs: [], mentions: [], displayMode: "DRAFT", version: 0, createdAt: NOW, updatedAt: NOW,
+  projectId: PROJECT_ID,
+  canvasItemId: ITEM_ID,
+  prompt: "Initial prompt",
+  parameters: {},
+  durationSeconds: null,
+  capabilityId: null,
+  styleId: null,
+  videoInputMode: null,
+  mediaInputs: [],
+  mentions: [],
+  displayMode: "DRAFT",
+  version: 0,
+  createdAt: NOW,
+  updatedAt: NOW,
 };
 const settings: MediaSettings = {
-  connections: [{ id: "provider", name: "Synthetic provider", platform: "MOCK", enabled: true,
-    version: 0, connectionVersion: 1, origin: null, keyMask: null,
-    connectivityStatus: "NOT_CHECKED", realGenerationTested: false,
-    capabilities: [{ id: "image-model", name: "Synthetic model", enabled: true,
-      version: 0, capabilityVersion: 1, adapterId: "MOCK_IMAGE", kind: "IMAGE_GENERATION",
-      minimumSeconds: 0, maximumSeconds: 0, maxReferenceImages: 4, maxReferenceVideos: 0,
-      maxReferenceAudios: 0, supportedVideoInputModes: [], defaultVideoInputMode: null,
-      supportsEndFrame: false, supportedImageAspectRatios: ["AUTO", "1:1", "9:16"],
-      supportedImageResolutions: ["1K"], supportedImageQualities: [],
-      supportsTransparentBackground: false, supportsImageMask: false, mappingSha256: "0".repeat(64), settings: {} }] }],
+  connections: [
+    {
+      id: "provider",
+      name: "Synthetic provider",
+      platform: "MOCK",
+      enabled: true,
+      version: 0,
+      connectionVersion: 1,
+      origin: null,
+      keyMask: null,
+      connectivityStatus: "NOT_CHECKED",
+      realGenerationTested: false,
+      capabilities: [
+        {
+          id: "image-model",
+          name: "Synthetic model",
+          enabled: true,
+          version: 0,
+          capabilityVersion: 1,
+          adapterId: "MOCK_IMAGE",
+          kind: "IMAGE_GENERATION",
+          minimumSeconds: 0,
+          maximumSeconds: 0,
+          maxReferenceImages: 4,
+          maxReferenceVideos: 0,
+          maxReferenceAudios: 0,
+          supportedVideoInputModes: [],
+          defaultVideoInputMode: null,
+          supportsEndFrame: false,
+          supportedImageAspectRatios: ["AUTO", "1:1", "9:16"],
+          supportedImageResolutions: ["1K"],
+          supportedImageQualities: [],
+          supportsTransparentBackground: false,
+          supportsImageMask: false,
+          mappingSha256: "0".repeat(64),
+          settings: {},
+        },
+      ],
+    },
+  ],
   defaults: [{ kind: "IMAGE_GENERATION", capabilityId: "image-model", version: 0 }],
 };
 
 function conflict() {
-  return HttpResponse.json({ code: "MEDIA_DRAFT_CONFLICT", title: "Synthetic conflict",
-    detail: "Synthetic conflict", retryable: false }, { status: 409 });
+  return HttpResponse.json(
+    { code: "MEDIA_DRAFT_CONFLICT", title: "Synthetic conflict", detail: "Synthetic conflict", retryable: false },
+    { status: 409 },
+  );
 }
 
 function delayedResponse() {
   let release = () => {};
-  const ready = new Promise<void>((resolve) => { release = resolve; });
+  const ready = new Promise<void>(resolve => {
+    release = resolve;
+  });
   return { ready, release };
 }
 
 function savedDraft(input: SaveMediaDraftRequest): MediaDraft {
-  return { ...initialDraft, ...input, version: input.expectedVersion + 1,
-    mediaInputs: input.mediaInputs.map((item, order) => ({ ...item, order,
+  return {
+    ...initialDraft,
+    ...input,
+    version: input.expectedVersion + 1,
+    mediaInputs: input.mediaInputs.map((item, order) => ({
+      ...item,
+      order,
       artifactId: REFERENCE_ID,
-      sources: [{ id: "manual-source", type: "MANUAL", connectionId: null }] })) };
+      sources: [{ id: "manual-source", type: "MANUAL", connectionId: null }],
+    })),
+  };
 }
 
 /** The button reproduces closing the selected card's editor, including its real unmount cleanup. */
 function SelectedEditor() {
   const [open, setOpen] = useState(true);
-  return <>
-    <button onClick={() => setOpen((current) => !current)}>{open ? "关闭测试编辑区" : "重新打开测试编辑区"}</button>
-    {open ? <MediaDraftEditor artifact={artifact} canvasItemId={ITEM_ID} /> : null}
-  </>;
+  return (
+    <>
+      <button onClick={() => setOpen(current => !current)}>{open ? "关闭测试编辑区" : "重新打开测试编辑区"}</button>
+      {open ? <MediaDraftEditor artifact={artifact} canvasItemId={ITEM_ID} /> : null}
+    </>
+  );
 }
 
 function renderDraft(draft: MediaDraft = initialDraft, mediaSettings: MediaSettings = settings) {
@@ -79,23 +139,49 @@ function renderDraft(draft: MediaDraft = initialDraft, mediaSettings: MediaSetti
     http.get(DRAFT_URL, () => HttpResponse.json(state.draft)),
     http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/${ARTIFACT_ID}/run`, () => HttpResponse.json([])),
     http.get(`/api/v1/projects/${PROJECT_ID}/canvas/items`, () => HttpResponse.json({ items: [] })),
-    http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [{ ...artifact,
-      id: REFERENCE_ID, title: "Synthetic reference", resourceDefaultVersionId: REFERENCE_VERSION }] })),
-    http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/${REFERENCE_ID}/versions`, () => HttpResponse.json({ items: [{
-      id: REFERENCE_VERSION, versionNo: 1, schemaVersion: 1, content: { sourceType: "UPLOAD", assetId: "synthetic-asset" },
-      inputReferences: [], createdByKind: "USER", runId: null, createdAt: NOW,
-    }] })),
+    http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () =>
+      HttpResponse.json({
+        items: [
+          { ...artifact, id: REFERENCE_ID, title: "Synthetic reference", resourceDefaultVersionId: REFERENCE_VERSION },
+        ],
+      }),
+    ),
+    http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/${REFERENCE_ID}/versions`, () =>
+      HttpResponse.json({
+        items: [
+          {
+            id: REFERENCE_VERSION,
+            versionNo: 1,
+            schemaVersion: 1,
+            content: { sourceType: "UPLOAD", assetId: "synthetic-asset" },
+            inputReferences: [],
+            createdByKind: "USER",
+            runId: null,
+            createdAt: NOW,
+          },
+        ],
+      }),
+    ),
   );
-  const client = new QueryClient({ defaultOptions: {
-    queries: { retry: false, staleTime: Infinity }, mutations: { retry: false },
-  } });
-  const view = render(<QueryClientProvider client={client}><SelectedEditor /></QueryClientProvider>);
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, staleTime: Infinity },
+      mutations: { retry: false },
+    },
+  });
+  const view = render(
+    <QueryClientProvider client={client}>
+      <SelectedEditor />
+    </QueryClientProvider>,
+  );
   return { state, client, ...view };
 }
 
 async function closeAndSettle(client: QueryClient, release: () => void = () => {}) {
   release();
-  await act(async () => { cleanup(); });
+  await act(async () => {
+    cleanup();
+  });
   await waitFor(() => {
     expect(client.isMutating()).toBe(0);
     expect(useCanvasStore.getState().mediaDraftRecoveries[RECOVERY_KEY]?.saving).not.toBe(true);
@@ -106,73 +192,128 @@ async function closeAndSettle(client: QueryClient, release: () => void = () => {
 describe("media draft persistence boundaries", () => {
   beforeEach(() => useCanvasStore.setState({ mediaDraftRecoveries: {}, imageRatioDrafts: {} }));
 
-  it.each(["event", "snapshot"] as const)("refreshes exact reference choices after a remote %s without reopening the editor", async (mode) => {
-    const { client } = renderDraft();
-    let refreshed = false;
-    server.use(
-      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [{ ...artifact,
-        id: REFERENCE_ID, title: refreshed ? "Updated reference" : "Synthetic reference",
-        resourceDefaultVersionId: refreshed ? "reference-v2" : REFERENCE_VERSION }] })),
-      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/${REFERENCE_ID}/versions`, () => HttpResponse.json({
-        items: (refreshed ? [2, 1] : [1]).map((versionNo) => ({
-          id: versionNo === 2 ? "reference-v2" : REFERENCE_VERSION, versionNo, schemaVersion: 1,
-          content: { sourceType: "UPLOAD", assetId: `synthetic-asset-${versionNo}` },
-          inputReferences: [], createdByKind: "USER", runId: null, createdAt: NOW,
-        })),
-      })),
-    );
-    try {
-      const user = userEvent.setup();
-      await screen.findByRole("textbox", { name: "图片提示词" });
-      await user.click(screen.getByRole("button", { name: "添加图片输入" }));
-      await user.click(screen.getByRole("menuitem", { name: "从资源库选择" }));
-      await screen.findByRole("checkbox", { name: /Synthetic reference · v1$/ });
-      refreshed = true;
-      const callbacks = projectCacheCallbacks(client, PROJECT_ID);
-      act(() => {
-        if (mode === "event") callbacks.onChange({
-          projectId: PROJECT_ID, type: "artifact.version.created", payload: { artifactId: REFERENCE_ID },
-          seq: 1, eventId: "reference-version-event", schemaVersion: 1, aggregateId: REFERENCE_ID,
-          aggregateVersion: 2, occurredAt: NOW,
+  it.each(["event", "snapshot"] as const)(
+    "refreshes exact reference choices after a remote %s without reopening the editor",
+    async mode => {
+      const { client } = renderDraft();
+      let refreshed = false;
+      server.use(
+        http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () =>
+          HttpResponse.json({
+            items: [
+              {
+                ...artifact,
+                id: REFERENCE_ID,
+                title: refreshed ? "Updated reference" : "Synthetic reference",
+                resourceDefaultVersionId: refreshed ? "reference-v2" : REFERENCE_VERSION,
+              },
+            ],
+          }),
+        ),
+        http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/${REFERENCE_ID}/versions`, () =>
+          HttpResponse.json({
+            items: (refreshed ? [2, 1] : [1]).map(versionNo => ({
+              id: versionNo === 2 ? "reference-v2" : REFERENCE_VERSION,
+              versionNo,
+              schemaVersion: 1,
+              content: { sourceType: "UPLOAD", assetId: `synthetic-asset-${versionNo}` },
+              inputReferences: [],
+              createdByKind: "USER",
+              runId: null,
+              createdAt: NOW,
+            })),
+          }),
+        ),
+      );
+      try {
+        const user = userEvent.setup();
+        await screen.findByRole("textbox", { name: "图片提示词" });
+        await user.click(screen.getByRole("button", { name: "添加图片输入" }));
+        await user.click(screen.getByRole("menuitem", { name: "从资源库选择" }));
+        await screen.findByRole("checkbox", { name: /Synthetic reference · v1$/ });
+        refreshed = true;
+        const callbacks = projectCacheCallbacks(client, PROJECT_ID);
+        act(() => {
+          if (mode === "event")
+            callbacks.onChange({
+              projectId: PROJECT_ID,
+              type: "artifact.version.created",
+              payload: { artifactId: REFERENCE_ID },
+              seq: 1,
+              eventId: "reference-version-event",
+              schemaVersion: 1,
+              aggregateId: REFERENCE_ID,
+              aggregateVersion: 2,
+              occurredAt: NOW,
+            });
+          else
+            callbacks.onSnapshot({
+              project: {
+                id: PROJECT_ID,
+                name: "Synthetic project",
+                aspectRatio: "SQUARE_1_1",
+                status: "ACTIVE",
+                version: 0,
+                createdAt: NOW,
+                updatedAt: NOW,
+              },
+              canvas: { items: [] },
+              connections: [],
+              director: null,
+              activeRun: null,
+              activeTasks: [],
+              unknownTasks: [],
+              snapshotSeq: 2,
+            });
         });
-        else callbacks.onSnapshot({ project: { id: PROJECT_ID, name: "Synthetic project", aspectRatio: "SQUARE_1_1",
-          status: "ACTIVE", version: 0, createdAt: NOW, updatedAt: NOW }, canvas: { items: [] }, connections: [],
-          director: null, activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 2 });
-      });
-      expect(await screen.findByRole("checkbox", { name: /Updated reference · v2$/ })).toBeEnabled();
-      expect(screen.getByRole("checkbox", { name: /Updated reference · v1$/ })).toBeInTheDocument();
-    } finally { await closeAndSettle(client); }
-  });
+        expect(await screen.findByRole("checkbox", { name: /Updated reference · v2$/ })).toBeEnabled();
+        expect(screen.getByRole("checkbox", { name: /Updated reference · v1$/ })).toBeInTheDocument();
+      } finally {
+        await closeAndSettle(client);
+      }
+    },
+  );
 
   it("projects a native image ratio through the extracted session and clears its clean preview on close", async () => {
-    const profile = klingProfiles.find((item) => item.adapterId === "KLING_IMAGE" && item.operation === "GENERATE")!;
-    const capability = { ...settings.connections[0]!.capabilities[0]!, adapterId: profile.adapterId,
-      settings: { model: profile.model ?? "", operation: profile.operation, klingInputs: profile.inputs } };
-    const nativeSettings: MediaSettings = { ...settings,
-      connections: [{ ...settings.connections[0]!, platform: "KLING", capabilities: [capability] }] };
-    const { client } = renderDraft({ ...initialDraft, capabilityId: capability.id,
-      parameters: { dynamicValues: { aspect_ratio: "9:16" } } }, nativeSettings);
+    const profile = klingProfiles.find(item => item.adapterId === "KLING_IMAGE" && item.operation === "GENERATE")!;
+    const capability = {
+      ...settings.connections[0]!.capabilities[0]!,
+      adapterId: profile.adapterId,
+      settings: { model: profile.model ?? "", operation: profile.operation, klingInputs: profile.inputs },
+    };
+    const nativeSettings: MediaSettings = {
+      ...settings,
+      connections: [{ ...settings.connections[0]!, platform: "KLING", capabilities: [capability] }],
+    };
+    const { client } = renderDraft(
+      { ...initialDraft, capabilityId: capability.id, parameters: { dynamicValues: { aspect_ratio: "9:16" } } },
+      nativeSettings,
+    );
     try {
       await screen.findByRole("textbox", { name: "图片提示词" });
       await waitFor(() => expect(useCanvasStore.getState().imageRatioDrafts[RECOVERY_KEY]).toBe("9:16"));
       await userEvent.setup().click(screen.getByRole("button", { name: "关闭测试编辑区" }));
       await waitFor(() => expect(useCanvasStore.getState().imageRatioDrafts[RECOVERY_KEY]).toBeUndefined());
       expect(useCanvasStore.getState().mediaDraftRecoveries[RECOVERY_KEY]).toBeUndefined();
-    } finally { await closeAndSettle(client); }
+    } finally {
+      await closeAndSettle(client);
+    }
   });
 
   it("keeps the original CAS after a committed PUT loses its response, until an explicit refresh", async () => {
     const { state, client } = renderDraft();
     const requests: SaveMediaDraftRequest[] = [];
     const keys: (string | null)[] = [];
-    server.use(http.put(DRAFT_URL, async ({ request }) => {
-      const input = await request.json() as SaveMediaDraftRequest;
-      requests.push(input);
-      keys.push(request.headers.get("Idempotency-Key"));
-      if (input.expectedVersion !== state.draft.version) return conflict();
-      state.draft = savedDraft(input);
-      return requests.length === 1 ? HttpResponse.error() : HttpResponse.json(state.draft);
-    }));
+    server.use(
+      http.put(DRAFT_URL, async ({ request }) => {
+        const input = (await request.json()) as SaveMediaDraftRequest;
+        requests.push(input);
+        keys.push(request.headers.get("Idempotency-Key"));
+        if (input.expectedVersion !== state.draft.version) return conflict();
+        state.draft = savedDraft(input);
+        return requests.length === 1 ? HttpResponse.error() : HttpResponse.json(state.draft);
+      }),
+    );
     try {
       const user = userEvent.setup();
       const prompt = await screen.findByRole("textbox", { name: "图片提示词" });
@@ -182,33 +323,39 @@ describe("media draft persistence boundaries", () => {
       await screen.findByText("保存失败，本地输入已保留");
       expect(state.draft.version).toBe(1);
       expect(prompt).toHaveTextContent("Keep the complete local prompt");
-      expect(requests.map((input) => input.expectedVersion)).toEqual([0]);
+      expect(requests.map(input => input.expectedVersion)).toEqual([0]);
       await user.click(screen.getByRole("button", { name: "重试保存" }));
       await screen.findByRole("button", { name: "重新读取版本" });
-      expect(requests.map((input) => input.expectedVersion)).toEqual([0, 0]);
+      expect(requests.map(input => input.expectedVersion)).toEqual([0, 0]);
       expect(prompt).toHaveTextContent("Keep the complete local prompt");
-      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 750)); });
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 750));
+      });
       expect(requests).toHaveLength(2);
       await user.click(screen.getByRole("button", { name: "重新读取版本" }));
       await screen.findByText("已保存");
-      expect(requests.map((input) => input.expectedVersion)).toEqual([0, 0, 1]);
+      expect(requests.map(input => input.expectedVersion)).toEqual([0, 0, 1]);
       expect(keys).toEqual([null, null, null]);
       expect(state.draft.prompt).toBe("Keep the complete local prompt");
-    } finally { await closeAndSettle(client); }
+    } finally {
+      await closeAndSettle(client);
+    }
   });
 
   it("waits for a pending resource commit before closing subsequent edits with its new CAS", async () => {
     const { state, client } = renderDraft();
     const pending = delayedResponse();
     const requests: SaveMediaDraftRequest[] = [];
-    server.use(http.put(DRAFT_URL, async ({ request }) => {
-      const input = await request.json() as SaveMediaDraftRequest;
-      requests.push(input);
-      await pending.ready;
-      if (input.expectedVersion !== state.draft.version) return conflict();
-      state.draft = savedDraft(input);
-      return HttpResponse.json(state.draft);
-    }));
+    server.use(
+      http.put(DRAFT_URL, async ({ request }) => {
+        const input = (await request.json()) as SaveMediaDraftRequest;
+        requests.push(input);
+        await pending.ready;
+        if (input.expectedVersion !== state.draft.version) return conflict();
+        state.draft = savedDraft(input);
+        return HttpResponse.json(state.draft);
+      }),
+    );
     try {
       const user = userEvent.setup();
       const prompt = await screen.findByRole("textbox", { name: "图片提示词" });
@@ -220,36 +367,62 @@ describe("media draft persistence boundaries", () => {
       await user.click(await screen.findByRole("checkbox", { name: "选择 Synthetic reference · v1" }));
       await user.click(screen.getByRole("button", { name: "添加所选图片（1）" }));
       await waitFor(() => expect(requests).toHaveLength(1));
-      expect(requests[0]).toMatchObject({ expectedVersion: 0,
-        prompt: "Dirty prompt included in the resource commit", mediaInputs: [{ versionId: REFERENCE_VERSION }] });
+      expect(requests[0]).toMatchObject({
+        expectedVersion: 0,
+        prompt: "Dirty prompt included in the resource commit",
+        mediaInputs: [{ versionId: REFERENCE_VERSION }],
+      });
       await user.clear(prompt);
       await user.type(prompt, "Edited again while the resource commit was pending");
       await user.click(screen.getByRole("button", { name: "关闭测试编辑区" }));
       // Keep the accepted commit unresolved past the autosave delay to expose any competing close-save.
-      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 750)); });
-      expect(requests.map((input) => ({ expectedVersion: input.expectedVersion,
-        versions: input.mediaInputs.map((item) => item.versionId) })))
-        .toEqual([{ expectedVersion: 0, versions: [REFERENCE_VERSION] }]);
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 750));
+      });
+      expect(
+        requests.map(input => ({
+          expectedVersion: input.expectedVersion,
+          versions: input.mediaInputs.map(item => item.versionId),
+        })),
+      ).toEqual([{ expectedVersion: 0, versions: [REFERENCE_VERSION] }]);
       pending.release();
       await waitFor(() => expect(requests).toHaveLength(2));
-      expect(requests[1]).toMatchObject({ expectedVersion: 1,
+      expect(requests[1]).toMatchObject({
+        expectedVersion: 1,
         prompt: "Edited again while the resource commit was pending",
-        parameters: {}, mentions: [], mediaInputs: [{ versionId: REFERENCE_VERSION }] });
+        parameters: {},
+        mentions: [],
+        mediaInputs: [{ versionId: REFERENCE_VERSION }],
+      });
       await waitFor(() => expect(client.getQueryData<MediaDraft>(QUERY_KEY)?.version).toBe(2));
       await waitFor(() => expect(useCanvasStore.getState().mediaDraftRecoveries[RECOVERY_KEY]).toBeUndefined());
       expect(state.draft.prompt).toBe("Edited again while the resource commit was pending");
-      expect(state.draft.mediaInputs.map((input) => input.versionId)).toEqual([REFERENCE_VERSION]);
+      expect(state.draft.mediaInputs.map(input => input.versionId)).toEqual([REFERENCE_VERSION]);
       await user.click(screen.getByRole("button", { name: "重新打开测试编辑区" }));
-      expect(await screen.findByRole("textbox", { name: "图片提示词" }))
-        .toHaveTextContent("Edited again while the resource commit was pending");
+      expect(await screen.findByRole("textbox", { name: "图片提示词" })).toHaveTextContent(
+        "Edited again while the resource commit was pending",
+      );
       expect(await screen.findByRole("button", { name: /^取消引入 Synthetic reference/ })).toBeEnabled();
-    } finally { await closeAndSettle(client, pending.release); }
+    } finally {
+      await closeAndSettle(client, pending.release);
+    }
   });
 
   it("waits for connected-input removal before closing edits with its new CAS", async () => {
-    const connectedDraft: MediaDraft = { ...initialDraft, parameters: { aspectRatio: "9:16" }, mediaInputs: [{ versionId: REFERENCE_VERSION,
-      artifactId: REFERENCE_ID, role: "REFERENCE", order: 0, color: "#F15CAF",
-      sources: [{ id: "connection-source", type: "CONNECTION", connectionId: "connection-1" }] }] };
+    const connectedDraft: MediaDraft = {
+      ...initialDraft,
+      parameters: { aspectRatio: "9:16" },
+      mediaInputs: [
+        {
+          versionId: REFERENCE_VERSION,
+          artifactId: REFERENCE_ID,
+          role: "REFERENCE",
+          order: 0,
+          color: "#F15CAF",
+          sources: [{ id: "connection-source", type: "CONNECTION", connectionId: "connection-1" }],
+        },
+      ],
+    };
     const { state, client } = renderDraft(connectedDraft);
     const pending = delayedResponse();
     const removals: unknown[] = [];
@@ -262,7 +435,7 @@ describe("media draft persistence boundaries", () => {
         return HttpResponse.json(state.draft);
       }),
       http.put(DRAFT_URL, async ({ request }) => {
-        const input = await request.json() as SaveMediaDraftRequest;
+        const input = (await request.json()) as SaveMediaDraftRequest;
         requests.push(input);
         await pending.ready;
         if (input.expectedVersion !== state.draft.version) return conflict();
@@ -278,77 +451,108 @@ describe("media draft persistence boundaries", () => {
       prompt.textContent = "Typed while the connected input was being removed";
       fireEvent.input(prompt);
       await user.click(screen.getByRole("button", { name: "关闭测试编辑区" }));
-      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 750)); });
-      expect(requests.map((input) => ({ expectedVersion: input.expectedVersion,
-        versions: input.mediaInputs.map((item) => item.versionId) }))).toEqual([]);
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 750));
+      });
+      expect(
+        requests.map(input => ({
+          expectedVersion: input.expectedVersion,
+          versions: input.mediaInputs.map(item => item.versionId),
+        })),
+      ).toEqual([]);
       pending.release();
       await waitFor(() => expect(requests).toHaveLength(1));
-      expect(requests[0]).toMatchObject({ expectedVersion: 1,
+      expect(requests[0]).toMatchObject({
+        expectedVersion: 1,
         prompt: "Typed while the connected input was being removed",
-        parameters: { aspectRatio: "9:16" }, mentions: [], mediaInputs: [] });
+        parameters: { aspectRatio: "9:16" },
+        mentions: [],
+        mediaInputs: [],
+      });
       await waitFor(() => expect(client.getQueryData<MediaDraft>(QUERY_KEY)?.version).toBe(2));
       await waitFor(() => expect(useCanvasStore.getState().mediaDraftRecoveries[RECOVERY_KEY]).toBeUndefined());
       expect(state.draft.prompt).toBe("Typed while the connected input was being removed");
       expect(state.draft.mediaInputs).toEqual([]);
       await user.click(screen.getByRole("button", { name: "重新打开测试编辑区" }));
-      expect(await screen.findByRole("textbox", { name: "图片提示词" }))
-        .toHaveTextContent("Typed while the connected input was being removed");
+      expect(await screen.findByRole("textbox", { name: "图片提示词" })).toHaveTextContent(
+        "Typed while the connected input was being removed",
+      );
       expect(screen.queryByRole("button", { name: /^取消引入 Synthetic reference/ })).not.toBeInTheDocument();
-    } finally { await closeAndSettle(client, pending.release); }
+    } finally {
+      await closeAndSettle(client, pending.release);
+    }
   });
 
   it("keeps dirty input and its original CAS when a media-draft event refreshes the server cache", async () => {
     const { state, client } = renderDraft();
     const requests: SaveMediaDraftRequest[] = [];
     let refreshedReads = 0;
-    server.use(http.put(DRAFT_URL, async ({ request }) => {
-      const input = await request.json() as SaveMediaDraftRequest;
-      requests.push(input);
-      if (input.expectedVersion !== state.draft.version) return conflict();
-      state.draft = savedDraft(input);
-      return HttpResponse.json(state.draft);
-    }));
+    server.use(
+      http.put(DRAFT_URL, async ({ request }) => {
+        const input = (await request.json()) as SaveMediaDraftRequest;
+        requests.push(input);
+        if (input.expectedVersion !== state.draft.version) return conflict();
+        state.draft = savedDraft(input);
+        return HttpResponse.json(state.draft);
+      }),
+    );
     try {
       const user = userEvent.setup();
       const prompt = await screen.findByRole("textbox", { name: "图片提示词" });
       await waitFor(() => expect(prompt).toHaveAttribute("contenteditable", "true"));
-      server.use(http.get(DRAFT_URL, () => {
-        refreshedReads++;
-        return HttpResponse.json(state.draft);
-      }));
+      server.use(
+        http.get(DRAFT_URL, () => {
+          refreshedReads++;
+          return HttpResponse.json(state.draft);
+        }),
+      );
       prompt.textContent = "Keep the dirty local prompt after SSE";
       fireEvent.input(prompt);
       state.draft = { ...initialDraft, version: 4, prompt: "New remote prompt" };
-      act(() => projectCacheCallbacks(client, PROJECT_ID).onChange({
-        projectId: PROJECT_ID, type: "media.draft.changed", payload: { canvasItemId: ITEM_ID },
-        seq: 1, eventId: "media-draft-event", schemaVersion: 1, aggregateId: ITEM_ID,
-        aggregateVersion: 4, occurredAt: NOW,
-      }));
+      act(() =>
+        projectCacheCallbacks(client, PROJECT_ID).onChange({
+          projectId: PROJECT_ID,
+          type: "media.draft.changed",
+          payload: { canvasItemId: ITEM_ID },
+          seq: 1,
+          eventId: "media-draft-event",
+          schemaVersion: 1,
+          aggregateId: ITEM_ID,
+          aggregateVersion: 4,
+          occurredAt: NOW,
+        }),
+      );
       await waitFor(() => expect(client.getQueryData<MediaDraft>(QUERY_KEY)?.version).toBe(4));
       expect(refreshedReads).toBe(1);
       expect(prompt).toHaveTextContent("Keep the dirty local prompt after SSE");
       await screen.findByRole("button", { name: "重新读取版本" });
       expect(requests).toHaveLength(1);
       expect(requests[0]).toMatchObject({ expectedVersion: 0, prompt: "Keep the dirty local prompt after SSE" });
-      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 750)); });
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 750));
+      });
       expect(requests).toHaveLength(1);
       await user.click(screen.getByRole("button", { name: "重新读取版本" }));
       await screen.findByText("已保存");
-      expect(requests.map((input) => input.expectedVersion)).toEqual([0, 4]);
+      expect(requests.map(input => input.expectedVersion)).toEqual([0, 4]);
       expect(state.draft).toMatchObject({ version: 5, prompt: "Keep the dirty local prompt after SSE" });
       expect(prompt).toHaveTextContent("Keep the dirty local prompt after SSE");
-    } finally { await closeAndSettle(client); }
+    } finally {
+      await closeAndSettle(client);
+    }
   });
 
   it("retains the last input and original CAS when a pending resource commit fails after closing", async () => {
     const { state, client } = renderDraft();
     const pending = delayedResponse();
     const requests: SaveMediaDraftRequest[] = [];
-    server.use(http.put(DRAFT_URL, async ({ request }) => {
-      requests.push(await request.json() as SaveMediaDraftRequest);
-      await pending.ready;
-      return HttpResponse.error();
-    }));
+    server.use(
+      http.put(DRAFT_URL, async ({ request }) => {
+        requests.push((await request.json()) as SaveMediaDraftRequest);
+        await pending.ready;
+        return HttpResponse.error();
+      }),
+    );
     try {
       const user = userEvent.setup();
       const prompt = await screen.findByRole("textbox", { name: "图片提示词" });
@@ -365,39 +569,51 @@ describe("media draft persistence boundaries", () => {
       pending.release();
       await waitFor(() => expect(useCanvasStore.getState().mediaDraftRecoveries[RECOVERY_KEY]?.saving).toBe(false));
       const recovery = useCanvasStore.getState().mediaDraftRecoveries[RECOVERY_KEY];
-      expect(recovery?.request).toMatchObject({ expectedVersion: 0,
-        prompt: "Retain these edits after the resource commit fails", parameters: {}, mediaInputs: [], mentions: [] });
+      expect(recovery?.request).toMatchObject({
+        expectedVersion: 0,
+        prompt: "Retain these edits after the resource commit fails",
+        parameters: {},
+        mediaInputs: [],
+        mentions: [],
+      });
       expect(recovery?.error).toBeInstanceOf(Error);
       expect(state.draft.version).toBe(0);
       await user.click(screen.getByRole("button", { name: "重新打开测试编辑区" }));
-      expect(await screen.findByRole("textbox", { name: "图片提示词" }))
-        .toHaveTextContent("Retain these edits after the resource commit fails");
+      expect(await screen.findByRole("textbox", { name: "图片提示词" })).toHaveTextContent(
+        "Retain these edits after the resource commit fails",
+      );
       expect(await screen.findByText("保存失败，本地输入已保留")).toBeVisible();
       expect(screen.getByRole("alert")).toHaveTextContent(recovery?.error?.message ?? "Missing failure");
       expect(screen.getByRole("button", { name: "重试保存" })).toBeEnabled();
       expect(screen.queryByRole("button", { name: /^取消引入 Synthetic reference/ })).not.toBeInTheDocument();
       // Failure retains the input for the user; neither closing nor reopening retries the business write.
-      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 750)); });
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 750));
+      });
       expect(requests).toHaveLength(1);
-    } finally { await closeAndSettle(client, pending.release); }
+    } finally {
+      await closeAndSettle(client, pending.release);
+    }
   });
 
   it("retains acknowledged references and CAS when the serialized close-save conflicts", async () => {
     const { state, client } = renderDraft();
     const pending = delayedResponse();
     const requests: SaveMediaDraftRequest[] = [];
-    server.use(http.put(DRAFT_URL, async ({ request }) => {
-      const input = await request.json() as SaveMediaDraftRequest;
-      const attempt = requests.push(input);
-      await pending.ready;
-      if (attempt === 2) {
-        state.draft = { ...state.draft, version: 2, prompt: "Concurrent server edit" };
-        return conflict();
-      }
-      if (input.expectedVersion !== state.draft.version) return conflict();
-      state.draft = savedDraft(input);
-      return HttpResponse.json(state.draft);
-    }));
+    server.use(
+      http.put(DRAFT_URL, async ({ request }) => {
+        const input = (await request.json()) as SaveMediaDraftRequest;
+        const attempt = requests.push(input);
+        await pending.ready;
+        if (attempt === 2) {
+          state.draft = { ...state.draft, version: 2, prompt: "Concurrent server edit" };
+          return conflict();
+        }
+        if (input.expectedVersion !== state.draft.version) return conflict();
+        state.draft = savedDraft(input);
+        return HttpResponse.json(state.draft);
+      }),
+    );
     try {
       const user = userEvent.setup();
       const prompt = await screen.findByRole("textbox", { name: "图片提示词" });
@@ -413,26 +629,41 @@ describe("media draft persistence boundaries", () => {
       pending.release();
       await waitFor(() => expect(useCanvasStore.getState().mediaDraftRecoveries[RECOVERY_KEY]?.saving).toBe(false));
       expect(requests).toHaveLength(2);
-      expect(requests[1]).toMatchObject({ expectedVersion: 1,
-        prompt: "Retain these edits after the close-save conflict", mediaInputs: [{ versionId: REFERENCE_VERSION }] });
+      expect(requests[1]).toMatchObject({
+        expectedVersion: 1,
+        prompt: "Retain these edits after the close-save conflict",
+        mediaInputs: [{ versionId: REFERENCE_VERSION }],
+      });
       const recovery = useCanvasStore.getState().mediaDraftRecoveries[RECOVERY_KEY];
-      expect(recovery?.request).toMatchObject({ expectedVersion: 1,
-        prompt: "Retain these edits after the close-save conflict", parameters: {}, mentions: [],
-        mediaInputs: [{ versionId: REFERENCE_VERSION }] });
+      expect(recovery?.request).toMatchObject({
+        expectedVersion: 1,
+        prompt: "Retain these edits after the close-save conflict",
+        parameters: {},
+        mentions: [],
+        mediaInputs: [{ versionId: REFERENCE_VERSION }],
+      });
       expect(recovery?.error).toMatchObject({ status: 409 });
       await user.click(screen.getByRole("button", { name: "重新打开测试编辑区" }));
-      expect(await screen.findByRole("textbox", { name: "图片提示词" }))
-        .toHaveTextContent("Retain these edits after the close-save conflict");
+      expect(await screen.findByRole("textbox", { name: "图片提示词" })).toHaveTextContent(
+        "Retain these edits after the close-save conflict",
+      );
       expect(await screen.findByRole("button", { name: /^取消引入 Synthetic reference/ })).toBeInTheDocument();
       await screen.findByRole("button", { name: "重新读取版本" });
-      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 750)); });
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 750));
+      });
       expect(requests).toHaveLength(2);
       await user.click(screen.getByRole("button", { name: "重新读取版本" }));
       await screen.findByText("已保存");
-      expect(requests.map((input) => input.expectedVersion)).toEqual([0, 1, 2]);
-      expect(state.draft).toMatchObject({ version: 3,
-        prompt: "Retain these edits after the close-save conflict", mediaInputs: [{ versionId: REFERENCE_VERSION }] });
+      expect(requests.map(input => input.expectedVersion)).toEqual([0, 1, 2]);
+      expect(state.draft).toMatchObject({
+        version: 3,
+        prompt: "Retain these edits after the close-save conflict",
+        mediaInputs: [{ versionId: REFERENCE_VERSION }],
+      });
       expect(useCanvasStore.getState().mediaDraftRecoveries[RECOVERY_KEY]).toBeUndefined();
-    } finally { await closeAndSettle(client, pending.release); }
+    } finally {
+      await closeAndSettle(client, pending.release);
+    }
   });
 });

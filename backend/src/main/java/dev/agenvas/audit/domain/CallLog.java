@@ -10,7 +10,13 @@ public record CallLog(UUID id, UUID projectId, String projectTitle, UUID taskId,
         String provider, String model, String traceId, String providerRequestId,
         String errorCode, Instant startedAt, Instant respondedAt, Long durationMs,
         boolean historical, boolean mock) {
-    public enum Kind { LLM, IMAGE, VIDEO, AUDIO }
-    public enum Operation { CHAT, SUBMIT, POLL, DIAGNOSTIC, LEGACY }
-    public enum Status { RUNNING, SUCCEEDED, FAILED, UNKNOWN }
+    public enum Kind {
+        LLM, IMAGE, VIDEO, AUDIO
+    }
+    public enum Operation {
+        CHAT, SUBMIT, POLL, DIAGNOSTIC, LEGACY
+    }
+    public enum Status {
+        RUNNING, SUCCEEDED, FAILED, UNKNOWN
+    }
 }

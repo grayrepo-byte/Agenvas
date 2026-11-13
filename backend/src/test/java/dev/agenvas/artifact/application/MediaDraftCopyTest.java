@@ -50,12 +50,14 @@ class MediaDraftCopyTest {
             artifacts, repository, items, mock(ProjectEventService.class), mapper,
             Clock.fixed(NOW, ZoneOffset.UTC), mock(MediaCapabilityService.class), mock(MediaStyleService.class));
 
-    @BeforeEach void configureSource() {
+    @BeforeEach
+    void configureSource() {
         var card = mock(CanvasItem.class);
         when(card.subjectId()).thenReturn(artifactId);
         when(items.requireArtifactItem(owner, project, sourceId)).thenReturn(card);
         when(artifacts.get(owner, project, artifactId)).thenReturn(new ArtifactService.ArtifactView(
-                new Artifact(artifactId, project, Artifact.Kind.IMAGE, "Synthetic image", null, null, 0, NOW, NOW), null));
+                new Artifact(artifactId, project, Artifact.Kind.IMAGE, "Synthetic image", null, null, 0, NOW, NOW),
+                null));
         when(repository.updateMediaDraft(any(), anyLong())).thenReturn(true);
     }
 
@@ -81,14 +83,16 @@ class MediaDraftCopyTest {
         });
     }
 
-    @Test void ordinaryCopyKeepsTheSelectedBatchCount() {
+    @Test
+    void ordinaryCopyKeepsTheSelectedBatchCount() {
         MediaDraft source = source(4);
         var copied = service.duplicateWithinChange(owner, project, sourceId, targetId, source.version());
         assertThat(copied.parameters()).isEqualTo(source.parameters());
         assertThat(copied.parameters()).isNotSameAs(source.parameters());
     }
 
-    @Test void batchOutputOverridesAnInheritedBatchCountWhenTheDraftOmitsIt() {
+    @Test
+    void batchOutputOverridesAnInheritedBatchCountWhenTheDraftOmitsIt() {
         MediaDraft source = source(4);
         ((ObjectNode) source.parameters()).remove("generationCount");
         var copied = service.duplicateBatchOutputWithinChange(owner, project, sourceId, targetId, source.version());
@@ -96,7 +100,8 @@ class MediaDraftCopyTest {
         assertThat(source.parameters().has("generationCount")).isFalse();
     }
 
-    @Test void frozenOutputDoesNotChangeTheAcceptedBatchSnapshot() {
+    @Test
+    void frozenOutputDoesNotChangeTheAcceptedBatchSnapshot() {
         ObjectNode frozen = mapper.createObjectNode().put("prompt", "Accepted prompt")
                 .put("capabilityId", capabilityId.toString());
         frozen.set("parameters", parameters(4));
@@ -111,7 +116,8 @@ class MediaDraftCopyTest {
         assertThat(frozen.at("/parameters/generationCount").asInt()).isEqualTo(4);
     }
 
-    @Test void frozenWorkflowOutputKeepsItsProtocolParameters() {
+    @Test
+    void frozenWorkflowOutputKeepsItsProtocolParameters() {
         ObjectNode frozen = mapper.createObjectNode().put("capabilityId", capabilityId.toString());
         frozen.putObject("parameters").putObject(NativeMediaProtocol.VALUES_PROPERTY).put("n", 4);
         service.initializeFrozenWithinChange(project, targetId, Artifact.Kind.IMAGE, frozen);
@@ -128,7 +134,8 @@ class MediaDraftCopyTest {
             String model, String operation, Artifact.Kind kind, String originalValues, String expectedValues) {
         ObjectNode frozen = mapper.createObjectNode().put("capabilityId", capabilityId.toString());
         frozen.putObject("parameters").set(NativeMediaProtocol.VALUES_PROPERTY, mapper.readTree(originalValues));
-        if (kind == Artifact.Kind.VIDEO) frozen.put("mode", "TEXT");
+        if (kind == Artifact.Kind.VIDEO)
+            frozen.put("mode", "TEXT");
         frozen.putObject("providerParameters").putObject(protocol)
                 .put("adapterId", adapter).put("model", model).put("operation", operation);
         service.initializeFrozenWithinChange(project, targetId, kind, frozen);
@@ -149,7 +156,8 @@ class MediaDraftCopyTest {
                 Arguments.of("native", "WAN_IMAGE", "wan2.7-image-pro", "GENERATE", Artifact.Kind.IMAGE,
                         "{\"n\":4,\"enable_sequential\":true,\"size\":\"2K\"}",
                         "{\"n\":1,\"enable_sequential\":false,\"size\":\"2K\"}"),
-                Arguments.of("native", SeedreamModels.ADAPTER_ID, SeedreamModels.LITE, SeedreamModels.GENERATE, Artifact.Kind.IMAGE,
+                Arguments.of("native", SeedreamModels.ADAPTER_ID, SeedreamModels.LITE, SeedreamModels.GENERATE,
+                        Artifact.Kind.IMAGE,
                         "{\"sequential_image_generation\":\"auto\",\"max_images\":3,\"output_format\":\"png\"}",
                         "{\"sequential_image_generation\":\"disabled\",\"max_images\":1,\"output_format\":\"png\"}"),
                 Arguments.of("kling", "", "kling-v3", "GENERATE", Artifact.Kind.IMAGE,
@@ -160,7 +168,8 @@ class MediaDraftCopyTest {
                 Arguments.of("native", "WAN_VIDEO", "wan3.0-video", "GENERATE", Artifact.Kind.VIDEO,
                         "{\"resolution\":\"720P\",\"smart_duration\":true}",
                         "{\"resolution\":\"720P\",\"smart_duration\":true}"),
-                Arguments.of("native", SeedreamModels.ADAPTER_ID, SeedreamModels.PRO, SeedreamModels.LAYERS, Artifact.Kind.IMAGE,
+                Arguments.of("native", SeedreamModels.ADAPTER_ID, SeedreamModels.PRO, SeedreamModels.LAYERS,
+                        Artifact.Kind.IMAGE,
                         "{\"size\":\"2K\"}", "{\"size\":\"2K\"}"),
                 Arguments.of("kling", "", "", "SUBJECT_COMPLETION", Artifact.Kind.IMAGE,
                         "{}", "{}"));

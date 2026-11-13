@@ -50,10 +50,9 @@ import tools.jackson.databind.node.ObjectNode;
 @Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = {AgenvasApplication.class, DirectTextGenerationPostgresIT.FakeConfig.class},
-        properties = {
-                "agenvas.llm.scheduler-enabled=false"
-        })
+@SpringBootTest(classes = {AgenvasApplication.class, DirectTextGenerationPostgresIT.FakeConfig.class}, properties = {
+        "agenvas.llm.scheduler-enabled=false"
+})
 class DirectTextGenerationPostgresIT {
 
     @Container
@@ -61,23 +60,35 @@ class DirectTextGenerationPostgresIT {
 
     @DynamicPropertySource
     static void postgresProperties(DynamicPropertyRegistry properties) {
-        if (!POSTGRES.isRunning()) POSTGRES.start();
+        if (!POSTGRES.isRunning())
+            POSTGRES.start();
         properties.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         properties.add("spring.datasource.username", POSTGRES::getUsername);
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private ArtifactService artifacts;
-    @Autowired private DirectTextTaskService direct;
-    @Autowired private DirectTextGenerationWorker worker;
-    @Autowired private TaskService tasks;
-    @Autowired private FakeGateway gateway;
-    @Autowired private ObjectMapper mapper;
-    @Autowired private dev.agenvas.settings.application.PromptService prompts;
-    @Autowired private LlmProtocolCodec codec;
-    @Autowired private JdbcClient jdbc;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private ArtifactService artifacts;
+    @Autowired
+    private DirectTextTaskService direct;
+    @Autowired
+    private DirectTextGenerationWorker worker;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private FakeGateway gateway;
+    @Autowired
+    private ObjectMapper mapper;
+    @Autowired
+    private dev.agenvas.settings.application.PromptService prompts;
+    @Autowired
+    private LlmProtocolCodec codec;
+    @Autowired
+    private JdbcClient jdbc;
     private AdminPrincipal owner;
 
     @BeforeAll
@@ -103,7 +114,8 @@ class DirectTextGenerationPostgresIT {
         assertThat(first.input().path("currentText").asText()).isEmpty();
         var prompt = prompts.require(dev.agenvas.settings.application.PromptService.TEXT_GENERATION_KEY,
                 dev.agenvas.settings.application.PromptService.Kind.FUNCTION);
-        prompts.update(prompt.id(), prompt.version(), prompt.name(), prompt.description(), "Changed after task acceptance");
+        prompts.update(prompt.id(), prompt.version(), prompt.name(), prompt.description(),
+                "Changed after task acceptance");
         gateway.expectedSystemPrompt = first.input().path("systemPrompt").asText();
         assertThat(worker.runOnce("text-worker")).isEqualTo(1);
 
@@ -176,8 +188,8 @@ class DirectTextGenerationPostgresIT {
         assertThat(done.output().path("result").path("selected").asBoolean()).isTrue();
         assertThat(gateway.calls.get()).isEqualTo(callsBefore);
         assertThatThrownBy(() -> tasks.succeedWithTextArtifact(firstLease, "crashed-text-worker", text("Stale worker")))
-                .isInstanceOfSatisfying(ApiProblemException.class, failure ->
-                        assertThat(failure.code()).isEqualTo("TASK_LEASE_LOST"));
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        failure -> assertThat(failure.code()).isEqualTo("TASK_LEASE_LOST"));
         assertThat(artifacts.listVersions(owner.userId(), project.id(), initial.artifact().id()))
                 .hasSize(2).extracting(version -> version.content().path("text").asText())
                 .containsExactlyInAnyOrder("Original card", "Recovered finished text");

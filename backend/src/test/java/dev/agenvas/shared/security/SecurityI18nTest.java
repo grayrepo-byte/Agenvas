@@ -32,7 +32,8 @@ class SecurityI18nTest {
         response = new MockHttpServletResponse();
         security.accessDeniedHandler(resolver).handle(request("ru"), response, null);
         assertThat(response.getStatus()).isEqualTo(HttpStatus.FORBIDDEN.value());
-        assertThat(mapper.readTree(response.getContentAsString(StandardCharsets.UTF_8)).path("code").asText()).isEqualTo("ACCESS_DENIED");
+        assertThat(mapper.readTree(response.getContentAsString(StandardCharsets.UTF_8)).path("code").asText())
+                .isEqualTo("ACCESS_DENIED");
         assertThat(response.getContentAsString(StandardCharsets.UTF_8)).doesNotContain("请求被拒绝", "请求缺少");
     }
 

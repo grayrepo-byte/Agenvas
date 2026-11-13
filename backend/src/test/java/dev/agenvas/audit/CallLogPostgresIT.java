@@ -91,19 +91,32 @@ class CallLogPostgresIT {
         registry.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private AgentRunService runs;
-    @Autowired private TaskService tasks;
-    @Autowired private dev.agenvas.task.application.TaskRepository taskRepository;
-    @Autowired private CallLogService calls;
-    @Autowired private dev.agenvas.audit.application.CallLogRepository auditRepository;
-    @Autowired private dev.agenvas.audit.application.CallLogRetentionService retention;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private org.springframework.transaction.PlatformTransactionManager transactionManager;
-    @Autowired private ObjectMapper mapper;
-    @Autowired private WebApplicationContext context;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private AgentInstanceService agents;
+    @Autowired
+    private AgentRunService runs;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private dev.agenvas.task.application.TaskRepository taskRepository;
+    @Autowired
+    private CallLogService calls;
+    @Autowired
+    private dev.agenvas.audit.application.CallLogRepository auditRepository;
+    @Autowired
+    private dev.agenvas.audit.application.CallLogRetentionService retention;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private org.springframework.transaction.PlatformTransactionManager transactionManager;
+    @Autowired
+    private ObjectMapper mapper;
+    @Autowired
+    private WebApplicationContext context;
     private AdminPrincipal owner;
     private MockMvc mvc;
     private final Map<UUID, AgentRun> fixtureRuns = new java.util.HashMap<>();
@@ -252,10 +265,10 @@ class CallLogPostgresIT {
         assertRedacted(page.toString());
 
         calls.record(new CallDescriptor(project.id(), task.id(), run.id(), null, CallLog.Kind.IMAGE,
-                        CallLog.Operation.SUBMIT, "MOCK", "mock-image", true),
+                CallLog.Operation.SUBMIT, "MOCK", "mock-image", true),
                 () -> "accepted", ignored -> new CallOutcome(CallLog.Status.SUCCEEDED, "request-image", null));
         calls.record(new CallDescriptor(project.id(), null, run.id(), 0, CallLog.Kind.LLM,
-                        CallLog.Operation.CHAT, "MOCK", "mock-chat", true),
+                CallLog.Operation.CHAT, "MOCK", "mock-chat", true),
                 () -> "reply", ignored -> new CallOutcome(CallLog.Status.SUCCEEDED, null, null));
         JsonNode recorded = list(owner, Map.of("projectId", project.id().toString()));
         assertThat(recorded.path("items").size()).isEqualTo(2);
@@ -270,67 +283,87 @@ class CallLogPostgresIT {
         AgentRun run = fixtureRun(project);
         var descriptor = new CallDescriptor(project.id(), null, run.id(), 0, CallLog.Kind.LLM,
                 CallLog.Operation.CHAT, "synthetic", "synthetic-model", true);
-        var gateway = new dev.agenvas.llm.infrastructure.SpringAiChatGateway(new org.springframework.ai.chat.model.ChatModel() {
-            @Override public org.springframework.ai.chat.model.ChatResponse call(org.springframework.ai.chat.prompt.Prompt prompt) {
-                throw new AssertionError("Stream only");
-            }
-            @Override public reactor.core.publisher.Flux<org.springframework.ai.chat.model.ChatResponse> stream(org.springframework.ai.chat.prompt.Prompt prompt) {
-                var assistant = org.springframework.ai.chat.messages.AssistantMessage.builder()
-                        .content("synthetic output sk-unusable-stream-key https://example.invalid/?token=synthetic-token")
-                        .properties(Map.of("reasoningContent", "synthetic private reasoning")).build();
-                return reactor.core.publisher.Flux.just(new org.springframework.ai.chat.model.ChatResponse(
-                        List.of(new org.springframework.ai.chat.model.Generation(assistant)),
-                        org.springframework.ai.chat.metadata.ChatResponseMetadata.builder().model("synthetic-model")
-                                .id("synthetic-stream-response").usage(new org.springframework.ai.chat.metadata.DefaultUsage(3, 2, 5)).build()));
-            }
-        }, 1);
+        var gateway = new dev.agenvas.llm.infrastructure.SpringAiChatGateway(
+                new org.springframework.ai.chat.model.ChatModel() {
+                    @Override
+                    public org.springframework.ai.chat.model.ChatResponse call(
+                            org.springframework.ai.chat.prompt.Prompt prompt) {
+                        throw new AssertionError("Stream only");
+                    }
+                    @Override
+                    public reactor.core.publisher.Flux<org.springframework.ai.chat.model.ChatResponse> stream(
+                            org.springframework.ai.chat.prompt.Prompt prompt) {
+                        var assistant = org.springframework.ai.chat.messages.AssistantMessage.builder()
+                                .content(
+                                        "synthetic output sk-unusable-stream-key https://example.invalid/?token=synthetic-token")
+                                .properties(Map.of("reasoningContent", "synthetic private reasoning")).build();
+                        return reactor.core.publisher.Flux.just(new org.springframework.ai.chat.model.ChatResponse(
+                                List.of(new org.springframework.ai.chat.model.Generation(assistant)),
+                                org.springframework.ai.chat.metadata.ChatResponseMetadata.builder()
+                                        .model("synthetic-model")
+                                        .id("synthetic-stream-response")
+                                        .usage(new org.springframework.ai.chat.metadata.DefaultUsage(3, 2, 5))
+                                        .build()));
+                    }
+                }, 1);
         for (boolean enabled : List.of(false, true)) {
             calls.updateSettings(enabled, calls.settings().version());
             calls.recordStream(descriptor, (capture, listener) -> {
                 assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
                 if (capture) {
-                    int index = DebugHttpCapture.begin("POST", "https://provider.invalid/chat", "{}".getBytes(StandardCharsets.UTF_8), "application/json");
+                    int index = DebugHttpCapture.begin("POST", "https://provider.invalid/chat",
+                            "{}".getBytes(StandardCharsets.UTF_8), "application/json");
                     String events = "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"synthetic output sk-unusable-stream-key https://example.invalid/?token=synthetic-token\","
                             + "\"reasoning_content\":\"synthetic private reasoning\"}}]}\n\ndata: [DONE]\n\n";
                     try (var body = DebugHttpCapture.responseStream(index, 200, "text/event-stream",
                             new java.io.ByteArrayInputStream(events.getBytes(StandardCharsets.UTF_8)))) {
                         body.readAllBytes();
-                    } catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
+                    } catch (java.io.IOException failure) {
+                        throw new java.io.UncheckedIOException(failure);
+                    }
                 }
-                return gateway.callStreaming(List.of(new org.springframework.ai.chat.messages.UserMessage("synthetic input")),
-                        List.of(), Map.of(), gateway.configIdentity(), ignored -> {}, capture, listener);
+                return gateway.callStreaming(
+                        List.of(new org.springframework.ai.chat.messages.UserMessage("synthetic input")),
+                        List.of(), Map.of(), gateway.configIdentity(), ignored -> {
+                        }, capture, listener);
             }, value -> CallOutcome.succeeded(value.response().getMetadata().getId()));
             UUID id = jdbc.sql("select id from call_log where project_id=:id order by started_at desc limit 1")
                     .param("id", project.id()).query(UUID.class).single();
-            org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
-                    assertThat(calls.debug(owner.userId(), id).llmStream()).isNotNull());
+            org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(5))
+                    .untilAsserted(() -> assertThat(calls.debug(owner.userId(), id).llmStream()).isNotNull());
             var detail = calls.debug(owner.userId(), id);
             assertThat(detail.captured()).isEqualTo(enabled);
             assertThat(detail.llmStream().metrics().firstTextMs()).isNotNull();
             assertThat(detail.llmStream().metrics().totalTokens()).isEqualTo(5);
-            assertThat(detail.llmStream().metrics().status()).isEqualTo(dev.agenvas.audit.domain.LlmStreamLog.EndStatus.COMPLETED);
+            assertThat(detail.llmStream().metrics().status())
+                    .isEqualTo(dev.agenvas.audit.domain.LlmStreamLog.EndStatus.COMPLETED);
             if (enabled) {
                 assertThat(detail.llmStream().content().response())
-                        .contains("synthetic output", "synthetic private reasoning", "sk-unusable-stream-key", "synthetic-token")
+                        .contains("synthetic output", "synthetic private reasoning", "sk-unusable-stream-key",
+                                "synthetic-token")
                         .doesNotContain("[REDACTED]", "data:", "[DONE]");
                 assertThat(detail.exchanges()).hasSize(1);
                 assertThat(detail.exchanges().getFirst().responseBody()).isNull();
                 assertThat(new tools.jackson.databind.ObjectMapper().readTree(detail.llmStream().content().response())
                         .at("/choices/0/message/reasoning_content").asText()).isEqualTo("synthetic private reasoning");
-            } else assertThat(detail.llmStream().content()).isNull();
+            } else
+                assertThat(detail.llmStream().content()).isNull();
             String path = PATH + "/" + id + "/debug";
             String payload = mvc.perform(get(path).with(authentication(asUser(owner, "ROLE_ADMIN"))))
                     .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
                     .andReturn().getResponse().getContentAsString();
             assertThat(payload).doesNotContain("firstOutputMs", "outputBatchCount", "outputChars", "\"output\":");
-            if (enabled) assertThat(payload).contains("\"responseIdentifiers\":{}");
-            mvc.perform(get(path).with(authentication(asUser(new AdminPrincipal(UUID.randomUUID(), "foreign"), "ROLE_ADMIN"))))
+            if (enabled)
+                assertThat(payload).contains("\"responseIdentifiers\":{}");
+            mvc.perform(get(path)
+                    .with(authentication(asUser(new AdminPrincipal(UUID.randomUUID(), "foreign"), "ROLE_ADMIN"))))
                     .andExpect(status().isNotFound());
             // A queued writer must never recreate data after history cleanup has deleted its call.
             jdbc.sql("delete from call_log where id=:id").param("id", id).update();
             assertThatThrownBy(() -> auditRepository.finishStream(id, CallOutcome.succeeded(null), Instant.now(), 1,
                     detail.llmStream(), List.of(), enabled)).isInstanceOf(IllegalStateException.class);
-            assertThat(jdbc.sql("select count(*) from call_log_debug where call_id=:id").param("id", id).query(Integer.class).single()).isZero();
+            assertThat(jdbc.sql("select count(*) from call_log_debug where call_id=:id").param("id", id)
+                    .query(Integer.class).single()).isZero();
         }
     }
 
@@ -370,10 +403,16 @@ class CallLogPostgresIT {
     void exceptionPropagatesWhileOnlySafeFailureMetadataIsSaved() throws Exception {
         Project project = newProject("Failed call");
         ApiProblemException failure = new ApiProblemException(HttpStatus.BAD_GATEWAY,
-                "PROVIDER_HTTP_ERROR", dev.agenvas.shared.i18n.ApiMessage.of("problem.fallback"), dev.agenvas.shared.i18n.ApiMessage.of("api.video-generation-parameters.video-generation-parameters-contain-an-unknown-field", PRIVATE_MARKER + PRIVATE_KEY + PRIVATE_ENDPOINT), false);
+                "PROVIDER_HTTP_ERROR", dev.agenvas.shared.i18n.ApiMessage.of("problem.fallback"),
+                dev.agenvas.shared.i18n.ApiMessage.of(
+                        "api.video-generation-parameters.video-generation-parameters-contain-an-unknown-field",
+                        PRIVATE_MARKER + PRIVATE_KEY + PRIVATE_ENDPOINT),
+                false);
         assertThatThrownBy(() -> calls.record(new CallDescriptor(project.id(), null, fixtureRun(project).id(), 0,
-                        CallLog.Kind.LLM, CallLog.Operation.CHAT, "OPENAI", "chat-model", false),
-                () -> { throw failure; }, ignored -> new CallOutcome(CallLog.Status.SUCCEEDED, null, null)))
+                CallLog.Kind.LLM, CallLog.Operation.CHAT, "OPENAI", "chat-model", false),
+                () -> {
+                    throw failure;
+                }, ignored -> new CallOutcome(CallLog.Status.SUCCEEDED, null, null)))
                 .isSameAs(failure);
         JsonNode row = list(owner, Map.of("projectId", project.id().toString())).path("items").get(0);
         assertThat(row.path("errorCode").asText()).isEqualTo("PROVIDER_HTTP_ERROR");
@@ -386,8 +425,10 @@ class CallLogPostgresIT {
         Task task = newTask(submission, CallLog.Kind.VIDEO);
         IllegalStateException uncertain = new IllegalStateException(PRIVATE_MARKER + PRIVATE_KEY);
         assertThatThrownBy(() -> calls.record(new CallDescriptor(submission.id(), task.id(), task.runId(), null,
-                        CallLog.Kind.VIDEO, CallLog.Operation.SUBMIT, PRIVATE_ENDPOINT, "unsafe model value", false),
-                () -> { throw uncertain; }, ignored -> new CallOutcome(CallLog.Status.SUCCEEDED, null, null)))
+                CallLog.Kind.VIDEO, CallLog.Operation.SUBMIT, PRIVATE_ENDPOINT, "unsafe model value", false),
+                () -> {
+                    throw uncertain;
+                }, ignored -> new CallOutcome(CallLog.Status.SUCCEEDED, null, null)))
                 .isSameAs(uncertain);
         JsonNode unknown = list(owner, Map.of("projectId", submission.id().toString())).path("items").get(0);
         assertThat(unknown.path("status").asText()).isEqualTo("UNKNOWN");
@@ -457,13 +498,16 @@ class CallLogPostgresIT {
         provider.createContext("/chat", exchange -> {
             exchange.getRequestBody().readAllBytes();
             exchange.getResponseHeaders().set("Content-Type", "application/json");
-            byte[] bytes = "{\"content\":\"RAW_RESPONSE\",\"reasoning_content\":\"PRIVATE_REASONING\",\"echo\":\"sk-debug-secret\"}".getBytes();
+            byte[] bytes = "{\"content\":\"RAW_RESPONSE\",\"reasoning_content\":\"PRIVATE_REASONING\",\"echo\":\"sk-debug-secret\"}"
+                    .getBytes();
             exchange.sendResponseHeaders(200, bytes.length);
-            exchange.getResponseBody().write(bytes); exchange.close();
+            exchange.getResponseBody().write(bytes);
+            exchange.close();
         });
         provider.start();
         try {
-            var client = PinnedHttpClients.pinned(Dns.SYSTEM, Duration.ofSeconds(2), Duration.ofSeconds(2), Duration.ofSeconds(5));
+            var client = PinnedHttpClients.pinned(Dns.SYSTEM, Duration.ofSeconds(2), Duration.ofSeconds(2),
+                    Duration.ofSeconds(5));
             Project project = newProject("Raw debug log");
             Task task = newTask(project, CallLog.Kind.IMAGE);
             var descriptor = new CallDescriptor(project.id(), task.id(), task.runId(), null,
@@ -473,8 +517,11 @@ class CallLogPostgresIT {
                         .url("http://127.0.0.1:" + provider.getAddress().getPort() + "/chat")
                         .header("Authorization", "Bearer sk-debug-secret")
                         .post(RequestBody.create("{\"prompt\":\"RAW_PROMPT\"}", MediaType.get("application/json")))
-                        .build()).execute()) { return response.body().string(); }
-                catch (java.io.IOException failure) { throw new IllegalStateException(failure); }
+                        .build()).execute()) {
+                    return response.body().string();
+                } catch (java.io.IOException failure) {
+                    throw new IllegalStateException(failure);
+                }
             };
             calls.record(descriptor, invoke, ignored -> CallOutcome.succeeded(null));
             UUID disabled = jdbc.sql("select id from call_log where project_id=:id").param("id", project.id())
@@ -482,7 +529,8 @@ class CallLogPostgresIT {
             assertThat(calls.debug(owner.userId(), disabled).captured()).isFalse();
             calls.updateSettings(true, calls.settings().version());
             calls.record(descriptor, invoke, ignored -> CallOutcome.succeeded(null));
-            UUID captured = jdbc.sql("select call_id from call_log_debug d join call_log c on c.id=d.call_id where c.project_id=:id")
+            UUID captured = jdbc.sql(
+                    "select call_id from call_log_debug d join call_log c on c.id=d.call_id where c.project_id=:id")
                     .param("id", project.id()).query(UUID.class).single();
             String path = PATH + "/" + captured + "/debug";
             mvc.perform(get(path)).andExpect(status().isUnauthorized());
@@ -498,24 +546,29 @@ class CallLogPostgresIT {
                     .doesNotContain("sk-debug-secret", "PRIVATE_REASONING", "Authorization");
             String stored = jdbc.sql("select exchanges_json::text from call_log_debug where call_id=:id")
                     .param("id", captured).query(String.class).single();
-            assertThat(stored).contains("RAW_PROMPT", "RAW_RESPONSE").doesNotContain("sk-debug-secret", "PRIVATE_REASONING");
+            assertThat(stored).contains("RAW_PROMPT", "RAW_RESPONSE").doesNotContain("sk-debug-secret",
+                    "PRIVATE_REASONING");
             assertThat(list(owner, Map.of("projectId", project.id().toString())).toString())
                     .doesNotContain("RAW_PROMPT", "RAW_RESPONSE", "/chat");
             calls.record(new CallDescriptor(project.id(), null, fixtureRun(project).id(), 0, CallLog.Kind.LLM,
                     CallLog.Operation.CHAT, "OPENAI", "llm-debug-fixture", false), invoke,
                     ignored -> CallOutcome.succeeded(null));
-            String llmStored = jdbc.sql("select exchanges_json::text from call_log_debug d join call_log c on c.id=d.call_id where c.project_id=:id and c.kind='LLM'")
+            String llmStored = jdbc.sql(
+                    "select exchanges_json::text from call_log_debug d join call_log c on c.id=d.call_id where c.project_id=:id and c.kind='LLM'")
                     .param("id", project.id()).query(String.class).single();
             // LLM debug preserves body text, including this synthetic echo, but never HTTP headers.
             assertThat(llmStored).contains("RAW_PROMPT", "RAW_RESPONSE", "PRIVATE_REASONING", "sk-debug-secret")
                     .doesNotContain("Authorization", "Bearer sk-debug-secret");
             calls.updateSettings(false, calls.settings().version());
             calls.record(descriptor, invoke, ignored -> CallOutcome.succeeded(null));
-            assertThat(jdbc.sql("select count(*) from call_log_debug d join call_log c on c.id=d.call_id where c.project_id=:id")
+            assertThat(jdbc.sql(
+                    "select count(*) from call_log_debug d join call_log c on c.id=d.call_id where c.project_id=:id")
                     .param("id", project.id()).query(Integer.class).single()).isEqualTo(2);
             assertThat(calls.debug(owner.userId(), captured).captured()).isTrue();
             assertThat(DebugHttpCapture.enabled()).isFalse();
-        } finally { provider.stop(0); }
+        } finally {
+            provider.stop(0);
+        }
     }
 
     @Test
@@ -551,11 +604,13 @@ class CallLogPostgresIT {
     void cleansHistoryAtomicallyKeepsBusinessRowsAndNeverRecreatesLegacyLogs() throws Exception {
         Instant now = Instant.parse("2026-10-01T00:00:00Z");
         Project project = newProject("Terminal retention");
-        UUID call = insertCall(project, CallLog.Kind.IMAGE, CallLog.Status.SUCCEEDED, now.minus(Duration.ofDays(31)), null);
+        UUID call = insertCall(project, CallLog.Kind.IMAGE, CallLog.Status.SUCCEEDED, now.minus(Duration.ofDays(31)),
+                null);
         UUID task = taskForCall(call);
         UUID run = fixtureRun(project).id();
         terminalHistory(project, task, now.minus(Duration.ofDays(31)));
-        jdbc.sql("insert into call_log_debug(call_id,exchanges_json) values(:id,'[]'::jsonb)").param("id", call).update();
+        jdbc.sql("insert into call_log_debug(call_id,exchanges_json) values(:id,'[]'::jsonb)").param("id", call)
+                .update();
         assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isZero();
         retention.update(30, retention.settings().version());
         assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
@@ -580,13 +635,15 @@ class CallLogPostgresIT {
         for (int index = 0; index < 2; index++) {
             Project project = newProject("Bounded cleanup " + index);
             UUID call = insertCall(project, CallLog.Kind.IMAGE, CallLog.Status.SUCCEEDED, cutoff.minusSeconds(1), null);
-            terminalHistory(project, taskForCall(call), cutoff.minusSeconds(1)); eligible.add(call);
+            terminalHistory(project, taskForCall(call), cutoff.minusSeconds(1));
+            eligible.add(call);
         }
         Project boundary = newProject("Retention boundary");
         UUID boundaryCall = insertCall(boundary, CallLog.Kind.IMAGE, CallLog.Status.SUCCEEDED, cutoff, null);
         terminalHistory(boundary, taskForCall(boundaryCall), cutoff);
         Project unknown = newProject("Retention unknown");
-        UUID unknownCall = insertCall(unknown, CallLog.Kind.IMAGE, CallLog.Status.UNKNOWN, cutoff.minusSeconds(1), null);
+        UUID unknownCall = insertCall(unknown, CallLog.Kind.IMAGE, CallLog.Status.UNKNOWN, cutoff.minusSeconds(1),
+                null);
         jdbc.sql("update task set status='UNKNOWN' where id=:id").param("id", taskForCall(unknownCall)).update();
         assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
         assertThat(eligible.stream().mapToInt(id -> count("call_log", "id", id)).sum()).isEqualTo(1);
@@ -603,8 +660,8 @@ class CallLogPostgresIT {
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.EnumSource(value = Task.Status.class,
-            names = {"READY", "RUNNING", "SUBMITTING", "WAITING_PROVIDER", "UNKNOWN", "BLOCKED"})
+    @org.junit.jupiter.params.provider.EnumSource(value = Task.Status.class, names = {"READY", "RUNNING", "SUBMITTING",
+            "WAITING_PROVIDER", "UNKNOWN", "BLOCKED"})
     void stopsAndPurgesEveryExpiredNonterminalRunTaskWithWorkerFencing(Task.Status state) throws Exception {
         Instant now = Instant.parse("2026-10-01T00:00:00Z");
         Instant old = now.minus(Duration.ofDays(31));
@@ -622,7 +679,8 @@ class CallLogPostgresIT {
         assertThat(stopped.cancelRequested()).isTrue();
         assertThat(stopped.errorCode()).isEqualTo("EXECUTION_HISTORY_CLEANED");
         assertThat(stopped.leaseEpoch()).isEqualTo(staleLease.leaseEpoch() + 1);
-        assertThat(stopped.leaseOwner()).isNull(); assertThat(stopped.leaseUntil()).isNull();
+        assertThat(stopped.leaseOwner()).isNull();
+        assertThat(stopped.leaseUntil()).isNull();
         assertThat(stopped.version()).isEqualTo(staleLease.version() + 1);
         assertThat(stopped.providerRequestId()).isEqualTo("expired-provider-request");
         var stoppedRun = runs.get(owner.userId(), project.id(), fixtureRun(project).id());
@@ -634,21 +692,28 @@ class CallLogPostgresIT {
         assertThat(count("llm_turn", "run_id", stoppedRun.id())).isZero();
         assertThat(count("tool_execution", "run_id", stoppedRun.id())).isZero();
         assertThat(count("provider_attempt", "task_id", taskId)).isZero();
-        assertThat(jdbc.sql("select count(*) from project_event where project_id=:id and type='task.status.changed' and aggregate_id=:task")
+        assertThat(jdbc.sql(
+                "select count(*) from project_event where project_id=:id and type='task.status.changed' and aggregate_id=:task")
                 .param("id", project.id()).param("task", taskId).query(Integer.class).single()).isPositive();
-        assertThat(jdbc.sql("select count(*) from project_event where project_id=:id and type='agent.run.changed' and aggregate_version=:version")
-                .param("id", project.id()).param("version", stoppedRun.version()).query(Integer.class).single()).isPositive();
-        assertThat(taskRepository.heartbeat(taskId, "expired-worker", staleLease.leaseEpoch(), now, now.plusSeconds(60))).isFalse();
-        assertThat(taskRepository.finishProviderResult(staleLease, "expired-worker", mapper.createObjectNode(), now)).isFalse();
+        assertThat(jdbc.sql(
+                "select count(*) from project_event where project_id=:id and type='agent.run.changed' and aggregate_version=:version")
+                .param("id", project.id()).param("version", stoppedRun.version()).query(Integer.class).single())
+                .isPositive();
+        assertThat(
+                taskRepository.heartbeat(taskId, "expired-worker", staleLease.leaseEpoch(), now, now.plusSeconds(60)))
+                .isFalse();
+        assertThat(taskRepository.finishProviderResult(staleLease, "expired-worker", mapper.createObjectNode(), now))
+                .isFalse();
         assertThat(taskRepository.recordLateResult(staleLease, mapper.createObjectNode(), now)).isFalse();
-        assertThat(taskRepository.claimDueProviderPolls("cleanup-proof", 100, now, now.plusSeconds(60))).extracting(Task::id).doesNotContain(taskId);
+        assertThat(taskRepository.claimDueProviderPolls("cleanup-proof", 100, now, now.plusSeconds(60)))
+                .extracting(Task::id).doesNotContain(taskId);
         assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isZero();
         assertThat(list(owner, Map.of("projectId", project.id().toString())).path("items").size()).isZero();
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.EnumSource(value = Task.Status.class,
-            names = {"READY", "RUNNING", "SUBMITTING", "WAITING_PROVIDER", "UNKNOWN", "BLOCKED"})
+    @org.junit.jupiter.params.provider.EnumSource(value = Task.Status.class, names = {"READY", "RUNNING", "SUBMITTING",
+            "WAITING_PROVIDER", "UNKNOWN", "BLOCKED"})
     void alsoStopsExpiredStandaloneTasksInEveryNonterminalState(Task.Status state) {
         Instant now = Instant.parse("2026-10-01T00:00:00Z"), old = now.minus(Duration.ofDays(31));
         Project project = newProject("Expired direct " + state);
@@ -657,7 +722,8 @@ class CallLogPostgresIT {
         terminalHistory(project, task, old);
         makeUnfinished(project, state, old, now);
         jdbc.sql("update task set run_id=null where id=:id").param("id", task).update();
-        jdbc.sql("update call_log set run_id=null,status='RUNNING',responded_at=null,duration_ms=null where id=:id").param("id", call).update();
+        jdbc.sql("update call_log set run_id=null,status='RUNNING',responded_at=null,duration_ms=null where id=:id")
+                .param("id", call).update();
         // The parent run remains recent; only its detached direct task is eligible.
         jdbc.sql("update agent_run set updated_at=:time where id=:id").param("time", Timestamp.from(now))
                 .param("id", fixtureRun(project).id()).update();
@@ -666,7 +732,8 @@ class CallLogPostgresIT {
         assertThat(tasks.get(owner.userId(), project.id(), task).status()).isEqualTo(Task.Status.CANCELED);
         assertThat(count("call_log", "id", call)).isZero();
         assertThat(count("provider_attempt", "task_id", task)).isZero();
-        assertThat(runs.get(owner.userId(), project.id(), fixtureRun(project).id()).status()).isEqualTo(AgentRun.Status.BLOCKED);
+        assertThat(runs.get(owner.userId(), project.id(), fixtureRun(project).id()).status())
+                .isEqualTo(AgentRun.Status.BLOCKED);
     }
 
     @Test
@@ -674,22 +741,30 @@ class CallLogPostgresIT {
         Instant now = Instant.parse("2026-10-01T00:00:00Z"), old = now.minus(Duration.ofDays(31));
         Project project = newProject("Abandon rollback");
         UUID call = insertCall(project, CallLog.Kind.IMAGE, CallLog.Status.UNKNOWN, old, null);
-        UUID taskId = taskForCall(call); terminalHistory(project, taskId, old);
+        UUID taskId = taskForCall(call);
+        terminalHistory(project, taskId, old);
         makeUnfinished(project, Task.Status.UNKNOWN, old, now);
         Task before = tasks.get(owner.userId(), project.id(), taskId);
         int eventCount = count("project_event", "project_id", project.id());
         retention.update(30, retention.settings().version());
-        jdbc.sql("CREATE FUNCTION retention_stop_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test rollback'; END $$").update();
-        jdbc.sql("CREATE TRIGGER retention_stop_failure BEFORE DELETE ON provider_attempt FOR EACH ROW EXECUTE FUNCTION retention_stop_failure()").update();
+        jdbc.sql(
+                "CREATE FUNCTION retention_stop_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test rollback'; END $$")
+                .update();
+        jdbc.sql(
+                "CREATE TRIGGER retention_stop_failure BEFORE DELETE ON provider_attempt FOR EACH ROW EXECUTE FUNCTION retention_stop_failure()")
+                .update();
         try {
-            assertThatThrownBy(() -> auditRepository.purgeExpired(now, 1, retention.settings().version())).isInstanceOf(RuntimeException.class);
+            assertThatThrownBy(() -> auditRepository.purgeExpired(now, 1, retention.settings().version()))
+                    .isInstanceOf(RuntimeException.class);
             assertThat(tasks.get(owner.userId(), project.id(), taskId)).isEqualTo(before);
-            assertThat(runs.get(owner.userId(), project.id(), fixtureRun(project).id()).status()).isEqualTo(AgentRun.Status.BLOCKED);
+            assertThat(runs.get(owner.userId(), project.id(), fixtureRun(project).id()).status())
+                    .isEqualTo(AgentRun.Status.BLOCKED);
             assertThat(count("project_event", "project_id", project.id())).isEqualTo(eventCount);
             assertThat(count("call_log", "id", call)).isEqualTo(1);
             assertThat(count("llm_turn", "run_id", fixtureRun(project).id())).isEqualTo(1);
             assertThat(count("provider_attempt", "task_id", taskId)).isEqualTo(1);
-            assertThat(jdbc.sql("select active_run_id from project where id=:id").param("id", project.id()).query(UUID.class).single()).isEqualTo(fixtureRun(project).id());
+            assertThat(jdbc.sql("select active_run_id from project where id=:id").param("id", project.id())
+                    .query(UUID.class).single()).isEqualTo(fixtureRun(project).id());
         } finally {
             jdbc.sql("DROP TRIGGER retention_stop_failure ON provider_attempt").update();
             jdbc.sql("DROP FUNCTION retention_stop_failure()").update();
@@ -697,8 +772,8 @@ class CallLogPostgresIT {
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.EnumSource(value = AgentRun.Status.class,
-            names = {"QUEUED", "RUNNING", "WAITING_TASKS", "BLOCKED", "CANCEL_REQUESTED"})
+    @org.junit.jupiter.params.provider.EnumSource(value = AgentRun.Status.class, names = {"QUEUED", "RUNNING",
+            "WAITING_TASKS", "BLOCKED", "CANCEL_REQUESTED"})
     void abandonsEveryExpiredNonterminalRunState(AgentRun.Status state) {
         Instant now = Instant.parse("2026-10-01T00:00:00Z"), old = now.minus(Duration.ofDays(31));
         Project project = newProject("Expired run " + state);
@@ -710,7 +785,8 @@ class CallLogPostgresIT {
                 .param("id", fixtureRun(project).id()).update();
         retention.update(30, retention.settings().version());
         assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
-        assertThat(runs.get(owner.userId(), project.id(), fixtureRun(project).id()).status()).isEqualTo(AgentRun.Status.CANCELED);
+        assertThat(runs.get(owner.userId(), project.id(), fixtureRun(project).id()).status())
+                .isEqualTo(AgentRun.Status.CANCELED);
         assertThat(count("call_log", "id", call)).isZero();
     }
 
@@ -720,12 +796,16 @@ class CallLogPostgresIT {
         Instant now = Instant.parse("2026-10-01T00:00:00Z"), old = now.minus(Duration.ofDays(31));
         Project project = newProject("Recent " + ledger);
         UUID call = insertCall(project, CallLog.Kind.IMAGE, CallLog.Status.UNKNOWN, old, null);
-        UUID task = taskForCall(call); terminalHistory(project, task, old);
+        UUID task = taskForCall(call);
+        terminalHistory(project, task, old);
         makeUnfinished(project, Task.Status.UNKNOWN, old, now);
         switch (ledger) {
-            case "llm_turn" -> jdbc.sql("update llm_turn set responded_at=:time where run_id=:id").param("time", Timestamp.from(now)).param("id", fixtureRun(project).id()).update();
-            case "tool_execution" -> jdbc.sql("update tool_execution set completed_at=:time where run_id=:id").param("time", Timestamp.from(now)).param("id", fixtureRun(project).id()).update();
-            case "provider_attempt" -> jdbc.sql("update provider_attempt set updated_at=:time where task_id=:id").param("time", Timestamp.from(now)).param("id", task).update();
+            case "llm_turn" -> jdbc.sql("update llm_turn set responded_at=:time where run_id=:id")
+                    .param("time", Timestamp.from(now)).param("id", fixtureRun(project).id()).update();
+            case "tool_execution" -> jdbc.sql("update tool_execution set completed_at=:time where run_id=:id")
+                    .param("time", Timestamp.from(now)).param("id", fixtureRun(project).id()).update();
+            case "provider_attempt" -> jdbc.sql("update provider_attempt set updated_at=:time where task_id=:id")
+                    .param("time", Timestamp.from(now)).param("id", task).update();
             default -> throw new IllegalArgumentException("Unknown fixture ledger");
         }
         retention.update(30, retention.settings().version());
@@ -740,23 +820,32 @@ class CallLogPostgresIT {
         UUID run = fixtureRun(project).id();
         jdbc.sql("update agent_run set status='BLOCKED',completed_at=null,created_at=:old,updated_at=:old where id=:id")
                 .param("old", Timestamp.from(old)).param("id", run).update();
-        jdbc.sql("update project set active_run_id=:run where id=:id").param("run", run).param("id", project.id()).update();
-        jdbc.sql("update task set status=:status,completed_at=null,created_at=:old,updated_at=:old,lease_epoch=1,lease_owner='expired-worker',lease_until=:until,provider_request_id='expired-provider-request' where run_id=:run")
-                .param("status", state.name()).param("old", Timestamp.from(old)).param("until", Timestamp.from(now.plusSeconds(60))).param("run", run).update();
+        jdbc.sql("update project set active_run_id=:run where id=:id").param("run", run).param("id", project.id())
+                .update();
+        jdbc.sql(
+                "update task set status=:status,completed_at=null,created_at=:old,updated_at=:old,lease_epoch=1,lease_owner='expired-worker',lease_until=:until,provider_request_id='expired-provider-request' where run_id=:run")
+                .param("status", state.name()).param("old", Timestamp.from(old))
+                .param("until", Timestamp.from(now.plusSeconds(60))).param("run", run).update();
     }
 
     @Test
     void rollsBackEveryDeletionWhenOneLedgerDeleteFails() {
         Instant now = Instant.parse("2026-10-01T00:00:00Z");
         Project project = newProject("Rollback cleanup");
-        UUID call = insertCall(project, CallLog.Kind.IMAGE, CallLog.Status.SUCCEEDED, now.minus(Duration.ofDays(31)), null);
+        UUID call = insertCall(project, CallLog.Kind.IMAGE, CallLog.Status.SUCCEEDED, now.minus(Duration.ofDays(31)),
+                null);
         UUID task = taskForCall(call);
         terminalHistory(project, task, now.minus(Duration.ofDays(31)));
         retention.update(30, retention.settings().version());
-        jdbc.sql("CREATE FUNCTION retention_test_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test rollback'; END $$").update();
-        jdbc.sql("CREATE TRIGGER retention_test_failure BEFORE DELETE ON provider_attempt FOR EACH ROW EXECUTE FUNCTION retention_test_failure()").update();
+        jdbc.sql(
+                "CREATE FUNCTION retention_test_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test rollback'; END $$")
+                .update();
+        jdbc.sql(
+                "CREATE TRIGGER retention_test_failure BEFORE DELETE ON provider_attempt FOR EACH ROW EXECUTE FUNCTION retention_test_failure()")
+                .update();
         try {
-            assertThatThrownBy(() -> auditRepository.purgeExpired(now, 1, retention.settings().version())).isInstanceOf(RuntimeException.class);
+            assertThatThrownBy(() -> auditRepository.purgeExpired(now, 1, retention.settings().version()))
+                    .isInstanceOf(RuntimeException.class);
             assertThat(count("call_log", "id", call)).isEqualTo(1);
             assertThat(count("llm_turn", "run_id", fixtureRun(project).id())).isEqualTo(1);
             assertThat(count("tool_execution", "run_id", fixtureRun(project).id())).isEqualTo(1);
@@ -803,20 +892,26 @@ class CallLogPostgresIT {
         var locked = new java.util.concurrent.CountDownLatch(1);
         var release = new java.util.concurrent.CountDownLatch(1);
         try (var pool = java.util.concurrent.Executors.newFixedThreadPool(2)) {
-            var checkpoint = pool.submit(() -> new org.springframework.transaction.support.TransactionTemplate(transactionManager)
-                    .executeWithoutResult(status -> {
-                        UUID lockedId = switch (lockedTable) {
-                            case "task" -> task;
-                            case "project" -> project.id();
-                            case "agent_run" -> fixtureRun(project).id();
-                            default -> throw new IllegalArgumentException("Unknown lock fixture");
-                        };
-                        // Fixed parameterized test identifiers only.
-                        jdbc.sql("select id from " + lockedTable + " where id=:id for update").param("id", lockedId).query(UUID.class).single();
-                        locked.countDown();
-                        try { release.await(10, java.util.concurrent.TimeUnit.SECONDS); }
-                        catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new IllegalStateException(failure); }
-                    }));
+            var checkpoint = pool
+                    .submit(() -> new org.springframework.transaction.support.TransactionTemplate(transactionManager)
+                            .executeWithoutResult(status -> {
+                                UUID lockedId = switch (lockedTable) {
+                                    case "task" -> task;
+                                    case "project" -> project.id();
+                                    case "agent_run" -> fixtureRun(project).id();
+                                    default -> throw new IllegalArgumentException("Unknown lock fixture");
+                                };
+                                // Fixed parameterized test identifiers only.
+                                jdbc.sql("select id from " + lockedTable + " where id=:id for update")
+                                        .param("id", lockedId).query(UUID.class).single();
+                                locked.countDown();
+                                try {
+                                    release.await(10, java.util.concurrent.TimeUnit.SECONDS);
+                                } catch (InterruptedException failure) {
+                                    Thread.currentThread().interrupt();
+                                    throw new IllegalStateException(failure);
+                                }
+                            }));
             try {
                 assertThat(locked.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
                 var cleanup = pool.submit(() -> auditRepository.purgeExpired(now, 1, retention.settings().version()));
@@ -824,7 +919,9 @@ class CallLogPostgresIT {
                 assertThat(count("call_log", "id", call)).isEqualTo(1);
                 assertThat(count("llm_turn", "run_id", fixtureRun(project).id())).isEqualTo(1);
                 assertThat(count("provider_attempt", "task_id", task)).isEqualTo(1);
-            } finally { release.countDown(); }
+            } finally {
+                release.countDown();
+            }
             checkpoint.get(5, java.util.concurrent.TimeUnit.SECONDS);
         }
         assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
@@ -836,16 +933,20 @@ class CallLogPostgresIT {
         assertThat(context.containsBean("callLogRetentionScheduler")).isFalse();
         String path = "/api/v1/settings/call-log-retention/cleanup";
         String body = mapper.createObjectNode().put("expectedVersion", retention.settings().version()).toString();
-        mvc.perform(post(path).contentType("application/json").content(body).with(csrf())).andExpect(status().isUnauthorized());
+        mvc.perform(post(path).contentType("application/json").content(body).with(csrf()))
+                .andExpect(status().isUnauthorized());
         mvc.perform(post(path).with(authentication(asUser(owner, "ROLE_USER"))).with(csrf())
                 .contentType("application/json").content(body)).andExpect(status().isForbidden());
         mvc.perform(post(path).with(authentication(asUser(owner, "ROLE_ADMIN")))
                 .contentType("application/json").content(body)).andExpect(status().isForbidden());
         mvc.perform(post(path).with(authentication(asUser(owner, "ROLE_ADMIN"))).with(csrf())
                 .contentType("application/json").content("{}")).andExpect(status().isBadRequest());
-        JsonNode permanent = mapper.readTree(mvc.perform(post(path).with(authentication(asUser(owner, "ROLE_ADMIN"))).with(csrf())
-                .contentType("application/json").content(body)).andExpect(status().isOk())
-                .andExpect(header().string("Cache-Control", "no-store")).andReturn().getResponse().getContentAsString());
+        JsonNode permanent = mapper.readTree(mvc
+                .perform(post(path).with(authentication(asUser(owner, "ROLE_ADMIN"))).with(csrf())
+                        .contentType("application/json").content(body))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store")).andReturn().getResponse()
+                .getContentAsString());
         assertThat(permanent.path("cleanedExecutions").asInt()).isZero();
         assertThat(permanent.path("batchLimitReached").asBoolean()).isFalse();
         Instant old = context.getBean(java.time.Clock.class).instant().minus(Duration.ofDays(31));
@@ -860,17 +961,22 @@ class CallLogPostgresIT {
                 .contentType("application/json").content(body)).andExpect(status().isConflict());
         assertThat(count("llm_turn", "run_id", fixtureRun(project).id())).isEqualTo(1);
         String current = mapper.createObjectNode().put("expectedVersion", retention.settings().version()).toString();
-        JsonNode result = mapper.readTree(mvc.perform(post(path).with(authentication(asUser(owner, "ROLE_ADMIN"))).with(csrf())
-                .contentType("application/json").content(current)).andExpect(status().isOk())
-                .andExpect(header().string("Cache-Control", "no-store")).andReturn().getResponse().getContentAsString());
+        JsonNode result = mapper.readTree(mvc
+                .perform(post(path).with(authentication(asUser(owner, "ROLE_ADMIN"))).with(csrf())
+                        .contentType("application/json").content(current))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store")).andReturn().getResponse()
+                .getContentAsString());
         assertThat(result.path("cleanedExecutions").asInt()).isEqualTo(1);
         assertThat(result.path("batchLimitReached").asBoolean()).isFalse();
         assertThat(count("call_log", "id", call)).isZero();
         assertThat(count("provider_attempt", "task_id", task)).isZero();
         assertThat(count("llm_turn", "run_id", fixtureRun(project).id())).isZero();
         assertThat(count("task", "id", task)).isEqualTo(1);
-        JsonNode again = mapper.readTree(mvc.perform(post(path).with(authentication(asUser(owner, "ROLE_ADMIN"))).with(csrf())
-                .contentType("application/json").content(current)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        JsonNode again = mapper.readTree(mvc
+                .perform(post(path).with(authentication(asUser(owner, "ROLE_ADMIN"))).with(csrf())
+                        .contentType("application/json").content(current))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(again.path("cleanedExecutions").asInt()).isZero();
     }
 
@@ -879,7 +985,8 @@ class CallLogPostgresIT {
     }
     private void terminalHistory(Project project, UUID task, Instant time) {
         UUID run = fixtureRun(project).id();
-        jdbc.sql("update task set status='SUCCEEDED',completed_at=:time,updated_at=:time,lease_owner=null,lease_until=null where run_id=:run")
+        jdbc.sql(
+                "update task set status='SUCCEEDED',completed_at=:time,updated_at=:time,lease_owner=null,lease_until=null where run_id=:run")
                 .param("time", Timestamp.from(time)).param("run", run).update();
         jdbc.sql("update project set active_run_id=null where id=:id").param("id", project.id()).update();
         jdbc.sql("update agent_run set status='SUCCEEDED',completed_at=:time,updated_at=:time where id=:id")
@@ -901,7 +1008,8 @@ class CallLogPostgresIT {
     }
     private int count(String table, String column, UUID id) {
         // Only fixed test identifiers; never API input.
-        return jdbc.sql("select count(*) from " + table + " where " + column + "=:id").param("id", id).query(Integer.class).single();
+        return jdbc.sql("select count(*) from " + table + " where " + column + "=:id").param("id", id)
+                .query(Integer.class).single();
     }
 
     private Project newProject(String title) {

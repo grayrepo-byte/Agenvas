@@ -16,9 +16,14 @@ export function imageDraftAspectRatio(ratio?: ImageGenerationParameters["aspectR
 
 export function imageAspectRatio(asset?: Pick<Asset, "width" | "height">): number | undefined {
   const { width, height } = asset ?? {};
-  return typeof width === "number" && typeof height === "number" &&
-    Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0
-    ? width / height : undefined;
+  return typeof width === "number" &&
+    typeof height === "number" &&
+    Number.isFinite(width) &&
+    Number.isFinite(height) &&
+    width > 0 &&
+    height > 0
+    ? width / height
+    : undefined;
 }
 
 /** Preserve the user's long edge when replacing a portrait with a landscape (or back). */
@@ -41,6 +46,5 @@ export function persistableNodeSize(size: NodeSize): NodeSize {
 export function imageNodeResizeBounds(aspectRatio: number) {
   const minimum = projectImageNodeSize({ width: IMAGE_MIN_LONG_EDGE, height: IMAGE_MIN_LONG_EDGE }, aspectRatio);
   const maximum = projectImageNodeSize({ width: CANVAS_MAX_SIZE, height: CANVAS_MAX_SIZE }, aspectRatio);
-  return { minWidth: minimum.width, minHeight: minimum.height,
-    maxWidth: maximum.width, maxHeight: maximum.height };
+  return { minWidth: minimum.width, minHeight: minimum.height, maxWidth: maximum.width, maxHeight: maximum.height };
 }

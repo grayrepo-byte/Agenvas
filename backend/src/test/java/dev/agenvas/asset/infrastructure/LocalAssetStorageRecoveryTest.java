@@ -21,14 +21,16 @@ class LocalAssetStorageRecoveryTest {
             "UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoEAAQAAkA4JaQAA3AA/vucwAA=");
     private static final UUID PROJECT = UUID.fromString("00000000-0000-0000-0000-000000000001");
     private static final UUID ASSET = UUID.fromString("00000000-0000-0000-0000-000000000002");
-    @TempDir Path root;
+    @TempDir
+    Path root;
 
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
     void recoversInstalledWebpAndRebuildsOnlyAMissingThumbnail(boolean keepThumbnail) throws Exception {
         var storage = storage();
         var stored = storage.storeImage(PROJECT, ASSET, new ByteArrayInputStream(WEBP));
-        if (!keepThumbnail) Files.delete(storage.checkedPath(stored.thumbnailKey()));
+        if (!keepThumbnail)
+            Files.delete(storage.checkedPath(stored.thumbnailKey()));
 
         assertThat(storage.recoverImage(PROJECT, ASSET)).contains(stored);
         assertThat(Files.readAllBytes(storage.checkedPath(stored.objectKey()))).isEqualTo(WEBP);
@@ -41,7 +43,7 @@ class LocalAssetStorageRecoveryTest {
         var storage = storage();
         var stored = storage.storeImage(PROJECT, ASSET, new ByteArrayInputStream(WEBP));
         Path other = root.resolve(PROJECT.toString()).resolve(ASSET + otherExtension);
-        Files.write(other, new byte[] {1, 2, 3});
+        Files.write(other, new byte[]{1, 2, 3});
 
         assertThatThrownBy(() -> storage.recoverImage(PROJECT, ASSET))
                 .isInstanceOf(IllegalStateException.class)

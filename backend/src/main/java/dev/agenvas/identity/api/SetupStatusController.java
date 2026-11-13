@@ -35,5 +35,6 @@ public class SetupStatusController {
     /** 对外公开的最小安装状态。
      * @param setupRequired 尚未初始化管理员时为 true
      */
-    public record SetupStatusResponse(boolean setupRequired) {}
+    public record SetupStatusResponse(boolean setupRequired) {
+    }
 }

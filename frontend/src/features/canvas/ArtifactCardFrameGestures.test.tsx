@@ -1,23 +1,39 @@
-import { createEvent,fireEvent,render,screen } from "@testing-library/react";
-import { ReactFlow,type NodeProps } from "@xyflow/react";
+import { createEvent, fireEvent, render, screen } from "@testing-library/react";
+import { ReactFlow, type NodeProps } from "@xyflow/react";
 import { useState } from "react";
-import { describe,expect,it,vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { clickControl } from "../../test/controls";
 import { ArtifactCardFrame } from "./ArtifactCardFrame";
 
 const action = vi.fn();
 function Card({ selected }: NodeProps) {
-  return <ArtifactCardFrame title="图片" kindLabel="图片" selected={selected} locked={false}
-    toolbar={<button onClick={action}>查看详情</button>}><p>预览</p></ArtifactCardFrame>;
+  return (
+    <ArtifactCardFrame
+      title="图片"
+      kindLabel="图片"
+      selected={selected}
+      locked={false}
+      toolbar={<button onClick={action}>查看详情</button>}
+    >
+      <p>预览</p>
+    </ArtifactCardFrame>
+  );
 }
 const nodeTypes = { card: Card };
 const NODE_SIZE = { width: 260, height: 150 };
 function Canvas() {
   const [selected, setSelected] = useState(true);
-  return <ReactFlow nodeTypes={nodeTypes}
-    nodes={[{ id: "card", type: "card", position: { x: 0, y: 0 }, data: {},
-      ...NODE_SIZE, measured: NODE_SIZE, selected }]}
-    onMoveStart={(event) => { if (event) setSelected(false); }} />;
+  return (
+    <ReactFlow
+      nodeTypes={nodeTypes}
+      nodes={[
+        { id: "card", type: "card", position: { x: 0, y: 0 }, data: {}, ...NODE_SIZE, measured: NODE_SIZE, selected },
+      ]}
+      onMoveStart={event => {
+        if (event) setSelected(false);
+      }}
+    />
+  );
 }
 
 describe("ArtifactCardFrame toolbar gestures", () => {

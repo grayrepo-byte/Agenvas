@@ -22,30 +22,42 @@ public final class AgentModelRetryPolicy {
     private static final int SCHEMA_VERSION = 1;
     private static final Duration BASE_DELAY = Duration.ofSeconds(2);
     private static final Duration MAX_DELAY = Duration.ofMinutes(5);
-    private AgentModelRetryPolicy() {}
+    private AgentModelRetryPolicy() {
+    }
 
     /** HTTP status takes precedence over nested I/O, so invalid/authenticated requests never retry. */
     static String retryableCode(Throwable failure) {
         // Missing protocol termination is not a license to repeatedly resubmit a paid request.
-        if (LlmStreamIncompleteException.matches(failure)) return null;
+        if (LlmStreamIncompleteException.matches(failure))
+            return null;
         boolean modelBoundary = false;
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
-            if (cause instanceof ModelCallFailure || cause instanceof TimeoutException) modelBoundary = true;
-            if (cause instanceof ApiProblemException) return null;
+            if (cause instanceof ModelCallFailure || cause instanceof TimeoutException)
+                modelBoundary = true;
+            if (cause instanceof ApiProblemException)
+                return null;
         }
-        if (!modelBoundary) return null;
+        if (!modelBoundary)
+            return null;
         // Quota exhaustion can also use HTTP 429, but waiting cannot replenish the account.
-        if (LlmBillingFailures.matches(failure)) return null;
+        if (LlmBillingFailures.matches(failure))
+            return null;
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
             if (cause instanceof OpenAIServiceException service) {
                 int status = service.statusCode();
-                if (status == HttpStatus.TOO_MANY_REQUESTS.value()) return "LLM_RATE_LIMITED";
-                return status == HttpStatus.REQUEST_TIMEOUT.value() || HttpStatus.Series.resolve(status) == HttpStatus.Series.SERVER_ERROR ? "LLM_SERVICE_UNAVAILABLE" : null;
+                if (status == HttpStatus.TOO_MANY_REQUESTS.value())
+                    return "LLM_RATE_LIMITED";
+                return status == HttpStatus.REQUEST_TIMEOUT.value()
+                        || HttpStatus.Series.resolve(status) == HttpStatus.Series.SERVER_ERROR
+                                ? "LLM_SERVICE_UNAVAILABLE"
+                                : null;
             }
         }
-        if (LlmCallTimeouts.isTimeout(failure)) return LlmCallTimeouts.ERROR_CODE;
+        if (LlmCallTimeouts.isTimeout(failure))
+            return LlmCallTimeouts.ERROR_CODE;
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
-            if (cause instanceof IOException || cause instanceof OpenAIIoException) return "LLM_CONNECTION_FAILED";
+            if (cause instanceof IOException || cause instanceof OpenAIIoException)
+                return "LLM_CONNECTION_FAILED";
         }
         return null;
     }
@@ -55,7 +67,8 @@ public final class AgentModelRetryPolicy {
     }
     static Duration remaining(Task task, Instant now) {
         JsonNode retry = progress(task);
-        return retry == null ? LlmCallTimeouts.REQUEST
+        return retry == null
+                ? LlmCallTimeouts.REQUEST
                 : Duration.between(now, Instant.parse(retry.path("deadlineAt").asText()));
     }
     static Decision afterFailure(Task task, String code, Instant now, ObjectMapper mapper) {
@@ -66,14 +79,16 @@ public final class AgentModelRetryPolicy {
         JsonNode previous = progress(task);
         Instant first = previous == null ? now : Instant.parse(previous.path("firstFailureAt").asText());
         // Restarts and deployment edits cannot extend an already persisted recovery window.
-        Instant deadline = previous == null ? first.plus(properties.recoveryWindow())
+        Instant deadline = previous == null
+                ? first.plus(properties.recoveryWindow())
                 : Instant.parse(previous.path("deadlineAt").asText());
         int maximum = previous == null ? properties.maxModelRetries() : previous.path("maxRetries").asInt();
         int count = previous == null ? 0 : previous.path("retryCount").asInt();
         boolean exhausted = count >= maximum || !now.isBefore(deadline);
         Instant next = exhausted ? now : now.plus(delay(count + 1, properties.retryMaxDelay()));
         // Schedule the deadline itself if no retry fits; the worker expires without a network call.
-        if (next.isAfter(deadline)) next = deadline;
+        if (next.isAfter(deadline))
+            next = deadline;
         ObjectNode retry = mapper.createObjectNode();
         retry.put("schemaVersion", SCHEMA_VERSION);
         retry.put("retryCount", exhausted ? count : count + 1);
@@ -90,5 +105,6 @@ public final class AgentModelRetryPolicy {
         Duration exponential = BASE_DELAY.multipliedBy(1L << Math.min(Math.max(0, retry - 1), 30));
         return exponential.compareTo(maximum) < 0 ? exponential : maximum;
     }
-    record Decision(ObjectNode progress, Instant nextActionAt, boolean exhausted) {}
+    record Decision(ObjectNode progress, Instant nextActionAt, boolean exhausted) {
+    }
 }

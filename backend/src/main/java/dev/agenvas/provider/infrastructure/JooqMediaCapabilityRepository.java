@@ -27,16 +27,21 @@ import org.springframework.stereotype.Repository;
 public class JooqMediaCapabilityRepository {
 
     public record Connection(UUID id, String name, MediaPlatform platform, boolean enabled,
-            long version, int currentVersion) {}
+            long version, int currentVersion) {
+    }
     public record ConnectionVersion(UUID connectionId, int version, String origin,
             String originSha256, byte[] credentialCiphertext, byte[] credentialNonce,
-            Integer credentialKeyVersion, String keyMask) {}
+            Integer credentialKeyVersion, String keyMask) {
+    }
     public record Capability(UUID id, UUID connectionId, String name, boolean enabled,
-            long version, int currentVersion, boolean deleted) {}
+            long version, int currentVersion, boolean deleted) {
+    }
     public record Snapshot(Connection connection, Capability capability,
             ConnectionVersion connectionVersion, String adapterId, String mappingSha256,
-            String specJson) {}
-    public record CreateKey(String payloadSha256, UUID entityId) {}
+            String specJson) {
+    }
+    public record CreateKey(String payloadSha256, UUID entityId) {
+    }
 
     private final DSLContext dsl;
 
@@ -95,7 +100,7 @@ public class JooqMediaCapabilityRepository {
 
     public Optional<CreateKey> createKey(String key) {
         return dsl.select(MEDIA_CONNECTION_CREATE_KEY.PAYLOAD_SHA256,
-                        MEDIA_CONNECTION_CREATE_KEY.CONNECTION_ID)
+                MEDIA_CONNECTION_CREATE_KEY.CONNECTION_ID)
                 .from(MEDIA_CONNECTION_CREATE_KEY)
                 .where(MEDIA_CONNECTION_CREATE_KEY.IDEMPOTENCY_KEY.eq(key))
                 .fetchOptional(row -> new CreateKey(row.value1(), row.value2()));
@@ -114,7 +119,7 @@ public class JooqMediaCapabilityRepository {
 
     public Optional<CreateKey> capabilityCreateKey(String key) {
         return dsl.select(MEDIA_CAPABILITY_CREATE_KEY.PAYLOAD_SHA256,
-                        MEDIA_CAPABILITY_CREATE_KEY.CAPABILITY_ID)
+                MEDIA_CAPABILITY_CREATE_KEY.CAPABILITY_ID)
                 .from(MEDIA_CAPABILITY_CREATE_KEY)
                 .where(MEDIA_CAPABILITY_CREATE_KEY.IDEMPOTENCY_KEY.eq(key))
                 .fetchOptional(row -> new CreateKey(row.value1(), row.value2()));
@@ -259,17 +264,17 @@ public class JooqMediaCapabilityRepository {
         var connectionVersionTable = MEDIA_PROVIDER_CONNECTION_VERSION.as("v");
         var capabilityVersionTable = MEDIA_CAPABILITY_VERSION.as("av");
         return dsl.select(connectionTable.ID, connectionTable.NAME, connectionTable.PLATFORM,
-                        connectionTable.ENABLED, connectionTable.VERSION,
-                        connectionTable.CURRENT_VERSION, connectionVersionTable.ORIGIN,
-                        connectionVersionTable.ORIGIN_SHA256,
-                        connectionVersionTable.CREDENTIAL_CIPHERTEXT,
-                        connectionVersionTable.CREDENTIAL_NONCE,
-                        connectionVersionTable.CREDENTIAL_KEY_VERSION,
-                        connectionVersionTable.KEY_MASK, capabilityTable.ID, capabilityTable.NAME,
-                        capabilityTable.ENABLED, capabilityTable.VERSION,
-                        capabilityTable.CURRENT_VERSION, capabilityVersionTable.ADAPTER_ID,
-                        capabilityVersionTable.MAPPING_SHA256, capabilityVersionTable.SPEC_JSON,
-                        capabilityTable.DELETED_AT)
+                connectionTable.ENABLED, connectionTable.VERSION,
+                connectionTable.CURRENT_VERSION, connectionVersionTable.ORIGIN,
+                connectionVersionTable.ORIGIN_SHA256,
+                connectionVersionTable.CREDENTIAL_CIPHERTEXT,
+                connectionVersionTable.CREDENTIAL_NONCE,
+                connectionVersionTable.CREDENTIAL_KEY_VERSION,
+                connectionVersionTable.KEY_MASK, capabilityTable.ID, capabilityTable.NAME,
+                capabilityTable.ENABLED, capabilityTable.VERSION,
+                capabilityTable.CURRENT_VERSION, capabilityVersionTable.ADAPTER_ID,
+                capabilityVersionTable.MAPPING_SHA256, capabilityVersionTable.SPEC_JSON,
+                capabilityTable.DELETED_AT)
                 .from(capabilityTable)
                 .join(connectionTable).on(connectionTable.ID.eq(capabilityTable.CONNECTION_ID))
                 .join(connectionVersionTable).on(connectionVersionTable.CONNECTION_ID
@@ -303,15 +308,15 @@ public class JooqMediaCapabilityRepository {
         var connectionVersionTable = MEDIA_PROVIDER_CONNECTION_VERSION.as("v");
         var capabilityVersionTable = MEDIA_CAPABILITY_VERSION.as("av");
         return dsl.select(connectionTable.NAME, connectionTable.PLATFORM,
-                        connectionTable.ENABLED, connectionTable.VERSION,
-                        connectionVersionTable.ORIGIN, connectionVersionTable.ORIGIN_SHA256,
-                        connectionVersionTable.CREDENTIAL_CIPHERTEXT,
-                        connectionVersionTable.CREDENTIAL_NONCE,
-                        connectionVersionTable.CREDENTIAL_KEY_VERSION,
-                        connectionVersionTable.KEY_MASK, capabilityTable.NAME,
-                        capabilityTable.ENABLED, capabilityTable.VERSION,
-                        capabilityVersionTable.ADAPTER_ID, capabilityVersionTable.MAPPING_SHA256,
-                        capabilityVersionTable.SPEC_JSON, capabilityTable.DELETED_AT)
+                connectionTable.ENABLED, connectionTable.VERSION,
+                connectionVersionTable.ORIGIN, connectionVersionTable.ORIGIN_SHA256,
+                connectionVersionTable.CREDENTIAL_CIPHERTEXT,
+                connectionVersionTable.CREDENTIAL_NONCE,
+                connectionVersionTable.CREDENTIAL_KEY_VERSION,
+                connectionVersionTable.KEY_MASK, capabilityTable.NAME,
+                capabilityTable.ENABLED, capabilityTable.VERSION,
+                capabilityVersionTable.ADAPTER_ID, capabilityVersionTable.MAPPING_SHA256,
+                capabilityVersionTable.SPEC_JSON, capabilityTable.DELETED_AT)
                 .from(capabilityTable)
                 .join(connectionTable).on(connectionTable.ID.eq(capabilityTable.CONNECTION_ID))
                 .join(connectionVersionTable).on(connectionVersionTable.CONNECTION_ID

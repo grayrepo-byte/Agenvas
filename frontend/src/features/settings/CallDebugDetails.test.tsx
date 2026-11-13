@@ -10,19 +10,38 @@ import { CallDebugDetails } from "./CallDebugDetails";
 
 function show() {
   const client = createQueryClient();
-  const rendered = render(<QueryClientProvider client={client}><MemoryRouter><Routes>
-    <Route path="/" element={<CallDebugDetails id="log" />} />
-    <Route path="/login" element={<h1>登录页</h1>} />
-  </Routes></MemoryRouter></QueryClientProvider>);
+  const rendered = render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter>
+        <Routes>
+          <Route path="/" element={<CallDebugDetails id="log" />} />
+          <Route path="/login" element={<h1>登录页</h1>} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
   return { ...rendered, client };
 }
 
 describe("CallDebugDetails", () => {
   it("renders real URL and bodies as plain text with explicit partial marker", async () => {
-    server.use(http.get("/api/v1/call-logs/log/debug", () => HttpResponse.json({ id: "log", captured: true,
-      exchanges: [{ method: "POST", url: "https://provider.example/v1/chat/completions", responseStatus: 500,
-        requestBody: { content: '{"prompt":"<script>unsafe</script>"}', encoding: "UTF8", truncated: false },
-        responseBody: { content: "partial response", encoding: "UTF8", truncated: true } }] })));
+    server.use(
+      http.get("/api/v1/call-logs/log/debug", () =>
+        HttpResponse.json({
+          id: "log",
+          captured: true,
+          exchanges: [
+            {
+              method: "POST",
+              url: "https://provider.example/v1/chat/completions",
+              responseStatus: 500,
+              requestBody: { content: '{"prompt":"<script>unsafe</script>"}', encoding: "UTF8", truncated: false },
+              responseBody: { content: "partial response", encoding: "UTF8", truncated: true },
+            },
+          ],
+        }),
+      ),
+    );
     const { unmount, client } = show();
     expect(await screen.findByText("https://provider.example/v1/chat/completions")).toBeInTheDocument();
     expect(screen.getByText(/HTTP 500/)).toBeInTheDocument();
@@ -33,7 +52,7 @@ describe("CallDebugDetails", () => {
     expect(screen.getByText(/响应正文 · UTF8 · 超限或未读完/)).toBeInTheDocument();
     unmount();
     // No raw body is kept in a long-lived query cache after collapsing the row.
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise(resolve => setTimeout(resolve, 0));
     expect(client.getQueryData(["call-debug", "log"])).toBeUndefined();
   });
 
@@ -42,7 +61,9 @@ describe("CallDebugDetails", () => {
     expect(await screen.findByText(/本次调用尚无 debug 正文/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "系统设置" })).toHaveAttribute("href", "/settings/general?tab=logs");
     unmount();
-    server.use(http.get("/api/v1/call-logs/log/debug", () => HttpResponse.json({ id: "log", captured: true, exchanges: [] })));
+    server.use(
+      http.get("/api/v1/call-logs/log/debug", () => HttpResponse.json({ id: "log", captured: true, exchanges: [] })),
+    );
     show();
     expect(await screen.findByText(/Mock 调用没有真实请求地址/)).toBeInTheDocument();
   });
@@ -57,22 +78,68 @@ describe("CallDebugDetails", () => {
   });
 });
 
-const streamMetrics = { schemaVersion: 2, firstChunkMs: 12, firstTextMs: 42, durationMs: 300,
-  chunkCount: 3, promptTokens: null, completionTokens: null, totalTokens: null,
-  model: "synthetic-model", responseId: "synthetic-response", finishReasons: [], status: "FAILED", errorCode: "CALL_STREAM_FAILED" };
+const streamMetrics = {
+  schemaVersion: 2,
+  firstChunkMs: 12,
+  firstTextMs: 42,
+  durationMs: 300,
+  chunkCount: 3,
+  promptTokens: null,
+  completionTokens: null,
+  totalTokens: null,
+  model: "synthetic-model",
+  responseId: "synthetic-response",
+  finishReasons: [],
+  status: "FAILED",
+  errorCode: "CALL_STREAM_FAILED",
+};
 
 it("formats a streamed LLM completion beside its captured prompt instead of leaving it as a separate JSON dump", async () => {
-  server.use(http.get("/api/v1/call-logs/log/debug", () => HttpResponse.json({ id: "log", captured: true,
-    exchanges: [{ method: "POST", url: "https://provider.invalid/v1/chat/completions", responseStatus: 200,
-      requestBody: { content: JSON.stringify({ model: "synthetic-model", stream: true,
-        messages: [{ role: "user", content: "Create synthetic text" }] }), encoding: "UTF8", truncated: false },
-      responseBody: { content: 'data: {"legacyFragment":"Synthetic legacy SSE"}\n\ndata: [DONE]\n\n', encoding: "UTF8", truncated: false } }],
-    llmStream: { metrics: { ...streamMetrics, status: "COMPLETED", errorCode: null }, content: {
-      response: JSON.stringify({ schemaVersion: 1, metadata: { id: "synthetic-response", model: "synthetic-model", usage: null },
-        generations: [{ assistant: { role: "ASSISTANT", text: "Synthetic public answer", toolCalls: [], metadata: {} },
-          metadata: { finishReason: "STOP" } }] }), truncated: false,
-    } },
-  })));
+  server.use(
+    http.get("/api/v1/call-logs/log/debug", () =>
+      HttpResponse.json({
+        id: "log",
+        captured: true,
+        exchanges: [
+          {
+            method: "POST",
+            url: "https://provider.invalid/v1/chat/completions",
+            responseStatus: 200,
+            requestBody: {
+              content: JSON.stringify({
+                model: "synthetic-model",
+                stream: true,
+                messages: [{ role: "user", content: "Create synthetic text" }],
+              }),
+              encoding: "UTF8",
+              truncated: false,
+            },
+            responseBody: {
+              content: 'data: {"legacyFragment":"Synthetic legacy SSE"}\n\ndata: [DONE]\n\n',
+              encoding: "UTF8",
+              truncated: false,
+            },
+          },
+        ],
+        llmStream: {
+          metrics: { ...streamMetrics, status: "COMPLETED", errorCode: null },
+          content: {
+            response: JSON.stringify({
+              schemaVersion: 1,
+              metadata: { id: "synthetic-response", model: "synthetic-model", usage: null },
+              generations: [
+                {
+                  assistant: { role: "ASSISTANT", text: "Synthetic public answer", toolCalls: [], metadata: {} },
+                  metadata: { finishReason: "STOP" },
+                },
+              ],
+            }),
+            truncated: false,
+          },
+        },
+      }),
+    ),
+  );
   show();
   const completion = await screen.findByRole("button", { name: "展开 Completion" });
   expect(completion).toBeEnabled();
@@ -95,17 +162,39 @@ it("formats a streamed LLM completion beside its captured prompt instead of leav
 it("retains each HTTP request and its identifiers without repeating the prompt paired with the stream response", async () => {
   const firstRequest = JSON.stringify({ messages: [{ role: "user", content: "First synthetic request" }] });
   const finalRequest = JSON.stringify({ messages: [{ role: "user", content: "Final synthetic request" }] });
-  server.use(http.get("/api/v1/call-logs/log/debug", () => HttpResponse.json({ id: "log", captured: true,
-    exchanges: [
-      { method: "POST", url: "https://provider.invalid/first", responseStatus: 503,
-        responseIdentifiers: { "x-request-id": "synthetic-first" },
-        requestBody: { content: firstRequest, encoding: "UTF8", truncated: false }, responseBody: null },
-      { method: "POST", url: "https://provider.invalid/final", responseStatus: 200,
-        responseIdentifiers: { "x-request-id": "synthetic-final" },
-        requestBody: { content: finalRequest, encoding: "UTF8", truncated: false }, responseBody: null },
-    ],
-    llmStream: { metrics: streamMetrics, content: { response: '{"choices":[{"message":{"role":"assistant","content":"Synthetic answer"}}]}', truncated: false } },
-  })));
+  server.use(
+    http.get("/api/v1/call-logs/log/debug", () =>
+      HttpResponse.json({
+        id: "log",
+        captured: true,
+        exchanges: [
+          {
+            method: "POST",
+            url: "https://provider.invalid/first",
+            responseStatus: 503,
+            responseIdentifiers: { "x-request-id": "synthetic-first" },
+            requestBody: { content: firstRequest, encoding: "UTF8", truncated: false },
+            responseBody: null,
+          },
+          {
+            method: "POST",
+            url: "https://provider.invalid/final",
+            responseStatus: 200,
+            responseIdentifiers: { "x-request-id": "synthetic-final" },
+            requestBody: { content: finalRequest, encoding: "UTF8", truncated: false },
+            responseBody: null,
+          },
+        ],
+        llmStream: {
+          metrics: streamMetrics,
+          content: {
+            response: '{"choices":[{"message":{"role":"assistant","content":"Synthetic answer"}}]}',
+            truncated: false,
+          },
+        },
+      }),
+    ),
+  );
   show();
   expect(await screen.findByText(/请求 1 · POST · HTTP 503/)).toBeInTheDocument();
   expect(screen.getByText(/请求 2 · POST · HTTP 200/)).toBeInTheDocument();
@@ -121,8 +210,26 @@ it("retains each HTTP request and its identifiers without repeating the prompt p
 });
 
 it("shows one partial model response and timing without delivery progress or remote rendering", async () => {
-  server.use(http.get("/api/v1/call-logs/log/debug", () => HttpResponse.json({ id: "log", captured: true, exchanges: [],
-    llmStream: { metrics: streamMetrics, content: { response: JSON.stringify({ generations: [{ assistant: { text: '<script>received tail</script> https://example.invalid/image.png' } }] }), truncated: false } } })));
+  server.use(
+    http.get("/api/v1/call-logs/log/debug", () =>
+      HttpResponse.json({
+        id: "log",
+        captured: true,
+        exchanges: [],
+        llmStream: {
+          metrics: streamMetrics,
+          content: {
+            response: JSON.stringify({
+              generations: [
+                { assistant: { text: "<script>received tail</script> https://example.invalid/image.png" } },
+              ],
+            }),
+            truncated: false,
+          },
+        },
+      }),
+    ),
+  );
   const { unmount, client } = show();
   expect(await screen.findByText("流式调用指标")).toBeInTheDocument();
   await userEvent.setup().click(screen.getByText("流式调用指标"));
@@ -136,19 +243,27 @@ it("shows one partial model response and timing without delivery progress or rem
   expect(screen.getByText(/以下内容可能不完整/)).toBeInTheDocument();
   expect(document.querySelector("script, img")).toBeNull();
   unmount();
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise(resolve => setTimeout(resolve, 0));
   expect(client.getQueryData(["call-debug", "log"])).toBeUndefined();
 });
 
 it("reads asynchronously saved metrics on reopening without a reload button", async () => {
   let saved = false;
-  server.use(http.get("/api/v1/call-logs/log/debug", () => HttpResponse.json({ id: "log", captured: false, exchanges: [],
-    llmStream: saved ? { metrics: streamMetrics, content: null } : null })));
+  server.use(
+    http.get("/api/v1/call-logs/log/debug", () =>
+      HttpResponse.json({
+        id: "log",
+        captured: false,
+        exchanges: [],
+        llmStream: saved ? { metrics: streamMetrics, content: null } : null,
+      }),
+    ),
+  );
   const { unmount } = show();
   expect(await screen.findByText(/本次调用尚无 debug 正文/)).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "重新读取日志" })).not.toBeInTheDocument();
   unmount();
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise(resolve => setTimeout(resolve, 0));
   saved = true;
   show();
   expect(await screen.findByText("首字延迟")).toBeVisible();
@@ -157,9 +272,18 @@ it("reads asynchronously saved metrics on reopening without a reload button", as
 });
 
 it("switches a semantic-only response to exact captured JSON without inventing a prompt", async () => {
-  const response = '{"schemaVersion":1,"generations":[{"assistant":{"role":"ASSISTANT","text":"<think>synthetic thought</think>Actual answer","toolCalls":[],"metadata":{"reasoningContent":"synthetic reasoning"}}}]}';
-  server.use(http.get("/api/v1/call-logs/log/debug", () => HttpResponse.json({ id: "log", captured: true, exchanges: [],
-    llmStream: { metrics: { ...streamMetrics, status: "COMPLETED" }, content: { response, truncated: false } } })));
+  const response =
+    '{"schemaVersion":1,"generations":[{"assistant":{"role":"ASSISTANT","text":"<think>synthetic thought</think>Actual answer","toolCalls":[],"metadata":{"reasoningContent":"synthetic reasoning"}}}]}';
+  server.use(
+    http.get("/api/v1/call-logs/log/debug", () =>
+      HttpResponse.json({
+        id: "log",
+        captured: true,
+        exchanges: [],
+        llmStream: { metrics: { ...streamMetrics, status: "COMPLETED" }, content: { response, truncated: false } },
+      }),
+    ),
+  );
   show();
   expect(await screen.findByRole("button", { name: "展开 Completion" })).toBeEnabled();
   expect(screen.getByRole("button", { name: "展开 Prompt" })).toBeDisabled();

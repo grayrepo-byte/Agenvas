@@ -46,14 +46,16 @@ public class CallLogService {
 
     public record CallDescriptor(UUID projectId, UUID taskId, UUID runId, Integer stepIndex,
             CallLog.Kind kind, CallLog.Operation operation, String provider, String model,
-            boolean mock) {}
+            boolean mock) {
+    }
     public record CallOutcome(CallLog.Status status, String providerRequestId, String errorCode) {
         public static CallOutcome succeeded(String requestId) {
             return new CallOutcome(CallLog.Status.SUCCEEDED, requestId, null);
         }
     }
     public record Filter(UUID projectId, CallLog.Kind kind, CallLog.Status status, String traceId,
-            Instant from, Instant to, int page, int size) {}
+            Instant from, Instant to, int page, int size) {
+    }
 
     /** Start is durable before dispatch; all streaming completion/debug writes leave the reader thread. */
     public <T> T recordStream(CallDescriptor descriptor,
@@ -64,7 +66,8 @@ public class CallLogService {
         UUID id = UUID.randomUUID();
         String traceId = UUID.randomUUID().toString().replace("-", "");
         CallDescriptor safe = new CallDescriptor(descriptor.projectId(), descriptor.taskId(), descriptor.runId(),
-                descriptor.stepIndex(), descriptor.kind(), descriptor.operation(), safeIdentifier(descriptor.provider()),
+                descriptor.stepIndex(), descriptor.kind(), descriptor.operation(),
+                safeIdentifier(descriptor.provider()),
                 safeIdentifier(descriptor.model()), descriptor.mock());
         repository.start(id, safe, traceId, clock.instant());
         boolean captured = repository.isDebugEnabled();
@@ -78,11 +81,14 @@ public class CallLogService {
         try {
             T result = invocation.apply(captured, stream::set);
             CallOutcome value = outcome.apply(result);
-            finished = new CallOutcome(value.status(), safeRequestId(value.providerRequestId()), safeErrorCode(value.errorCode()));
+            finished = new CallOutcome(value.status(), safeRequestId(value.providerRequestId()),
+                    safeErrorCode(value.errorCode()));
             return result;
         } catch (RuntimeException | Error failure) {
             finished = new CallOutcome(CallLog.Status.FAILED, null,
-                    failure instanceof ApiProblemException problem ? safeErrorCode(problem.code()) : "CALL_TECHNICAL_FAILURE");
+                    failure instanceof ApiProblemException problem
+                            ? safeErrorCode(problem.code())
+                            : "CALL_TECHNICAL_FAILURE");
             throw failure;
         } finally {
             Instant respondedAt = clock.instant();
@@ -94,20 +100,29 @@ public class CallLogService {
                     var content = log.content();
                     var http = savedExchanges.isEmpty() ? null : savedExchanges.getLast().responseBody();
                     boolean useHttp = http != null && http.encoding() == DebugHttpCapture.Encoding.UTF8
-                            && http.content().getBytes(java.nio.charset.StandardCharsets.UTF_8).length <= LlmStreamLog.MAX_CONTENT_BYTES;
+                            && http.content().getBytes(
+                                    java.nio.charset.StandardCharsets.UTF_8).length <= LlmStreamLog.MAX_CONTENT_BYTES;
                     log = new LlmStreamLog(log.metrics(), new LlmStreamLog.Content(
                             useHttp ? http.content() : capture.sanitizeJson(content.response()),
                             useHttp ? http.truncated() : content.truncated() || http != null));
                     // Persist one response body. Exchanges retain request, address and HTTP status only.
-                    savedExchanges = savedExchanges.stream().map(exchange -> new Exchange(exchange.method(), exchange.url(),
-                            exchange.requestBody(), exchange.responseStatus(), null, exchange.responseIdentifiers())).toList();
-                } else if (log != null) log = new LlmStreamLog(log.metrics(), null);
+                    savedExchanges = savedExchanges.stream()
+                            .map(exchange -> new Exchange(exchange.method(), exchange.url(),
+                                    exchange.requestBody(), exchange.responseStatus(), null,
+                                    exchange.responseIdentifiers()))
+                            .toList();
+                } else if (log != null)
+                    log = new LlmStreamLog(log.metrics(), null);
                 streamWriter.submit(id, finished, respondedAt, durationMs, log, savedExchanges, captured);
             } catch (RuntimeException loggingFailure) {
                 LOGGER.error("LLM stream log snapshot failed callId={} code=CALL_STREAM_SNAPSHOT_FAILED", id);
             } finally {
-                if (capture != null) capture.close();
-                if (previousTrace == null) MDC.remove("traceId"); else MDC.put("traceId", previousTrace);
+                if (capture != null)
+                    capture.close();
+                if (previousTrace == null)
+                    MDC.remove("traceId");
+                else
+                    MDC.put("traceId", previousTrace);
             }
         }
     }
@@ -126,14 +141,17 @@ public class CallLogService {
         repository.start(id, safe, traceId, clock.instant());
         // Pin the setting at invocation start. Each request checkpoint precedes network I/O.
         Consumer<List<Exchange>> checkpoint = exchanges -> {
-            try { repository.saveDebug(id, exchanges); }
-            catch (RuntimeException failure) {
+            try {
+                repository.saveDebug(id, exchanges);
+            } catch (RuntimeException failure) {
                 LOGGER.error("Debug call capture write failed callId={} code=CALL_DEBUG_WRITE_FAILED", id);
             }
         };
-        DebugHttpCapture capture = !repository.isDebugEnabled() ? null
-                : descriptor.kind() == CallLog.Kind.LLM ? DebugHttpCapture.openLlm(checkpoint)
-                : DebugHttpCapture.open(checkpoint);
+        DebugHttpCapture capture = !repository.isDebugEnabled()
+                ? null
+                : descriptor.kind() == CallLog.Kind.LLM
+                        ? DebugHttpCapture.openLlm(checkpoint)
+                        : DebugHttpCapture.open(checkpoint);
         String previousTrace = MDC.get("traceId");
         MDC.put("traceId", traceId);
         long started = System.nanoTime();
@@ -143,9 +161,11 @@ public class CallLogService {
                 result = invocation.get();
             } catch (RuntimeException | Error failure) {
                 CallLog.Status status = descriptor.operation() == CallLog.Operation.SUBMIT
-                        ? CallLog.Status.UNKNOWN : CallLog.Status.FAILED;
+                        ? CallLog.Status.UNKNOWN
+                        : CallLog.Status.FAILED;
                 String code = failure instanceof ApiProblemException problem
-                        ? safeErrorCode(problem.code()) : "CALL_TECHNICAL_FAILURE";
+                        ? safeErrorCode(problem.code())
+                        : "CALL_TECHNICAL_FAILURE";
                 finish(id, new CallOutcome(status, null, code), clock.instant(), elapsed(started));
                 throw failure;
             }
@@ -155,24 +175,31 @@ public class CallLogService {
             finish(id, outcome.apply(result), respondedAt, durationMs);
             return result;
         } finally {
-            if (capture != null) capture.close();
-            if (previousTrace == null) MDC.remove("traceId");
-            else MDC.put("traceId", previousTrace);
+            if (capture != null)
+                capture.close();
+            if (previousTrace == null)
+                MDC.remove("traceId");
+            else
+                MDC.put("traceId", previousTrace);
         }
     }
 
-    public DebugSettings settings() { return repository.settings(); }
+    public DebugSettings settings() {
+        return repository.settings();
+    }
 
     public DebugSettings updateSettings(boolean enabled, int expectedVersion) {
-        return repository.updateSettings(enabled, expectedVersion).orElseThrow(() ->
-                new ApiProblemException(HttpStatus.CONFLICT, "VERSION_CONFLICT", ApiMessage.of("api.call-log-service.settings-changed"),
-                        ApiMessage.of("api.call-log-service.please-re-read-the-debug-mode-settings-before-saving"), false));
+        return repository.updateSettings(enabled, expectedVersion)
+                .orElseThrow(() -> new ApiProblemException(HttpStatus.CONFLICT, "VERSION_CONFLICT",
+                        ApiMessage.of("api.call-log-service.settings-changed"),
+                        ApiMessage.of("api.call-log-service.please-re-read-the-debug-mode-settings-before-saving"),
+                        false));
     }
 
     public CallDebug debug(UUID ownerId, UUID id) {
-        return repository.debug(ownerId, id).orElseThrow(() ->
-                new ApiProblemException(HttpStatus.NOT_FOUND, "CALL_LOG_NOT_FOUND", ApiMessage.of("api.call-log-service.call-record-does-not-exist"),
-                        ApiMessage.of("api.call-log-service.the-call-record-does-not-exist-or-does-not-belong"), false));
+        return repository.debug(ownerId, id).orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND,
+                "CALL_LOG_NOT_FOUND", ApiMessage.of("api.call-log-service.call-record-does-not-exist"),
+                ApiMessage.of("api.call-log-service.the-call-record-does-not-exist-or-does-not-belong"), false));
     }
 
     private static long elapsed(long started) {
@@ -198,7 +225,9 @@ public class CallLogService {
                 || filter.from() != null && filter.to() != null && filter.from().isAfter(filter.to())
                 || filter.traceId() != null && !filter.traceId().matches("[0-9a-f]{32}")) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
-                    ApiMessage.of("api.system-log-buffer.log-filtering-is-invalid"), ApiMessage.of("api.call-log-service.please-check-the-page-number-quantity-per-page-time-range"), false);
+                    ApiMessage.of("api.system-log-buffer.log-filtering-is-invalid"),
+                    ApiMessage.of("api.call-log-service.please-check-the-page-number-quantity-per-page-time-range"),
+                    false);
         }
         return repository.list(ownerId, filter);
     }

@@ -41,30 +41,45 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
         "agenvas.llm.scheduler-enabled=false"})
 class AgentStreamPostgresIT {
     private static final String WORKER = "stream-test-worker";
-    @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
 
-    @DynamicPropertySource static void database(DynamicPropertyRegistry registry) {
+    @DynamicPropertySource
+    static void database(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
     }
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private ProjectSnapshotService snapshots;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private AgentRunService runs;
-    @Autowired private AgentTurnCommitService commits;
-    @Autowired private TaskService tasks;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private PlatformTransactionManager transactions;
-    @MockitoBean private TaskRecoveryScheduler recovery;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private ProjectSnapshotService snapshots;
+    @Autowired
+    private AgentInstanceService agents;
+    @Autowired
+    private AgentRunService runs;
+    @Autowired
+    private AgentTurnCommitService commits;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private PlatformTransactionManager transactions;
+    @MockitoBean
+    private TaskRecoveryScheduler recovery;
     private static UUID owner;
 
-    @BeforeEach void administrator() {
-        if (owner == null) owner = identities.setup("stream-test-admin", "synthetic-password-123").userId();
+    @BeforeEach
+    void administrator() {
+        if (owner == null)
+            owner = identities.setup("stream-test-admin", "synthetic-password-123").userId();
     }
 
-    @Test void publicTextAndProjectEventCommitTogetherAndSnapshotRestoresTheWholePrefix() {
+    @Test
+    void publicTextAndProjectEventCommitTogetherAndSnapshotRestoresTheWholePrefix() {
         Task lease = startedTurn();
         tasks.startAgentStream(lease, WORKER);
         long chunk = tasks.appendAgentStream(lease, WORKER, 0, "公开回复");
@@ -80,13 +95,15 @@ class AgentStreamPostgresIT {
             tasks.appendAgentStream(lease, WORKER, chunk, "应回滚");
             throw new IllegalStateException("synthetic rollback");
         })).isInstanceOf(IllegalStateException.class);
-        assertThat(tasks.get(owner, lease.projectId(), lease.id()).output().path("assistantStream").path("text").asText())
+        assertThat(
+                tasks.get(owner, lease.projectId(), lease.id()).output().path("assistantStream").path("text").asText())
                 .isEqualTo("公开回复");
         assertThat(streamEventCount(lease)).isEqualTo(2);
         assertThat(snapshots.snapshot(owner, lease.projectId()).snapshotSeq()).isEqualTo(sequence);
     }
 
-    @Test void staleChunkAndOldEpochCannotAppendAndNewEpochStartsWithAnEmptyPrefix() {
+    @Test
+    void staleChunkAndOldEpochCannotAppendAndNewEpochStartsWithAnEmptyPrefix() {
         Task lease = startedTurn();
         tasks.startAgentStream(lease, WORKER);
         tasks.appendAgentStream(lease, WORKER, 0, "旧流");
@@ -104,7 +121,8 @@ class AgentStreamPostgresIT {
         assertThat(stream.path("streamEpoch").asLong()).isEqualTo(replacement.leaseEpoch());
     }
 
-    @Test void largePublicPrefixIsDurableAndRecoveredBySnapshotBeforeCompletion() {
+    @Test
+    void largePublicPrefixIsDurableAndRecoveredBySnapshotBeforeCompletion() {
         Task lease = startedTurn();
         String text = "合成公开内容".repeat(70_000);
         tasks.startAgentStream(lease, WORKER);
@@ -120,12 +138,14 @@ class AgentStreamPostgresIT {
         assertThat(progress.path("status").asText()).isEqualTo("COMPLETED");
     }
 
-    @Test void expiredOrCanceledLeaseCannotPublishAndFailureRetainsTheInterruptedPrefix() {
+    @Test
+    void expiredOrCanceledLeaseCannotPublishAndFailureRetainsTheInterruptedPrefix() {
         Task expired = startedTurn();
         tasks.startAgentStream(expired, WORKER);
         tasks.appendAgentStream(expired, WORKER, 0, "已收到的公开内容");
         jdbc.sql("update task set lease_until = :past where id = :id")
-                .param("past", java.sql.Timestamp.from(Instant.now().minusSeconds(60))).param("id", expired.id()).update();
+                .param("past", java.sql.Timestamp.from(Instant.now().minusSeconds(60))).param("id", expired.id())
+                .update();
         assertThatThrownBy(() -> tasks.appendAgentStream(expired, WORKER, 1, "过期晚到"))
                 .isInstanceOf(RuntimeException.class);
 
@@ -160,7 +180,8 @@ class AgentStreamPostgresIT {
     }
 
     private long streamEventCount(Task lease) {
-        return jdbc.sql("select count(*) from project_event where project_id = :project and type like 'agent.turn.stream.%'")
+        return jdbc.sql(
+                "select count(*) from project_event where project_id = :project and type like 'agent.turn.stream.%'")
                 .param("project", lease.projectId()).query(Long.class).single();
     }
 }

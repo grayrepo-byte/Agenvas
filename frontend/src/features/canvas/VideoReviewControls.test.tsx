@@ -16,31 +16,39 @@ beforeEach(() => {
 
 describe("VideoReviewControls", () => {
   it("seeks both exact videos, steps using the chosen frame rate, and applies one playback rate", async () => {
-    const left = media(), right = media(5);
+    const left = media(),
+      right = media(5);
     render(<VideoReviewControls video={left} partner={right} />);
     expect(screen.getByRole("slider", { name: "审片进度" })).toHaveAttribute("max", "5");
     fireEvent.change(screen.getByRole("slider"), { target: { value: "2" } });
-    expect(left.currentTime).toBe(2); expect(right.currentTime).toBe(2);
+    expect(left.currentTime).toBe(2);
+    expect(right.currentTime).toBe(2);
     await selectValue(screen.getByRole("combobox", { name: "步进帧率" }), 25);
     fireEvent.click(screen.getByRole("button", { name: "前进一步" }));
-    expect(left.currentTime).toBeCloseTo(2.04); expect(right.currentTime).toBeCloseTo(2.04);
+    expect(left.currentTime).toBeCloseTo(2.04);
+    expect(right.currentTime).toBeCloseTo(2.04);
     fireEvent.click(screen.getByRole("button", { name: "后退一步" }));
     expect(left.currentTime).toBeCloseTo(2);
     await selectValue(screen.getByRole("combobox", { name: "播放速度" }), 0.5);
-    expect(left.playbackRate).toBe(0.5); expect(right.playbackRate).toBe(0.5);
+    expect(left.playbackRate).toBe(0.5);
+    expect(right.playbackRate).toBe(0.5);
     expect(screen.getByText(/不是素材帧率检测/)).toBeVisible();
   });
 
   it("corrects partner drift and pauses both videos at the shorter duration", () => {
-    const left = media(), right = media(5);
+    const left = media(),
+      right = media(5);
     Object.defineProperty(left, "paused", { configurable: true, value: false });
     render(<VideoReviewControls video={left} partner={right} />);
-    left.currentTime = 3; right.currentTime = 1;
+    left.currentTime = 3;
+    right.currentTime = 1;
     fireEvent.timeUpdate(left);
-    expect(right.currentTime).toBe(3); expect(right.muted).toBe(true);
+    expect(right.currentTime).toBe(3);
+    expect(right.muted).toBe(true);
     left.currentTime = 5.1;
     fireEvent.timeUpdate(left);
-    expect(left.currentTime).toBe(5); expect(right.currentTime).toBe(5);
+    expect(left.currentTime).toBe(5);
+    expect(right.currentTime).toBe(5);
     expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
   });
 
@@ -61,10 +69,13 @@ describe("VideoReviewControls", () => {
   });
 
   it("pauses both players and reports a rejected play attempt", async () => {
-    const left = media(), right = media();
+    const left = media(),
+      right = media();
     vi.mocked(HTMLMediaElement.prototype.play).mockRejectedValue(new DOMException("Blocked", "NotAllowedError"));
     render(<VideoReviewControls video={left} partner={right} />);
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "播放" })); });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "播放" }));
+    });
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("播放失败"));
     expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
   });
@@ -77,13 +88,20 @@ describe("VideoReviewControls", () => {
     video.play = vi.fn(() => {
       paused = false;
       video.dispatchEvent(new Event("play"));
-      return new Promise<void>((_resolve, reject) => { rejectPlay = reject; });
+      return new Promise<void>((_resolve, reject) => {
+        rejectPlay = reject;
+      });
     });
-    video.pause = vi.fn(() => { paused = true; video.dispatchEvent(new Event("pause")); });
+    video.pause = vi.fn(() => {
+      paused = true;
+      video.dispatchEvent(new Event("pause"));
+    });
     render(<VideoReviewControls video={video} />);
     fireEvent.click(screen.getByRole("button", { name: "播放" }));
     fireEvent.click(screen.getByRole("button", { name: "暂停" }));
-    await act(async () => { rejectPlay(new DOMException("Interrupted by pause", "AbortError")); });
+    await act(async () => {
+      rejectPlay(new DOMException("Interrupted by pause", "AbortError"));
+    });
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "播放" })).toBeEnabled();
   });
@@ -93,31 +111,49 @@ describe("VideoReviewControls", () => {
     let paused = true;
     Object.defineProperty(video, "paused", { get: () => paused });
     let rejectFirst!: (reason: DOMException) => void;
-    const firstPlay = new Promise<void>((_resolve, reject) => { rejectFirst = reject; });
+    const firstPlay = new Promise<void>((_resolve, reject) => {
+      rejectFirst = reject;
+    });
     let attempts = 0;
     video.play = vi.fn(() => {
-      paused = false; video.dispatchEvent(new Event("play"));
+      paused = false;
+      video.dispatchEvent(new Event("play"));
       return attempts++ === 0 ? firstPlay : Promise.resolve();
     });
-    video.pause = vi.fn(() => { paused = true; video.dispatchEvent(new Event("pause")); });
+    video.pause = vi.fn(() => {
+      paused = true;
+      video.dispatchEvent(new Event("pause"));
+    });
     render(<VideoReviewControls video={video} />);
     fireEvent.click(screen.getByRole("button", { name: "播放" }));
     fireEvent.click(screen.getByRole("button", { name: "暂停" }));
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "播放" })); });
-    await act(async () => { rejectFirst(new DOMException("Old request was interrupted", "AbortError")); });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "播放" }));
+    });
+    await act(async () => {
+      rejectFirst(new DOMException("Old request was interrupted", "AbortError"));
+    });
     expect(video.paused).toBe(false);
     expect(screen.getByRole("button", { name: "暂停" })).toBeEnabled();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("ignores a pending play failure after replacing the reviewed player", async () => {
-    const first = media(), next = media();
+    const first = media(),
+      next = media();
     let rejectFirst!: (reason: DOMException) => void;
-    first.play = vi.fn(() => new Promise<void>((_resolve, reject) => { rejectFirst = reject; }));
+    first.play = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectFirst = reject;
+        }),
+    );
     const { rerender } = render(<VideoReviewControls video={first} />);
     fireEvent.click(screen.getByRole("button", { name: "播放" }));
     rerender(<VideoReviewControls video={next} />);
-    await act(async () => { rejectFirst(new DOMException("Source changed", "AbortError")); });
+    await act(async () => {
+      rejectFirst(new DOMException("Source changed", "AbortError"));
+    });
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "播放" })).toBeEnabled();
   });
@@ -129,17 +165,27 @@ describe("VideoReviewControls", () => {
     let rejectCurrent!: (reason: DOMException) => void;
     let attempts = 0;
     video.play = vi.fn(() => {
-      paused = false; video.dispatchEvent(new Event("play"));
-      return attempts++ === 0 ? Promise.resolve()
-        : new Promise<void>((_resolve, reject) => { rejectCurrent = reject; });
+      paused = false;
+      video.dispatchEvent(new Event("play"));
+      return attempts++ === 0
+        ? Promise.resolve()
+        : new Promise<void>((_resolve, reject) => {
+            rejectCurrent = reject;
+          });
     });
-    video.pause = vi.fn(() => { paused = true; });
+    video.pause = vi.fn(() => {
+      paused = true;
+    });
     render(<VideoReviewControls video={video} />);
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "播放" })); });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "播放" }));
+    });
     fireEvent.click(screen.getByRole("button", { name: "暂停" }));
     fireEvent.click(screen.getByRole("button", { name: "播放" }));
     fireEvent.pause(video);
-    await act(async () => { rejectCurrent(new DOMException("Current playback blocked", "NotAllowedError")); });
+    await act(async () => {
+      rejectCurrent(new DOMException("Current playback blocked", "NotAllowedError"));
+    });
     expect(screen.getByRole("alert")).toHaveTextContent("播放失败");
     expect(video.paused).toBe(true);
   });

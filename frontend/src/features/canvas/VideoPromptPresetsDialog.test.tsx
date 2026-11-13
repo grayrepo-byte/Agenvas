@@ -5,8 +5,11 @@ import { VideoPromptPresetsDialog } from "./VideoPromptPresetsDialog";
 import { filterVideoPromptPresets, VIDEO_PROMPT_PRESETS, type VideoPromptPreset } from "./videoPromptPresets";
 
 // Playback lifecycle and drawing are verified independently; this suite exercises selection and draft application.
-vi.mock("./VideoCameraMotionPreview", () => ({ VideoCameraMotionPreview: ({ preset }: { preset: { id: string } }) =>
-  <div data-testid="camera-preview" data-preset={preset.id} /> }));
+vi.mock("./VideoCameraMotionPreview", () => ({
+  VideoCameraMotionPreview: ({ preset }: { preset: { id: string } }) => (
+    <div data-testid="camera-preview" data-preset={preset.id} />
+  ),
+}));
 
 function setup(prompt = "An existing scene.", maxLength = 20000, accepted = true) {
   const onApply = vi.fn(() => accepted);
@@ -17,10 +20,12 @@ function setup(prompt = "An existing scene.", maxLength = 20000, accepted = true
 
 function expectPresetOptions(presets: readonly VideoPromptPreset[]) {
   const list = screen.getByRole("group", { name: "运镜预设列表" });
-  const names = within(list).getAllByRole("button").map((button) => button.getAttribute("aria-label"));
+  const names = within(list)
+    .getAllByRole("button")
+    .map(button => button.getAttribute("aria-label"));
   // Off-screen options are intentionally unmounted; the visible window retains catalog order.
   expect(names.length).toBeLessThanOrEqual(20);
-  expect(names).toEqual(presets.slice(0, names.length).map((preset) => preset.copy.zh.name));
+  expect(names).toEqual(presets.slice(0, names.length).map(preset => preset.copy.zh.name));
   expect(screen.getByRole("status")).toHaveTextContent(String(presets.length));
 }
 
@@ -44,7 +49,7 @@ describe("VideoPromptPresetsDialog", () => {
 
   it("shows the guide and full fixed prompt, then applies only the selected suffix", () => {
     const { onApply, onClose } = setup();
-    const selected = VIDEO_PROMPT_PRESETS.find((preset) => /over.the.shoulder/i.test(preset.englishName))!;
+    const selected = VIDEO_PROMPT_PRESETS.find(preset => /over.the.shoulder/i.test(preset.englishName))!;
     const details = screen.getByRole("region", { name: "镜头详情" });
     expect(within(details).getByText(selected.copy.zh.conditions)).toBeInTheDocument();
     expect(within(details).getByText(selected.copy.zh.effect)).toBeInTheDocument();
@@ -100,7 +105,10 @@ describe("VideoPromptPresetsDialog", () => {
     const macro = VIDEO_PROMPT_PRESETS.find(({ id }) => id === "macro-focus-travel")!;
     const macros = filterVideoPromptPresets("微距", "lens", "product");
     expectPresetOptions(macros);
-    expect(screen.getByRole("button", { name: new RegExp(`^变焦与对焦\\s*${macros.length}$`) })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: new RegExp(`^变焦与对焦\\s*${macros.length}$`) })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     const allMacroCount = filterVideoPromptPresets("微距", "all", "product").length;
     expect(screen.getByRole("button", { name: new RegExp(`^全部镜头\\s*${allMacroCount}$`) })).toBeInTheDocument();
     expect(screen.getByTestId("camera-preview")).toHaveAttribute("data-preset", macro.id);
@@ -121,13 +129,18 @@ describe("VideoPromptPresetsDialog", () => {
     expect(screen.getByRole("searchbox")).toHaveValue("过肩");
     const shoulders = filterVideoPromptPresets("过肩", "framing");
     expectPresetOptions(shoulders);
-    expect(screen.getByRole("button", { name: new RegExp(`^构图与视角\\s*${shoulders.length}$`) })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: new RegExp(`^构图与视角\\s*${shoulders.length}$`) })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     expect(screen.getByTestId("camera-preview")).toHaveAttribute("data-preset", "over-the-shoulder");
     fireEvent.click(screen.getByRole("radio", { name: "风景" }));
     fireEvent.click(screen.getByRole("button", { name: "清除筛选" }));
     expect(screen.getByRole("searchbox")).toHaveValue("");
     expect(screen.getByRole("radio", { name: "全部场景" })).toBeChecked();
-    expect(screen.getByRole("button", { name: new RegExp(`^全部镜头\\s*${VIDEO_PROMPT_PRESETS.length}$`) })).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.getByRole("button", { name: new RegExp(`^全部镜头\\s*${VIDEO_PROMPT_PRESETS.length}$`) }),
+    ).toHaveAttribute("aria-pressed", "true");
     expectPresetOptions(VIDEO_PROMPT_PRESETS);
   });
 
@@ -152,7 +165,7 @@ describe("VideoPromptPresetsDialog", () => {
 
   it("updates the guide and appended instruction when another shot is selected", () => {
     const { onApply } = setup();
-    const next = VIDEO_PROMPT_PRESETS.find((preset) => /steadicam/i.test(preset.englishName))!;
+    const next = VIDEO_PROMPT_PRESETS.find(preset => /steadicam/i.test(preset.englishName))!;
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "steadicam" } });
     fireEvent.click(screen.getByRole("button", { name: next.copy.zh.name }));
     expect(screen.getByRole("heading", { name: next.copy.zh.name })).toBeInTheDocument();
@@ -174,12 +187,14 @@ describe("VideoPromptPresetsDialog", () => {
     setLocale("en");
     try {
       setup();
-      const selected = VIDEO_PROMPT_PRESETS.find((preset) => /over.the.shoulder/i.test(preset.englishName))!;
+      const selected = VIDEO_PROMPT_PRESETS.find(preset => /over.the.shoulder/i.test(preset.englishName))!;
       expect(screen.getByRole("dialog", { name: "Camera language library" })).toBeInTheDocument();
       expect(screen.getByText(selected.copy.en.conditions)).toBeInTheDocument();
       expect(screen.getByText(selected.prompt)).toBeInTheDocument();
       expect(screen.getByRole("radiogroup", { name: "Use case" })).toBeInTheDocument();
       expect(screen.getByRole("radio", { name: "Product showcase" })).toBeInTheDocument();
-    } finally { setLocale("zh"); }
+    } finally {
+      setLocale("zh");
+    }
   });
 });

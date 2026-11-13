@@ -38,7 +38,9 @@ public class CanvasAgentToolService {
     private static final int MAX_CHARACTER_LIMIT = 20;
     private static final int MAX_CHARACTER_TEXT_PAGE = 4000;
     private static final int MAX_SUMMARY_NAME = 160;
-    private enum Action { RENAME, MOVE, RESIZE, REMOVE, DUPLICATE }
+    private enum Action {
+        RENAME, MOVE, RESIZE, REMOVE, DUPLICATE
+    }
     private final CanvasService canvas;
     private final ArtifactService artifacts;
     private final MediaDraftService drafts;
@@ -63,40 +65,53 @@ public class CanvasAgentToolService {
     @Transactional(readOnly = true)
     public JsonNode readCanvas(TrustedToolContext context, AgentRun run, UUID operationId, String arguments) {
         ObjectNode input = parse(arguments, Set.of("offset", "limit", "includeDrafts", "characterOffset",
-                "characterLimit", "characterId", "characterTextOffset", "characterTextLimit", "expectedCharacterVersion"));
+                "characterLimit", "characterId", "characterTextOffset", "characterTextLimit",
+                "expectedCharacterVersion"));
         int offset = input.has("offset") ? integer(input, "offset") : 0;
         int limit = input.has("limit") ? integer(input, "limit") : 20;
         int characterOffset = input.has("characterOffset") ? integer(input, "characterOffset") : 0;
         int characterLimit = input.has("characterLimit") ? integer(input, "characterLimit") : DEFAULT_CHARACTER_LIMIT;
-        if (characterLimit < 1 || characterLimit > MAX_CHARACTER_LIMIT) throw invalid();
+        if (characterLimit < 1 || characterLimit > MAX_CHARACTER_LIMIT)
+            throw invalid();
         if (!input.has("characterId") && (input.has("characterTextOffset") || input.has("characterTextLimit")
-                || input.has("expectedCharacterVersion"))) throw invalid();
+                || input.has("expectedCharacterVersion")))
+            throw invalid();
         List<CanvasService.CanvasEntry> directory = canvas.list(context.ownerId(), context.projectId());
-        if (input.has("includeDrafts") && !input.path("includeDrafts").isBoolean()) throw invalid();
+        if (input.has("includeDrafts") && !input.path("includeDrafts").isBoolean())
+            throw invalid();
         boolean includeDrafts = input.path("includeDrafts").asBoolean(false);
-        if (includeDrafts && limit > 6) throw invalid();
-        if (limit < 1 || limit > 40 || offset > directory.size()) throw invalid();
+        if (includeDrafts && limit > 6)
+            throw invalid();
+        if (limit < 1 || limit > 40 || offset > directory.size())
+            throw invalid();
         ObjectNode result = result(operationId, "已读取画布节点目录");
         CharacterIndex characterIndex = characters.listForAgent(context.ownerId(), context.projectId());
         appendCharacterDirectory(result, characterIndex, characterOffset, characterLimit);
-        if (input.has("characterId")) appendCharacterTextPage(result, characterIndex, input);
+        if (input.has("characterId"))
+            appendCharacterTextPage(result, characterIndex, input);
         result.put("offset", offset).put("total", directory.size());
         int end = Math.min(directory.size(), offset + limit);
-        if (end < directory.size()) result.put("nextOffset", end); else result.putNull("nextOffset");
+        if (end < directory.size())
+            result.put("nextOffset", end);
+        else
+            result.putNull("nextOffset");
         var data = result.putArray("data");
         for (int index = offset; index < end; index++) {
             var entry = directory.get(index);
             ObjectNode item = describe(context, entry, characterIndex)
                     .put("locked", entry.item().locked()).put("zIndex", entry.item().zIndex());
-            if (entry.artifact() != null) item.put("kind", entry.artifact().artifact().kind().name())
-                    .put("artifactVersion", entry.artifact().artifact().version());
+            if (entry.artifact() != null)
+                item.put("kind", entry.artifact().artifact().kind().name())
+                        .put("artifactVersion", entry.artifact().artifact().version());
             JsonNode draft = item.path("mediaDraft");
             if (!includeDrafts && draft.isObject()) {
                 ObjectNode metadata = mapper.createObjectNode().put("version", draft.path("version").asLong())
                         .put("promptCharacters", draft.path("prompt").asText().length())
-                        .put("mediaInputCount", draft.path("mediaInputs").size()).put("mentionCount", draft.path("mentions").size());
+                        .put("mediaInputCount", draft.path("mediaInputs").size())
+                        .put("mentionCount", draft.path("mentions").size());
                 for (String field : List.of("capabilityId", "videoInputMode", "durationSeconds"))
-                    if (!draft.path(field).isMissingNode()) metadata.set(field, draft.path(field).deepCopy());
+                    if (!draft.path(field).isMissingNode())
+                        metadata.set(field, draft.path(field).deepCopy());
                 item.set("mediaDraft", metadata);
             }
             data.add(item);
@@ -105,35 +120,48 @@ public class CanvasAgentToolService {
     }
 
     public JsonNode manageNode(TrustedToolContext context, AgentRun run, UUID operationId, String arguments) {
-        ObjectNode input = parse(arguments, Set.of("action", "itemId", "expectedVersion", "title", "x", "y", "width", "height", "expectedDraftVersion"));
+        ObjectNode input = parse(arguments, Set.of("action", "itemId", "expectedVersion", "title", "x", "y", "width",
+                "height", "expectedDraftVersion"));
         Action action;
-        try { action = Action.valueOf(input.path("action").asText()); }
-        catch (IllegalArgumentException malformed) { throw invalid(); }
+        try {
+            action = Action.valueOf(input.path("action").asText());
+        } catch (IllegalArgumentException malformed) {
+            throw invalid();
+        }
         CanvasService.CanvasEntry entry = requireItem(context, run, uuid(input, "itemId"));
         CanvasItem item = entry.item();
         long expected = version(input, "expectedVersion");
-        if (item.version() != expected) throw problem(HttpStatus.CONFLICT, "CANVAS_VERSION_CONFLICT", ApiMessage.of("api.canvas-service.the-canvas-card-has-been-modified-by-other-requests-please"));
+        if (item.version() != expected)
+            throw problem(HttpStatus.CONFLICT, "CANVAS_VERSION_CONFLICT",
+                    ApiMessage.of("api.canvas-service.the-canvas-card-has-been-modified-by-other-requests-please"));
         requireUnlocked(item);
         ObjectNode result = result(operationId, "已更新画布节点");
         CanvasService.CanvasEntry updated;
         switch (action) {
             case RENAME -> {
                 String title = text(input, "title", 160);
-                updated = canvas.apply(context.ownerId(), context.projectId(), List.of(new CanvasService.UpdateTitle(item.id(), expected, title)))
-                        .stream().filter(candidate -> candidate.item().id().equals(item.id())).findFirst().orElseThrow();
+                updated = canvas
+                        .apply(context.ownerId(), context.projectId(),
+                                List.of(new CanvasService.UpdateTitle(item.id(), expected, title)))
+                        .stream().filter(candidate -> candidate.item().id().equals(item.id())).findFirst()
+                        .orElseThrow();
             }
             case MOVE, RESIZE -> {
                 BigDecimal x = action == Action.MOVE ? decimal(input, "x") : item.x();
                 BigDecimal y = action == Action.MOVE ? decimal(input, "y") : item.y();
                 BigDecimal width = action == Action.RESIZE ? decimal(input, "width") : item.width();
                 BigDecimal height = action == Action.RESIZE ? decimal(input, "height") : item.height();
-                updated = canvas.apply(context.ownerId(), context.projectId(), List.of(new CanvasService.UpdateLayout(item.id(), expected,
-                        x, y, width, height, item.zIndex(), item.groupId())))
-                        .stream().filter(candidate -> candidate.item().id().equals(item.id())).findFirst().orElseThrow();
+                updated = canvas
+                        .apply(context.ownerId(), context.projectId(),
+                                List.of(new CanvasService.UpdateLayout(item.id(), expected,
+                                        x, y, width, height, item.zIndex(), item.groupId())))
+                        .stream().filter(candidate -> candidate.item().id().equals(item.id())).findFirst()
+                        .orElseThrow();
             }
             case REMOVE -> {
                 requireIdle(context, entry);
-                canvas.apply(context.ownerId(), context.projectId(), List.of(new CanvasService.Remove(item.id(), expected)));
+                canvas.apply(context.ownerId(), context.projectId(),
+                        List.of(new CanvasService.Remove(item.id(), expected)));
                 result.putArray("updatedIds").add(item.id().toString());
                 result.put("userVisibleSummary", "已从画布移除节点，原产物和历史仍保留");
                 return result;
@@ -145,16 +173,23 @@ public class CanvasAgentToolService {
                 if (entry.artifact().artifact().kind() == Artifact.Kind.TEXT) {
                     var source = entry.artifact().resourceDefaultVersion();
                     artifacts.requireCanvasVersion(context.ownerId(), context.projectId(), source.id());
-                    var copy = artifacts.createFromAgent(context.ownerId(), context.projectId(), run.id(), Artifact.Kind.TEXT,
+                    var copy = artifacts.createFromAgent(context.ownerId(), context.projectId(), run.id(),
+                            Artifact.Kind.TEXT,
                             item.title(), source.content());
-                    updated = canvas.apply(context.ownerId(), context.projectId(), List.of(new CanvasService.PlaceArtifact(targetId,
-                            copy.artifact().id(), x, y, item.width(), item.height(), item.zIndex(), item.groupId(), false)))
-                            .stream().filter(candidate -> candidate.item().id().equals(targetId)).findFirst().orElseThrow();
+                    updated = canvas
+                            .apply(context.ownerId(), context.projectId(),
+                                    List.of(new CanvasService.PlaceArtifact(targetId,
+                                            copy.artifact().id(), x, y, item.width(), item.height(), item.zIndex(),
+                                            item.groupId(), false)))
+                            .stream().filter(candidate -> candidate.item().id().equals(targetId)).findFirst()
+                            .orElseThrow();
                 } else {
-                    if (item.selectedVersionId() != null) artifacts.requireCanvasVersion(context.ownerId(),
-                            context.projectId(), item.selectedVersionId());
+                    if (item.selectedVersionId() != null)
+                        artifacts.requireCanvasVersion(context.ownerId(),
+                                context.projectId(), item.selectedVersionId());
                     updated = canvas.duplicate(context.ownerId(), context.projectId(), item.id(), targetId, expected,
-                            version(input, "expectedDraftVersion"), x, y, item.width(), item.height(), item.zIndex()).item();
+                            version(input, "expectedDraftVersion"), x, y, item.width(), item.height(), item.zIndex())
+                            .item();
                 }
                 result.putArray("createdIds").add(updated.item().id().toString());
                 result.put("userVisibleSummary", "已复制画布节点");
@@ -168,49 +203,70 @@ public class CanvasAgentToolService {
 
     /** Omitted fields retain the existing draft. Saving never submits a media task. */
     public JsonNode updateMediaDraft(TrustedToolContext context, AgentRun run, UUID operationId, String arguments) {
-        ObjectNode input = parse(arguments, Set.of("itemId", "expectedVersion", "prompt", "parameters", "durationSeconds", "capabilityId", "videoInputMode", "mediaInputs", "mentions"));
+        ObjectNode input = parse(arguments, Set.of("itemId", "expectedVersion", "prompt", "parameters",
+                "durationSeconds", "capabilityId", "videoInputMode", "mediaInputs", "mentions"));
         CanvasService.CanvasEntry entry = requireItem(context, run, uuid(input, "itemId"));
         requireUnlocked(entry.item());
         requireIdle(context, entry);
-        if (entry.artifact().artifact().kind() == Artifact.Kind.TEXT) throw invalid();
+        if (entry.artifact().artifact().kind() == Artifact.Kind.TEXT)
+            throw invalid();
         MediaDraft before = drafts.get(context.ownerId(), context.projectId(), entry.item().id());
         List<MediaDraftService.SaveMediaInput> mediaInputs = before.mediaInputs().stream()
-                .map(media -> new MediaDraftService.SaveMediaInput(media.versionId(), media.role(), media.color())).toList();
+                .map(media -> new MediaDraftService.SaveMediaInput(media.versionId(), media.role(), media.color()))
+                .toList();
         if (input.has("mediaInputs")) {
             JsonNode supplied = input.path("mediaInputs");
-            if (!supplied.isArray() || supplied.size() > 14) throw invalid();
+            if (!supplied.isArray() || supplied.size() > 14)
+                throw invalid();
             var parsed = new java.util.ArrayList<MediaDraftService.SaveMediaInput>();
             for (JsonNode value : supplied) {
-                if (!value.isObject() || value.size() != 2) throw invalid();
+                if (!value.isObject() || value.size() != 2)
+                    throw invalid();
                 UUID versionId = uuid(value, "versionId");
-                artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), run.contextSnapshot(), context.runId(), versionId);
+                artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), run.contextSnapshot(),
+                        context.runId(), versionId);
                 MediaDraft.InputRole role;
-                try { role = MediaDraft.InputRole.valueOf(value.path("role").asText()); }
-                catch (IllegalArgumentException malformed) { throw invalid(); }
+                try {
+                    role = MediaDraft.InputRole.valueOf(value.path("role").asText());
+                } catch (IllegalArgumentException malformed) {
+                    throw invalid();
+                }
                 parsed.add(new MediaDraftService.SaveMediaInput(versionId, role, "#7C3AED"));
             }
             mediaInputs = List.copyOf(parsed);
         }
         MediaDraft.VideoInputMode mode = before.videoInputMode();
         if (input.has("videoInputMode")) {
-            try { mode = MediaDraft.VideoInputMode.valueOf(input.path("videoInputMode").asText()); }
-            catch (IllegalArgumentException malformed) { throw invalid(); }
+            try {
+                mode = MediaDraft.VideoInputMode.valueOf(input.path("videoInputMode").asText());
+            } catch (IllegalArgumentException malformed) {
+                throw invalid();
+            }
         }
         JsonNode parameters = input.has("parameters") ? input.path("parameters") : before.parameters();
-        if (!parameters.isObject()) throw invalid();
-        Integer duration = input.has("durationSeconds") ? Integer.valueOf(integer(input, "durationSeconds")) : before.durationSeconds();
+        if (!parameters.isObject())
+            throw invalid();
+        Integer duration = input.has("durationSeconds")
+                ? Integer.valueOf(integer(input, "durationSeconds"))
+                : before.durationSeconds();
         List<MediaDraft.PromptMention> mentions = input.has("prompt") ? List.of() : before.mentions();
         if (input.has("mentions")) {
             JsonNode supplied = input.path("mentions");
-            if (!supplied.isArray() || supplied.size() > 1000) throw invalid();
+            if (!supplied.isArray() || supplied.size() > 1000)
+                throw invalid();
             var parsed = new java.util.ArrayList<MediaDraft.PromptMention>();
             for (JsonNode value : supplied) {
-                if (!value.isObject() || value.size() != 2) throw invalid();
+                if (!value.isObject() || value.size() != 2)
+                    throw invalid();
                 UUID versionId = uuid(value, "versionId");
-                artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), run.contextSnapshot(), context.runId(), versionId);
+                artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), run.contextSnapshot(),
+                        context.runId(), versionId);
                 MediaDraft.InputRole role;
-                try { role = MediaDraft.InputRole.valueOf(value.path("role").asText()); }
-                catch (IllegalArgumentException malformed) { throw invalid(); }
+                try {
+                    role = MediaDraft.InputRole.valueOf(value.path("role").asText());
+                } catch (IllegalArgumentException malformed) {
+                    throw invalid();
+                }
                 parsed.add(new MediaDraft.PromptMention(versionId, role));
             }
             mentions = List.copyOf(parsed);
@@ -218,15 +274,20 @@ public class CanvasAgentToolService {
         String prompt = input.has("prompt") ? text(input, "prompt", 20_000) : before.prompt();
         if (input.has("mediaInputs") && !input.has("mentions")) {
             var retained = mediaInputs;
-            mentions = mentions.stream().filter(mention -> retained.stream().anyMatch(media ->
-                    media.versionId().equals(mention.versionId()) && media.role() == mention.role())).toList();
-            if (!input.has("prompt")) prompt = drafts.pruneRemovedMentions(before.prompt(), before.mentions(), mentions);
+            mentions = mentions.stream()
+                    .filter(mention -> retained.stream().anyMatch(
+                            media -> media.versionId().equals(mention.versionId()) && media.role() == mention.role()))
+                    .toList();
+            if (!input.has("prompt"))
+                prompt = drafts.pruneRemovedMentions(before.prompt(), before.mentions(), mentions);
         }
         UUID capabilityId = input.has("capabilityId") ? uuid(input, "capabilityId") : before.capabilityId();
         MediaDraft saved = input.has("mediaInputs")
-                ? draftWrites.replaceInputs(context.ownerId(), context.projectId(), entry.item().id(), version(input, "expectedVersion"),
+                ? draftWrites.replaceInputs(context.ownerId(), context.projectId(), entry.item().id(),
+                        version(input, "expectedVersion"),
                         prompt, parameters, duration, capabilityId, mode, mediaInputs, mentions, before.styleId())
-                : draftWrites.save(context.ownerId(), context.projectId(), entry.item().id(), version(input, "expectedVersion"),
+                : draftWrites.save(context.ownerId(), context.projectId(), entry.item().id(),
+                        version(input, "expectedVersion"),
                         prompt, parameters, duration, capabilityId, mode, mediaInputs, mentions, before.styleId());
         ObjectNode result = result(operationId, "已保存媒体草稿，尚未生成");
         result.putArray("updatedIds").add(entry.item().id().toString());
@@ -236,20 +297,28 @@ public class CanvasAgentToolService {
 
     private CanvasService.CanvasEntry requireItem(TrustedToolContext context, AgentRun run, UUID itemId) {
         CanvasService.CanvasEntry entry = canvas.list(context.ownerId(), context.projectId()).stream()
-                .filter(candidate -> candidate.item().id().equals(itemId) && candidate.item().subjectType() == CanvasItem.SubjectType.ARTIFACT)
-                .findFirst().orElseThrow(() -> problem(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", ApiMessage.of("api.canvas-service.the-canvas-card-does-not-exist-or-the-current-user")));
+                .filter(candidate -> candidate.item().id().equals(itemId)
+                        && candidate.item().subjectType() == CanvasItem.SubjectType.ARTIFACT)
+                .findFirst().orElseThrow(() -> problem(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND",
+                        ApiMessage.of("api.canvas-service.the-canvas-card-does-not-exist-or-the-current-user")));
         return entry;
     }
 
     private void requireUnlocked(CanvasItem item) {
-        if (item.locked()) throw problem(HttpStatus.CONFLICT, "CANVAS_ITEM_LOCKED", ApiMessage.of("api.creative-artifact-tool-service.locked-cards-cannot-be-arranged-by-the-agent"));
+        if (item.locked())
+            throw problem(HttpStatus.CONFLICT, "CANVAS_ITEM_LOCKED",
+                    ApiMessage.of("api.creative-artifact-tool-service.locked-cards-cannot-be-arranged-by-the-agent"));
     }
 
     private void requireIdle(TrustedToolContext context, CanvasService.CanvasEntry entry) {
-        if (entry.artifact().artifact().kind() == Artifact.Kind.TEXT) return;
-        if (mediaTasks.list(context.ownerId(), context.projectId(), entry.item().subjectId(), entry.item().id()).stream()
-                .anyMatch(task -> Set.of(Task.Status.READY, Task.Status.SUBMITTING, Task.Status.RUNNING, Task.Status.WAITING_PROVIDER).contains(task.status())))
-            throw problem(HttpStatus.CONFLICT, "CANVAS_ITEM_BUSY", ApiMessage.of("api.canvas-agent-tool-service.node-is-running"));
+        if (entry.artifact().artifact().kind() == Artifact.Kind.TEXT)
+            return;
+        if (mediaTasks.list(context.ownerId(), context.projectId(), entry.item().subjectId(), entry.item().id())
+                .stream()
+                .anyMatch(task -> Set.of(Task.Status.READY, Task.Status.SUBMITTING, Task.Status.RUNNING,
+                        Task.Status.WAITING_PROVIDER).contains(task.status())))
+            throw problem(HttpStatus.CONFLICT, "CANVAS_ITEM_BUSY",
+                    ApiMessage.of("api.canvas-agent-tool-service.node-is-running"));
     }
 
     private ObjectNode describe(TrustedToolContext context, CanvasService.CanvasEntry entry) {
@@ -265,8 +334,11 @@ public class CanvasAgentToolService {
         if (item.subjectType() == CanvasItem.SubjectType.CHARACTER)
             return dev.agenvas.canvas.application.CharacterNodeSummary.append(data, item, entry.characterNode());
         data.put("artifactId", item.subjectId().toString());
-        var version = entry.artifact().artifact().kind() == Artifact.Kind.TEXT ? entry.artifact().resourceDefaultVersion() : entry.selectedVersion();
-        if (version != null) data.put("selectedVersionId", version.id().toString());
+        var version = entry.artifact().artifact().kind() == Artifact.Kind.TEXT
+                ? entry.artifact().resourceDefaultVersion()
+                : entry.selectedVersion();
+        if (version != null)
+            data.put("selectedVersionId", version.id().toString());
         if (entry.artifact().artifact().kind() != Artifact.Kind.TEXT)
             data.set("mediaDraft", mapper.valueToTree(drafts.get(context.ownerId(), context.projectId(), item.id())));
         var bindings = data.putArray("characterBindings");
@@ -282,10 +354,14 @@ public class CanvasAgentToolService {
         // The character cursor is independent of the canvas cursor, including on an empty canvas.
         List<CharacterProfile> directory = index.characters().stream()
                 .sorted(Comparator.comparing(character -> character.id().toString())).toList();
-        if (offset > directory.size()) throw invalid();
+        if (offset > directory.size())
+            throw invalid();
         int end = offset + Math.min(limit, directory.size() - offset);
         result.put("characterOffset", offset).put("characterTotal", directory.size());
-        if (end < directory.size()) result.put("nextCharacterOffset", end); else result.putNull("nextCharacterOffset");
+        if (end < directory.size())
+            result.put("nextCharacterOffset", end);
+        else
+            result.putNull("nextCharacterOffset");
         var data = result.putArray("characters");
         directory.subList(offset, end).forEach(character -> {
             var summary = data.addObject().put("characterId", character.id().toString())
@@ -303,7 +379,8 @@ public class CanvasAgentToolService {
         UUID characterId = uuid(input, "characterId");
         int offset = input.has("characterTextOffset") ? integer(input, "characterTextOffset") : 0;
         int limit = input.has("characterTextLimit") ? integer(input, "characterTextLimit") : MAX_CHARACTER_TEXT_PAGE;
-        if (limit < 1 || limit > MAX_CHARACTER_TEXT_PAGE || offset > 0 && !input.has("expectedCharacterVersion")) throw invalid();
+        if (limit < 1 || limit > MAX_CHARACTER_TEXT_PAGE || offset > 0 && !input.has("expectedCharacterVersion"))
+            throw invalid();
         CharacterProfile character = index.characters().stream().filter(profile -> profile.id().equals(characterId))
                 .findFirst().orElseThrow(() -> problem(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND",
                         ApiMessage.of("api.project-service.the-project-does-not-exist-or-the-current-user-does")));
@@ -311,14 +388,18 @@ public class CanvasAgentToolService {
             throw problem(HttpStatus.CONFLICT, "CHARACTER_VERSION_CONFLICT", ApiMessage.of("api.character.conflict"));
         String text = characterSafeText(character).toString();
         int total = text.codePointCount(0, text.length());
-        if (offset > total) throw invalid();
+        if (offset > total)
+            throw invalid();
         int end = offset + Math.min(limit, total - offset);
         ObjectNode detail = result.putObject("characterDetails").put("characterId", character.id().toString())
                 .put("characterVersion", character.version()).put("format", "JSON")
                 .put("text", text.substring(text.offsetByCodePoints(0, offset), text.offsetByCodePoints(0, end)));
         ObjectNode page = detail.putObject("textPage").put("offset", offset).put("endOffset", end)
                 .put("total", total).put("truncated", offset > 0 || end < total);
-        if (end < total) page.put("nextOffset", end); else page.putNull("nextOffset");
+        if (end < total)
+            page.put("nextOffset", end);
+        else
+            page.putNull("nextOffset");
     }
 
     /** Explicit safe projection: do not serialize profile records, reference IDs, speaker IDs
@@ -330,11 +411,14 @@ public class CanvasAgentToolService {
         var looks = result.putArray("looks");
         for (CharacterLook look : character.content().looks()) {
             var entry = looks.addObject().put("lookId", look.id().toString()).put("name", look.name())
-                    .put("clothing", look.clothing()).put("expression", look.expression()).put("description", look.description());
+                    .put("clothing", look.clothing()).put("expression", look.expression())
+                    .put("description", look.description());
             var views = entry.putArray("views");
-            look.views().forEach(view -> views.addObject().put("purpose", view.purpose()).put("description", view.description()));
+            look.views().forEach(
+                    view -> views.addObject().put("purpose", view.purpose()).put("description", view.description()));
         }
-        if (character.content().voice() != null) result.put("voiceDescription", character.content().voice().description());
+        if (character.content().voice() != null)
+            result.put("voiceDescription", character.content().voice().description());
         return result;
     }
 
@@ -346,9 +430,11 @@ public class CanvasAgentToolService {
         for (CharacterSnapshot snapshot : binding.snapshots()) {
             var entry = snapshots.addObject().put("characterId", snapshot.characterId().toString())
                     .put("characterVersion", snapshot.characterVersion()).put("useAppearance", snapshot.useAppearance())
-                    .put("useVoice", snapshot.useVoice()).put("hasVoice", snapshot.voice() != null).put("textDetailsOmitted", true);
+                    .put("useVoice", snapshot.useVoice()).put("hasVoice", snapshot.voice() != null)
+                    .put("textDetailsOmitted", true);
             putSummaryName(entry, snapshot.name());
-            if (snapshot.look() != null) entry.set("look", characterLookSummary(snapshot.look()));
+            if (snapshot.look() != null)
+                entry.set("look", characterLookSummary(snapshot.look()));
         }
         return summary;
     }
@@ -368,35 +454,59 @@ public class CanvasAgentToolService {
     private ObjectNode result(UUID operationId, String summary) {
         ObjectNode result = mapper.createObjectNode().put("status", ToolResultStatus.SUCCEEDED.name())
                 .put("operationId", operationId.toString()).put("userVisibleSummary", summary);
-        result.putArray("createdIds"); result.putArray("updatedIds"); result.putObject("affectedVersions");
-        result.putArray("taskIds"); result.putNull("errorCode"); return result;
+        result.putArray("createdIds");
+        result.putArray("updatedIds");
+        result.putObject("affectedVersions");
+        result.putArray("taskIds");
+        result.putNull("errorCode");
+        return result;
     }
     private ObjectNode parse(String arguments, Set<String> fields) {
         JsonNode parsed;
-        try { parsed = mapper.readTree(arguments); } catch (RuntimeException malformed) { throw invalid(); }
-        if (!(parsed instanceof ObjectNode object) || object.propertyNames().stream().anyMatch(key -> !fields.contains(key))) throw invalid();
+        try {
+            parsed = mapper.readTree(arguments);
+        } catch (RuntimeException malformed) {
+            throw invalid();
+        }
+        if (!(parsed instanceof ObjectNode object)
+                || object.propertyNames().stream().anyMatch(key -> !fields.contains(key)))
+            throw invalid();
         return object;
     }
     private UUID uuid(JsonNode input, String field) {
-        if (!input.path(field).isTextual()) throw invalid();
-        try { return UUID.fromString(input.path(field).asText()); } catch (IllegalArgumentException malformed) { throw invalid(); }
+        if (!input.path(field).isTextual())
+            throw invalid();
+        try {
+            return UUID.fromString(input.path(field).asText());
+        } catch (IllegalArgumentException malformed) {
+            throw invalid();
+        }
     }
     private long version(JsonNode input, String field) {
         JsonNode value = input.path(field);
-        if (!value.isIntegralNumber() || !value.canConvertToLong() || value.longValue() < 0) throw invalid();
+        if (!value.isIntegralNumber() || !value.canConvertToLong() || value.longValue() < 0)
+            throw invalid();
         return value.longValue();
     }
     private int integer(JsonNode input, String field) {
-        long value = version(input, field); if (value > Integer.MAX_VALUE) throw invalid(); return (int) value;
+        long value = version(input, field);
+        if (value > Integer.MAX_VALUE)
+            throw invalid();
+        return (int) value;
     }
     private BigDecimal decimal(JsonNode input, String field) {
-        if (!input.path(field).isNumber()) throw invalid(); return input.path(field).decimalValue();
+        if (!input.path(field).isNumber())
+            throw invalid();
+        return input.path(field).decimalValue();
     }
     private String text(JsonNode input, String field, int max) {
-        if (!input.path(field).isTextual() || input.path(field).asText().length() > max) throw invalid(); return input.path(field).asText();
+        if (!input.path(field).isTextual() || input.path(field).asText().length() > max)
+            throw invalid();
+        return input.path(field).asText();
     }
     private ApiProblemException invalid() {
-        return problem(HttpStatus.BAD_REQUEST, "TOOL_ARGUMENT_INVALID", ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
+        return problem(HttpStatus.BAD_REQUEST, "TOOL_ARGUMENT_INVALID",
+                ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
     }
     private ApiProblemException problem(HttpStatus status, String code, ApiMessage message) {
         return new ApiProblemException(status, code, message, message, false);

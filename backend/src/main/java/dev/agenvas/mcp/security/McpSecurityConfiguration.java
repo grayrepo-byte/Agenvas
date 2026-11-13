@@ -23,7 +23,8 @@ public class McpSecurityConfiguration {
             @Qualifier("handlerExceptionResolver") HandlerExceptionResolver resolver,
             @Value("${agenvas.recovery-mode:false}") boolean recoveryMode) throws Exception {
         return http
-                .securityMatcher(request -> (request.getContextPath() + McpHttpEndpoints.TRANSPORT).equals(request.getRequestURI())
+                .securityMatcher(request -> (request.getContextPath() + McpHttpEndpoints.TRANSPORT)
+                        .equals(request.getRequestURI())
                         || (request.getContextPath() + McpHttpEndpoints.UPLOAD).equals(request.getRequestURI()))
                 .authorizeHttpRequests(authorize -> authorize.anyRequest().authenticated())
                 .csrf(csrf -> csrf.disable())
@@ -33,7 +34,8 @@ public class McpSecurityConfiguration {
                 .httpBasic(basic -> basic.disable())
                 .formLogin(form -> form.disable())
                 .logout(logout -> logout.disable())
-                .addFilterBefore(new McpBearerAuthenticationFilter(tokens, resolver), AnonymousAuthenticationFilter.class)
+                .addFilterBefore(new McpBearerAuthenticationFilter(tokens, resolver),
+                        AnonymousAuthenticationFilter.class)
                 .addFilterAfter(new McpRequestLimitsFilter(resolver, recoveryMode), McpBearerAuthenticationFilter.class)
                 .build();
     }

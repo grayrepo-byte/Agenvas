@@ -47,7 +47,7 @@ class ApiI18nTest {
         assertThat(SupportedLocales.negotiate("ja-JP")).isEqualTo(Locale.JAPANESE);
         assertThat(SupportedLocales.negotiate("zh-Hans-CN")).isEqualTo(Locale.CHINESE);
         assertThat(SupportedLocales.negotiate("en;q=0,ja;q=0.5")).isEqualTo(Locale.JAPANESE);
-        for (String value : new String[] {"", "fr", "en;q=invalid", "en;q=0"}) {
+        for (String value : new String[]{"", "fr", "en;q=invalid", "en;q=0"}) {
             assertThat(SupportedLocales.negotiate(value)).isEqualTo(SupportedLocales.DEFAULT);
         }
     }
@@ -71,14 +71,15 @@ class ApiI18nTest {
     @Test
     void realDomainValidationPreservesDynamicDetailInEveryLanguage() throws Exception {
         String[] details = {
-            "Video generation parameters contain an unknown field: extra.",
-            "视频生成参数包含未知字段：extra。",
-            "Параметры генерации видео содержат неизвестное поле: extra.",
-            "動画生成パラメータに不明なフィールドがあります：extra。"
+                "Video generation parameters contain an unknown field: extra.",
+                "视频生成参数包含未知字段：extra。",
+                "Параметры генерации видео содержат неизвестное поле: extra.",
+                "動画生成パラメータに不明なフィールドがあります：extra。"
         };
         for (int index = 0; index < SupportedLocales.SUPPORTED.size(); index++) {
-            mvc.perform(post("/video").header(HttpHeaders.ACCEPT_LANGUAGE, SupportedLocales.SUPPORTED.get(index).toLanguageTag())
-                            .contentType(MediaType.APPLICATION_JSON).content("{\"extra\":\"secret value never echoed\"}"))
+            mvc.perform(post("/video")
+                    .header(HttpHeaders.ACCEPT_LANGUAGE, SupportedLocales.SUPPORTED.get(index).toLanguageTag())
+                    .contentType(MediaType.APPLICATION_JSON).content("{\"extra\":\"secret value never echoed\"}"))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.detail").value(details[index]))
                     .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
@@ -87,9 +88,13 @@ class ApiI18nTest {
 
     @Test
     void placeholdersAreSubstitutedOnceWithoutFormattingIdsOrInterpretingValues() {
-        ApiMessage message = ApiMessage.of("api.direct-media-task-service.the-selected-image-capability-accepts-at-most-reference-images", 1234567);
-        assertThat(messages.text(message, Locale.ENGLISH)).isEqualTo("The selected image capability accepts at most 1234567 reference images.");
-        ApiMessage special = ApiMessage.of("api.video-generation-parameters.video-generation-parameters-contain-an-unknown-field", "$1\\{0}'");
+        ApiMessage message = ApiMessage.of(
+                "api.direct-media-task-service.the-selected-image-capability-accepts-at-most-reference-images",
+                1234567);
+        assertThat(messages.text(message, Locale.ENGLISH))
+                .isEqualTo("The selected image capability accepts at most 1234567 reference images.");
+        ApiMessage special = ApiMessage
+                .of("api.video-generation-parameters.video-generation-parameters-contain-an-unknown-field", "$1\\{0}'");
         assertThat(messages.text(special, Locale.ENGLISH)).endsWith("$1\\{0}'.");
         assertThatThrownBy(() -> ApiMessage.of(message.key())).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> ApiMessage.of("unregistered.message")).isInstanceOf(IllegalArgumentException.class);
@@ -98,13 +103,13 @@ class ApiI18nTest {
     @Test
     void invalidBodiesAndUnexpectedErrorsAreLocalizedWithoutEchoingInputs() throws Exception {
         mvc.perform(post("/validate").header(HttpHeaders.ACCEPT_LANGUAGE, "ru")
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"\"}"))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.fieldErrors[0].field").value("name"))
                 .andExpect(jsonPath("$.fieldErrors[0].message").value("не должно быть пустым"));
         mvc.perform(post("/validate").header(HttpHeaders.ACCEPT_LANGUAGE, "en")
-                        .contentType(MediaType.APPLICATION_JSON).content("broken-json"))
+                .contentType(MediaType.APPLICATION_JSON).content("broken-json"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
         var result = mvc.perform(get("/unexpected").header(HttpHeaders.ACCEPT_LANGUAGE, "ja"))
@@ -117,16 +122,16 @@ class ApiI18nTest {
     @Test
     void actualSetupValidationUsesCustomCatalogMessagesInAllFourLanguages() throws Exception {
         String[] explanations = {
-            "Use only letters, digits, dots, underscores or hyphens.",
-            "只能包含字母、数字、点、下划线和连字符。",
-            "Используйте только буквы, цифры, точки, подчёркивания или дефисы.",
-            "英字、数字、ドット、アンダースコア、ハイフンのみ使用できます。"
+                "Use only letters, digits, dots, underscores or hyphens.",
+                "只能包含字母、数字、点、下划线和连字符。",
+                "Используйте только буквы, цифры, точки, подчёркивания или дефисы.",
+                "英字、数字、ドット、アンダースコア、ハイフンのみ使用できます。"
         };
         for (int index = 0; index < SupportedLocales.SUPPORTED.size(); index++) {
             var response = mvc.perform(post("/setup-validation")
-                            .header(HttpHeaders.ACCEPT_LANGUAGE, SupportedLocales.SUPPORTED.get(index).toLanguageTag())
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("{\"loginName\":\"bad name\",\"password\":\"private-fixture-password\"}"))
+                    .header(HttpHeaders.ACCEPT_LANGUAGE, SupportedLocales.SUPPORTED.get(index).toLanguageTag())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"loginName\":\"bad name\",\"password\":\"private-fixture-password\"}"))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.fieldErrors[0].field").value("loginName"))
                     .andExpect(jsonPath("$.fieldErrors[0].message").value(explanations[index])).andReturn();
@@ -137,7 +142,8 @@ class ApiI18nTest {
 
     @Test
     void storedDescriptorsAndHistoricalStaticErrorsResolveForEachReader() {
-        ApiMessage message = ApiMessage.of("api.video-generation-parameters.video-generation-parameters-contain-an-unknown-field", "extra");
+        ApiMessage message = ApiMessage
+                .of("api.video-generation-parameters.video-generation-parameters-contain-an-unknown-field", "extra");
         String descriptor = mapper.writeValueAsString(message);
         for (Locale locale : SupportedLocales.SUPPORTED) {
             assertThat(messages.persisted(descriptor, request(locale.toLanguageTag())))
@@ -174,13 +180,20 @@ class ApiI18nTest {
                     ApiMessage.of("api.security-configuration.please-sign-in-to-continue"), false);
         }
         @GetMapping("/unexpected")
-        void unexpected() { throw new IllegalStateException("private implementation detail"); }
+        void unexpected() {
+            throw new IllegalStateException("private implementation detail");
+        }
         @PostMapping("/validate")
-        void validate(@Valid @RequestBody Input input) {}
+        void validate(@Valid @RequestBody Input input) {
+        }
         @PostMapping("/video")
-        void video(@RequestBody JsonNode parameters) { VideoGenerationParameters.parse(parameters); }
+        void video(@RequestBody JsonNode parameters) {
+            VideoGenerationParameters.parse(parameters);
+        }
         @PostMapping("/setup-validation")
-        void setup(@Valid @RequestBody AuthenticationController.SetupRequest request) {}
+        void setup(@Valid @RequestBody AuthenticationController.SetupRequest request) {
+        }
     }
-    record Input(@NotBlank String name) {}
+    record Input(@NotBlank String name) {
+    }
 }

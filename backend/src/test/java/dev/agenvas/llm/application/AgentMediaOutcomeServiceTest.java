@@ -77,7 +77,8 @@ class AgentMediaOutcomeServiceTest {
         var saved = org.mockito.ArgumentCaptor.forClass(AgentMediaApproval.class);
         verify(approvals).update(saved.capture(), eq(0L));
         assertThat(saved.getValue().status()).isEqualTo(status == Task.Status.SUCCEEDED
-                ? AgentMediaApproval.Status.SUCCEEDED : AgentMediaApproval.Status.FAILED);
+                ? AgentMediaApproval.Status.SUCCEEDED
+                : AgentMediaApproval.Status.FAILED);
         assertThat(saved.getValue().result().toString()).doesNotContain("PRIVATE_RECEIPT", "PRIVATE_BILLING");
         verify(tasks).create(eq(owner), eq(project), eq(runId), eq("agent-turn-1"),
                 eq(Task.Kind.AGENT_TURN), any(), eq(1));
@@ -91,7 +92,8 @@ class AgentMediaOutcomeServiceTest {
         receipt.putObject("data").putArray("outputs").addObject().put("kind", "VIDEO").putObject("preview")
                 .put("capabilityId", "model-original").putObject("parameters").put("videoResolution", "768p");
         var revised = approval(AgentMediaApproval.Status.APPROVED, NOW.plusSeconds(60))
-                .transition(AgentMediaApproval.Status.FAILED, List.of(taskId), mapper.createObjectNode().put("status", "FAILED"),
+                .transition(AgentMediaApproval.Status.FAILED, List.of(taskId),
+                        mapper.createObjectNode().put("status", "FAILED"),
                         NOW.plusSeconds(60), "approved", "hash");
         var output = (tools.jackson.databind.node.ObjectNode) revised.targets().path("outputs").get(0);
         output.put("kind", "VIDEO").put("title", "Revised video");
@@ -110,7 +112,8 @@ class AgentMediaOutcomeServiceTest {
     @Test
     void toolReplyIsUnavailableUntilFinalAndKeepsTheOriginalReceiptImmutable() {
         var receipt = mapper.createObjectNode().put("approvalId", approvalId.toString()).put("awaitingMedia", true);
-        var preview = receipt.putObject("data").putArray("outputs").addObject().put("kind", "IMAGE").putObject("preview");
+        var preview = receipt.putObject("data").putArray("outputs").addObject().put("kind", "IMAGE")
+                .putObject("preview");
         preview.putObject("creativeSkill").put("skillVersionId", UUID.randomUUID().toString())
                 .put("skillMd", "SYNTHETIC_FULL_BODY");
         when(approvals.findByToolCall(project, runId, 0, "call-1"))
@@ -119,13 +122,15 @@ class AgentMediaOutcomeServiceTest {
                 .isInstanceOf(IllegalStateException.class);
         var completed = approval(AgentMediaApproval.Status.APPROVED, NOW.plusSeconds(60))
                 .transition(AgentMediaApproval.Status.REJECTED, List.of(),
-                        mapper.createObjectNode().put("schemaVersion", 1).put("status", "REJECTED"), null, "key", "hash");
+                        mapper.createObjectNode().put("schemaVersion", 1).put("status", "REJECTED"), null, "key",
+                        "hash");
         when(approvals.findByToolCall(project, runId, 0, "call-1")).thenReturn(Optional.of(completed));
         var reply = service.finalToolResult(project, runId, 0, "call-1", receipt);
         assertThat(reply.path("awaitingMedia").asBoolean()).isFalse();
         assertThat(reply.at("/mediaApproval/status").asText()).isEqualTo("REJECTED");
         assertThat(reply.toString()).doesNotContain("skillMd", "SYNTHETIC_FULL_BODY");
-        assertThat(receipt.at("/data/outputs/0/preview/creativeSkill/skillMd").asText()).isEqualTo("SYNTHETIC_FULL_BODY");
+        assertThat(receipt.at("/data/outputs/0/preview/creativeSkill/skillMd").asText())
+                .isEqualTo("SYNTHETIC_FULL_BODY");
         assertThat(receipt.path("awaitingMedia").asBoolean()).isTrue();
         assertThat(receipt.has("mediaApproval")).isFalse();
     }

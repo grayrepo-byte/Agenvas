@@ -40,12 +40,12 @@ public class JooqToolExecutionRepository implements ToolExecutionRepository {
     /** JSONB 只提取服务端写入的公开摘要和业务状态，避免载入私有结果字段。 */
     @Override
     public List<RunAction> listCompletedActions(UUID projectId, UUID runId, int limit) {
-        Field<String> resultStatus =
-                DSL.jsonbGetAttributeAsText(TOOL_EXECUTION.RESULT_JSON, "status").as("result_status");
-        Field<String> summary =
-                DSL.jsonbGetAttributeAsText(TOOL_EXECUTION.RESULT_JSON, "userVisibleSummary").as("summary");
+        Field<String> resultStatus = DSL.jsonbGetAttributeAsText(TOOL_EXECUTION.RESULT_JSON, "status")
+                .as("result_status");
+        Field<String> summary = DSL.jsonbGetAttributeAsText(TOOL_EXECUTION.RESULT_JSON, "userVisibleSummary")
+                .as("summary");
         return dsl.select(TOOL_EXECUTION.ID, TOOL_EXECUTION.STEP_INDEX, TOOL_EXECUTION.TOOL_NAME,
-                        resultStatus, summary, TOOL_EXECUTION.COMPLETED_AT)
+                resultStatus, summary, TOOL_EXECUTION.COMPLETED_AT)
                 .from(TOOL_EXECUTION)
                 .where(TOOL_EXECUTION.PROJECT_ID.eq(projectId))
                 .and(TOOL_EXECUTION.RUN_ID.eq(runId))

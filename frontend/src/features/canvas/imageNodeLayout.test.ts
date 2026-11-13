@@ -1,14 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { imageAspectRatio, imageDraftAspectRatio, imageNodeResizeBounds, persistableNodeSize, projectImageNodeSize } from "./imageNodeLayout";
+import {
+  imageAspectRatio,
+  imageDraftAspectRatio,
+  imageNodeResizeBounds,
+  persistableNodeSize,
+  projectImageNodeSize,
+} from "./imageNodeLayout";
 
 describe("image node layout", () => {
   it.each(["1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"] as const)(
-    "projects the generation ratio %s while preserving the long edge", (ratio) => {
+    "projects the generation ratio %s while preserving the long edge",
+    ratio => {
       const [width, height] = ratio.split(":").map(Number);
       const size = projectImageNodeSize({ width: 225, height: 300 }, imageDraftAspectRatio(ratio));
       expect(size.width / size.height).toBeCloseTo(width! / height!);
       expect(Math.max(size.width, size.height)).toBe(300);
-    });
+    },
+  );
 
   it("leaves AUTO and unset ratios to the existing image or stored dimensions", () => {
     expect(imageDraftAspectRatio("AUTO")).toBeUndefined();
@@ -30,13 +38,18 @@ describe("image node layout", () => {
 
   it("keeps empty cards and unavailable or invalid metadata at their existing size", () => {
     const size = { width: 225, height: 300 };
-    for (const asset of [undefined, { width: null, height: 10 }, { width: 10, height: 0 },
-      { width: -1, height: 10 }, { width: NaN, height: 10 }]) {
+    for (const asset of [
+      undefined,
+      { width: null, height: 10 },
+      { width: 10, height: 0 },
+      { width: -1, height: 10 },
+      { width: NaN, height: 10 },
+    ]) {
       expect(projectImageNodeSize(size, imageAspectRatio(asset))).toEqual(size);
     }
   });
 
-  it.each([20, 0.05])("restores extreme ratio %s after saving storage-safe dimensions and refreshing", (ratio) => {
+  it.each([20, 0.05])("restores extreme ratio %s after saving storage-safe dimensions and refreshing", ratio => {
     const visible = projectImageNodeSize({ width: 225, height: 300 }, ratio);
     const saved = persistableNodeSize(visible);
     expect(saved.width).toBeGreaterThanOrEqual(120);

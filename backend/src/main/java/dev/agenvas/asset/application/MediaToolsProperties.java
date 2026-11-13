@@ -31,7 +31,7 @@ public record MediaToolsProperties(Path ffmpeg, Path ffprobe, Duration timeout) 
 
     /** 应用启动时仅从三个固定本地目录中解析媒体工具路径。 */
     private static Path defaultBinary(String name) {
-        for (String directory : new String[] {"/usr/bin", "/opt/homebrew/bin", "/usr/local/bin"}) {
+        for (String directory : new String[]{"/usr/bin", "/opt/homebrew/bin", "/usr/local/bin"}) {
             Path candidate = Path.of(directory, name);
             if (Files.isExecutable(candidate)) {
                 return candidate;

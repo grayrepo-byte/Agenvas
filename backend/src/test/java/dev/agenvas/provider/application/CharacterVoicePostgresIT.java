@@ -52,25 +52,39 @@ import tools.jackson.databind.ObjectMapper;
         "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class CharacterVoicePostgresIT {
     private static final String SPEAKER = "synthetic_voice_1";
-    @TempDir static Path storage;
-    @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
-    @DynamicPropertySource static void database(DynamicPropertyRegistry properties) {
+    @TempDir
+    static Path storage;
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    @DynamicPropertySource
+    static void database(DynamicPropertyRegistry properties) {
         properties.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         properties.add("spring.datasource.username", POSTGRES::getUsername);
         properties.add("spring.datasource.password", POSTGRES::getPassword);
         properties.add("agenvas.storage.root", () -> storage.toString());
     }
-    @Autowired IdentityService identities;
-    @Autowired ProjectService projects;
-    @Autowired AssetService assets;
-    @Autowired ArtifactService artifacts;
-    @Autowired CanvasService canvas;
-    @Autowired MediaDraftService drafts;
-    @Autowired CharacterService characters;
-    @Autowired DirectMediaTaskService media;
-    @Autowired TaskService tasks;
-    @Autowired AudioReferenceLoader audioReferences;
-    @Autowired ObjectMapper mapper;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    ProjectService projects;
+    @Autowired
+    AssetService assets;
+    @Autowired
+    ArtifactService artifacts;
+    @Autowired
+    CanvasService canvas;
+    @Autowired
+    MediaDraftService drafts;
+    @Autowired
+    CharacterService characters;
+    @Autowired
+    DirectMediaTaskService media;
+    @Autowired
+    TaskService tasks;
+    @Autowired
+    AudioReferenceLoader audioReferences;
+    @Autowired
+    ObjectMapper mapper;
 
     @Test
     void voiceApplicationFreezesExactAudioAndSpeakerAndRejectsAnImageTargetAtomically() {
@@ -105,8 +119,10 @@ class CharacterVoicePostgresIT {
             assertThat(input.role()).isEqualTo(MediaDraft.InputRole.AUDIO_REFERENCE);
         });
         assertThat(persisted.parameters().path("speaker").asText()).isEqualTo(SPEAKER);
-        var preflight = media.preflight(owner.userId(), project.id(), output.artifact().id(), itemId, applied.draft().version());
-        assertThat(preflight.safeSummary().at("/characterBindings/0/voice/versionId").asText()).isEqualTo(originalVoice.toString());
+        var preflight = media.preflight(owner.userId(), project.id(), output.artifact().id(), itemId,
+                applied.draft().version());
+        assertThat(preflight.safeSummary().at("/characterBindings/0/voice/versionId").asText())
+                .isEqualTo(originalVoice.toString());
         assertThat(preflight.safeSummary().at("/characterContribution/speakerId").asText()).isEqualTo(SPEAKER);
         Task accepted = media.run(owner.userId(), project.id(), output.artifact().id(), itemId,
                 applied.draft().version(), "character-voice-acceptance");
@@ -126,14 +142,16 @@ class CharacterVoicePostgresIT {
                 .satisfies(reference -> assertThat(reference.bytes()).isEqualTo(originalBytes));
 
         var revised = characters.save(owner.userId(), project.id(), characterId,
-                new SaveCharacter(UUID.randomUUID(), character.version(), content(replacementVoice, "synthetic_voice_2")));
+                new SaveCharacter(UUID.randomUUID(), character.version(),
+                        content(replacementVoice, "synthetic_voice_2")));
         Task saved = tasks.get(owner.userId(), project.id(), accepted.id());
         assertJsonSemantics(saved.input().path("mediaInput"), frozen);
         assertThat(audioReferences.load(owner.userId(), saved, true)).singleElement()
                 .satisfies(reference -> assertThat(reference.bytes()).isEqualTo(originalBytes));
         assertThat(tasks.listProviderAttempts(owner.userId(), project.id(), accepted.id())).isEmpty();
 
-        var image = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE, "Image without voice support", null);
+        var image = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE, "Image without voice support",
+                null);
         UUID imageItem = place(owner.userId(), project.id(), image.artifact().id(), 1000);
         var imageDraft = drafts.save(owner.userId(), project.id(), imageItem, 0, "Portrait only",
                 mapper.createObjectNode(), null, null, null, List.of(), List.of(), null);
@@ -148,7 +166,8 @@ class CharacterVoicePostgresIT {
                         ClearMode.REMOVE_OWNED, "0".repeat(64))));
         assertJsonSemantics(mapper.valueToTree(drafts.get(owner.userId(), project.id(), imageItem)), before);
         assertThat(media.list(owner.userId(), project.id(), image.artifact().id(), imageItem)).isEmpty();
-        assertThat(characters.list(owner.userId(), project.id()).bindings()).noneMatch(binding -> binding.canvasItemId().equals(imageItem));
+        assertThat(characters.list(owner.userId(), project.id()).bindings())
+                .noneMatch(binding -> binding.canvasItemId().equals(imageItem));
     }
 
     private void assertUnsupported(org.assertj.core.api.ThrowableAssert.ThrowingCallable call) {
@@ -196,6 +215,8 @@ class CharacterVoicePostgresIT {
             if (AudioSystem.write(input, AudioFileFormat.Type.WAVE, output) <= 0)
                 throw new IllegalStateException("WAV encoder unavailable");
             return output.toByteArray();
-        } catch (IOException failure) { throw new IllegalStateException("Cannot create synthetic WAV", failure); }
+        } catch (IOException failure) {
+            throw new IllegalStateException("Cannot create synthetic WAV", failure);
+        }
     }
 }

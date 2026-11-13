@@ -1,60 +1,119 @@
-import { describe, expect, it } from 'vitest';
-import { clipEndMs, compositionClipAt, compositionFade, compositionOutput, compositionSourceTime, createCompositionTimeline, frameTimeMs, trimCompositionClip, visibleCompositionCaptions, type CompositionSourceClip } from './compositionTimeline';
-const clip = (id: string, overrides: Partial<CompositionSourceClip> = {}): CompositionSourceClip => ({ id, title: id, src: `/${id}.mp4`, sourceDurationMs: 10000, sourceStartMs: 1000, sourceEndMs: 2000, speed: 1, fadeMs: 0, ...overrides });
-describe('composition timeline', () => {
-  it.each([[0, 1033, 1, 30], [100, 1050, 1, 31], [125, 1049, .5, 62], [300, 1033, 2, 15], [150, 1300, 1.15, 33]])(
-    'places fractional source interval %sms + %sms at speed %s on frame %s', (start, duration, speed, frames) => {
-      const interval = { sourceStartMs: start, sourceEndMs: start + duration, speed };
-      const timeline = createCompositionTimeline([clip('red', interval), clip('blue', interval)]);
-      expect(timeline.clips.map((item) => [item.startFrame, item.frames])).toEqual([[0, frames], [frames, frames]]);
-      expect(compositionClipAt(timeline, frameTimeMs(frames) - .01)?.id).toBe('red');
-      expect(compositionClipAt(timeline, frameTimeMs(frames))?.id).toBe('blue');
-    });
-  it('retains integer frame offsets across fractional clip lengths and maps each boundary to the next clip', () => {
-    const timeline = createCompositionTimeline([clip('one', { sourceEndMs: 2133, speed: 2 }), clip('two', { speed: .5 })]);
-    expect(timeline.clips.map((item) => [item.startFrame, item.frames])).toEqual([[0, 16], [16, 60]]);
+import { describe, expect, it } from "vitest";
+import {
+  clipEndMs,
+  compositionClipAt,
+  compositionFade,
+  compositionOutput,
+  compositionSourceTime,
+  createCompositionTimeline,
+  frameTimeMs,
+  trimCompositionClip,
+  visibleCompositionCaptions,
+  type CompositionSourceClip,
+} from "./compositionTimeline";
+const clip = (id: string, overrides: Partial<CompositionSourceClip> = {}): CompositionSourceClip => ({
+  id,
+  title: id,
+  src: `/${id}.mp4`,
+  sourceDurationMs: 10000,
+  sourceStartMs: 1000,
+  sourceEndMs: 2000,
+  speed: 1,
+  fadeMs: 0,
+  ...overrides,
+});
+describe("composition timeline", () => {
+  it.each([
+    [0, 1033, 1, 30],
+    [100, 1050, 1, 31],
+    [125, 1049, 0.5, 62],
+    [300, 1033, 2, 15],
+    [150, 1300, 1.15, 33],
+  ])("places fractional source interval %sms + %sms at speed %s on frame %s", (start, duration, speed, frames) => {
+    const interval = { sourceStartMs: start, sourceEndMs: start + duration, speed };
+    const timeline = createCompositionTimeline([clip("red", interval), clip("blue", interval)]);
+    expect(timeline.clips.map(item => [item.startFrame, item.frames])).toEqual([
+      [0, frames],
+      [frames, frames],
+    ]);
+    expect(compositionClipAt(timeline, frameTimeMs(frames) - 0.01)?.id).toBe("red");
+    expect(compositionClipAt(timeline, frameTimeMs(frames))?.id).toBe("blue");
+  });
+  it("retains integer frame offsets across fractional clip lengths and maps each boundary to the next clip", () => {
+    const timeline = createCompositionTimeline([
+      clip("one", { sourceEndMs: 2133, speed: 2 }),
+      clip("two", { speed: 0.5 }),
+    ]);
+    expect(timeline.clips.map(item => [item.startFrame, item.frames])).toEqual([
+      [0, 16],
+      [16, 60],
+    ]);
     expect(timeline.frames).toBe(76);
-    expect(compositionClipAt(timeline, frameTimeMs(16) - .01)?.id).toBe('one');
-    expect(compositionClipAt(timeline, frameTimeMs(16))?.id).toBe('two');
-    expect(compositionClipAt(timeline, frameTimeMs(76))?.id).toBe('two');
+    expect(compositionClipAt(timeline, frameTimeMs(16) - 0.01)?.id).toBe("one");
+    expect(compositionClipAt(timeline, frameTimeMs(16))?.id).toBe("two");
+    expect(compositionClipAt(timeline, frameTimeMs(76))?.id).toBe("two");
     expect(compositionSourceTime(timeline.clips[1]!, frameTimeMs(16) + 1000)).toBe(1500);
   });
-  it('does not silently skip invalid clips or permit a timeline over sixty seconds', () => {
-    expect(createCompositionTimeline([clip('one', { speed: NaN })]).valid).toBe(false);
-    expect(createCompositionTimeline([clip('one', { sourceEndMs: 10001 })]).clips).toHaveLength(0);
-    expect(createCompositionTimeline([clip('one', { sourceDurationMs: 120000, sourceEndMs: 120000 })], 1800).valid).toBe(false);
+  it("does not silently skip invalid clips or permit a timeline over sixty seconds", () => {
+    expect(createCompositionTimeline([clip("one", { speed: NaN })]).valid).toBe(false);
+    expect(createCompositionTimeline([clip("one", { sourceEndMs: 10001 })]).clips).toHaveLength(0);
+    expect(
+      createCompositionTimeline([clip("one", { sourceDurationMs: 120000, sourceEndMs: 120000 })], 1800).valid,
+    ).toBe(false);
   });
-  it('clamps trim handles to the source, minimum interval, fades and remaining output frame budget', () => {
-    const timeline = createCompositionTimeline([clip('one', { sourceStartMs: 0, sourceEndMs: 10000, speed: 2 }), clip('two', { sourceStartMs: 0, sourceEndMs: 6000 })]);
+  it("clamps trim handles to the source, minimum interval, fades and remaining output frame budget", () => {
+    const timeline = createCompositionTimeline([
+      clip("one", { sourceStartMs: 0, sourceEndMs: 10000, speed: 2 }),
+      clip("two", { sourceStartMs: 0, sourceEndMs: 6000 }),
+    ]);
     const first = timeline.clips[0]!;
-    expect(trimCompositionClip(timeline, first, 'start', -1000)).toEqual({ startMs: 0, endMs: 10000 });
-    expect(trimCompositionClip(timeline, first, 'end', 20000).endMs).toBe(10000);
-    expect(trimCompositionClip(timeline, first, 'start', 10000).startMs).toBe(9900);
-    const withFade = createCompositionTimeline([clip('fade', { fadeMs: 55 })]);
-    const trim = trimCompositionClip(withFade, withFade.clips[0]!, 'end', 1010);
-    expect(createCompositionTimeline([clip('fade', { fadeMs: 55, sourceEndMs: trim.endMs })]).valid).toBe(true);
-    const bounded = createCompositionTimeline([clip('a', { sourceDurationMs: 120000, sourceStartMs: 0, sourceEndMs: 10000 }), clip('b', { sourceDurationMs: 120000, sourceStartMs: 0, sourceEndMs: 49000 })], 1800);
-    const next = trimCompositionClip(bounded, bounded.clips[0]!, 'end', 100000);
-    const result = createCompositionTimeline([{ ...bounded.clips[0]!, sourceEndMs: next.endMs }, bounded.clips[1]!], 1800);
-    expect(result.frames).toBe(1800); expect(result.valid).toBe(true);
+    expect(trimCompositionClip(timeline, first, "start", -1000)).toEqual({ startMs: 0, endMs: 10000 });
+    expect(trimCompositionClip(timeline, first, "end", 20000).endMs).toBe(10000);
+    expect(trimCompositionClip(timeline, first, "start", 10000).startMs).toBe(9900);
+    const withFade = createCompositionTimeline([clip("fade", { fadeMs: 55 })]);
+    const trim = trimCompositionClip(withFade, withFade.clips[0]!, "end", 1010);
+    expect(createCompositionTimeline([clip("fade", { fadeMs: 55, sourceEndMs: trim.endMs })]).valid).toBe(true);
+    const bounded = createCompositionTimeline(
+      [
+        clip("a", { sourceDurationMs: 120000, sourceStartMs: 0, sourceEndMs: 10000 }),
+        clip("b", { sourceDurationMs: 120000, sourceStartMs: 0, sourceEndMs: 49000 }),
+      ],
+      1800,
+    );
+    const next = trimCompositionClip(bounded, bounded.clips[0]!, "end", 100000);
+    const result = createCompositionTimeline(
+      [{ ...bounded.clips[0]!, sourceEndMs: next.endMs }, bounded.clips[1]!],
+      1800,
+    );
+    expect(result.frames).toBe(1800);
+    expect(result.valid).toBe(true);
   });
-  it('previews longer edits and uses the server frame budget for trimming', () => {
-    const timeline = createCompositionTimeline([clip('long', { sourceStartMs: 0, sourceDurationMs: 180000, sourceEndMs: 120000 })], 3600);
+  it("previews longer edits and uses the server frame budget for trimming", () => {
+    const timeline = createCompositionTimeline(
+      [clip("long", { sourceStartMs: 0, sourceDurationMs: 180000, sourceEndMs: 120000 })],
+      3600,
+    );
     expect(timeline.valid).toBe(true);
     expect(timeline.frames).toBe(3600);
-    const trim = trimCompositionClip(timeline, timeline.clips[0]!, 'end', 180000);
+    const trim = trimCompositionClip(timeline, timeline.clips[0]!, "end", 180000);
     expect(trim.endMs).toBe(120000);
-    expect(createCompositionTimeline([clip('over', { sourceStartMs: 0, sourceDurationMs: 180000, sourceEndMs: 120034 })], 3600).valid).toBe(false);
-    expect(compositionOutput('2160P', '16:9')).toEqual({ width: 3840, height: 2160 });
+    expect(
+      createCompositionTimeline(
+        [clip("over", { sourceStartMs: 0, sourceDurationMs: 180000, sourceEndMs: 120034 })],
+        3600,
+      ).valid,
+    ).toBe(false);
+    expect(compositionOutput("2160P", "16:9")).toEqual({ width: 3840, height: 2160 });
   });
-  it('uses export fade, caption centiseconds, literal ASS characters and output dimensions', () => {
-    const timeline = createCompositionTimeline([clip('one', { fadeMs: 200 })]), current = timeline.clips[0]!;
-    expect(compositionFade(current, 100)).toBe(.5);
-    expect(compositionFade(current, clipEndMs(current) - 100)).toBe(.5);
-    const captions = [{ id: 'c', text: '  {tag}\\N\n第二行  ', startMs: 109, endMs: 999 }];
-    expect(visibleCompositionCaptions(captions, 100)).toEqual(['｛tag｝＼N\n第二行']);
+  it("uses export fade, caption centiseconds, literal ASS characters and output dimensions", () => {
+    const timeline = createCompositionTimeline([clip("one", { fadeMs: 200 })]),
+      current = timeline.clips[0]!;
+    expect(compositionFade(current, 100)).toBe(0.5);
+    expect(compositionFade(current, clipEndMs(current) - 100)).toBe(0.5);
+    const captions = [{ id: "c", text: "  {tag}\\N\n第二行  ", startMs: 109, endMs: 999 }];
+    expect(visibleCompositionCaptions(captions, 100)).toEqual(["｛tag｝＼N\n第二行"]);
     expect(visibleCompositionCaptions(captions, 990)).toEqual([]);
-    expect(compositionOutput('1080P', '9:16')).toEqual({ width: 1080, height: 1920 });
-    expect(compositionOutput('720P', '16:9')).toEqual({ width: 1280, height: 720 });
+    expect(compositionOutput("1080P", "9:16")).toEqual({ width: 1080, height: 1920 });
+    expect(compositionOutput("720P", "16:9")).toEqual({ width: 1280, height: 720 });
   });
 });

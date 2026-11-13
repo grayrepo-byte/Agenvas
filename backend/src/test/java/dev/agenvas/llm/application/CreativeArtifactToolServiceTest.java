@@ -141,7 +141,8 @@ class CreativeArtifactToolServiceTest {
                 artifactId, context.projectId(), kind, "Synthetic output",
                 resourceDefaultVersion == null ? null : resourceDefaultVersion.id(),
                 null, 1L, NOW, NOW), resourceDefaultVersion);
-        when(artifacts.requireCanvasVersion(context.ownerId(), context.projectId(), versionId)).thenReturn(version(versionId));
+        when(artifacts.requireCanvasVersion(context.ownerId(), context.projectId(), versionId))
+                .thenReturn(version(versionId));
         when(artifacts.get(context.ownerId(), context.projectId(), artifactId)).thenReturn(view);
         return view;
     }

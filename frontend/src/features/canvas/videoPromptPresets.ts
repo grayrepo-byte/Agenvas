@@ -29,7 +29,7 @@ export const VIDEO_PROMPT_SCENARIOS = [
   { id: "landscape", label: "video.presets.scenario.landscape" },
 ] as const satisfies readonly { id: VideoPromptScenario; label: MessageKey }[];
 
-export type VideoPromptCategory = typeof VIDEO_PROMPT_CATEGORIES[number]["id"];
+export type VideoPromptCategory = (typeof VIDEO_PROMPT_CATEGORIES)[number]["id"];
 export type VideoPromptPreset = Readonly<{
   id: string;
   category: string;
@@ -42,8 +42,11 @@ export type VideoPromptPreset = Readonly<{
 }>;
 
 /** Bundled, authored data stays available in self-hosted and offline Mock installations. */
-export const VIDEO_PROMPT_PRESETS: readonly VideoPromptPreset[] = [...firstPresets, ...secondPresets, ...supplementalPresets]
-  .map((preset) => ({ ...preset, scenarios: VIDEO_PROMPT_SCENARIOS_BY_PRESET[preset.id] ?? [] }));
+export const VIDEO_PROMPT_PRESETS: readonly VideoPromptPreset[] = [
+  ...firstPresets,
+  ...secondPresets,
+  ...supplementalPresets,
+].map(preset => ({ ...preset, scenarios: VIDEO_PROMPT_SCENARIOS_BY_PRESET[preset.id] ?? [] }));
 
 const searchTextByPreset = new WeakMap<VideoPromptPreset, string>();
 
@@ -51,20 +54,29 @@ const searchTextByPreset = new WeakMap<VideoPromptPreset, string>();
 function presetSearchText(preset: VideoPromptPreset): string {
   const cached = searchTextByPreset.get(preset);
   if (cached !== undefined) return cached;
-  const searchable = [preset.englishName, preset.prompt,
-    ...Object.values(preset.copy).flatMap((copy) => [copy.name, copy.conditions, copy.effect, copy.caution])]
-    .join(" ").normalize("NFKC").toLocaleLowerCase();
+  const searchable = [
+    preset.englishName,
+    preset.prompt,
+    ...Object.values(preset.copy).flatMap(copy => [copy.name, copy.conditions, copy.effect, copy.caution]),
+  ]
+    .join(" ")
+    .normalize("NFKC")
+    .toLocaleLowerCase();
   searchTextByPreset.set(preset, searchable);
   return searchable;
 }
 
-export function filterVideoPromptPresets(query: string, category: string, scenario: VideoPromptScenario | "all" = "all"): readonly VideoPromptPreset[] {
+export function filterVideoPromptPresets(
+  query: string,
+  category: string,
+  scenario: VideoPromptScenario | "all" = "all",
+): readonly VideoPromptPreset[] {
   const terms = query.normalize("NFKC").trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-  return VIDEO_PROMPT_PRESETS.filter((preset) => {
+  return VIDEO_PROMPT_PRESETS.filter(preset => {
     if (category !== "all" && preset.category !== category) return false;
     if (scenario !== "all" && !preset.scenarios.includes(scenario)) return false;
     if (terms.length === 0) return true;
     const searchable = presetSearchText(preset);
-    return terms.every((term) => searchable.includes(term));
+    return terms.every(term => searchable.includes(term));
   });
 }

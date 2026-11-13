@@ -9,20 +9,28 @@ import { server } from "../../test/server";
 import { DebugModeSection } from "./DebugModeSection";
 
 function show() {
-  render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><Routes>
-    <Route path="/" element={<DebugModeSection enabled />} />
-    <Route path="/login" element={<h1>登录页</h1>} />
-  </Routes></MemoryRouter></QueryClientProvider>);
+  render(
+    <QueryClientProvider client={createQueryClient()}>
+      <MemoryRouter>
+        <Routes>
+          <Route path="/" element={<DebugModeSection enabled />} />
+          <Route path="/login" element={<h1>登录页</h1>} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
 }
 
 describe("DebugModeSection", () => {
   it("starts disabled, explains risk, and saves using server version", async () => {
     const save = vi.fn();
-    server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "csrf" })),
+    server.use(
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "csrf" })),
       http.put("/api/v1/settings/debug", async ({ request }) => {
         save(await request.json());
         return HttpResponse.json({ debugMode: true, version: 2 });
-      }));
+      }),
+    );
     show();
     const toggle = await screen.findByRole("switch", { name: "开启 debug 模式" });
     expect(toggle).not.toBeChecked();
@@ -39,13 +47,18 @@ describe("DebugModeSection", () => {
 
   it("keeps the choice after a conflict, reloads version, and retries", async () => {
     let version = 1;
-    server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "csrf" })),
+    server.use(
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "csrf" })),
       http.get("/api/v1/settings/debug", () => HttpResponse.json({ debugMode: false, version })),
       http.put("/api/v1/settings/debug", async ({ request }) => {
-        const body = await request.json() as { expectedVersion: number };
-        if (body.expectedVersion === 1) { version = 2; return HttpResponse.json({ code: "VERSION_CONFLICT", status: 409 }, { status: 409 }); }
+        const body = (await request.json()) as { expectedVersion: number };
+        if (body.expectedVersion === 1) {
+          version = 2;
+          return HttpResponse.json({ code: "VERSION_CONFLICT", status: 409 }, { status: 409 });
+        }
         return HttpResponse.json({ debugMode: true, version: 3 });
-      }));
+      }),
+    );
     show();
     await screen.findByText("已关闭");
     await userEvent.setup().click(screen.getByRole("switch"));
@@ -59,9 +72,14 @@ describe("DebugModeSection", () => {
 
   it("supports switching off an enabled setting", async () => {
     const save = vi.fn();
-    server.use(http.get("/api/v1/settings/debug", () => HttpResponse.json({ debugMode: true, version: 5 })),
+    server.use(
+      http.get("/api/v1/settings/debug", () => HttpResponse.json({ debugMode: true, version: 5 })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "csrf" })),
-      http.put("/api/v1/settings/debug", async ({ request }) => { save(await request.json()); return HttpResponse.json({ debugMode: false, version: 6 }); }));
+      http.put("/api/v1/settings/debug", async ({ request }) => {
+        save(await request.json());
+        return HttpResponse.json({ debugMode: false, version: 6 });
+      }),
+    );
     show();
     await screen.findByText("已开启");
     const toggle = screen.getByRole("switch", { name: "开启 debug 模式" });

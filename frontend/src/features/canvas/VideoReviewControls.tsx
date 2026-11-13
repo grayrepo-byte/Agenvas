@@ -25,8 +25,18 @@ function playableDuration(video: HTMLVideoElement | null): number {
 }
 
 /** Review state belongs to this mounted review, never to a media draft or immutable result. */
-export function VideoReviewControls({ video, partner = null, markers = true, compact = false, disabled = false }: {
-  video: HTMLVideoElement | null; partner?: HTMLVideoElement | null; markers?: boolean; compact?: boolean; disabled?: boolean;
+export function VideoReviewControls({
+  video,
+  partner = null,
+  markers = true,
+  compact = false,
+  disabled = false,
+}: {
+  video: HTMLVideoElement | null;
+  partner?: HTMLVideoElement | null;
+  markers?: boolean;
+  compact?: boolean;
+  disabled?: boolean;
 }) {
   useLocale();
   const id = useId();
@@ -47,11 +57,20 @@ export function VideoReviewControls({ video, partner = null, markers = true, com
     let active = true;
     let animation: number | undefined;
     const videos = partner ? [video, partner] : [video];
-    function pause() { playbackAttempt.current++; videos.forEach((element) => element.pause()); setPlaying(false); }
-    function failed() { if (active) { pause(); setError(true); } }
+    function pause() {
+      playbackAttempt.current++;
+      videos.forEach(element => element.pause());
+      setPlaying(false);
+    }
+    function failed() {
+      if (active) {
+        pause();
+        setError(true);
+      }
+    }
     function update() {
       const lengths = videos.map(playableDuration);
-      const limit = lengths.every((length) => length > 0) ? Math.min(...lengths) : 0;
+      const limit = lengths.every(length => length > 0) ? Math.min(...lengths) : 0;
       setDuration(limit);
       setPosition(video!.currentTime);
       setPlaying(!video!.paused && !video!.ended);
@@ -59,7 +78,9 @@ export function VideoReviewControls({ video, partner = null, markers = true, com
       setMuted(video!.muted);
       if (partner && limit > 0) {
         if (video!.currentTime >= limit - END_TOLERANCE_SECONDS && !video!.paused) {
-          pause(); video!.currentTime = limit; partner.currentTime = limit;
+          pause();
+          video!.currentTime = limit;
+          partner.currentTime = limit;
         } else if (Math.abs(partner.currentTime - video!.currentTime) > SYNC_TOLERANCE_SECONDS) {
           partner.currentTime = Math.min(video!.currentTime, limit);
         }
@@ -79,7 +100,9 @@ export function VideoReviewControls({ video, partner = null, markers = true, com
         partner.playbackRate = video!.playbackRate;
         partner.muted = true;
         const attempt = playbackAttempt.current;
-        void partner.play().catch(() => { if (attempt === playbackAttempt.current) failed(); });
+        void partner.play().catch(() => {
+          if (attempt === playbackAttempt.current) failed();
+        });
       }
       if (animation !== undefined) window.cancelAnimationFrame(animation);
       animation = window.requestAnimationFrame(tick);
@@ -87,29 +110,32 @@ export function VideoReviewControls({ video, partner = null, markers = true, com
     }
     function pausePartner() {
       // pause/play events are queued; an earlier pause must not invalidate a newer play.
-      if (video!.paused) { playbackAttempt.current++; partner?.pause(); }
+      if (video!.paused) {
+        playbackAttempt.current++;
+        partner?.pause();
+      }
       update();
     }
     const events = ["timeupdate", "durationchange", "loadedmetadata", "seeking", "ratechange", "volumechange"];
-    events.forEach((name) => video.addEventListener(name, update));
+    events.forEach(name => video.addEventListener(name, update));
     video.addEventListener("play", playPartner);
     video.addEventListener("pause", pausePartner);
     video.addEventListener("ended", pause);
-    videos.forEach((element) => element.addEventListener("error", failed));
+    videos.forEach(element => element.addEventListener("error", failed));
     partner?.addEventListener("loadedmetadata", update);
     update();
     return () => {
       active = false;
       playbackAttempt.current++;
       if (animation !== undefined) window.cancelAnimationFrame(animation);
-      events.forEach((name) => video.removeEventListener(name, update));
+      events.forEach(name => video.removeEventListener(name, update));
       video.removeEventListener("play", playPartner);
       video.removeEventListener("pause", pausePartner);
       video.removeEventListener("ended", pause);
-      videos.forEach((element) => element.removeEventListener("error", failed));
+      videos.forEach(element => element.removeEventListener("error", failed));
       partner?.removeEventListener("loadedmetadata", update);
       // A close or source switch must not leave either player audible in the background.
-      videos.forEach((element) => element.pause());
+      videos.forEach(element => element.pause());
     };
   }, [video, partner]);
 
@@ -121,62 +147,207 @@ export function VideoReviewControls({ video, partner = null, markers = true, com
   }
   function step(direction: -1 | 1) {
     playbackAttempt.current++;
-    video?.pause(); partner?.pause(); setPlaying(false);
+    video?.pause();
+    partner?.pause();
+    setPlaying(false);
     seek((video?.currentTime ?? position) + direction / frameRate);
   }
   async function togglePlayback() {
     if (!video) return;
     const attempt = ++playbackAttempt.current;
-    if (!video.paused) { video.pause(); partner?.pause(); setPlaying(false); return; }
+    if (!video.paused) {
+      video.pause();
+      partner?.pause();
+      setPlaying(false);
+      return;
+    }
     if (video.currentTime >= duration - END_TOLERANCE_SECONDS) seek(0);
     setError(false);
-    const results = await Promise.allSettled((partner ? [video, partner] : [video]).map((element) => element.play()));
+    const results = await Promise.allSettled((partner ? [video, partner] : [video]).map(element => element.play()));
     if (attempt !== playbackAttempt.current) return;
-    if (results.some((result) => result.status === "rejected")) {
-      video.pause(); partner?.pause(); setPlaying(false); setError(true);
+    if (results.some(result => result.status === "rejected")) {
+      video.pause();
+      partner?.pause();
+      setPlaying(false);
+      setError(true);
     } else setPlaying(true);
   }
   const ready = Boolean(video) && duration > 0 && !disabled;
-  return <div className="video-review-controls nodrag nowheel nopan" onClick={(event) => event.stopPropagation()}
-    onPointerDown={(event) => event.stopPropagation()} onKeyDown={(event) => { if (event.key !== "Tab") event.stopPropagation(); }}>
-    <div className="video-review-transport">
-      <Button type="button" variant="outline" size="icon-sm" disabled={!ready} aria-label={t(playing ? "video.review.pause" : "video.review.play")}
-        onClick={() => void togglePlayback()}>{playing ? <Pause /> : <Play />}</Button>
-      <Button type="button" variant="ghost" size="icon-sm" disabled={!ready} aria-label={t("video.review.previousFrame")} onClick={() => step(-1)}><ArrowLeft /></Button>
-      <Button type="button" variant="ghost" size="icon-sm" disabled={!ready} aria-label={t("video.review.nextFrame")} onClick={() => step(1)}><ArrowRight /></Button>
-      <Range variant="media" aria-label={t("video.review.progress")} min={0} max={duration} step={0.001}
-        disabled={!ready} value={Math.min(position, duration)} aria-valuetext={`${videoTimeLabel(position)} / ${videoTimeLabel(duration)}`}
-        onChange={(event) => seek(Number(event.target.value))} />
-      <span className="video-review-time">{videoTimeLabel(position)} / {videoTimeLabel(duration)}</span>
-      <Button type="button" variant="ghost" size="icon-sm" disabled={!video || disabled} aria-label={t(muted ? "video.review.unmute" : "video.review.mute")}
-        onClick={() => { if (video) { video.muted = !video.muted; setMuted(video.muted); } }}>{muted ? <SpeakerSlash /> : <SpeakerHigh />}</Button>
+  return (
+    <div
+      className="video-review-controls nodrag nowheel nopan"
+      onClick={event => event.stopPropagation()}
+      onPointerDown={event => event.stopPropagation()}
+      onKeyDown={event => {
+        if (event.key !== "Tab") event.stopPropagation();
+      }}
+    >
+      <div className="video-review-transport">
+        <Button
+          type="button"
+          variant="outline"
+          size="icon-sm"
+          disabled={!ready}
+          aria-label={t(playing ? "video.review.pause" : "video.review.play")}
+          onClick={() => void togglePlayback()}
+        >
+          {playing ? <Pause /> : <Play />}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          disabled={!ready}
+          aria-label={t("video.review.previousFrame")}
+          onClick={() => step(-1)}
+        >
+          <ArrowLeft />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          disabled={!ready}
+          aria-label={t("video.review.nextFrame")}
+          onClick={() => step(1)}
+        >
+          <ArrowRight />
+        </Button>
+        <Range
+          variant="media"
+          aria-label={t("video.review.progress")}
+          min={0}
+          max={duration}
+          step={0.001}
+          disabled={!ready}
+          value={Math.min(position, duration)}
+          aria-valuetext={`${videoTimeLabel(position)} / ${videoTimeLabel(duration)}`}
+          onChange={event => seek(Number(event.target.value))}
+        />
+        <span className="video-review-time">
+          {videoTimeLabel(position)} / {videoTimeLabel(duration)}
+        </span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          disabled={!video || disabled}
+          aria-label={t(muted ? "video.review.unmute" : "video.review.mute")}
+          onClick={() => {
+            if (video) {
+              video.muted = !video.muted;
+              setMuted(video.muted);
+            }
+          }}
+        >
+          {muted ? <SpeakerSlash /> : <SpeakerHigh />}
+        </Button>
+      </div>
+      {!compact ? (
+        <>
+          <FieldGroup className="video-review-options">
+            <Field>
+              <FieldLabel htmlFor={`${id}-speed`}>{t("video.review.speed")}</FieldLabel>
+              <Select
+                id={`${id}-speed`}
+                value={rate}
+                disabled={!video || disabled}
+                onChange={event => {
+                  const next = Number(event.target.value);
+                  if (video) video.playbackRate = next;
+                  if (partner) partner.playbackRate = next;
+                  setRate(next);
+                }}
+              >
+                {PLAYBACK_RATES.map(value => (
+                  <option key={value} value={value}>
+                    {value}×
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor={`${id}-frame-rate`}>{t("video.review.frameRate")}</FieldLabel>
+              <Select
+                id={`${id}-frame-rate`}
+                value={frameRate}
+                disabled={disabled}
+                aria-describedby={`${id}-frame-hint`}
+                onChange={event => setFrameRate(Number(event.target.value))}
+              >
+                {STEP_FRAME_RATES.map(value => (
+                  <option key={value} value={value}>
+                    {value} fps
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </FieldGroup>
+          <p className="video-review-hint" id={`${id}-frame-hint`}>
+            {t("video.review.frameHint")}
+          </p>
+        </>
+      ) : null}
+      {error ? (
+        <Alert variant="destructive">
+          <AlertDescription>{t("video.review.playFailed")}</AlertDescription>
+        </Alert>
+      ) : null}
+      {markers ? (
+        <>
+          <FieldGroup className="video-review-marker-form">
+            <Field>
+              <FieldLabel htmlFor={`${id}-note`}>{t("video.review.note")}</FieldLabel>
+              <Input id={`${id}-note`} maxLength={160} value={note} onChange={event => setNote(event.target.value)} />
+            </Field>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!ready}
+              onClick={() => {
+                setPoints(current => [
+                  ...current,
+                  {
+                    id: current.reduce((max, point) => Math.max(max, point.id), 0) + 1,
+                    seconds: video?.currentTime ?? position,
+                    note: note.trim(),
+                  },
+                ]);
+                setNote("");
+              }}
+            >
+              <BookmarkSimple data-icon="inline-start" />
+              {t("video.review.addMarker")}
+            </Button>
+          </FieldGroup>
+          <p className="video-review-hint">{t("video.review.markerHint")}</p>
+          <ul className="video-review-markers" aria-label={t("video.review.markers")}>
+            {points.map(point => (
+              <li key={point.id}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  disabled={!ready}
+                  aria-label={`${videoTimeLabel(point.seconds)} ${point.note}`}
+                  onClick={() => seek(point.seconds)}
+                >
+                  <time>{videoTimeLabel(point.seconds)}</time>
+                  <span>{point.note}</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={t("video.review.removeMarker", { "0": videoTimeLabel(point.seconds) })}
+                  onClick={() => setPoints(current => current.filter(value => value.id !== point.id))}
+                >
+                  <X />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
     </div>
-    {!compact ? <><FieldGroup className="video-review-options">
-      <Field><FieldLabel htmlFor={`${id}-speed`}>{t("video.review.speed")}</FieldLabel>
-        <Select id={`${id}-speed`} value={rate} disabled={!video || disabled} onChange={(event) => {
-          const next = Number(event.target.value); if (video) video.playbackRate = next; if (partner) partner.playbackRate = next; setRate(next);
-        }}>{PLAYBACK_RATES.map((value) => <option key={value} value={value}>{value}×</option>)}</Select></Field>
-      <Field><FieldLabel htmlFor={`${id}-frame-rate`}>{t("video.review.frameRate")}</FieldLabel>
-        <Select id={`${id}-frame-rate`} value={frameRate} disabled={disabled} aria-describedby={`${id}-frame-hint`} onChange={(event) => setFrameRate(Number(event.target.value))}>
-          {STEP_FRAME_RATES.map((value) => <option key={value} value={value}>{value} fps</option>)}</Select></Field>
-    </FieldGroup>
-    <p className="video-review-hint" id={`${id}-frame-hint`}>{t("video.review.frameHint")}</p></> : null}
-    {error ? <Alert variant="destructive"><AlertDescription>{t("video.review.playFailed")}</AlertDescription></Alert> : null}
-    {markers ? <>
-      <FieldGroup className="video-review-marker-form"><Field><FieldLabel htmlFor={`${id}-note`}>{t("video.review.note")}</FieldLabel>
-        <Input id={`${id}-note`} maxLength={160} value={note} onChange={(event) => setNote(event.target.value)} /></Field>
-        <Button type="button" variant="outline" disabled={!ready} onClick={() => {
-          setPoints((current) => [...current, { id: current.reduce((max, point) => Math.max(max, point.id), 0) + 1,
-            seconds: video?.currentTime ?? position, note: note.trim() }]); setNote("");
-        }}><BookmarkSimple data-icon="inline-start" />{t("video.review.addMarker")}</Button></FieldGroup>
-      <p className="video-review-hint">{t("video.review.markerHint")}</p>
-      <ul className="video-review-markers" aria-label={t("video.review.markers")}>
-        {points.map((point) => <li key={point.id}><Button type="button" variant="ghost" disabled={!ready}
-          aria-label={`${videoTimeLabel(point.seconds)} ${point.note}`} onClick={() => seek(point.seconds)}>
-          <time>{videoTimeLabel(point.seconds)}</time><span>{point.note}</span></Button>
-          <Button type="button" variant="ghost" size="icon-sm" aria-label={t("video.review.removeMarker", { "0": videoTimeLabel(point.seconds) })}
-            onClick={() => setPoints((current) => current.filter((value) => value.id !== point.id))}><X /></Button></li>)}
-      </ul>
-    </> : null}
-  </div>;
+  );
 }

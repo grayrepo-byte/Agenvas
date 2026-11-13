@@ -17,7 +17,8 @@ import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.ai.chat.model.ChatModel;
 
 class ConfiguredChatGatewayAuditTest {
-    @Test void reportsRunPinnedModelEvenAfterTheActiveConfigurationChanges() {
+    @Test
+    void reportsRunPinnedModelEvenAfterTheActiveConfigurationChanges() {
         LlmProviderConfigRepository configs = mock(LlmProviderConfigRepository.class);
         StoredChatModelFactory factory = mock(StoredChatModelFactory.class);
         when(configs.active()).thenReturn(Optional.of(config(2, "new-model")));

@@ -40,7 +40,8 @@ class LlmProtocolCodecTest {
     void restoresMediaContinuationLargerThanTheOldRequestLimit() {
         AssistantMessage assistant = AssistantMessage.builder().content("")
                 .toolCalls(List.of(new AssistantMessage.ToolCall(
-                        "media-call", "function", "propose_media_generation", "{}"))).build();
+                        "media-call", "function", "propose_media_generation", "{}")))
+                .build();
         ObjectNode result = mapper.createObjectNode().put("status", "SUCCEEDED");
         // Synthetic repeated Skill previews reproduce a completed media batch's large receipt.
         result.put("creativeSkill", "创作规范".repeat(50_000));
@@ -133,7 +134,8 @@ class LlmProtocolCodecTest {
 
         AssistantMessage assistant = AssistantMessage.builder().content("")
                 .toolCalls(List.of(new AssistantMessage.ToolCall(
-                        "call-1", "function", "create_text", "{}"))).build();
+                        "call-1", "function", "create_text", "{}")))
+                .build();
         assertThatThrownBy(() -> codec.toolResults(assistant, Map.of()))
                 .isInstanceOf(IllegalArgumentException.class);
         ObjectNode response = codec.response(new ChatResponse(List.of(new Generation(assistant))));

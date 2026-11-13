@@ -17,20 +17,34 @@ const outDir = join(profile, "build");
 const pending = new Map();
 const runtimeErrors = [];
 let videoEvidence;
-let server, chrome, socket, nextId = 0;
-const pause = () => new Promise((resolve) => setTimeout(resolve, 50));
+let server,
+  chrome,
+  socket,
+  nextId = 0;
+const pause = () => new Promise(resolve => setTimeout(resolve, 50));
 function cdp(method, params = {}) {
   const id = ++nextId;
-  return new Promise((resolve, reject) => { pending.set(id, { resolve, reject }); socket.send(JSON.stringify({ id, method, params })); });
+  return new Promise((resolve, reject) => {
+    pending.set(id, { resolve, reject });
+    socket.send(JSON.stringify({ id, method, params }));
+  });
 }
 async function page(fn, ...args) {
-  const value = await cdp("Runtime.evaluate", { expression: `(${fn.toString()})(...${JSON.stringify(args)})`, awaitPromise: true, returnByValue: true });
-  if (value.exceptionDetails) throw new Error(value.exceptionDetails.exception?.description ?? value.exceptionDetails.text);
+  const value = await cdp("Runtime.evaluate", {
+    expression: `(${fn.toString()})(...${JSON.stringify(args)})`,
+    awaitPromise: true,
+    returnByValue: true,
+  });
+  if (value.exceptionDetails)
+    throw new Error(value.exceptionDetails.exception?.description ?? value.exceptionDetails.text);
   return value.result.value;
 }
 async function waitFor(fn, ...args) {
   const deadline = Date.now() + 20000;
-  while (Date.now() < deadline) { if (await page(fn, ...args)) return; await pause(); }
+  while (Date.now() < deadline) {
+    if (await page(fn, ...args)) return;
+    await pause();
+  }
   throw new Error(`Timed out: ${await page(() => document.body.innerText)}`);
 }
 async function screenshot(name) {
@@ -38,29 +52,51 @@ async function screenshot(name) {
   await writeFile(join(screenshots, name + ".png"), Buffer.from(capture.data, "base64"), { mode: 0o600 });
 }
 async function click(selector) {
-  await page((target) => document.querySelector(target).scrollIntoView({ block: "nearest", inline: "nearest" }), selector);
-  const point = await page((target) => {
+  await page(
+    target => document.querySelector(target).scrollIntoView({ block: "nearest", inline: "nearest" }),
+    selector,
+  );
+  const point = await page(target => {
     const bounds = document.querySelector(target).getBoundingClientRect();
     return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
   }, selector);
-  assert.equal(await page(({ x, y }, target) => document.querySelector(target).contains(document.elementFromPoint(x, y)), point, selector), true,
-    `Control can be reached by pointer: ${selector}`);
+  assert.equal(
+    await page(
+      ({ x, y }, target) => document.querySelector(target).contains(document.elementFromPoint(x, y)),
+      point,
+      selector,
+    ),
+    true,
+    `Control can be reached by pointer: ${selector}`,
+  );
   await cdp("Input.dispatchMouseEvent", { type: "mousePressed", ...point, button: "left", clickCount: 1 });
   await cdp("Input.dispatchMouseEvent", { type: "mouseReleased", ...point, button: "left", clickCount: 1 });
 }
 async function clickNamed(selector, name) {
-  await waitFor((query, label) => [...document.querySelectorAll(query)].some((control) =>
-    (control.getAttribute("aria-label") ?? control.textContent?.replace(/\s+/g, " ").trim()) === label), selector, name);
-  const point = await page((query, label) => {
-    const candidates = [...document.querySelectorAll(query)].filter((control) =>
-      (control.getAttribute("aria-label") ?? control.textContent?.replace(/\s+/g, " ").trim()) === label);
-    if (candidates.length !== 1) throw new Error(`Expected one ${query} named ${label}, found ${candidates.length}`);
-    const control = candidates[0];
-    control.scrollIntoView({ block: "nearest", inline: "nearest" });
-    const bounds = control.getBoundingClientRect();
-    const x = bounds.x + bounds.width / 2, y = bounds.y + bounds.height / 2;
-    return { x, y, reachable: control.contains(document.elementFromPoint(x, y)) };
-  }, selector, name);
+  await waitFor(
+    (query, label) =>
+      [...document.querySelectorAll(query)].some(
+        control => (control.getAttribute("aria-label") ?? control.textContent?.replace(/\s+/g, " ").trim()) === label,
+      ),
+    selector,
+    name,
+  );
+  const point = await page(
+    (query, label) => {
+      const candidates = [...document.querySelectorAll(query)].filter(
+        control => (control.getAttribute("aria-label") ?? control.textContent?.replace(/\s+/g, " ").trim()) === label,
+      );
+      if (candidates.length !== 1) throw new Error(`Expected one ${query} named ${label}, found ${candidates.length}`);
+      const control = candidates[0];
+      control.scrollIntoView({ block: "nearest", inline: "nearest" });
+      const bounds = control.getBoundingClientRect();
+      const x = bounds.x + bounds.width / 2,
+        y = bounds.y + bounds.height / 2;
+      return { x, y, reachable: control.contains(document.elementFromPoint(x, y)) };
+    },
+    selector,
+    name,
+  );
   assert.equal(point.reachable, true, `Control can be reached by pointer: ${name}`);
   const { x, y } = point;
   await cdp("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 });
@@ -68,7 +104,7 @@ async function clickNamed(selector, name) {
 }
 async function selectValue(selector, value) {
   await click(selector);
-  await waitFor((option) => Boolean(document.querySelector(`[role="option"][data-value="${option}"]`)), value);
+  await waitFor(option => Boolean(document.querySelector(`[role="option"][data-value="${option}"]`)), value);
   await click(`[role="option"][data-value="${value}"]`);
 }
 async function orbitViewport() {
@@ -78,77 +114,169 @@ async function orbitViewport() {
     return { x: bounds.x + bounds.width * 0.18, y: bounds.y + bounds.height * 0.18 };
   });
   await cdp("Input.dispatchMouseEvent", { type: "mousePressed", ...center, button: "left", clickCount: 1 });
-  await cdp("Input.dispatchMouseEvent", { type: "mouseMoved", x: center.x + 70, y: center.y + 20, button: "left", buttons: 1 });
-  await cdp("Input.dispatchMouseEvent", { type: "mouseReleased", x: center.x + 70, y: center.y + 20, button: "left", clickCount: 1 });
+  await cdp("Input.dispatchMouseEvent", {
+    type: "mouseMoved",
+    x: center.x + 70,
+    y: center.y + 20,
+    button: "left",
+    buttons: 1,
+  });
+  await cdp("Input.dispatchMouseEvent", {
+    type: "mouseReleased",
+    x: center.x + 70,
+    y: center.y + 20,
+    button: "left",
+    clickCount: 1,
+  });
 }
 async function checkControlReachability() {
   // Inspect every visible panel, toolbar and footer; hidden tabs and file inputs are not pointer controls.
-  const count = await page(() => [...document.querySelectorAll(".director-workbench button:not(:disabled), .director-workbench input:not(:disabled):not([type=file]), .director-workbench textarea:not(:disabled)")]
-    .filter((control) => control.getClientRects().length && !control.closest("[hidden]") && getComputedStyle(control).visibility !== "hidden").length);
+  const count = await page(
+    () =>
+      [
+        ...document.querySelectorAll(
+          ".director-workbench button:not(:disabled), .director-workbench input:not(:disabled):not([type=file]), .director-workbench textarea:not(:disabled)",
+        ),
+      ].filter(
+        control =>
+          control.getClientRects().length &&
+          !control.closest("[hidden]") &&
+          getComputedStyle(control).visibility !== "hidden",
+      ).length,
+  );
   for (let index = 0; index < count; index++) {
-    const reachable = await page((controlIndex) => {
-      const control = [...document.querySelectorAll(".director-workbench button:not(:disabled), .director-workbench input:not(:disabled):not([type=file]), .director-workbench textarea:not(:disabled)")]
-        .filter((candidate) => candidate.getClientRects().length && !candidate.closest("[hidden]") && getComputedStyle(candidate).visibility !== "hidden")[controlIndex];
+    const reachable = await page(controlIndex => {
+      const control = [
+        ...document.querySelectorAll(
+          ".director-workbench button:not(:disabled), .director-workbench input:not(:disabled):not([type=file]), .director-workbench textarea:not(:disabled)",
+        ),
+      ].filter(
+        candidate =>
+          candidate.getClientRects().length &&
+          !candidate.closest("[hidden]") &&
+          getComputedStyle(candidate).visibility !== "hidden",
+      )[controlIndex];
       control.scrollIntoView({ block: "nearest", inline: "nearest" });
       const bounds = control.getBoundingClientRect();
-      const x = bounds.x + bounds.width / 2, y = bounds.y + bounds.height / 2;
-      return { label: control.getAttribute("aria-label") ?? control.textContent, width: bounds.width, height: bounds.height,
-        reachable: x >= 0 && y >= 0 && x <= innerWidth && y <= innerHeight && control.contains(document.elementFromPoint(x, y)) };
+      const x = bounds.x + bounds.width / 2,
+        y = bounds.y + bounds.height / 2;
+      return {
+        label: control.getAttribute("aria-label") ?? control.textContent,
+        width: bounds.width,
+        height: bounds.height,
+        reachable:
+          x >= 0 && y >= 0 && x <= innerWidth && y <= innerHeight && control.contains(document.elementFromPoint(x, y)),
+      };
     }, index);
-    assert.ok(reachable.reachable && reachable.width > 0 && reachable.height > 0, `Control remains accessible after scrolling: ${JSON.stringify(reachable)}`);
+    assert.ok(
+      reachable.reachable && reachable.width > 0 && reachable.height > 0,
+      `Control remains accessible after scrolling: ${JSON.stringify(reachable)}`,
+    );
   }
 }
 const captureButton = '[data-director-action="capture"]';
 const generateButton = '[data-director-action="generate-angle"]';
-async function ready() { await waitFor((selector) => document.querySelector(selector)?.disabled === false, captureButton); }
+async function ready() {
+  await waitFor(selector => document.querySelector(selector)?.disabled === false, captureButton);
+}
 
 try {
   if (process.argv.includes("--dev")) {
-    server = await createServer({ ...config, server: { host: "127.0.0.1", port: 0, open: false } }); await server.listen();
+    server = await createServer({ ...config, server: { host: "127.0.0.1", port: 0, open: false } });
+    await server.listen();
   } else {
-    await build({ ...config, logLevel: "warn", build: { outDir, emptyOutDir: true, rollupOptions: { input: join(root, route) } } });
+    await build({
+      ...config,
+      logLevel: "warn",
+      build: { outDir, emptyOutDir: true, rollupOptions: { input: join(root, route) } },
+    });
     server = await preview({ ...config, build: { outDir }, preview: { host: "127.0.0.1", port: 0, open: false } });
   }
-  chrome = spawn(chromePath, ["--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-background-networking",
-    "--enable-unsafe-swiftshader", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
+  chrome = spawn(
+    chromePath,
+    [
+      "--headless=new",
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--disable-background-networking",
+      "--enable-unsafe-swiftshader",
+      "--remote-debugging-port=0",
+      `--user-data-dir=${profile}`,
+      "about:blank",
+    ],
+    { stdio: ["ignore", "ignore", "pipe"] },
+  );
   const endpoint = await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("Chrome startup timed out")), 20000);
-    chrome.once("error", (error) => { clearTimeout(timer); reject(error); });
-    chrome.stderr.on("data", (data) => { const match = data.toString().match(/DevTools listening on (ws:\/\/\S+)/);
-      if (match) { clearTimeout(timer); resolve(new URL(match[1]).origin.replace("ws:", "http:")); } });
+    chrome.once("error", error => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    chrome.stderr.on("data", data => {
+      const match = data.toString().match(/DevTools listening on (ws:\/\/\S+)/);
+      if (match) {
+        clearTimeout(timer);
+        resolve(new URL(match[1]).origin.replace("ws:", "http:"));
+      }
+    });
   });
   const target = await (await fetch(`${endpoint}/json/new?about:blank`, { method: "PUT" })).json();
   socket = new WebSocket(target.webSocketDebuggerUrl);
-  await new Promise((resolve, reject) => { socket.addEventListener("open", resolve, { once: true }); socket.addEventListener("error", reject, { once: true }); });
+  await new Promise((resolve, reject) => {
+    socket.addEventListener("open", resolve, { once: true });
+    socket.addEventListener("error", reject, { once: true });
+  });
   socket.addEventListener("message", ({ data }) => {
     const message = JSON.parse(data);
     if (message.method === "Runtime.exceptionThrown") runtimeErrors.push(message.params.exceptionDetails.text);
     const waiting = pending.get(message.id);
     if (!waiting) return;
     pending.delete(message.id);
-    if (message.error) waiting.reject(new Error(message.error.message)); else waiting.resolve(message.result);
+    if (message.error) waiting.reject(new Error(message.error.message));
+    else waiting.resolve(message.result);
   });
-  await cdp("Page.enable"); await cdp("Runtime.enable");
+  await cdp("Page.enable");
+  await cdp("Runtime.enable");
   const baseUrl = server.resolvedUrls.local[0];
-  for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }, { width: 844, height: 390 }]) {
+  for (const viewport of [
+    { width: 1440, height: 900 },
+    { width: 390, height: 844 },
+    { width: 844, height: 390 },
+  ]) {
     await cdp("Emulation.setDeviceMetricsOverride", { ...viewport, deviceScaleFactor: 1, mobile: false });
-    await cdp("Page.navigate", { url: new URL(route, baseUrl).href }); await ready();
+    await cdp("Page.navigate", { url: new URL(route, baseUrl).href });
+    await ready();
     const layout = await page(() => {
       const dialog = document.querySelector(".director-workbench").getBoundingClientRect();
       const canvas = document.querySelector(".director-viewport__canvas").getBoundingClientRect();
-      return { left: dialog.left, top: dialog.top, right: dialog.right, bottom: dialog.bottom, width: innerWidth, height: innerHeight,
-        overflow: document.documentElement.scrollWidth > innerWidth, canvasWidth: canvas.width, canvasHeight: canvas.height,
+      return {
+        left: dialog.left,
+        top: dialog.top,
+        right: dialog.right,
+        bottom: dialog.bottom,
+        width: innerWidth,
+        height: innerHeight,
+        overflow: document.documentElement.scrollWidth > innerWidth,
+        canvasWidth: canvas.width,
+        canvasHeight: canvas.height,
         body: document.querySelector(".director-body").getBoundingClientRect().toJSON(),
-        regions: [...document.querySelector(".director-body").children].map((region) => ({
-          name: region.className, bounds: region.getBoundingClientRect().toJSON(),
-        })) };
+        regions: [...document.querySelector(".director-body").children].map(region => ({
+          name: region.className,
+          bounds: region.getBoundingClientRect().toJSON(),
+        })),
+      };
     });
-    assert.ok(layout.left >= -1 && layout.top >= -1 && layout.right <= layout.width + 1 && layout.bottom <= layout.height + 1, JSON.stringify(layout));
+    assert.ok(
+      layout.left >= -1 && layout.top >= -1 && layout.right <= layout.width + 1 && layout.bottom <= layout.height + 1,
+      JSON.stringify(layout),
+    );
     assert.equal(layout.overflow, false, "No horizontal document overflow");
     assert.ok(layout.canvasWidth > 100 && layout.canvasHeight > 100, "WebGL composition has useful dimensions");
     for (const { name, bounds } of layout.regions) {
-      assert.ok(bounds.width > 0 && bounds.height > 0 && bounds.left >= layout.left - 1 && bounds.right <= layout.right + 1,
-        `Workspace region stays within the dialog width: ${name} ${JSON.stringify(bounds)}`);
+      assert.ok(
+        bounds.width > 0 && bounds.height > 0 && bounds.left >= layout.left - 1 && bounds.right <= layout.right + 1,
+        `Workspace region stays within the dialog width: ${name} ${JSON.stringify(bounds)}`,
+      );
     }
     await screenshot(`workbench-${viewport.width}x${viewport.height}`);
     await checkControlReachability();
@@ -159,17 +287,26 @@ try {
     await click('button[aria-label="添加物体"]');
     await clickNamed('[role="menuitem"]', "方体");
     await clickNamed('[role="tab"]', "物体");
-    assert.equal(await page(() => [...document.querySelectorAll("label")]
-      .find((label) => label.textContent.trim() === "物体名称")?.control?.value), "方体 2");
+    assert.equal(
+      await page(
+        () =>
+          [...document.querySelectorAll("label")].find(label => label.textContent.trim() === "物体名称")?.control
+            ?.value,
+      ),
+      "方体 2",
+    );
     await click('input[aria-label="位置 X"]');
     await page(() => document.querySelector('input[aria-label="位置 X"]').select());
     await cdp("Input.insertText", { text: "1.5" });
     await cdp("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab" });
     await cdp("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab" });
     await clickNamed('[role="radio"]', "图片换视角");
-    await waitFor((selector) => Boolean(document.querySelector(selector)), generateButton);
-    assert.equal(await page((selector) => Boolean(document.querySelector(selector)), captureButton), false,
-      "Angle mode presents its explicit generation action instead of local capture");
+    await waitFor(selector => Boolean(document.querySelector(selector)), generateButton);
+    assert.equal(
+      await page(selector => Boolean(document.querySelector(selector)), captureButton),
+      false,
+      "Angle mode presents its explicit generation action instead of local capture",
+    );
     await screenshot(`workbench-angle-${viewport.width}x${viewport.height}`);
     await checkControlReachability();
     await clickNamed('[role="radio"]', "场景摆位");
@@ -177,62 +314,125 @@ try {
     await clickNamed("button", "继续编辑");
   }
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-  await cdp("Page.navigate", { url: new URL(route, baseUrl).href }); await ready();
-  assert.equal(await page(() => document.querySelector(".director-viewport").dataset.viewMode), "director",
-    "The workbench opens in the director observation view");
+  await cdp("Page.navigate", { url: new URL(route, baseUrl).href });
+  await ready();
+  assert.equal(
+    await page(() => document.querySelector(".director-viewport").dataset.viewMode),
+    "director",
+    "The workbench opens in the director observation view",
+  );
   await clickNamed("button", "高级机位");
-  const readCameraDraft = () => page(() => Object.fromEntries([...document.querySelectorAll('.director-inspector input[type="number"]')]
-    .map((input) => [input.getAttribute("aria-label"), Number(input.value)])));
+  const readCameraDraft = () =>
+    page(() =>
+      Object.fromEntries(
+        [...document.querySelectorAll('.director-inspector input[type="number"]')].map(input => [
+          input.getAttribute("aria-label"),
+          Number(input.value),
+        ]),
+      ),
+    );
   const observationDraft = await readCameraDraft();
   for (const field of ["水平角度 (°)", "俯仰角度 (°)", "距离 (m)", "焦距 (mm)", "目标 X", "目标 Y", "目标 Z"]) {
-    assert.ok(Object.hasOwn(observationDraft, field) && Number.isFinite(observationDraft[field]),
-      `Observation check includes the camera field: ${field}`);
+    assert.ok(
+      Object.hasOwn(observationDraft, field) && Number.isFinite(observationDraft[field]),
+      `Observation check includes the camera field: ${field}`,
+    );
   }
   await orbitViewport();
-  assert.deepEqual(await readCameraDraft(), observationDraft, "Orbiting the director observation view does not alter the scene camera");
+  assert.deepEqual(
+    await readCameraDraft(),
+    observationDraft,
+    "Orbiting the director observation view does not alter the scene camera",
+  );
   await clickNamed('[role="radio"]', "摄影机视图");
   assert.equal(await page(() => document.querySelector(".director-viewport").dataset.viewMode), "camera");
-  assert.deepEqual(await readCameraDraft(), observationDraft, "Switching to the camera view preserves the scene camera");
+  assert.deepEqual(
+    await readCameraDraft(),
+    observationDraft,
+    "Switching to the camera view preserves the scene camera",
+  );
   await clickNamed('[role="radio"]', "导演视图");
   assert.equal(await page(() => document.querySelector(".director-viewport").dataset.viewMode), "director");
-  assert.deepEqual(await readCameraDraft(), observationDraft, "Switching back to the director view preserves the scene camera");
-  assert.deepEqual(await page(() => {
-    const evidence = JSON.parse(document.querySelector("#director-browser-evidence").textContent);
-    return { uploads: evidence.uploads.length, scenes: evidence.scenes.length, angles: evidence.angles.length };
-  }), { uploads: 0, scenes: 0, angles: 0 }, "Observation and view switching do not submit capture or generation requests");
+  assert.deepEqual(
+    await readCameraDraft(),
+    observationDraft,
+    "Switching back to the director view preserves the scene camera",
+  );
+  assert.deepEqual(
+    await page(() => {
+      const evidence = JSON.parse(document.querySelector("#director-browser-evidence").textContent);
+      return { uploads: evidence.uploads.length, scenes: evidence.scenes.length, angles: evidence.angles.length };
+    }),
+    { uploads: 0, scenes: 0, angles: 0 },
+    "Observation and view switching do not submit capture or generation requests",
+  );
   await clickNamed('[role="radio"]', "摄影机视图");
   const before = await page(() => Number(document.querySelector('input[aria-label="水平角度 (°)"]').value));
   await orbitViewport();
-  await waitFor((previous) => Number(document.querySelector('input[aria-label="水平角度 (°)"]').value) !== previous, before);
-  await page(() => document.querySelector("canvas").getContext("webgl2").getExtension("WEBGL_lose_context").loseContext());
-  await waitFor(() => [...document.querySelectorAll("button")].some((button) => button.textContent.trim() === "重试 3D 预览"));
-  assert.equal(await page((selector) => document.querySelector(selector).disabled, captureButton), true, "Context loss blocks capture");
+  await waitFor(
+    previous => Number(document.querySelector('input[aria-label="水平角度 (°)"]').value) !== previous,
+    before,
+  );
+  await page(() =>
+    document.querySelector("canvas").getContext("webgl2").getExtension("WEBGL_lose_context").loseContext(),
+  );
+  await waitFor(() =>
+    [...document.querySelectorAll("button")].some(button => button.textContent.trim() === "重试 3D 预览"),
+  );
+  assert.equal(
+    await page(selector => document.querySelector(selector).disabled, captureButton),
+    true,
+    "Context loss blocks capture",
+  );
   await clickNamed("button", "重试 3D 预览");
   await ready();
-  assert.notEqual(await page(() => Number(document.querySelector('input[aria-label="水平角度 (°)"]').value)), before, "WebGL retry retains the camera draft");
-  const sizes = [["16:9", 1600, 900], ["9:16", 900, 1600], ["1:1", 1600, 1600], ["4:3", 1600, 1200]];
+  assert.notEqual(
+    await page(() => Number(document.querySelector('input[aria-label="水平角度 (°)"]').value)),
+    before,
+    "WebGL retry retains the camera draft",
+  );
+  const sizes = [
+    ["16:9", 1600, 900],
+    ["9:16", 900, 1600],
+    ["1:1", 1600, 1600],
+    ["4:3", 1600, 1200],
+  ];
   for (const [ratio, width, height] of sizes) {
     await selectValue('button[role="combobox"][aria-label="画幅"]', ratio);
     await click(captureButton);
     await waitFor(() => !document.querySelector(".director-workbench"));
     const evidence = await page(() => JSON.parse(document.querySelector("#director-browser-evidence").textContent));
-    const capture = evidence.uploads.at(-1), saved = evidence.scenes.at(-1);
-    assert.equal(capture.width, width); assert.equal(capture.height, height);
-    assert.ok(capture.bytes > 1000 && capture.colors > 10, `Real nonempty WebGL PNG for ${ratio}: ${JSON.stringify(capture)}`);
-    assert.equal(saved.purpose, "DIRECTOR_3D"); assert.equal(saved.directorScene.aspectRatio, ratio);
+    const capture = evidence.uploads.at(-1),
+      saved = evidence.scenes.at(-1);
+    assert.equal(capture.width, width);
+    assert.equal(capture.height, height);
+    assert.ok(
+      capture.bytes > 1000 && capture.colors > 10,
+      `Real nonempty WebGL PNG for ${ratio}: ${JSON.stringify(capture)}`,
+    );
+    assert.equal(saved.purpose, "DIRECTOR_3D");
+    assert.equal(saved.directorScene.aspectRatio, ratio);
     assert.equal(saved.sourceVersionId, "synthetic-source");
     const capturedPng = await page(async () => {
       const image = document.querySelector("#director-browser-capture");
       const blob = await (await fetch(image.src)).blob();
       return new Promise((resolve, reject) => {
-        const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(blob);
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
       });
     });
-    await writeFile(join(screenshots, `captured-frame-${ratio.replace(":", "x")}.png`), Buffer.from(capturedPng.split(",")[1], "base64"), { mode: 0o600 });
-    await click("#open-director-fixture"); await ready();
+    await writeFile(
+      join(screenshots, `captured-frame-${ratio.replace(":", "x")}.png`),
+      Buffer.from(capturedPng.split(",")[1], "base64"),
+      { mode: 0o600 },
+    );
+    await click("#open-director-fixture");
+    await ready();
   }
   await clickNamed('[role="radio"]', "图片换视角");
-  await waitFor((selector) => document.querySelector(selector)?.disabled === false, generateButton);
+  await waitFor(selector => document.querySelector(selector)?.disabled === false, generateButton);
   await click(generateButton);
   await waitFor(() => !document.querySelector(".director-workbench"));
   const angleEvidence = await page(() => JSON.parse(document.querySelector("#director-browser-evidence").textContent));
@@ -243,7 +443,8 @@ try {
   assert.ok(angleEvidence.angles[0].instruction.includes("following camera direction"));
   assert.equal(angleEvidence.uploads.length, 4, "Angle submission does not recapture or upload a fake source frame");
   // Actual 3D rendering + synthetic HTTP: record, play, export, archive and restore a two-camera take.
-  await cdp("Page.navigate", { url: new URL(`${route}?restore`, baseUrl).href }); await ready();
+  await cdp("Page.navigate", { url: new URL(`${route}?restore`, baseUrl).href });
+  await ready();
   await cdp("Browser.setDownloadBehavior", { behavior: "allow", downloadPath: screenshots });
   await clickNamed('[role="tab"]', "运镜");
   await clickNamed("button", "记录当前机位");
@@ -266,44 +467,90 @@ try {
   await clickNamed("button", "回到起点");
   await clickNamed("button", "播放");
   await waitFor(() => Number(document.querySelector(".director-motion-panel").dataset.motionTime) > 0.15);
-  assert.equal(await page((selector) => document.querySelector(selector).disabled, captureButton), true, "Capture pauses during playback");
+  assert.equal(
+    await page(selector => document.querySelector(selector).disabled, captureButton),
+    true,
+    "Capture pauses during playback",
+  );
   await clickNamed("button", "暂停");
   const pausedTime = await page(() => Number(document.querySelector(".director-motion-panel").dataset.motionTime));
-  await new Promise((resolve) => setTimeout(resolve, 150));
-  assert.equal(await page(() => Number(document.querySelector(".director-motion-panel").dataset.motionTime)), pausedTime, "Pause freezes playback");
+  await new Promise(resolve => setTimeout(resolve, 150));
+  assert.equal(
+    await page(() => Number(document.querySelector(".director-motion-panel").dataset.motionTime)),
+    pausedTime,
+    "Pause freezes playback",
+  );
   await screenshot("motion-paused-3d-path");
   await clickNamed("button", "播放");
-  await waitFor(() => document.querySelector(".director-motion-panel").dataset.motionTime === "1"
-    && document.querySelector(".director-motion-panel").dataset.motionPlaying === "false");
+  await waitFor(
+    () =>
+      document.querySelector(".director-motion-panel").dataset.motionTime === "1" &&
+      document.querySelector(".director-motion-panel").dataset.motionPlaying === "false",
+  );
   await clickNamed("button", "导出当前参考 PNG");
   const frameFile = join(screenshots, "director-frame-1.00s.png");
   let png;
   for (let retry = 0; retry < 100; retry++) {
-    try { png = await readFile(frameFile); break; } catch { await pause(); }
+    try {
+      png = await readFile(frameFile);
+      break;
+    } catch {
+      await pause();
+    }
   }
   assert.ok(png?.length > 1000, "Reference download contains real PNG bytes");
-  assert.equal(png.readUInt32BE(16), 1600); assert.equal(png.readUInt32BE(20), 900);
-  assert.deepEqual(await page(() => {
-    const evidence = JSON.parse(document.querySelector("#director-browser-evidence").textContent);
-    return { uploads: evidence.uploads.length, scenes: evidence.scenes.length, angles: evidence.angles.length };
-  }), { uploads: 0, scenes: 0, angles: 0 }, "Playback and reference export make no model/upload calls");
+  assert.equal(png.readUInt32BE(16), 1600);
+  assert.equal(png.readUInt32BE(20), 900);
+  assert.deepEqual(
+    await page(() => {
+      const evidence = JSON.parse(document.querySelector("#director-browser-evidence").textContent);
+      return { uploads: evidence.uploads.length, scenes: evidence.scenes.length, angles: evidence.angles.length };
+    }),
+    { uploads: 0, scenes: 0, angles: 0 },
+    "Playback and reference export make no model/upload calls",
+  );
   await click('button[aria-label="场景文件"]');
   await clickNamed('[role="menuitem"]', "导出场景");
   let exported;
   for (let retry = 0; retry < 100; retry++) {
-    try { exported = JSON.parse(await readFile(join(screenshots, "director-scene.json"), "utf8")); break; } catch { await pause(); }
+    try {
+      exported = JSON.parse(await readFile(join(screenshots, "director-scene.json"), "utf8"));
+      break;
+    } catch {
+      await pause();
+    }
   }
   assert.equal(exported.schemaVersion, 3);
-  assert.deepEqual(exported.motion.keyframes.map((frame) => [frame.timeSeconds, frame.camera.azimuth]), [[0, 25], [1, 90]]);
+  assert.deepEqual(
+    exported.motion.keyframes.map(frame => [frame.timeSeconds, frame.camera.azimuth]),
+    [
+      [0, 25],
+      [1, 90],
+    ],
+  );
   await click(captureButton);
   await waitFor(() => !document.querySelector(".director-workbench"));
-  const take = await page(() => JSON.parse(document.querySelector("#director-browser-evidence").textContent).scenes.at(-1).directorScene);
-  assert.equal(take.schemaVersion, 3); assert.equal(take.camera.azimuth, 90);
-  assert.deepEqual(take.motion.keyframes.map((frame) => [frame.timeSeconds, frame.camera.azimuth]), [[0, 25], [1, 90]]);
-  await click("#open-director-fixture"); await ready();
+  const take = await page(
+    () => JSON.parse(document.querySelector("#director-browser-evidence").textContent).scenes.at(-1).directorScene,
+  );
+  assert.equal(take.schemaVersion, 3);
+  assert.equal(take.camera.azimuth, 90);
+  assert.deepEqual(
+    take.motion.keyframes.map(frame => [frame.timeSeconds, frame.camera.azimuth]),
+    [
+      [0, 25],
+      [1, 90],
+    ],
+  );
+  await click("#open-director-fixture");
+  await ready();
   await clickNamed('[role="tab"]', "运镜");
   assert.equal(await page(() => document.querySelectorAll(".director-motion-key").length), 2, "Saved track reopens");
-  assert.equal(await page(() => document.querySelector(".director-motion-panel").dataset.motionPlaying), "false", "Reopened take starts paused");
+  assert.equal(
+    await page(() => document.querySelector(".director-motion-panel").dataset.motionPlaying),
+    "false",
+    "Reopened take starts paused",
+  );
   await clickNamed("button", "播放");
   await waitFor(() => document.querySelector(".director-motion-panel").dataset.motionTime === "1");
   await clickNamed("button", "播放");
@@ -311,94 +558,212 @@ try {
   await clickNamed("button", "暂停");
   await screenshot("motion-restored-replayed");
   await clickNamed("button", "播放");
-  await page(() => document.querySelector("canvas").getContext("webgl2").getExtension("WEBGL_lose_context").loseContext());
+  await page(() =>
+    document.querySelector("canvas").getContext("webgl2").getExtension("WEBGL_lose_context").loseContext(),
+  );
   await waitFor(() => document.querySelector(".director-motion-panel").dataset.motionPlaying === "false");
-  await clickNamed("button", "重试 3D 预览"); await ready();
-  assert.equal(await page(() => document.querySelectorAll(".director-motion-key").length), 2, "Context loss preserves camera keys");
-  assert.equal(await page(() => document.querySelector(".director-motion-panel").dataset.motionPlaying), "false", "Context recovery starts paused");
+  await clickNamed("button", "重试 3D 预览");
+  await ready();
+  assert.equal(
+    await page(() => document.querySelectorAll(".director-motion-key").length),
+    2,
+    "Context loss preserves camera keys",
+  );
+  assert.equal(
+    await page(() => document.querySelector(".director-motion-panel").dataset.motionPlaying),
+    "false",
+    "Context recovery starts paused",
+  );
   // Actual MediaRecorder bytes, independently decoded below with local FFmpeg/FFprobe.
   await page(() => {
     const original = HTMLCanvasElement.prototype.captureStream;
     const tracks = [];
     window.directorRecordedTracks = tracks;
     HTMLCanvasElement.prototype.captureStream = function (rate) {
-      const stream = original.call(this, rate); tracks.push(...stream.getTracks()); return stream;
+      const stream = original.call(this, rate);
+      tracks.push(...stream.getTracks());
+      return stream;
     };
   });
   await clickNamed("button", "导出参考视频（WebM）");
   await waitFor(() => Boolean(document.querySelector('[role="progressbar"]')));
-  assert.equal(await page(() => document.querySelector('button[aria-label="关闭"]').disabled), false, "Export can be closed and cancelled");
+  assert.equal(
+    await page(() => document.querySelector('button[aria-label="关闭"]').disabled),
+    false,
+    "Export can be closed and cancelled",
+  );
   await clickNamed("button", "取消视频导出");
   await waitFor(() => !document.querySelector('[role="progressbar"]'));
-  assert.equal(await page(() => window.directorRecordedTracks.every((track) => track.readyState === "ended")), true, "Cancelled recording releases its tracks");
-  assert.equal(await readFile(join(screenshots, "director-motion-reference.webm")).then(() => true, () => false), false, "Cancellation does not download partial video");
+  assert.equal(
+    await page(() => window.directorRecordedTracks.every(track => track.readyState === "ended")),
+    true,
+    "Cancelled recording releases its tracks",
+  );
+  assert.equal(
+    await readFile(join(screenshots, "director-motion-reference.webm")).then(
+      () => true,
+      () => false,
+    ),
+    false,
+    "Cancellation does not download partial video",
+  );
   await clickNamed("button", "导出参考视频（WebM）");
   await waitFor(() => Boolean(document.querySelector('[role="progressbar"]')));
   await click('button[aria-label="关闭"]');
   await waitFor(() => !document.querySelector(".director-workbench"));
-  assert.equal(await page(() => window.directorRecordedTracks.every((track) => track.readyState === "ended")), true, "Closing releases the recording tracks");
-  await click("#open-director-fixture"); await ready();
+  assert.equal(
+    await page(() => window.directorRecordedTracks.every(track => track.readyState === "ended")),
+    true,
+    "Closing releases the recording tracks",
+  );
+  await click("#open-director-fixture");
+  await ready();
   await clickNamed('[role="tab"]', "运镜");
-  await page(() => { window.directorOriginalRecorder = window.MediaRecorder; window.MediaRecorder = undefined; });
+  await page(() => {
+    window.directorOriginalRecorder = window.MediaRecorder;
+    window.MediaRecorder = undefined;
+  });
   await clickNamed("button", "导出参考视频（WebM）");
   await waitFor(() => document.querySelector('[role="alert"]')?.textContent.includes("不支持本地 WebM"));
-  await page(() => { window.MediaRecorder = window.directorOriginalRecorder; });
+  await page(() => {
+    window.MediaRecorder = window.directorOriginalRecorder;
+  });
   const beforeExport = await page(() => document.querySelector(".director-motion-panel").dataset.motionTime);
   await clickNamed("button", "导出参考视频（WebM）");
   await waitFor(() => Boolean(document.querySelector('[role="progressbar"]')));
   await screenshot("video-export-progress");
-  await waitFor(() => !document.querySelector('[role="progressbar"]') && document.body.textContent.includes("参考视频已下载"));
+  await waitFor(
+    () => !document.querySelector('[role="progressbar"]') && document.body.textContent.includes("参考视频已下载"),
+  );
   const videoPath = join(screenshots, "director-motion-reference.webm");
   let webm;
   for (let retry = 0; retry < 100; retry++) {
-    try { webm = await readFile(videoPath); break; } catch { await pause(); }
+    try {
+      webm = await readFile(videoPath);
+      break;
+    } catch {
+      await pause();
+    }
   }
   assert.equal(webm.subarray(0, 4).toString("hex"), "1a45dfa3", "Downloaded bytes are an actual WebM container");
-  const probe = JSON.parse(execFileSync(process.env.AGENVAS_E2E_FFPROBE ?? "ffprobe",
-    ["-v", "error", "-select_streams", "v:0", "-show_streams", "-show_format", "-show_packets", "-of", "json", videoPath], { encoding: "utf8" }));
+  const probe = JSON.parse(
+    execFileSync(
+      process.env.AGENVAS_E2E_FFPROBE ?? "ffprobe",
+      [
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_streams",
+        "-show_format",
+        "-show_packets",
+        "-of",
+        "json",
+        videoPath,
+      ],
+      { encoding: "utf8" },
+    ),
+  );
   assert.ok(probe.format.format_name.includes("webm"));
   assert.ok(["vp8", "vp9"].includes(probe.streams[0].codec_name));
-  assert.equal(probe.streams[0].width, 960); assert.equal(probe.streams[0].height, 540);
+  assert.equal(probe.streams[0].width, 960);
+  assert.equal(probe.streams[0].height, 540);
   const duration = Number(probe.packets.at(-1).pts_time) - Number(probe.packets[0].pts_time);
   assert.ok(duration > 0.75 && duration < 1.5, `One-second take has a bounded recorded duration: ${duration}`);
   assert.ok(probe.packets.length >= 8, "The clip contains multiple encoded frames");
-  const decoded = execFileSync(process.env.AGENVAS_E2E_FFMPEG ?? "ffmpeg",
-    ["-v", "error", "-i", videoPath, "-an", "-vf", "fps=4,scale=64:64", "-f", "framemd5", "-"], { encoding: "utf8" });
-  const hashes = decoded.split("\n").filter((line) => line.trim() && !line.startsWith("#")).map((line) => line.split(",").at(-1).trim());
+  const decoded = execFileSync(
+    process.env.AGENVAS_E2E_FFMPEG ?? "ffmpeg",
+    ["-v", "error", "-i", videoPath, "-an", "-vf", "fps=4,scale=64:64", "-f", "framemd5", "-"],
+    { encoding: "utf8" },
+  );
+  const hashes = decoded
+    .split("\n")
+    .filter(line => line.trim() && !line.startsWith("#"))
+    .map(line => line.split(",").at(-1).trim());
   assert.ok(hashes.length >= 3 && new Set(hashes).size >= 3, "Decoded frames show changing 3D camera imagery");
-  assert.equal(await page(() => window.directorRecordedTracks.every((track) => track.readyState === "ended")), true, "Successful recording releases its tracks");
-  assert.equal(await page(() => document.querySelector(".director-motion-panel").dataset.motionTime), beforeExport, "Video export preserves preview position");
+  assert.equal(
+    await page(() => window.directorRecordedTracks.every(track => track.readyState === "ended")),
+    true,
+    "Successful recording releases its tracks",
+  );
+  assert.equal(
+    await page(() => document.querySelector(".director-motion-panel").dataset.motionTime),
+    beforeExport,
+    "Video export preserves preview position",
+  );
   await rename(videoPath, join(screenshots, "director-motion-reference-first.webm"));
   await clickNamed("button", "导出参考视频（WebM）");
   await waitFor(() => Boolean(document.querySelector('[role="progressbar"]')));
   await waitFor(() => !document.querySelector('[role="progressbar"]'));
   let repeated;
   for (let retry = 0; retry < 100; retry++) {
-    try { repeated = await readFile(videoPath); break; } catch { await pause(); }
+    try {
+      repeated = await readFile(videoPath);
+      break;
+    } catch {
+      await pause();
+    }
   }
   assert.ok(repeated?.length > 1000, "A repeated export downloads a fresh video");
-  assert.equal(await page(() => window.directorRecordedTracks.every((track) => track.readyState === "ended")), true);
-  videoEvidence = { filename: join(screenshots, "director-motion-reference-first.webm"), format: probe.format.format_name, codec: probe.streams[0].codec_name,
-    width: 960, height: 540, packetDurationSeconds: duration, frames: probe.packets.length, uniqueDecodedFrames: new Set(hashes).size, bytes: webm.length };
+  assert.equal(await page(() => window.directorRecordedTracks.every(track => track.readyState === "ended")), true);
+  videoEvidence = {
+    filename: join(screenshots, "director-motion-reference-first.webm"),
+    format: probe.format.format_name,
+    codec: probe.streams[0].codec_name,
+    width: 960,
+    height: 540,
+    packetDurationSeconds: duration,
+    frames: probe.packets.length,
+    uniqueDecodedFrames: new Set(hashes).size,
+    bytes: webm.length,
+  };
   await writeFile(join(screenshots, "video-evidence.json"), JSON.stringify(videoEvidence, null, 2), { mode: 0o600 });
-  assert.deepEqual(await page(() => {
-    const evidence = JSON.parse(document.querySelector("#director-browser-evidence").textContent);
-    return { uploads: evidence.uploads.length, scenes: evidence.scenes.length, angles: evidence.angles.length };
-  }), { uploads: 1, scenes: 1, angles: 0 }, "WebM export makes no additional upload or model calls");
+  assert.deepEqual(
+    await page(() => {
+      const evidence = JSON.parse(document.querySelector("#director-browser-evidence").textContent);
+      return { uploads: evidence.uploads.length, scenes: evidence.scenes.length, angles: evidence.angles.length };
+    }),
+    { uploads: 1, scenes: 1, angles: 0 },
+    "WebM export makes no additional upload or model calls",
+  );
   assert.deepEqual(runtimeErrors, [], "No uncaught browser errors");
-  console.log(JSON.stringify({ result: "passed", renderer: "Chrome WebGL (SwiftShader allowed)", screenshots, videoEvidence,
-    checks: ["three viewport sizes", "reachable object and camera controls", "angle configuration", "dirty close", "director observation preserves the scene camera",
-      "view switching does not submit requests", "camera view mouse orbit synchronization",
-      "WebGL loss and retained-draft retry", "four exact PNG dimensions with actual colored scene pixels", "scene upload metadata",
-      "explicit existing angle task submission with exact source and camera guidance",
-      "named 3D camera keys, smooth motion, pause/repeat", "actual local reference PNG and reusable scene JSON without API calls",
-      "v3 track archival and restore (synthetic HTTP)", "actual WebM export decoded by FFprobe/FFmpeg",
-      "video export cancel/close/repeat/unsupported recovery and released tracks"] }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        result: "passed",
+        renderer: "Chrome WebGL (SwiftShader allowed)",
+        screenshots,
+        videoEvidence,
+        checks: [
+          "three viewport sizes",
+          "reachable object and camera controls",
+          "angle configuration",
+          "dirty close",
+          "director observation preserves the scene camera",
+          "view switching does not submit requests",
+          "camera view mouse orbit synchronization",
+          "WebGL loss and retained-draft retry",
+          "four exact PNG dimensions with actual colored scene pixels",
+          "scene upload metadata",
+          "explicit existing angle task submission with exact source and camera guidance",
+          "named 3D camera keys, smooth motion, pause/repeat",
+          "actual local reference PNG and reusable scene JSON without API calls",
+          "v3 track archival and restore (synthetic HTTP)",
+          "actual WebM export decoded by FFprobe/FFmpeg",
+          "video export cancel/close/repeat/unsupported recovery and released tracks",
+        ],
+      },
+      null,
+      2,
+    ),
+  );
 } finally {
   socket?.close();
   if (chrome && chrome.exitCode === null) {
-    const stopped = new Promise((resolve) => chrome.once("exit", resolve));
-    chrome.kill(); await stopped;
+    const stopped = new Promise(resolve => chrome.once("exit", resolve));
+    chrome.kill();
+    await stopped;
   }
-  await server?.close(); await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await server?.close();
+  await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }

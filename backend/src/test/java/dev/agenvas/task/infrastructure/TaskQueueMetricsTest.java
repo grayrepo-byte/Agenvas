@@ -45,9 +45,8 @@ class TaskQueueMetricsTest {
             assertThat(value(meters, "UNKNOWN")).isZero();
             assertThat(value(meters, "BLOCKED")).isZero();
             assertThat(oldestAge(meters)).isZero();
-            assertThat(meters.getMeters()).allSatisfy(meter ->
-                    assertThat(meter.getId().getTags()).allSatisfy(tag ->
-                            assertThat(tag.getKey()).isEqualTo("status")));
+            assertThat(meters.getMeters()).allSatisfy(meter -> assertThat(meter.getId().getTags())
+                    .allSatisfy(tag -> assertThat(tag.getKey()).isEqualTo("status")));
         } finally {
             meters.close();
         }

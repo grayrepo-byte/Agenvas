@@ -31,7 +31,8 @@ class SafeLlmStreamingLimitHttpTest {
     private static final long TIMEOUT_SECONDS = 20;
     private static final int FRAGMENT_SIZE = 1024;
     // Keep the synthetic response unfinished when the client reaches its bound, even on a fast loopback socket.
-    private static final int MAX_TEST_FRAGMENTS = (int) (8 * SafeLlmTransport.MAX_STREAM_RESPONSE_BYTES / FRAGMENT_SIZE);
+    private static final int MAX_TEST_FRAGMENTS = (int) (8 * SafeLlmTransport.MAX_STREAM_RESPONSE_BYTES
+            / FRAGMENT_SIZE);
 
     @Test
     void acceptsFiveMiBPublicResponseThroughTransportAggregationAndCheckpoint() throws Exception {
@@ -47,7 +48,9 @@ class SafeLlmStreamingLimitHttpTest {
                 event(output, "{\"content\":\"" + fragment + "\"}");
                 event(output, "{\"content\":\"" + fragment + "\"}");
                 output.write("data: [DONE]\n\n".getBytes(StandardCharsets.UTF_8));
-            } finally { exchange.close(); }
+            } finally {
+                exchange.close();
+            }
         });
         server.start();
         String endpoint = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1";
@@ -67,7 +70,9 @@ class SafeLlmStreamingLimitHttpTest {
             LlmProtocolCodec codec = new LlmProtocolCodec(new ObjectMapper());
             assertThat(codec.selectedAssistant(codec.response(exchange.response())).getText()).isEqualTo(expected);
             assertThat(requests).hasValue(1);
-        } finally { server.stop(0); }
+        } finally {
+            server.stop(0);
+        }
     }
 
     @Test
@@ -96,8 +101,11 @@ class SafeLlmStreamingLimitHttpTest {
                 .httpClientBuilderCustomizer(builder -> builder.interceptor(transport.interceptor())).build();
         SpringAiChatGateway gateway = new SpringAiChatGateway(model, 3);
         try {
-            var exchange = gateway.callStreaming(List.of(new UserMessage("Hello")), List.of(), Map.of(), gateway.configIdentity(), ignored -> {});
-            assertThat(exchange.response().getResult().getOutput().getText()).isEqualTo("Public response without reported usage.");
+            var exchange = gateway.callStreaming(List.of(new UserMessage("Hello")), List.of(), Map.of(),
+                    gateway.configIdentity(), ignored -> {
+                    });
+            assertThat(exchange.response().getResult().getOutput().getText())
+                    .isEqualTo("Public response without reported usage.");
             assertThat(exchange.response().getMetadata().getUsage()).isInstanceOf(EmptyUsage.class);
             var checkpoint = new LlmProtocolCodec(new ObjectMapper()).response(exchange.response());
             assertThat(checkpoint.path("metadata").path("usage").isNull()).isTrue();
@@ -124,7 +132,8 @@ class SafeLlmStreamingLimitHttpTest {
                 event(output, "{\"content\":\"Published public text.\"}");
                 event(output, "{\"tool_calls\":[{\"index\":0,\"id\":\"call-bound-1\",\"type\":\"function\","
                         + "\"function\":{\"name\":\"read_project_summary\",\"arguments\":\"{\\\"prompt\\\":\\\"\"}}]}");
-                String continuation = "{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"" + "x".repeat(FRAGMENT_SIZE) + "\"}}]}";
+                String continuation = "{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\""
+                        + "x".repeat(FRAGMENT_SIZE) + "\"}}]}";
                 for (int index = 0; index < MAX_TEST_FRAGMENTS; index++) {
                     event(output, continuation);
                     fragments.incrementAndGet();
@@ -143,11 +152,16 @@ class SafeLlmStreamingLimitHttpTest {
                 .maxRetries(0).timeout(Duration.ofSeconds(TIMEOUT_SECONDS)).build())
                 .httpClientBuilderCustomizer(builder -> builder.interceptor(transport.interceptor())).build();
         ToolCallback tool = new ToolCallback() {
-            @Override public ToolDefinition getToolDefinition() {
+            @Override
+            public ToolDefinition getToolDefinition() {
                 return ToolDefinition.builder().name("read_project_summary").description("Read project")
                         .inputSchema("{\"type\":\"object\"}").build();
             }
-            @Override public String call(String input) { executions.incrementAndGet(); return "{}"; }
+            @Override
+            public String call(String input) {
+                executions.incrementAndGet();
+                return "{}";
+            }
         };
         SpringAiChatGateway gateway = new SpringAiChatGateway(model, 3);
         List<String> deltas = new ArrayList<>();
@@ -157,7 +171,8 @@ class SafeLlmStreamingLimitHttpTest {
             assertThat(failure).isNotNull();
             boolean limited = false;
             for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
-                if (cause instanceof IOException && cause.getMessage().contains("transport size limit")) limited = true;
+                if (cause instanceof IOException && cause.getMessage().contains("transport size limit"))
+                    limited = true;
             }
             assertThat(limited).as("Raw source bound, before tool calls have been merged").isTrue();
             assertThat(requests).hasValue(1);
@@ -172,7 +187,8 @@ class SafeLlmStreamingLimitHttpTest {
 
     private static void event(OutputStream output, String delta) throws IOException {
         String body = "data: {\"id\":\"response-bound\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,"
-                + "\"model\":\"synthetic-limit-model\",\"choices\":[{\"index\":0,\"delta\":" + delta + ",\"finish_reason\":null}]}\n\n";
+                + "\"model\":\"synthetic-limit-model\",\"choices\":[{\"index\":0,\"delta\":" + delta
+                + ",\"finish_reason\":null}]}\n\n";
         output.write(body.getBytes(StandardCharsets.UTF_8));
         output.flush();
     }

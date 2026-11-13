@@ -1,12 +1,47 @@
 import {
-  ACESFilmicToneMapping, Box3, BoxGeometry, BufferGeometry, CameraHelper, Color, CylinderGeometry, DirectionalLight, EdgesGeometry,
-  Group, HemisphereLight, LineBasicMaterial, LineSegments, Material, Mesh, MeshBasicMaterial, MeshStandardMaterial, PCFShadowMap,
-  PerspectiveCamera, Plane, PlaneGeometry, Raycaster, Scene, SphereGeometry, TorusGeometry, Vector2, Vector3, WebGLRenderer,
+  ACESFilmicToneMapping,
+  Box3,
+  BoxGeometry,
+  BufferGeometry,
+  CameraHelper,
+  Color,
+  CylinderGeometry,
+  DirectionalLight,
+  EdgesGeometry,
+  Group,
+  HemisphereLight,
+  LineBasicMaterial,
+  LineSegments,
+  Material,
+  Mesh,
+  MeshBasicMaterial,
+  MeshStandardMaterial,
+  PCFShadowMap,
+  PerspectiveCamera,
+  Plane,
+  PlaneGeometry,
+  Raycaster,
+  Scene,
+  SphereGeometry,
+  TorusGeometry,
+  Vector2,
+  Vector3,
+  WebGLRenderer,
 } from "three";
 import { cameraPosition, DIRECTOR_CAPTURE_SIZES, type DirectorObject, type DirectorScene } from "./directorScene";
 import { directorCameraAtTime, directorCameraPath } from "./directorMotion";
-import { DIRECTOR_RESIZE_AXES, resizeDirectorObject, type DirectorLocalBounds, type DirectorResizeHandle } from "./directorResize";
-import { moveDirectorObject, rotateDirectorObject, wrapDirectorRotation, type DirectorMoveAxis } from "./directorTransform";
+import {
+  DIRECTOR_RESIZE_AXES,
+  resizeDirectorObject,
+  type DirectorLocalBounds,
+  type DirectorResizeHandle,
+} from "./directorResize";
+import {
+  moveDirectorObject,
+  rotateDirectorObject,
+  wrapDirectorRotation,
+  type DirectorMoveAxis,
+} from "./directorTransform";
 
 interface DirectorRendererCallbacks {
   onCameraChange(camera: DirectorScene["camera"]): void;
@@ -30,29 +65,64 @@ export interface DirectorRenderer {
 }
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
-const wrapAzimuth = (value: number) => ((value + 180) % 360 + 360) % 360 - 180;
-type OrbitDrag = { kind: "orbit"; id: number; x: number; y: number; startX: number; startY: number; pan: boolean; moved: boolean };
-type ResizeDrag = { kind: "resize"; id: number; original: DirectorObject; bounds: DirectorLocalBounds;
-  handle: DirectorResizeHandle; plane: Plane; startPoint: Vector3 };
-type MoveDrag = { kind: "move"; id: number; original: DirectorObject; axis: DirectorMoveAxis; plane: Plane;
-  startPoint: Vector3; startX: number; startY: number; moved: boolean };
-type RotateDrag = { kind: "rotate"; id: number; original: DirectorObject; plane: Plane | null; center: Vector3;
-  lastAngle: number; accumulated: number; startX: number; startY: number; moved: boolean };
+const wrapAzimuth = (value: number) => ((((value + 180) % 360) + 360) % 360) - 180;
+type OrbitDrag = {
+  kind: "orbit";
+  id: number;
+  x: number;
+  y: number;
+  startX: number;
+  startY: number;
+  pan: boolean;
+  moved: boolean;
+};
+type ResizeDrag = {
+  kind: "resize";
+  id: number;
+  original: DirectorObject;
+  bounds: DirectorLocalBounds;
+  handle: DirectorResizeHandle;
+  plane: Plane;
+  startPoint: Vector3;
+};
+type MoveDrag = {
+  kind: "move";
+  id: number;
+  original: DirectorObject;
+  axis: DirectorMoveAxis;
+  plane: Plane;
+  startPoint: Vector3;
+  startX: number;
+  startY: number;
+  moved: boolean;
+};
+type RotateDrag = {
+  kind: "rotate";
+  id: number;
+  original: DirectorObject;
+  plane: Plane | null;
+  center: Vector3;
+  lastAngle: number;
+  accumulated: number;
+  startX: number;
+  startY: number;
+  moved: boolean;
+};
 type ObjectDrag = ResizeDrag | MoveDrag | RotateDrag;
 type ObjectInstance = { group: Group; kind: DirectorObject["kind"]; bounds: Box3 };
 
 function disposeObjects(root: Group | Scene) {
   const geometries = new Set<BufferGeometry>();
   const materials = new Set<Material>();
-  root.traverse((child) => {
+  root.traverse(child => {
     if (child instanceof Mesh || child instanceof LineSegments) {
       geometries.add(child.geometry);
       for (const material of Array.isArray(child.material) ? child.material : [child.material]) materials.add(material);
     }
     if (child instanceof DirectionalLight) child.shadow.dispose();
   });
-  geometries.forEach((geometry) => geometry.dispose());
-  materials.forEach((material) => material.dispose());
+  geometries.forEach(geometry => geometry.dispose());
+  materials.forEach(material => material.dispose());
   root.clear();
 }
 
@@ -124,9 +194,12 @@ function createObject(object: DirectorObject): Group {
   if (object.kind === "ACTOR") {
     group.add(createActor(material));
   } else {
-    const geometry = object.kind === "BOX" ? new BoxGeometry(1, 1, 1)
-      : object.kind === "SPHERE" ? new SphereGeometry(0.5, 32, 24)
-      : new CylinderGeometry(0.5, 0.5, 1, 32);
+    const geometry =
+      object.kind === "BOX"
+        ? new BoxGeometry(1, 1, 1)
+        : object.kind === "SPHERE"
+          ? new SphereGeometry(0.5, 32, 24)
+          : new CylinderGeometry(0.5, 0.5, 1, 32);
     const mesh = new Mesh(geometry, material);
     mesh.position.y = 0.5;
     mesh.castShadow = true;
@@ -138,17 +211,20 @@ function createObject(object: DirectorObject): Group {
 
 function applyObjectTransform(group: Group, object: DirectorObject) {
   group.position.set(object.position.x, object.position.y, object.position.z);
-  group.rotation.y = object.rotation * Math.PI / 180;
+  group.rotation.y = (object.rotation * Math.PI) / 180;
   group.scale.set(object.scale.x, object.scale.y, object.scale.z);
-  group.traverse((child) => {
+  group.traverse(child => {
     if (child instanceof Mesh && child.material instanceof MeshStandardMaterial) child.material.color.set(object.color);
   });
   group.updateMatrixWorld(true);
 }
 
 /** All renderer resources and DOM listeners belong to this one viewport lifetime. */
-export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: DirectorScene,
-  callbacks: DirectorRendererCallbacks): DirectorRenderer {
+export function createDirectorRenderer(
+  canvas: HTMLCanvasElement,
+  initialScene: DirectorScene,
+  callbacks: DirectorRendererCallbacks,
+): DirectorRenderer {
   const renderer = new WebGLRenderer({ canvas, antialias: true, alpha: false });
   const world = new Scene();
   world.background = new Color("#E8E4DC");
@@ -156,9 +232,16 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
   world.add(objects);
   const instances = new Map<string, ObjectInstance>();
   const unitBox = new BoxGeometry(1, 1, 1);
-  const selection = new LineSegments(new EdgesGeometry(unitBox), new LineBasicMaterial({
-    depthTest: false, depthWrite: false, transparent: true, opacity: 0.85, toneMapped: false,
-  }));
+  const selection = new LineSegments(
+    new EdgesGeometry(unitBox),
+    new LineBasicMaterial({
+      depthTest: false,
+      depthWrite: false,
+      transparent: true,
+      opacity: 0.85,
+      toneMapped: false,
+    }),
+  );
   unitBox.dispose();
   selection.name = "director-selection";
   selection.visible = false;
@@ -171,27 +254,34 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
   const handleGeometry = new BoxGeometry(1, 1, 1);
   const handleMaterial = new MeshBasicMaterial({ depthTest: false, depthWrite: false, toneMapped: false });
   const handles: { mesh: Mesh; signs: DirectorResizeHandle }[] = [];
-  for (const x of [-1, 0, 1]) for (const y of [-1, 0, 1]) for (const z of [-1, 0, 1]) {
-    const axisCount = [x, y, z].filter(Boolean).length;
-    if (axisCount !== 1 && axisCount !== 3) continue;
-    const mesh = new Mesh(handleGeometry, handleMaterial);
-    mesh.name = `director-resize-${x}-${y}-${z}`;
-    mesh.renderOrder = 2;
-    mesh.frustumCulled = false;
-    resizeHandles.add(mesh);
-    handles.push({ mesh, signs: { x, y, z } });
-  }
+  for (const x of [-1, 0, 1])
+    for (const y of [-1, 0, 1])
+      for (const z of [-1, 0, 1]) {
+        const axisCount = [x, y, z].filter(Boolean).length;
+        if (axisCount !== 1 && axisCount !== 3) continue;
+        const mesh = new Mesh(handleGeometry, handleMaterial);
+        mesh.name = `director-resize-${x}-${y}-${z}`;
+        mesh.renderOrder = 2;
+        mesh.frustumCulled = false;
+        resizeHandles.add(mesh);
+        handles.push({ mesh, signs: { x, y, z } });
+      }
   world.add(resizeHandles);
   const moveHandles = new Group();
   moveHandles.name = "director-move-handles";
   moveHandles.visible = false;
   const axisStem = new CylinderGeometry(0.012, 0.012, 0.82, 10);
   const axisTip = new CylinderGeometry(0, 0.06, 0.18, 12);
-  const axisHandles = (["x", "y", "z"] as const).map((axis) => {
-    const root = new Group(); root.name = `director-move-${axis}`;
+  const axisHandles = (["x", "y", "z"] as const).map(axis => {
+    const root = new Group();
+    root.name = `director-move-${axis}`;
     const material = new MeshBasicMaterial({ depthTest: false, depthWrite: false, toneMapped: false });
-    const stem = new Mesh(axisStem, material); stem.position.y = 0.41; stem.renderOrder = 2;
-    const tip = new Mesh(axisTip, material); tip.position.y = 0.91; tip.renderOrder = 2;
+    const stem = new Mesh(axisStem, material);
+    stem.position.y = 0.41;
+    stem.renderOrder = 2;
+    const tip = new Mesh(axisTip, material);
+    tip.position.y = 0.91;
+    tip.renderOrder = 2;
     tip.name = `director-move-${axis}-tip`;
     root.add(stem, tip);
     if (axis === "x") root.rotation.z = -Math.PI / 2;
@@ -205,9 +295,11 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
   const rotationMaterial = new MeshBasicMaterial({ depthTest: false, depthWrite: false, toneMapped: false });
   const rotationRing = new Mesh(new TorusGeometry(1, 0.012, 8, 80), rotationMaterial);
   rotationRing.name = "director-rotate-y";
-  rotationRing.rotation.x = Math.PI / 2; rotationRing.renderOrder = 2;
+  rotationRing.rotation.x = Math.PI / 2;
+  rotationRing.renderOrder = 2;
   const rotationGrip = new Mesh(new SphereGeometry(1, 12, 8), rotationMaterial);
-  rotationGrip.name = "director-rotate-y-grip"; rotationGrip.renderOrder = 3;
+  rotationGrip.name = "director-rotate-y-grip";
+  rotationGrip.renderOrder = 3;
   rotateHandles.add(rotationRing, rotationGrip);
   world.add(moveHandles, rotateHandles);
   let axisLength = 1;
@@ -265,11 +357,17 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
   let objectTool: DirectorObjectTool = "move";
   const initialCameraPosition = cameraPosition(initialScene.camera);
   // The observer frames the subject and physical camera together, without entering saved scene data.
-  let observerPose: DirectorScene["camera"] = { azimuth: 55, elevation: 30,
-    distance: Math.max(14, initialScene.camera.distance * 1.7), focalLength: 35,
-    target: { x: (initialScene.camera.target.x + initialCameraPosition.x) / 2,
+  let observerPose: DirectorScene["camera"] = {
+    azimuth: 55,
+    elevation: 30,
+    distance: Math.max(14, initialScene.camera.distance * 1.7),
+    focalLength: 35,
+    target: {
+      x: (initialScene.camera.target.x + initialCameraPosition.x) / 2,
       y: (initialScene.camera.target.y + initialCameraPosition.y) / 2,
-      z: (initialScene.camera.target.z + initialCameraPosition.z) / 2 } };
+      z: (initialScene.camera.target.z + initialCameraPosition.z) / 2,
+    },
+  };
   let selectedId: string | undefined;
   let capturing = false;
   let width = 1;
@@ -302,7 +400,7 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
     const accent = new Color().setStyle(themeAccent || getComputedStyle(canvas).color);
     cameraFrustum.setColors(accent, accent, accent, accent, accent);
     cameraPath.material.color.copy(accent);
-    cameraRig.traverse((object) => {
+    cameraRig.traverse(object => {
       if (object instanceof Mesh && object.material instanceof MeshBasicMaterial) object.material.color.copy(accent);
     });
     const observerPosition = cameraPosition(observerPose);
@@ -312,11 +410,11 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
     observerCamera.updateProjectionMatrix();
     observerCamera.updateMatrixWorld();
   };
-  const activeCamera = () => viewMode === "director" ? observerCamera : camera;
-  const activePose = () => viewMode === "director" ? observerPose : scene.camera;
+  const activeCamera = () => (viewMode === "director" ? observerCamera : camera);
+  const activePose = () => (viewMode === "director" ? observerPose : scene.camera);
   const syncSelection = () => {
     const instance = selectedId ? instances.get(selectedId) : undefined;
-    const object = scene.objects.find((item) => item.id === selectedId);
+    const object = scene.objects.find(item => item.id === selectedId);
     selection.visible = Boolean(instance && object) && !capturing;
     const editable = Boolean(instance && object && callbacks.onObjectChange) && !disabled && !capturing;
     resizeHandles.visible = editable && objectTool === "resize";
@@ -335,10 +433,13 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
     rotationMaterial.color.copy(selection.material.color);
     const viewingCamera = activeCamera();
     const pivotDepth = -selection.position.clone().applyMatrix4(viewingCamera.matrixWorldInverse).z;
-    const pivotVisible = Number.isFinite(pivotDepth) && pivotDepth > viewingCamera.near && pivotDepth < viewingCamera.far;
+    const pivotVisible =
+      Number.isFinite(pivotDepth) && pivotDepth > viewingCamera.near && pivotDepth < viewingCamera.far;
     moveHandles.visible &&= pivotVisible;
     rotateHandles.visible &&= pivotVisible;
-    const pivotUnitsPerPixel = 2 * Math.max(pivotDepth, viewingCamera.near) * Math.tan(viewingCamera.fov * Math.PI / 360) / Math.max(height, 1);
+    const pivotUnitsPerPixel =
+      (2 * Math.max(pivotDepth, viewingCamera.near) * Math.tan((viewingCamera.fov * Math.PI) / 360)) /
+      Math.max(height, 1);
     axisLength = pivotUnitsPerPixel * 72;
     moveHandles.position.copy(selection.position);
     const style = getComputedStyle(canvas);
@@ -347,32 +448,45 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
       handle.material.color.setStyle(style.getPropertyValue(token).trim() || themeAccent || style.color);
       handle.root.scale.setScalar(axisLength);
       const axis = new Vector3(handle.axis === "x" ? 1 : 0, handle.axis === "y" ? 1 : 0, handle.axis === "z" ? 1 : 0);
-      const tipDepth = -moveHandles.position.clone().addScaledVector(axis, axisLength).applyMatrix4(viewingCamera.matrixWorldInverse).z;
-      handle.root.visible = Math.abs(axis.dot(viewingCamera.getWorldDirection(new Vector3()))) < 0.985
-        && tipDepth > viewingCamera.near && tipDepth < viewingCamera.far;
+      const tipDepth = -moveHandles.position
+        .clone()
+        .addScaledVector(axis, axisLength)
+        .applyMatrix4(viewingCamera.matrixWorldInverse).z;
+      handle.root.visible =
+        Math.abs(axis.dot(viewingCamera.getWorldDirection(new Vector3()))) < 0.985 &&
+        tipDepth > viewingCamera.near &&
+        tipDepth < viewingCamera.far;
     }
     moveHandles.updateMatrixWorld(true);
     rotationRadius = Math.hypot(size.x * object.scale.x, size.z * object.scale.z) / 2 + pivotUnitsPerPixel * 18;
     rotateHandles.position.set(object.position.x, selection.position.y, object.position.z);
     rotationRing.scale.setScalar(rotationRadius);
-    const heading = object.rotation * Math.PI / 180;
+    const heading = (object.rotation * Math.PI) / 180;
     rotationGrip.position.set(Math.sin(heading) * rotationRadius, 0, Math.cos(heading) * rotationRadius);
     rotationGrip.scale.setScalar(pivotUnitsPerPixel * 5);
     rotateHandles.updateMatrixWorld(true);
     for (const handle of handles) {
-      const point = new Vector3(...DIRECTOR_RESIZE_AXES.map((axis) => handle.signs[axis] > 0 ? bounds.max[axis]
-        : handle.signs[axis] < 0 ? bounds.min[axis] : center[axis]) as [number, number, number]);
+      const point = new Vector3(
+        ...(DIRECTOR_RESIZE_AXES.map(axis =>
+          handle.signs[axis] > 0 ? bounds.max[axis] : handle.signs[axis] < 0 ? bounds.min[axis] : center[axis],
+        ) as [number, number, number]),
+      );
       handle.mesh.position.copy(group.localToWorld(point));
       handle.mesh.quaternion.copy(viewingCamera.quaternion);
       const depth = -handle.mesh.position.clone().applyMatrix4(viewingCamera.matrixWorldInverse).z;
       handle.mesh.visible = depth > viewingCamera.near && depth < viewingCamera.far;
-      const axes = DIRECTOR_RESIZE_AXES.filter((axis) => handle.signs[axis]);
+      const axes = DIRECTOR_RESIZE_AXES.filter(axis => handle.signs[axis]);
       if (axes.length === 1) {
-        const axis = new Vector3(axes[0] === "x" ? 1 : 0, axes[0] === "y" ? 1 : 0, axes[0] === "z" ? 1 : 0).applyQuaternion(group.quaternion);
+        const axis = new Vector3(
+          axes[0] === "x" ? 1 : 0,
+          axes[0] === "y" ? 1 : 0,
+          axes[0] === "z" ? 1 : 0,
+        ).applyQuaternion(group.quaternion);
         // An end-on axis has no meaningful screen motion; corners or an observer orbit remain available.
         if (Math.abs(axis.dot(viewingCamera.getWorldDirection(new Vector3()))) > 0.985) handle.mesh.visible = false;
       }
-      const unitsPerPixel = 2 * Math.max(depth, viewingCamera.near) * Math.tan(viewingCamera.fov * Math.PI / 360) / Math.max(height, 1);
+      const unitsPerPixel =
+        (2 * Math.max(depth, viewingCamera.near) * Math.tan((viewingCamera.fov * Math.PI) / 360)) / Math.max(height, 1);
       handle.mesh.scale.setScalar(unitsPerPixel * 7);
     }
   };
@@ -381,7 +495,8 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
     unavailable = true;
     if (frame !== null) cancelAnimationFrame(frame);
     frame = null;
-    const pointerId = drag?.id; drag = null;
+    const pointerId = drag?.id;
+    drag = null;
     delete canvas.dataset.directorResizing;
     delete canvas.dataset.directorTransforming;
     if (pointerId !== undefined && canvas.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId);
@@ -390,7 +505,8 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
   };
   renderer.debug.onShaderError = fail;
   const renderNow = (shooting = false) => {
-    if (disposed || unavailable || renderer.getContext().isContextLost()) throw new Error("DIRECTOR_VIEWPORT_UNAVAILABLE");
+    if (disposed || unavailable || renderer.getContext().isContextLost())
+      throw new Error("DIRECTOR_VIEWPORT_UNAVAILABLE");
     applyCamera();
     syncSelection();
     renderer.render(world, shooting ? camera : activeCamera());
@@ -400,43 +516,61 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
     if (disposed || unavailable || frame !== null) return;
     frame = requestAnimationFrame(() => {
       frame = null;
-      try { renderNow(); } catch { fail(); }
+      try {
+        renderNow();
+      } catch {
+        fail();
+      }
     });
   };
   const update = (nextScene: DirectorScene, selectedObjectId?: string) => {
     if (disposed || unavailable) return;
     scene = nextScene;
     if (pathMotion !== nextScene.motion) {
-      const points = directorCameraPath(nextScene).flatMap((path) => path.slice(1).flatMap((point, index) => {
-        const previous = path[index]!;
-        return [new Vector3(previous.x, previous.y, previous.z), new Vector3(point.x, point.y, point.z)];
-      }));
+      const points = directorCameraPath(nextScene).flatMap(path =>
+        path.slice(1).flatMap((point, index) => {
+          const previous = path[index]!;
+          return [new Vector3(previous.x, previous.y, previous.z), new Vector3(point.x, point.y, point.z)];
+        }),
+      );
       cameraPath.geometry.dispose();
       cameraPath.geometry = new BufferGeometry().setFromPoints(points);
       pathMotion = nextScene.motion;
     }
     const transformingId = drag && drag.kind !== "orbit" ? drag.original.id : undefined;
-    if (drag && transformingId && (selectedObjectId !== transformingId || !nextScene.objects.some((object) => object.id === transformingId))) {
-      const pointerId = drag.id; drag = null;
+    if (
+      drag &&
+      transformingId &&
+      (selectedObjectId !== transformingId || !nextScene.objects.some(object => object.id === transformingId))
+    ) {
+      const pointerId = drag.id;
+      drag = null;
       delete canvas.dataset.directorResizing;
       delete canvas.dataset.directorTransforming;
       canvas.style.removeProperty("cursor");
       if (canvas.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId);
     }
     selectedId = selectedObjectId;
-    const wanted = new Set(nextScene.objects.map((object) => object.id));
-    for (const [id, instance] of instances) if (!wanted.has(id)) {
-      objects.remove(instance.group); disposeObjects(instance.group); instances.delete(id);
-    }
+    const wanted = new Set(nextScene.objects.map(object => object.id));
+    for (const [id, instance] of instances)
+      if (!wanted.has(id)) {
+        objects.remove(instance.group);
+        disposeObjects(instance.group);
+        instances.delete(id);
+      }
     for (const object of nextScene.objects) {
       let instance = instances.get(object.id);
       if (instance && instance.kind !== object.kind) {
-        objects.remove(instance.group); disposeObjects(instance.group); instances.delete(object.id); instance = undefined;
+        objects.remove(instance.group);
+        disposeObjects(instance.group);
+        instances.delete(object.id);
+        instance = undefined;
       }
       if (!instance) {
         const group = createObject(object);
         instance = { group, kind: object.kind, bounds: new Box3().setFromObject(group) };
-        instances.set(object.id, instance); objects.add(group);
+        instances.set(object.id, instance);
+        objects.add(group);
       }
       applyObjectTransform(instance.group, object);
     }
@@ -445,62 +579,87 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
     invalidate();
   };
   const changeObject = (object: DirectorObject) => {
-    scene = { ...scene, objects: scene.objects.map((item) => item.id === object.id ? object : item) };
+    scene = { ...scene, objects: scene.objects.map(item => (item.id === object.id ? object : item)) };
     const instance = instances.get(object.id);
     if (instance) applyObjectTransform(instance.group, object);
-    syncSelection(); invalidate(); callbacks.onObjectChange?.(object.id, object);
+    syncSelection();
+    invalidate();
+    callbacks.onObjectChange?.(object.id, object);
   };
   const finishObjectTransform = (revert: boolean) => {
     if (!drag || drag.kind === "orbit") return;
-    const current = drag; drag = null;
+    const current = drag;
+    drag = null;
     delete canvas.dataset.directorResizing;
     delete canvas.dataset.directorTransforming;
     if (canvas.hasPointerCapture(current.id)) canvas.releasePointerCapture(current.id);
     canvas.style.removeProperty("cursor");
-    if (revert && scene.objects.some((object) => object.id === current.original.id)) changeObject(current.original);
+    if (revert && scene.objects.some(object => object.id === current.original.id)) changeObject(current.original);
   };
   const setPointerRay = (event: { clientX: number; clientY: number }) => {
     const bounds = canvas.getBoundingClientRect();
     if (bounds.width <= 0 || bounds.height <= 0) return false;
-    raycaster.setFromCamera(new Vector2((event.clientX - bounds.left) / bounds.width * 2 - 1,
-      1 - (event.clientY - bounds.top) / bounds.height * 2), activeCamera());
+    raycaster.setFromCamera(
+      new Vector2(
+        ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+        1 - ((event.clientY - bounds.top) / bounds.height) * 2,
+      ),
+      activeCamera(),
+    );
     return true;
   };
   const pickHandle = (event: { clientX: number; clientY: number }) => {
     if (!resizeHandles.visible || disabled || !callbacks.onObjectChange) return undefined;
     const bounds = canvas.getBoundingClientRect();
     if (bounds.width <= 0 || bounds.height <= 0) return undefined;
-    let picked: typeof handles[number] | undefined;
+    let picked: (typeof handles)[number] | undefined;
     let shortest = 10;
     for (const handle of handles) {
       if (!handle.mesh.visible) continue;
       const point = handle.mesh.position.clone().project(activeCamera());
-      const distance = Math.hypot((point.x + 1) * bounds.width / 2 + bounds.left - event.clientX,
-        (1 - point.y) * bounds.height / 2 + bounds.top - event.clientY);
-      if (distance < shortest) { picked = handle; shortest = distance; }
+      const distance = Math.hypot(
+        ((point.x + 1) * bounds.width) / 2 + bounds.left - event.clientX,
+        ((1 - point.y) * bounds.height) / 2 + bounds.top - event.clientY,
+      );
+      if (distance < shortest) {
+        picked = handle;
+        shortest = distance;
+      }
     }
     return picked;
   };
   const beginResize = (event: PointerEvent) => {
     if (objectTool !== "resize" || event.button !== 0 || event.shiftKey) return false;
     const handle = pickHandle(event);
-    const object = scene.objects.find((item) => item.id === selectedId);
+    const object = scene.objects.find(item => item.id === selectedId);
     const instance = selectedId ? instances.get(selectedId) : undefined;
     if (!handle || !object || !instance || !setPointerRay(event)) return false;
-    const axes = DIRECTOR_RESIZE_AXES.filter((axis) => handle.signs[axis]);
+    const axes = DIRECTOR_RESIZE_AXES.filter(axis => handle.signs[axis]);
     const normal = activeCamera().getWorldDirection(new Vector3());
     if (axes.length === 1) {
-      const axis = new Vector3(axes[0] === "x" ? 1 : 0, axes[0] === "y" ? 1 : 0, axes[0] === "z" ? 1 : 0).applyQuaternion(instance.group.quaternion);
+      const axis = new Vector3(
+        axes[0] === "x" ? 1 : 0,
+        axes[0] === "y" ? 1 : 0,
+        axes[0] === "z" ? 1 : 0,
+      ).applyQuaternion(instance.group.quaternion);
       normal.addScaledVector(axis, -normal.dot(axis));
       if (normal.lengthSq() < 0.0001) return false;
     }
     const plane = new Plane().setFromNormalAndCoplanarPoint(normal.normalize(), handle.mesh.position);
     const startPoint = raycaster.ray.intersectPlane(plane, new Vector3());
     if (!startPoint) return false;
-    drag = { kind: "resize", id: event.pointerId, original: structuredClone(object),
-      bounds: { min: { x: instance.bounds.min.x, y: instance.bounds.min.y, z: instance.bounds.min.z },
-        max: { x: instance.bounds.max.x, y: instance.bounds.max.y, z: instance.bounds.max.z } },
-      handle: handle.signs, plane, startPoint };
+    drag = {
+      kind: "resize",
+      id: event.pointerId,
+      original: structuredClone(object),
+      bounds: {
+        min: { x: instance.bounds.min.x, y: instance.bounds.min.y, z: instance.bounds.min.z },
+        max: { x: instance.bounds.max.x, y: instance.bounds.max.y, z: instance.bounds.max.z },
+      },
+      handle: handle.signs,
+      plane,
+      startPoint,
+    };
     // The owning dialog lets Escape reach the viewport while this local gesture is active.
     canvas.dataset.directorResizing = "true";
     canvas.dataset.directorTransforming = "true";
@@ -511,8 +670,10 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
   const screenPoint = (point: Vector3) => {
     const bounds = canvas.getBoundingClientRect();
     const projected = point.clone().project(activeCamera());
-    return new Vector2((projected.x + 1) * bounds.width / 2 + bounds.left,
-      (1 - projected.y) * bounds.height / 2 + bounds.top);
+    return new Vector2(
+      ((projected.x + 1) * bounds.width) / 2 + bounds.left,
+      ((1 - projected.y) * bounds.height) / 2 + bounds.top,
+    );
   };
   const distanceToSegment = (point: Vector2, start: Vector2, end: Vector2) => {
     const direction = end.clone().sub(start);
@@ -527,11 +688,18 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
     let closest = 10;
     for (const handle of axisHandles) {
       if (!handle.root.visible) continue;
-      const direction = new Vector3(handle.axis === "x" ? 1 : 0, handle.axis === "y" ? 1 : 0, handle.axis === "z" ? 1 : 0);
+      const direction = new Vector3(
+        handle.axis === "x" ? 1 : 0,
+        handle.axis === "y" ? 1 : 0,
+        handle.axis === "z" ? 1 : 0,
+      );
       const start = screenPoint(moveHandles.position.clone().addScaledVector(direction, axisLength * 0.3));
       const end = screenPoint(moveHandles.position.clone().addScaledVector(direction, axisLength));
       const distance = distanceToSegment(pointer, start, end);
-      if (distance < closest) { selected = handle.axis; closest = distance; }
+      if (distance < closest) {
+        selected = handle.axis;
+        closest = distance;
+      }
     }
     return selected;
   };
@@ -539,28 +707,36 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
     if (!rotateHandles.visible || disabled || !callbacks.onObjectChange) return false;
     const pointer = new Vector2(event.clientX, event.clientY);
     const pointAt = (angle: number) => {
-      const point = rotateHandles.position.clone().add(new Vector3(Math.sin(angle) * rotationRadius, 0, Math.cos(angle) * rotationRadius));
+      const point = rotateHandles.position
+        .clone()
+        .add(new Vector3(Math.sin(angle) * rotationRadius, 0, Math.cos(angle) * rotationRadius));
       const depth = -point.clone().applyMatrix4(activeCamera().matrixWorldInverse).z;
       return { screen: screenPoint(point), visible: depth > activeCamera().near && depth < activeCamera().far };
     };
     let previous = pointAt(0);
     for (let index = 1; index <= 80; index++) {
-      const point = pointAt(index / 80 * Math.PI * 2);
-      if (previous.visible && point.visible && distanceToSegment(pointer, previous.screen, point.screen) < 10) return true;
+      const point = pointAt((index / 80) * Math.PI * 2);
+      if (previous.visible && point.visible && distanceToSegment(pointer, previous.screen, point.screen) < 10)
+        return true;
       previous = point;
     }
     return false;
   };
-  const pickScene = (event: { clientX: number; clientY: number }):
-    { kind: "object"; object: DirectorObject; point: Vector3 } | { kind: "camera" } | undefined => {
+  const pickScene = (event: {
+    clientX: number;
+    clientY: number;
+  }): { kind: "object"; object: DirectorObject; point: Vector3 } | { kind: "camera" } | undefined => {
     if (!setPointerRay(event)) return undefined;
     world.updateMatrixWorld(true);
-    const hit = raycaster.intersectObjects(viewMode === "director" ? [...objects.children, cameraRig] : objects.children, true)[0];
+    const hit = raycaster.intersectObjects(
+      viewMode === "director" ? [...objects.children, cameraRig] : objects.children,
+      true,
+    )[0];
     let node = hit?.object;
     while (node) {
       if (node.userData.directorCamera === true) return { kind: "camera" };
       const id: unknown = node.userData.directorObjectId;
-      const object = scene.objects.find((item) => item.id === id);
+      const object = scene.objects.find(item => item.id === id);
       if (object && hit) return { kind: "object", object, point: hit.point };
       node = node.parent ?? undefined;
     }
@@ -572,7 +748,9 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
     canvas.dataset.directorTransforming = "true";
     delete canvas.dataset.directorResizing;
     canvas.style.cursor = next.kind === "move" ? "grabbing" : "ew-resize";
-    syncSelection(); invalidate(); callbacks.onSelectObject?.(next.original.id);
+    syncSelection();
+    invalidate();
+    callbacks.onSelectObject?.(next.original.id);
   };
   const beginMove = (event: PointerEvent, object: DirectorObject, axis: DirectorMoveAxis, point: Vector3) => {
     if (!callbacks.onObjectChange || !setPointerRay(event)) return false;
@@ -582,42 +760,67 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
       const direction = new Vector3(axis === "x" ? 1 : 0, axis === "y" ? 1 : 0, axis === "z" ? 1 : 0);
       normal.addScaledVector(direction, -normal.dot(direction));
       if (normal.lengthSq() < 0.0001) return false;
-    } else if (Math.abs(activeCamera().getWorldDirection(new Vector3()).y) < 0.2 || Math.abs(raycaster.ray.direction.y) < 0.05) {
+    } else if (
+      Math.abs(activeCamera().getWorldDirection(new Vector3()).y) < 0.2 ||
+      Math.abs(raycaster.ray.direction.y) < 0.05
+    ) {
       // At eye level the ground plane is edge-on; screen-plane motion still preserves world height.
       normal.copy(activeCamera().getWorldDirection(new Vector3()));
     }
     const plane = new Plane().setFromNormalAndCoplanarPoint(normal.normalize(), point);
     const startPoint = raycaster.ray.intersectPlane(plane, new Vector3());
     if (!startPoint) return false;
-    activateObjectDrag({ kind: "move", id: event.pointerId, original: structuredClone(object), axis, plane, startPoint,
-      startX: event.clientX, startY: event.clientY, moved: false });
+    activateObjectDrag({
+      kind: "move",
+      id: event.pointerId,
+      original: structuredClone(object),
+      axis,
+      plane,
+      startPoint,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
+    });
     return true;
   };
   const beginRotate = (event: PointerEvent, object: DirectorObject, ring: boolean) => {
     if (!callbacks.onObjectChange || !setPointerRay(event)) return false;
     const center = rotateHandles.position.clone();
     let plane: Plane | null = ring ? new Plane().setFromNormalAndCoplanarPoint(new Vector3(0, 1, 0), center) : null;
-    const intersection = plane && Math.abs(raycaster.ray.direction.y) > 0.03
-      ? raycaster.ray.intersectPlane(plane, new Vector3()) : null;
+    const intersection =
+      plane && Math.abs(raycaster.ray.direction.y) > 0.03 ? raycaster.ray.intersectPlane(plane, new Vector3()) : null;
     if (!intersection || intersection.distanceToSquared(center) < 0.0001) plane = null;
-    const angle = intersection ? Math.atan2(intersection.x - center.x, intersection.z - center.z) * 180 / Math.PI : 0;
-    activateObjectDrag({ kind: "rotate", id: event.pointerId, original: structuredClone(object), plane, center,
-      lastAngle: angle, accumulated: 0, startX: event.clientX, startY: event.clientY, moved: false });
+    const angle = intersection ? (Math.atan2(intersection.x - center.x, intersection.z - center.z) * 180) / Math.PI : 0;
+    activateObjectDrag({
+      kind: "rotate",
+      id: event.pointerId,
+      original: structuredClone(object),
+      plane,
+      center,
+      lastAngle: angle,
+      accumulated: 0,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
+    });
     return true;
   };
   const beginObjectTransform = (event: PointerEvent) => {
     if (event.button !== 0 || event.shiftKey || !callbacks.onObjectChange) return false;
     if (beginResize(event)) return true;
-    const selected = scene.objects.find((object) => object.id === selectedId);
+    const selected = scene.objects.find(object => object.id === selectedId);
     if (objectTool === "move") {
       const axis = pickMoveAxis(event);
       if (axis && selected && beginMove(event, selected, axis, moveHandles.position)) return true;
     }
-    if (objectTool === "rotate" && selected && pickRotationRing(event) && beginRotate(event, selected, true)) return true;
+    if (objectTool === "rotate" && selected && pickRotationRing(event) && beginRotate(event, selected, true))
+      return true;
     if (objectTool === "resize") return false;
     const hit = pickScene(event);
     if (hit?.kind !== "object") return false;
-    return objectTool === "move" ? beginMove(event, hit.object, "xz", hit.point) : beginRotate(event, hit.object, false);
+    return objectTool === "move"
+      ? beginMove(event, hit.object, "xz", hit.point)
+      : beginRotate(event, hit.object, false);
   };
   const hoverCursor = (event: { clientX: number; clientY: number }) => {
     if (pickHandle(event)) return "nwse-resize";
@@ -641,12 +844,23 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
     canvas.focus({ preventScroll: true });
     canvas.setPointerCapture(event.pointerId);
     if (beginObjectTransform(event)) return;
-    drag = { kind: "orbit", id: event.pointerId, x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY,
-      pan: event.shiftKey || event.button !== 0, moved: false };
+    drag = {
+      kind: "orbit",
+      id: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      startX: event.clientX,
+      startY: event.clientY,
+      pan: event.shiftKey || event.button !== 0,
+      moved: false,
+    };
   };
   const pointerMove = (event: PointerEvent) => {
     if (disabled || unavailable) return;
-    if (!drag) { canvas.style.cursor = hoverCursor(event); return; }
+    if (!drag) {
+      canvas.style.cursor = hoverCursor(event);
+      return;
+    }
     if (drag.id !== event.pointerId) return;
     if (drag.kind === "resize") {
       if (!setPointerRay(event)) return;
@@ -666,8 +880,9 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
         if (drag.plane) {
           const point = raycaster.ray.intersectPlane(drag.plane, new Vector3());
           if (!point || point.distanceToSquared(drag.center) < 0.0001) return;
-          const angle = Math.atan2(point.x - drag.center.x, point.z - drag.center.z) * 180 / Math.PI;
-          drag.accumulated += wrapDirectorRotation(angle - drag.lastAngle); drag.lastAngle = angle;
+          const angle = (Math.atan2(point.x - drag.center.x, point.z - drag.center.z) * 180) / Math.PI;
+          drag.accumulated += wrapDirectorRotation(angle - drag.lastAngle);
+          drag.lastAngle = angle;
         } else drag.accumulated = (event.clientX - drag.startX) * 0.7;
         changeObject(rotateDirectorObject(drag.original, drag.accumulated));
       }
@@ -682,49 +897,84 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
     const pose = activePose();
     const viewingCamera = activeCamera();
     if (drag.pan) {
-      const units = 2 * pose.distance * Math.tan(viewingCamera.fov * Math.PI / 360) / Math.max(height, 1);
-      const offset = new Vector3().setFromMatrixColumn(viewingCamera.matrixWorld, 0).multiplyScalar(-dx * units)
+      const units = (2 * pose.distance * Math.tan((viewingCamera.fov * Math.PI) / 360)) / Math.max(height, 1);
+      const offset = new Vector3()
+        .setFromMatrixColumn(viewingCamera.matrixWorld, 0)
+        .multiplyScalar(-dx * units)
         .add(new Vector3().setFromMatrixColumn(viewingCamera.matrixWorld, 1).multiplyScalar(dy * units));
       const targetLimit = viewMode === "director" ? 100 : 20;
-      changeCamera({ ...pose, target: {
-        x: clamp(pose.target.x + offset.x, -targetLimit, targetLimit), y: clamp(pose.target.y + offset.y, -targetLimit, targetLimit),
-        z: clamp(pose.target.z + offset.z, -targetLimit, targetLimit),
-      } });
+      changeCamera({
+        ...pose,
+        target: {
+          x: clamp(pose.target.x + offset.x, -targetLimit, targetLimit),
+          y: clamp(pose.target.y + offset.y, -targetLimit, targetLimit),
+          z: clamp(pose.target.z + offset.z, -targetLimit, targetLimit),
+        },
+      });
     } else {
-      changeCamera({ ...pose, azimuth: wrapAzimuth(pose.azimuth - dx * 0.35),
-        elevation: clamp(pose.elevation + dy * 0.25, -80, 80) });
+      changeCamera({
+        ...pose,
+        azimuth: wrapAzimuth(pose.azimuth - dx * 0.35),
+        elevation: clamp(pose.elevation + dy * 0.25, -80, 80),
+      });
     }
   };
   const pointerUp = (event: PointerEvent) => {
     if (!drag || drag.id !== event.pointerId) return;
-    if (drag.kind !== "orbit") { finishObjectTransform(event.type !== "pointerup"); return; }
+    if (drag.kind !== "orbit") {
+      finishObjectTransform(event.type !== "pointerup");
+      return;
+    }
     const select = !drag.moved && !drag.pan && event.type === "pointerup" && !disabled && !unavailable;
     drag = null;
     if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
     if (!select || (!callbacks.onSelectObject && !callbacks.onSelectCamera)) return;
     const bounds = canvas.getBoundingClientRect();
     if (bounds.width <= 0 || bounds.height <= 0) return;
-    raycaster.setFromCamera(new Vector2((event.clientX - bounds.left) / bounds.width * 2 - 1,
-      1 - (event.clientY - bounds.top) / bounds.height * 2), activeCamera());
+    raycaster.setFromCamera(
+      new Vector2(
+        ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+        1 - ((event.clientY - bounds.top) / bounds.height) * 2,
+      ),
+      activeCamera(),
+    );
     world.updateMatrixWorld(true);
-    let hit = raycaster.intersectObjects(viewMode === "director" ? [...objects.children, cameraRig] : objects.children, true)[0]?.object;
+    let hit = raycaster.intersectObjects(
+      viewMode === "director" ? [...objects.children, cameraRig] : objects.children,
+      true,
+    )[0]?.object;
     while (hit) {
-      if (hit.userData.directorCamera === true) { callbacks.onSelectCamera?.(); break; }
+      if (hit.userData.directorCamera === true) {
+        callbacks.onSelectCamera?.();
+        break;
+      }
       const id: unknown = hit.userData.directorObjectId;
-      if (typeof id === "string") { callbacks.onSelectObject?.(id); break; }
+      if (typeof id === "string") {
+        callbacks.onSelectObject?.(id);
+        break;
+      }
       hit = hit.parent ?? undefined;
     }
   };
   const wheel = (event: WheelEvent) => {
     if (disabled || unavailable || (drag && drag.kind !== "orbit")) return;
     event.preventDefault();
-    const delta = event.deltaY * (event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? height : 1);
+    const delta =
+      event.deltaY *
+      (event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? height : 1);
     const pose = activePose();
-    changeCamera({ ...pose, distance: clamp(pose.distance * Math.exp(clamp(delta * 0.0015, -1, 1)), 1, viewMode === "director" ? 200 : 50) });
+    changeCamera({
+      ...pose,
+      distance: clamp(pose.distance * Math.exp(clamp(delta * 0.0015, -1, 1)), 1, viewMode === "director" ? 200 : 50),
+    });
   };
   const keyDown = (event: KeyboardEvent) => {
     if (drag && drag.kind !== "orbit") {
-      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); finishObjectTransform(true); }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        finishObjectTransform(true);
+      }
       return;
     }
     if (disabled || unavailable || event.altKey || event.ctrlKey || event.metaKey) return;
@@ -732,21 +982,40 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
     const maxDistance = viewMode === "director" ? 200 : 50;
     let nextCamera: DirectorScene["camera"];
     switch (event.key) {
-      case "ArrowLeft": nextCamera = { ...pose, azimuth: wrapAzimuth(pose.azimuth - 5) }; break;
-      case "ArrowRight": nextCamera = { ...pose, azimuth: wrapAzimuth(pose.azimuth + 5) }; break;
-      case "ArrowUp": nextCamera = { ...pose, elevation: clamp(pose.elevation + 5, -80, 80) }; break;
-      case "ArrowDown": nextCamera = { ...pose, elevation: clamp(pose.elevation - 5, -80, 80) }; break;
-      case "+": case "=": nextCamera = { ...pose, distance: clamp(pose.distance * 0.9, 1, maxDistance) }; break;
-      case "-": nextCamera = { ...pose, distance: clamp(pose.distance * 1.1, 1, maxDistance) }; break;
-      default: return;
+      case "ArrowLeft":
+        nextCamera = { ...pose, azimuth: wrapAzimuth(pose.azimuth - 5) };
+        break;
+      case "ArrowRight":
+        nextCamera = { ...pose, azimuth: wrapAzimuth(pose.azimuth + 5) };
+        break;
+      case "ArrowUp":
+        nextCamera = { ...pose, elevation: clamp(pose.elevation + 5, -80, 80) };
+        break;
+      case "ArrowDown":
+        nextCamera = { ...pose, elevation: clamp(pose.elevation - 5, -80, 80) };
+        break;
+      case "+":
+      case "=":
+        nextCamera = { ...pose, distance: clamp(pose.distance * 0.9, 1, maxDistance) };
+        break;
+      case "-":
+        nextCamera = { ...pose, distance: clamp(pose.distance * 1.1, 1, maxDistance) };
+        break;
+      default:
+        return;
     }
     event.preventDefault();
     event.stopPropagation();
     changeCamera(nextCamera);
   };
   const contextMenu = (event: Event) => event.preventDefault();
-  const pointerLeave = () => { if (!drag) canvas.style.removeProperty("cursor"); };
-  const contextLost = (event: Event) => { event.preventDefault(); fail(); };
+  const pointerLeave = () => {
+    if (!drag) canvas.style.removeProperty("cursor");
+  };
+  const contextLost = (event: Event) => {
+    event.preventDefault();
+    fail();
+  };
   canvas.addEventListener("pointerdown", pointerDown);
   canvas.addEventListener("pointermove", pointerMove);
   canvas.addEventListener("pointerup", pointerUp);
@@ -763,7 +1032,8 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
     disposed = true;
     if (frame !== null) cancelAnimationFrame(frame);
     frame = null;
-    const pointerId = drag?.id; drag = null;
+    const pointerId = drag?.id;
+    drag = null;
     delete canvas.dataset.directorResizing;
     delete canvas.dataset.directorTransforming;
     if (pointerId !== undefined && canvas.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId);
@@ -789,7 +1059,10 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
   try {
     update(initialScene);
     renderNow();
-  } catch (error) { dispose(); throw error; }
+  } catch (error) {
+    dispose();
+    throw error;
+  }
 
   return {
     update,
@@ -807,11 +1080,13 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
     setObjectTool(tool) {
       if (disposed || unavailable || tool === objectTool) return;
       finishObjectTransform(false);
-      const pointerId = drag?.id; drag = null;
+      const pointerId = drag?.id;
+      drag = null;
       if (pointerId !== undefined && canvas.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId);
       canvas.style.removeProperty("cursor");
       objectTool = tool;
-      syncSelection(); invalidate();
+      syncSelection();
+      invalidate();
     },
     resize(nextWidth, nextHeight) {
       if (disposed || unavailable) return;
@@ -833,20 +1108,25 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
         if (canvas.hasPointerCapture(drag.id)) canvas.releasePointerCapture(drag.id);
         drag = null;
       }
-      syncSelection(); invalidate();
+      syncSelection();
+      invalidate();
     },
     renderReferenceFrame(timeSeconds, outputWidth, outputHeight) {
       if (disposed || unavailable) throw new Error("DIRECTOR_VIEWPORT_UNAVAILABLE");
       if (frame !== null) cancelAnimationFrame(frame);
       frame = null;
       capturing = true;
-      cameraRig.visible = false; cameraPath.visible = false; cameraFrustum.visible = false;
+      cameraRig.visible = false;
+      cameraPath.visible = false;
+      cameraFrustum.visible = false;
       scene = { ...scene, camera: directorCameraAtTime(scene, timeSeconds) };
-      renderer.setPixelRatio(1); renderer.setSize(outputWidth, outputHeight, false);
+      renderer.setPixelRatio(1);
+      renderer.setSize(outputWidth, outputHeight, false);
       renderNow(true);
     },
     async capture() {
-      if (disposed || unavailable || renderer.getContext().isContextLost()) throw new Error("DIRECTOR_VIEWPORT_UNAVAILABLE");
+      if (disposed || unavailable || renderer.getContext().isContextLost())
+        throw new Error("DIRECTOR_VIEWPORT_UNAVAILABLE");
       finishObjectTransform(false);
       const size = DIRECTOR_CAPTURE_SIZES[scene.aspectRatio];
       // Copy synchronously before restoring the preview; no preserveDrawingBuffer or continuous loop is needed.
@@ -891,9 +1171,12 @@ export function createDirectorRenderer(canvas: HTMLCanvasElement, initialScene: 
           invalidate();
         }
       }
-      const blob = await new Promise<Blob>((resolve, reject) => output.toBlob((value) => {
-        if (value) resolve(value); else reject(new Error("DIRECTOR_CAPTURE_FAILED"));
-      }, "image/png"));
+      const blob = await new Promise<Blob>((resolve, reject) =>
+        output.toBlob(value => {
+          if (value) resolve(value);
+          else reject(new Error("DIRECTOR_CAPTURE_FAILED"));
+        }, "image/png"),
+      );
       if (disposed || unavailable) throw new Error("DIRECTOR_VIEWPORT_UNAVAILABLE");
       return new File([blob], "director-frame.png", { type: "image/png" });
     },

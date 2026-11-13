@@ -39,12 +39,14 @@ class InitialModelContextServiceTest {
                 .contains("call read_canvas", "No canvas content or image pixels"));
         assertThat(messages).anySatisfy(message -> assertThat(message.getText())
                 .contains("isDefault", "defaultParameters/defaultDurationSeconds", "user may revise"));
-        assertThat(messages).noneSatisfy(message -> assertThat(message.getText()).contains("Explicitly bound immutable inputs"));
+        assertThat(messages)
+                .noneSatisfy(message -> assertThat(message.getText()).contains("Explicitly bound immutable inputs"));
     }
 
     @Test
     void currentPromptUsesLiveCanvasWithReadOnlySkillInputsAndApprovalBoundaries() {
-        var policy = mapper.createObjectNode().put("systemPromptVersion", InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
+        var policy = mapper.createObjectNode().put("systemPromptVersion",
+                InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
         assertThat(InitialModelContextService.systemRules(policy))
                 .contains("entire current canvas", "Nodes added or changed during this Run", "observed CAS",
                         "not permission to", "explicit user request and approval", "one image per assistant tool batch")
@@ -58,13 +60,15 @@ class InitialModelContextServiceTest {
 
     @Test
     void storyboardGuidanceRequiresTheFrozenWritePermission() {
-        var policy = mapper.createObjectNode().put("systemPromptVersion", InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
+        var policy = mapper.createObjectNode().put("systemPromptVersion",
+                InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
         policy.putArray("allowedTools").add("read_canvas");
         String previous = InitialModelContextService.systemRules(policy);
         assertThat(previous).doesNotContain("write_storyboard_shots", "board-wide expectedVersion");
         policy.withArray("allowedTools").add("read_storyboard").add("write_storyboard_shots");
         assertThat(InitialModelContextService.systemRules(policy)).contains(previous,
-                "save the formal shots", "Other shots and pinned media remain preserved", "cannot confirm those reviews",
+                "save the formal shots", "Other shots and pinned media remain preserved",
+                "cannot confirm those reviews",
                 "Saving a storyboard creates no media Task", "compare the current shot", "shotIds",
                 "current expectedShotRevision", "Only the user may approve", "never infer selection from a Task");
     }
@@ -87,7 +91,8 @@ class InitialModelContextServiceTest {
 
     @Test
     void compositionGuidanceRequiresItsFrozenToolPermissionAndDoesNotClaimAudiovisualUnderstanding() {
-        var policy = mapper.createObjectNode().put("systemPromptVersion", InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
+        var policy = mapper.createObjectNode().put("systemPromptVersion",
+                InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
         policy.putArray("allowedTools").add("read_artifacts");
         String olderRun = InitialModelContextService.systemRules(policy);
         assertThat(olderRun).doesNotContain("compose_video");
@@ -176,7 +181,7 @@ class InitialModelContextServiceTest {
         var entries = memory.putArray("entries");
         entries.addObject().put("role", "USER").put("content", "Earlier request");
         entries.addObject().put("role", "ASSISTANT").put("content", "Earlier public result");
-        for (JsonNode history : new JsonNode[] {null, memory}) {
+        for (JsonNode history : new JsonNode[]{null, memory}) {
             var messages = assemble(history, InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
             assertThat(messages).filteredOn(SystemMessage.class::isInstance)
                     .hasSize(history == null ? 2 : 3);
@@ -210,7 +215,8 @@ class InitialModelContextServiceTest {
                 .put("agentName", "Creator").put("agentInstruction", "Create")
                 .put("aspectRatio", "LANDSCAPE_16_9");
         snapshot.putArray("selection");
-        if (memory != null) snapshot.set("conversationMemory", memory);
+        if (memory != null)
+            snapshot.set("conversationMemory", memory);
         when(run.contextSnapshot()).thenReturn(snapshot);
         when(run.policySnapshot()).thenReturn(mapper.createObjectNode().put("systemPromptVersion", promptVersion));
         when(run.instruction()).thenReturn("新的用户请求");

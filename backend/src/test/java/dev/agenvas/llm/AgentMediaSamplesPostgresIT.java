@@ -63,30 +63,47 @@ import tools.jackson.databind.ObjectMapper;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = {AgenvasApplication.class, AgentMediaSamplesPostgresIT.FakeConfig.class})
 class AgentMediaSamplesPostgresIT {
-    @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     private static final Path STORAGE = storage();
-    @DynamicPropertySource static void properties(DynamicPropertyRegistry registry) {
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("agenvas.storage.root", STORAGE::toString);
     }
-    @Autowired IdentityService identities;
-    @Autowired ProjectService projects;
-    @Autowired ArtifactService artifacts;
-    @Autowired AssetService assets;
-    @Autowired MediaToolRunner mediaTools;
-    @Autowired CanvasService canvas;
-    @Autowired AgentInstanceService agents;
-    @Autowired AgentRunService runs;
-    @Autowired AgentTurnWorker worker;
-    @Autowired AgentImageInputService inputs;
-    @Autowired LlmProtocolCodec codec;
-    @Autowired FakeGateway gateway;
-    @Autowired JdbcClient jdbc;
-    @Autowired ObjectMapper mapper;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    ProjectService projects;
+    @Autowired
+    ArtifactService artifacts;
+    @Autowired
+    AssetService assets;
+    @Autowired
+    MediaToolRunner mediaTools;
+    @Autowired
+    CanvasService canvas;
+    @Autowired
+    AgentInstanceService agents;
+    @Autowired
+    AgentRunService runs;
+    @Autowired
+    AgentTurnWorker worker;
+    @Autowired
+    AgentImageInputService inputs;
+    @Autowired
+    LlmProtocolCodec codec;
+    @Autowired
+    FakeGateway gateway;
+    @Autowired
+    JdbcClient jdbc;
+    @Autowired
+    ObjectMapper mapper;
 
-    @Test void committedSamplesCheckpointOnlyReferencesHydrateOutsideTransactionsAndReauthorizeOnReplay() throws Exception {
+    @Test
+    void committedSamplesCheckpointOnlyReferencesHydrateOutsideTransactionsAndReauthorizeOnReplay() throws Exception {
         var owner = identities.setup("sample-admin", "synthetic-password-123");
         var project = projects.create(owner.userId(), "Synthetic samples", Project.AspectRatio.LANDSCAPE_16_9);
         Path source = Files.createTempFile(STORAGE, "source-", ".mp4");
@@ -95,14 +112,21 @@ class AgentMediaSamplesPostgresIT {
             mediaTools.ffmpeg(List.of("-v", "error", "-f", "lavfi", "-i", "testsrc2=size=160x90:rate=12:duration=2",
                     "-f", "lavfi", "-i", "sine=frequency=440:duration=2", "-c:v", "libx264", "-pix_fmt", "yuv420p",
                     "-c:a", "aac", "-shortest", "-y", source.toString()));
-            try (var bytes = Files.newInputStream(source)) { assetId = assets.archiveVideo(owner.userId(), project.id(), bytes).id(); }
-        } finally { Files.deleteIfExists(source); }
+            try (var bytes = Files.newInputStream(source)) {
+                assetId = assets.archiveVideo(owner.userId(), project.id(), bytes).id();
+            }
+        } finally {
+            Files.deleteIfExists(source);
+        }
         var artifact = artifacts.create(owner.userId(), project.id(), Artifact.Kind.VIDEO, "Exact sample source",
                 mapper.createObjectNode().put("sourceType", "UPLOAD").put("assetId", assetId.toString()));
         UUID item = CanvasMediaFixture.place(canvas, owner.userId(), project.id(), artifact.artifact().id());
         gateway.version = artifact.resourceDefaultVersion().id();
-        var agent = configureDirector(agents, owner.userId(), project.id(), "Sample reader", "Inspect the exact requested samples");
-        var run = runs.create(owner.userId(), project.id(), agent.id(), "Inspect this selected clip", "synthetic-sample-run").run();
+        var agent = configureDirector(agents, owner.userId(), project.id(), "Sample reader",
+                "Inspect the exact requested samples");
+        var run = runs
+                .create(owner.userId(), project.id(), agent.id(), "Inspect this selected clip", "synthetic-sample-run")
+                .run();
         assertThat(worker.runOnce("sample-worker")).isEqualTo(1);
         assertThat(jdbc.sql("select count(*) from tool_execution where run_id=:run and tool_name='load_toolset'")
                 .param("run", run.id()).query(Long.class).single()).isEqualTo(1);
@@ -118,14 +142,19 @@ class AgentMediaSamplesPostgresIT {
                 .param("run", run.id()).query(String.class).list();
         assertThat(checkpoints).hasSize(4);
         assertThat(mapper.readTree(checkpoints.getFirst()).path("tools")).hasSize(1);
-        assertThat(mapper.readTree(checkpoints.getFirst()).path("tools").get(0).path("name").asText()).isEqualTo("load_toolset");
-        assertThat(checkpoints.subList(0, 3)).allSatisfy(value -> assertThat(value).doesNotContain(AgentMediaSampleService.METADATA_KEY));
-        assertThat(checkpoints.getLast()).contains(AgentMediaSampleService.METADATA_KEY, gateway.version.toString(), "timestampsMs", "audioDurationMs");
+        assertThat(mapper.readTree(checkpoints.getFirst()).path("tools").get(0).path("name").asText())
+                .isEqualTo("load_toolset");
+        assertThat(checkpoints.subList(0, 3))
+                .allSatisfy(value -> assertThat(value).doesNotContain(AgentMediaSampleService.METADATA_KEY));
+        assertThat(checkpoints.getLast()).contains(AgentMediaSampleService.METADATA_KEY, gateway.version.toString(),
+                "timestampsMs", "audioDurationMs");
         String audioBase64 = Base64.getEncoder().encodeToString(gateway.audio);
-        assertThat(checkpoints).allSatisfy(value -> assertThat(value).doesNotContain(audioBase64, "agenvas-agent-sample-", STORAGE.toString()));
+        assertThat(checkpoints).allSatisfy(
+                value -> assertThat(value).doesNotContain(audioBase64, "agenvas-agent-sample-", STORAGE.toString()));
         var toolResults = jdbc.sql("select result_json::text from tool_execution where run_id=:run")
                 .param("run", run.id()).query(String.class).list();
-        assertThat(toolResults).hasSize(2).anySatisfy(value -> assertThat(value).contains("sampleRequested", gateway.version.toString()));
+        assertThat(toolResults).hasSize(2)
+                .anySatisfy(value -> assertThat(value).contains("sampleRequested", gateway.version.toString()));
         assertThat(toolResults).allSatisfy(value -> assertThat(value)
                 .doesNotContain(audioBase64, "agenvas-agent-sample-", STORAGE.toString()));
 
@@ -136,39 +165,60 @@ class AgentMediaSamplesPostgresIT {
         var current = canvas.list(owner.userId(), project.id()).stream().map(CanvasService.CanvasEntry::item)
                 .filter(candidate -> candidate.id().equals(item)).findFirst().orElseThrow();
         canvas.apply(owner.userId(), project.id(), List.of(new CanvasService.Remove(item, current.version())));
-        assertThatThrownBy(() -> inputs.hydrate(owner.userId(), project.id(), run.id(), completed.contextSnapshot(), savedMessages))
-                .isInstanceOf(ApiProblemException.class).satisfies(failure -> assertThat(((ApiProblemException) failure).code()).isEqualTo("INPUT_SCOPE_DENIED"));
+        assertThatThrownBy(() -> inputs.hydrate(owner.userId(), project.id(), run.id(), completed.contextSnapshot(),
+                savedMessages))
+                .isInstanceOf(ApiProblemException.class).satisfies(
+                        failure -> assertThat(((ApiProblemException) failure).code()).isEqualTo("INPUT_SCOPE_DENIED"));
         assertThat(toolCount(run.id())).isEqualTo(2);
     }
 
     private long toolCount(UUID run) {
-        return jdbc.sql("select count(*) from tool_execution where run_id=:run").param("run", run).query(Long.class).single();
+        return jdbc.sql("select count(*) from tool_execution where run_id=:run").param("run", run).query(Long.class)
+                .single();
     }
-    @TestConfiguration static class FakeConfig {
-        @Bean @Primary FakeGateway mediaSamplesGateway() { return new FakeGateway(); }
+    @TestConfiguration
+    static class FakeConfig {
+        @Bean
+        @Primary
+        FakeGateway mediaSamplesGateway() {
+            return new FakeGateway();
+        }
     }
     static class FakeGateway implements ChatGateway {
         final AtomicInteger calls = new AtomicInteger();
         UUID version;
         byte[] audio;
-        @Override public int configVersion() { return 1; }
-        @Override public String configSource() { return "test-fake"; }
-        @Override public Capabilities capabilities() { return new Capabilities(true, false, false); }
-        @Override public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context) {
+        @Override
+        public int configVersion() {
+            return 1;
+        }
+        @Override
+        public String configSource() {
+            return "test-fake";
+        }
+        @Override
+        public Capabilities capabilities() {
+            return new Capabilities(true, false, false);
+        }
+        @Override
+        public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context) {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
             var media = messages.stream().filter(UserMessage.class::isInstance).map(UserMessage.class::cast)
                     .flatMap(message -> message.getMedia().stream()).toList();
-            assertThat(messages).allSatisfy(message -> assertThat(message.getMetadata()).doesNotContainKey(AgentMediaSampleService.METADATA_KEY));
+            assertThat(messages).allSatisfy(message -> assertThat(message.getMetadata())
+                    .doesNotContainKey(AgentMediaSampleService.METADATA_KEY));
             if (tools.size() == 1 && "load_toolset".equals(tools.getFirst().getToolDefinition().name())) {
                 assertThat(calls).hasValue(0);
                 assertThat(media).isEmpty();
                 var load = AssistantMessage.builder().content("").toolCalls(List.of(new AssistantMessage.ToolCall(
-                        "load-inspection-tools", "function", "load_toolset", "{\"toolsets\":[\"INSPECTION\"]}"))).build();
+                        "load-inspection-tools", "function", "load_toolset", "{\"toolsets\":[\"INSPECTION\"]}")))
+                        .build();
                 return new Exchange(1, new ChatResponse(List.of(new Generation(load))));
             }
             int step = calls.incrementAndGet();
             assertThat(tools.stream().map(tool -> tool.getToolDefinition().name())).contains("read_media_sample");
-            if (step < 3) assertThat(media).isEmpty();
+            if (step < 3)
+                assertThat(media).isEmpty();
             else {
                 assertThat(media).hasSize(2);
                 assertThat(media.getFirst().getMimeType().toString()).isEqualTo("image/png");
@@ -176,7 +226,9 @@ class AgentMediaSamplesPostgresIT {
                     var sheet = ImageIO.read(new ByteArrayInputStream(media.getFirst().getDataAsByteArray()));
                     assertThat(sheet.getWidth()).isEqualTo(1024);
                     assertThat(sheet.getHeight()).isEqualTo(540);
-                } catch (IOException failure) { throw new IllegalStateException(failure); }
+                } catch (IOException failure) {
+                    throw new IllegalStateException(failure);
+                }
                 assertThat(media.getLast().getMimeType().toString()).isEqualTo("audio/wav");
                 audio = media.getLast().getDataAsByteArray();
                 assertThat(audio).hasSizeBetween(16000, 17000);
@@ -184,21 +236,31 @@ class AgentMediaSamplesPostgresIT {
             }
             AssistantMessage answer;
             if (step < 3) {
-                String arguments = "{\"versionId\":\"" + version + "\",\"timestampsMs\":[0,1000],\"audioStartMs\":0,\"audioDurationMs\":500}";
+                String arguments = "{\"versionId\":\"" + version
+                        + "\",\"timestampsMs\":[0,1000],\"audioStartMs\":0,\"audioDurationMs\":500}";
                 var call = new AssistantMessage.ToolCall("sample-" + step, "function", "read_media_sample", arguments);
-                answer = AssistantMessage.builder().content("").toolCalls(step == 1 ? List.of(call,
-                        new AssistantMessage.ToolCall("sample-too-many", "function", "read_media_sample", arguments)) : List.of(call)).build();
-            } else answer = new AssistantMessage("已记录这两个时间点和短音频样本的观察。");
+                answer = AssistantMessage.builder().content("").toolCalls(step == 1
+                        ? List.of(call,
+                                new AssistantMessage.ToolCall("sample-too-many", "function", "read_media_sample",
+                                        arguments))
+                        : List.of(call)).build();
+            } else
+                answer = new AssistantMessage("已记录这两个时间点和短音频样本的观察。");
             return new Exchange(1, new ChatResponse(List.of(new Generation(answer))));
         }
     }
     private static Path storage() {
-        try { return Files.createTempDirectory("agenvas-synthetic-agent-samples-"); }
-        catch (IOException failure) { throw new ExceptionInInitializerError(failure); }
+        try {
+            return Files.createTempDirectory("agenvas-synthetic-agent-samples-");
+        } catch (IOException failure) {
+            throw new ExceptionInInitializerError(failure);
+        }
     }
-    @AfterAll static void cleanup() throws IOException {
+    @AfterAll
+    static void cleanup() throws IOException {
         try (var paths = Files.walk(STORAGE)) {
-            for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
+            for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
+                Files.deleteIfExists(path);
         }
     }
 }

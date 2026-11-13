@@ -45,7 +45,8 @@ class LocalAssetStorageArchiveTest {
     private static final UUID ASSET = UUID.fromString("00000000-0000-0000-0000-000000000002");
     private static final byte[] VIDEO_BYTES = {0, 1, 2, 3};
 
-    @TempDir Path root;
+    @TempDir
+    Path root;
     private LocalAssetStorage storage;
     private byte[] imageBytes;
 
@@ -84,9 +85,9 @@ class LocalAssetStorageArchiveTest {
                 case SECOND_MOVE, UNSUPPORTED_ATOMIC_MOVE ->
                     files.when(() -> Files.move(any(Path.class), eq(preview),
                             eq(StandardCopyOption.ATOMIC_MOVE))).thenAnswer(invocation -> {
-                        assertThat(Files.exists(original)).isTrue();
-                        throw failure;
-                    });
+                                assertThat(Files.exists(original)).isTrue();
+                                throw failure;
+                            });
                 case PREVIEW_SIZE -> files.when(() -> Files.size(preview)).thenAnswer(invocation -> {
                     assertThat(Files.exists(original)).isTrue();
                     assertThat(Files.exists(preview)).isTrue();

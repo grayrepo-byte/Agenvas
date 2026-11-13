@@ -66,25 +66,40 @@ class TaskArchivedProjectPostgresIT {
         properties.add("agenvas.storage.root", STORAGE_ROOT::toString);
     }
 
-    @Autowired private dev.agenvas.task.application.TaskRepository taskRepository;
+    @Autowired
+    private dev.agenvas.task.application.TaskRepository taskRepository;
 
     @Autowired
     private dev.agenvas.audit.application.CallLogService callLogs;
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private AgentRunService runs;
-    @Autowired private TaskService tasks;
-    @Autowired private AssetService assets;
-    @Autowired private MediaToolRunner mediaTools;
-    @Autowired private ArtifactService artifacts;
-    @Autowired private CanvasService canvas;
-    @Autowired private ObjectMapper mapper;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private TaskQueueMetrics queueMetrics;
-    @Autowired private ActiveRunMetrics activeRunMetrics;
-    @Autowired private MeterRegistry meters;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private AgentInstanceService agents;
+    @Autowired
+    private AgentRunService runs;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private AssetService assets;
+    @Autowired
+    private MediaToolRunner mediaTools;
+    @Autowired
+    private ArtifactService artifacts;
+    @Autowired
+    private CanvasService canvas;
+    @Autowired
+    private ObjectMapper mapper;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private TaskQueueMetrics queueMetrics;
+    @Autowired
+    private ActiveRunMetrics activeRunMetrics;
+    @Autowired
+    private MeterRegistry meters;
 
     /** A late accepted image stays auditable, but never creates an active canvas output. */
     @Test
@@ -103,7 +118,9 @@ class TaskArchivedProjectPostgresIT {
         // 直连生成固定写入一张已存在的空媒体卡片；归档发生在提交之后。
         var card = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
                 "Archived image card", null);
-        Task task = dev.agenvas.task.application.TaskMediaFixture.create(tasks, taskRepository, artifacts, owner.userId(), project.id(), run.id(), "image", Task.Kind.IMAGE_GENERATION, mapper.createObjectNode(), card.artifact().id());
+        Task task = dev.agenvas.task.application.TaskMediaFixture.create(tasks, taskRepository, artifacts,
+                owner.userId(), project.id(), run.id(), "image", Task.Kind.IMAGE_GENERATION, mapper.createObjectNode(),
+                card.artifact().id());
         Task lease = tasks.claimDue("archive-submitter", 1).getFirst();
         tasks.beginSubmission(lease, "archive-submitter");
         String requestId = UUID.randomUUID().toString();
@@ -111,7 +128,9 @@ class TaskArchivedProjectPostgresIT {
                 Instant.now().plusSeconds(60));
         var unsubmittedCard = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
                 "Not submitted card", null);
-        Task unsubmitted = dev.agenvas.task.application.TaskMediaFixture.create(tasks, taskRepository, artifacts, owner.userId(), project.id(), run.id(), "not-submitted", Task.Kind.IMAGE_GENERATION, mapper.createObjectNode(), unsubmittedCard.artifact().id());
+        Task unsubmitted = dev.agenvas.task.application.TaskMediaFixture.create(tasks, taskRepository, artifacts,
+                owner.userId(), project.id(), run.id(), "not-submitted", Task.Kind.IMAGE_GENERATION,
+                mapper.createObjectNode(), unsubmittedCard.artifact().id());
 
         Project archived = projects.archive(owner.userId(), project.id(),
                 projects.get(owner.userId(), project.id()).version());
@@ -162,15 +181,15 @@ class TaskArchivedProjectPostgresIT {
                 .isEqualTo(result.versionId().toString());
         assertThat(projects.get(owner.userId(), project.id()).status())
                 .isEqualTo(Project.Status.ARCHIVED);
-        assertThat(canvas.list(owner.userId(), project.id())).noneMatch(item ->
-                item.item().subjectId().toString().equals(
+        assertThat(canvas.list(owner.userId(), project.id()))
+                .noneMatch(item -> item.item().subjectId().toString().equals(
                         completed.output().path("artifactId").asText()));
         assertThat(jdbc.sql("select count(*) from project_event where project_id = :projectId "
-                        + "and aggregate_id = :taskId and type = 'task.status.changed'")
+                + "and aggregate_id = :taskId and type = 'task.status.changed'")
                 .param("projectId", project.id()).param("taskId", task.id())
                 .query(Integer.class).single()).isGreaterThan(0);
         assertThat(jdbc.sql("select status from provider_attempt where task_id = :taskId "
-                        + "and provider_request_id = :requestId")
+                + "and provider_request_id = :requestId")
                 .param("taskId", task.id()).param("requestId", requestId)
                 .query(String.class).single()).isEqualTo("ACCEPTED");
         // 晚到结果只追加为不可变的卡片历史版本：可在事后核对，但不会把卡片切到该版本，

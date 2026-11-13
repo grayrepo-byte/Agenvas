@@ -12,11 +12,13 @@ public final class SupportedLocales {
             Locale.forLanguageTag("ru"), Locale.JAPANESE);
     private static final String REQUEST_ATTRIBUTE = SupportedLocales.class.getName();
 
-    private SupportedLocales() {}
+    private SupportedLocales() {
+    }
 
     public static Locale resolve(HttpServletRequest request) {
         Object cached = request.getAttribute(REQUEST_ATTRIBUTE);
-        if (cached instanceof Locale locale) return locale;
+        if (cached instanceof Locale locale)
+            return locale;
         Locale locale = negotiate(request.getHeader(HttpHeaders.ACCEPT_LANGUAGE));
         request.setAttribute(REQUEST_ATTRIBUTE, locale);
         return locale;
@@ -24,13 +26,16 @@ public final class SupportedLocales {
 
     /** Supported regional variants use their base language. q=0 never selects a language. */
     public static Locale negotiate(String header) {
-        if (header == null || header.isBlank()) return DEFAULT;
+        if (header == null || header.isBlank())
+            return DEFAULT;
         try {
             for (Locale.LanguageRange range : Locale.LanguageRange.parse(header)) {
-                if (range.getWeight() == 0) continue;
+                if (range.getWeight() == 0)
+                    continue;
                 String language = range.getRange().split("-", 2)[0];
                 for (Locale supported : SUPPORTED) {
-                    if (supported.getLanguage().equals(language)) return supported;
+                    if (supported.getLanguage().equals(language))
+                        return supported;
                 }
             }
         } catch (IllegalArgumentException invalidHeader) {

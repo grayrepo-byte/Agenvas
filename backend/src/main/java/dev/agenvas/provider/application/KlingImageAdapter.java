@@ -16,5 +16,8 @@ public class KlingImageAdapter extends KlingProtocolAdapter {
             KlingMediaDownloadPolicy downloads, ObjectMapper mapper, KlingPreparedMedia media) {
         super(Task.Kind.IMAGE_GENERATION, catalog, cipher, client, downloads, mapper, media);
     }
-    @Override public String adapterId() { return KlingModels.IMAGE_ADAPTER_ID; }
+    @Override
+    public String adapterId() {
+        return KlingModels.IMAGE_ADAPTER_ID;
+    }
 }

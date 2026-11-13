@@ -8,10 +8,21 @@ import "./MediaStyles.css";
 export function MediaStylePreview({ style }: { style: Pick<MediaStyleSummary, "name" | "thumbnailUrl"> }) {
   useLocale();
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
-  return <div className="media-style-preview">
-    {style.thumbnailUrl && failedUrl !== style.thumbnailUrl
-      ? <img src={style.thumbnailUrl} alt={t("styles.previewAlt", { "0": style.name })} loading="lazy"
-        onError={() => setFailedUrl(style.thumbnailUrl)} />
-      : <span className="media-style-preview-empty"><PaintBrush aria-hidden />{t("styles.noPreview")}</span>}
-  </div>;
+  return (
+    <div className="media-style-preview">
+      {style.thumbnailUrl && failedUrl !== style.thumbnailUrl ? (
+        <img
+          src={style.thumbnailUrl}
+          alt={t("styles.previewAlt", { "0": style.name })}
+          loading="lazy"
+          onError={() => setFailedUrl(style.thumbnailUrl)}
+        />
+      ) : (
+        <span className="media-style-preview-empty">
+          <PaintBrush aria-hidden />
+          {t("styles.noPreview")}
+        </span>
+      )}
+    </div>
+  );
 }

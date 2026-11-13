@@ -21,19 +21,28 @@ import tools.jackson.databind.node.ObjectNode;
 public class KlingVideo3Adapter extends KlingAdapterSupport {
     private final MediaToolRunner mediaTools;
     public KlingVideo3Adapter(JooqMediaCapabilityRepository catalog, CredentialCipher cipher,
-            KlingClient client, KlingMediaDownloadPolicy downloads, ObjectMapper mapper, KlingReferenceLoader references,
+            KlingClient client, KlingMediaDownloadPolicy downloads, ObjectMapper mapper,
+            KlingReferenceLoader references,
             MediaToolRunner mediaTools) {
         super(catalog, cipher, client, downloads, mapper, references);
         this.mediaTools = mediaTools;
     }
-    @Override public String adapterId() { return KlingProtocol.VIDEO_ADAPTER_ID; }
-    @Override protected boolean video() { return true; }
-    @Override public boolean supports(PortInput input) {
+    @Override
+    public String adapterId() {
+        return KlingProtocol.VIDEO_ADAPTER_ID;
+    }
+    @Override
+    protected boolean video() {
+        return true;
+    }
+    @Override
+    public boolean supports(PortInput input) {
         return input.kind() == Task.Kind.VIDEO_GENERATION && input.durationSeconds() >= KlingProtocol.MINIMUM_SECONDS
                 && input.durationSeconds() <= KlingProtocol.MAXIMUM_SECONDS;
     }
 
-    @Override protected ObjectNode prepare(AttemptContext context, boolean submitting) {
+    @Override
+    protected ObjectNode prepare(AttemptContext context, boolean submitting) {
         var task = context.lease();
         var mediaInput = task.input().path("mediaInput");
         var parameters = VideoGenerationParameters.parse(mediaInput.path("parameters"));
@@ -43,21 +52,26 @@ public class KlingVideo3Adapter extends KlingAdapterSupport {
                 submitting ? context.requestKey() : "preflight-only");
     }
 
-    @Override protected void validateResult(AttemptContext context, Path file) {
+    @Override
+    protected void validateResult(AttemptContext context, Path file) {
         String probe;
-        try { probe = mediaTools.ffprobe(List.of("-v", "error", "-show_entries",
-                "stream=codec_type:format=format_name,duration", "-of", "json", file.toString())); }
-        catch (MediaToolRunner.MediaToolException failure) {
-            if (failure.invalidInput()) throw new KlingMediaDownloadPolicy.Rejected("PROVIDER_PROTOCOL_INVALID");
+        try {
+            probe = mediaTools.ffprobe(List.of("-v", "error", "-show_entries",
+                    "stream=codec_type:format=format_name,duration", "-of", "json", file.toString()));
+        } catch (MediaToolRunner.MediaToolException failure) {
+            if (failure.invalidInput())
+                throw new KlingMediaDownloadPolicy.Rejected("PROVIDER_PROTOCOL_INVALID");
             throw failure;
         }
         var details = mapper.readTree(probe);
         double duration = details.path("format").path("duration").asDouble(-1);
         int expected = context.lease().input().path("durationSeconds").asInt(-1);
         boolean videoStream = false;
-        for (var stream : details.path("streams")) videoStream |= "video".equals(stream.path("codec_type").asText());
+        for (var stream : details.path("streams"))
+            videoStream |= "video".equals(stream.path("codec_type").asText());
         if (!videoStream || !details.path("format").path("format_name").asText().contains("mp4")
-                || !Double.isFinite(duration) || expected < KlingProtocol.MINIMUM_SECONDS || expected > KlingProtocol.MAXIMUM_SECONDS
+                || !Double.isFinite(duration) || expected < KlingProtocol.MINIMUM_SECONDS
+                || expected > KlingProtocol.MAXIMUM_SECONDS
                 || duration < expected - 1.5 || duration > expected + 1.5)
             throw new KlingMediaDownloadPolicy.Rejected("PROVIDER_PROTOCOL_INVALID");
     }

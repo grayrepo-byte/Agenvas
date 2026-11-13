@@ -52,18 +52,22 @@ type EventCallbacks = {
 };
 
 const defaultDependencies: EventDependencies = {
-  open: (url) => {
+  open: url => {
     const source = new EventSource(url);
     return {
       addListener: (type, listener) => source.addEventListener(type, listener as EventListener),
-      onOpen: (listener) => { source.onopen = listener; },
-      onError: (listener) => { source.onerror = listener; },
+      onOpen: listener => {
+        source.onopen = listener;
+      },
+      onError: listener => {
+        source.onerror = listener;
+      },
       close: () => source.close(),
     };
   },
   loadSnapshot: getProjectSnapshot,
   schedule: (callback, delayMillis) => setTimeout(callback, delayMillis),
-  clearSchedule: (handle) => clearTimeout(handle),
+  clearSchedule: handle => clearTimeout(handle),
 };
 
 /** Maintains one project SSE connection and restores a consistent snapshot after any gap. */
@@ -165,7 +169,7 @@ export function subscribeProjectEvents(
     );
     stream = current;
     for (const type of supportedTypes) {
-      current.addListener(type, (event) => {
+      current.addListener(type, event => {
         if (stream === current) handleEvent(event);
       });
     }
@@ -197,15 +201,20 @@ export function subscribeProjectEvents(
 function isProjectEvent(value: unknown, projectId: string): value is ProjectEvent {
   if (typeof value !== "object" || value === null) return false;
   const event = value as Record<string, unknown>;
-  return event.projectId === projectId &&
+  return (
+    event.projectId === projectId &&
     typeof event.eventId === "string" &&
-    Number.isSafeInteger(event.seq) && Number(event.seq) > 0 &&
+    Number.isSafeInteger(event.seq) &&
+    Number(event.seq) > 0 &&
     typeof event.type === "string" &&
-    supportedTypes.some((type) => type === event.type) &&
+    supportedTypes.some(type => type === event.type) &&
     event.schemaVersion === 1 &&
     typeof event.aggregateId === "string" &&
-    Number.isSafeInteger(event.aggregateVersion) && Number(event.aggregateVersion) >= 0 &&
-    typeof event.payload === "object" && event.payload !== null &&
+    Number.isSafeInteger(event.aggregateVersion) &&
+    Number(event.aggregateVersion) >= 0 &&
+    typeof event.payload === "object" &&
+    event.payload !== null &&
     !Array.isArray(event.payload) &&
-    typeof event.occurredAt === "string";
+    typeof event.occurredAt === "string"
+  );
 }

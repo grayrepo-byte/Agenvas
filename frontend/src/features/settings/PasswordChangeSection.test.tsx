@@ -10,9 +10,12 @@ describe("PasswordChangeSection", () => {
   it("validates confirmation and sends only the two contract fields", async () => {
     const submitted: unknown[] = [];
     server.use(
-      http.get("/api/v1/auth/csrf", () => HttpResponse.json({
-        headerName: "X-XSRF-TOKEN", token: "test",
-      })),
+      http.get("/api/v1/auth/csrf", () =>
+        HttpResponse.json({
+          headerName: "X-XSRF-TOKEN",
+          token: "test",
+        }),
+      ),
       http.post("/api/v1/auth/change-password", async ({ request }) => {
         submitted.push(await request.json());
         return new HttpResponse(null, { status: 204 });
@@ -44,14 +47,18 @@ describe("PasswordChangeSection", () => {
   it("clears secrets after an authentication failure", async () => {
     const submitted = vi.fn();
     server.use(
-      http.get("/api/v1/auth/csrf", () => HttpResponse.json({
-        headerName: "X-XSRF-TOKEN", token: "test",
-      })),
+      http.get("/api/v1/auth/csrf", () =>
+        HttpResponse.json({
+          headerName: "X-XSRF-TOKEN",
+          token: "test",
+        }),
+      ),
       http.post("/api/v1/auth/change-password", () => {
         submitted();
-        return HttpResponse.json({ title: "密码错误", status: 401,
-          code: "INVALID_CREDENTIALS", detail: "当前密码错误。", retryable: false,
-        }, { status: 401, headers: { "Content-Type": "application/problem+json" } });
+        return HttpResponse.json(
+          { title: "密码错误", status: 401, code: "INVALID_CREDENTIALS", detail: "当前密码错误。", retryable: false },
+          { status: 401, headers: { "Content-Type": "application/problem+json" } },
+        );
       }),
     );
     render(<PasswordChangeSection />);
@@ -77,7 +84,9 @@ describe("PasswordChangeSection", () => {
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
       http.post("/api/v1/auth/change-password", async () => {
         submitted();
-        await new Promise<void>((resolve) => { finish = resolve; });
+        await new Promise<void>(resolve => {
+          finish = resolve;
+        });
         return new HttpResponse(null, { status: 204 });
       }),
     );
@@ -96,10 +105,11 @@ describe("PasswordChangeSection", () => {
     expect(confirm).toBeDisabled();
     expect(screen.getByRole("button", { name: "正在修改…" })).toBeDisabled();
     expect(submitted).toHaveBeenCalledOnce();
-    await act(async () => { finish?.(); });
+    await act(async () => {
+      finish?.();
+    });
     expect(await screen.findByText("密码已修改，其他会话已失效。")).toBeInTheDocument();
     expect(current).toBeEnabled();
     expect(current).toHaveValue("");
   });
-
 });

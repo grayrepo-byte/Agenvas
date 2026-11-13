@@ -4,7 +4,11 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import { listRunMediaApprovals, type AgentMediaApproval, type AgentMediaApprovalDecision } from "../../shared/api/client";
+import {
+  listRunMediaApprovals,
+  type AgentMediaApproval,
+  type AgentMediaApprovalDecision,
+} from "../../shared/api/client";
 import { server } from "../../test/server";
 import { AgentMediaApprovalCard } from "./AgentMediaApprovalCard";
 
@@ -17,14 +21,37 @@ const REFERENCE_VERSION = "synthetic-reference-version";
 
 function approval(overrides: Partial<AgentMediaApproval> = {}): AgentMediaApproval {
   return {
-    id: APPROVAL_ID, projectId: PROJECT_ID, runId: RUN_ID, operationId: "operation-1",
-    status: "PENDING", version: 0, taskIds: [], result: null,
-    createdAt: NOW, expiresAt: "2026-10-03T00:00:00Z", executionDeadline: null,
-    outputs: [{ kind: "VIDEO", title: "海岸短片", artifactId: "artifact-1", canvasItemId: "item-1", draftVersion: 0,
-      preview: { prompt: "海浪缓缓拍打礁石。", adapterId: "MOCK_VIDEO", capabilityId: "capability-1",
-        priceUnknown: true, durationSeconds: 5, videoInputMode: "GENERAL_REFERENCE",
-        parameters: { aspectRatio: "16:9", seed: 42 },
-        mediaInputs: [{ versionId: REFERENCE_VERSION, role: "REFERENCE" }] } }], ...overrides,
+    id: APPROVAL_ID,
+    projectId: PROJECT_ID,
+    runId: RUN_ID,
+    operationId: "operation-1",
+    status: "PENDING",
+    version: 0,
+    taskIds: [],
+    result: null,
+    createdAt: NOW,
+    expiresAt: "2026-10-03T00:00:00Z",
+    executionDeadline: null,
+    outputs: [
+      {
+        kind: "VIDEO",
+        title: "海岸短片",
+        artifactId: "artifact-1",
+        canvasItemId: "item-1",
+        draftVersion: 0,
+        preview: {
+          prompt: "海浪缓缓拍打礁石。",
+          adapterId: "MOCK_VIDEO",
+          capabilityId: "capability-1",
+          priceUnknown: true,
+          durationSeconds: 5,
+          videoInputMode: "GENERAL_REFERENCE",
+          parameters: { aspectRatio: "16:9", seed: 42 },
+          mediaInputs: [{ versionId: REFERENCE_VERSION, role: "REFERENCE" }],
+        },
+      },
+    ],
+    ...overrides,
   };
 }
 
@@ -32,22 +59,34 @@ function mountCard(initial: AgentMediaApproval, disabled = false) {
   const client = createQueryClient();
   client.setDefaultOptions({ queries: { retry: false } });
   function ConnectedCard() {
-    const current = useQuery({ queryKey: ["run-media-approvals", PROJECT_ID, RUN_ID],
-      queryFn: () => listRunMediaApprovals(PROJECT_ID, RUN_ID), initialData: [initial] });
+    const current = useQuery({
+      queryKey: ["run-media-approvals", PROJECT_ID, RUN_ID],
+      queryFn: () => listRunMediaApprovals(PROJECT_ID, RUN_ID),
+      initialData: [initial],
+    });
     const item = current.data[0];
-    return item ? <AgentMediaApprovalCard projectId={PROJECT_ID} runId={RUN_ID} approval={item} disabled={disabled} /> : null;
+    return item ? (
+      <AgentMediaApprovalCard projectId={PROJECT_ID} runId={RUN_ID} approval={item} disabled={disabled} />
+    ) : null;
   }
   server.use(
     http.get(APPROVAL_URL, () => HttpResponse.json([initial])),
-    http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic-csrf-token" })),
+    http.get("/api/v1/auth/csrf", () =>
+      HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic-csrf-token" }),
+    ),
   );
-  render(<QueryClientProvider client={client}><ConnectedCard /></QueryClientProvider>);
+  render(
+    <QueryClientProvider client={client}>
+      <ConnectedCard />
+    </QueryClientProvider>,
+  );
   return client;
 }
 
 describe("AgentMediaApprovalCard", () => {
   it("shows the frozen shot code and creative revision without making a decision", () => {
-    const pending = approval(); pending.outputs[0]!.storyboard = { shotId: "shot-3", shotCode: "SHOT-03", shotRevision: 4, role: "VIDEO" };
+    const pending = approval();
+    pending.outputs[0]!.storyboard = { shotId: "shot-3", shotCode: "SHOT-03", shotRevision: 4, role: "VIDEO" };
     mountCard(pending);
     expect(screen.getByText("关联镜头：SHOT-03 · 修订 4")).toBeVisible();
     expect(screen.getByRole("button", { name: "批准并生成" })).toBeEnabled();
@@ -56,7 +95,25 @@ describe("AgentMediaApprovalCard", () => {
     const pending = approval();
     const output = pending.outputs[0];
     if (!output) throw new Error("Synthetic approval output is required");
-    output.preview.characterBindings = [{ characterId: "character-1", characterVersion: 4, name: "Mira", description: "PRIVATE_CHARACTER_METADATA", look: { id: "look-1", name: "Travel coat", clothing: "Coat", expression: "Calm", description: "Stable", views: [] }, useAppearance: true, useVoice: true, voice: { versionId: null, speakerId: "PRIVATE_VOICE_METADATA", description: "Warm" } }];
+    output.preview.characterBindings = [
+      {
+        characterId: "character-1",
+        characterVersion: 4,
+        name: "Mira",
+        description: "PRIVATE_CHARACTER_METADATA",
+        look: {
+          id: "look-1",
+          name: "Travel coat",
+          clothing: "Coat",
+          expression: "Calm",
+          description: "Stable",
+          views: [],
+        },
+        useAppearance: true,
+        useVoice: true,
+        voice: { versionId: null, speakerId: "PRIVATE_VOICE_METADATA", description: "Warm" },
+      },
+    ];
     mountCard(pending);
     expect(screen.getByText("Mira · v4 · Travel coat")).toBeVisible();
     expect(screen.getByText("应用外观与参考图 · 应用声音与音色")).toBeVisible();
@@ -70,7 +127,11 @@ describe("AgentMediaApprovalCard", () => {
     if (!output) throw new Error("Synthetic approval output is required");
     output.preview.endpoint = "PRIVATE_PROVIDER_ENDPOINT";
     output.preview.apiKey = "PRIVATE_PROVIDER_KEY";
-    output.preview.parameters = { aspectRatio: "16:9", seed: 42, nested: { apiKey: "PRIVATE_NESTED_KEY", quality: "high" } };
+    output.preview.parameters = {
+      aspectRatio: "16:9",
+      seed: 42,
+      nested: { apiKey: "PRIVATE_NESTED_KEY", quality: "high" },
+    };
     mountCard(pending);
     const card = screen.getByRole("region", { name: "批准媒体生成 · 1 项" });
     expect(within(card).getByText("海浪缓缓拍打礁石。")).toBeVisible();
@@ -89,17 +150,25 @@ describe("AgentMediaApprovalCard", () => {
     const pending = approval();
     const first = pending.outputs[0];
     if (!first) throw new Error("Synthetic approval output is required");
-    pending.outputs.push({ ...first, kind: "AUDIO", title: "海岸旁白", canvasItemId: "item-2", artifactId: "artifact-2" });
+    pending.outputs.push({
+      ...first,
+      kind: "AUDIO",
+      title: "海岸旁白",
+      canvasItemId: "item-2",
+      artifactId: "artifact-2",
+    });
     let current = pending;
     const bodies: AgentMediaApprovalDecision[] = [];
     const keys: (string | null)[] = [];
     let finish: (() => void) | undefined;
-    const received = new Promise<void>((resolve) => { finish = resolve; });
+    const received = new Promise<void>(resolve => {
+      finish = resolve;
+    });
     mountCard(pending);
     server.use(
       http.get(APPROVAL_URL, () => HttpResponse.json([current])),
       http.post(`${APPROVAL_URL}/${APPROVAL_ID}/decision`, async ({ request }) => {
-        bodies.push(await request.json() as AgentMediaApprovalDecision);
+        bodies.push((await request.json()) as AgentMediaApprovalDecision);
         keys.push(request.headers.get("Idempotency-Key"));
         expect(request.headers.get("X-XSRF-TOKEN")).toBeTruthy();
         await received;
@@ -127,11 +196,17 @@ describe("AgentMediaApprovalCard", () => {
     const pending = approval();
     const keys: (string | null)[] = [];
     mountCard(pending);
-    server.use(http.post(`${APPROVAL_URL}/${APPROVAL_ID}/decision`, ({ request }) => {
-      keys.push(request.headers.get("Idempotency-Key"));
-      return keys.length === 1 ? HttpResponse.json({ title: "合成服务暂不可用", code: "SYNTHETIC_UNAVAILABLE", detail: "合成服务暂不可用" }, { status: 503 })
-        : HttpResponse.json({ ...pending, status: "APPROVED", version: 1, taskIds: ["task-1"] });
-    }));
+    server.use(
+      http.post(`${APPROVAL_URL}/${APPROVAL_ID}/decision`, ({ request }) => {
+        keys.push(request.headers.get("Idempotency-Key"));
+        return keys.length === 1
+          ? HttpResponse.json(
+              { title: "合成服务暂不可用", code: "SYNTHETIC_UNAVAILABLE", detail: "合成服务暂不可用" },
+              { status: 503 },
+            )
+          : HttpResponse.json({ ...pending, status: "APPROVED", version: 1, taskIds: ["task-1"] });
+      }),
+    );
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "批准并生成" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("请求未完成");
@@ -150,7 +225,10 @@ describe("AgentMediaApprovalCard", () => {
       http.get(APPROVAL_URL, () => HttpResponse.json([current])),
       http.post(`${APPROVAL_URL}/${APPROVAL_ID}/decision`, () => {
         current = { ...pending, status: "CANCELED", version: 1 };
-        return HttpResponse.json({ code: "AGENT_MEDIA_APPROVAL_CONFLICT", detail: "Synthetic version conflict" }, { status: 409 });
+        return HttpResponse.json(
+          { code: "AGENT_MEDIA_APPROVAL_CONFLICT", detail: "Synthetic version conflict" },
+          { status: 409 },
+        );
       }),
     );
     await userEvent.setup().click(screen.getByRole("button", { name: "批准并生成" }));
@@ -167,7 +245,7 @@ describe("AgentMediaApprovalCard", () => {
     server.use(
       http.get(APPROVAL_URL, () => HttpResponse.json([current])),
       http.post(`${APPROVAL_URL}/${APPROVAL_ID}/decision`, async ({ request }) => {
-        bodies.push(await request.json() as AgentMediaApprovalDecision);
+        bodies.push((await request.json()) as AgentMediaApprovalDecision);
         current = { ...pending, status: "REJECTED", version: 1 };
         return HttpResponse.json(current);
       }),
@@ -179,9 +257,18 @@ describe("AgentMediaApprovalCard", () => {
   });
 
   it("shows UNKNOWN as a settled failure with external cost information and no automatic retry action", () => {
-    mountCard(approval({ status: "FAILED", version: 2, taskIds: ["unknown-task"], result: {
-      schemaVersion: 1, status: "FAILED", tasks: [{ taskId: "unknown-task", kind: "VIDEO_GENERATION", status: "UNKNOWN" }],
-    } }));
+    mountCard(
+      approval({
+        status: "FAILED",
+        version: 2,
+        taskIds: ["unknown-task"],
+        result: {
+          schemaVersion: 1,
+          status: "FAILED",
+          tasks: [{ taskId: "unknown-task", kind: "VIDEO_GENERATION", status: "UNKNOWN" }],
+        },
+      }),
+    );
     expect(screen.getByText("生成未完成")).toBeInTheDocument();
     expect(screen.getByText("结果未知")).toBeInTheDocument();
     expect(screen.getByText(/部分任务结果未知/)).toBeInTheDocument();
@@ -189,13 +276,34 @@ describe("AgentMediaApprovalCard", () => {
   });
 
   it("shows safe image moderation details in the settled approval result without retrying generation", () => {
-    mountCard(approval({ status: "FAILED", version: 2, taskIds: ["synthetic-moderated-task"], result: {
-      schemaVersion: 1, status: "FAILED", tasks: [{ taskId: "synthetic-moderated-task", kind: "IMAGE_GENERATION", status: "FAILED",
-        errorCode: "OPENAI_IMAGE_MODERATION_BLOCKED", providerFailure: {
-          stage: "SUBMIT", category: "MODERATION", httpStatus: 400, upstreamCode: null, nodeId: null, fieldName: null,
-          moderation: { code: "moderation_blocked", stage: "output", categories: ["sexual"] },
-        } }],
-    } }));
+    mountCard(
+      approval({
+        status: "FAILED",
+        version: 2,
+        taskIds: ["synthetic-moderated-task"],
+        result: {
+          schemaVersion: 1,
+          status: "FAILED",
+          tasks: [
+            {
+              taskId: "synthetic-moderated-task",
+              kind: "IMAGE_GENERATION",
+              status: "FAILED",
+              errorCode: "OPENAI_IMAGE_MODERATION_BLOCKED",
+              providerFailure: {
+                stage: "SUBMIT",
+                category: "MODERATION",
+                httpStatus: 400,
+                upstreamCode: null,
+                nodeId: null,
+                fieldName: null,
+                moderation: { code: "moderation_blocked", stage: "output", categories: ["sexual"] },
+              },
+            },
+          ],
+        },
+      }),
+    );
     const detail = screen.getByText(/moderation_blocked/);
     expect(detail).toHaveTextContent("安全检查");
     expect(detail).toHaveTextContent("生成结果安全检查");
@@ -205,10 +313,25 @@ describe("AgentMediaApprovalCard", () => {
   });
 
   it("keeps legacy failed approval results readable when no provider diagnosis was saved", () => {
-    mountCard(approval({ status: "FAILED", version: 2, taskIds: ["synthetic-legacy-task"], result: {
-      schemaVersion: 1, status: "FAILED", tasks: [{ taskId: "synthetic-legacy-task", kind: "IMAGE_GENERATION", status: "FAILED",
-        errorCode: "OPENAI_IMAGE_REJECTED" }],
-    } }));
+    mountCard(
+      approval({
+        status: "FAILED",
+        version: 2,
+        taskIds: ["synthetic-legacy-task"],
+        result: {
+          schemaVersion: 1,
+          status: "FAILED",
+          tasks: [
+            {
+              taskId: "synthetic-legacy-task",
+              kind: "IMAGE_GENERATION",
+              status: "FAILED",
+              errorCode: "OPENAI_IMAGE_REJECTED",
+            },
+          ],
+        },
+      }),
+    );
     expect(screen.getByText(/上游拒绝了请求（参数或凭证）/)).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent("安全代码");
     expect(screen.queryByRole("button")).not.toBeInTheDocument();

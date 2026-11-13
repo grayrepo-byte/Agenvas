@@ -10,38 +10,49 @@ import tools.jackson.databind.JsonNode;
 /** A director scene is bounded local geometry, never a source of URLs or executable asset data. */
 final class DirectorSceneValidator {
     private static final Set<String> SCENE_FIELDS = Set.of("schemaVersion", "aspectRatio", "camera", "objects");
-    private static final Set<String> MOTION_SCENE_FIELDS = Set.of("schemaVersion", "aspectRatio", "camera", "objects", "motion");
+    private static final Set<String> MOTION_SCENE_FIELDS = Set.of("schemaVersion", "aspectRatio", "camera", "objects",
+            "motion");
     private static final Set<String> MOTION_FIELDS = Set.of("durationSeconds", "keyframes");
     private static final Set<String> KEYFRAME_FIELDS = Set.of("id", "name", "timeSeconds", "transition", "camera");
     private static final Set<String> TRANSITIONS = Set.of("LINEAR", "SMOOTH", "CUT");
     private static final int MOTION_VERSION = 3;
-    private static final Set<String> CAMERA_FIELDS = Set.of("azimuth", "elevation", "distance", "target", "focalLength");
-    private static final Set<String> OBJECT_FIELDS = Set.of("id", "name", "kind", "position", "rotation", "scale", "color");
+    private static final Set<String> CAMERA_FIELDS = Set.of("azimuth", "elevation", "distance", "target",
+            "focalLength");
+    private static final Set<String> OBJECT_FIELDS = Set.of("id", "name", "kind", "position", "rotation", "scale",
+            "color");
     private static final Set<String> VECTOR_FIELDS = Set.of("x", "y", "z");
     private static final Set<String> ASPECT_RATIOS = Set.of("16:9", "9:16", "1:1", "4:3");
     private static final Set<String> KINDS = Set.of("ACTOR", "BOX", "SPHERE", "CYLINDER");
     private static final int UNIFORM_SCALE_VERSION = 1;
     private static final int AXIS_SCALE_VERSION = 2;
 
-    private DirectorSceneValidator() {}
+    private DirectorSceneValidator() {
+    }
 
     static void validate(JsonNode scene) {
-        if (scene == null || !scene.isObject()) throw invalid();
+        if (scene == null || !scene.isObject())
+            throw invalid();
         JsonNode schemaVersion = scene.path("schemaVersion");
         if (!schemaVersion.isIntegralNumber() || !schemaVersion.canConvertToInt()
-                || (schemaVersion.asInt() != UNIFORM_SCALE_VERSION && schemaVersion.asInt() != AXIS_SCALE_VERSION && schemaVersion.asInt() != MOTION_VERSION)
-                || !ASPECT_RATIOS.contains(text(scene.path("aspectRatio"), 4))) throw invalid();
+                || (schemaVersion.asInt() != UNIFORM_SCALE_VERSION && schemaVersion.asInt() != AXIS_SCALE_VERSION
+                        && schemaVersion.asInt() != MOTION_VERSION)
+                || !ASPECT_RATIOS.contains(text(scene.path("aspectRatio"), 4)))
+            throw invalid();
         object(scene, schemaVersion.asInt() == MOTION_VERSION ? MOTION_SCENE_FIELDS : SCENE_FIELDS);
         camera(scene.path("camera"));
-        if (schemaVersion.asInt() == MOTION_VERSION) motion(scene.path("motion"));
+        if (schemaVersion.asInt() == MOTION_VERSION)
+            motion(scene.path("motion"));
         JsonNode objects = scene.path("objects");
-        if (!objects.isArray() || objects.size() > 32) throw invalid();
+        if (!objects.isArray() || objects.size() > 32)
+            throw invalid();
         Set<String> ids = new HashSet<>();
         for (JsonNode item : objects) {
             object(item, OBJECT_FIELDS);
-            if (!ids.add(text(item.path("id"), 64))) throw invalid();
+            if (!ids.add(text(item.path("id"), 64)))
+                throw invalid();
             text(item.path("name"), 80);
-            if (!KINDS.contains(text(item.path("kind"), 8))) throw invalid();
+            if (!KINDS.contains(text(item.path("kind"), 8)))
+                throw invalid();
             vector(item.path("position"));
             number(item.path("rotation"), -180, 180);
             // Keep the original payload intact: old accepted commands still replay their v1 scalar.
@@ -50,9 +61,11 @@ final class DirectorSceneValidator {
             } else {
                 JsonNode scale = item.path("scale");
                 object(scale, VECTOR_FIELDS);
-                for (String field : VECTOR_FIELDS) number(scale.path(field), 0.1, 5);
+                for (String field : VECTOR_FIELDS)
+                    number(scale.path(field), 0.1, 5);
             }
-            if (!text(item.path("color"), 7).matches("#[0-9a-fA-F]{6}")) throw invalid();
+            if (!text(item.path("color"), 7).matches("#[0-9a-fA-F]{6}"))
+                throw invalid();
         }
     }
 
@@ -70,41 +83,52 @@ final class DirectorSceneValidator {
         object(motion, MOTION_FIELDS);
         number(motion.path("durationSeconds"), 1, 120);
         JsonNode frames = motion.path("keyframes");
-        if (!frames.isArray() || frames.size() > 24) throw invalid();
+        if (!frames.isArray() || frames.size() > 24)
+            throw invalid();
         Set<String> ids = new HashSet<>();
         double previousTime = -1;
         for (JsonNode frame : frames) {
             object(frame, KEYFRAME_FIELDS);
-            if (!ids.add(text(frame.path("id"), 64))) throw invalid();
+            if (!ids.add(text(frame.path("id"), 64)))
+                throw invalid();
             text(frame.path("name"), 80);
             number(frame.path("timeSeconds"), 0, motion.path("durationSeconds").asDouble());
             double time = frame.path("timeSeconds").asDouble();
-            if (time <= previousTime) throw invalid();
+            if (time <= previousTime)
+                throw invalid();
             previousTime = time;
-            if (!TRANSITIONS.contains(text(frame.path("transition"), 6))) throw invalid();
+            if (!TRANSITIONS.contains(text(frame.path("transition"), 6)))
+                throw invalid();
             camera(frame.path("camera"));
         }
     }
 
     private static void vector(JsonNode node) {
         object(node, VECTOR_FIELDS);
-        for (String field : VECTOR_FIELDS) number(node.path(field), -20, 20);
+        for (String field : VECTOR_FIELDS)
+            number(node.path(field), -20, 20);
     }
 
     private static void object(JsonNode node, Set<String> fields) {
-        if (node == null || !node.isObject() || node.size() != fields.size()) throw invalid();
-        for (String field : fields) if (!node.has(field)) throw invalid();
+        if (node == null || !node.isObject() || node.size() != fields.size())
+            throw invalid();
+        for (String field : fields)
+            if (!node.has(field))
+                throw invalid();
     }
 
     private static String text(JsonNode node, int maxLength) {
-        if (!node.isTextual() || node.asText().isBlank() || node.asText().length() > maxLength) throw invalid();
+        if (!node.isTextual() || node.asText().isBlank() || node.asText().length() > maxLength)
+            throw invalid();
         return node.asText();
     }
 
     private static void number(JsonNode node, double minimum, double maximum) {
-        if (!node.isNumber()) throw invalid();
+        if (!node.isNumber())
+            throw invalid();
         double value = node.asDouble();
-        if (!Double.isFinite(value) || value < minimum || value > maximum) throw invalid();
+        if (!Double.isFinite(value) || value < minimum || value > maximum)
+            throw invalid();
     }
 
     private static ApiProblemException invalid() {

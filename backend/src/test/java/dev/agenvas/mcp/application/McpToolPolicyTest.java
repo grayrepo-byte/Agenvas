@@ -13,7 +13,8 @@ class McpToolPolicyTest {
     private final McpToolPolicy policy = new McpToolPolicy(mapper);
     private final String project = UUID.randomUUID().toString();
 
-    @Test void catalogKeepsWriteAndGenerationGrantsIndependent() {
+    @Test
+    void catalogKeepsWriteAndGenerationGrantsIndependent() {
         assertThat(policy.definitions()).hasSize(14);
         assertThat(policy.requiredScope("run_media")).isEqualTo(McpScope.MEDIA_GENERATE);
         assertThat(policy.requiredScope("compose_video")).isEqualTo(McpScope.MEDIA_GENERATE);
@@ -22,7 +23,8 @@ class McpToolPolicyTest {
         assertThat(policy.requiredScope("list_projects")).isEqualTo(McpScope.READ);
         assertThatThrownBy(() -> policy.requiredScope("approve_media_batch")).isInstanceOf(ApiProblemException.class);
     }
-    @Test void uploadMetadataCannotGrantLocalFileOrRemoteUrlAccess() {
+    @Test
+    void uploadMetadataCannotGrantLocalFileOrRemoteUrlAccess() {
         String metadata = "{\"projectId\":\"" + project + "\",\"commandId\":\"upload\",\"title\":\"Reference\","
                 + "\"kind\":\"IMAGE\",\"byteSize\":4096,\"sha256\":\"" + "a".repeat(64) + "\"}";
         policy.validate("prepare_media_upload", mapper.readTree(metadata));
@@ -30,64 +32,82 @@ class McpToolPolicyTest {
         invalid("prepare_media_upload", metadata.replace("a".repeat(64), "not-a-digest"));
         invalid("prepare_media_upload", metadata.replace("\"Reference\"", "\"  \""));
         invalid("prepare_media_upload", metadata.replace("\"kind\":", "\"path\":\"/private/file.png\",\"kind\":"));
-        invalid("prepare_media_upload", metadata.replace("\"kind\":", "\"url\":\"https://example.test/file.png\",\"kind\":"));
+        invalid("prepare_media_upload",
+                metadata.replace("\"kind\":", "\"url\":\"https://example.test/file.png\",\"kind\":"));
     }
-    @Test void compositionContractBoundsSourcesAndAllowsCompleteFrozenReferenceSummary() {
+    @Test
+    void compositionContractBoundsSourcesAndAllowsCompleteFrozenReferenceSummary() {
         var definition = policy.definition("compose_video");
-        assertThat(definition.at("/outputSchema/properties/tasks/items/properties/inputSummary/properties/inputVersionIds/maxItems").asInt()).isEqualTo(721);
+        assertThat(definition
+                .at("/outputSchema/properties/tasks/items/properties/inputSummary/properties/inputVersionIds/maxItems")
+                .asInt()).isEqualTo(721);
         String composition = "{\"title\":\"Scene\",\"shots\":[{\"videoVersionId\":\"" + project
                 + "\",\"lines\":[{\"audioVersionId\":\"" + project + "\"}]}]}";
-        String request = "{\"projectId\":\"" + project + "\",\"commandId\":\"compose\",\"composition\":" + composition + "}";
+        String request = "{\"projectId\":\"" + project + "\",\"commandId\":\"compose\",\"composition\":" + composition
+                + "}";
         policy.validate("compose_video", mapper.readTree(request));
         invalid("compose_video", request.replace("\"title\":\"Scene\"", "\"title\":\"" + "x".repeat(161) + "\""));
         invalid("compose_video", request.replace("\"lines\":", "\"url\":\"file:///private/input\",\"lines\":"));
     }
-    @Test void compositionProtocolAcceptsLongEditsAndStillRejectsAbsoluteCeilingOverflow() {
+    @Test
+    void compositionProtocolAcceptsLongEditsAndStillRejectsAbsoluteCeilingOverflow() {
         var input = mapper.createObjectNode().put("projectId", project).put("commandId", "long-composition");
         var composition = input.putObject("composition").put("title", "Long edit");
         composition.putObject("output").put("resolution", "2160P");
         var shots = composition.putArray("shots");
-        for (int i = 0; i < 120; i++) shots.addObject().put("videoVersionId", project).put("durationMs", 1000).putArray("lines");
-        composition.putArray("subtitles").addObject().put("text", "Late caption").put("startMs", 119000).put("endMs", 120000);
+        for (int i = 0; i < 120; i++)
+            shots.addObject().put("videoVersionId", project).put("durationMs", 1000).putArray("lines");
+        composition.putArray("subtitles").addObject().put("text", "Late caption").put("startMs", 119000).put("endMs",
+                120000);
         policy.validate("compose_video", input);
         shots.add(shots.get(0).deepCopy());
         assertThatThrownBy(() -> policy.validate("compose_video", input)).isInstanceOf(ApiProblemException.class);
     }
-    @Test void rejectsIdentitySpoofingUnknownFieldsWrongTypesAndUnboundedBatches() {
+    @Test
+    void rejectsIdentitySpoofingUnknownFieldsWrongTypesAndUnboundedBatches() {
         invalid("read_project_summary", "{\"projectId\":\"" + project + "\",\"userId\":\"spoof\"}");
         invalid("read_canvas", "{\"projectId\":\"" + project + "\",\"offset\":1.5}");
         invalid("read_canvas", "{\"projectId\":\"" + project + "\",\"includeDrafts\":true,\"limit\":7}");
         invalid("read_canvas", "{\"projectId\":\"" + project + "\",\"limit\":9223372036854775808}");
-        invalid("read_artifacts", "{\"projectId\":\"" + project + "\",\"versionIds\":[\"" + project + "\",\"" + project + "\"]}");
-        invalid("run_media", "{\"projectId\":\"" + project + "\",\"commandId\":\"x\",\"canvasItemId\":\"" + project + "\",\"expectedDraftVersion\":0,\"approved\":true}");
+        invalid("read_artifacts",
+                "{\"projectId\":\"" + project + "\",\"versionIds\":[\"" + project + "\",\"" + project + "\"]}");
+        invalid("run_media", "{\"projectId\":\"" + project + "\",\"commandId\":\"x\",\"canvasItemId\":\"" + project
+                + "\",\"expectedDraftVersion\":0,\"approved\":true}");
     }
-    @Test void validatesActionSpecificFieldsAndPatchShape() {
+    @Test
+    void validatesActionSpecificFieldsAndPatchShape() {
         String base = "\"projectId\":\"" + project + "\",\"commandId\":\"move\",\"canvasItemId\":\"" + project + "\"";
         invalid("manage_canvas_node", "{" + base + ",\"action\":\"MOVE\",\"expectedVersion\":0,\"x\":2}");
         invalid("manage_canvas_node", "{" + base + ",\"action\":\"REMOVE\",\"expectedVersion\":0}");
         invalid("update_media_draft", "{" + base + ",\"expectedDraftVersion\":0,\"patch\":{}}");
-        invalid("update_media_draft", "{" + base + ",\"expectedDraftVersion\":0,\"patch\":{\"endpoint\":\"https://invalid.example\"}}");
-        policy.validate("update_media_draft", mapper.readTree("{" + base + ",\"expectedDraftVersion\":0,\"patch\":{\"prompt\":\"hello\",\"capabilityId\":null}}"));
+        invalid("update_media_draft",
+                "{" + base + ",\"expectedDraftVersion\":0,\"patch\":{\"endpoint\":\"https://invalid.example\"}}");
+        policy.validate("update_media_draft", mapper.readTree(
+                "{" + base + ",\"expectedDraftVersion\":0,\"patch\":{\"prompt\":\"hello\",\"capabilityId\":null}}"));
     }
-    @Test void textPagesAreBoundedAndRequireOneExactVersion() {
+    @Test
+    void textPagesAreBoundedAndRequireOneExactVersion() {
         var request = mapper.createObjectNode().put("projectId", project);
         request.putArray("versionIds").add(project);
         policy.validate("read_artifacts", request.deepCopy().put("textOffset", 0).put("textLimit", 4000));
         for (var invalid : java.util.List.of(request.deepCopy().put("textOffset", -1),
                 request.deepCopy().put("textOffset", 2147483648L), request.deepCopy().put("textOffset", 1.5),
                 request.deepCopy().put("textLimit", 0), request.deepCopy().put("textLimit", 4001))) {
-            assertThatThrownBy(() -> policy.validate("read_artifacts", invalid)).isInstanceOf(ApiProblemException.class);
+            assertThatThrownBy(() -> policy.validate("read_artifacts", invalid))
+                    .isInstanceOf(ApiProblemException.class);
         }
         request.put("textOffset", 0);
         ((tools.jackson.databind.node.ArrayNode) request.path("versionIds")).add(UUID.randomUUID().toString());
         assertThatThrownBy(() -> policy.validate("read_artifacts", request)).isInstanceOf(ApiProblemException.class);
     }
-    @Test void structuredMentionsPreserveRepeatedPositionsRatherThanDeduplicatingReferences() {
+    @Test
+    void structuredMentionsPreserveRepeatedPositionsRatherThanDeduplicatingReferences() {
         var request = mapper.createObjectNode().put("projectId", project).put("commandId", "tags")
                 .put("canvasItemId", project).put("expectedDraftVersion", 0);
         var patch = request.putObject("patch").put("prompt", "\uFFFC and \uFFFC");
         var mentions = patch.putArray("mentions");
-        for (int i = 0; i < 2; i++) mentions.addObject().put("versionId", project).put("role", "REFERENCE");
+        for (int i = 0; i < 2; i++)
+            mentions.addObject().put("versionId", project).put("role", "REFERENCE");
         policy.validate("update_media_draft", request);
     }
     private void invalid(String name, String json) {

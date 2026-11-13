@@ -80,16 +80,26 @@ class AssetPostgresIT {
         registry.add("agenvas.storage.root", STORAGE_ROOT::toString);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private AssetService assets;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private CanvasService canvasService;
-    @Autowired private LocalAssetStorage storage;
-    @Autowired private MediaToolRunner mediaTools;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private ObjectMapper mapper;
-    @Autowired private WebApplicationContext context;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private AssetService assets;
+    @Autowired
+    private AgentInstanceService agents;
+    @Autowired
+    private CanvasService canvasService;
+    @Autowired
+    private LocalAssetStorage storage;
+    @Autowired
+    private MediaToolRunner mediaTools;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private ObjectMapper mapper;
+    @Autowired
+    private WebApplicationContext context;
 
     @Test
     void uploadValidatesBytesAndPrivateRangeReadsStayInsideProject() throws Exception {
@@ -100,8 +110,8 @@ class AssetPostgresIT {
         byte[] png = tinyPng();
         String path = "/api/v1/projects/" + project.id() + "/assets";
         MvcResult uploaded = mvc.perform(multipart(path)
-                        .file(new MockMultipartFile("file", "evil.html", "text/html", png))
-                        .with(authentication(asUser(owner))).with(csrf()))
+                .file(new MockMultipartFile("file", "evil.html", "text/html", png))
+                .with(authentication(asUser(owner))).with(csrf()))
                 .andExpect(status().isCreated()).andReturn();
         UUID id = UUID.fromString(mapper.readTree(uploaded.getResponse().getContentAsString())
                 .path("id").asText());
@@ -113,12 +123,12 @@ class AssetPostgresIT {
         assertThat(jdbc.sql("select count(*) from asset where project_id = :projectId")
                 .param("projectId", project.id()).query(Integer.class).single()).isEqualTo(1);
         assertThat(jdbc.sql("select count(*) from project_event where project_id = :projectId "
-                        + "and type = 'asset.ready'")
+                + "and type = 'asset.ready'")
                 .param("projectId", project.id()).query(Integer.class).single()).isEqualTo(1);
         assertThat(readThumbnail(owner.userId(), project.id(), id).getWidth()).isEqualTo(3);
 
         MvcResult thumbnail = mvc.perform(get(path + "/" + id + "/thumbnail")
-                        .with(authentication(asUser(owner))))
+                .with(authentication(asUser(owner))))
                 .andExpect(status().isOk()).andReturn();
         assertThat(thumbnail.getRequest().isAsyncStarted()).isFalse();
         assertThat(thumbnail.getResponse().getContentType()).isEqualTo("image/png");
@@ -126,15 +136,15 @@ class AssetPostgresIT {
                 thumbnail.getResponse().getContentAsByteArray())).getWidth())
                 .isEqualTo(3);
         mvc.perform(get(path + "/" + id + "/thumbnail")
-                        .with(authentication(asUser(new AdminPrincipal(
-                                UUID.randomUUID(), "foreign")))))
+                .with(authentication(asUser(new AdminPrincipal(
+                        UUID.randomUUID(), "foreign")))))
                 .andExpect(status().isNotFound());
         mvc.perform(get(path + "/" + id + "/thumbnail"))
                 .andExpect(status().isUnauthorized());
 
         String content = path + "/" + id + "/content";
         MvcResult ranged = mvc.perform(get(content).header(HttpHeaders.RANGE, "bytes=1-4")
-                        .with(authentication(asUser(owner))))
+                .with(authentication(asUser(owner))))
                 .andExpect(status().isPartialContent()).andReturn();
         assertThat(ranged.getRequest().isAsyncStarted()).isFalse();
         assertThat(ranged.getResponse().getContentAsByteArray())
@@ -143,7 +153,7 @@ class AssetPostgresIT {
                 .isEqualTo("bytes 1-4/" + png.length);
         for (String range : List.of("bytes=1-999999", "bytes=1-999999999999999999999999999999")) {
             MvcResult bounded = mvc.perform(get(content).header(HttpHeaders.RANGE, range)
-                            .with(authentication(asUser(owner))))
+                    .with(authentication(asUser(owner))))
                     .andExpect(status().isPartialContent()).andReturn();
             assertThat(bounded.getResponse().getContentAsByteArray())
                     .containsExactly(java.util.Arrays.copyOfRange(png, 1, png.length));
@@ -157,20 +167,20 @@ class AssetPostgresIT {
         mvc.perform(request(HttpMethod.HEAD, content).with(authentication(asUser(owner))))
                 .andExpect(status().isOk());
         mvc.perform(get(content).header(HttpHeaders.RANGE, "bytes=999999-")
-                        .with(authentication(asUser(owner))))
+                .with(authentication(asUser(owner))))
                 .andExpect(status().isRequestedRangeNotSatisfiable())
                 .andExpect(result -> assertThat(result.getResponse()
                         .getHeader(HttpHeaders.CONTENT_RANGE))
                         .isEqualTo("bytes */" + png.length));
         mvc.perform(get(content).with(authentication(asUser(
-                        new AdminPrincipal(UUID.randomUUID(), "foreign")))))
+                new AdminPrincipal(UUID.randomUUID(), "foreign")))))
                 .andExpect(status().isNotFound());
         mvc.perform(get(content)).andExpect(status().isUnauthorized());
 
         mvc.perform(multipart(path)
-                        .file(new MockMultipartFile("file", "bad.png", "image/png",
-                                "<svg>not an image</svg>".getBytes()))
-                        .with(authentication(asUser(owner))).with(csrf()))
+                .file(new MockMultipartFile("file", "bad.png", "image/png",
+                        "<svg>not an image</svg>".getBytes()))
+                .with(authentication(asUser(owner))).with(csrf()))
                 .andExpect(status().isUnprocessableEntity());
         assertThat(jdbc.sql("select count(*) from asset where project_id = :projectId")
                 .param("projectId", project.id()).query(Integer.class).single()).isEqualTo(1);
@@ -209,12 +219,12 @@ class AssetPostgresIT {
         byte[] tooLarge = new byte[20 * 1024 * 1024 + 1];
         assertThatThrownBy(() -> assets.archiveImage(owner.userId(), project.id(),
                 new ByteArrayInputStream(tooLarge)))
-                .isInstanceOfSatisfying(ApiProblemException.class, error ->
-                        assertThat(error.code()).isEqualTo("ASSET_TOO_LARGE"));
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        error -> assertThat(error.code()).isEqualTo("ASSET_TOO_LARGE"));
         assertThatThrownBy(() -> assets.archiveImage(owner.userId(), project.id(),
                 new ByteArrayInputStream(pngWithOversizedHeader(png))))
-                .isInstanceOfSatisfying(ApiProblemException.class, error ->
-                        assertThat(error.code()).isEqualTo("ASSET_TOO_MANY_PIXELS"));
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        error -> assertThat(error.code()).isEqualTo("ASSET_TOO_MANY_PIXELS"));
         assertThatThrownBy(() -> assets.archiveImage(owner.userId(), project.id(),
                 interruptedUpload(png))).isInstanceOf(IllegalStateException.class);
         try (var projectFiles = Files.list(STORAGE_ROOT.resolve(project.id().toString()))) {
@@ -223,8 +233,8 @@ class AssetPostgresIT {
         }
         assertThatThrownBy(() -> assets.archiveVideo(owner.userId(), project.id(),
                 new ByteArrayInputStream("not an MP4".getBytes())))
-                .isInstanceOfSatisfying(ApiProblemException.class, error ->
-                        assertThat(error.code()).isEqualTo("ASSET_INVALID_VIDEO"));
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        error -> assertThat(error.code()).isEqualTo("ASSET_INVALID_VIDEO"));
         assertThat(jdbc.sql("select count(*) from asset where project_id = :projectId")
                 .param("projectId", project.id()).query(Integer.class).single()).isEqualTo(2);
         verifyWebpUpload(mvc, owner, project);
@@ -245,7 +255,7 @@ class AssetPostgresIT {
         long rowsBefore = jdbc.sql("select count(*) from asset where project_id = :projectId")
                 .param("projectId", project.id()).query(Long.class).single();
         long eventsBefore = jdbc.sql("select count(*) from project_event where project_id = :projectId "
-                        + "and type = 'asset.ready'")
+                + "and type = 'asset.ready'")
                 .param("projectId", project.id()).query(Long.class).single();
         UUID taskId = UUID.randomUUID();
         UUID taskAssetId = AssetService.taskImageAssetId(taskId);
@@ -274,7 +284,7 @@ class AssetPostgresIT {
                     .param("projectId", project.id()).query(Long.class).single())
                     .isEqualTo(rowsBefore);
             assertThat(jdbc.sql("select count(*) from project_event "
-                            + "where project_id = :projectId and type = 'asset.ready'")
+                    + "where project_id = :projectId and type = 'asset.ready'")
                     .param("projectId", project.id()).query(Long.class).single())
                     .isEqualTo(eventsBefore);
         } finally {
@@ -293,7 +303,7 @@ class AssetPostgresIT {
                 .param("projectId", project.id()).query(Long.class).single())
                 .isEqualTo(rowsBefore + 1);
         assertThat(jdbc.sql("select count(*) from project_event "
-                        + "where project_id = :projectId and type = 'asset.ready'")
+                + "where project_id = :projectId and type = 'asset.ready'")
                 .param("projectId", project.id()).query(Long.class).single())
                 .isEqualTo(eventsBefore + 1);
     }
@@ -301,8 +311,10 @@ class AssetPostgresIT {
     private void verifyGifUpload(MockMvc mvc, AdminPrincipal owner, Project project) throws Exception {
         byte[] gif = dev.agenvas.testing.GifFixture.animation(2);
         String path = "/api/v1/projects/" + project.id() + "/assets";
-        var uploaded = mvc.perform(multipart(path).file(new MockMultipartFile("file", "misleading.png", "image/png", gif))
-                .with(authentication(asUser(owner))).with(csrf())).andExpect(status().isCreated()).andReturn();
+        var uploaded = mvc
+                .perform(multipart(path).file(new MockMultipartFile("file", "misleading.png", "image/png", gif))
+                        .with(authentication(asUser(owner))).with(csrf()))
+                .andExpect(status().isCreated()).andReturn();
         UUID id = UUID.fromString(mapper.readTree(uploaded.getResponse().getContentAsString()).path("id").asText());
         var file = assets.get(owner.userId(), project.id(), id);
         assertThat(file.asset().contentType()).isEqualTo("image/gif");
@@ -325,9 +337,9 @@ class AssetPostgresIT {
                 "UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoEAAQAAkA4JaQAA3AA/vucwAA=");
         String path = "/api/v1/projects/" + project.id() + "/assets";
         MvcResult uploaded = mvc.perform(multipart(path)
-                        .file(new MockMultipartFile("file", "misleading.png",
-                                "image/png", webp))
-                        .with(authentication(asUser(owner))).with(csrf()))
+                .file(new MockMultipartFile("file", "misleading.png",
+                        "image/png", webp))
+                .with(authentication(asUser(owner))).with(csrf()))
                 .andExpect(status().isCreated()).andReturn();
         UUID id = UUID.fromString(mapper.readTree(uploaded.getResponse().getContentAsString())
                 .path("id").asText());
@@ -337,18 +349,18 @@ class AssetPostgresIT {
         assertThat(Files.readAllBytes(file.path())).containsExactly(webp);
         assertThat(readThumbnail(owner.userId(), project.id(), id)).isNotNull();
         MvcResult content = mvc.perform(get(path + "/" + id + "/content")
-                        .with(authentication(asUser(owner))))
+                .with(authentication(asUser(owner))))
                 .andExpect(status().isOk()).andReturn();
         assertThat(content.getResponse().getContentType()).isEqualTo("image/webp");
         assertThat(content.getResponse().getContentAsByteArray()).containsExactly(webp);
         MvcResult artifactCreated = mvc.perform(post("/api/v1/projects/" + project.id()
-                        + "/artifacts").contentType(MediaType.APPLICATION_JSON)
-                        .header("Idempotency-Key", UUID.randomUUID().toString())
-                        .content("""
+                + "/artifacts").contentType(MediaType.APPLICATION_JSON)
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .content("""
                                 {"kind":"IMAGE","title":"Product reference",
                                  "content":{"sourceType":"UPLOAD","assetId":"%s"}}
                                 """.formatted(id))
-                        .with(authentication(asUser(owner))).with(csrf()))
+                .with(authentication(asUser(owner))).with(csrf()))
                 .andExpect(status().isCreated()).andReturn();
         var artifact = mapper.readTree(artifactCreated.getResponse().getContentAsString());
         assertThat(artifact.path("resourceDefaultVersion").path("content").path("sourceType").asText())
@@ -358,16 +370,16 @@ class AssetPostgresIT {
         UUID artifactId = UUID.fromString(artifact.path("id").asText());
         UUID versionId = UUID.fromString(artifact.path("resourceDefaultVersionId").asText());
         mvc.perform(post("/api/v1/projects/" + project.id() + "/canvas/commands")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
                                 {"commands":[{"type":"PLACE_ARTIFACT","itemId":"%s",
                                   "artifactId":"%s","x":80,"y":80,"width":280,
                                   "height":240,"zIndex":0,"locked":false}]}
                                 """.formatted(UUID.randomUUID(), artifactId))
-                        .with(authentication(asUser(owner))).with(csrf()))
+                .with(authentication(asUser(owner))).with(csrf()))
                 .andExpect(status().isOk());
         MvcResult canvas = mvc.perform(get("/api/v1/projects/" + project.id()
-                        + "/canvas/items").with(authentication(asUser(owner))))
+                + "/canvas/items").with(authentication(asUser(owner))))
                 .andExpect(status().isOk()).andReturn();
         assertThat(mapper.readTree(canvas.getResponse().getContentAsString())
                 .path("items").path(0).path("artifact").path("resourceDefaultVersion")
@@ -382,14 +394,14 @@ class AssetPostgresIT {
         });
 
         mvc.perform(multipart(path)
-                        .file(new MockMultipartFile("file", "bad.webp", "image/webp",
-                                "not a WebP".getBytes()))
-                        .with(authentication(asUser(owner))).with(csrf()))
+                .file(new MockMultipartFile("file", "bad.webp", "image/webp",
+                        "not a WebP".getBytes()))
+                .with(authentication(asUser(owner))).with(csrf()))
                 .andExpect(status().isUnprocessableEntity());
         mvc.perform(multipart(path)
-                        .file(new MockMultipartFile("file", "truncated.webp", "image/webp",
-                                java.util.Arrays.copyOf(webp, webp.length - 5)))
-                        .with(authentication(asUser(owner))).with(csrf()))
+                .file(new MockMultipartFile("file", "truncated.webp", "image/webp",
+                        java.util.Arrays.copyOf(webp, webp.length - 5)))
+                .with(authentication(asUser(owner))).with(csrf()))
                 .andExpect(status().isUnprocessableEntity());
         assertThat(jdbc.sql("select count(*) from asset where project_id = :projectId")
                 .param("projectId", project.id()).query(Integer.class).single()).isEqualTo(3);
@@ -462,7 +474,7 @@ class AssetPostgresIT {
         assertThat(jdbc.sql("select count(*) from asset where id = :id")
                 .param("id", assetId).query(Integer.class).single()).isEqualTo(1);
         assertThat(jdbc.sql("select count(*) from project_event where project_id = :projectId "
-                        + "and type = 'asset.ready' and aggregate_id = :assetId")
+                + "and type = 'asset.ready' and aggregate_id = :assetId")
                 .param("projectId", project.id()).param("assetId", assetId)
                 .query(Integer.class).single()).isEqualTo(1);
     }
@@ -492,18 +504,18 @@ class AssetPostgresIT {
             assertThat(mapper.readTree(metadata.getResponse().getContentAsString())
                     .has("objectKey")).isFalse();
             mvc.perform(get(path).with(authentication(asUser(new AdminPrincipal(
-                            UUID.randomUUID(), "foreign")))))
+                    UUID.randomUUID(), "foreign")))))
                     .andExpect(status().isNotFound());
             mvc.perform(get(path)).andExpect(status().isUnauthorized());
             MvcResult range = mvc.perform(get(path + "/content")
-                            .header(HttpHeaders.RANGE, "bytes=4-7")
-                            .with(authentication(asUser(owner))))
+                    .header(HttpHeaders.RANGE, "bytes=4-7")
+                    .with(authentication(asUser(owner))))
                     .andExpect(status().isPartialContent()).andReturn();
             assertThat(range.getRequest().isAsyncStarted()).isFalse();
             assertThat(range.getResponse().getContentType()).isEqualTo("video/mp4");
             assertThat(range.getResponse().getContentAsString()).isEqualTo("ftyp");
             mvc.perform(request(HttpMethod.HEAD, path + "/content")
-                            .with(authentication(asUser(owner))))
+                    .with(authentication(asUser(owner))))
                     .andExpect(status().isOk());
             mvc.perform(get(path + "/content"))
                     .andExpect(status().isUnauthorized());
@@ -584,7 +596,7 @@ class AssetPostgresIT {
         assertThat(jdbc.sql("select count(*) from asset where id = :id")
                 .param("id", assetId).query(Integer.class).single()).isEqualTo(1);
         assertThat(jdbc.sql("select count(*) from project_event where project_id = :projectId "
-                        + "and type = 'asset.ready' and aggregate_id = :assetId")
+                + "and type = 'asset.ready' and aggregate_id = :assetId")
                 .param("projectId", project.id()).param("assetId", assetId)
                 .query(Integer.class).single()).isEqualTo(1);
     }
@@ -627,7 +639,8 @@ class AssetPostgresIT {
 
             @Override
             public int read(byte[] buffer, int offset, int length) throws IOException {
-                if (!firstRead) throw new IOException("Injected upload interruption");
+                if (!firstRead)
+                    throw new IOException("Injected upload interruption");
                 firstRead = false;
                 return super.read(buffer, offset, Math.min(length, 16));
             }

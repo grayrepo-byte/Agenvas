@@ -17,27 +17,52 @@ const NOW = "2026-09-26T00:00:00Z";
 const UPLOAD_URL = `/api/v1/projects/${PROJECT_ID}/assets`;
 const CARD_UPLOAD_URL = `/api/v1/projects/${PROJECT_ID}/canvas-items/${CANVAS_ITEM_ID}/upload-version`;
 const EMPTY_IMAGE: Artifact = {
-  id: ARTIFACT_ID, projectId: PROJECT_ID, kind: "IMAGE", title: "空图片卡片",
-  resourceDefaultVersionId: null, resourceDefaultVersion: null, version: ORIGINAL_VERSION,
-  createdAt: NOW, updatedAt: NOW,
+  id: ARTIFACT_ID,
+  projectId: PROJECT_ID,
+  kind: "IMAGE",
+  title: "空图片卡片",
+  resourceDefaultVersionId: null,
+  resourceDefaultVersion: null,
+  version: ORIGINAL_VERSION,
+  createdAt: NOW,
+  updatedAt: NOW,
 };
 const REVISED_IMAGE: Artifact = {
-  ...EMPTY_IMAGE, resourceDefaultVersionId: UPLOADED_VERSION_ID,
+  ...EMPTY_IMAGE,
+  resourceDefaultVersionId: UPLOADED_VERSION_ID,
   resourceDefaultVersion: {
-    id: UPLOADED_VERSION_ID, versionNo: 1, schemaVersion: 1,
-    content: { sourceType: "UPLOAD", assetId: ASSET_ID }, inputReferences: [],
-    createdByKind: "USER", runId: null, createdAt: NOW,
+    id: UPLOADED_VERSION_ID,
+    versionNo: 1,
+    schemaVersion: 1,
+    content: { sourceType: "UPLOAD", assetId: ASSET_ID },
+    inputReferences: [],
+    createdByKind: "USER",
+    runId: null,
+    createdAt: NOW,
   },
 };
 const ITEM: CanvasItem = {
-  id: CANVAS_ITEM_ID, subjectType: "ARTIFACT", subjectId: ARTIFACT_ID, title: "空图片卡片",
-  x: 0, y: 0, width: 320, height: 320, zIndex: 0, groupId: null, locked: false,
-  selectedVersionId: null, selectedVersion: null, version: 0, artifact: EMPTY_IMAGE,
+  id: CANVAS_ITEM_ID,
+  subjectType: "ARTIFACT",
+  subjectId: ARTIFACT_ID,
+  title: "空图片卡片",
+  x: 0,
+  y: 0,
+  width: 320,
+  height: 320,
+  zIndex: 0,
+  groupId: null,
+  locked: false,
+  selectedVersionId: null,
+  selectedVersion: null,
+  version: 0,
+  artifact: EMPTY_IMAGE,
 };
 
 function mockUpload(onUpload: () => void, kind: "IMAGE" | "VIDEO") {
-  server.use(http.get("/api/v1/auth/csrf", () =>
-    HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })));
+  server.use(
+    http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
+  );
   // Match the existing image-upload tests: inspect browser FormData before Node's
   // fetch implementation tries to serialize jsdom's File objects.
   const interceptedFetch = globalThis.fetch;
@@ -46,7 +71,10 @@ function mockUpload(onUpload: () => void, kind: "IMAGE" | "VIDEO") {
       expect(new Headers(init?.headers).get("X-XSRF-TOKEN")).toBe("test-token");
       expect(new Headers(init?.headers).has("Content-Type")).toBe(false);
       expect(init?.body).toBeInstanceOf(FormData);
-      expect((init?.body as FormData).get("file")).toHaveProperty("name", kind === "VIDEO" ? "clip.mp4" : "reference.webp");
+      expect((init?.body as FormData).get("file")).toHaveProperty(
+        "name",
+        kind === "VIDEO" ? "clip.mp4" : "reference.webp",
+      );
       onUpload();
       return HttpResponse.json({ id: ASSET_ID, mediaKind: kind }, { status: 201 });
     }
@@ -55,14 +83,16 @@ function mockUpload(onUpload: () => void, kind: "IMAGE" | "VIDEO") {
 }
 
 function mountUpload(kind: "IMAGE" | "VIDEO") {
-  const initialFile = kind === "VIDEO"
-    ? new File(["synthetic video bytes"], "clip.mp4", { type: "video/mp4" }) : imageFile();
+  const initialFile =
+    kind === "VIDEO" ? new File(["synthetic video bytes"], "clip.mp4", { type: "video/mp4" }) : imageFile();
   const artifact = { ...EMPTY_IMAGE, kind };
   const onDone = vi.fn();
   const client = createQueryClient();
-  render(<QueryClientProvider client={client}>
-    <MediaCardUpload artifact={artifact} item={{ ...ITEM, artifact }} initialFile={initialFile} onDone={onDone} />
-  </QueryClientProvider>);
+  render(
+    <QueryClientProvider client={client}>
+      <MediaCardUpload artifact={artifact} item={{ ...ITEM, artifact }} initialFile={initialFile} onDone={onDone} />
+    </QueryClientProvider>,
+  );
   return onDone;
 }
 
@@ -80,17 +110,27 @@ function submitUpload() {
   fireEvent.submit(form);
 }
 
-describe.each(["IMAGE", "VIDEO"] as const)("MediaCardUpload %s", (kind) => {
+describe.each(["IMAGE", "VIDEO"] as const)("MediaCardUpload %s", kind => {
   it("uploads the chosen file immediately into the empty source node", async () => {
     const operations: string[] = [];
     mockUpload(() => operations.push("upload"), kind);
     server.use(
       http.post(CARD_UPLOAD_URL, async ({ request }) => {
         operations.push("card-upload");
-        expect(await request.json()).toEqual({ targetItemId: CANVAS_ITEM_ID,
-          expectedVersion: ITEM.version, content: { sourceType: "UPLOAD", assetId: ASSET_ID } });
-        return HttpResponse.json({ ...ITEM, selectedVersionId: UPLOADED_VERSION_ID,
-          selectedVersion: REVISED_IMAGE.resourceDefaultVersion, version: 1 }, { status: 201 });
+        expect(await request.json()).toEqual({
+          targetItemId: CANVAS_ITEM_ID,
+          expectedVersion: ITEM.version,
+          content: { sourceType: "UPLOAD", assetId: ASSET_ID },
+        });
+        return HttpResponse.json(
+          {
+            ...ITEM,
+            selectedVersionId: UPLOADED_VERSION_ID,
+            selectedVersion: REVISED_IMAGE.resourceDefaultVersion,
+            version: 1,
+          },
+          { status: 201 },
+        );
       }),
     );
     const onDone = mountUpload(kind);
@@ -108,13 +148,25 @@ describe.each(["IMAGE", "VIDEO"] as const)("MediaCardUpload %s", (kind) => {
       http.post(CARD_UPLOAD_URL, async ({ request }) => {
         operations.push("card-upload");
         requests++;
-        expect(await request.json()).toEqual({ targetItemId: CANVAS_ITEM_ID,
-          expectedVersion: ITEM.version, content: { sourceType: "UPLOAD", assetId: ASSET_ID } });
-        if (requests === 1) return HttpResponse.json({ title: "暂时不可用", detail: "响应暂时失败。",
-          code: "SERVICE_UNAVAILABLE", retryable: true },
-        { status: 503, headers: { "Content-Type": "application/problem+json" } });
-        return HttpResponse.json({ ...ITEM, selectedVersionId: UPLOADED_VERSION_ID,
-          selectedVersion: REVISED_IMAGE.resourceDefaultVersion, version: 1 }, { status: 201 });
+        expect(await request.json()).toEqual({
+          targetItemId: CANVAS_ITEM_ID,
+          expectedVersion: ITEM.version,
+          content: { sourceType: "UPLOAD", assetId: ASSET_ID },
+        });
+        if (requests === 1)
+          return HttpResponse.json(
+            { title: "暂时不可用", detail: "响应暂时失败。", code: "SERVICE_UNAVAILABLE", retryable: true },
+            { status: 503, headers: { "Content-Type": "application/problem+json" } },
+          );
+        return HttpResponse.json(
+          {
+            ...ITEM,
+            selectedVersionId: UPLOADED_VERSION_ID,
+            selectedVersion: REVISED_IMAGE.resourceDefaultVersion,
+            version: 1,
+          },
+          { status: 201 },
+        );
       }),
     );
     const onDone = mountUpload(kind);
@@ -131,13 +183,25 @@ describe.each(["IMAGE", "VIDEO"] as const)("MediaCardUpload %s", (kind) => {
     server.use(
       http.post(CARD_UPLOAD_URL, async ({ request }) => {
         operations.push("card-upload");
-        expect(await request.json()).toEqual({ targetItemId: CANVAS_ITEM_ID,
-          expectedVersion: ITEM.version, content: { sourceType: "UPLOAD", assetId: ASSET_ID } });
-        if (failing) return HttpResponse.json({ title: "响应失败", detail: "响应暂时不可用。",
-          code: "SERVICE_UNAVAILABLE", retryable: true },
-        { status: 503, headers: { "Content-Type": "application/problem+json" } });
-        return HttpResponse.json({ ...ITEM, selectedVersionId: UPLOADED_VERSION_ID,
-          selectedVersion: REVISED_IMAGE.resourceDefaultVersion, version: 1 }, { status: 201 });
+        expect(await request.json()).toEqual({
+          targetItemId: CANVAS_ITEM_ID,
+          expectedVersion: ITEM.version,
+          content: { sourceType: "UPLOAD", assetId: ASSET_ID },
+        });
+        if (failing)
+          return HttpResponse.json(
+            { title: "响应失败", detail: "响应暂时不可用。", code: "SERVICE_UNAVAILABLE", retryable: true },
+            { status: 503, headers: { "Content-Type": "application/problem+json" } },
+          );
+        return HttpResponse.json(
+          {
+            ...ITEM,
+            selectedVersionId: UPLOADED_VERSION_ID,
+            selectedVersion: REVISED_IMAGE.resourceDefaultVersion,
+            version: 1,
+          },
+          { status: 201 },
+        );
       }),
     );
     const onDone = mountUpload(kind);
@@ -153,9 +217,11 @@ describe.each(["IMAGE", "VIDEO"] as const)("MediaCardUpload %s", (kind) => {
 
   it("retains the selected file after a card conflict", async () => {
     const operations: string[] = [];
-    const conflict = () => HttpResponse.json({ title: "版本冲突", detail: "卡片已被其他编辑更新。",
-      code: "ARTIFACT_VERSION_CONFLICT", retryable: false },
-    { status: 409, headers: { "Content-Type": "application/problem+json" } });
+    const conflict = () =>
+      HttpResponse.json(
+        { title: "版本冲突", detail: "卡片已被其他编辑更新。", code: "ARTIFACT_VERSION_CONFLICT", retryable: false },
+        { status: 409, headers: { "Content-Type": "application/problem+json" } },
+      );
     mockUpload(() => operations.push("upload"), kind);
     server.use(
       http.post(CARD_UPLOAD_URL, () => {

@@ -65,8 +65,7 @@ public class ProjectController {
             @RequestParam(defaultValue = "false") boolean includeArchived,
             @RequestParam(required = false) String cursor,
             @RequestParam(required = false) @Min(1) @Max(100) Integer limit) {
-        ProjectService.ProjectPage page =
-                projects.list(principal.userId(), includeArchived, cursor, limit);
+        ProjectService.ProjectPage page = projects.list(principal.userId(), includeArchived, cursor, limit);
         return new ProjectListResponse(
                 page.items().stream().map(ProjectResponse::from).toList(), page.nextCursor());
     }
@@ -123,7 +122,8 @@ public class ProjectController {
      */
     public record CreateProjectRequest(
             @NotBlank @Size(max = 120) String name,
-            @NotNull Project.AspectRatio aspectRatio) {}
+            @NotNull Project.AspectRatio aspectRatio) {
+    }
 
     /** 项目设置更新命令；字段为空表示不修改，版本用于避免丢失并发更新。
      * @param expectedVersion 客户端读取项目时的版本
@@ -133,7 +133,8 @@ public class ProjectController {
     public record UpdateProjectRequest(
             @PositiveOrZero long expectedVersion,
             @Size(min = 1, max = 120) String name,
-            Project.AspectRatio aspectRatio) {}
+            Project.AspectRatio aspectRatio) {
+    }
 
     /** 以查询参数中的版本删除归档项目；同版本命令可安全重放。 */
     @DeleteMapping("/{projectId}")
@@ -148,7 +149,8 @@ public class ProjectController {
     /** 项目归档命令。
      * @param expectedVersion 客户端读取项目时的版本
      */
-    public record ArchiveProjectRequest(@PositiveOrZero long expectedVersion) {}
+    public record ArchiveProjectRequest(@PositiveOrZero long expectedVersion) {
+    }
 
     /** 对外返回的项目快照。
      * @param id 项目 UUID 的字符串形式
@@ -191,5 +193,6 @@ public class ProjectController {
      * @param items 当前页项目
      * @param nextCursor 下一页起点；没有后续数据时为空
      */
-    public record ProjectListResponse(List<ProjectResponse> items, String nextCursor) {}
+    public record ProjectListResponse(List<ProjectResponse> items, String nextCursor) {
+    }
 }

@@ -28,23 +28,27 @@ import tools.jackson.databind.node.ObjectNode;
 
 /** Reference preparation with frozen asset identities and synthetic probe data; no cloud traffic. */
 class MiniMaxH3ReferenceLoaderTest {
-    @TempDir Path root;
+    @TempDir
+    Path root;
     private final UUID owner = UUID.randomUUID(), project = UUID.randomUUID();
     private final ObjectMapper mapper = new ObjectMapper();
     private final ArtifactService artifacts = mock(ArtifactService.class);
     private final AssetService assets = mock(AssetService.class);
     private final MediaRelayService relay = mock(MediaRelayService.class);
     private final MediaToolRunner tools = mock(MediaToolRunner.class);
-    private final MiniMaxH3ReferenceLoader loader = new MiniMaxH3ReferenceLoader(artifacts, assets, relay, tools, mapper);
+    private final MiniMaxH3ReferenceLoader loader = new MiniMaxH3ReferenceLoader(artifacts, assets, relay, tools,
+            mapper);
     private final ObjectNode input = mapper.createObjectNode();
 
-    @Test void usesTheFrozenRelayProfileAndSignsOnlyAtSubmission() throws Exception {
+    @Test
+    void usesTheFrozenRelayProfileAndSignsOnlyAtSubmission() throws Exception {
         var context = context();
         Asset video = reference(Asset.MediaKind.VIDEO, "video/mp4", 2_000, 3, "VIDEO_REFERENCE");
         UUID profile = UUID.randomUUID();
         ((ObjectNode) input.at("/mediaInput/videos/0")).put("relayProfileId", profile.toString());
         when(tools.ffprobe(anyList())).thenReturn(probe("h264", "24/1", "aac"));
-        when(relay.signedVideo(owner, project, video.id(), profile)).thenReturn("https://store.example.com/video.mp4?signature=synthetic");
+        when(relay.signedVideo(owner, project, video.id(), profile))
+                .thenReturn("https://store.example.com/video.mp4?signature=synthetic");
         assertThat(loader.load(context, false)).singleElement().satisfies(ref -> {
             assertThat(ref.type()).isEqualTo("video_url");
             assertThat(ref.role()).isEqualTo("reference_video");
@@ -54,7 +58,8 @@ class MiniMaxH3ReferenceLoaderTest {
         verify(relay).signedVideo(owner, project, video.id(), profile);
     }
 
-    @Test void rejectsUnsupportedVideoCodecsAudioCodecsAndFrameRatesBeforeSigning() throws Exception {
+    @Test
+    void rejectsUnsupportedVideoCodecsAudioCodecsAndFrameRatesBeforeSigning() throws Exception {
         var context = context();
         Asset video = reference(Asset.MediaKind.VIDEO, "video/mp4", 2_000, 3, "VIDEO_REFERENCE");
         for (String invalid : java.util.List.of(probe("vp9", "24/1", "aac"), probe("h264", "0/0", "aac"),
@@ -65,7 +70,8 @@ class MiniMaxH3ReferenceLoaderTest {
         verify(relay, never()).signedVideo(owner, project, video.id(), null);
     }
 
-    @Test void sendsExactMp3BytesWithTheOfficialInlineMimeWithoutRequiringVisualInput() throws Exception {
+    @Test
+    void sendsExactMp3BytesWithTheOfficialInlineMimeWithoutRequiringVisualInput() throws Exception {
         var context = context();
         reference(Asset.MediaKind.AUDIO, "audio/mpeg", 2_000, 3, "AUDIO_REFERENCE");
         assertThat(loader.load(context, true)).singleElement().satisfies(ref -> {
@@ -75,7 +81,8 @@ class MiniMaxH3ReferenceLoaderTest {
         });
     }
 
-    @Test void rejectsAggregateDurationAndChangedArchivedBytes() throws Exception {
+    @Test
+    void rejectsAggregateDurationAndChangedArchivedBytes() throws Exception {
         var context = context();
         reference(Asset.MediaKind.AUDIO, "audio/wav", 8_000, 3, "AUDIO_REFERENCE");
         reference(Asset.MediaKind.AUDIO, "audio/wav", 8_000, 3, "AUDIO_REFERENCE");
@@ -87,16 +94,22 @@ class MiniMaxH3ReferenceLoaderTest {
 
     private AttemptContext context() {
         ObjectNode media = input.putObject("mediaInput").put("mode", "GENERAL_REFERENCE");
-        media.putArray("images"); media.putArray("audios"); media.putArray("videos");
+        media.putArray("images");
+        media.putArray("audios");
+        media.putArray("videos");
         Task task = mock(Task.class);
-        when(task.projectId()).thenReturn(project); when(task.input()).thenReturn(input);
+        when(task.projectId()).thenReturn(project);
+        when(task.input()).thenReturn(input);
         return new AttemptContext(task, null, owner, "synthetic-request", null);
     }
 
-    private Asset reference(Asset.MediaKind kind, String mime, Integer duration, int declaredBytes, String role) throws Exception {
+    private Asset reference(Asset.MediaKind kind, String mime, Integer duration, int declaredBytes, String role)
+            throws Exception {
         UUID artifactId = UUID.randomUUID(), versionId = UUID.randomUUID(), assetId = UUID.randomUUID();
         var group = (tools.jackson.databind.node.ArrayNode) input.at("/mediaInput/" + switch (kind) {
-            case IMAGE -> "images"; case AUDIO -> "audios"; case VIDEO -> "videos";
+            case IMAGE -> "images";
+            case AUDIO -> "audios";
+            case VIDEO -> "videos";
         });
         group.addObject().put("artifactId", artifactId.toString()).put("versionId", versionId.toString())
                 .put("role", role).put("order", group.size() - 1);
@@ -107,13 +120,15 @@ class MiniMaxH3ReferenceLoaderTest {
                 kind == Asset.MediaKind.AUDIO ? null : 256, kind == Asset.MediaKind.AUDIO ? null : 256,
                 duration, null, null, null, Instant.now());
         when(assets.requireReadyMedia(owner, project, assetId, kind)).thenReturn(asset);
-        Path file = root.resolve(assetId.toString()); Files.write(file, new byte[] {1, 2, 3});
+        Path file = root.resolve(assetId.toString());
+        Files.write(file, new byte[]{1, 2, 3});
         when(assets.get(owner, project, assetId)).thenReturn(new AssetService.AssetFile(asset, file));
         return asset;
     }
 
     private static String probe(String videoCodec, String rate, String audioCodec) {
-        return "{\"streams\":[{\"codec_type\":\"video\",\"codec_name\":\"" + videoCodec + "\",\"avg_frame_rate\":\"" + rate
+        return "{\"streams\":[{\"codec_type\":\"video\",\"codec_name\":\"" + videoCodec + "\",\"avg_frame_rate\":\""
+                + rate
                 + "\"},{\"codec_type\":\"audio\",\"codec_name\":\"" + audioCodec + "\"}]}";
     }
 }

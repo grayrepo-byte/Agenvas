@@ -13,7 +13,9 @@ afterEach(() => window.history.replaceState({}, "", "/"));
 it("shows a recovery action when a lazy page fails and allows history navigation to a healthy page", async () => {
   window.history.replaceState({}, "", "/login");
   server.use(
-    http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "synthetic-admin", loginName: "synthetic-admin", role: "ADMIN" })),
+    http.get("/api/v1/auth/me", () =>
+      HttpResponse.json({ id: "synthetic-admin", loginName: "synthetic-admin", role: "ADMIN" }),
+    ),
     http.get("/api/v1/projects", () => HttpResponse.json({ items: [], nextCursor: null })),
   );
   render(<App />, { onCaughtError: () => {} });

@@ -3,7 +3,12 @@ import { CANVAS_SELECTION_MODE, useCanvasStore } from "./canvasStore";
 
 describe("canvas interaction store", () => {
   beforeEach(() => {
-    useCanvasStore.setState({ drafts: {}, selectedIds: [], selectionMode: CANVAS_SELECTION_MODE.SINGLE, saveState: "saved" });
+    useCanvasStore.setState({
+      drafts: {},
+      selectedIds: [],
+      selectionMode: CANVAS_SELECTION_MODE.SINGLE,
+      saveState: "saved",
+    });
   });
 
   it("retains the local layout draft when a save fails", () => {

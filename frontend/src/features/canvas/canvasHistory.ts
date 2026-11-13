@@ -10,8 +10,11 @@ export function acknowledgeCanvasEdit(history: CanvasHistory, entry: CanvasHisto
   return { undo: [...history.undo, entry].slice(-CANVAS_HISTORY_LIMIT), redo: [] };
 }
 
-export function acknowledgeCanvasReplay(history: CanvasHistory, direction: "UNDO" | "REDO",
-  receipt: CanvasEditReceipt): CanvasHistory {
+export function acknowledgeCanvasReplay(
+  history: CanvasHistory,
+  direction: "UNDO" | "REDO",
+  receipt: CanvasEditReceipt,
+): CanvasHistory {
   const source = direction === "UNDO" ? history.undo : history.redo;
   const entry = source.at(-1);
   if (!entry || entry.receipt.id !== receipt.id) return history;

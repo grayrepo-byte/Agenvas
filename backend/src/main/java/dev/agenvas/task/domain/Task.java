@@ -67,31 +67,48 @@ public record Task(
     }
 
     /** Only fixed local editors can stop an active process; external generation keeps its existing boundary. */
-    public boolean isCancelableLocalProcessing() { return isVideoComposition() || isAudioTrim() || kind == Kind.SUBTITLE_TRANSCRIPTION; }
+    public boolean isCancelableLocalProcessing() {
+        return isVideoComposition() || isAudioTrim() || kind == Kind.SUBTITLE_TRANSCRIPTION;
+    }
 
     /** Local composition runs independently after acceptance; this is its trusted initiating conversation. */
     public UUID compositionRunId() {
-        if (!isVideoComposition() || !input.path("compositionRunId").isString()) return null;
-        try { return UUID.fromString(input.path("compositionRunId").asText()); }
-        catch (IllegalArgumentException invalid) { return null; }
+        if (!isVideoComposition() || !input.path("compositionRunId").isString())
+            return null;
+        try {
+            return UUID.fromString(input.path("compositionRunId").asText());
+        } catch (IllegalArgumentException invalid) {
+            return null;
+        }
     }
 
     /** Only trusted local tool entry points write this association; the tool ledger checks it again. */
-    public UUID agentLocalRunId() { return localOriginId("runId"); }
-    public UUID agentLocalOperationId() { return localOriginId("operationId"); }
+    public UUID agentLocalRunId() {
+        return localOriginId("runId");
+    }
+    public UUID agentLocalOperationId() {
+        return localOriginId("operationId");
+    }
 
     private UUID localOriginId(String field) {
         if (runId != null || !(isVideoComposition() || isAudioTrim()
-                || kind == Kind.AUDIO_GENERATION && "EXTRACT_AUDIO".equals(input.path("videoOperation").path("name").asText()))) return null;
+                || kind == Kind.AUDIO_GENERATION
+                        && "EXTRACT_AUDIO".equals(input.path("videoOperation").path("name").asText())))
+            return null;
         JsonNode value = input.path("agentLocalOrigin").path(field);
-        if (!value.isTextual()) return null;
-        try { return UUID.fromString(value.asText()); }
-        catch (IllegalArgumentException malformed) { return null; }
+        if (!value.isTextual())
+            return null;
+        try {
+            return UUID.fromString(value.asText());
+        } catch (IllegalArgumentException malformed) {
+            return null;
+        }
     }
 
     /** Provenance does not couple independent accepted local tasks to Run cancellation. */
     public UUID originatingRunId() {
-        if (agentLocalRunId() != null) return agentLocalRunId();
+        if (agentLocalRunId() != null)
+            return agentLocalRunId();
         return compositionRunId() == null ? runId : compositionRunId();
     }
 
@@ -112,25 +129,36 @@ public record Task(
         return kind == Kind.TEXT_GENERATION && VIDEO_PROMPT_PURPOSE.equals(input.path("purpose").asText());
     }
 
-    public boolean isPromptAssistance() { return isImagePrompt() || isVideoPromptOptimization(); }
+    public boolean isPromptAssistance() {
+        return isImagePrompt() || isVideoPromptOptimization();
+    }
 
     /** Only the approval application entry point attaches this server-created identity. */
     public boolean approvedMedia() {
         if (runId == null || kind != Kind.IMAGE_GENERATION
-                && kind != Kind.VIDEO_GENERATION && kind != Kind.AUDIO_GENERATION) return false;
+                && kind != Kind.VIDEO_GENERATION && kind != Kind.AUDIO_GENERATION)
+            return false;
         JsonNode approvalId = input.get(APPROVAL_INPUT_PROPERTY);
-        if (approvalId == null || !approvalId.isTextual()) return false;
-        try { UUID.fromString(approvalId.asText()); return true; }
-        catch (IllegalArgumentException invalid) { return false; }
+        if (approvalId == null || !approvalId.isTextual())
+            return false;
+        try {
+            UUID.fromString(approvalId.asText());
+            return true;
+        } catch (IllegalArgumentException invalid) {
+            return false;
+        }
     }
 
     /** Server-authored initiator; a null Run alone does not imply a browser click. */
-    public enum Initiator { USER_DIRECT, BUILTIN_AGENT, EXTERNAL_MCP }
+    public enum Initiator {
+        USER_DIRECT, BUILTIN_AGENT, EXTERNAL_MCP
+    }
 
     public Initiator initiator() {
         if (Initiator.EXTERNAL_MCP.name().equals(input.path("initiator").asText())
                 && runId == null && input.path("mcpOperationId").isString()
-                && input.path("mcpTokenId").isString()) return Initiator.EXTERNAL_MCP;
+                && input.path("mcpTokenId").isString())
+            return Initiator.EXTERNAL_MCP;
         return originatingRunId() == null ? Initiator.USER_DIRECT : Initiator.BUILTIN_AGENT;
     }
 

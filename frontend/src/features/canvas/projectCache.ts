@@ -3,7 +3,12 @@ import type { ProjectEvent, ProjectSnapshot } from "../../shared/api/client";
 import { applyAssistantStreamEvent, isAssistantStreamEvent, restoreAssistantStreams } from "./agentRunStream";
 
 const HISTORY_QUERY_PREFIXES = [
-  "run-history", "agent-conversations", "conversation-runs", "run-history-tasks", "run-actions", "run-media-approvals",
+  "run-history",
+  "agent-conversations",
+  "conversation-runs",
+  "run-history-tasks",
+  "run-actions",
+  "run-media-approvals",
 ] as const;
 
 /** Updates the workspace cache after validated project events or snapshot recovery. */
@@ -16,8 +21,9 @@ export function projectCacheCallbacks(queryClient: QueryClient, projectId: strin
 
   function invalidateRunState(runId: unknown) {
     for (const prefix of ["run-history-tasks", "run-actions", "run-tasks"]) {
-      void queryClient.invalidateQueries({ queryKey: typeof runId === "string"
-        ? [prefix, projectId, runId] : [prefix, projectId] });
+      void queryClient.invalidateQueries({
+        queryKey: typeof runId === "string" ? [prefix, projectId, runId] : [prefix, projectId],
+      });
     }
   }
 
@@ -34,8 +40,12 @@ export function projectCacheCallbacks(queryClient: QueryClient, projectId: strin
       }
       if (event.type === "agent.media.approval.changed") {
         invalidate("storyboard-media-approvals");
-        void queryClient.invalidateQueries({ queryKey: typeof event.payload.runId === "string"
-          ? ["run-media-approvals", projectId, event.payload.runId] : ["run-media-approvals", projectId] });
+        void queryClient.invalidateQueries({
+          queryKey:
+            typeof event.payload.runId === "string"
+              ? ["run-media-approvals", projectId, event.payload.runId]
+              : ["run-media-approvals", projectId],
+        });
         invalidate("snapshot");
         invalidateRunState(event.payload.runId);
       }
@@ -51,8 +61,11 @@ export function projectCacheCallbacks(queryClient: QueryClient, projectId: strin
       if (event.type === "canvas.edited" && event.payload.operation === "DUPLICATE") {
         invalidate("canvas-connections", "media-draft", "artifacts");
       }
-      if (event.type.startsWith("artifact.") || event.type.startsWith("canvas.") ||
-          event.type === "agent.instance.changed") {
+      if (
+        event.type.startsWith("artifact.") ||
+        event.type.startsWith("canvas.") ||
+        event.type === "agent.instance.changed"
+      ) {
         invalidate("canvas");
         if (event.type.startsWith("artifact.")) {
           // Reference pickers have their own catalog/history caches outside the canvas projection.
@@ -66,8 +79,7 @@ export function projectCacheCallbacks(queryClient: QueryClient, projectId: strin
         }
         if (event.type === "agent.instance.changed") invalidate("snapshot");
         if (event.type.startsWith("artifact.")) invalidate("media-draft");
-        if (event.type === "canvas.item.selected_version.changed"
-            && typeof event.payload.canvasItemId === "string") {
+        if (event.type === "canvas.item.selected_version.changed" && typeof event.payload.canvasItemId === "string") {
           void queryClient.invalidateQueries({
             queryKey: ["media-draft", projectId, event.payload.canvasItemId],
           });
@@ -80,7 +92,11 @@ export function projectCacheCallbacks(queryClient: QueryClient, projectId: strin
       }
       if (event.type === "character.profile.changed") invalidate("canvas");
       if (event.type === "project.changed") invalidate("projects");
-      if (event.type === "task.status.changed" || event.type === "agent.run.changed" || event.type === "agent.conversation.changed") {
+      if (
+        event.type === "task.status.changed" ||
+        event.type === "agent.run.changed" ||
+        event.type === "agent.conversation.changed"
+      ) {
         invalidate("snapshot", ...HISTORY_QUERY_PREFIXES);
       }
       const activeRunId = queryClient.getQueryData<ProjectSnapshot>(["snapshot", projectId])?.activeRun?.id;
@@ -95,12 +111,17 @@ export function projectCacheCallbacks(queryClient: QueryClient, projectId: strin
       }
       if (event.type === "media.draft.changed") invalidate("media-draft", "canvas-connections");
       if (event.type === "subtitle.draft.changed") invalidate("subtitle-drafts");
-      if (event.type === "task.status.changed" && typeof event.payload.subtitleId === "string") invalidate("subtitle-drafts", "task");
+      if (event.type === "task.status.changed" && typeof event.payload.subtitleId === "string")
+        invalidate("subtitle-drafts", "task");
       if (event.type === "usage.changed") invalidate("project-usage");
       // Character review depends on the current draft and exact selected result, not
       // just profile mutations. Reconnect recovery refreshes the same projection below.
-      if (event.type.startsWith("character.") || event.type.startsWith("canvas.")
-          || event.type === "media.draft.changed" || event.type === "artifact.version.created") {
+      if (
+        event.type.startsWith("character.") ||
+        event.type.startsWith("canvas.") ||
+        event.type === "media.draft.changed" ||
+        event.type === "artifact.version.created"
+      ) {
         invalidate("project-characters");
       }
     },
@@ -112,9 +133,24 @@ export function projectCacheCallbacks(queryClient: QueryClient, projectId: strin
       restoreAssistantStreams(queryClient, projectId, fresh.activeTasks);
       // The snapshot contains the current workspace, but not historical panels or lists.
       // A missed event may have changed any of them while the stream was unavailable.
-      invalidate(...HISTORY_QUERY_PREFIXES, "run-tasks", "direct-media-tasks", "media-draft",
-        "canvas-media-versions", "project-usage", "storyboard", "storyboard-revisions",
-        "storyboard-media-approvals", "project-characters", "canvas-editor", "project-resources", "artifacts", "artifact-versions", "subtitle-drafts", "task");
+      invalidate(
+        ...HISTORY_QUERY_PREFIXES,
+        "run-tasks",
+        "direct-media-tasks",
+        "media-draft",
+        "canvas-media-versions",
+        "project-usage",
+        "storyboard",
+        "storyboard-revisions",
+        "storyboard-media-approvals",
+        "project-characters",
+        "canvas-editor",
+        "project-resources",
+        "artifacts",
+        "artifact-versions",
+        "subtitle-drafts",
+        "task",
+      );
     },
   };
 }

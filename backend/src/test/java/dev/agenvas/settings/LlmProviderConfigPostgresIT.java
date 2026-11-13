@@ -65,13 +65,20 @@ class LlmProviderConfigPostgresIT {
                 () -> Base64.getEncoder().encodeToString(new byte[32]));
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private LlmProviderConfigService configs;
-    @Autowired private LlmProviderConfigRepository repository;
-    @Autowired private ChatGateway gateway;
-    @Autowired private CredentialCipher cipher;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private WebApplicationContext context;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private LlmProviderConfigService configs;
+    @Autowired
+    private LlmProviderConfigRepository repository;
+    @Autowired
+    private ChatGateway gateway;
+    @Autowired
+    private CredentialCipher cipher;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private WebApplicationContext context;
 
     @Test
     void adminOnlyEncryptedRotationIsMaskedAndVersioned() throws Exception {
@@ -88,14 +95,14 @@ class LlmProviderConfigPostgresIT {
         String firstKey = "local-provider-secret-A123";
         String firstRequest = request(0, "http://127.0.0.1:18080/v1", firstKey);
         mvc.perform(put("/api/v1/settings/llm").with(auth)
-                        .contentType("application/json").content(firstRequest))
+                .contentType("application/json").content(firstRequest))
                 .andExpect(status().isForbidden());
         mvc.perform(put("/api/v1/settings/llm").with(auth).with(csrf())
-                        .contentType("application/json")
-                        .content(request(0, "http://user:synthetic-password@127.0.0.1/latest", firstKey)))
+                .contentType("application/json")
+                .content(request(0, "http://user:synthetic-password@127.0.0.1/latest", firstKey)))
                 .andExpect(status().isBadRequest());
         mvc.perform(put("/api/v1/settings/llm").with(auth).with(csrf())
-                        .contentType("application/json").content(firstRequest))
+                .contentType("application/json").content(firstRequest))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.version").value(1))
                 .andExpect(jsonPath("$.keyMask").value("••••A123"))
@@ -128,7 +135,8 @@ class LlmProviderConfigPostgresIT {
                 .doesNotContain(firstKey);
         assertThat(cipher.decrypt(first.id(), first.version(),
                 new CredentialCipher.Encrypted(first.credentialCiphertext(),
-                        first.credentialNonce(), first.keyVersion()))).isEqualTo(firstKey);
+                        first.credentialNonce(), first.keyVersion())))
+                .isEqualTo(firstKey);
         assertThatThrownBy(() -> cipher.decrypt(UUID.randomUUID(), first.version(),
                 new CredentialCipher.Encrypted(first.credentialCiphertext(),
                         first.credentialNonce(), first.keyVersion())))
@@ -136,14 +144,14 @@ class LlmProviderConfigPostgresIT {
 
         String secondKey = "rotated-provider-secret-B456";
         mvc.perform(put("/api/v1/settings/llm").with(auth).with(csrf())
-                        .contentType("application/json")
-                        .content(request(1, "http://127.0.0.1:18080/v1", secondKey)))
+                .contentType("application/json")
+                .content(request(1, "http://127.0.0.1:18080/v1", secondKey)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.version").value(2))
                 .andExpect(jsonPath("$.keyMask").value("••••B456"));
         mvc.perform(put("/api/v1/settings/llm").with(auth).with(csrf())
-                        .contentType("application/json")
-                        .content(request(1, "http://127.0.0.1:18080/v1", secondKey)))
+                .contentType("application/json")
+                .content(request(1, "http://127.0.0.1:18080/v1", secondKey)))
                 .andExpect(status().isConflict());
         assertThat(repository.findVersion(1)).isPresent();
         assertThat(repository.findVersion(1).orElseThrow().active()).isFalse();

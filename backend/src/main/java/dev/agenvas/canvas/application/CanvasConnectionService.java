@@ -63,7 +63,8 @@ public class CanvasConnectionService {
             UUID sourceItemId, UUID targetItemId, UUID sourceVersionId, long expectedDraftVersion) {
         MediaDraft draft = drafts.get(ownerId, projectId, targetItemId);
         if (draft.mediaInputs().stream().noneMatch(input -> input.versionId().equals(sourceVersionId))) {
-            throw invalid(ApiMessage.of("api.canvas-connection-service.the-image-entry-does-not-exist-in-the-media-draft"));
+            throw invalid(
+                    ApiMessage.of("api.canvas-connection-service.the-image-entry-does-not-exist-in-the-media-draft"));
         }
         return connect(ownerId, projectId, sourceItemId, targetItemId, sourceVersionId,
                 CanvasConnection.RelationType.MEDIA_INPUT, expectedDraftVersion, true, null);
@@ -85,24 +86,29 @@ public class CanvasConnectionService {
             }
             if (!promptInput && sourceArtifact.kind() != Artifact.Kind.IMAGE
                     && (!Set.of(Artifact.Kind.AUDIO, Artifact.Kind.VIDEO).contains(sourceArtifact.kind())
-                        || relationType != CanvasConnection.RelationType.MEDIA_INPUT)) {
-                throw invalid(ApiMessage.of("api.canvas-connection-service.canvas-image-input-connections-must-originate-from-the-image-card"));
+                            || relationType != CanvasConnection.RelationType.MEDIA_INPUT)) {
+                throw invalid(ApiMessage.of(
+                        "api.canvas-connection-service.canvas-image-input-connections-must-originate-from-the-image-card"));
             }
-            UUID currentSourceVersion = promptInput ? sourceArtifact.resourceDefaultVersionId() : source.selectedVersionId();
+            UUID currentSourceVersion = promptInput
+                    ? sourceArtifact.resourceDefaultVersionId()
+                    : source.selectedVersionId();
             if (sourceVersionId == null || !sourceVersionId.equals(currentSourceVersion)) {
-                throw conflict(ApiMessage.of(promptInput ? "api.canvas-prompt.source-changed"
+                throw conflict(ApiMessage.of(promptInput
+                        ? "api.canvas-prompt.source-changed"
                         : "api.canvas-connection-service.the-source-image-version-has-changed-during-dragging-please-reconnect"));
             }
             if (relationType == CanvasConnection.RelationType.MEDIA_DERIVATION) {
-                throw invalid(ApiMessage.of("api.canvas-connection-service.media-derived-lines-can-only-be-created-by-media-change"));
+                throw invalid(ApiMessage
+                        .of("api.canvas-connection-service.media-derived-lines-can-only-be-created-by-media-change"));
             }
             artifacts.requireVersion(ownerId, projectId, source.subjectId(), sourceVersionId);
             List<CanvasConnection> current = connections.list(ownerId, projectId);
-            if (current.stream().anyMatch(connection ->
-                    connection.sourceCanvasItemId().equals(sourceItemId)
-                            && connection.targetCanvasItemId().equals(targetItemId)
-                            && connection.relationType() == relationType)) {
-                throw conflict(ApiMessage.of("api.canvas-connection-service.there-is-already-a-connection-of-the-same-kind-between"));
+            if (current.stream().anyMatch(connection -> connection.sourceCanvasItemId().equals(sourceItemId)
+                    && connection.targetCanvasItemId().equals(targetItemId)
+                    && connection.relationType() == relationType)) {
+                throw conflict(ApiMessage
+                        .of("api.canvas-connection-service.there-is-already-a-connection-of-the-same-kind-between"));
             }
             if (reaches(current, targetItemId, sourceItemId)) {
                 throw invalid(ApiMessage.of("api.canvas-connection-service.this-connection-forms-a-canvasitem-loop"));
@@ -125,7 +131,8 @@ public class CanvasConnectionService {
                         target.subjectId()).artifact();
                 if (targetArtifact.kind() == Artifact.Kind.TEXT
                         || expectedTargetDraftVersion == null) {
-                    throw invalid(ApiMessage.of("api.canvas-connection-service.the-media-input-connection-must-point-to-the-image-or"));
+                    throw invalid(ApiMessage
+                            .of("api.canvas-connection-service.the-media-input-connection-must-point-to-the-image-or"));
                 }
                 draft = drafts.addConnectionInputWithinChange(ownerId, projectId,
                         targetItemId, expectedTargetDraftVersion, sourceVersionId,
@@ -156,7 +163,8 @@ public class CanvasConnectionService {
                 && target.selectedVersionId() == null;
         if (!sourceVersionId.equals(source.selectedVersionId())
                 || !(sameMediaBranch || audioExtraction)) {
-            throw invalid(ApiMessage.of("api.canvas-connection-service.media-derivation-lines-must-connect-fixed-source-versions-and-new"));
+            throw invalid(ApiMessage.of(
+                    "api.canvas-connection-service.media-derivation-lines-must-connect-fixed-source-versions-and-new"));
         }
         Instant now = clock.instant();
         CanvasConnection connection = new CanvasConnection(UUID.randomUUID(), projectId,
@@ -200,15 +208,19 @@ public class CanvasConnectionService {
                     .orElseThrow(this::notFound);
             // Redo restores the same identity with a new incarnation; delayed deletes must not cross it.
             if (expectedVersion < 0 || connection.version() != expectedVersion)
-                throw conflict(ApiMessage.of("api.canvas-connection-service.the-connection-was-deleted-by-another-operation"));
+                throw conflict(
+                        ApiMessage.of("api.canvas-connection-service.the-connection-was-deleted-by-another-operation"));
             MediaDraft draft = null;
             if (connection.relationType() == CanvasConnection.RelationType.MEDIA_INPUT) {
-                if (expectedTargetDraftVersion == null) throw invalid(ApiMessage.of("api.canvas-connection-service.disconnected-media-is-missing-draft-versions"));
+                if (expectedTargetDraftVersion == null)
+                    throw invalid(ApiMessage
+                            .of("api.canvas-connection-service.disconnected-media-is-missing-draft-versions"));
                 draft = drafts.removeConnectionInputWithinChange(ownerId, projectId,
                         connection.targetCanvasItemId(), expectedTargetDraftVersion, connectionId);
             }
             if (!connections.delete(projectId, connectionId)) {
-                throw conflict(ApiMessage.of("api.canvas-connection-service.the-connection-was-deleted-by-another-operation"));
+                throw conflict(
+                        ApiMessage.of("api.canvas-connection-service.the-connection-was-deleted-by-another-operation"));
             }
             return ProjectEventService.Change.changed(new ConnectionResult(connection, draft),
                     connectionEvent(connection, "canvas.connection.deleted"));
@@ -224,7 +236,8 @@ public class CanvasConnectionService {
             MediaDraft before = drafts.get(ownerId, projectId, targetCanvasItemId);
             MediaDraft.MediaInput input = before.mediaInputs().stream()
                     .filter(candidate -> candidate.versionId().equals(imageVersionId))
-                    .findFirst().orElseThrow(() -> invalid(ApiMessage.of("api.canvas-connection-service.the-image-entry-does-not-exist-in-the-media-draft")));
+                    .findFirst().orElseThrow(() -> invalid(ApiMessage
+                            .of("api.canvas-connection-service.the-image-entry-does-not-exist-in-the-media-draft")));
             MediaDraft updated = drafts.removeMediaInputWithinChange(ownerId, projectId,
                     targetCanvasItemId, expectedDraftVersion, imageVersionId);
             List<UUID> connectionIds = input.sources().stream()
@@ -234,7 +247,8 @@ public class CanvasConnectionService {
                     .toList();
             for (UUID connectionId : connectionIds) {
                 if (!connections.delete(projectId, connectionId)) {
-                    throw conflict(ApiMessage.of("api.canvas-connection-service.the-connection-associated-with-the-image-input-has-been-deleted"));
+                    throw conflict(ApiMessage.of(
+                            "api.canvas-connection-service.the-connection-associated-with-the-image-input-has-been-deleted"));
                 }
             }
             ObjectNode payload = mapper.createObjectNode();
@@ -278,7 +292,8 @@ public class CanvasConnectionService {
                         connection.targetCanvasItemId(), target.version(), connection.id());
             }
             if (!connections.delete(projectId, connection.id())) {
-                throw conflict(ApiMessage.of("api.canvas-connection-service.the-connection-was-deleted-by-another-operation"));
+                throw conflict(
+                        ApiMessage.of("api.canvas-connection-service.the-connection-was-deleted-by-another-operation"));
             }
         }
     }
@@ -306,7 +321,10 @@ public class CanvasConnectionService {
         MediaDraft current = drafts.get(ownerId, projectId, targetCanvasItemId);
         if (current.version() != expectedDraftVersion) {
             throw new ApiProblemException(HttpStatus.CONFLICT, "VERSION_CONFLICT",
-                    ApiMessage.of("api.canvas-connection-service.draft-version-conflict"), ApiMessage.of("api.canvas-connection-service.the-target-draft-has-changed-before-restoring-history-input"), true);
+                    ApiMessage.of("api.canvas-connection-service.draft-version-conflict"),
+                    ApiMessage.of(
+                            "api.canvas-connection-service.the-target-draft-has-changed-before-restoring-history-input"),
+                    true);
         }
         List<CanvasConnection> affected = connections.list(ownerId, projectId).stream()
                 .filter(connection -> connection.targetCanvasItemId().equals(targetCanvasItemId)
@@ -317,7 +335,8 @@ public class CanvasConnectionService {
             current = drafts.removeConnectionInputWithinChange(ownerId, projectId,
                     targetCanvasItemId, current.version(), connection.id());
             if (!connections.delete(projectId, connection.id())) {
-                throw conflict(ApiMessage.of("api.canvas-connection-service.the-connection-has-been-deleted-by-other-operations-when-restoring"));
+                throw conflict(ApiMessage.of(
+                        "api.canvas-connection-service.the-connection-has-been-deleted-by-other-operations-when-restoring"));
             }
         }
         return current.version();
@@ -329,11 +348,12 @@ public class CanvasConnectionService {
         queue.add(start);
         while (!queue.isEmpty()) {
             UUID current = queue.removeFirst();
-            if (!visited.add(current)) continue;
-            if (current.equals(target)) return true;
-            graph.stream().filter(edge -> edge.relationType()
-                            != CanvasConnection.RelationType.MEDIA_DERIVATION
-                            && edge.sourceCanvasItemId().equals(current))
+            if (!visited.add(current))
+                continue;
+            if (current.equals(target))
+                return true;
+            graph.stream().filter(edge -> edge.relationType() != CanvasConnection.RelationType.MEDIA_DERIVATION
+                    && edge.sourceCanvasItemId().equals(current))
                     .map(CanvasConnection::targetCanvasItemId).forEach(queue::addLast);
         }
         return false;
@@ -351,7 +371,9 @@ public class CanvasConnectionService {
 
     private ApiProblemException notFound() {
         return new ApiProblemException(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND",
-                ApiMessage.of("api.canvas-connection-service.the-connection-does-not-exist"), ApiMessage.of("api.canvas-connection-service.the-connection-does-not-exist-or-the-current-user-does"), false);
+                ApiMessage.of("api.canvas-connection-service.the-connection-does-not-exist"),
+                ApiMessage.of("api.canvas-connection-service.the-connection-does-not-exist-or-the-current-user-does"),
+                false);
     }
 
     private static ApiProblemException invalid(ApiMessage detail) {
@@ -364,5 +386,6 @@ public class CanvasConnectionService {
                 ApiMessage.of("api.canvas-connection-service.canvas-connection-conflict"), detail, true);
     }
 
-    public record ConnectionResult(CanvasConnection connection, MediaDraft draft) {}
+    public record ConnectionResult(CanvasConnection connection, MediaDraft draft) {
+    }
 }

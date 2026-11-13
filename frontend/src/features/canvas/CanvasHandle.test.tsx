@@ -13,10 +13,12 @@ class TestPointerEvent extends MouseEvent {
 }
 
 const NODE_TYPES = {
-  handles: () => <>
-    <CanvasHandle id="artifact-output" />
-    <CanvasHandle id="artifact-input" />
-  </>,
+  handles: () => (
+    <>
+      <CanvasHandle id="artifact-output" />
+      <CanvasHandle id="artifact-input" />
+    </>
+  ),
 };
 
 beforeEach(() => {
@@ -26,11 +28,22 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 function showHandle(scale = 1, selector = ".canvas-handle--out") {
-  const { container } = render(<div className="workspace-shell">
-    <ReactFlow nodeTypes={NODE_TYPES} nodes={[{
-      id: "card", type: "handles", position: { x: 0, y: 0 }, data: {}, selected: true,
-    }]} />
-  </div>);
+  const { container } = render(
+    <div className="workspace-shell">
+      <ReactFlow
+        nodeTypes={NODE_TYPES}
+        nodes={[
+          {
+            id: "card",
+            type: "handles",
+            position: { x: 0, y: 0 },
+            data: {},
+            selected: true,
+          },
+        ]}
+      />
+    </div>,
+  );
   const handle = container.querySelector<HTMLDivElement>(selector)!;
   const home = handle.querySelector<HTMLSpanElement>(".canvas-handle-home")!;
   // jsdom 没有布局；只替换静止 home 的几何，保留真实 React Flow Handle 和指针事件。
@@ -76,7 +89,7 @@ describe("CanvasHandle hover motion", () => {
     expect(offset(handle)).toEqual({ x: 0, y: 0 });
   });
 
-  it.each([0.5, 2])("keeps the same canvas displacement at zoom %s", (scale) => {
+  it.each([0.5, 2])("keeps the same canvas displacement at zoom %s", scale => {
     const { handle, move } = showHandle(scale);
     move(20, 0);
     expect(offset(handle)).toEqual({ x: 6, y: 0 });
@@ -84,13 +97,12 @@ describe("CanvasHandle hover motion", () => {
     expect(offset(handle)).toEqual({ x: 0, y: 0 });
   });
 
-  it.each(["pointerLeave", "pointerDown", "pointerCancel"] as const)(
-    "returns home on %s", (event) => {
-      const { handle, move } = showHandle();
-      move(10, 0);
-      fireEvent[event](handle);
-      expect(offset(handle)).toEqual({ x: 0, y: 0 });
-    });
+  it.each(["pointerLeave", "pointerDown", "pointerCancel"] as const)("returns home on %s", event => {
+    const { handle, move } = showHandle();
+    move(10, 0);
+    fireEvent[event](handle);
+    expect(offset(handle)).toEqual({ x: 0, y: 0 });
+  });
 
   it("stays still while dragging and for touch input", () => {
     const { handle, move } = showHandle();

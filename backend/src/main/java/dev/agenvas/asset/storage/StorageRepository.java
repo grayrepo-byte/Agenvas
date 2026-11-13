@@ -18,12 +18,18 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class StorageRepository {
     private final DSLContext dsl;
-    public StorageRepository(DSLContext dsl) { this.dsl = dsl; }
-    public record State(int version, UUID activeProfileId, UUID relayProfileId, boolean llmRelayEnabled, boolean imageRelayEnabled) {}
-    public record Route(UUID profileId, String mediaKind, String metadata, boolean ready) {}
+    public StorageRepository(DSLContext dsl) {
+        this.dsl = dsl;
+    }
+    public record State(int version, UUID activeProfileId, UUID relayProfileId, boolean llmRelayEnabled,
+            boolean imageRelayEnabled) {
+    }
+    public record Route(UUID profileId, String mediaKind, String metadata, boolean ready) {
+    }
     public State state() {
         var r = dsl.selectFrom(STORAGE_SETTINGS).where(STORAGE_SETTINGS.SINGLETON.isTrue()).fetchSingle();
-        return new State(r.getVersion(), r.getActiveProfileId(), r.getRelayProfileId(), r.getLlmRelayEnabled(), r.getImageRelayEnabled());
+        return new State(r.getVersion(), r.getActiveProfileId(), r.getRelayProfileId(), r.getLlmRelayEnabled(),
+                r.getImageRelayEnabled());
     }
     public int lockVersion() {
         return dsl.select(STORAGE_SETTINGS.VERSION).from(STORAGE_SETTINGS)
@@ -74,24 +80,29 @@ public class StorageRepository {
     }
     public boolean hasStoredReferences(UUID id) {
         return dsl.fetchExists(dsl.selectOne().from(ASSET_STORAGE_ROUTE).where(ASSET_STORAGE_ROUTE.PROFILE_ID.eq(id)))
-                || dsl.fetchExists(dsl.selectOne().from(MEDIA_RELAY_OBJECT).where(MEDIA_RELAY_OBJECT.PROFILE_ID.eq(id)));
+                || dsl.fetchExists(
+                        dsl.selectOne().from(MEDIA_RELAY_OBJECT).where(MEDIA_RELAY_OBJECT.PROFILE_ID.eq(id)));
     }
     public void updateProfile(StorageProfile p) {
-        if (dsl.update(STORAGE_PROFILE).set(STORAGE_PROFILE.NAME, p.name()).set(STORAGE_PROFILE.PROVIDER, p.provider().name())
+        if (dsl.update(STORAGE_PROFILE).set(STORAGE_PROFILE.NAME, p.name())
+                .set(STORAGE_PROFILE.PROVIDER, p.provider().name())
                 .set(STORAGE_PROFILE.ENDPOINT, p.endpoint()).set(STORAGE_PROFILE.REGION, p.region())
                 .set(STORAGE_PROFILE.BUCKET, p.bucket()).set(STORAGE_PROFILE.KEY_PREFIX, p.keyPrefix())
-                .set(STORAGE_PROFILE.PATH_STYLE, p.pathStyle()).set(STORAGE_PROFILE.CREDENTIAL_VERSION, p.credentialVersion())
+                .set(STORAGE_PROFILE.PATH_STYLE, p.pathStyle())
+                .set(STORAGE_PROFILE.CREDENTIAL_VERSION, p.credentialVersion())
                 .set(STORAGE_PROFILE.CREDENTIAL_CIPHERTEXT, p.credentials().ciphertext())
                 .set(STORAGE_PROFILE.CREDENTIAL_NONCE, p.credentials().nonce())
                 .set(STORAGE_PROFILE.CREDENTIAL_KEY_VERSION, p.credentials().keyVersion())
-                .set(STORAGE_PROFILE.ACCESS_KEY_MASK, p.accessKeyMask()).where(STORAGE_PROFILE.ID.eq(p.id())).execute() != 1)
+                .set(STORAGE_PROFILE.ACCESS_KEY_MASK, p.accessKeyMask()).where(STORAGE_PROFILE.ID.eq(p.id()))
+                .execute() != 1)
             throw new IllegalStateException("Storage profile update failed");
     }
     /** Clear both selectors in the same CAS transaction; deletion never picks a replacement cloud. */
     public void detachProfile(int expected, UUID id) {
         if (dsl.update(STORAGE_SETTINGS).set(STORAGE_SETTINGS.VERSION, Math.addExact(expected, 1))
-                .set(STORAGE_SETTINGS.ACTIVE_PROFILE_ID, org.jooq.impl.DSL.when(STORAGE_SETTINGS.ACTIVE_PROFILE_ID.eq(id),
-                        org.jooq.impl.DSL.val((UUID) null)).otherwise(STORAGE_SETTINGS.ACTIVE_PROFILE_ID))
+                .set(STORAGE_SETTINGS.ACTIVE_PROFILE_ID,
+                        org.jooq.impl.DSL.when(STORAGE_SETTINGS.ACTIVE_PROFILE_ID.eq(id),
+                                org.jooq.impl.DSL.val((UUID) null)).otherwise(STORAGE_SETTINGS.ACTIVE_PROFILE_ID))
                 .set(STORAGE_SETTINGS.RELAY_PROFILE_ID, org.jooq.impl.DSL.when(STORAGE_SETTINGS.RELAY_PROFILE_ID.eq(id),
                         org.jooq.impl.DSL.val((UUID) null)).otherwise(STORAGE_SETTINGS.RELAY_PROFILE_ID))
                 .where(STORAGE_SETTINGS.SINGLETON.isTrue()).and(STORAGE_SETTINGS.VERSION.eq(expected)).execute() != 1)
@@ -103,13 +114,15 @@ public class StorageRepository {
     }
     private StorageProfile map(dev.agenvas.db.tables.records.StorageProfileRecord r) {
         return new StorageProfile(r.getId(), r.getName(), StorageProfile.Provider.valueOf(r.getProvider()),
-                r.getEndpoint(), r.getRegion(), r.getBucket(), r.getKeyPrefix(), r.getPathStyle(), r.getCredentialVersion(),
+                r.getEndpoint(), r.getRegion(), r.getBucket(), r.getKeyPrefix(), r.getPathStyle(),
+                r.getCredentialVersion(),
                 new Encrypted(r.getCredentialCiphertext(), r.getCredentialNonce(), r.getCredentialKeyVersion()),
                 r.getAccessKeyMask(), r.getCreatedAt().toInstant());
     }
     public Optional<Route> route(UUID project, UUID asset) {
         return dsl.selectFrom(ASSET_STORAGE_ROUTE).where(ASSET_STORAGE_ROUTE.PROJECT_ID.eq(project))
-                .and(ASSET_STORAGE_ROUTE.ASSET_ID.eq(asset)).fetchOptional(r -> new Route(r.getProfileId(), r.getMediaKind(),
+                .and(ASSET_STORAGE_ROUTE.ASSET_ID.eq(asset))
+                .fetchOptional(r -> new Route(r.getProfileId(), r.getMediaKind(),
                         r.getMetadataJson() == null ? null : r.getMetadataJson().data(), r.getReady()));
     }
     public Route pinLocal(UUID project, UUID asset, String kind) {
@@ -130,7 +143,8 @@ public class StorageRepository {
                         .where(STORAGE_SETTINGS.SINGLETON.isTrue()))
                 .onConflict(ASSET_STORAGE_ROUTE.PROJECT_ID, ASSET_STORAGE_ROUTE.ASSET_ID).doNothing().execute();
         Route route = route(project, asset).orElseThrow();
-        if (!route.mediaKind().equals(kind)) throw new IllegalStateException("Archive kind differs from pinned route");
+        if (!route.mediaKind().equals(kind))
+            throw new IllegalStateException("Archive kind differs from pinned route");
         return route;
     }
     public void checkpoint(UUID project, UUID asset, String metadata) {
@@ -146,11 +160,13 @@ public class StorageRepository {
             throw new IllegalStateException("Registered media cannot lose its archive receipt");
         dsl.update(ASSET_STORAGE_ROUTE).setNull(ASSET_STORAGE_ROUTE.METADATA_JSON)
                 .set(ASSET_STORAGE_ROUTE.READY, false)
-                .where(ASSET_STORAGE_ROUTE.PROJECT_ID.eq(project).and(ASSET_STORAGE_ROUTE.ASSET_ID.eq(asset))).execute();
+                .where(ASSET_STORAGE_ROUTE.PROJECT_ID.eq(project).and(ASSET_STORAGE_ROUTE.ASSET_ID.eq(asset)))
+                .execute();
     }
     public void ready(UUID project, UUID asset) {
         if (dsl.update(ASSET_STORAGE_ROUTE).set(ASSET_STORAGE_ROUTE.READY, true)
-                .where(ASSET_STORAGE_ROUTE.PROJECT_ID.eq(project)).and(ASSET_STORAGE_ROUTE.ASSET_ID.eq(asset)).execute() != 1)
+                .where(ASSET_STORAGE_ROUTE.PROJECT_ID.eq(project)).and(ASSET_STORAGE_ROUTE.ASSET_ID.eq(asset))
+                .execute() != 1)
             throw new IllegalStateException("Archive route missing");
     }
 }

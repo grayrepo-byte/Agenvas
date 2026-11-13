@@ -59,7 +59,13 @@
   }
 
   /* Streaming owns its temporary hidden-scrollbar state; keep its text width stable. */
-  [data-slot="message-scroller-viewport"] { scrollbar-gutter: stable; }
-  [data-slot="message-scroller-viewport"][data-autoscrolling] { scrollbar-width: none; }
-  [data-slot="message-scroller-viewport"][data-autoscrolling]::-webkit-scrollbar { display: none; }
+  [data-slot="message-scroller-viewport"] {
+    scrollbar-gutter: stable;
+  }
+  [data-slot="message-scroller-viewport"][data-autoscrolling] {
+    scrollbar-width: none;
+  }
+  [data-slot="message-scroller-viewport"][data-autoscrolling]::-webkit-scrollbar {
+    display: none;
+  }
 }

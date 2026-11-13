@@ -85,7 +85,8 @@ class VideoOperationServiceTest {
         when(items.requireArtifactItem(owner, project, itemId)).thenReturn(card(itemId));
         ArtifactVersion source = mock(ArtifactVersion.class);
         when(source.content()).thenReturn(mapper.createObjectNode().put("assetId", assetId.toString()));
-        when(artifacts.requireMediaVersionForTask(owner, project, sourceVersionId, Artifact.Kind.VIDEO)).thenReturn(source);
+        when(artifacts.requireMediaVersionForTask(owner, project, sourceVersionId, Artifact.Kind.VIDEO))
+                .thenReturn(source);
         when(assets.metadata(owner, project, assetId)).thenReturn(new Asset(assetId, project,
                 Asset.MediaKind.VIDEO, "private/test.mp4", "video/mp4", 1024, "test",
                 640, 480, 1435, null, null, null, NOW));
@@ -105,13 +106,15 @@ class VideoOperationServiceTest {
         var parameters = mapper.createObjectNode();
         UUID clientSource = UUID.randomUUID();
         var supplied = parameters.putObject("dynamicValues").put("clip", clientSource.toString());
-        if (!requestedSeconds.equals("default")) supplied.put("seconds", Integer.parseInt(requestedSeconds));
+        if (!requestedSeconds.equals("default"))
+            supplied.put("seconds", Integer.parseInt(requestedSeconds));
 
         Task task = run(parameters);
 
         assertThat(task.input().path("durationSeconds").asInt()).isEqualTo(expectedSeconds);
         assertThat(task.input().at("/mediaInput/parameters/dynamicValues/seconds").asInt()).isEqualTo(expectedSeconds);
-        assertThat(task.input().at("/mediaInput/parameters/dynamicValues/clip").asText()).isEqualTo(sourceVersionId.toString());
+        assertThat(task.input().at("/mediaInput/parameters/dynamicValues/clip").asText())
+                .isEqualTo(sourceVersionId.toString());
         assertThat(parameters.at("/dynamicValues/clip").asText()).isEqualTo(clientSource.toString());
         assertThat(task.input().at("/mediaInput/runningHubContract/targetId").asText()).isEqualTo("123");
         // Hashing occurs before JSONB persistence; keep the accepted serialization order stable.

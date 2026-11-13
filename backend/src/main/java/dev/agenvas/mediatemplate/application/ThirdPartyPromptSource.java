@@ -6,4 +6,5 @@ import java.time.Instant;
 
 public record ThirdPartyPromptSource(String id, String name, TargetKind targetKind, Format format,
         String url, String model, boolean enabled, long version, Instant nextSyncAt,
-        Instant lastSyncedAt, String lastError, long promptCount, boolean syncing) {}
+        Instant lastSyncedAt, String lastError, long promptCount, boolean syncing) {
+}

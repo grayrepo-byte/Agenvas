@@ -29,17 +29,25 @@ public class MediaRelayService {
     private final Clock clock;
     private final MediaRelayReservationService reservations;
     public MediaRelayService(AssetService assets, ConfiguredAssetStorage storage, StorageSettingsService settings,
-            ObjectStorageClient cloud, MediaRelayRepository copies, Clock clock, MediaRelayReservationService reservations) {
-        this.assets = assets; this.storage = storage; this.settings = settings;
-        this.cloud = cloud; this.copies = copies; this.clock = clock; this.reservations = reservations;
+            ObjectStorageClient cloud, MediaRelayRepository copies, Clock clock,
+            MediaRelayReservationService reservations) {
+        this.assets = assets;
+        this.storage = storage;
+        this.settings = settings;
+        this.cloud = cloud;
+        this.copies = copies;
+        this.clock = clock;
+        this.reservations = reservations;
     }
 
     /** No network I/O: freeze the relay connection at acceptance, independent of archive settings. */
     public UUID pinProfile(Asset asset) {
-        if (storage.cloudObject(asset.objectKey()).isPresent()) return null;
+        if (storage.cloudObject(asset.objectKey()).isPresent())
+            return null;
         UUID profile = settings.relayProfileId();
-        if (profile == null) throw new ApiProblemException(HttpStatus.BAD_REQUEST, "MEDIA_RELAY_REQUIRED",
-                ApiMessage.of("api.media-relay.unavailable"), ApiMessage.of("api.media-relay.required"), false);
+        if (profile == null)
+            throw new ApiProblemException(HttpStatus.BAD_REQUEST, "MEDIA_RELAY_REQUIRED",
+                    ApiMessage.of("api.media-relay.unavailable"), ApiMessage.of("api.media-relay.required"), false);
         settings.requireProfile(profile);
         return profile;
     }
@@ -88,8 +96,12 @@ public class MediaRelayService {
     }
 
     /** Optional image transport; a null selection means the caller keeps its existing inline protocol. */
-    public UUID pinImageProfile() { return settings.imageRelayProfileId(); }
-    public UUID llmProfile() { return settings.llmRelayProfileId(); }
+    public UUID pinImageProfile() {
+        return settings.imageRelayProfileId();
+    }
+    public UUID llmProfile() {
+        return settings.llmRelayProfileId();
+    }
 
     public void preflightImage(UUID profileId) {
         StorageProfile profile = settings.requireProfile(profileId);
@@ -114,7 +126,8 @@ public class MediaRelayService {
         try {
             file = java.nio.file.Files.createTempFile("agenvas-relay-", extension);
             java.nio.file.Files.write(file, bytes);
-            String hash = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes));
+            String hash = java.util.HexFormat.of()
+                    .formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes));
             cloud.put(profile, reserved.copy().key(), file, contentType, bytes.length, hash);
             String url = cloud.signedGet(profile, reserved.copy().key(), URL_LIFETIME);
             dev.agenvas.shared.http.DebugHttpCapture.registerMediaRelayUrl(url);
@@ -122,13 +135,18 @@ public class MediaRelayService {
         } catch (java.io.IOException | java.security.NoSuchAlgorithmException failure) {
             throw new IllegalStateException("Relay image preparation failed");
         } finally {
-            if (file != null) try { java.nio.file.Files.deleteIfExists(file); }
-            catch (java.io.IOException failure) { LOGGER.warn("Relay temporary image cleanup failed"); }
+            if (file != null)
+                try {
+                    java.nio.file.Files.deleteIfExists(file);
+                } catch (java.io.IOException failure) {
+                    LOGGER.warn("Relay temporary image cleanup failed");
+                }
         }
     }
 
     private StorageProfile requirePinned(UUID profile) {
-        if (profile == null) throw new IllegalArgumentException("Frozen video reference omitted its relay connection");
+        if (profile == null)
+            throw new IllegalArgumentException("Frozen video reference omitted its relay connection");
         return settings.requireProfile(profile);
     }
 

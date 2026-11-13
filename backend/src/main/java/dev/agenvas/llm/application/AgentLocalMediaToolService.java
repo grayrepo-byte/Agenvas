@@ -35,8 +35,11 @@ public class AgentLocalMediaToolService {
 
     public AgentLocalMediaToolService(CanvasItemQueryService items, ArtifactService artifacts,
             VideoOperationService videoOperations, AudioTrimService trims, ObjectMapper mapper) {
-        this.items = items; this.artifacts = artifacts; this.videoOperations = videoOperations;
-        this.trims = trims; this.mapper = mapper;
+        this.items = items;
+        this.artifacts = artifacts;
+        this.videoOperations = videoOperations;
+        this.trims = trims;
+        this.mapper = mapper;
     }
 
     public JsonNode extract(TrustedToolContext context, AgentRun run, UUID operationId, String arguments) {
@@ -44,8 +47,10 @@ public class AgentLocalMediaToolService {
         UUID versionId = uuid(input, "sourceVersionId");
         long expected = integer(input, "expectedCanvasItemVersion", Long.MAX_VALUE);
         ObjectNode parameters = mapper.createObjectNode();
-        if (input.has("format")) parameters.set("format", input.get("format"));
-        if (input.has("trackIndex")) parameters.set("trackIndex", input.get("trackIndex"));
+        if (input.has("format"))
+            parameters.set("format", input.get("format"));
+        if (input.has("trackIndex"))
+            parameters.set("trackIndex", input.get("trackIndex"));
         var extraction = AudioExtractionParameters.parse(parameters);
         CanvasItem source = requireSource(context, run, input, versionId, expected, Artifact.Kind.VIDEO);
         Task task = videoOperations.extractAudioFromAgent(context.ownerId(), context.projectId(), source.subjectId(),
@@ -59,7 +64,8 @@ public class AgentLocalMediaToolService {
         UUID versionId = uuid(input, "sourceVersionId");
         long expected = integer(input, "expectedCanvasItemVersion", Long.MAX_VALUE);
         ObjectNode format = mapper.createObjectNode();
-        if (input.has("format")) format.set("format", input.get("format"));
+        if (input.has("format"))
+            format.set("format", input.get("format"));
         var parameters = new AudioTrimParameters((int) integer(input, "startMs", 599_900),
                 (int) integer(input, "endMs", 600_000), AudioExtractionParameters.parse(format).format());
         CanvasItem source = requireSource(context, run, input, versionId, expected, Artifact.Kind.AUDIO);
@@ -70,12 +76,16 @@ public class AgentLocalMediaToolService {
 
     private CanvasItem requireSource(TrustedToolContext context, AgentRun run, JsonNode input, UUID versionId,
             long expected, Artifact.Kind kind) {
-        CanvasItem item = items.requireArtifactItem(context.ownerId(), context.projectId(), uuid(input, "canvasItemId"));
-        if (item.locked()) throw problem(HttpStatus.CONFLICT, "CANVAS_ITEM_LOCKED",
-                ApiMessage.of("api.creative-artifact-tool-service.locked-cards-cannot-be-arranged-by-the-agent"));
+        CanvasItem item = items.requireArtifactItem(context.ownerId(), context.projectId(),
+                uuid(input, "canvasItemId"));
+        if (item.locked())
+            throw problem(HttpStatus.CONFLICT, "CANVAS_ITEM_LOCKED",
+                    ApiMessage.of("api.creative-artifact-tool-service.locked-cards-cannot-be-arranged-by-the-agent"));
         if (item.version() != expected || !versionId.equals(item.selectedVersionId()))
-            throw problem(HttpStatus.CONFLICT, "DIRECT_MEDIA_CONFLICT", ApiMessage.of("api.media-function.source-changed"));
-        var version = artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), run.contextSnapshot(), context.runId(), versionId);
+            throw problem(HttpStatus.CONFLICT, "DIRECT_MEDIA_CONFLICT",
+                    ApiMessage.of("api.media-function.source-changed"));
+        var version = artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(),
+                run.contextSnapshot(), context.runId(), versionId);
         var artifact = artifacts.get(context.ownerId(), context.projectId(), item.subjectId()).artifact();
         if (!item.subjectId().equals(version.artifactId()) || artifact.kind() != kind || artifact.archivedAt() != null)
             throw invalid();
@@ -85,10 +95,14 @@ public class AgentLocalMediaToolService {
     private ObjectNode receipt(UUID operationId, Task task, String summary) {
         String artifact = task.input().path("artifactId").asText(), item = task.input().path("canvasItemId").asText();
         ObjectNode result = mapper.createObjectNode().put("status", ToolResultStatus.SUCCEEDED.name())
-                .put("operationId", operationId.toString()).put("userVisibleSummary", summary).put("awaitingLocalTask", true);
-        result.putArray("createdIds").add(artifact); result.putArray("createdCanvasItemIds").add(item);
-        result.putArray("updatedIds"); result.putObject("affectedVersions");
-        result.putArray("taskIds").add(task.id().toString()); result.putNull("errorCode");
+                .put("operationId", operationId.toString()).put("userVisibleSummary", summary)
+                .put("awaitingLocalTask", true);
+        result.putArray("createdIds").add(artifact);
+        result.putArray("createdCanvasItemIds").add(item);
+        result.putArray("updatedIds");
+        result.putObject("affectedVersions");
+        result.putArray("taskIds").add(task.id().toString());
+        result.putNull("errorCode");
         result.putObject("data").put("taskId", task.id().toString()).put("status", task.status().name())
                 .put("artifactId", artifact).put("canvasItemId", item)
                 .put("queued", true).put("completed", false).put("localProcessing", true);
@@ -97,30 +111,41 @@ public class AgentLocalMediaToolService {
 
     private ObjectNode parse(String arguments, Set<String> allowed) {
         JsonNode parsed;
-        try { parsed = mapper.readTree(arguments); } catch (RuntimeException malformed) { throw invalid(); }
-        if (!(parsed instanceof ObjectNode object) || !allowed.containsAll(object.propertyNames())) throw invalid();
+        try {
+            parsed = mapper.readTree(arguments);
+        } catch (RuntimeException malformed) {
+            throw invalid();
+        }
+        if (!(parsed instanceof ObjectNode object) || !allowed.containsAll(object.propertyNames()))
+            throw invalid();
         return object;
     }
 
     private UUID uuid(JsonNode input, String field) {
         JsonNode value = input.path(field);
-        if (!value.isTextual()) throw invalid();
+        if (!value.isTextual())
+            throw invalid();
         try {
             UUID parsed = UUID.fromString(value.asText());
-            if (!parsed.toString().equalsIgnoreCase(value.asText())) throw invalid();
+            if (!parsed.toString().equalsIgnoreCase(value.asText()))
+                throw invalid();
             return parsed;
-        } catch (IllegalArgumentException malformed) { throw invalid(); }
+        } catch (IllegalArgumentException malformed) {
+            throw invalid();
+        }
     }
 
     private long integer(JsonNode input, String field, long maximum) {
         JsonNode value = input.path(field);
-        if (!value.isIntegralNumber() || !value.canConvertToLong() || value.longValue() < 0 || value.longValue() > maximum)
+        if (!value.isIntegralNumber() || !value.canConvertToLong() || value.longValue() < 0
+                || value.longValue() > maximum)
             throw invalid();
         return value.longValue();
     }
 
     private static ApiProblemException invalid() {
-        return problem(HttpStatus.BAD_REQUEST, "TOOL_ARGUMENT_INVALID", ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
+        return problem(HttpStatus.BAD_REQUEST, "TOOL_ARGUMENT_INVALID",
+                ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
     }
     private static ApiProblemException problem(HttpStatus status, String code, ApiMessage message) {
         return new ApiProblemException(status, code, message, message, false);

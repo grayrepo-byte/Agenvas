@@ -16,7 +16,9 @@ public class DirectorSettingsService {
     private static final int SINGLETON_ID = 1;
     private final DSLContext dsl;
 
-    public DirectorSettingsService(DSLContext dsl) { this.dsl = dsl; }
+    public DirectorSettingsService(DSLContext dsl) {
+        this.dsl = dsl;
+    }
 
     @Transactional(readOnly = true)
     public DirectorSettings get() {
@@ -38,8 +40,10 @@ public class DirectorSettingsService {
                 .set(DIRECTOR_SETTINGS.VERSION, DIRECTOR_SETTINGS.VERSION.plus(1))
                 .where(DIRECTOR_SETTINGS.ID.eq(SINGLETON_ID)).and(DIRECTOR_SETTINGS.VERSION.eq(settings.version()))
                 .returning().fetchOne();
-        if (row == null) throw new ApiProblemException(HttpStatus.CONFLICT, "VERSION_CONFLICT",
-                ApiMessage.of("api.director-settings.title"), ApiMessage.of("api.director-settings.conflict"), false);
+        if (row == null)
+            throw new ApiProblemException(HttpStatus.CONFLICT, "VERSION_CONFLICT",
+                    ApiMessage.of("api.director-settings.title"), ApiMessage.of("api.director-settings.conflict"),
+                    false);
         return from(row);
     }
 

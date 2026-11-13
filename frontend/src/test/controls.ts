@@ -5,8 +5,9 @@ import userEvent from "@testing-library/user-event";
 export async function selectValue(control: HTMLElement, value: string | number) {
   const user = userEvent.setup();
   await user.click(control);
-  const option = within(screen.getByRole("listbox")).getAllByRole("option")
-    .find((item) => item.dataset.value === String(value));
+  const option = within(screen.getByRole("listbox"))
+    .getAllByRole("option")
+    .find(item => item.dataset.value === String(value));
   if (!option) throw new Error(`Missing select option: ${value}`);
   await user.click(option);
 }

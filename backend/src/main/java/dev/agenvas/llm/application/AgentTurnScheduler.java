@@ -9,8 +9,7 @@ import org.springframework.stereotype.Component;
 
 /** 仅在运维启用调度器且非恢复模式时轮询数据库中的模型回合任务。 */
 @Component
-@ConditionalOnProperty(prefix = "agenvas", name = "recovery-mode",
-        havingValue = "false", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "agenvas", name = "recovery-mode", havingValue = "false", matchIfMissing = true)
 @ConditionalOnProperty(prefix = "agenvas.llm", name = "scheduler-enabled", havingValue = "true")
 public class AgentTurnScheduler {
 

@@ -12,42 +12,109 @@ import { Button } from "../../shared/ui/primitives/button";
 import { Field, FieldLabel } from "../../shared/ui/primitives/field";
 import { Input } from "../../shared/ui/primitives/input";
 
-export function MediaStylePicker({ selected, onSelect, onClose }: {
-  selected: string | null; onSelect: (styleId: string | null) => void; onClose: () => void;
+export function MediaStylePicker({
+  selected,
+  onSelect,
+  onClose,
+}: {
+  selected: string | null;
+  onSelect: (styleId: string | null) => void;
+  onClose: () => void;
 }) {
   useLocale();
   const styles = useQuery(mediaStylesQueryOptions());
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
-  const available = styles.data?.filter((style) => style.enabled).map((style) => ({ ...style, ...getMediaStyleLabels(style) })) ?? [];
-  const categories = [...new Map(available.map((style) => [style.categoryKey, style.category])).entries()];
+  const available =
+    styles.data?.filter(style => style.enabled).map(style => ({ ...style, ...getMediaStyleLabels(style) })) ?? [];
+  const categories = [...new Map(available.map(style => [style.categoryKey, style.category])).entries()];
   const needle = search.trim().toLocaleLowerCase();
-  const filtered = available.filter((style) => (!category || style.categoryKey === category)
-    && `${style.name} ${style.category}`.toLocaleLowerCase().includes(needle));
-  const choose = (styleId: string | null) => { onSelect(styleId); onClose(); };
-  return <Dialog title={t("styles.choose")} description={t("styles.pickerHint")} className="media-style-picker"
-    onClose={onClose} onSubmit={(event) => event.preventDefault()}>
-    <div className="media-style-picker-controls">
-      <Field><FieldLabel htmlFor="media-style-search">{t("styles.search")}</FieldLabel><Input id="media-style-search"
-        type="search" value={search} placeholder={t("styles.searchPlaceholder")} onChange={(event) => setSearch(event.target.value)} /></Field>
-      <Field className="media-style-category-filter"><FieldLabel htmlFor="media-style-category">{t("styles.category")}</FieldLabel>
-        <Select id="media-style-category" value={category} onChange={(event) => setCategory(event.target.value)}>
-          <option value="">{t("styles.allCategories")}</option>{categories.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-        </Select></Field>
-    </div>
-    <Button type="button" variant={selected ? "outline" : "secondary"} className="media-style-none" aria-pressed={!selected}
-      onClick={() => choose(null)}><PaintBrush data-icon="inline-start" />{t("styles.none")}{!selected ? <Check data-icon="inline-end" /> : null}</Button>
-    {styles.isPending ? <LoadingState compact label={t("styles.loading")} /> : null}
-    {styles.error ? <Notice tone="danger" title={t("styles.loadFailed")}><p>{styles.error.message}</p>
-      <Button type="button" variant="outline" disabled={styles.isFetching} onClick={() => void styles.refetch()}>{t("common.retry")}</Button></Notice> : null}
-    {styles.isSuccess && !filtered.length ? <EmptyState icon={<PaintBrush />} title={t("styles.empty")}
-      description={available.length ? t("styles.noMatches") : t("styles.emptyHint")} /> : null}
-    <div className="media-style-grid">
-      {filtered.map((style) => <Button key={style.id} type="button" variant={style.id === selected ? "secondary" : "outline"}
-        className="media-style-choice" aria-label={style.name} aria-pressed={style.id === selected} onClick={() => choose(style.id)}>
-        <MediaStylePreview style={style} /><span className="media-style-choice-label"><span>{style.name}</span>
-          {style.id === selected ? <Check aria-hidden /> : null}</span>
-      </Button>)}
-    </div>
-  </Dialog>;
+  const filtered = available.filter(
+    style =>
+      (!category || style.categoryKey === category) &&
+      `${style.name} ${style.category}`.toLocaleLowerCase().includes(needle),
+  );
+  const choose = (styleId: string | null) => {
+    onSelect(styleId);
+    onClose();
+  };
+  return (
+    <Dialog
+      title={t("styles.choose")}
+      description={t("styles.pickerHint")}
+      className="media-style-picker"
+      onClose={onClose}
+      onSubmit={event => event.preventDefault()}
+    >
+      <div className="media-style-picker-controls">
+        <Field>
+          <FieldLabel htmlFor="media-style-search">{t("styles.search")}</FieldLabel>
+          <Input
+            id="media-style-search"
+            type="search"
+            value={search}
+            placeholder={t("styles.searchPlaceholder")}
+            onChange={event => setSearch(event.target.value)}
+          />
+        </Field>
+        <Field className="media-style-category-filter">
+          <FieldLabel htmlFor="media-style-category">{t("styles.category")}</FieldLabel>
+          <Select id="media-style-category" value={category} onChange={event => setCategory(event.target.value)}>
+            <option value="">{t("styles.allCategories")}</option>
+            {categories.map(([key, label]) => (
+              <option key={key} value={key}>
+                {label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      </div>
+      <Button
+        type="button"
+        variant={selected ? "outline" : "secondary"}
+        className="media-style-none"
+        aria-pressed={!selected}
+        onClick={() => choose(null)}
+      >
+        <PaintBrush data-icon="inline-start" />
+        {t("styles.none")}
+        {!selected ? <Check data-icon="inline-end" /> : null}
+      </Button>
+      {styles.isPending ? <LoadingState compact label={t("styles.loading")} /> : null}
+      {styles.error ? (
+        <Notice tone="danger" title={t("styles.loadFailed")}>
+          <p>{styles.error.message}</p>
+          <Button type="button" variant="outline" disabled={styles.isFetching} onClick={() => void styles.refetch()}>
+            {t("common.retry")}
+          </Button>
+        </Notice>
+      ) : null}
+      {styles.isSuccess && !filtered.length ? (
+        <EmptyState
+          icon={<PaintBrush />}
+          title={t("styles.empty")}
+          description={available.length ? t("styles.noMatches") : t("styles.emptyHint")}
+        />
+      ) : null}
+      <div className="media-style-grid">
+        {filtered.map(style => (
+          <Button
+            key={style.id}
+            type="button"
+            variant={style.id === selected ? "secondary" : "outline"}
+            className="media-style-choice"
+            aria-label={style.name}
+            aria-pressed={style.id === selected}
+            onClick={() => choose(style.id)}
+          >
+            <MediaStylePreview style={style} />
+            <span className="media-style-choice-label">
+              <span>{style.name}</span>
+              {style.id === selected ? <Check aria-hidden /> : null}
+            </span>
+          </Button>
+        ))}
+      </div>
+    </Dialog>
+  );
 }

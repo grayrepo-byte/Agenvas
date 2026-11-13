@@ -15,10 +15,8 @@ import org.springframework.stereotype.Component;
 
 /** Schedules only pinned media work; provider mode is irrelevant to this route. */
 @Component
-@ConditionalOnProperty(prefix = "agenvas", name = "recovery-mode",
-        havingValue = "false", matchIfMissing = true)
-@ConditionalOnProperty(prefix = "agenvas.provider.media", name = "scheduler-enabled",
-        havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "agenvas", name = "recovery-mode", havingValue = "false", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "agenvas.provider.media", name = "scheduler-enabled", havingValue = "true", matchIfMissing = true)
 public class MediaExecutionScheduler {
     private static final Logger LOGGER = LoggerFactory.getLogger(MediaExecutionScheduler.class);
     private static final int MAX_SUBMIT_WORKERS = 3;
@@ -42,7 +40,8 @@ public class MediaExecutionScheduler {
 
     @Scheduled(initialDelay = INITIAL_DELAY_MS, fixedDelay = TICK_DELAY_MS)
     public void tick() {
-        if (closed) return;
+        if (closed)
+            return;
         dispatch(pollSlots, () -> worker.pollOnce(pollerId));
         for (int index = 0; index < MAX_SUBMIT_WORKERS; index++) {
             dispatch(submitSlots, () -> worker.submitOnce(submitterId));
@@ -50,7 +49,8 @@ public class MediaExecutionScheduler {
     }
 
     private void dispatch(Semaphore slots, Runnable operation) {
-        if (!slots.tryAcquire()) return;
+        if (!slots.tryAcquire())
+            return;
         try {
             executor.execute(() -> {
                 try {

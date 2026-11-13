@@ -59,7 +59,9 @@ public class TaskService {
     private static final int MAX_AGENT_STREAM_BYTES = 8 * 1024 * 1024;
     private static final long FIRST_STREAM_CHUNK = 0;
 
-    public enum AgentStreamStatus { STREAMING, COMPLETED, INTERRUPTED }
+    public enum AgentStreamStatus {
+        STREAMING, COMPLETED, INTERRUPTED
+    }
 
     private static final int MAX_TASK_KEY_LENGTH = 160;
     private static final int MAX_ERROR_CODE_LENGTH = 120;
@@ -151,7 +153,8 @@ public class TaskService {
         AgentRun run = runs.get(ownerId, projectId, runId);
         if (run.status().terminal() || run.status() == AgentRun.Status.CANCEL_REQUESTED) {
             throw new ApiProblemException(HttpStatus.CONFLICT, "TASK_CANCELED",
-                    ApiMessage.of("api.task-service.run-has-stopped"), ApiMessage.of("api.task-service.a-canceled-or-ended-run-cannot-create-new-tasks"), false);
+                    ApiMessage.of("api.task-service.run-has-stopped"),
+                    ApiMessage.of("api.task-service.a-canceled-or-ended-run-cannot-create-new-tasks"), false);
         }
         if (input != null && input.has(Task.APPROVAL_INPUT_PROPERTY)) {
             throw validation(ApiMessage.of("api.task-service.task-kind-input-and-positive-attemptno-are-required"));
@@ -188,7 +191,8 @@ public class TaskService {
             if (current.status().terminal()
                     || current.status() == AgentRun.Status.CANCEL_REQUESTED) {
                 throw new ApiProblemException(HttpStatus.CONFLICT, "TASK_CANCELED",
-                        ApiMessage.of("api.task-service.run-has-stopped"), ApiMessage.of("api.task-service.a-canceled-or-ended-run-cannot-create-new-tasks"), false);
+                        ApiMessage.of("api.task-service.run-has-stopped"),
+                        ApiMessage.of("api.task-service.a-canceled-or-ended-run-cannot-create-new-tasks"), false);
             }
             tasks.create(task);
             return ProjectEventService.Change.changed(task, taskEvent(task, false));
@@ -213,10 +217,13 @@ public class TaskService {
                     && (current.status() == Task.Status.READY
                             || current.status() == Task.Status.RUNNING || current.status() == Task.Status.BLOCKED);
             if (current.status() == Task.Status.SUCCEEDED || current.status() == Task.Status.FAILED
-                    || current.cancelRequested() && !unsubmitted) return ProjectEventService.Change.unchanged(current);
-            if (!tasks.cancelApprovedMedia(current, clock.instant())) throw leaseLost();
+                    || current.cancelRequested() && !unsubmitted)
+                return ProjectEventService.Change.unchanged(current);
+            if (!tasks.cancelApprovedMedia(current, clock.instant()))
+                throw leaseLost();
             Task updated = tasks.findById(taskId).orElseThrow(this::notFound);
-            if (updated.status() == Task.Status.CANCELED) usage.releaseUnsubmittedMediaTask(ownerId, updated);
+            if (updated.status() == Task.Status.CANCELED)
+                usage.releaseUnsubmittedMediaTask(ownerId, updated);
             // Usage release appends its own event under this project lock. Append against
             // that latest sequence rather than returning a draft using the outer watermark.
             events.append(ownerId, projectId, taskEvent(updated, current.providerRequestId() != null));
@@ -274,7 +281,8 @@ public class TaskService {
     /** 在短事务中认领有限批次；事务返回后调用方再执行耗时工作。 */
     @Transactional
     public List<Task> claimDue(String requestedWorkerId, int requestedLimit) {
-        if (shutdownGate.isClosing()) return List.of();
+        if (shutdownGate.isClosing())
+            return List.of();
         return claimBatch(requestedWorkerId, requestedLimit, tasks::claimDue);
     }
 
@@ -297,7 +305,8 @@ public class TaskService {
     /** 只认领已保存原外部请求 ID 的轮询任务；取消后的请求仍可查询并归档晚到结果。 */
     @Transactional
     public List<Task> claimProviderPolls(String requestedWorkerId, int requestedLimit) {
-        if (shutdownGate.isClosing()) return List.of();
+        if (shutdownGate.isClosing())
+            return List.of();
         return claimBatch(requestedWorkerId, requestedLimit, tasks::claimDueProviderPolls);
     }
 
@@ -315,21 +324,24 @@ public class TaskService {
     /** 只认领 AGENT_TURN 任务，供有回合上限的 Run 调度器处理。 */
     @Transactional
     public List<Task> claimAgentTurns(String requestedWorkerId, int requestedLimit) {
-        if (shutdownGate.isClosing()) return List.of();
+        if (shutdownGate.isClosing())
+            return List.of();
         return claimBatch(requestedWorkerId, requestedLimit, tasks::claimDueAgentTurns);
     }
 
     /** Claims only direct text-card model work; other workers never consume this kind. */
     @Transactional
     public List<Task> claimTextGenerations(String requestedWorkerId, int requestedLimit) {
-        if (shutdownGate.isClosing()) return List.of();
+        if (shutdownGate.isClosing())
+            return List.of();
         return claimBatch(requestedWorkerId, requestedLimit, tasks::claimDueTextGenerations);
     }
 
     /** Shares the normal lease, shutdown admission and fencing protocol with other durable tasks. */
     @Transactional
     public List<Task> claimSubtitleTranscriptions(String workerId, int limit) {
-        if (shutdownGate.isClosing()) return List.of();
+        if (shutdownGate.isClosing())
+            return List.of();
         return claimBatch(workerId, limit, tasks::claimDueSubtitleTranscriptions);
     }
 
@@ -337,7 +349,8 @@ public class TaskService {
     private List<Task> claimBatch(String requestedWorkerId, int requestedLimit, BatchClaim claim) {
         String workerId = validateWorkerId(requestedWorkerId);
         int limit = Math.min(requestedLimit, properties.maxClaimBatch());
-        if (limit < 1) throw validation(ApiMessage.of("api.task-service.claim-limit-must-be-a-positive-number"));
+        if (limit < 1)
+            throw validation(ApiMessage.of("api.task-service.claim-limit-must-be-a-positive-number"));
         Instant now = clock.instant();
         return shutdownGate.claimOrEmpty(() -> claim.execute(workerId, limit, now,
                 now.plus(properties.leaseDuration())), List.of());
@@ -376,7 +389,8 @@ public class TaskService {
         }
         JsonNode progress = mutateAgentStream(lease, workerId, (current, run) -> {
             JsonNode previous = requireStreaming(current, lease);
-            if (previous.path("chunkIndex").asLong(-1) != expectedChunkIndex) throw leaseLost();
+            if (previous.path("chunkIndex").asLong(-1) != expectedChunkIndex)
+                throw leaseLost();
             String text = previous.path("text").asText() + textDelta;
             requireStreamSize(text);
             ObjectNode next = (ObjectNode) previous.deepCopy();
@@ -390,7 +404,8 @@ public class TaskService {
     /** Called inside the response-checkpoint transaction, before any model tool can execute. */
     @Transactional
     public void completeAgentStream(Task lease, String workerId, String finalText) {
-        if (finalText == null) throw new IllegalArgumentException("Missing public assistant text");
+        if (finalText == null)
+            throw new IllegalArgumentException("Missing public assistant text");
         requireStreamSize(finalText);
         mutateAgentStream(lease, workerId, (current, run) -> {
             ObjectNode next = (ObjectNode) requireStreaming(current, lease).deepCopy();
@@ -408,7 +423,8 @@ public class TaskService {
         return events.recordChange(ownerId, lease.projectId(), () -> {
             Instant now = clock.instant();
             if (!tasks.lockActiveAgentTurnLease(lease.projectId(), lease.runId(), lease.id(),
-                    validateWorkerId(workerId), lease.leaseEpoch(), now)) throw leaseLost();
+                    validateWorkerId(workerId), lease.leaseEpoch(), now))
+                throw leaseLost();
             Task current = tasks.findById(lease.id()).orElseThrow(this::notFound);
             AgentRun run = runs.get(ownerId, lease.projectId(), lease.runId());
             int step = lease.input().path("stepIndex").asInt(-1);
@@ -416,8 +432,10 @@ public class TaskService {
                 throw leaseLost();
             }
             StreamMutation mutation = change.apply(current, run);
-            if (mutation == null) return ProjectEventService.Change.unchanged(stream(current));
-            ObjectNode output = current.output() == null ? objectMapper.createObjectNode()
+            if (mutation == null)
+                return ProjectEventService.Change.unchanged(stream(current));
+            ObjectNode output = current.output() == null
+                    ? objectMapper.createObjectNode()
                     : (ObjectNode) current.output().deepCopy();
             output.put("schemaVersion", 1);
             output.set(AGENT_STREAM_PROPERTY, mutation.progress());
@@ -449,9 +467,12 @@ public class TaskService {
         }
     }
 
-    private record StreamMutation(ObjectNode progress, String eventType, String delta) {}
+    private record StreamMutation(ObjectNode progress, String eventType, String delta) {
+    }
     @FunctionalInterface
-    private interface StreamChange { StreamMutation apply(Task task, AgentRun run); }
+    private interface StreamChange {
+        StreamMutation apply(Task task, AgentRun run);
+    }
 
     private ProjectEventService.EventDraft streamEvent(String type, Task task, long runVersion,
             JsonNode progress, String delta) {
@@ -461,7 +482,8 @@ public class TaskService {
         payload.put("stepIndex", task.input().path("stepIndex").asInt());
         payload.put("streamEpoch", progress.path("streamEpoch").asLong());
         payload.put("chunkIndex", progress.path("chunkIndex").asLong());
-        if (delta != null) payload.put("textDelta", delta);
+        if (delta != null)
+            payload.put("textDelta", delta);
         // Stream ordering uses projectSeq plus this task's epoch/cursor, not Run's model-step version.
         return new ProjectEventService.EventDraft(type, 1, task.runId(), runVersion, payload);
     }
@@ -471,7 +493,8 @@ public class TaskService {
     public void onRunCanceled(ProjectEventRecorded recorded) {
         var event = recorded.event();
         if (!event.type().equals("agent.run.changed")
-                || !event.payload().path("status").asText().equals(AgentRun.Status.CANCELED.name())) return;
+                || !event.payload().path("status").asText().equals(AgentRun.Status.CANCELED.name()))
+            return;
         for (Task task : tasks.listByRun(recorded.ownerId(), event.projectId(), event.aggregateId())) {
             if (task.kind() == Task.Kind.AGENT_TURN && task.cancelRequested()
                     && stream(task).path("status").asText().equals(AgentStreamStatus.INTERRUPTED.name())) {
@@ -482,7 +505,8 @@ public class TaskService {
     }
 
     private JsonNode interruptedAgentOutput(Task task) {
-        if (task.output() == null) return null;
+        if (task.output() == null)
+            return null;
         if (task.kind() != Task.Kind.AGENT_TURN) {
             // Media failures retain only the bounded public diagnostic, never an unfinished result payload.
             if (java.util.Set.of(Task.Kind.IMAGE_GENERATION, Task.Kind.VIDEO_GENERATION, Task.Kind.AUDIO_GENERATION)
@@ -513,7 +537,8 @@ public class TaskService {
         return events.recordChange(ownerId, lease.projectId(), () -> {
             Task current = tasks.findById(lease.id()).orElseThrow(this::notFound);
             if (current.output() != null) {
-                if (!current.output().equals(response)) throw leaseLost();
+                if (!current.output().equals(response))
+                    throw leaseLost();
                 return ProjectEventService.Change.unchanged(current.output());
             }
             if (!tasks.checkpointTextResponse(lease.id(), validateWorkerId(workerId),
@@ -539,13 +564,15 @@ public class TaskService {
         return events.recordChange(ownerId, lease.projectId(), () -> {
             Task current = tasks.findById(lease.id()).orElseThrow(this::notFound);
             TaskRepository.ArtifactTarget target = tasks.findArtifactTarget(lease.id())
-                    .orElseThrow(() -> validation(ApiMessage.of("api.task-service.text-generation-task-is-missing-target-snapshot")));
+                    .orElseThrow(() -> validation(
+                            ApiMessage.of("api.task-service.text-generation-task-is-missing-target-snapshot")));
             boolean liveLease = current.status() == Task.Status.RUNNING
                     && workerId.equals(current.leaseOwner())
                     && current.leaseEpoch() == lease.leaseEpoch()
                     && current.leaseUntil() != null && current.leaseUntil().isAfter(now)
                     && !current.cancelRequested() && current.output() != null;
-            if (!liveLease) throw leaseLost();
+            if (!liveLease)
+                throw leaseLost();
             ArtifactService.TaskVersionResult result = artifacts.appendTaskVersionWithinChange(
                     ownerId, lease.projectId(), target.artifactId(), null,
                     target.expectedCurrentVersionId(), target.expectedArtifactVersion(),
@@ -571,7 +598,8 @@ public class TaskService {
      */
     @Transactional
     public void succeedWithImagePromptCard(Task lease, String workerId, JsonNode output, JsonNode content) {
-        if (!lease.isImagePromptCard()) throw new IllegalArgumentException("Expected an image prompt card task");
+        if (!lease.isImagePromptCard())
+            throw new IllegalArgumentException("Expected an image prompt card task");
         UUID ownerId = tasks.ownerId(lease.id()).orElseThrow(this::notFound);
         Instant now = clock.instant();
         events.recordChange(ownerId, lease.projectId(), () -> {
@@ -589,10 +617,13 @@ public class TaskService {
             ObjectNode summary = (ObjectNode) completed.path("result");
             summary.put("artifactId", artifact.artifact().id().toString());
             summary.put("artifactVersionId", artifact.resourceDefaultVersion().id().toString());
-            if (item != null) summary.put("canvasItemId", item.id().toString());
+            if (item != null)
+                summary.put("canvasItemId", item.id().toString());
             if (!tasks.finish(lease.id(), validateWorkerId(workerId), lease.leaseEpoch(),
-                    Task.Status.SUCCEEDED, completed, null, now)) throw leaseLost();
-            events.append(ownerId, lease.projectId(), taskEvent(tasks.findById(lease.id()).orElseThrow(this::notFound), false));
+                    Task.Status.SUCCEEDED, completed, null, now))
+                throw leaseLost();
+            events.append(ownerId, lease.projectId(),
+                    taskEvent(tasks.findById(lease.id()).orElseThrow(this::notFound), false));
             return ProjectEventService.Change.unchanged(null);
         });
     }
@@ -643,11 +674,13 @@ public class TaskService {
         });
     }
 
-    public record ArchivedProviderResult(int ordinal, Artifact.Kind kind, boolean primary, JsonNode content) {}
+    public record ArchivedProviderResult(int ordinal, Artifact.Kind kind, boolean primary, JsonNode content) {
+    }
 
     @Transactional(readOnly = true)
     public Optional<ProviderResultManifest> providerResultManifest(Task lease) {
-        if (tasks.findById(lease.id()).filter(task -> task.projectId().equals(lease.projectId())).isEmpty()) throw notFound();
+        if (tasks.findById(lease.id()).filter(task -> task.projectId().equals(lease.projectId())).isEmpty())
+            throw notFound();
         return tasks.providerResultManifest(lease.id());
     }
 
@@ -655,22 +688,26 @@ public class TaskService {
      * Losing a lease is a best-effort miss here so UNKNOWN recovery can still classify the request. */
     @Transactional
     public boolean recordProviderFailure(Task lease, String workerId, ProviderFailure failure) {
-        if (failure == null) return false;
+        if (failure == null)
+            return false;
         String worker = validateWorkerId(workerId);
         // Only adapters with a bounded diagnostic protocol may publish details. OpenAI currently
         // exposes recognized moderation failures; ordinary upstream error bodies remain private.
-        if (tasks.mediaBinding(lease.id()).filter(binding ->
-                MediaAdapterRegistry.RUNNINGHUB_ADAPTERS.contains(binding.adapterId())
-                || (MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(binding.adapterId())
-                    && failure.category() == ProviderFailure.Category.MODERATION
-                    && failure.moderation() != null)).isEmpty()) return false;
+        if (tasks.mediaBinding(lease.id())
+                .filter(binding -> MediaAdapterRegistry.RUNNINGHUB_ADAPTERS.contains(binding.adapterId())
+                        || (MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(binding.adapterId())
+                                && failure.category() == ProviderFailure.Category.MODERATION
+                                && failure.moderation() != null))
+                .isEmpty())
+            return false;
         UUID ownerId = tasks.ownerId(lease.id()).orElseThrow(this::notFound);
         return events.recordChange(ownerId, lease.projectId(), () -> {
             Task current = tasks.findById(lease.id()).orElseThrow(this::notFound);
             if (!current.projectId().equals(lease.projectId()) || current.leaseEpoch() != lease.leaseEpoch())
                 return ProjectEventService.Change.unchanged(false);
             ObjectNode output = current.output() != null && current.output().isObject()
-                    ? (ObjectNode) current.output().deepCopy() : objectMapper.createObjectNode();
+                    ? (ObjectNode) current.output().deepCopy()
+                    : objectMapper.createObjectNode();
             output.set("providerFailure", objectMapper.valueToTree(failure));
             if (!tasks.recordProviderFailure(current, worker, output, clock.instant()))
                 return ProjectEventService.Change.unchanged(false);
@@ -704,8 +741,8 @@ public class TaskService {
         }
         if (refreshed.results().stream().mapToLong(result -> result.url().length()).sum() > 96L * 1024 * 1024)
             throw validation(ApiMessage.of("api.task-service.the-resulting-list-is-invalid"));
-        if (tasks.mediaBinding(lease.id()).filter(binding ->
-                MediaAdapterRegistry.RUNNINGHUB_ADAPTERS.contains(binding.adapterId())).isEmpty())
+        if (tasks.mediaBinding(lease.id())
+                .filter(binding -> MediaAdapterRegistry.RUNNINGHUB_ADAPTERS.contains(binding.adapterId())).isEmpty())
             throw validation(ApiMessage.of("api.task-service.the-resulting-list-is-invalid"));
         if (!tasks.refreshProviderResultUrls(lease, validateWorkerId(workerId), frozen, refreshed, clock.instant()))
             throw leaseLost();
@@ -718,18 +755,23 @@ public class TaskService {
                 || manifest.results() == null || manifest.results().isEmpty()
                 || manifest.results().size() > maximumProviderResults(lease)
                 || manifest.results().stream().anyMatch(java.util.Objects::isNull)
-                || manifest.results().stream().filter(ProviderResultManifest.Result::primary).count() != 1) throw validation(ApiMessage.of("api.task-service.the-resulting-list-is-invalid"));
-        if (manifest.results().stream().mapToLong(r -> r.url() == null ? 0 : r.url().length()).sum() > 96L * 1024 * 1024)
+                || manifest.results().stream().filter(ProviderResultManifest.Result::primary).count() != 1)
+            throw validation(ApiMessage.of("api.task-service.the-resulting-list-is-invalid"));
+        if (manifest.results().stream().mapToLong(r -> r.url() == null ? 0 : r.url().length()).sum() > 96L * 1024
+                * 1024)
             throw validation(ApiMessage.of("api.task-service.the-resulting-list-is-invalid"));
         for (int index = 0; index < manifest.results().size(); index++) {
             var result = manifest.results().get(index);
             if (result.ordinal() != index || result.kind() == null || result.url() == null || result.url().isBlank()
-                    || result.archiveEntry() != null && (result.archiveEntry().name() == null || result.archiveEntry().name().isBlank()
-                        || result.archiveEntry().sha256() == null || !result.archiveEntry().sha256().matches("[0-9a-f]{64}"))
+                    || result.archiveEntry() != null
+                            && (result.archiveEntry().name() == null || result.archiveEntry().name().isBlank()
+                                    || result.archiveEntry().sha256() == null
+                                    || !result.archiveEntry().sha256().matches("[0-9a-f]{64}"))
                     || result.primary() && !lease.kind().name().equals(result.kind().name() + "_GENERATION"))
                 throw validation(ApiMessage.of("api.task-service.the-result-list-has-an-invalid-order-or-media-type"));
         }
-        if (!tasks.checkpointProviderResults(lease, validateWorkerId(workerId), manifest, clock.instant())) throw leaseLost();
+        if (!tasks.checkpointProviderResults(lease, validateWorkerId(workerId), manifest, clock.instant()))
+            throw leaseLost();
     }
 
     /**
@@ -753,32 +795,38 @@ public class TaskService {
         return events.recordChange(ownerId, lease.projectId(), () -> {
             Task current = tasks.findById(lease.id()).orElseThrow(this::notFound);
             TaskRepository.ArtifactTarget target = tasks.findArtifactTarget(lease.id())
-                    .orElseThrow(() -> validation(ApiMessage.of("api.task-service.the-media-task-is-missing-a-snapshot-of-the-production")));
-            AgentRun run = lease.runId() == null ? null
+                    .orElseThrow(() -> validation(
+                            ApiMessage.of("api.task-service.the-media-task-is-missing-a-snapshot-of-the-production")));
+            AgentRun run = lease.runId() == null
+                    ? null
                     : runs.getForTaskCompletion(ownerId, lease.projectId(), lease.runId());
             boolean canceled = current.cancelRequested()
                     || (run != null && (run.status() == AgentRun.Status.CANCEL_REQUESTED
                             || run.status() == AgentRun.Status.CANCELED));
-            boolean projectInactive = projects.getRetainedProject(ownerId, lease.projectId()).status()
-                    != Project.Status.ACTIVE;
+            boolean projectInactive = projects.getRetainedProject(ownerId, lease.projectId())
+                    .status() != Project.Status.ACTIVE;
             UUID canvasItemId = target.canvasItemId();
             if (canvasItemId != null
                     && !canvasItemId.toString().equals(
                             lease.input().path("canvasItemId").asText())) {
-                throw validation(ApiMessage.of("api.task-service.card-targets-for-the-media-task-were-inconsistent-with-fixed"));
+                throw validation(
+                        ApiMessage.of("api.task-service.card-targets-for-the-media-task-were-inconsistent-with-fixed"));
             }
             boolean explicitSelection = lease.approvedMedia()
                     && lease.input().path(Task.REQUIRE_EXPLICIT_SELECTION_PROPERTY).asBoolean(false);
-            boolean allowTargetSelection = !explicitSelection && !canceled && !projectInactive && pinnedMediaInputsCurrent(ownerId, lease);
+            boolean allowTargetSelection = !explicitSelection && !canceled && !projectInactive
+                    && pinnedMediaInputsCurrent(ownerId, lease);
             boolean selectResult = allowTargetSelection
                     && (lease.runId() != null || canvasItemId != null);
             boolean acknowledgedPoll = requireMediaResultLease(current, lease, workerId, canceled, now);
             if (content == null || !content.path("sourceTaskId").asText("")
                     .equals(lease.id().toString())) {
-                throw validation(ApiMessage.of("api.task-service.the-generated-result-must-identify-the-matching-sourcetaskid"));
+                throw validation(
+                        ApiMessage.of("api.task-service.the-generated-result-must-identify-the-matching-sourcetaskid"));
             }
             UUID artifactId = target.artifactId();
-            ArtifactService.TaskVersionResult result = archivePrimaryResult(ownerId, lease, target, content, selectResult);
+            ArtifactService.TaskVersionResult result = archivePrimaryResult(ownerId, lease, target, content,
+                    selectResult);
             ObjectNode output = objectMapper.createObjectNode();
             output.put("artifactId", artifactId.toString());
             output.put("artifactVersionId", result.versionId().toString());
@@ -787,7 +835,8 @@ public class TaskService {
             boolean allowAdditionalSelection = !explicitSelection && !canceled && !projectInactive;
             output.set("additionalResults", archiveAdditionalResults(ownerId, lease, target, results,
                     allowTargetSelection, allowAdditionalSelection));
-            if (providerUsage != null) output.set("providerUsage", providerUsage.deepCopy());
+            if (providerUsage != null)
+                output.set("providerUsage", providerUsage.deepCopy());
             if (canceled) {
                 preserveCanceledResult(lease, workerId, output, now);
             } else if (!(acknowledgedPoll
@@ -805,15 +854,24 @@ public class TaskService {
             Task updated = tasks.findById(lease.id()).orElseThrow(this::notFound);
             // Approved Agent media shares the same reservation ledger as direct generation.
             if (lease.runId() == null || lease.approvedMedia()) {
-                if (dev.agenvas.provider.domain.KlingModels.PROTOCOL_ID.equals(lease.input().path("providerProtocol").asText())
-                        || dev.agenvas.provider.domain.NativeMediaProtocol.PROTOCOL_ID.equals(lease.input().path("providerProtocol").asText())) {
+                if (dev.agenvas.provider.domain.KlingModels.PROTOCOL_ID
+                        .equals(lease.input().path("providerProtocol").asText())
+                        || dev.agenvas.provider.domain.NativeMediaProtocol.PROTOCOL_ID
+                                .equals(lease.input().path("providerProtocol").asText())) {
                     int images = (int) results.stream().filter(media -> media.kind() == Artifact.Kind.IMAGE).count();
                     java.math.BigDecimal seconds = lease.kind() == Task.Kind.VIDEO_GENERATION
-                            ? java.math.BigDecimal.valueOf(content.path("parameters").path("providerResultDurationMs").asLong(), 3) : null;
-                    if (seconds != null && seconds.signum() <= 0) throw new IllegalStateException("Archived Kling video lacks probed duration");
-                    if (seconds != null) seconds = seconds.add(lease.input().path("nativeBillableInputSeconds").isNumber() ? lease.input().path("nativeBillableInputSeconds").decimalValue() : java.math.BigDecimal.ZERO);
+                            ? java.math.BigDecimal
+                                    .valueOf(content.path("parameters").path("providerResultDurationMs").asLong(), 3)
+                            : null;
+                    if (seconds != null && seconds.signum() <= 0)
+                        throw new IllegalStateException("Archived Kling video lacks probed duration");
+                    if (seconds != null)
+                        seconds = seconds.add(lease.input().path("nativeBillableInputSeconds").isNumber()
+                                ? lease.input().path("nativeBillableInputSeconds").decimalValue()
+                                : java.math.BigDecimal.ZERO);
                     usage.settleMediaTask(ownerId, lease, images, seconds);
-                } else usage.settleMediaTask(ownerId, lease, null, null, providerUsage);
+                } else
+                    usage.settleMediaTask(ownerId, lease, null, null, providerUsage);
             }
             appendMediaOutcomeEvent(ownerId, lease, updated, artifactId, result);
             return ProjectEventService.Change.unchanged(result);
@@ -845,14 +903,16 @@ public class TaskService {
                 || current.status() == Task.Status.SUBMITTING
                 || current.status() == Task.Status.WAITING_PROVIDER
                 || current.status() == Task.Status.UNKNOWN
-                || current.status() == Task.Status.CANCELED && current.isCancelableLocalProcessing() && current.cancelRequested();
+                || current.status() == Task.Status.CANCELED && current.isCancelableLocalProcessing()
+                        && current.cancelRequested();
         boolean acknowledgedPoll = current.status() == Task.Status.RUNNING
                 && current.providerRequestId() != null
                 && current.providerRequestId().equals(lease.providerRequestId());
         boolean liveLease = workerId.equals(current.leaseOwner())
                 && current.leaseUntil() != null
                 && current.leaseUntil().isAfter(now);
-        if (current.leaseEpoch() != lease.leaseEpoch() || !activeOrUnknown) throw leaseLost();
+        if (current.leaseEpoch() != lease.leaseEpoch() || !activeOrUnknown)
+            throw leaseLost();
         if (!canceled && ((!acknowledgedPoll && current.status() != Task.Status.SUBMITTING) || !liveLease)) {
             throw leaseLost();
         }
@@ -867,7 +927,8 @@ public class TaskService {
                 target.expectedCurrentVersionId(), target.expectedArtifactVersion(), content,
                 lease.input().has("mediaInput") ? lease.input().path("mediaInput") : null,
                 selectResult && target.canvasItemId() == null);
-        if (target.canvasItemId() == null) return result;
+        if (target.canvasItemId() == null)
+            return result;
         canvas.recordTaskMediaVersionWithinChange(ownerId, lease.projectId(),
                 target.canvasItemId(), target.artifactId(), result.versionId());
         boolean cardSelected = selectResult && canvas.selectTaskResultWithinChange(
@@ -884,12 +945,14 @@ public class TaskService {
         ArrayNode output = objectMapper.createArrayNode();
         int outputIndex = 1;
         for (ArchivedProviderResult extra : results) {
-            if (extra.primary()) continue;
+            if (extra.primary())
+                continue;
             if (!lease.id().toString().equals(extra.content().path("sourceTaskId").asText())) {
                 throw validation(ApiMessage.of("api.task-service.extra-results-sourcetaskid-is-invalid"));
             }
             if (lease.input().has(VideoOperation.SILENT_VIDEO_TARGET) && extra.kind() == Artifact.Kind.VIDEO
-                    && VideoOperation.SILENT_VIDEO_RESULT.equals(extra.content().path("parameters").path("videoOperationOutput").asText())) {
+                    && VideoOperation.SILENT_VIDEO_RESULT
+                            .equals(extra.content().path("parameters").path("videoOperationOutput").asText())) {
                 output.add(archiveSilentVideoResult(ownerId, lease, extra, allowTargetSelection));
                 continue;
             }
@@ -898,13 +961,19 @@ public class TaskService {
                 extraArtifact = artifacts.createTaskMediaIdentityWithinChange(ownerId, lease.projectId(), extra.kind(),
                         "RunningHub " + extra.kind() + " " + (outputIndex + 1));
             }
-            var extraVersion = artifacts.appendTaskVersionWithinChange(ownerId, lease.projectId(), extraArtifact.id(), lease.originatingRunId(), null,
+            var extraVersion = artifacts.appendTaskVersionWithinChange(ownerId, lease.projectId(), extraArtifact.id(),
+                    lease.originatingRunId(), null,
                     extraArtifact.version(), extra.content(), lease.input().path("mediaInput"), false);
-            var extraCard = canvas.placeTaskMediaOutputWithinChange(ownerId, lease.projectId(), target.canvasItemId(), extraArtifact.id(),
+            var extraCard = canvas.placeTaskMediaOutputWithinChange(ownerId, lease.projectId(), target.canvasItemId(),
+                    extraArtifact.id(),
                     outputIndex++, lease.input().path("mediaInput"));
-            if (extraCard != null) canvas.recordTaskMediaVersionWithinChange(ownerId, lease.projectId(), extraCard.id(), extraArtifact.id(), extraVersion.versionId());
-            boolean extraSelected = extraCard != null && allowAdditionalSelection && canvas.selectTaskResultWithinChange(
-                    ownerId, lease.projectId(), extraCard.id(), extraArtifact.id(), null, extraVersion.versionId(), null, null);
+            if (extraCard != null)
+                canvas.recordTaskMediaVersionWithinChange(ownerId, lease.projectId(), extraCard.id(),
+                        extraArtifact.id(), extraVersion.versionId());
+            boolean extraSelected = extraCard != null && allowAdditionalSelection
+                    && canvas.selectTaskResultWithinChange(
+                            ownerId, lease.projectId(), extraCard.id(), extraArtifact.id(), null,
+                            extraVersion.versionId(), null, null);
             output.addObject().put("ordinal", extra.ordinal()).put("artifactId", extraArtifact.id().toString())
                     .put("canvasItemId", extraCard == null ? null : extraCard.id().toString())
                     .put("artifactVersionId", extraVersion.versionId().toString()).put("selected", extraSelected);
@@ -949,7 +1018,8 @@ public class TaskService {
         return events.recordChange(ownerId, lease.projectId(), () -> {
             Instant now = clock.instant();
             if (!tasks.lockActiveAgentTurnLease(lease.projectId(), lease.runId(), lease.id(),
-                    validateWorkerId(workerId), lease.leaseEpoch(), now)) throw leaseLost();
+                    validateWorkerId(workerId), lease.leaseEpoch(), now))
+                throw leaseLost();
             Task before = tasks.findById(lease.id()).orElseThrow(this::notFound);
             JsonNode interrupted = interruptedAgentOutput(before);
             ObjectNode output = interrupted == null ? objectMapper.createObjectNode() : (ObjectNode) interrupted;
@@ -960,7 +1030,8 @@ public class TaskService {
                             output, validateErrorCode(errorCode), now)
                     : tasks.deferAgentTurnRetry(lease, workerId, output,
                             validateErrorCode(errorCode), nextActionAt, now);
-            if (!changed) throw leaseLost();
+            if (!changed)
+                throw leaseLost();
             Task updated = tasks.findById(lease.id()).orElseThrow(this::notFound);
             if (stream(before).path("status").asText().equals(AgentStreamStatus.STREAMING.name())) {
                 AgentRun run = runs.get(ownerId, lease.projectId(), lease.runId());
@@ -1108,13 +1179,16 @@ public class TaskService {
     }
 
     private static int maximumProviderResults(Task task) {
-        return dev.agenvas.provider.domain.NativeMediaProtocol.PROTOCOL_ID.equals(task.input().path("providerProtocol").asText())
-                ? dev.agenvas.provider.domain.NativeMediaProtocol.MAX_RESULTS : RunningHubDefinition.MAX_OUTPUTS;
+        return dev.agenvas.provider.domain.NativeMediaProtocol.PROTOCOL_ID
+                .equals(task.input().path("providerProtocol").asText())
+                        ? dev.agenvas.provider.domain.NativeMediaProtocol.MAX_RESULTS
+                        : RunningHubDefinition.MAX_OUTPUTS;
     }
 
     /** Capture synchronous outputs and acknowledge the original response in one fenced transaction. */
     @Transactional
-    public void waitForProviderWithResults(Task lease, String workerId, String requestId, ProviderResultManifest manifest) {
+    public void waitForProviderWithResults(Task lease, String workerId, String requestId,
+            ProviderResultManifest manifest) {
         checkpointProviderResults(lease, workerId, manifest);
         waitForProvider(lease, workerId, requestId, clock.instant().plusSeconds(1));
     }
@@ -1151,7 +1225,8 @@ public class TaskService {
         Instant now = clock.instant();
         if (lease.providerRequestId() == null || nextActionAt == null
                 || !nextActionAt.isAfter(now)) {
-            throw validation(ApiMessage.of("api.task-service.the-original-provider-requestid-and-future-verification-time-are-required"));
+            throw validation(ApiMessage
+                    .of("api.task-service.the-original-provider-requestid-and-future-verification-time-are-required"));
         }
         UUID ownerId = tasks.ownerId(lease.id()).orElseThrow(this::notFound);
         events.recordChange(ownerId, lease.projectId(), () -> {
@@ -1217,15 +1292,21 @@ public class TaskService {
             // preflight-to-submission race before any provider request is sent.
             if (projects.getRetainedProject(ownerId, lease.projectId()).status() != Project.Status.ACTIVE) {
                 throw new ApiProblemException(HttpStatus.CONFLICT, "TASK_PROJECT_ARCHIVED",
-                        ApiMessage.of("api.project-service.project-archived"), ApiMessage.of("api.task-service.no-new-media-build-requests-will-be-submitted-after-the"), false);
+                        ApiMessage.of("api.project-service.project-archived"),
+                        ApiMessage.of("api.task-service.no-new-media-build-requests-will-be-submitted-after-the"),
+                        false);
             }
             if (binding != null && !tasks.lockCurrentMediaBinding(binding)) {
                 throw new ApiProblemException(HttpStatus.CONFLICT, "MEDIA_CAPABILITY_CHANGED",
-                        ApiMessage.of("api.task-service.media-capabilities-have-changed"), ApiMessage.of("api.task-service.the-connection-or-capability-has-been-deactivated-modified-please-check"), false);
+                        ApiMessage.of("api.task-service.media-capabilities-have-changed"),
+                        ApiMessage.of(
+                                "api.task-service.the-connection-or-capability-has-been-deactivated-modified-please-check"),
+                        false);
             }
             if (!pinnedMediaInputsCurrent(ownerId, lease)) {
                 throw new ApiProblemException(HttpStatus.CONFLICT, "TASK_INPUT_STALE",
-                        ApiMessage.of("api.task-service.task-input-has-expired"), ApiMessage.of("api.task-service.the-input-image-or-draft-has-been-modified-and-the"), false);
+                        ApiMessage.of("api.task-service.task-input-has-expired"),
+                        ApiMessage.of("api.task-service.the-input-image-or-draft-has-been-modified-and-the"), false);
             }
             if (!tasks.beginSubmission(lease.id(), validateWorkerId(workerId), lease.leaseEpoch(),
                     UUID.randomUUID(), requestKey, now)) {
@@ -1252,15 +1333,15 @@ public class TaskService {
         int recovered = 0;
         for (TaskRepository.ExpiredSubmission candidate : tasks.findExpiredSubmissions(now, limit)) {
             if (events.recordChange(candidate.ownerId(), candidate.projectId(), () -> {
-                        if (!tasks.recoverExpiredSubmission(candidate.taskId(), now)) {
-                            return ProjectEventService.Change.unchanged(false);
-                        }
-                        Task task = tasks.findById(candidate.taskId()).orElseThrow();
-                        events.append(candidate.ownerId(), candidate.projectId(),
-                                taskEvent(task, true));
-                        blockWaitingRunForMedia(candidate.ownerId(), task);
-                        return ProjectEventService.Change.unchanged(true);
-                    }).value()) {
+                if (!tasks.recoverExpiredSubmission(candidate.taskId(), now)) {
+                    return ProjectEventService.Change.unchanged(false);
+                }
+                Task task = tasks.findById(candidate.taskId()).orElseThrow();
+                events.append(candidate.ownerId(), candidate.projectId(),
+                        taskEvent(task, true));
+                blockWaitingRunForMedia(candidate.ownerId(), task);
+                return ProjectEventService.Change.unchanged(true);
+            }).value()) {
                 recovered++;
             }
         }
@@ -1283,21 +1364,21 @@ public class TaskService {
         int recovered = 0;
         for (TaskRepository.ExpiredSubmission candidate : tasks.findExpiredCanceledRunning(now, limit)) {
             if (events.recordChange(candidate.ownerId(), candidate.projectId(), () -> {
-                        if (!tasks.finishExpiredCanceledRunning(candidate.taskId(), now)) {
-                            return ProjectEventService.Change.unchanged(false);
-                        }
-                        Task task = tasks.findById(candidate.taskId()).orElseThrow();
-                        if ((task.runId() == null || task.approvedMedia())
-                                && (task.kind() == Task.Kind.IMAGE_GENERATION
-                                        || task.kind() == Task.Kind.VIDEO_GENERATION
-                                        || task.kind() == Task.Kind.AUDIO_GENERATION)
-                                && task.providerRequestId() == null) {
-                            usage.releaseUnsubmittedMediaTask(candidate.ownerId(), task);
-                        }
-                        events.append(candidate.ownerId(), candidate.projectId(),
-                                taskEvent(task, false));
-                        return ProjectEventService.Change.unchanged(true);
-                    }).value()) {
+                if (!tasks.finishExpiredCanceledRunning(candidate.taskId(), now)) {
+                    return ProjectEventService.Change.unchanged(false);
+                }
+                Task task = tasks.findById(candidate.taskId()).orElseThrow();
+                if ((task.runId() == null || task.approvedMedia())
+                        && (task.kind() == Task.Kind.IMAGE_GENERATION
+                                || task.kind() == Task.Kind.VIDEO_GENERATION
+                                || task.kind() == Task.Kind.AUDIO_GENERATION)
+                        && task.providerRequestId() == null) {
+                    usage.releaseUnsubmittedMediaTask(candidate.ownerId(), task);
+                }
+                events.append(candidate.ownerId(), candidate.projectId(),
+                        taskEvent(task, false));
+                return ProjectEventService.Change.unchanged(true);
+            }).value()) {
                 recovered++;
             }
         }
@@ -1358,10 +1439,11 @@ public class TaskService {
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put("taskId", task.id().toString());
         payload.put("status", task.status().name());
-        if (task.kind() == Task.Kind.SUBTITLE_TRANSCRIPTION) payload.put("subtitleId", task.input().path("subtitleId").asText());
+        if (task.kind() == Task.Kind.SUBTITLE_TRANSCRIPTION)
+            payload.put("subtitleId", task.input().path("subtitleId").asText());
         payload.put("cancelRequested", task.cancelRequested());
-        boolean localProcessing = tasks.mediaBinding(task.id()).map(binding ->
-                MediaAdapterRegistry.localProcessor(binding.adapterId())).orElse(false);
+        boolean localProcessing = tasks.mediaBinding(task.id())
+                .map(binding -> MediaAdapterRegistry.localProcessor(binding.adapterId())).orElse(false);
         payload.put("possibleExternalCost", !localProcessing && (possibleExternalCost
                 || task.providerRequestId() != null
                 || ((task.kind() == Task.Kind.IMAGE_GENERATION
@@ -1388,13 +1470,17 @@ public class TaskService {
         if (task.isAudioTrim()) {
             try {
                 UUID sourceId = UUID.fromString(input.path("audioTrim").path("sourceVersionId").asText());
-                var version = artifacts.requireMediaVersionForTask(ownerId, task.projectId(), sourceId, Artifact.Kind.AUDIO);
+                var version = artifacts.requireMediaVersionForTask(ownerId, task.projectId(), sourceId,
+                        Artifact.Kind.AUDIO);
                 var references = input.path("mediaInput").path("audios");
                 return references.isArray() && references.size() == 1
                         && sourceId.toString().equals(references.get(0).path("versionId").asText())
                         && version.artifactId().toString().equals(references.get(0).path("artifactId").asText())
-                        && artifacts.get(ownerId, task.projectId(), version.artifactId()).artifact().archivedAt() == null;
-            } catch (ApiProblemException | IllegalArgumentException unavailable) { return false; }
+                        && artifacts.get(ownerId, task.projectId(), version.artifactId()).artifact()
+                                .archivedAt() == null;
+            } catch (ApiProblemException | IllegalArgumentException unavailable) {
+                return false;
+            }
         }
         if (task.isVideoComposition()) {
             try {
@@ -1403,12 +1489,15 @@ public class TaskService {
                     for (JsonNode source : input.path("mediaInput").path(field)) {
                         var version = artifacts.requireMediaVersionForTask(ownerId, task.projectId(),
                                 UUID.fromString(source.path("versionId").asText()), kind);
-                        if (artifacts.get(ownerId, task.projectId(), version.artifactId()).artifact().archivedAt() != null)
+                        if (artifacts.get(ownerId, task.projectId(), version.artifactId()).artifact()
+                                .archivedAt() != null)
                             return false;
                     }
                 }
                 return true;
-            } catch (ApiProblemException | IllegalArgumentException unavailable) { return false; }
+            } catch (ApiProblemException | IllegalArgumentException unavailable) {
+                return false;
+            }
         }
         if (input.has("videoOperation")) {
             try {
@@ -1434,14 +1523,16 @@ public class TaskService {
             try {
                 UUID canvasItemId = UUID.fromString(input.path("canvasItemId").asText());
                 if (!canvas.hasArtifactItem(ownerId, task.projectId(), canvasItemId,
-                        UUID.fromString(input.path("artifactId").asText()))) return false;
+                        UUID.fromString(input.path("artifactId").asText())))
+                    return false;
                 MediaDraft current = mediaDrafts.get(ownerId, task.projectId(), canvasItemId);
                 JsonNode frozen = input.path("mediaInput");
                 String currentMode = task.kind() == Task.Kind.IMAGE_GENERATION
                         ? MediaDraft.VideoInputMode.GENERAL_REFERENCE.name()
                         : task.kind() == Task.Kind.AUDIO_GENERATION ? "TEXT" : current.videoInputMode().name();
                 if (!currentMode.equals(frozen.path("mode").asText())
-                        || current.mediaInputs().size() != frozen.path("images").size() + frozen.path("audios").size() + frozen.path("videos").size()) {
+                        || current.mediaInputs().size() != frozen.path("images").size() + frozen.path("audios").size()
+                                + frozen.path("videos").size()) {
                     return false;
                 }
                 int imageIndex = 0;
@@ -1461,7 +1552,8 @@ public class TaskService {
                         return false;
                     }
                     artifacts.requireMediaVersionForTask(ownerId, task.projectId(),
-                            currentImage.versionId(), dev.agenvas.artifact.application.MediaDraftService.mediaKind(currentImage.role()));
+                            currentImage.versionId(),
+                            dev.agenvas.artifact.application.MediaDraftService.mediaKind(currentImage.role()));
                 }
                 return true;
             } catch (ApiProblemException | IllegalArgumentException unavailable) {

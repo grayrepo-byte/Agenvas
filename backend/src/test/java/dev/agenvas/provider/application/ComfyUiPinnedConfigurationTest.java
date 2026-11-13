@@ -56,8 +56,10 @@ class ComfyUiPinnedConfigurationTest {
         verify(fixture.repository(), never()).snapshot(binding.capabilityId());
         verify(fixture.clients()).create(version);
         verifyNoInteractions(fixture.published());
-        if (kind == AdapterKind.IMAGE) verify(fixture.client()).imageStatus(PROMPT_ID, ComfyUiImageWorkflow.OUTPUT_NODE_ID);
-        else verify(fixture.client()).videoStatus(PROMPT_ID, ComfyUiVideoWorkflow.OUTPUT_NODE_ID);
+        if (kind == AdapterKind.IMAGE)
+            verify(fixture.client()).imageStatus(PROMPT_ID, ComfyUiImageWorkflow.OUTPUT_NODE_ID);
+        else
+            verify(fixture.client()).videoStatus(PROMPT_ID, ComfyUiVideoWorkflow.OUTPUT_NODE_ID);
     }
 
     @ParameterizedTest
@@ -71,7 +73,8 @@ class ComfyUiPinnedConfigurationTest {
         stubPinned(fixture, invalid == InvalidBinding.MISSING ? Optional.empty() : Optional.of(changed));
 
         assertThatThrownBy(() -> fixture.adapter().submit(fixture.context())).isInstanceOf(IllegalStateException.class);
-        assertThatThrownBy(() -> fixture.adapter().reconcile(fixture.context())).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> fixture.adapter().reconcile(fixture.context()))
+                .isInstanceOf(IllegalStateException.class);
         verifyNoInteractions(fixture.clients(), fixture.client(), fixture.published());
     }
 
@@ -81,7 +84,8 @@ class ComfyUiPinnedConfigurationTest {
         Fixture fixture = fixture(kind);
         stubPinned(fixture, Optional.of(fixture.snapshot()));
         var version = fixture.snapshot().connectionVersion();
-        when(fixture.clients().create(version)).thenThrow(new IllegalStateException("Pinned ComfyUI origin fingerprint differs"));
+        when(fixture.clients().create(version))
+                .thenThrow(new IllegalStateException("Pinned ComfyUI origin fingerprint differs"));
 
         assertThatThrownBy(() -> fixture.adapter().submit(fixture.context()))
                 .isInstanceOf(IllegalStateException.class).hasMessage("Pinned ComfyUI origin fingerprint differs");
@@ -110,29 +114,38 @@ class ComfyUiPinnedConfigurationTest {
         var published = mock(ComfyUiPublishedWorkflow.class);
         var client = mock(ComfyUiClient.class);
         String adapterId = kind == AdapterKind.IMAGE ? "COMFY_IMAGE_V1" : "COMFY_VIDEO_V1";
-        var binding = new MediaCapabilityBinding(UUID.randomUUID(), 3, UUID.randomUUID(), 2, adapterId, "pinned-mapping");
+        var binding = new MediaCapabilityBinding(UUID.randomUUID(), 3, UUID.randomUUID(), 2, adapterId,
+                "pinned-mapping");
         // Live enabled/deleted flags do not authorize another generation, but cannot erase accepted history.
-        var connection = new Connection(binding.connectionId(), "Disabled current connection", MediaPlatform.COMFYUI, false, 8, 3);
-        var capability = new Capability(binding.capabilityId(), binding.connectionId(), "Deleted current capability", false, 9, 2, true);
-        var version = new ConnectionVersion(binding.connectionId(), 3, "https://comfy.example.com", "pinned-origin-hash", null, null, null, null);
-        var snapshot = new Snapshot(connection, capability, version, adapterId, binding.mappingSha256(), "{\"settings\":{}}");
+        var connection = new Connection(binding.connectionId(), "Disabled current connection", MediaPlatform.COMFYUI,
+                false, 8, 3);
+        var capability = new Capability(binding.capabilityId(), binding.connectionId(), "Deleted current capability",
+                false, 9, 2, true);
+        var version = new ConnectionVersion(binding.connectionId(), 3, "https://comfy.example.com",
+                "pinned-origin-hash", null, null, null, null);
+        var snapshot = new Snapshot(connection, capability, version, adapterId, binding.mappingSha256(),
+                "{\"settings\":{}}");
         MediaAdapter adapter = kind == AdapterKind.IMAGE
                 ? new ComfyUiImageAdapter(catalog, null, null, null, mapper, clients, published)
                 : new ComfyUiVideoAdapter(catalog, null, null, null, mapper, clients, published);
-        return new Fixture(adapter, new AttemptContext(null, binding, UUID.randomUUID(), "unused-request-key", PROMPT_ID),
+        return new Fixture(adapter,
+                new AttemptContext(null, binding, UUID.randomUUID(), "unused-request-key", PROMPT_ID),
                 snapshot, repository, clients, published, client);
     }
 
     private void stubPinned(Fixture fixture, Optional<Snapshot> snapshot) {
         var binding = fixture.context().binding();
-        when(fixture.repository().snapshotAt(binding.capabilityId(), 2, binding.connectionId(), 3)).thenReturn(snapshot);
+        when(fixture.repository().snapshotAt(binding.capabilityId(), 2, binding.connectionId(), 3))
+                .thenReturn(snapshot);
     }
 
     private void pending(AdapterKind kind, ComfyUiClient client) {
         if (kind == AdapterKind.IMAGE) {
-            when(client.imageStatus(PROMPT_ID, ComfyUiImageWorkflow.OUTPUT_NODE_ID)).thenReturn(new ComfyUiHistory.Pending());
+            when(client.imageStatus(PROMPT_ID, ComfyUiImageWorkflow.OUTPUT_NODE_ID))
+                    .thenReturn(new ComfyUiHistory.Pending());
         } else {
-            when(client.videoStatus(PROMPT_ID, ComfyUiVideoWorkflow.OUTPUT_NODE_ID)).thenReturn(new ComfyUiHistory.VideoPending());
+            when(client.videoStatus(PROMPT_ID, ComfyUiVideoWorkflow.OUTPUT_NODE_ID))
+                    .thenReturn(new ComfyUiHistory.VideoPending());
         }
     }
 
@@ -143,7 +156,12 @@ class ComfyUiPinnedConfigurationTest {
 
     private record Fixture(MediaAdapter adapter, AttemptContext context, Snapshot snapshot,
             JooqMediaCapabilityRepository repository, ComfyUiClientFactory clients,
-            ComfyUiPublishedWorkflow published, ComfyUiClient client) {}
-    enum AdapterKind { IMAGE, VIDEO }
-    enum InvalidBinding { MISSING, ADAPTER, MAPPING }
+            ComfyUiPublishedWorkflow published, ComfyUiClient client) {
+    }
+    enum AdapterKind {
+        IMAGE, VIDEO
+    }
+    enum InvalidBinding {
+        MISSING, ADAPTER, MAPPING
+    }
 }

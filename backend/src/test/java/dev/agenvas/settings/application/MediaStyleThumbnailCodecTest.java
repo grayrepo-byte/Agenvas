@@ -11,7 +11,8 @@ import org.junit.jupiter.api.Test;
 class MediaStyleThumbnailCodecTest {
     private final MediaStyleThumbnailCodec codec = new MediaStyleThumbnailCodec();
 
-    @Test void decodesActualImageAndResizesRatherThanTrustingFilenameOrMime() throws Exception {
+    @Test
+    void decodesActualImageAndResizesRatherThanTrustingFilenameOrMime() throws Exception {
         BufferedImage image = new BufferedImage(1280, 960, BufferedImage.TYPE_INT_RGB);
         ByteArrayOutputStream original = new ByteArrayOutputStream();
         ImageIO.write(image, "jpeg", original);
@@ -22,8 +23,10 @@ class MediaStyleThumbnailCodecTest {
         assertThat(resized.getHeight()).isEqualTo(480);
     }
 
-    @Test void rejectsEmptyUnsupportedAndOversizedUploads() {
-        for (byte[] input : new byte[][] {new byte[0], "<svg><script/></svg>".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+    @Test
+    void rejectsEmptyUnsupportedAndOversizedUploads() {
+        for (byte[] input : new byte[][]{new byte[0],
+                "<svg><script/></svg>".getBytes(java.nio.charset.StandardCharsets.UTF_8),
                 new byte[MediaStyleThumbnailCodec.MAX_UPLOAD_BYTES + 1]}) {
             assertThatThrownBy(() -> codec.decode(new ByteArrayInputStream(input)))
                     .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class)
@@ -32,7 +35,8 @@ class MediaStyleThumbnailCodecTest {
         }
     }
 
-    @Test void rejectsPixelBombBeforeDecoding() throws Exception {
+    @Test
+    void rejectsPixelBombBeforeDecoding() throws Exception {
         ByteArrayOutputStream encoded = new ByteArrayOutputStream();
         ImageIO.write(new BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB), "png", encoded);
         byte[] png = encoded.toByteArray();

@@ -8,9 +8,11 @@ final class AudioActivityAnalyzer {
     static final int SAMPLE_RATE = 8_000;
     private static final int FRAME_SAMPLES = SAMPLE_RATE / 50;
     private static final int FRAME_MS = 20;
-    record Window(int startMs, int endMs) {}
+    record Window(int startMs, int endMs) {
+    }
     record Analysis(int durationMs, int trimStartMs, int trimEndMs, List<Window> windows,
-            boolean reliableWindows) {}
+            boolean reliableWindows) {
+    }
 
     Analysis analyze(byte[] pcm, boolean sourceVideo) {
         if (pcm.length < 2 || pcm.length % 2 != 0 || pcm.length > 2L * SAMPLE_RATE * 600)
@@ -35,15 +37,18 @@ final class AudioActivityAnalyzer {
         int start = -1, last = -1;
         for (int frame = 0; frame < levels.length; frame++) {
             if (levels[frame] >= threshold) {
-                if (start < 0) start = frame;
+                if (start < 0)
+                    start = frame;
                 last = frame;
             } else if (start >= 0 && frame - last > 8) {
                 append(raw, start, last, duration);
                 start = -1;
             }
         }
-        if (start >= 0) append(raw, start, last, duration);
-        if (raw.isEmpty()) return new Analysis(duration, 0, duration, List.of(), false);
+        if (start >= 0)
+            append(raw, start, last, duration);
+        if (raw.isEmpty())
+            return new Analysis(duration, 0, duration, List.of(), false);
         // Only exterior silence is removed. Quiet pauses inside a line remain intact.
         int trimStart = Math.max(0, raw.getFirst().startMs() - 80);
         int trimEnd = Math.min(duration, raw.getLast().endMs() + 80);

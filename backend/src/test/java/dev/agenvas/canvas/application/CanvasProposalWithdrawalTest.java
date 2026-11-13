@@ -37,9 +37,10 @@ class CanvasProposalWithdrawalTest {
     private final CanvasService canvas = new CanvasService(mock(ProjectService.class),
             mock(ArtifactService.class), drafts, items,
             connections, events, new JsonMapper(), Clock.systemUTC(),
-                    new org.springframework.beans.factory.support.StaticListableBeanFactory(java.util.Map.of("characters",
-                            mock(dev.agenvas.character.application.CharacterService.class)))
-                            .getBeanProvider(dev.agenvas.character.application.CharacterService.class), dev.agenvas.testing.CreationMessagesTestSupport.messages());
+            new org.springframework.beans.factory.support.StaticListableBeanFactory(java.util.Map.of("characters",
+                    mock(dev.agenvas.character.application.CharacterService.class)))
+                    .getBeanProvider(dev.agenvas.character.application.CharacterService.class),
+            dev.agenvas.testing.CreationMessagesTestSupport.messages());
 
     private void current(UUID selectedVersionId, long draftVersion) {
         Instant now = Instant.now();

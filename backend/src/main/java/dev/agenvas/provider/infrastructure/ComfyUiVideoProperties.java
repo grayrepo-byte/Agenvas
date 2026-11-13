@@ -7,4 +7,5 @@ package dev.agenvas.provider.infrastructure;
  * @param clipVision 图像条件编码器文件名
  */
 public record ComfyUiVideoProperties(String diffusionModel,
-        String textEncoder, String vae, String clipVision) {}
+        String textEncoder, String vae, String clipVision) {
+}

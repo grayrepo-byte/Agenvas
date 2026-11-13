@@ -28,16 +28,22 @@ public final class RunningHubResultArchive implements AutoCloseable {
     static final int MAX_ENTRIES = 256;
     private static final int MAX_NAME_LENGTH = 1024;
     private static final int BUFFER_BYTES = 8192;
-    private static final Limits DEFAULT_LIMITS = new Limits(MAX_ARCHIVE_BYTES, MAX_EXPANDED_BYTES, MAX_ENTRY_BYTES, MAX_ENTRIES);
+    private static final Limits DEFAULT_LIMITS = new Limits(MAX_ARCHIVE_BYTES, MAX_EXPANDED_BYTES, MAX_ENTRY_BYTES,
+            MAX_ENTRIES);
     private final Path directory;
     private final Limits limits;
     private final List<Path> scratch = new ArrayList<>();
     private final List<Member> members = new ArrayList<>();
 
-    public record Member(RunningHubDefinition.OutputKind kind, ProviderResultManifest.ArchiveEntry entry, Path file) {}
-    record Limits(long archiveBytes, long expandedBytes, long entryBytes, int entries) {}
+    public record Member(RunningHubDefinition.OutputKind kind, ProviderResultManifest.ArchiveEntry entry, Path file) {
+    }
+    record Limits(long archiveBytes, long expandedBytes, long entryBytes, int entries) {
+    }
 
-    private RunningHubResultArchive(Path directory, Limits limits) { this.directory = directory; this.limits = limits; }
+    private RunningHubResultArchive(Path directory, Limits limits) {
+        this.directory = directory;
+        this.limits = limits;
+    }
 
     public static RunningHubResultArchive open(MediaPayload payload) {
         return open(payload, DEFAULT_LIMITS);
@@ -56,18 +62,28 @@ public final class RunningHubResultArchive implements AutoCloseable {
             archive.scratch.remove(zip);
             return archive;
         } catch (IOException | RuntimeException failure) {
-            if (archive != null) try { archive.close(); } catch (RuntimeException cleanup) { failure.addSuppressed(cleanup); }
+            if (archive != null)
+                try {
+                    archive.close();
+                } catch (RuntimeException cleanup) {
+                    failure.addSuppressed(cleanup);
+                }
             throw new RunningHubClient.ProtocolFailure();
         }
     }
 
-    public List<Member> members() { return List.copyOf(members); }
+    public List<Member> members() {
+        return List.copyOf(members);
+    }
 
     public MediaPayload download(ProviderResultManifest.ArchiveEntry expected) {
         Member member = members.stream().filter(item -> item.entry().equals(expected)).findFirst()
                 .orElseThrow(RunningHubClient.ProtocolFailure::new);
-        try { return new MediaPayload(Files.newInputStream(member.file()), "application/octet-stream"); }
-        catch (IOException failure) { throw new RunningHubClient.ProtocolFailure(); }
+        try {
+            return new MediaPayload(Files.newInputStream(member.file()), "application/octet-stream");
+        } catch (IOException failure) {
+            throw new RunningHubClient.ProtocolFailure();
+        }
     }
 
     private void extract(Path source) throws IOException {
@@ -75,16 +91,19 @@ public final class RunningHubResultArchive implements AutoCloseable {
         long expanded = 0;
         int count = 0;
         try (ZipFile zip = new ZipFile(source.toFile())) {
-            if (zip.size() > limits.entries()) throw new RunningHubClient.ProtocolFailure();
+            if (zip.size() > limits.entries())
+                throw new RunningHubClient.ProtocolFailure();
             var entries = zip.entries();
             while (entries.hasMoreElements()) {
                 ZipEntry entry = entries.nextElement();
                 if (++count > limits.entries() || !safeName(entry.getName()) || !names.add(entry.getName()))
                     throw new RunningHubClient.ProtocolFailure();
-                if (entry.getSize() < 0 || entry.getSize() > Math.min(limits.entryBytes(), limits.expandedBytes() - expanded))
+                if (entry.getSize() < 0
+                        || entry.getSize() > Math.min(limits.entryBytes(), limits.expandedBytes() - expanded))
                     throw new RunningHubClient.ProtocolFailure();
                 String extension = extension(entry.getName());
-                if ("zip".equals(extension)) throw new RunningHubClient.ProtocolFailure();
+                if ("zip".equals(extension))
+                    throw new RunningHubClient.ProtocolFailure();
                 var kind = entry.isDirectory() ? null : outputKind(extension);
                 // The adapter caps selected results. ZIP ingestion has separate byte
                 // and entry limits, so an archive containing extra media remains usable.
@@ -93,13 +112,20 @@ public final class RunningHubResultArchive implements AutoCloseable {
                 CRC32 crc = new CRC32();
                 long size;
                 try (InputStream input = zip.getInputStream(entry);
-                        OutputStream output = file == null ? OutputStream.nullOutputStream() : Files.newOutputStream(file)) {
-                    size = copy(input, output, Math.min(limits.entryBytes(), limits.expandedBytes() - expanded), digest, crc);
+                        OutputStream output = file == null
+                                ? OutputStream.nullOutputStream()
+                                : Files.newOutputStream(file)) {
+                    size = copy(input, output, Math.min(limits.entryBytes(), limits.expandedBytes() - expanded), digest,
+                            crc);
                 }
                 expanded += size;
-                if (size != entry.getSize() || crc.getValue() != entry.getCrc()) throw new RunningHubClient.ProtocolFailure();
-                if (kind != null) members.add(new Member(kind,
-                        new ProviderResultManifest.ArchiveEntry(entry.getName(), HexFormat.of().formatHex(digest.digest())), file));
+                if (size != entry.getSize() || crc.getValue() != entry.getCrc())
+                    throw new RunningHubClient.ProtocolFailure();
+                if (kind != null)
+                    members.add(new Member(kind,
+                            new ProviderResultManifest.ArchiveEntry(entry.getName(),
+                                    HexFormat.of().formatHex(digest.digest())),
+                            file));
             }
         }
     }
@@ -110,24 +136,32 @@ public final class RunningHubResultArchive implements AutoCloseable {
         return file;
     }
 
-    private static long copy(InputStream input, OutputStream output, long maximum, MessageDigest digest, CRC32 crc) throws IOException {
+    private static long copy(InputStream input, OutputStream output, long maximum, MessageDigest digest, CRC32 crc)
+            throws IOException {
         byte[] buffer = new byte[BUFFER_BYTES];
         long size = 0;
         int count;
         while ((count = input.read(buffer)) != -1) {
             size += count;
-            if (size > maximum) throw new RunningHubClient.ProtocolFailure();
+            if (size > maximum)
+                throw new RunningHubClient.ProtocolFailure();
             output.write(buffer, 0, count);
-            if (digest != null) digest.update(buffer, 0, count);
-            if (crc != null) crc.update(buffer, 0, count);
+            if (digest != null)
+                digest.update(buffer, 0, count);
+            if (crc != null)
+                crc.update(buffer, 0, count);
         }
         return size;
     }
 
     private static boolean safeName(String name) {
-        if (name.isBlank() || name.length() > MAX_NAME_LENGTH || name.startsWith("/") || name.contains("\\") || name.contains("//")
-                || name.indexOf('\0') >= 0 || name.contains(":")) return false;
-        for (String part : name.split("/")) if (part.isEmpty() || ".".equals(part) || "..".equals(part)) return false;
+        if (name.isBlank() || name.length() > MAX_NAME_LENGTH || name.startsWith("/") || name.contains("\\")
+                || name.contains("//")
+                || name.indexOf('\0') >= 0 || name.contains(":"))
+            return false;
+        for (String part : name.split("/"))
+            if (part.isEmpty() || ".".equals(part) || "..".equals(part))
+                return false;
         return true;
     }
 
@@ -146,18 +180,35 @@ public final class RunningHubResultArchive implements AutoCloseable {
     }
 
     private static MessageDigest sha256() {
-        try { return MessageDigest.getInstance("SHA-256"); }
-        catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
+        try {
+            return MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException(impossible);
+        }
     }
 
-    @Override public void close() {
+    @Override
+    public void close() {
         IOException failure = null;
         for (Path file : scratch) {
-            try { Files.deleteIfExists(file); }
-            catch (IOException cleanup) { if (failure == null) failure = cleanup; else failure.addSuppressed(cleanup); }
+            try {
+                Files.deleteIfExists(file);
+            } catch (IOException cleanup) {
+                if (failure == null)
+                    failure = cleanup;
+                else
+                    failure.addSuppressed(cleanup);
+            }
         }
-        try { Files.deleteIfExists(directory); }
-        catch (IOException cleanup) { if (failure == null) failure = cleanup; else failure.addSuppressed(cleanup); }
-        if (failure != null) throw new RunningHubClient.ProtocolFailure();
+        try {
+            Files.deleteIfExists(directory);
+        } catch (IOException cleanup) {
+            if (failure == null)
+                failure = cleanup;
+            else
+                failure.addSuppressed(cleanup);
+        }
+        if (failure != null)
+            throw new RunningHubClient.ProtocolFailure();
     }
 }

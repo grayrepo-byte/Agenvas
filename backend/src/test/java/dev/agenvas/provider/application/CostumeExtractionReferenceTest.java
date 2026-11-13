@@ -5,7 +5,8 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 class CostumeExtractionReferenceTest {
-    @Test void immutableVersionRejectsTamperedHashesAndCannotLeakMutableBytes() throws Exception {
+    @Test
+    void immutableVersionRejectsTamperedHashesAndCannotLeakMutableBytes() throws Exception {
         var mapper = new ObjectMapper();
         var descriptor = CostumeExtractionReference.snapshot(mapper);
         byte[] bytes = CostumeExtractionReference.read(descriptor);

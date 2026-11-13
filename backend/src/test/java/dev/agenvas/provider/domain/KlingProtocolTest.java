@@ -10,22 +10,27 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class KlingProtocolTest {
-    @Test void mapsOnlyTheDeclaredVideoResolutionTiers() {
+    @Test
+    void mapsOnlyTheDeclaredVideoResolutionTiers() {
         assertThat(KlingProtocol.resolution(null)).isEqualTo("1080p");
         assertThat(KlingProtocol.providerResolution("2160p")).isEqualTo("4k");
         assertThat(KlingProtocol.providerResolution("720p")).isEqualTo("720p");
         assertThatThrownBy(() -> KlingProtocol.resolution("1440p")).isInstanceOf(ApiProblemException.class);
     }
 
-    @Test void usesDifferentOfficialPromptLimitsAndRejectsBlankText() {
+    @Test
+    void usesDifferentOfficialPromptLimitsAndRejectsBlankText() {
         KlingProtocol.validatePrompt("字".repeat(2_500), false);
         KlingProtocol.validatePrompt("字".repeat(3_072), true);
-        assertThatThrownBy(() -> KlingProtocol.validatePrompt("字".repeat(2_501), false)).isInstanceOf(ApiProblemException.class);
-        assertThatThrownBy(() -> KlingProtocol.validatePrompt("字".repeat(3_073), true)).isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> KlingProtocol.validatePrompt("字".repeat(2_501), false))
+                .isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> KlingProtocol.validatePrompt("字".repeat(3_073), true))
+                .isInstanceOf(ApiProblemException.class);
         assertThatThrownBy(() -> KlingProtocol.validatePrompt(" ", true)).isInstanceOf(ApiProblemException.class);
     }
 
-    @Test void validatesFormatSizeDimensionsAndImageOnlyReferences() {
+    @Test
+    void validatesFormatSizeDimensionsAndImageOnlyReferences() {
         KlingProtocol.validateMetadata(asset("image/png", 10_000_000, 300, 750), false);
         KlingProtocol.validateMetadata(asset("image/jpeg", 50_000_000, 750, 300), true);
         for (Asset invalid : java.util.List.of(asset("image/webp", 100, 300, 300),

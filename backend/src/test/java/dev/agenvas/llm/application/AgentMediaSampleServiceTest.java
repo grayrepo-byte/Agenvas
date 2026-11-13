@@ -22,7 +22,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import tools.jackson.databind.ObjectMapper;
 
 class AgentMediaSampleServiceTest {
-    @TempDir Path temporary;
+    @TempDir
+    Path temporary;
     private final ObjectMapper mapper = new ObjectMapper();
     private final ArtifactService artifacts = mock(ArtifactService.class);
     private final AssetService assets = mock(AssetService.class);
@@ -41,12 +42,15 @@ class AgentMediaSampleServiceTest {
         when(version.content()).thenReturn(mapper.createObjectNode().put("assetId", assetId.toString()));
         when(artifacts.requireAgentReadableVersion(owner, project, snapshot, run, versionId)).thenReturn(version);
         Asset asset = mock(Asset.class);
-        when(asset.id()).thenReturn(assetId); when(asset.projectId()).thenReturn(project);
-        when(asset.durationMs()).thenReturn(2000); when(asset.mediaKind()).thenReturn(Asset.MediaKind.VIDEO);
+        when(asset.id()).thenReturn(assetId);
+        when(asset.projectId()).thenReturn(project);
+        when(asset.durationMs()).thenReturn(2000);
+        when(asset.mediaKind()).thenReturn(Asset.MediaKind.VIDEO);
         when(assets.metadata(owner, project, assetId)).thenReturn(asset);
         return asset;
     }
-    @Test void rejectsOutOfRangeSamplesBeforeOpeningAnyMedia() {
+    @Test
+    void rejectsOutOfRangeSamplesBeforeOpeningAnyMedia() {
         authorized();
         assertThatThrownBy(() -> service.authorize(owner, project, snapshot, run, sample(List.of(2000), null, null)))
                 .isInstanceOf(ApiProblemException.class);
@@ -54,29 +58,36 @@ class AgentMediaSampleServiceTest {
                 .isInstanceOf(ApiProblemException.class);
         verify(assets, never()).get(any(), any(), any());
     }
-    @Test void enforcesStrictSampleShapeAndAudioBudget() {
+    @Test
+    void enforcesStrictSampleShapeAndAudioBudget() {
         String prefix = "{\"artifactId\":\"" + artifact + "\",\"versionId\":\"" + versionId + "\",";
         for (String invalid : List.of("\"timestampsMs\":[0,0]}", "\"timestampsMs\":[0,1,2,3,4]}",
-                "\"audioStartMs\":0}", "\"audioStartMs\":0,\"audioDurationMs\":15001}", "\"timestampsMs\":[0.5]}", "\"url\":\"https://example.org\"}"))
+                "\"audioStartMs\":0}", "\"audioStartMs\":0,\"audioDurationMs\":15001}", "\"timestampsMs\":[0.5]}",
+                "\"url\":\"https://example.org\"}"))
             assertThatThrownBy(() -> AgentMediaSampleService.parse(mapper.readTree(prefix + invalid)))
                     .isInstanceOf(ApiProblemException.class);
     }
-    @Test void refusesDecodingInsideATransaction() {
+    @Test
+    void refusesDecodingInsideATransaction() {
         TransactionSynchronizationManager.setActualTransactionActive(true);
         try {
             assertThatThrownBy(() -> service.hydrate(owner, project, snapshot, run, sample(List.of(0), null, null)))
                     .isInstanceOf(IllegalStateException.class).hasMessageContaining("transaction");
             verifyNoInteractions(assets, artifacts);
-        } finally { TransactionSynchronizationManager.setActualTransactionActive(false); }
+        } finally {
+            TransactionSynchronizationManager.setActualTransactionActive(false);
+        }
     }
-    @Test void realFfmpegProducesTimestampedFramesAndBoundedAudioFromOnlyTheAuthorizedVersion() throws Exception {
+    @Test
+    void realFfmpegProducesTimestampedFramesAndBoundedAudioFromOnlyTheAuthorizedVersion() throws Exception {
         Asset asset = authorized();
         Path source = temporary.resolve("synthetic.mp4");
         tools.ffmpeg(List.of("-v", "error", "-f", "lavfi", "-i", "testsrc2=size=160x90:rate=12:duration=2",
                 "-f", "lavfi", "-i", "sine=frequency=440:duration=2", "-c:v", "libx264", "-pix_fmt", "yuv420p",
                 "-c:a", "aac", "-shortest", "-y", source.toString()));
         when(asset.byteSize()).thenReturn(Files.size(source));
-        when(asset.sha256()).thenReturn(java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(source))));
+        when(asset.sha256()).thenReturn(java.util.HexFormat.of()
+                .formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(source))));
         when(assets.get(owner, project, assetId)).thenReturn(new AssetService.AssetFile(asset, source));
         var result = service.hydrate(owner, project, snapshot, run, sample(List.of(0, 1000), 0, 1000));
         assertThat(result).hasSize(2);

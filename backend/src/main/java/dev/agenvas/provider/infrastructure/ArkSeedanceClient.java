@@ -57,9 +57,16 @@ public class ArkSeedanceClient {
     }
 
     public record Reference(String contentType, byte[] bytes, String role, String url) {
-        public Reference(String contentType, byte[] bytes, String role) { this(contentType, bytes, role, null); }
-        public static Reference video(String signedUrl) { return new Reference("video/mp4", null, "reference_video", signedUrl); }
-        @Override public String toString() { return "Reference[role=" + role + "]"; }
+        public Reference(String contentType, byte[] bytes, String role) {
+            this(contentType, bytes, role, null);
+        }
+        public static Reference video(String signedUrl) {
+            return new Reference("video/mp4", null, "reference_video", signedUrl);
+        }
+        @Override
+        public String toString() {
+            return "Reference[role=" + role + "]";
+        }
     }
 
     public String create(String key, String prompt, List<Reference> references,
@@ -77,8 +84,10 @@ public class ArkSeedanceClient {
             String type = video ? "video_url" : audio ? "audio_url" : "image_url";
             String mime = "audio/mpeg".equals(reference.contentType()) ? "audio/mp3" : reference.contentType();
             var item = content.addObject().put("type", type).put("role", reference.role());
-            item.putObject(type).put("url", video ? reference.url() : "data:" + mime + ";base64,"
-                    + Base64.getEncoder().encodeToString(reference.bytes()));
+            item.putObject(type).put("url", video
+                    ? reference.url()
+                    : "data:" + mime + ";base64,"
+                            + Base64.getEncoder().encodeToString(reference.bytes()));
         }
         request.put("duration", durationSeconds);
         request.put("ratio", ratio);
@@ -89,7 +98,8 @@ public class ArkSeedanceClient {
         JsonNode response = request(key, TASKS,
                 request.toString().getBytes(StandardCharsets.UTF_8), true);
         String id = response.path("id").asText();
-        if (!validTaskId(id)) throw new Uncertain("Ark create response omitted task ID");
+        if (!validTaskId(id))
+            throw new Uncertain("Ark create response omitted task ID");
         return id;
     }
 
@@ -118,32 +128,40 @@ public class ArkSeedanceClient {
         Request.Builder request = new Request.Builder().url(origin.resolve(path).toString())
                 .header("Authorization", "Bearer " + key)
                 .header("Accept", "application/json");
-        if (create) request.post(RequestBody.create(body,
-                MediaType.parse("application/json; charset=utf-8")));
-        else request.get();
+        if (create)
+            request.post(RequestBody.create(body,
+                    MediaType.parse("application/json; charset=utf-8")));
+        else
+            request.get();
         try (Response response = http.newCall(request.build()).execute()) {
-            if (response.body() == null) throw responseError(create);
+            if (response.body() == null)
+                throw responseError(create);
             byte[] bytes = response.body().byteStream().readNBytes(MAX_JSON_BYTES + 1);
-            if (bytes.length > MAX_JSON_BYTES) throw responseError(create);
+            if (bytes.length > MAX_JSON_BYTES)
+                throw responseError(create);
             int status = response.code();
             if (status >= 400 && status < 500 && status != 429 && create) {
                 throw new Rejected(status);
             }
-            if (status != 200) throw responseError(create);
+            if (status != 200)
+                throw responseError(create);
             JsonNode parsed = mapper.readTree(bytes);
-            if (!parsed.isObject()) throw responseError(create);
+            if (!parsed.isObject())
+                throw responseError(create);
             return parsed;
         } catch (IOException failure) {
             throw responseError(create);
         } catch (RuntimeException failure) {
             if (failure instanceof Rejected || failure instanceof Uncertain
-                    || failure instanceof TechnicalFailure) throw failure;
+                    || failure instanceof TechnicalFailure)
+                throw failure;
             throw responseError(create);
         }
     }
 
     private static RuntimeException responseError(boolean create) {
-        return create ? new Uncertain("Ark create result is uncertain")
+        return create
+                ? new Uncertain("Ark create result is uncertain")
                 : new TechnicalFailure("Ark original task could not be queried");
     }
 
@@ -151,17 +169,26 @@ public class ArkSeedanceClient {
         return id != null && id.matches("[A-Za-z0-9][A-Za-z0-9_-]{0,127}");
     }
 
-    public record TaskState(String status, String videoUrl) {}
+    public record TaskState(String status, String videoUrl) {
+    }
     public static final class Rejected extends RuntimeException {
-        public Rejected(int status) { super("Ark create rejected: HTTP " + status); }
+        public Rejected(int status) {
+            super("Ark create rejected: HTTP " + status);
+        }
     }
     public static final class Uncertain extends RuntimeException {
-        public Uncertain(String message) { super(message); }
+        public Uncertain(String message) {
+            super(message);
+        }
     }
     public static final class TechnicalFailure extends RuntimeException {
-        public TechnicalFailure(String message) { super(message); }
+        public TechnicalFailure(String message) {
+            super(message);
+        }
     }
     public static final class ProtocolFailure extends RuntimeException {
-        public ProtocolFailure(String message) { super(message); }
+        public ProtocolFailure(String message) {
+            super(message);
+        }
     }
 }

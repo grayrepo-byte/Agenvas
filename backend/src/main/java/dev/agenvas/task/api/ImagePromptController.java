@@ -26,7 +26,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/projects/{projectId}/artifacts/{artifactId}/image-prompts")
 public class ImagePromptController {
     private final ImagePromptTaskService prompts;
-    public ImagePromptController(ImagePromptTaskService prompts) { this.prompts = prompts; }
+    public ImagePromptController(ImagePromptTaskService prompts) {
+        this.prompts = prompts;
+    }
 
     @GetMapping
     public ResponseEntity<List<TaskController.TaskResponse>> list(@AuthenticationPrincipal AdminPrincipal principal,
@@ -40,9 +42,10 @@ public class ImagePromptController {
             @PathVariable UUID projectId, @PathVariable UUID artifactId,
             @RequestHeader("Idempotency-Key") String key, @Valid @RequestBody ImagePromptRequest request,
             HttpServletRequest http) {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(TaskController.TaskResponse.from(prompts.run(
-                principal.userId(), projectId, artifactId, request.canvasItemId(), request.sourceVersionId(),
-                request.expectedCanvasItemVersion(), SupportedLocales.resolve(http).getLanguage(), key)));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(TaskController.TaskResponse.from(prompts.run(
+                        principal.userId(), projectId, artifactId, request.canvasItemId(), request.sourceVersionId(),
+                        request.expectedCanvasItemVersion(), SupportedLocales.resolve(http).getLanguage(), key)));
     }
 
     @PostMapping("/{taskId}/cancel")
@@ -52,5 +55,6 @@ public class ImagePromptController {
     }
 
     public record ImagePromptRequest(@NotNull UUID canvasItemId, @NotNull UUID sourceVersionId,
-            @NotNull @PositiveOrZero Long expectedCanvasItemVersion) {}
+            @NotNull @PositiveOrZero Long expectedCanvasItemVersion) {
+    }
 }

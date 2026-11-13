@@ -9,37 +9,88 @@ import { server } from "../../test/server";
 import { MediaTemplatePicker, type TemplatePickerContext } from "./MediaTemplatePicker";
 import { ThirdPartyPromptCatalog } from "./ThirdPartyPromptCatalog";
 
-const entry: ThirdPartyPromptEntry = { id: "native:1", sourceId: "native", targetKind: "IMAGE", video: null, version: 2,
-  cachedAt: "2026-10-08T00:00:00Z", updatedAt: "2026-10-08T00:00:00Z", image: { id: "native:1", sourceId: "native", title: "Cached portrait",
-    prompt: "Synthetic portrait", description: "Synthetic description", coverUrl: "https://example.com/cover.png", referenceImageUrls: [], tags: ["portrait"],
-    author: "Artist", sourceUrl: "https://example.com/original", createdAt: "", imageMode: "generate", imageModel: "source-model" } };
-const context: TemplatePickerContext = { projectId: "project", targetKind: "IMAGE", fields: { prompt: "draft", parameters: {}, durationSeconds: null,
-  capabilityId: null, videoInputMode: null, mediaInputs: [], mentions: [] }, seedImages: [], onApply: vi.fn(), onClose: vi.fn(), onBusy: vi.fn() };
+const entry: ThirdPartyPromptEntry = {
+  id: "native:1",
+  sourceId: "native",
+  targetKind: "IMAGE",
+  video: null,
+  version: 2,
+  cachedAt: "2026-10-08T00:00:00Z",
+  updatedAt: "2026-10-08T00:00:00Z",
+  image: {
+    id: "native:1",
+    sourceId: "native",
+    title: "Cached portrait",
+    prompt: "Synthetic portrait",
+    description: "Synthetic description",
+    coverUrl: "https://example.com/cover.png",
+    referenceImageUrls: [],
+    tags: ["portrait"],
+    author: "Artist",
+    sourceUrl: "https://example.com/original",
+    createdAt: "",
+    imageMode: "generate",
+    imageModel: "source-model",
+  },
+};
+const context: TemplatePickerContext = {
+  projectId: "project",
+  targetKind: "IMAGE",
+  fields: {
+    prompt: "draft",
+    parameters: {},
+    durationSeconds: null,
+    capabilityId: null,
+    videoInputMode: null,
+    mediaInputs: [],
+    mentions: [],
+  },
+  seedImages: [],
+  onApply: vi.fn(),
+  onClose: vi.fn(),
+  onBusy: vi.fn(),
+};
 function mount(props = context) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  return render(<QueryClientProvider client={client}><MediaTemplatePicker {...props} /></QueryClientProvider>);
+  return render(
+    <QueryClientProvider client={client}>
+      <MediaTemplatePicker {...props} />
+    </QueryClientProvider>,
+  );
 }
 function catalogue() {
-  server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "fixture" })),
+  server.use(
+    http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "fixture" })),
     http.get("/api/v1/media-templates", () => HttpResponse.json({ items: [] })),
     http.get("/api/v1/media-templates/third-party/sources", () => HttpResponse.json({ items: [] })),
-    http.get("/api/v1/media-templates/third-party", () => HttpResponse.json({ items: [entry], total: 1, offset: 0, limit: 50 })));
+    http.get("/api/v1/media-templates/third-party", () =>
+      HttpResponse.json({ items: [entry], total: 1, offset: 0, limit: 50 }),
+    ),
+  );
 }
 describe("third-party prompt catalogue", () => {
   it("opens details separately and returns to the same filtered page and scroll position", async () => {
-    catalogue(); const close = vi.fn(); const apply = vi.fn(); const offsets: string[] = [];
-    server.use(http.get("/api/v1/media-templates/third-party", ({ request }) => {
-      const offset = new URL(request.url).searchParams.get("offset") ?? "0"; offsets.push(offset);
-      return HttpResponse.json({ items: [entry], total: 101, offset: Number(offset), limit: 50 });
-    }));
-    mount({ ...context, onApply: apply, onClose: close }); const user = userEvent.setup();
+    catalogue();
+    const close = vi.fn();
+    const apply = vi.fn();
+    const offsets: string[] = [];
+    server.use(
+      http.get("/api/v1/media-templates/third-party", ({ request }) => {
+        const offset = new URL(request.url).searchParams.get("offset") ?? "0";
+        offsets.push(offset);
+        return HttpResponse.json({ items: [entry], total: 101, offset: Number(offset), limit: 50 });
+      }),
+    );
+    mount({ ...context, onApply: apply, onClose: close });
+    const user = userEvent.setup();
     await user.click(screen.getByRole("tab", { name: "第三方模板" }));
     await screen.findByRole("button", { name: "Cached portrait" });
     const catalogueDialog = screen.getByRole("dialog", { name: "图片模板" });
     await user.type(within(catalogueDialog).getAllByRole("searchbox")[1]!, "portrait");
     await user.click(await screen.findByRole("button", { name: "下一页" }));
     await screen.findByText("第 2 / 3 页");
-    const body = catalogueDialog.querySelector(".ui-dialog-body")!; body.scrollTop = 417;
+    const body = catalogueDialog.querySelector(".ui-dialog-body")!;
+    body.scrollTop = 417;
     const card = await screen.findByRole("button", { name: "Cached portrait" });
     await user.click(card);
     const detail = screen.getByRole("dialog", { name: "Cached portrait" });
@@ -53,103 +104,232 @@ describe("third-party prompt catalogue", () => {
     expect(screen.getByRole("dialog", { name: "图片模板" })).toBe(catalogueDialog);
     expect(screen.getByText("第 2 / 3 页")).toBeInTheDocument();
     expect(within(catalogueDialog).getAllByRole("searchbox")[1]).toHaveValue("portrait");
-    expect(body.scrollTop).toBe(417); expect(card).toHaveFocus();
-    expect(close).not.toHaveBeenCalled(); expect(offsets.at(-1)).toBe("50");
+    expect(body.scrollTop).toBe(417);
+    expect(card).toHaveFocus();
+    expect(close).not.toHaveBeenCalled();
+    expect(offsets.at(-1)).toBe("50");
     expect(screen.queryByRole("button", { name: "使用模板" })).not.toBeInTheDocument();
   });
   it("shows a generated video with manual playback and blocks importing unpublished references", async () => {
     catalogue();
-    const video: ThirdPartyPromptEntry = { ...entry, targetKind: "VIDEO", image: null, video: {
-      id: entry.id, sourceId: entry.sourceId, title: "Synthetic reference clip", prompt: "Animate @Image1", description: "", coverUrl: "https://example.com/poster.jpg",
-      tags: [], author: "Fixture author", sourceUrl: "https://example.com/original", createdAt: "", videoMode: "image_to_video", videoModel: "source-model",
-      references: [], imageGeneration: null, previewVideoUrl: "https://example.com/output.mp4", missingReferences: [{ kind: "IMAGE", label: "IMAGE 1" }],
-    } };
-    server.use(http.get("/api/v1/media-templates/third-party", () => HttpResponse.json({ items: [video], total: 1, offset: 0, limit: 50 })));
+    const video: ThirdPartyPromptEntry = {
+      ...entry,
+      targetKind: "VIDEO",
+      image: null,
+      video: {
+        id: entry.id,
+        sourceId: entry.sourceId,
+        title: "Synthetic reference clip",
+        prompt: "Animate @Image1",
+        description: "",
+        coverUrl: "https://example.com/poster.jpg",
+        tags: [],
+        author: "Fixture author",
+        sourceUrl: "https://example.com/original",
+        createdAt: "",
+        videoMode: "image_to_video",
+        videoModel: "source-model",
+        references: [],
+        imageGeneration: null,
+        previewVideoUrl: "https://example.com/output.mp4",
+        missingReferences: [{ kind: "IMAGE", label: "IMAGE 1" }],
+      },
+    };
+    server.use(
+      http.get("/api/v1/media-templates/third-party", () =>
+        HttpResponse.json({ items: [video], total: 1, offset: 0, limit: 50 }),
+      ),
+    );
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const apply = vi.fn(); const imported = vi.fn();
-    server.use(http.post("/api/v1/projects/project/media-templates/third-party/import", () => { imported(); return HttpResponse.json({}); }));
-    render(<QueryClientProvider client={client}><ThirdPartyPromptCatalog kind="VIDEO" context={{ ...context, targetKind: "VIDEO", onApply: apply }} /></QueryClientProvider>);
-    const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "Synthetic reference clip" }));
+    const apply = vi.fn();
+    const imported = vi.fn();
+    server.use(
+      http.post("/api/v1/projects/project/media-templates/third-party/import", () => {
+        imported();
+        return HttpResponse.json({});
+      }),
+    );
+    render(
+      <QueryClientProvider client={client}>
+        <ThirdPartyPromptCatalog kind="VIDEO" context={{ ...context, targetKind: "VIDEO", onApply: apply }} />
+      </QueryClientProvider>,
+    );
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Synthetic reference clip" }));
     const preview = screen.getByLabelText("生成效果视频");
     expect(preview).toHaveAttribute("src", "https://example.com/output.mp4");
-    expect(preview).toHaveAttribute("controls"); expect(preview).toHaveAttribute("preload", "none"); expect(preview).not.toHaveAttribute("autoplay");
+    expect(preview).toHaveAttribute("controls");
+    expect(preview).toHaveAttribute("preload", "none");
+    expect(preview).not.toHaveAttribute("autoplay");
     expect(screen.getAllByText(/来源未提供所需参考素材/).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "使用模板" })).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "使用模板" })); expect(imported).not.toHaveBeenCalled(); expect(apply).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "使用模板" }));
+    expect(imported).not.toHaveBeenCalled();
+    expect(apply).not.toHaveBeenCalled();
   });
   it("previews cached attribution and applies through the current editor without generating", async () => {
-    catalogue(); const apply = vi.fn(); const close = vi.fn(); const imported = { templateId: "id", templateVersion: 2, targetKind: "IMAGE",
-      prompt: "Synthetic portrait", images: [], references: [], videoInputMode: null };
-    server.use(http.post("/api/v1/projects/project/media-templates/third-party/import", () => HttpResponse.json(imported)));
-    mount({ ...context, onApply: apply, onClose: close }); const user = userEvent.setup();
+    catalogue();
+    const apply = vi.fn();
+    const close = vi.fn();
+    const imported = {
+      templateId: "id",
+      templateVersion: 2,
+      targetKind: "IMAGE",
+      prompt: "Synthetic portrait",
+      images: [],
+      references: [],
+      videoInputMode: null,
+    };
+    server.use(
+      http.post("/api/v1/projects/project/media-templates/third-party/import", () => HttpResponse.json(imported)),
+    );
+    mount({ ...context, onApply: apply, onClose: close });
+    const user = userEvent.setup();
     await user.click(screen.getByRole("tab", { name: "第三方模板" }));
     await user.click(await screen.findByRole("button", { name: "Cached portrait" }));
     const detail = screen.getByRole("dialog", { name: "Cached portrait" });
     expect(screen.getByRole("link", { name: "查看原始来源" })).toHaveAttribute("href", "https://example.com/original");
     expect(within(detail).getByRole("img", { name: "生成效果预览图" })).toHaveAttribute("src", entry.image!.coverUrl);
-    expect(apply).not.toHaveBeenCalled(); await user.click(screen.getByRole("button", { name: "使用模板" }));
-    await waitFor(() => expect(apply).toHaveBeenCalledWith(imported, { videoInputMode: null, imageSlots: [] })); expect(close).toHaveBeenCalled();
+    expect(apply).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "使用模板" }));
+    await waitFor(() => expect(apply).toHaveBeenCalledWith(imported, { videoInputMode: null, imageSlots: [] }));
+    expect(close).toHaveBeenCalled();
   });
   it("retains the selected template and command key after a lost import response", async () => {
-    catalogue(); const calls: Record<string, unknown>[] = []; let failures = 0;
-    server.use(http.post("/api/v1/projects/project/media-templates/third-party/import", async ({ request }) => {
-      calls.push(await request.json() as Record<string, unknown>); failures++;
-      return failures === 1 ? HttpResponse.json({ detail: "Synthetic failure" }, { status: 503, headers: { "Content-Type": "application/problem+json" } }) : HttpResponse.json({
-        templateId: "id", templateVersion: 2, targetKind: "IMAGE", prompt: "Synthetic portrait", images: [] });
-    }));
-    const apply = vi.fn(); mount({ ...context, onApply: apply }); const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "第三方模板" })); await user.click(await screen.findByRole("button", { name: "Cached portrait" }));
-    await user.click(screen.getByRole("button", { name: "使用模板" })); await screen.findByText("Synthetic failure");
-    expect(apply).not.toHaveBeenCalled(); await user.click(screen.getByRole("button", { name: "使用模板" }));
-    await waitFor(() => expect(apply).toHaveBeenCalled()); expect(calls[0]).toEqual(calls[1]); expect(calls[0]).toMatchObject({ promptId: entry.id, expectedVersion: 2 });
+    catalogue();
+    const calls: Record<string, unknown>[] = [];
+    let failures = 0;
+    server.use(
+      http.post("/api/v1/projects/project/media-templates/third-party/import", async ({ request }) => {
+        calls.push((await request.json()) as Record<string, unknown>);
+        failures++;
+        return failures === 1
+          ? HttpResponse.json(
+              { detail: "Synthetic failure" },
+              { status: 503, headers: { "Content-Type": "application/problem+json" } },
+            )
+          : HttpResponse.json({
+              templateId: "id",
+              templateVersion: 2,
+              targetKind: "IMAGE",
+              prompt: "Synthetic portrait",
+              images: [],
+            });
+      }),
+    );
+    const apply = vi.fn();
+    mount({ ...context, onApply: apply });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "第三方模板" }));
+    await user.click(await screen.findByRole("button", { name: "Cached portrait" }));
+    await user.click(screen.getByRole("button", { name: "使用模板" }));
+    await screen.findByText("Synthetic failure");
+    expect(apply).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "使用模板" }));
+    await waitFor(() => expect(apply).toHaveBeenCalled());
+    expect(calls[0]).toEqual(calls[1]);
+    expect(calls[0]).toMatchObject({ promptId: entry.id, expectedVersion: 2 });
   });
 });
 
 describe("third-party source failure status", () => {
-  const source: ThirdPartyPromptSource = { id: "native", name: "Synthetic source", targetKind: "IMAGE", format: "NATIVE_JSON",
-    url: "https://example.com/private-feed?private=DO_NOT_DISPLAY", model: "", enabled: true, version: 1,
-    nextSyncAt: "2026-11-04T01:00:00Z", lastSyncedAt: "2026-11-03T00:00:00Z", lastError: null, promptCount: 7, syncing: false };
+  const source: ThirdPartyPromptSource = {
+    id: "native",
+    name: "Synthetic source",
+    targetKind: "IMAGE",
+    format: "NATIVE_JSON",
+    url: "https://example.com/private-feed?private=DO_NOT_DISPLAY",
+    model: "",
+    enabled: true,
+    version: 1,
+    nextSyncAt: "2026-11-04T01:00:00Z",
+    lastSyncedAt: "2026-11-03T00:00:00Z",
+    lastError: null,
+    promptCount: 7,
+    syncing: false,
+  };
   function show(lastError: string | null) {
-    catalogue(); setLocale("en");
-    server.use(http.get("/api/v1/media-templates/third-party/sources", () => HttpResponse.json({ items: [{ ...source, lastError }] })),
-      http.get("/api/v1/settings/media-template-sync", () => HttpResponse.json({ enabled: false, deploymentEnabled: true, version: 0 })));
-    return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <ThirdPartyPromptCatalog kind="IMAGE" system />
-    </QueryClientProvider>);
+    catalogue();
+    setLocale("en");
+    server.use(
+      http.get("/api/v1/media-templates/third-party/sources", () =>
+        HttpResponse.json({ items: [{ ...source, lastError }] }),
+      ),
+      http.get("/api/v1/settings/media-template-sync", () =>
+        HttpResponse.json({ enabled: false, deploymentEnabled: true, version: 0 }),
+      ),
+    );
+    return render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <ThirdPartyPromptCatalog kind="IMAGE" system />
+      </QueryClientProvider>,
+    );
   }
 
   it.each([
-    ["THIRD_PARTY_SOURCE_HTTP_ERROR", "The source did not return a successful download response. Cached entries remain available."],
-    ["THIRD_PARTY_SOURCE_DOWNLOAD_FAILED", "The source could not be downloaded. Check the address, network access and source availability. Cached entries remain available."],
-    ["THIRD_PARTY_SOURCE_TOO_LARGE", "The source response exceeded the download limit. Cached entries remain available."],
-    ["THIRD_PARTY_SOURCE_INVALID_DATA", "The source data or address failed validation. Cached entries remain available."],
+    [
+      "THIRD_PARTY_SOURCE_HTTP_ERROR",
+      "The source did not return a successful download response. Cached entries remain available.",
+    ],
+    [
+      "THIRD_PARTY_SOURCE_DOWNLOAD_FAILED",
+      "The source could not be downloaded. Check the address, network access and source availability. Cached entries remain available.",
+    ],
+    [
+      "THIRD_PARTY_SOURCE_TOO_LARGE",
+      "The source response exceeded the download limit. Cached entries remain available.",
+    ],
+    [
+      "THIRD_PARTY_SOURCE_INVALID_DATA",
+      "The source data or address failed validation. Cached entries remain available.",
+    ],
   ])("shows a safe explanation for persisted %s without exposing the configured URL", async (code, message) => {
     show(code);
     expect(await screen.findByText(message)).toBeInTheDocument();
     expect(screen.queryByText(/DO_NOT_DISPLAY/)).not.toBeInTheDocument();
-    expect(screen.getByText(/Failed sources retry after one hour when automatic sync and the source are enabled/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Failed sources retry after one hour when automatic sync and the source are enabled/),
+    ).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Cached portrait" })).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: "Automatically sync third-party prompts" })).not.toBeChecked();
   });
 
-  it.each(["THIRD_PARTY_SYNC_FAILED", "UNKNOWN_PRIVATE_ERROR", "constructor"])("keeps a generic fallback for %s", async (code) => {
-    show(code);
-    expect(await screen.findByText("Sync failed. Cached entries remain available. Check the source URL and retry.")).toBeInTheDocument();
-    expect(screen.queryByText(code)).not.toBeInTheDocument();
-  });
+  it.each(["THIRD_PARTY_SYNC_FAILED", "UNKNOWN_PRIVATE_ERROR", "constructor"])(
+    "keeps a generic fallback for %s",
+    async code => {
+      show(code);
+      expect(
+        await screen.findByText("Sync failed. Cached entries remain available. Check the source URL and retry."),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(code)).not.toBeInTheDocument();
+    },
+  );
 
   it("refreshes a failed explicit manual sync without enabling automatic downloads", async () => {
     show(null);
-    let syncs = 0; let settingsWrites = 0;
-    server.use(http.post("/api/v1/settings/media-template-sources/native/sync", () => {
-      syncs++;
-      server.use(http.get("/api/v1/media-templates/third-party/sources", () => HttpResponse.json({ items: [
-        { ...source, lastError: "THIRD_PARTY_SOURCE_HTTP_ERROR" },
-      ] })));
-      return HttpResponse.json({ sourceId: source.id, state: "FAILED", inserted: 0, updated: 0, received: 0 });
-    }), http.put("/api/v1/settings/media-template-sync", () => { settingsWrites++; return HttpResponse.json({}); }));
+    let syncs = 0;
+    let settingsWrites = 0;
+    server.use(
+      http.post("/api/v1/settings/media-template-sources/native/sync", () => {
+        syncs++;
+        server.use(
+          http.get("/api/v1/media-templates/third-party/sources", () =>
+            HttpResponse.json({ items: [{ ...source, lastError: "THIRD_PARTY_SOURCE_HTTP_ERROR" }] }),
+          ),
+        );
+        return HttpResponse.json({ sourceId: source.id, state: "FAILED", inserted: 0, updated: 0, received: 0 });
+      }),
+      http.put("/api/v1/settings/media-template-sync", () => {
+        settingsWrites++;
+        return HttpResponse.json({});
+      }),
+    );
     await userEvent.setup().click(await screen.findByRole("button", { name: "Sync now" }));
-    expect(await screen.findByText("The source did not return a successful download response. Cached entries remain available.")).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "The source did not return a successful download response. Cached entries remain available.",
+      ),
+    ).toBeInTheDocument();
     expect(syncs).toBe(1);
     expect(settingsWrites).toBe(0);
     expect(screen.getByRole("button", { name: "Cached portrait" })).toBeInTheDocument();

@@ -54,24 +54,31 @@ public class ComfyUiVideoAdapter implements MediaAdapter {
         this.published = published;
     }
 
-    @Override public String adapterId() { return "COMFY_VIDEO_V1"; }
+    @Override
+    public String adapterId() {
+        return "COMFY_VIDEO_V1";
+    }
 
-    @Override public boolean supports(PortInput input) {
+    @Override
+    public boolean supports(PortInput input) {
         // This is the protocol envelope; acceptance applies the pinned capability's narrower range.
         return input.kind() == Task.Kind.VIDEO_GENERATION
                 && input.durationSeconds() >= 1 && input.durationSeconds() <= ComfyUiWorkflowDefinition.MAX_SECONDS;
     }
 
-    @Override public String preflightFailure(AttemptContext context) {
+    @Override
+    public String preflightFailure(AttemptContext context) {
         var settings = mapper.readTree(catalog.pinnedSnapshot(context.binding()).specJson()).path("settings");
         return ComfyUiWorkflowDefinition.configured(settings) ? published.preflightFailure(context) : null;
     }
 
-    @Override public Submission submit(AttemptContext context) {
+    @Override
+    public Submission submit(AttemptContext context) {
         Snapshot snapshot = catalog.pinnedSnapshot(context.binding());
         ComfyUiClient client = clients.create(snapshot.connectionVersion());
         var settings = mapper.readTree(snapshot.specJson()).path("settings");
-        if (ComfyUiWorkflowDefinition.configured(settings)) return published.submit(context, client, settings);
+        if (ComfyUiWorkflowDefinition.configured(settings))
+            return published.submit(context, client, settings);
         ComfyUiVideoWorkflow workflow = workflow(settings);
         Task task = context.lease();
         int durationSeconds = task.input().path("durationSeconds").asInt(-1);
@@ -90,18 +97,20 @@ public class ComfyUiVideoAdapter implements MediaAdapter {
         return new Submission.Accepted(promptId);
     }
 
-    @Override public Submission reconcile(AttemptContext context) {
+    @Override
+    public Submission reconcile(AttemptContext context) {
         Snapshot snapshot = catalog.pinnedSnapshot(context.binding());
         ComfyUiClient client = clients.create(snapshot.connectionVersion());
         var settings = mapper.readTree(snapshot.specJson()).path("settings");
-        if (ComfyUiWorkflowDefinition.configured(settings)) return published.reconcile(context, client, settings);
+        if (ComfyUiWorkflowDefinition.configured(settings))
+            return published.reconcile(context, client, settings);
         String promptId = context.originalRequestId();
         try {
             return switch (client.videoStatus(promptId, ComfyUiVideoWorkflow.OUTPUT_NODE_ID)) {
                 case ComfyUiHistory.VideoPending ignored ->
-                        new Submission.Pending(Instant.now().plusSeconds(5));
+                    new Submission.Pending(Instant.now().plusSeconds(5));
                 case ComfyUiHistory.VideoFailed ignored ->
-                        new Submission.Rejected("PROVIDER_EXECUTION_FAILED");
+                    new Submission.Rejected("PROVIDER_EXECUTION_FAILED");
                 case ComfyUiHistory.VideoReady ready -> new Submission.Completed(
                         new MediaPayload(client.output(ready.filename()), "video/mp4"));
             };
@@ -116,8 +125,10 @@ public class ComfyUiVideoAdapter implements MediaAdapter {
         if (!frozen.isMissingNode() && (!frozen.isTextual()
                 || !java.util.Set.of("16:9", "9:16", "1:1").contains(frozen.asText())))
             throw new IllegalStateException("Pinned ComfyUI aspect ratio is invalid");
-        String requested = frozen.isMissingNode() ? VideoGenerationParameters.parse(context.lease().input()
-                .path("mediaInput").path("parameters")).aspectRatio() : frozen.asText();
+        String requested = frozen.isMissingNode()
+                ? VideoGenerationParameters.parse(context.lease().input()
+                        .path("mediaInput").path("parameters")).aspectRatio()
+                : frozen.asText();
         if (VideoGenerationParameters.AUTO_ASPECT_RATIO.equals(requested)) {
             return projects.get(context.ownerId(), context.lease().projectId()).aspectRatio();
         }
@@ -156,7 +167,8 @@ public class ComfyUiVideoAdapter implements MediaAdapter {
         } catch (IOException failure) {
             throw new IllegalStateException("Cannot decode pinned video input", failure);
         }
-        if (source == null) throw new IllegalStateException("Pinned video input is undecodable");
+        if (source == null)
+            throw new IllegalStateException("Pinned video input is undecodable");
         ComfyUiVideoWorkflow.Dimensions dimensions = workflow.dimensions(ratio);
         int width = dimensions.width();
         int height = dimensions.height();

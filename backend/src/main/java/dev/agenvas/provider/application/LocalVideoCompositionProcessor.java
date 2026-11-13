@@ -35,14 +35,23 @@ public class LocalVideoCompositionProcessor {
     private final ObjectMapper mapper;
 
     public LocalVideoCompositionProcessor(ArtifactService artifacts, AssetService assets,
-            LocalVideoCompositionRenderer renderer, TaskService tasks, ObjectMapper mapper, VideoCompositionLimits limits) {
-        this.artifacts = artifacts; this.assets = assets; this.renderer = renderer;
-        this.tasks = tasks; this.mapper = mapper; this.limits = limits;
+            LocalVideoCompositionRenderer renderer, TaskService tasks, ObjectMapper mapper,
+            VideoCompositionLimits limits) {
+        this.artifacts = artifacts;
+        this.assets = assets;
+        this.renderer = renderer;
+        this.tasks = tasks;
+        this.mapper = mapper;
+        this.limits = limits;
     }
 
     String preflight(AttemptContext context) {
-        try { resolve(context); return null; }
-        catch (RuntimeException invalid) { return "VIDEO_COMPOSITION_INVALID"; }
+        try {
+            resolve(context);
+            return null;
+        } catch (RuntimeException invalid) {
+            return "VIDEO_COMPOSITION_INVALID";
+        }
     }
 
     Submission submit(AttemptContext context) {
@@ -54,24 +63,31 @@ public class LocalVideoCompositionProcessor {
                 if (tasks.get(context.ownerId(), context.lease().projectId(), context.lease().id()).cancelRequested())
                     throw new CancellationException();
                 tasks.heartbeat(context.lease().id(), context.lease().leaseOwner(), context.lease().leaseEpoch());
-                if (System.nanoTime() >= deadline) return new Submission.Rejected("LOCAL_VIDEO_COMPOSITION_TIMEOUT");
+                if (System.nanoTime() >= deadline)
+                    return new Submission.Rejected("LOCAL_VIDEO_COMPOSITION_TIMEOUT");
             }
             var sources = resolve(context);
             scratch = Files.createTempDirectory(scratchRoot(), "agenvas-video-composition-",
                     PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
             var rendered = renderer.render(context.lease().input().path("videoComposition"), sources, scratch,
-                    () -> tasks.get(context.ownerId(), context.lease().projectId(), context.lease().id()).cancelRequested(),
+                    () -> tasks.get(context.ownerId(), context.lease().projectId(), context.lease().id())
+                            .cancelRequested(),
                     () -> {
                         if (System.nanoTime() >= deadline)
                             throw new MediaToolRunner.MediaToolException("Composition timed out", false, null);
-                        tasks.heartbeat(context.lease().id(), context.lease().leaseOwner(), context.lease().leaseEpoch());
+                        tasks.heartbeat(context.lease().id(), context.lease().leaseOwner(),
+                                context.lease().leaseEpoch());
                     });
             if (tasks.get(context.ownerId(), context.lease().projectId(), context.lease().id()).cancelRequested())
                 throw new CancellationException();
-            var asset = assets.archiveTaskVideo(context.ownerId(), context.lease().projectId(), context.lease().id(), () -> {
-                try { return Files.newInputStream(rendered.path()); }
-                catch (IOException failure) { throw new IllegalStateException("Cannot read composition output", failure); }
-            });
+            var asset = assets.archiveTaskVideo(context.ownerId(), context.lease().projectId(), context.lease().id(),
+                    () -> {
+                        try {
+                            return Files.newInputStream(rendered.path());
+                        } catch (IOException failure) {
+                            throw new IllegalStateException("Cannot read composition output", failure);
+                        }
+                    });
             var content = MediaResult.content(mapper, context.lease(), asset.id(),
                     context.lease().input().path("videoComposition").path("title").asText());
             content.withObject("parameters").put("local", true).put("operation", "VIDEO_COMPOSITION")
@@ -86,7 +102,8 @@ public class LocalVideoCompositionProcessor {
             return new Submission.Rejected("LOCAL_VIDEO_COMPOSITION_CANCELED");
         } catch (MediaToolRunner.MediaToolException failure) {
             return new Submission.Rejected(failure.getMessage().contains("timed out")
-                    ? "LOCAL_VIDEO_COMPOSITION_TIMEOUT" : "LOCAL_VIDEO_COMPOSITION_FAILED");
+                    ? "LOCAL_VIDEO_COMPOSITION_TIMEOUT"
+                    : "LOCAL_VIDEO_COMPOSITION_FAILED");
         } catch (IllegalArgumentException invalid) {
             return new Submission.Rejected("VIDEO_COMPOSITION_INVALID");
         } catch (IOException | RuntimeException failure) {
@@ -94,12 +111,15 @@ public class LocalVideoCompositionProcessor {
         } finally {
             if (scratch != null) {
                 try (var paths = Files.walk(scratch)) {
-                    for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
+                    for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
+                        Files.deleteIfExists(path);
                 } catch (IOException failure) {
-                    org.slf4j.LoggerFactory.getLogger(LocalVideoCompositionProcessor.class).warn("Video composition scratch cleanup failed");
+                    org.slf4j.LoggerFactory.getLogger(LocalVideoCompositionProcessor.class)
+                            .warn("Video composition scratch cleanup failed");
                 }
             }
-            if (acquired) renders.release();
+            if (acquired)
+                renders.release();
         }
     }
 
@@ -107,8 +127,9 @@ public class LocalVideoCompositionProcessor {
 
     /** Authorizes pinned sources exactly as export does, but only returns timing, never paths or media bytes. */
     public JsonNode preview(UUID owner, UUID project, JsonNode composition, JsonNode mediaInput) {
-        if (!previews.tryAcquire()) throw previewProblem(org.springframework.http.HttpStatus.TOO_MANY_REQUESTS,
-                "VIDEO_PREVIEW_BUSY", "api.video-preview.busy");
+        if (!previews.tryAcquire())
+            throw previewProblem(org.springframework.http.HttpStatus.TOO_MANY_REQUESTS,
+                    "VIDEO_PREVIEW_BUSY", "api.video-preview.busy");
         Path scratch = null;
         try {
             var sources = resolve(owner, project, composition, mediaInput);
@@ -116,34 +137,43 @@ public class LocalVideoCompositionProcessor {
                     PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
             return renderer.preview(composition, sources, scratch);
         } catch (VideoCompositionPlanner.DoesNotFit overflow) {
-            throw previewProblem(org.springframework.http.HttpStatus.UNPROCESSABLE_CONTENT, "VIDEO_COMPOSITION_AUDIO_OVERFLOW", "api.video-preview.overflow");
+            throw previewProblem(org.springframework.http.HttpStatus.UNPROCESSABLE_CONTENT,
+                    "VIDEO_COMPOSITION_AUDIO_OVERFLOW", "api.video-preview.overflow");
         } catch (IllegalArgumentException invalid) {
-            throw previewProblem(org.springframework.http.HttpStatus.BAD_REQUEST, "VIDEO_COMPOSITION_INVALID", "api.video-composition.invalid");
+            throw previewProblem(org.springframework.http.HttpStatus.BAD_REQUEST, "VIDEO_COMPOSITION_INVALID",
+                    "api.video-composition.invalid");
         } catch (IOException | MediaToolRunner.MediaToolException failure) {
-            throw previewProblem(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, "VIDEO_PREVIEW_FAILED", "api.video-preview.failed");
+            throw previewProblem(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, "VIDEO_PREVIEW_FAILED",
+                    "api.video-preview.failed");
         } finally {
             if (scratch != null) {
                 try (var paths = Files.walk(scratch)) {
-                    for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
+                    for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
+                        Files.deleteIfExists(path);
                 } catch (IOException failure) {
-                    org.slf4j.LoggerFactory.getLogger(LocalVideoCompositionProcessor.class).warn("Video preview scratch cleanup failed");
+                    org.slf4j.LoggerFactory.getLogger(LocalVideoCompositionProcessor.class)
+                            .warn("Video preview scratch cleanup failed");
                 }
             }
             previews.release();
         }
     }
-    private static dev.agenvas.shared.error.ApiProblemException previewProblem(org.springframework.http.HttpStatus status, String code, String message) {
+    private static dev.agenvas.shared.error.ApiProblemException previewProblem(
+            org.springframework.http.HttpStatus status, String code, String message) {
         var text = dev.agenvas.shared.i18n.ApiMessage.of(message);
         return new dev.agenvas.shared.error.ApiProblemException(status, code, text, text, false);
     }
 
     private Map<UUID, LocalVideoCompositionRenderer.Source> resolve(AttemptContext context) {
-        return resolve(context.ownerId(), context.lease().projectId(), context.lease().input().path("videoComposition"), context.lease().input().path("mediaInput"));
+        return resolve(context.ownerId(), context.lease().projectId(), context.lease().input().path("videoComposition"),
+                context.lease().input().path("mediaInput"));
     }
 
-    private Map<UUID, LocalVideoCompositionRenderer.Source> resolve(UUID owner, UUID project, JsonNode composition, JsonNode mediaInput) {
+    private Map<UUID, LocalVideoCompositionRenderer.Source> resolve(UUID owner, UUID project, JsonNode composition,
+            JsonNode mediaInput) {
         if (!composition.isObject() || !composition.path("shots").isArray() || composition.path("shots").isEmpty()
-                || composition.path("shots").size() > limits.maxShots() || !Set.of("MUTE", "BACKGROUND", "KEEP").contains(composition.path("originalAudioMode").asText()))
+                || composition.path("shots").size() > limits.maxShots()
+                || !Set.of("MUTE", "BACKGROUND", "KEEP").contains(composition.path("originalAudioMode").asText()))
             throw new IllegalArgumentException("Invalid frozen composition");
         Map<UUID, Artifact.Kind> required = new HashMap<>();
         int lineCount = 0;
@@ -154,23 +184,30 @@ public class LocalVideoCompositionProcessor {
             int duration = integer(shot, "durationMs", 1, 600_000);
             integer(shot, "sourceStartMs", 0, 599_999);
             double speed = shot.path("speed").asDouble(1);
-            if (!Double.isFinite(speed) || speed < 0.5 || speed > 2) throw new IllegalArgumentException("Invalid shot speed");
+            if (!Double.isFinite(speed) || speed < 0.5 || speed > 2)
+                throw new IllegalArgumentException("Invalid shot speed");
             int frames = (int) Math.floor(duration * (double) VideoCompositionPlanner.FPS / (1000 * speed));
-            if (frames < 1) throw new IllegalArgumentException("Invalid output shot length");
+            if (frames < 1)
+                throw new IllegalArgumentException("Invalid output shot length");
             int outputDuration = frames * 1000 / VideoCompositionPlanner.FPS;
             int fade = shot.has("fadeMs") ? integer(shot, "fadeMs", 0, 500) : 0;
-            if (fade * 2 > outputDuration) throw new IllegalArgumentException("Invalid shot fade");
+            if (fade * 2 > outputDuration)
+                throw new IllegalArgumentException("Invalid shot fade");
             totalFrames += frames;
-            if (!shot.path("lines").isArray()) throw new IllegalArgumentException("Invalid frozen dialogue list");
+            if (!shot.path("lines").isArray())
+                throw new IllegalArgumentException("Invalid frozen dialogue list");
             for (JsonNode line : shot.path("lines")) {
                 lineCount++;
                 requireKind(required, UUID.fromString(line.path("audioVersionId").asText()), Artifact.Kind.AUDIO);
-                if (line.hasNonNull("startMs")) integer(line, "startMs", 0, outputDuration - 1);
+                if (line.hasNonNull("startMs"))
+                    integer(line, "startMs", 0, outputDuration - 1);
             }
         }
-        if (lineCount > limits.maxLines() || totalFrames > limits.maxFrames()) throw new IllegalArgumentException("Composition bounds exceeded");
+        if (lineCount > limits.maxLines() || totalFrames > limits.maxFrames())
+            throw new IllegalArgumentException("Composition bounds exceeded");
         JsonNode music = composition.path("music");
-        if (music.isObject()) requireKind(required, UUID.fromString(music.path("audioVersionId").asText()), Artifact.Kind.AUDIO);
+        if (music.isObject())
+            requireKind(required, UUID.fromString(music.path("audioVersionId").asText()), Artifact.Kind.AUDIO);
         Map<UUID, LocalVideoCompositionRenderer.Source> resolved = new HashMap<>();
         Set<UUID> assetIds = new HashSet<>();
         long bytes = 0;
@@ -178,17 +215,21 @@ public class LocalVideoCompositionProcessor {
             UUID id = entry.getKey();
             var version = artifacts.requireMediaVersionForTask(owner, project, id, entry.getValue());
             String group = entry.getValue() == Artifact.Kind.VIDEO ? "videos" : "audios";
-            long matching = mediaInput.path(group).valueStream().filter(reference ->
-                    id.toString().equals(reference.path("versionId").asText())
-                            && version.artifactId().toString().equals(reference.path("artifactId").asText())).count();
-            if (matching != 1) throw new IllegalArgumentException("Composition input was not pinned");
+            long matching = mediaInput.path(group).valueStream()
+                    .filter(reference -> id.toString().equals(reference.path("versionId").asText())
+                            && version.artifactId().toString().equals(reference.path("artifactId").asText()))
+                    .count();
+            if (matching != 1)
+                throw new IllegalArgumentException("Composition input was not pinned");
             var file = assets.get(owner, project, UUID.fromString(version.content().path("assetId").asText()));
             Asset asset = file.asset();
             if (!asset.mediaKind().name().equals(entry.getValue().name()) || asset.durationMs() == null
                     || asset.durationMs() < 1 || asset.durationMs() > 600_000 || asset.byteSize() < 1)
                 throw new IllegalArgumentException("Invalid composition source");
-            if (assetIds.add(asset.id())) bytes = Math.addExact(bytes, asset.byteSize());
-            if (bytes > limits.maxSourceBytes()) throw new IllegalArgumentException("Composition source byte bound exceeded");
+            if (assetIds.add(asset.id()))
+                bytes = Math.addExact(bytes, asset.byteSize());
+            if (bytes > limits.maxSourceBytes())
+                throw new IllegalArgumentException("Composition source byte bound exceeded");
             resolved.put(id, new LocalVideoCompositionRenderer.Source(file.path(), asset.durationMs()));
         }
         for (JsonNode shot : composition.path("shots")) {
@@ -212,11 +253,13 @@ public class LocalVideoCompositionProcessor {
 
     private static void requireKind(Map<UUID, Artifact.Kind> required, UUID id, Artifact.Kind kind) {
         Artifact.Kind previous = required.putIfAbsent(id, kind);
-        if (previous != null && previous != kind) throw new IllegalArgumentException("Composition source kind mismatch");
+        if (previous != null && previous != kind)
+            throw new IllegalArgumentException("Composition source kind mismatch");
     }
     private static int integer(JsonNode object, String field, int minimum, int maximum) {
         JsonNode value = object.path(field);
-        if (!value.isIntegralNumber() || !value.canConvertToInt() || value.intValue() < minimum || value.intValue() > maximum)
+        if (!value.isIntegralNumber() || !value.canConvertToInt() || value.intValue() < minimum
+                || value.intValue() > maximum)
             throw new IllegalArgumentException("Invalid composition timing");
         return value.intValue();
     }

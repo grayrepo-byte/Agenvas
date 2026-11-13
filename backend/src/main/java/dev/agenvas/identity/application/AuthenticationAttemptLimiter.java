@@ -74,5 +74,6 @@ public class AuthenticationAttemptLimiter {
      * @param failures 当前窗口累计失败次数
      * @param startedAt 窗口起始时刻
      */
-    private record FailureWindow(int failures, Instant startedAt) {}
+    private record FailureWindow(int failures, Instant startedAt) {
+    }
 }

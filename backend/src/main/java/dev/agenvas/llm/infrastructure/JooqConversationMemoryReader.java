@@ -41,7 +41,8 @@ public class JooqConversationMemoryReader implements ConversationMemoryReader {
     @Transactional(readOnly = true)
     public ConversationMemory read(UUID projectId, List<UUID> authorizedPriorRunIds) {
         List<UUID> priorIds = List.copyOf(new LinkedHashSet<>(authorizedPriorRunIds));
-        if (priorIds.isEmpty()) return new ConversationMemory(List.of(), false, 0);
+        if (priorIds.isEmpty())
+            return new ConversationMemory(List.of(), false, 0);
         List<UUID> selected = new ArrayList<>();
         selected.add(priorIds.get(FIRST_RUN_INDEX));
         int recentStart = Math.max(1, priorIds.size() - MAX_HISTORY_RUNS + 1);
@@ -86,8 +87,8 @@ public class JooqConversationMemoryReader implements ConversationMemoryReader {
         Field<String> boundedSummary = DSL.left(
                 DSL.jsonbGetAttributeAsText(TOOL_EXECUTION.RESULT_JSON, "userVisibleSummary"),
                 sourceLimit).as("text");
-        Field<String> resultStatus =
-                DSL.jsonbGetAttributeAsText(TOOL_EXECUTION.RESULT_JSON, "status").as("result_status");
+        Field<String> resultStatus = DSL.jsonbGetAttributeAsText(TOOL_EXECUTION.RESULT_JSON, "status")
+                .as("result_status");
         dsl.select(TOOL_EXECUTION.RUN_ID, boundedSummary, resultStatus)
                 .from(TOOL_EXECUTION)
                 .where(TOOL_EXECUTION.PROJECT_ID.eq(projectId))
@@ -140,7 +141,8 @@ public class JooqConversationMemoryReader implements ConversationMemoryReader {
     }
 
     private static String bounded(String text, int maximum) {
-        if (codePoints(text) <= maximum) return text;
+        if (codePoints(text) <= maximum)
+            return text;
         int retained = maximum - codePoints(TRUNCATION_MARKER);
         return text.substring(0, text.offsetByCodePoints(0, retained)) + TRUNCATION_MARKER;
     }
@@ -149,7 +151,8 @@ public class JooqConversationMemoryReader implements ConversationMemoryReader {
         return text.codePointCount(0, text.length());
     }
 
-    private record PublicText(UUID runId, String text, RunAction.Status status) {}
+    private record PublicText(UUID runId, String text, RunAction.Status status) {
+    }
 
     private static final class PublicRun {
         private final UUID id;

@@ -44,15 +44,24 @@ class TaskQueueMetricsPostgresIT {
         registry.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private AgentRunService runs;
-    @Autowired private TaskService tasks;
-    @Autowired private TaskQueueMetrics metrics;
-    @Autowired private MeterRegistry meters;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private ObjectMapper mapper;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private AgentInstanceService agents;
+    @Autowired
+    private AgentRunService runs;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private TaskQueueMetrics metrics;
+    @Autowired
+    private MeterRegistry meters;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private ObjectMapper mapper;
 
     @Test
     void oldestDueReadyAgeExcludesFutureWorkAndHasNoIdentifierLabels() {
@@ -69,7 +78,7 @@ class TaskQueueMetricsPostgresIT {
         jdbc.sql("update task set updated_at = now() - interval '120 seconds' where id = :id")
                 .param("id", due.id()).update();
         jdbc.sql("update task set updated_at = now() - interval '600 seconds', "
-                        + "next_action_at = now() + interval '1 hour' where id = :id")
+                + "next_action_at = now() + interval '1 hour' where id = :id")
                 .param("id", future.id()).update();
 
         metrics.refresh();

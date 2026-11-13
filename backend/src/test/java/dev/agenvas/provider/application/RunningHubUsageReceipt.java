@@ -10,7 +10,8 @@ import tools.jackson.databind.ObjectMapper;
 /** Reads the producer's saved identity before any original-task query is allowed. */
 record RunningHubUsageReceipt(String origin, RunningHubDefinition.TargetType targetType,
         String targetId, List<Attempt> attempts) {
-    record Attempt(String name, String providerRequestId) {}
+    record Attempt(String name, String providerRequestId) {
+    }
 
     static RunningHubUsageReceipt parse(JsonNode receipt) {
         String origin = requiredText(receipt, "origin");
@@ -35,7 +36,8 @@ record RunningHubUsageReceipt(String origin, RunningHubDefinition.TargetType tar
         require("SUCCESS".equals(response.path("status").asText()), "Original provider task has not succeeded");
         var videos = mapper.createArrayNode();
         for (JsonNode result : response.path("results")) {
-            if (RunningHubResultArchive.outputKind(result.path("outputType").asText()) == RunningHubDefinition.OutputKind.VIDEO)
+            if (RunningHubResultArchive
+                    .outputKind(result.path("outputType").asText()) == RunningHubDefinition.OutputKind.VIDEO)
                 videos.add(result);
         }
         // This usage-only check never downloads a companion ZIP. ZIP decoding and
@@ -44,7 +46,8 @@ record RunningHubUsageReceipt(String origin, RunningHubDefinition.TargetType tar
         var direct = mapper.createObjectNode();
         direct.set("results", videos);
         direct.set("usage", response.path("usage"));
-        var definition = new RunningHubDefinition(RunningHubDefinition.SCHEMA_VERSION, RunningHubDefinition.PROTOCOL_VERSION,
+        var definition = new RunningHubDefinition(RunningHubDefinition.SCHEMA_VERSION,
+                RunningHubDefinition.PROTOCOL_VERSION,
                 targetType, targetId, List.of(), List.of(),
                 List.of(new RunningHubDefinition.Output(null, RunningHubDefinition.OutputKind.VIDEO, true, 1)),
                 "default", false, false, null, null, null, null);
@@ -58,6 +61,7 @@ record RunningHubUsageReceipt(String origin, RunningHubDefinition.TargetType tar
     }
 
     private static void require(boolean valid, String message) {
-        if (!valid) throw new IllegalArgumentException(message);
+        if (!valid)
+            throw new IllegalArgumentException(message);
     }
 }

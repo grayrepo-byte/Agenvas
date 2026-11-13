@@ -19,7 +19,8 @@ final class SystemLogRedactor {
     private static final Pattern URL_QUERY = Pattern.compile("(?i)(https?://[^\\s\\\"'<>?]+)\\?[^\\s\\\"'<>]*");
     private static final Pattern URL_CREDENTIAL = Pattern.compile("(?i)(https?://)[^/\\s@]+@");
 
-    private SystemLogRedactor() {}
+    private SystemLogRedactor() {
+    }
 
     static String redact(String line) {
         String safe = ANSI.matcher(line).replaceAll("");

@@ -21,19 +21,25 @@ class ComfyUiHistoryTest {
     private static final String SYNTHETIC_PROXY_PROMPT_ID = "2100000000000000123";
     private final String promptId = SYNTHETIC_PROXY_PROMPT_ID;
 
-    @Test void publishedOutputUsesSelectedNodeAndSafeSubfolder() {
+    @Test
+    void publishedOutputUsesSelectedNodeAndSafeSubfolder() {
         var output = new ComfyUiWorkflowDefinition.Output("9", "images");
-        assertThat(ComfyUiHistory.published(history(true, "success", "image.png", "output", "render/day"), promptId, output, Task.Kind.IMAGE_GENERATION))
+        assertThat(ComfyUiHistory.published(history(true, "success", "image.png", "output", "render/day"), promptId,
+                output, Task.Kind.IMAGE_GENERATION))
                 .isEqualTo(new ComfyUiHistory.PublishedReady("image.png", "render/day", "image/png"));
-        assertThatThrownBy(() -> ComfyUiHistory.published(history(true, "success", "image.png", "output", "render/day"), promptId,
-                new ComfyUiWorkflowDefinition.Output("8", "images"), Task.Kind.IMAGE_GENERATION)).isInstanceOf(ComfyUiClient.ProtocolFailure.class);
+        assertThatThrownBy(
+                () -> ComfyUiHistory.published(history(true, "success", "image.png", "output", "render/day"), promptId,
+                        new ComfyUiWorkflowDefinition.Output("8", "images"), Task.Kind.IMAGE_GENERATION))
+                .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
         assertThat(ComfyUiHistory.published(mapper.createObjectNode(), promptId, output, Task.Kind.IMAGE_GENERATION))
                 .isInstanceOf(ComfyUiHistory.PublishedPending.class);
-        assertThat(ComfyUiHistory.published(history(false, "error", "image.png", "output", ""), promptId, output, Task.Kind.IMAGE_GENERATION))
+        assertThat(ComfyUiHistory.published(history(false, "error", "image.png", "output", ""), promptId, output,
+                Task.Kind.IMAGE_GENERATION))
                 .isInstanceOf(ComfyUiHistory.PublishedFailed.class);
     }
 
-    @Test void publishedOutputAcceptsSuccessfulProxyHistoryWithoutCompletedFlag() {
+    @Test
+    void publishedOutputAcceptsSuccessfulProxyHistoryWithoutCompletedFlag() {
         var output = new ComfyUiWorkflowDefinition.Output("9", "images");
         JsonNode response = history(true, "success", "image.png", "output", "render/day");
         ((ObjectNode) response.path(promptId).path("status")).remove("completed");
@@ -42,16 +48,21 @@ class ComfyUiHistoryTest {
                 .isEqualTo(new ComfyUiHistory.PublishedReady("image.png", "render/day", "image/png"));
     }
 
-    @Test void publishedOutputRejectsTraversalAndUnexpectedTypes() {
+    @Test
+    void publishedOutputRejectsTraversalAndUnexpectedTypes() {
         var output = new ComfyUiWorkflowDefinition.Output("9", "images");
         for (String folder : java.util.List.of("../private", "/absolute", "a/../b", "a\\b", "a//b", "a/%2e%2e"))
-            assertThatThrownBy(() -> ComfyUiHistory.published(history(true, "success", "image.png", "output", folder), promptId, output, Task.Kind.IMAGE_GENERATION))
+            assertThatThrownBy(() -> ComfyUiHistory.published(history(true, "success", "image.png", "output", folder),
+                    promptId, output, Task.Kind.IMAGE_GENERATION))
                     .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
-        assertThatThrownBy(() -> ComfyUiHistory.published(history(true, "success", "image.png", "input", ""), promptId, output, Task.Kind.IMAGE_GENERATION)).isInstanceOf(ComfyUiClient.ProtocolFailure.class);
-        assertThatThrownBy(() -> ComfyUiHistory.published(history(true, "success", "image.png", "output", ""), promptId, output, Task.Kind.VIDEO_GENERATION)).isInstanceOf(ComfyUiClient.ProtocolFailure.class);
+        assertThatThrownBy(() -> ComfyUiHistory.published(history(true, "success", "image.png", "input", ""), promptId,
+                output, Task.Kind.IMAGE_GENERATION)).isInstanceOf(ComfyUiClient.ProtocolFailure.class);
+        assertThatThrownBy(() -> ComfyUiHistory.published(history(true, "success", "image.png", "output", ""), promptId,
+                output, Task.Kind.VIDEO_GENERATION)).isInstanceOf(ComfyUiClient.ProtocolFailure.class);
     }
 
-    @Test void publishedOutputSelectsFirstSafeMatchingMediaInProviderOrder() {
+    @Test
+    void publishedOutputSelectsFirstSafeMatchingMediaInProviderOrder() {
         var response = history(true, "success", "preview.png", "temp", "");
         var files = (tools.jackson.databind.node.ArrayNode) response.at("/" + promptId + "/outputs/9/images");
         files.addObject().put("filename", "../unsafe.mp4").put("type", "output");
@@ -66,7 +77,8 @@ class ComfyUiHistoryTest {
                 .isEqualTo(new ComfyUiHistory.PublishedReady("image.png", "", "image/png"));
     }
 
-    @Test void fixedImageSelectsFirstSafeOutputAndIgnoresPreviewsAndExtras() {
+    @Test
+    void fixedImageSelectsFirstSafeOutputAndIgnoresPreviewsAndExtras() {
         var response = history(true, "success", "preview.png", "temp", "");
         var files = (tools.jackson.databind.node.ArrayNode) response.at("/" + promptId + "/outputs/9/images");
         files.addObject().put("filename", "../unsafe.png").put("type", "output");
@@ -90,7 +102,8 @@ class ComfyUiHistoryTest {
                 .isEqualTo(new ComfyUiHistory.VideoReady("first.mp4"));
     }
 
-    @Test void fixedVideoSkipsNonAnimatedAndUnsafeMp4Candidates() {
+    @Test
+    void fixedVideoSkipsNonAnimatedAndUnsafeMp4Candidates() {
         var response = videoHistory(true, "success", "still.mp4", false);
         var output = (ObjectNode) response.at("/" + promptId + "/outputs/14");
         var files = (tools.jackson.databind.node.ArrayNode) output.path("images");
@@ -192,7 +205,8 @@ class ComfyUiHistoryTest {
     @ValueSource(strings = {"", "running", "unknown", "SUCCESS", "ERROR"})
     void absentCompletedFlagRequiresTrustedTerminalStatus(String statusCode) {
         JsonNode response = withoutCompleted(history(true, statusCode, "image.png", "output", ""));
-        if (statusCode == null) ((ObjectNode) response.path(promptId).path("status")).remove("status_str");
+        if (statusCode == null)
+            ((ObjectNode) response.path(promptId).path("status")).remove("status_str");
         assertBothMediaReject(response, "History status is malformed");
     }
 

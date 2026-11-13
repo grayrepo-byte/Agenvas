@@ -7,7 +7,8 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 class McpCommandSchemaTest {
-    @Test void schemasRequireStableCommandsAndNeverAcceptServerAuthority() {
+    @Test
+    void schemasRequireStableCommandsAndNeverAcceptServerAuthority() {
         McpToolPolicy policy = new McpToolPolicy(new ObjectMapper());
         for (var definition : policy.definitions()) {
             var input = definition.path("inputSchema");
@@ -17,7 +18,8 @@ class McpCommandSchemaTest {
                 assertThat(input.path("required").valueStream().map(n -> n.asText()).toList()).contains("projectId");
             if (policy.requiredScope(definition.path("name").asText()) != McpScope.READ)
                 assertThat(input.path("required").valueStream().map(n -> n.asText()).toList()).contains("commandId");
-            for (String forbidden : Set.of("userId", "ownerId", "tokenId", "runId", "operationId", "approved", "endpoint", "apiKey"))
+            for (String forbidden : Set.of("userId", "ownerId", "tokenId", "runId", "operationId", "approved",
+                    "endpoint", "apiKey"))
                 assertThat(input.path("properties").has(forbidden)).isFalse();
         }
     }

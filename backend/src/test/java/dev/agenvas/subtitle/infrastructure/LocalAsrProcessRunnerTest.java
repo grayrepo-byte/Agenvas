@@ -17,21 +17,29 @@ import org.junit.jupiter.api.io.TempDir;
 
 /** Controlled native processes test lifecycle and isolation, not speech recognition quality. */
 class LocalAsrProcessRunnerTest {
-    @TempDir Path temp;
+    @TempDir
+    Path temp;
     private final LocalAsrProcessRunner runner = new LocalAsrProcessRunner();
 
-    @Test void enforcesTimeoutAndCancellationWhileTheNativeProcessIsStillRunning() {
-        assertThatThrownBy(() -> runner.run(Path.of("/bin/sleep"), List.of("5"), temp, Duration.ofMillis(100), () -> false, () -> {}))
+    @Test
+    void enforcesTimeoutAndCancellationWhileTheNativeProcessIsStillRunning() {
+        assertThatThrownBy(
+                () -> runner.run(Path.of("/bin/sleep"), List.of("5"), temp, Duration.ofMillis(100), () -> false, () -> {
+                }))
                 .isInstanceOfSatisfying(LocalAsrException.class,
                         failure -> assertThat(failure.code()).isEqualTo(LocalAsrException.Code.TIMED_OUT));
         var checks = new AtomicInteger();
         assertThatThrownBy(() -> runner.run(Path.of("/bin/sleep"), List.of("5"), temp, Duration.ofSeconds(2),
-                () -> checks.incrementAndGet() > 1, () -> {})).isInstanceOf(CancellationException.class);
+                () -> checks.incrementAndGet() > 1, () -> {
+                })).isInstanceOf(CancellationException.class);
     }
 
-    @Test void clearsInheritedEnvironmentAndSuppressesNativeErrorOutput() throws Exception {
-        Path executable = script("#!/bin/sh\n/usr/bin/env > process-environment\necho 'PRIVATE_NATIVE_ERROR' >&2\nexit 7\n");
-        assertThatThrownBy(() -> runner.run(executable, List.of(), temp, Duration.ofSeconds(2), () -> false, () -> {}))
+    @Test
+    void clearsInheritedEnvironmentAndSuppressesNativeErrorOutput() throws Exception {
+        Path executable = script(
+                "#!/bin/sh\n/usr/bin/env > process-environment\necho 'PRIVATE_NATIVE_ERROR' >&2\nexit 7\n");
+        assertThatThrownBy(() -> runner.run(executable, List.of(), temp, Duration.ofSeconds(2), () -> false, () -> {
+        }))
                 .isInstanceOfSatisfying(LocalAsrException.class, failure -> {
                     assertThat(failure.code()).isEqualTo(LocalAsrException.Code.FAILED);
                     assertThat(failure.getMessage()).doesNotContain("PRIVATE_NATIVE_ERROR", temp.toString());
@@ -40,31 +48,44 @@ class LocalAsrProcessRunnerTest {
                 .doesNotContain("HOME=", "USER=", "JAVA_HOME=", "OPENAI_API_KEY=");
     }
 
-    @Test void checksScratchBudgetAndSymlinksBeforeAndAfterAQuickNativeProcess() throws Exception {
+    @Test
+    void checksScratchBudgetAndSymlinksBeforeAndAfterAQuickNativeProcess() throws Exception {
         Path oversized = temp.resolve("oversized");
         try (var file = new RandomAccessFile(oversized.toFile(), "rw")) {
             file.setLength(LocalAsrProcessRunner.MAX_SCRATCH_BYTES + 1);
         }
-        assertThatThrownBy(() -> runner.run(Path.of("/usr/bin/true"), List.of(), temp, Duration.ofSeconds(2), () -> false, () -> {}))
+        assertThatThrownBy(
+                () -> runner.run(Path.of("/usr/bin/true"), List.of(), temp, Duration.ofSeconds(2), () -> false, () -> {
+                }))
                 .isInstanceOfSatisfying(LocalAsrException.class,
                         failure -> assertThat(failure.code()).isEqualTo(LocalAsrException.Code.SCRATCH_LIMIT));
         Files.delete(oversized);
         Path executable = script("#!/bin/sh\n/bin/ln -s controlled-test-process linked-output\n");
-        assertThatThrownBy(() -> runner.run(executable, List.of(), temp, Duration.ofSeconds(2), () -> false, () -> {}))
+        assertThatThrownBy(() -> runner.run(executable, List.of(), temp, Duration.ofSeconds(2), () -> false, () -> {
+        }))
                 .isInstanceOfSatisfying(LocalAsrException.class,
                         failure -> assertThat(failure.code()).isEqualTo(LocalAsrException.Code.INVALID_OUTPUT));
     }
 
-    @Test void keepsTheThreadInterruptFlagAndPropagatesLeaseHeartbeatFailure() {
+    @Test
+    void keepsTheThreadInterruptFlagAndPropagatesLeaseHeartbeatFailure() {
         Thread.currentThread().interrupt();
         try {
-            assertThatThrownBy(() -> runner.run(Path.of("/usr/bin/true"), List.of(), temp, Duration.ofSeconds(2), () -> false, () -> {}))
+            assertThatThrownBy(() -> runner.run(Path.of("/usr/bin/true"), List.of(), temp, Duration.ofSeconds(2),
+                    () -> false, () -> {
+                    }))
                     .isInstanceOf(CancellationException.class);
             assertThat(Thread.currentThread().isInterrupted()).isTrue();
-        } finally { Thread.interrupted(); }
+        } finally {
+            Thread.interrupted();
+        }
         var leaseFailure = new IllegalStateException("synthetic lease lost");
-        assertThatThrownBy(() -> runner.run(Path.of("/bin/sleep"), List.of("5"), temp, Duration.ofSeconds(2), () -> false,
-                () -> { throw leaseFailure; })).isSameAs(leaseFailure);
+        assertThatThrownBy(
+                () -> runner.run(Path.of("/bin/sleep"), List.of("5"), temp, Duration.ofSeconds(2), () -> false,
+                        () -> {
+                            throw leaseFailure;
+                        }))
+                .isSameAs(leaseFailure);
     }
 
     private Path script(String contents) throws Exception {

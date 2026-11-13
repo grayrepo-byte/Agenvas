@@ -45,29 +45,43 @@ import tools.jackson.databind.ObjectMapper;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class)
 class ResourceCatalogPostgresIT {
-    @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     private static final Path STORAGE_ROOT = temporaryRoot();
 
-    @DynamicPropertySource static void properties(DynamicPropertyRegistry registry) {
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("agenvas.storage.root", STORAGE_ROOT::toString);
     }
 
-    @Autowired IdentityService identities;
-    @Autowired ProjectService projects;
-    @Autowired ArtifactService artifacts;
-    @Autowired AssetService assets;
-    @Autowired MediaToolRunner mediaTools;
-    @Autowired ResourceCatalogService resources;
-    @Autowired CanvasService canvas;
-    @Autowired MediaDraftService drafts;
-    @Autowired JdbcClient jdbc;
-    @Autowired ObjectMapper mapper;
-    @Autowired WebApplicationContext context;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    ProjectService projects;
+    @Autowired
+    ArtifactService artifacts;
+    @Autowired
+    AssetService assets;
+    @Autowired
+    MediaToolRunner mediaTools;
+    @Autowired
+    ResourceCatalogService resources;
+    @Autowired
+    CanvasService canvas;
+    @Autowired
+    MediaDraftService drafts;
+    @Autowired
+    JdbcClient jdbc;
+    @Autowired
+    ObjectMapper mapper;
+    @Autowired
+    WebApplicationContext context;
 
-    @Test void browsesAllExactResultsWithoutCanvasLibraryOrDefaultSelectionAndEnforcesOwnership() throws Exception {
+    @Test
+    void browsesAllExactResultsWithoutCanvasLibraryOrDefaultSelectionAndEnforcesOwnership() throws Exception {
         var owner = identities.setup("resource-admin", "synthetic-password-123");
         var auth = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of()));
         var mvc = webAppContextSetup(context).apply(springSecurity()).build();
@@ -98,11 +112,14 @@ class ResourceCatalogPostgresIT {
         String canvasUrl = "/api/v1/projects/" + secondProject.id() + "/canvas/commands";
         UUID itemId = UUID.randomUUID();
         var placement = mapper.createObjectNode().put("type", "PLACE_ARTIFACT").put("itemId", itemId.toString())
-                .put("artifactId", image.artifact().id().toString()).put("versionId", image.resourceDefaultVersion().id().toString())
+                .put("artifactId", image.artifact().id().toString())
+                .put("versionId", image.resourceDefaultVersion().id().toString())
                 .put("x", 120).put("y", 80).put("width", 640).put("height", 360).put("zIndex", 0);
-        var batch = mapper.createObjectNode(); batch.putArray("commands").add(placement);
+        var batch = mapper.createObjectNode();
+        batch.putArray("commands").add(placement);
         for (int attempt = 0; attempt < 2; attempt++) {
-            mvc.perform(post(canvasUrl).with(auth).with(csrf()).contentType("application/json").content(mapper.writeValueAsBytes(batch)))
+            mvc.perform(post(canvasUrl).with(auth).with(csrf()).contentType("application/json")
+                    .content(mapper.writeValueAsBytes(batch)))
                     .andExpect(status().isOk());
             if (attempt == 0) {
                 var before = artifacts.get(owner.userId(), secondProject.id(), image.artifact().id());
@@ -114,27 +131,36 @@ class ResourceCatalogPostgresIT {
         assertThat(canvas.list(owner.userId(), secondProject.id())).hasSize(1);
         var node = canvas.list(owner.userId(), secondProject.id()).getFirst().item();
         assertThat(node.selectedVersionId()).isEqualTo(image.resourceDefaultVersion().id());
-        assertThat(canvas.listMediaVersions(owner.userId(), secondProject.id(), itemId)).extracting(version -> version.id())
+        assertThat(canvas.listMediaVersions(owner.userId(), secondProject.id(), itemId))
+                .extracting(version -> version.id())
                 .containsExactly(image.resourceDefaultVersion().id());
         assertThat(drafts.get(owner.userId(), secondProject.id(), itemId).prompt()).isEmpty();
-        assertThat(artifacts.get(owner.userId(), secondProject.id(), image.artifact().id()).artifact().resourceDefaultVersionId())
+        assertThat(artifacts.get(owner.userId(), secondProject.id(), image.artifact().id()).artifact()
+                .resourceDefaultVersionId())
                 .isEqualTo(oldImage.resourceDefaultVersion().id());
         placement.put("versionId", oldImage.resourceDefaultVersion().id().toString());
-        mvc.perform(post(canvasUrl).with(auth).with(csrf()).contentType("application/json").content(mapper.writeValueAsBytes(batch)))
+        mvc.perform(post(canvasUrl).with(auth).with(csrf()).contentType("application/json")
+                .content(mapper.writeValueAsBytes(batch)))
                 .andExpect(status().isConflict());
-        placement.put("itemId", UUID.randomUUID().toString()).put("versionId", audio.resourceDefaultVersion().id().toString());
-        mvc.perform(post(canvasUrl).with(auth).with(csrf()).contentType("application/json").content(mapper.writeValueAsBytes(batch)))
+        placement.put("itemId", UUID.randomUUID().toString()).put("versionId",
+                audio.resourceDefaultVersion().id().toString());
+        mvc.perform(post(canvasUrl).with(auth).with(csrf()).contentType("application/json")
+                .content(mapper.writeValueAsBytes(batch)))
                 .andExpect(status().isNotFound());
         var invalidBatch = mapper.createObjectNode();
         invalidBatch.putArray("commands")
-                .add(placement.deepCopy().put("itemId", UUID.randomUUID().toString()).put("versionId", image.resourceDefaultVersion().id().toString()))
+                .add(placement.deepCopy().put("itemId", UUID.randomUUID().toString()).put("versionId",
+                        image.resourceDefaultVersion().id().toString()))
                 .add(placement);
-        mvc.perform(post(canvasUrl).with(auth).with(csrf()).contentType("application/json").content(mapper.writeValueAsBytes(invalidBatch)))
+        mvc.perform(post(canvasUrl).with(auth).with(csrf()).contentType("application/json")
+                .content(mapper.writeValueAsBytes(invalidBatch)))
                 .andExpect(status().isNotFound());
         assertThat(canvas.list(owner.userId(), secondProject.id())).hasSize(1); // Earlier valid placement rolled back too.
-        var removal = mapper.createObjectNode(); removal.putArray("commands").addObject()
+        var removal = mapper.createObjectNode();
+        removal.putArray("commands").addObject()
                 .put("type", "REMOVE").put("itemId", itemId.toString()).put("expectedVersion", node.version());
-        mvc.perform(post(canvasUrl).with(auth).with(csrf()).contentType("application/json").content(mapper.writeValueAsBytes(removal)))
+        mvc.perform(post(canvasUrl).with(auth).with(csrf()).contentType("application/json")
+                .content(mapper.writeValueAsBytes(removal)))
                 .andExpect(status().isOk());
         assertThat(canvas.list(owner.userId(), secondProject.id())).isEmpty();
         // Removed and unselected results survive, with a precise project scope and no empty identities.
@@ -147,9 +173,15 @@ class ResourceCatalogPostgresIT {
         assertThat(projectJson.path("items").size()).isEqualTo(2);
         assertThat(projectJson.path("items").get(0).path("content").path("text").asText()).isEqualTo("Revised text");
         mvc.perform(get("/api/v1/projects/" + firstProject.id() + "/resources")).andExpect(status().isUnauthorized());
-        assertThat(resources.listProject(owner.userId(), secondProject.id(), Artifact.Kind.IMAGE, "Sample image", null, 1).nextCursor()).isNotNull();
-        mvc.perform(get("/api/v1/projects/" + UUID.randomUUID() + "/resources").with(auth)).andExpect(status().isNotFound());
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> resources.listProject(UUID.randomUUID(), firstProject.id(), null, "", null, null))
+        assertThat(
+                resources.listProject(owner.userId(), secondProject.id(), Artifact.Kind.IMAGE, "Sample image", null, 1)
+                        .nextCursor())
+                .isNotNull();
+        mvc.perform(get("/api/v1/projects/" + UUID.randomUUID() + "/resources").with(auth))
+                .andExpect(status().isNotFound());
+        org.assertj.core.api.Assertions
+                .assertThatThrownBy(
+                        () -> resources.listProject(UUID.randomUUID(), firstProject.id(), null, "", null, null))
                 .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
         projects.archive(owner.userId(), secondProject.id(), secondProject.version());
         var page = resources.list(owner.userId(), null, "", null, 1);
@@ -159,17 +191,21 @@ class ResourceCatalogPostgresIT {
         var last = resources.list(owner.userId(), null, "", next.nextCursor(), 1);
         assertThat(last.items()).hasSize(1);
         assertThat(last.nextCursor()).isNull();
-        assertThat(java.util.stream.Stream.of(page, next, last).flatMap(part -> part.items().stream()).map(row -> row.versionId()))
-                .containsExactlyInAnyOrder(oldImage.resourceDefaultVersion().id(), image.resourceDefaultVersion().id(), audio.resourceDefaultVersion().id());
+        assertThat(java.util.stream.Stream.of(page, next, last).flatMap(part -> part.items().stream())
+                .map(row -> row.versionId()))
+                .containsExactlyInAnyOrder(oldImage.resourceDefaultVersion().id(), image.resourceDefaultVersion().id(),
+                        audio.resourceDefaultVersion().id());
         assertThat(resources.list(UUID.randomUUID(), null, "", null, null).items()).isEmpty();
         assertThat(resources.list(owner.userId(), Artifact.Kind.IMAGE, "Second", null, null).items())
-                .extracting(row -> row.versionId()).containsExactlyInAnyOrder(oldImage.resourceDefaultVersion().id(), image.resourceDefaultVersion().id());
+                .extracting(row -> row.versionId())
+                .containsExactlyInAnyOrder(oldImage.resourceDefaultVersion().id(), image.resourceDefaultVersion().id());
         assertThat(resources.list(owner.userId(), null, "%", null, null).items()).isEmpty();
         var response = mvc.perform(get("/api/v1/resources").with(auth).param("kind", "IMAGE"))
                 .andExpect(status().isOk()).andReturn().getResponse();
         var json = mapper.readTree(response.getContentAsString());
         assertThat(json.path("items").size()).isEqualTo(2);
-        assertThat(json.path("items").get(0).path("versionId").asText()).isEqualTo(oldImage.resourceDefaultVersion().id().toString());
+        assertThat(json.path("items").get(0).path("versionId").asText())
+                .isEqualTo(oldImage.resourceDefaultVersion().id().toString());
         assertThat(json.path("items").get(0).path("content").path("assetId").asText()).isEqualTo(assetId.toString());
         assertThat(artifacts.listVersions(owner.userId(), firstProject.id(), text.artifact().id())).hasSize(2);
         mvc.perform(get("/api/v1/resources").with(auth).param("kind", "TEXT")).andExpect(status().isBadRequest());
@@ -178,16 +214,21 @@ class ResourceCatalogPostgresIT {
         var audioJson = mapper.readTree(audioResponse.getContentAsString());
         assertThat(audioJson.path("items").size()).isEqualTo(1);
         assertThat(audioJson.path("items").get(0).path("kind").asText()).isEqualTo("AUDIO");
-        assertThat(audioJson.path("items").get(0).path("content").path("assetId").asText()).isEqualTo(audioAssetId.toString());
+        assertThat(audioJson.path("items").get(0).path("content").path("assetId").asText())
+                .isEqualTo(audioAssetId.toString());
         mvc.perform(get("/api/v1/resources")).andExpect(status().isUnauthorized());
         var invalid = mvc.perform(get("/api/v1/resources").with(auth).param("cursor", "!"))
                 .andExpect(status().isBadRequest()).andReturn().getResponse();
-        assertThat(mapper.readTree(invalid.getContentAsString()).path("code").asText()).isEqualTo("RESOURCE_QUERY_INVALID");
+        assertThat(mapper.readTree(invalid.getContentAsString()).path("code").asText())
+                .isEqualTo("RESOURCE_QUERY_INVALID");
         mvc.perform(get("/api/v1/resources").with(auth).param("limit", "0")).andExpect(status().isBadRequest());
     }
 
     private static Path temporaryRoot() {
-        try { return Files.createTempDirectory("agenvas-resource-catalog-"); }
-        catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
+        try {
+            return Files.createTempDirectory("agenvas-resource-catalog-");
+        } catch (java.io.IOException failure) {
+            throw new java.io.UncheckedIOException(failure);
+        }
     }
 }

@@ -53,13 +53,20 @@ class DirectMediaGenerationPlacementPostgresIT {
         registry.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private CanvasService canvas;
-    @Autowired private CanvasConnectionService connections;
-    @Autowired private MediaExecutionWorker worker;
-    @Autowired private WebApplicationContext context;
-    @Autowired private ObjectMapper mapper;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private CanvasService canvas;
+    @Autowired
+    private CanvasConnectionService connections;
+    @Autowired
+    private MediaExecutionWorker worker;
+    @Autowired
+    private WebApplicationContext context;
+    @Autowired
+    private ObjectMapper mapper;
 
     @Test
     void fillsAnEmptyCardThenRegeneratesInTheSameCard() throws Exception {
@@ -70,38 +77,38 @@ class DirectMediaGenerationPlacementPostgresIT {
         var auth = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of()));
         String base = "/api/v1/projects/" + project.id();
         JsonNode artifact = mapper.readTree(mvc.perform(post(base + "/artifacts")
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .header("Idempotency-Key", "placement-image-create")
-                        .content("{\"kind\":\"IMAGE\",\"title\":\"Concept\",\"content\":null}"))
+                .with(auth).with(csrf()).contentType("application/json")
+                .header("Idempotency-Key", "placement-image-create")
+                .content("{\"kind\":\"IMAGE\",\"title\":\"Concept\",\"content\":null}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         String artifactId = artifact.path("id").asText();
         String sourceItemId = UUID.randomUUID().toString();
         mvc.perform(post(base + "/canvas/commands").with(auth).with(csrf())
-                        .contentType("application/json")
-                        .content("{\"commands\":[{\"type\":\"PLACE_ARTIFACT\",\"itemId\":\""
-                                + sourceItemId + "\",\"artifactId\":\"" + artifactId
-                                + "\",\"x\":0,\"y\":0,\"width\":280,\"height\":240,"
-                                + "\"zIndex\":0,\"locked\":false}]}"))
+                .contentType("application/json")
+                .content("{\"commands\":[{\"type\":\"PLACE_ARTIFACT\",\"itemId\":\""
+                        + sourceItemId + "\",\"artifactId\":\"" + artifactId
+                        + "\",\"x\":0,\"y\":0,\"width\":280,\"height\":240,"
+                        + "\"zIndex\":0,\"locked\":false}]}"))
                 .andExpect(status().isOk());
         String draftPath = base + "/canvas-items/" + sourceItemId + "/media-draft";
         JsonNode firstDraft = mapper.readTree(mvc.perform(put(draftPath).with(auth).with(csrf())
-                        .contentType("application/json")
-                        .content("{\"expectedVersion\":0,\"prompt\":\"First image\","
-                                + "\"parameters\":{},\"videoInputMode\":null,"
-                                + "\"mediaInputs\":[],\"mentions\":[]}"))
+                .contentType("application/json")
+                .content("{\"expectedVersion\":0,\"prompt\":\"First image\","
+                        + "\"parameters\":{},\"videoInputMode\":null,"
+                        + "\"mediaInputs\":[],\"mentions\":[]}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         String runPath = base + "/artifacts/" + artifactId + "/run";
         JsonNode firstTask = mapper.readTree(mvc.perform(post(runPath).with(auth).with(csrf())
-                        .header("Idempotency-Key", "placement-first-run")
-                        .contentType("application/json")
-                        .content("{\"canvasItemId\":\"" + sourceItemId
-                                + "\",\"expectedDraftVersion\":"
-                                + firstDraft.path("version").asLong() + "}"))
+                .header("Idempotency-Key", "placement-first-run")
+                .contentType("application/json")
+                .content("{\"canvasItemId\":\"" + sourceItemId
+                        + "\",\"expectedDraftVersion\":"
+                        + firstDraft.path("version").asLong() + "}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
 
         assertThat(firstTask.at("/input/canvasItemId").asText()).isEqualTo(sourceItemId);
         JsonNode queuedTasks = mapper.readTree(mvc.perform(get(runPath).with(auth)
-                        .param("canvasItemId", sourceItemId))
+                .param("canvasItemId", sourceItemId))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(queuedTasks).singleElement().satisfies(task -> {
             assertThat(task.path("id").asText()).isEqualTo(firstTask.path("id").asText());
@@ -115,17 +122,17 @@ class DirectMediaGenerationPlacementPostgresIT {
         JsonNode currentDraft = mapper.readTree(mvc.perform(get(draftPath).with(auth))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         JsonNode revisedDraft = mapper.readTree(mvc.perform(put(draftPath).with(auth).with(csrf())
-                        .contentType("application/json")
-                        .content("{\"expectedVersion\":" + currentDraft.path("version").asLong()
-                                + ",\"prompt\":\"Revised image\",\"parameters\":{},"
-                                + "\"videoInputMode\":null,\"mediaInputs\":[],\"mentions\":[]}"))
+                .contentType("application/json")
+                .content("{\"expectedVersion\":" + currentDraft.path("version").asLong()
+                        + ",\"prompt\":\"Revised image\",\"parameters\":{},"
+                        + "\"videoInputMode\":null,\"mediaInputs\":[],\"mentions\":[]}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         JsonNode secondTask = mapper.readTree(mvc.perform(post(runPath).with(auth).with(csrf())
-                        .header("Idempotency-Key", "placement-second-run")
-                        .contentType("application/json")
-                        .content("{\"canvasItemId\":\"" + sourceItemId
-                                + "\",\"expectedDraftVersion\":"
-                                + revisedDraft.path("version").asLong() + "}"))
+                .header("Idempotency-Key", "placement-second-run")
+                .contentType("application/json")
+                .content("{\"canvasItemId\":\"" + sourceItemId
+                        + "\",\"expectedDraftVersion\":"
+                        + revisedDraft.path("version").asLong() + "}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(secondTask.at("/input/canvasItemId").asText()).isEqualTo(sourceItemId);
         assertThat(canvas.list(owner.userId(), project.id())).hasSize(1);
@@ -136,10 +143,10 @@ class DirectMediaGenerationPlacementPostgresIT {
         assertThat(canvas.list(owner.userId(), project.id()).getFirst().selectedVersion().versionNo())
                 .isEqualTo(2);
         JsonNode completedTasks = mapper.readTree(mvc.perform(get(runPath).with(auth)
-                        .param("canvasItemId", sourceItemId))
+                .param("canvasItemId", sourceItemId))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
-        assertThat(completedTasks).hasSize(2).allSatisfy(task ->
-                assertThat(task.path("status").asText()).isEqualTo("SUCCEEDED"));
+        assertThat(completedTasks).hasSize(2)
+                .allSatisfy(task -> assertThat(task.path("status").asText()).isEqualTo("SUCCEEDED"));
         assertThat(completedTasks.get(0).path("id").asText()).isEqualTo(secondTask.path("id").asText());
     }
 }

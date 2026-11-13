@@ -28,7 +28,8 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
     public static final int MAX_IMPORT_SOURCE_BYTES = 256 * 1024;
     public static final int MAX_DEFINITION_BYTES = 1024 * 1024;
     private static final int MAX_IMPORT_DEPTH = 64;
-    private static final Set<String> IMPORT_CREDENTIAL_FIELDS = Set.of("apikey", "authorization", "accesspassword", "password", "token", "secret");
+    private static final Set<String> IMPORT_CREDENTIAL_FIELDS = Set.of("apikey", "authorization", "accesspassword",
+            "password", "token", "secret");
     public static final String VALUES_PROPERTY = "dynamicValues";
     public static final int MAX_LABEL_LENGTH = 160;
     public static final int MAX_GROUP_LENGTH = 80;
@@ -44,14 +45,28 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
             "advanced", "nodeId", "fieldName", "source", "encoding", "resourceFormat", "enabledWhen", "group");
     private static final Set<String> RESERVED_KEYS = Set.of("apiKey", "accessPassword", "password",
             "authorization", "endpoint", "webhookUrl", "__proto__", "constructor", "prototype");
-    public enum TargetType { WORKFLOW, AI_APP }
-    public enum FieldType { STRING, NUMBER, INTEGER, BOOLEAN, SELECT, IMAGE, AUDIO, VIDEO }
-    public enum Source { PARAMETER, PROMPT, DURATION_SECONDS }
-    public enum Encoding { NATIVE, STRING }
-    public enum ResourceFormat { FILE_NAME, URL }
-    public enum OutputKind { IMAGE, VIDEO, AUDIO }
-    public record Option(String label, JsonNode value) {}
-    public record Condition(String field, JsonNode value) {}
+    public enum TargetType {
+        WORKFLOW, AI_APP
+    }
+    public enum FieldType {
+        STRING, NUMBER, INTEGER, BOOLEAN, SELECT, IMAGE, AUDIO, VIDEO
+    }
+    public enum Source {
+        PARAMETER, PROMPT, DURATION_SECONDS
+    }
+    public enum Encoding {
+        NATIVE, STRING
+    }
+    public enum ResourceFormat {
+        FILE_NAME, URL
+    }
+    public enum OutputKind {
+        IMAGE, VIDEO, AUDIO
+    }
+    public record Option(String label, JsonNode value) {
+    }
+    public record Condition(String field, JsonNode value) {
+    }
     public record Field(String key, String label, String description, FieldType type,
             boolean required, JsonNode defaultValue, BigDecimal minimum, BigDecimal maximum,
             Integer maxLength, List<Option> options, boolean advanced, String nodeId,
@@ -66,16 +81,27 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
             this(key, label, description, type, required, defaultValue, minimum, maximum, maxLength,
                     options, advanced, nodeId, fieldName, source, encoding, resourceFormat, enabledWhen, null);
         }
-        public boolean media() { return type == FieldType.IMAGE || type == FieldType.AUDIO || type == FieldType.VIDEO; }
-        public Source effectiveSource() { return source == null ? Source.PARAMETER : source; }
-        public Encoding effectiveEncoding() { return encoding == null ? Encoding.NATIVE : encoding; }
-        public ResourceFormat effectiveResourceFormat() { return resourceFormat == null ? ResourceFormat.FILE_NAME : resourceFormat; }
+        public boolean media() {
+            return type == FieldType.IMAGE || type == FieldType.AUDIO || type == FieldType.VIDEO;
+        }
+        public Source effectiveSource() {
+            return source == null ? Source.PARAMETER : source;
+        }
+        public Encoding effectiveEncoding() {
+            return encoding == null ? Encoding.NATIVE : encoding;
+        }
+        public ResourceFormat effectiveResourceFormat() {
+            return resourceFormat == null ? ResourceFormat.FILE_NAME : resourceFormat;
+        }
     }
-    public record FixedBinding(String nodeId, String fieldName, JsonNode value, Encoding encoding) {}
-    public record Output(String nodeId, OutputKind kind, boolean primary, int maxCount) {}
+    public record FixedBinding(String nodeId, String fieldName, JsonNode value, Encoding encoding) {
+    }
+    public record Output(String nodeId, OutputKind kind, boolean primary, int maxCount) {
+    }
     /** Display-only imported node catalog, including nodes without editable scalar inputs.
      * It neither authorizes bindings nor determines which nodes actually return media. */
-    public record NodeOption(String nodeId, String label) {}
+    public record NodeOption(String nodeId, String label) {
+    }
 
     /** Public execution snapshots need the declared mappings, not administrator import material. */
     public RunningHubDefinition executionContract() {
@@ -91,20 +117,32 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
             throw invalid(ApiMessage.of("api.running-hub-definition.capacity-definition-exceeds-size-limit"));
         for (JsonNode field : value.path("fields")) {
             requireObject(field, FIELD_FIELDS);
-            for (JsonNode option : field.path("options")) requireObject(option, Set.of("label", "value"));
-            if (field.hasNonNull("enabledWhen")) requireObject(field.get("enabledWhen"), Set.of("field", "value"));
+            for (JsonNode option : field.path("options"))
+                requireObject(option, Set.of("label", "value"));
+            if (field.hasNonNull("enabledWhen"))
+                requireObject(field.get("enabledWhen"), Set.of("field", "value"));
         }
-        for (JsonNode binding : value.path("fixedBindings")) requireObject(binding, Set.of("nodeId", "fieldName", "value", "encoding"));
-        for (JsonNode output : value.path("outputs")) requireObject(output, Set.of("nodeId", "kind", "primary", "maxCount"));
-        for (JsonNode node : value.path("nodeOptions")) requireObject(node, Set.of("nodeId", "label"));
+        for (JsonNode binding : value.path("fixedBindings"))
+            requireObject(binding, Set.of("nodeId", "fieldName", "value", "encoding"));
+        for (JsonNode output : value.path("outputs"))
+            requireObject(output, Set.of("nodeId", "kind", "primary", "maxCount"));
+        for (JsonNode node : value.path("nodeOptions"))
+            requireObject(node, Set.of("nodeId", "label"));
         RunningHubDefinition definition;
         ObjectNode normalized = (ObjectNode) value.deepCopy();
-        for (String flag : List.of("usePersonalQueue", "addMetadata")) if (!normalized.has(flag)) normalized.put(flag, false);
+        for (String flag : List.of("usePersonalQueue", "addMetadata"))
+            if (!normalized.has(flag))
+                normalized.put(flag, false);
         for (JsonNode field : normalized.path("fields")) {
-            for (String flag : List.of("required", "advanced")) if (!field.has(flag)) ((ObjectNode) field).put(flag, false);
+            for (String flag : List.of("required", "advanced"))
+                if (!field.has(flag))
+                    ((ObjectNode) field).put(flag, false);
         }
-        try { definition = mapper.treeToValue(normalized, RunningHubDefinition.class); }
-        catch (RuntimeException failure) { throw invalid(ApiMessage.of("api.running-hub-definition.runninghub-capability-field-type-is-invalid")); }
+        try {
+            definition = mapper.treeToValue(normalized, RunningHubDefinition.class);
+        } catch (RuntimeException failure) {
+            throw invalid(ApiMessage.of("api.running-hub-definition.runninghub-capability-field-type-is-invalid"));
+        }
         definition.validate(kind);
         return definition;
     }
@@ -113,7 +151,8 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
         validateImportSource(importSource, targetType == null ? "" : targetType.name());
         if (schemaVersion != SCHEMA_VERSION || !PROTOCOL_VERSION.equals(protocolVersion)
                 || targetType == null || targetId == null || !targetId.matches("[0-9]{1,32}"))
-            throw invalid(ApiMessage.of("api.running-hub-definition.v2-protocol-target-type-and-real-target-id-must-be"));
+            throw invalid(
+                    ApiMessage.of("api.running-hub-definition.v2-protocol-target-type-and-real-target-id-must-be"));
         if (fields == null || fields.size() > MAX_FIELDS || outputs == null || outputs.isEmpty()
                 || outputs.size() > MAX_OUTPUTS || fixedBindings != null && fixedBindings.size() > MAX_FIELDS)
             throw invalid(ApiMessage.of("api.running-hub-definition.invalid-capability-field-or-output-quantity"));
@@ -123,44 +162,57 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
             throw invalid(ApiMessage.of("api.running-hub-definition.invalid-instance-option-or-source-summary"));
         Set<String> bindings = new HashSet<>();
         if (nodeOptions != null) {
-            if (nodeOptions.size() > MAX_NODE_OPTIONS) throw invalid(ApiMessage.of("api.running-hub-definition.invalid-capability-field-or-output-quantity"));
+            if (nodeOptions.size() > MAX_NODE_OPTIONS)
+                throw invalid(ApiMessage.of("api.running-hub-definition.invalid-capability-field-or-output-quantity"));
             Set<String> nodeIds = new HashSet<>();
             for (NodeOption node : nodeOptions) {
-                if (node == null || node.nodeId() == null || !node.nodeId().matches("[0-9]{1,32}") || !nodeIds.add(node.nodeId()))
+                if (node == null || node.nodeId() == null || !node.nodeId().matches("[0-9]{1,32}")
+                        || !nodeIds.add(node.nodeId()))
                     throw invalid(ApiMessage.of("api.running-hub-definition.invalid-output-map"));
                 label(node.label());
             }
         }
         validateFields(fields);
-        for (Field field : fields) binding(field.nodeId(), field.fieldName(), bindings);
-        if (fixedBindings != null) for (FixedBinding fixed : fixedBindings) {
-            if (fixed == null) throw invalid(ApiMessage.of("api.running-hub-definition.fixed-mapping-is-invalid"));
-            binding(fixed.nodeId(), fixed.fieldName(), bindings);
-            scalar(fixed.value());
-        }
-        if (outputs.stream().anyMatch(java.util.Objects::isNull)) throw invalid(ApiMessage.of("api.running-hub-definition.invalid-output-map"));
+        for (Field field : fields)
+            binding(field.nodeId(), field.fieldName(), bindings);
+        if (fixedBindings != null)
+            for (FixedBinding fixed : fixedBindings) {
+                if (fixed == null)
+                    throw invalid(ApiMessage.of("api.running-hub-definition.fixed-mapping-is-invalid"));
+                binding(fixed.nodeId(), fixed.fieldName(), bindings);
+                scalar(fixed.value());
+            }
+        if (outputs.stream().anyMatch(java.util.Objects::isNull))
+            throw invalid(ApiMessage.of("api.running-hub-definition.invalid-output-map"));
         long primaryCount = outputs.stream().filter(Output::primary).count();
-        if (primaryCount != 1) throw invalid(ApiMessage.of("api.running-hub-definition.a-primary-output-must-be-specified"));
+        if (primaryCount != 1)
+            throw invalid(ApiMessage.of("api.running-hub-definition.a-primary-output-must-be-specified"));
         Set<String> outputKeys = new HashSet<>();
         int totalOutputs = 0;
         for (Output output : outputs) {
             if (output.kind() == null || output.maxCount() < 1 || output.maxCount() > MAX_OUTPUTS
                     || output.nodeId() != null && !output.nodeId().matches("[0-9]{1,32}")
-                    || !outputKeys.add(output.nodeId() + ":" + output.kind())) throw invalid(ApiMessage.of("api.running-hub-definition.invalid-or-duplicate-output-map"));
+                    || !outputKeys.add(output.nodeId() + ":" + output.kind()))
+                throw invalid(ApiMessage.of("api.running-hub-definition.invalid-or-duplicate-output-map"));
             if (output.primary() && !output.kind().name().equals(kind.name().replace("_GENERATION", "")))
-                throw invalid(ApiMessage.of("api.running-hub-definition.primary-output-does-not-match-capability-media-type"));
+                throw invalid(ApiMessage
+                        .of("api.running-hub-definition.primary-output-does-not-match-capability-media-type"));
             totalOutputs += output.maxCount();
             if (outputs.stream().anyMatch(other -> other != output && other.kind() == output.kind()
                     && (other.nodeId() == null || output.nodeId() == null)))
-                throw invalid(ApiMessage.of("api.running-hub-definition.wildcard-output-of-the-same-media-type-cannot-overlap-with"));
+                throw invalid(ApiMessage
+                        .of("api.running-hub-definition.wildcard-output-of-the-same-media-type-cannot-overlap-with"));
         }
-        if (totalOutputs > MAX_OUTPUTS) throw invalid(ApiMessage.of("api.running-hub-definition.the-total-result-cap-for-all-output-mappings-cannot-exceed"));
+        if (totalOutputs > MAX_OUTPUTS)
+            throw invalid(ApiMessage
+                    .of("api.running-hub-definition.the-total-result-cap-for-all-output-mappings-cannot-exceed"));
     }
 
     /** Keep the normalized import for administrator editing only. It is never a
      * submission template; the remote target and declared bindings remain authoritative. */
     private static void validateImportSource(JsonNode source, String targetType) {
-        if (source == null || source.isNull()) return;
+        if (source == null || source.isNull())
+            return;
         if (source.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length > MAX_IMPORT_SOURCE_BYTES)
             throw invalid(ApiMessage.of("api.running-hub-import-service.importing-json-exceeds-size-limit"));
         if ("WORKFLOW".equals(targetType) ? !source.isObject() : !"AI_APP".equals(targetType) || !source.isArray())
@@ -169,15 +221,22 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
     }
 
     /** The same credential boundary applies to imports and direct capability writes. */
-    public static void rejectImportCredentials(JsonNode source) { rejectImportCredentials(source, 0); }
+    public static void rejectImportCredentials(JsonNode source) {
+        rejectImportCredentials(source, 0);
+    }
     private static void rejectImportCredentials(JsonNode source, int depth) {
-        if (depth > MAX_IMPORT_DEPTH) throw invalid(ApiMessage.of("api.running-hub-definition.runninghub-capability-field-type-is-invalid"));
-        if (source.isObject()) for (var entry : source.properties()) {
-            if (IMPORT_CREDENTIAL_FIELDS.contains(entry.getKey().toLowerCase(java.util.Locale.ROOT)))
-                throw invalid(ApiMessage.of("api.running-hub-import-service.please-remove-the-credential-field-before-importing-do-not-paste"));
-            rejectImportCredentials(entry.getValue(), depth + 1);
-        }
-        if (source.isArray()) for (JsonNode child : source) rejectImportCredentials(child, depth + 1);
+        if (depth > MAX_IMPORT_DEPTH)
+            throw invalid(ApiMessage.of("api.running-hub-definition.runninghub-capability-field-type-is-invalid"));
+        if (source.isObject())
+            for (var entry : source.properties()) {
+                if (IMPORT_CREDENTIAL_FIELDS.contains(entry.getKey().toLowerCase(java.util.Locale.ROOT)))
+                    throw invalid(ApiMessage.of(
+                            "api.running-hub-import-service.please-remove-the-credential-field-before-importing-do-not-paste"));
+                rejectImportCredentials(entry.getValue(), depth + 1);
+            }
+        if (source.isArray())
+            for (JsonNode child : source)
+                rejectImportCredentials(child, depth + 1);
     }
 
     /** Shared bounded field contract used by imported ComfyUI scalar inputs as well. */
@@ -190,14 +249,16 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
             if (field == null || field.type() == null || field.key() == null
                     || !field.key().matches("[A-Za-z][A-Za-z0-9_]{0,63}")
                     || RESERVED_KEYS.contains(field.key()) || !keys.add(field.key()))
-                throw invalid(ApiMessage.of("api.running-hub-definition.parameter-keys-must-be-valid-unique-and-cannot-contain-credential"));
+                throw invalid(ApiMessage.of(
+                        "api.running-hub-definition.parameter-keys-must-be-valid-unique-and-cannot-contain-credential"));
             label(field.label());
             if (field.group() != null && field.group().length() > MAX_GROUP_LENGTH)
                 throw invalid(ApiMessage.of("api.running-hub-definition.field-group-must-be-at-most-80-characters"));
             if (field.description() != null && field.description().length() > MAX_DESCRIPTION_LENGTH)
                 throw invalid(ApiMessage.of("api.running-hub-definition.parameter-description-is-too-long"));
             if (field.effectiveSource() != Source.PARAMETER && !sources.add(field.effectiveSource()))
-                throw invalid(ApiMessage.of("api.running-hub-definition.prompt-words-and-duration-sources-cannot-be-bound-repeatedly"));
+                throw invalid(ApiMessage
+                        .of("api.running-hub-definition.prompt-words-and-duration-sources-cannot-be-bound-repeatedly"));
             if (field.effectiveSource() == Source.PROMPT && field.type() != FieldType.STRING
                     || field.effectiveSource() == Source.DURATION_SECONDS && field.type() != FieldType.INTEGER
                     || field.media() && field.effectiveSource() != Source.PARAMETER)
@@ -209,27 +270,37 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
                     || field.options() != null && field.options().size() > MAX_OPTIONS)
                 throw invalid(ApiMessage.of("api.running-hub-definition.invalid-number-of-drop-down-options"));
             Set<String> options = new HashSet<>();
-            if (field.options() != null) for (Option option : field.options()) {
-                if (option == null) throw invalid(ApiMessage.of("api.running-hub-definition.dropdown-option-is-invalid"));
-                label(option.label());
-                scalar(option.value());
-                String canonical = option.value().isNumber() ? "number:" + option.value().decimalValue().stripTrailingZeros()
-                        : option.value().toString();
-                if (!options.add(canonical)) throw invalid(ApiMessage.of("api.running-hub-definition.duplicate-drop-down-option-value"));
-            }
+            if (field.options() != null)
+                for (Option option : field.options()) {
+                    if (option == null)
+                        throw invalid(ApiMessage.of("api.running-hub-definition.dropdown-option-is-invalid"));
+                    label(option.label());
+                    scalar(option.value());
+                    String canonical = option.value().isNumber()
+                            ? "number:" + option.value().decimalValue().stripTrailingZeros()
+                            : option.value().toString();
+                    if (!options.add(canonical))
+                        throw invalid(ApiMessage.of("api.running-hub-definition.duplicate-drop-down-option-value"));
+                }
             if (field.defaultValue() != null && !field.defaultValue().isNull()) {
-                if (field.media()) throw invalid(ApiMessage.of("api.running-hub-definition.asset-defaults-cannot-contain-project-assets-or-external-urls"));
+                if (field.media())
+                    throw invalid(ApiMessage.of(
+                            "api.running-hub-definition.asset-defaults-cannot-contain-project-assets-or-external-urls"));
                 validateValue(field, field.defaultValue());
             }
         }
-        for (Field field : fields) if (field.enabledWhen() != null) {
-            Condition condition = field.enabledWhen();
-            Field parent = fields.stream().filter(candidate -> candidate.key().equals(condition.field())).findFirst()
-                    .orElseThrow(() -> invalid(ApiMessage.of("api.running-hub-definition.condition-field-does-not-exist")));
-            if (parent == field || parent.enabledWhen() != null || parent.media())
-                throw invalid(ApiMessage.of("api.running-hub-definition.display-conditions-can-only-refer-to-unconditional-ordinary-parameters"));
-            validateValue(parent, condition.value());
-        }
+        for (Field field : fields)
+            if (field.enabledWhen() != null) {
+                Condition condition = field.enabledWhen();
+                Field parent = fields.stream().filter(candidate -> candidate.key().equals(condition.field()))
+                        .findFirst()
+                        .orElseThrow(() -> invalid(
+                                ApiMessage.of("api.running-hub-definition.condition-field-does-not-exist")));
+                if (parent == field || parent.enabledWhen() != null || parent.media())
+                    throw invalid(ApiMessage.of(
+                            "api.running-hub-definition.display-conditions-can-only-refer-to-unconditional-ordinary-parameters"));
+                validateValue(parent, condition.value());
+            }
     }
 
     public static List<Field> parseFields(ObjectMapper mapper, JsonNode raw) {
@@ -238,12 +309,19 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
         List<Field> result = new java.util.ArrayList<>();
         for (JsonNode field : raw) {
             requireObject(field, FIELD_FIELDS);
-            for (JsonNode option : field.path("options")) requireObject(option, Set.of("label", "value"));
-            if (field.hasNonNull("enabledWhen")) requireObject(field.get("enabledWhen"), Set.of("field", "value"));
+            for (JsonNode option : field.path("options"))
+                requireObject(option, Set.of("label", "value"));
+            if (field.hasNonNull("enabledWhen"))
+                requireObject(field.get("enabledWhen"), Set.of("field", "value"));
             ObjectNode normalized = (ObjectNode) field.deepCopy();
-            for (String flag : List.of("required", "advanced")) if (!normalized.has(flag)) normalized.put(flag, false);
-            try { result.add(mapper.treeToValue(normalized, Field.class)); }
-            catch (RuntimeException failure) { throw invalid(ApiMessage.of("api.running-hub-definition.runninghub-capability-field-type-is-invalid")); }
+            for (String flag : List.of("required", "advanced"))
+                if (!normalized.has(flag))
+                    normalized.put(flag, false);
+            try {
+                result.add(mapper.treeToValue(normalized, Field.class));
+            } catch (RuntimeException failure) {
+                throw invalid(ApiMessage.of("api.running-hub-definition.runninghub-capability-field-type-is-invalid"));
+            }
         }
         return List.copyOf(result);
     }
@@ -268,15 +346,20 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
     /** Resolve declared fields only; draft callers may omit required inputs until execution. */
     public static ObjectNode inputValues(ObjectMapper mapper, List<Field> fields, JsonNode raw,
             String prompt, Integer seconds, boolean executing) {
-        return inputValues(mapper, fields, raw, prompt, seconds, executing, java.util.function.UnaryOperator.identity());
+        return inputValues(mapper, fields, raw, prompt, seconds, executing,
+                java.util.function.UnaryOperator.identity());
     }
 
     private static ObjectNode inputValues(ObjectMapper mapper, List<Field> fields, JsonNode raw,
             String prompt, Integer seconds, boolean executing, java.util.function.UnaryOperator<String> composePrompt) {
-        if (raw == null) raw = mapper.createObjectNode();
-        if (!raw.isMissingNode() && !raw.isObject()) throw invalid(ApiMessage.of("api.running-hub-definition.dynamic-parameters-must-be-objects"));
-        for (String key : raw.propertyNames()) if (fields.stream().noneMatch(field -> field.key().equals(key)))
-            throw invalid(ApiMessage.of("api.running-hub-definition.the-current-capability-does-not-support-parameter", key));
+        if (raw == null)
+            raw = mapper.createObjectNode();
+        if (!raw.isMissingNode() && !raw.isObject())
+            throw invalid(ApiMessage.of("api.running-hub-definition.dynamic-parameters-must-be-objects"));
+        for (String key : raw.propertyNames())
+            if (fields.stream().noneMatch(field -> field.key().equals(key)))
+                throw invalid(ApiMessage
+                        .of("api.running-hub-definition.the-current-capability-does-not-support-parameter", key));
         ObjectNode effective = mapper.createObjectNode();
         for (Field field : fields) {
             JsonNode value = switch (field.effectiveSource()) {
@@ -284,11 +367,14 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
                 case DURATION_SECONDS -> mapper.valueToTree(seconds);
                 case PARAMETER -> raw.get(field.key());
             };
-            if (executing && (value == null || value.isNull() || field.effectiveSource() == Source.PROMPT && value.isTextual() && value.asText().isBlank())) value = field.defaultValue();
+            if (executing && (value == null || value.isNull()
+                    || field.effectiveSource() == Source.PROMPT && value.isTextual() && value.asText().isBlank()))
+                value = field.defaultValue();
             if (field.effectiveSource() == Source.PROMPT) {
                 String composed = composePrompt.apply(value == null || value.isNull() ? "" : value.asText());
                 // Optional absent prompts must stay absent when no linked text contributes.
-                if (value != null && !value.isNull() || !composed.isEmpty()) value = mapper.valueToTree(composed);
+                if (value != null && !value.isNull() || !composed.isEmpty())
+                    value = mapper.valueToTree(composed);
             }
             if (value != null && !value.isNull()) {
                 validateValue(field, value);
@@ -298,10 +384,14 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
         for (Field field : fields) {
             boolean active = field.enabledWhen() == null || scalarEquals(
                     effective.get(field.enabledWhen().field()), field.enabledWhen().value());
-            if (!active) { effective.remove(field.key()); continue; }
+            if (!active) {
+                effective.remove(field.key());
+                continue;
+            }
             JsonNode value = effective.get(field.key());
             if (executing && field.required() && (value == null || value.isNull()
-                    || value.isTextual() && value.asText().isBlank())) throw invalid(ApiMessage.of("api.running-hub-definition.enter-a-value-for", field.label()));
+                    || value.isTextual() && value.asText().isBlank()))
+                throw invalid(ApiMessage.of("api.running-hub-definition.enter-a-value-for", field.label()));
         }
         return effective;
     }
@@ -313,7 +403,8 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
             java.util.function.UnaryOperator<String> transform) {
         ObjectNode result = values.deepCopy();
         for (Field field : fields) {
-            if (field.effectiveSource() != Source.PROMPT || !result.hasNonNull(field.key())) continue;
+            if (field.effectiveSource() != Source.PROMPT || !result.hasNonNull(field.key()))
+                continue;
             JsonNode prompt = mapper.valueToTree(transform.apply(result.path(field.key()).asText()));
             validateValue(field, prompt);
             result.set(field.key(), prompt);
@@ -324,52 +415,69 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
     /** JSON numbers have value semantics: browsers serialize 1.0 as 1, without changing an enum or condition. */
     public static boolean scalarEquals(JsonNode left, JsonNode right) {
         return left != null && right != null && left.isNumber() && right.isNumber()
-                ? left.decimalValue().compareTo(right.decimalValue()) == 0 : java.util.Objects.equals(left, right);
+                ? left.decimalValue().compareTo(right.decimalValue()) == 0
+                : java.util.Objects.equals(left, right);
     }
 
     private static void validateValue(Field field, JsonNode value) {
-        if (value == null || value.isNull()) return;
+        if (value == null || value.isNull())
+            return;
         scalar(value);
         boolean valid = switch (field.type()) {
-            case STRING -> value.isTextual() && value.asText().length() <= (field.maxLength() == null ? MAX_TEXT_LENGTH : field.maxLength());
+            case STRING -> value.isTextual()
+                    && value.asText().length() <= (field.maxLength() == null ? MAX_TEXT_LENGTH : field.maxLength());
             case INTEGER -> value.isIntegralNumber() && value.canConvertToLong();
             case NUMBER -> value.isNumber();
             case BOOLEAN -> value.isBoolean();
             case SELECT -> field.options().stream().anyMatch(option -> scalarEquals(option.value(), value));
             case IMAGE, AUDIO, VIDEO -> value.isTextual() && uuid(value.asText());
         };
-        if (valid && field.effectiveSource() == Source.DURATION_SECONDS) valid = value.asLong() >= 1 && value.asLong() <= MediaAdapterRegistry.RUNNINGHUB_MAX_VIDEO_SECONDS;
-        if (valid && value.isNumber()) valid = (field.minimum() == null || value.decimalValue().compareTo(field.minimum()) >= 0)
-                && (field.maximum() == null || value.decimalValue().compareTo(field.maximum()) <= 0);
-        if (!valid) throw invalid(ApiMessage.of("api.running-hub-definition.the-type-or-range-of-is-invalid", field.label()));
+        if (valid && field.effectiveSource() == Source.DURATION_SECONDS)
+            valid = value.asLong() >= 1 && value.asLong() <= MediaAdapterRegistry.RUNNINGHUB_MAX_VIDEO_SECONDS;
+        if (valid && value.isNumber())
+            valid = (field.minimum() == null || value.decimalValue().compareTo(field.minimum()) >= 0)
+                    && (field.maximum() == null || value.decimalValue().compareTo(field.maximum()) <= 0);
+        if (!valid)
+            throw invalid(ApiMessage.of("api.running-hub-definition.the-type-or-range-of-is-invalid", field.label()));
     }
 
     private static boolean uuid(String value) {
-        try { return UUID.fromString(value).toString().equals(value); }
-        catch (IllegalArgumentException invalid) { return false; }
+        try {
+            return UUID.fromString(value).toString().equals(value);
+        } catch (IllegalArgumentException invalid) {
+            return false;
+        }
     }
     private static void scalar(JsonNode value) {
         if (value == null || value.isNull() || !(value.isTextual() || value.isNumber() || value.isBoolean())
-                || value.isTextual() && value.asText().length() > MAX_TEXT_LENGTH) throw invalid(ApiMessage.of("api.running-hub-definition.parameter-value-must-be-a-bounded-literal-number-or-boolean"));
+                || value.isTextual() && value.asText().length() > MAX_TEXT_LENGTH)
+            throw invalid(ApiMessage
+                    .of("api.running-hub-definition.parameter-value-must-be-a-bounded-literal-number-or-boolean"));
     }
     private static void label(String value) {
-        if (value == null || value.isBlank() || value.length() > MAX_LABEL_LENGTH) throw invalid(ApiMessage.of("api.running-hub-definition.field-name-must-be-1-160-characters"));
+        if (value == null || value.isBlank() || value.length() > MAX_LABEL_LENGTH)
+            throw invalid(ApiMessage.of("api.running-hub-definition.field-name-must-be-1-160-characters"));
     }
     private static void binding(String node, String field, Set<String> seen) {
         if (node == null || !node.matches("[0-9]{1,32}") || !bindableFieldName(field)
-                || !seen.add(node + ":" + field)) throw invalid(ApiMessage.of("api.running-hub-definition.node-mapping-must-be-valid-and-cannot-be-duplicated"));
+                || !seen.add(node + ":" + field))
+            throw invalid(
+                    ApiMessage.of("api.running-hub-definition.node-mapping-must-be-valid-and-cannot-be-duplicated"));
     }
     /** Dots belong to the exact remote input name; they are never traversed as JSON paths. */
     public static boolean bindableFieldName(String field) {
         return field != null && field.matches("[A-Za-z_][A-Za-z0-9_.]{0,79}") && !RESERVED_KEYS.contains(field);
     }
     private static void requireObject(JsonNode value, Set<String> allowed) {
-        if (value == null || !value.isObject() || !allowed.containsAll(value.propertyNames())) throw invalid(ApiMessage.of("api.running-hub-definition.capability-definition-contains-unknown-fields-or-invalid-objects"));
+        if (value == null || !value.isObject() || !allowed.containsAll(value.propertyNames()))
+            throw invalid(ApiMessage
+                    .of("api.running-hub-definition.capability-definition-contains-unknown-fields-or-invalid-objects"));
         if (allowed.contains("group") && value.hasNonNull("group") && !value.path("group").isTextual())
             throw invalid(ApiMessage.of("api.running-hub-definition.runninghub-capability-field-type-is-invalid"));
     }
     public static ApiProblemException invalid(ApiMessage detail) {
         return new ApiProblemException(HttpStatus.UNPROCESSABLE_ENTITY, "RUNNINGHUB_INPUT_INVALID",
-                ApiMessage.of("api.running-hub-definition.runninghub-configuration-or-input-is-invalid"), detail, false);
+                ApiMessage.of("api.running-hub-definition.runninghub-configuration-or-input-is-invalid"), detail,
+                false);
     }
 }

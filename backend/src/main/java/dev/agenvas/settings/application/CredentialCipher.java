@@ -130,7 +130,8 @@ public class CredentialCipher {
             String namespace) {
         requireKeyVersion(encrypted.keyVersion());
         SecretKeySpec selected = encrypted.keyVersion() == keyVersion
-                ? key : previousKeys.get(encrypted.keyVersion());
+                ? key
+                : previousKeys.get(encrypted.keyVersion());
         if (encrypted.nonce().length != NONCE_BYTES) {
             throw new IllegalStateException("Credential nonce is invalid");
         }
@@ -150,8 +151,10 @@ public class CredentialCipher {
         if ((requestedVersion != keyVersion && !previousKeys.containsKey(requestedVersion))
                 || (requestedVersion == keyVersion && key == null)) {
             throw new ApiProblemException(HttpStatus.SERVICE_UNAVAILABLE,
-                    "CREDENTIAL_KEY_VERSION_MISSING", ApiMessage.of("api.credential-cipher.historical-credential-key-is-not-available"),
-                    ApiMessage.of("api.credential-cipher.the-deployer-has-not-provided-a-decryption-master-key-for"), false);
+                    "CREDENTIAL_KEY_VERSION_MISSING",
+                    ApiMessage.of("api.credential-cipher.historical-credential-key-is-not-available"),
+                    ApiMessage.of("api.credential-cipher.the-deployer-has-not-provided-a-decryption-master-key-for"),
+                    false);
         }
     }
 
@@ -166,7 +169,9 @@ public class CredentialCipher {
         if (key == null) {
             throw new ApiProblemException(HttpStatus.SERVICE_UNAVAILABLE,
                     "CREDENTIAL_MASTER_KEY_MISSING", ApiMessage.of("api.credential-cipher.key-store-not-ready"),
-                    ApiMessage.of("api.credential-cipher.the-deployer-has-not-configured-the-credential-encryption-master-key"), false);
+                    ApiMessage.of(
+                            "api.credential-cipher.the-deployer-has-not-configured-the-credential-encryption-master-key"),
+                    false);
         }
     }
 
@@ -175,5 +180,6 @@ public class CredentialCipher {
      * @param nonce 本条密文独占的 12 字节随机数
      * @param keyVersion 加密时使用的密钥版本
      */
-    public record Encrypted(byte[] ciphertext, byte[] nonce, int keyVersion) {}
+    public record Encrypted(byte[] ciphertext, byte[] nonce, int keyVersion) {
+    }
 }

@@ -55,15 +55,15 @@ class ArtifactContentValidatorTest {
     @Test
     void rejectsPartialUnknownAndMalformedReferenceContent() {
         assertThatThrownBy(() -> validate(Artifact.Kind.TEXT, "{\"format\":\"MARKDOWN\"}"))
-                .isInstanceOfSatisfying(ApiProblemException.class, problem ->
-                        assertThat(problem.code()).isEqualTo("ARTIFACT_SCHEMA_INVALID"));
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        problem -> assertThat(problem.code()).isEqualTo("ARTIFACT_SCHEMA_INVALID"));
         assertThatThrownBy(() -> validate(
-                        Artifact.Kind.TEXT,
-                        "{\"format\":\"MARKDOWN\",\"text\":\"ok\",\"ownerId\":\"x\"}"))
+                Artifact.Kind.TEXT,
+                "{\"format\":\"MARKDOWN\",\"text\":\"ok\",\"ownerId\":\"x\"}"))
                 .isInstanceOf(ApiProblemException.class);
         assertThatThrownBy(() -> validate(
-                        Artifact.Kind.IMAGE,
-                        mediaContent().replace("\"parameters\":{}", "\"parameters\":{\"apiKey\":\"secret\"}")))
+                Artifact.Kind.IMAGE,
+                mediaContent().replace("\"parameters\":{}", "\"parameters\":{\"apiKey\":\"secret\"}")))
                 .isInstanceOf(ApiProblemException.class);
         assertThatThrownBy(() -> validate(Artifact.Kind.IMAGE,
                 "{\"sourceType\":\"UPLOAD\",\"assetId\":\"" + UUID.randomUUID()

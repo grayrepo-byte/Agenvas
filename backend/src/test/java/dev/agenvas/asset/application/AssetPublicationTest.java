@@ -106,8 +106,10 @@ class AssetPublicationTest {
         doThrow(failure).when(repository).insert(any());
         assertThatThrownBy(() -> archive(kind, false)).isSameAs(failure);
         verify(storage).discard(ORIGINAL);
-        if (kind != Asset.MediaKind.AUDIO) verify(storage).discard(THUMBNAIL);
-        else verify(storage, never()).discard(THUMBNAIL);
+        if (kind != Asset.MediaKind.AUDIO)
+            verify(storage).discard(THUMBNAIL);
+        else
+            verify(storage, never()).discard(THUMBNAIL);
         verify(events, never()).insert(any());
         verify(events, never()).advanceSequence(any(), any(), anyLong(), anyLong());
     }
@@ -141,16 +143,21 @@ class AssetPublicationTest {
         UUID id = UUID.randomUUID();
         var failure = new IllegalStateException("synthetic command conflict");
         var prepared = service.withPreparedUpload(OWNER, PROJECT, id, kind,
-                () -> new ByteArrayInputStream(new byte[] {1, 2, 3}), asset -> asset);
+                () -> new ByteArrayInputStream(new byte[]{1, 2, 3}), asset -> asset);
         when(repository.find(PROJECT, id)).thenReturn(Optional.of(prepared));
         assertThatThrownBy(() -> service.withPreparedUpload(OWNER, PROJECT, id, kind,
-                () -> new ByteArrayInputStream(new byte[] {1, 2, 3}), asset -> { throw failure; })).isSameAs(failure);
+                () -> new ByteArrayInputStream(new byte[]{1, 2, 3}), asset -> {
+                    throw failure;
+                })).isSameAs(failure);
         verify(storage, never()).discard(any());
         when(repository.find(PROJECT, id)).thenReturn(Optional.empty());
         assertThatThrownBy(() -> service.withPreparedUpload(OWNER, PROJECT, id, kind,
-                () -> new ByteArrayInputStream(new byte[] {1, 2, 3}), asset -> { throw failure; })).isSameAs(failure);
+                () -> new ByteArrayInputStream(new byte[]{1, 2, 3}), asset -> {
+                    throw failure;
+                })).isSameAs(failure);
         verify(storage).discard(ORIGINAL);
-        if (kind != Asset.MediaKind.AUDIO) verify(storage).discard(THUMBNAIL);
+        if (kind != Asset.MediaKind.AUDIO)
+            verify(storage).discard(THUMBNAIL);
     }
 
     @ParameterizedTest
@@ -160,20 +167,25 @@ class AssetPublicationTest {
         var cleanupFailure = new IllegalStateException("synthetic original cleanup failure");
         doThrow(cleanupFailure).when(storage).discard(ORIGINAL);
         assertThatThrownBy(() -> service.withPreparedUpload(OWNER, PROJECT, UUID.randomUUID(), kind,
-                () -> new ByteArrayInputStream(new byte[] {1, 2, 3}), asset -> { throw failure; })).isSameAs(failure);
+                () -> new ByteArrayInputStream(new byte[]{1, 2, 3}), asset -> {
+                    throw failure;
+                })).isSameAs(failure);
         assertThat(failure.getSuppressed()).containsExactly(cleanupFailure);
         verify(storage).discard(THUMBNAIL);
     }
 
     private Asset archive(Asset.MediaKind kind, boolean task) {
-        Supplier<java.io.InputStream> input = () -> new ByteArrayInputStream(new byte[] {1, 2, 3});
+        Supplier<java.io.InputStream> input = () -> new ByteArrayInputStream(new byte[]{1, 2, 3});
         UUID taskId = UUID.randomUUID();
         return switch (kind) {
-            case IMAGE -> task ? service.archiveTaskImage(OWNER, PROJECT, taskId, input)
+            case IMAGE -> task
+                    ? service.archiveTaskImage(OWNER, PROJECT, taskId, input)
                     : service.archiveImage(OWNER, PROJECT, input.get());
-            case VIDEO -> task ? service.archiveTaskVideo(OWNER, PROJECT, taskId, input)
+            case VIDEO -> task
+                    ? service.archiveTaskVideo(OWNER, PROJECT, taskId, input)
                     : service.archiveVideo(OWNER, PROJECT, input.get());
-            case AUDIO -> task ? service.archiveTaskAudio(OWNER, PROJECT, taskId, input)
+            case AUDIO -> task
+                    ? service.archiveTaskAudio(OWNER, PROJECT, taskId, input)
                     : service.archiveAudio(OWNER, PROJECT, input.get());
         };
     }

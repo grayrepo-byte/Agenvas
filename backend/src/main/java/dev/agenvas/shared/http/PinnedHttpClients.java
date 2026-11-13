@@ -24,10 +24,11 @@ public final class PinnedHttpClients {
      * <p>必须是网络拦截器：应用拦截器位于 {@code RetryAndFollowUpInterceptor} 外层，
      * 拿到的是重发结束之后的响应，改不到它的输入。
      */
-    private static final Interceptor DROP_RETRY_AFTER = chain ->
-            chain.proceed(chain.request()).newBuilder().removeHeader("Retry-After").build();
+    private static final Interceptor DROP_RETRY_AFTER = chain -> chain.proceed(chain.request()).newBuilder()
+            .removeHeader("Retry-After").build();
 
-    private PinnedHttpClients() {}
+    private PinnedHttpClients() {
+    }
 
     /**
      * 构造一个受约束的客户端。
@@ -86,7 +87,8 @@ public final class PinnedHttpClients {
                 .connectTimeout(connectTimeout)
                 .readTimeout(readTimeout)
                 .callTimeout(callTimeout);
-        if (captureDebugBodies) builder.addInterceptor(DebugHttpCapture.interceptor());
+        if (captureDebugBodies)
+            builder.addInterceptor(DebugHttpCapture.interceptor());
         return builder;
     }
 }

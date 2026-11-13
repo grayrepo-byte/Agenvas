@@ -75,7 +75,8 @@ class AgentLocalTaskOutcomeServiceTest {
         when(run.version()).thenReturn(3L);
         when(runs.get(owner, project, runId)).thenReturn(run);
         when(runs.transition(owner, project, runId, 3L, AgentRun.Status.RUNNING)).thenAnswer(ignored -> {
-            runStatus.set(AgentRun.Status.RUNNING); return run;
+            runStatus.set(AgentRun.Status.RUNNING);
+            return run;
         });
         when(tasks.get(owner, project, taskId)).thenReturn(task);
         when(task.id()).thenReturn(taskId);
@@ -110,7 +111,8 @@ class AgentLocalTaskOutcomeServiceTest {
                 eq(Task.Kind.AGENT_TURN), any(), eq(1));
     }
 
-    @Test void unknownLateSuccessCannotRewriteTheDeliveredReply() {
+    @Test
+    void unknownLateSuccessCannotRewriteTheDeliveredReply() {
         when(task.status()).thenReturn(Task.Status.UNKNOWN);
         when(task.output()).thenReturn(null);
         service.reconcileLocalTasks(owner, project, runId);
@@ -135,7 +137,8 @@ class AgentLocalTaskOutcomeServiceTest {
         verify(tasks, never()).cancelApprovedMedia(any(), any(), any());
     }
 
-    @Test void outstandingApprovalPreventsLocalCompletionFromResumingTheSameRound() {
+    @Test
+    void outstandingApprovalPreventsLocalCompletionFromResumingTheSameRound() {
         when(task.status()).thenReturn(Task.Status.SUCCEEDED);
         var approval = mock(AgentMediaApproval.class);
         when(approval.stepIndex()).thenReturn(0);
@@ -146,7 +149,8 @@ class AgentLocalTaskOutcomeServiceTest {
         verify(tasks, never()).create(any(), any(), any(), any(), any(), any(), any(int.class));
     }
 
-    @Test void queuedReceiptCannotBePresentedAsCompleted() {
+    @Test
+    void queuedReceiptCannotBePresentedAsCompleted() {
         when(task.status()).thenReturn(Task.Status.RUNNING);
         service.reconcileLocalTasks(owner, project, runId);
         assertThatThrownBy(() -> service.finalToolResult(project, runId, 0, "call-local", saved.get().result()))
@@ -155,17 +159,21 @@ class AgentLocalTaskOutcomeServiceTest {
         verify(tasks, never()).create(any(), any(), any(), any(), any(), any(), any(int.class));
     }
 
-    @Test void successfulTaskRequiresAnActualArchivedVersion() {
+    @Test
+    void successfulTaskRequiresAnActualArchivedVersion() {
         when(task.status()).thenReturn(Task.Status.SUCCEEDED);
         when(task.output()).thenReturn(mapper.createObjectNode().put("artifactId", artifact.toString()));
-        assertThatThrownBy(() -> service.reconcileLocalTasks(owner, project, runId)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> service.reconcileLocalTasks(owner, project, runId))
+                .isInstanceOf(IllegalStateException.class);
         verify(ledger, never()).appendLocalTaskOutcome(any(), any());
     }
 
-    @Test void originMustMatchBothRunAndCommittedOperation() {
+    @Test
+    void originMustMatchBothRunAndCommittedOperation() {
         when(task.agentLocalOperationId()).thenReturn(UUID.randomUUID());
         when(task.status()).thenReturn(Task.Status.SUCCEEDED);
-        assertThatThrownBy(() -> service.reconcileLocalTasks(owner, project, runId)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> service.reconcileLocalTasks(owner, project, runId))
+                .isInstanceOf(IllegalStateException.class);
         verify(ledger, never()).appendLocalTaskOutcome(any(), any());
     }
 

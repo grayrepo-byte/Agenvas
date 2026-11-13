@@ -31,7 +31,7 @@ async function awaitRecovery(key: string) {
         unsubscribe();
         reject(new Error(t("canvas.edit.draftsPending")));
       }, RECOVERY_WAIT_MS);
-      const unsubscribe = useCanvasStore.subscribe((state) => {
+      const unsubscribe = useCanvasStore.subscribe(state => {
         if (state.mediaDraftRecoveries[key]?.saving) return;
         window.clearTimeout(timer);
         unsubscribe();

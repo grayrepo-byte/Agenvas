@@ -56,11 +56,13 @@ public interface ProjectRepository {
      * @param projectStatus 项目是否仍允许新 Run
      * @param activeRunId 当前占用槽位的 Run；没有活动 Run 时为空
      */
-    record RunSlot(Project.Status projectStatus, UUID activeRunId) {}
+    record RunSlot(Project.Status projectStatus, UUID activeRunId) {
+    }
 
     /** 项目一致性快照的锚点，用于把业务实体读取绑定到同一数据库快照。
      * @param eventSequence 项目事件水位，SSE 从此序号之后补发
      * @param activeRunId 快照时占用活动槽位的 Run
      */
-    record SnapshotAnchor(long eventSequence, UUID activeRunId) {}
+    record SnapshotAnchor(long eventSequence, UUID activeRunId) {
+    }
 }

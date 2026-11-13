@@ -63,14 +63,21 @@ public final class MediaAdapterRegistry {
             Set<String> supportedVideoInputModes, String defaultVideoInputMode,
             boolean supportsEndFrame, Set<String> supportedImageAspectRatios,
             Set<String> supportedImageResolutions, Set<String> supportedImageQualities,
-            boolean supportsTransparentBackground, boolean supportsImageMask, int maxReferenceAudios, int maxReferenceVideos) {}
+            boolean supportsTransparentBackground, boolean supportsImageMask, int maxReferenceAudios,
+            int maxReferenceVideos) {
+    }
 
     private static final Map<String, Declaration> DECLARATIONS = Map.ofEntries(
             Map.entry("WAN_IMAGE", new WanModels().declaration(new WanModels().profiles().getFirst())),
-            Map.entry("WAN_VIDEO", new WanModels().declaration(new WanModels().profiles().stream().filter(p -> "WAN_VIDEO".equals(p.adapterId())).findFirst().orElseThrow())),
-            Map.entry("ARK_SEEDREAM_IMAGE", new SeedreamModels().declaration(new SeedreamModels().profiles().getFirst())),
+            Map.entry("WAN_VIDEO",
+                    new WanModels().declaration(new WanModels().profiles().stream()
+                            .filter(p -> "WAN_VIDEO".equals(p.adapterId())).findFirst().orElseThrow())),
+            Map.entry("ARK_SEEDREAM_IMAGE",
+                    new SeedreamModels().declaration(new SeedreamModels().profiles().getFirst())),
             Map.entry("GOOGLE_VEO", new GoogleVideoModels().declaration(new GoogleVideoModels().profiles().getFirst())),
-            Map.entry("GOOGLE_OMNI_VIDEO", new GoogleVideoModels().declaration(new GoogleVideoModels().profiles().stream().filter(p -> "GOOGLE_OMNI_VIDEO".equals(p.adapterId())).findFirst().orElseThrow())),
+            Map.entry("GOOGLE_OMNI_VIDEO",
+                    new GoogleVideoModels().declaration(new GoogleVideoModels().profiles().stream()
+                            .filter(p -> "GOOGLE_OMNI_VIDEO".equals(p.adapterId())).findFirst().orElseThrow())),
             Map.entry(KlingModels.IMAGE_ADAPTER_ID, image(MediaPlatform.KLING, true, 10,
                     Set.of(), Set.of(), Set.of(), false, false)),
             Map.entry(KlingModels.VIDEO_ADAPTER_ID, new Declaration(MediaPlatform.KLING, Task.Kind.VIDEO_GENERATION,
@@ -118,13 +125,15 @@ public final class MediaAdapterRegistry {
                     ImageGenerationParameters.RESOLUTIONS, Set.of(), false, false)),
             Map.entry("ARK_SEEDANCE_2_I2V", video(MediaPlatform.ARK, 4, 15, false, 9,
                     Set.of("TEXT", "START_END", "GENERAL_REFERENCE"), "START_END", true)),
-            Map.entry(AutoDlWorkflows.ADAPTER_ID, AutoDlWorkflows.require(AutoDlWorkflows.DEFAULT_WORKFLOW).declaration()));
+            Map.entry(AutoDlWorkflows.ADAPTER_ID,
+                    AutoDlWorkflows.require(AutoDlWorkflows.DEFAULT_WORKFLOW).declaration()));
 
     private static Declaration runningHub(Task.Kind kind) {
         return new Declaration(MediaPlatform.RUNNINGHUB, kind, 0,
                 kind == Task.Kind.VIDEO_GENERATION ? RUNNINGHUB_MAX_VIDEO_SECONDS : 0,
                 true, RUNNINGHUB_MAX_INPUTS, kind == Task.Kind.VIDEO_GENERATION
-                        ? Set.of("TEXT", "GENERAL_REFERENCE") : Set.of(),
+                        ? Set.of("TEXT", "GENERAL_REFERENCE")
+                        : Set.of(),
                 kind == Task.Kind.VIDEO_GENERATION ? "TEXT" : null,
                 false, Set.of(), Set.of(), Set.of(), false, false, RUNNINGHUB_MAX_INPUTS, RUNNINGHUB_MAX_INPUTS);
     }
@@ -143,7 +152,9 @@ public final class MediaAdapterRegistry {
         return new Declaration(platform, Task.Kind.VIDEO_GENERATION, minimumSeconds,
                 maximumSeconds, originRequired, maxReferenceImages, inputModes, defaultInputMode,
                 supportsEndFrame, Set.of(), Set.of(), Set.of(), false, false,
-                platform == MediaPlatform.MOCK || platform == MediaPlatform.ARK || platform == MediaPlatform.MINIMAX ? 3 : 0,
+                platform == MediaPlatform.MOCK || platform == MediaPlatform.ARK || platform == MediaPlatform.MINIMAX
+                        ? 3
+                        : 0,
                 platform == MediaPlatform.ARK || platform == MediaPlatform.MINIMAX ? 3 : 0);
     }
 
@@ -177,7 +188,7 @@ public final class MediaAdapterRegistry {
         }
         return input.kind() == Task.Kind.IMAGE_GENERATION
                 || input.durationSeconds() >= declaration.minimumSeconds()
-                && input.durationSeconds() <= declaration.maximumSeconds();
+                        && input.durationSeconds() <= declaration.maximumSeconds();
     }
 
     public MediaAdapter require(String adapterId) {
@@ -191,7 +202,10 @@ public final class MediaAdapterRegistry {
 
     private static ApiProblemException unsupported() {
         return new ApiProblemException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "PROVIDER_UNSUPPORTED_CAPABILITY", ApiMessage.of("api.media-adapter-registry.media-capabilities-are-not-available"),
-                ApiMessage.of("api.media-adapter-registry.this-media-adapter-is-not-installed-by-the-current-application"), false);
+                "PROVIDER_UNSUPPORTED_CAPABILITY",
+                ApiMessage.of("api.media-adapter-registry.media-capabilities-are-not-available"),
+                ApiMessage.of(
+                        "api.media-adapter-registry.this-media-adapter-is-not-installed-by-the-current-application"),
+                false);
     }
 }

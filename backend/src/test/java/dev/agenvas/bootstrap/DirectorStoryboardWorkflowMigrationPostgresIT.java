@@ -76,7 +76,8 @@ class DirectorStoryboardWorkflowMigrationPostgresIT {
                     .isEqualTo("Synthetic retained global description");
             assertThat(scalar(db, "select version::text from prompt_definition where key='agent.director'"))
                     .isEqualTo("12");
-            assertThat(scalar(db, "select (updated_at>'2000-01-01T00:00:00Z')::text from prompt_definition where key='agent.director'"))
+            assertThat(scalar(db,
+                    "select (updated_at>'2000-01-01T00:00:00Z')::text from prompt_definition where key='agent.director'"))
                     .isEqualTo("true");
             assertDirector(db, firstProject, first, "Synthetic original director", 1, 8, current);
             assertDirector(db, renamedProject, renamed, "Synthetic renamed director", 9, 14, current);
@@ -86,8 +87,9 @@ class DirectorStoryboardWorkflowMigrationPostgresIT {
             assertThat(scalar(db, "select event_seq::text from project where id=?", emptyProject)).isEqualTo("4");
             assertThat(scalar(db, "select count(*)::text from project_event")).isEqualTo("2");
             assertThat(snapshot(db, "prompt_definition", "kind='FUNCTION'")).isEqualTo(functionsBefore);
-            for (var entry : history.entrySet()) assertThat(snapshot(db, entry.getKey(), "true"))
-                    .as("preserved frozen %s", entry.getKey()).isEqualTo(entry.getValue());
+            for (var entry : history.entrySet())
+                assertThat(snapshot(db, entry.getKey(), "true"))
+                        .as("preserved frozen %s", entry.getKey()).isEqualTo(entry.getValue());
             assertThat(scalar(db, "select count(*)::text from agent_instance")).isEqualTo("3");
         }
     }
@@ -130,14 +132,16 @@ class DirectorStoryboardWorkflowMigrationPostgresIT {
                     begin raise exception 'Synthetic event write failure'; end;
                     $$
                     """);
-            execute(db, "create trigger reject_storyboard_event before insert on project_event for each row execute function reject_storyboard_event()");
+            execute(db,
+                    "create trigger reject_storyboard_event before insert on project_event for each row execute function reject_storyboard_event()");
             for (String table : List.of("prompt_definition", "agent_instance", "project", "project_event"))
                 before.put(table, snapshot(db, table, "true"));
         }
         assertThatThrownBy(() -> migration("34").migrate()).hasStackTraceContaining("Synthetic event write failure");
         try (Connection db = connection()) {
-            for (var entry : before.entrySet()) assertThat(snapshot(db, entry.getKey(), "true"))
-                    .as("transactionally retained %s", entry.getKey()).isEqualTo(entry.getValue());
+            for (var entry : before.entrySet())
+                assertThat(snapshot(db, entry.getKey(), "true"))
+                        .as("transactionally retained %s", entry.getKey()).isEqualTo(entry.getValue());
             assertThat(scalar(db, "select version from flyway_schema_history order by installed_rank desc limit 1"))
                     .isEqualTo("33");
         }
@@ -165,9 +169,12 @@ class DirectorStoryboardWorkflowMigrationPostgresIT {
             String instruction) throws SQLException {
         assertThat(scalar(db, "select instruction from agent_instance where id=?", agent)).isEqualTo(instruction);
         assertThat(scalar(db, "select name from agent_instance where id=?", agent)).isEqualTo(name);
-        assertThat(scalar(db, "select version::text from agent_instance where id=?", agent)).isEqualTo(Integer.toString(version));
-        assertThat(scalar(db, "select (updated_at>'2000-01-01T00:00:00Z')::text from agent_instance where id=?", agent)).isEqualTo("true");
-        assertThat(scalar(db, "select event_seq::text from project where id=?", project)).isEqualTo(Integer.toString(sequence));
+        assertThat(scalar(db, "select version::text from agent_instance where id=?", agent))
+                .isEqualTo(Integer.toString(version));
+        assertThat(scalar(db, "select (updated_at>'2000-01-01T00:00:00Z')::text from agent_instance where id=?", agent))
+                .isEqualTo("true");
+        assertThat(scalar(db, "select event_seq::text from project where id=?", project))
+                .isEqualTo(Integer.toString(sequence));
         assertThat(scalar(db, """
                 select count(*)::text from project_event where project_id=? and seq=? and type='agent.instance.changed'
                     and schema_version=1 and aggregate_id=? and aggregate_version=?
@@ -176,7 +183,8 @@ class DirectorStoryboardWorkflowMigrationPostgresIT {
     }
 
     private void owner(Connection db, UUID owner) throws SQLException {
-        execute(db, "insert into app_user(id,login_name,password_hash,status,created_at) values (?,?,'synthetic-hash','ACTIVE',now())",
+        execute(db,
+                "insert into app_user(id,login_name,password_hash,status,created_at) values (?,?,'synthetic-hash','ACTIVE',now())",
                 owner, "storyboard-" + owner);
     }
 
@@ -187,16 +195,19 @@ class DirectorStoryboardWorkflowMigrationPostgresIT {
                 """, project, owner, sequence);
     }
 
-    private void director(Connection db, UUID project, UUID agent, String name, String instruction, int version) throws SQLException {
+    private void director(Connection db, UUID project, UUID agent, String name, String instruction, int version)
+            throws SQLException {
         execute(db, """
                 insert into agent_instance(id,project_id,profile_key,profile_version,name,instruction,version,created_at,updated_at)
                 values (?,?,'creator',1,?,?,?,'2000-01-01T00:00:00Z','2000-01-01T00:00:00Z')
                 """, agent, project, name, instruction, version);
     }
 
-    private void frozenHistory(Connection db, UUID owner, UUID project, UUID agent, String instruction) throws SQLException {
+    private void frozenHistory(Connection db, UUID owner, UUID project, UUID agent, String instruction)
+            throws SQLException {
         UUID conversation = UUID.randomUUID(), run = UUID.randomUUID(), task = UUID.randomUUID();
-        execute(db, "insert into agent_conversation(id,project_id,agent_instance_id,title,created_at,updated_at) values (?,?,?,'Synthetic frozen conversation',now(),now())",
+        execute(db,
+                "insert into agent_conversation(id,project_id,agent_instance_id,title,created_at,updated_at) values (?,?,?,'Synthetic frozen conversation',now(),now())",
                 conversation, project, agent);
         execute(db, "update agent_instance set current_conversation_id=? where id=?", conversation, agent);
         execute(db, """
@@ -219,7 +230,8 @@ class DirectorStoryboardWorkflowMigrationPostgresIT {
     private String previousDirector() throws Exception {
         try (var stream = new ClassPathResource("db/migration/V26__retire_agent_canvas_nodes.sql").getInputStream()) {
             String source = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
-            var match = Pattern.compile("\\$current_director\\$(.*?)\\$current_director\\$", Pattern.DOTALL).matcher(source);
+            var match = Pattern.compile("\\$current_director\\$(.*?)\\$current_director\\$", Pattern.DOTALL)
+                    .matcher(source);
             assertThat(match.find()).isTrue();
             return match.group(1);
         }
@@ -242,7 +254,9 @@ class DirectorStoryboardWorkflowMigrationPostgresIT {
     }
 
     private void execute(Connection db, String sql, Object... values) throws SQLException {
-        try (PreparedStatement statement = prepare(db, sql, values)) { statement.executeUpdate(); }
+        try (PreparedStatement statement = prepare(db, sql, values)) {
+            statement.executeUpdate();
+        }
     }
 
     private String scalar(Connection db, String sql, Object... values) throws SQLException {
@@ -254,7 +268,8 @@ class DirectorStoryboardWorkflowMigrationPostgresIT {
 
     private PreparedStatement prepare(Connection db, String sql, Object... values) throws SQLException {
         var statement = db.prepareStatement(sql);
-        for (int index = 0; index < values.length; index++) statement.setObject(index + 1, values[index]);
+        for (int index = 0; index < values.length; index++)
+            statement.setObject(index + 1, values[index]);
         return statement;
     }
 }

@@ -19,18 +19,27 @@ final class LlmSseCompletion {
     private boolean sdkStopped;
     private boolean sawDataField;
 
-    LlmSseCompletion() { this(true); }
+    LlmSseCompletion() {
+        this(true);
+    }
 
-    LlmSseCompletion(boolean declaredSse) { this.declaredSse = declaredSse; }
+    LlmSseCompletion(boolean declaredSse) {
+        this.declaredSse = declaredSse;
+    }
 
     /** Total input is bounded by SafeLlmTransport before it reaches this observer. */
     void accept(Buffer bytes) throws IOException {
         while (!bytes.exhausted()) {
             int value = bytes.readByte() & 0xff;
-            if (value == '\n' && afterCr) { afterCr = false; continue; }
+            if (value == '\n' && afterCr) {
+                afterCr = false;
+                continue;
+            }
             afterCr = value == '\r';
-            if (value == '\r' || value == '\n') line();
-            else line.write(value);
+            if (value == '\r' || value == '\n')
+                line();
+            else
+                line.write(value);
         }
     }
 
@@ -45,7 +54,8 @@ final class LlmSseCompletion {
             dataLine = false;
         } else if (value.equals("data") || value.startsWith("data:")) {
             sawDataField = true;
-            if (dataLine) data.append('\n');
+            if (dataLine)
+                data.append('\n');
             dataLine = true;
             String content = value.equals("data") ? "" : value.substring(5);
             // SSE removes one optional ASCII space, not arbitrary Unicode whitespace.
@@ -54,13 +64,15 @@ final class LlmSseCompletion {
     }
 
     private void frame() {
-        if (complete || sdkStopped || data.isEmpty()) return;
+        if (complete || sdkStopped || data.isEmpty())
+            return;
         String event = data.toString();
         // The SDK treats any [DONE] prefix as the end and ignores later events. Never let
         // an ignored tail supply a completion marker for an earlier incomplete tool call.
         if (event.startsWith("[DONE]")) {
             sdkStopped = true;
-            if ("[DONE]".equals(event.strip())) complete = true;
+            if ("[DONE]".equals(event.strip()))
+                complete = true;
             return;
         }
         try {
@@ -81,8 +93,10 @@ final class LlmSseCompletion {
 
     void end() throws LlmStreamIncompleteException {
         // An unfinished final line can identify actual SSE, but cannot dispatch a frame.
-        if (line.size() > 0) line();
+        if (line.size() > 0)
+            line();
         // SSE dispatches only at an empty line; EOF cannot complete an unfinished data frame.
-        if ((declaredSse || sawDataField) && !complete) throw new LlmStreamIncompleteException();
+        if ((declaredSse || sawDataField) && !complete)
+            throw new LlmStreamIncompleteException();
     }
 }

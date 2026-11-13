@@ -17,12 +17,22 @@
 }
 
 /* An outer shadow follows the card radius without taking space from the preview. */
-.artifact-canvas-card:hover { box-shadow: var(--ui-canvas-shadow-raised); }
-.artifact-canvas-card:hover:not(.is-selected) .artifact-card-title { color: var(--ui-text); }
-.artifact-canvas-card:hover:not(.is-selected) .artifact-card-title-icon { color: var(--ui-text-secondary); }
-.artifact-canvas-card.is-selected { box-shadow: var(--ui-canvas-selection-shadow); }
+.artifact-canvas-card:hover {
+  box-shadow: var(--ui-canvas-shadow-raised);
+}
+.artifact-canvas-card:hover:not(.is-selected) .artifact-card-title {
+  color: var(--ui-text);
+}
+.artifact-canvas-card:hover:not(.is-selected) .artifact-card-title-icon {
+  color: var(--ui-text-secondary);
+}
+.artifact-canvas-card.is-selected {
+  box-shadow: var(--ui-canvas-selection-shadow);
+}
 .artifact-canvas-card.is-selected .artifact-card-title,
-.artifact-canvas-card.is-selected .artifact-card-title-icon { color: var(--ui-accent-text); }
+.artifact-canvas-card.is-selected .artifact-card-title-icon {
+  color: var(--ui-accent-text);
+}
 .artifact-card-title {
   position: absolute;
   z-index: 4;
@@ -36,11 +46,18 @@
   color: var(--ui-text-secondary);
   font-size: var(--artifact-title-font-size);
   font-weight: 500;
-  letter-spacing: .01em;
+  letter-spacing: 0.01em;
   line-height: var(--artifact-title-height);
 }
-.artifact-card-title-icon { display: flex; flex: none; color: var(--ui-text-subtle); }
-.artifact-card-title-icon > svg { width: var(--artifact-title-icon-size); height: var(--artifact-title-icon-size); }
+.artifact-card-title-icon {
+  display: flex;
+  flex: none;
+  color: var(--ui-text-subtle);
+}
+.artifact-card-title-icon > svg {
+  width: var(--artifact-title-icon-size);
+  height: var(--artifact-title-icon-size);
+}
 .artifact-card-caption {
   display: block;
   min-width: 0;
@@ -96,21 +113,68 @@
   border-color: var(--ui-danger);
   box-shadow: 0 0 0 1px var(--ui-danger-border);
 }
-.artifact-card-title-input:disabled { opacity: .7; cursor: progress; }
+.artifact-card-title-input:disabled {
+  opacity: 0.7;
+  cursor: progress;
+}
 
-.artifact-card-toolbar { position: relative; display: flex; align-items: center; gap: 2px; width: max-content; max-width: calc(100vw - 48px); padding: 4px; border: 1px solid var(--ui-canvas-border); border-radius: var(--ui-canvas-toolbar-radius); background: var(--ui-canvas-chrome); box-shadow: var(--ui-canvas-shadow); }
-.react-flow__node-toolbar.artifact-card-toolbar-raised { z-index: 1003 !important; }
+.artifact-card-toolbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: max-content;
+  max-width: calc(100vw - 48px);
+  padding: 4px;
+  border: 1px solid var(--ui-canvas-border);
+  border-radius: var(--ui-canvas-toolbar-radius);
+  background: var(--ui-canvas-chrome);
+  box-shadow: var(--ui-canvas-shadow);
+}
+.react-flow__node-toolbar.artifact-card-toolbar-raised {
+  z-index: 1003 !important;
+}
 /* Direct toolbar actions share compact corners; nested panels retain their own controls. */
 .artifact-card-toolbar > :where(button),
 .artifact-card-toolbar > :where(.media-version-picker, .text-card-version-picker) > :where(button),
-.artifact-card-toolbar > a { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 10px; border: none; border-radius: var(--ui-radius-sm); color: var(--ui-text-secondary); background: transparent; font-size: var(--ui-text-sm); font-weight: 400; white-space: nowrap; cursor: pointer; }
+.artifact-card-toolbar > a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--ui-radius-sm);
+  color: var(--ui-text-secondary);
+  background: transparent;
+  font-size: var(--ui-text-sm);
+  font-weight: 400;
+  white-space: nowrap;
+  cursor: pointer;
+}
 .artifact-card-toolbar > :where(button:hover:not(:disabled), button.is-open, button[aria-expanded="true"]),
-.artifact-card-toolbar > :where(.media-version-picker, .text-card-version-picker) > :where(button:hover:not(:disabled), button.is-open, button[aria-expanded="true"]),
-.artifact-card-toolbar > a:hover { background: var(--ui-hover); color: var(--ui-text); }
+.artifact-card-toolbar
+  > :where(.media-version-picker, .text-card-version-picker)
+  > :where(button:hover:not(:disabled), button.is-open, button[aria-expanded="true"]),
+.artifact-card-toolbar > a:hover {
+  background: var(--ui-hover);
+  color: var(--ui-text);
+}
 .artifact-card-toolbar > :where(button:active:not(:disabled)),
-.artifact-card-toolbar > :where(.media-version-picker, .text-card-version-picker) > :where(button:active:not(:disabled)),
-.artifact-card-toolbar > a:active { background: var(--ui-selected); }
+.artifact-card-toolbar
+  > :where(.media-version-picker, .text-card-version-picker)
+  > :where(button:active:not(:disabled)),
+.artifact-card-toolbar > a:active {
+  background: var(--ui-selected);
+}
 .artifact-card-toolbar > :where(button:disabled),
-.artifact-card-toolbar > :where(.media-version-picker, .text-card-version-picker) > :where(button:disabled) { opacity: .48; cursor: not-allowed; }
+.artifact-card-toolbar > :where(.media-version-picker, .text-card-version-picker) > :where(button:disabled) {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
 .artifact-card-toolbar > :where(button, a):focus-visible,
-.artifact-card-toolbar > :where(.media-version-picker, .text-card-version-picker) > :where(button):focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
+.artifact-card-toolbar > :where(.media-version-picker, .text-card-version-picker) > :where(button):focus-visible {
+  outline: var(--ui-focus-width) solid var(--ui-focus);
+  outline-offset: var(--ui-focus-offset);
+}

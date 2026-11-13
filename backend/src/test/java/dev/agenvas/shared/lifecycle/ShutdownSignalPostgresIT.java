@@ -47,13 +47,20 @@ class ShutdownSignalPostgresIT {
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private AgentRunService runs;
-    @Autowired private TaskService tasks;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private ObjectMapper mapper;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private AgentInstanceService agents;
+    @Autowired
+    private AgentRunService runs;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private ObjectMapper mapper;
 
     @Test
     void sigtermClosesChildGateWithoutRewritingQueuedWork() throws Exception {
@@ -95,7 +102,8 @@ class ShutdownSignalPostgresIT {
     private static void waitForStartup(Process child, Path log) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
         while (child.isAlive() && System.nanoTime() < deadline) {
-            if (Files.readString(log).contains("Started AgenvasApplication")) return;
+            if (Files.readString(log).contains("Started AgenvasApplication"))
+                return;
             Thread.sleep(200);
         }
         assertThat(Files.readString(log)).contains("Started AgenvasApplication");

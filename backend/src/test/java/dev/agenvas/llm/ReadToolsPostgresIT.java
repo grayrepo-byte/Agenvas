@@ -69,19 +69,32 @@ class ReadToolsPostgresIT {
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private ArtifactService artifacts;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private CanvasService canvas;
-    @Autowired private AgentRunService runs;
-    @Autowired private TaskService tasks;
-    @Autowired private AgentTurnWorker worker;
-    @Autowired private CreativeArtifactToolService creativeTools;
-    @Autowired private ToolExecutionService toolExecutions;
-    @Autowired private FakeGateway gateway;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private ObjectMapper mapper;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private ArtifactService artifacts;
+    @Autowired
+    private AgentInstanceService agents;
+    @Autowired
+    private CanvasService canvas;
+    @Autowired
+    private AgentRunService runs;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private AgentTurnWorker worker;
+    @Autowired
+    private CreativeArtifactToolService creativeTools;
+    @Autowired
+    private ToolExecutionService toolExecutions;
+    @Autowired
+    private FakeGateway gateway;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private ObjectMapper mapper;
 
     @Test
     void currentCanvasReadsAreBoundedReplayableAndOffCanvasContentIsDenied() {
@@ -109,8 +122,8 @@ class ReadToolsPostgresIT {
         UUID selectedItemId = UUID.randomUUID();
         UUID largeItemId = UUID.randomUUID();
         canvas.apply(owner.userId(), project.id(), List.of(new CanvasService.PlaceArtifact(
-                        selectedItemId, bound.artifact().id(), BigDecimal.ZERO, BigDecimal.ZERO,
-                        new BigDecimal("320"), new BigDecimal("200"), 0, null, false),
+                selectedItemId, bound.artifact().id(), BigDecimal.ZERO, BigDecimal.ZERO,
+                new BigDecimal("320"), new BigDecimal("200"), 0, null, false),
                 new CanvasService.PlaceArtifact(largeItemId, largeBound.artifact().id(),
                         new BigDecimal("600"), BigDecimal.ZERO,
                         new BigDecimal("320"), new BigDecimal("200"), 1, null, false)));
@@ -253,13 +266,19 @@ class ReadToolsPostgresIT {
         }
 
         @Override
-        public String configSource() { return "test-fake"; }
+        public String configSource() {
+            return "test-fake";
+        }
 
         @Override
-        public int configVersion() { return 1; }
+        public int configVersion() {
+            return 1;
+        }
 
         @Override
-        public Capabilities capabilities() { return new Capabilities(true, false, false); }
+        public Capabilities capabilities() {
+            return new Capabilities(true, false, false);
+        }
 
         @Override
         public Exchange call(List<Message> messages, List<ToolCallback> tools,
@@ -268,7 +287,8 @@ class ReadToolsPostgresIT {
                 discoveryCalls.incrementAndGet();
                 AssistantMessage discovery = AssistantMessage.builder().content("").toolCalls(List.of(
                         new AssistantMessage.ToolCall("load-read-tools", "function", "load_toolset",
-                                "{\"toolsets\":[\"CANVAS\",\"LAYOUT\",\"MEDIA\"]}"))).build();
+                                "{\"toolsets\":[\"CANVAS\",\"LAYOUT\",\"MEDIA\"]}")))
+                        .build();
                 return new Exchange(1, new ChatResponse(List.of(new Generation(discovery))));
             }
             assertThat(tools.stream().map(tool -> tool.getToolDefinition().name()))
@@ -351,14 +371,16 @@ class ReadToolsPostgresIT {
         private String versionRequest(UUID... versionIds) {
             ObjectNode input = mapper.createObjectNode();
             var values = input.putArray("versionIds");
-            for (UUID versionId : versionIds) values.add(versionId.toString());
+            for (UUID versionId : versionIds)
+                values.add(versionId.toString());
             return input.toString();
         }
 
         private String taskRequest(UUID... taskIds) {
             ObjectNode input = mapper.createObjectNode();
             var values = input.putArray("taskIds");
-            for (UUID requestedId : taskIds) values.add(requestedId.toString());
+            for (UUID requestedId : taskIds)
+                values.add(requestedId.toString());
             return input.toString();
         }
 

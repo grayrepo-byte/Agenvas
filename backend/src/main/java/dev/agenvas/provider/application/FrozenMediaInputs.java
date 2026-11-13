@@ -10,19 +10,22 @@ import tools.jackson.databind.JsonNode;
 
 /** Typed reader for the single authoritative ordered mediaInput snapshot on a Task. */
 final class FrozenMediaInputs {
-    private FrozenMediaInputs() {}
+    private FrozenMediaInputs() {
+    }
 
     static List<Image> images(Task task) {
         return read(task, "images");
     }
 
     static List<Image> audios(Task task) {
-        if (!task.input().path("mediaInput").has("audios")) return List.of();
+        if (!task.input().path("mediaInput").has("audios"))
+            return List.of();
         return read(task, "audios");
     }
 
     static List<Image> videos(Task task) {
-        if (!task.input().path("mediaInput").has("videos")) return List.of();
+        if (!task.input().path("mediaInput").has("videos"))
+            return List.of();
         return read(task, "videos");
     }
 
@@ -47,9 +50,10 @@ final class FrozenMediaInputs {
     }
 
     static Image first(Task task) {
-        return images(task).stream().findFirst().orElseThrow(() ->
-                new IllegalArgumentException("Frozen media input has no image"));
+        return images(task).stream().findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Frozen media input has no image"));
     }
 
-    record Image(UUID artifactId, UUID versionId, String role, int order) {}
+    record Image(UUID artifactId, UUID versionId, String role, int order) {
+    }
 }

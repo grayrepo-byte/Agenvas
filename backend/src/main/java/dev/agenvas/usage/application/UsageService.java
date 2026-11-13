@@ -67,7 +67,8 @@ public class UsageService {
             throw new IllegalArgumentException("Model reservation requires REQUESTED checkpoint");
         }
         String source = llmMode.mode() == LlmModeProperties.Mode.MOCK
-                ? "MOCK_UNPRICED" : "PROVIDER_UNPRICED";
+                ? "MOCK_UNPRICED"
+                : "PROVIDER_UNPRICED";
         persist(ownerId, modelEntry(turn, UsageEntry.EntryType.RESERVATION,
                 source, null, null, null));
     }
@@ -79,8 +80,8 @@ public class UsageService {
             throw new IllegalArgumentException("Model settlement requires RESPONDED checkpoint");
         }
         String key = modelOperationKey(turn, "reserve");
-        UsageEntry reservation = ledger.findByOperationKey(key).orElseThrow(() ->
-                new IllegalStateException("Model turn has no usage reservation"));
+        UsageEntry reservation = ledger.findByOperationKey(key)
+                .orElseThrow(() -> new IllegalStateException("Model turn has no usage reservation"));
         JsonNode usage = turn.response().path("metadata").path("usage");
         String modelId = turn.response().path("metadata").path("model").asText(null);
         persist(ownerId, modelEntry(turn, UsageEntry.EntryType.SETTLEMENT,
@@ -100,10 +101,14 @@ public class UsageService {
         putNullableToken(quantity, "outputTokens", outputTokens);
         return new UsageEntry(UUID.randomUUID(), turn.projectId(), turn.runId(), null,
                 modelOperationKey(turn, type == UsageEntry.EntryType.RESERVATION
-                        ? "reserve" : "settle"), type, quantity, null, null, null,
+                        ? "reserve"
+                        : "settle"),
+                type, quantity, null, null, null,
                 UsageEntry.CostStatus.UNKNOWN, source, turn.modelConfigVersion(),
                 null, modelId == null || modelId.isBlank() || modelId.length() > 160
-                        ? null : modelId, clock.instant());
+                        ? null
+                        : modelId,
+                clock.instant());
     }
 
     /** 用 Run、步骤和阶段组成模型账目幂等键，区分预留与结算。 */
@@ -116,7 +121,8 @@ public class UsageService {
     public void reserveDirectTextTask(UUID ownerId, Task task) {
         requireDirectText(task);
         String source = llmMode.mode() == LlmModeProperties.Mode.MOCK
-                ? "MOCK_UNPRICED" : "PROVIDER_UNPRICED";
+                ? "MOCK_UNPRICED"
+                : "PROVIDER_UNPRICED";
         persist(ownerId, directTextEntry(task, UsageEntry.EntryType.RESERVATION,
                 source, null, null, task.input().path("modelId").asText(null), "reserve"));
     }
@@ -126,8 +132,8 @@ public class UsageService {
     public void settleDirectTextTask(UUID ownerId, Task task, JsonNode response) {
         requireDirectText(task);
         UsageEntry reservation = ledger.findByOperationKey(
-                "llm-task:" + task.id() + ":reserve").orElseThrow(() ->
-                new IllegalStateException("Direct text Task has no usage reservation"));
+                "llm-task:" + task.id() + ":reserve")
+                .orElseThrow(() -> new IllegalStateException("Direct text Task has no usage reservation"));
         JsonNode metadata = response.path("response").path("metadata");
         JsonNode reported = metadata.path("usage");
         persist(ownerId, directTextEntry(task, UsageEntry.EntryType.SETTLEMENT,
@@ -141,9 +147,10 @@ public class UsageService {
     public void releaseDirectTextTask(UUID ownerId, Task task) {
         requireDirectText(task);
         String prefix = "llm-task:" + task.id();
-        UsageEntry reservation = ledger.findByOperationKey(prefix + ":reserve").orElseThrow(() ->
-                new IllegalStateException("Direct text Task has no usage reservation"));
-        if (ledger.findByOperationKey(prefix + ":settle").isPresent()) return;
+        UsageEntry reservation = ledger.findByOperationKey(prefix + ":reserve")
+                .orElseThrow(() -> new IllegalStateException("Direct text Task has no usage reservation"));
+        if (ledger.findByOperationKey(prefix + ":settle").isPresent())
+            return;
         persist(ownerId, directTextEntry(task, UsageEntry.EntryType.RELEASE,
                 reservation.costSource(), null, null,
                 task.input().path("modelId").asText(null), "release"));
@@ -176,13 +183,16 @@ public class UsageService {
     private Integer tokenCount(JsonNode usage, String field) {
         JsonNode value = usage.path(field);
         return value.isIntegralNumber() && value.canConvertToInt() && value.asInt() >= 0
-                ? value.asInt() : null;
+                ? value.asInt()
+                : null;
     }
 
     /** 保留缺失 token 数量的未知语义，不将其写成零。 */
     private void putNullableToken(ObjectNode quantity, String field, Integer tokens) {
-        if (tokens == null) quantity.putNull(field);
-        else quantity.put(field, tokens);
+        if (tokens == null)
+            quantity.putNull(field);
+        else
+            quantity.put(field, tokens);
     }
 
     /** 在已鉴权的项目事务中，每创建一个直接媒体任务后写入对应预留。 */
@@ -214,12 +224,14 @@ public class UsageService {
     @Transactional(propagation = Propagation.MANDATORY)
     public void settleMediaTask(UUID ownerId, Task task, Integer archivedImageCount,
             BigDecimal archivedVideoSeconds, JsonNode providerUsage) {
-        if (!isMediaTask(task)) return;
+        if (!isMediaTask(task))
+            return;
         UsageEntry reservation = ledger.findByOperationKey(
-                "media:" + task.id() + ":reserve").orElseThrow(() ->
-                new IllegalStateException("Direct media Task has no media usage reservation"));
+                "media:" + task.id() + ":reserve")
+                .orElseThrow(() -> new IllegalStateException("Direct media Task has no media usage reservation"));
         persist(ownerId, entry(task, UsageEntry.EntryType.SETTLEMENT,
-                reservation.costSource(), "media:" + task.id() + ":settle", reservation.providerConfigVersion(), archivedImageCount, archivedVideoSeconds, providerUsage));
+                reservation.costSource(), "media:" + task.id() + ":settle", reservation.providerConfigVersion(),
+                archivedImageCount, archivedVideoSeconds, providerUsage));
     }
 
     /** 调用方确认生成未提交，或零费用本地处理已失败/取消后释放预留；不推断未知外部费用。 */
@@ -266,25 +278,35 @@ public class UsageService {
     }
 
     private UsageEntry entry(Task task, UsageEntry.EntryType type, String source,
-            String operationKey, int connectionVersion, Integer archivedImageCount, BigDecimal archivedVideoSeconds, JsonNode providerUsage) {
+            String operationKey, int connectionVersion, Integer archivedImageCount, BigDecimal archivedVideoSeconds,
+            JsonNode providerUsage) {
         ObjectNode quantity = mapper.createObjectNode();
         boolean runningHub = "RUNNINGHUB_V2".equals(task.input().path("providerProtocol").asText());
-        boolean kling = dev.agenvas.provider.domain.KlingModels.PROTOCOL_ID.equals(task.input().path("providerProtocol").asText())
-                || dev.agenvas.provider.domain.NativeMediaProtocol.PROTOCOL_ID.equals(task.input().path("providerProtocol").asText());
+        boolean kling = dev.agenvas.provider.domain.KlingModels.PROTOCOL_ID
+                .equals(task.input().path("providerProtocol").asText())
+                || dev.agenvas.provider.domain.NativeMediaProtocol.PROTOCOL_ID
+                        .equals(task.input().path("providerProtocol").asText());
         switch (task.kind()) {
             case AUDIO_GENERATION -> {
                 quantity.put("audioCount", 1);
-                if (runningHub) quantity.putNull("audioSeconds");
+                if (runningHub)
+                    quantity.putNull("audioSeconds");
                 else if ("LOCAL_NO_COST".equals(source) && task.input().has("sourceDurationMs"))
                     quantity.put("audioSeconds", BigDecimal.valueOf(task.input().path("sourceDurationMs").asLong(), 3));
-                else quantity.put("audioSeconds", dev.agenvas.artifact.domain.AudioGenerationParameters.MAX_GENERATION_SECONDS);
-                quantity.put("imageCount", 0); quantity.put("videoCount", 0);
+                else
+                    quantity.put("audioSeconds",
+                            dev.agenvas.artifact.domain.AudioGenerationParameters.MAX_GENERATION_SECONDS);
+                quantity.put("imageCount", 0);
+                quantity.put("videoCount", 0);
                 quantity.put("videoSeconds", "0");
             }
             case IMAGE_GENERATION -> {
-                if (kling && archivedImageCount != null) quantity.put("imageCount", archivedImageCount);
-                else if (kling && task.input().path("expectedImageCount").isNull()) quantity.putNull("imageCount");
-                else quantity.put("imageCount", kling ? task.input().path("expectedImageCount").asInt(1) : 1);
+                if (kling && archivedImageCount != null)
+                    quantity.put("imageCount", archivedImageCount);
+                else if (kling && task.input().path("expectedImageCount").isNull())
+                    quantity.putNull("imageCount");
+                else
+                    quantity.put("imageCount", kling ? task.input().path("expectedImageCount").asInt(1) : 1);
                 quantity.put("videoCount", 0);
                 quantity.put("videoSeconds", "0");
             }
@@ -292,9 +314,12 @@ public class UsageService {
                 String durationText;
                 JsonNode seconds = task.input().path("durationSeconds");
                 if ("LOCAL_NO_COST".equals(source) && task.input().has("sourceDurationMs")) {
-                    durationText = BigDecimal.valueOf(task.input().path("sourceDurationMs").asLong(), 3).toPlainString();
-                } else if (kling && archivedVideoSeconds != null) durationText = archivedVideoSeconds.toPlainString();
-                else if ((runningHub || kling) && seconds.isMissingNode()) durationText = null;
+                    durationText = BigDecimal.valueOf(task.input().path("sourceDurationMs").asLong(), 3)
+                            .toPlainString();
+                } else if (kling && archivedVideoSeconds != null)
+                    durationText = archivedVideoSeconds.toPlainString();
+                else if ((runningHub || kling) && seconds.isMissingNode())
+                    durationText = null;
                 else {
                     int maxSeconds = runningHub
                             ? dev.agenvas.provider.domain.MediaAdapterRegistry.RUNNINGHUB_MAX_VIDEO_SECONDS
@@ -303,8 +328,11 @@ public class UsageService {
                             || seconds.intValue() > maxSeconds) {
                         throw new IllegalStateException("Approved video Task lacks pinned duration");
                     }
-                    durationText = BigDecimal.valueOf(seconds.intValue()).add(task.input().path("nativeBillableInputSeconds").isNumber()
-                            ? task.input().path("nativeBillableInputSeconds").decimalValue() : BigDecimal.ZERO).toPlainString();
+                    durationText = BigDecimal.valueOf(seconds.intValue())
+                            .add(task.input().path("nativeBillableInputSeconds").isNumber()
+                                    ? task.input().path("nativeBillableInputSeconds").decimalValue()
+                                    : BigDecimal.ZERO)
+                            .toPlainString();
                 }
                 quantity.put("imageCount", 0);
                 quantity.put("videoCount", 1);
@@ -317,7 +345,7 @@ public class UsageService {
         quantity.putNull("outputTokens");
         JsonNode imageUsage = task.kind() == Task.Kind.IMAGE_GENERATION && type == UsageEntry.EntryType.SETTLEMENT
                 && (task.input().has("mediaTokenPricing") || task.input().path("workflowVersion").asText()
-                    .startsWith(dev.agenvas.provider.domain.MediaAdapterRegistry.OPENAI_GPT_IMAGE_2 + ":"))
+                        .startsWith(dev.agenvas.provider.domain.MediaAdapterRegistry.OPENAI_GPT_IMAGE_2 + ":"))
                 && providerUsage != null ? providerUsage : mapper.nullNode();
         if (imageUsage.isObject()) {
             for (String field : dev.agenvas.provider.domain.OpenAiImageUsage.COUNTS) {
@@ -342,17 +370,22 @@ public class UsageService {
         } else if (!localNoCost && pricing.isObject()) {
             estimate = new BigDecimal(pricing.path("amount").asText());
             if ("SECOND".equals(pricing.path("unit").asText())) {
-                JsonNode duration = quantity.path(task.kind() == Task.Kind.AUDIO_GENERATION ? "audioSeconds" : "videoSeconds");
+                JsonNode duration = quantity
+                        .path(task.kind() == Task.Kind.AUDIO_GENERATION ? "audioSeconds" : "videoSeconds");
                 estimate = duration.isNull() ? null : estimate.multiply(new BigDecimal(duration.asText()));
             } else if (kling && "IMAGE".equals(pricing.path("unit").asText())) {
-                estimate = quantity.path("imageCount").isNull() ? null : estimate.multiply(BigDecimal.valueOf(quantity.path("imageCount").asInt()));
+                estimate = quantity.path("imageCount").isNull()
+                        ? null
+                        : estimate.multiply(BigDecimal.valueOf(quantity.path("imageCount").asInt()));
             }
-            if (estimate != null) estimate = estimate.setScale(MONEY_SCALE, java.math.RoundingMode.HALF_UP);
+            if (estimate != null)
+                estimate = estimate.setScale(MONEY_SCALE, java.math.RoundingMode.HALF_UP);
             currency = pricing.path("currency").asText();
         }
         return new UsageEntry(UUID.randomUUID(), task.projectId(), task.runId(), task.id(),
                 operationKey, type, quantity, estimate, knownZero, currency,
-                localNoCost ? UsageEntry.CostStatus.KNOWN
+                localNoCost
+                        ? UsageEntry.CostStatus.KNOWN
                         : estimate != null ? UsageEntry.CostStatus.ESTIMATED : UsageEntry.CostStatus.UNKNOWN,
                 estimate != null && !localNoCost ? "ADMIN_CONFIGURED" : source, connectionVersion,
                 workflowVersion, imageUsage.path("model").asText(null), clock.instant());

@@ -20,7 +20,8 @@ public class ComfyUiClientFactory {
 
     /** Historical local versions contain plaintext; configured proxy paths are encrypted with versioned AAD. */
     public ComfyUiClient create(ConnectionVersion version) {
-        String origin = version.credentialCiphertext() == null ? version.origin()
+        String origin = version.credentialCiphertext() == null
+                ? version.origin()
                 : cipher.decryptMedia(version.connectionId(), version.version(),
                         new CredentialCipher.Encrypted(version.credentialCiphertext(),
                                 version.credentialNonce(), version.credentialKeyVersion()));

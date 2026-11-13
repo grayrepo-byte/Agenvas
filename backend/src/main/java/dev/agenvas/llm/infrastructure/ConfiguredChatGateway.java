@@ -28,23 +28,29 @@ public class ConfiguredChatGateway implements ChatGateway {
     private final StoredChatModelFactory factory;
     /** 当前版本缓存；配置轮换时丢弃旧的凭证客户端引用。 */
     private volatile RuntimeClient activeClient;
-    @Override public LlmRequestBudget requestBudgetFor(ConfigIdentity expected) {
+    @Override
+    public LlmRequestBudget requestBudgetFor(ConfigIdentity expected) {
         var config = pinnedConfig(expected);
         if (config == null) {
             requireEnvironmentModel();
-            return factory == null ? LlmRequestBudget.resolve(DirectorSettings.defaults(), null)
+            return factory == null
+                    ? LlmRequestBudget.resolve(DirectorSettings.defaults(), null)
                     : factory.requestBudget(null);
         }
-        if (factory == null) throw LlmRequestBudget.unknown();
+        if (factory == null)
+            throw LlmRequestBudget.unknown();
         return factory.requestBudget(config);
     }
-    @Override public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context,
+    @Override
+    public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context,
             ConfigIdentity expected, LlmRequestBudget budget) {
         budget.requireInput(messages, tools);
         return requireConfigured(pinnedConfig(expected), budget).call(messages, tools, context);
     }
-    @Override public Exchange callStreaming(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context,
-            ConfigIdentity expected, LlmRequestBudget budget, Consumer<String> delta, boolean captureContent, Consumer<LlmStreamLog> log) {
+    @Override
+    public Exchange callStreaming(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context,
+            ConfigIdentity expected, LlmRequestBudget budget, Consumer<String> delta, boolean captureContent,
+            Consumer<LlmStreamLog> log) {
         budget.requireInput(messages, tools);
         var pinned = requireConfigured(pinnedConfig(expected), budget);
         return pinned.callStreaming(messages, tools, context, pinned.configIdentity(), delta, captureContent, log);
@@ -92,7 +98,8 @@ public class ConfiguredChatGateway implements ChatGateway {
             Map<String, Object> toolContext, ConfigIdentity expected, Consumer<String> publicDelta,
             boolean captureContent, Consumer<LlmStreamLog> streamLog) {
         SpringAiChatGateway pinned = requireConfigured(pinnedConfig(expected));
-        return pinned.callStreaming(messages, tools, toolContext, pinned.configIdentity(), publicDelta, captureContent, streamLog);
+        return pinned.callStreaming(messages, tools, toolContext, pinned.configIdentity(), publicDelta, captureContent,
+                streamLog);
     }
 
     /** 数据库配置能力只按其固定历史版本报告；缺失配置或其他来源走接口默认核验。 */
@@ -127,7 +134,8 @@ public class ConfiguredChatGateway implements ChatGateway {
                 ? new Capabilities(false, false, false)
                 : new Capabilities(properties.toolCallingVerified()
                         && new SpringAiChatGateway(model, properties.configVersion())
-                                .capabilities().toolCalling(), false, false);
+                                .capabilities().toolCalling(),
+                        false, false);
     }
 
     /** 为用户预检提供非秘密 Provider 类别和模型 ID，不包含端点或密钥。 */
@@ -139,7 +147,8 @@ public class ConfiguredChatGateway implements ChatGateway {
                     config.toolCallingVerified());
         }
         ChatModel model = models.getIfAvailable();
-        if (model == null) return new ModelDetails(false, null, null, false);
+        if (model == null)
+            return new ModelDetails(false, null, null, false);
         ModelDetails adapter = new SpringAiChatGateway(model,
                 properties.configVersion()).modelDetails();
         return new ModelDetails(adapter.available(), adapter.providerAdapter(),
@@ -161,42 +170,49 @@ public class ConfiguredChatGateway implements ChatGateway {
     private SpringAiChatGateway requireConfigured(LlmProviderConfig config) {
         if (config != null) {
             RuntimeClient cached = activeClient;
-            if (cached != null && cached.version() == config.version()) return cached.gateway();
+            if (cached != null && cached.version() == config.version())
+                return cached.gateway();
             synchronized (this) {
                 cached = activeClient;
-                if (cached != null && cached.version() == config.version()) return cached.gateway();
+                if (cached != null && cached.version() == config.version())
+                    return cached.gateway();
                 SpringAiChatGateway gateway = factory.create(config);
                 activeClient = new RuntimeClient(config.version(), gateway);
                 return gateway;
             }
         }
         ChatModel model = requireEnvironmentModel();
-        return factory == null ? new SpringAiChatGateway(model, properties.configVersion())
+        return factory == null
+                ? new SpringAiChatGateway(model, properties.configVersion())
                 : factory.environment(model, properties.configVersion());
     }
 
     /** Frozen envelopes retain their exact wire limit, including summary and retry requests. */
     private SpringAiChatGateway requireConfigured(LlmProviderConfig config, LlmRequestBudget budget) {
-        if (config != null) return factory.create(config, budget);
+        if (config != null)
+            return factory.create(config, budget);
         ChatModel model = requireEnvironmentModel();
-        return factory == null ? new SpringAiChatGateway(model, properties.configVersion(), null, budget)
+        return factory == null
+                ? new SpringAiChatGateway(model, properties.configVersion(), null, budget)
                 : factory.environment(model, properties.configVersion(), budget);
     }
 
     private ChatModel requireEnvironmentModel() {
         ChatModel model = models.getIfAvailable();
-        if (model == null) throw new IllegalStateException("No LLM ChatModel is configured for this installation");
+        if (model == null)
+            throw new IllegalStateException("No LLM ChatModel is configured for this installation");
         return model;
     }
 
     /** 只解析 Run 固定的数据库版本或仍未被数据库配置取代的环境版本。 */
     private LlmProviderConfig pinnedConfig(ConfigIdentity expected) {
         if ("stored".equals(expected.source()) && configs != null) {
-            return configs.findVersion(expected.version()).orElseThrow(() ->
-                    new IllegalStateException("Pinned LLM configuration is unavailable"));
+            return configs.findVersion(expected.version())
+                    .orElseThrow(() -> new IllegalStateException("Pinned LLM configuration is unavailable"));
         }
         if ("environment".equals(expected.source()) && activeConfig() == null
-                && properties.configVersion() == expected.version()) return null;
+                && properties.configVersion() == expected.version())
+            return null;
         throw new IllegalStateException("ChatGateway configuration changed before model call");
     }
 
@@ -236,5 +252,6 @@ public class ConfiguredChatGateway implements ChatGateway {
      * @param version 客户端对应的数据库配置版本
      * @param gateway 持有该版本解密凭证的模型调用入口
      */
-    private record RuntimeClient(int version, SpringAiChatGateway gateway) {}
+    private record RuntimeClient(int version, SpringAiChatGateway gateway) {
+    }
 }

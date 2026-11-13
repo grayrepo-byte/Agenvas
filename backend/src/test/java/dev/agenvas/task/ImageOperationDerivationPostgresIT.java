@@ -58,18 +58,30 @@ class ImageOperationDerivationPostgresIT {
         registry.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private ArtifactService artifacts;
-    @Autowired private AssetService assets;
-    @Autowired private MediaDraftService drafts;
-    @Autowired private CanvasService canvas;
-    @Autowired private CanvasConnectionService connections;
-    @Autowired private DirectMediaTaskService directMedia;
-    @Autowired private TaskService tasks;
-    @Autowired private MediaExecutionWorker worker;
-    @Autowired private MediaCapabilityService capabilities;
-    @Autowired private ObjectMapper mapper;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private ArtifactService artifacts;
+    @Autowired
+    private AssetService assets;
+    @Autowired
+    private MediaDraftService drafts;
+    @Autowired
+    private CanvasService canvas;
+    @Autowired
+    private CanvasConnectionService connections;
+    @Autowired
+    private DirectMediaTaskService directMedia;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private MediaExecutionWorker worker;
+    @Autowired
+    private MediaCapabilityService capabilities;
+    @Autowired
+    private ObjectMapper mapper;
 
     @Test
     void createsConnectedResultBranchAndSelectsOnlyThatBranch() {
@@ -101,7 +113,8 @@ class ImageOperationDerivationPostgresIT {
                 List.of(new MediaDraftService.SaveMediaInput(reference.resourceDefaultVersion().id(),
                         MediaDraft.InputRole.REFERENCE, "#7C3AED")),
                 List.of(new MediaDraft.PromptMention(reference.resourceDefaultVersion().id(),
-                        MediaDraft.InputRole.REFERENCE)), UUID.fromString("00000000-0000-4000-8000-000000000301"));
+                        MediaDraft.InputRole.REFERENCE)),
+                UUID.fromString("00000000-0000-4000-8000-000000000301"));
         // Compare persisted snapshots so the unchanged source includes PostgreSQL timestamp precision.
         MediaDraft sourceDraft = drafts.get(owner.userId(), project.id(), sourceCardId);
 
@@ -201,7 +214,8 @@ class ImageOperationDerivationPostgresIT {
             var resized = directMedia.runImageOperation(owner.userId(), project.id(), image.artifact().id(),
                     sourceCardId, sourceVersionId, 1, ImageOperation.RESIZE, "", 0, 1, List.of(), null, resize, key);
             assertThat(directMedia.runImageOperation(owner.userId(), project.id(), image.artifact().id(),
-                    sourceCardId, sourceVersionId, 1, ImageOperation.RESIZE, "", 0, 1, List.of(), null, resize, key).id())
+                    sourceCardId, sourceVersionId, 1, ImageOperation.RESIZE, "", 0, 1, List.of(), null, resize, key)
+                    .id())
                     .isEqualTo(resized.id());
             UUID resizedCard = UUID.fromString(resized.input().path("canvasItemId").asText());
             assertFreshDraft(owner, project, resizedCard, MediaDraft.DisplayMode.DRAFT);
@@ -210,11 +224,13 @@ class ImageOperationDerivationPostgresIT {
             assertThat(finished.status()).isEqualTo(Task.Status.SUCCEEDED);
             assertThat(finished.output().path("selected").asBoolean()).isTrue();
             var result = canvas.listMediaVersions(owner.userId(), project.id(), resizedCard).getFirst();
-            var asset = assets.metadata(owner.userId(), project.id(), UUID.fromString(result.content().path("assetId").asText()));
+            var asset = assets.metadata(owner.userId(), project.id(),
+                    UUID.fromString(result.content().path("assetId").asText()));
             int edge = resize.has("percentage") ? 1 : 5;
             assertThat(asset.width()).isEqualTo(edge);
             assertThat(asset.height()).isEqualTo(edge);
-            assertThat(canvas.list(owner.userId(), project.id()).stream().filter(entry -> entry.item().id().equals(sourceCardId))
+            assertThat(canvas.list(owner.userId(), project.id()).stream()
+                    .filter(entry -> entry.item().id().equals(sourceCardId))
                     .findFirst().orElseThrow().item().selectedVersionId()).isEqualTo(sourceVersionId);
             assertThat(drafts.get(owner.userId(), project.id(), sourceCardId)).isEqualTo(sourceDraft);
             assertThat(connections.list(owner.userId(), project.id()).stream()
@@ -223,7 +239,8 @@ class ImageOperationDerivationPostgresIT {
         int nodeCount = canvas.list(owner.userId(), project.id()).size();
         assertThatThrownBy(() -> directMedia.runImageOperation(owner.userId(), project.id(), image.artifact().id(),
                 sourceCardId, sourceVersionId, 1, ImageOperation.RESIZE, "", 0, 1, List.of(), null,
-                mapper.createObjectNode().put("resizeMode", "LONGEST_EDGE").put("longestEdge", 40000), "oversized-resize"))
+                mapper.createObjectNode().put("resizeMode", "LONGEST_EDGE").put("longestEdge", 40000),
+                "oversized-resize"))
                 .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
         assertThat(canvas.list(owner.userId(), project.id())).hasSize(nodeCount);
     }

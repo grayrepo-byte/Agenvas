@@ -23,14 +23,19 @@ public final class SystemLogCapture implements AutoCloseable {
         System.setErr(capturedErr);
     }
 
-    public static SystemLogCapture install(SystemLogBuffer buffer) { return new SystemLogCapture(buffer); }
+    public static SystemLogCapture install(SystemLogBuffer buffer) {
+        return new SystemLogCapture(buffer);
+    }
 
     /** Restores only streams still owned by this capture, and never closes the original console. */
-    @Override public void close() {
+    @Override
+    public void close() {
         capturedOut.flush();
         capturedErr.flush();
-        if (System.out == capturedOut) System.setOut(originalOut);
-        if (System.err == capturedErr) System.setErr(originalErr);
+        if (System.out == capturedOut)
+            System.setOut(originalOut);
+        if (System.err == capturedErr)
+            System.setErr(originalErr);
     }
 
     /** Buffer complete UTF-8 lines, including split writes; discard oversize tails until newline. */
@@ -47,21 +52,25 @@ public final class SystemLogCapture implements AutoCloseable {
             this.stream = stream;
         }
 
-        @Override public synchronized void write(int value) {
+        @Override
+        public synchronized void write(int value) {
             destination.write(value);
             capture(value & 0xff);
         }
 
-        @Override public synchronized void write(byte[] bytes, int offset, int length) {
+        @Override
+        public synchronized void write(byte[] bytes, int offset, int length) {
             java.util.Objects.checkFromIndexSize(offset, length, bytes.length);
             destination.write(bytes, offset, length);
-            for (int index = offset; index < offset + length; index++) capture(bytes[index] & 0xff);
+            for (int index = offset; index < offset + length; index++)
+                capture(bytes[index] & 0xff);
         }
 
         private void capture(int value) {
             if (value == '\n') {
                 String line = pending.toString(StandardCharsets.UTF_8);
-                if (line.endsWith("\r")) line = line.substring(0, line.length() - 1);
+                if (line.endsWith("\r"))
+                    line = line.substring(0, line.length() - 1);
                 buffer.append(stream, line, truncated);
                 pending.reset();
                 truncated = false;
@@ -73,7 +82,13 @@ public final class SystemLogCapture implements AutoCloseable {
         }
 
         // A flush can occur between bytes of a line or a credential: publish only at newline.
-        @Override public synchronized void flush() { destination.flush(); }
-        @Override public void close() { flush(); }
+        @Override
+        public synchronized void flush() {
+            destination.flush();
+        }
+        @Override
+        public void close() {
+            flush();
+        }
     }
 }

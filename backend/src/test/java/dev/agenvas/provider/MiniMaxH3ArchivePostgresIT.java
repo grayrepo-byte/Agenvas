@@ -55,7 +55,8 @@ import tools.jackson.databind.node.ObjectNode;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = {AgenvasApplication.class, MiniMaxH3ArchivePostgresIT.FakeClient.class})
 class MiniMaxH3ArchivePostgresIT {
-    @org.junit.jupiter.api.io.TempDir static java.nio.file.Path assetsRoot;
+    @org.junit.jupiter.api.io.TempDir
+    static java.nio.file.Path assetsRoot;
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     private static final String TASK_ID = "cgt-test-seedance-archive-123";
@@ -79,21 +80,37 @@ class MiniMaxH3ArchivePostgresIT {
                 () -> Base64.getEncoder().encodeToString(new byte[32]));
     }
 
-    @AfterAll static void stopServer() { SERVER.stop(0); }
+    @AfterAll
+    static void stopServer() {
+        SERVER.stop(0);
+    }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private ArtifactService artifacts;
-    @Autowired private AssetService assets;
-    @Autowired private MediaDraftService drafts;
-    @Autowired private CanvasService canvas;
-    @Autowired private DirectMediaTaskService directMedia;
-    @Autowired private MediaCapabilityService catalog;
-    @Autowired private MediaExecutionWorker worker;
-    @Autowired private TaskService tasks;
-    @Autowired private MediaToolRunner mediaTools;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private ObjectMapper mapper;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private ArtifactService artifacts;
+    @Autowired
+    private AssetService assets;
+    @Autowired
+    private MediaDraftService drafts;
+    @Autowired
+    private CanvasService canvas;
+    @Autowired
+    private DirectMediaTaskService directMedia;
+    @Autowired
+    private MediaCapabilityService catalog;
+    @Autowired
+    private MediaExecutionWorker worker;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private MediaToolRunner mediaTools;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private ObjectMapper mapper;
 
     @Test
     void expiredUrlRefreshesOnlyOriginalTaskThenArchivesVideoWithNativeAudio() throws Exception {
@@ -209,7 +226,9 @@ class MiniMaxH3ArchivePostgresIT {
             var bytes = new java.io.ByteArrayOutputStream();
             javax.imageio.ImageIO.write(image, "png", bytes);
             return assets.archiveImage(ownerId, projectId, new java.io.ByteArrayInputStream(bytes.toByteArray())).id();
-        } catch (IOException failure) { throw new IllegalStateException(failure); }
+        } catch (IOException failure) {
+            throw new IllegalStateException(failure);
+        }
     }
 
     private Task approve(UUID ownerId, Fixture fixture) {
@@ -262,7 +281,8 @@ class MiniMaxH3ArchivePostgresIT {
                             ? "file:///invalid-result.mp4"
                             : "http://127.0.0.1:" + server.getAddress().getPort()
                                     + (query == 1 || EXPIRED_UNREFRESHABLE.get()
-                                            ? "/expired.mp4" : "/result.mp4");
+                                            ? "/expired.mp4"
+                                            : "/result.mp4");
                     respond(exchange, "{\"task\":{\"id\":\"" + TASK_ID + "\",\"model\":"
                             + "\"MiniMax-H3\",\"status\":\"succeeded\","
                             + "\"content\":{\"url\":\"" + videoUrl + "\"}}}");
@@ -282,7 +302,9 @@ class MiniMaxH3ArchivePostgresIT {
                 }
                 exchange.getResponseHeaders().set("Content-Type", "video/mp4");
                 exchange.sendResponseHeaders(200, VIDEO_BYTES.length);
-                try (var output = exchange.getResponseBody()) { output.write(VIDEO_BYTES); }
+                try (var output = exchange.getResponseBody()) {
+                    output.write(VIDEO_BYTES);
+                }
             });
             server.start();
             return server;
@@ -295,18 +317,22 @@ class MiniMaxH3ArchivePostgresIT {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json");
         exchange.sendResponseHeaders(200, bytes.length);
-        try (var output = exchange.getResponseBody()) { output.write(bytes); }
+        try (var output = exchange.getResponseBody()) {
+            output.write(bytes);
+        }
     }
 
     @TestConfiguration
     static class FakeClient {
-        @Bean @Primary
+        @Bean
+        @Primary
         MiniMaxH3Client fakeMiniMaxH3Client(ObjectMapper mapper) {
             return new MiniMaxH3Client(mapper,
                     URI.create("http://127.0.0.1:" + SERVER.getAddress().getPort()));
         }
 
-        @Bean @Primary
+        @Bean
+        @Primary
         MiniMaxMediaDownloadPolicy fakeMiniMaxDownloadPolicy() {
             return new MiniMaxMediaDownloadPolicy();
         }
@@ -314,5 +340,6 @@ class MiniMaxH3ArchivePostgresIT {
 
     /** 直连视频任务的固定输入：视频卡片、作为关键帧的图片产物和已保存的草稿版本。 */
     private record Fixture(Project project, ArtifactService.ArtifactView card,
-            ArtifactService.ArtifactView keyframe, UUID canvasItemId, long draftVersion) {}
+            ArtifactService.ArtifactView keyframe, UUID canvasItemId, long draftVersion) {
+    }
 }

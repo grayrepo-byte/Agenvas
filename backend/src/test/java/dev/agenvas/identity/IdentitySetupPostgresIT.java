@@ -50,13 +50,20 @@ class IdentitySetupPostgresIT {
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired IdentityService identities;
-    @Autowired AdminAccountRepository accounts;
-    @Autowired SetupStatusService setupStatus;
-    @Autowired JdbcClient jdbc;
-    @Autowired WebApplicationContext context;
-    @Autowired PlatformTransactionManager transactions;
-    @Autowired DataSource dataSource;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    AdminAccountRepository accounts;
+    @Autowired
+    SetupStatusService setupStatus;
+    @Autowired
+    JdbcClient jdbc;
+    @Autowired
+    WebApplicationContext context;
+    @Autowired
+    PlatformTransactionManager transactions;
+    @Autowired
+    DataSource dataSource;
     private MockMvc mvc;
 
     @BeforeEach

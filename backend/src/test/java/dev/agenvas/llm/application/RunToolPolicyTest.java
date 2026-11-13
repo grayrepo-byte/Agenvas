@@ -11,12 +11,16 @@ import tools.jackson.databind.json.JsonMapper;
 class RunToolPolicyTest {
     private final JsonMapper mapper = JsonMapper.builder().build();
     private final ToolRegistry registry = new ToolRegistry();
-    @Test void ordinaryReadToolsStayAvailableWithoutSkillResources() {
-        assertThat(RunToolPolicy.current(false, false)).contains("read_project_summary", "read_selection", "read_artifacts")
+    @Test
+    void ordinaryReadToolsStayAvailableWithoutSkillResources() {
+        assertThat(RunToolPolicy.current(false, false))
+                .contains("read_project_summary", "read_selection", "read_artifacts")
                 .doesNotContain("read_skill", "read_skill_resource", "read_skill_asset");
-        assertThat(RunToolPolicy.current(true, true, true)).contains("read_skill", "read_skill_resource", "read_skill_asset");
+        assertThat(RunToolPolicy.current(true, true, true)).contains("read_skill", "read_skill_resource",
+                "read_skill_asset");
     }
-    @Test void retiredAndMissingPoliciesFailClosed() {
+    @Test
+    void retiredAndMissingPoliciesFailClosed() {
         var policy = mapper.createObjectNode().put("schemaVersion", RunToolPolicy.CURRENT_SCHEMA_VERSION)
                 .put("systemPromptVersion", InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
         policy.putArray("allowedTools").add("read_artifacts");
@@ -26,7 +30,8 @@ class RunToolPolicyTest {
             assertThatThrownBy(() -> registry.modelDefinitions(policy)).isInstanceOf(IllegalStateException.class);
         }
     }
-    @Test void mismatchedSnapshotAndPromptProtocolsCannotReuseCurrentToolPermissions() {
+    @Test
+    void mismatchedSnapshotAndPromptProtocolsCannotReuseCurrentToolPermissions() {
         var policy = policy();
         policy.putArray("allowedTools").add("read_artifacts");
         policy.put("schemaVersion", RunToolPolicy.CURRENT_SCHEMA_VERSION - 1);
@@ -35,7 +40,8 @@ class RunToolPolicyTest {
                 .put("systemPromptVersion", InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION - 1);
         assertThatThrownBy(() -> registry.modelDefinitions(policy)).isInstanceOf(IllegalStateException.class);
     }
-    @Test void pinnedAllowlistIsSharedWithDefinitionsAndCallbacksCannotExecute() {
+    @Test
+    void pinnedAllowlistIsSharedWithDefinitionsAndCallbacksCannotExecute() {
         var policy = policy();
         policy.putArray("allowedTools").add("read_skill_resource");
         assertThat(names(policy)).containsExactly("read_skill_resource");
@@ -47,7 +53,8 @@ class RunToolPolicyTest {
         policy.putArray("allowedTools").add("run_shell");
         assertThatThrownBy(() -> registry.modelDefinitions(policy)).isInstanceOf(IllegalStateException.class);
     }
-    @Test void currentSchemasHaveCanvasTargetsAndNoAgentOutputGroups() {
+    @Test
+    void currentSchemasHaveCanvasTargetsAndNoAgentOutputGroups() {
         var policy = policy();
         policy.set("allowedTools", mapper.valueToTree(RunToolPolicy.CURRENT));
         assertThat(names(policy)).contains("read_canvas", "manage_canvas_node", "update_media_draft")
@@ -57,11 +64,15 @@ class RunToolPolicyTest {
             assertThat(mapper.readTree(definition.inputSchema()).path("type").asText()).isEqualTo("object");
             assertThat(definition.inputSchema()).doesNotContain("AGENT_OUTPUT");
             assertThat(definition.description()).doesNotContain("frozenSelectedVersionId", "bound to this Run");
-            if (definition.name().equals("propose_media_generation")) assertThat(definition.inputSchema()).contains("canvasItemId", "expectedDraftVersion", "expectedItemVersion");
-            if (definition.name().equals("read_skill_resource")) assertThat(definition.inputSchema()).contains("skillVersionId");
+            if (definition.name().equals("propose_media_generation"))
+                assertThat(definition.inputSchema()).contains("canvasItemId", "expectedDraftVersion",
+                        "expectedItemVersion");
+            if (definition.name().equals("read_skill_resource"))
+                assertThat(definition.inputSchema()).contains("skillVersionId");
         }
     }
-    @Test void compositionSchemaUsesExactInputsAndDoesNotGrantExistingRunsNewPermissions() {
+    @Test
+    void compositionSchemaUsesExactInputsAndDoesNotGrantExistingRunsNewPermissions() {
         var policy = policy();
         policy.putArray("allowedTools").add("read_artifacts");
         assertThat(names(policy)).doesNotContain("compose_video");
@@ -79,7 +90,8 @@ class RunToolPolicyTest {
                 .doesNotContain("ownerId", "projectId", "runId", "url", "ffmpeg");
         assertThat(definition.description()).contains("acceptance only", "durably waits", "do not poll", "1.15x");
     }
-    @Test void localAudioSchemasExposeExactCanvasVersionsWithoutAuthorityOrRawCommands() {
+    @Test
+    void localAudioSchemasExposeExactCanvasVersionsWithoutAuthorityOrRawCommands() {
         var policy = policy();
         policy.putArray("allowedTools").add("extract_audio").add("trim_audio");
         assertThat(names(policy)).containsExactly("extract_audio", "trim_audio");
@@ -87,15 +99,18 @@ class RunToolPolicyTest {
             var definition = callback.getToolDefinition();
             JsonNode schema = mapper.readTree(definition.inputSchema());
             assertThat(schema.path("additionalProperties").asBoolean()).isFalse();
-            assertThat(schema.path("required").toString()).contains("canvasItemId", "sourceVersionId", "expectedCanvasItemVersion");
+            assertThat(schema.path("required").toString()).contains("canvasItemId", "sourceVersionId",
+                    "expectedCanvasItemVersion");
             assertThat(definition.inputSchema()).doesNotContain("runId", "ownerId", "projectId", "url", "ffmpeg");
             assertThat(definition.description()).contains("no Provider charge", "resumes");
             if (definition.name().equals("extract_audio"))
                 assertThat(schema.at("/properties/trackIndex/maximum").asInt()).isEqualTo(31);
-            else assertThat(schema.path("required").toString()).contains("startMs", "endMs");
+            else
+                assertThat(schema.path("required").toString()).contains("startMs", "endMs");
         }
     }
-    @Test void storyboardSchemasExposeOnlyCreativeEditsAndPreserveFrozenPermissions() {
+    @Test
+    void storyboardSchemasExposeOnlyCreativeEditsAndPreserveFrozenPermissions() {
         var policy = policy();
         policy.putArray("allowedTools").add("read_canvas");
         assertThat(names(policy)).doesNotContain("read_storyboard", "write_storyboard_shots");
@@ -103,7 +118,8 @@ class RunToolPolicyTest {
         policy.withArray("allowedTools").add("read_storyboard").add("write_storyboard_shots");
         for (var callback : registry.modelDefinitions(policy)) {
             var tool = callback.getToolDefinition();
-            if (!tool.name().contains("storyboard")) continue;
+            if (!tool.name().contains("storyboard"))
+                continue;
             var schema = mapper.readTree(tool.inputSchema());
             assertThat(schema.path("additionalProperties").asBoolean()).isFalse();
             assertThat(tool.inputSchema()).doesNotContain("projectId", "ownerId", "runId", "approved",
@@ -121,7 +137,8 @@ class RunToolPolicyTest {
             }
         }
     }
-    @Test void shotMediaAssociationsExposeOnlyObservedIdentityAndRevision() {
+    @Test
+    void shotMediaAssociationsExposeOnlyObservedIdentityAndRevision() {
         var policy = policy();
         policy.putArray("allowedTools").add("propose_media_generation");
         var callback = registry.modelDefinitions(policy).getFirst();

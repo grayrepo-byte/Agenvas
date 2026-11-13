@@ -55,12 +55,18 @@ class ArtifactCreateIdempotencyPostgresIT {
         registry.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private ArtifactService artifacts;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private ObjectMapper mapper;
-    @Autowired private WebApplicationContext context;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private ArtifactService artifacts;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private ObjectMapper mapper;
+    @Autowired
+    private WebApplicationContext context;
 
     @Test
     void sameKeyReplaysOriginalResponseAndConcurrentRequestsCreateOnlyOnce() throws Exception {
@@ -103,7 +109,8 @@ class ArtifactCreateIdempotencyPostgresIT {
             }
             start.countDown();
             List<ArtifactService.CreateResult> results = new ArrayList<>();
-            for (Future<ArtifactService.CreateResult> future : futures) results.add(future.get());
+            for (Future<ArtifactService.CreateResult> future : futures)
+                results.add(future.get());
             assertThat(results.stream().map(result -> result.view().artifact().id()).distinct()
                     .toList())
                     .hasSize(1);
@@ -118,7 +125,8 @@ class ArtifactCreateIdempotencyPostgresIT {
 
         MockMvc mvc = webAppContextSetup(context)
                 .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers
-                        .springSecurity()).build();
+                        .springSecurity())
+                .build();
         String path = "/api/v1/projects/" + project.id() + "/artifacts";
         var auth = authentication(new UsernamePasswordAuthenticationToken(owner, null,
                 List.of()));
@@ -127,15 +135,15 @@ class ArtifactCreateIdempotencyPostgresIT {
                 {"format":"PLAIN_TEXT","text":"HTTP brief"}}
                 """;
         mvc.perform(post(path).with(auth).with(csrf()).contentType("application/json")
-                        .header("Idempotency-Key", "http-key-1").content(body))
+                .header("Idempotency-Key", "http-key-1").content(body))
                 .andExpect(status().isCreated())
                 .andExpect(header().string("Idempotency-Replayed", "false"));
         mvc.perform(post(path).with(auth).with(csrf()).contentType("application/json")
-                        .header("Idempotency-Key", "http-key-1").content(body))
+                .header("Idempotency-Key", "http-key-1").content(body))
                 .andExpect(status().isCreated())
                 .andExpect(header().string("Idempotency-Replayed", "true"));
         mvc.perform(post(path).with(auth).with(csrf()).contentType("application/json")
-                        .content(body))
+                .content(body))
                 .andExpect(status().isBadRequest());
         assertThat(jdbc.sql("""
                         select count(*) from artifact

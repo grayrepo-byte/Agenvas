@@ -1,0 +1,14 @@
+# Generated API types must match openapi-typescript output.
+src/shared/api/schema.ts
+# Package-manager-owned files, dependencies, caches and build output.
+pnpm-lock.yaml
+node_modules/
+dist/
+coverage/
+.temp/
+*.tsbuildinfo
+# Private local configuration and non-code assets are outside the format scripts.
+.env*
+**/*.md
+**/*.svg
+**/*.txt

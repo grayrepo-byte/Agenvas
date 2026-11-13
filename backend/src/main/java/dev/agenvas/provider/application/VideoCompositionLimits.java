@@ -32,7 +32,8 @@ public record VideoCompositionLimits(Integer maxDurationMs, Integer maxShots, In
         timeout = duration(timeout, Duration.ofMinutes(15), TIMEOUT_CEILING);
         previewTimeout = duration(previewTimeout, Duration.ofSeconds(30), Duration.ofMinutes(2));
         scratchRoot = scratchRoot == null ? Path.of(System.getProperty("java.io.tmpdir")) : scratchRoot;
-        if (!scratchRoot.isAbsolute()) throw new IllegalArgumentException("Composition scratch root must be absolute");
+        if (!scratchRoot.isAbsolute())
+            throw new IllegalArgumentException("Composition scratch root must be absolute");
         maxResolution = maxResolution == null ? "2160P" : maxResolution;
         if (!List.of("720P", "1080P", "2160P").contains(maxResolution))
             throw new IllegalArgumentException("Invalid composition maximum resolution");
@@ -40,14 +41,17 @@ public record VideoCompositionLimits(Integer maxDurationMs, Integer maxShots, In
     public static VideoCompositionLimits defaults() {
         return new VideoCompositionLimits(null, null, null, null, null, null, null, null, null, null, null, null);
     }
-    public int maxFrames() { return (int) ((long) maxDurationMs * VideoCompositionPlanner.FPS / 1000); }
+    public int maxFrames() {
+        return (int) ((long) maxDurationMs * VideoCompositionPlanner.FPS / 1000);
+    }
     public List<String> resolutions() {
         var values = List.of("720P", "1080P", "2160P");
         return values.subList(0, values.indexOf(maxResolution) + 1);
     }
     private static long bound(Number value, long fallback, long min, long max) {
         long result = value == null ? fallback : value.longValue();
-        if (result < min || result > max) throw new IllegalArgumentException("Composition budget outside supported range");
+        if (result < min || result > max)
+            throw new IllegalArgumentException("Composition budget outside supported range");
         return result;
     }
     private static Duration duration(Duration value, Duration fallback, Duration max) {

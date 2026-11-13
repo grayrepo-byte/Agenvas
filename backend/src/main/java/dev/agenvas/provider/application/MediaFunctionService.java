@@ -30,7 +30,9 @@ public class MediaFunctionService {
         this.clock = clock;
     }
 
-    public List<JooqMediaFunctionRepository.Setting> list() { return repository.list(); }
+    public List<JooqMediaFunctionRepository.Setting> list() {
+        return repository.list();
+    }
 
     @Transactional
     public void update(MediaFunction operation, long expectedVersion, UUID capabilityId) {
@@ -49,7 +51,8 @@ public class MediaFunctionService {
             throw problem(HttpStatus.CONFLICT, "MEDIA_FUNCTION_CONFLICT", ApiMessage.of("api.media-function.conflict"));
         }
         if (setting.capabilityId() == null) {
-            throw problem(HttpStatus.UNPROCESSABLE_ENTITY, "MEDIA_FUNCTION_UNCONFIGURED", ApiMessage.of("api.media-function.unconfigured"));
+            throw problem(HttpStatus.UNPROCESSABLE_ENTITY, "MEDIA_FUNCTION_UNCONFIGURED",
+                    ApiMessage.of("api.media-function.unconfigured"));
         }
         return compatibleBinding(operation, setting.capabilityId());
     }
@@ -65,38 +68,48 @@ public class MediaFunctionService {
                 var policy = catalog.inputPolicy(binding);
                 if (!MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(binding.adapterId())
                         || policy.maxReferenceImages() < 2 || !policy.supportedImageAspectRatios().contains("2:3")) {
-                    throw problem(HttpStatus.BAD_REQUEST, "MEDIA_FUNCTION_INCOMPATIBLE", ApiMessage.of("api.media-function.incompatible"));
+                    throw problem(HttpStatus.BAD_REQUEST, "MEDIA_FUNCTION_INCOMPATIBLE",
+                            ApiMessage.of("api.media-function.incompatible"));
                 }
                 return binding;
             }
-            if (local) return binding;
+            if (local)
+                return binding;
             var policy = catalog.inputPolicy(binding);
             boolean transparent = image == ImageOperation.REMOVE_BACKGROUND || image == ImageOperation.LAYER_SPLIT;
             boolean nativeEdit = image.cloud() && policy.maxReferenceImages() > 0
                     && (!transparent || policy.supportsTransparentBackground())
                     && (MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(binding.adapterId())
-                    || MediaAdapterRegistry.GOOGLE_NANO_BANANA_2.equals(binding.adapterId())
-                    || MediaAdapterRegistry.COMFY_IMAGE_V1.equals(binding.adapterId()) && policy.maxReferenceImages() == 1);
-            boolean workflow = !transparent && (image.cloud() || image == ImageOperation.DEPTH_MAP || image == ImageOperation.UPSCALE)
-                    && compatibleDefinition(catalog.runningHubDefinition(binding), RunningHubDefinition.FieldType.IMAGE);
+                            || MediaAdapterRegistry.GOOGLE_NANO_BANANA_2.equals(binding.adapterId())
+                            || MediaAdapterRegistry.COMFY_IMAGE_V1.equals(binding.adapterId())
+                                    && policy.maxReferenceImages() == 1);
+            boolean workflow = !transparent
+                    && (image.cloud() || image == ImageOperation.DEPTH_MAP || image == ImageOperation.UPSCALE)
+                    && compatibleDefinition(catalog.runningHubDefinition(binding),
+                            RunningHubDefinition.FieldType.IMAGE);
             if (!nativeEdit && !workflow) {
-                throw problem(HttpStatus.BAD_REQUEST, "MEDIA_FUNCTION_INCOMPATIBLE", ApiMessage.of("api.media-function.incompatible"));
+                throw problem(HttpStatus.BAD_REQUEST, "MEDIA_FUNCTION_INCOMPATIBLE",
+                        ApiMessage.of("api.media-function.incompatible"));
             }
             return binding;
         }
         local = (operation == MediaFunction.VIDEO_DEPTH_MAP
                 && MediaAdapterRegistry.LOCAL_VIDEO_PROCESSOR.equals(binding.adapterId()))
                 || (operation == MediaFunction.VIDEO_EXTRACT_AUDIO
-                && MediaAdapterRegistry.LOCAL_VIDEO_AUDIO_EXTRACTOR.equals(binding.adapterId()));
-        if (!local && !compatibleDefinition(catalog.runningHubDefinition(binding), RunningHubDefinition.FieldType.VIDEO)) {
-            throw problem(HttpStatus.BAD_REQUEST, "MEDIA_FUNCTION_INCOMPATIBLE", ApiMessage.of("api.media-function.incompatible"));
+                        && MediaAdapterRegistry.LOCAL_VIDEO_AUDIO_EXTRACTOR.equals(binding.adapterId()));
+        if (!local
+                && !compatibleDefinition(catalog.runningHubDefinition(binding), RunningHubDefinition.FieldType.VIDEO)) {
+            throw problem(HttpStatus.BAD_REQUEST, "MEDIA_FUNCTION_INCOMPATIBLE",
+                    ApiMessage.of("api.media-function.incompatible"));
         }
         return binding;
     }
 
     /** A workflow consumes one fixed source; additional or conditional media would change the tool's meaning. */
-    public static boolean compatibleDefinition(RunningHubDefinition definition, RunningHubDefinition.FieldType sourceType) {
-        if (definition == null) return false;
+    public static boolean compatibleDefinition(RunningHubDefinition definition,
+            RunningHubDefinition.FieldType sourceType) {
+        if (definition == null)
+            return false;
         var media = definition.fields().stream().filter(RunningHubDefinition.Field::media).toList();
         return media.size() == 1 && media.getFirst().type() == sourceType
                 && media.getFirst().enabledWhen() == null;

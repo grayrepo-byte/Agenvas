@@ -20,19 +20,29 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/settings/call-log-retention")
 public class CallLogRetentionController {
     private final CallLogRetentionService retention;
-    public CallLogRetentionController(CallLogRetentionService retention) { this.retention = retention; }
-    @GetMapping public ResponseEntity<CallLogRetentionSettings> get() { return response(retention.settings()); }
-    @PutMapping public ResponseEntity<CallLogRetentionSettings> update(@Valid @RequestBody Request request) {
+    public CallLogRetentionController(CallLogRetentionService retention) {
+        this.retention = retention;
+    }
+    @GetMapping
+    public ResponseEntity<CallLogRetentionSettings> get() {
+        return response(retention.settings());
+    }
+    @PutMapping
+    public ResponseEntity<CallLogRetentionSettings> update(@Valid @RequestBody Request request) {
         return response(retention.update(request.retentionDays(), request.expectedVersion()));
     }
     @PostMapping("/cleanup")
     public ResponseEntity<CallLogCleanupResult> cleanup(@Valid @RequestBody CleanupRequest request) {
-        return ResponseEntity.ok().header("Cache-Control", "no-store").body(retention.cleanExpired(request.expectedVersion()));
+        return ResponseEntity.ok().header("Cache-Control", "no-store")
+                .body(retention.cleanExpired(request.expectedVersion()));
     }
-    public record CleanupRequest(@NotNull @Min(1) Integer expectedVersion) {}
+    public record CleanupRequest(@NotNull @Min(1) Integer expectedVersion) {
+    }
     private ResponseEntity<CallLogRetentionSettings> response(CallLogRetentionSettings value) {
         return ResponseEntity.ok().header("Cache-Control", "no-store").body(value);
     }
-    public record Request(@JsonProperty(value = "retentionDays", required = true) @Min(CallLogRetentionSettings.MIN_DAYS) @Max(CallLogRetentionSettings.MAX_DAYS) Integer retentionDays,
-            @NotNull @Min(1) Integer expectedVersion) {}
+    public record Request(
+            @JsonProperty(value = "retentionDays", required = true) @Min(CallLogRetentionSettings.MIN_DAYS) @Max(CallLogRetentionSettings.MAX_DAYS) Integer retentionDays,
+            @NotNull @Min(1) Integer expectedVersion) {
+    }
 }

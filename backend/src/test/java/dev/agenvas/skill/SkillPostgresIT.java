@@ -70,52 +70,77 @@ import tools.jackson.databind.ObjectMapper;
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.skill.worker-enabled=false", "agenvas.library.worker-enabled=false"})
 class SkillPostgresIT {
-    @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     private static final Path STORAGE = temporaryRoot();
     private static final String BODY = "---\nname: warm-illustration\ndescription: Prepare a warm illustration from an explicit subject.\n---\nUse references/style-guide.md and the chosen subject.\n";
-    @DynamicPropertySource static void properties(DynamicPropertyRegistry registry) {
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry registry) {
         // PER_CLASS Spring injection can precede Testcontainers' beforeAll callback.
-        if (!POSTGRES.isRunning()) POSTGRES.start();
+        if (!POSTGRES.isRunning())
+            POSTGRES.start();
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("agenvas.storage.root", STORAGE::toString);
     }
-    @Autowired IdentityService identities;
-    @Autowired SkillService skills;
-    @Autowired dev.agenvas.skill.application.BuiltinSkillCatalogue catalogue;
-    @Autowired dev.agenvas.skill.infrastructure.SkillRepository repository;
-    @Autowired org.springframework.transaction.support.TransactionTemplate transactions;
-    @Autowired LibraryService library;
-    @Autowired SkillAssetArchiveService archive;
-    @Autowired ObjectMapper mapper;
-    @Autowired JdbcClient jdbc;
-    @Autowired DSLContext db;
-    @Autowired WebApplicationContext context;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    SkillService skills;
+    @Autowired
+    dev.agenvas.skill.application.BuiltinSkillCatalogue catalogue;
+    @Autowired
+    dev.agenvas.skill.infrastructure.SkillRepository repository;
+    @Autowired
+    org.springframework.transaction.support.TransactionTemplate transactions;
+    @Autowired
+    LibraryService library;
+    @Autowired
+    SkillAssetArchiveService archive;
+    @Autowired
+    ObjectMapper mapper;
+    @Autowired
+    JdbcClient jdbc;
+    @Autowired
+    DSLContext db;
+    @Autowired
+    WebApplicationContext context;
     private AdminPrincipal owner;
     private MockMvc mvc;
     private RequestPostProcessor auth;
-    @BeforeAll void setup() {
+    @BeforeAll
+    void setup() {
         owner = identities.setup("skill-catalogue-admin", "synthetic-password-123");
         auth = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of()));
         mvc = webAppContextSetup(context).apply(springSecurity()).build();
     }
 
-    @Test void concurrentFirstReadsRegisterPackagedBuiltinsOnceWithoutChangingPersonalSkills() throws Exception {
+    @Test
+    void concurrentFirstReadsRegisterPackagedBuiltinsOnceWithoutChangingPersonalSkills() throws Exception {
         UUID account = UUID.randomUUID();
-        jdbc.sql("insert into app_user(id,login_name,password_hash,status,created_at) values (:id,:login,'synthetic-hash','DISABLED',now())")
+        jdbc.sql(
+                "insert into app_user(id,login_name,password_hash,status,created_at) values (:id,:login,'synthetic-hash','DISABLED',now())")
                 .param("id", account).param("login", "builtin-" + account).update();
         var personal = skills.create(account, "Personal creative method", "Keep this editable draft");
         CountDownLatch start = new CountDownLatch(1);
         try (var executor = Executors.newFixedThreadPool(2)) {
-            var first = executor.submit(() -> { start.await(); return skills.list(account, "short-drama", false, null); });
-            var second = executor.submit(() -> { start.await(); return skills.list(account, "short-drama", false, null); });
+            var first = executor.submit(() -> {
+                start.await();
+                return skills.list(account, "short-drama", false, null);
+            });
+            var second = executor.submit(() -> {
+                start.await();
+                return skills.list(account, "short-drama", false, null);
+            });
             start.countDown();
             assertThat(first.get().items()).hasSize(8).allMatch(SkillService.SkillResponse::builtin);
             assertThat(second.get().items()).extracting(SkillService.SkillResponse::id)
-                    .containsExactlyElementsOf(first.get().items().stream().map(SkillService.SkillResponse::id).toList());
+                    .containsExactlyElementsOf(
+                            first.get().items().stream().map(SkillService.SkillResponse::id).toList());
         }
-        assertThat(jdbc.sql("select count(*) from skill_version where owner_id=:owner").param("owner", account).query(Integer.class).single()).isEqualTo(catalogue.entries().size());
+        assertThat(jdbc.sql("select count(*) from skill_version where owner_id=:owner").param("owner", account)
+                .query(Integer.class).single()).isEqualTo(catalogue.entries().size());
         assertThat(skills.getDraft(account, personal.id()).version()).isZero();
         assertThat(skills.get(account, personal.id()).builtin()).isFalse();
         var one = skills.list(account, "short-drama-write", false, null).items().getFirst();
@@ -123,29 +148,40 @@ class SkillPostgresIT {
         assertThat(skills.list(account, "short-drama", true, null).items()).isEmpty();
         assertThatThrownBy(() -> skills.get(owner.userId(), one.id())).isInstanceOfSatisfying(ApiProblemException.class,
                 problem -> assertThat(problem.code()).isEqualTo("SKILL_NOT_FOUND"));
-        assertThatThrownBy(() -> skills.getBundle(owner.userId(), one.id(), one.currentVersionId())).isInstanceOfSatisfying(ApiProblemException.class,
-                problem -> assertThat(problem.code()).isEqualTo("SKILL_NOT_FOUND"));
+        assertThatThrownBy(() -> skills.getBundle(owner.userId(), one.id(), one.currentVersionId()))
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        problem -> assertThat(problem.code()).isEqualTo("SKILL_NOT_FOUND"));
     }
 
-    @Test void purposeFiltersBeforePaginationAndReturnsCurrentSourceWithoutChangingVersions() throws Exception {
+    @Test
+    void purposeFiltersBeforePaginationAndReturnsCurrentSourceWithoutChangingVersions() throws Exception {
         UUID account = UUID.randomUUID();
-        jdbc.sql("insert into app_user(id,login_name,password_hash,status,created_at) values (:id,:login,'synthetic-hash','DISABLED',now())")
+        jdbc.sql(
+                "insert into app_user(id,login_name,password_hash,status,created_at) values (:id,:login,'synthetic-hash','DISABLED',now())")
                 .param("id", account).param("login", "categories-" + account).update();
         var first = skills.list(account, "", false, null);
-        var h3 = first.items().stream().filter(item -> item.title().contains("h3-prompt-writing")).findFirst().orElseThrow();
-        for (int index = 0; index < 45; index++) skills.create(account, "Recent personal " + index, "Personal method");
-        var filtered = skills.list(account, "", false, null, dev.agenvas.skill.application.BuiltinSkillCatalogue.Category.ADVERTISING);
+        var h3 = first.items().stream().filter(item -> item.title().contains("h3-prompt-writing")).findFirst()
+                .orElseThrow();
+        for (int index = 0; index < 45; index++)
+            skills.create(account, "Recent personal " + index, "Personal method");
+        var filtered = skills.list(account, "", false, null,
+                dev.agenvas.skill.application.BuiltinSkillCatalogue.Category.ADVERTISING);
         assertThat(filtered.total()).isEqualTo(2);
         assertThat(filtered.nextCursor()).isNull();
         assertThat(filtered.items()).allSatisfy(item -> {
             assertThat(item.builtin()).isTrue();
-            assertThat(item.category()).isEqualTo(dev.agenvas.skill.application.BuiltinSkillCatalogue.Category.ADVERTISING);
+            assertThat(item.category())
+                    .isEqualTo(dev.agenvas.skill.application.BuiltinSkillCatalogue.Category.ADVERTISING);
             assertThat(item.builtinSource().name()).isEqualTo("MiniMax H3");
         });
-        assertThat(skills.list(account, "可审核", false, null, dev.agenvas.skill.application.BuiltinSkillCatalogue.Category.ADVERTISING).total()).isEqualTo(1);
-        assertThat(skills.list(account, "", true, null, dev.agenvas.skill.application.BuiltinSkillCatalogue.Category.ADVERTISING).total()).isZero();
+        assertThat(skills.list(account, "可审核", false, null,
+                dev.agenvas.skill.application.BuiltinSkillCatalogue.Category.ADVERTISING).total()).isEqualTo(1);
+        assertThat(skills
+                .list(account, "", true, null, dev.agenvas.skill.application.BuiltinSkillCatalogue.Category.ADVERTISING)
+                .total()).isZero();
         assertThat(skills.get(account, h3.id()).currentVersionId()).isEqualTo(h3.currentVersionId());
-        assertThat(skills.getVersion(account, h3.id(), h3.currentVersionId()).resources()).extracting(SkillContent.PublishedResource::path)
+        assertThat(skills.getVersion(account, h3.id(), h3.currentVersionId()).resources())
+                .extracting(SkillContent.PublishedResource::path)
                 .contains("references/base-en.txt", "references/ref-en.txt");
         var accountAuth = authentication(new UsernamePasswordAuthenticationToken(
                 new AdminPrincipal(account, "synthetic-category-user"), null, List.of()));
@@ -161,11 +197,13 @@ class SkillPostgresIT {
                 problem -> assertThat(problem.code()).isEqualTo("SKILL_BUILTIN_READ_ONLY"));
     }
 
-    @Test void immutableVersionReadsUseOneQueryAndKeepPublicationOrderAndAccountScope() {
+    @Test
+    void immutableVersionReadsUseOneQueryAndKeepPublicationOrderAndAccountScope() {
         var primary = skills.create(owner.userId(), "Synthetic version history", "Query fixture");
         var sibling = skills.create(owner.userId(), "Synthetic sibling history", "Query fixture");
         UUID otherOwner = UUID.randomUUID();
-        jdbc.sql("insert into app_user(id,login_name,password_hash,status,created_at) values (:id,:login,'synthetic-hash','DISABLED',now())")
+        jdbc.sql(
+                "insert into app_user(id,login_name,password_hash,status,created_at) values (:id,:login,'synthetic-hash','DISABLED',now())")
                 .param("id", otherOwner).param("login", "version-query-" + otherOwner).update();
         var otherSkill = skills.create(otherOwner, "Synthetic other account history", "Query fixture");
         var first = syntheticVersion(owner.userId(), primary.id(), 1);
@@ -184,7 +222,10 @@ class SkillPostgresIT {
         AtomicInteger queries = new AtomicInteger();
         Configuration measured = db.configuration().derive();
         measured.set(new DefaultExecuteListenerProvider(new ExecuteListener() {
-            @Override public void executeEnd(ExecuteContext context) { queries.incrementAndGet(); }
+            @Override
+            public void executeEnd(ExecuteContext context) {
+                queries.incrementAndGet();
+            }
         }));
         SkillRepository reads = new SkillRepository(DSL.using(measured), mapper);
 
@@ -205,10 +246,12 @@ class SkillPostgresIT {
                         problem -> assertThat(problem.code()).isEqualTo("SKILL_NOT_FOUND"));
     }
 
-    @Test void builtinVersionsAreReadableThroughTheApiAndCannotBeEditedTrashedOrCopied() throws Exception {
+    @Test
+    void builtinVersionsAreReadableThroughTheApiAndCannotBeEditedTrashedOrCopied() throws Exception {
         var builtin = skills.list(owner.userId(), "short-drama-write", false, null).items().getFirst();
         String path = "/api/v1/skills/" + builtin.id();
-        String response = mvc.perform(get(path).with(auth)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String response = mvc.perform(get(path).with(auth)).andExpect(status().isOk()).andReturn().getResponse()
+                .getContentAsString();
         assertThat(mapper.readTree(response).path("builtin").asBoolean()).isTrue();
         mvc.perform(get(path + "/versions/" + builtin.currentVersionId()).with(auth)).andExpect(status().isOk());
         for (Runnable mutation : List.<Runnable>of(
@@ -226,20 +269,26 @@ class SkillPostgresIT {
         assertThat(skills.get(owner.userId(), builtin.id()).currentVersionId()).isEqualTo(builtin.currentVersionId());
     }
 
-    @Test void retiredBuiltinsAreExcludedBeforePaginationWhilePersonalSkillsAndHistoricalVersionsRemain() {
+    @Test
+    void retiredBuiltinsAreExcludedBeforePaginationWhilePersonalSkillsAndHistoricalVersionsRemain() {
         UUID account = UUID.randomUUID();
-        jdbc.sql("insert into app_user(id,login_name,password_hash,status,created_at) values (:id,:login,'synthetic-hash','DISABLED',now())")
+        jdbc.sql(
+                "insert into app_user(id,login_name,password_hash,status,created_at) values (:id,:login,'synthetic-hash','DISABLED',now())")
                 .param("id", account).param("login", "retired-" + account).update();
         var available = skills.list(account, "short-drama-write", false, null).items().getFirst();
         var source = skills.getBundle(account, available.id(), available.currentVersionId());
-        for (int index = 0; index < 41; index++) skills.create(account, "short-drama-edit personal " + index, "Personal creative method");
+        for (int index = 0; index < 41; index++)
+            skills.create(account, "short-drama-edit personal " + index, "Personal creative method");
         var retired = new java.util.ArrayList<SkillContent.Version>();
         for (String name : List.of("short-drama", "short-drama-produce", "short-drama-edit", "short-drama-write")) {
             UUID id = UUID.randomUUID();
             var now = java.time.Instant.now();
-            var version = new SkillContent.Version(UUID.randomUUID(), account, id, 1, source.bundleHash(), source.bundle(), now);
-            transactions.executeWithoutResult(ignored -> repository.registerBuiltin(new SkillContent.Catalogue(id, account,
-                    name, "Previously bundled workflow", "drama-skills/" + name, null, null, 0, now, now), version));
+            var version = new SkillContent.Version(UUID.randomUUID(), account, id, 1, source.bundleHash(),
+                    source.bundle(), now);
+            transactions.executeWithoutResult(ignored -> repository.registerBuiltin(
+                    new SkillContent.Catalogue(id, account,
+                            name, "Previously bundled workflow", "drama-skills/" + name, null, null, 0, now, now),
+                    version));
             retired.add(version);
         }
         var first = skills.list(account, "short-drama", false, null);
@@ -250,19 +299,23 @@ class SkillPostgresIT {
         assertThat(second.total()).isEqualTo(49);
         assertThat(second.items()).hasSize(9);
         assertThat(second.nextCursor()).isNull();
-        assertThat(java.util.stream.Stream.concat(first.items().stream(), second.items().stream()).map(SkillService.SkillResponse::id))
-                .doesNotContainAnyElementsOf(retired.stream().map(SkillContent.Version::skillId).toList()).doesNotHaveDuplicates();
+        assertThat(java.util.stream.Stream.concat(first.items().stream(), second.items().stream())
+                .map(SkillService.SkillResponse::id))
+                .doesNotContainAnyElementsOf(retired.stream().map(SkillContent.Version::skillId).toList())
+                .doesNotHaveDuplicates();
         assertThat(skills.list(account, "short-drama-edit", false, null).total()).isEqualTo(41);
         for (var version : retired) {
             var historical = skills.getBundle(account, version.skillId(), version.id());
             assertThat(historical.id()).isEqualTo(version.id());
             assertThat(historical.bundle()).isEqualTo(version.bundle());
             assertThatThrownBy(() -> skills.requireSelectableVersion(account, version.skillId(), version.id()))
-                    .isInstanceOfSatisfying(ApiProblemException.class, problem -> assertThat(problem.code()).isEqualTo("SKILL_NOT_FOUND"));
+                    .isInstanceOfSatisfying(ApiProblemException.class,
+                            problem -> assertThat(problem.code()).isEqualTo("SKILL_NOT_FOUND"));
         }
     }
 
-    @Test void localizedBuiltinSearchMatchesVisibleTitlesAndDescriptionsWithoutChangingStoredContent() throws Exception {
+    @Test
+    void localizedBuiltinSearchMatchesVisibleTitlesAndDescriptionsWithoutChangingStoredContent() throws Exception {
         UUID account = searchAccount("localized");
         var builtin = skills.list(account, "short-drama-assets", false, null).items().getFirst();
         var original = skills.getBundle(account, builtin.id(), builtin.currentVersionId());
@@ -274,7 +327,7 @@ class SkillPostgresIT {
                 List.of("en;q=0,ja-JP;q=0.9", "ビジュアル素材設計", "時代設定"))) {
             for (String query : sample.subList(1, sample.size())) {
                 var result = mapper.readTree(mvc.perform(get("/api/v1/skills").with(accountAuth)
-                                .header("Accept-Language", sample.getFirst()).param("query", query).param("category", "STORY"))
+                        .header("Accept-Language", sample.getFirst()).param("query", query).param("category", "STORY"))
                         .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
                 assertThat(result.path("total").asInt()).as("%s / %s", sample.getFirst(), query).isEqualTo(1);
                 assertThat(result.path("items")).hasSize(1);
@@ -290,7 +343,8 @@ class SkillPostgresIT {
                 .containsExactly(builtin.id());
     }
 
-    @Test void localizedSearchSharesRawPersonalFiltersTotalsAndCursorPagination() throws Exception {
+    @Test
+    void localizedSearchSharesRawPersonalFiltersTotalsAndCursorPagination() throws Exception {
         withEnglishSearchRequest(() -> {
             UUID account = searchAccount("pages");
             var builtin = skills.list(account, "short-drama-assets", false, null).items().getFirst();
@@ -302,7 +356,8 @@ class SkillPostgresIT {
                 personalIds.add(personal.id());
             }
             var trashed = skills.create(account, "Visual asset design trash", "Keep this user text");
-            skills.updateMetadata(account, trashed.id(), trashed.version(), trashed.title(), trashed.description(), true);
+            skills.updateMetadata(account, trashed.id(), trashed.version(), trashed.title(), trashed.description(),
+                    true);
             var first = skills.list(account, "visual asset design", false, null);
             assertThat(first.total()).isEqualTo(46);
             assertThat(first.items()).hasSize(SkillService.PAGE_SIZE);
@@ -313,8 +368,10 @@ class SkillPostgresIT {
             assertThat(second.nextCursor()).isNull();
             assertThat(java.util.stream.Stream.concat(first.items().stream(), second.items().stream())
                     .map(SkillService.SkillResponse::id)).doesNotHaveDuplicates()
-                    .containsExactlyInAnyOrderElementsOf(java.util.stream.Stream.concat(personalIds.stream(), java.util.stream.Stream.of(builtin.id())).toList());
-            var story = skills.list(account, "visual asset design", false, null, dev.agenvas.skill.application.BuiltinSkillCatalogue.Category.STORY);
+                    .containsExactlyInAnyOrderElementsOf(java.util.stream.Stream
+                            .concat(personalIds.stream(), java.util.stream.Stream.of(builtin.id())).toList());
+            var story = skills.list(account, "visual asset design", false, null,
+                    dev.agenvas.skill.application.BuiltinSkillCatalogue.Category.STORY);
             assertThat(story.total()).isEqualTo(1);
             assertThat(story.items()).extracting(SkillService.SkillResponse::id).containsExactly(builtin.id());
             assertThat(story.nextCursor()).isNull();
@@ -323,22 +380,26 @@ class SkillPostgresIT {
             assertThat(skills.list(account, "visual asset design", true, null).items())
                     .extracting(SkillService.SkillResponse::id).containsExactly(trashed.id());
             assertThat(skills.list(account, "User-authored", false, null).total()).isEqualTo(23);
-            assertThat(skills.get(account, personalIds.getFirst()).description()).isEqualTo("User-authored description");
+            assertThat(skills.get(account, personalIds.getFirst()).description())
+                    .isEqualTo("User-authored description");
             assertThat(skills.list(owner.userId(), "visual asset design custom", false, null).total()).isZero();
         });
     }
 
-    @Test void localizedSearchDoesNotTranslateChangedBuiltinMetadataOrPersonalCopies() {
+    @Test
+    void localizedSearchDoesNotTranslateChangedBuiltinMetadataOrPersonalCopies() {
         withEnglishSearchRequest(() -> {
             UUID account = searchAccount("guards");
             var builtin = skills.list(account, "short-drama-assets", false, null).items().getFirst();
             var personal = skills.create(account, builtin.title(), builtin.description());
             // Public editing rejects built-ins. Simulate legacy/customized metadata to retain the display guard anyway.
-            jdbc.sql("update creative_skill set description='Custom builtin description' where id=:id").param("id", builtin.id()).update();
+            jdbc.sql("update creative_skill set description='Custom builtin description' where id=:id")
+                    .param("id", builtin.id()).update();
             assertThat(skills.list(account, "visual asset design", false, null).items())
                     .extracting(SkillService.SkillResponse::id).containsExactly(builtin.id());
             assertThat(skills.list(account, "period details", false, null).total()).isZero();
-            jdbc.sql("update creative_skill set title='Custom builtin title' where id=:id").param("id", builtin.id()).update();
+            jdbc.sql("update creative_skill set title='Custom builtin title' where id=:id").param("id", builtin.id())
+                    .update();
             assertThat(skills.list(account, "visual asset design", false, null).total()).isZero();
             assertThat(skills.list(account, "Custom builtin", false, null).items())
                     .extracting(SkillService.SkillResponse::id).containsExactly(builtin.id());
@@ -364,16 +425,20 @@ class SkillPostgresIT {
 
     private UUID searchAccount(String suffix) {
         UUID account = UUID.randomUUID();
-        jdbc.sql("insert into app_user(id,login_name,password_hash,status,created_at) values (:id,:login,'synthetic-hash','DISABLED',now())")
+        jdbc.sql(
+                "insert into app_user(id,login_name,password_hash,status,created_at) values (:id,:login,'synthetic-hash','DISABLED',now())")
                 .param("id", account).param("login", "search-" + suffix + "-" + account).update();
         return account;
     }
 
-    @Test void missingVersionsAndRequiredInputFlagsCannotBecomeDefaultValues() throws Exception {
+    @Test
+    void missingVersionsAndRequiredInputFlagsCannotBecomeDefaultValues() throws Exception {
         var skill = skills.create(owner.userId(), "Required fields", "");
         var body = mapper.createObjectNode().put("skillMd", BODY);
         body.putArray("outputKinds").add("IMAGE");
-        body.putArray("inputSlots"); body.putArray("resources"); body.putArray("assets");
+        body.putArray("inputSlots");
+        body.putArray("resources");
+        body.putArray("assets");
         String path = "/api/v1/skills/" + skill.id();
         mvc.perform(put(path + "/draft").with(auth).with(csrf()).contentType("application/json")
                 .content(body.toString())).andExpect(status().isBadRequest());
@@ -390,10 +455,12 @@ class SkillPostgresIT {
         assertThat(skills.getDraft(owner.userId(), skill.id()).version()).isZero();
         assertThat(skills.versions(owner.userId(), skill.id())).isEmpty();
         assertThatThrownBy(() -> jdbc.sql("update skill_draft set content_json = '{}'::jsonb where skill_id = :id")
-                .param("id", skill.id()).update()).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+                .param("id", skill.id()).update())
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
     }
 
-    @Test void expiredPublicationCannotRenewOrFinishEvenBeforeAnotherWorkerClaimsIt() {
+    @Test
+    void expiredPublicationCannotRenewOrFinishEvenBeforeAnotherWorkerClaimsIt() {
         var skill = skills.create(owner.userId(), "Expired lease", "");
         skills.saveDraft(owner.userId(), skill.id(), 0, new SkillContent.DraftContent(1, BODY,
                 List.of(dev.agenvas.artifact.domain.Artifact.Kind.IMAGE), List.of(), List.of(), List.of()));
@@ -403,15 +470,18 @@ class SkillPostgresIT {
         assertThat(claim.id()).isEqualTo(accepted.id());
         jdbc.sql("update skill_publish_operation set lease_until = now() - interval '1 second' where id = :id")
                 .param("id", accepted.id()).update();
-        assertThat(repository.progress(claim, claim.progress(), now.plusSeconds(60), java.time.Instant.now())).isFalse();
+        assertThat(repository.progress(claim, claim.progress(), now.plusSeconds(60), java.time.Instant.now()))
+                .isFalse();
         assertThat(repository.finish(claim, SkillContent.OperationStatus.FAILED, null, "LATE", "Late writer",
                 java.time.Instant.now())).isFalse();
         assertThat(skills.processNext()).isTrue();
-        assertThat(skills.getOperation(owner.userId(), accepted.id()).status()).isEqualTo(SkillContent.OperationStatus.SUCCEEDED);
+        assertThat(skills.getOperation(owner.userId(), accepted.id()).status())
+                .isEqualTo(SkillContent.OperationStatus.SUCCEEDED);
         assertThat(skills.versions(owner.userId(), skill.id())).hasSize(1);
     }
 
-    @Test void authoringRequiresAuthenticationCsrfAndCasAndPublishesAFixedVersion() throws Exception {
+    @Test
+    void authoringRequiresAuthenticationCsrfAndCasAndPublishesAFixedVersion() throws Exception {
         mvc.perform(get("/api/v1/skills")).andExpect(status().isUnauthorized());
         mvc.perform(post("/api/v1/skills").with(auth).contentType("application/json").content("{\"title\":\"Style\"}"))
                 .andExpect(status().isForbidden());
@@ -421,38 +491,51 @@ class SkillPostgresIT {
         String draftPath = "/api/v1/skills/" + skill + "/draft";
         var input = Map.of("expectedVersion", 0, "skillMd", BODY, "outputKinds", List.of("IMAGE"),
                 "inputSlots", List.of(Map.of("alias", "subject-image", "kind", "IMAGE", "required", true)),
-                "resources", List.of(Map.of("path", "references/style-guide.md", "content", "Use a warm color palette.")), "assets", List.of());
-        mvc.perform(put(draftPath).with(auth).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(input)))
+                "resources",
+                List.of(Map.of("path", "references/style-guide.md", "content", "Use a warm color palette.")), "assets",
+                List.of());
+        mvc.perform(put(draftPath).with(auth).with(csrf()).contentType("application/json")
+                .content(mapper.writeValueAsString(input)))
                 .andExpect(status().isOk());
-        mvc.perform(put(draftPath).with(auth).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(input)))
+        mvc.perform(put(draftPath).with(auth).with(csrf()).contentType("application/json")
+                .content(mapper.writeValueAsString(input)))
                 .andExpect(status().isConflict());
         var accepted = json(mvc.perform(post("/api/v1/skills/" + skill + "/versions").with(auth).with(csrf())
-                .contentType("application/json").content("{\"expectedDraftVersion\":1,\"commandKey\":\"publish-style\"}"))
+                .contentType("application/json")
+                .content("{\"expectedDraftVersion\":1,\"commandKey\":\"publish-style\"}"))
                 .andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString());
         UUID operation = UUID.fromString(accepted.path("id").asText());
         assertThat(skills.processNext()).isTrue();
         UUID version = skills.getOperation(owner.userId(), operation).resultVersionId();
         assertThat(version).isNotNull();
         assertThat(skills.publish(owner.userId(), skill, 1, "publish-style").id()).isEqualTo(operation);
-        assertThatThrownBy(() -> skills.publish(owner.userId(), skill, 2, "publish-style")).isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> skills.publish(owner.userId(), skill, 2, "publish-style"))
+                .isInstanceOf(ApiProblemException.class);
         var original = skills.getVersion(owner.userId(), skill, version);
         skills.saveDraft(owner.userId(), skill, 1, new SkillContent.DraftContent(1, BODY + "Changed draft\n",
                 List.of(dev.agenvas.artifact.domain.Artifact.Kind.IMAGE), List.of(), List.of(), List.of()));
         assertThat(skills.getVersion(owner.userId(), skill, version)).isEqualTo(original);
         assertThat(original.resources().getFirst().contentHash()).hasSize(64);
-        var outsider = authentication(new UsernamePasswordAuthenticationToken(new AdminPrincipal(UUID.randomUUID(), "synthetic-outsider"), null, List.of()));
-        mvc.perform(get("/api/v1/skills/" + skill + "/versions/" + version).with(outsider)).andExpect(status().isNotFound());
+        var outsider = authentication(new UsernamePasswordAuthenticationToken(
+                new AdminPrincipal(UUID.randomUUID(), "synthetic-outsider"), null, List.of()));
+        mvc.perform(get("/api/v1/skills/" + skill + "/versions/" + version).with(outsider))
+                .andExpect(status().isNotFound());
         var catalogue = skills.get(owner.userId(), skill);
         mvc.perform(patch("/api/v1/skills/" + skill).with(auth).with(csrf()).contentType("application/json")
-                .content(mapper.writeValueAsString(Map.of("expectedVersion", catalogue.version(), "title", "Renamed style", "description", "", "trashed", true))))
+                .content(mapper.writeValueAsString(Map.of("expectedVersion", catalogue.version(), "title",
+                        "Renamed style", "description", "", "trashed", true))))
                 .andExpect(status().isOk());
         assertThat(skills.getBundle(owner.userId(), skill, version).bundle().skillMd()).isEqualTo(BODY);
-        assertThatThrownBy(() -> skills.requireSelectableVersion(owner.userId(), skill, version)).isInstanceOf(ApiProblemException.class);
-        assertThat(skills.list(owner.userId(), "Renamed", true, null).items()).extracting(SkillService.SkillResponse::id).contains(skill);
-        assertThat(jdbc.sql("select count(*) from skill_version where skill_id = :skill").param("skill", skill).query(Long.class).single()).isEqualTo(1);
+        assertThatThrownBy(() -> skills.requireSelectableVersion(owner.userId(), skill, version))
+                .isInstanceOf(ApiProblemException.class);
+        assertThat(skills.list(owner.userId(), "Renamed", true, null).items())
+                .extracting(SkillService.SkillResponse::id).contains(skill);
+        assertThat(jdbc.sql("select count(*) from skill_version where skill_id = :skill").param("skill", skill)
+                .query(Long.class).single()).isEqualTo(1);
     }
 
-    @Test void publishedImageAndCopiedSkillSurvivePermanentSourceDeletion() throws Exception {
+    @Test
+    void publishedImageAndCopiedSkillSurvivePermanentSourceDeletion() throws Exception {
         byte[] image = image();
         UUID entry = uploadedImage(image, "independent-source");
         var skill = skills.create(owner.userId(), "Independent style", "");
@@ -462,11 +545,14 @@ class SkillPostgresIT {
         skills.processNext();
         UUID version = skills.getOperation(owner.userId(), accepted.id()).resultVersionId();
         assertThat(version).isNotNull();
-        while (skills.cleanupNext()) { /* Drain durable pin cleanup for successful fixtures. */ }
+        while (skills.cleanupNext()) {
+            /* Drain durable pin cleanup for successful fixtures. */ }
         var trashed = library.trash(owner.userId(), entry, 0, false);
         library.delete(owner.userId(), entry, trashed.version());
         library.cleanupNext();
-        byte[] retained = mvc.perform(get("/api/v1/skills/" + skill.id() + "/versions/" + version + "/assets/style-reference/file").with(auth))
+        byte[] retained = mvc
+                .perform(get("/api/v1/skills/" + skill.id() + "/versions/" + version + "/assets/style-reference/file")
+                        .with(auth))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray();
         assertThat(retained).containsExactly(image);
         String safeVersion = mvc.perform(get("/api/v1/skills/" + skill.id() + "/versions/" + version).with(auth))
@@ -482,10 +568,13 @@ class SkillPostgresIT {
         assertThat(copiedVersion).isNotNull();
         assertThat(skills.getVersion(owner.userId(), copied.id(), copiedVersion).bundleHash())
                 .isEqualTo(skills.getVersion(owner.userId(), skill.id(), version).bundleHash());
-        assertThat(Files.readAllBytes(skills.file(owner.userId(), copied.id(), copiedVersion, "style-reference", false).path())).containsExactly(image);
+        assertThat(Files
+                .readAllBytes(skills.file(owner.userId(), copied.id(), copiedVersion, "style-reference", false).path()))
+                .containsExactly(image);
     }
 
-    @Test void sourceTrashedBeforePinFailsWithoutPublishingHalfABundle() throws Exception {
+    @Test
+    void sourceTrashedBeforePinFailsWithoutPublishingHalfABundle() throws Exception {
         UUID entry = uploadedImage(image(), "trashed-source");
         var skill = skills.create(owner.userId(), "Trashed reference", "");
         var draft = skills.saveDraft(owner.userId(), skill.id(), 0, imageDraft(entry, 0L));
@@ -500,36 +589,49 @@ class SkillPostgresIT {
         assertThat(skills.versions(owner.userId(), skill.id())).isEmpty();
     }
 
-    @Test void expiredClaimIsRecoveredAndConcurrentWorkersPublishExactlyOnce() throws Exception {
+    @Test
+    void expiredClaimIsRecoveredAndConcurrentWorkersPublishExactlyOnce() throws Exception {
         var skill = skills.create(owner.userId(), "Recovered style", "");
         skills.saveDraft(owner.userId(), skill.id(), 0, new SkillContent.DraftContent(1, BODY,
                 List.of(dev.agenvas.artifact.domain.Artifact.Kind.IMAGE), List.of(), List.of(), List.of()));
         var operation = skills.publish(owner.userId(), skill.id(), 1, "publish-recovered-style");
-        jdbc.sql("update skill_publish_operation set status = 'ARCHIVING', epoch = 7, lease_until = now() - interval '1 minute' where id = :id")
+        jdbc.sql(
+                "update skill_publish_operation set status = 'ARCHIVING', epoch = 7, lease_until = now() - interval '1 minute' where id = :id")
                 .param("id", operation.id()).update();
         CountDownLatch start = new CountDownLatch(1);
         try (var executor = Executors.newFixedThreadPool(2)) {
-            var first = executor.submit(() -> { start.await(); return skills.processNext(); });
-            var second = executor.submit(() -> { start.await(); return skills.processNext(); });
+            var first = executor.submit(() -> {
+                start.await();
+                return skills.processNext();
+            });
+            var second = executor.submit(() -> {
+                start.await();
+                return skills.processNext();
+            });
             start.countDown();
             assertThat(List.of(first.get(), second.get())).containsExactlyInAnyOrder(true, false);
         }
-        assertThat(skills.getOperation(owner.userId(), operation.id()).status()).isEqualTo(SkillContent.OperationStatus.SUCCEEDED);
+        assertThat(skills.getOperation(owner.userId(), operation.id()).status())
+                .isEqualTo(SkillContent.OperationStatus.SUCCEEDED);
         assertThat(skills.versions(owner.userId(), skill.id())).hasSize(1);
-        assertThat(jdbc.sql("select epoch from skill_publish_operation where id = :id").param("id", operation.id()).query(Long.class).single()).isEqualTo(8);
+        assertThat(jdbc.sql("select epoch from skill_publish_operation where id = :id").param("id", operation.id())
+                .query(Long.class).single()).isEqualTo(8);
     }
 
-    @Test void committedPinResumesAfterTheSourceIsPermanentlyDeleted() throws Exception {
+    @Test
+    void committedPinResumesAfterTheSourceIsPermanentlyDeleted() throws Exception {
         UUID entry = uploadedImage(image(), "pinned-source");
         var skill = skills.create(owner.userId(), "Pinned reference", "");
         var draft = skills.saveDraft(owner.userId(), skill.id(), 0, imageDraft(entry, 0L));
         var operation = skills.publish(owner.userId(), skill.id(), draft.version(), "publish-pinned-source");
-        UUID pinId = UUID.nameUUIDFromBytes(("agenvas:skill-pin:v1:" + operation.id() + ":style-reference").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        UUID pinId = UUID.nameUUIDFromBytes(("agenvas:skill-pin:v1:" + operation.id() + ":style-reference")
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
         var pinned = library.pinForSkill(owner.userId(), entry, 0, pinId);
         var progress = mapper.createObjectNode();
         progress.withObject("pins").set("style-reference", mapper.valueToTree(pinned));
         // Simulate a committed pin checkpoint followed by a worker restart before archival.
-        jdbc.sql("update skill_publish_operation set progress_json = cast(:progress as jsonb), status = 'ARCHIVING', epoch = 3, lease_until = now() - interval '1 minute' where id = :id")
+        jdbc.sql(
+                "update skill_publish_operation set progress_json = cast(:progress as jsonb), status = 'ARCHIVING', epoch = 3, lease_until = now() - interval '1 minute' where id = :id")
                 .param("progress", progress.toString()).param("id", operation.id()).update();
         var trashed = library.trash(owner.userId(), entry, 0, false);
         library.delete(owner.userId(), entry, trashed.version());
@@ -537,11 +639,13 @@ class SkillPostgresIT {
         var completed = skills.getOperation(owner.userId(), operation.id());
         assertThat(completed.status()).isEqualTo(SkillContent.OperationStatus.SUCCEEDED);
         assertThat(skills.getVersion(owner.userId(), skill.id(), completed.resultVersionId()).assets()).hasSize(1);
-        while (skills.cleanupNext()) { /* Drain durable pin cleanup for successful fixtures. */ }
+        while (skills.cleanupNext()) {
+            /* Drain durable pin cleanup for successful fixtures. */ }
         assertThat(Files.exists(STORAGE.resolve("library").resolve(pinned.pinKey()))).isFalse();
     }
 
-    @Test void committedArchiveResumesWithoutReadingTheRemovedPinOrArchivingAgain() throws Exception {
+    @Test
+    void committedArchiveResumesWithoutReadingTheRemovedPinOrArchivingAgain() throws Exception {
         byte[] image = image();
         UUID entry = uploadedImage(image, "archived-source");
         var skill = skills.create(owner.userId(), "Archived reference", "");
@@ -556,7 +660,8 @@ class SkillPostgresIT {
         var progress = mapper.createObjectNode();
         progress.withObject("pins").set("style-reference", mapper.valueToTree(pinned));
         progress.withObject("archived").set("style-reference", mapper.valueToTree(archived));
-        assertThat(jdbc.sql("update skill_publish_operation set progress_json = cast(:progress as jsonb), status = 'ARCHIVING', epoch = 3, lease_until = now() - interval '1 minute' where id = :id")
+        assertThat(jdbc.sql(
+                "update skill_publish_operation set progress_json = cast(:progress as jsonb), status = 'ARCHIVING', epoch = 3, lease_until = now() - interval '1 minute' where id = :id")
                 .param("progress", progress.toString()).param("id", operation.id()).update()).isEqualTo(1);
         var trashed = library.trash(owner.userId(), entry, 0, false);
         library.delete(owner.userId(), entry, trashed.version());
@@ -585,7 +690,8 @@ class SkillPostgresIT {
                 .param("id", operation.id()).query(Long.class).single()).isEqualTo(4);
         assertThat(Files.readAllBytes(skills.file(owner.userId(), skill.id(), completed.resultVersionId(),
                 "style-reference", false).path())).containsExactly(image);
-        while (skills.cleanupNext()) { /* Cleanup remains idempotent after the temporary pin is gone. */ }
+        while (skills.cleanupNext()) {
+            /* Cleanup remains idempotent after the temporary pin is gone. */ }
         assertThat(jdbc.sql("select pins_cleaned from skill_publish_operation where id = :id")
                 .param("id", operation.id()).query(Boolean.class).single()).isTrue();
     }
@@ -596,21 +702,25 @@ class SkillPostgresIT {
         var bundle = new SkillContent.Bundle(1, "synthetic-version-" + number, "Synthetic publication",
                 instructions, List.of(dev.agenvas.artifact.domain.Artifact.Kind.TEXT),
                 List.of(new SkillContent.InputSlot("subject", dev.agenvas.artifact.domain.Artifact.Kind.TEXT, false)),
-                List.of(new SkillContent.PublishedResource("references/guide.md", reference, Sha256.hex(reference))), List.of());
+                List.of(new SkillContent.PublishedResource("references/guide.md", reference, Sha256.hex(reference))),
+                List.of());
         // Publication number, rather than timestamp, defines the history order.
         return new SkillContent.Version(UUID.randomUUID(), account, skill, number,
-                Sha256.hex(mapper.writeValueAsString(bundle)), bundle, Instant.parse("2026-10-11T00:00:00Z").minusSeconds(number));
+                Sha256.hex(mapper.writeValueAsString(bundle)), bundle,
+                Instant.parse("2026-10-11T00:00:00Z").minusSeconds(number));
     }
 
     private SkillContent.DraftContent imageDraft(UUID entry, long version) {
         return new SkillContent.DraftContent(1, BODY, List.of(dev.agenvas.artifact.domain.Artifact.Kind.IMAGE),
-                List.of(new SkillContent.InputSlot("subject-image", dev.agenvas.artifact.domain.Artifact.Kind.IMAGE, true)),
+                List.of(new SkillContent.InputSlot("subject-image", dev.agenvas.artifact.domain.Artifact.Kind.IMAGE,
+                        true)),
                 List.of(new SkillContent.Resource("references/style-guide.md", "Use warm colors and soft strokes.")),
                 List.of(new SkillContent.DraftAsset("style-reference", entry, version, null, null, null,
                         SkillContent.Usage.PROVIDER_REFERENCE, true, "Style only")));
     }
     private UUID uploadedImage(byte[] bytes, String key) throws Exception {
-        var command = library.upload(owner.userId(), "Synthetic style", LibraryEntry.Category.OTHER, Asset.MediaKind.IMAGE,
+        var command = library.upload(owner.userId(), "Synthetic style", LibraryEntry.Category.OTHER,
+                Asset.MediaKind.IMAGE,
                 key, new MockMultipartFile("file", "style.png", "image/png", bytes));
         library.processNext();
         return UUID.fromString(library.command(owner.userId(), command.id()).result().path("entryId").asText());
@@ -621,9 +731,15 @@ class SkillPostgresIT {
             return output.toByteArray();
         }
     }
-    private JsonNode json(String text) { return mapper.readTree(text); }
+    private JsonNode json(String text) {
+        return mapper.readTree(text);
+    }
     private static Path temporaryRoot() {
-        try { return Files.createTempDirectory("agenvas-skill-test-", PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------"))); }
-        catch (java.io.IOException failure) { throw new IllegalStateException(failure); }
+        try {
+            return Files.createTempDirectory("agenvas-skill-test-",
+                    PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
+        } catch (java.io.IOException failure) {
+            throw new IllegalStateException(failure);
+        }
     }
 }

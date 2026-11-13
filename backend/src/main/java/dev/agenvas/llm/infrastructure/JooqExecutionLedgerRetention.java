@@ -14,8 +14,11 @@ import org.springframework.transaction.annotation.Transactional;
 @Repository
 public class JooqExecutionLedgerRetention implements ExecutionLedgerRetention {
     private final DSLContext dsl;
-    public JooqExecutionLedgerRetention(DSLContext dsl) { this.dsl = dsl; }
-    @Override @Transactional(propagation = Propagation.MANDATORY)
+    public JooqExecutionLedgerRetention(DSLContext dsl) {
+        this.dsl = dsl;
+    }
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
     public void deleteFor(List<UUID> runIds) {
         dsl.deleteFrom(TOOL_EXECUTION).where(TOOL_EXECUTION.RUN_ID.in(runIds)).execute();
         dsl.deleteFrom(LLM_TURN).where(LLM_TURN.RUN_ID.in(runIds)).execute();

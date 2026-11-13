@@ -68,7 +68,8 @@ class LlmStreamCompletionHttpTest {
                     .put("modelConfigSource", "spring-ai").put("modelConfigVersion", 1));
             when(runs.find(owner, project, runId)).thenReturn(Optional.of(run));
             when(images.hydrate(any(), any(), any(), any(), anyList())).thenAnswer(call -> call.getArgument(4));
-            when(checkpoints.reserveLeased(any(), any(), any(), anyInt(), anyInt(), anyString(), any(), any(), anyString()))
+            when(checkpoints.reserveLeased(any(), any(), any(), anyInt(), anyInt(), anyString(), any(), any(),
+                    anyString()))
                     .thenReturn(new LlmTurn(project, runId, 0, LlmTurn.Status.REQUESTED, 1,
                             mapper.createObjectNode(), null, Instant.EPOCH, null));
             var writer = mock(AsyncCallLogWriter.class);
@@ -80,12 +81,15 @@ class LlmStreamCompletionHttpTest {
                     List.of(new UserMessage("Fixture")), List.of(), Map.of(), lease, "worker"))
                     .isInstanceOfSatisfying(ApiProblemException.class,
                             failure -> assertThat(failure.code()).isEqualTo("LLM_STREAM_INCOMPLETE"));
-            verify(checkpoints, never()).saveResponseLeased(any(), any(), any(), anyInt(), anyInt(), any(), any(), anyString());
+            verify(checkpoints, never()).saveResponseLeased(any(), any(), any(), anyInt(), anyInt(), any(), any(),
+                    anyString());
             var outcome = org.mockito.ArgumentCaptor.forClass(CallLogService.CallOutcome.class);
             verify(writer).submit(any(), outcome.capture(), any(), anyLong(), any(), anyList(), eq(false));
             assertThat(outcome.getValue().errorCode()).isEqualTo("LLM_STREAM_INCOMPLETE");
             assertThat(requests).hasValue(1);
-        } finally { server.stop(0); }
+        } finally {
+            server.stop(0);
+        }
     }
 
     @ParameterizedTest
@@ -96,14 +100,18 @@ class LlmStreamCompletionHttpTest {
         try {
             var gateway = gateway(server);
             assertThatThrownBy(() -> gateway.callStreaming(List.of(new UserMessage("Fixture")), List.of(), Map.of(),
-                    gateway.configIdentity(), ignored -> {}))
+                    gateway.configIdentity(), ignored -> {
+                    }))
                     .isInstanceOfSatisfying(ApiProblemException.class,
                             failure -> assertThat(failure.code()).isEqualTo("LLM_STREAM_INCOMPLETE"));
-        } finally { server.stop(0); }
+        } finally {
+            server.stop(0);
+        }
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"", "data: [DONE]junk\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"})
+    @ValueSource(strings = {"",
+            "data: [DONE]junk\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"})
     void cleanEofAfterParseableToolIsAnExplicitNonRetryableFailure(String ignoredTail) throws Exception {
         var requests = new AtomicInteger();
         HttpServer server = server("text/event-stream", 200, event(TOOL_DELTA, null) + ignoredTail, requests);
@@ -111,7 +119,8 @@ class LlmStreamCompletionHttpTest {
             var gateway = gateway(server);
             var log = new AtomicReference<LlmStreamLog>();
             assertThatThrownBy(() -> gateway.callStreaming(List.of(new UserMessage("Fixture")), List.of(), Map.of(),
-                    gateway.configIdentity(), ignored -> {}, false, log::set))
+                    gateway.configIdentity(), ignored -> {
+                    }, false, log::set))
                     .isInstanceOfSatisfying(ApiProblemException.class, failure -> {
                         assertThat(failure.code()).isEqualTo(LlmStreamIncompleteException.ERROR_CODE);
                         assertThat(failure.retryable()).isFalse();
@@ -121,22 +130,28 @@ class LlmStreamCompletionHttpTest {
             assertThat(log.get().metrics().status()).isEqualTo(LlmStreamLog.EndStatus.FAILED);
             assertThat(log.get().metrics().errorCode()).isEqualTo("LLM_STREAM_INCOMPLETE");
             assertThat(log.get().content()).isNull();
-        } finally { server.stop(0); }
+        } finally {
+            server.stop(0);
+        }
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"finish", "done", "both", "provider_end"})
     void acceptsASelectedFinishReasonOrDoneWithoutRequiringBoth(String marker) throws Exception {
-        String ending = marker.equals("provider_end") ? event("{}", "provider_end")
+        String ending = marker.equals("provider_end")
+                ? event("{}", "provider_end")
                 : (marker.equals("done") ? "" : event("{}", "tool_calls"))
-                    + (marker.equals("finish") ? "" : "data: [DONE]\n\n");
+                        + (marker.equals("finish") ? "" : "data: [DONE]\n\n");
         HttpServer server = server("text/event-stream", 200, event(TOOL_DELTA, null) + ending, new AtomicInteger());
         try {
             var gateway = gateway(server);
             var result = gateway.callStreaming(List.of(new UserMessage("Fixture")), List.of(), Map.of(),
-                    gateway.configIdentity(), ignored -> {});
+                    gateway.configIdentity(), ignored -> {
+                    });
             assertThat(result.response().getResult().getOutput().getToolCalls()).hasSize(1);
-        } finally { server.stop(0); }
+        } finally {
+            server.stop(0);
+        }
     }
 
     @Test
@@ -146,10 +161,13 @@ class LlmStreamCompletionHttpTest {
         try {
             var gateway = gateway(server);
             assertThatThrownBy(() -> gateway.callStreaming(List.of(new UserMessage("Fixture")), List.of(), Map.of(),
-                    gateway.configIdentity(), ignored -> {}))
+                    gateway.configIdentity(), ignored -> {
+                    }))
                     .isInstanceOfSatisfying(ApiProblemException.class,
                             failure -> assertThat(failure.code()).isEqualTo("LLM_STREAM_INCOMPLETE"));
-        } finally { server.stop(0); }
+        } finally {
+            server.stop(0);
+        }
     }
 
     @Test
@@ -159,13 +177,16 @@ class LlmStreamCompletionHttpTest {
         try {
             var gateway = gateway(server);
             var result = gateway.callStreaming(List.of(new UserMessage("Fixture")), List.of(), Map.of(),
-                    gateway.configIdentity(), ignored -> {});
+                    gateway.configIdentity(), ignored -> {
+                    });
             assertThat(result.response().getResult().getMetadata().getFinishReason()).isEqualTo("LENGTH");
             var codec = new LlmProtocolCodec(new ObjectMapper());
             var checkpoint = codec.response(result.response());
             assertThatThrownBy(() -> codec.selectedAssistant(checkpoint))
                     .isInstanceOf(LlmProtocolCodec.OutputTruncated.class);
-        } finally { server.stop(0); }
+        } finally {
+            server.stop(0);
+        }
     }
 
     @ParameterizedTest
@@ -182,7 +203,9 @@ class LlmStreamCompletionHttpTest {
                 assertThat(response.code()).isEqualTo(status);
                 assertThat(response.body().string()).isEqualTo(body);
             }
-        } finally { server.stop(0); }
+        } finally {
+            server.stop(0);
+        }
     }
 
     @Test
@@ -196,7 +219,9 @@ class LlmStreamCompletionHttpTest {
                 assertThat(response.code()).isEqualTo(429);
                 assertThat(response.body().string()).isEqualTo("data: error\n\n");
             }
-        } finally { server.stop(0); }
+        } finally {
+            server.stop(0);
+        }
     }
 
     private static SpringAiChatGateway gateway(HttpServer server) {
@@ -211,17 +236,23 @@ class LlmStreamCompletionHttpTest {
         return new SafeLlmTransport(endpoint(server), new LlmEndpointPolicy());
     }
 
-    private static String endpoint(HttpServer server) { return "http://127.0.0.1:" + server.getAddress().getPort() + "/v1"; }
+    private static String endpoint(HttpServer server) {
+        return "http://127.0.0.1:" + server.getAddress().getPort() + "/v1";
+    }
 
     private static HttpServer server(String type, int status, String body, AtomicInteger requests) throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1/chat/completions", exchange -> {
             requests.incrementAndGet();
             exchange.getRequestBody().readAllBytes();
-            if (type != null) exchange.getResponseHeaders().set("Content-Type", type);
+            if (type != null)
+                exchange.getResponseHeaders().set("Content-Type", type);
             exchange.sendResponseHeaders(status, 0);
-            try (var out = exchange.getResponseBody()) { out.write(body.getBytes(StandardCharsets.UTF_8)); }
-            finally { exchange.close(); }
+            try (var out = exchange.getResponseBody()) {
+                out.write(body.getBytes(StandardCharsets.UTF_8));
+            } finally {
+                exchange.close();
+            }
         });
         server.start();
         return server;

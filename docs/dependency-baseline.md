@@ -86,6 +86,19 @@ MCP 上传扩展复用现有 Spring MVC multipart、JDK SHA-256、Asset 解码/�
 
 普通 Dockerfile 构建默认保留 `dependency:go-offline` 层，供 CI 的 GHA layer cache 继续跨 runner 复用；cache mount 的数据不随该缓存自动导出。所有构建的生产打包改用 `-Dmaven.test.skip=true`，测试源码在其后复制，只有显式 `VERIFY_DEPTH_MODEL=true` 执行原深度模型 smoke test。本地更新脚本默认不强制拉取基础镜像，`--pull` 显式拉取，`server` / `web` 可缩小构建范围。验证范围为脚本故障/命令回归、四种 Compose 配置、实际镜像构建、跨 POM 层失效的离线 Maven 包复用和定向模型 smoke test；实际运行结果与未验证范围见开发清单。
 
+## 代码格式化工具
+
+格式化只增加开发工具，不升级现有 Java、Node、pnpm、ESLint、编译器或运行依赖：
+
+| 工具 | 固定版本 | 职责 |
+|---|---:|---|
+| [Prettier](https://prettier.io/blog/2026/06/27/3.9.0) | 3.9.0 | 前端源码、测试、脚本及配置格式化；不处理生成 API 类型与锁文件 |
+| [eslint-config-prettier](https://github.com/prettier/eslint-config-prettier/releases/tag/v10.1.8) | 10.1.8 | 关闭与 Prettier 输出冲突的格式规则，保留项目 lint 规则 |
+| [Spotless Maven Plugin](https://github.com/diffplug/spotless/blob/main/plugin-maven/CHANGES.md) | 3.0.0 | 仅处理手写 Java；要求 Java 17+，兼容项目 Java 21 |
+| [Eclipse JDT formatter](https://github.com/eclipse-jdt/eclipse.jdt.core/tree/R4_35) | 4.35 | 由 Spotless 调用，使用 `backend/eclipse-formatter.xml` 的四空格配置 |
+
+采用稳定正式版并显式固定，不跟随格式化引擎的默认版本漂移。前端保留原 ESLint；不引入另一套 lint 或通过 ESLint 执行格式化。后端不绑定 Maven 默认构建生命周期，不增加数据库、jOOQ 生成或生产打包的前置条件。具体写入、只检查命令及排除范围见 [CONTRIBUTING.md](../CONTRIBUTING.md#code-formatting)。
+
 ## 初始基线验证（历史记录）
 
 以下命令结果记录的是建立 M0 基线时的执行快照，不代表当前版本的全量测试计数或最新部署验收；后续行为与回归结果以 开发记录（不随源码公开） 和开发清单为准。

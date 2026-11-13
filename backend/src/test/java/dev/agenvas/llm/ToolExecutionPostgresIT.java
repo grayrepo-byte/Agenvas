@@ -74,21 +74,36 @@ class ToolExecutionPostgresIT {
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private AgentRunService runs;
-    @Autowired private LlmRoundService rounds;
-    @Autowired private AgentTurnCommitService turnCommits;
-    @Autowired private LlmConversationService conversation;
-    @Autowired private LlmTurnCheckpointService checkpoints;
-    @Autowired private LlmProtocolCodec codec;
-    @Autowired private ToolExecutionService executor;
-    @Autowired private ToolRegistry registry;
-    @Autowired private ArtifactService artifacts;
-    @Autowired private TaskService tasks;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private FakeGateway gateway;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private AgentInstanceService agents;
+    @Autowired
+    private AgentRunService runs;
+    @Autowired
+    private LlmRoundService rounds;
+    @Autowired
+    private AgentTurnCommitService turnCommits;
+    @Autowired
+    private LlmConversationService conversation;
+    @Autowired
+    private LlmTurnCheckpointService checkpoints;
+    @Autowired
+    private LlmProtocolCodec codec;
+    @Autowired
+    private ToolExecutionService executor;
+    @Autowired
+    private ToolRegistry registry;
+    @Autowired
+    private ArtifactService artifacts;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private FakeGateway gateway;
 
     @Test
     void committedResponseExecutesOnceAndForgedScopeNeverBecomesAuthority() throws Exception {
@@ -217,11 +232,13 @@ class ToolExecutionPostgresIT {
                     : "{\"title\":\"Forged\",\"text\":\"Bad\",\"format\":\"PLAIN_TEXT\",\"ownerId\":\"spoof\"}";
             AssistantMessage output = AssistantMessage.builder().content("")
                     .toolCalls(List.of(new AssistantMessage.ToolCall("call-" + call,
-                            "function", "create_text", arguments))).build();
+                            "function", "create_text", arguments)))
+                    .build();
             if (call == 1) {
                 AssistantMessage unselected = AssistantMessage.builder().content("")
                         .toolCalls(List.of(new AssistantMessage.ToolCall("unselected-call",
-                                "function", "create_text", arguments))).build();
+                                "function", "create_text", arguments)))
+                        .build();
                 return new Exchange(1, new ChatResponse(List.of(new Generation(output),
                         new Generation(unselected))));
             }

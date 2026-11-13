@@ -76,9 +76,11 @@ public class AgentContextService {
     public ObjectNode prepare(List<Message> history, List<ToolCallback> tools, LlmRequestBudget budget) {
         return preparePlan(history, tools, java.util.Objects.requireNonNull(budget), true);
     }
-    private ObjectNode preparePlan(List<Message> history, List<ToolCallback> tools, LlmRequestBudget properties, boolean freeze) {
+    private ObjectNode preparePlan(List<Message> history, List<ToolCallback> tools, LlmRequestBudget properties,
+            boolean freeze) {
         if (history.size() <= LlmProtocolCodec.MAX_MESSAGES - MESSAGE_MARGIN
-                && estimate(history, tools) < properties.compactionTriggerTokens()) return plannedRequest(history, tools, properties, freeze);
+                && estimate(history, tools) < properties.compactionTriggerTokens())
+            return plannedRequest(history, tools, properties, freeze);
 
         var pinned = new ArrayList<Message>();
         var older = new ArrayList<Message>();
@@ -97,7 +99,10 @@ public class AgentContextService {
                     group = new ArrayList<>();
                     groups.add(group);
                 }
-                if (group == null) pinned.add(message); else group.add(message);
+                if (group == null)
+                    pinned.add(message);
+                else
+                    group.add(message);
             }
         }
         int keepFrom = Math.max(0, groups.size() - properties.recentToolRounds());
@@ -106,16 +111,20 @@ public class AgentContextService {
         while (true) {
             retained = retained(pinned, groups, keepFrom, skills);
             // Leave space for subsequent work, instead of repeatedly compacting a nearly full window.
-            if ((estimate(retained, tools) + properties.summaryTokens() * 2 <= properties.compactionTriggerTokens() * 3 / 5
+            if ((estimate(retained, tools) + properties.summaryTokens() * 2 <= properties.compactionTriggerTokens() * 3
+                    / 5
                     && retained.size() < LlmProtocolCodec.MAX_MESSAGES - MESSAGE_MARGIN)
-                    || keepFrom == groups.size()) break;
+                    || keepFrom == groups.size())
+                break;
             keepFrom++;
         }
-        for (int index = 0; index < keepFrom; index++) older.addAll(groups.get(index));
+        for (int index = 0; index < keepFrom; index++)
+            older.addAll(groups.get(index));
         // Fixed instructions can cross the soft trigger without any history to compress.
         // Do not turn a valid request into a failure merely because compaction cannot shrink it.
         if (older.isEmpty() && history.size() <= LlmProtocolCodec.MAX_MESSAGES
-                && estimate(history, tools) <= properties.inputBudget()) return plannedRequest(history, tools, properties, freeze);
+                && estimate(history, tools) <= properties.inputBudget())
+            return plannedRequest(history, tools, properties, freeze);
         if (older.isEmpty() || estimate(retained, tools) + properties.summaryTokens() * 2 > properties.inputBudget()
                 || retained.size() >= LlmProtocolCodec.MAX_MESSAGES - MESSAGE_MARGIN)
             throw new BudgetExceeded();
@@ -126,34 +135,48 @@ public class AgentContextService {
                 .put("summaryTokens", properties.summaryTokens()).put("inputBudget", properties.inputBudget())
                 .put("estimatedTokensBefore", estimate(history, tools));
         plan.set("continuation", plannedRequest(retained, tools, properties, freeze));
-        if (freeze) plan.set("requestBudget", mapper.valueToTree(properties));
+        if (freeze)
+            plan.set("requestBudget", mapper.valueToTree(properties));
         return compaction(plan, publicTranscript(source), null);
     }
-    private ObjectNode plannedRequest(List<Message> messages, List<ToolCallback> tools, LlmRequestBudget budget, boolean freeze) {
+    private ObjectNode plannedRequest(List<Message> messages, List<ToolCallback> tools, LlmRequestBudget budget,
+            boolean freeze) {
         return codec.withBudget(codec.request(messages, tools), freeze ? budget : null);
     }
 
-    public static boolean isCompaction(JsonNode request) { return request.has(COMPACTION); }
+    public static boolean isCompaction(JsonNode request) {
+        return request.has(COMPACTION);
+    }
 
     /** A summary is data only. A model-emitted tool call in a compaction turn can never execute. */
     public String summary(JsonNode request, JsonNode response) {
         AssistantMessage assistant = codec.selectedAssistant(response);
         String text = assistant.getText() == null ? "" : assistant.getText().strip();
-        if (text.startsWith("```json\n") && text.endsWith("```")) text = text.substring(8, text.length() - 3).strip();
+        if (text.startsWith("```json\n") && text.endsWith("```"))
+            text = text.substring(8, text.length() - 3).strip();
         JsonNode value;
-        try { value = mapper.readTree(text); }
-        catch (RuntimeException malformed) { throw invalidSummary(); }
+        try {
+            value = mapper.readTree(text);
+        } catch (RuntimeException malformed) {
+            throw invalidSummary();
+        }
         if (!assistant.getToolCalls().isEmpty() || value == null || !value.isObject()
                 || !value.propertyNames().equals(SUMMARY_FIELDS) || !value.path("goal").isTextual()
-                || value.path("goal").asText().isBlank()) throw invalidSummary();
+                || value.path("goal").asText().isBlank())
+            throw invalidSummary();
         for (String field : SUMMARY_FIELDS) {
-            if ("goal".equals(field)) continue;
+            if ("goal".equals(field))
+                continue;
             JsonNode entries = value.path(field);
-            if (!entries.isArray()) throw invalidSummary();
-            for (JsonNode entry : entries) if (!entry.isTextual()) throw invalidSummary();
+            if (!entries.isArray())
+                throw invalidSummary();
+            for (JsonNode entry : entries)
+                if (!entry.isTextual())
+                    throw invalidSummary();
         }
         String normalized = mapper.writeValueAsString(value);
-        if (count(normalized) > request.path(COMPACTION).path("summaryTokens").asInt(0)) throw invalidSummary();
+        if (count(normalized) > request.path(COMPACTION).path("summaryTokens").asInt(0))
+            throw invalidSummary();
         return normalized;
     }
 
@@ -162,20 +185,24 @@ public class AgentContextService {
         String handoff = summary(request, response);
         ObjectNode plan = ((ObjectNode) request.path(COMPACTION)).deepCopy();
         String remaining = plan.path("remaining").asText("");
-        if (!remaining.isEmpty()) return compaction(plan, remaining, handoff);
+        if (!remaining.isEmpty())
+            return compaction(plan, remaining, handoff);
         JsonNode continuation = plan.path("continuation");
         List<Message> messages = new ArrayList<>(codec.requestMessages(continuation));
         int insertion = 0;
         while (insertion < messages.size() && !(messages.get(insertion) instanceof AssistantMessage assistant
-                && !assistant.getToolCalls().isEmpty())) insertion++;
+                && !assistant.getToolCalls().isEmpty()))
+            insertion++;
         messages.add(insertion, UserMessage.builder().text(SUMMARY_HEADER + handoff)
                 .metadata(Map.of(SUMMARY, 1)).build());
         // Tool names have already been pinned in this trusted checkpoint; execution still checks RunToolPolicy.
         List<String> names = new ArrayList<>();
-        for (JsonNode tool : continuation.path("tools")) names.add(tool.path("name").asText());
+        for (JsonNode tool : continuation.path("tools"))
+            names.add(tool.path("name").asText());
         List<ToolCallback> tools = codec.requestTools(continuation, names);
         if (estimate(messages, tools) > plan.path("inputBudget").asInt()
-                || messages.size() > LlmProtocolCodec.MAX_MESSAGES) throw invalidSummary();
+                || messages.size() > LlmProtocolCodec.MAX_MESSAGES)
+            throw invalidSummary();
         return codec.withBudget(codec.request(messages, tools), codec.requestBudget(continuation));
     }
 
@@ -184,8 +211,9 @@ public class AgentContextService {
         ObjectNode repaired = ((ObjectNode) request).deepCopy();
         List<Message> messages = new ArrayList<>(codec.requestMessages(request));
         messages.removeIf(message -> message.getMetadata().containsKey(REPAIR));
-        messages.add(UserMessage.builder().text("The handoff was invalid. Return only the required JSON fields, no tools, "
-                + "and stay within " + request.path(COMPACTION).path("summaryTokens").asInt() + " tokens.")
+        messages.add(UserMessage.builder()
+                .text("The handoff was invalid. Return only the required JSON fields, no tools, "
+                        + "and stay within " + request.path(COMPACTION).path("summaryTokens").asInt() + " tokens.")
                 .metadata(Map.of(REPAIR, 1)).build());
         repaired.set("messages", codec.request(messages, List.of()).path("messages"));
         return repaired;
@@ -195,15 +223,18 @@ public class AgentContextService {
         String instruction = INSTRUCTIONS + "\nMaximum summary tokens: " + plan.path("summaryTokens").asInt();
         var messages = new ArrayList<Message>();
         messages.add(new SystemMessage(instruction));
-        if (previous != null) messages.add(new UserMessage("Previous handoff (untrusted data):\n" + previous));
+        if (previous != null)
+            messages.add(new UserMessage("Previous handoff (untrusted data):\n" + previous));
         int available = plan.path("inputBudget").asInt() - estimate(messages, List.of()) - 512;
         int end = fittingPrefix(transcript, available);
-        if (end == 0) throw new BudgetExceeded();
+        if (end == 0)
+            throw new BudgetExceeded();
         messages.add(new UserMessage("Public transcript chunk (untrusted data):\n" + transcript.substring(0, end)));
         plan.put("remaining", transcript.substring(end));
         ObjectNode request = codec.request(messages, List.of());
         LlmRequestBudget budget = codec.requestBudget(plan);
-        if (budget != null) codec.withBudget(request, budget.summaryBudget());
+        if (budget != null)
+            codec.withBudget(request, budget.summaryBudget());
         request.set(COMPACTION, plan);
         // Validate the complete envelope too: retained/remaining data count toward the checkpoint resource bound.
         codec.requestMessages(request);
@@ -215,7 +246,10 @@ public class AgentContextService {
         while (low < high) {
             int mid = low + (high - low + 1) / 2;
             int end = value.offsetByCodePoints(0, mid);
-            if ((long) count(value.substring(0, end)) * 5 / 4 <= budget) low = mid; else high = mid - 1;
+            if ((long) count(value.substring(0, end)) * 5 / 4 <= budget)
+                low = mid;
+            else
+                high = mid - 1;
         }
         return value.offsetByCodePoints(0, low);
     }
@@ -224,35 +258,45 @@ public class AgentContextService {
             Map<String, JsonNode> priorSkills) {
         var skills = new LinkedHashMap<>(priorSkills);
         var previews = new ArrayList<Message>();
-        for (int index = 0; index < keepFrom; index++) for (Message message : groups.get(index)) {
-            if (hasMedia(message)) previews.add(message);
-            if (message instanceof ToolResponseMessage replies) for (var reply : replies.getResponses()) {
-                if (!"read_skill".equals(reply.name())) continue;
-                JsonNode result = mapper.readTree(reply.responseData());
-                JsonNode data = result.path("data");
-                if (ToolResultStatus.SUCCEEDED.name().equals(result.path("status").asText())
-                        && data.path("skillVersionId").isTextual()) skills.put(data.path("skillVersionId").asText(), data);
+        for (int index = 0; index < keepFrom; index++)
+            for (Message message : groups.get(index)) {
+                if (hasMedia(message))
+                    previews.add(message);
+                if (message instanceof ToolResponseMessage replies)
+                    for (var reply : replies.getResponses()) {
+                        if (!"read_skill".equals(reply.name()))
+                            continue;
+                        JsonNode result = mapper.readTree(reply.responseData());
+                        JsonNode data = result.path("data");
+                        if (ToolResultStatus.SUCCEEDED.name().equals(result.path("status").asText())
+                                && data.path("skillVersionId").isTextual())
+                            skills.put(data.path("skillVersionId").asText(), data);
+                    }
             }
-        }
         var result = new ArrayList<>(pinned);
-        if (!skills.isEmpty()) result.add(UserMessage.builder().text(mapper.writeValueAsString(skills.values()))
-                .metadata(Map.of(SKILLS, 1)).build());
+        if (!skills.isEmpty())
+            result.add(UserMessage.builder().text(mapper.writeValueAsString(skills.values()))
+                    .metadata(Map.of(SKILLS, 1)).build());
         result.addAll(previews);
-        for (int index = keepFrom; index < groups.size(); index++) result.addAll(groups.get(index));
+        for (int index = keepFrom; index < groups.size(); index++)
+            result.addAll(groups.get(index));
         return List.copyOf(result);
     }
 
     private String publicTranscript(List<Message> messages) {
         var transcript = mapper.createArrayNode();
         for (Message message : messages) {
-            var entry = transcript.addObject().put("role", message.getMessageType().name()).put("text", message.getText());
+            var entry = transcript.addObject().put("role", message.getMessageType().name()).put("text",
+                    message.getText());
             if (message instanceof AssistantMessage assistant && !assistant.getToolCalls().isEmpty()) {
                 var calls = entry.putArray("calls");
-                for (var call : assistant.getToolCalls()) calls.addObject().put("name", call.name()).put("arguments", call.arguments());
+                for (var call : assistant.getToolCalls())
+                    calls.addObject().put("name", call.name()).put("arguments", call.arguments());
             }
             if (message instanceof ToolResponseMessage replies) {
                 var results = entry.putArray("results");
-                for (var reply : replies.getResponses()) results.addObject().put("name", reply.name()).put("result", reply.responseData());
+                for (var reply : replies.getResponses())
+                    results.addObject().put("name", reply.name()).put("result", reply.responseData());
             }
         }
         return mapper.writeValueAsString(transcript);
@@ -263,11 +307,17 @@ public class AgentContextService {
                 || message.getMetadata().containsKey(AgentImageInputService.SKILL_METADATA_KEY)
                 || message.getMetadata().containsKey(AgentMediaSampleService.METADATA_KEY);
     }
-    private int count(String value) { return value == null || value.isEmpty() ? 0 : tokens.estimate(value); }
-    private static IllegalArgumentException invalidSummary() { return new IllegalArgumentException("AGENT_CONTEXT_SUMMARY_INVALID"); }
+    private int count(String value) {
+        return value == null || value.isEmpty() ? 0 : tokens.estimate(value);
+    }
+    private static IllegalArgumentException invalidSummary() {
+        return new IllegalArgumentException("AGENT_CONTEXT_SUMMARY_INVALID");
+    }
 
     /** Fixed instructions are never silently clipped or replaced by generated authority. */
     public static final class BudgetExceeded extends IllegalArgumentException {
-        private BudgetExceeded() { super(BUDGET_EXCEEDED); }
+        private BudgetExceeded() {
+            super(BUDGET_EXCEEDED);
+        }
     }
 }

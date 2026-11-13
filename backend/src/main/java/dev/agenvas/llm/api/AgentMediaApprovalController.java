@@ -57,15 +57,18 @@ public class AgentMediaApprovalController {
             @PathVariable UUID runId, @PathVariable UUID approvalId,
             @Valid @RequestBody RevisionRequest request) {
         return approvals.revise(principal.userId(), projectId, runId, approvalId, request.expectedVersion(),
-                request.outputIndex(), request.capabilityId(), request.parameters(), request.durationSeconds(), request.videoInputMode());
+                request.outputIndex(), request.capabilityId(), request.parameters(), request.durationSeconds(),
+                request.videoInputMode());
     }
 
     public record RevisionRequest(@NotNull @PositiveOrZero Long expectedVersion,
             @NotNull @PositiveOrZero Integer outputIndex, @NotNull UUID capabilityId,
             @NotNull tools.jackson.databind.JsonNode parameters,
             @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(60) Integer durationSeconds,
-            @NotNull dev.agenvas.artifact.domain.MediaDraft.VideoInputMode videoInputMode) {}
+            @NotNull dev.agenvas.artifact.domain.MediaDraft.VideoInputMode videoInputMode) {
+    }
 
     public record DecisionRequest(@NotNull @PositiveOrZero Long expectedVersion,
-            @NotNull AgentMediaApprovalService.Decision decision) {}
+            @NotNull AgentMediaApprovalService.Decision decision) {
+    }
 }

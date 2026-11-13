@@ -21,10 +21,11 @@ public record AgentMediaApproval(UUID id, UUID ownerId, UUID projectId, UUID run
     public enum Status {
         PENDING, APPROVED, SUCCEEDED, FAILED, REJECTED, EXPIRED, CANCELED;
 
-        private static final Set<Status> TERMINAL =
-                Set.of(SUCCEEDED, FAILED, REJECTED, EXPIRED, CANCELED);
+        private static final Set<Status> TERMINAL = Set.of(SUCCEEDED, FAILED, REJECTED, EXPIRED, CANCELED);
 
-        public boolean terminal() { return TERMINAL.contains(this); }
+        public boolean terminal() {
+            return TERMINAL.contains(this);
+        }
     }
 
     /** A versioned state replacement preserves the original approved payload and targets. */
@@ -36,7 +37,8 @@ public record AgentMediaApproval(UUID id, UUID ownerId, UUID projectId, UUID run
     }
 
     public AgentMediaApproval revise(JsonNode revisedRequest, JsonNode revisedTargets) {
-        if (status != Status.PENDING) throw new IllegalStateException("Only pending approvals can be revised");
+        if (status != Status.PENDING)
+            throw new IllegalStateException("Only pending approvals can be revised");
         return new AgentMediaApproval(id, ownerId, projectId, runId, stepIndex, toolCallId,
                 operationId, revisedRequest, revisedTargets, taskIds, result, status,
                 version + 1, createdAt, expiresAt, executionDeadline, decisionKey, decisionHash);

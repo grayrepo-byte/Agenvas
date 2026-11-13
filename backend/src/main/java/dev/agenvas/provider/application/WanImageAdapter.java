@@ -16,5 +16,8 @@ public final class WanImageAdapter extends WanProtocolAdapter {
             WanMediaDownloadPolicy downloads, ObjectMapper mapper, NativeMediaReferences references) {
         super(Task.Kind.IMAGE_GENERATION, catalog, cipher, client, downloads, mapper, references);
     }
-    @Override public String adapterId() { return WanModels.IMAGE_ADAPTER_ID; }
+    @Override
+    public String adapterId() {
+        return WanModels.IMAGE_ADAPTER_ID;
+    }
 }

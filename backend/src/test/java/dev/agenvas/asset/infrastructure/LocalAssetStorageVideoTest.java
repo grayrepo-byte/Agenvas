@@ -18,7 +18,8 @@ import tools.jackson.databind.ObjectMapper;
 
 /** Synthetic real MP4s verify the common upload/provider archive and its recovery path. */
 class LocalAssetStorageVideoTest {
-    @TempDir Path root;
+    @TempDir
+    Path root;
     private final MediaToolRunner tools = new MediaToolRunner(new MediaToolsProperties(null, null, null));
 
     @ParameterizedTest

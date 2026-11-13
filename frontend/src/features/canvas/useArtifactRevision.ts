@@ -1,7 +1,7 @@
 import { t } from "../../shared/i18n";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { HTTP_STATUS,ApiError, getArtifact, type Artifact } from "../../shared/api/client";
+import { HTTP_STATUS, ApiError, getArtifact, type Artifact } from "../../shared/api/client";
 import { hasCurrentVersion, type VersionedArtifact } from "./versionedArtifact";
 
 type ArtifactRevisionOptions<Fields, Revision> = {
@@ -12,7 +12,9 @@ type ArtifactRevisionOptions<Fields, Revision> = {
 
 /** Pins the editable version and CAS base together until save or an explicit reload replaces them. */
 export function useArtifactRevision<Fields extends object, Revision>({
-  artifact, readFields, saveRevision,
+  artifact,
+  readFields,
+  saveRevision,
 }: ArtifactRevisionOptions<Fields, Revision>) {
   const queryClient = useQueryClient();
   const [base, setBase] = useState(artifact);
@@ -26,7 +28,7 @@ export function useArtifactRevision<Fields extends object, Revision>({
 
   const save = useMutation({
     mutationFn: (revision: Revision) => saveRevision(base, revision),
-    onSuccess: async (saved) => {
+    onSuccess: async saved => {
       if (hasCurrentVersion(saved)) acceptVersion(saved);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["canvas", base.projectId] }),
@@ -41,7 +43,10 @@ export function useArtifactRevision<Fields extends object, Revision>({
       if (!hasCurrentVersion(latest)) throw new Error(t("artifacts.revision.versionMissing"));
       return latest;
     },
-    onSuccess: (latest) => { acceptVersion(latest); save.reset(); },
+    onSuccess: latest => {
+      acceptVersion(latest);
+      save.reset();
+    },
   });
   const busy = save.isPending || reload.isPending;
 
@@ -54,14 +59,20 @@ export function useArtifactRevision<Fields extends object, Revision>({
   }, [artifact, base.id, base.version, dirty, busy, readFields]);
 
   const status = {
-    dirty, busy, saving: save.isPending, saved: save.isSuccess,
+    dirty,
+    busy,
+    saving: save.isPending,
+    saved: save.isSuccess,
     newerAvailable: artifact.version > base.version,
     conflict: save.error instanceof ApiError && save.error.status === HTTP_STATUS.CONFLICT,
-    error: save.error, reloadError: reload.error,
+    error: save.error,
+    reloadError: reload.error,
   };
   return {
-    base, fields, status,
-    edit: (patch: Partial<Fields>) => setFields((current) => ({ ...current, ...patch })),
+    base,
+    fields,
+    status,
+    edit: (patch: Partial<Fields>) => setFields(current => ({ ...current, ...patch })),
     save: save.mutate,
     saveAsync: save.mutateAsync,
     reload: () => reload.mutate(),

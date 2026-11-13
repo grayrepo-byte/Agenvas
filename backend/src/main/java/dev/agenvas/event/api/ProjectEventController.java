@@ -63,7 +63,8 @@ public class ProjectEventController {
                     HttpStatus.BAD_REQUEST,
                     "VALIDATION_ERROR",
                     ApiMessage.of("api.project-event-controller.the-event-cursor-is-invalid"),
-                    ApiMessage.of("api.project-event-controller.last-event-id-must-be-the-project-event-sequence-number"),
+                    ApiMessage
+                            .of("api.project-event-controller.last-event-id-must-be-the-project-event-sequence-number"),
                     false);
         }
     }

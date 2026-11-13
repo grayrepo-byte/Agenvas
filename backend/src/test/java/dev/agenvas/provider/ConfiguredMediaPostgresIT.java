@@ -60,14 +60,22 @@ class ConfiguredMediaPostgresIT {
         registry.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private MediaCapabilityService catalog;
-    @Autowired private SystemDiagnosticsService diagnostics;
-    @Autowired private ProviderModeProperties mode;
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private WebApplicationContext context;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private ObjectMapper mapper;
+    @Autowired
+    private MediaCapabilityService catalog;
+    @Autowired
+    private SystemDiagnosticsService diagnostics;
+    @Autowired
+    private ProviderModeProperties mode;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private WebApplicationContext context;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private ObjectMapper mapper;
 
     @Test
     void deploymentStartsWithoutMockDefaultsAndKeepsHistoryWhileUsingPublishedRealCapabilities() throws Exception {
@@ -99,21 +107,23 @@ class ConfiguredMediaPostgresIT {
             assertThat(mediaDefault.path("capabilityId").isNull()).isTrue();
         }
 
-        Project project = projects.create(admin.userId(), "Configured media workspace", Project.AspectRatio.LANDSCAPE_16_9);
+        Project project = projects.create(admin.userId(), "Configured media workspace",
+                Project.AspectRatio.LANDSCAPE_16_9);
         String base = "/api/v1/projects/" + project.id();
         for (String kind : List.of("IMAGE", "VIDEO", "AUDIO")) {
             JsonNode artifact = mapper.readTree(mvc.perform(post(base + "/artifacts").with(auth).with(csrf())
-                            .contentType("application/json").header("Idempotency-Key", "configured-empty-" + kind)
-                            .content("{\"kind\":\"" + kind + "\",\"title\":\"Empty media\",\"content\":null}"))
+                    .contentType("application/json").header("Idempotency-Key", "configured-empty-" + kind)
+                    .content("{\"kind\":\"" + kind + "\",\"title\":\"Empty media\",\"content\":null}"))
                     .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
             UUID itemId = UUID.randomUUID();
             mvc.perform(post(base + "/canvas/commands").with(auth).with(csrf()).contentType("application/json")
-                            .content("{\"commands\":[{\"type\":\"PLACE_ARTIFACT\",\"itemId\":\"" + itemId
-                                    + "\",\"artifactId\":\"" + artifact.path("id").asText()
-                                    + "\",\"x\":0,\"y\":0,\"width\":280,\"height\":240,\"zIndex\":0,\"locked\":false}]}"))
+                    .content("{\"commands\":[{\"type\":\"PLACE_ARTIFACT\",\"itemId\":\"" + itemId
+                            + "\",\"artifactId\":\"" + artifact.path("id").asText()
+                            + "\",\"x\":0,\"y\":0,\"width\":280,\"height\":240,\"zIndex\":0,\"locked\":false}]}"))
                     .andExpect(status().isOk());
-            JsonNode draft = mapper.readTree(mvc.perform(get(base + "/canvas-items/" + itemId + "/media-draft").with(auth))
-                    .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+            JsonNode draft = mapper
+                    .readTree(mvc.perform(get(base + "/canvas-items/" + itemId + "/media-draft").with(auth))
+                            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
             assertThat(draft.path("capabilityId").isNull()).isTrue();
         }
 
@@ -132,7 +142,8 @@ class ConfiguredMediaPostgresIT {
         assertThat(catalog.pinnedSnapshot(pinned)).isEqualTo(historical);
         assertThat(jdbc.sql("select enabled from media_provider_connection where id=:id")
                 .param("id", historical.connection().id()).query(Boolean.class).single()).isTrue();
-        var connectionVersion = catalog.getConnectionVersion(connection.id(), connection.currentVersion()).orElseThrow();
+        var connectionVersion = catalog.getConnectionVersion(connection.id(), connection.currentVersion())
+                .orElseThrow();
         catalog.updateConnection(connection.id(), connection.version(), connection.name(), false,
                 connectionVersion.origin(), null);
         assertThat(diagnostics.snapshot().imageConfigured()).isFalse();

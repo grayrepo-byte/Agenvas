@@ -4,10 +4,25 @@ import { directorCameraAtTime, directorCameraPath, resizeDirectorMotion } from "
 
 function movingScene(): DirectorScene {
   const scene = createDirectorScene();
-  scene.motion = { durationSeconds: 10, keyframes: [
-    { id: "start", name: "Front", timeSeconds: 0, transition: "LINEAR", camera: { ...scene.camera, azimuth: 170, distance: 10 } },
-    { id: "end", name: "Back", timeSeconds: 10, transition: "LINEAR", camera: { ...scene.camera, azimuth: -170, distance: 4, focalLength: 85, target: { x: 4, y: 2, z: -2 } } },
-  ] };
+  scene.motion = {
+    durationSeconds: 10,
+    keyframes: [
+      {
+        id: "start",
+        name: "Front",
+        timeSeconds: 0,
+        transition: "LINEAR",
+        camera: { ...scene.camera, azimuth: 170, distance: 10 },
+      },
+      {
+        id: "end",
+        name: "Back",
+        timeSeconds: 10,
+        transition: "LINEAR",
+        camera: { ...scene.camera, azimuth: -170, distance: 4, focalLength: 85, target: { x: 4, y: 2, z: -2 } },
+      },
+    ],
+  };
   return scene;
 }
 
@@ -42,7 +57,7 @@ describe("local 3D camera motion", () => {
     const scene = movingScene();
     const motion = resizeDirectorMotion(scene.motion, 4);
     expect(motion.durationSeconds).toBe(4);
-    expect(motion.keyframes.map((frame) => frame.timeSeconds)).toEqual([0, 4]);
+    expect(motion.keyframes.map(frame => frame.timeSeconds)).toEqual([0, 4]);
     expect(scene.motion.durationSeconds).toBe(10);
     scene.motion.keyframes = [];
     expect(directorCameraAtTime(scene, 1)).toEqual(scene.camera);
@@ -55,7 +70,8 @@ describe("local 3D camera motion", () => {
   });
 
   it("upgrades v2 into an empty motion track without modifying its source", () => {
-    const old: Partial<DirectorScene> = createDirectorScene(); delete old.motion;
+    const old: Partial<DirectorScene> = createDirectorScene();
+    delete old.motion;
     const legacy = { ...old, schemaVersion: 2 };
     const original = structuredClone(legacy);
     expect(parseDirectorScene(legacy)?.motion).toEqual({ durationSeconds: 5, keyframes: [] });
@@ -66,7 +82,9 @@ describe("local 3D camera motion", () => {
     const scene = movingScene();
     const frame = scene.motion.keyframes[0]!;
     for (const motion of [
-      { ...scene.motion, unknown: true }, { ...scene.motion, durationSeconds: 0 }, { ...scene.motion, durationSeconds: 121 },
+      { ...scene.motion, unknown: true },
+      { ...scene.motion, durationSeconds: 0 },
+      { ...scene.motion, durationSeconds: 121 },
       { ...scene.motion, keyframes: [frame, frame] },
       { ...scene.motion, keyframes: [...scene.motion.keyframes].reverse() },
       { ...scene.motion, keyframes: [{ ...frame, timeSeconds: NaN }] },
@@ -74,11 +92,14 @@ describe("local 3D camera motion", () => {
       { ...scene.motion, keyframes: [{ ...frame, name: " " }] },
       { ...scene.motion, keyframes: [{ ...frame, camera: { ...frame.camera, url: "https://example.invalid/model" } }] },
       { ...scene.motion, keyframes: [{ ...frame, transition: "SCRIPT" }] },
-      { ...scene.motion, keyframes: Array.from({ length: 25 }, (_, i) => ({ ...frame, id: String(i), timeSeconds: i / 10 })) },
-    ]) expect(parseDirectorScene({ ...scene, motion })).toBeNull();
+      {
+        ...scene.motion,
+        keyframes: Array.from({ length: 25 }, (_, i) => ({ ...frame, id: String(i), timeSeconds: i / 10 })),
+      },
+    ])
+      expect(parseDirectorScene({ ...scene, motion })).toBeNull();
     const parsed = parseDirectorScene(scene)!;
     parsed.motion.keyframes[0]!.camera.target.x = 15;
     expect(scene.motion.keyframes[0]!.camera.target.x).toBe(0);
   });
-
 });

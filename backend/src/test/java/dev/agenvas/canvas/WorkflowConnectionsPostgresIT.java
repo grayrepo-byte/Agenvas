@@ -56,29 +56,44 @@ import tools.jackson.databind.node.ObjectNode;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false",
-        "agenvas.library.worker-enabled=false" })
+        "agenvas.library.worker-enabled=false"})
 class WorkflowConnectionsPostgresIT {
-    @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
-    @TempDir static Path storage;
-    @DynamicPropertySource static void properties(DynamicPropertyRegistry registry) {
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    @TempDir
+    static Path storage;
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("agenvas.storage.root", () -> storage.toString());
         registry.add("agenvas.credentials.master-key-base64", () -> Base64.getEncoder().encodeToString(new byte[32]));
     }
-    @Autowired IdentityService identities;
-    @Autowired ProjectService projects;
-    @Autowired ArtifactService artifacts;
-    @Autowired AssetService assets;
-    @Autowired CanvasService canvas;
-    @Autowired CanvasConnectionService connections;
-    @Autowired MediaDraftService drafts;
-    @Autowired MediaCapabilityService catalog;
-    @Autowired LibraryService library;
-    @Autowired JdbcClient jdbc;
-    @Autowired ObjectMapper mapper;
-    @Autowired WebApplicationContext context;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    ProjectService projects;
+    @Autowired
+    ArtifactService artifacts;
+    @Autowired
+    AssetService assets;
+    @Autowired
+    CanvasService canvas;
+    @Autowired
+    CanvasConnectionService connections;
+    @Autowired
+    MediaDraftService drafts;
+    @Autowired
+    MediaCapabilityService catalog;
+    @Autowired
+    LibraryService library;
+    @Autowired
+    JdbcClient jdbc;
+    @Autowired
+    ObjectMapper mapper;
+    @Autowired
+    WebApplicationContext context;
 
     @Test
     void workflowConnectionsFillNamedSlotsInOrderAndRollbackRejectedRelationsAndImports() throws Exception {
@@ -87,7 +102,8 @@ class WorkflowConnectionsPostgresIT {
         AdminPrincipal owner = identities.setup("workflow-connection-admin", "synthetic-password-123");
         RequestPostProcessor auth = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of()));
         MockMvc mvc = webAppContextSetup(context).apply(
-                org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
+                org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build();
         var runningHub = catalog.createConnection("synthetic-runninghub-connection", "Synthetic RunningHub",
                 "RUNNINGHUB", "https://www.runninghub.ai", "synthetic-unusable-key");
         ObjectNode settings = mapper.createObjectNode();
@@ -95,12 +111,14 @@ class WorkflowConnectionsPostgresIT {
         definition.put("schemaVersion", 1).put("protocolVersion", "V2")
                 .put("targetType", "WORKFLOW").put("targetId", "123");
         var fields = definition.putArray("fields");
-        for (int index = 0; index < 2; index++) fields.addObject()
-                .put("key", "image" + index).put("label", "Synthetic reference " + index)
-                .put("type", "IMAGE").put("required", true).put("nodeId", String.valueOf(index + 1))
-                .put("fieldName", "image");
+        for (int index = 0; index < 2; index++)
+            fields.addObject()
+                    .put("key", "image" + index).put("label", "Synthetic reference " + index)
+                    .put("type", "IMAGE").put("required", true).put("nodeId", String.valueOf(index + 1))
+                    .put("fieldName", "image");
         definition.putArray("outputs").addObject().put("kind", "VIDEO").put("primary", true).put("maxCount", 1);
-        var runningHubCapability = catalog.publishCapability(runningHub.id(), "Synthetic video", "RUNNINGHUB_VIDEO", settings);
+        var runningHubCapability = catalog.publishCapability(runningHub.id(), "Synthetic video", "RUNNINGHUB_VIDEO",
+                settings);
         verifyConnections(owner, auth, mvc, runningHubCapability.id(), List.of("image0", "image1"));
 
         var comfy = catalog.createConnection("Synthetic ComfyUI", "http://127.0.0.1:8188");
@@ -111,7 +129,8 @@ class WorkflowConnectionsPostgresIT {
         workflow.withObject("graph").withObject("14").withObject("inputs").putArray("secondReference").add("15").add(0);
         workflow.withArray("bindings").addObject().put("nodeId", "15").put("inputName", "image")
                 .put("source", "REFERENCE_IMAGE").put("referenceIndex", 1);
-        var comfyCapability = catalog.publishCapability(comfy.id(), "Synthetic Comfy video", "COMFY_VIDEO_V1", comfySettings);
+        var comfyCapability = catalog.publishCapability(comfy.id(), "Synthetic Comfy video", "COMFY_VIDEO_V1",
+                comfySettings);
         verifyConnections(owner, auth, mvc, comfyCapability.id(), List.of("reference_0", "reference_1"));
 
         verifyLibrarySlot(owner, auth, mvc, runningHubCapability.id());
@@ -120,7 +139,8 @@ class WorkflowConnectionsPostgresIT {
 
     private void verifyConnections(AdminPrincipal owner, RequestPostProcessor auth, MockMvc mvc,
             UUID capability, List<String> slots) throws Exception {
-        Project project = projects.create(owner.userId(), "Synthetic workflow connections", Project.AspectRatio.SQUARE_1_1);
+        Project project = projects.create(owner.userId(), "Synthetic workflow connections",
+                Project.AspectRatio.SQUARE_1_1);
         UUID target = emptyVideo(owner, project, capability);
         Source first = source(owner, project);
         Source second = source(owner, project);
@@ -130,7 +150,8 @@ class WorkflowConnectionsPostgresIT {
         assertThat(created.path("draft").path("videoInputMode").asText()).isEqualTo("GENERAL_REFERENCE");
         assertThat(created.path("draft").path("parameters").path("dynamicValues").path(slots.getFirst()).asText())
                 .isEqualTo(first.version().toString());
-        assertThat(created.path("draft").path("mediaInputs").get(0).path("sources").get(0).path("type").asText()).isEqualTo("CONNECTION");
+        assertThat(created.path("draft").path("mediaInputs").get(0).path("sources").get(0).path("type").asText())
+                .isEqualTo("CONNECTION");
         mvc.perform(post(base).with(auth).with(csrf()).contentType("application/json")
                 .content(command(target, first, 2))).andExpect(status().isConflict());
         mvc.perform(post(base).with(auth).with(csrf()).contentType("application/json")
@@ -145,12 +166,15 @@ class WorkflowConnectionsPostgresIT {
         assertThat(connections.list(owner.userId(), project.id())).hasSize(2);
         assertThat(drafts.get(owner.userId(), project.id(), target).version()).isEqualTo(3);
         mvc.perform(post(base + "/" + created.path("connection").path("id").asText() + "/disconnect")
-                .with(auth).with(csrf()).contentType("application/json").content("{\"expectedVersion\":0,\"expectedTargetDraftVersion\":3}"))
+                .with(auth).with(csrf()).contentType("application/json")
+                .content("{\"expectedVersion\":0,\"expectedTargetDraftVersion\":3}"))
                 .andExpect(status().isOk());
         var disconnected = drafts.get(owner.userId(), project.id(), target);
         assertThat(disconnected.parameters().path("dynamicValues").has(slots.getFirst())).isFalse();
-        assertThat(disconnected.parameters().path("dynamicValues").path(slots.get(1)).asText()).isEqualTo(second.version().toString());
-        assertThat(disconnected.mediaInputs()).singleElement().satisfies(input -> assertThat(input.versionId()).isEqualTo(second.version()));
+        assertThat(disconnected.parameters().path("dynamicValues").path(slots.get(1)).asText())
+                .isEqualTo(second.version().toString());
+        assertThat(disconnected.mediaInputs()).singleElement()
+                .satisfies(input -> assertThat(input.versionId()).isEqualTo(second.version()));
     }
 
     private void verifyLibrarySlot(AdminPrincipal owner, RequestPostProcessor auth, MockMvc mvc,
@@ -158,23 +182,30 @@ class WorkflowConnectionsPostgresIT {
         Project project = projects.create(owner.userId(), "Synthetic library slot", Project.AspectRatio.SQUARE_1_1);
         UUID target = emptyVideo(owner, project, capability);
         Source image = source(owner, project);
-        var sourceCard = canvas.list(owner.userId(), project.id()).stream().filter(item -> item.item().id().equals(image.item())).findFirst().orElseThrow().item();
+        var sourceCard = canvas.list(owner.userId(), project.id()).stream()
+                .filter(item -> item.item().id().equals(image.item())).findFirst().orElseThrow().item();
         var saved = library.save(owner.userId(), project.id(), image.item(), image.version(),
-                sourceCard.version(), null, "Synthetic saved image", LibraryEntry.Category.OTHER, "workflow-image-save");
+                sourceCard.version(), null, "Synthetic saved image", LibraryEntry.Category.OTHER,
+                "workflow-image-save");
         finish(owner, saved.id());
         UUID entry = UUID.fromString(library.command(owner.userId(), saved.id()).result().path("entryId").asText());
         String route = "/api/v1/projects/" + project.id() + "/canvas-items/" + target + "/library-references";
         String body = mapper.writeValueAsString(Map.of("entryId", entry, "expectedVersion", 0,
-                "slotKey", "image1", "role", "REFERENCE", "color", "#7C3AED", "commandKey", "workflow-library-reference",
+                "slotKey", "image1", "role", "REFERENCE", "color", "#7C3AED", "commandKey",
+                "workflow-library-reference",
                 "draft", Map.of("expectedVersion", 1, "prompt", "Synthetic prompt", "parameters", Map.of(),
-                        "capabilityId", capability, "videoInputMode", "TEXT", "mediaInputs", List.of(), "mentions", List.of())));
-        JsonNode accepted = mapper.readTree(mvc.perform(post(route).with(auth).with(csrf()).contentType("application/json")
-                .content(body)).andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString());
+                        "capabilityId", capability, "videoInputMode", "TEXT", "mediaInputs", List.of(), "mentions",
+                        List.of())));
+        JsonNode accepted = mapper.readTree(mvc
+                .perform(post(route).with(auth).with(csrf()).contentType("application/json")
+                        .content(body))
+                .andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString());
         finish(owner, UUID.fromString(accepted.path("id").asText()));
         var applied = drafts.get(owner.userId(), project.id(), target);
         assertThat(applied.videoInputMode()).isEqualTo(MediaDraft.VideoInputMode.GENERAL_REFERENCE);
         assertThat(applied.mediaInputs()).hasSize(1);
-        assertThat(applied.parameters().path("dynamicValues").path("image1").asText()).isEqualTo(applied.mediaInputs().getFirst().versionId().toString());
+        assertThat(applied.parameters().path("dynamicValues").path("image1").asText())
+                .isEqualTo(applied.mediaInputs().getFirst().versionId().toString());
         assertThat(applied.parameters().path("dynamicValues").has("image0")).isFalse();
         assertThat(applied.mediaInputs().getFirst().versionId()).isNotEqualTo(image.version());
         assertThat(connections.list(owner.userId(), project.id())).isEmpty();
@@ -207,28 +238,34 @@ class WorkflowConnectionsPostgresIT {
         sharedParameters.withObject("dynamicValues").put("image0", sharedInput.versionId().toString());
         var shared = drafts.save(owner.userId(), project.id(), target, replaced.version(), replaced.prompt(),
                 sharedParameters, null, capability, MediaDraft.VideoInputMode.GENERAL_REFERENCE,
-                List.of(new MediaDraftService.SaveMediaInput(sharedInput.versionId(), sharedInput.role(), sharedInput.color())),
+                List.of(new MediaDraftService.SaveMediaInput(sharedInput.versionId(), sharedInput.role(),
+                        sharedInput.color())),
                 List.of(), null);
         UUID sharedCard = CanvasMediaFixture.place(canvas, owner.userId(), project.id(), sharedInput.artifactId());
         var sharedLinked = connections.connect(owner.userId(), project.id(), sharedCard, target,
                 sharedInput.versionId(), dev.agenvas.canvas.domain.CanvasConnection.RelationType.MEDIA_INPUT,
                 shared.version()).draft();
-        finish(owner, libraryReference(mvc, auth, route, entry, "workflow-library-shared-replace", "image1", sharedLinked));
+        finish(owner,
+                libraryReference(mvc, auth, route, entry, "workflow-library-shared-replace", "image1", sharedLinked));
         var sharedReplaced = drafts.get(owner.userId(), project.id(), target);
         assertThat(sharedReplaced.mediaInputs()).hasSize(2);
-        assertThat(sharedReplaced.parameters().path("dynamicValues").path("image0").asText()).isEqualTo(sharedInput.versionId().toString());
-        assertThat(sharedReplaced.parameters().path("dynamicValues").path("image1").asText()).isNotEqualTo(sharedInput.versionId().toString());
+        assertThat(sharedReplaced.parameters().path("dynamicValues").path("image0").asText())
+                .isEqualTo(sharedInput.versionId().toString());
+        assertThat(sharedReplaced.parameters().path("dynamicValues").path("image1").asText())
+                .isNotEqualTo(sharedInput.versionId().toString());
         assertThat(connections.list(owner.userId(), project.id())).hasSize(1);
 
         // CAS failure after acceptance rolls back the imported project artifact and any input cleanup.
         long artifactCount = jdbc.sql("select count(*) from artifact where project_id=:project")
                 .param("project", project.id()).query(Long.class).single();
-        UUID stale = libraryReference(mvc, auth, route, entry, "workflow-library-stale-replace", "image0", sharedReplaced);
+        UUID stale = libraryReference(mvc, auth, route, entry, "workflow-library-stale-replace", "image0",
+                sharedReplaced);
         assertThat(library.command(owner.userId(), stale).status()).isEqualTo(LibraryCommand.Status.ACCEPTED);
         drafts.save(owner.userId(), project.id(), target, sharedReplaced.version(), "New user edit",
                 sharedReplaced.parameters(), null, capability, sharedReplaced.videoInputMode(),
                 sharedReplaced.mediaInputs().stream().map(reference -> new MediaDraftService.SaveMediaInput(
-                        reference.versionId(), reference.role(), reference.color())).toList(), List.of(), null);
+                        reference.versionId(), reference.role(), reference.color())).toList(),
+                List.of(), null);
         assertThat(library.processNext()).isTrue();
         assertThat(library.command(owner.userId(), stale).status()).isEqualTo(LibraryCommand.Status.FAILED);
         assertThat(library.command(owner.userId(), stale).errorCode()).isEqualTo("VERSION_CONFLICT");
@@ -243,14 +280,17 @@ class WorkflowConnectionsPostgresIT {
         var request = mapper.createObjectNode().put("entryId", entry.toString()).put("expectedVersion", 0)
                 .put("slotKey", slotKey).put("role", "REFERENCE").put("color", "#7C3AED").put("commandKey", key);
         var fields = request.putObject("draft").put("expectedVersion", draft.version()).put("prompt", draft.prompt())
-                .put("capabilityId", draft.capabilityId().toString()).put("videoInputMode", draft.videoInputMode().name());
+                .put("capabilityId", draft.capabilityId().toString())
+                .put("videoInputMode", draft.videoInputMode().name());
         fields.set("parameters", draft.parameters());
         var inputs = fields.putArray("mediaInputs");
         draft.mediaInputs().forEach(input -> inputs.addObject().put("versionId", input.versionId().toString())
                 .put("role", input.role().name()).put("color", input.color()));
         fields.set("mentions", mapper.valueToTree(draft.mentions()));
-        return UUID.fromString(mapper.readTree(mvc.perform(post(route).with(auth).with(csrf()).contentType("application/json")
-                .content(request.toString())).andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString())
+        return UUID.fromString(mapper
+                .readTree(mvc.perform(post(route).with(auth).with(csrf()).contentType("application/json")
+                        .content(request.toString())).andExpect(status().isAccepted()).andReturn().getResponse()
+                        .getContentAsString())
                 .path("id").asText());
     }
 
@@ -279,13 +319,16 @@ class WorkflowConnectionsPostgresIT {
     private JsonNode connect(MockMvc mvc, RequestPostProcessor auth, String route, UUID target,
             Source source, long version) throws Exception {
         return mapper.readTree(mvc.perform(post(route).with(auth).with(csrf()).contentType("application/json")
-                .content(command(target, source, version))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+                .content(command(target, source, version))).andExpect(status().isCreated()).andReturn().getResponse()
+                .getContentAsString());
     }
 
     private String command(UUID target, Source source, long expected) {
         return mapper.writeValueAsString(Map.of("sourceCanvasItemId", source.item(), "targetCanvasItemId", target,
-                "sourceVersionId", source.version(), "relationType", "MEDIA_INPUT", "expectedTargetDraftVersion", expected));
+                "sourceVersionId", source.version(), "relationType", "MEDIA_INPUT", "expectedTargetDraftVersion",
+                expected));
     }
 
-    private record Source(UUID item, UUID version) {}
+    private record Source(UUID item, UUID version) {
+    }
 }

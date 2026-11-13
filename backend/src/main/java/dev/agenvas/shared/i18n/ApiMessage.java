@@ -16,11 +16,13 @@ public record ApiMessage(String key, List<String> arguments) {
 
     public ApiMessage {
         Objects.requireNonNull(key, "Message key required");
-        if (!SOURCE.containsKey(key)) throw new IllegalArgumentException("Unknown public message key: " + key);
+        if (!SOURCE.containsKey(key))
+            throw new IllegalArgumentException("Unknown public message key: " + key);
         arguments = List.copyOf(arguments);
         int required = PARAMETER.matcher(SOURCE.getString(key)).results()
                 .mapToInt(match -> Integer.parseInt(match.group(1)) + 1).max().orElse(0);
-        if (arguments.size() != required) throw new IllegalArgumentException("Wrong argument count for " + key);
+        if (arguments.size() != required)
+            throw new IllegalArgumentException("Wrong argument count for " + key);
     }
 
     public static ApiMessage of(String key, Object... arguments) {
@@ -40,7 +42,7 @@ public record ApiMessage(String key, List<String> arguments) {
 
     static ApiMessage fromLegacySource(String source) {
         return SOURCE.keySet().stream().filter(key -> SOURCE.getString(key).equals(source)
-                        && !PARAMETER.matcher(source).find())
+                && !PARAMETER.matcher(source).find())
                 .findFirst().map(ApiMessage::of).orElse(null);
     }
 }

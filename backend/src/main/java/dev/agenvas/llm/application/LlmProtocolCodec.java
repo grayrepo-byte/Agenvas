@@ -68,7 +68,8 @@ public class LlmProtocolCodec {
         return envelope;
     }
     public LlmRequestBudget requestBudget(JsonNode request) {
-        if (!request.has("requestBudget")) return null;
+        if (!request.has("requestBudget"))
+            return null;
         return mapper.treeToValue(request.path("requestBudget"), LlmRequestBudget.class);
     }
     public ObjectNode withBudget(ObjectNode request, LlmRequestBudget budget) {
@@ -178,8 +179,12 @@ public class LlmProtocolCodec {
 
     /** 保存的模型定义不能将 Spring AI 自动调用路径变成业务执行入口。 */
     private record SavedDefinition(ToolDefinition definition) implements ToolCallback {
-        @Override public ToolDefinition getToolDefinition() { return definition; }
-        @Override public String call(String input) {
+        @Override
+        public ToolDefinition getToolDefinition() {
+            return definition;
+        }
+        @Override
+        public String call(String input) {
             throw new IllegalStateException("Saved tool definitions require the durable business executor");
         }
     }
@@ -210,7 +215,9 @@ public class LlmProtocolCodec {
 
     /** Carries no provider text, credentials or private model content into public errors. */
     public static final class OutputTruncated extends RuntimeException {
-        OutputTruncated() { super("Model response stopped at a token limit"); }
+        OutputTruncated() {
+            super("Model response stopped at a token limit");
+        }
     }
 
     /**
@@ -298,7 +305,8 @@ public class LlmProtocolCodec {
         if (!value.isObject()) {
             throw new IllegalArgumentException("Saved model metadata is malformed");
         }
-        return mapper.convertValue(value, new tools.jackson.core.type.TypeReference<>() {});
+        return mapper.convertValue(value, new tools.jackson.core.type.TypeReference<>() {
+        });
     }
 
     /**
@@ -340,7 +348,8 @@ public class LlmProtocolCodec {
     }
 
     private ObjectNode encodeMessage(Message message, boolean preserveModelContent) {
-        if (!preserveModelContent && message instanceof AssistantMessage assistant) message = PublicAssistantResponse.sanitize(assistant);
+        if (!preserveModelContent && message instanceof AssistantMessage assistant)
+            message = PublicAssistantResponse.sanitize(assistant);
         ObjectNode value = mapper.createObjectNode();
         value.put("role", message.getMessageType().name());
         if (message.getText() == null) {

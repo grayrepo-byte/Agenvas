@@ -53,7 +53,8 @@ public class CreativeArtifactToolService {
         JsonNode version = input.path("expectedVersion");
         if (!version.isIntegralNumber() || !version.canConvertToLong()
                 || version.longValue() < 0) {
-            throw invalid(ApiMessage.of("api.creative-artifact-tool-service.expectedversion-must-be-a-nonnegative-integer"));
+            throw invalid(
+                    ApiMessage.of("api.creative-artifact-tool-service.expectedversion-must-be-a-nonnegative-integer"));
         }
         String title = input.has("title") ? requiredText(input, "title", 160) : null;
         JsonNode content = input.path("content");
@@ -104,17 +105,20 @@ public class CreativeArtifactToolService {
         for (JsonNode supplied : requested) {
             if (!(supplied instanceof ObjectNode object)
                     || object.size() < 2 || object.size() > 3
-                    || object.propertyNames().stream().anyMatch(field -> !Set.of("itemId", "versionId", "expectedVersion").contains(field))
+                    || object.propertyNames().stream()
+                            .anyMatch(field -> !Set.of("itemId", "versionId", "expectedVersion").contains(field))
                     || !object.has("itemId")
                     || !object.has("expectedVersion")) {
-                throw invalid(ApiMessage.of("api.creative-artifact-tool-service.arrange-items-requires-itemid-versionid-and-expectedversion"));
+                throw invalid(ApiMessage.of(
+                        "api.creative-artifact-tool-service.arrange-items-requires-itemid-versionid-and-expectedversion"));
             }
             UUID itemId = parseUuid(object.path("itemId"));
             UUID versionId = object.has("versionId") ? parseUuid(object.path("versionId")) : null;
             JsonNode expected = object.path("expectedVersion");
             if (!expected.isIntegralNumber() || !expected.canConvertToLong()
                     || expected.longValue() < 0 || !unique.add(itemId)) {
-                throw invalid(ApiMessage.of("api.creative-artifact-tool-service.arrange-items-has-an-invalid-or-duplicate-item"));
+                throw invalid(ApiMessage
+                        .of("api.creative-artifact-tool-service.arrange-items-has-an-invalid-or-duplicate-item"));
             }
             commands.add(new ArrangeRequest(itemId, versionId, expected.longValue()));
         }
@@ -126,30 +130,44 @@ public class CreativeArtifactToolService {
                     .filter(candidate -> candidate.item().id().equals(request.itemId()))
                     .findFirst().orElseThrow(() -> new ApiProblemException(
                             HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND",
-                            ApiMessage.of("api.creative-artifact-tool-service.canvas-card-does-not-exist"), ApiMessage.of("api.creative-artifact-tool-service.the-target-card-does-not-belong-to-the-current-project"), false));
+                            ApiMessage.of("api.creative-artifact-tool-service.canvas-card-does-not-exist"),
+                            ApiMessage.of(
+                                    "api.creative-artifact-tool-service.the-target-card-does-not-belong-to-the-current-project"),
+                            false));
             CanvasItem item = entry.item();
             ArtifactService.ArtifactView view = artifacts.get(context.ownerId(), context.projectId(), item.subjectId());
             if (item.subjectType() != CanvasItem.SubjectType.ARTIFACT) {
-                throw invalid(ApiMessage.of("api.creative-artifact-tool-service.arrange-items-version-does-not-match-its-card"));
+                throw invalid(ApiMessage
+                        .of("api.creative-artifact-tool-service.arrange-items-version-does-not-match-its-card"));
             }
             if (item.locked()) {
                 throw new ApiProblemException(HttpStatus.CONFLICT, "CANVAS_ITEM_LOCKED",
-                        ApiMessage.of("api.creative-artifact-tool-service.card-locked"), ApiMessage.of("api.creative-artifact-tool-service.locked-cards-cannot-be-arranged-by-the-agent"), false);
+                        ApiMessage.of("api.creative-artifact-tool-service.card-locked"),
+                        ApiMessage
+                                .of("api.creative-artifact-tool-service.locked-cards-cannot-be-arranged-by-the-agent"),
+                        false);
             }
             boolean emptyMedia = request.versionId() == null
                     && view.artifact().kind() != Artifact.Kind.TEXT && item.selectedVersionId() == null;
             if (!emptyMedia) {
-                if (request.versionId() == null) throw invalid(ApiMessage.of("api.creative-artifact-tool-service.arrange-items-version-does-not-match-its-card"));
-                ArtifactVersion version = artifacts.requireCanvasVersion(context.ownerId(), context.projectId(), request.versionId());
+                if (request.versionId() == null)
+                    throw invalid(ApiMessage
+                            .of("api.creative-artifact-tool-service.arrange-items-version-does-not-match-its-card"));
+                ArtifactVersion version = artifacts.requireCanvasVersion(context.ownerId(), context.projectId(),
+                        request.versionId());
                 if (!version.artifactId().equals(item.subjectId())) {
-                    throw invalid(ApiMessage.of("api.creative-artifact-tool-service.arrange-items-version-does-not-match-its-card"));
+                    throw invalid(ApiMessage
+                            .of("api.creative-artifact-tool-service.arrange-items-version-does-not-match-its-card"));
                 }
             }
             if (view.artifact().archivedAt() != null
                     || (!emptyMedia && !isCurrentCardVersion(view, item, request.versionId()))) {
                 throw new ApiProblemException(HttpStatus.CONFLICT,
-                        "ARTIFACT_VERSION_CONFLICT", ApiMessage.of("api.creative-artifact-tool-service.product-version-has-changed"),
-                        ApiMessage.of("api.creative-artifact-tool-service.old-content-versions-do-not-determine-the-current-card-layout"), false);
+                        "ARTIFACT_VERSION_CONFLICT",
+                        ApiMessage.of("api.creative-artifact-tool-service.product-version-has-changed"),
+                        ApiMessage.of(
+                                "api.creative-artifact-tool-service.old-content-versions-do-not-determine-the-current-card-layout"),
+                        false);
             }
             selected.add(item);
         }
@@ -227,7 +245,8 @@ public class CreativeArtifactToolService {
      * @param versionId 项目产物卡片当前展示的内容版本；空媒体草稿时为空
      * @param expectedVersion 写入前必须匹配的画布布局版本
      */
-    private record ArrangeRequest(UUID itemId, UUID versionId, long expectedVersion) {}
+    private record ArrangeRequest(UUID itemId, UUID versionId, long expectedVersion) {
+    }
 
     /** 解析工具 JSON 对象；语法错误和非对象根节点均转换为稳定参数错误。 */
     private ObjectNode parseObject(String arguments) {
@@ -247,7 +266,8 @@ public class CreativeArtifactToolService {
     private void allowOnly(ObjectNode input, Set<String> allowed) {
         for (String field : input.propertyNames()) {
             if (!allowed.contains(field)) {
-                throw invalid(ApiMessage.of("api.creative-artifact-tool-service.tool-arguments-contain-an-unknown-field"));
+                throw invalid(
+                        ApiMessage.of("api.creative-artifact-tool-service.tool-arguments-contain-an-unknown-field"));
             }
         }
     }
@@ -265,12 +285,14 @@ public class CreativeArtifactToolService {
     /** 将 JSON 字符串解析为 UUID，阻止数字或其他节点被宽松强转。 */
     private UUID parseUuid(JsonNode value) {
         if (!value.isTextual()) {
-            throw invalid(ApiMessage.of("api.creative-artifact-tool-service.reference-version-id-must-be-a-uuid-string"));
+            throw invalid(
+                    ApiMessage.of("api.creative-artifact-tool-service.reference-version-id-must-be-a-uuid-string"));
         }
         try {
             return UUID.fromString(value.asText());
         } catch (IllegalArgumentException exception) {
-            throw invalid(ApiMessage.of("api.creative-artifact-tool-service.reference-version-id-must-be-a-uuid-string"));
+            throw invalid(
+                    ApiMessage.of("api.creative-artifact-tool-service.reference-version-id-must-be-a-uuid-string"));
         }
     }
 

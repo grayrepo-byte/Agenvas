@@ -17,7 +17,8 @@ public final class LlmStreamIncompleteException extends IOException {
     public static boolean matches(Throwable failure) {
         int depth = 0;
         for (Throwable cause = failure; cause != null && depth++ < 64; cause = cause.getCause()) {
-            if (cause instanceof LlmStreamIncompleteException) return true;
+            if (cause instanceof LlmStreamIncompleteException)
+                return true;
         }
         return false;
     }

@@ -8,8 +8,7 @@ import { build, createServer, preview } from "vite";
 
 /** Production CSS, native playback and real keyboard/pointer checks with synthetic media. */
 const root = fileURLToPath(new URL("../", import.meta.url));
-const chromePath = process.env.AGENVAS_E2E_CHROME
-  ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const chromePath = process.env.AGENVAS_E2E_CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const route = "/e2e/media-preview.html";
 const production = !process.argv.includes("--dev");
 const editOnly = process.argv.includes("--video-edit-only");
@@ -43,7 +42,7 @@ let syntheticMedia;
 const compositions = [];
 const pending = new Map();
 const attempts = new Map();
-const pause = () => new Promise((resolve) => setTimeout(resolve, pollMs));
+const pause = () => new Promise(resolve => setTimeout(resolve, pollMs));
 
 function cdp(method, params = {}) {
   const id = ++nextId;
@@ -56,10 +55,11 @@ function cdp(method, params = {}) {
 async function page(fn, ...args) {
   const result = await cdp("Runtime.evaluate", {
     expression: `(${fn.toString()})(...${JSON.stringify(args)})`,
-    awaitPromise: true, returnByValue: true,
+    awaitPromise: true,
+    returnByValue: true,
   });
-  if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description
-    ?? result.exceptionDetails.text);
+  if (result.exceptionDetails)
+    throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text);
   return result.result.value;
 }
 
@@ -79,17 +79,22 @@ async function clickAt(point) {
 }
 
 async function pointerClick(selector) {
-  await page((target) => document.querySelector(target)?.scrollIntoView({ block: "nearest", inline: "nearest" }), selector);
-  await waitFor((target) => {
+  await page(
+    target => document.querySelector(target)?.scrollIntoView({ block: "nearest", inline: "nearest" }),
+    selector,
+  );
+  await waitFor(target => {
     const element = document.querySelector(target);
     if (!element || element.disabled) return false;
     const bounds = element.getBoundingClientRect();
     return element.contains(document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2));
   }, selector);
-  await clickAt(await page((target) => {
-    const bounds = document.querySelector(target).getBoundingClientRect();
-    return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
-  }, selector));
+  await clickAt(
+    await page(target => {
+      const bounds = document.querySelector(target).getBoundingClientRect();
+      return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+    }, selector),
+  );
 }
 
 async function key(key, code, windowsVirtualKeyCode, modifiers = 0) {
@@ -99,42 +104,59 @@ async function key(key, code, windowsVirtualKeyCode, modifiers = 0) {
 
 async function open(button, kind) {
   await pointerClick(button);
-  await waitFor((selector) => Boolean(document.querySelector(selector)), dialog);
-  await waitFor((selector, type) => {
-    const element = document.querySelector(selector);
-    return type === "image" ? element?.complete && element.naturalWidth > 0 : element?.readyState >= 2;
-  }, kind === "image" ? image : video, kind);
-  await waitFor((selector) => document.activeElement === document.querySelector(selector), close);
+  await waitFor(selector => Boolean(document.querySelector(selector)), dialog);
+  await waitFor(
+    (selector, type) => {
+      const element = document.querySelector(selector);
+      return type === "image" ? element?.complete && element.naturalWidth > 0 : element?.readyState >= 2;
+    },
+    kind === "image" ? image : video,
+    kind,
+  );
+  await waitFor(selector => document.activeElement === document.querySelector(selector), close);
 }
 
 async function closed(button) {
-  await waitFor((selector) => !document.querySelector(selector), dialog);
-  await waitFor((selector) => document.activeElement === document.querySelector(selector), button);
+  await waitFor(selector => !document.querySelector(selector), dialog);
+  await waitFor(selector => document.activeElement === document.querySelector(selector), button);
 }
 
 async function layout(viewport, kind, ratio) {
-  const result = await page((rootSelector, mediaSelector) => {
-    const bounds = (element) => {
-      const { x, y, right, bottom, width, height } = element.getBoundingClientRect();
-      return { x, y, right, bottom, width, height };
-    };
-    const root = document.querySelector(rootSelector);
-    return {
-      media: bounds(document.querySelector(mediaSelector)),
-      buttons: [...root.querySelectorAll(".yarl__toolbar button")].map((button) => ({
-        label: button.getAttribute("aria-label"), bounds: bounds(button),
-      })),
-      controls: document.querySelector(mediaSelector).controls,
-      sharedProgress: root.querySelectorAll('[data-slot="range"]').length,
-    };
-  }, dialog, kind === "image" ? image : video);
-  for (const bounds of [result.media, ...result.buttons.map((button) => button.bounds)]) {
-    assert.ok(bounds.width > 0 && bounds.height > 0 && bounds.x >= -tolerance && bounds.y >= -tolerance
-      && bounds.right <= viewport.width + tolerance && bounds.bottom <= viewport.height + tolerance,
-    `Media and toolbar must fit ${JSON.stringify(viewport)}: ${JSON.stringify(result)}`);
+  const result = await page(
+    (rootSelector, mediaSelector) => {
+      const bounds = element => {
+        const { x, y, right, bottom, width, height } = element.getBoundingClientRect();
+        return { x, y, right, bottom, width, height };
+      };
+      const root = document.querySelector(rootSelector);
+      return {
+        media: bounds(document.querySelector(mediaSelector)),
+        buttons: [...root.querySelectorAll(".yarl__toolbar button")].map(button => ({
+          label: button.getAttribute("aria-label"),
+          bounds: bounds(button),
+        })),
+        controls: document.querySelector(mediaSelector).controls,
+        sharedProgress: root.querySelectorAll('[data-slot="range"]').length,
+      };
+    },
+    dialog,
+    kind === "image" ? image : video,
+  );
+  for (const bounds of [result.media, ...result.buttons.map(button => button.bounds)]) {
+    assert.ok(
+      bounds.width > 0 &&
+        bounds.height > 0 &&
+        bounds.x >= -tolerance &&
+        bounds.y >= -tolerance &&
+        bounds.right <= viewport.width + tolerance &&
+        bounds.bottom <= viewport.height + tolerance,
+      `Media and toolbar must fit ${JSON.stringify(viewport)}: ${JSON.stringify(result)}`,
+    );
   }
-  assert.ok(Math.abs(result.media.width / result.media.height - ratio) < 0.02,
-    `The complete ${kind} must retain its aspect ratio`);
+  assert.ok(
+    Math.abs(result.media.width / result.media.height - ratio) < 0.02,
+    `The complete ${kind} must retain its aspect ratio`,
+  );
   if (kind === "video") {
     assert.equal(result.controls, false, "The viewer uses shared playback controls");
     assert.equal(result.sharedProgress, 1, "The shared review progress must be available");
@@ -145,12 +167,17 @@ async function layout(viewport, kind, ratio) {
 async function keyboardIsolation() {
   for (let step = 0; step < 12; step++) {
     await key("Tab", "Tab", 9, step < 6 ? 0 : 8);
-    assert.ok(await page((selector) => document.querySelector(selector).contains(document.activeElement), dialog),
-      "Tab and Shift+Tab must stay in the preview");
+    assert.ok(
+      await page(selector => document.querySelector(selector).contains(document.activeElement), dialog),
+      "Tab and Shift+Tab must stay in the preview",
+    );
   }
   await key("Delete", "Delete", 46);
-  assert.equal(await page(() => document.querySelector("#fixture").dataset.deletions), "0",
-    "Preview keyboard events must not reach the background canvas deletion handler");
+  assert.equal(
+    await page(() => document.querySelector("#fixture").dataset.deletions),
+    "0",
+    "Preview keyboard events must not reach the background canvas deletion handler",
+  );
 }
 
 async function screenshot(name) {
@@ -161,69 +188,136 @@ async function screenshot(name) {
 
 async function respondToSyntheticFailure({ requestId, request }) {
   const pathname = new URL(request.url).pathname;
-  if (pathname === "/api/v1/projects/review/subtitles" || pathname === "/api/v1/projects/review/subtitles/capabilities") {
-    const value = pathname.endsWith("capabilities") ? { availability: "NOT_CONFIGURED", maxCues: 5000, maxFileBytes: 2097152, maxSourceDurationMs: 600000 } : [];
-    await cdp("Fetch.fulfillRequest", { requestId, responseCode: 200, body: Buffer.from(JSON.stringify(value)).toString("base64"), responseHeaders: [{ name: "Content-Type", value: "application/json" }] });
+  if (
+    pathname === "/api/v1/projects/review/subtitles" ||
+    pathname === "/api/v1/projects/review/subtitles/capabilities"
+  ) {
+    const value = pathname.endsWith("capabilities")
+      ? { availability: "NOT_CONFIGURED", maxCues: 5000, maxFileBytes: 2097152, maxSourceDurationMs: 600000 }
+      : [];
+    await cdp("Fetch.fulfillRequest", {
+      requestId,
+      responseCode: 200,
+      body: Buffer.from(JSON.stringify(value)).toString("base64"),
+      responseHeaders: [{ name: "Content-Type", value: "application/json" }],
+    });
     return;
   }
   if (pathname === "/api/v1/projects/review/video-compositions/capabilities") {
-    const value = { maxDurationMs: 600000, maxFrames: 18000, maxShots: 60, maxLines: 300, maxSubtitles: 2000,
-      maxSourceDurationMs: 600000, maxSourceBytes: 2147483648, maxOutputBytes: 524288000,
-      frameRate: 30, timeoutSeconds: 900, resolutions: ["720P", "1080P", "2160P"] };
-    await cdp("Fetch.fulfillRequest", { requestId, responseCode: 200, body: Buffer.from(JSON.stringify(value)).toString("base64"),
-      responseHeaders: [{ name: "Content-Type", value: "application/json" }] });
+    const value = {
+      maxDurationMs: 600000,
+      maxFrames: 18000,
+      maxShots: 60,
+      maxLines: 300,
+      maxSubtitles: 2000,
+      maxSourceDurationMs: 600000,
+      maxSourceBytes: 2147483648,
+      maxOutputBytes: 524288000,
+      frameRate: 30,
+      timeoutSeconds: 900,
+      resolutions: ["720P", "1080P", "2160P"],
+    };
+    await cdp("Fetch.fulfillRequest", {
+      requestId,
+      responseCode: 200,
+      body: Buffer.from(JSON.stringify(value)).toString("base64"),
+      responseHeaders: [{ name: "Content-Type", value: "application/json" }],
+    });
     return;
   }
   if (pathname === "/api/v1/projects/review/video-compositions/preview") {
     const requestBody = JSON.parse(request.postData);
     // Voice-free analysis uses fixed, normal-speed prefixes; this fixture never simulates speech planning.
-    assert.ok(requestBody.shots.every((shot) => shot.speed === 1 && shot.fadeMs === 0 && shot.lines.length === 0));
+    assert.ok(requestBody.shots.every(shot => shot.speed === 1 && shot.fadeMs === 0 && shot.lines.length === 0));
     let durationMs = 0;
-    const shots = requestBody.shots.map((shot) => {
-      const preview = { videoVersionId: shot.videoVersionId, timelineStartMs: durationMs,
-        durationMs: shot.durationMs, lines: [] };
+    const shots = requestBody.shots.map(shot => {
+      const preview = {
+        videoVersionId: shot.videoVersionId,
+        timelineStartMs: durationMs,
+        durationMs: shot.durationMs,
+        lines: [],
+      };
       durationMs += shot.durationMs;
       return preview;
     });
-    await cdp("Fetch.fulfillRequest", { requestId, responseCode: 200,
-      body: Buffer.from(JSON.stringify({ durationMs, frames: Math.round(durationMs * 30 / 1000),
-        fontFamily: "sans-serif", shots })).toString("base64"),
-      responseHeaders: [{ name: "Content-Type", value: "application/json" }] });
+    await cdp("Fetch.fulfillRequest", {
+      requestId,
+      responseCode: 200,
+      body: Buffer.from(
+        JSON.stringify({ durationMs, frames: Math.round((durationMs * 30) / 1000), fontFamily: "sans-serif", shots }),
+      ).toString("base64"),
+      responseHeaders: [{ name: "Content-Type", value: "application/json" }],
+    });
     return;
   }
   if (pathname === "/api/v1/auth/csrf" || pathname === "/api/v1/projects/review/video-compositions") {
     if (request.postData) compositions.push(JSON.parse(request.postData));
-    const value = pathname.endsWith("csrf") ? { headerName: "X-XSRF-TOKEN", token: "synthetic" } : { id: "synthetic-edit", status: "READY" };
-    await cdp("Fetch.fulfillRequest", { requestId, responseCode: 200, body: Buffer.from(JSON.stringify(value)).toString("base64"), responseHeaders: [{ name: "Content-Type", value: "application/json" }] });
+    const value = pathname.endsWith("csrf")
+      ? { headerName: "X-XSRF-TOKEN", token: "synthetic" }
+      : { id: "synthetic-edit", status: "READY" };
+    await cdp("Fetch.fulfillRequest", {
+      requestId,
+      responseCode: 200,
+      body: Buffer.from(JSON.stringify(value)).toString("base64"),
+      responseHeaders: [{ name: "Content-Type", value: "application/json" }],
+    });
     return;
   }
   if (pathname.startsWith("/api/v1/projects/review/assets/")) {
     if (!pathname.endsWith("/content") && !pathname.endsWith("/thumbnail")) {
-      await cdp("Fetch.fulfillRequest", { requestId, responseCode: 200,
-        body: Buffer.from(JSON.stringify({ id: pathname.split("/").at(-1), projectId: "review", mediaKind: "VIDEO", contentType: "video/webm", byteSize: 1024,
-          sha256: "a".repeat(64), width: 320, height: 180, durationMs: 1000, createdAt: "2026-10-22T00:00:00Z" })).toString("base64"),
-        responseHeaders: [{ name: "Content-Type", value: "application/json" }] });
+      await cdp("Fetch.fulfillRequest", {
+        requestId,
+        responseCode: 200,
+        body: Buffer.from(
+          JSON.stringify({
+            id: pathname.split("/").at(-1),
+            projectId: "review",
+            mediaKind: "VIDEO",
+            contentType: "video/webm",
+            byteSize: 1024,
+            sha256: "a".repeat(64),
+            width: 320,
+            height: 180,
+            durationMs: 1000,
+            createdAt: "2026-10-22T00:00:00Z",
+          }),
+        ).toString("base64"),
+        responseHeaders: [{ name: "Content-Type", value: "application/json" }],
+      });
       return;
     }
     const original = pathname.endsWith("/content");
     const full = Buffer.from(syntheticMedia[original ? "video" : "image"], "base64");
-    const range = Object.entries(request.headers).find(([name]) => name.toLowerCase() === "range")?.[1]?.match(/^bytes=(\d+)-(\d*)$/);
+    const range = Object.entries(request.headers)
+      .find(([name]) => name.toLowerCase() === "range")?.[1]
+      ?.match(/^bytes=(\d+)-(\d*)$/);
     const start = range ? Number(range[1]) : 0;
     const end = range?.[2] ? Math.min(Number(range[2]), full.length - 1) : full.length - 1;
     const body = full.subarray(start, end + 1);
-    await cdp("Fetch.fulfillRequest", { requestId, responseCode: range ? 206 : 200, body: body.toString("base64"),
-      responseHeaders: [{ name: "Content-Type", value: original ? "video/webm" : "image/png" },
-        { name: "Accept-Ranges", value: "bytes" }, { name: "Content-Length", value: String(body.length) },
-        ...(range ? [{ name: "Content-Range", value: `bytes ${start}-${end}/${full.length}` }] : [])] });
+    await cdp("Fetch.fulfillRequest", {
+      requestId,
+      responseCode: range ? 206 : 200,
+      body: body.toString("base64"),
+      responseHeaders: [
+        { name: "Content-Type", value: original ? "video/webm" : "image/png" },
+        { name: "Accept-Ranges", value: "bytes" },
+        { name: "Content-Length", value: String(body.length) },
+        ...(range ? [{ name: "Content-Range", value: `bytes ${start}-${end}/${full.length}` }] : []),
+      ],
+    });
     return;
   }
   const attempt = (attempts.get(pathname) ?? 0) + 1;
   attempts.set(pathname, attempt);
   const isImage = pathname.endsWith(".png");
-  const body = attempt === 1 ? Buffer.from("Synthetic first load failure").toString("base64")
-    : syntheticMedia[isImage ? "image" : "video"];
+  const body =
+    attempt === 1
+      ? Buffer.from("Synthetic first load failure").toString("base64")
+      : syntheticMedia[isImage ? "image" : "video"];
   await cdp("Fetch.fulfillRequest", {
-    requestId, responseCode: attempt === 1 ? 500 : 200, body,
+    requestId,
+    responseCode: attempt === 1 ? 500 : 200,
+    body,
     responseHeaders: [
       { name: "Content-Type", value: isImage ? "image/png" : "video/webm" },
       { name: "Cache-Control", value: "no-store" },
@@ -233,25 +327,45 @@ async function respondToSyntheticFailure({ requestId, request }) {
 
 try {
   if (production) {
-    await build({ ...config, logLevel: "warn", build: {
-      outDir, emptyOutDir: true, rollupOptions: { input: join(root, route) },
-    } });
-    server = await preview({ ...config, build: { outDir },
-      preview: { host: "127.0.0.1", port: 0, open: false },
+    await build({
+      ...config,
+      logLevel: "warn",
+      build: {
+        outDir,
+        emptyOutDir: true,
+        rollupOptions: { input: join(root, route) },
+      },
     });
+    server = await preview({ ...config, build: { outDir }, preview: { host: "127.0.0.1", port: 0, open: false } });
   } else {
     server = await createServer({ ...config, server: { host: "127.0.0.1", port: 0, open: false } });
     await server.listen();
   }
-  chrome = spawn(chromePath, ["--headless=new", "--no-first-run", "--no-default-browser-check",
-    "--disable-background-networking", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"],
-  { stdio: ["ignore", "ignore", "pipe"] });
+  chrome = spawn(
+    chromePath,
+    [
+      "--headless=new",
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--disable-background-networking",
+      "--remote-debugging-port=0",
+      `--user-data-dir=${profile}`,
+      "about:blank",
+    ],
+    { stdio: ["ignore", "ignore", "pipe"] },
+  );
   const endpoint = await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("Chrome did not start")), timeoutMs);
-    chrome.once("error", (error) => { clearTimeout(timer); reject(error); });
-    chrome.stderr.on("data", (data) => {
+    chrome.once("error", error => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    chrome.stderr.on("data", data => {
       const match = data.toString().match(/DevTools listening on (ws:\/\/\S+)/);
-      if (match) { clearTimeout(timer); resolve(new URL(match[1]).origin.replace("ws:", "http:")); }
+      if (match) {
+        clearTimeout(timer);
+        resolve(new URL(match[1]).origin.replace("ws:", "http:"));
+      }
     });
   });
   const target = await (await fetch(`${endpoint}/json/new?about:blank`, { method: "PUT" })).json();
@@ -260,10 +374,12 @@ try {
     socket.addEventListener("open", resolve, { once: true });
     socket.addEventListener("error", reject, { once: true });
   });
-  socket.addEventListener("message", (event) => {
+  socket.addEventListener("message", event => {
     const message = JSON.parse(event.data);
     if (message.method === "Fetch.requestPaused") {
-      void respondToSyntheticFailure(message.params).catch((error) => { networkError = error; });
+      void respondToSyntheticFailure(message.params).catch(error => {
+        networkError = error;
+      });
       return;
     }
     const waiting = pending.get(message.id);
@@ -273,13 +389,17 @@ try {
     else waiting.resolve(message.result);
   });
   await cdp("Page.enable");
-  await cdp("Fetch.enable", { patterns: [{ urlPattern: "*/e2e/retry-*", requestStage: "Request" },
-    { urlPattern: "*/api/v1/projects/review/assets/*", requestStage: "Request" },
-    { urlPattern: "*/api/v1/projects/review/video-compositions", requestStage: "Request" },
-    { urlPattern: "*/api/v1/projects/review/video-compositions/preview", requestStage: "Request" },
-    { urlPattern: "*/api/v1/projects/review/video-compositions/capabilities", requestStage: "Request" },
-    { urlPattern: "*/api/v1/projects/review/subtitles*", requestStage: "Request" },
-    { urlPattern: "*/api/v1/auth/csrf", requestStage: "Request" }] });
+  await cdp("Fetch.enable", {
+    patterns: [
+      { urlPattern: "*/e2e/retry-*", requestStage: "Request" },
+      { urlPattern: "*/api/v1/projects/review/assets/*", requestStage: "Request" },
+      { urlPattern: "*/api/v1/projects/review/video-compositions", requestStage: "Request" },
+      { urlPattern: "*/api/v1/projects/review/video-compositions/preview", requestStage: "Request" },
+      { urlPattern: "*/api/v1/projects/review/video-compositions/capabilities", requestStage: "Request" },
+      { urlPattern: "*/api/v1/projects/review/subtitles*", requestStage: "Request" },
+      { urlPattern: "*/api/v1/auth/csrf", requestStage: "Request" },
+    ],
+  });
   const baseUrl = server.resolvedUrls.local[0];
   for (const viewport of viewports) {
     await cdp("Emulation.setDeviceMetricsOverride", { ...viewport, deviceScaleFactor: 1, mobile: false });
@@ -288,7 +408,7 @@ try {
     syntheticMedia = await page(async () => {
       const fixture = document.querySelector("#fixture");
       const blob = await (await fetch(fixture.dataset.video)).blob();
-      const dataUrl = await new Promise((resolve) => {
+      const dataUrl = await new Promise(resolve => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result);
         reader.readAsDataURL(blob);
@@ -296,113 +416,176 @@ try {
       return { image: fixture.dataset.image.split(",")[1], video: dataUrl.split(",")[1] };
     });
     if (!editOnly) {
-    await open("#image-open", "image");
-    const before = await layout(viewport, "image", 16 / 9);
-    await screenshot(`image-${viewport.width}x${viewport.height}`);
-    await keyboardIsolation();
-    await pointerClick(zoomIn);
-    await waitFor((selector, width) => document.querySelector(selector).getBoundingClientRect().width > width * 1.05,
-      image, before.width);
-    await pointerClick(zoomOut);
-    await waitFor((selector, width) => Math.abs(document.querySelector(selector).getBoundingClientRect().width - width) <= 1,
-      image, before.width);
-    if (viewport.width === viewports[0].width) {
-      await pointerClick(enterFullscreen);
-      await waitFor(() => Boolean(document.fullscreenElement));
-      await pointerClick(exitFullscreen);
-      await waitFor(() => !document.fullscreenElement);
-    }
-    await pointerClick(close);
-    await closed("#image-open");
-    await open("#portrait-open", "image");
-    await layout(viewport, "image", 9 / 16);
-    await key("Escape", "Escape", 27);
-    await closed("#portrait-open");
-    await open("#image-open", "image");
-    await clickAt({ x: 8, y: viewport.height / 2 });
-    await closed("#image-open");
+      await open("#image-open", "image");
+      const before = await layout(viewport, "image", 16 / 9);
+      await screenshot(`image-${viewport.width}x${viewport.height}`);
+      await keyboardIsolation();
+      await pointerClick(zoomIn);
+      await waitFor(
+        (selector, width) => document.querySelector(selector).getBoundingClientRect().width > width * 1.05,
+        image,
+        before.width,
+      );
+      await pointerClick(zoomOut);
+      await waitFor(
+        (selector, width) => Math.abs(document.querySelector(selector).getBoundingClientRect().width - width) <= 1,
+        image,
+        before.width,
+      );
+      if (viewport.width === viewports[0].width) {
+        await pointerClick(enterFullscreen);
+        await waitFor(() => Boolean(document.fullscreenElement));
+        await pointerClick(exitFullscreen);
+        await waitFor(() => !document.fullscreenElement);
+      }
+      await pointerClick(close);
+      await closed("#image-open");
+      await open("#portrait-open", "image");
+      await layout(viewport, "image", 9 / 16);
+      await key("Escape", "Escape", 27);
+      await closed("#portrait-open");
+      await open("#image-open", "image");
+      await clickAt({ x: 8, y: viewport.height / 2 });
+      await closed("#image-open");
 
-    await open("#gif-open", "image");
-    await waitFor((selector) => document.querySelector(selector)?.src.startsWith("data:image/gif"), image);
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    const colors = [];
-    for (let sample = 0; sample < 10; sample++) {
-      const clip = await page((selector) => {
-        const bounds = document.querySelector(selector).getBoundingClientRect();
-        return { x: Math.floor(bounds.x + bounds.width / 2), y: Math.floor(bounds.y + bounds.height / 2), width: 1, height: 1, scale: 1 };
-      }, image);
-      const captured = await cdp("Page.captureScreenshot", { format: "png", clip });
-      colors.push(await page(async (png) => {
-        const pixel = new Image(); pixel.src = `data:image/png;base64,${png}`; await pixel.decode();
-        const canvas = document.createElement("canvas"); canvas.width = canvas.height = 1;
-        const context = canvas.getContext("2d"); context.drawImage(pixel, 0, 0);
-        return [...context.getImageData(0, 0, 1, 1).data];
-      }, captured.data));
-      await new Promise((resolve) => setTimeout(resolve, 80));
-    }
-    assert.ok(colors.some(([red, green]) => red > 200 && green < 50), "GIF preview must render its red frame");
-    assert.ok(colors.some(([red, green]) => green > 200 && red < 50), "GIF preview must render its green frame, retaining animation");
-    await pointerClick(close);
-    await closed("#gif-open");
+      await open("#gif-open", "image");
+      await waitFor(selector => document.querySelector(selector)?.src.startsWith("data:image/gif"), image);
+      await new Promise(resolve => setTimeout(resolve, 250));
+      const colors = [];
+      for (let sample = 0; sample < 10; sample++) {
+        const clip = await page(selector => {
+          const bounds = document.querySelector(selector).getBoundingClientRect();
+          return {
+            x: Math.floor(bounds.x + bounds.width / 2),
+            y: Math.floor(bounds.y + bounds.height / 2),
+            width: 1,
+            height: 1,
+            scale: 1,
+          };
+        }, image);
+        const captured = await cdp("Page.captureScreenshot", { format: "png", clip });
+        colors.push(
+          await page(async png => {
+            const pixel = new Image();
+            pixel.src = `data:image/png;base64,${png}`;
+            await pixel.decode();
+            const canvas = document.createElement("canvas");
+            canvas.width = canvas.height = 1;
+            const context = canvas.getContext("2d");
+            context.drawImage(pixel, 0, 0);
+            return [...context.getImageData(0, 0, 1, 1).data];
+          }, captured.data),
+        );
+        await new Promise(resolve => setTimeout(resolve, 80));
+      }
+      assert.ok(
+        colors.some(([red, green]) => red > 200 && green < 50),
+        "GIF preview must render its red frame",
+      );
+      assert.ok(
+        colors.some(([red, green]) => green > 200 && red < 50),
+        "GIF preview must render its green frame, retaining animation",
+      );
+      await pointerClick(close);
+      await closed("#gif-open");
 
-    await open("#video-open", "video");
-    await layout(viewport, "video", 16 / 9);
-    assert.ok(await page((selector) => document.querySelector(selector).paused, video), "Video must initially be paused");
-    await screenshot(`video-${viewport.width}x${viewport.height}`);
-    await keyboardIsolation();
-    const interruptedPlayback = await page(async (selector) => {
-      const root = document.querySelector(selector);
-      const button = root.querySelector("button[aria-label='播放']");
-      // pause() can abort play() before its promise or queued native events settle.
-      button.click(); button.click();
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      return { paused: root.querySelector("video").paused, failed: Boolean(root.querySelector("[role='alert']")) };
-    }, dialog);
-    assert.ok(interruptedPlayback.paused && !interruptedPlayback.failed,
-      "An intentionally interrupted native play must remain paused without a playback failure");
-    // Space activates the visible shared Play button; the native player has no controls.
-    await page((selector) => document.querySelector(selector).focus(), `${dialog} button[aria-label="播放"]`);
-    await key(" ", "Space", 32);
-    await waitFor((selector) => !document.querySelector(selector).paused && document.querySelector(selector).currentTime > 0,
-      video);
-    await page((selector) => { window.closedPreviewVideo = document.querySelector(selector); }, video);
-    await pointerClick(close);
-    await closed("#video-open");
-    assert.ok(await page(() => !window.closedPreviewVideo.isConnected && window.closedPreviewVideo.paused),
-      "Closing the preview must remove and stop the native player");
-    await pointerClick("#compare-open");
-    await waitFor(() => [...document.querySelectorAll(".video-comparison-dialog video")].length === 2
-      && [...document.querySelectorAll(".video-comparison-dialog video")].every((element) => element.readyState >= 2));
-    await waitFor(() => !document.querySelector(".video-comparison-dialog button[aria-label='播放']")?.disabled);
-    await pointerClick(".video-comparison-dialog button[aria-label='前进一步']");
-    await waitFor(() => {
-      const players = [...document.querySelectorAll(".video-comparison-dialog video")];
-      return players.every((element) => !element.seeking && element.currentTime > 0 && element.paused)
-        && Math.abs(players[0].currentTime - players[1].currentTime) < 0.01;
-    });
-    await pointerClick(".video-comparison-dialog button[aria-label='播放']");
-    await waitFor(() => [...document.querySelectorAll(".video-comparison-dialog video")].every((element) => !element.paused && element.currentTime > 0.05));
-    assert.ok(await page(() => {
-      const players = [...document.querySelectorAll(".video-comparison-dialog video")];
-      return players[1].muted && Math.abs(players[0].currentTime - players[1].currentTime) < 0.12;
-    }), "Two versions must play in sync with only left audio");
-    await pointerClick(".video-comparison-dialog button[aria-label='暂停']");
-    await pointerClick(".video-comparison-dialog .video-review-marker-form button");
-    assert.equal(await page(() => document.querySelectorAll(".video-review-markers li").length), 1);
-    assert.ok(await page(() => {
-      const root = document.querySelector(".video-comparison-dialog");
-      return root.scrollWidth <= root.clientWidth + 1 && root.getBoundingClientRect().right <= window.innerWidth;
-    }), "Comparison must fit narrow and wide viewports");
-    const { data: compareScreenshot } = await cdp("Page.captureScreenshot", { format: "png" });
-    await writeFile(join(screenshots, `compare-${viewport.width}x${viewport.height}.png`), Buffer.from(compareScreenshot, "base64"), { mode: 0o600 });
-    await page(() => { window.closedComparisonVideos = [...document.querySelectorAll(".video-comparison-dialog video")]; });
-    await pointerClick(".video-comparison-dialog button[aria-label='关闭窗口']");
-    await waitFor(() => !document.querySelector(".video-comparison-dialog"));
-    assert.ok(await page(() => window.closedComparisonVideos.every((element) => !element.isConnected && element.paused)), "Closing comparison stops both videos");
+      await open("#video-open", "video");
+      await layout(viewport, "video", 16 / 9);
+      assert.ok(
+        await page(selector => document.querySelector(selector).paused, video),
+        "Video must initially be paused",
+      );
+      await screenshot(`video-${viewport.width}x${viewport.height}`);
+      await keyboardIsolation();
+      const interruptedPlayback = await page(async selector => {
+        const root = document.querySelector(selector);
+        const button = root.querySelector("button[aria-label='播放']");
+        // pause() can abort play() before its promise or queued native events settle.
+        button.click();
+        button.click();
+        await new Promise(resolve => setTimeout(resolve, 50));
+        return { paused: root.querySelector("video").paused, failed: Boolean(root.querySelector("[role='alert']")) };
+      }, dialog);
+      assert.ok(
+        interruptedPlayback.paused && !interruptedPlayback.failed,
+        "An intentionally interrupted native play must remain paused without a playback failure",
+      );
+      // Space activates the visible shared Play button; the native player has no controls.
+      await page(selector => document.querySelector(selector).focus(), `${dialog} button[aria-label="播放"]`);
+      await key(" ", "Space", 32);
+      await waitFor(
+        selector => !document.querySelector(selector).paused && document.querySelector(selector).currentTime > 0,
+        video,
+      );
+      await page(selector => {
+        window.closedPreviewVideo = document.querySelector(selector);
+      }, video);
+      await pointerClick(close);
+      await closed("#video-open");
+      assert.ok(
+        await page(() => !window.closedPreviewVideo.isConnected && window.closedPreviewVideo.paused),
+        "Closing the preview must remove and stop the native player",
+      );
+      await pointerClick("#compare-open");
+      await waitFor(
+        () =>
+          [...document.querySelectorAll(".video-comparison-dialog video")].length === 2 &&
+          [...document.querySelectorAll(".video-comparison-dialog video")].every(element => element.readyState >= 2),
+      );
+      await waitFor(() => !document.querySelector(".video-comparison-dialog button[aria-label='播放']")?.disabled);
+      await pointerClick(".video-comparison-dialog button[aria-label='前进一步']");
+      await waitFor(() => {
+        const players = [...document.querySelectorAll(".video-comparison-dialog video")];
+        return (
+          players.every(element => !element.seeking && element.currentTime > 0 && element.paused) &&
+          Math.abs(players[0].currentTime - players[1].currentTime) < 0.01
+        );
+      });
+      await pointerClick(".video-comparison-dialog button[aria-label='播放']");
+      await waitFor(() =>
+        [...document.querySelectorAll(".video-comparison-dialog video")].every(
+          element => !element.paused && element.currentTime > 0.05,
+        ),
+      );
+      assert.ok(
+        await page(() => {
+          const players = [...document.querySelectorAll(".video-comparison-dialog video")];
+          return players[1].muted && Math.abs(players[0].currentTime - players[1].currentTime) < 0.12;
+        }),
+        "Two versions must play in sync with only left audio",
+      );
+      await pointerClick(".video-comparison-dialog button[aria-label='暂停']");
+      await pointerClick(".video-comparison-dialog .video-review-marker-form button");
+      assert.equal(await page(() => document.querySelectorAll(".video-review-markers li").length), 1);
+      assert.ok(
+        await page(() => {
+          const root = document.querySelector(".video-comparison-dialog");
+          return root.scrollWidth <= root.clientWidth + 1 && root.getBoundingClientRect().right <= window.innerWidth;
+        }),
+        "Comparison must fit narrow and wide viewports",
+      );
+      const { data: compareScreenshot } = await cdp("Page.captureScreenshot", { format: "png" });
+      await writeFile(
+        join(screenshots, `compare-${viewport.width}x${viewport.height}.png`),
+        Buffer.from(compareScreenshot, "base64"),
+        { mode: 0o600 },
+      );
+      await page(() => {
+        window.closedComparisonVideos = [...document.querySelectorAll(".video-comparison-dialog video")];
+      });
+      await pointerClick(".video-comparison-dialog button[aria-label='关闭窗口']");
+      await waitFor(() => !document.querySelector(".video-comparison-dialog"));
+      assert.ok(
+        await page(() => window.closedComparisonVideos.every(element => !element.isConnected && element.paused)),
+        "Closing comparison stops both videos",
+      );
     }
     await pointerClick("#edit-open");
-    await waitFor(() => document.querySelectorAll(".video-edit-dialog video").length === 1
-      && document.querySelector(".video-edit-dialog video").readyState >= 2);
+    await waitFor(
+      () =>
+        document.querySelectorAll(".video-edit-dialog video").length === 1 &&
+        document.querySelector(".video-edit-dialog video").readyState >= 2,
+    );
     await page(() => {
       const input = document.querySelector(".video-edit-inspector section[aria-label='片段 1'] input[type='number']");
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, "0.2");
@@ -411,48 +594,85 @@ try {
     await pointerClick(".video-edit-range-buttons button:last-child");
     await waitFor(() => document.querySelector(".video-edit-dialog video").currentTime >= 0.2);
     await pointerClick(".video-edit-clip[aria-label='片段 2'] button[aria-label='上移']");
-    assert.ok(await page(() => document.querySelector(".video-edit-clip[aria-label='片段 1'] .video-edit-clip-select").textContent.includes("Synthetic 2")), "Clip ordering must update the precise source");
+    assert.ok(
+      await page(() =>
+        document
+          .querySelector(".video-edit-clip[aria-label='片段 1'] .video-edit-clip-select")
+          .textContent.includes("Synthetic 2"),
+      ),
+      "Clip ordering must update the precise source",
+    );
     await pointerClick(".video-edit-dialog [data-slot='dialog-footer'] button:first-child");
     await waitFor(() => document.querySelector(".video-edit-inspector")?.textContent.includes("2000"));
-    assert.ok(await page(() => document.querySelector(".video-edit-status").textContent.includes("10:00")), "Server duration budget must replace the old one-minute label");
+    assert.ok(
+      await page(() => document.querySelector(".video-edit-status").textContent.includes("10:00")),
+      "Server duration budget must replace the old one-minute label",
+    );
     const { data: editScreenshot } = await cdp("Page.captureScreenshot", { format: "png" });
-    await writeFile(join(screenshots, `edit-${viewport.width}x${viewport.height}.png`), Buffer.from(editScreenshot, "base64"), { mode: 0o600 });
-    assert.ok(await page(() => {
-      const root = document.querySelector(".video-edit-dialog");
-      const footer = root.querySelector("[data-slot='dialog-footer']").getBoundingClientRect();
-      return root.scrollWidth <= root.clientWidth + 1 && footer.bottom <= window.innerHeight && footer.top >= 0;
-    }), "Editing must fit each viewport and keep submission reachable");
+    await writeFile(
+      join(screenshots, `edit-${viewport.width}x${viewport.height}.png`),
+      Buffer.from(editScreenshot, "base64"),
+      { mode: 0o600 },
+    );
+    assert.ok(
+      await page(() => {
+        const root = document.querySelector(".video-edit-dialog");
+        const footer = root.querySelector("[data-slot='dialog-footer']").getBoundingClientRect();
+        return root.scrollWidth <= root.clientWidth + 1 && footer.bottom <= window.innerHeight && footer.top >= 0;
+      }),
+      "Editing must fit each viewport and keep submission reachable",
+    );
     await pointerClick(".video-edit-dialog [data-slot='dialog-footer'] button:last-child");
     await waitFor(() => !document.querySelector(".video-edit-dialog"));
-    assert.deepEqual(compositions.at(-1).shots.map((shot) => shot.videoVersionId), ["v2", "v1"]);
+    assert.deepEqual(
+      compositions.at(-1).shots.map(shot => shot.videoVersionId),
+      ["v2", "v1"],
+    );
     assert.equal(compositions.at(-1).shots[1].sourceStartMs, 200);
-    assert.deepEqual(compositions.at(-1).shots.map((shot) => shot.lines), [[], []], "A real clip edit must allow zero voice tracks");
+    assert.deepEqual(
+      compositions.at(-1).shots.map(shot => shot.lines),
+      [[], []],
+      "A real clip edit must allow zero voice tracks",
+    );
     console.log(`${editOnly ? "Video editor" : "Media preview"} passed at ${viewport.width}x${viewport.height}`);
   }
-  if (!editOnly) for (const kind of ["image", "video"]) {
-    await pointerClick(`#retry-${kind}-open`);
-    await waitFor(() => Boolean(document.querySelector(".media-preview-error[role='alert']")));
-    await pointerClick(".media-preview-retry");
-    await waitFor((selector, type) => {
-      const element = document.querySelector(selector);
-      return type === "image" ? element?.complete && element.naturalWidth > 0 : element?.readyState >= 2;
-    }, kind === "image" ? image : video, kind);
-    assert.equal(await page(() => document.querySelector(".media-preview-error[role='alert']")), null,
-      `Retry must recover the failed ${kind}`);
-    assert.ok(attempts.get(`/e2e/retry-${kind}.${kind === "image" ? "png" : "webm"}`) >= 2,
-      "Retry must issue a new media request");
-    await pointerClick(close);
-    await closed(`#retry-${kind}-open`);
-  }
-  console.log(`${editOnly ? "Video editor browser checks passed (3 viewports, real synthetic video decode, trim, order, server limits and export acceptance)" : "Media preview browser checks passed (3 viewports, image/portrait/animated GIF/video, zoom, fullscreen, keyboard, playback and retry)"}. Private screenshots: ${screenshots}`);
+  if (!editOnly)
+    for (const kind of ["image", "video"]) {
+      await pointerClick(`#retry-${kind}-open`);
+      await waitFor(() => Boolean(document.querySelector(".media-preview-error[role='alert']")));
+      await pointerClick(".media-preview-retry");
+      await waitFor(
+        (selector, type) => {
+          const element = document.querySelector(selector);
+          return type === "image" ? element?.complete && element.naturalWidth > 0 : element?.readyState >= 2;
+        },
+        kind === "image" ? image : video,
+        kind,
+      );
+      assert.equal(
+        await page(() => document.querySelector(".media-preview-error[role='alert']")),
+        null,
+        `Retry must recover the failed ${kind}`,
+      );
+      assert.ok(
+        attempts.get(`/e2e/retry-${kind}.${kind === "image" ? "png" : "webm"}`) >= 2,
+        "Retry must issue a new media request",
+      );
+      await pointerClick(close);
+      await closed(`#retry-${kind}-open`);
+    }
+  console.log(
+    `${editOnly ? "Video editor browser checks passed (3 viewports, real synthetic video decode, trim, order, server limits and export acceptance)" : "Media preview browser checks passed (3 viewports, image/portrait/animated GIF/video, zoom, fullscreen, keyboard, playback and retry)"}. Private screenshots: ${screenshots}`,
+  );
 } finally {
   socket?.close();
   if (chrome && chrome.exitCode == null) {
-    const exited = new Promise((resolve) => chrome.once("exit", resolve));
+    const exited = new Promise(resolve => chrome.once("exit", resolve));
     chrome.kill();
     await exited;
   }
   if (server?.close) await server.close();
-  else if (server) await new Promise((resolve, reject) => server.httpServer.close((error) => error ? reject(error) : resolve()));
+  else if (server)
+    await new Promise((resolve, reject) => server.httpServer.close(error => (error ? reject(error) : resolve())));
   await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }

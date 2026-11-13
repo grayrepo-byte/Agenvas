@@ -127,7 +127,8 @@ public class ArtifactController {
     public record CreateArtifactRequest(
             @NotNull Artifact.Kind kind,
             @NotBlank @Size(max = 160) String title,
-            JsonNode content) {}
+            JsonNode content) {
+    }
 
     /**
      * 整体替换产物正文的请求；旧版本仍保留。
@@ -139,7 +140,8 @@ public class ArtifactController {
     public record ReviseArtifactRequest(
             @PositiveOrZero long expectedVersion,
             @Size(min = 1, max = 160) String title,
-            @NotNull JsonNode content) {}
+            @NotNull JsonNode content) {
+    }
 
     /**
      * 选择已有历史版本的并发控制请求。
@@ -148,7 +150,8 @@ public class ArtifactController {
      * @param expectedVersion 客户端读取到的产物版本
      */
     public record SelectArtifactVersionRequest(
-            @NotNull UUID versionId, @PositiveOrZero long expectedVersion) {}
+            @NotNull UUID versionId, @PositiveOrZero long expectedVersion) {
+    }
 
     /**
      * 稳定产物身份和当前选中版本的 API 投影。
@@ -186,7 +189,8 @@ public class ArtifactController {
                     artifact.version(),
                     artifact.createdAt(),
                     artifact.updatedAt(),
-                    view.resourceDefaultVersion() == null ? null
+                    view.resourceDefaultVersion() == null
+                            ? null
                             : ArtifactVersionResponse.from(view.resourceDefaultVersion()));
         }
     }
@@ -259,7 +263,9 @@ public class ArtifactController {
      *
      * @param items 按版本顺序返回的正文版本
      */
-    public record ArtifactVersionListResponse(List<ArtifactVersionResponse> items) {}
+    public record ArtifactVersionListResponse(List<ArtifactVersionResponse> items) {
+    }
 
-    public record ArtifactListResponse(List<ArtifactResponse> items) {}
+    public record ArtifactListResponse(List<ArtifactResponse> items) {
+    }
 }

@@ -73,7 +73,8 @@ public class MediaToolRunner {
             BooleanSupplier shouldCancel, Runnable onTick) {
         if (timeout == null || timeout.isNegative() || timeout.isZero() || timeout.compareTo(Duration.ofHours(1)) > 0
                 || workDirectory == null || !workDirectory.isAbsolute()
-                || !Files.isDirectory(workDirectory, LinkOption.NOFOLLOW_LINKS) || shouldCancel == null || onTick == null)
+                || !Files.isDirectory(workDirectory, LinkOption.NOFOLLOW_LINKS) || shouldCancel == null
+                || onTick == null)
             throw new IllegalArgumentException("Invalid bounded probe process settings");
         return probe(arguments, workDirectory, timeout, shouldCancel, onTick);
     }
@@ -120,7 +121,8 @@ public class MediaToolRunner {
                 .directory(selectedDirectory.toFile())
                 .redirectInput(ProcessBuilder.Redirect.from(Path.of("/dev/null").toFile()))
                 .redirectError(ProcessBuilder.Redirect.DISCARD)
-                .redirectOutput(output == null ? ProcessBuilder.Redirect.DISCARD
+                .redirectOutput(output == null
+                        ? ProcessBuilder.Redirect.DISCARD
                         : ProcessBuilder.Redirect.to(output.toFile()));
         // 媒体解码器不得继承初始化凭据、数据库凭据或 Provider 密钥。
         builder.environment().clear();

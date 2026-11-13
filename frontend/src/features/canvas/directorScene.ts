@@ -5,11 +5,15 @@ export const DIRECTOR_ASPECT_RATIOS = ["16:9", "9:16", "1:1", "4:3"] as const;
 export const DIRECTOR_SCENE_SCHEMA_VERSION = 3;
 export const DIRECTOR_SCALE_LIMITS = { min: 0.1, max: 5 } as const;
 
-export interface DirectorVector { x: number; y: number; z: number }
+export interface DirectorVector {
+  x: number;
+  y: number;
+  z: number;
+}
 export interface DirectorObject {
   id: string;
   name: string;
-  kind: typeof DIRECTOR_OBJECT_KINDS[number];
+  kind: (typeof DIRECTOR_OBJECT_KINDS)[number];
   position: DirectorVector;
   /** Rotation around the world Y axis, in degrees. Characters face +Z at zero. */
   rotation: number;
@@ -24,13 +28,16 @@ export interface DirectorKeyframe {
   name: string;
   timeSeconds: number;
   /** The incoming segment; CUT holds the preceding camera until this timestamp. */
-  transition: typeof DIRECTOR_CAMERA_TRANSITIONS[number];
+  transition: (typeof DIRECTOR_CAMERA_TRANSITIONS)[number];
   camera: DirectorScene["camera"];
 }
-export interface DirectorMotion { durationSeconds: number; keyframes: DirectorKeyframe[] }
+export interface DirectorMotion {
+  durationSeconds: number;
+  keyframes: DirectorKeyframe[];
+}
 export interface DirectorScene {
   schemaVersion: typeof DIRECTOR_SCENE_SCHEMA_VERSION;
-  aspectRatio: typeof DIRECTOR_ASPECT_RATIOS[number];
+  aspectRatio: (typeof DIRECTOR_ASPECT_RATIOS)[number];
   camera: {
     /** Zero is +Z; positive azimuth moves the camera toward +X. */
     azimuth: number;
@@ -57,8 +64,17 @@ export function createDirectorScene(): DirectorScene {
     aspectRatio: "16:9",
     motion: { durationSeconds: 5, keyframes: [] },
     camera: { azimuth: 25, elevation: 12, distance: 7, target: { x: 0, y: 0.9, z: 0 }, focalLength: 35 },
-    objects: [{ id: crypto.randomUUID(), name: "Actor 1", kind: "ACTOR", position: { x: 0, y: 0, z: 0 },
-      rotation: 0, scale: { x: 1, y: 1, z: 1 }, color: "#D9A35F" }],
+    objects: [
+      {
+        id: crypto.randomUUID(),
+        name: "Actor 1",
+        kind: "ACTOR",
+        position: { x: 0, y: 0, z: 0 },
+        rotation: 0,
+        scale: { x: 1, y: 1, z: 1 },
+        color: "#D9A35F",
+      },
+    ],
   };
 }
 
@@ -69,48 +85,86 @@ function finite(value: unknown, min: number, max: number): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= min && value <= max;
 }
 function keys(value: Record<string, unknown>, allowed: readonly string[]): boolean {
-  return Object.keys(value).every((key) => allowed.includes(key));
+  return Object.keys(value).every(key => allowed.includes(key));
 }
 function vector(value: unknown): value is DirectorVector {
-  return record(value) && keys(value, ["x", "y", "z"])
-    && finite(value.x, -20, 20) && finite(value.y, -20, 20) && finite(value.z, -20, 20);
+  return (
+    record(value) &&
+    keys(value, ["x", "y", "z"]) &&
+    finite(value.x, -20, 20) &&
+    finite(value.y, -20, 20) &&
+    finite(value.z, -20, 20)
+  );
 }
 type LegacyDirectorObject = Omit<DirectorObject, "scale"> & { scale: number };
 function scaleVector(value: unknown): value is DirectorVector {
-  return record(value) && keys(value, ["x", "y", "z"])
-    && finite(value.x, DIRECTOR_SCALE_LIMITS.min, DIRECTOR_SCALE_LIMITS.max)
-    && finite(value.y, DIRECTOR_SCALE_LIMITS.min, DIRECTOR_SCALE_LIMITS.max)
-    && finite(value.z, DIRECTOR_SCALE_LIMITS.min, DIRECTOR_SCALE_LIMITS.max);
+  return (
+    record(value) &&
+    keys(value, ["x", "y", "z"]) &&
+    finite(value.x, DIRECTOR_SCALE_LIMITS.min, DIRECTOR_SCALE_LIMITS.max) &&
+    finite(value.y, DIRECTOR_SCALE_LIMITS.min, DIRECTOR_SCALE_LIMITS.max) &&
+    finite(value.z, DIRECTOR_SCALE_LIMITS.min, DIRECTOR_SCALE_LIMITS.max)
+  );
 }
 function object(value: unknown, version: 1 | 2 | 3): value is DirectorObject | LegacyDirectorObject {
-  return record(value) && keys(value, ["id", "name", "kind", "position", "rotation", "scale", "color"])
-    && typeof value.id === "string" && value.id.trim().length > 0 && value.id.length <= 64
-    && typeof value.name === "string" && value.name.trim().length > 0 && value.name.length <= 80
-    && DIRECTOR_OBJECT_KINDS.some((kind) => kind === value.kind) && vector(value.position)
-    && finite(value.rotation, -180, 180)
-    && (version === 1 ? finite(value.scale, DIRECTOR_SCALE_LIMITS.min, DIRECTOR_SCALE_LIMITS.max) : scaleVector(value.scale))
-    && typeof value.color === "string" && /^#[\da-f]{6}$/i.test(value.color);
+  return (
+    record(value) &&
+    keys(value, ["id", "name", "kind", "position", "rotation", "scale", "color"]) &&
+    typeof value.id === "string" &&
+    value.id.trim().length > 0 &&
+    value.id.length <= 64 &&
+    typeof value.name === "string" &&
+    value.name.trim().length > 0 &&
+    value.name.length <= 80 &&
+    DIRECTOR_OBJECT_KINDS.some(kind => kind === value.kind) &&
+    vector(value.position) &&
+    finite(value.rotation, -180, 180) &&
+    (version === 1
+      ? finite(value.scale, DIRECTOR_SCALE_LIMITS.min, DIRECTOR_SCALE_LIMITS.max)
+      : scaleVector(value.scale)) &&
+    typeof value.color === "string" &&
+    /^#[\da-f]{6}$/i.test(value.color)
+  );
 }
 
 function cameraPose(value: unknown): value is DirectorScene["camera"] {
-  return record(value) && keys(value, ["azimuth", "elevation", "distance", "target", "focalLength"])
-    && finite(value.azimuth, -180, 180) && finite(value.elevation, -80, 80)
-    && finite(value.distance, 1, 50) && vector(value.target) && finite(value.focalLength, 18, 120);
+  return (
+    record(value) &&
+    keys(value, ["azimuth", "elevation", "distance", "target", "focalLength"]) &&
+    finite(value.azimuth, -180, 180) &&
+    finite(value.elevation, -80, 80) &&
+    finite(value.distance, 1, 50) &&
+    vector(value.target) &&
+    finite(value.focalLength, 18, 120)
+  );
 }
 function identity(value: unknown, maxLength: number): value is string {
   return typeof value === "string" && value.trim().length > 0 && value.length <= maxLength;
 }
 function cameraMotion(value: unknown): value is DirectorMotion {
-  if (!record(value) || !keys(value, ["durationSeconds", "keyframes"])
-    || !finite(value.durationSeconds, DIRECTOR_MOTION_LIMITS.minDuration, DIRECTOR_MOTION_LIMITS.maxDuration)
-    || !Array.isArray(value.keyframes) || value.keyframes.length > DIRECTOR_MOTION_LIMITS.maxKeyframes) return false;
+  if (
+    !record(value) ||
+    !keys(value, ["durationSeconds", "keyframes"]) ||
+    !finite(value.durationSeconds, DIRECTOR_MOTION_LIMITS.minDuration, DIRECTOR_MOTION_LIMITS.maxDuration) ||
+    !Array.isArray(value.keyframes) ||
+    value.keyframes.length > DIRECTOR_MOTION_LIMITS.maxKeyframes
+  )
+    return false;
   let previousTime = -1;
   const ids = new Set<string>();
   for (const frame of value.keyframes) {
-    if (!record(frame) || !keys(frame, ["id", "name", "timeSeconds", "transition", "camera"])
-      || !identity(frame.id, 64) || ids.has(frame.id) || !identity(frame.name, 80)
-      || !finite(frame.timeSeconds, 0, value.durationSeconds) || frame.timeSeconds <= previousTime
-      || !DIRECTOR_CAMERA_TRANSITIONS.some((transition) => transition === frame.transition) || !cameraPose(frame.camera)) return false;
+    if (
+      !record(frame) ||
+      !keys(frame, ["id", "name", "timeSeconds", "transition", "camera"]) ||
+      !identity(frame.id, 64) ||
+      ids.has(frame.id) ||
+      !identity(frame.name, 80) ||
+      !finite(frame.timeSeconds, 0, value.durationSeconds) ||
+      frame.timeSeconds <= previousTime ||
+      !DIRECTOR_CAMERA_TRANSITIONS.some(transition => transition === frame.transition) ||
+      !cameraPose(frame.camera)
+    )
+      return false;
     previousTime = frame.timeSeconds;
     ids.add(frame.id);
   }
@@ -119,30 +173,51 @@ function cameraMotion(value: unknown): value is DirectorMotion {
 
 /** Validate before allocating geometry; upgrade detached legacy drafts, never archived payloads. */
 export function parseDirectorScene(value: unknown): DirectorScene | null {
-  if (!record(value) || (value.schemaVersion !== 1 && value.schemaVersion !== 2 && value.schemaVersion !== DIRECTOR_SCENE_SCHEMA_VERSION)
-    || !keys(value, value.schemaVersion === 3 ? ["schemaVersion", "aspectRatio", "camera", "objects", "motion"]
-      : ["schemaVersion", "aspectRatio", "camera", "objects"])
-    || !DIRECTOR_ASPECT_RATIOS.some((ratio) => ratio === value.aspectRatio)
-    || !cameraPose(value.camera) || !Array.isArray(value.objects) || value.objects.length > 32) return null;
+  if (
+    !record(value) ||
+    (value.schemaVersion !== 1 && value.schemaVersion !== 2 && value.schemaVersion !== DIRECTOR_SCENE_SCHEMA_VERSION) ||
+    !keys(
+      value,
+      value.schemaVersion === 3
+        ? ["schemaVersion", "aspectRatio", "camera", "objects", "motion"]
+        : ["schemaVersion", "aspectRatio", "camera", "objects"],
+    ) ||
+    !DIRECTOR_ASPECT_RATIOS.some(ratio => ratio === value.aspectRatio) ||
+    !cameraPose(value.camera) ||
+    !Array.isArray(value.objects) ||
+    value.objects.length > 32
+  )
+    return null;
   const version = value.schemaVersion;
-  if (!value.objects.every((item): item is DirectorObject | LegacyDirectorObject => object(item, version))
-    || new Set(value.objects.map((item) => item.id)).size !== value.objects.length
-    || (version === 3 && !cameraMotion(value.motion))) return null;
-  const aspectRatio = DIRECTOR_ASPECT_RATIOS.find((ratio) => ratio === value.aspectRatio);
+  if (
+    !value.objects.every((item): item is DirectorObject | LegacyDirectorObject => object(item, version)) ||
+    new Set(value.objects.map(item => item.id)).size !== value.objects.length ||
+    (version === 3 && !cameraMotion(value.motion))
+  )
+    return null;
+  const aspectRatio = DIRECTOR_ASPECT_RATIOS.find(ratio => ratio === value.aspectRatio);
   if (!aspectRatio) return null;
   return {
     schemaVersion: DIRECTOR_SCENE_SCHEMA_VERSION,
     aspectRatio,
     camera: structuredClone(value.camera),
     motion: version === 3 ? structuredClone(value.motion as DirectorMotion) : { durationSeconds: 5, keyframes: [] },
-    objects: value.objects.map((item) => ({ id: item.id, name: item.name, kind: item.kind,
-      position: { ...item.position }, rotation: item.rotation,
-      scale: typeof item.scale === "number" ? { x: item.scale, y: item.scale, z: item.scale } : { ...item.scale }, color: item.color })),
+    objects: value.objects.map(item => ({
+      id: item.id,
+      name: item.name,
+      kind: item.kind,
+      position: { ...item.position },
+      rotation: item.rotation,
+      scale: typeof item.scale === "number" ? { x: item.scale, y: item.scale, z: item.scale } : { ...item.scale },
+      color: item.color,
+    })),
   };
 }
 
 /** Match the existing image operation's vocabulary to the actual +Z / +X camera orbit. */
-export function directorViewAngle(scene: DirectorScene): NonNullable<RunImageOperationRequest["parameters"]["viewAngle"]> {
+export function directorViewAngle(
+  scene: DirectorScene,
+): NonNullable<RunImageOperationRequest["parameters"]["viewAngle"]> {
   const { azimuth, elevation } = scene.camera;
   if (elevation >= 35) return "HIGH_ANGLE";
   if (elevation <= -15) return "LOW_ANGLE";
@@ -155,8 +230,8 @@ export function directorViewAngle(scene: DirectorScene): NonNullable<RunImageOpe
 }
 
 export function cameraPosition(camera: DirectorScene["camera"]): DirectorVector {
-  const azimuth = camera.azimuth * Math.PI / 180;
-  const elevation = camera.elevation * Math.PI / 180;
+  const azimuth = (camera.azimuth * Math.PI) / 180;
+  const elevation = (camera.elevation * Math.PI) / 180;
   const horizontalDistance = Math.cos(elevation) * camera.distance;
   return {
     x: camera.target.x + Math.sin(azimuth) * horizontalDistance,
@@ -166,7 +241,11 @@ export function cameraPosition(camera: DirectorScene["camera"]): DirectorVector 
 }
 
 /** Fit the composition inside the viewport; the bars are UI and never captured. */
-export function directorFrameSize(width: number, height: number, aspectRatio: DirectorScene["aspectRatio"]): { width: number; height: number } {
+export function directorFrameSize(
+  width: number,
+  height: number,
+  aspectRatio: DirectorScene["aspectRatio"],
+): { width: number; height: number } {
   const size = DIRECTOR_CAPTURE_SIZES[aspectRatio];
   const scale = Math.max(0, Math.min(width / size.width, height / size.height));
   return { width: size.width * scale, height: size.height * scale };
@@ -177,10 +256,12 @@ export function directorCameraPrompt(scene: DirectorScene): string {
   const camera = scene.camera;
   const position = cameraPosition(camera);
   const point = (value: DirectorVector) => `(${value.x.toFixed(2)}, ${value.y.toFixed(2)}, ${value.z.toFixed(2)})`;
-  return `Use the following camera direction and composition guidance. `
-    + `Output aspect ratio: ${scene.aspectRatio}. Camera focal length: ${camera.focalLength.toFixed(1)} mm on a 35 mm film gauge. `
-    + `Camera azimuth: ${camera.azimuth.toFixed(1)} degrees; elevation: ${camera.elevation.toFixed(1)} degrees; `
-    + `distance to target: ${camera.distance.toFixed(2)} scene units. Camera position: ${point(position)}; look-at target: ${point(camera.target)}. `
-    + `Coordinates use +Y up; zero azimuth is +Z and positive azimuth turns toward +X. `
-    + `This is a direction reference. Preserve the intended subject identity and appearance from the source image.`;
+  return (
+    `Use the following camera direction and composition guidance. ` +
+    `Output aspect ratio: ${scene.aspectRatio}. Camera focal length: ${camera.focalLength.toFixed(1)} mm on a 35 mm film gauge. ` +
+    `Camera azimuth: ${camera.azimuth.toFixed(1)} degrees; elevation: ${camera.elevation.toFixed(1)} degrees; ` +
+    `distance to target: ${camera.distance.toFixed(2)} scene units. Camera position: ${point(position)}; look-at target: ${point(camera.target)}. ` +
+    `Coordinates use +Y up; zero azimuth is +Z and positive azimuth turns toward +X. ` +
+    `This is a direction reference. Preserve the intended subject identity and appearance from the source image.`
+  );
 }

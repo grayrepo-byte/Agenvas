@@ -11,12 +11,29 @@ import { seededPrompts } from "../../test/seededCatalogs";
 import { setLocale } from "../../shared/i18n";
 import { PromptManagementSection } from "./PromptManagementSection";
 
-const defaults = { id: "director", key: "agent.director", kind: "AGENT", name: "导演 Agent", description: "Synthetic purpose", content: "Synthetic workflow", builtIn: true, version: 1, createdAt: "2026-10-03T00:00:00Z", updatedAt: "2026-10-03T00:00:00Z" };
+const defaults = {
+  id: "director",
+  key: "agent.director",
+  kind: "AGENT",
+  name: "导演 Agent",
+  description: "Synthetic purpose",
+  content: "Synthetic workflow",
+  builtIn: true,
+  version: 1,
+  createdAt: "2026-10-03T00:00:00Z",
+  updatedAt: "2026-10-03T00:00:00Z",
+};
 function show(enabled = true) {
-  const view = render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><Routes>
-    <Route path="/" element={<PromptManagementSection enabled={enabled} />} />
-    <Route path="/login" element={<p>Login destination</p>} />
-  </Routes></MemoryRouter></QueryClientProvider>);
+  const view = render(
+    <QueryClientProvider client={createQueryClient()}>
+      <MemoryRouter>
+        <Routes>
+          <Route path="/" element={<PromptManagementSection enabled={enabled} />} />
+          <Route path="/login" element={<p>Login destination</p>} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
   return view;
 }
 describe("PromptManagementSection", () => {
@@ -36,7 +53,9 @@ describe("PromptManagementSection", () => {
       }
       expect(container.textContent).not.toMatch(/\p{Script=Han}/u);
     }
-    fireEvent.change(screen.getByLabelText("Search name, key or description"), { target: { value: "Text card generation" } });
+    fireEvent.change(screen.getByLabelText("Search name, key or description"), {
+      target: { value: "Text card generation" },
+    });
     expect(screen.getByRole("button", { name: /text\.generate/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /agent\.director/ })).not.toBeInTheDocument();
   });
@@ -45,20 +64,32 @@ describe("PromptManagementSection", () => {
     setLocale("en");
     const prompt = { ...seededPrompts[0]!, content: "保留已有中文创作指令" };
     const writes = vi.fn();
-    server.use(http.get("/api/v1/settings/prompts", () => HttpResponse.json({ items: [prompt] })),
+    server.use(
+      http.get("/api/v1/settings/prompts", () => HttpResponse.json({ items: [prompt] })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ token: "synthetic", headerName: "X-CSRF-TOKEN" })),
       http.put(`/api/v1/settings/prompts/${prompt.id}`, async ({ request }) => {
-        const input = await request.json(); writes(input);
+        const input = await request.json();
+        writes(input);
         return HttpResponse.json({ ...prompt, content: "保留已有中文创作指令，再补充要求", version: 2 });
-      }));
-    show(); await screen.findByDisplayValue(prompt.content);
-    fireEvent.change(screen.getByLabelText("Prompt content"), { target: { value: "保留已有中文创作指令，再补充要求" } });
+      }),
+    );
+    show();
+    await screen.findByDisplayValue(prompt.content);
+    fireEvent.change(screen.getByLabelText("Prompt content"), {
+      target: { value: "保留已有中文创作指令，再补充要求" },
+    });
     act(() => setLocale("ja"));
     expect(screen.getByDisplayValue("保留已有中文创作指令，再补充要求")).toBeInTheDocument();
     act(() => setLocale("en"));
     await userEvent.setup().click(screen.getByRole("button", { name: "Save configuration" }));
-    await waitFor(() => expect(writes).toHaveBeenCalledWith({ name: prompt.name, description: prompt.description,
-      content: "保留已有中文创作指令，再补充要求", expectedVersion: prompt.version }));
+    await waitFor(() =>
+      expect(writes).toHaveBeenCalledWith({
+        name: prompt.name,
+        description: prompt.description,
+        content: "保留已有中文创作指令，再补充要求",
+        expectedVersion: prompt.version,
+      }),
+    );
   });
 
   it("preserves customized Chinese metadata and unrecognized identities", async () => {
@@ -69,42 +100,69 @@ describe("PromptManagementSection", () => {
       { ...seededPrompts[2]!, id: "unknown", key: "feature.unknown" },
     ];
     server.use(http.get("/api/v1/settings/prompts", () => HttpResponse.json({ items: prompts })));
-    show(); await screen.findByDisplayValue("我的中文导演");
+    show();
+    await screen.findByDisplayValue("我的中文导演");
     expect(screen.getByLabelText("Purpose description")).toHaveValue("自定义中文用途说明");
-    for (const prompt of prompts) expect(screen.getByRole("button", { name: new RegExp(prompt.name) })).toBeInTheDocument();
+    for (const prompt of prompts)
+      expect(screen.getByRole("button", { name: new RegExp(prompt.name) })).toBeInTheDocument();
   });
 
   it("does not load while its category is inactive", () => {
     const reads = vi.fn();
-    server.use(http.get("/api/v1/settings/prompts", () => { reads(); return HttpResponse.json({ items: [defaults] }); }));
-    show(false); expect(reads).not.toHaveBeenCalled();
+    server.use(
+      http.get("/api/v1/settings/prompts", () => {
+        reads();
+        return HttpResponse.json({ items: [defaults] });
+      }),
+    );
+    show(false);
+    expect(reads).not.toHaveBeenCalled();
   });
   it("saves complete content with the pinned version", async () => {
     const writes: unknown[] = [];
-    server.use(http.get("/api/v1/settings/prompts", () => HttpResponse.json({ items: [defaults] })),
+    server.use(
+      http.get("/api/v1/settings/prompts", () => HttpResponse.json({ items: [defaults] })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ token: "synthetic", headerName: "X-CSRF-TOKEN" })),
       http.put("/api/v1/settings/prompts/director", async ({ request }) => {
-        const input = await request.json(); writes.push(input);
+        const input = await request.json();
+        writes.push(input);
         return HttpResponse.json({ ...defaults, content: "Full creative workflow", version: 2 });
-      }));
-    show(); await screen.findByDisplayValue(defaults.content);
+      }),
+    );
+    show();
+    await screen.findByDisplayValue(defaults.content);
     fireEvent.change(screen.getByLabelText("提示词正文"), { target: { value: "Full creative workflow" } });
     await userEvent.setup().click(screen.getByRole("button", { name: "保存配置" }));
     await screen.findByText("提示词已保存。");
-    expect(writes).toEqual([{ description: defaults.description, name: defaults.name, content: "Full creative workflow", expectedVersion: 1 }]);
+    expect(writes).toEqual([
+      { description: defaults.description, name: defaults.name, content: "Full creative workflow", expectedVersion: 1 },
+    ]);
   });
   it("retains edited content after a conflict and requires explicitly adopting the refreshed version", async () => {
-    let version = 1; const versions: number[] = [];
-    server.use(http.get("/api/v1/settings/prompts", () => HttpResponse.json({ items: [{ ...defaults, content: version === 1 ? defaults.content : "Other administrator", version }] })),
+    let version = 1;
+    const versions: number[] = [];
+    server.use(
+      http.get("/api/v1/settings/prompts", () =>
+        HttpResponse.json({
+          items: [{ ...defaults, content: version === 1 ? defaults.content : "Other administrator", version }],
+        }),
+      ),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ token: "synthetic", headerName: "X-CSRF-TOKEN" })),
       http.put("/api/v1/settings/prompts/director", async ({ request }) => {
-        const input = await request.json() as { expectedVersion: number }; versions.push(input.expectedVersion);
-        if (version === 1) { version = 2; return HttpResponse.json({ code: "PROMPT_CONFLICT", status: 409 }, { status: 409 }); }
+        const input = (await request.json()) as { expectedVersion: number };
+        versions.push(input.expectedVersion);
+        if (version === 1) {
+          version = 2;
+          return HttpResponse.json({ code: "PROMPT_CONFLICT", status: 409 }, { status: 409 });
+        }
         return HttpResponse.json({ ...defaults, content: "My draft", version: 3 });
-      }));
-    show(); await screen.findByDisplayValue(defaults.content);
+      }),
+    );
+    show();
+    await screen.findByDisplayValue(defaults.content);
     fireEvent.change(screen.getByLabelText("提示词正文"), { target: { value: "My draft" } });
-    const user = userEvent.setup(); await user.click(screen.getByRole("button", { name: "保存配置" }));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "保存配置" }));
     await screen.findByText("提示词已被其他请求修改，请重新读取后处理草稿。");
     await user.click(screen.getByRole("button", { name: "重新读取设置" }));
     await user.click(await screen.findByRole("button", { name: "保留草稿并使用最新版本" }));
@@ -113,11 +171,20 @@ describe("PromptManagementSection", () => {
     await waitFor(() => expect(versions).toEqual([1, 2]));
   });
   it("keeps independent drafts while switching between Agent and feature prompts and supports filtering", async () => {
-    const feature = { ...defaults, id: "text", key: "text.generate", kind: "FUNCTION", name: "文字卡片生成", content: "Feature prompt" };
+    const feature = {
+      ...defaults,
+      id: "text",
+      key: "text.generate",
+      kind: "FUNCTION",
+      name: "文字卡片生成",
+      content: "Feature prompt",
+    };
     server.use(http.get("/api/v1/settings/prompts", () => HttpResponse.json({ items: [defaults, feature] })));
-    show(); await screen.findByDisplayValue(defaults.content);
+    show();
+    await screen.findByDisplayValue(defaults.content);
     fireEvent.change(screen.getByLabelText("提示词正文"), { target: { value: "Director draft" } });
-    const user = userEvent.setup(); await user.click(screen.getByRole("button", { name: /文字卡片生成/ }));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /文字卡片生成/ }));
     fireEvent.change(screen.getByLabelText("提示词正文"), { target: { value: "Feature draft" } });
     await user.click(screen.getByRole("button", { name: /导演 Agent/ }));
     expect(screen.getByLabelText("提示词正文")).toHaveValue("Director draft");
@@ -128,24 +195,46 @@ describe("PromptManagementSection", () => {
     expect(screen.queryByRole("button", { name: "删除提示词" })).not.toBeInTheDocument();
   });
   it("creates and explicitly deletes a custom function using its version", async () => {
-    const writes: unknown[] = []; const deletions: string[] = [];
-    const feature = { ...defaults, id: "summary", key: "feature.summary", kind: "FUNCTION", name: "Summary", description: "", content: "Summarize", builtIn: false };
-    server.use(http.get("/api/v1/settings/prompts", () => HttpResponse.json({ items: [defaults] })),
+    const writes: unknown[] = [];
+    const deletions: string[] = [];
+    const feature = {
+      ...defaults,
+      id: "summary",
+      key: "feature.summary",
+      kind: "FUNCTION",
+      name: "Summary",
+      description: "",
+      content: "Summarize",
+      builtIn: false,
+    };
+    server.use(
+      http.get("/api/v1/settings/prompts", () => HttpResponse.json({ items: [defaults] })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ token: "synthetic", headerName: "X-CSRF-TOKEN" })),
-      http.post("/api/v1/settings/prompts", async ({ request }) => { writes.push(await request.json()); return HttpResponse.json(feature, { status: 201 }); }),
-      http.delete("/api/v1/settings/prompts/summary", ({ request }) => { deletions.push(new URL(request.url).searchParams.get("expectedVersion")!); return new HttpResponse(null, { status: 204 }); }));
-    show(); await screen.findByDisplayValue(defaults.content);
-    const user = userEvent.setup(); await user.click(screen.getByRole("button", { name: "新建功能提示词" }));
+      http.post("/api/v1/settings/prompts", async ({ request }) => {
+        writes.push(await request.json());
+        return HttpResponse.json(feature, { status: 201 });
+      }),
+      http.delete("/api/v1/settings/prompts/summary", ({ request }) => {
+        deletions.push(new URL(request.url).searchParams.get("expectedVersion")!);
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    show();
+    await screen.findByDisplayValue(defaults.content);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "新建功能提示词" }));
     fireEvent.change(screen.getByLabelText("用途标识"), { target: { value: feature.key } });
     expect(screen.getByRole("textbox", { name: "用途" })).toHaveValue("功能");
     expect(screen.getByRole("textbox", { name: "用途" })).toHaveAttribute("readonly");
     expect(screen.queryByRole("combobox", { name: "用途" })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("名称"), { target: { value: feature.name } });
     fireEvent.change(screen.getByLabelText("提示词正文"), { target: { value: feature.content } });
-    await user.click(screen.getByRole("button", { name: "保存配置" })); await screen.findByText("提示词已保存。");
+    await user.click(screen.getByRole("button", { name: "保存配置" }));
+    await screen.findByText("提示词已保存。");
     expect(writes).toEqual([{ key: feature.key, name: feature.name, content: feature.content, description: "" }]);
     expect(screen.getByLabelText("用途标识")).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "删除提示词" })); expect(deletions).toEqual([]);
+    await user.click(screen.getByRole("button", { name: "删除提示词" }));
+    expect(deletions).toEqual([]);
     await user.click(screen.getByRole("button", { name: "确认删除" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: /Summary/ })).not.toBeInTheDocument());
     expect(deletions).toEqual(["1"]);
@@ -156,22 +245,28 @@ describe("PromptManagementSection", () => {
       { id: "face", key: "image.three-view.face", name: "脸部三视图" },
       { id: "prop", key: "image.three-view.prop", name: "道具三视图" },
       { id: "scene", key: "image.three-view.scene-grid", name: "场景宫格图" },
-    ].map((entry) => ({ ...defaults, ...entry, kind: "FUNCTION", content: `Synthetic ${entry.id} views` }));
+    ].map(entry => ({ ...defaults, ...entry, kind: "FUNCTION", content: `Synthetic ${entry.id} views` }));
     const writes: unknown[] = [];
     const face = viewPrompts[1]!;
-    server.use(http.get("/api/v1/settings/prompts", () => HttpResponse.json({ items: [defaults, ...viewPrompts] })),
+    server.use(
+      http.get("/api/v1/settings/prompts", () => HttpResponse.json({ items: [defaults, ...viewPrompts] })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ token: "synthetic", headerName: "X-CSRF-TOKEN" })),
       http.put("/api/v1/settings/prompts/face", async ({ request }) => {
         writes.push(await request.json());
         return HttpResponse.json({ ...face, content: "Synthetic customized facial views", version: 2 });
-      }));
-    show(); await screen.findByDisplayValue(defaults.content);
+      }),
+    );
+    show();
+    await screen.findByDisplayValue(defaults.content);
     const user = userEvent.setup();
     await selectValue(screen.getByRole("combobox", { name: "筛选用途" }), "FUNCTION");
-    for (const entry of viewPrompts) expect(screen.getByRole("button", { name: new RegExp(entry.name) })).toBeInTheDocument();
+    for (const entry of viewPrompts)
+      expect(screen.getByRole("button", { name: new RegExp(entry.name) })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /角色三视图/ }));
     fireEvent.change(screen.getByLabelText("提示词正文"), { target: { value: "Synthetic character draft" } });
-    fireEvent.change(screen.getByRole("textbox", { name: "搜索名称、标识或说明" }), { target: { value: "image.three-view.face" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "搜索名称、标识或说明" }), {
+      target: { value: "image.three-view.face" },
+    });
     expect(screen.queryByRole("button", { name: /角色三视图/ })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /脸部三视图/ }));
     expect(screen.getByLabelText("用途标识")).toHaveValue(face.key);
@@ -180,33 +275,63 @@ describe("PromptManagementSection", () => {
     fireEvent.change(screen.getByLabelText("提示词正文"), { target: { value: "Synthetic customized facial views" } });
     await user.click(screen.getByRole("button", { name: "保存配置" }));
     await screen.findByText("提示词已保存。");
-    expect(writes).toEqual([{ name: face.name, description: face.description,
-      content: "Synthetic customized facial views", expectedVersion: face.version }]);
+    expect(writes).toEqual([
+      {
+        name: face.name,
+        description: face.description,
+        content: "Synthetic customized facial views",
+        expectedVersion: face.version,
+      },
+    ]);
     fireEvent.change(screen.getByRole("textbox", { name: "搜索名称、标识或说明" }), { target: { value: "" } });
     await user.click(screen.getByRole("button", { name: /角色三视图/ }));
     expect(screen.getByLabelText("提示词正文")).toHaveValue("Synthetic character draft");
   });
   it("keeps a new prompt draft after a duplicate key and allows correcting that key", async () => {
     let creates = 0;
-    server.use(http.get("/api/v1/settings/prompts", () => HttpResponse.json({ items: [defaults] })),
+    server.use(
+      http.get("/api/v1/settings/prompts", () => HttpResponse.json({ items: [defaults] })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ token: "synthetic", headerName: "X-CSRF-TOKEN" })),
-      http.post("/api/v1/settings/prompts", () => { creates++; return creates === 1
-        ? HttpResponse.json({ code: "PROMPT_KEY_CONFLICT", status: 409 }, { status: 409, headers: { "Content-Type": "application/problem+json" } })
-        : HttpResponse.json({ ...defaults, id: "writer", key: "feature.writer", kind: "FUNCTION", name: "Writer", content: "Write", builtIn: false }); }));
-    show(); await screen.findByDisplayValue(defaults.content); const user = userEvent.setup();
+      http.post("/api/v1/settings/prompts", () => {
+        creates++;
+        return creates === 1
+          ? HttpResponse.json(
+              { code: "PROMPT_KEY_CONFLICT", status: 409 },
+              { status: 409, headers: { "Content-Type": "application/problem+json" } },
+            )
+          : HttpResponse.json({
+              ...defaults,
+              id: "writer",
+              key: "feature.writer",
+              kind: "FUNCTION",
+              name: "Writer",
+              content: "Write",
+              builtIn: false,
+            });
+      }),
+    );
+    show();
+    await screen.findByDisplayValue(defaults.content);
+    const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "新建功能提示词" }));
     fireEvent.change(screen.getByLabelText("用途标识"), { target: { value: "text.generate" } });
     fireEvent.change(screen.getByLabelText("名称"), { target: { value: "Writer" } });
     fireEvent.change(screen.getByLabelText("提示词正文"), { target: { value: "Write" } });
-    await user.click(screen.getByRole("button", { name: "保存配置" })); await screen.findByRole("alert");
+    await user.click(screen.getByRole("button", { name: "保存配置" }));
+    await screen.findByRole("alert");
     fireEvent.change(screen.getByLabelText("用途标识"), { target: { value: "feature.writer" } });
     expect(screen.getByLabelText("提示词正文")).toHaveValue("Write");
-    await user.click(screen.getByRole("button", { name: "保存配置" })); await screen.findByText("提示词已保存。"); expect(creates).toBe(2);
+    await user.click(screen.getByRole("button", { name: "保存配置" }));
+    await screen.findByText("提示词已保存。");
+    expect(creates).toBe(2);
   });
-  it.each([401, 403, 503])("handles an HTTP %s read without an editable empty prompt", async (status) => {
+  it.each([401, 403, 503])("handles an HTTP %s read without an editable empty prompt", async status => {
     server.use(http.get("/api/v1/settings/prompts", () => HttpResponse.json({ status }, { status })));
     show();
     if (status === 401) await screen.findByText("Login destination");
-    else { await screen.findByRole("alert"); expect(screen.getByRole("button", { name: "保存配置" })).toBeDisabled(); }
+    else {
+      await screen.findByRole("alert");
+      expect(screen.getByRole("button", { name: "保存配置" })).toBeDisabled();
+    }
   });
 });

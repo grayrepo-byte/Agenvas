@@ -125,7 +125,8 @@ class AgentTurnWorkerTest {
         verifyAppliedResponse();
     }
 
-    @Test void toolRepairReusesRejectedRequestBudgetInsteadOfLiveDirectorSettings() throws Exception {
+    @Test
+    void toolRepairReusesRejectedRequestBudgetInsteadOfLiveDirectorSettings() throws Exception {
         var budget = LlmRequestBudget.resolve(DirectorSettings.defaults(),
                 dev.agenvas.settings.application.LlmModelPolicy.manual(
                         dev.agenvas.settings.application.ModelCatalog.Provider.COMPATIBLE, 8192, null, 1024,
@@ -148,7 +149,8 @@ class AgentTurnWorkerTest {
 
     @ParameterizedTest
     @CsvSource({"WAITING_TASKS, 0", "RUNNING, 1"})
-    void resumedTurnsReadTheDurableResponseWithoutSubmittingAModelCall(AgentRun.Status status, int nextStep) throws Exception {
+    void resumedTurnsReadTheDurableResponseWithoutSubmittingAModelCall(AgentRun.Status status, int nextStep)
+            throws Exception {
         when(run.status()).thenReturn(status);
         when(run.nextStepIndex()).thenReturn(nextStep);
         when(turns.find(project, runId, 0)).thenReturn(Optional.of(turn(LlmTurn.Status.RESPONDED)));
@@ -164,7 +166,8 @@ class AgentTurnWorkerTest {
     @ParameterizedTest
     @CsvSource({"true,false,length", "false,false,length", "true,true,length", "false,true,length",
             "true,false,LENGTH", "false,false,LENGTH", "true,true,LENGTH", "false,true,LENGTH"})
-    void tokenLimitedResponseCannotExecuteToolsOrCompleteEvenWhenReplayed(boolean hasTools, boolean replay, String reason)
+    void tokenLimitedResponseCannotExecuteToolsOrCompleteEvenWhenReplayed(boolean hasTools, boolean replay,
+            String reason)
             throws Exception {
         JsonNode truncated = codec.response(new ChatResponse(List.of(new Generation(
                 AssistantMessage.builder().content("Task complete")
@@ -186,7 +189,8 @@ class AgentTurnWorkerTest {
         verify(commits, never()).complete(any(), anyString());
         verify(commits, never()).scheduleRepair(any(), anyString(), anyString(), anyString());
         verify(commits, never()).modelFailed(any(), anyString(), anyString());
-        if (replay) verifyNoInteractions(rounds);
+        if (replay)
+            verifyNoInteractions(rounds);
     }
 
     @Test

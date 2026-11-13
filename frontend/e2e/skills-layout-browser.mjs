@@ -8,8 +8,7 @@ import { build, createServer, preview } from "vite";
 
 /** Real CSS/layout regression without a backend, credentials or provider calls. */
 const root = fileURLToPath(new URL("../", import.meta.url));
-const chromePath = process.env.AGENVAS_E2E_CHROME
-  ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const chromePath = process.env.AGENVAS_E2E_CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const route = "/e2e/skills-layout.html";
 // Verify the same bundled CSS and real Skill page as the shipped frontend.
 const production = !process.argv.includes("--dev");
@@ -30,7 +29,7 @@ let chrome;
 let socket;
 let nextId = 0;
 const pending = new Map();
-const pause = () => new Promise((resolve) => setTimeout(resolve, pollMs));
+const pause = () => new Promise(resolve => setTimeout(resolve, pollMs));
 
 function cdp(method, params = {}) {
   const id = ++nextId;
@@ -43,10 +42,11 @@ function cdp(method, params = {}) {
 async function page(fn, ...args) {
   const result = await cdp("Runtime.evaluate", {
     expression: `(${fn.toString()})(...${JSON.stringify(args)})`,
-    awaitPromise: true, returnByValue: true,
+    awaitPromise: true,
+    returnByValue: true,
   });
-  if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description
-    ?? result.exceptionDetails.text);
+  if (result.exceptionDetails)
+    throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text);
   return result.result.value;
 }
 
@@ -59,29 +59,47 @@ async function waitFor(fn, ...args) {
   throw new Error(`Timed out waiting for Skill layout: ${await page(() => document.body.innerText)}`);
 }
 
-
 try {
   if (production) {
-    await build({ ...config, logLevel: "warn", build: {
-      outDir, emptyOutDir: true, rollupOptions: { input: join(root, route) },
-    } });
-    server = await preview({ ...config, build: { outDir },
-      preview: { host: "127.0.0.1", port: 0, open: false },
+    await build({
+      ...config,
+      logLevel: "warn",
+      build: {
+        outDir,
+        emptyOutDir: true,
+        rollupOptions: { input: join(root, route) },
+      },
     });
+    server = await preview({ ...config, build: { outDir }, preview: { host: "127.0.0.1", port: 0, open: false } });
   } else {
     server = await createServer({ ...config, server: { host: "127.0.0.1", port: 0, open: false } });
     await server.listen();
   }
-  chrome = spawn(chromePath, ["--headless=new", "--no-first-run",
-    "--no-default-browser-check", "--disable-background-networking",
-    "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"],
-  { stdio: ["ignore", "ignore", "pipe"] });
+  chrome = spawn(
+    chromePath,
+    [
+      "--headless=new",
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--disable-background-networking",
+      "--remote-debugging-port=0",
+      `--user-data-dir=${profile}`,
+      "about:blank",
+    ],
+    { stdio: ["ignore", "ignore", "pipe"] },
+  );
   const endpoint = await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("Chrome did not start")), timeoutMs);
-    chrome.once("error", (error) => { clearTimeout(timer); reject(error); });
-    chrome.stderr.on("data", (data) => {
+    chrome.once("error", error => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    chrome.stderr.on("data", data => {
       const match = data.toString().match(/DevTools listening on (ws:\/\/\S+)/);
-      if (match) { clearTimeout(timer); resolve(new URL(match[1]).origin.replace("ws:", "http:")); }
+      if (match) {
+        clearTimeout(timer);
+        resolve(new URL(match[1]).origin.replace("ws:", "http:"));
+      }
     });
   });
   const target = await (await fetch(`${endpoint}/json/new?about:blank`, { method: "PUT" })).json();
@@ -91,9 +109,12 @@ try {
     socket.addEventListener("error", reject, { once: true });
   });
   const browserErrors = [];
-  socket.addEventListener("message", (event) => {
+  socket.addEventListener("message", event => {
     const message = JSON.parse(event.data);
-    if (message.method === "Runtime.exceptionThrown") browserErrors.push(message.params.exceptionDetails.exception?.description ?? message.params.exceptionDetails.text);
+    if (message.method === "Runtime.exceptionThrown")
+      browserErrors.push(
+        message.params.exceptionDetails.exception?.description ?? message.params.exceptionDetails.text,
+      );
     const waiting = pending.get(message.id);
     if (!waiting) return;
     pending.delete(message.id);
@@ -119,14 +140,26 @@ try {
           const range = document.createRange();
           if (text) range.selectNodeContents(text);
           else {
-            const node = [...button.childNodes].find(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
+            const node = [...button.childNodes].find(
+              node => node.nodeType === Node.TEXT_NODE && node.textContent.trim(),
+            );
             range.selectNode(node);
           }
-          return { title: button.getAttribute("aria-label"), height: box.height,
-            clipped: [...range.getClientRects()].some(rect => rect.top < box.top || rect.bottom > box.bottom || rect.right > box.right),
-            badgeOverlaps: Boolean(button.querySelector(".ui-badge") && text && text.getBoundingClientRect().right > button.querySelector(".ui-badge").getBoundingClientRect().left),
-            scrollWidth: button.scrollWidth, clientWidth: button.clientWidth };
-        })
+          return {
+            title: button.getAttribute("aria-label"),
+            height: box.height,
+            clipped: [...range.getClientRects()].some(
+              rect => rect.top < box.top || rect.bottom > box.bottom || rect.right > box.right,
+            ),
+            badgeOverlaps: Boolean(
+              button.querySelector(".ui-badge") &&
+              text &&
+              text.getBoundingClientRect().right > button.querySelector(".ui-badge").getBoundingClientRect().left,
+            ),
+            scrollWidth: button.scrollWidth,
+            clientWidth: button.clientWidth,
+          };
+        }),
       };
     });
     assert.equal(layout.overflow, false, `Page overflows at ${viewport.width}px`);
@@ -141,25 +174,43 @@ try {
       return getComputedStyle(selected).backgroundColor !== getComputedStyle(unselected).backgroundColor;
     });
     assert.equal(selection, true, "Current Skill has a visible selected state");
-    await page(() => document.querySelectorAll(".skills-resource-list details").forEach(details => { details.open = true; }));
+    await page(() =>
+      document.querySelectorAll(".skills-resource-list details").forEach(details => {
+        details.open = true;
+      }),
+    );
     const resources = await page(() => ({
       overflow: document.documentElement.scrollWidth > window.innerWidth,
       previews: [...document.querySelectorAll(".skills-version-preview pre")].map(pre => ({
-        width: pre.clientWidth, scrollWidth: pre.scrollWidth, height: pre.clientHeight,
-        lineHeight: parseFloat(getComputedStyle(pre).lineHeight), fontSize: parseFloat(getComputedStyle(pre).fontSize)
-      }))
+        width: pre.clientWidth,
+        scrollWidth: pre.scrollWidth,
+        height: pre.clientHeight,
+        lineHeight: parseFloat(getComputedStyle(pre).lineHeight),
+        fontSize: parseFloat(getComputedStyle(pre).fontSize),
+      })),
     }));
     assert.equal(resources.overflow, false, "Expanded long resource paths stay within the page");
     for (const preview of resources.previews) {
       assert.ok(preview.scrollWidth <= preview.width + 1, "Document text wraps within its preview");
-      assert.ok(preview.height <= 480 && preview.lineHeight >= preview.fontSize * 1.6, "Documents have bounded height and readable line spacing");
+      assert.ok(
+        preview.height <= 480 && preview.lineHeight >= preview.fontSize * 1.6,
+        "Documents have bounded height and readable line spacing",
+      );
     }
-    await page(() => document.querySelectorAll(".skills-resource-list details").forEach(details => { details.open = false; }));
+    await page(() =>
+      document.querySelectorAll(".skills-resource-list details").forEach(details => {
+        details.open = false;
+      }),
+    );
     if (process.env.AGENVAS_SKILLS_SCREENSHOT && viewport.width === 1440) {
       await page(async () => {
         await document.fonts.ready;
-        await Promise.all(document.getAnimations().filter(animation => Number.isFinite(animation.effect?.getComputedTiming().iterations))
-          .map(animation => animation.finished.catch(() => undefined)));
+        await Promise.all(
+          document
+            .getAnimations()
+            .filter(animation => Number.isFinite(animation.effect?.getComputedTiming().iterations))
+            .map(animation => animation.finished.catch(() => undefined)),
+        );
       });
       const capture = await cdp("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
       await writeFile(process.env.AGENVAS_SKILLS_SCREENSHOT, Buffer.from(capture.data, "base64"), { mode: 0o600 });
@@ -168,47 +219,99 @@ try {
     await waitFor(() => Boolean(document.querySelector('[role="option"][data-value="PROMPT"]')));
     await page(() => document.querySelector('[role="option"][data-value="PROMPT"]').click());
     await waitFor(() => document.querySelectorAll(".skills-list button").length === 1);
-    assert.equal(await page(() => document.querySelector(".skills-list button").textContent.includes("h3-prompt-writing")), true);
-    assert.equal(await page(() => document.documentElement.scrollWidth > window.innerWidth), false, "Category filter stays within the page");
-    assert.equal(await page(() => document.querySelector(".skills-builtin-viewer").textContent.includes("视觉资产设定")), true, "Filtering retains the opened publication");
+    assert.equal(
+      await page(() => document.querySelector(".skills-list button").textContent.includes("h3-prompt-writing")),
+      true,
+    );
+    assert.equal(
+      await page(() => document.documentElement.scrollWidth > window.innerWidth),
+      false,
+      "Category filter stays within the page",
+    );
+    assert.equal(
+      await page(() => document.querySelector(".skills-builtin-viewer").textContent.includes("视觉资产设定")),
+      true,
+      "Filtering retains the opened publication",
+    );
     await page(() => document.querySelector(".skills-list button").click());
-    await waitFor(() => Boolean(document.querySelector('.skills-detail > div:not([hidden]) .skills-builtin-viewer a[href*="huggingface.co"]')));
-    assert.equal(await page(() => document.documentElement.scrollWidth > window.innerWidth), false, "Third-party attribution stays within the page");
+    await waitFor(() =>
+      Boolean(
+        document.querySelector('.skills-detail > div:not([hidden]) .skills-builtin-viewer a[href*="huggingface.co"]'),
+      ),
+    );
+    assert.equal(
+      await page(() => document.documentElement.scrollWidth > window.innerWidth),
+      false,
+      "Third-party attribution stays within the page",
+    );
     if (process.env.AGENVAS_SKILLS_SCREENSHOT && [1440, 390].includes(viewport.width)) {
       await page(async () => {
-        await Promise.all(document.getAnimations().filter(animation => Number.isFinite(animation.effect?.getComputedTiming().iterations))
-          .map(animation => animation.finished.catch(() => undefined)));
+        await Promise.all(
+          document
+            .getAnimations()
+            .filter(animation => Number.isFinite(animation.effect?.getComputedTiming().iterations))
+            .map(animation => animation.finished.catch(() => undefined)),
+        );
       });
       const capture = await cdp("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
-      await writeFile(`${process.env.AGENVAS_SKILLS_SCREENSHOT}.${viewport.width}.h3.png`, Buffer.from(capture.data, "base64"), { mode: 0o600 });
+      await writeFile(
+        `${process.env.AGENVAS_SKILLS_SCREENSHOT}.${viewport.width}.h3.png`,
+        Buffer.from(capture.data, "base64"),
+        { mode: 0o600 },
+      );
     }
     await page(() => document.querySelector('button[aria-label="Skill 分类"]').click());
     await waitFor(() => Boolean(document.querySelector('[role="option"][data-value=""]')));
     await page(() => document.querySelector('[role="option"][data-value=""]').click());
-    await waitFor(() => Boolean([...document.querySelectorAll(".skills-list button")].find(button => button.getAttribute("aria-label") === "个人创作方法")));
-    await page(() => [...document.querySelectorAll(".skills-list button")].find(button => button.getAttribute("aria-label") === "个人创作方法").click());
+    await waitFor(() =>
+      Boolean(
+        [...document.querySelectorAll(".skills-list button")].find(
+          button => button.getAttribute("aria-label") === "个人创作方法",
+        ),
+      ),
+    );
+    await page(() =>
+      [...document.querySelectorAll(".skills-list button")]
+        .find(button => button.getAttribute("aria-label") === "个人创作方法")
+        .click(),
+    );
     await waitFor(() => Boolean(document.querySelector(".skills-personal-editor textarea")));
-    const editorLayout = await page(() => ({ overflow: document.documentElement.scrollWidth > window.innerWidth,
-      escaping: [...document.querySelectorAll(".skills-personal-editor *")].filter(el => el.getBoundingClientRect().right > window.innerWidth).map(el => ({ tag: el.tagName, class: el.className, width: el.getBoundingClientRect().width })) }));
-    assert.equal(editorLayout.overflow, false, `Personal editor stays within ${viewport.width}px: ${JSON.stringify(editorLayout.escaping)}`);
-    await page(() => [...document.querySelectorAll('[role="tab"]')].find(tab => tab.getAttribute("aria-label") === "资源附件").focus());
+    const editorLayout = await page(() => ({
+      overflow: document.documentElement.scrollWidth > window.innerWidth,
+      escaping: [...document.querySelectorAll(".skills-personal-editor *")]
+        .filter(el => el.getBoundingClientRect().right > window.innerWidth)
+        .map(el => ({ tag: el.tagName, class: el.className, width: el.getBoundingClientRect().width })),
+    }));
+    assert.equal(
+      editorLayout.overflow,
+      false,
+      `Personal editor stays within ${viewport.width}px: ${JSON.stringify(editorLayout.escaping)}`,
+    );
+    await page(() =>
+      [...document.querySelectorAll('[role="tab"]')].find(tab => tab.getAttribute("aria-label") === "资源附件").focus(),
+    );
     await cdp("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter" });
     await cdp("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter" });
     await waitFor(() => Boolean(document.querySelector('input[value^="references/"]')));
-    assert.equal(await page(() => document.documentElement.scrollWidth > window.innerWidth), false, "Resource editor stays within the page");
-
+    assert.equal(
+      await page(() => document.documentElement.scrollWidth > window.innerWidth),
+      false,
+      "Resource editor stays within the page",
+    );
   }
   assert.deepEqual(browserErrors, [], "Skill page has no browser runtime errors");
-  console.log("Skill layout passed: categorized collections, filter retains publication, long titles, selected state, resources and personal editor, five viewports; synthetic only");
-
+  console.log(
+    "Skill layout passed: categorized collections, filter retains publication, long titles, selected state, resources and personal editor, five viewports; synthetic only",
+  );
 } finally {
   socket?.close();
   if (chrome && chrome.exitCode == null) {
-    const exited = new Promise((resolve) => chrome.once("exit", resolve));
+    const exited = new Promise(resolve => chrome.once("exit", resolve));
     chrome.kill();
     await exited;
   }
   if (server?.close) await server.close();
-  else if (server) await new Promise((resolve, reject) => server.httpServer.close((error) => error ? reject(error) : resolve()));
+  else if (server)
+    await new Promise((resolve, reject) => server.httpServer.close(error => (error ? reject(error) : resolve())));
   await rm(profile, { recursive: true, force: true });
 }

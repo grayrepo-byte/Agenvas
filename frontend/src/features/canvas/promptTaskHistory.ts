@@ -11,15 +11,16 @@ function creationOrder(task: Task): string {
 export async function acknowledgePromptTask(client: QueryClient, queryKey: QueryKey, task: Task): Promise<void> {
   const known = client.getQueryData<Task[]>(queryKey);
   await client.cancelQueries({ queryKey, exact: true });
-  client.setQueryData<Task[]>(queryKey, (current) => {
+  client.setQueryData<Task[]>(queryKey, current => {
     const tasks = new Map<string, Task>();
     for (const entry of [...(known ?? []), ...(current ?? []), task]) {
       const previous = tasks.get(entry.id);
       if (!previous || previous.version <= entry.version) tasks.set(entry.id, entry);
     }
     return [...tasks.values()].sort((left, right) => {
-      const a = creationOrder(left), b = creationOrder(right);
-      return a !== b ? a < b ? 1 : -1 : left.id === right.id ? 0 : left.id < right.id ? 1 : -1;
+      const a = creationOrder(left),
+        b = creationOrder(right);
+      return a !== b ? (a < b ? 1 : -1) : left.id === right.id ? 0 : left.id < right.id ? 1 : -1;
     });
   });
 }

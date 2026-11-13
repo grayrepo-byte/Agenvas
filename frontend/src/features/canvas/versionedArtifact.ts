@@ -12,8 +12,7 @@ export type VersionedArtifact = Artifact & {
   resourceDefaultVersion: NonNullable<Artifact["resourceDefaultVersion"]>;
 };
 
-export function hasCurrentVersion(artifact: Artifact | null | undefined):
-  artifact is VersionedArtifact {
+export function hasCurrentVersion(artifact: Artifact | null | undefined): artifact is VersionedArtifact {
   return artifact?.resourceDefaultVersionId != null && artifact.resourceDefaultVersion != null;
 }
 

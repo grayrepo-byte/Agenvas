@@ -30,7 +30,8 @@ import tools.jackson.databind.ObjectMapper;
 
 class RunningHubImportServiceTest {
     private final ObjectMapper mapper = new ObjectMapper();
-    private final RunningHubImportService imports = new RunningHubImportService(null, null, null, mapper, dev.agenvas.testing.CreationMessagesTestSupport.messages());
+    private final RunningHubImportService imports = new RunningHubImportService(null, null, null, mapper,
+            dev.agenvas.testing.CreationMessagesTestSupport.messages());
 
     @ParameterizedTest
     @CsvSource({"en, Node 1", "zh, 节点 1", "ru, Узел 1", "ja, ノード 1"})
@@ -42,7 +43,8 @@ class RunningHubImportServiceTest {
             var source = mapper.readTree("""
                     {"1":{"inputs":{"steps":20}},"2":{"_meta":{"title":"用户节点"},"inputs":{"steps":20}}}
                     """);
-            var preview = imports.candidates(RunningHubDefinition.TargetType.WORKFLOW, "123", Task.Kind.IMAGE_GENERATION, source);
+            var preview = imports.candidates(RunningHubDefinition.TargetType.WORKFLOW, "123",
+                    Task.Kind.IMAGE_GENERATION, source);
             assertThat(preview.definition().nodeOptions().getFirst().label()).isEqualTo(expected);
             assertThat(preview.definition().fields().getFirst().label()).isEqualTo(expected + " · steps");
             assertThat(preview.definition().nodeOptions().getLast().label()).isEqualTo("用户节点");
@@ -53,14 +55,16 @@ class RunningHubImportServiceTest {
     }
     @ParameterizedTest
     @EnumSource(RunningHubDefinition.TargetType.class)
-    void discoveryAcceptsMoreThan64FieldsThrough1024AndPreservesThemWhenPublished(RunningHubDefinition.TargetType type) {
+    void discoveryAcceptsMoreThan64FieldsThrough1024AndPreservesThemWhenPublished(
+            RunningHubDefinition.TargetType type) {
         for (int count : new int[]{65, 1024}) {
             var source = scalarInputs(type, count);
             var preview = imports.candidates(type, "123", Task.Kind.IMAGE_GENERATION, source);
             assertThat(preview.definition().fields()).hasSize(count);
             assertThat(preview.definition().fields().getLast().key()).isEqualTo("input" + count);
             assertThat(preview.definition().importSource()).isEqualTo(source);
-            assertThat(RunningHubDefinition.parse(mapper, mapper.valueToTree(preview.definition()), Task.Kind.IMAGE_GENERATION))
+            assertThat(RunningHubDefinition.parse(mapper, mapper.valueToTree(preview.definition()),
+                    Task.Kind.IMAGE_GENERATION))
                     .isEqualTo(preview.definition());
         }
     }
@@ -86,7 +90,9 @@ class RunningHubImportServiceTest {
         return inputs;
     }
 
-    @Test void automaticPublicAppDiscoveryProducesAValidVideoContractWithoutSendingCredentialsOrGenerating() throws Exception {
+    @Test
+    void automaticPublicAppDiscoveryProducesAValidVideoContractWithoutSendingCredentialsOrGenerating()
+            throws Exception {
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         var calls = new AtomicInteger();
         try (var input = getClass().getResourceAsStream("/runninghub/minimax-h3-app-inputs.json")) {
@@ -95,19 +101,22 @@ class RunningHubImportServiceTest {
             payload.put("code", 0);
             var nodes = mapper.readTree(input);
             // Synthetic discovery response: the node class is generic, its app description is specific.
-            for (var node : nodes) if ("IMAGE".equals(node.path("fieldType").asText())) {
-                var object = (tools.jackson.databind.node.ObjectNode) node;
-                object.put("description", object.path("nodeName").asText());
-                object.put("nodeName", "LoadImage");
-                var choices = object.putArray("fieldData");
-                choices.addArray().add("synthetic.png").add("None").add("synthetic.png");
-                choices.addObject().put("image_upload", true);
-            }
-            payload.putObject("data").put("id", "2084320751339032577").put("name", "  Synthetic video app  ").set("inputNodes", nodes);
+            for (var node : nodes)
+                if ("IMAGE".equals(node.path("fieldType").asText())) {
+                    var object = (tools.jackson.databind.node.ObjectNode) node;
+                    object.put("description", object.path("nodeName").asText());
+                    object.put("nodeName", "LoadImage");
+                    var choices = object.putArray("fieldData");
+                    choices.addArray().add("synthetic.png").add("None").add("synthetic.png");
+                    choices.addObject().put("image_upload", true);
+                }
+            payload.putObject("data").put("id", "2084320751339032577").put("name", "  Synthetic video app  ")
+                    .set("inputNodes", nodes);
             server.createContext("/api/webapp/detail", exchange -> {
                 calls.incrementAndGet();
                 assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isNull();
-                assertThat(mapper.readTree(exchange.getRequestBody().readAllBytes()).path("webappId").asText()).isEqualTo("2084320751339032577");
+                assertThat(mapper.readTree(exchange.getRequestBody().readAllBytes()).path("webappId").asText())
+                        .isEqualTo("2084320751339032577");
                 byte[] bytes = payload.toString().getBytes(StandardCharsets.UTF_8);
                 exchange.sendResponseHeaders(200, bytes.length);
                 exchange.getResponseBody().write(bytes);
@@ -117,23 +126,32 @@ class RunningHubImportServiceTest {
             var repository = mock(JooqMediaCapabilityRepository.class);
             var cipher = mock(CredentialCipher.class);
             var connectionId = UUID.randomUUID();
-            when(repository.connection(connectionId)).thenReturn(Optional.of(new JooqMediaCapabilityRepository.Connection(
-                    connectionId, "Synthetic app connection", MediaPlatform.RUNNINGHUB, true, 1, 1)));
-            when(repository.connectionVersion(connectionId, 1)).thenReturn(Optional.of(new JooqMediaCapabilityRepository.ConnectionVersion(
-                    connectionId, 1, "http://127.0.0.1:" + server.getAddress().getPort(), "synthetic", new byte[0], new byte[0], 1, "test")));
-            when(cipher.decryptMedia(eq(connectionId), eq(1), any(CredentialCipher.Encrypted.class))).thenReturn("synthetic-key");
-            var preview = new RunningHubImportService(repository, cipher, new RunningHubClient(mapper), mapper, dev.agenvas.testing.CreationMessagesTestSupport.messages())
-                    .preview(connectionId, RunningHubDefinition.TargetType.AI_APP, "2084320751339032577", Task.Kind.VIDEO_GENERATION, null);
+            when(repository.connection(connectionId))
+                    .thenReturn(Optional.of(new JooqMediaCapabilityRepository.Connection(
+                            connectionId, "Synthetic app connection", MediaPlatform.RUNNINGHUB, true, 1, 1)));
+            when(repository.connectionVersion(connectionId, 1))
+                    .thenReturn(Optional.of(new JooqMediaCapabilityRepository.ConnectionVersion(
+                            connectionId, 1, "http://127.0.0.1:" + server.getAddress().getPort(), "synthetic",
+                            new byte[0], new byte[0], 1, "test")));
+            when(cipher.decryptMedia(eq(connectionId), eq(1), any(CredentialCipher.Encrypted.class)))
+                    .thenReturn("synthetic-key");
+            var preview = new RunningHubImportService(repository, cipher, new RunningHubClient(mapper), mapper,
+                    dev.agenvas.testing.CreationMessagesTestSupport.messages())
+                    .preview(connectionId, RunningHubDefinition.TargetType.AI_APP, "2084320751339032577",
+                            Task.Kind.VIDEO_GENERATION, null);
             assertThat(preview.definition().fields()).hasSize(21);
             assertThat(preview.targetName()).isEqualTo("Synthetic video app");
             assertThat(preview.definition().importSource().toString()).doesNotContain("Synthetic video app");
-            assertThat(preview.definition().fields().stream().filter(field -> field.type() == RunningHubDefinition.FieldType.IMAGE))
+            assertThat(preview.definition().fields().stream()
+                    .filter(field -> field.type() == RunningHubDefinition.FieldType.IMAGE))
                     .extracting(RunningHubDefinition.Field::label)
                     .containsExactly("参考图1", "参考图2", "参考图3", "参考图4", "参考图5", "参考图6");
             assertThat(preview.definition().fields().stream().filter(RunningHubDefinition.Field::media))
                     .allSatisfy(field -> assertThat(field.options()).isEmpty());
-            assertThat(preview.definition().fields()).anyMatch(field -> field.fieldName().equals("aspect_ratio") && field.options().size() == 8);
-            assertThat(preview.definition().outputs().getFirst().kind()).isEqualTo(RunningHubDefinition.OutputKind.VIDEO);
+            assertThat(preview.definition().fields())
+                    .anyMatch(field -> field.fieldName().equals("aspect_ratio") && field.options().size() == 8);
+            assertThat(preview.definition().outputs().getFirst().kind())
+                    .isEqualTo(RunningHubDefinition.OutputKind.VIDEO);
             preview.definition().validate(Task.Kind.VIDEO_GENERATION);
             assertThat(mapper.writeValueAsString(preview)).doesNotContain("synthetic-key");
             assertThat(calls).hasValue(1);
@@ -141,17 +159,21 @@ class RunningHubImportServiceTest {
             server.stop(0);
         }
     }
-    @Test void workflowImportRecognizesTextButDoesNotTurnAnUnknownImageStringIntoAMediaSlot() {
+    @Test
+    void workflowImportRecognizesTextButDoesNotTurnAnUnknownImageStringIntoAMediaSlot() {
         var preview = imports.candidates(RunningHubDefinition.TargetType.WORKFLOW, "123", Task.Kind.IMAGE_GENERATION,
-                mapper.readTree("{\"6\":{\"class_type\":\"Text\",\"inputs\":{\"text\":\"draw\",\"model\":[\"4\",0]}},\"10\":{\"inputs\":{\"image\":\"remote.png\"}}}"));
+                mapper.readTree(
+                        "{\"6\":{\"class_type\":\"Text\",\"inputs\":{\"text\":\"draw\",\"model\":[\"4\",0]}},\"10\":{\"inputs\":{\"image\":\"remote.png\"}}}"));
         assertThat(preview.definition().fields()).hasSize(2).allMatch(field -> !field.required());
-        assertThat(preview.definition().fields().getFirst().effectiveSource()).isEqualTo(RunningHubDefinition.Source.PROMPT);
+        assertThat(preview.definition().fields().getFirst().effectiveSource())
+                .isEqualTo(RunningHubDefinition.Source.PROMPT);
         assertThat(preview.definition().fields().get(1).type()).isEqualTo(RunningHubDefinition.FieldType.STRING);
         assertThat(preview.recommendedFieldKeys()).containsExactly("input1");
         assertThat(preview.targetName()).isNull();
         assertThat(preview.definition().sourceSha256()).hasSize(64);
     }
-    @Test void fieldInsightsExplainTypeRoleConnectionsAndOnlyExplicitStagesWithoutChangingTheSource() {
+    @Test
+    void fieldInsightsExplainTypeRoleConnectionsAndOnlyExplicitStagesWithoutChangingTheSource() {
         var source = mapper.readTree("""
             {"1":{"class_type":"PrimitiveFloat","_meta":{"title":"Stage 1: Base duration"},"inputs":{"value":15}},
              "2":{"class_type":"ResolutionSelector","_meta":{"title":"latent upscale"},"inputs":{"megapixels":["1",0]}},
@@ -160,24 +182,30 @@ class RunningHubImportServiceTest {
              "5":{"class_type":"KSampler","inputs":{"positive":["3",0],"negative":["4",0],"steps":20}}}
             """);
         var before = source.deepCopy();
-        var preview = imports.candidates(RunningHubDefinition.TargetType.WORKFLOW, "123", Task.Kind.VIDEO_GENERATION, source);
+        var preview = imports.candidates(RunningHubDefinition.TargetType.WORKFLOW, "123", Task.Kind.VIDEO_GENERATION,
+                source);
         assertThat(preview.fieldInsights()).hasSize(preview.definition().fields().size());
-        assertThat(preview.fieldInsights().getFirst().confidence()).isEqualTo(RunningHubImportService.Confidence.DECLARED);
+        assertThat(preview.fieldInsights().getFirst().confidence())
+                .isEqualTo(RunningHubImportService.Confidence.DECLARED);
         assertThat(preview.fieldInsights().getFirst().reasons()).contains(
                 RunningHubImportService.InsightReason.TYPE_DECLARATION,
                 RunningHubImportService.InsightReason.DIRECT_CREATIVE_CONNECTION,
                 RunningHubImportService.InsightReason.EXPLICIT_GROUP);
         assertThat(preview.definition().fields().getFirst().group()).isEqualTo("Stage 1");
         assertThat(preview.definition().fields().get(1).group()).isNull();
-        assertThat(preview.fieldInsights().get(1).reasons()).contains(RunningHubImportService.InsightReason.PRIMARY_PROMPT);
-        assertThat(preview.fieldInsights().get(2).reasons()).contains(RunningHubImportService.InsightReason.NEGATIVE_PROMPT)
+        assertThat(preview.fieldInsights().get(1).reasons())
+                .contains(RunningHubImportService.InsightReason.PRIMARY_PROMPT);
+        assertThat(preview.fieldInsights().get(2).reasons())
+                .contains(RunningHubImportService.InsightReason.NEGATIVE_PROMPT)
                 .doesNotContain(RunningHubImportService.InsightReason.PRIMARY_PROMPT);
-        assertThat(preview.fieldInsights().get(3).reasons()).containsExactly(RunningHubImportService.InsightReason.JSON_VALUE);
+        assertThat(preview.fieldInsights().get(3).reasons())
+                .containsExactly(RunningHubImportService.InsightReason.JSON_VALUE);
         assertThat(preview.definition().fields().get(3).group()).isNull();
         assertThat(preview.definition().importSource()).isEqualTo(before);
         assertThat(source).isEqualTo(before);
     }
-    @Test void fieldInsightsExposeAmbiguousPromptAndMetadataWithoutForcingSelection() {
+    @Test
+    void fieldInsightsExposeAmbiguousPromptAndMetadataWithoutForcingSelection() {
         var preview = imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.VIDEO_GENERATION,
                 mapper.readTree("""
                     [{"nodeId":"1","fieldName":"prompt","nodeName":"Text","fieldType":"STRING","fieldValue":"first"},
@@ -188,14 +216,21 @@ class RunningHubImportServiceTest {
                      {"nodeId":"5","fieldName":"value"}]
                     """));
         assertThat(preview.recommendedFieldKeys()).isEmpty();
-        assertThat(preview.fieldInsights()).allMatch(insight -> insight.confidence() == RunningHubImportService.Confidence.UNCERTAIN);
-        assertThat(preview.fieldInsights().getFirst().reasons()).contains(RunningHubImportService.InsightReason.AMBIGUOUS_PROMPT);
-        assertThat(preview.fieldInsights().get(2).reasons()).contains(RunningHubImportService.InsightReason.CONFLICTING_MEDIA_METADATA);
-        assertThat(preview.fieldInsights().get(3).reasons()).contains(RunningHubImportService.InsightReason.MISSING_ENUM_OPTIONS);
-        assertThat(preview.fieldInsights().get(4).reasons()).containsExactly(RunningHubImportService.InsightReason.MISSING_TYPE_METADATA);
-        assertThat(preview.definition().fields()).allMatch(field -> field.effectiveSource() == RunningHubDefinition.Source.PARAMETER);
+        assertThat(preview.fieldInsights())
+                .allMatch(insight -> insight.confidence() == RunningHubImportService.Confidence.UNCERTAIN);
+        assertThat(preview.fieldInsights().getFirst().reasons())
+                .contains(RunningHubImportService.InsightReason.AMBIGUOUS_PROMPT);
+        assertThat(preview.fieldInsights().get(2).reasons())
+                .contains(RunningHubImportService.InsightReason.CONFLICTING_MEDIA_METADATA);
+        assertThat(preview.fieldInsights().get(3).reasons())
+                .contains(RunningHubImportService.InsightReason.MISSING_ENUM_OPTIONS);
+        assertThat(preview.fieldInsights().get(4).reasons())
+                .containsExactly(RunningHubImportService.InsightReason.MISSING_TYPE_METADATA);
+        assertThat(preview.definition().fields())
+                .allMatch(field -> field.effectiveSource() == RunningHubDefinition.Source.PARAMETER);
     }
-    @Test void loaderClassDeterminesResourceFormatAndUnknownMediaPortsRemainEditable() {
+    @Test
+    void loaderClassDeterminesResourceFormatAndUnknownMediaPortsRemainEditable() {
         for (var targetType : RunningHubDefinition.TargetType.values()) {
             var source = targetType == RunningHubDefinition.TargetType.WORKFLOW ? mapper.readTree("""
                 {"1":{"class_type":"LoadImageFromUrl","inputs":{"image":"https://media.invalid/synthetic.png"}},
@@ -214,31 +249,40 @@ class RunningHubImportServiceTest {
                 """);
             var preview = imports.candidates(targetType, "123", Task.Kind.VIDEO_GENERATION, source);
             assertThat(preview.definition().fields()).extracting(RunningHubDefinition.Field::resourceFormat)
-                    .containsExactly(RunningHubDefinition.ResourceFormat.URL, RunningHubDefinition.ResourceFormat.FILE_NAME,
+                    .containsExactly(RunningHubDefinition.ResourceFormat.URL,
+                            RunningHubDefinition.ResourceFormat.FILE_NAME,
                             RunningHubDefinition.ResourceFormat.URL, RunningHubDefinition.ResourceFormat.URL, null,
                             RunningHubDefinition.ResourceFormat.URL);
             assertThat(preview.definition().fields()).allMatch(field -> field.defaultValue() == null);
-            assertThat(preview.fieldInsights().getFirst().reasons()).contains(RunningHubImportService.InsightReason.RESOURCE_URL_NODE);
-            assertThat(preview.fieldInsights().get(1).reasons()).contains(RunningHubImportService.InsightReason.RESOURCE_FILE_NODE);
-            assertThat(preview.fieldInsights().get(4).confidence()).isEqualTo(RunningHubImportService.Confidence.UNCERTAIN);
-            assertThat(preview.fieldInsights().get(4).reasons()).contains(RunningHubImportService.InsightReason.RESOURCE_FORMAT_UNCERTAIN);
+            assertThat(preview.fieldInsights().getFirst().reasons())
+                    .contains(RunningHubImportService.InsightReason.RESOURCE_URL_NODE);
+            assertThat(preview.fieldInsights().get(1).reasons())
+                    .contains(RunningHubImportService.InsightReason.RESOURCE_FILE_NODE);
+            assertThat(preview.fieldInsights().get(4).confidence())
+                    .isEqualTo(RunningHubImportService.Confidence.UNCERTAIN);
+            assertThat(preview.fieldInsights().get(4).reasons())
+                    .contains(RunningHubImportService.InsightReason.RESOURCE_FORMAT_UNCERTAIN);
             assertThat(preview.recommendedFieldKeys()).hasSize(6);
         }
     }
-    @Test void genericTextPromotedToMediaReportsInferenceAndStageSuggestionsStayBounded() {
+    @Test
+    void genericTextPromotedToMediaReportsInferenceAndStageSuggestionsStayBounded() {
         var preview = imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.IMAGE_GENERATION,
                 mapper.readTree("""
                     [{"nodeId":"1","nodeName":"LoadImage","fieldName":"reference_image","fieldType":"STRING","fieldValue":"synthetic.png"}]
                     """));
         assertThat(preview.definition().fields().getFirst().type()).isEqualTo(RunningHubDefinition.FieldType.IMAGE);
-        assertThat(preview.fieldInsights().getFirst().confidence()).isEqualTo(RunningHubImportService.Confidence.INFERRED);
-        assertThat(preview.fieldInsights().getFirst().reasons()).contains(RunningHubImportService.InsightReason.NAME_HINT);
+        assertThat(preview.fieldInsights().getFirst().confidence())
+                .isEqualTo(RunningHubImportService.Confidence.INFERRED);
+        assertThat(preview.fieldInsights().getFirst().reasons())
+                .contains(RunningHubImportService.InsightReason.NAME_HINT);
         assertThat(RunningHubInputDiscovery.group("放大输出：清晰度")).isEqualTo("放大输出");
         assertThat(RunningHubInputDiscovery.group("Phase 2 — Resolution")).isEqualTo("Phase 2");
         assertThat(RunningHubInputDiscovery.group("Latent upscale")).isNull();
         assertThat(RunningHubInputDiscovery.group("Stage " + "1".repeat(100) + ": Duration")).isNull();
     }
-    @Test void workflowDiscoverySuggestsPromptAndMediaWhileLeavingSameNodeTuningParametersManual() {
+    @Test
+    void workflowDiscoverySuggestsPromptAndMediaWhileLeavingSameNodeTuningParametersManual() {
         var preview = imports.candidates(RunningHubDefinition.TargetType.WORKFLOW, "123", Task.Kind.VIDEO_GENERATION,
                 mapper.readTree("""
                     {"1":{"class_type":"RH_Text","inputs":{"text":"draw a scene","seed":8}},
@@ -250,15 +294,21 @@ class RunningHubImportServiceTest {
                      "7":{"class_type":"KSampler","inputs":{"steps":20,"cfg":7.0,"model":["6",0]}}}
                     """));
         assertThat(preview.recommendedFieldKeys()).containsExactly("input1", "input3", "input5", "input7", "input8");
-        assertThat(preview.definition().fields().getFirst().effectiveSource()).isEqualTo(RunningHubDefinition.Source.PROMPT);
-        assertThat(preview.definition().fields().stream().filter(RunningHubDefinition.Field::media)).extracting(RunningHubDefinition.Field::type)
-                .containsExactly(RunningHubDefinition.FieldType.IMAGE, RunningHubDefinition.FieldType.VIDEO, RunningHubDefinition.FieldType.AUDIO, RunningHubDefinition.FieldType.AUDIO);
-        assertThat(preview.definition().fields().stream().filter(RunningHubDefinition.Field::media)).allMatch(field -> field.defaultValue() == null);
-        assertThat(preview.definition().fields().stream().filter(field -> field.fieldName().equals("audio_url")).findFirst().orElseThrow().effectiveResourceFormat())
+        assertThat(preview.definition().fields().getFirst().effectiveSource())
+                .isEqualTo(RunningHubDefinition.Source.PROMPT);
+        assertThat(preview.definition().fields().stream().filter(RunningHubDefinition.Field::media))
+                .extracting(RunningHubDefinition.Field::type)
+                .containsExactly(RunningHubDefinition.FieldType.IMAGE, RunningHubDefinition.FieldType.VIDEO,
+                        RunningHubDefinition.FieldType.AUDIO, RunningHubDefinition.FieldType.AUDIO);
+        assertThat(preview.definition().fields().stream().filter(RunningHubDefinition.Field::media))
+                .allMatch(field -> field.defaultValue() == null);
+        assertThat(preview.definition().fields().stream().filter(field -> field.fieldName().equals("audio_url"))
+                .findFirst().orElseThrow().effectiveResourceFormat())
                 .isEqualTo(RunningHubDefinition.ResourceFormat.URL);
         preview.definition().validate(Task.Kind.VIDEO_GENERATION);
     }
-    @Test void negativeConditioningPathsDoNotConsumeTheCanvasPromptEvenThroughAnIntermediateTextEncoder() {
+    @Test
+    void negativeConditioningPathsDoNotConsumeTheCanvasPromptEvenThroughAnIntermediateTextEncoder() {
         var preview = imports.candidates(RunningHubDefinition.TargetType.WORKFLOW, "123", Task.Kind.IMAGE_GENERATION,
                 mapper.readTree("""
                     {"1":{"class_type":"Text","inputs":{"text":"blur"}},
@@ -266,20 +316,25 @@ class RunningHubImportServiceTest {
                      "3":{"class_type":"CLIPTextEncode","inputs":{"text":"a landscape"}},
                      "4":{"class_type":"KSampler","inputs":{"negative":["2",0],"positive":["3",0],"seed":42}}}
                     """));
-        assertThat(preview.definition().fields().getFirst().effectiveSource()).isEqualTo(RunningHubDefinition.Source.PARAMETER);
-        assertThat(preview.definition().fields().get(1).effectiveSource()).isEqualTo(RunningHubDefinition.Source.PROMPT);
+        assertThat(preview.definition().fields().getFirst().effectiveSource())
+                .isEqualTo(RunningHubDefinition.Source.PARAMETER);
+        assertThat(preview.definition().fields().get(1).effectiveSource())
+                .isEqualTo(RunningHubDefinition.Source.PROMPT);
         assertThat(preview.recommendedFieldKeys()).containsExactly("input1", "input2");
     }
-    @Test void sharedPositiveAndNegativeTextRemainsManual() {
+    @Test
+    void sharedPositiveAndNegativeTextRemainsManual() {
         var preview = imports.candidates(RunningHubDefinition.TargetType.WORKFLOW, "123", Task.Kind.IMAGE_GENERATION,
                 mapper.readTree("""
                     {"1":{"class_type":"Text","inputs":{"text":"shared"}},
                      "2":{"class_type":"KSampler","inputs":{"negative":["1",0],"positive":["1",0],"seed":42}}}
                     """));
-        assertThat(preview.definition().fields().getFirst().effectiveSource()).isEqualTo(RunningHubDefinition.Source.PARAMETER);
+        assertThat(preview.definition().fields().getFirst().effectiveSource())
+                .isEqualTo(RunningHubDefinition.Source.PARAMETER);
         assertThat(preview.recommendedFieldKeys()).isEmpty();
     }
-    @Test void conflictingUploadMetadataIsNotOverruledByTheFieldNameOrLabel() {
+    @Test
+    void conflictingUploadMetadataIsNotOverruledByTheFieldNameOrLabel() {
         var preview = imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.VIDEO_GENERATION,
                 mapper.readTree("""
                     [{"nodeId":"1","fieldName":"reference_image_1","description":"参考图","fieldType":"STRING","fieldValue":"None",
@@ -292,7 +347,8 @@ class RunningHubImportServiceTest {
         assertThat(preview.definition().fields().get(1).type()).isEqualTo(RunningHubDefinition.FieldType.VIDEO);
         assertThat(preview.recommendedFieldKeys()).containsExactly("input2");
     }
-    @Test void ambiguousTextInputsAndNegativeLabelsRemainManualRatherThanCreatingDuplicatePromptSources() {
+    @Test
+    void ambiguousTextInputsAndNegativeLabelsRemainManualRatherThanCreatingDuplicatePromptSources() {
         var preview = imports.candidates(RunningHubDefinition.TargetType.WORKFLOW, "123", Task.Kind.IMAGE_GENERATION,
                 mapper.readTree("""
                     {"1":{"class_type":"Text","inputs":{"text":"first"}},
@@ -300,10 +356,12 @@ class RunningHubImportServiceTest {
                      "3":{"class_type":"CLIPTextEncode","_meta":{"title":"负向提示词"},"inputs":{"text":"bad"}}}
                     """));
         assertThat(preview.recommendedFieldKeys()).containsExactly("input3");
-        assertThat(preview.definition().fields()).allMatch(field -> field.effectiveSource() == RunningHubDefinition.Source.PARAMETER);
+        assertThat(preview.definition().fields())
+                .allMatch(field -> field.effectiveSource() == RunningHubDefinition.Source.PARAMETER);
         preview.definition().validate(Task.Kind.IMAGE_GENERATION);
     }
-    @Test void appDiscoverySelectsCreatorInputsWithoutExposingSeeds() {
+    @Test
+    void appDiscoverySelectsCreatorInputsWithoutExposingSeeds() {
         var preview = imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.VIDEO_GENERATION,
                 mapper.readTree("""
                     [{"nodeId":"1","nodeName":"Text","fieldName":"text","fieldType":"STRING","fieldValue":"scene"},
@@ -318,7 +376,8 @@ class RunningHubImportServiceTest {
         assertThat(preview.definition().fields().get(4).defaultValue().asInt()).isEqualTo(42);
         assertThat(preview.definition().fields().get(5).options()).hasSize(2);
     }
-    @Test void appDiscoveryUsesWidgetTypesBoundsAndCurrentDefaultsForCreativeParameters() {
+    @Test
+    void appDiscoveryUsesWidgetTypesBoundsAndCurrentDefaultsForCreativeParameters() {
         var source = mapper.readTree("""
             [{"nodeId":"1","fieldName":"value","fieldType":"FLOAT","description":"时长（秒）","fieldValue":"12.5",
               "fieldData":["FLOAT",{"min":0.1,"max":30,"step":0.1,"default":6}]},
@@ -329,7 +388,8 @@ class RunningHubImportServiceTest {
              {"nodeId":"5","fieldName":"scheduler","fieldType":"LIST","fieldValue":"simple","fieldData":["simple","normal"]},
              {"nodeId":"6","fieldName":"text","description":"视频描述","fieldType":"STRING","fieldValue":"synthetic scene"}]
             """);
-        var preview = imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.VIDEO_GENERATION, source);
+        var preview = imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.VIDEO_GENERATION,
+                source);
         assertThat(preview.recommendedFieldKeys()).containsExactly("input1", "input2", "input3", "input4", "input6");
         var duration = preview.definition().fields().getFirst();
         assertThat(duration.type()).isEqualTo(RunningHubDefinition.FieldType.NUMBER);
@@ -342,13 +402,16 @@ class RunningHubImportServiceTest {
         assertThat(preview.definition().fields().get(2).type()).isEqualTo(RunningHubDefinition.FieldType.SELECT);
         assertThat(preview.definition().fields().get(2).defaultValue().asText()).isEqualTo("16:9");
         assertThat(preview.definition().fields().get(3).defaultValue().isIntegralNumber()).isTrue();
-        assertThat(preview.definition().fields().get(5).effectiveSource()).isEqualTo(RunningHubDefinition.Source.PROMPT);
+        assertThat(preview.definition().fields().get(5).effectiveSource())
+                .isEqualTo(RunningHubDefinition.Source.PROMPT);
         assertThat(preview.definition().importSource()).isEqualTo(source);
-        var published = RunningHubDefinition.parse(mapper, mapper.valueToTree(preview.definition()), Task.Kind.VIDEO_GENERATION);
+        var published = RunningHubDefinition.parse(mapper, mapper.valueToTree(preview.definition()),
+                Task.Kind.VIDEO_GENERATION);
         var publishedJson = mapper.valueToTree(published);
         assertThat(publishedJson).isEqualTo(mapper.valueToTree(preview.definition()));
     }
-    @Test void workflowDiscoveryRecognizesNumberedReferenceSlotsAndCreativeControls() {
+    @Test
+    void workflowDiscoveryRecognizesNumberedReferenceSlotsAndCreativeControls() {
         var preview = imports.candidates(RunningHubDefinition.TargetType.WORKFLOW, "123", Task.Kind.VIDEO_GENERATION,
                 mapper.readTree("""
                     {"1":{"class_type":"Primitive","_meta":{"title":"视频描述"},"inputs":{"value":"synthetic scene"}},
@@ -357,14 +420,19 @@ class RunningHubImportServiceTest {
                      "4":{"class_type":"Primitive","_meta":{"title":"输出时长（秒）"},"inputs":{"value":6.5}},
                      "5":{"class_type":"Text","_meta":{"title":"负向提示词"},"inputs":{"text":"synthetic negative"}}}
                     """));
-        assertThat(preview.recommendedFieldKeys()).containsExactly("input1", "input2", "input3", "input4", "input5", "input6", "input7", "input10", "input11");
+        assertThat(preview.recommendedFieldKeys()).containsExactly("input1", "input2", "input3", "input4", "input5",
+                "input6", "input7", "input10", "input11");
         assertThat(preview.definition().fields().subList(1, 4)).extracting(RunningHubDefinition.Field::type)
-                .containsExactly(RunningHubDefinition.FieldType.IMAGE, RunningHubDefinition.FieldType.AUDIO, RunningHubDefinition.FieldType.VIDEO);
-        assertThat(preview.definition().fields().getFirst().effectiveSource()).isEqualTo(RunningHubDefinition.Source.PROMPT);
-        assertThat(preview.definition().fields().getLast().effectiveSource()).isEqualTo(RunningHubDefinition.Source.PARAMETER);
+                .containsExactly(RunningHubDefinition.FieldType.IMAGE, RunningHubDefinition.FieldType.AUDIO,
+                        RunningHubDefinition.FieldType.VIDEO);
+        assertThat(preview.definition().fields().getFirst().effectiveSource())
+                .isEqualTo(RunningHubDefinition.Source.PROMPT);
+        assertThat(preview.definition().fields().getLast().effectiveSource())
+                .isEqualTo(RunningHubDefinition.Source.PARAMETER);
         assertThat(preview.definition().fields().get(9).type()).isEqualTo(RunningHubDefinition.FieldType.NUMBER);
     }
-    @Test void workflowPrimitiveTypesAndDirectCreativeConnectionsDoNotExposeInternalControls() {
+    @Test
+    void workflowPrimitiveTypesAndDirectCreativeConnectionsDoNotExposeInternalControls() {
         var preview = imports.candidates(RunningHubDefinition.TargetType.WORKFLOW, "123", Task.Kind.VIDEO_GENERATION,
                 mapper.readTree("""
                     {"1":{"class_type":"PrimitiveFloat","_meta":{"title":"Float (Duration)"},"inputs":{"value":15}},
@@ -383,9 +451,11 @@ class RunningHubImportServiceTest {
         assertThat(preview.definition().fields().get(1).type()).isEqualTo(RunningHubDefinition.FieldType.NUMBER);
         assertThat(preview.recommendedFieldKeys()).containsExactly("input1", "input2", "input3", "input10");
         assertThat(preview.definition().fields().getFirst().defaultValue().asInt()).isEqualTo(15);
-        assertThat(preview.definition().fields().getLast().effectiveSource()).isEqualTo(RunningHubDefinition.Source.PARAMETER);
+        assertThat(preview.definition().fields().getLast().effectiveSource())
+                .isEqualTo(RunningHubDefinition.Source.PARAMETER);
     }
-    @Test void workflowImportKeepsDottedScalarNamesWithoutExpandingNestedObjects() {
+    @Test
+    void workflowImportKeepsDottedScalarNamesWithoutExpandingNestedObjects() {
         var source = mapper.readTree("""
             {"516":{"class_type":"SyntheticSampler","inputs":{
               "sampling_mode.top_p":0.9,"sampling_mode.presence_penalty":0,
@@ -393,17 +463,21 @@ class RunningHubImportServiceTest {
               "sampling_mode.seed":42,"sampling_mode.top_k":50,"sampling_mode.min_p":0.1,
               "sampling_mode":{"top_p":0.5},"model":["4",0]}}}
             """);
-        var preview = imports.candidates(RunningHubDefinition.TargetType.WORKFLOW, "123", Task.Kind.IMAGE_GENERATION, source);
+        var preview = imports.candidates(RunningHubDefinition.TargetType.WORKFLOW, "123", Task.Kind.IMAGE_GENERATION,
+                source);
         assertThat(preview.definition().fields()).hasSize(7).allSatisfy(field -> {
             assertThat(field.nodeId()).isEqualTo("516");
             assertThat(field.fieldName()).startsWith("sampling_mode.");
             assertThat(field.defaultValue()).isEqualTo(source.path("516").path("inputs").get(field.fieldName()));
         });
-        assertThat(preview.warnings()).hasSize(2).noneMatch(warning -> warning.key().contains("unsupported-mapping-format"));
-        assertThat(RunningHubDefinition.parse(mapper, mapper.valueToTree(preview.definition()), Task.Kind.IMAGE_GENERATION))
+        assertThat(preview.warnings()).hasSize(2)
+                .noneMatch(warning -> warning.key().contains("unsupported-mapping-format"));
+        assertThat(RunningHubDefinition.parse(mapper, mapper.valueToTree(preview.definition()),
+                Task.Kind.IMAGE_GENERATION))
                 .isEqualTo(preview.definition());
     }
-    @Test void workflowImportRetainsItsFullSourceAndOutputOnlyNodesAcrossContractRoundTrip() {
+    @Test
+    void workflowImportRetainsItsFullSourceAndOutputOnlyNodesAcrossContractRoundTrip() {
         var preview = imports.candidates(RunningHubDefinition.TargetType.WORKFLOW, "123", Task.Kind.IMAGE_GENERATION,
                 mapper.readTree("""
                     {"6":{"class_type":"Text","inputs":{"text":"draw"}},
@@ -419,20 +493,26 @@ class RunningHubImportServiceTest {
         assertThat(json.path("nodeOptions").toString()).doesNotContain("class_type", "images", "inputs");
         assertThat(json.path("importSource").path("20").path("inputs").path("images")).hasSize(2);
         assertThat(json.path("importSource").path("30").path("class_type").asText()).isEqualTo("PreviewImage");
-        assertThat(RunningHubDefinition.parse(mapper, json, Task.Kind.IMAGE_GENERATION)).isEqualTo(preview.definition());
+        assertThat(RunningHubDefinition.parse(mapper, json, Task.Kind.IMAGE_GENERATION))
+                .isEqualTo(preview.definition());
     }
-    @Test void appListPreservesValuesAndMediaDefaultsAreNotRemoteUrls() {
-        var preview = imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.VIDEO_GENERATION, mapper.readTree("""
+    @Test
+    void appListPreservesValuesAndMediaDefaultsAreNotRemoteUrls() {
+        var preview = imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.VIDEO_GENERATION,
+                mapper.readTree("""
             [{"nodeId":"1","nodeName":"尺寸","fieldName":"size","fieldType":"LIST","fieldValue":"wide","fieldData":"{\\"options\\":[{\\"label\\":\\"宽屏\\",\\"value\\":\\"wide\\"}]}"},
              {"nodeId":"2","nodeName":"参考视频","fieldName":"video","fieldType":"VIDEO","fieldValue":"https://remote.invalid/video.mp4"}]
             """));
         assertThat(preview.definition().fields().getFirst().options().getFirst().label()).isEqualTo("宽屏");
         assertThat(preview.definition().fields().get(1).defaultValue()).isNull();
         assertThat(preview.definition().importSource().isArray()).isTrue();
-        assertThat(preview.definition().importSource().get(1).path("fieldValue").asText()).isEqualTo("https://remote.invalid/video.mp4");
+        assertThat(preview.definition().importSource().get(1).path("fieldValue").asText())
+                .isEqualTo("https://remote.invalid/video.mp4");
     }
-    @Test void appLabelsUseDescriptionsAndFallBackToNonBlankNodeOrFieldNames() {
-        var preview = imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.VIDEO_GENERATION, mapper.readTree("""
+    @Test
+    void appLabelsUseDescriptionsAndFallBackToNonBlankNodeOrFieldNames() {
+        var preview = imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.VIDEO_GENERATION,
+                mapper.readTree("""
             [{"nodeId":"1","nodeName":"LoadImage","fieldName":"image","fieldType":"IMAGE","description":"  参考图1  "},
              {"nodeId":"2","nodeName":"LoadImage","fieldName":"image","fieldType":"IMAGE","description":"参考图2"},
              {"nodeId":"3","nodeName":" LoadImage ","fieldName":"image","fieldType":"IMAGE","description":"  "},
@@ -447,13 +527,19 @@ class RunningHubImportServiceTest {
         assertThat(preview.definition().fields()).extracting(RunningHubDefinition.Field::key)
                 .containsExactly("input1", "input2", "input3", "input4", "input5");
     }
-    @Test void credentialsAndOversizedSourceCannotBecomeTemplates() {
-        assertThatThrownBy(() -> imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.IMAGE_GENERATION,
-                mapper.readTree("[{\"apiKey\":\"secret\"}]"))).hasMessageContaining("凭据");
-        assertThatThrownBy(() -> imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.IMAGE_GENERATION,
-                mapper.readTree("{\"apiKey\":\"secret\",\"nodeInfoList\":[]}"))).hasMessageContaining("凭据");
+    @Test
+    void credentialsAndOversizedSourceCannotBecomeTemplates() {
+        assertThatThrownBy(
+                () -> imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.IMAGE_GENERATION,
+                        mapper.readTree("[{\"apiKey\":\"secret\"}]")))
+                .hasMessageContaining("凭据");
+        assertThatThrownBy(
+                () -> imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.IMAGE_GENERATION,
+                        mapper.readTree("{\"apiKey\":\"secret\",\"nodeInfoList\":[]}")))
+                .hasMessageContaining("凭据");
     }
-    @Test void longAppDescriptionRemainsAvailableWhileItsLabelRespectsTheLengthLimit() {
+    @Test
+    void longAppDescriptionRemainsAvailableWhileItsLabelRespectsTheLengthLimit() {
         String description = "图".repeat(RunningHubDefinition.MAX_LABEL_LENGTH - 1) + "🎨用途";
         var node = mapper.createObjectNode().put("nodeId", "1").put("nodeName", "LoadImage")
                 .put("fieldName", "image").put("fieldType", "IMAGE").put("description", description);
@@ -463,17 +549,22 @@ class RunningHubImportServiceTest {
                 .isEqualTo("图".repeat(RunningHubDefinition.MAX_LABEL_LENGTH - 1));
         assertThat(preview.definition().fields().getFirst().description()).isEqualTo(description);
     }
-    @Test void workflowUploadWidgetLabelsDoNotPreventDiscoveryOfTheActualFileBinding() {
-        var preview = imports.candidates(RunningHubDefinition.TargetType.WORKFLOW, "2037454919065673729", Task.Kind.VIDEO_GENERATION,
+    @Test
+    void workflowUploadWidgetLabelsDoNotPreventDiscoveryOfTheActualFileBinding() {
+        var preview = imports.candidates(RunningHubDefinition.TargetType.WORKFLOW, "2037454919065673729",
+                Task.Kind.VIDEO_GENERATION,
                 mapper.readTree("""
                     {"3":{"class_type":"LoadVideo","inputs":{"file":"None","choose video file to upload":"Video"}}}
                     """));
         assertThat(preview.definition().fields()).hasSize(1);
         assertThat(preview.definition().fields().getFirst().fieldName()).isEqualTo("file");
-        assertThat(preview.warnings()).anyMatch(warning -> warning.source().contains("choose video file to upload") && warning.source().contains("已跳过"));
+        assertThat(preview.warnings()).anyMatch(warning -> warning.source().contains("choose video file to upload")
+                && warning.source().contains("已跳过"));
     }
-    @Test void appComfyWidgetListsPreserveStringEnumsAndTheSavedSelection() {
-        var preview = imports.candidates(RunningHubDefinition.TargetType.AI_APP, "2039199752025280513", Task.Kind.VIDEO_GENERATION,
+    @Test
+    void appComfyWidgetListsPreserveStringEnumsAndTheSavedSelection() {
+        var preview = imports.candidates(RunningHubDefinition.TargetType.AI_APP, "2039199752025280513",
+                Task.Kind.VIDEO_GENERATION,
                 mapper.readTree("""
                     [{"nodeId":"15","fieldName":"duration","fieldType":"LIST","fieldValue":"5",
                       "fieldData":[["4","5","6"],{"default":"5"}]}]
@@ -484,7 +575,8 @@ class RunningHubImportServiceTest {
         assertThat(field.options().getFirst().value().asText()).isEqualTo("4");
         assertThat(field.defaultValue().asText()).isEqualTo("5");
     }
-    @Test void mediaUploadWidgetsDoNotCreateDropdownOptions() {
+    @Test
+    void mediaUploadWidgetsDoNotCreateDropdownOptions() {
         var source = mapper.readTree("""
             [{"nodeId":"1","fieldName":"image","fieldType":"IMAGE","fieldValue":"sample.png",
               "fieldData":"[[\\"sample.png\\",\\"None\\",\\"sample.png\\"],{\\"image_upload\\":true}]"},
@@ -495,7 +587,8 @@ class RunningHubImportServiceTest {
              {"nodeId":"4","nodeName":"LoadImage","fieldName":"file","fieldType":"STRING","fieldValue":"sample.png",
               "fieldData":[["sample.png","sample.png"],{"image_upload":true}]}]
             """);
-        var preview = imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.VIDEO_GENERATION, source);
+        var preview = imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.VIDEO_GENERATION,
+                source);
         assertThat(preview.definition().fields()).extracting(RunningHubDefinition.Field::type)
                 .containsExactly(RunningHubDefinition.FieldType.IMAGE, RunningHubDefinition.FieldType.AUDIO,
                         RunningHubDefinition.FieldType.VIDEO, RunningHubDefinition.FieldType.IMAGE);
@@ -505,11 +598,13 @@ class RunningHubImportServiceTest {
         });
         assertThat(preview.definition().importSource()).isEqualTo(source);
         assertThat(preview.recommendedFieldKeys()).containsExactly("input1", "input2", "input3", "input4");
-        var published = RunningHubDefinition.parse(mapper, mapper.valueToTree(preview.definition()), Task.Kind.VIDEO_GENERATION);
+        var published = RunningHubDefinition.parse(mapper, mapper.valueToTree(preview.definition()),
+                Task.Kind.VIDEO_GENERATION);
         var publishedJson = mapper.valueToTree(published);
         assertThat(publishedJson).isEqualTo(mapper.valueToTree(preview.definition()));
     }
-    @Test void ordinaryScalarWidgetMetadataDoesNotCreateDropdownOptions() {
+    @Test
+    void ordinaryScalarWidgetMetadataDoesNotCreateDropdownOptions() {
         var preview = imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.VIDEO_GENERATION,
                 mapper.readTree("""
                     [{"nodeId":"1","fieldName":"steps","fieldType":"INTEGER","fieldValue":"20","fieldData":[20,20]},
@@ -519,24 +614,31 @@ class RunningHubImportServiceTest {
         assertThat(preview.definition().fields()).allSatisfy(field -> assertThat(field.options()).isEmpty());
         assertThat(preview.definition().fields().getFirst().defaultValue().asInt()).isEqualTo(20);
     }
-    @Test void realDropdownOptionsStillRejectDuplicateValues() {
-        assertThatThrownBy(() -> imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.VIDEO_GENERATION,
-                mapper.readTree("""
+    @Test
+    void realDropdownOptionsStillRejectDuplicateValues() {
+        assertThatThrownBy(
+                () -> imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.VIDEO_GENERATION,
+                        mapper.readTree("""
                     [{"nodeId":"1","fieldName":"mode","fieldType":"LIST","fieldValue":"fast",
                       "fieldData":["COMBO",{"options":["fast","fast"]}]}]
-                    """))).hasMessageContaining("下拉选项值重复");
+                    """)))
+                .hasMessageContaining("下拉选项值重复");
     }
-    @Test void minimaxAppTypedComboPreservesAspectRatioValuesWithoutInterpretingWidgetSettings() throws Exception {
+    @Test
+    void minimaxAppTypedComboPreservesAspectRatioValuesWithoutInterpretingWidgetSettings() throws Exception {
         try (var input = getClass().getResourceAsStream("/runninghub/minimax-h3-app-inputs.json")) {
             assertThat(input).isNotNull();
             var preview = imports.candidates(RunningHubDefinition.TargetType.AI_APP, "2084320751339032577",
                     Task.Kind.VIDEO_GENERATION, mapper.readTree(input));
-            var ratio = preview.definition().fields().stream().filter(field -> field.fieldName().equals("aspect_ratio")).findFirst().orElseThrow();
+            var ratio = preview.definition().fields().stream().filter(field -> field.fieldName().equals("aspect_ratio"))
+                    .findFirst().orElseThrow();
             assertThat(ratio.type()).isEqualTo(RunningHubDefinition.FieldType.SELECT);
-            assertThat(ratio.options()).hasSize(8).anyMatch(option -> option.value().asText().equals("16:9 (Widescreen)"));
+            assertThat(ratio.options()).hasSize(8)
+                    .anyMatch(option -> option.value().asText().equals("16:9 (Widescreen)"));
             assertThat(ratio.defaultValue().asText()).isEqualTo("16:9 (Widescreen)");
             assertThat(preview.warnings()).noneMatch(warning -> warning.source().contains("缺少可识别的 LIST"));
-            assertThat(preview.definition().fields().stream().filter(RunningHubDefinition.Field::media)).allMatch(field -> field.defaultValue() == null);
+            assertThat(preview.definition().fields().stream().filter(RunningHubDefinition.Field::media))
+                    .allMatch(field -> field.defaultValue() == null);
         }
     }
 }

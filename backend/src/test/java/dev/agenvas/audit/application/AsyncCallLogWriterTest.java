@@ -16,7 +16,8 @@ class AsyncCallLogWriterTest {
     private static final long TIMEOUT_SECONDS = 5;
     private final CallLogRepository repository = mock(CallLogRepository.class);
 
-    @Test void blockedDatabaseAndFullQueueNeverBlockCallerOrRunJdbcOnCaller() throws Exception {
+    @Test
+    void blockedDatabaseAndFullQueueNeverBlockCallerOrRunJdbcOnCaller() throws Exception {
         var executor = new CallLogWriterConfiguration().llmStreamLogExecutor(new CallLogWriterProperties(1, 1, 1));
         executor.initialize();
         var writer = new AsyncCallLogWriter(repository, executor);
@@ -24,8 +25,10 @@ class AsyncCallLogWriterTest {
         CountDownLatch release = new CountDownLatch(1);
         AtomicReference<String> writeThread = new AtomicReference<>();
         doAnswer(call -> {
-            writeThread.set(Thread.currentThread().getName()); entered.countDown();
-            assertThat(release.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue(); return null;
+            writeThread.set(Thread.currentThread().getName());
+            entered.countDown();
+            assertThat(release.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
+            return null;
         }).when(repository).finishStream(any(), any(), any(), anyLong(), any(), anyList(), anyBoolean());
         UUID first = UUID.randomUUID(), queued = UUID.randomUUID(), rejected = UUID.randomUUID();
         try {
@@ -35,24 +38,32 @@ class AsyncCallLogWriterTest {
             submit(writer, rejected); // Must return even though the JDBC worker and queue are occupied.
             assertThat(executor.getThreadPoolExecutor().getQueue()).hasSize(1);
             assertThat(writeThread.get()).startsWith("llm-stream-log-").isNotEqualTo(Thread.currentThread().getName());
-            verify(repository, never()).finishStream(eq(rejected), any(), any(), anyLong(), any(), anyList(), anyBoolean());
-        } finally { release.countDown(); executor.shutdown(); }
+            verify(repository, never()).finishStream(eq(rejected), any(), any(), anyLong(), any(), anyList(),
+                    anyBoolean());
+        } finally {
+            release.countDown();
+            executor.shutdown();
+        }
         verify(repository, times(2)).finishStream(any(), any(), any(), anyLong(), any(), anyList(), anyBoolean());
     }
 
-    @Test void failedWriteIsContainedAndSubsequentSnapshotStillWritesWithoutRetry() {
+    @Test
+    void failedWriteIsContainedAndSubsequentSnapshotStillWritesWithoutRetry() {
         var writer = new AsyncCallLogWriter(repository, Runnable::run);
         UUID failure = UUID.randomUUID(), next = UUID.randomUUID();
         doThrow(new IllegalStateException("synthetic database failure")).when(repository)
                 .finishStream(eq(failure), any(), any(), anyLong(), any(), anyList(), anyBoolean());
-        submit(writer, failure); submit(writer, next);
+        submit(writer, failure);
+        submit(writer, next);
         verify(repository, times(1)).finishStream(eq(failure), any(), any(), anyLong(), any(), anyList(), anyBoolean());
         verify(repository, times(1)).finishStream(eq(next), any(), any(), anyLong(), any(), anyList(), anyBoolean());
     }
 
-    @Test void closedExecutorRejectsSnapshotWithoutPropagatingIntoModelResult() {
+    @Test
+    void closedExecutorRejectsSnapshotWithoutPropagatingIntoModelResult() {
         var executor = new CallLogWriterConfiguration().llmStreamLogExecutor(new CallLogWriterProperties(1, 1, 1));
-        executor.initialize(); executor.shutdown();
+        executor.initialize();
+        executor.shutdown();
         submit(new AsyncCallLogWriter(repository, executor), UUID.randomUUID());
         verifyNoInteractions(repository);
     }

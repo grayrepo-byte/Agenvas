@@ -26,14 +26,21 @@ class SafeLlmStreamBoundTest {
         AtomicBoolean closed = new AtomicBoolean();
         AtomicLong readBytes = new AtomicLong();
         Source endless = new Source() {
-            @Override public long read(Buffer sink, long byteCount) {
+            @Override
+            public long read(Buffer sink, long byteCount) {
                 int size = (int) Math.min(byteCount, READ_CHUNK_BYTES);
                 sink.write(new byte[size]);
                 readBytes.addAndGet(size);
                 return size;
             }
-            @Override public Timeout timeout() { return Timeout.NONE; }
-            @Override public void close() { closed.set(true); }
+            @Override
+            public Timeout timeout() {
+                return Timeout.NONE;
+            }
+            @Override
+            public void close() {
+                closed.set(true);
+            }
         };
         Response response = SafeLlmTransport.boundStream(response(endless, -1));
         assertThatThrownBy(() -> response.body().source().readUtf8LineStrict())
@@ -46,11 +53,21 @@ class SafeLlmStreamBoundTest {
     void knownOversizedLengthIsRejectedBeforeReadingAndStillClosesTheBody() {
         AtomicBoolean closed = new AtomicBoolean();
         Source unread = new Source() {
-            @Override public long read(Buffer sink, long byteCount) { throw new AssertionError("Body must not be read"); }
-            @Override public Timeout timeout() { return Timeout.NONE; }
-            @Override public void close() { closed.set(true); }
+            @Override
+            public long read(Buffer sink, long byteCount) {
+                throw new AssertionError("Body must not be read");
+            }
+            @Override
+            public Timeout timeout() {
+                return Timeout.NONE;
+            }
+            @Override
+            public void close() {
+                closed.set(true);
+            }
         };
-        assertThatThrownBy(() -> SafeLlmTransport.boundStream(response(unread, SafeLlmTransport.MAX_STREAM_RESPONSE_BYTES + 1)))
+        assertThatThrownBy(
+                () -> SafeLlmTransport.boundStream(response(unread, SafeLlmTransport.MAX_STREAM_RESPONSE_BYTES + 1)))
                 .isInstanceOf(IOException.class).hasMessageContaining("transport size limit");
         assertThat(closed).isTrue();
     }
@@ -60,9 +77,18 @@ class SafeLlmStreamBoundTest {
         AtomicBoolean closed = new AtomicBoolean();
         Buffer data = new Buffer().writeUtf8("data: [DONE]\n\n");
         Source source = new Source() {
-            @Override public long read(Buffer sink, long byteCount) { return data.read(sink, byteCount); }
-            @Override public Timeout timeout() { return Timeout.NONE; }
-            @Override public void close() { closed.set(true); }
+            @Override
+            public long read(Buffer sink, long byteCount) {
+                return data.read(sink, byteCount);
+            }
+            @Override
+            public Timeout timeout() {
+                return Timeout.NONE;
+            }
+            @Override
+            public void close() {
+                closed.set(true);
+            }
         };
         try (Response response = SafeLlmTransport.boundStream(response(source, -1))) {
             assertThat(response.body().contentType().toString()).isEqualTo("text/event-stream");
@@ -73,11 +99,21 @@ class SafeLlmStreamBoundTest {
 
     private Response response(Source source, long length) {
         BufferedSource buffered = Okio.buffer(source);
-        return new Response.Builder().request(new Request.Builder().url("https://synthetic.example/v1/chat/completions").build())
+        return new Response.Builder()
+                .request(new Request.Builder().url("https://synthetic.example/v1/chat/completions").build())
                 .protocol(Protocol.HTTP_1_1).code(200).message("OK").body(new ResponseBody() {
-                    @Override public MediaType contentType() { return MediaType.get("text/event-stream"); }
-                    @Override public long contentLength() { return length; }
-                    @Override public BufferedSource source() { return buffered; }
+                    @Override
+                    public MediaType contentType() {
+                        return MediaType.get("text/event-stream");
+                    }
+                    @Override
+                    public long contentLength() {
+                        return length;
+                    }
+                    @Override
+                    public BufferedSource source() {
+                        return buffered;
+                    }
                 }).build();
     }
 }

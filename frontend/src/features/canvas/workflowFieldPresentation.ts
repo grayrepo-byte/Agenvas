@@ -8,5 +8,6 @@ export function workflowFieldLabel(field: CreatorInputField): string {
 /** Keep the saved name and exact mapping available without repeating them in the form. */
 export function workflowFieldHint(field: CreatorInputField): string {
   return "nodeId" in field && "fieldName" in field
-    ? `${field.label} · ${field.nodeId}.${field.fieldName}` : field.description?.trim() || field.label;
+    ? `${field.label} · ${field.nodeId}.${field.fieldName}`
+    : field.description?.trim() || field.label;
 }

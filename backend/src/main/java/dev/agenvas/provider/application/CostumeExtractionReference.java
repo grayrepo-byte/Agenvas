@@ -12,7 +12,8 @@ import tools.jackson.databind.node.ObjectNode;
 public final class CostumeExtractionReference {
     public static final String ID = "costume-display-v1";
     private static final String RESOURCE = "builtin-media/costume-display-v1.png";
-    private CostumeExtractionReference() {}
+    private CostumeExtractionReference() {
+    }
 
     private static final class Loaded {
         private static final byte[] PNG = load();

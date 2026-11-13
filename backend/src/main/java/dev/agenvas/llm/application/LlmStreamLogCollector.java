@@ -42,7 +42,9 @@ public final class LlmStreamLogCollector {
     private final Map<String, Object> assistantAttributes = new LinkedHashMap<>();
     private final Map<String, Object> responseAttributes = new LinkedHashMap<>();
 
-    public LlmStreamLogCollector(boolean captureContent) { this(captureContent, System::nanoTime); }
+    public LlmStreamLogCollector(boolean captureContent) {
+        this(captureContent, System::nanoTime);
+    }
     LlmStreamLogCollector(boolean captureContent, LongSupplier nanoTime) {
         this.captureContent = captureContent;
         this.nanoTime = nanoTime;
@@ -51,15 +53,21 @@ public final class LlmStreamLogCollector {
 
     public synchronized void chunk(ChatResponse response) {
         chunks++;
-        if (firstChunkMs == null) firstChunkMs = elapsed();
+        if (firstChunkMs == null)
+            firstChunkMs = elapsed();
         String publicText = PublicAssistantResponse.text(PublicAssistantResponse.sanitize(response));
-        if (!publicText.isEmpty() && firstTextMs == null) firstTextMs = elapsed();
+        if (!publicText.isEmpty() && firstTextMs == null)
+            firstTextMs = elapsed();
         metadata(response);
-        if (!captureContent || truncated) return;
+        if (!captureContent || truncated)
+            return;
         try {
             int retained = codec.debugResponse(response).toString().getBytes(StandardCharsets.UTF_8).length;
             contentBytes = Math.addExact(contentBytes, retained);
-            if (contentBytes > LlmStreamLog.MAX_CONTENT_BYTES) { truncated = true; return; }
+            if (contentBytes > LlmStreamLog.MAX_CONTENT_BYTES) {
+                truncated = true;
+                return;
+            }
             received.append(PublicAssistantResponse.text(response));
             // Keep the received text/tool prefix and observed model attributes within the same
             // byte budget. The audit service prefers the assembled HTTP response when available.
@@ -68,8 +76,11 @@ public final class LlmStreamLogCollector {
                 generationMetadata = response.getResult().getMetadata();
                 assistantAttributes.putAll(response.getResult().getOutput().getMetadata());
             }
-            response.getMetadata().entrySet().forEach(entry -> responseAttributes.put(entry.getKey(), entry.getValue()));
-        } catch (RuntimeException failure) { truncated = true; }
+            response.getMetadata().entrySet()
+                    .forEach(entry -> responseAttributes.put(entry.getKey(), entry.getValue()));
+        } catch (RuntimeException failure) {
+            truncated = true;
+        }
     }
 
     public synchronized void complete(ChatResponse response) {
@@ -87,10 +98,13 @@ public final class LlmStreamLogCollector {
                             .toolCalls(first.getOutput().getToolCalls()).media(first.getOutput().getMedia())
                             .properties(attributes).build();
                     Map<String, Object> generationAttributes = new LinkedHashMap<>();
-                    first.getMetadata().entrySet().forEach(entry -> generationAttributes.put(entry.getKey(), entry.getValue()));
-                    generationMetadata.entrySet().forEach(entry -> generationAttributes.put(entry.getKey(), entry.getValue()));
+                    first.getMetadata().entrySet()
+                            .forEach(entry -> generationAttributes.put(entry.getKey(), entry.getValue()));
+                    generationMetadata.entrySet()
+                            .forEach(entry -> generationAttributes.put(entry.getKey(), entry.getValue()));
                     var metadata = ChatGenerationMetadata.builder().finishReason(first.getMetadata().getFinishReason())
-                            .contentFilters(first.getMetadata().getContentFilters()).metadata(generationAttributes).build();
+                            .contentFilters(first.getMetadata().getContentFilters()).metadata(generationAttributes)
+                            .build();
                     generations.set(0, new Generation(assistant, metadata));
                 }
                 Map<String, Object> attributes = new LinkedHashMap<>();
@@ -101,8 +115,9 @@ public final class LlmStreamLogCollector {
                         .usage(response.getMetadata().getUsage()).rateLimit(response.getMetadata().getRateLimit())
                         .promptMetadata(response.getMetadata().getPromptMetadata()).build();
                 completeResponse = codec.debugResponse(new ChatResponse(generations, metadata)).toString();
+            } catch (RuntimeException failure) {
+                truncated = true;
             }
-            catch (RuntimeException failure) { truncated = true; }
         }
     }
 
@@ -110,14 +125,18 @@ public final class LlmStreamLogCollector {
         Usage reported = response.getMetadata().getUsage();
         if (reported != null && !(reported instanceof EmptyUsage)
                 && (positive(reported.getPromptTokens()) || positive(reported.getCompletionTokens())
-                || positive(reported.getTotalTokens()))) usage = reported;
+                        || positive(reported.getTotalTokens())))
+            usage = reported;
         String candidate = CallLogService.safeIdentifier(response.getMetadata().getModel());
-        if (candidate != null && !candidate.isEmpty()) model = candidate;
+        if (candidate != null && !candidate.isEmpty())
+            model = candidate;
         candidate = CallLogService.safeRequestId(response.getMetadata().getId());
-        if (candidate != null && !candidate.isEmpty()) responseId = candidate;
+        if (candidate != null && !candidate.isEmpty())
+            responseId = candidate;
         response.getResults().forEach(generation -> {
             String reason = CallLogService.safeIdentifier(generation.getMetadata().getFinishReason());
-            if (reason != null && finishReasons.size() < MAX_FINISH_REASONS && !finishReasons.contains(reason)) finishReasons.add(reason);
+            if (reason != null && finishReasons.size() < MAX_FINISH_REASONS && !finishReasons.contains(reason))
+                finishReasons.add(reason);
         });
     }
 
@@ -128,8 +147,15 @@ public final class LlmStreamLogCollector {
                     .properties(new LinkedHashMap<>(assistantAttributes)).build();
             var metadata = ChatResponseMetadata.builder().metadata(new LinkedHashMap<>(responseAttributes)).model(model)
                     .id(responseId).usage(usage).build();
-            try { response = codec.debugResponse(new ChatResponse(List.of(new Generation(assistant, generationMetadata)), metadata)).toString(); }
-            catch (RuntimeException failure) { response = "{\"omitted\":\"LOG_CONTENT_LIMIT\"}"; truncated = true; }
+            try {
+                response = codec
+                        .debugResponse(
+                                new ChatResponse(List.of(new Generation(assistant, generationMetadata)), metadata))
+                        .toString();
+            } catch (RuntimeException failure) {
+                response = "{\"omitted\":\"LOG_CONTENT_LIMIT\"}";
+                truncated = true;
+            }
         }
         var metrics = new LlmStreamLog.Metrics(LlmStreamLog.SCHEMA_VERSION, firstChunkMs, firstTextMs, elapsed(),
                 chunks, usage instanceof EmptyUsage ? null : usage.getPromptTokens(),
@@ -139,6 +165,10 @@ public final class LlmStreamLogCollector {
         return new LlmStreamLog(metrics, captureContent ? new LlmStreamLog.Content(response, truncated) : null);
     }
 
-    private boolean positive(Integer value) { return value != null && value > 0; }
-    private long elapsed() { return Math.max(0, (nanoTime.getAsLong() - started) / NANOS_PER_MILLISECOND); }
+    private boolean positive(Integer value) {
+        return value != null && value > 0;
+    }
+    private long elapsed() {
+        return Math.max(0, (nanoTime.getAsLong() - started) / NANOS_PER_MILLISECOND);
+    }
 }

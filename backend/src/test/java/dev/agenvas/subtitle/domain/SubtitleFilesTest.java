@@ -10,7 +10,8 @@ import org.junit.jupiter.api.Test;
 class SubtitleFilesTest {
     private static final UUID SOURCE = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
-    @Test void importsBomCrLfAndMultilineSrtAndExportsTheCorrectedSourceTimes() {
+    @Test
+    void importsBomCrLfAndMultilineSrtAndExportsTheCorrectedSourceTimes() {
         var track = SubtitleFiles.decode("\ufeff1\r\n00:00:01,200 --> 00:00:02,300\r\n你好\r\nSecond line\r\n",
                 SubtitleFiles.Format.SRT, SOURCE, 3000, "zh");
         assertThat(track.sourceVersionId()).isEqualTo(SOURCE);
@@ -21,8 +22,10 @@ class SubtitleFilesTest {
         assertThat(track.cues().getFirst().text()).isEqualTo("你好\nSecond line");
     }
 
-    @Test void importsWebVttIdentifiersSettingsAndNotesWithoutTreatingPayloadAsMarkup() {
-        var track = SubtitleFiles.decode("WEBVTT\n\nNOTE synthetic fixture\nignored\n\ncue-id\n00:01.200 --> 00:02.300 align:start\n&lt;b&gt;中文 &amp; text&lt;/b&gt;\n\n",
+    @Test
+    void importsWebVttIdentifiersSettingsAndNotesWithoutTreatingPayloadAsMarkup() {
+        var track = SubtitleFiles.decode(
+                "WEBVTT\n\nNOTE synthetic fixture\nignored\n\ncue-id\n00:01.200 --> 00:02.300 align:start\n&lt;b&gt;中文 &amp; text&lt;/b&gt;\n\n",
                 SubtitleFiles.Format.VTT, SOURCE, 3000, "auto");
         assertThat(track.cues()).containsExactly(new SubtitleCue("<b>中文 & text</b>", 1200, 2300));
         String exported = SubtitleFiles.encode(track, SubtitleFiles.Format.VTT);
@@ -30,7 +33,8 @@ class SubtitleFilesTest {
         assertThat(SubtitleFiles.decode(exported, SubtitleFiles.Format.VTT, SOURCE, 3000, "auto")).isEqualTo(track);
     }
 
-    @Test void preservesOverlappingCuesAndSortsExportsWithoutMutatingTheCorrectedTrack() {
+    @Test
+    void preservesOverlappingCuesAndSortsExportsWithoutMutatingTheCorrectedTrack() {
         var later = new SubtitleCue("后", 1500, 2500);
         var earlier = new SubtitleCue("先", 1000, 2000);
         var track = new SubtitleTrack(SOURCE, 3000, "zh", List.of(later, earlier));
@@ -41,7 +45,8 @@ class SubtitleFilesTest {
         assertThatThrownBy(() -> track.cues().clear()).isInstanceOf(UnsupportedOperationException.class);
     }
 
-    @Test void representsSilenceAsAnEmptyDraftInBothFormats() {
+    @Test
+    void representsSilenceAsAnEmptyDraftInBothFormats() {
         for (var format : SubtitleFiles.Format.values()) {
             var track = new SubtitleTrack(SOURCE, 3000, "auto", List.of());
             assertThat(SubtitleFiles.decode(SubtitleFiles.encode(track, format), format, SOURCE, 3000, "auto"))
@@ -49,7 +54,8 @@ class SubtitleFilesTest {
         }
     }
 
-    @Test void rejectsMalformedTimingOutOfRangeCuesAndUnboundedInput() {
+    @Test
+    void rejectsMalformedTimingOutOfRangeCuesAndUnboundedInput() {
         for (String input : List.of("1\n00:60:01,000 --> 00:00:02,000\ntext",
                 "1\n00:00:02,000 --> 00:00:01,000\ntext", "1\n00:00:00,000 --> 00:00:03,001\ntext",
                 "1\n99999999999999999:00:00,000 --> 99999999999999999:00:01,000\ntext",
@@ -60,7 +66,8 @@ class SubtitleFilesTest {
         assertThatThrownBy(() -> SubtitleFiles.decode("WEBVTT\n00:00.000 --> 00:01.000\ntext",
                 SubtitleFiles.Format.VTT, SOURCE, 3000, "en")).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new SubtitleCue("line\n\nnext", 0, 100)).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new SubtitleCue("null\u0000byte", 0, 100)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new SubtitleCue("null\u0000byte", 0, 100))
+                .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new SubtitleTrack(SOURCE, 3000, "en", java.util.Collections.nCopies(5001,
                 new SubtitleCue("text", 0, 100)))).isInstanceOf(IllegalArgumentException.class);
     }

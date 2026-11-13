@@ -1,7 +1,7 @@
-import { useMutation,useQueryClient } from "@tanstack/react-query";
-import { useEffect,useRef,useState,type KeyboardEvent } from "react";
-import { applyCanvasCommands,type Canvas, type CanvasItem } from "../../shared/api/client";
-import { t,useLocale } from "../../shared/i18n";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { applyCanvasCommands, type Canvas, type CanvasItem } from "../../shared/api/client";
+import { t, useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";
 import { Input } from "../../shared/ui/primitives/input";
 import { canvasItemPresentation, useCanvasEditingExecutor } from "./useCanvasEditing";
@@ -11,7 +11,11 @@ const MIN_INPUT_CHARS = 8;
 const MAX_INPUT_CHARS = 32;
 
 /** Double-click editing for one CanvasItem title; failed saves keep the draft in place. */
-export function CanvasItemTitleEditor({ projectId, item, kindLabel }: {
+export function CanvasItemTitleEditor({
+  projectId,
+  item,
+  kindLabel,
+}: {
   projectId: string;
   item: CanvasItem;
   kindLabel: string;
@@ -29,7 +33,7 @@ export function CanvasItemTitleEditor({ projectId, item, kindLabel }: {
   const [baseVersion, setBaseVersion] = useState(item.version);
   const [validationError, setValidationError] = useState<string | null>(null);
   function acceptTitle(canvas: Canvas, submittedTitle: string) {
-    const updated = canvas.items.find((candidate) => candidate.id === item.id);
+    const updated = canvas.items.find(candidate => candidate.id === item.id);
     if (!updated) throw new Error("Updated canvas item is missing from the response");
     setDisplayTitle(updated.title);
     setBaseVersion(updated.version);
@@ -38,31 +42,42 @@ export function CanvasItemTitleEditor({ projectId, item, kindLabel }: {
       setDraft(updated.title);
       setEditing(false);
     }
-    queryClient.setQueryData<Canvas>(["canvas", projectId], (current) => {
-      const cached = new Map(current?.items.map((candidate) => [candidate.id, candidate]) ?? []);
-      return { items: canvas.items.map((candidate) => {
-        const newer = cached.get(candidate.id);
-        return newer && newer.version > candidate.version ? newer : candidate;
-      }) };
+    queryClient.setQueryData<Canvas>(["canvas", projectId], current => {
+      const cached = new Map(current?.items.map(candidate => [candidate.id, candidate]) ?? []);
+      return {
+        items: canvas.items.map(candidate => {
+          const newer = cached.get(candidate.id);
+          return newer && newer.version > candidate.version ? newer : candidate;
+        }),
+      };
     });
     void queryClient.invalidateQueries({ queryKey: ["snapshot", projectId] });
   }
   const save = useMutation({
     mutationFn: async (title: string) => {
-      const canvas = execute ? await execute({ operation: "DISPLAY",
-        itemChanges: [{ ...canvasItemPresentation(item), expectedVersion: baseVersion, title }] },
-      (accepted) => acceptTitle(accepted, title))
-        : await applyCanvasCommands(projectId, [{
-        type: "UPDATE_TITLE",
-        itemId: item.id,
-        expectedVersion: baseVersion,
-        title,
-      }]);
-      const updated = canvas.items.find((candidate) => candidate.id === item.id);
+      const canvas = execute
+        ? await execute(
+            {
+              operation: "DISPLAY",
+              itemChanges: [{ ...canvasItemPresentation(item), expectedVersion: baseVersion, title }],
+            },
+            accepted => acceptTitle(accepted, title),
+          )
+        : await applyCanvasCommands(projectId, [
+            {
+              type: "UPDATE_TITLE",
+              itemId: item.id,
+              expectedVersion: baseVersion,
+              title,
+            },
+          ]);
+      const updated = canvas.items.find(candidate => candidate.id === item.id);
       if (!updated) throw new Error("Updated canvas item is missing from the response");
       return { canvas, updated };
     },
-    onSuccess: ({ canvas }, title) => { if (!execute) acceptTitle(canvas, title); },
+    onSuccess: ({ canvas }, title) => {
+      if (!execute) acceptTitle(canvas, title);
+    },
   });
 
   useEffect(() => {
@@ -88,7 +103,7 @@ export function CanvasItemTitleEditor({ projectId, item, kindLabel }: {
     if (save.isPending) return;
     cancelBlur.current = false;
     setDraft(displayTitle);
-    setBaseVersion((current) => Math.max(current, item.version));
+    setBaseVersion(current => Math.max(current, item.version));
     setValidationError(null);
     save.reset();
     setEditing(true);
@@ -138,28 +153,59 @@ export function CanvasItemTitleEditor({ projectId, item, kindLabel }: {
   const error = validationError ?? (save.error ? t("canvas.title.saveFailed") : null);
   const inputWidth = Math.min(Math.max(draft.length + 2, MIN_INPUT_CHARS), MAX_INPUT_CHARS);
 
-  return <span className="artifact-card-title-editor nodrag nowheel nopan">
-    {editing ? <>
-      <Input ref={input} className={`artifact-card-title-input${error ? " is-error" : ""}`}
-        aria-label={t("canvas.title.titleLabel", { "0": kindLabel })} aria-invalid={Boolean(error)}
-        disabled={save.isPending} maxLength={MAX_TITLE_LENGTH} size={inputWidth}
-        title={error ?? t("canvas.title.keyboardHint")}
-        value={draft} onBlur={commit} onChange={(event) => {
-          setDraft(event.target.value);
-          setValidationError(null);
-          if (save.isError) save.reset();
-        }} onKeyDown={handleKeyDown} />
-      {error ? <span className="sr-only" role="alert">{error}</span> : null}
-    </> : <Button variant="ghost" type="button" className="artifact-card-caption nodrag nowheel nopan"
-      aria-label={t("canvas.title.renameLabel", { "0": kindLabel, "1": displayTitle })} title={t("canvas.title.editHint")}
-      onClick={(event) => { if (event.detail === 2) beginEditing(); }}
-      onDoubleClick={(event) => { event.stopPropagation(); beginEditing(); }}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === "F2") {
-          event.preventDefault();
-          event.stopPropagation();
-          beginEditing();
-        }
-      }}>{displayTitle}</Button>}
-  </span>;
+  return (
+    <span className="artifact-card-title-editor nodrag nowheel nopan">
+      {editing ? (
+        <>
+          <Input
+            ref={input}
+            className={`artifact-card-title-input${error ? " is-error" : ""}`}
+            aria-label={t("canvas.title.titleLabel", { "0": kindLabel })}
+            aria-invalid={Boolean(error)}
+            disabled={save.isPending}
+            maxLength={MAX_TITLE_LENGTH}
+            size={inputWidth}
+            title={error ?? t("canvas.title.keyboardHint")}
+            value={draft}
+            onBlur={commit}
+            onChange={event => {
+              setDraft(event.target.value);
+              setValidationError(null);
+              if (save.isError) save.reset();
+            }}
+            onKeyDown={handleKeyDown}
+          />
+          {error ? (
+            <span className="sr-only" role="alert">
+              {error}
+            </span>
+          ) : null}
+        </>
+      ) : (
+        <Button
+          variant="ghost"
+          type="button"
+          className="artifact-card-caption nodrag nowheel nopan"
+          aria-label={t("canvas.title.renameLabel", { "0": kindLabel, "1": displayTitle })}
+          title={t("canvas.title.editHint")}
+          onClick={event => {
+            if (event.detail === 2) beginEditing();
+          }}
+          onDoubleClick={event => {
+            event.stopPropagation();
+            beginEditing();
+          }}
+          onKeyDown={event => {
+            if (event.key === "Enter" || event.key === "F2") {
+              event.preventDefault();
+              event.stopPropagation();
+              beginEditing();
+            }
+          }}
+        >
+          {displayTitle}
+        </Button>
+      )}
+    </span>
+  );
 }

@@ -123,12 +123,13 @@ class McpRealServiceIT {
                         "kind", "IMAGE", "title", "Synthetic MCP integration image")));
                 String mediaItem = requiredText(media.at("/node/canvasItemId"));
                 Map<String, Object> parameters = new HashMap<>();
-                configuration.parameters.properties().forEach(entry ->
-                        parameters.put(entry.getKey(), mapper.convertValue(entry.getValue(), Object.class)));
+                configuration.parameters.properties().forEach(
+                        entry -> parameters.put(entry.getKey(), mapper.convertValue(entry.getValue(), Object.class)));
                 // Even when a configured capability defaults to a batch, this acceptance test delegates one image.
                 parameters.put("generationCount", 1);
                 JsonNode draft = call(client, "update_media_draft", command("image-draft", Map.of(
-                        "canvasItemId", mediaItem, "expectedDraftVersion", media.at("/node/mediaDraft/version").asLong(),
+                        "canvasItemId", mediaItem, "expectedDraftVersion",
+                        media.at("/node/mediaDraft/version").asLong(),
                         "patch", Map.of("prompt", IMAGE_PROMPT, "capabilityId", configuration.capabilityId,
                                 "parameters", parameters))));
                 check(draft.at("/draft/parameters/generationCount").asInt() == 1,
@@ -205,7 +206,8 @@ class McpRealServiceIT {
             check(Boolean.FALSE.equals(tool.inputSchema().get("additionalProperties")),
                     "Tool input schemas must reject extra fields");
         }
-        check(tools.size() == 14 && names.containsAll(ALL_TOOLS) && names.contains("compose_video"), "Full credential must expose fourteen tools");
+        check(tools.size() == 14 && names.containsAll(ALL_TOOLS) && names.contains("compose_video"),
+                "Full credential must expose fourteen tools");
     }
 
     private void verifyProjectListed(McpSyncClient client) {
@@ -214,12 +216,15 @@ class McpRealServiceIT {
         for (int page = 0; page < 100 && !found; page++) {
             Map<String, Object> arguments = new HashMap<>();
             arguments.put("limit", 100);
-            if (cursor != null) arguments.put("cursor", cursor);
+            if (cursor != null)
+                arguments.put("cursor", cursor);
             JsonNode projects = call(client, "list_projects", arguments);
             for (JsonNode item : projects.path("items")) {
-                if (configuration.projectId.equals(item.path("projectId").asText())) found = true;
+                if (configuration.projectId.equals(item.path("projectId").asText()))
+                    found = true;
             }
-            if (projects.path("nextCursor").isNull()) break;
+            if (projects.path("nextCursor").isNull())
+                break;
             cursor = requiredText(projects.path("nextCursor"));
         }
         check(found, "Dedicated project is not accessible to the full credential");
@@ -233,9 +238,11 @@ class McpRealServiceIT {
                     "kind", "IMAGE", "offset", offset, "limit", 100));
             check(!containsField(capabilities, "adapterId"), "Capability catalog exposed its adapter identifier");
             for (JsonNode item : capabilities.path("items")) {
-                if (configuration.capabilityId.equals(item.path("capabilityId").asText())) found = true;
+                if (configuration.capabilityId.equals(item.path("capabilityId").asText()))
+                    found = true;
             }
-            if (capabilities.path("nextOffset").isNull()) break;
+            if (capabilities.path("nextOffset").isNull())
+                break;
             offset = capabilities.path("nextOffset").asInt();
         }
         check(found, "Configured image capability is not available through MCP");
@@ -249,7 +256,8 @@ class McpRealServiceIT {
             check(states.path("items").size() == 1, "Task status response has an unexpected size");
             JsonNode task = states.at("/items/0");
             String status = task.path("status").asText();
-            if ("SUCCEEDED".equals(status)) return task;
+            if ("SUCCEEDED".equals(status))
+                return task;
             if (TERMINAL_FAILURES.contains(status)) {
                 throw new SafeFailure("MCP_REAL_TASK_STATUS_" + safeCode(status)
                         + "_CODE_" + safeCode(task.path("errorCode").asText("NONE")));
@@ -264,7 +272,8 @@ class McpRealServiceIT {
     private void saveDecodedImage(McpSchema.CallToolResult result) throws Exception {
         var images = new ArrayList<McpSchema.ImageContent>();
         result.content().forEach(content -> {
-            if (content instanceof McpSchema.ImageContent image) images.add(image);
+            if (content instanceof McpSchema.ImageContent image)
+                images.add(image);
         });
         check(images.size() == 1, "MCP must return exactly one image preview");
         byte[] bytes = Base64.getDecoder().decode(images.getFirst().data());
@@ -290,7 +299,8 @@ class McpRealServiceIT {
         var transport = HttpClientStreamableHttpTransport.builder(base).endpoint(uri.getRawPath())
                 .openConnectionOnStartup(false).resumableStreams(false)
                 .requestBuilder(HttpRequest.newBuilder().header("Authorization", "Bearer " + token)).build();
-        return McpClient.sync(transport).requestTimeout(Duration.ofSeconds(40)).initializationTimeout(Duration.ofSeconds(30))
+        return McpClient.sync(transport).requestTimeout(Duration.ofSeconds(40))
+                .initializationTimeout(Duration.ofSeconds(30))
                 .clientInfo(new McpSchema.Implementation("agenvas-real-service-integration", "1.0"))
                 .enableCallToolSchemaCaching(true).build();
     }
@@ -341,7 +351,8 @@ class McpRealServiceIT {
 
     private void prepareEvidenceDirectory() throws IOException {
         Path repository = Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize();
-        while (repository.getParent() != null && !Files.exists(repository.resolve(".git"))) repository = repository.getParent();
+        while (repository.getParent() != null && !Files.exists(repository.resolve(".git")))
+            repository = repository.getParent();
         check(repository.getParent() == null || !configuration.evidenceDirectory.startsWith(repository),
                 "Real test evidence must remain outside the repository");
         Files.createDirectories(configuration.evidenceDirectory,
@@ -361,21 +372,28 @@ class McpRealServiceIT {
     }
 
     private void recordFailure(String safeMessage) {
-        if (receiptFile == null) return;
+        if (receiptFile == null)
+            return;
         receipt.put("status", "FAILED");
         receipt.put("failure", safeMessage);
         receipt.put("completedAt", Instant.now().toString());
-        try { saveReceipt(); } catch (SafeFailure ignored) { /* Preserve the original safe failure. */ }
+        try {
+            saveReceipt();
+        } catch (SafeFailure ignored) {
+            /* Preserve the original safe failure. */ }
     }
 
     private void writePrivate(Path path, byte[] bytes) throws IOException {
-        if (!Files.exists(path)) Files.createFile(path,
-                PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
+        if (!Files.exists(path))
+            Files.createFile(path,
+                    PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
         Files.setPosixFilePermissions(path, PosixFilePermissions.fromString("rw-------"));
         Files.write(path, bytes, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING);
     }
 
-    private Map<String, Object> read() { return Map.of("projectId", configuration.projectId); }
+    private Map<String, Object> read() {
+        return Map.of("projectId", configuration.projectId);
+    }
 
     private Map<String, Object> command(String suffix, Map<String, Object> fields) {
         var result = new HashMap<String, Object>(fields);
@@ -386,10 +404,15 @@ class McpRealServiceIT {
 
     private boolean containsField(JsonNode node, String field) {
         if (node.isObject()) {
-            if (node.has(field)) return true;
-            for (var entry : node.properties()) if (containsField(entry.getValue(), field)) return true;
+            if (node.has(field))
+                return true;
+            for (var entry : node.properties())
+                if (containsField(entry.getValue(), field))
+                    return true;
         } else if (node.isArray()) {
-            for (JsonNode child : node) if (containsField(child, field)) return true;
+            for (JsonNode child : node)
+                if (containsField(child, field))
+                    return true;
         }
         return false;
     }
@@ -404,11 +427,14 @@ class McpRealServiceIT {
     }
 
     private static void check(boolean condition, String safeMessage) {
-        if (!condition) throw new SafeFailure(safeMessage);
+        if (!condition)
+            throw new SafeFailure(safeMessage);
     }
 
     private static final class SafeFailure extends AssertionError {
-        SafeFailure(String safeMessage) { super(safeMessage); }
+        SafeFailure(String safeMessage) {
+            super(safeMessage);
+        }
     }
 
     /** Deliberately has no generated toString: its fields include private Bearer credentials. */

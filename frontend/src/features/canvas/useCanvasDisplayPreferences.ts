@@ -32,14 +32,21 @@ function readPreferences(storageKey: string | null): PreferenceState {
     const raw = localStorage.getItem(storageKey);
     if (!raw) return defaults;
     const saved: unknown = JSON.parse(raw);
-    if (typeof saved !== "object" || saved === null || !("version" in saved)
-        || saved.version !== STORAGE_VERSION) return defaults;
-    return { ...defaults, preferences: {
-      alwaysShowConnections: "alwaysShowConnections" in saved && typeof saved.alwaysShowConnections === "boolean"
-        ? saved.alwaysShowConnections : DEFAULT_CANVAS_DISPLAY_PREFERENCES.alwaysShowConnections,
-      connectionFlowEnabled: "connectionFlowEnabled" in saved && typeof saved.connectionFlowEnabled === "boolean"
-        ? saved.connectionFlowEnabled : DEFAULT_CANVAS_DISPLAY_PREFERENCES.connectionFlowEnabled,
-    } };
+    if (typeof saved !== "object" || saved === null || !("version" in saved) || saved.version !== STORAGE_VERSION)
+      return defaults;
+    return {
+      ...defaults,
+      preferences: {
+        alwaysShowConnections:
+          "alwaysShowConnections" in saved && typeof saved.alwaysShowConnections === "boolean"
+            ? saved.alwaysShowConnections
+            : DEFAULT_CANVAS_DISPLAY_PREFERENCES.alwaysShowConnections,
+        connectionFlowEnabled:
+          "connectionFlowEnabled" in saved && typeof saved.connectionFlowEnabled === "boolean"
+            ? saved.connectionFlowEnabled
+            : DEFAULT_CANVAS_DISPLAY_PREFERENCES.connectionFlowEnabled,
+      },
+    };
   } catch {
     return { ...defaults, persistenceError: READ_ERROR };
   }

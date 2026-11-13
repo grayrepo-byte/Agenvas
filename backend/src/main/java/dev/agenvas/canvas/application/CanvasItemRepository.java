@@ -19,7 +19,9 @@ public interface CanvasItemRepository {
     Optional<CanvasItem> findForUpdate(UUID ownerId, UUID projectId, UUID itemId);
 
     /** Confirms a group identity is active inside this project. */
-    default boolean groupExists(UUID ownerId, UUID projectId, UUID groupId) { return groupId == null; }
+    default boolean groupExists(UUID ownerId, UUID projectId, UUID groupId) {
+        return groupId == null;
+    }
 
     /** 插入由客户端指定稳定 ID 的展示项。 */
     boolean create(CanvasItem item);

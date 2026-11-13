@@ -84,7 +84,8 @@ public class ProjectSnapshotService {
                 ? null
                 : runs.get(ownerId, projectId, anchor.activeRunId());
         List<Task> activeTasks = new java.util.ArrayList<>(tasks.listActiveDirect(ownerId, projectId));
-        if (activeRun != null) activeTasks.addAll(tasks.listByRun(ownerId, projectId, activeRun.id()));
+        if (activeRun != null)
+            activeTasks.addAll(tasks.listByRun(ownerId, projectId, activeRun.id()));
         List<Task> unknownTasks = tasks.listUnknown(ownerId, projectId);
         return new ProjectSnapshot(
                 project,
@@ -127,5 +128,6 @@ public class ProjectSnapshotService {
             AgentRun activeRun,
             List<Task> activeTasks,
             List<Task> unknownTasks,
-            long snapshotSeq) {}
+            long snapshotSeq) {
+    }
 }

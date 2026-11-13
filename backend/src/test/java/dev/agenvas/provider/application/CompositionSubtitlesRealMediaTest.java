@@ -18,17 +18,22 @@ import tools.jackson.databind.ObjectMapper;
 
 /** Requires an FFmpeg build with libass; a local override can select a deployment-equivalent binary. */
 class CompositionSubtitlesRealMediaTest {
-    @TempDir Path defaultTemp;
+    @TempDir
+    Path defaultTemp;
     private Path mountedTemp;
 
-    @AfterEach void removeExplicitWorkspace() throws Exception {
-        if (mountedTemp == null) return;
+    @AfterEach
+    void removeExplicitWorkspace() throws Exception {
+        if (mountedTemp == null)
+            return;
         try (var files = Files.walk(mountedTemp)) {
-            for (Path file : files.sorted(java.util.Comparator.reverseOrder()).toList()) Files.deleteIfExists(file);
+            for (Path file : files.sorted(java.util.Comparator.reverseOrder()).toList())
+                Files.deleteIfExists(file);
         }
     }
 
-    @Test void rendersVisibleSubtitlesIntoTheArchivedPictureWithoutInterpretingAssOverrides() throws Exception {
+    @Test
+    void rendersVisibleSubtitlesIntoTheArchivedPictureWithoutInterpretingAssOverrides() throws Exception {
         var defaults = new MediaToolsProperties(null, null, null);
         String configured = System.getProperty("agenvas.test.subtitle-ffmpeg");
         Path ffmpeg = configured == null ? defaults.ffmpeg() : Path.of(configured);
@@ -50,7 +55,8 @@ class CompositionSubtitlesRealMediaTest {
         }
         var tools = new MediaToolRunner(new MediaToolsProperties(ffmpeg, defaults.ffprobe(), null));
         var mapper = new ObjectMapper();
-        var renderer = new LocalVideoCompositionRenderer(tools, mapper, new VideoCompositionRenderProperties("DejaVu Sans"));
+        var renderer = new LocalVideoCompositionRenderer(tools, mapper,
+                new VideoCompositionRenderProperties("DejaVu Sans"));
         Path source = temp.resolve("black.mp4");
         tools.ffmpeg(List.of("-v", "error", "-f", "lavfi", "-i", "color=c=black:s=160x90:r=30:d=2",
                 "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", source.toString()));
@@ -58,18 +64,24 @@ class CompositionSubtitlesRealMediaTest {
         var request = mapper.createObjectNode().put("title", "Subtitle smoke").put("originalAudioMode", "MUTE");
         request.putArray("shots").addObject().put("videoVersionId", sourceId.toString()).put("sourceStartMs", 0)
                 .put("durationMs", 2000).putArray("lines");
-        request.putArray("subtitles").addObject().put("text", "Visible text {\\p1}\\N safe").put("startMs", 0).put("endMs", 2000);
-        for (int i = 0; i < 100; i++) request.withArray("subtitles").addObject().put("text", "Caption " + i)
-                .put("startMs", i * 10).put("endMs", i * 10 + 100);
+        request.putArray("subtitles").addObject().put("text", "Visible text {\\p1}\\N safe").put("startMs", 0)
+                .put("endMs", 2000);
+        for (int i = 0; i < 100; i++)
+            request.withArray("subtitles").addObject().put("text", "Caption " + i)
+                    .put("startMs", i * 10).put("endMs", i * 10 + 100);
         Path scratch = Files.createDirectory(temp.resolve("render"));
         var result = renderer.render(request, Map.of(sourceId, new LocalVideoCompositionRenderer.Source(source, 2000)),
-                scratch, () -> false, () -> {});
+                scratch, () -> false, () -> {
+                });
         Path frame = temp.resolve("caption-frame.png");
-        tools.ffmpeg(List.of("-v", "error", "-ss", "1", "-i", result.path().toString(), "-frames:v", "1", "-y", frame.toString()));
+        tools.ffmpeg(List.of("-v", "error", "-ss", "1", "-i", result.path().toString(), "-frames:v", "1", "-y",
+                frame.toString()));
         var picture = ImageIO.read(frame.toFile());
         int bright = 0;
-        for (int y = picture.getHeight() / 2; y < picture.getHeight(); y++) for (int x = 0; x < picture.getWidth(); x++)
-            if ((picture.getRGB(x, y) & 0xff) > 180) bright++;
+        for (int y = picture.getHeight() / 2; y < picture.getHeight(); y++)
+            for (int x = 0; x < picture.getWidth(); x++)
+                if ((picture.getRGB(x, y) & 0xff) > 180)
+                    bright++;
         assertThat(bright).isGreaterThan(100);
         assertThat(result.schedule().path("subtitles")).isEqualTo(request.path("subtitles"));
         tools.ffmpeg(List.of("-v", "error", "-xerror", "-i", result.path().toString(), "-f", "null", "-"));

@@ -47,21 +47,30 @@ import tools.jackson.databind.ObjectMapper;
         "agenvas.llm.agent.context-window-tokens=12345", "agenvas.llm.agent.compaction-threshold-percent=99"})
 class DirectorSettingsPostgresIT {
     private static final String ENDPOINT = "/api/v1/settings/director";
-    @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
-    @DynamicPropertySource static void database(DynamicPropertyRegistry properties) {
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    @DynamicPropertySource
+    static void database(DynamicPropertyRegistry properties) {
         properties.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         properties.add("spring.datasource.username", POSTGRES::getUsername);
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
-    @Autowired DirectorSettingsService settings;
-    @Autowired AgentContextService context;
-    @Autowired LlmProtocolCodec codec;
-    @Autowired ObjectMapper mapper;
-    @Autowired JdbcClient jdbc;
-    @Autowired WebApplicationContext application;
+    @Autowired
+    DirectorSettingsService settings;
+    @Autowired
+    AgentContextService context;
+    @Autowired
+    LlmProtocolCodec codec;
+    @Autowired
+    ObjectMapper mapper;
+    @Autowired
+    JdbcClient jdbc;
+    @Autowired
+    WebApplicationContext application;
     private MockMvc mvc;
 
-    @BeforeEach void reset() {
+    @BeforeEach
+    void reset() {
         jdbc.sql("""
                 update director_settings set context_window_tokens=32768, compaction_threshold_percent=50,
                 response_reserve_tokens=4096, summary_tokens=1024, recent_tool_rounds=4,
@@ -71,11 +80,13 @@ class DirectorSettingsPostgresIT {
         mvc = webAppContextSetup(application).apply(springSecurity()).build();
     }
 
-    @Test void databaseDefaultsIgnoreObsoleteDeploymentPropertiesAndSurviveANewReader() throws Exception {
+    @Test
+    void databaseDefaultsIgnoreObsoleteDeploymentPropertiesAndSurviveANewReader() throws Exception {
         assertThat(settings.get()).isEqualTo(DirectorSettings.defaults());
         var saved = settings.update(small(1));
         assertThat(saved.version()).isEqualTo(2);
-        try (var database = org.jooq.impl.DSL.using(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())) {
+        try (var database = org.jooq.impl.DSL.using(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(),
+                POSTGRES.getPassword())) {
             assertThat(new DirectorSettingsService(database).get()).isEqualTo(saved);
         }
         mvc.perform(get(ENDPOINT).with(user("administrator").roles("ADMIN")))
@@ -84,7 +95,8 @@ class DirectorSettingsPostgresIT {
                 .andExpect(jsonPath("$.version").value(2));
     }
 
-    @Test void httpRequiresAdministratorCsrfAndCompleteValidVersionedInput() throws Exception {
+    @Test
+    void httpRequiresAdministratorCsrfAndCompleteValidVersionedInput() throws Exception {
         String body = mapper.writeValueAsString(request());
         mvc.perform(get(ENDPOINT)).andExpect(status().isUnauthorized());
         mvc.perform(get(ENDPOINT).with(user("reader").roles("USER"))).andExpect(status().isForbidden());
@@ -92,18 +104,24 @@ class DirectorSettingsPostgresIT {
                 .contentType("application/json").content(body)).andExpect(status().isForbidden());
         mvc.perform(put(ENDPOINT).with(user("administrator").roles("ADMIN"))
                 .contentType("application/json").content(body)).andExpect(status().isForbidden());
-        var missing = request(); missing.remove("summaryTokens");
+        var missing = request();
+        missing.remove("summaryTokens");
         mvc.perform(put(ENDPOINT).with(user("administrator").roles("ADMIN")).with(csrf())
-                .contentType("application/json").content(mapper.writeValueAsString(missing))).andExpect(status().isBadRequest());
-        for (String field : List.of("contextWindowTokens", "compactionThresholdPercent", "summaryTokens", "expectedVersion")) {
-            var invalid = request(); invalid.put(field, 0);
+                .contentType("application/json").content(mapper.writeValueAsString(missing)))
+                .andExpect(status().isBadRequest());
+        for (String field : List.of("contextWindowTokens", "compactionThresholdPercent", "summaryTokens",
+                "expectedVersion")) {
+            var invalid = request();
+            invalid.put(field, 0);
             mvc.perform(put(ENDPOINT).with(user("administrator").roles("ADMIN")).with(csrf())
                     .contentType("application/json").content(mapper.writeValueAsString(invalid)))
                     .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
         }
-        var invalidRelation = request(); invalidRelation.put("responseReserveTokens", 5000);
+        var invalidRelation = request();
+        invalidRelation.put("responseReserveTokens", 5000);
         mvc.perform(put(ENDPOINT).with(user("administrator").roles("ADMIN")).with(csrf())
-                .contentType("application/json").content(mapper.writeValueAsString(invalidRelation))).andExpect(status().isBadRequest());
+                .contentType("application/json").content(mapper.writeValueAsString(invalidRelation)))
+                .andExpect(status().isBadRequest());
         assertThat(settings.get()).isEqualTo(DirectorSettings.defaults());
         mvc.perform(put(ENDPOINT).with(user("administrator").roles("ADMIN")).with(csrf())
                 .contentType("application/json").content(body)).andExpect(status().isOk())
@@ -114,17 +132,25 @@ class DirectorSettingsPostgresIT {
         assertThat(settings.get().version()).isEqualTo(2);
     }
 
-    @Test void concurrentAdministratorsHaveExactlyOneWinnerAndNoPartialSave() throws Exception {
+    @Test
+    void concurrentAdministratorsHaveExactlyOneWinnerAndNoPartialSave() throws Exception {
         var start = new CountDownLatch(1);
         try (var executor = Executors.newFixedThreadPool(2)) {
             var attempts = java.util.stream.IntStream.range(0, 2).mapToObj(index -> executor.submit(() -> {
                 start.await(5, TimeUnit.SECONDS);
-                try { settings.update(small(1)); return true; }
-                catch (ApiProblemException conflict) { assertThat(conflict.code()).isEqualTo("VERSION_CONFLICT"); return false; }
+                try {
+                    settings.update(small(1));
+                    return true;
+                } catch (ApiProblemException conflict) {
+                    assertThat(conflict.code()).isEqualTo("VERSION_CONFLICT");
+                    return false;
+                }
             })).toList();
             start.countDown();
             int winners = 0;
-            for (var attempt : attempts) if (attempt.get(10, TimeUnit.SECONDS)) winners++;
+            for (var attempt : attempts)
+                if (attempt.get(10, TimeUnit.SECONDS))
+                    winners++;
             assertThat(winners).isEqualTo(1);
         }
         assertThat(settings.get()).isEqualTo(small(2));
@@ -133,11 +159,14 @@ class DirectorSettingsPostgresIT {
         assertThat(settings.get()).isEqualTo(small(2));
     }
 
-    @Test void savedSettingsAffectNewPlansImmediatelyButNeverReplanFrozenCompaction() {
+    @Test
+    void savedSettingsAffectNewPlansImmediatelyButNeverReplanFrozenCompaction() {
         var assistant = AssistantMessage.builder().content("Verified public fact ".repeat(1500)).toolCalls(List.of(
                 new AssistantMessage.ToolCall("read", "function", "read_project_summary", "{}"))).build();
-        List<Message> history = List.of(new SystemMessage("Keep the creative constraint"), new UserMessage("Finish the task"),
-                assistant, codec.toolResults(assistant, Map.of("read", mapper.createObjectNode().put("status", "SUCCEEDED"))));
+        List<Message> history = List.of(new SystemMessage("Keep the creative constraint"),
+                new UserMessage("Finish the task"),
+                assistant,
+                codec.toolResults(assistant, Map.of("read", mapper.createObjectNode().put("status", "SUCCEEDED"))));
         assertThat(AgentContextService.isCompaction(context.prepare(history, List.of()))).isFalse();
         settings.update(small(1));
         assertThat(context.estimate(history, List.of())).isBetween(4096, 7168);
@@ -151,18 +180,22 @@ class DirectorSettingsPostgresIT {
         var current = DirectorSettings.defaults();
         settings.update(new DirectorSettings(current.contextWindowTokens(), current.compactionThresholdPercent(),
                 current.responseReserveTokens(), current.summaryTokens(), current.recentToolRounds(),
-                current.recoveryWindowMinutes(), current.maxModelRetries(), current.retryMaxDelaySeconds(), current.maxRepairAttempts(), 2));
+                current.recoveryWindowMinutes(), current.maxModelRetries(), current.retryMaxDelaySeconds(),
+                current.maxRepairAttempts(), 2));
         assertThat(context.afterCompaction(frozen, response)).isEqualTo(expected);
         assertThat(AgentContextService.isCompaction(context.prepare(history, List.of()))).isFalse();
         assertThat(jdbc.sql("select count(*) from llm_turn").query(Long.class).single()).isZero();
     }
 
-    @Test void httpPayloadsMatchTheOpenApiRequiredFieldsAndNumericRanges() throws Exception {
+    @Test
+    void httpPayloadsMatchTheOpenApiRequiredFieldsAndNumericRanges() throws Exception {
         java.nio.file.Path directory = java.nio.file.Path.of("").toAbsolutePath();
-        while (directory != null && !java.nio.file.Files.exists(directory.resolve("contracts/openapi.yaml"))) directory = directory.getParent();
+        while (directory != null && !java.nio.file.Files.exists(directory.resolve("contracts/openapi.yaml")))
+            directory = directory.getParent();
         assertThat(directory).isNotNull();
         var yaml = new org.springframework.beans.factory.config.YamlMapFactoryBean();
-        yaml.setResources(new org.springframework.core.io.FileSystemResource(directory.resolve("contracts/openapi.yaml")));
+        yaml.setResources(
+                new org.springframework.core.io.FileSystemResource(directory.resolve("contracts/openapi.yaml")));
         Map<?, ?> document = yaml.getObject();
         var components = (Map<?, ?>) document.get("components");
         var schemas = (Map<?, ?>) components.get("schemas");
@@ -176,15 +209,21 @@ class DirectorSettingsPostgresIT {
             for (String key : required) {
                 var property = (Map<?, ?>) properties.get(key);
                 assertThat(entry.getValue().path(key).isIntegralNumber()).isTrue();
-                assertThat(entry.getValue().path(key).asLong()).isGreaterThanOrEqualTo(((Number) property.get("minimum")).longValue());
-                if (property.get("maximum") instanceof Number max) assertThat(entry.getValue().path(key).asLong()).isLessThanOrEqualTo(max.longValue());
+                assertThat(entry.getValue().path(key).asLong())
+                        .isGreaterThanOrEqualTo(((Number) property.get("minimum")).longValue());
+                if (property.get("maximum") instanceof Number max)
+                    assertThat(entry.getValue().path(key).asLong()).isLessThanOrEqualTo(max.longValue());
             }
         }
     }
 
-    private DirectorSettings small(long version) { return new DirectorSettings(8192, 50, 1024, 512, 0, 60, 12, 30, 2, version); }
+    private DirectorSettings small(long version) {
+        return new DirectorSettings(8192, 50, 1024, 512, 0, 60, 12, 30, 2, version);
+    }
     private tools.jackson.databind.node.ObjectNode request() {
         var result = (tools.jackson.databind.node.ObjectNode) mapper.valueToTree(small(1));
-        result.remove("version"); result.put("expectedVersion", 1); return result;
+        result.remove("version");
+        result.put("expectedVersion", 1);
+        return result;
     }
 }

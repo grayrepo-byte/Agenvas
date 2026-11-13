@@ -18,7 +18,7 @@ describe("Space tap and hold", () => {
     expect(result.current.selecting).toBe(true);
   });
 
-  it.each(["select", "hand"] as const)("restores %s after holding Space", (tool) => {
+  it.each(["select", "hand"] as const)("restores %s after holding Space", tool => {
     const now = vi.spyOn(performance, "now").mockReturnValue(0);
     const { result } = renderHook(useCanvasInteraction);
     act(() => result.current.setTool(tool));

@@ -38,8 +38,8 @@ public class JooqCallLogRepository implements CallLogRepository {
     private static final short SETTINGS_ID = 1;
     // A diagnostic has no worker lease. Its one-call transport deadline plus connection grace
     // bounds how long an incomplete row can honestly be projected as actively calling.
-    private static final long DIAGNOSTIC_STALE_SECONDS =
-            LlmCallTimeouts.REQUEST.plus(LlmCallTimeouts.CONNECT).toSeconds();
+    private static final long DIAGNOSTIC_STALE_SECONDS = LlmCallTimeouts.REQUEST.plus(LlmCallTimeouts.CONNECT)
+            .toSeconds();
     private final DSLContext dsl;
     private final ObjectMapper mapper;
     private final dev.agenvas.llm.application.ExecutionLedgerRetention turns;
@@ -52,15 +52,21 @@ public class JooqCallLogRepository implements CallLogRepository {
             dev.agenvas.task.application.ProviderAttemptRetention attempts,
             dev.agenvas.run.application.RunHistoryCleanupService runs,
             dev.agenvas.task.application.TaskHistoryCleanupService tasks) {
-        this.dsl = dsl; this.mapper = mapper; this.turns = turns; this.attempts = attempts;
-        this.runs = runs; this.tasks = tasks;
+        this.dsl = dsl;
+        this.mapper = mapper;
+        this.turns = turns;
+        this.attempts = attempts;
+        this.runs = runs;
+        this.tasks = tasks;
     }
 
-    @Override public CallLogRetentionSettings retentionSettings() {
+    @Override
+    public CallLogRetentionSettings retentionSettings() {
         return dsl.selectFrom(AUDIT_LOG_RETENTION_SETTINGS).where(AUDIT_LOG_RETENTION_SETTINGS.ID.eq(SETTINGS_ID))
                 .fetchSingle(row -> new CallLogRetentionSettings(row.getRetentionDays(), row.getVersion()));
     }
-    @Override public Optional<CallLogRetentionSettings> updateRetentionSettings(Integer days, int expectedVersion) {
+    @Override
+    public Optional<CallLogRetentionSettings> updateRetentionSettings(Integer days, int expectedVersion) {
         return dsl.update(AUDIT_LOG_RETENTION_SETTINGS).set(AUDIT_LOG_RETENTION_SETTINGS.RETENTION_DAYS, days)
                 .set(AUDIT_LOG_RETENTION_SETTINGS.VERSION, AUDIT_LOG_RETENTION_SETTINGS.VERSION.plus(1))
                 .where(AUDIT_LOG_RETENTION_SETTINGS.ID.eq(SETTINGS_ID))
@@ -110,43 +116,55 @@ public class JooqCallLogRepository implements CallLogRepository {
      * Stop expired nonterminal units and fence old workers before removing their ledgers.
      * State changes, project events and history deletion commit or roll back together.
      */
-    @Override @Transactional
+    @Override
+    @Transactional
     public int purgeExpired(Instant now, int batchSize, int expectedVersion) {
         var policy = dsl.selectFrom(AUDIT_LOG_RETENTION_SETTINGS)
                 .where(AUDIT_LOG_RETENTION_SETTINGS.ID.eq(SETTINGS_ID)).forUpdate().fetchSingle();
         if (policy.getVersion() != expectedVersion) {
-            throw new dev.agenvas.shared.error.ApiProblemException(org.springframework.http.HttpStatus.CONFLICT, "VERSION_CONFLICT",
+            throw new dev.agenvas.shared.error.ApiProblemException(org.springframework.http.HttpStatus.CONFLICT,
+                    "VERSION_CONFLICT",
                     dev.agenvas.shared.i18n.ApiMessage.of("api.audit-retention.conflict-title"),
                     dev.agenvas.shared.i18n.ApiMessage.of("api.audit-retention.conflict-detail"), false);
         }
-        if (policy.getRetentionDays() == null) return 0;
+        if (policy.getRetentionDays() == null)
+            return 0;
         Instant cutoff = now.minus(policy.getRetentionDays(), ChronoUnit.DAYS);
-        var candidates = dsl.fetch(EXPIRED_RUNS + " ORDER BY coalesce(r.completed_at,r.created_at),r.id LIMIT ?", utc(cutoff), batchSize);
-        var directCandidates = dsl.fetch(EXPIRED_STANDALONE + " ORDER BY coalesce(t.completed_at,t.created_at),t.id LIMIT ?", utc(cutoff), batchSize);
+        var candidates = dsl.fetch(EXPIRED_RUNS + " ORDER BY coalesce(r.completed_at,r.created_at),r.id LIMIT ?",
+                utc(cutoff), batchSize);
+        var directCandidates = dsl.fetch(
+                EXPIRED_STANDALONE + " ORDER BY coalesce(t.completed_at,t.created_at),t.id LIMIT ?", utc(cutoff),
+                batchSize);
         var projectIds = new java.util.HashSet<>(candidates.getValues("project_id", UUID.class));
         projectIds.addAll(directCandidates.getValues("project_id", UUID.class));
         // SKIP LOCKED never waits while holding a run/task lock for another project's event lock.
         var projects = dsl.select(PROJECT.ID).from(PROJECT).where(PROJECT.ID.in(projectIds))
                 .orderBy(PROJECT.ID).forUpdate().skipLocked().fetch(PROJECT.ID);
-        var runIds = new ArrayList<>(dsl.fetch(EXPIRED_RUNS + """
+        var runIds = new ArrayList<>(dsl
+                .fetch(EXPIRED_RUNS + """
                  AND r.id=ANY(?) AND r.project_id=ANY(?)
                  ORDER BY coalesce(r.completed_at,r.created_at),r.id LIMIT ? FOR UPDATE OF r SKIP LOCKED
-                """, utc(cutoff), candidates.getValues("id", UUID.class).toArray(UUID[]::new), projects.toArray(UUID[]::new), batchSize)
+                """, utc(cutoff), candidates.getValues("id", UUID.class).toArray(UUID[]::new),
+                        projects.toArray(UUID[]::new), batchSize)
                 .getValues("id", UUID.class));
-        var taskIds = new ArrayList<>(dsl.fetch("SELECT id FROM task WHERE run_id = ANY(?) ORDER BY id FOR UPDATE SKIP LOCKED",
-                (Object) runIds.toArray(UUID[]::new)).getValues("id", UUID.class));
+        var taskIds = new ArrayList<>(
+                dsl.fetch("SELECT id FROM task WHERE run_id = ANY(?) ORDER BY id FOR UPDATE SKIP LOCKED",
+                        (Object) runIds.toArray(UUID[]::new)).getValues("id", UUID.class));
         // A skipped task or a newly refreshed checkpoint defers the whole execution, never half.
         var deferred = dsl.fetch("""
                 SELECT DISTINCT run_id FROM task WHERE run_id = ANY(?) AND
                   (NOT (id = ANY(?)) OR coalesce(completed_at,created_at) >= ? OR updated_at >= ?)
-                """, runIds.toArray(UUID[]::new), taskIds.toArray(UUID[]::new), utc(cutoff), utc(cutoff)).getValues("run_id", UUID.class);
+                """, runIds.toArray(UUID[]::new), taskIds.toArray(UUID[]::new), utc(cutoff), utc(cutoff))
+                .getValues("run_id", UUID.class);
         runIds.removeAll(deferred);
         taskIds = new ArrayList<>(dsl.fetch("SELECT id FROM task WHERE run_id = ANY(?)",
                 (Object) runIds.toArray(UUID[]::new)).getValues("id", UUID.class));
-        var standalone = dsl.fetch(EXPIRED_STANDALONE + """
+        var standalone = dsl
+                .fetch(EXPIRED_STANDALONE + """
                  AND t.id=ANY(?) AND t.project_id=ANY(?)
                  ORDER BY coalesce(t.completed_at,t.created_at),t.id LIMIT ? FOR UPDATE OF t SKIP LOCKED
-                """, utc(cutoff), directCandidates.getValues("id", UUID.class).toArray(UUID[]::new), projects.toArray(UUID[]::new), batchSize - runIds.size())
+                """, utc(cutoff), directCandidates.getValues("id", UUID.class).toArray(UUID[]::new),
+                        projects.toArray(UUID[]::new), batchSize - runIds.size())
                 .getValues("id", UUID.class);
         taskIds.addAll(standalone);
         runs.stopFor(runIds, now);
@@ -163,32 +181,40 @@ public class JooqCallLogRepository implements CallLogRepository {
                 .and(CALL_LOG.RESPONDED_AT.isNull().or(CALL_LOG.RESPONDED_AT.lt(utc(cutoff))))
                 .orderBy(CALL_LOG.STARTED_AT, CALL_LOG.ID).limit(remaining).forUpdate().skipLocked()
                 .fetch(CALL_LOG.ID);
-        int diagnosticCount = diagnosticIds.isEmpty() ? 0
+        int diagnosticCount = diagnosticIds.isEmpty()
+                ? 0
                 : dsl.deleteFrom(CALL_LOG).where(CALL_LOG.ID.in(diagnosticIds)).execute();
         return runIds.size() + standalone.size() + diagnosticCount;
     }
 
-    @Override public boolean isDebugEnabled() { return settings().debugMode(); }
-    @Override public DebugSettings settings() {
+    @Override
+    public boolean isDebugEnabled() {
+        return settings().debugMode();
+    }
+    @Override
+    public DebugSettings settings() {
         return dsl.selectFrom(AUDIT_DEBUG_SETTINGS).where(AUDIT_DEBUG_SETTINGS.ID.eq(SETTINGS_ID))
                 .fetchSingle(row -> new DebugSettings(row.getDebugMode(), row.getVersion()));
     }
-    @Override public Optional<DebugSettings> updateSettings(boolean enabled, int expectedVersion) {
+    @Override
+    public Optional<DebugSettings> updateSettings(boolean enabled, int expectedVersion) {
         return dsl.update(AUDIT_DEBUG_SETTINGS).set(AUDIT_DEBUG_SETTINGS.DEBUG_MODE, enabled)
                 .set(AUDIT_DEBUG_SETTINGS.VERSION, AUDIT_DEBUG_SETTINGS.VERSION.plus(1))
                 .where(AUDIT_DEBUG_SETTINGS.ID.eq(SETTINGS_ID))
                 .and(AUDIT_DEBUG_SETTINGS.VERSION.eq(expectedVersion)).returning()
                 .fetchOptional(row -> new DebugSettings(row.getDebugMode(), row.getVersion()));
     }
-    @Override public void saveDebug(UUID id, List<Exchange> exchanges) {
+    @Override
+    public void saveDebug(UUID id, List<Exchange> exchanges) {
         JSONB json = JSONB.valueOf(mapper.writeValueAsString(exchanges));
         dsl.insertInto(CALL_LOG_DEBUG).set(CALL_LOG_DEBUG.CALL_ID, id)
                 .set(CALL_LOG_DEBUG.EXCHANGES_JSON, json).onConflict(CALL_LOG_DEBUG.CALL_ID)
                 .doUpdate().set(CALL_LOG_DEBUG.EXCHANGES_JSON, json).execute();
     }
-    @Override public Optional<CallDebug> debug(UUID ownerId, UUID id) {
+    @Override
+    public Optional<CallDebug> debug(UUID ownerId, UUID id) {
         return dsl.select(CALL_LOG.ID, CALL_LOG.LLM_STREAM_METRICS_JSON,
-                        CALL_LOG_DEBUG.EXCHANGES_JSON, CALL_LOG_DEBUG.LLM_STREAM_CONTENT_JSON).from(CALL_LOG)
+                CALL_LOG_DEBUG.EXCHANGES_JSON, CALL_LOG_DEBUG.LLM_STREAM_CONTENT_JSON).from(CALL_LOG)
                 .leftJoin(PROJECT).on(PROJECT.ID.eq(CALL_LOG.PROJECT_ID))
                 .leftJoin(CALL_LOG_DEBUG).on(CALL_LOG_DEBUG.CALL_ID.eq(CALL_LOG.ID))
                 .where(CALL_LOG.ID.eq(id)).and(PROJECT.OWNER_ID.eq(ownerId).or(
@@ -197,31 +223,41 @@ public class JooqCallLogRepository implements CallLogRepository {
                                         .and(APP_USER.STATUS.eq("ACTIVE")))))
                 .fetchOptional(row -> {
                     JSONB json = row.get(CALL_LOG_DEBUG.EXCHANGES_JSON);
-                    List<Exchange> exchanges = json == null ? List.of() : List.of(
-                            mapper.readValue(json.data(), Exchange[].class));
+                    List<Exchange> exchanges = json == null
+                            ? List.of()
+                            : List.of(
+                                    mapper.readValue(json.data(), Exchange[].class));
                     JSONB metrics = row.get(CALL_LOG.LLM_STREAM_METRICS_JSON);
                     JSONB content = row.get(CALL_LOG_DEBUG.LLM_STREAM_CONTENT_JSON);
-                    LlmStreamLog log = metrics == null ? null : new LlmStreamLog(
-                            mapper.readValue(metrics.data(), LlmStreamLog.Metrics.class),
-                            content == null ? null : mapper.readValue(content.data(), LlmStreamLog.Content.class));
+                    LlmStreamLog log = metrics == null
+                            ? null
+                            : new LlmStreamLog(
+                                    mapper.readValue(metrics.data(), LlmStreamLog.Metrics.class),
+                                    content == null
+                                            ? null
+                                            : mapper.readValue(content.data(), LlmStreamLog.Content.class));
                     return new CallDebug(id, json != null, exchanges, log);
                 });
     }
 
     private static final int STREAM_WRITE_TIMEOUT_SECONDS = 10;
 
-    @Override @Transactional(timeout = STREAM_WRITE_TIMEOUT_SECONDS)
+    @Override
+    @Transactional(timeout = STREAM_WRITE_TIMEOUT_SECONDS)
     public void finishStream(UUID id, CallLogService.CallOutcome outcome, Instant respondedAt, long durationMs,
             LlmStreamLog log, List<Exchange> exchanges, boolean captured) {
         // The guarded update locks the existing call. Cleanup cannot resurrect a deleted debug row.
         finish(id, outcome, respondedAt, durationMs);
-        if (log != null) dsl.update(CALL_LOG).set(CALL_LOG.LLM_STREAM_METRICS_JSON,
-                JSONB.valueOf(mapper.writeValueAsString(log.metrics()))).where(CALL_LOG.ID.eq(id)).execute();
+        if (log != null)
+            dsl.update(CALL_LOG).set(CALL_LOG.LLM_STREAM_METRICS_JSON,
+                    JSONB.valueOf(mapper.writeValueAsString(log.metrics()))).where(CALL_LOG.ID.eq(id)).execute();
         if (captured) {
             saveDebug(id, exchanges);
-            if (log != null && log.content() != null) dsl.update(CALL_LOG_DEBUG)
-                    .set(CALL_LOG_DEBUG.LLM_STREAM_CONTENT_JSON, JSONB.valueOf(mapper.writeValueAsString(log.content())))
-                    .where(CALL_LOG_DEBUG.CALL_ID.eq(id)).execute();
+            if (log != null && log.content() != null)
+                dsl.update(CALL_LOG_DEBUG)
+                        .set(CALL_LOG_DEBUG.LLM_STREAM_CONTENT_JSON,
+                                JSONB.valueOf(mapper.writeValueAsString(log.content())))
+                        .where(CALL_LOG_DEBUG.CALL_ID.eq(id)).execute();
         }
     }
 
@@ -255,7 +291,8 @@ public class JooqCallLogRepository implements CallLogRepository {
                 .where(CALL_LOG.ID.eq(id))
                 .and(CALL_LOG.STATUS.eq(CallLog.Status.RUNNING.name()))
                 .execute();
-        if (updated != 1) throw new IllegalStateException("Call response already recorded or missing");
+        if (updated != 1)
+            throw new IllegalStateException("Call response already recorded or missing");
     }
 
     // Legacy rows are explicitly checkpoints, not fabricated network observations. The NOT EXISTS
@@ -328,10 +365,12 @@ public class JooqCallLogRepository implements CallLogRepository {
         }
         add(where, bindings, "trace_id", filter.traceId());
         if (filter.from() != null) {
-            where.append(" AND started_at >= ?"); bindings.add(utc(filter.from()));
+            where.append(" AND started_at >= ?");
+            bindings.add(utc(filter.from()));
         }
         if (filter.to() != null) {
-            where.append(" AND started_at <= ?"); bindings.add(utc(filter.to()));
+            where.append(" AND started_at <= ?");
+            bindings.add(utc(filter.to()));
         }
         long count = dsl.fetchSingle(SOURCE + " SELECT count(*) FROM calls" + where,
                 bindings.toArray()).get(0, Long.class);
@@ -339,7 +378,7 @@ public class JooqCallLogRepository implements CallLogRepository {
         pageBindings.add(filter.size());
         pageBindings.add((long) filter.page() * filter.size());
         var items = dsl.fetch(SOURCE + " SELECT * FROM calls" + where
-                        + " ORDER BY started_at DESC, id DESC LIMIT ? OFFSET ?",
+                + " ORDER BY started_at DESC, id DESC LIMIT ? OFFSET ?",
                 pageBindings.toArray()).map(this::map);
         return new CallLogPage(items, filter.page(), filter.size(), count,
                 (count + filter.size() - 1) / filter.size());
@@ -347,8 +386,10 @@ public class JooqCallLogRepository implements CallLogRepository {
 
     private static void add(StringBuilder where, List<Object> bindings,
             String column, Object value) {
-        if (value != null) { where.append(" AND ").append(column).append(" = ?");
-            bindings.add(value); }
+        if (value != null) {
+            where.append(" AND ").append(column).append(" = ?");
+            bindings.add(value);
+        }
     }
     private CallLog map(Record row) {
         String taskStatus = row.get("task_status", String.class);
@@ -356,7 +397,8 @@ public class JooqCallLogRepository implements CallLogRepository {
         return new CallLog(row.get("id", UUID.class), row.get("project_id", UUID.class),
                 row.get("project_title", String.class), row.get("task_id", UUID.class),
                 row.get("run_id", UUID.class), CallLog.Kind.valueOf(row.get("kind", String.class)),
-                CallLog.Operation.valueOf(row.get("operation", String.class)), CallLog.Status.valueOf(row.get("status", String.class)),
+                CallLog.Operation.valueOf(row.get("operation", String.class)),
+                CallLog.Status.valueOf(row.get("status", String.class)),
                 taskStatus == null ? null : Task.Status.valueOf(taskStatus),
                 CallLogService.safeIdentifier(row.get("provider", String.class)),
                 CallLogService.safeIdentifier(row.get("model", String.class)), row.get("trace_id", String.class),
@@ -366,5 +408,7 @@ public class JooqCallLogRepository implements CallLogRepository {
                 responded == null ? null : responded.toInstant(), row.get("duration_ms", Long.class),
                 row.get("historical", Boolean.class), row.get("mock", Boolean.class));
     }
-    private static OffsetDateTime utc(Instant value) { return value.atOffset(ZoneOffset.UTC); }
+    private static OffsetDateTime utc(Instant value) {
+        return value.atOffset(ZoneOffset.UTC);
+    }
 }

@@ -24,22 +24,46 @@ public final class SkillWorker {
     private final SkillService skills;
     private final ShutdownGate shutdown;
     private final SkillRunService runSkills;
-    private final ExecutorService executor = Executors.newSingleThreadExecutor(Thread.ofPlatform().name("skill-copy").factory());
+    private final ExecutorService executor = Executors
+            .newSingleThreadExecutor(Thread.ofPlatform().name("skill-copy").factory());
     private final AtomicBoolean busy = new AtomicBoolean();
-    public SkillWorker(SkillService skills, ShutdownGate shutdown, SkillRunService runSkills) { this.skills = skills; this.shutdown = shutdown; this.runSkills = runSkills; }
-    @Scheduled(fixedDelayString = "${agenvas.skill.poll-interval-ms:500}") public void tick() {
-        if (shutdown.isClosing() || !busy.compareAndSet(false, true)) return;
+    public SkillWorker(SkillService skills, ShutdownGate shutdown, SkillRunService runSkills) {
+        this.skills = skills;
+        this.shutdown = shutdown;
+        this.runSkills = runSkills;
+    }
+    @Scheduled(fixedDelayString = "${agenvas.skill.poll-interval-ms:500}")
+    public void tick() {
+        if (shutdown.isClosing() || !busy.compareAndSet(false, true))
+            return;
         try {
             executor.execute(() -> {
-                try { if (!shutdown.isClosing()) { skills.cleanupNext(); runSkills.cleanupNext(); skills.processNext(); runSkills.processNext(); } }
-                catch (RuntimeException failure) { LOGGER.warn("Skill worker pass failed: {}", failure.getClass().getSimpleName()); }
-                finally { busy.set(false); }
+                try {
+                    if (!shutdown.isClosing()) {
+                        skills.cleanupNext();
+                        runSkills.cleanupNext();
+                        skills.processNext();
+                        runSkills.processNext();
+                    }
+                } catch (RuntimeException failure) {
+                    LOGGER.warn("Skill worker pass failed: {}", failure.getClass().getSimpleName());
+                } finally {
+                    busy.set(false);
+                }
             });
-        } catch (RejectedExecutionException stopped) { busy.set(false); }
+        } catch (RejectedExecutionException stopped) {
+            busy.set(false);
+        }
     }
-    @PreDestroy public void close() {
+    @PreDestroy
+    public void close() {
         executor.shutdown();
-        try { if (!executor.awaitTermination(SHUTDOWN_SECONDS, TimeUnit.SECONDS)) executor.shutdownNow(); }
-        catch (InterruptedException interrupted) { executor.shutdownNow(); Thread.currentThread().interrupt(); }
+        try {
+            if (!executor.awaitTermination(SHUTDOWN_SECONDS, TimeUnit.SECONDS))
+                executor.shutdownNow();
+        } catch (InterruptedException interrupted) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
     }
 }

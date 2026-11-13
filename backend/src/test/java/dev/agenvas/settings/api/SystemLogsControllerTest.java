@@ -26,16 +26,28 @@ import tools.jackson.databind.ObjectMapper;
 
 /** Uses the actual application security chain without a database or external model. */
 class SystemLogsControllerTest {
-    @Configuration @EnableWebMvc @EnableWebSecurity
+    @Configuration
+    @EnableWebMvc
+    @EnableWebSecurity
     @Import({SecurityConfiguration.class, ApiExceptionHandler.class, SystemLogsController.class,
             I18nConfiguration.class, ApiMessages.class, LocaleResponseFilter.class})
     static class WebConfiguration {
-        @Bean AdminAuthenticationProvider authenticationProvider() { return mock(AdminAuthenticationProvider.class); }
-        @Bean SystemLogBuffer logs() { return new SystemLogBuffer(Clock.systemUTC()); }
-        @Bean ObjectMapper objectMapper() { return new ObjectMapper(); }
+        @Bean
+        AdminAuthenticationProvider authenticationProvider() {
+            return mock(AdminAuthenticationProvider.class);
+        }
+        @Bean
+        SystemLogBuffer logs() {
+            return new SystemLogBuffer(Clock.systemUTC());
+        }
+        @Bean
+        ObjectMapper objectMapper() {
+            return new ObjectMapper();
+        }
     }
 
-    @Test void contractAndAdministratorBoundary() throws Exception {
+    @Test
+    void contractAndAdministratorBoundary() throws Exception {
         try (var context = new AnnotationConfigWebApplicationContext()) {
             context.setServletContext(new MockServletContext());
             context.register(WebConfiguration.class);
@@ -43,7 +55,8 @@ class SystemLogsControllerTest {
             var mvc = MockMvcBuilders.webAppContextSetup(context)
                     .addFilters(context.getBean(LocaleResponseFilter.class)).apply(springSecurity()).build();
             String path = "/api/v1/settings/system-logs";
-            mvc.perform(get(path)).andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+            mvc.perform(get(path)).andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
             mvc.perform(get(path).with(user("reader").roles("USER"))).andExpect(status().isForbidden());
             mvc.perform(get(path).with(user("admin").roles("ADMIN")))
                     .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
@@ -51,7 +64,8 @@ class SystemLogsControllerTest {
                     .andExpect(jsonPath("$.capacity").value(SystemLogBuffer.CAPACITY))
                     .andExpect(jsonPath("$.entries").isArray()).andExpect(jsonPath("$.matchedCount").value(0));
             String[] languages = {"en", "zh", "ru", "ja"};
-            String[] details = {"Please sign in to continue.", "请登录后继续。", "Войдите, чтобы продолжить.", "ログインして続行してください。"};
+            String[] details = {"Please sign in to continue.", "请登录后继续。", "Войдите, чтобы продолжить.",
+                    "ログインして続行してください。"};
             for (int index = 0; index < languages.length; index++) {
                 mvc.perform(get(path).header("Accept-Language", languages[index]))
                         .andExpect(status().isUnauthorized())
@@ -60,7 +74,8 @@ class SystemLogsControllerTest {
                         .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"))
                         .andExpect(jsonPath("$.detail").value(details[index]));
             }
-            for (String query : new String[]{"?limit=0", "?limit=1001", "?limit=invalid", "?stream=STDIN", "?search=" + "x".repeat(201)}) {
+            for (String query : new String[]{"?limit=0", "?limit=1001", "?limit=invalid", "?stream=STDIN",
+                    "?search=" + "x".repeat(201)}) {
                 mvc.perform(get(path + query).with(user("admin").roles("ADMIN")))
                         .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
             }

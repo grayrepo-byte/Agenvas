@@ -67,20 +67,34 @@ class CanvasMediaVersionsPostgresIT {
         registry.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private ArtifactService artifacts;
-    @Autowired private MediaDraftService drafts;
-    @Autowired private CanvasService canvas;
-    @Autowired private CanvasConnectionService connections;
-    @Autowired private DirectMediaTaskService direct;
-    @Autowired private TaskService tasks;
-    @Autowired private MediaExecutionWorker worker;
-    @Autowired private AssetService assets;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private ObjectMapper mapper;
-    @Autowired private WebApplicationContext context;
-    @Autowired private org.springframework.transaction.PlatformTransactionManager transactions;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private ArtifactService artifacts;
+    @Autowired
+    private MediaDraftService drafts;
+    @Autowired
+    private CanvasService canvas;
+    @Autowired
+    private CanvasConnectionService connections;
+    @Autowired
+    private DirectMediaTaskService direct;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private MediaExecutionWorker worker;
+    @Autowired
+    private AssetService assets;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private ObjectMapper mapper;
+    @Autowired
+    private WebApplicationContext context;
+    @Autowired
+    private org.springframework.transaction.PlatformTransactionManager transactions;
     private AdminPrincipal owner;
     private Project project;
 
@@ -207,10 +221,12 @@ class CanvasMediaVersionsPostgresIT {
                 .contentType("application/json").content(request)).andExpect(status().isConflict());
         mvc.perform(post(base + "/select-media-version").with(auth).with(csrf())
                 .contentType("application/json").content("{\"versionId\":\"" + foreignResult
-                        + "\",\"expectedVersion\":2}")).andExpect(status().isBadRequest());
+                        + "\",\"expectedVersion\":2}"))
+                .andExpect(status().isBadRequest());
         mvc.perform(get(base + "/media-versions").with(authentication(
                 new UsernamePasswordAuthenticationToken(new AdminPrincipal(UUID.randomUUID(), "foreign"),
-                        null, List.of())))).andExpect(status().isNotFound());
+                        null, List.of()))))
+                .andExpect(status().isNotFound());
         assertThat(card(sibling).item().selectedVersionId()).isEqualTo(foreignResult);
     }
 
@@ -285,9 +301,11 @@ class CanvasMediaVersionsPostgresIT {
         UUID second = generate(originalId);
         var original = card(originalId).item();
         UUID artifactId = original.subjectId();
-        var defaultBefore = artifacts.get(owner.userId(), project.id(), artifactId).artifact().resourceDefaultVersionId();
+        var defaultBefore = artifacts.get(owner.userId(), project.id(), artifactId).artifact()
+                .resourceDefaultVersionId();
         var template = new org.springframework.transaction.support.TransactionTemplate(transactions);
-        var reference = template.execute(status -> canvas.ensureMediaReferenceWithinChange(owner.userId(), project.id(), artifactId, first, null));
+        var reference = template.execute(status -> canvas.ensureMediaReferenceWithinChange(owner.userId(), project.id(),
+                artifactId, first, null));
         assertThat(reference).isNotNull();
         assertThat(reference.id()).isNotEqualTo(originalId);
         assertThat(reference.groupId()).isNull();
@@ -296,8 +314,10 @@ class CanvasMediaVersionsPostgresIT {
         assertThat(canvas.listMediaVersions(owner.userId(), project.id(), reference.id()))
                 .extracting(version -> version.id()).containsExactly(first);
         assertThat(card(originalId).item().selectedVersionId()).isEqualTo(second);
-        assertThat(artifacts.get(owner.userId(), project.id(), artifactId).artifact().resourceDefaultVersionId()).isEqualTo(defaultBefore);
-        var reused = template.execute(status -> canvas.ensureMediaReferenceWithinChange(owner.userId(), project.id(), artifactId, first, null));
+        assertThat(artifacts.get(owner.userId(), project.id(), artifactId).artifact().resourceDefaultVersionId())
+                .isEqualTo(defaultBefore);
+        var reused = template.execute(status -> canvas.ensureMediaReferenceWithinChange(owner.userId(), project.id(),
+                artifactId, first, null));
         assertThat(reused.id()).isEqualTo(reference.id());
         assertThat(canvas.list(owner.userId(), project.id())).hasSize(2);
     }
@@ -339,7 +359,8 @@ class CanvasMediaVersionsPostgresIT {
         Task pending = run(card);
         Task lease = tasks.claimBoundMedia("removed-node-worker", 1).getFirst();
         tasks.beginSubmission(lease, "removed-node-worker");
-        canvas.apply(owner.userId(), project.id(), List.of(new CanvasService.Remove(card, card(card).item().version())));
+        canvas.apply(owner.userId(), project.id(),
+                List.of(new CanvasService.Remove(card, card(card).item().version())));
         var late = finish(lease, "removed-node-worker");
         assertThat(late.selected()).isFalse();
         assertThat(canvas.list(owner.userId(), project.id())).isEmpty();

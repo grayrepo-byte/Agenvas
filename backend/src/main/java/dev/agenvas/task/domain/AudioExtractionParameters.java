@@ -16,23 +16,32 @@ public record AudioExtractionParameters(Format format, int trackIndex) {
     public static final int MAX_TRACK_INDEX = 31;
     private static final Set<String> FIELDS = Set.of("format", "trackIndex");
 
-    public enum Format { WAV, MP3 }
+    public enum Format {
+        WAV, MP3
+    }
 
     public AudioExtractionParameters {
-        if (format == null || trackIndex < 0 || trackIndex > MAX_TRACK_INDEX) throw invalid();
+        if (format == null || trackIndex < 0 || trackIndex > MAX_TRACK_INDEX)
+            throw invalid();
     }
 
     /** Empty historic task parameters preserve first-track PCM WAV semantics. */
     public static AudioExtractionParameters parse(JsonNode parameters) {
-        if (!parameters.isObject() || !FIELDS.containsAll(parameters.propertyNames())) throw invalid();
+        if (!parameters.isObject() || !FIELDS.containsAll(parameters.propertyNames()))
+            throw invalid();
         JsonNode format = parameters.get("format"), track = parameters.get("trackIndex");
         Format selected = Format.WAV;
         if (format != null) {
-            if (!format.isTextual()) throw invalid();
-            try { selected = Format.valueOf(format.textValue()); }
-            catch (IllegalArgumentException failure) { throw invalid(); }
+            if (!format.isTextual())
+                throw invalid();
+            try {
+                selected = Format.valueOf(format.textValue());
+            } catch (IllegalArgumentException failure) {
+                throw invalid();
+            }
         }
-        if (track != null && (!track.isIntegralNumber() || !track.canConvertToInt())) throw invalid();
+        if (track != null && (!track.isIntegralNumber() || !track.canConvertToInt()))
+            throw invalid();
         return new AudioExtractionParameters(selected, track == null ? 0 : track.intValue());
     }
 

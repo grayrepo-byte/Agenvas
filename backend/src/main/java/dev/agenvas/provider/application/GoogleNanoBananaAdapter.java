@@ -49,13 +49,18 @@ public class GoogleNanoBananaAdapter implements MediaAdapter {
         this.mapper = mapper;
     }
 
-    @Override public String adapterId() { return "GOOGLE_NANO_BANANA_2"; }
+    @Override
+    public String adapterId() {
+        return "GOOGLE_NANO_BANANA_2";
+    }
 
-    @Override public boolean supports(PortInput input) {
+    @Override
+    public boolean supports(PortInput input) {
         return input.kind() == Task.Kind.IMAGE_GENERATION;
     }
 
-    @Override public String preflightFailure(AttemptContext context) {
+    @Override
+    public String preflightFailure(AttemptContext context) {
         try {
             credential(snapshot(context));
         } catch (RuntimeException unavailable) {
@@ -70,13 +75,15 @@ public class GoogleNanoBananaAdapter implements MediaAdapter {
         }
     }
 
-    @Override public Submission submit(AttemptContext context) {
+    @Override
+    public Submission submit(AttemptContext context) {
         Snapshot snapshot = snapshot(context);
         String key = credential(snapshot);
         String configuredModel = modelName(snapshot);
         String prompt = context.lease().input().path("prompt").asText();
         String negative = context.lease().input().path("negativePrompt").asText("");
-        if (!negative.isBlank()) prompt += "\nAvoid: " + negative;
+        if (!negative.isBlank())
+            prompt += "\nAvoid: " + negative;
         List<GoogleNanoBananaClient.InputImage> references = references(context);
         try {
             return new Submission.Completed(client.generate(key, configuredModel,
@@ -90,7 +97,8 @@ public class GoogleNanoBananaAdapter implements MediaAdapter {
         }
     }
 
-    @Override public Submission reconcile(AttemptContext context) {
+    @Override
+    public Submission reconcile(AttemptContext context) {
         return new Submission.Blocked("GOOGLE_IMAGE_HAS_NO_STATUS_ENDPOINT");
     }
 
@@ -98,8 +106,8 @@ public class GoogleNanoBananaAdapter implements MediaAdapter {
         var binding = context.binding();
         Snapshot snapshot = catalog.snapshotAt(binding.capabilityId(),
                 binding.capabilityVersion(), binding.connectionId(),
-                binding.connectionVersion()).orElseThrow(() ->
-                new IllegalStateException("Pinned media capability version is missing"));
+                binding.connectionVersion())
+                .orElseThrow(() -> new IllegalStateException("Pinned media capability version is missing"));
         if (!adapterId().equals(snapshot.adapterId())
                 || !binding.mappingSha256().equals(snapshot.mappingSha256())) {
             throw new IllegalStateException("Pinned Nano Banana mapping differs");
@@ -127,7 +135,8 @@ public class GoogleNanoBananaAdapter implements MediaAdapter {
 
     private String aspectRatio(AttemptContext context) {
         String configured = parameters(context).aspectRatio();
-        if (!ImageGenerationParameters.AUTO_ASPECT_RATIO.equals(configured)) return configured;
+        if (!ImageGenerationParameters.AUTO_ASPECT_RATIO.equals(configured))
+            return configured;
         return switch (projects.get(context.ownerId(), context.lease().projectId()).aspectRatio()) {
             case LANDSCAPE_16_9 -> "16:9";
             case PORTRAIT_9_16 -> "9:16";

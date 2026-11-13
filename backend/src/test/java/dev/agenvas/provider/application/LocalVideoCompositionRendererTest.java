@@ -25,24 +25,31 @@ import tools.jackson.databind.node.ObjectNode;
 
 /** Runs installed FFmpeg against generated signals; no model output or private media is used. */
 class LocalVideoCompositionRendererTest {
-    @TempDir Path temp;
+    @TempDir
+    Path temp;
     private final ObjectMapper mapper = new ObjectMapper();
     private MediaToolRunner tools;
     private LocalVideoCompositionRenderer renderer;
 
-    @BeforeEach void requireLocalMediaTools() {
+    @BeforeEach
+    void requireLocalMediaTools() {
         var properties = new MediaToolsProperties(null, null, null);
-        assumeTrue(Files.isExecutable(properties.ffmpeg()) && Files.isExecutable(properties.ffprobe()), "FFmpeg and ffprobe required");
+        assumeTrue(Files.isExecutable(properties.ffmpeg()) && Files.isExecutable(properties.ffprobe()),
+                "FFmpeg and ffprobe required");
         tools = new MediaToolRunner(properties);
         renderer = new LocalVideoCompositionRenderer(tools, mapper);
     }
 
-    @Test void thirteenClipsExportBeyondOneMinuteAndRetainEveryFrame() throws Exception {
+    @Test
+    void thirteenClipsExportBeyondOneMinuteAndRetainEveryFrame() throws Exception {
         Path source = video("long-source.mp4", "5", false, null);
         UUID id = UUID.randomUUID();
         ObjectNode request = request("MUTE");
-        for (int i = 0; i < 13; i++) addShot(request, id, 5000);
-        var result = renderer.render(request, Map.of(id, source(source, 5000)), scratch("long-edit"), () -> false, () -> {});
+        for (int i = 0; i < 13; i++)
+            addShot(request, id, 5000);
+        var result = renderer.render(request, Map.of(id, source(source, 5000)), scratch("long-edit"), () -> false,
+                () -> {
+                });
         assertThat(result.schedule().path("durationMs").asInt()).isEqualTo(65_000);
         assertThat(result.schedule().path("shots")).hasSize(13);
         var probe = mapper.readTree(tools.ffprobe(List.of("-v", "error", "-count_frames", "-show_entries",
@@ -51,49 +58,65 @@ class LocalVideoCompositionRendererTest {
         tools.ffmpeg(List.of("-v", "error", "-xerror", "-i", result.path().toString(), "-f", "null", "-"));
     }
 
-    @Test void fourKSampleKeepsExactFrames() throws Exception {
+    @Test
+    void fourKSampleKeepsExactFrames() throws Exception {
         Path source = video("4k-source.mp4", "0.1", false, null);
         UUID id = UUID.randomUUID();
         ObjectNode request = request("MUTE");
         addShot(request, id, 100);
         request.putObject("output").put("resolution", "2160P").put("aspectRatio", "16:9");
-        var result = renderer.render(request, Map.of(id, source(source, 100)), scratch("4k-output"), () -> false, () -> {});
+        var result = renderer.render(request, Map.of(id, source(source, 100)), scratch("4k-output"), () -> false,
+                () -> {
+                });
         assertThat(result.schedule().path("width").asInt()).isEqualTo(3840);
         assertThat(result.schedule().path("height").asInt()).isEqualTo(2160);
         assertThat(result.schedule().path("durationMs").asInt()).isEqualTo(100);
         tools.ffmpeg(List.of("-v", "error", "-xerror", "-i", result.path().toString(), "-f", "null", "-"));
     }
 
-    @Test void scratchOutputAndDeadlineBudgetsRejectIncompleteWork() throws Exception {
+    @Test
+    void scratchOutputAndDeadlineBudgetsRejectIncompleteWork() throws Exception {
         Path source = video("budget-source.mp4", "1", false, null);
         UUID id = UUID.randomUUID();
         ObjectNode request = request("MUTE");
         addShot(request, id, 1000);
         var sources = Map.of(id, source(source, 1000));
-        var smallScratch = VideoCompositionLimitsTest.configured(Map.of("agenvas.video-composition.limits.max-scratch-bytes", "1048576"));
+        var smallScratch = VideoCompositionLimitsTest
+                .configured(Map.of("agenvas.video-composition.limits.max-scratch-bytes", "1048576"));
         Path full = scratch("full");
         Files.write(full.resolve("filled"), new byte[1048577]);
-        assertThatThrownBy(() -> new LocalVideoCompositionRenderer(tools, mapper, new VideoCompositionRenderProperties(null), smallScratch)
-                .render(request, sources, full, () -> false, () -> {})).isInstanceOf(IllegalStateException.class)
+        assertThatThrownBy(() -> new LocalVideoCompositionRenderer(tools, mapper,
+                new VideoCompositionRenderProperties(null), smallScratch)
+                .render(request, sources, full, () -> false, () -> {
+                })).isInstanceOf(IllegalStateException.class)
                 .hasMessage("Composition scratch bound exceeded");
-        var smallOutput = VideoCompositionLimitsTest.configured(Map.of("agenvas.video-composition.limits.max-output-bytes", "1024"));
-        assertThatThrownBy(() -> new LocalVideoCompositionRenderer(tools, mapper, new VideoCompositionRenderProperties(null), smallOutput)
-                .render(request, sources, scratch("small-output"), () -> false, () -> {})).isInstanceOf(IllegalStateException.class);
-        var shortDeadline = VideoCompositionLimitsTest.configured(Map.of("agenvas.video-composition.limits.timeout", "PT0.001S"));
-        assertThatThrownBy(() -> new LocalVideoCompositionRenderer(tools, mapper, new VideoCompositionRenderProperties(null), shortDeadline)
-                .render(request, sources, scratch("deadline"), () -> false, () -> {})).isInstanceOf(MediaToolRunner.MediaToolException.class)
+        var smallOutput = VideoCompositionLimitsTest
+                .configured(Map.of("agenvas.video-composition.limits.max-output-bytes", "1024"));
+        assertThatThrownBy(() -> new LocalVideoCompositionRenderer(tools, mapper,
+                new VideoCompositionRenderProperties(null), smallOutput)
+                .render(request, sources, scratch("small-output"), () -> false, () -> {
+                })).isInstanceOf(IllegalStateException.class);
+        var shortDeadline = VideoCompositionLimitsTest
+                .configured(Map.of("agenvas.video-composition.limits.timeout", "PT0.001S"));
+        assertThatThrownBy(() -> new LocalVideoCompositionRenderer(tools, mapper,
+                new VideoCompositionRenderProperties(null), shortDeadline)
+                .render(request, sources, scratch("deadline"), () -> false, () -> {
+                })).isInstanceOf(MediaToolRunner.MediaToolException.class)
                 .hasMessageContaining("timed out");
     }
 
-    @Test void manyLateDialoguesMixWithoutTimelineSizedDelayBuffers() throws Exception {
+    @Test
+    void manyLateDialoguesMixWithoutTimelineSizedDelayBuffers() throws Exception {
         Path source = video("late-source.mp4", "180", false, null);
         Path voice = audio("late-voice.wav", "0.5", "1");
         UUID id = UUID.randomUUID(), audioId = UUID.randomUUID();
         var request = request("MUTE");
         var lines = addShot(request, id, 180_000).withArray("lines");
-        for (int i = 0; i < 10; i++) lines.addObject().put("audioVersionId", audioId.toString()).put("startMs", 165_000 + i * 1000);
+        for (int i = 0; i < 10; i++)
+            lines.addObject().put("audioVersionId", audioId.toString()).put("startMs", 165_000 + i * 1000);
         var result = renderer.render(request, Map.of(id, source(source, 180_000), audioId, source(voice, 500)),
-                scratch("late-mix"), () -> false, () -> {});
+                scratch("late-mix"), () -> false, () -> {
+                });
         assertThat(result.schedule().path("durationMs").asInt()).isEqualTo(180_000);
         assertThat(result.schedule().at("/shots/0/lines")).hasSize(10);
         var pcm = decodeAudio(result.path(), "late-result.pcm");
@@ -103,20 +126,25 @@ class LocalVideoCompositionRendererTest {
         assertThat(rms(pcm, 174700, 175000)).isLessThan(.0001);
     }
 
-    @Test void nearScratchBudgetNeverTurnsAWholeDialogueIntoAShortSuccessfulLine() throws Exception {
-        var limits = VideoCompositionLimitsTest.configured(Map.of("agenvas.video-composition.limits.max-scratch-bytes", "1048576"));
-        var bounded = new LocalVideoCompositionRenderer(tools, mapper, new VideoCompositionRenderProperties(null), limits);
+    @Test
+    void nearScratchBudgetNeverTurnsAWholeDialogueIntoAShortSuccessfulLine() throws Exception {
+        var limits = VideoCompositionLimitsTest
+                .configured(Map.of("agenvas.video-composition.limits.max-scratch-bytes", "1048576"));
+        var bounded = new LocalVideoCompositionRenderer(tools, mapper, new VideoCompositionRenderProperties(null),
+                limits);
         Path video = video("near-budget.mp4", "2", false, null);
         Path voice = audio("whole-line.wav", "1", "1");
         UUID id = UUID.randomUUID(), audioId = UUID.randomUUID();
         var request = request("MUTE");
         addShot(request, id, 2000).withArray("lines").addObject().put("audioVersionId", audioId.toString());
         assertThatThrownBy(() -> bounded.render(request, Map.of(id, source(video, 2000), audioId, source(voice, 1000)),
-                scratch("near-budget"), () -> false, () -> {})).isInstanceOf(IllegalStateException.class)
+                scratch("near-budget"), () -> false, () -> {
+                })).isInstanceOf(IllegalStateException.class)
                 .hasMessage("Composition scratch bound exceeded");
     }
 
-    @Test void originalSoundWindowsPlaceWholeTrimmedLinesAndMuteOriginalAudio() throws Exception {
+    @Test
+    void originalSoundWindowsPlaceWholeTrimmedLinesAndMuteOriginalAudio() throws Exception {
         Path source = video("source.mp4", "6", true, "if(between(t,1,2)+between(t,4,5),1,0)");
         Path voice = audio("voice.wav", "0.9", "if(between(t,0.2,0.7),1,0)");
         UUID videoId = UUID.randomUUID(), audioId = UUID.randomUUID();
@@ -147,17 +175,22 @@ class LocalVideoCompositionRendererTest {
         assertThat(rms(pcm, 1850, 1950)).isLessThan(0.0001);
     }
 
-    @Test void previewSharesExportTimingAndDoesNotRenderAnOutput() throws Exception {
+    @Test
+    void previewSharesExportTimingAndDoesNotRenderAnOutput() throws Exception {
         Path source = video("preview-source.mp4", "6", true, "if(between(t,1,2)+between(t,4,5),1,0)");
         Path voice = audio("preview-voice.wav", "0.9", "if(between(t,0.2,0.7),1,0)");
         UUID videoId = UUID.randomUUID(), audioId = UUID.randomUUID();
         ObjectNode request = request("KEEP");
-        addShot(request, videoId, 6000).put("speed", 2).withArray("lines").addObject().put("audioVersionId", audioId.toString());
+        addShot(request, videoId, 6000).put("speed", 2).withArray("lines").addObject().put("audioVersionId",
+                audioId.toString());
         var sources = Map.of(videoId, source(source, 6000), audioId, source(voice, 900));
         Path previewDir = scratch("preview-only");
         var preview = renderer.preview(request, sources, previewDir);
-        try (var files = Files.list(previewDir)) { assertThat(files.toList()).isEmpty(); }
-        var output = renderer.render(request, sources, scratch("matching-export"), () -> false, () -> {});
+        try (var files = Files.list(previewDir)) {
+            assertThat(files.toList()).isEmpty();
+        }
+        var output = renderer.render(request, sources, scratch("matching-export"), () -> false, () -> {
+        });
         assertThat(preview.path("frames").asInt()).isEqualTo(90);
         var expected = output.schedule().path("shots").get(0).path("lines").get(0);
         var actual = preview.path("shots").get(0).path("lines").get(0);
@@ -166,17 +199,24 @@ class LocalVideoCompositionRendererTest {
         assertThat(Math.abs(actual.path("endMs").asInt() - expected.path("endMs").asInt())).isLessThanOrEqualTo(40);
     }
 
-    @Test void sixCroppedClipsHaveExactlySixtySecondsIncludingTheAacTail() throws Exception {
+    @Test
+    void sixCroppedClipsHaveExactlySixtySecondsIncludingTheAacTail() throws Exception {
         Path source = video("fractional-source.mp4", "10.125", false, null);
         UUID videoId = UUID.randomUUID();
         ObjectNode request = request("MUTE");
-        for (int index = 0; index < 6; index++) addShot(request, videoId, 10_000);
-        var result = renderer.render(request, Map.of(videoId, source(source, 10_125)), scratch("sixty-seconds"), () -> false, () -> {});
+        for (int index = 0; index < 6; index++)
+            addShot(request, videoId, 10_000);
+        var result = renderer.render(request, Map.of(videoId, source(source, 10_125)), scratch("sixty-seconds"),
+                () -> false, () -> {
+                });
         JsonNode probe = mapper.readTree(tools.ffprobe(List.of("-v", "error", "-count_frames", "-show_entries",
-                "stream=codec_type,width,height,duration,nb_read_frames:format=duration", "-of", "json", result.path().toString())));
+                "stream=codec_type,width,height,duration,nb_read_frames:format=duration", "-of", "json",
+                result.path().toString())));
         assertThat(probe.at("/format/duration").asDouble()).isEqualTo(60.0);
-        JsonNode video = probe.path("streams").valueStream().filter(s -> "video".equals(s.path("codec_type").asText())).findFirst().orElseThrow();
-        JsonNode audio = probe.path("streams").valueStream().filter(s -> "audio".equals(s.path("codec_type").asText())).findFirst().orElseThrow();
+        JsonNode video = probe.path("streams").valueStream().filter(s -> "video".equals(s.path("codec_type").asText()))
+                .findFirst().orElseThrow();
+        JsonNode audio = probe.path("streams").valueStream().filter(s -> "audio".equals(s.path("codec_type").asText()))
+                .findFirst().orElseThrow();
         assertThat(video.path("nb_read_frames").asInt()).isEqualTo(1800);
         assertThat(video.path("width").asInt()).isEqualTo(1280);
         assertThat(video.path("height").asInt()).isEqualTo(720);
@@ -188,12 +228,15 @@ class LocalVideoCompositionRendererTest {
         tools.ffmpeg(List.of("-v", "error", "-xerror", "-i", result.path().toString(), "-f", "null", "-"));
     }
 
-    @Test void backgroundKeepsOriginalSoundAtTheDeclaredGainAndWarnsAboutOriginalDialogue() throws Exception {
+    @Test
+    void backgroundKeepsOriginalSoundAtTheDeclaredGainAndWarnsAboutOriginalDialogue() throws Exception {
         Path source = video("background.mp4", "2", true, "1");
         UUID videoId = UUID.randomUUID();
         ObjectNode request = request("BACKGROUND");
         addShot(request, videoId, 2000);
-        var result = renderer.render(request, Map.of(videoId, source(source, 2000)), scratch("background-render"), () -> false, () -> {});
+        var result = renderer.render(request, Map.of(videoId, source(source, 2000)), scratch("background-render"),
+                () -> false, () -> {
+                });
         assertThat(result.schedule().path("warnings").valueStream().map(JsonNode::asText))
                 .contains("ORIGINAL_AUDIO_AT_0_15_INCLUDES_ANY_ORIGINAL_DIALOGUE");
         double output = rms(decodeAudio(result.path(), "background-result.pcm"), 300, 1500);
@@ -201,19 +244,22 @@ class LocalVideoCompositionRendererTest {
         // gain after the same channel conversion, otherwise the baseline differs by sqrt(1/2).
         Path stereoBaseline = temp.resolve("background-stereo-baseline.wav");
         tools.ffmpeg(List.of("-v", "error", "-i", source.toString(), "-vn", "-af",
-                "aresample=48000,aformat=channel_layouts=stereo", "-c:a", "pcm_s16le", "-y", stereoBaseline.toString()));
+                "aresample=48000,aformat=channel_layouts=stereo", "-c:a", "pcm_s16le", "-y",
+                stereoBaseline.toString()));
         double original = rms(decodeAudio(stereoBaseline, "background-source.pcm"), 300, 1500);
         assertThat(output / original).isBetween(0.14, 0.16);
     }
 
-    @Test void slightlyLongVoiceUsesBoundedTempoAndRetainsTheCompleteLine() throws Exception {
+    @Test
+    void slightlyLongVoiceUsesBoundedTempoAndRetainsTheCompleteLine() throws Exception {
         Path source = video("tempo-source.mp4", "2", false, null);
         Path voice = audio("tempo-voice.wav", "2.1", "1");
         UUID videoId = UUID.randomUUID(), audioId = UUID.randomUUID();
         ObjectNode request = request("MUTE");
         addShot(request, videoId, 2000).withArray("lines").addObject().put("audioVersionId", audioId.toString());
         var result = renderer.render(request, Map.of(videoId, source(source, 2000), audioId, source(voice, 2100)),
-                scratch("tempo-render"), () -> false, () -> {});
+                scratch("tempo-render"), () -> false, () -> {
+                });
         JsonNode line = result.schedule().at("/shots/0/lines/0");
         assertThat(line.path("trimStartMs").asInt()).isZero();
         assertThat(line.path("trimEndMs").asInt()).isEqualTo(2100);
@@ -224,7 +270,8 @@ class LocalVideoCompositionRendererTest {
                 .contains("SHOT_1_NO_RELIABLE_SOUND_WINDOWS_DURATION_FALLBACK");
     }
 
-    @Test void overflowAndCancellationFailWithoutProducingAComposedFile() throws Exception {
+    @Test
+    void overflowAndCancellationFailWithoutProducingAComposedFile() throws Exception {
         Path source = video("short.mp4", "2", false, null);
         Path voice = audio("long.wav", "3", "1");
         UUID videoId = UUID.randomUUID(), audioId = UUID.randomUUID();
@@ -232,34 +279,45 @@ class LocalVideoCompositionRendererTest {
         addShot(request, videoId, 2000).withArray("lines").addObject().put("audioVersionId", audioId.toString());
         var sources = Map.of(videoId, source(source, 2000), audioId, source(voice, 3000));
         Path overflowScratch = scratch("overflow");
-        assertThatThrownBy(() -> renderer.render(request, sources, overflowScratch, () -> false, () -> {}))
+        assertThatThrownBy(() -> renderer.render(request, sources, overflowScratch, () -> false, () -> {
+        }))
                 .isInstanceOf(VideoCompositionPlanner.DoesNotFit.class);
         assertThat(Files.exists(overflowScratch.resolve("composition.mp4"))).isFalse();
         Path canceledScratch = scratch("canceled");
-        assertThatThrownBy(() -> renderer.render(request, sources, canceledScratch, () -> true, () -> {}))
+        assertThatThrownBy(() -> renderer.render(request, sources, canceledScratch, () -> true, () -> {
+        }))
                 .isInstanceOf(CancellationException.class);
-        try (var files = Files.list(canceledScratch)) { assertThat(files.toList()).isEmpty(); }
+        try (var files = Files.list(canceledScratch)) {
+            assertThat(files.toList()).isEmpty();
+        }
     }
 
-    @Test void longerContainerAudioCannotHideAnIncompleteVideoTimeline() throws Exception {
+    @Test
+    void longerContainerAudioCannotHideAnIncompleteVideoTimeline() throws Exception {
         Path source = temp.resolve("one-frame-short.mp4");
         tools.ffmpeg(List.of("-v", "error", "-f", "lavfi", "-i", "color=c=navy:s=160x90:r=30:d=1.9666666667",
-                "-f", "lavfi", "-i", "sine=duration=2:sample_rate=48000", "-c:v", "libx264", "-c:a", "aac", "-y", source.toString()));
+                "-f", "lavfi", "-i", "sine=duration=2:sample_rate=48000", "-c:v", "libx264", "-c:a", "aac", "-y",
+                source.toString()));
         UUID videoId = UUID.randomUUID();
         ObjectNode request = request("MUTE");
         addShot(request, videoId, 2000);
         assertThatThrownBy(() -> renderer.render(request, Map.of(videoId, source(source, 2000)),
-                scratch("incomplete-video"), () -> false, () -> {}))
-                .isInstanceOf(IllegalStateException.class).hasMessage("Composition ended before the complete media timeline");
+                scratch("incomplete-video"), () -> false, () -> {
+                }))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Composition ended before the complete media timeline");
     }
 
-    @Test void postproductionSpeedKeepsOriginalSoundAndChangesTheOutputCanvasWithoutDialogue() throws Exception {
+    @Test
+    void postproductionSpeedKeepsOriginalSoundAndChangesTheOutputCanvasWithoutDialogue() throws Exception {
         Path source = video("speed-source.mp4", "4", true, "1");
         UUID videoId = UUID.randomUUID();
         ObjectNode request = request("KEEP");
         addShot(request, videoId, 4000).put("speed", 2).put("fadeMs", 100);
         request.putObject("output").put("resolution", "720P").put("aspectRatio", "9:16");
-        var result = renderer.render(request, Map.of(videoId, source(source, 4000)), scratch("postproduction"), () -> false, () -> {});
+        var result = renderer.render(request, Map.of(videoId, source(source, 4000)), scratch("postproduction"),
+                () -> false, () -> {
+                });
         assertThat(result.schedule().path("durationMs").asInt()).isEqualTo(2000);
         assertThat(result.schedule().path("width").asInt()).isEqualTo(720);
         assertThat(result.schedule().path("height").asInt()).isEqualTo(1280);
@@ -269,15 +327,18 @@ class LocalVideoCompositionRendererTest {
         assertThat(rms(decodeAudio(result.path(), "kept-sound.pcm"), 300, 1500)).isGreaterThan(0.02);
     }
 
-    @Test void postproductionMusicStartsFromItsPinnedOffsetAndMayEndBeforeTheTimeline() throws Exception {
+    @Test
+    void postproductionMusicStartsFromItsPinnedOffsetAndMayEndBeforeTheTimeline() throws Exception {
         Path source = video("music-source.mp4", "3", false, null);
         Path music = audio("music.wav", "2", "if(between(t,1,2),1,0)");
         UUID videoId = UUID.randomUUID(), musicId = UUID.randomUUID();
         ObjectNode request = request("MUTE");
         addShot(request, videoId, 3000);
-        request.putObject("music").put("audioVersionId", musicId.toString()).put("sourceStartMs", 1000).put("volume", 0.5);
+        request.putObject("music").put("audioVersionId", musicId.toString()).put("sourceStartMs", 1000).put("volume",
+                0.5);
         var result = renderer.render(request, Map.of(videoId, source(source, 3000), musicId, source(music, 2000)),
-                scratch("music-render"), () -> false, () -> {});
+                scratch("music-render"), () -> false, () -> {
+                });
         assertThat(result.schedule().at("/music/audioVersionId").asText()).isEqualTo(musicId.toString());
         assertThat(result.schedule().at("/music/sourceStartMs").asInt()).isEqualTo(1000);
         byte[] pcm = decodeAudio(result.path(), "music-result.pcm");
@@ -286,13 +347,16 @@ class LocalVideoCompositionRendererTest {
         assertThat(result.schedule().path("durationMs").asInt()).isEqualTo(3000);
     }
 
-    @Test void postproductionSlowMotionRetainsThePlannedFramesAndFadesToBlack() throws Exception {
+    @Test
+    void postproductionSlowMotionRetainsThePlannedFramesAndFadesToBlack() throws Exception {
         Path source = video("slow-source.mp4", "2", false, null);
         UUID videoId = UUID.randomUUID();
         ObjectNode request = request("MUTE");
         addShot(request, videoId, 2000).put("speed", 0.5).put("fadeMs", 500);
         request.putObject("output").put("resolution", "1080P").put("aspectRatio", "1:1");
-        var result = renderer.render(request, Map.of(videoId, source(source, 2000)), scratch("slow-render"), () -> false, () -> {});
+        var result = renderer.render(request, Map.of(videoId, source(source, 2000)), scratch("slow-render"),
+                () -> false, () -> {
+                });
         assertThat(result.schedule().path("durationMs").asInt()).isEqualTo(4000);
         assertThat(result.schedule().path("width").asInt()).isEqualTo(1080);
         assertThat(result.schedule().path("height").asInt()).isEqualTo(1080);
@@ -318,7 +382,8 @@ class LocalVideoCompositionRendererTest {
         addShot(request, redId, durationMs).put("sourceStartMs", startMs).put("speed", speed);
         addShot(request, blueId, durationMs).put("sourceStartMs", startMs).put("speed", speed);
         var result = renderer.render(request, Map.of(redId, source(red, 2000), blueId, source(blue, 2000)),
-                scratch("fractional-render"), () -> false, () -> {});
+                scratch("fractional-render"), () -> false, () -> {
+                });
         assertThat(result.schedule().at("/shots/1/timelineStartMs").asInt()).isEqualTo(secondShotStartMs);
         Path pixels = temp.resolve("frames.rgb");
         tools.ffmpeg(List.of("-v", "error", "-i", result.path().toString(), "-vf", "scale=1:1", "-pix_fmt", "rgb24",
@@ -327,8 +392,10 @@ class LocalVideoCompositionRendererTest {
         assertThat(rgb).hasSize(firstBlueFrame * 2 * 3);
         for (int frame = 0; frame < firstBlueFrame * 2; frame++) {
             int redChannel = rgb[frame * 3] & 255, blueChannel = rgb[frame * 3 + 2] & 255;
-            assertThat(frame < firstBlueFrame ? redChannel : blueChannel).as("dominant color at frame %s", frame).isGreaterThan(200);
-            assertThat(frame < firstBlueFrame ? blueChannel : redChannel).as("opposite color at frame %s", frame).isLessThan(20);
+            assertThat(frame < firstBlueFrame ? redChannel : blueChannel).as("dominant color at frame %s", frame)
+                    .isGreaterThan(200);
+            assertThat(frame < firstBlueFrame ? blueChannel : redChannel).as("opposite color at frame %s", frame)
+                    .isLessThan(20);
         }
     }
 
@@ -341,14 +408,16 @@ class LocalVideoCompositionRendererTest {
             tools.ffmpeg(List.of("-v", "error", "-f", "lavfi", "-i",
                     "color=c=" + entry.getValue() + ":s=160x90:r=30:d=2", "-f", "lavfi", "-i",
                     "sine=frequency=" + frequency + ":sample_rate=48000:duration=2", "-t", "2",
-                    "-c:a", "aac", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-y", entry.getKey().toString()));
+                    "-c:a", "aac", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-y",
+                    entry.getKey().toString()));
         }
         UUID redId = UUID.randomUUID(), blueId = UUID.randomUUID();
         ObjectNode request = request(mode);
         addShot(request, redId, 1050).put("sourceStartMs", 137);
         addShot(request, blueId, 1050).put("sourceStartMs", 137);
         var result = renderer.render(request, Map.of(redId, source(red, 2000), blueId, source(blue, 2000)),
-                scratch("fractional-sound"), () -> false, () -> {});
+                scratch("fractional-sound"), () -> false, () -> {
+                });
         assertThat(result.schedule().at("/shots/1/timelineStartMs").asInt()).isEqualTo(1033);
         Path frame = temp.resolve("first-blue-with-sound.png");
         tools.ffmpeg(List.of("-v", "error", "-i", result.path().toString(), "-vf", "select=eq(n\\,31)",
@@ -365,24 +434,29 @@ class LocalVideoCompositionRendererTest {
         for (int sample = startMs * 8 + 1; sample < endMs * 8; sample++) {
             short previous = (short) ((pcm[2 * sample - 2] & 255) | pcm[2 * sample - 1] << 8);
             short current = (short) ((pcm[2 * sample] & 255) | pcm[2 * sample + 1] << 8);
-            if (previous <= 0 && current > 0) crossings++;
+            if (previous <= 0 && current > 0)
+                crossings++;
         }
         return crossings;
     }
 
     private Path video(String name, String duration, boolean sound, String volume) {
         Path result = temp.resolve(name);
-        List<String> args = new ArrayList<>(List.of("-v", "error", "-f", "lavfi", "-i", "color=c=navy:s=160x90:r=24:d=" + duration));
-        if (sound) args.addAll(List.of("-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=" + duration,
-                "-af", "volume='" + volume + "':eval=frame", "-c:a", "aac"));
-        args.addAll(List.of("-t", duration, "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-y", result.toString()));
+        List<String> args = new ArrayList<>(
+                List.of("-v", "error", "-f", "lavfi", "-i", "color=c=navy:s=160x90:r=24:d=" + duration));
+        if (sound)
+            args.addAll(List.of("-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=" + duration,
+                    "-af", "volume='" + volume + "':eval=frame", "-c:a", "aac"));
+        args.addAll(List.of("-t", duration, "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-y",
+                result.toString()));
         tools.ffmpeg(args);
         return result;
     }
     private Path audio(String name, String duration, String volume) {
         Path result = temp.resolve(name);
-        tools.ffmpeg(List.of("-v", "error", "-f", "lavfi", "-i", "sine=frequency=660:sample_rate=48000:duration=" + duration,
-                "-af", "volume='" + volume + "':eval=frame", "-c:a", "pcm_s16le", "-y", result.toString()));
+        tools.ffmpeg(
+                List.of("-v", "error", "-f", "lavfi", "-i", "sine=frequency=660:sample_rate=48000:duration=" + duration,
+                        "-af", "volume='" + volume + "':eval=frame", "-c:a", "pcm_s16le", "-y", result.toString()));
         return result;
     }
     private byte[] decodeAudio(Path media, String name) throws Exception {
@@ -415,5 +489,7 @@ class LocalVideoCompositionRendererTest {
     private LocalVideoCompositionRenderer.Source source(Path path, int durationMs) {
         return new LocalVideoCompositionRenderer.Source(path, durationMs);
     }
-    private Path scratch(String name) throws Exception { return Files.createDirectory(temp.resolve(name)); }
+    private Path scratch(String name) throws Exception {
+        return Files.createDirectory(temp.resolve(name));
+    }
 }

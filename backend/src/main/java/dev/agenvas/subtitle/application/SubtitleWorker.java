@@ -17,22 +17,39 @@ public class SubtitleWorker {
     private final ShutdownGate shutdown;
     private final AtomicBoolean busy = new AtomicBoolean();
     private final String workerId = "subtitle-" + UUID.randomUUID();
-    private final ExecutorService worker = Executors.newSingleThreadExecutor(Thread.ofPlatform().name("subtitle-asr").factory());
-    public SubtitleWorker(SubtitleRecognitionService jobs, ShutdownGate shutdown) { this.jobs = jobs; this.shutdown = shutdown; }
-    @Scheduled(fixedDelayString = "${agenvas.subtitles.poll-interval-ms:1000}") public void tick() {
-        if (shutdown.isClosing() || !busy.compareAndSet(false, true)) return;
+    private final ExecutorService worker = Executors
+            .newSingleThreadExecutor(Thread.ofPlatform().name("subtitle-asr").factory());
+    public SubtitleWorker(SubtitleRecognitionService jobs, ShutdownGate shutdown) {
+        this.jobs = jobs;
+        this.shutdown = shutdown;
+    }
+    @Scheduled(fixedDelayString = "${agenvas.subtitles.poll-interval-ms:1000}")
+    public void tick() {
+        if (shutdown.isClosing() || !busy.compareAndSet(false, true))
+            return;
         try {
             worker.execute(() -> {
-                try { if (!shutdown.isClosing()) jobs.processNext(workerId); }
-                catch (RuntimeException failure) {
-                    org.slf4j.LoggerFactory.getLogger(SubtitleWorker.class).warn("Subtitle worker stopped ({})", failure.getClass().getSimpleName());
-                } finally { busy.set(false); }
+                try {
+                    if (!shutdown.isClosing())
+                        jobs.processNext(workerId);
+                } catch (RuntimeException failure) {
+                    org.slf4j.LoggerFactory.getLogger(SubtitleWorker.class).warn("Subtitle worker stopped ({})",
+                            failure.getClass().getSimpleName());
+                } finally {
+                    busy.set(false);
+                }
             });
-        } catch (RejectedExecutionException stopped) { busy.set(false); }
+        } catch (RejectedExecutionException stopped) {
+            busy.set(false);
+        }
     }
-    @PreDestroy public void close() {
+    @PreDestroy
+    public void close() {
         worker.shutdownNow();
-        try { worker.awaitTermination(5, TimeUnit.SECONDS); }
-        catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+        try {
+            worker.awaitTermination(5, TimeUnit.SECONDS);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
     }
 }

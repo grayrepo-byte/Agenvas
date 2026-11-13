@@ -78,9 +78,11 @@ public class IdentityService {
                         HttpStatus.UNAUTHORIZED,
                         "UNAUTHENTICATED",
                         ApiMessage.of("api.identity-service.login-has-expired"),
-                        ApiMessage.of("api.identity-service.the-current-administrator-account-is-unavailable-please-log-in-again"),
+                        ApiMessage.of(
+                                "api.identity-service.the-current-administrator-account-is-unavailable-please-log-in-again"),
                         false));
-        if (!canVerifyPassword(currentPassword, account.passwordHash()) || !passwordEncoder.matches(currentPassword, account.passwordHash())) {
+        if (!canVerifyPassword(currentPassword, account.passwordHash())
+                || !passwordEncoder.matches(currentPassword, account.passwordHash())) {
             throw new ApiProblemException(
                     HttpStatus.UNAUTHORIZED,
                     "CURRENT_PASSWORD_INVALID",
@@ -103,7 +105,8 @@ public class IdentityService {
                     HttpStatus.CONFLICT,
                     "VERSION_CONFLICT",
                     ApiMessage.of("api.identity-service.account-updated"),
-                    ApiMessage.of("api.identity-service.the-administrator-account-has-been-updated-in-other-requests-please"),
+                    ApiMessage.of(
+                            "api.identity-service.the-administrator-account-has-been-updated-in-other-requests-please"),
                     false);
         }
     }
@@ -118,7 +121,8 @@ public class IdentityService {
 
     /** Reject BCrypt truncation without blocking supported legacy algorithms that verify the full input. */
     public static boolean canVerifyPassword(String password, String encodedPassword) {
-        return password != null && (!encodedPassword.startsWith(BCRYPT_HASH_PREFIX) || isPasswordWithinByteLimit(password));
+        return password != null
+                && (!encodedPassword.startsWith(BCRYPT_HASH_PREFIX) || isPasswordWithinByteLimit(password));
     }
 
     private static boolean isPasswordWithinByteLimit(String password) {
@@ -143,7 +147,8 @@ public class IdentityService {
     /** 仅允许规范化后的 ASCII 登录标识及规定长度。 */
     private void validateLoginName(String loginName) {
         if (!loginName.matches("[a-z0-9._-]{3,64}")) {
-            throw validationProblem(ApiMessage.of("api.identity-service.login-name-must-be-3-to-64-letters-numbers-dots"));
+            throw validationProblem(
+                    ApiMessage.of("api.identity-service.login-name-must-be-3-to-64-letters-numbers-dots"));
         }
     }
 
@@ -163,7 +168,8 @@ public class IdentityService {
                 HttpStatus.CONFLICT,
                 "SETUP_ALREADY_COMPLETED",
                 ApiMessage.of("api.identity-service.system-has-been-initialized"),
-                ApiMessage.of("api.identity-service.the-administrator-already-exists-and-cannot-perform-initialization-again"),
+                ApiMessage.of(
+                        "api.identity-service.the-administrator-already-exists-and-cannot-perform-initialization-again"),
                 false);
     }
 }

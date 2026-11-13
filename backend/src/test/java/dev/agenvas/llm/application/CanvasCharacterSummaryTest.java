@@ -52,7 +52,9 @@ class CanvasCharacterSummaryTest {
         when(card.subjectType()).thenReturn(CanvasItem.SubjectType.valueOf("CHARACTER"));
         when(card.subjectId()).thenReturn(characterId);
         when(card.title()).thenReturn("Aster — winter look");
-        stubIndex(List.of(profile(characterId, new CharacterContent("Aster", "private-long-persona", List.of(), null), 2)), List.of());
+        stubIndex(List
+                .of(profile(characterId, new CharacterContent("Aster", "private-long-persona", List.of(), null), 2)),
+                List.of());
         when(canvas.list(owner, project)).thenReturn(List.of(new CanvasService.CanvasEntry(card, null, null)));
 
         var result = read(mapper.createObjectNode().put("limit", 1).put("includeDrafts", true));
@@ -109,13 +111,16 @@ class CanvasCharacterSummaryTest {
         List<UUID> seen = new ArrayList<>();
         int offset = 0;
         while (true) {
-            var page = read(mapper.createObjectNode().put("limit", 1).put("characterOffset", offset).put("characterLimit", 13));
+            var page = read(
+                    mapper.createObjectNode().put("limit", 1).put("characterOffset", offset).put("characterLimit", 13));
             assertThat(page.path("offset").asInt()).isZero();
             assertThat(page.path("nextOffset").isNull()).isTrue();
             assertThat(page.path("characterOffset").asInt()).isEqualTo(offset);
             assertThat(page.path("characters").size()).isLessThanOrEqualTo(13);
-            page.path("characters").forEach(character -> seen.add(UUID.fromString(character.path("characterId").asText())));
-            if (page.path("nextCharacterOffset").isNull()) break;
+            page.path("characters")
+                    .forEach(character -> seen.add(UUID.fromString(character.path("characterId").asText())));
+            if (page.path("nextCharacterOffset").isNull())
+                break;
             offset = page.path("nextCharacterOffset").asInt();
         }
         assertThat(seen).containsExactlyElementsOf(profiles.stream().map(CharacterProfile::id).toList());
@@ -135,14 +140,16 @@ class CanvasCharacterSummaryTest {
         while (true) {
             var request = mapper.createObjectNode().put("characterId", characterId.toString())
                     .put("characterTextOffset", offset).put("characterTextLimit", 257);
-            if (offset > 0) request.put("expectedCharacterVersion", 7);
+            if (offset > 0)
+                request.put("expectedCharacterVersion", 7);
             JsonNode detail = read(request).path("characterDetails");
             String fragment = detail.path("text").asText();
             JsonNode page = detail.path("textPage");
             assertThat(detail.path("characterVersion").asLong()).isEqualTo(7);
             assertThat(detail.path("format").asText()).isEqualTo("JSON");
             assertThat(page.path("offset").asInt()).isEqualTo(offset);
-            assertThat(fragment.codePointCount(0, fragment.length())).isEqualTo(page.path("endOffset").asInt() - offset);
+            assertThat(fragment.codePointCount(0, fragment.length()))
+                    .isEqualTo(page.path("endOffset").asInt() - offset);
             assertThat(fragment.codePointCount(0, fragment.length())).isLessThanOrEqualTo(257);
             assertThat(fragment.codePoints().anyMatch(point -> point >= 0xD800 && point <= 0xDFFF)).isFalse();
             assertThat(page.path("truncated").asBoolean()).isTrue();
@@ -157,13 +164,17 @@ class CanvasCharacterSummaryTest {
         }
         assertThat(pages).isGreaterThan(2);
         var expected = mapper.createObjectNode().put("characterId", characterId.toString()).put("characterVersion", 7)
-                .put("name", profile.content().name()).put("description", profile.content().description()).put("archived", false);
-        var expectedLook = expected.putArray("looks").addObject().put("lookId", look.id().toString()).put("name", look.name())
-                .put("clothing", look.clothing()).put("expression", look.expression()).put("description", look.description());
+                .put("name", profile.content().name()).put("description", profile.content().description())
+                .put("archived", false);
+        var expectedLook = expected.putArray("looks").addObject().put("lookId", look.id().toString())
+                .put("name", look.name())
+                .put("clothing", look.clothing()).put("expression", look.expression())
+                .put("description", look.description());
         expectedLook.putArray("views").addObject().put("purpose", "正面😀").put("description", "镜头说明".repeat(400));
         expected.put("voiceDescription", voice.description());
         assertThat(joined.toString()).isEqualTo(expected.toString()).contains("😀")
-                .doesNotContain(imageId.toString(), audioId.toString(), "versionId", "private-speaker", "speakerId", "storage");
+                .doesNotContain(imageId.toString(), audioId.toString(), "versionId", "private-speaker", "speakerId",
+                        "storage");
         assertThat(mapper.readTree(joined.toString())).isEqualTo(expected);
         verifyNoInteractions(artifacts, drafts, media, run);
     }
@@ -176,10 +187,13 @@ class CanvasCharacterSummaryTest {
         when(canvas.list(owner, project)).thenReturn(List.of());
         when(characters.listForAgent(owner, project)).thenReturn(new CharacterIndex(List.of(original), List.of()),
                 new CharacterIndex(List.of(changed), List.of()));
-        var first = read(mapper.createObjectNode().put("characterId", characterId.toString()).put("characterTextLimit", 10));
+        var first = read(
+                mapper.createObjectNode().put("characterId", characterId.toString()).put("characterTextLimit", 10));
         assertThat(first.at("/characterDetails/characterVersion").asLong()).isEqualTo(4);
-        assertProblem(mapper.createObjectNode().put("characterId", characterId.toString()).put("characterTextOffset", 10)
-                .put("expectedCharacterVersion", 4), HttpStatus.CONFLICT, "CHARACTER_VERSION_CONFLICT");
+        assertProblem(
+                mapper.createObjectNode().put("characterId", characterId.toString()).put("characterTextOffset", 10)
+                        .put("expectedCharacterVersion", 4),
+                HttpStatus.CONFLICT, "CHARACTER_VERSION_CONFLICT");
         assertProblem(mapper.createObjectNode().put("characterId", UUID.randomUUID().toString()),
                 HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND");
     }
@@ -210,20 +224,25 @@ class CanvasCharacterSummaryTest {
     void nodeBindingSummariesDoNotRepeatLongProfileText() {
         UUID cardId = UUID.randomUUID(), referenceId = UUID.randomUUID();
         var profiles = largeCatalog();
-        var snapshots = profiles.subList(0, 20).stream().map(profile -> new CharacterSnapshot(profile.id(), profile.version(),
-                profile.content().name(), profile.content().description(), profile.content().looks().getFirst(),
-                new CharacterVoice(referenceId, "private-speaker", "long voice".repeat(200)), true, true)).toList();
+        var snapshots = profiles.subList(0, 20).stream()
+                .map(profile -> new CharacterSnapshot(profile.id(), profile.version(),
+                        profile.content().name(), profile.content().description(), profile.content().looks().getFirst(),
+                        new CharacterVoice(referenceId, "private-speaker", "long voice".repeat(200)), true, true))
+                .toList();
         var binding = new CharacterBinding(cardId, 1, 0, null, snapshots, true, List.of(ReviewReason.PROFILE_CHANGED),
-                new CharacterContribution(List.of(referenceId), "long prompt block".repeat(1000), "private-speaker"), null);
+                new CharacterContribution(List.of(referenceId), "long prompt block".repeat(1000), "private-speaker"),
+                null);
         stubIndex(profiles, List.of(binding));
         stubNode(cardId);
-        when(characters.frozenBindings(owner, project, cardId)).thenReturn(mapper.createArrayNode().add(mapper.createObjectNode()));
+        when(characters.frozenBindings(owner, project, cardId))
+                .thenReturn(mapper.createArrayNode().add(mapper.createObjectNode()));
         var result = read(mapper.createObjectNode().put("limit", 1));
         assertThat(result.at("/data/0/characterBindings/0/snapshots").size()).isEqualTo(20);
         assertThat(result.at("/data/0/characterBindings/0/appliedToCurrentDraft").asBoolean()).isTrue();
         assertThat(result.at("/data/0/characterBindings/0/snapshots/0/textDetailsOmitted").asBoolean()).isTrue();
         assertThat(result.toString().getBytes(StandardCharsets.UTF_8).length).isLessThan(250_000);
-        assertThat(result.toString()).doesNotContain("large-description", "large-clothing", "large-expression", "long voice",
+        assertThat(result.toString()).doesNotContain("large-description", "large-clothing", "large-expression",
+                "long voice",
                 "long prompt block", "private-speaker", referenceId.toString());
     }
 
@@ -234,7 +253,8 @@ class CanvasCharacterSummaryTest {
                 .put("toolPolicyVersion", RunToolPolicy.CURRENT_VERSION);
         policy.set("allowedTools", mapper.valueToTree(RunToolPolicy.CURRENT));
         var definition = new ToolRegistry().modelDefinitions(policy).stream()
-                .map(callback -> callback.getToolDefinition()).filter(tool -> tool.name().equals("read_canvas")).findFirst().orElseThrow();
+                .map(callback -> callback.getToolDefinition()).filter(tool -> tool.name().equals("read_canvas"))
+                .findFirst().orElseThrow();
         var schema = mapper.readTree(definition.inputSchema());
         assertThat(schema.path("required").isMissingNode()).isTrue();
         assertThat(schema.at("/properties/characterLimit/maximum").asInt()).isEqualTo(20);
@@ -262,7 +282,8 @@ class CanvasCharacterSummaryTest {
 
     private List<CharacterProfile> largeCatalog() {
         var looks = IntStream.range(0, 20).mapToObj(index -> new CharacterLook(new UUID(1, index), "造".repeat(160),
-                "large-clothing".repeat(140), "large-expression".repeat(120), "large-description".repeat(230), List.<CharacterView>of())).toList();
+                "large-clothing".repeat(140), "large-expression".repeat(120), "large-description".repeat(230),
+                List.<CharacterView>of())).toList();
         var content = new CharacterContent("人".repeat(160), "large-description".repeat(230), looks, null);
         return IntStream.range(0, 200).mapToObj(index -> profile(new UUID(0, index), content, 1)).toList();
     }

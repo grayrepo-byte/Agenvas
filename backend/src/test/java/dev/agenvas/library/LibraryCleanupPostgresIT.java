@@ -39,9 +39,12 @@ class LibraryCleanupPostgresIT {
         registry.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired IdentityService identities;
-    @Autowired LibraryRepository repository;
-    @Autowired ObjectMapper mapper;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    LibraryRepository repository;
+    @Autowired
+    ObjectMapper mapper;
 
     @Test
     void cleanupUsesTheApplicationClockAndPreservesDeferredRetries() {

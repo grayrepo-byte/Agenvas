@@ -15,7 +15,8 @@ public final class KlingProtocol {
     public static final String DEFAULT_RESOLUTION = "1080p";
     public static final Set<String> RESOLUTIONS = Set.of("720p", DEFAULT_RESOLUTION, "2160p");
     public static final Set<String> IMAGE_RESOLUTIONS = Set.of("1K", "2K");
-    public static final Set<String> IMAGE_ASPECT_RATIOS = Set.of("1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9");
+    public static final Set<String> IMAGE_ASPECT_RATIOS = Set.of("1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3",
+            "21:9");
     public static final Set<String> VIDEO_ASPECT_RATIOS = Set.of("16:9", "9:16", "1:1");
     // Decimal MB avoids exceeding the provider's documented limits.
     public static final int MAX_IMAGE_BYTES = 10_000_000;
@@ -25,11 +26,14 @@ public final class KlingProtocol {
     public static final int MINIMUM_SECONDS = 3;
     public static final int MAXIMUM_SECONDS = 15;
 
-    private KlingProtocol() {}
+    private KlingProtocol() {
+    }
 
     public static String resolution(String requested) {
-        if (requested == null) return DEFAULT_RESOLUTION;
-        if (!RESOLUTIONS.contains(requested)) throw invalid();
+        if (requested == null)
+            return DEFAULT_RESOLUTION;
+        if (!RESOLUTIONS.contains(requested))
+            throw invalid();
         return requested;
     }
 
@@ -42,15 +46,20 @@ public final class KlingProtocol {
         validatePrompt(prompt, false);
     }
 
-    public static void requireVideoPrompt(String prompt) { validatePrompt(prompt, true); }
+    public static void requireVideoPrompt(String prompt) {
+        validatePrompt(prompt, true);
+    }
 
     public static void validatePrompt(String prompt, boolean video) {
         if (prompt == null || prompt.isBlank()
-                || prompt.codePointCount(0, prompt.length()) > (video ? MAX_VIDEO_PROMPT_LENGTH : MAX_IMAGE_PROMPT_LENGTH))
+                || prompt.codePointCount(0,
+                        prompt.length()) > (video ? MAX_VIDEO_PROMPT_LENGTH : MAX_IMAGE_PROMPT_LENGTH))
             throw invalid();
     }
 
-    public static void validateMetadata(Asset asset) { validateMetadata(asset, false); }
+    public static void validateMetadata(Asset asset) {
+        validateMetadata(asset, false);
+    }
 
     /** Only still image references are accepted by either Kling generation endpoint. */
     public static void validateMetadata(Asset asset, boolean videoGeneration) {
@@ -65,7 +74,8 @@ public final class KlingProtocol {
 
     public static void requireDimensions(int width, int height) {
         double ratio = (double) width / height;
-        if (width < 300 || height < 300 || ratio < 0.4 || ratio > 2.5) throw invalid();
+        if (width < 300 || height < 300 || ratio < 0.4 || ratio > 2.5)
+            throw invalid();
     }
 
     public static ApiProblemException invalid() {

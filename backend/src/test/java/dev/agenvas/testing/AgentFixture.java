@@ -6,7 +6,8 @@ import java.util.UUID;
 
 /** Test scenarios configure the one project director through its public CAS use case. */
 public final class AgentFixture {
-    private AgentFixture() {}
+    private AgentFixture() {
+    }
 
     public static AgentInstance configureDirector(AgentInstanceService agents, UUID ownerId,
             UUID projectId, String name, String instruction) {

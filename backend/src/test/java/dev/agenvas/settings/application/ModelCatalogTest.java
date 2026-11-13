@@ -7,7 +7,8 @@ import tools.jackson.databind.ObjectMapper;
 class ModelCatalogTest {
     private final ObjectMapper json = new ObjectMapper();
 
-    @Test void compatibleListsDoNotInventCapacityOrTrustReturnedUrls() {
+    @Test
+    void compatibleListsDoNotInventCapacityOrTrustReturnedUrls() {
         var result = ModelCatalog.parse(ModelCatalog.Provider.COMPATIBLE, json.readTree("""
                 {"data":[{"id":"tenant/model-a","url":"https://metadata.invalid/secret"},
                          {"id":"bad?key=secret"},{"id":"good","context_length":"1000000"}]}
@@ -21,7 +22,8 @@ class ModelCatalogTest {
         assertThat(result.partial()).isTrue();
     }
 
-    @Test void providerInputLimitsAreNotRelabelledAsCombinedContext() {
+    @Test
+    void providerInputLimitsAreNotRelabelledAsCombinedContext() {
         var gemini = ModelCatalog.parse(ModelCatalog.Provider.GEMINI, json.readTree("""
                 {"models":[{"name":"models/gemini-synthetic","inputTokenLimit":32000,"outputTokenLimit":4096,
                  "supportedGenerationMethods":["generateContent"]},
@@ -42,7 +44,8 @@ class ModelCatalogTest {
         assertThat(claude.outputLimitTokens()).isEqualTo(8192);
     }
 
-    @Test void openRouterUsesRoutingLimitsInsteadOfPromotingModelMaximum() {
+    @Test
+    void openRouterUsesRoutingLimitsInsteadOfPromotingModelMaximum() {
         var result = ModelCatalog.parse(ModelCatalog.Provider.OPENROUTER, json.readTree("""
                 {"data":[{"id":"provider/model","context_length":128000,
                  "top_provider":{"context_length":32000,"max_completion_tokens":4096}}]}
@@ -55,7 +58,8 @@ class ModelCatalogTest {
         assertThat(model.outputLimitTokens()).isEqualTo(4096);
     }
 
-    @Test void ollamaTheoryAndCurrentAllocationStaySeparateAndDigestMustMatch() {
+    @Test
+    void ollamaTheoryAndCurrentAllocationStaySeparateAndDigestMustMatch() {
         var tags = json.readTree("""
                 {"models":[{"name":"model:latest","digest":"digest-a"},{"name":"unloaded:latest"}]}
                 """);
@@ -72,11 +76,14 @@ class ModelCatalogTest {
         assertThat(result.models().getFirst().runtimeContextTokens()).isEqualTo(4096);
         assertThat(result.models().get(1).runtimeContextTokens()).isNull();
         var changed = ModelCatalog.parse(ModelCatalog.Provider.OLLAMA, tags, show,
-                json.readTree("{\"models\":[{\"name\":\"model:latest\",\"digest\":\"other\",\"context_length\":64000}]}"), "model:latest");
+                json.readTree(
+                        "{\"models\":[{\"name\":\"model:latest\",\"digest\":\"other\",\"context_length\":64000}]}"),
+                "model:latest");
         assertThat(changed.models().getFirst().runtimeContextTokens()).isNull();
     }
 
-    @Test void invalidAndAbsentNumbersStayUnknownAndDuplicateModelsAreStable() {
+    @Test
+    void invalidAndAbsentNumbersStayUnknownAndDuplicateModelsAreStable() {
         var result = ModelCatalog.parse(ModelCatalog.Provider.ANTHROPIC, json.readTree("""
                 {"data":[{"id":"model","max_input_tokens":0,"max_tokens":-1},
                          {"id":"model","max_input_tokens":9999},{"id":"other","max_input_tokens":1e100}]}

@@ -55,13 +55,15 @@ public class ApiExceptionHandler {
     }
 
     @ExceptionHandler(dev.agenvas.provider.domain.NativeMediaFailure.class)
-    ResponseEntity<ProblemDetail> handleNativeMedia(dev.agenvas.provider.domain.NativeMediaFailure exception, HttpServletRequest request) {
+    ResponseEntity<ProblemDetail> handleNativeMedia(dev.agenvas.provider.domain.NativeMediaFailure exception,
+            HttpServletRequest request) {
         return build(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY, exception.code(),
                 dev.agenvas.shared.i18n.ApiMessage.of("api.native-media.invalid-title"),
                 dev.agenvas.shared.i18n.ApiMessage.of("api.native-media.invalid"), false, request, null);
     }
     @ExceptionHandler(dev.agenvas.llm.application.LlmRequestBudget.Failure.class)
-    ResponseEntity<ProblemDetail> handleModelBudget(dev.agenvas.llm.application.LlmRequestBudget.Failure exception, HttpServletRequest request) {
+    ResponseEntity<ProblemDetail> handleModelBudget(dev.agenvas.llm.application.LlmRequestBudget.Failure exception,
+            HttpServletRequest request) {
         String key = switch (exception.getMessage()) {
             case "MODEL_CAPACITY_UNKNOWN" -> "api.model-budget.unknown";
             case "MODEL_RUNTIME_CONTEXT_CHANGED" -> "api.model-budget.changed";
@@ -78,7 +80,8 @@ public class ApiExceptionHandler {
             MethodArgumentNotValidException exception, HttpServletRequest request) {
         List<FieldError> fields = exception.getBindingResult().getFieldErrors().stream()
                 .map(error -> new FieldError(error.getField(), error.getDefaultMessage() != null
-                        ? error.getDefaultMessage() : messages.invalidField(request)))
+                        ? error.getDefaultMessage()
+                        : messages.invalidField(request)))
                 .toList();
         return build(
                 HttpStatus.BAD_REQUEST,
@@ -94,8 +97,10 @@ public class ApiExceptionHandler {
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     ResponseEntity<ProblemDetail> handleLargeUpload(
             MaxUploadSizeExceededException exception, HttpServletRequest request) {
-        return build(HttpStatus.PAYLOAD_TOO_LARGE, "ASSET_TOO_LARGE", ApiMessage.of("api.local-asset-storage.material-is-too-large"),
-                ApiMessage.of("api.api-exception-handler.the-uploaded-file-exceeds-the-size-limit"), false, request, null);
+        return build(HttpStatus.PAYLOAD_TOO_LARGE, "ASSET_TOO_LARGE",
+                ApiMessage.of("api.local-asset-storage.material-is-too-large"),
+                ApiMessage.of("api.api-exception-handler.the-uploaded-file-exceeds-the-size-limit"), false, request,
+                null);
     }
 
     /** 映射 DTO 绑定之外触发的参数校验失败。 */
@@ -121,7 +126,8 @@ public class ApiExceptionHandler {
                 HttpStatus.BAD_REQUEST,
                 "VALIDATION_ERROR",
                 ApiMessage.of("api.identity-service.invalid-request"),
-                ApiMessage.of("api.api-exception-handler.the-request-body-parameter-format-or-required-request-headers-are"),
+                ApiMessage.of(
+                        "api.api-exception-handler.the-request-body-parameter-format-or-required-request-headers-are"),
                 false,
                 request,
                 null);
@@ -140,8 +146,10 @@ public class ApiExceptionHandler {
     ResponseEntity<ProblemDetail> handleUnsupportedMethod(
             org.springframework.web.HttpRequestMethodNotSupportedException exception, HttpServletRequest request) {
         ApiMessage message = ApiMessage.of("api.api-exception-handler.method-not-allowed");
-        var response = build(HttpStatus.METHOD_NOT_ALLOWED, "METHOD_NOT_ALLOWED", message, message, false, request, null);
-        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).headers(exception.getHeaders()).body(response.getBody());
+        var response = build(HttpStatus.METHOD_NOT_ALLOWED, "METHOD_NOT_ALLOWED", message, message, false, request,
+                null);
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).headers(exception.getHeaders())
+                .body(response.getBody());
     }
 
     /** Keep request media negotiation failures out of the retryable unexpected-error path. */
@@ -172,7 +180,10 @@ public class ApiExceptionHandler {
         String traceId = traceId(request);
         LOGGER.error("Unhandled API failure traceId={} path={}", traceId, request.getRequestURI(), exception);
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(
-                HttpStatus.INTERNAL_SERVER_ERROR, messages.text(ApiMessage.of("api.api-exception-handler.the-server-cannot-complete-the-request-right-now"), request));
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                messages.text(
+                        ApiMessage.of("api.api-exception-handler.the-server-cannot-complete-the-request-right-now"),
+                        request));
         problem.setType(URI.create("urn:agenvas:problem:internal-error"));
         problem.setTitle(messages.text(ApiMessage.of("api.api-exception-handler.server-error"), request));
         problem.setInstance(URI.create(request.getRequestURI()));
@@ -217,12 +228,14 @@ public class ApiExceptionHandler {
     private String traceId(HttpServletRequest request) {
         Object value = request.getAttribute(RequestCorrelationFilter.ATTRIBUTE);
         return value instanceof String id && id.matches("[0-9a-f]{32}")
-                ? id : UUID.randomUUID().toString().replace("-", "");
+                ? id
+                : UUID.randomUUID().toString().replace("-", "");
     }
 
     /** 对外字段校验错误，不回显用户提交的字段值。
      * @param field 出错字段路径
      * @param message 已净化的校验说明
      */
-    public record FieldError(String field, String message) {}
+    public record FieldError(String field, String message) {
+    }
 }

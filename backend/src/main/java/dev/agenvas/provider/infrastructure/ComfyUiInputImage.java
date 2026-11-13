@@ -17,7 +17,8 @@ public final class ComfyUiInputImage {
     private static final Color BACKGROUND = new Color(127, 127, 127);
     private static final String FORMAT = "png";
 
-    private ComfyUiInputImage() {}
+    private ComfyUiInputImage() {
+    }
 
     public static Dimensions imageDimensions(Project.AspectRatio ratio) {
         return switch (ratio) {
@@ -55,5 +56,6 @@ public final class ComfyUiInputImage {
         }
     }
 
-    public record Dimensions(int width, int height) {}
+    public record Dimensions(int width, int height) {
+    }
 }

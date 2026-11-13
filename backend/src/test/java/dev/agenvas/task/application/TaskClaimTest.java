@@ -35,8 +35,8 @@ class TaskClaimTest {
     private static final Duration LEASE = Duration.ofSeconds(45);
     private static final int BATCH_LIMIT = 3;
     private final List<Task> claimed = List.of(mock(Task.class));
-    private final TaskRepository repository = mock(TaskRepository.class, call ->
-            call.getMethod().getReturnType() == List.class ? claimed : Answers.RETURNS_DEFAULTS.answer(call));
+    private final TaskRepository repository = mock(TaskRepository.class,
+            call -> call.getMethod().getReturnType() == List.class ? claimed : Answers.RETURNS_DEFAULTS.answer(call));
     private final ShutdownGate gate = new ShutdownGate();
     private final TaskService service = service(Clock.fixed(NOW, ZoneOffset.UTC));
 
@@ -88,7 +88,10 @@ class TaskClaimTest {
     @Test
     void shutdownDuringLeasePreparationPreventsTheQuery() {
         Clock clock = mock(Clock.class);
-        when(clock.instant()).thenAnswer(call -> { gate.onContextClosed(null); return NOW; });
+        when(clock.instant()).thenAnswer(call -> {
+            gate.onContextClosed(null);
+            return NOW;
+        });
         assertThat(service(clock).claimDue("worker", 1)).isEmpty();
         verifyNoInteractions(repository);
     }
@@ -120,11 +123,12 @@ class TaskClaimTest {
     }
 
     private enum Route {
-        DUE("claimDue"), BOUND_MEDIA("claimDueBoundMedia"), BOUND_POLLS("claimDueBoundMediaPolls"),
-        PROVIDER_POLLS("claimDueProviderPolls"),
-        AGENT("claimDueAgentTurns"), TEXT("claimDueTextGenerations");
+        DUE("claimDue"), BOUND_MEDIA("claimDueBoundMedia"), BOUND_POLLS("claimDueBoundMediaPolls"), PROVIDER_POLLS(
+                "claimDueProviderPolls"), AGENT("claimDueAgentTurns"), TEXT("claimDueTextGenerations");
 
         private final String repositoryMethod;
-        Route(String repositoryMethod) { this.repositoryMethod = repositoryMethod; }
+        Route(String repositoryMethod) {
+            this.repositoryMethod = repositoryMethod;
+        }
     }
 }

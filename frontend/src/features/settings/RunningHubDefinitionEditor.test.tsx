@@ -11,11 +11,34 @@ import { server } from "../../test/server";
 import { selectRunningHubNodes } from "./runningHubSelection";
 
 const initialDefinition: RunningHubDefinition = {
-  schemaVersion: 1, protocolVersion: "V2", targetType: "WORKFLOW", targetId: "123", usePersonalQueue: false, addMetadata: false,
+  schemaVersion: 1,
+  protocolVersion: "V2",
+  targetType: "WORKFLOW",
+  targetId: "123",
+  usePersonalQueue: false,
+  addMetadata: false,
   fields: [
-    { key: "mode", label: "模式", type: "BOOLEAN", nodeId: "1", fieldName: "mode", defaultValue: false, required: false, advanced: false },
-    { key: "strength", label: "强度", type: "NUMBER", nodeId: "2", fieldName: "strength", defaultValue: 0, required: false, advanced: false,
-      enabledWhen: { field: "mode", value: true } },
+    {
+      key: "mode",
+      label: "模式",
+      type: "BOOLEAN",
+      nodeId: "1",
+      fieldName: "mode",
+      defaultValue: false,
+      required: false,
+      advanced: false,
+    },
+    {
+      key: "strength",
+      label: "强度",
+      type: "NUMBER",
+      nodeId: "2",
+      fieldName: "strength",
+      defaultValue: 0,
+      required: false,
+      advanced: false,
+      enabledWhen: { field: "mode", value: true },
+    },
   ],
   fixedBindings: [{ nodeId: "2", fieldName: "text", value: "initial" }],
   outputs: [{ kind: "IMAGE", primary: true, maxCount: 1 }],
@@ -26,14 +49,30 @@ async function mount(selectNode = true, startingDefinition = initialDefinition) 
     const [definition, setDefinition] = useState(startingDefinition);
     const [nodes, setNodes] = useState<string[] | undefined>();
     const [fields, setFields] = useState<string[] | undefined>();
-    return <>
-      <RunningHubDefinitionEditor connectionId="connection" adapterId="RUNNINGHUB_IMAGE" value={definition} selectedNodeIds={nodes} selectedFieldKeys={fields}
-        onChange={(next, _kind, nodeIds, fieldKeys) => { setDefinition(next); setNodes(nodeIds); setFields(fieldKeys); }} />
-      <output data-testid="definition">{JSON.stringify(definition)}</output>
-      <output data-testid="published">{JSON.stringify(selectRunningHubNodes(definition, nodes, fields))}</output>
-    </>;
+    return (
+      <>
+        <RunningHubDefinitionEditor
+          connectionId="connection"
+          adapterId="RUNNINGHUB_IMAGE"
+          value={definition}
+          selectedNodeIds={nodes}
+          selectedFieldKeys={fields}
+          onChange={(next, _kind, nodeIds, fieldKeys) => {
+            setDefinition(next);
+            setNodes(nodeIds);
+            setFields(fieldKeys);
+          }}
+        />
+        <output data-testid="definition">{JSON.stringify(definition)}</output>
+        <output data-testid="published">{JSON.stringify(selectRunningHubNodes(definition, nodes, fields))}</output>
+      </>
+    );
   }
-  render(<QueryClientProvider client={new QueryClient()}><Editor /></QueryClientProvider>);
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <Editor />
+    </QueryClientProvider>,
+  );
   if (selectNode) {
     await showNodes("2");
     fireEvent.click(within(parameterRow("强度")).getByRole("button", { name: "更多设置" }));
@@ -56,9 +95,11 @@ async function findParameterRow(label: string) {
 async function showNodes(...nodeIds: string[]) {
   await clickControl(screen.getByRole("button", { name: "选择节点" }));
   for (const item of screen.getAllByRole("menuitemcheckbox")) {
-    const selected = nodeIds.some((nodeId) => nodeId
-      ? item.textContent === `节点 ${nodeId}` || item.textContent?.startsWith(`节点 ${nodeId} · `)
-      : item.textContent === "待配置节点");
+    const selected = nodeIds.some(nodeId =>
+      nodeId
+        ? item.textContent === `节点 ${nodeId}` || item.textContent?.startsWith(`节点 ${nodeId} · `)
+        : item.textContent === "待配置节点",
+    );
     if ((item.getAttribute("aria-checked") === "true") !== selected) await clickControl(item);
   }
   await userEvent.setup().keyboard("{Escape}");
@@ -73,17 +114,52 @@ function publishedDefinition() {
 }
 
 describe("RunningHubDefinitionEditor review and large candidate sets", () => {
-  beforeEach(() => server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" }))));
+  beforeEach(() =>
+    server.use(
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+    ),
+  );
   it("shows server evidence and filters recommended, exposed and uncertain candidates", async () => {
     const fields: RunningHubDefinition["fields"] = [
-      { ...initialDefinition.fields[0]!, key: "seconds", nodeId: "10", fieldName: "duration", label: "时长", type: "NUMBER", defaultValue: 5.5 },
-      { ...initialDefinition.fields[0]!, key: "uncertain", nodeId: "10", fieldName: "asset", label: "待定素材", type: "STRING", defaultValue: null },
+      {
+        ...initialDefinition.fields[0]!,
+        key: "seconds",
+        nodeId: "10",
+        fieldName: "duration",
+        label: "时长",
+        type: "NUMBER",
+        defaultValue: 5.5,
+      },
+      {
+        ...initialDefinition.fields[0]!,
+        key: "uncertain",
+        nodeId: "10",
+        fieldName: "asset",
+        label: "待定素材",
+        type: "STRING",
+        defaultValue: null,
+      },
     ];
-    server.use(http.post("/api/v1/settings/media-connections/connection/runninghub/preview", () => HttpResponse.json({
-      definition: { ...initialDefinition, fields, fixedBindings: [] }, targetName: null, warnings: [], recommendedFieldKeys: ["seconds"],
-      fieldInsights: [{ key: "seconds", nodeId: "10", fieldName: "duration", confidence: "DECLARED", reasons: ["WIDGET_TYPE"] },
-        { key: "uncertain", nodeId: "10", fieldName: "asset", confidence: "UNCERTAIN", reasons: ["CONFLICTING_MEDIA_METADATA"] }],
-    })));
+    server.use(
+      http.post("/api/v1/settings/media-connections/connection/runninghub/preview", () =>
+        HttpResponse.json({
+          definition: { ...initialDefinition, fields, fixedBindings: [] },
+          targetName: null,
+          warnings: [],
+          recommendedFieldKeys: ["seconds"],
+          fieldInsights: [
+            { key: "seconds", nodeId: "10", fieldName: "duration", confidence: "DECLARED", reasons: ["WIDGET_TYPE"] },
+            {
+              key: "uncertain",
+              nodeId: "10",
+              fieldName: "asset",
+              confidence: "UNCERTAIN",
+              reasons: ["CONFLICTING_MEDIA_METADATA"],
+            },
+          ],
+        }),
+      ),
+    );
     await mount(false, { ...initialDefinition, fields: [], fixedBindings: [] });
     await clickControl(screen.getByRole("button", { name: "自动发现参数" }));
     await findParameterRow("时长");
@@ -96,19 +172,26 @@ describe("RunningHubDefinitionEditor review and large candidate sets", () => {
     expect(screen.queryByRole("button", { name: "编辑参数 · 待定素材" })).not.toBeInTheDocument();
     await selectValue(screen.getByRole("combobox", { name: "参数筛选" }), "EXPOSED");
     expect(parameterRow("时长")).toBeInTheDocument();
-    expect(publishedDefinition().fields.map((item) => item.key)).toEqual(["seconds"]);
+    expect(publishedDefinition().fields.map(item => item.key)).toEqual(["seconds"]);
   });
 
   // The full-capacity fixture exercises several rendered pages; hosted CI can exceed 5s in jsdom.
   it("mounts one page of 1024 fields and preserves invalid scalar text across pages", { timeout: 15_000 }, async () => {
-    const fields = Array.from({ length: 1024 }, (_, index) => ({ ...initialDefinition.fields[1]!, key: `field${index + 1}`,
-      nodeId: "1", fieldName: `value${index + 1}`, label: `参数${index + 1}`, enabledWhen: null }));
+    const fields = Array.from({ length: 1024 }, (_, index) => ({
+      ...initialDefinition.fields[1]!,
+      key: `field${index + 1}`,
+      nodeId: "1",
+      fieldName: `value${index + 1}`,
+      label: `参数${index + 1}`,
+      enabledWhen: null,
+    }));
     await mount(false, { ...initialDefinition, fields, fixedBindings: [] });
     expect(document.querySelectorAll(".runninghub-catalog-item")).toHaveLength(20);
     expect(document.querySelectorAll(".runninghub-parameter-card")).toHaveLength(1);
     const first = parameterRow("参数1");
     const input = within(first).getByRole("textbox", { name: "默认值" });
-    fireEvent.change(input, { target: { value: "invalid draft" } }); fireEvent.blur(input);
+    fireEvent.change(input, { target: { value: "invalid draft" } });
+    fireEvent.blur(input);
     await clickControl(screen.getByRole("button", { name: "下一页" }));
     expect(screen.queryByRole("button", { name: "编辑参数 · 参数1" })).not.toBeInTheDocument();
     expect(parameterRow("参数21")).toBeInTheDocument();
@@ -116,7 +199,8 @@ describe("RunningHubDefinitionEditor review and large candidate sets", () => {
     expect(document.querySelectorAll(".runninghub-parameter-card")).toHaveLength(1);
     await clickControl(screen.getByRole("button", { name: "上一页" }));
     const restored = within(parameterRow("参数1")).getByRole("textbox", { name: "默认值" });
-    expect(restored).toHaveValue("invalid draft"); expect(restored).toHaveProperty("validity.valid", false);
+    expect(restored).toHaveValue("invalid draft");
+    expect(restored).toHaveProperty("validity.valid", false);
     fireEvent.change(screen.getByRole("textbox", { name: "搜索字段、节点或分组" }), { target: { value: "参数1024" } });
     expect(document.querySelectorAll(".runninghub-parameter-card")).toHaveLength(1);
     expect(parameterRow("参数1024")).toBeInTheDocument();
@@ -125,13 +209,34 @@ describe("RunningHubDefinitionEditor review and large candidate sets", () => {
 
   it("validates selected fields outside the mounted page, clears filters and reveals the invalid field", async () => {
     const submitted = vi.fn();
-    const fields = Array.from({ length: 45 }, (_, index) => ({ ...initialDefinition.fields[1]!, key: `field${index + 1}`,
-      nodeId: "1", fieldName: `value${index + 1}`, label: `参数${index + 1}`, enabledWhen: null, defaultValue: index === 44 ? "invalid number" : 0 }));
+    const fields = Array.from({ length: 45 }, (_, index) => ({
+      ...initialDefinition.fields[1]!,
+      key: `field${index + 1}`,
+      nodeId: "1",
+      fieldName: `value${index + 1}`,
+      label: `参数${index + 1}`,
+      enabledWhen: null,
+      defaultValue: index === 44 ? "invalid number" : 0,
+    }));
     function Form() {
       const [value, setValue] = useState<RunningHubDefinition>({ ...initialDefinition, fields, fixedBindings: [] });
-      return <form aria-label="validation" onSubmit={submitted}><RunningHubDefinitionEditor connectionId="connection" adapterId="RUNNINGHUB_IMAGE" value={value} onChange={setValue} /><button type="submit">Submit</button></form>;
+      return (
+        <form aria-label="validation" onSubmit={submitted}>
+          <RunningHubDefinitionEditor
+            connectionId="connection"
+            adapterId="RUNNINGHUB_IMAGE"
+            value={value}
+            onChange={setValue}
+          />
+          <button type="submit">Submit</button>
+        </form>
+      );
     }
-    render(<QueryClientProvider client={new QueryClient()}><Form /></QueryClientProvider>);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <Form />
+      </QueryClientProvider>,
+    );
     fireEvent.change(screen.getByRole("textbox", { name: "搜索字段、节点或分组" }), { target: { value: "参数1" } });
     fireEvent.submit(screen.getByRole("form", { name: "validation" }));
     expect(submitted).not.toHaveBeenCalled();
@@ -143,22 +248,67 @@ describe("RunningHubDefinitionEditor review and large candidate sets", () => {
 
   it("compares saved source metadata and preserves manual settings until explicit adoption", async () => {
     const oldSource = { "2": { class_type: "PrimitiveFloat", inputs: { value: 1 } } };
-    const oldField = { ...initialDefinition.fields[1]!, key: "oldInput", fieldName: "value", label: "old source", type: "INTEGER" as const, enabledWhen: null, defaultValue: 1 };
-    const newField = { ...oldField, key: "input1", type: "NUMBER" as const, maximum: 10, label: "new source", defaultValue: 2 };
+    const oldField = {
+      ...initialDefinition.fields[1]!,
+      key: "oldInput",
+      fieldName: "value",
+      label: "old source",
+      type: "INTEGER" as const,
+      enabledWhen: null,
+      defaultValue: 1,
+    };
+    const newField = {
+      ...oldField,
+      key: "input1",
+      type: "NUMBER" as const,
+      maximum: 10,
+      label: "new source",
+      defaultValue: 2,
+    };
     const requests: { source?: unknown }[] = [];
-    server.use(http.post("/api/v1/settings/media-connections/connection/runninghub/preview", async ({ request }) => {
-      const body = await request.json() as { source?: unknown }; requests.push(body);
-      return HttpResponse.json({ definition: { ...initialDefinition, importSource: body.source ?? { changed: true }, fixedBindings: [], fields: [body.source ? oldField : newField] },
-        targetName: null, recommendedFieldKeys: ["input1"], warnings: [] });
-    }));
-    await mount(false, { ...initialDefinition, fields: [{ ...oldField, key: "duration", label: "手工时长", defaultValue: 4, group: "基础生成" }], fixedBindings: [], importSource: oldSource });
+    server.use(
+      http.post("/api/v1/settings/media-connections/connection/runninghub/preview", async ({ request }) => {
+        const body = (await request.json()) as { source?: unknown };
+        requests.push(body);
+        return HttpResponse.json({
+          definition: {
+            ...initialDefinition,
+            importSource: body.source ?? { changed: true },
+            fixedBindings: [],
+            fields: [body.source ? oldField : newField],
+          },
+          targetName: null,
+          recommendedFieldKeys: ["input1"],
+          warnings: [],
+        });
+      }),
+    );
+    await mount(false, {
+      ...initialDefinition,
+      fields: [{ ...oldField, key: "duration", label: "手工时长", defaultValue: 4, group: "基础生成" }],
+      fixedBindings: [],
+      importSource: oldSource,
+    });
     await clickControl(screen.getByRole("button", { name: "自动发现参数" }));
     await screen.findByText("INTEGER → NUMBER");
     expect(requests).toHaveLength(2);
     expect(screen.getByText("类型变化 · 范围 / 必填规则变化")).toBeInTheDocument();
-    expect(currentDefinition().fields[0]).toMatchObject({ key: "duration", label: "手工时长", type: "INTEGER", defaultValue: 4, group: "基础生成" });
+    expect(currentDefinition().fields[0]).toMatchObject({
+      key: "duration",
+      label: "手工时长",
+      type: "INTEGER",
+      defaultValue: 4,
+      group: "基础生成",
+    });
     await clickControl(screen.getByRole("button", { name: "采纳类型、选项及约束" }));
-    expect(currentDefinition().fields[0]).toMatchObject({ key: "duration", label: "手工时长", type: "NUMBER", maximum: 10, defaultValue: 4, group: "基础生成" });
+    expect(currentDefinition().fields[0]).toMatchObject({
+      key: "duration",
+      label: "手工时长",
+      type: "NUMBER",
+      maximum: 10,
+      defaultValue: 4,
+      group: "基础生成",
+    });
   });
 });
 
@@ -167,7 +317,8 @@ describe("RunningHubDefinitionEditor parameter workspace", () => {
     await mount(false);
     const before = publishedDefinition();
     const scalar = within(parameterRow("强度")).getByRole("textbox", { name: "默认值" });
-    fireEvent.change(scalar, { target: { value: "unfinished" } }); fireEvent.blur(scalar);
+    fireEvent.change(scalar, { target: { value: "unfinished" } });
+    fireEvent.blur(scalar);
     await clickControl(screen.getByRole("radio", { name: /节点 1 · 模式/ }));
     expect(screen.queryByRole("button", { name: "编辑参数 · 强度" })).not.toBeInTheDocument();
     expect(screen.getByRole("row", { name: "模式" })).toBeInTheDocument();
@@ -183,19 +334,35 @@ describe("RunningHubDefinitionEditor parameter workspace", () => {
     await mount(false);
     await clickControl(screen.getByRole("checkbox", { name: "发布此参数 · 强度" }));
     expect(screen.getByRole("row", { name: "模式" })).toBeInTheDocument();
-    expect(publishedDefinition().fields.map((item) => item.key)).toEqual(["mode"]);
+    expect(publishedDefinition().fields.map(item => item.key)).toEqual(["mode"]);
     expect(currentDefinition().fields[1]).toEqual(initialDefinition.fields[1]);
     await clickControl(screen.getByRole("radio", { name: /节点 2 · 强度/ }));
     expect(within(screen.getByRole("row", { name: "强度" })).getByRole("textbox", { name: "显示名称" })).toBeDisabled();
     await clickControl(screen.getByRole("button", { name: "手动添加字段" }));
     expect(currentDefinition().fields.at(-1)?.nodeId).toBe("2");
-    expect(within(screen.getByRole("row", { name: "新参数" })).getByRole("textbox", { name: "节点 ID" })).toHaveValue("2");
+    expect(within(screen.getByRole("row", { name: "新参数" })).getByRole("textbox", { name: "节点 ID" })).toHaveValue(
+      "2",
+    );
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
   it("uses enum choices for defaults while preserving scalar types and supports clearing the default", async () => {
-    await mount(false, { ...initialDefinition, fixedBindings: [], fields: [{ ...initialDefinition.fields[0]!,
-      type: "SELECT", defaultValue: false, options: [{ label: "关闭", value: false }, { label: "双倍", value: 2 }, { label: "自动", value: "auto" }] }] });
+    await mount(false, {
+      ...initialDefinition,
+      fixedBindings: [],
+      fields: [
+        {
+          ...initialDefinition.fields[0]!,
+          type: "SELECT",
+          defaultValue: false,
+          options: [
+            { label: "关闭", value: false },
+            { label: "双倍", value: 2 },
+            { label: "自动", value: "auto" },
+          ],
+        },
+      ],
+    });
     const row = screen.getByRole("row", { name: "模式" });
     expect(within(row).getByRole("combobox", { name: "默认值" })).toHaveValue("0");
     expect(within(row).getByRole("textbox", { name: /下拉选项/ })).toBeInTheDocument();
@@ -210,28 +377,133 @@ describe("RunningHubDefinitionEditor parameter workspace", () => {
 });
 
 describe("RunningHubDefinitionEditor intelligent discovery", () => {
-  const discovered: RunningHubDefinition = { ...initialDefinition, fixedBindings: [], fields: [
-    { key: "prompt", required: false, advanced: false, label: "画面提示", type: "STRING", source: "PROMPT", nodeId: "10", fieldName: "text", defaultValue: "scene" },
-    { key: "seed", required: false, advanced: false, label: "随机种子", type: "INTEGER", source: "PARAMETER", nodeId: "10", fieldName: "seed", defaultValue: 42 },
-    { key: "image", required: false, advanced: false, label: "参考图", type: "IMAGE", source: "PARAMETER", nodeId: "20", fieldName: "image" },
-    { key: "steps", required: false, advanced: false, label: "采样步数", type: "INTEGER", source: "PARAMETER", nodeId: "30", fieldName: "steps", defaultValue: 20 },
-  ] };
-  const creationInputs: RunningHubDefinition = { ...initialDefinition, fixedBindings: [], fields: [
-    discovered.fields[0]!, discovered.fields[2]!,
-    { key: "duration", label: "片段时长", type: "NUMBER", source: "PARAMETER", nodeId: "30", fieldName: "duration", defaultValue: 5.5,
-      minimum: 1, maximum: 60, required: false, advanced: false },
-    { key: "ratio", label: "画幅", type: "SELECT", source: "PARAMETER", nodeId: "40", fieldName: "aspect_ratio", defaultValue: "16:9",
-      options: [{ label: "横屏", value: "16:9" }, { label: "竖屏", value: "9:16" }], required: false, advanced: false },
-    { key: "width", label: "图片宽度", type: "INTEGER", nodeId: "40", fieldName: "width", defaultValue: 1024,
-      minimum: 64, maximum: 4096, required: false, advanced: false },
-    { key: "height", label: "图片高度", type: "INTEGER", nodeId: "40", fieldName: "height", defaultValue: 576,
-      minimum: 64, maximum: 4096, required: false, advanced: false },
-    { key: "sound", label: "保留声音", type: "BOOLEAN", source: "PARAMETER", nodeId: "50", fieldName: "sound", defaultValue: false,
-      required: false, advanced: false },
-  ] };
+  const discovered: RunningHubDefinition = {
+    ...initialDefinition,
+    fixedBindings: [],
+    fields: [
+      {
+        key: "prompt",
+        required: false,
+        advanced: false,
+        label: "画面提示",
+        type: "STRING",
+        source: "PROMPT",
+        nodeId: "10",
+        fieldName: "text",
+        defaultValue: "scene",
+      },
+      {
+        key: "seed",
+        required: false,
+        advanced: false,
+        label: "随机种子",
+        type: "INTEGER",
+        source: "PARAMETER",
+        nodeId: "10",
+        fieldName: "seed",
+        defaultValue: 42,
+      },
+      {
+        key: "image",
+        required: false,
+        advanced: false,
+        label: "参考图",
+        type: "IMAGE",
+        source: "PARAMETER",
+        nodeId: "20",
+        fieldName: "image",
+      },
+      {
+        key: "steps",
+        required: false,
+        advanced: false,
+        label: "采样步数",
+        type: "INTEGER",
+        source: "PARAMETER",
+        nodeId: "30",
+        fieldName: "steps",
+        defaultValue: 20,
+      },
+    ],
+  };
+  const creationInputs: RunningHubDefinition = {
+    ...initialDefinition,
+    fixedBindings: [],
+    fields: [
+      discovered.fields[0]!,
+      discovered.fields[2]!,
+      {
+        key: "duration",
+        label: "片段时长",
+        type: "NUMBER",
+        source: "PARAMETER",
+        nodeId: "30",
+        fieldName: "duration",
+        defaultValue: 5.5,
+        minimum: 1,
+        maximum: 60,
+        required: false,
+        advanced: false,
+      },
+      {
+        key: "ratio",
+        label: "画幅",
+        type: "SELECT",
+        source: "PARAMETER",
+        nodeId: "40",
+        fieldName: "aspect_ratio",
+        defaultValue: "16:9",
+        options: [
+          { label: "横屏", value: "16:9" },
+          { label: "竖屏", value: "9:16" },
+        ],
+        required: false,
+        advanced: false,
+      },
+      {
+        key: "width",
+        label: "图片宽度",
+        type: "INTEGER",
+        nodeId: "40",
+        fieldName: "width",
+        defaultValue: 1024,
+        minimum: 64,
+        maximum: 4096,
+        required: false,
+        advanced: false,
+      },
+      {
+        key: "height",
+        label: "图片高度",
+        type: "INTEGER",
+        nodeId: "40",
+        fieldName: "height",
+        defaultValue: 576,
+        minimum: 64,
+        maximum: 4096,
+        required: false,
+        advanced: false,
+      },
+      {
+        key: "sound",
+        label: "保留声音",
+        type: "BOOLEAN",
+        source: "PARAMETER",
+        nodeId: "50",
+        fieldName: "sound",
+        defaultValue: false,
+        required: false,
+        advanced: false,
+      },
+    ],
+  };
   function discovery(definition = discovered, recommendedFieldKeys = ["prompt", "image"]) {
-    server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
-      http.post("/api/v1/settings/media-connections/connection/runninghub/preview", () => HttpResponse.json({ definition, warnings: [], recommendedFieldKeys })));
+    server.use(
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+      http.post("/api/v1/settings/media-connections/connection/runninghub/preview", () =>
+        HttpResponse.json({ definition, warnings: [], recommendedFieldKeys }),
+      ),
+    );
   }
   it("exposes only suggested inputs, including individual fields within a selected node", async () => {
     discovery();
@@ -243,15 +515,18 @@ describe("RunningHubDefinitionEditor intelligent discovery", () => {
     expect(within(seed).getByRole("checkbox", { name: "暴露参数 · 随机种子" })).not.toBeChecked();
     expect(within(seed).getByRole("textbox", { name: "默认值" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "编辑参数 · 采样步数" })).not.toBeInTheDocument();
-    expect(publishedDefinition().fields.map((field) => field.key)).toEqual(["prompt", "image"]);
+    expect(publishedDefinition().fields.map(field => field.key)).toEqual(["prompt", "image"]);
     await showNodes("10", "20", "30");
     const steps = parameterRow("采样步数");
     await clickControl(within(steps).getByRole("checkbox", { name: "暴露参数 · 采样步数" }));
-    expect(publishedDefinition().fields.map((field) => field.key)).toEqual(["prompt", "image", "steps"]);
+    expect(publishedDefinition().fields.map(field => field.key)).toEqual(["prompt", "image", "steps"]);
     expect(currentDefinition().fields).toEqual(discovered.fields);
   });
   it("exposes suggested creation parameters with their imported types, defaults and options", async () => {
-    discovery(creationInputs, creationInputs.fields.map((field) => field.key));
+    discovery(
+      creationInputs,
+      creationInputs.fields.map(field => field.key),
+    );
     await mount(false, { ...initialDefinition, fields: [], fixedBindings: [] });
     await clickControl(screen.getByRole("button", { name: "自动发现参数" }));
     await findParameterRow("片段时长");
@@ -270,12 +545,16 @@ describe("RunningHubDefinitionEditor intelligent discovery", () => {
     expect(within(preview).getByRole("combobox", { name: "保留声音" })).toHaveValue("false");
   });
   it("preserves deselected creation parameters and their edited types, defaults and constraints on rediscovery", async () => {
-    discovery(creationInputs, creationInputs.fields.map((field) => field.key));
+    discovery(
+      creationInputs,
+      creationInputs.fields.map(field => field.key),
+    );
     await mount(false, creationInputs);
     const duration = parameterRow("片段时长");
     await selectValue(within(duration).getByRole("combobox", { name: "类型" }), "INTEGER");
     const defaultValue = within(duration).getByRole("textbox", { name: "默认值" });
-    fireEvent.change(defaultValue, { target: { value: "7" } }); fireEvent.blur(defaultValue);
+    fireEvent.change(defaultValue, { target: { value: "7" } });
+    fireEvent.blur(defaultValue);
     await clickControl(within(duration).getByRole("button", { name: "更多设置" }));
     const constraints = screen.getByRole("row", { name: "更多设置 · 片段时长" });
     fireEvent.change(within(constraints).getByRole("spinbutton", { name: "最小值" }), { target: { value: "3" } });
@@ -283,11 +562,22 @@ describe("RunningHubDefinitionEditor intelligent discovery", () => {
     await clickControl(within(parameterRow("画幅")).getByRole("checkbox", { name: "暴露参数 · 画幅" }));
     await showNodes("10", "20", "30", "40");
     const configured = currentDefinition();
-    expect(configured.fields.find((field) => field.key === "duration")).toMatchObject({ type: "INTEGER", defaultValue: 7, minimum: 3, maximum: 20 });
+    expect(configured.fields.find(field => field.key === "duration")).toMatchObject({
+      type: "INTEGER",
+      defaultValue: 7,
+      minimum: 3,
+      maximum: 20,
+    });
     await clickControl(screen.getByRole("button", { name: "自动发现参数" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "自动发现参数" })).toBeEnabled());
     expect(currentDefinition().fields).toEqual(configured.fields);
-    expect(publishedDefinition().fields.map((field) => field.key)).toEqual(["prompt", "image", "duration", "width", "height"]);
+    expect(publishedDefinition().fields.map(field => field.key)).toEqual([
+      "prompt",
+      "image",
+      "duration",
+      "width",
+      "height",
+    ]);
     expect(within(parameterRow("画幅")).getByRole("checkbox", { name: "暴露参数 · 画幅" })).not.toBeChecked();
     expect(screen.queryByRole("button", { name: "编辑参数 · 保留声音" })).not.toBeInTheDocument();
   });
@@ -298,29 +588,44 @@ describe("RunningHubDefinitionEditor intelligent discovery", () => {
     await clickControl(within(prompt).getByRole("checkbox", { name: "暴露参数 · 画面提示" }));
     const seed = parameterRow("随机种子");
     const input = within(seed).getByRole("textbox", { name: "默认值" });
-    fireEvent.change(input, { target: { value: "invalid" } }); fireEvent.blur(input);
+    fireEvent.change(input, { target: { value: "invalid" } });
+    fireEvent.blur(input);
     await clickControl(within(seed).getByRole("checkbox", { name: "暴露参数 · 随机种子" }));
     expect(input).toBeDisabled();
     expect((input as HTMLInputElement).checkValidity()).toBe(true);
     await clickControl(within(seed).getByRole("checkbox", { name: "暴露参数 · 随机种子" }));
     expect(input).toHaveValue("invalid");
     expect(input).toHaveProperty("validity.valid", false);
-    fireEvent.change(input, { target: { value: "100" } }); fireEvent.blur(input);
-    fireEvent.change(within(parameterRow("随机种子", true)).getByRole("textbox", { name: "稳定字段键" }), { target: { value: "customSeed" } });
+    fireEvent.change(input, { target: { value: "100" } });
+    fireEvent.blur(input);
+    fireEvent.change(within(parameterRow("随机种子", true)).getByRole("textbox", { name: "稳定字段键" }), {
+      target: { value: "customSeed" },
+    });
     await clickControl(screen.getByRole("button", { name: "自动发现参数" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "自动发现参数" })).toBeEnabled());
-    expect(publishedDefinition().fields.map((field) => field.key)).toEqual(["customSeed", "image", "steps"]);
+    expect(publishedDefinition().fields.map(field => field.key)).toEqual(["customSeed", "image", "steps"]);
     expect(currentDefinition().fields[1]?.defaultValue).toBe(100);
     expect(within(parameterRow("画面提示")).getByRole("checkbox", { name: "暴露参数 · 画面提示" })).not.toBeChecked();
   });
   it("applies new media suggestions after key collision renaming without reselecting an existing node", async () => {
-    const existing: RunningHubDefinition = { ...initialDefinition, fixedBindings: [], fields: [{ ...initialDefinition.fields[0]!, key: "input1" }] };
-    const imported: RunningHubDefinition = { ...existing, fields: [
-      { ...discovered.fields[2]!, key: "input1" },
-      { ...existing.fields[0]!, key: "input2" },
-    ] };
-    server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
-      http.post("/api/v1/settings/media-connections/connection/runninghub/preview", () => HttpResponse.json({ definition: imported, warnings: [], recommendedFieldKeys: ["input1"] })));
+    const existing: RunningHubDefinition = {
+      ...initialDefinition,
+      fixedBindings: [],
+      fields: [{ ...initialDefinition.fields[0]!, key: "input1" }],
+    };
+    const imported: RunningHubDefinition = {
+      ...existing,
+      fields: [
+        { ...discovered.fields[2]!, key: "input1" },
+        { ...existing.fields[0]!, key: "input2" },
+      ],
+    };
+    server.use(
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+      http.post("/api/v1/settings/media-connections/connection/runninghub/preview", () =>
+        HttpResponse.json({ definition: imported, warnings: [], recommendedFieldKeys: ["input1"] }),
+      ),
+    );
     await mount(false, existing);
     await showNodes();
     await clickControl(screen.getByRole("button", { name: "自动发现参数" }));
@@ -330,23 +635,31 @@ describe("RunningHubDefinitionEditor intelligent discovery", () => {
     expect(currentDefinition().fields[0]).toEqual(existing.fields[0]);
   });
   it("preserves an existing canvas prompt instead of exposing a newly inferred second prompt", async () => {
-    const existing: RunningHubDefinition = { ...initialDefinition, fixedBindings: [], fields: [
-      { ...discovered.fields[0]!, key: "savedPrompt", nodeId: "99" },
-    ] };
+    const existing: RunningHubDefinition = {
+      ...initialDefinition,
+      fixedBindings: [],
+      fields: [{ ...discovered.fields[0]!, key: "savedPrompt", nodeId: "99" }],
+    };
     discovery();
     await mount(false, existing);
     await clickControl(screen.getByRole("button", { name: "自动发现参数" }));
     await findParameterRow("参考图");
-    expect(publishedDefinition().fields.map((field) => field.key)).toEqual(["savedPrompt", "image"]);
-    expect(currentDefinition().fields.filter((field) => field.source === "PROMPT")).toHaveLength(1);
-    expect(currentDefinition().fields.find((field) => field.key === "prompt")?.source).toBe("PARAMETER");
+    expect(publishedDefinition().fields.map(field => field.key)).toEqual(["savedPrompt", "image"]);
+    expect(currentDefinition().fields.filter(field => field.source === "PROMPT")).toHaveLength(1);
+    expect(currentDefinition().fields.find(field => field.key === "prompt")?.source).toBe("PARAMETER");
   });
 });
 
 describe("RunningHubDefinitionEditor node field names", () => {
   it("accepts dotted open and fixed bindings without changing local parameter keys", async () => {
     await mount();
-    for (const value of ["sampling_mode.top_p", ".top_p", "sampling_mode/top_p", "sampling mode.top_p", "a".repeat(81)]) {
+    for (const value of [
+      "sampling_mode.top_p",
+      ".top_p",
+      "sampling_mode/top_p",
+      "sampling mode.top_p",
+      "a".repeat(81),
+    ]) {
       const fieldInput = within(parameterRow("强度", true)).getByRole("textbox", { name: "节点字段" });
       fireEvent.change(fieldInput, { target: { value } });
       expect(fieldInput).toHaveProperty("validity.valid", value === "sampling_mode.top_p");
@@ -366,20 +679,50 @@ describe("RunningHubDefinitionEditor saved import JSON", () => {
       "3": { class_type: "Seed", inputs: { seed: 8 } },
       "99": { class_type: "SaveImage", inputs: { images: ["2", 0] } },
     };
-    const stored: RunningHubDefinition = { ...initialDefinition, importSource: source,
-      outputs: [{ nodeId: "99", kind: "IMAGE", primary: true, maxCount: 2 }] };
-    const imported: RunningHubDefinition = { ...stored,
-      fields: [...initialDefinition.fields.map((field) => ({ ...field, label: "导入名称", defaultValue: field.nodeId === "2" ? 0.75 : false })),
-        { key: "text", label: "固定字段候选", type: "STRING", nodeId: "2", fieldName: "text", required: false, advanced: false },
-        { key: "mode", label: "种子候选", type: "INTEGER", nodeId: "3", fieldName: "seed", required: false, advanced: false }],
-      fixedBindings: [], outputs: [{ kind: "IMAGE", primary: true, maxCount: 1 }],
+    const stored: RunningHubDefinition = {
+      ...initialDefinition,
+      importSource: source,
+      outputs: [{ nodeId: "99", kind: "IMAGE", primary: true, maxCount: 2 }],
+    };
+    const imported: RunningHubDefinition = {
+      ...stored,
+      fields: [
+        ...initialDefinition.fields.map(field => ({
+          ...field,
+          label: "导入名称",
+          defaultValue: field.nodeId === "2" ? 0.75 : false,
+        })),
+        {
+          key: "text",
+          label: "固定字段候选",
+          type: "STRING",
+          nodeId: "2",
+          fieldName: "text",
+          required: false,
+          advanced: false,
+        },
+        {
+          key: "mode",
+          label: "种子候选",
+          type: "INTEGER",
+          nodeId: "3",
+          fieldName: "seed",
+          required: false,
+          advanced: false,
+        },
+      ],
+      fixedBindings: [],
+      outputs: [{ kind: "IMAGE", primary: true, maxCount: 1 }],
       nodeOptions: [{ nodeId: "99", label: "SaveImage" }],
     };
     const requests: unknown[] = [];
-    server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+    server.use(
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
       http.post("/api/v1/settings/media-connections/connection/runninghub/preview", async ({ request }) => {
-        requests.push(await request.json()); return HttpResponse.json({ definition: imported, warnings: [], recommendedFieldKeys: [] });
-      }));
+        requests.push(await request.json());
+        return HttpResponse.json({ definition: imported, warnings: [], recommendedFieldKeys: [] });
+      }),
+    );
     await mount(false, stored);
     expect(requests).toEqual([]);
     fireEvent.click(screen.getByText("导入 / 已保存的 JSON"));
@@ -399,7 +742,9 @@ describe("RunningHubDefinitionEditor saved import JSON", () => {
     const stored: RunningHubDefinition = { ...initialDefinition, importSource: { "1": { inputs: { mode: false } } } };
     await mount(false, stored);
     fireEvent.click(screen.getByText("导入 / 已保存的 JSON"));
-    fireEvent.change(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" }), { target: { value: "invalid" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" }), {
+      target: { value: "invalid" },
+    });
     await clickControl(screen.getByRole("button", { name: "导入 JSON 字段" }));
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(currentDefinition()).toEqual(stored);
@@ -410,23 +755,42 @@ describe("RunningHubDefinitionEditor saved import JSON", () => {
 describe("RunningHubDefinitionEditor field capacity", () => {
   function importedFields(count: number): RunningHubDefinition["fields"] {
     return Array.from({ length: count }, (_, index) => ({
-      key: `imported${index}`, label: `导入字段 ${index}`, type: "STRING", nodeId: "3", fieldName: `input${index}`,
-      required: false, advanced: false,
+      key: `imported${index}`,
+      label: `导入字段 ${index}`,
+      type: "STRING",
+      nodeId: "3",
+      fieldName: `input${index}`,
+      required: false,
+      advanced: false,
     }));
   }
 
   function preview(definition: RunningHubDefinition) {
-    server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
-      http.post("/api/v1/settings/media-connections/connection/runninghub/preview", () => HttpResponse.json({
-        definition, warnings: [], recommendedFieldKeys: [],
-      })));
+    server.use(
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+      http.post("/api/v1/settings/media-connections/connection/runninghub/preview", () =>
+        HttpResponse.json({
+          definition,
+          warnings: [],
+          recommendedFieldKeys: [],
+        }),
+      ),
+    );
   }
 
   it("accepts automatic discovery when merged candidates reach 1024 fields", async () => {
     const onChange = vi.fn();
     preview({ ...initialDefinition, fields: importedFields(1022), fixedBindings: [] });
-    render(<QueryClientProvider client={new QueryClient()}><RunningHubDefinitionEditor connectionId="connection" adapterId="RUNNINGHUB_IMAGE"
-      value={initialDefinition} onChange={onChange} /></QueryClientProvider>);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <RunningHubDefinitionEditor
+          connectionId="connection"
+          adapterId="RUNNINGHUB_IMAGE"
+          value={initialDefinition}
+          onChange={onChange}
+        />
+      </QueryClientProvider>,
+    );
     await clickControl(screen.getByRole("button", { name: "自动发现参数" }));
     await waitFor(() => expect(onChange).toHaveBeenCalledOnce());
     const next = onChange.mock.calls[0]?.[0] as RunningHubDefinition;
@@ -440,8 +804,16 @@ describe("RunningHubDefinitionEditor field capacity", () => {
     const stored = { ...initialDefinition, importSource: { saved: true } };
     const onChange = vi.fn();
     preview({ ...initialDefinition, fields: importedFields(1023), fixedBindings: [] });
-    render(<QueryClientProvider client={new QueryClient()}><RunningHubDefinitionEditor connectionId="connection" adapterId="RUNNINGHUB_IMAGE"
-      value={stored} onChange={onChange} /></QueryClientProvider>);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <RunningHubDefinitionEditor
+          connectionId="connection"
+          adapterId="RUNNINGHUB_IMAGE"
+          value={stored}
+          onChange={onChange}
+        />
+      </QueryClientProvider>,
+    );
     fireEvent.click(screen.getByText("导入 / 已保存的 JSON"));
     const source = screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" });
     fireEvent.change(source, { target: { value: '{"draft":true}' } });
@@ -454,17 +826,35 @@ describe("RunningHubDefinitionEditor field capacity", () => {
 });
 
 const scalarInputs = [
-  { label: "默认值", error: "默认值需要有效数字或 JSON 标量。", getValue: (definition: RunningHubDefinition) => definition.fields[1]?.defaultValue },
-  { label: "条件值（JSON 标量）", error: "显示条件需要有效的 JSON 标量。", getValue: (definition: RunningHubDefinition) => definition.fields[1]?.enabledWhen?.value },
-  { label: "固定值（JSON 标量）", error: "固定值需要有效的 JSON 文字、数字或布尔值。", getValue: (definition: RunningHubDefinition) => definition.fixedBindings?.[0]?.value },
+  {
+    label: "默认值",
+    error: "默认值需要有效数字或 JSON 标量。",
+    getValue: (definition: RunningHubDefinition) => definition.fields[1]?.defaultValue,
+  },
+  {
+    label: "条件值（JSON 标量）",
+    error: "显示条件需要有效的 JSON 标量。",
+    getValue: (definition: RunningHubDefinition) => definition.fields[1]?.enabledWhen?.value,
+  },
+  {
+    label: "固定值（JSON 标量）",
+    error: "固定值需要有效的 JSON 文字、数字或布尔值。",
+    getValue: (definition: RunningHubDefinition) => definition.fixedBindings?.[0]?.value,
+  },
 ];
 
 describe("RunningHubDefinitionEditor output node selection", () => {
   it("selects output-only imported nodes and keeps choices independent of parameter visibility", async () => {
     const definition: RunningHubDefinition = {
       ...initialDefinition,
-      nodeOptions: [{ nodeId: "20", label: "保存图片" }, { nodeId: "3", label: "预览图片" }],
-      outputs: [{ kind: "IMAGE", primary: true, maxCount: 2 }, { nodeId: "99", kind: "AUDIO", primary: false, maxCount: 1 }],
+      nodeOptions: [
+        { nodeId: "20", label: "保存图片" },
+        { nodeId: "3", label: "预览图片" },
+      ],
+      outputs: [
+        { kind: "IMAGE", primary: true, maxCount: 2 },
+        { nodeId: "99", kind: "AUDIO", primary: false, maxCount: 1 },
+      ],
     };
     await mount(false, definition);
     await showNodes();
@@ -473,8 +863,13 @@ describe("RunningHubDefinitionEditor output node selection", () => {
     const [primary, extra] = within(table).getAllByRole("combobox", { name: "输出节点" });
     expect(extra).toHaveTextContent("节点 99");
     await clickControl(primary!);
-    expect(screen.getAllByRole("option").map((item) => item.textContent)).toEqual([
-      "按媒体类型匹配（不限节点）", "节点 1 · 模式", "节点 2 · 强度", "节点 3 · 预览图片", "节点 20 · 保存图片", "节点 99",
+    expect(screen.getAllByRole("option").map(item => item.textContent)).toEqual([
+      "按媒体类型匹配（不限节点）",
+      "节点 1 · 模式",
+      "节点 2 · 强度",
+      "节点 3 · 预览图片",
+      "节点 20 · 保存图片",
+      "节点 99",
     ]);
     await clickControl(screen.getByRole("option", { name: "节点 20 · 保存图片" }));
     expect(currentDefinition().outputs).toEqual([{ ...definition.outputs[0], nodeId: "20" }, definition.outputs[1]]);
@@ -487,7 +882,9 @@ describe("RunningHubDefinitionEditor output node selection", () => {
   it("adds extra mappings with a node picker and changes only the chosen row", async () => {
     await mount(false);
     await clickControl(screen.getByRole("button", { name: "添加额外输出映射" }));
-    const pickers = within(screen.getByRole("table", { name: "输出映射" })).getAllByRole("combobox", { name: "输出节点" });
+    const pickers = within(screen.getByRole("table", { name: "输出映射" })).getAllByRole("combobox", {
+      name: "输出节点",
+    });
     await selectValue(pickers[1]!, "2");
     expect(currentDefinition().outputs[1]).toEqual({ nodeId: "2", kind: "IMAGE", primary: false, maxCount: 1 });
     expect(currentDefinition().outputs[0]).toEqual(initialDefinition.outputs[0]);
@@ -497,7 +894,10 @@ describe("RunningHubDefinitionEditor output node selection", () => {
   });
 
   it("retains legacy saved output IDs as choices after changing to another node", async () => {
-    const definition: RunningHubDefinition = { ...initialDefinition, outputs: [{ nodeId: "99", kind: "IMAGE", primary: true, maxCount: 1 }] };
+    const definition: RunningHubDefinition = {
+      ...initialDefinition,
+      outputs: [{ nodeId: "99", kind: "IMAGE", primary: true, maxCount: 1 }],
+    };
     await mount(false, definition);
     const picker = screen.getByRole("combobox", { name: "输出节点" });
     await selectValue(picker, "2");
@@ -516,28 +916,31 @@ function inputFor(label: string) {
 }
 
 describe("RunningHubDefinitionEditor scalar inputs", () => {
-  it.each(scalarInputs)("keeps the draft on invalid $label and clears errors after a typed scalar is committed", async ({ label, error, getValue }) => {
-    await mount();
-    const originalValue = getValue(currentDefinition());
+  it.each(scalarInputs)(
+    "keeps the draft on invalid $label and clears errors after a typed scalar is committed",
+    async ({ label, error, getValue }) => {
+      await mount();
+      const originalValue = getValue(currentDefinition());
 
-    for (const raw of ["invalid", "null", "{}", "[]"]) {
-      const input = inputFor(label);
-      fireEvent.change(input, { target: { value: raw } });
-      fireEvent.blur(input);
-      expect(getValue(currentDefinition())).toEqual(originalValue);
-      expect(input).toHaveProperty("validationMessage", error);
-      expect(screen.getByRole("alert")).toHaveTextContent(error);
-    }
+      for (const raw of ["invalid", "null", "{}", "[]"]) {
+        const input = inputFor(label);
+        fireEvent.change(input, { target: { value: raw } });
+        fireEvent.blur(input);
+        expect(getValue(currentDefinition())).toEqual(originalValue);
+        expect(input).toHaveProperty("validationMessage", error);
+        expect(screen.getByRole("alert")).toHaveTextContent(error);
+      }
 
-    for (const value of [1.25, false, "文字🎨"]) {
-      const input = inputFor(label);
-      fireEvent.change(input, { target: { value: JSON.stringify(value) } });
-      fireEvent.blur(input);
-      expect(getValue(currentDefinition())).toBe(value);
-      expect(inputFor(label)).toHaveProperty("validationMessage", "");
-      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    }
-  });
+      for (const value of [1.25, false, "文字🎨"]) {
+        const input = inputFor(label);
+        fireEvent.change(input, { target: { value: JSON.stringify(value) } });
+        fireEvent.blur(input);
+        expect(getValue(currentDefinition())).toBe(value);
+        expect(inputFor(label)).toHaveProperty("validationMessage", "");
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      }
+    },
+  );
 
   it("clears an optional default while empty condition and fixed values retain their previous draft", async () => {
     await mount();
@@ -563,9 +966,33 @@ describe("RunningHubDefinitionEditor node labels", () => {
     const definition: RunningHubDefinition = {
       ...initialDefinition,
       fields: [
-        { key: "loraName", label: "LoRA · Loader · lora_name", type: "STRING", nodeId: "115", fieldName: "lora_name", required: false, advanced: false },
-        { key: "loraStrength", label: "LoRA · Loader · strength", type: "NUMBER", nodeId: "115", fieldName: "strength", required: false, advanced: false },
-        { key: "sampler", label: "采样器 · 自定义名称", type: "STRING", nodeId: "116", fieldName: "method", required: false, advanced: false },
+        {
+          key: "loraName",
+          label: "LoRA · Loader · lora_name",
+          type: "STRING",
+          nodeId: "115",
+          fieldName: "lora_name",
+          required: false,
+          advanced: false,
+        },
+        {
+          key: "loraStrength",
+          label: "LoRA · Loader · strength",
+          type: "NUMBER",
+          nodeId: "115",
+          fieldName: "strength",
+          required: false,
+          advanced: false,
+        },
+        {
+          key: "sampler",
+          label: "采样器 · 自定义名称",
+          type: "STRING",
+          nodeId: "116",
+          fieldName: "method",
+          required: false,
+          advanced: false,
+        },
       ],
       fixedBindings: [],
     };
@@ -576,7 +1003,10 @@ describe("RunningHubDefinitionEditor node labels", () => {
     await clickControl(screen.getByRole("menuitemcheckbox", { name: "节点 115 · LoRA · Loader" }));
     await clickControl(screen.getByRole("menuitemcheckbox", { name: "节点 116 · 采样器 · 自定义名称" }));
     await userEvent.setup().keyboard("{Escape}");
-    expect(screen.getByRole("button", { name: "选择节点" })).toHaveAttribute("title", "节点 115 · LoRA · Loader · 节点 116 · 采样器 · 自定义名称");
+    expect(screen.getByRole("button", { name: "选择节点" })).toHaveAttribute(
+      "title",
+      "节点 115 · LoRA · Loader · 节点 116 · 采样器 · 自定义名称",
+    );
     expect(parameterRow("LoRA · Loader · lora_name")).toBeVisible();
     expect(parameterRow("LoRA · Loader · strength")).toBeVisible();
     expect(currentDefinition()).toEqual(definition);
@@ -584,8 +1014,19 @@ describe("RunningHubDefinitionEditor node labels", () => {
 
   it("keeps AI application input labels intact when their names end with the field name", async () => {
     const definition: RunningHubDefinition = {
-      ...initialDefinition, targetType: "AI_APP",
-      fields: [{ key: "prompt", label: "输入 · prompt", type: "STRING", nodeId: "8", fieldName: "prompt", required: false, advanced: false }],
+      ...initialDefinition,
+      targetType: "AI_APP",
+      fields: [
+        {
+          key: "prompt",
+          label: "输入 · prompt",
+          type: "STRING",
+          nodeId: "8",
+          fieldName: "prompt",
+          required: false,
+          advanced: false,
+        },
+      ],
       fixedBindings: [],
     };
     await mount(false, definition);
@@ -598,24 +1039,81 @@ describe("RunningHubDefinitionEditor node labels", () => {
     const definition: RunningHubDefinition = {
       ...initialDefinition,
       fields: [
-        { key: "unassigned", label: "未配置输入", type: "STRING", nodeId: "", fieldName: "text", required: false, advanced: false },
+        {
+          key: "unassigned",
+          label: "未配置输入",
+          type: "STRING",
+          nodeId: "",
+          fieldName: "text",
+          required: false,
+          advanced: false,
+        },
         { key: "blank", label: "  ", type: "STRING", nodeId: "3", fieldName: "text", required: false, advanced: false },
-        { key: "generated", label: "节点 4 · scale", type: "NUMBER", nodeId: "4", fieldName: "scale", required: false, advanced: false },
-        { key: "english", label: "Node 6 · seed", type: "INTEGER", nodeId: "6", fieldName: "seed", required: false, advanced: false },
-        { key: "firstBlank", label: "", type: "STRING", nodeId: "7", fieldName: "text", required: false, advanced: false },
-        { key: "named", label: "命名节点 · strength", type: "NUMBER", nodeId: "7", fieldName: "strength", required: false, advanced: false },
-        { key: "emptyTitle", label: " · scale", type: "NUMBER", nodeId: "8", fieldName: "scale", required: false, advanced: false },
+        {
+          key: "generated",
+          label: "节点 4 · scale",
+          type: "NUMBER",
+          nodeId: "4",
+          fieldName: "scale",
+          required: false,
+          advanced: false,
+        },
+        {
+          key: "english",
+          label: "Node 6 · seed",
+          type: "INTEGER",
+          nodeId: "6",
+          fieldName: "seed",
+          required: false,
+          advanced: false,
+        },
+        {
+          key: "firstBlank",
+          label: "",
+          type: "STRING",
+          nodeId: "7",
+          fieldName: "text",
+          required: false,
+          advanced: false,
+        },
+        {
+          key: "named",
+          label: "命名节点 · strength",
+          type: "NUMBER",
+          nodeId: "7",
+          fieldName: "strength",
+          required: false,
+          advanced: false,
+        },
+        {
+          key: "emptyTitle",
+          label: " · scale",
+          type: "NUMBER",
+          nodeId: "8",
+          fieldName: "scale",
+          required: false,
+          advanced: false,
+        },
       ],
       fixedBindings: [{ nodeId: "5", fieldName: "seed", value: 1 }],
     };
     await mount(false, definition);
     await clickControl(screen.getByRole("button", { name: "选择节点" }));
-    expect(screen.getAllByRole("menuitemcheckbox").map((item) => item.textContent)).toEqual([
-      "待配置节点", "节点 3", "节点 4", "节点 5", "节点 6", "节点 7 · 命名节点", "节点 8",
+    expect(screen.getAllByRole("menuitemcheckbox").map(item => item.textContent)).toEqual([
+      "待配置节点",
+      "节点 3",
+      "节点 4",
+      "节点 5",
+      "节点 6",
+      "节点 7 · 命名节点",
+      "节点 8",
     ]);
     await clickControl(screen.getByRole("menuitem", { name: "全选节点" }));
     await userEvent.setup().keyboard("{Escape}");
-    expect(screen.getByRole("button", { name: "选择节点" })).toHaveAttribute("title", "待配置节点 · 节点 3 · 节点 4 · 节点 5 · 节点 6 · 节点 7 · 命名节点 · 节点 8");
+    expect(screen.getByRole("button", { name: "选择节点" })).toHaveAttribute(
+      "title",
+      "待配置节点 · 节点 3 · 节点 4 · 节点 5 · 节点 6 · 节点 7 · 命名节点 · 节点 8",
+    );
     expect(currentDefinition()).toEqual(definition);
   });
 
@@ -623,8 +1121,9 @@ describe("RunningHubDefinitionEditor node labels", () => {
     await mount(false);
     await showNodes("2");
     expect(screen.getByRole("button", { name: "选择节点" })).toHaveAttribute("title", "节点 2 · 强度");
-    fireEvent.change(within(parameterRow("强度")).getByRole("textbox", { name: "显示名称" }),
-      { target: { value: "采样强度" } });
+    fireEvent.change(within(parameterRow("强度")).getByRole("textbox", { name: "显示名称" }), {
+      target: { value: "采样强度" },
+    });
     expect(screen.getByRole("button", { name: "选择节点" })).toHaveAttribute("title", "节点 2 · 采样强度");
     await clickControl(screen.getByRole("button", { name: "选择节点" }));
     expect(screen.getByRole("menuitemcheckbox", { name: "节点 2 · 采样强度" })).toHaveAttribute("aria-checked", "true");
@@ -633,7 +1132,6 @@ describe("RunningHubDefinitionEditor node labels", () => {
     await userEvent.setup().keyboard("{Escape}");
   });
 });
-
 
 describe("RunningHubDefinitionEditor mapping table", () => {
   it("shows saved nodes and their parameter mappings immediately when opening the editor", async () => {
@@ -741,7 +1239,12 @@ describe("RunningHubDefinitionEditor mapping table", () => {
     fireEvent.change(within(strength).getByRole("textbox", { name: "节点 ID" }), { target: { value: "42" } });
     fireEvent.change(within(strength).getByRole("textbox", { name: "节点字段" }), { target: { value: "scale" } });
     fireEvent.change(within(strength).getByRole("textbox", { name: "显示名称" }), { target: { value: "采样强度" } });
-    expect(currentDefinition().fields[1]).toMatchObject({ nodeId: "42", fieldName: "scale", label: "采样强度", defaultValue: 0 });
+    expect(currentDefinition().fields[1]).toMatchObject({
+      nodeId: "42",
+      fieldName: "scale",
+      label: "采样强度",
+      defaultValue: 0,
+    });
     expect(currentDefinition().fields[0]).toEqual(initialDefinition.fields[0]);
     fireEvent.click(within(strength).getByRole("button", { name: "移除此候选字段 · 采样强度" }));
     expect(currentDefinition().fields).toEqual([initialDefinition.fields[0]]);
@@ -753,12 +1256,26 @@ describe("RunningHubDefinitionEditor mapping table", () => {
     const submitted = vi.fn();
     function Editor() {
       const [definition, setDefinition] = useState(initialDefinition);
-      return <form aria-label="condition validation" onSubmit={submitted}><RunningHubDefinitionEditor connectionId="connection" adapterId="RUNNINGHUB_IMAGE" value={definition} onChange={setDefinition} /></form>;
+      return (
+        <form aria-label="condition validation" onSubmit={submitted}>
+          <RunningHubDefinitionEditor
+            connectionId="connection"
+            adapterId="RUNNINGHUB_IMAGE"
+            value={definition}
+            onChange={setDefinition}
+          />
+        </form>
+      );
     }
-    render(<QueryClientProvider client={new QueryClient()}><Editor /></QueryClientProvider>);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <Editor />
+      </QueryClientProvider>,
+    );
     parameterRow("强度", true);
     const input = screen.getByRole("textbox", { name: "条件值（JSON 标量）" });
-    fireEvent.change(input, { target: { value: "invalid" } }); fireEvent.blur(input);
+    fireEvent.change(input, { target: { value: "invalid" } });
+    fireEvent.blur(input);
     await clickControl(screen.getByRole("radio", { name: /节点 1 · 模式/ }));
     expect(screen.queryByRole("textbox", { name: "条件值（JSON 标量）" })).not.toBeInTheDocument();
     fireEvent.submit(screen.getByRole("form", { name: "condition validation" }));
@@ -792,15 +1309,28 @@ describe("RunningHubDefinitionEditor mapping table", () => {
   });
 });
 
-
 describe("RunningHubDefinitionEditor workbench session", () => {
   it("groups mappings by node and places injected identity and pricing fields in their numbered sections", async () => {
-    render(<QueryClientProvider client={new QueryClient()}><RunningHubDefinitionEditor connectionId="connection" adapterId="RUNNINGHUB_IMAGE"
-      value={initialDefinition} onChange={() => undefined} identityFields={<span>Identity fields</span>} pricingFields={<span>Pricing fields</span>} />
-    </QueryClientProvider>);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <RunningHubDefinitionEditor
+          connectionId="connection"
+          adapterId="RUNNINGHUB_IMAGE"
+          value={initialDefinition}
+          onChange={() => undefined}
+          identityFields={<span>Identity fields</span>}
+          pricingFields={<span>Pricing fields</span>}
+        />
+      </QueryClientProvider>,
+    );
     const navigation = screen.getByRole("navigation", { name: "能力配置步骤" });
     const links = within(navigation).getAllByRole("link");
-    expect(links.map((link) => link.textContent)).toEqual(["01目标与来源", "02输入与参数", "03输出与运行", "04预览与费用"]);
+    expect(links.map(link => link.textContent)).toEqual([
+      "01目标与来源",
+      "02输入与参数",
+      "03输出与运行",
+      "04预览与费用",
+    ]);
     for (const link of links) expect(document.getElementById(link.getAttribute("href")!.slice(1))).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "目标与来源" })).getByText("Identity fields")).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "预览与费用" })).getByText("Pricing fields")).toBeInTheDocument();
@@ -825,19 +1355,29 @@ describe("RunningHubDefinitionEditor workbench session", () => {
     vi.unstubAllGlobals();
   });
 
-
   it("scrolls section navigation inside the dialog body without moving the dialog ancestors", async () => {
     vi.stubGlobal("matchMedia", () => ({ matches: false }));
-    const view = render(<QueryClientProvider client={new QueryClient()}><div className="ui-dialog-body">
-      <RunningHubDefinitionEditor connectionId="connection" adapterId="RUNNINGHUB_IMAGE" value={initialDefinition} onChange={() => undefined} />
-    </div></QueryClientProvider>);
+    const view = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <div className="ui-dialog-body">
+          <RunningHubDefinitionEditor
+            connectionId="connection"
+            adapterId="RUNNINGHUB_IMAGE"
+            value={initialDefinition}
+            onChange={() => undefined}
+          />
+        </div>
+      </QueryClientProvider>,
+    );
     const body = view.container.querySelector<HTMLElement>(".ui-dialog-body")!;
     const bodyScroll = vi.fn();
     body.scrollTo = bodyScroll;
     const section = screen.getByRole("region", { name: "输出与运行" });
     const ancestorScroll = vi.fn();
     section.scrollIntoView = ancestorScroll;
-    await clickControl(within(screen.getByRole("navigation", { name: "能力配置步骤" })).getByRole("link", { name: "输出与运行" }));
+    await clickControl(
+      within(screen.getByRole("navigation", { name: "能力配置步骤" })).getByRole("link", { name: "输出与运行" }),
+    );
     expect(bodyScroll).toHaveBeenCalledWith({ top: -16, behavior: "smooth" });
     expect(ancestorScroll).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
@@ -845,21 +1385,49 @@ describe("RunningHubDefinitionEditor workbench session", () => {
 
   it("ignores a discovery response after an explicit reload replaces its editing session", async () => {
     let finish: (() => void) | undefined;
-    const waiting = new Promise<void>((resolve) => { finish = resolve; });
-    server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+    const waiting = new Promise<void>(resolve => {
+      finish = resolve;
+    });
+    server.use(
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
       http.post("/api/v1/settings/media-connections/connection/runninghub/preview", async () => {
         await waiting;
-        return HttpResponse.json({ definition: initialDefinition, warnings: [], recommendedFieldKeys: ["mode", "strength"] });
-      }));
+        return HttpResponse.json({
+          definition: initialDefinition,
+          warnings: [],
+          recommendedFieldKeys: ["mode", "strength"],
+        });
+      }),
+    );
     const queryClient = new QueryClient();
     const onChange = vi.fn();
     const onBusyChange = vi.fn();
-    const view = render(<QueryClientProvider client={queryClient}><RunningHubDefinitionEditor connectionId="connection" adapterId="RUNNINGHUB_IMAGE"
-      value={initialDefinition} onChange={onChange} onBusyChange={onBusyChange} resetKey={0} /></QueryClientProvider>);
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <RunningHubDefinitionEditor
+          connectionId="connection"
+          adapterId="RUNNINGHUB_IMAGE"
+          value={initialDefinition}
+          onChange={onChange}
+          onBusyChange={onBusyChange}
+          resetKey={0}
+        />
+      </QueryClientProvider>,
+    );
     await clickControl(screen.getByRole("button", { name: "自动发现参数" }));
     await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(true));
-    view.rerender(<QueryClientProvider client={queryClient}><RunningHubDefinitionEditor connectionId="connection" adapterId="RUNNINGHUB_IMAGE"
-      value={{ ...initialDefinition, targetId: "987" }} onChange={onChange} onBusyChange={onBusyChange} resetKey={1} /></QueryClientProvider>);
+    view.rerender(
+      <QueryClientProvider client={queryClient}>
+        <RunningHubDefinitionEditor
+          connectionId="connection"
+          adapterId="RUNNINGHUB_IMAGE"
+          value={{ ...initialDefinition, targetId: "987" }}
+          onChange={onChange}
+          onBusyChange={onBusyChange}
+          resetKey={1}
+        />
+      </QueryClientProvider>,
+    );
     expect(onBusyChange).toHaveBeenLastCalledWith(false);
     finish?.();
     await waitFor(() => expect(queryClient.getMutationCache().getAll()[0]?.state.status).toBe("success"));
@@ -868,22 +1436,47 @@ describe("RunningHubDefinitionEditor workbench session", () => {
   });
   it("reports discovery as busy, protects contract controls and releases the parent after discovery", async () => {
     let finish: (() => void) | undefined;
-    const waiting = new Promise<void>((resolve) => { finish = resolve; });
-    server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+    const waiting = new Promise<void>(resolve => {
+      finish = resolve;
+    });
+    server.use(
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
       http.post("/api/v1/settings/media-connections/connection/runninghub/preview", async () => {
         await waiting;
-        return HttpResponse.json({ definition: initialDefinition, warnings: [], recommendedFieldKeys: ["mode", "strength"] });
-      }));
+        return HttpResponse.json({
+          definition: initialDefinition,
+          warnings: [],
+          recommendedFieldKeys: ["mode", "strength"],
+        });
+      }),
+    );
     function Editor() {
       const [definition, setDefinition] = useState(initialDefinition);
       const [busy, setBusy] = useState(false);
-      return <><RunningHubDefinitionEditor connectionId="connection" adapterId="RUNNINGHUB_IMAGE" value={definition}
-        onChange={setDefinition} onBusyChange={setBusy} identityFields={<input aria-label="Capability name" defaultValue="Draft name" />} /><output data-testid="busy">{String(busy)}</output></>;
+      return (
+        <>
+          <RunningHubDefinitionEditor
+            connectionId="connection"
+            adapterId="RUNNINGHUB_IMAGE"
+            value={definition}
+            onChange={setDefinition}
+            onBusyChange={setBusy}
+            identityFields={<input aria-label="Capability name" defaultValue="Draft name" />}
+          />
+          <output data-testid="busy">{String(busy)}</output>
+        </>
+      );
     }
-    render(<QueryClientProvider client={new QueryClient()}><Editor /></QueryClientProvider>);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <Editor />
+      </QueryClientProvider>,
+    );
     await clickControl(screen.getByRole("button", { name: "自动发现参数" }));
     await waitFor(() => expect(screen.getByTestId("busy")).toHaveTextContent("true"));
-    expect(within(screen.getByRole("region", { name: "参数设置" })).getByRole("textbox", { name: "显示名称" })).toBeDisabled();
+    expect(
+      within(screen.getByRole("region", { name: "参数设置" })).getByRole("textbox", { name: "显示名称" }),
+    ).toBeDisabled();
     expect(screen.getByRole("button", { name: "选择节点" })).toBeDisabled();
     expect(screen.getByRole("combobox", { name: "输出节点" })).toBeDisabled();
     expect(screen.getByRole("textbox", { name: "Capability name" })).toBeEnabled();
@@ -896,67 +1489,161 @@ describe("RunningHubDefinitionEditor workbench session", () => {
     function EditingSession() {
       const [open, setOpen] = useState(true);
       const [sourceDraft, setSourceDraft] = useState<string>();
-      const [definition, setDefinition] = useState<RunningHubDefinition>({ ...initialDefinition, importSource: { saved: true } });
+      const [definition, setDefinition] = useState<RunningHubDefinition>({
+        ...initialDefinition,
+        importSource: { saved: true },
+      });
       const [resetKey, setResetKey] = useState(0);
-      return <>
-        <button type="button" onClick={() => setOpen((current) => !current)}>{open ? "Close editor" : "Reopen editor"}</button>
-        <button type="button" onClick={() => {
-          setSourceDraft(undefined); setDefinition({ ...initialDefinition, importSource: { latest: true } }); setResetKey((current) => current + 1);
-        }}>Accept latest source</button>
-        {open ? <RunningHubDefinitionEditor connectionId="connection" adapterId="RUNNINGHUB_IMAGE" value={definition} onChange={setDefinition}
-          sourceDraft={sourceDraft} onSourceDraftChange={setSourceDraft} resetKey={resetKey} /> : null}
-      </>;
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(current => !current)}>
+            {open ? "Close editor" : "Reopen editor"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setSourceDraft(undefined);
+              setDefinition({ ...initialDefinition, importSource: { latest: true } });
+              setResetKey(current => current + 1);
+            }}
+          >
+            Accept latest source
+          </button>
+          {open ? (
+            <RunningHubDefinitionEditor
+              connectionId="connection"
+              adapterId="RUNNINGHUB_IMAGE"
+              value={definition}
+              onChange={setDefinition}
+              sourceDraft={sourceDraft}
+              onSourceDraftChange={setSourceDraft}
+              resetKey={resetKey}
+            />
+          ) : null}
+        </>
+      );
     }
-    render(<QueryClientProvider client={new QueryClient()}><EditingSession /></QueryClientProvider>);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <EditingSession />
+      </QueryClientProvider>,
+    );
     await clickControl(screen.getByText("导入 / 已保存的 JSON"));
-    fireEvent.change(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" }), { target: { value: "unfinished JSON draft" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" }), {
+      target: { value: "unfinished JSON draft" },
+    });
     await clickControl(screen.getByRole("button", { name: "Close editor" }));
     await clickControl(screen.getByRole("button", { name: "Reopen editor" }));
     await clickControl(screen.getByText("导入 / 已保存的 JSON"));
-    expect(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" })).toHaveValue("unfinished JSON draft");
+    expect(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" })).toHaveValue(
+      "unfinished JSON draft",
+    );
     await clickControl(screen.getByRole("button", { name: "Accept latest source" }));
     await clickControl(screen.getByText("导入 / 已保存的 JSON"));
-    expect(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" })).toHaveValue(JSON.stringify({ latest: true }, null, 2));
+    expect(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" })).toHaveValue(
+      JSON.stringify({ latest: true }, null, 2),
+    );
   });
 
   it("reports source drafts only for user input and keeps import normalization local to the editor", async () => {
     const normalized = { "1": { inputs: { mode: false } } };
-    server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
-      http.post("/api/v1/settings/media-connections/connection/runninghub/preview", () => HttpResponse.json({
-        definition: { ...initialDefinition, importSource: normalized }, warnings: [], recommendedFieldKeys: ["mode", "strength"],
-      })));
+    server.use(
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+      http.post("/api/v1/settings/media-connections/connection/runninghub/preview", () =>
+        HttpResponse.json({
+          definition: { ...initialDefinition, importSource: normalized },
+          warnings: [],
+          recommendedFieldKeys: ["mode", "strength"],
+        }),
+      ),
+    );
     const sourceChanged = vi.fn();
-    render(<QueryClientProvider client={new QueryClient()}><RunningHubDefinitionEditor connectionId="connection" adapterId="RUNNINGHUB_IMAGE"
-      value={initialDefinition} onChange={() => undefined} sourceDraft="" onSourceDraftChange={sourceChanged} /></QueryClientProvider>);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <RunningHubDefinitionEditor
+          connectionId="connection"
+          adapterId="RUNNINGHUB_IMAGE"
+          value={initialDefinition}
+          onChange={() => undefined}
+          sourceDraft=""
+          onSourceDraftChange={sourceChanged}
+        />
+      </QueryClientProvider>,
+    );
     await clickControl(screen.getByText("导入 / 已保存的 JSON"));
     expect(sourceChanged).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" }), { target: { value: '{"user":"input"}' } });
+    fireEvent.change(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" }), {
+      target: { value: '{"user":"input"}' },
+    });
     expect(sourceChanged).toHaveBeenCalledExactlyOnceWith('{"user":"input"}');
     await clickControl(screen.getByRole("button", { name: "导入 JSON 字段" }));
-    await waitFor(() => expect(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" })).toHaveValue(JSON.stringify(normalized, null, 2)));
+    await waitFor(() =>
+      expect(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" })).toHaveValue(
+        JSON.stringify(normalized, null, 2),
+      ),
+    );
     expect(sourceChanged).toHaveBeenCalledExactlyOnceWith('{"user":"input"}');
   });
 
   it("resets unparsed JSON, scalar validation and selections only when an explicit reload changes the reset key", async () => {
     const starting = { ...initialDefinition, importSource: { original: true } };
-    const latest: RunningHubDefinition = { ...initialDefinition, targetId: "987", importSource: { latest: true },
-      fields: [{ ...initialDefinition.fields[0]!, nodeId: "44", label: "最新参数" }], fixedBindings: [] };
+    const latest: RunningHubDefinition = {
+      ...initialDefinition,
+      targetId: "987",
+      importSource: { latest: true },
+      fields: [{ ...initialDefinition.fields[0]!, nodeId: "44", label: "最新参数" }],
+      fixedBindings: [],
+    };
     const queryClient = new QueryClient();
     const onChange = vi.fn();
-    const view = render(<QueryClientProvider client={queryClient}><RunningHubDefinitionEditor connectionId="connection"
-      adapterId="RUNNINGHUB_IMAGE" value={starting} onChange={onChange} resetKey={0} /></QueryClientProvider>);
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <RunningHubDefinitionEditor
+          connectionId="connection"
+          adapterId="RUNNINGHUB_IMAGE"
+          value={starting}
+          onChange={onChange}
+          resetKey={0}
+        />
+      </QueryClientProvider>,
+    );
     await clickControl(screen.getByText("导入 / 已保存的 JSON"));
-    fireEvent.change(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" }), { target: { value: "unfinished JSON draft" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" }), {
+      target: { value: "unfinished JSON draft" },
+    });
     const scalar = within(parameterRow("强度")).getByRole("textbox", { name: "默认值" });
-    fireEvent.change(scalar, { target: { value: "invalid scalar" } }); fireEvent.blur(scalar);
+    fireEvent.change(scalar, { target: { value: "invalid scalar" } });
+    fireEvent.blur(scalar);
     expect(screen.getByRole("alert")).toBeInTheDocument();
-    view.rerender(<QueryClientProvider client={queryClient}><RunningHubDefinitionEditor connectionId="connection"
-      adapterId="RUNNINGHUB_IMAGE" value={latest} onChange={onChange} resetKey={0} /></QueryClientProvider>);
-    expect(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" })).toHaveValue("unfinished JSON draft");
-    view.rerender(<QueryClientProvider client={queryClient}><RunningHubDefinitionEditor connectionId="connection"
-      adapterId="RUNNINGHUB_IMAGE" value={latest} onChange={onChange} resetKey={1} /></QueryClientProvider>);
+    view.rerender(
+      <QueryClientProvider client={queryClient}>
+        <RunningHubDefinitionEditor
+          connectionId="connection"
+          adapterId="RUNNINGHUB_IMAGE"
+          value={latest}
+          onChange={onChange}
+          resetKey={0}
+        />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" })).toHaveValue(
+      "unfinished JSON draft",
+    );
+    view.rerender(
+      <QueryClientProvider client={queryClient}>
+        <RunningHubDefinitionEditor
+          connectionId="connection"
+          adapterId="RUNNINGHUB_IMAGE"
+          value={latest}
+          onChange={onChange}
+          resetKey={1}
+        />
+      </QueryClientProvider>,
+    );
     await clickControl(screen.getByText("导入 / 已保存的 JSON"));
-    expect(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" })).toHaveValue(JSON.stringify(latest.importSource, null, 2));
+    expect(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" })).toHaveValue(
+      JSON.stringify(latest.importSource, null, 2),
+    );
     expect(screen.getByRole("button", { name: "选择节点" })).toHaveAttribute("title", "节点 44 · 最新参数");
     expect(screen.getByRole("textbox", { name: "真实目标 ID" })).toHaveValue("987");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();

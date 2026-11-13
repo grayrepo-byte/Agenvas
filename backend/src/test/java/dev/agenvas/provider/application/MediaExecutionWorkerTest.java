@@ -57,7 +57,8 @@ import tools.jackson.databind.node.ObjectNode;
 class MediaExecutionWorkerTest {
     private static final String WORKER = "media-worker";
 
-    @Test void expiredRunningHubDownloadRefreshesTheOriginalTaskOnceAndCheckpointsUrlsBeforeArchiving() {
+    @Test
+    void expiredRunningHubDownloadRefreshesTheOriginalTaskOnceAndCheckpointsUrlsBeforeArchiving() {
         Fixture fixture = new Fixture(true, Task.Kind.IMAGE_GENERATION, "RUNNINGHUB_IMAGE");
         var original = fixture.manifest(List.of(new ProviderResultManifest.Result(0, "9", OutputKind.IMAGE,
                 true, "https://cdn.example.com/image.png?old")));
@@ -86,7 +87,8 @@ class MediaExecutionWorkerTest {
         verify(fixture.adapter, never()).reconcile(any());
     }
 
-    @Test void failedRefreshOrRepeatedExpiryBlocksSafelyWithoutAnotherGeneration() {
+    @Test
+    void failedRefreshOrRepeatedExpiryBlocksSafelyWithoutAnotherGeneration() {
         for (boolean changedIdentity : new boolean[]{false, true}) {
             Fixture fixture = new Fixture(true, Task.Kind.IMAGE_GENERATION, "RUNNINGHUB_IMAGE");
             var manifest = fixture.manifest(List.of(new ProviderResultManifest.Result(0, "9", OutputKind.IMAGE,
@@ -94,8 +96,11 @@ class MediaExecutionWorkerTest {
             when(fixture.tasks.providerResultManifest(fixture.task)).thenReturn(Optional.of(manifest));
             when(fixture.adapter.openResultDownloads(any())).thenReturn(fixture.downloads);
             when(fixture.downloads.download(any())).thenThrow(expired());
-            if (changedIdentity) when(fixture.adapter.refreshResults(any(), eq(manifest))).thenThrow(new RunningHubClient.ResultIdentityChanged());
-            else when(fixture.adapter.refreshResults(any(), eq(manifest))).thenReturn(manifest);
+            if (changedIdentity)
+                when(fixture.adapter.refreshResults(any(), eq(manifest)))
+                        .thenThrow(new RunningHubClient.ResultIdentityChanged());
+            else
+                when(fixture.adapter.refreshResults(any(), eq(manifest))).thenReturn(manifest);
 
             assertThat(fixture.worker.pollOnce(WORKER)).isEqualTo(1);
 
@@ -108,13 +113,16 @@ class MediaExecutionWorkerTest {
         }
     }
 
-    @Test void submissionDiagnosticsAreRecordedWithoutInterferingWithExpiredUnknownLeaseRecovery() {
+    @Test
+    void submissionDiagnosticsAreRecordedWithoutInterferingWithExpiredUnknownLeaseRecovery() {
         Fixture fixture = new Fixture(false, Task.Kind.IMAGE_GENERATION, "RUNNINGHUB_IMAGE");
         var diagnostic = new ProviderFailure(ProviderFailure.Stage.SUBMIT, ProviderFailure.Category.RATE_LIMIT,
                 429, null, null, null);
-        when(fixture.adapter.submit(any())).thenReturn(new Submission.Unknown("PROVIDER_SUBMISSION_UNKNOWN", diagnostic));
+        when(fixture.adapter.submit(any()))
+                .thenReturn(new Submission.Unknown("PROVIDER_SUBMISSION_UNKNOWN", diagnostic));
         when(fixture.tasks.recordProviderFailure(fixture.task, WORKER, diagnostic)).thenReturn(false);
-        when(fixture.tasks.markSubmissionUnknown(fixture.task, WORKER, "PROVIDER_SUBMISSION_UNKNOWN")).thenReturn(false);
+        when(fixture.tasks.markSubmissionUnknown(fixture.task, WORKER, "PROVIDER_SUBMISSION_UNKNOWN"))
+                .thenReturn(false);
         assertThat(fixture.worker.submitOnce(WORKER)).isEqualTo(1);
         verify(fixture.tasks).recordProviderFailure(fixture.task, WORKER, diagnostic);
         verify(fixture.tasks).markSubmissionUnknown(fixture.task, WORKER, "PROVIDER_SUBMISSION_UNKNOWN");
@@ -198,7 +206,8 @@ class MediaExecutionWorkerTest {
     void payloadFinalTaskWriteFailurePropagatesAfterClosingTheResponse() {
         Fixture fixture = new Fixture(true);
         TrackingInputStream response = new TrackingInputStream(false);
-        when(fixture.adapter.reconcile(any())).thenReturn(new Submission.Completed(new MediaPayload(response, "image/png")));
+        when(fixture.adapter.reconcile(any()))
+                .thenReturn(new Submission.Completed(new MediaPayload(response, "image/png")));
         RuntimeException commitFailure = new IllegalStateException("Task write failed");
         doThrow(commitFailure).when(fixture.tasks).succeedWithArtifacts(any(), anyString(), anyList(), any());
 
@@ -212,7 +221,8 @@ class MediaExecutionWorkerTest {
     void payloadCloseFailureRetriesPollingBeforeTheFinalTaskWrite() {
         Fixture fixture = new Fixture(true);
         TrackingInputStream response = new TrackingInputStream(true);
-        when(fixture.adapter.reconcile(any())).thenReturn(new Submission.Completed(new MediaPayload(response, "image/png")));
+        when(fixture.adapter.reconcile(any()))
+                .thenReturn(new Submission.Completed(new MediaPayload(response, "image/png")));
         // AssetService has consumed the bytes successfully; only the caller's response close fails.
         doReturn(fixture.asset(fixture.task.id(), Asset.MediaKind.IMAGE)).when(fixture.assets)
                 .archiveTaskImage(any(), any(), any(), any());
@@ -243,7 +253,8 @@ class MediaExecutionWorkerTest {
     void payloadArchiveFailureRetriesPollingAndClosesTheResponse() {
         Fixture fixture = new Fixture(true);
         TrackingInputStream response = new TrackingInputStream(false);
-        when(fixture.adapter.reconcile(any())).thenReturn(new Submission.Completed(new MediaPayload(response, "image/png")));
+        when(fixture.adapter.reconcile(any()))
+                .thenReturn(new Submission.Completed(new MediaPayload(response, "image/png")));
         doThrow(new IllegalStateException("Invalid image")).when(fixture.assets)
                 .archiveTaskImage(any(), any(), any(), any());
 
@@ -304,7 +315,8 @@ class MediaExecutionWorkerTest {
     void submissionArchiveFailurePropagatesWithoutTurningIntoAPollRetry() {
         Fixture fixture = new Fixture(false);
         TrackingInputStream response = new TrackingInputStream(false);
-        when(fixture.adapter.submit(any())).thenReturn(new Submission.Completed(new MediaPayload(response, "image/png")));
+        when(fixture.adapter.submit(any()))
+                .thenReturn(new Submission.Completed(new MediaPayload(response, "image/png")));
         RuntimeException archiveFailure = new IllegalStateException("Invalid image");
         doThrow(archiveFailure).when(fixture.assets).archiveTaskImage(any(), any(), any(), any());
 
@@ -324,7 +336,8 @@ class MediaExecutionWorkerTest {
         var completed = new Submission.CompletedArtifact(fixture.mapper.createObjectNode());
         when(fixture.adapter.submit(any())).thenReturn(completed);
         when(fixture.adapter.reconcile(any())).thenReturn(completed);
-        when(fixture.videoProcessor.silentVideoResult(any())).thenThrow(new IllegalStateException("Cannot process video"));
+        when(fixture.videoProcessor.silentVideoResult(any()))
+                .thenThrow(new IllegalStateException("Cannot process video"));
 
         assertThat(polling ? fixture.worker.pollOnce(WORKER) : fixture.worker.submitOnce(WORKER)).isEqualTo(1);
 
@@ -345,7 +358,8 @@ class MediaExecutionWorkerTest {
         var manifest = fixture.manifest(List.of(result(0, OutputKind.AUDIO, true)));
         when(fixture.tasks.providerResultManifest(fixture.task)).thenReturn(Optional.of(manifest));
         fixture.downloads(manifest);
-        when(fixture.videoProcessor.silentVideoResult(any())).thenThrow(new IllegalStateException("Cannot process video"));
+        when(fixture.videoProcessor.silentVideoResult(any()))
+                .thenThrow(new IllegalStateException("Cannot process video"));
 
         assertThat(fixture.worker.pollOnce(WORKER)).isEqualTo(1);
 
@@ -408,16 +422,20 @@ class MediaExecutionWorkerTest {
             when(tasks.providerResultManifest(task)).thenReturn(Optional.empty());
             when(tasks.beginSubmission(task, WORKER, binding)).thenReturn(UUID.randomUUID());
             when(catalog.isCurrentBinding(binding, task.kind(), 0)).thenReturn(true);
-            var connection = new Connection(binding.connectionId(), "Synthetic connection", MediaPlatform.MOCK, true, 0, 1);
+            var connection = new Connection(binding.connectionId(), "Synthetic connection", MediaPlatform.MOCK, true, 0,
+                    1);
             when(catalog.pinnedSnapshot(binding)).thenReturn(new Snapshot(connection, null, null,
                     binding.adapterId(), binding.mappingSha256(), "{\"settings\":{}}"));
             when(callLogs.record(any(), any(), any())).thenAnswer(call -> {
                 Supplier<?> invocation = call.getArgument(1);
                 return invocation.get();
             });
-            when(assets.archiveTaskImage(any(), any(), any(), any())).thenAnswer(call -> archive(call, Asset.MediaKind.IMAGE));
-            when(assets.archiveTaskAudio(any(), any(), any(), any())).thenAnswer(call -> archive(call, Asset.MediaKind.AUDIO));
-            when(assets.archiveTaskVideo(any(), any(), any(), any())).thenAnswer(call -> archive(call, Asset.MediaKind.VIDEO));
+            when(assets.archiveTaskImage(any(), any(), any(), any()))
+                    .thenAnswer(call -> archive(call, Asset.MediaKind.IMAGE));
+            when(assets.archiveTaskAudio(any(), any(), any(), any()))
+                    .thenAnswer(call -> archive(call, Asset.MediaKind.AUDIO));
+            when(assets.archiveTaskVideo(any(), any(), any(), any()))
+                    .thenAnswer(call -> archive(call, Asset.MediaKind.VIDEO));
         }
 
         ProviderResultManifest manifest(List<ProviderResultManifest.Result> results) {
@@ -428,7 +446,8 @@ class MediaExecutionWorkerTest {
         void downloads(ProviderResultManifest manifest) {
             when(adapter.openResultDownloads(any())).thenReturn(downloads);
             for (var result : manifest.results()) {
-                when(downloads.download(result)).thenReturn(new MediaPayload(new TrackingInputStream(false), "application/octet-stream"));
+                when(downloads.download(result))
+                        .thenReturn(new MediaPayload(new TrackingInputStream(false), "application/octet-stream"));
             }
         }
 
@@ -451,14 +470,15 @@ class MediaExecutionWorkerTest {
         boolean closed;
 
         TrackingInputStream(boolean failOnClose) {
-            super(new byte[] {1, 2, 3});
+            super(new byte[]{1, 2, 3});
             this.failOnClose = failOnClose;
         }
 
         @Override
         public void close() throws IOException {
             closed = true;
-            if (failOnClose) throw new IOException("Cannot close response");
+            if (failOnClose)
+                throw new IOException("Cannot close response");
             super.close();
         }
     }

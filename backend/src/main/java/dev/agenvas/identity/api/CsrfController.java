@@ -24,5 +24,6 @@ public class CsrfController {
      * @param headerName 后续请求必须使用的 CSRF 请求头名称
      * @param token 当前会话的 CSRF token
      */
-    public record CsrfResponse(String headerName, String token) {}
+    public record CsrfResponse(String headerName, String token) {
+    }
 }

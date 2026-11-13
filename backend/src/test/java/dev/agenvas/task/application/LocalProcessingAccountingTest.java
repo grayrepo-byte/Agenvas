@@ -45,7 +45,8 @@ class LocalProcessingAccountingTest {
             mock(ArtifactService.class), mock(MediaDraftService.class), mock(CanvasService.class), repository,
             new TaskProperties(null, 0), events, usage, mapper, Clock.fixed(NOW, ZoneOffset.UTC), new ShutdownGate());
 
-    @BeforeEach void setup() {
+    @BeforeEach
+    void setup() {
         when(repository.ownerId(id)).thenReturn(Optional.of(owner));
         when(events.recordChange(eq(owner), eq(project), any())).thenAnswer(call -> {
             Supplier<?> mutation = call.getArgument(2);
@@ -88,7 +89,8 @@ class LocalProcessingAccountingTest {
         verify(usage).releaseUnsubmittedMediaTask(owner, failed);
     }
 
-    @Test void externalRejectionDoesNotGainLocalReleaseSemantics() {
+    @Test
+    void externalRejectionDoesNotGainLocalReleaseSemantics() {
         Task lease = task("external", Task.Status.SUBMITTING, null);
         Task failed = task("external", Task.Status.FAILED, "PROVIDER_REJECTED");
         when(repository.findById(id)).thenReturn(Optional.of(failed));
@@ -99,7 +101,8 @@ class LocalProcessingAccountingTest {
 
     private Task task(String type, Task.Status status, String code) {
         var input = mapper.createObjectNode();
-        if (!"external".equals(type)) input.putObject(type);
+        if (!"external".equals(type))
+            input.putObject(type);
         Task.Kind kind = "videoComposition".equals(type) ? Task.Kind.VIDEO_GENERATION : Task.Kind.AUDIO_GENERATION;
         return new Task(id, project, null, "synthetic", kind, status, false, input, "hash", null, null,
                 1, NOW, "worker", NOW.plusSeconds(30), 1, 0, code, NOW, NOW, null);

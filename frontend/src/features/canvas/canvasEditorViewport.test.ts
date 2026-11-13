@@ -1,10 +1,16 @@
-import { describe,expect,it } from "vitest";
-import { calculateCanvasEditorViewport,type CanvasEditorViewportInput } from "./canvasEditorViewport";
+import { describe, expect, it } from "vitest";
+import { calculateCanvasEditorViewport, type CanvasEditorViewportInput } from "./canvasEditorViewport";
 
 const input = (patch: Partial<CanvasEditorViewportInput> = {}): CanvasEditorViewportInput => ({
-  canvas: { width: 1280, height: 900 }, nodeSize: { width: 420, height: 270 },
-  currentZoom: 1, minZoom: 0.1, editorHeight: 220, editorGap: 16,
-  topToolbarSpace: 48, margin: 16, ...patch,
+  canvas: { width: 1280, height: 900 },
+  nodeSize: { width: 420, height: 270 },
+  currentZoom: 1,
+  minZoom: 0.1,
+  editorHeight: 220,
+  editorGap: 16,
+  topToolbarSpace: 48,
+  margin: 16,
+  ...patch,
 });
 
 describe("calculateCanvasEditorViewport", () => {
@@ -17,8 +23,8 @@ describe("calculateCanvasEditorViewport", () => {
     const result = calculateCanvasEditorViewport(options);
     expect(result).toEqual({ zoom: 1, centerOffsetY: 120 });
     const nodeCenterY = options.canvas.height / 2 - result.centerOffsetY * result.zoom;
-    const editorBottom = nodeCenterY + options.nodeSize.height * result.zoom / 2
-      + options.editorGap + options.editorHeight;
+    const editorBottom =
+      nodeCenterY + (options.nodeSize.height * result.zoom) / 2 + options.editorGap + options.editorHeight;
     expect(nodeCenterY).toBe(240);
     expect(editorBottom).toBeLessThan(options.canvas.height - options.margin);
   });
@@ -29,10 +35,11 @@ describe("calculateCanvasEditorViewport", () => {
     expect(result.zoom).toBeCloseTo(284 / 600);
     expect(result.centerOffsetY).toBeGreaterThan(0);
     const nodeCenterY = options.canvas.height / 2 - result.centerOffsetY * result.zoom;
-    const halfNodeHeight = options.nodeSize.height * result.zoom / 2;
+    const halfNodeHeight = (options.nodeSize.height * result.zoom) / 2;
     expect(nodeCenterY - halfNodeHeight - options.topToolbarSpace).toBeCloseTo(options.margin);
-    expect(nodeCenterY + halfNodeHeight + options.editorGap + options.editorHeight)
-      .toBeCloseTo(options.canvas.height - options.margin);
+    expect(nodeCenterY + halfNodeHeight + options.editorGap + options.editorHeight).toBeCloseTo(
+      options.canvas.height - options.margin,
+    );
   });
 
   it("accounts for node width when choosing the zoom", () => {
@@ -44,8 +51,7 @@ describe("calculateCanvasEditorViewport", () => {
   });
 
   it("preserves an already smaller zoom instead of enlarging the node", () => {
-    expect(calculateCanvasEditorViewport(input({ currentZoom: 0.5 })))
-      .toEqual({ zoom: 0.5, centerOffsetY: 300 });
+    expect(calculateCanvasEditorViewport(input({ currentZoom: 0.5 }))).toEqual({ zoom: 0.5, centerOffsetY: 300 });
   });
 
   it("keeps a tall media node's toolbar visible while preserving the current zoom", () => {
@@ -59,14 +65,17 @@ describe("calculateCanvasEditorViewport", () => {
   it.each([
     { width: 1280, height: 220 },
     { width: 20, height: 220 },
-  ])("stops at minZoom and never moves the node downward when space runs out: %o", (canvas) => {
-    const result = calculateCanvasEditorViewport(input({ canvas, nodeSize: { width: 420, height: 600 }, minZoom: 0.4 }));
+  ])("stops at minZoom and never moves the node downward when space runs out: %o", canvas => {
+    const result = calculateCanvasEditorViewport(
+      input({ canvas, nodeSize: { width: 420, height: 600 }, minZoom: 0.4 }),
+    );
     expect(result).toEqual({ zoom: 0.4, centerOffsetY: 0 });
   });
 
   it("honors minZoom even when the remaining positive space cannot fit the full stack", () => {
-    const result = calculateCanvasEditorViewport(input({ canvas: { width: 1280, height: 400 },
-      nodeSize: { width: 420, height: 600 }, minZoom: 0.4 }));
+    const result = calculateCanvasEditorViewport(
+      input({ canvas: { width: 1280, height: 400 }, nodeSize: { width: 420, height: 600 }, minZoom: 0.4 }),
+    );
     expect(result.zoom).toBe(0.4);
     expect(result.centerOffsetY).toBe(40);
   });

@@ -44,8 +44,7 @@ public class ArtifactContentValidator {
     public void validate(
             Artifact.Kind kind, JsonNode content) {
         requireObject(content, "content");
-        if (content.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length
-                > MAX_CONTENT_BYTES) {
+        if (content.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length > MAX_CONTENT_BYTES) {
             throw invalid(ApiMessage.of("api.artifact-content-validator.content-cannot-exceed-256-kib"));
         }
         rejectProtectedFields(content);
@@ -88,7 +87,8 @@ public class ArtifactContentValidator {
         Set<String> allowed = Set.of(allowedNames);
         for (String propertyName : content.propertyNames()) {
             if (!allowed.contains(propertyName)) {
-                throw invalid(ApiMessage.of("api.artifact-content-validator.content-contains-a-disallowed-field", propertyName));
+                throw invalid(ApiMessage.of("api.artifact-content-validator.content-contains-a-disallowed-field",
+                        propertyName));
             }
         }
     }
@@ -110,7 +110,9 @@ public class ArtifactContentValidator {
                             .replace("-", "")
                             .toLowerCase(java.util.Locale.ROOT);
                     if (PROTECTED_FIELD_NAMES.contains(normalized)) {
-                        throw invalid(ApiMessage.of("api.artifact-content-validator.content-cannot-contain-the-protected-field", propertyName));
+                        throw invalid(ApiMessage.of(
+                                "api.artifact-content-validator.content-cannot-contain-the-protected-field",
+                                propertyName));
                     }
                     pending.addLast(node.get(propertyName));
                 }
@@ -135,7 +137,8 @@ public class ArtifactContentValidator {
         }
         String text = value.stringValue().trim();
         if (text.length() < minimum || text.length() > maximum) {
-            throw invalid(ApiMessage.of("api.artifact-content-validator.the-length-of-must-be-between-and", field, minimum, maximum));
+            throw invalid(ApiMessage.of("api.artifact-content-validator.the-length-of-must-be-between-and", field,
+                    minimum, maximum));
         }
         return text;
     }
@@ -147,7 +150,8 @@ public class ArtifactContentValidator {
             return;
         }
         if (!value.isString() || value.stringValue().length() > maximum) {
-            throw invalid(ApiMessage.of("api.artifact-content-validator.must-be-a-string-no-longer-than-characters", field, maximum));
+            throw invalid(ApiMessage.of("api.artifact-content-validator.must-be-a-string-no-longer-than-characters",
+                    field, maximum));
         }
     }
 

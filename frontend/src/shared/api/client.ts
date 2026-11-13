@@ -19,7 +19,11 @@ export type McpTokenScope = components["schemas"]["McpTokenScope"];
 export type McpTokenSummary = components["schemas"]["McpTokenSummary"];
 export type CreateMcpTokenRequest = components["schemas"]["CreateMcpTokenRequest"];
 export type McpTokenCreatedResponse = components["schemas"]["McpTokenCreatedResponse"];
-export const MCP_TOKEN_SCOPES = { READ: "READ", CONTENT_WRITE: "CONTENT_WRITE", MEDIA_GENERATE: "MEDIA_GENERATE" } as const satisfies Record<McpTokenScope, McpTokenScope>;
+export const MCP_TOKEN_SCOPES = {
+  READ: "READ",
+  CONTENT_WRITE: "CONTENT_WRITE",
+  MEDIA_GENERATE: "MEDIA_GENERATE",
+} as const satisfies Record<McpTokenScope, McpTokenScope>;
 export type Project = components["schemas"]["Project"];
 export type ProjectList = components["schemas"]["ProjectList"];
 export type ProjectSnapshot = components["schemas"]["ProjectSnapshot"];
@@ -48,38 +52,95 @@ export const CHARACTER_CLEAR_MODES = { KEEP_INPUTS: "KEEP_INPUTS", REMOVE_OWNED:
 export function listCharacters(projectId: string): Promise<CharacterIndex> {
   return readJson(`/api/v1/projects/${projectId}/characters`, t("character.loadFailed"));
 }
-export function saveCharacter(projectId: string, characterId: string, request: SaveCharacter): Promise<CharacterProfile> {
-  return writeJson(`/api/v1/projects/${projectId}/characters/${characterId}`, { method: "PUT", body: JSON.stringify(request) }, t("character.saveFailed"));
+export function saveCharacter(
+  projectId: string,
+  characterId: string,
+  request: SaveCharacter,
+): Promise<CharacterProfile> {
+  return writeJson(
+    `/api/v1/projects/${projectId}/characters/${characterId}`,
+    { method: "PUT", body: JSON.stringify(request) },
+    t("character.saveFailed"),
+  );
 }
-export function previewCharacterChange(projectId: string, characterId: string, request: SaveCharacter): Promise<CharacterChangePreview> {
-  return writeJson(`/api/v1/projects/${projectId}/characters/${characterId}/preview-change`, { method: "POST", body: JSON.stringify(request) }, t("character.previewFailed"));
+export function previewCharacterChange(
+  projectId: string,
+  characterId: string,
+  request: SaveCharacter,
+): Promise<CharacterChangePreview> {
+  return writeJson(
+    `/api/v1/projects/${projectId}/characters/${characterId}/preview-change`,
+    { method: "POST", body: JSON.stringify(request) },
+    t("character.previewFailed"),
+  );
 }
-export function archiveCharacter(projectId: string, characterId: string, request: components["schemas"]["ArchiveCharacter"]): Promise<CharacterProfile> {
-  return writeJson(`/api/v1/projects/${projectId}/characters/${characterId}/archive`, { method: "POST", body: JSON.stringify(request) }, t("character.saveFailed"));
+export function archiveCharacter(
+  projectId: string,
+  characterId: string,
+  request: components["schemas"]["ArchiveCharacter"],
+): Promise<CharacterProfile> {
+  return writeJson(
+    `/api/v1/projects/${projectId}/characters/${characterId}/archive`,
+    { method: "POST", body: JSON.stringify(request) },
+    t("character.saveFailed"),
+  );
 }
-export function previewCharacterBindings(projectId: string, itemId: string, request: PreviewCharacterBindings): Promise<CharacterBindingPreview> {
-  return writeJson(`/api/v1/projects/${projectId}/canvas-items/${itemId}/character-bindings/preview`, { method: "POST", body: JSON.stringify(request) }, t("character.previewFailed"));
+export function previewCharacterBindings(
+  projectId: string,
+  itemId: string,
+  request: PreviewCharacterBindings,
+): Promise<CharacterBindingPreview> {
+  return writeJson(
+    `/api/v1/projects/${projectId}/canvas-items/${itemId}/character-bindings/preview`,
+    { method: "POST", body: JSON.stringify(request) },
+    t("character.previewFailed"),
+  );
 }
-export function applyCharacterBindings(projectId: string, itemId: string, request: ApplyCharacterBindings): Promise<components["schemas"]["CharacterBindingApplied"]> {
-  return writeJson(`/api/v1/projects/${projectId}/canvas-items/${itemId}/character-bindings/apply`, { method: "POST", body: JSON.stringify(request) }, t("character.applyFailed"));
+export function applyCharacterBindings(
+  projectId: string,
+  itemId: string,
+  request: ApplyCharacterBindings,
+): Promise<components["schemas"]["CharacterBindingApplied"]> {
+  return writeJson(
+    `/api/v1/projects/${projectId}/canvas-items/${itemId}/character-bindings/apply`,
+    { method: "POST", body: JSON.stringify(request) },
+    t("character.applyFailed"),
+  );
 }
-export function reviewCharacterBindings(projectId: string, itemId: string, request: components["schemas"]["ReviewCharacterBindings"]): Promise<CharacterBinding> {
-  return writeJson(`/api/v1/projects/${projectId}/canvas-items/${itemId}/character-bindings/review`, { method: "POST", body: JSON.stringify(request) }, t("character.reviewFailed"));
+export function reviewCharacterBindings(
+  projectId: string,
+  itemId: string,
+  request: components["schemas"]["ReviewCharacterBindings"],
+): Promise<CharacterBinding> {
+  return writeJson(
+    `/api/v1/projects/${projectId}/canvas-items/${itemId}/character-bindings/review`,
+    { method: "POST", body: JSON.stringify(request) },
+    t("character.reviewFailed"),
+  );
 }
 
 /** Account-wide immutable results, paged by the server rather than fetched project by project. */
 export function listResources(filters: ResourceFilters): Promise<components["schemas"]["ResourcePage"]> {
   const query = new URLSearchParams();
-  Object.entries(filters).forEach(([key, value]) => { if (value !== undefined) query.set(key, String(value)); });
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined) query.set(key, String(value));
+  });
   return readJson(`/api/v1/resources?${query}`, t("resources.loadFailed"));
 }
 
 /** Exact project results, including meaningful text revisions and media with no resource default. */
-export function listProjectResources(projectId: string,
-  filters: NonNullable<paths["/api/v1/projects/{projectId}/resources"]["get"]["parameters"]["query"]>): Promise<components["schemas"]["ResourcePage"]> {
+export function listProjectResources(
+  projectId: string,
+  filters: NonNullable<paths["/api/v1/projects/{projectId}/resources"]["get"]["parameters"]["query"]>,
+): Promise<components["schemas"]["ResourcePage"]> {
   const query = new URLSearchParams();
-  Object.entries(filters).forEach(([key, value]) => { if (value !== undefined) query.set(key, String(value)); });
-  return readJson(`/api/v1/projects/${encodeURIComponent(projectId)}/resources?${query}`, t("api.errors.projectResourcesUnavailable"));
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined) query.set(key, String(value));
+  });
+  return readJson(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/resources?${query}`,
+    t("api.errors.projectResourcesUnavailable"),
+  );
 }
 export type Storyboard = components["schemas"]["Storyboard"];
 export type StoryboardShot = components["schemas"]["StoryboardShot"];
@@ -91,10 +152,16 @@ export function getStoryboard(projectId: string): Promise<Storyboard> {
   return readJson(`/api/v1/projects/${encodeURIComponent(projectId)}/storyboard`, t("storyboard.loadFailed"));
 }
 export function saveStoryboard(projectId: string, input: SaveStoryboardRequest): Promise<Storyboard> {
-  return writeJson(`/api/v1/projects/${encodeURIComponent(projectId)}/storyboard`, { method: "PUT", body: JSON.stringify(input) });
+  return writeJson(`/api/v1/projects/${encodeURIComponent(projectId)}/storyboard`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
 }
 export function listStoryboardMediaApprovals(projectId: string): Promise<{ items: AgentMediaApproval[] }> {
-  return readJson(`/api/v1/projects/${encodeURIComponent(projectId)}/storyboard/media-approvals`, t("storyboard.loadFailed"));
+  return readJson(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/storyboard/media-approvals`,
+    t("storyboard.loadFailed"),
+  );
 }
 export type MediaDraft = components["schemas"]["MediaDraft"];
 export type SaveMediaDraftRequest = components["schemas"]["SaveMediaDraftRequest"];
@@ -106,49 +173,107 @@ export type ImagePromptRequest = components["schemas"]["ImagePromptRequest"];
 
 /** Image analysis is durable text work; it never changes the card's media draft. */
 export function listImagePromptTasks(projectId: string, artifactId: string, canvasItemId: string): Promise<Task[]> {
-  return readJson(`/api/v1/projects/${projectId}/artifacts/${artifactId}/image-prompts?canvasItemId=${encodeURIComponent(canvasItemId)}`,
-    t("image.reversePrompt.loadFailed"));
+  return readJson(
+    `/api/v1/projects/${projectId}/artifacts/${artifactId}/image-prompts?canvasItemId=${encodeURIComponent(canvasItemId)}`,
+    t("image.reversePrompt.loadFailed"),
+  );
 }
-export function runImagePrompt(projectId: string, artifactId: string, input: ImagePromptRequest, key: string): Promise<Task> {
-  return writeJson(`/api/v1/projects/${projectId}/artifacts/${artifactId}/image-prompts`, {
-    method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify(input),
-  }, t("image.reversePrompt.failed"));
+export function runImagePrompt(
+  projectId: string,
+  artifactId: string,
+  input: ImagePromptRequest,
+  key: string,
+): Promise<Task> {
+  return writeJson(
+    `/api/v1/projects/${projectId}/artifacts/${artifactId}/image-prompts`,
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": key },
+      body: JSON.stringify(input),
+    },
+    t("image.reversePrompt.failed"),
+  );
 }
 export function cancelImagePrompt(projectId: string, artifactId: string, taskId: string): Promise<Task> {
-  return writeJson(`/api/v1/projects/${projectId}/artifacts/${artifactId}/image-prompts/${taskId}/cancel`, {
-    method: "POST",
-  }, t("image.reversePrompt.cancelFailed"));
+  return writeJson(
+    `/api/v1/projects/${projectId}/artifacts/${artifactId}/image-prompts/${taskId}/cancel`,
+    {
+      method: "POST",
+    },
+    t("image.reversePrompt.cancelFailed"),
+  );
 }
 export type VideoPromptOptimizationRequest = components["schemas"]["VideoPromptOptimizationRequest"];
 export function listVideoPromptTasks(projectId: string, canvasItemId: string): Promise<Task[]> {
-  return readJson(`/api/v1/projects/${projectId}/canvas-items/${canvasItemId}/video-prompt-optimizations`, t("video.optimize.loadFailed"));
+  return readJson(
+    `/api/v1/projects/${projectId}/canvas-items/${canvasItemId}/video-prompt-optimizations`,
+    t("video.optimize.loadFailed"),
+  );
 }
-export function runVideoPromptOptimization(projectId: string, canvasItemId: string, input: VideoPromptOptimizationRequest, key: string): Promise<Task> {
-  return writeJson(`/api/v1/projects/${projectId}/canvas-items/${canvasItemId}/video-prompt-optimizations`, {
-    method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify(input),
-  }, t("video.optimize.failed"));
+export function runVideoPromptOptimization(
+  projectId: string,
+  canvasItemId: string,
+  input: VideoPromptOptimizationRequest,
+  key: string,
+): Promise<Task> {
+  return writeJson(
+    `/api/v1/projects/${projectId}/canvas-items/${canvasItemId}/video-prompt-optimizations`,
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": key },
+      body: JSON.stringify(input),
+    },
+    t("video.optimize.failed"),
+  );
 }
 export function cancelVideoPromptOptimization(projectId: string, canvasItemId: string, taskId: string): Promise<Task> {
-  return writeJson(`/api/v1/projects/${projectId}/canvas-items/${canvasItemId}/video-prompt-optimizations/${taskId}/cancel`, {
-    method: "POST",
-  }, t("video.optimize.failed"));
+  return writeJson(
+    `/api/v1/projects/${projectId}/canvas-items/${canvasItemId}/video-prompt-optimizations/${taskId}/cancel`,
+    {
+      method: "POST",
+    },
+    t("video.optimize.failed"),
+  );
 }
 export type VideoCompositionRequest = components["schemas"]["VideoCompositionRequest"];
 export type VideoCompositionPreview = components["schemas"]["VideoCompositionPreview"];
 export type VideoCompositionCapabilities = components["schemas"]["VideoCompositionCapabilities"];
-export function getVideoCompositionCapabilities(projectId: string, signal?: AbortSignal): Promise<VideoCompositionCapabilities> {
-  return readJson(`/api/v1/projects/${projectId}/video-compositions/capabilities`, t("video.edit.capabilitiesFailed"), signal);
+export function getVideoCompositionCapabilities(
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<VideoCompositionCapabilities> {
+  return readJson(
+    `/api/v1/projects/${projectId}/video-compositions/capabilities`,
+    t("video.edit.capabilitiesFailed"),
+    signal,
+  );
 }
 /** Read-only analysis shares export authorization and never creates a task or reserves usage. */
-export function previewVideoComposition(projectId: string, input: VideoCompositionRequest, signal?: AbortSignal): Promise<VideoCompositionPreview> {
-  return writeJson(`/api/v1/projects/${projectId}/video-compositions/preview`, {
-    method: "POST", body: JSON.stringify(input), signal,
-  }, t("video.edit.previewFailed"));
+export function previewVideoComposition(
+  projectId: string,
+  input: VideoCompositionRequest,
+  signal?: AbortSignal,
+): Promise<VideoCompositionPreview> {
+  return writeJson(
+    `/api/v1/projects/${projectId}/video-compositions/preview`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+      signal,
+    },
+    t("video.edit.previewFailed"),
+  );
 }
 export function composeVideo(projectId: string, input: VideoCompositionRequest, commandKey: string): Promise<Task> {
-  return writeJson(`/api/v1/projects/${projectId}/video-compositions`, {
-    method: "POST", headers: { "Idempotency-Key": commandKey }, body: JSON.stringify(input),
-  }, t("video.edit.failed"));
+  return writeJson(
+    `/api/v1/projects/${projectId}/video-compositions`,
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": commandKey },
+      body: JSON.stringify(input),
+    },
+    t("video.edit.failed"),
+  );
 }
 export type VideoOperation = components["schemas"]["VideoOperation"];
 export type MediaFunction = components["schemas"]["MediaFunction"];
@@ -202,15 +327,21 @@ export type SaveLlmConnectionRequest = components["schemas"]["SaveLlmConnectionR
 export type ActivateLlmConnectionRequest = components["schemas"]["ActivateLlmConnectionRequest"];
 export type SystemDiagnostics = components["schemas"]["SystemDiagnostics"];
 export type CallLogCleanupResult = components["schemas"]["CallLogCleanupResult"];
-export type CleanupCallLogsRequest = NonNullable<paths["/api/v1/settings/call-log-retention/cleanup"]["post"]["requestBody"]>["content"]["application/json"];
+export type CleanupCallLogsRequest = NonNullable<
+  paths["/api/v1/settings/call-log-retention/cleanup"]["post"]["requestBody"]
+>["content"]["application/json"];
 export type CallLogRetentionSettings = components["schemas"]["CallLogRetentionSettings"];
-export type UpdateCallLogRetentionRequest = NonNullable<paths["/api/v1/settings/call-log-retention"]["put"]["requestBody"]>["content"]["application/json"];
+export type UpdateCallLogRetentionRequest = NonNullable<
+  paths["/api/v1/settings/call-log-retention"]["put"]["requestBody"]
+>["content"]["application/json"];
 export type DirectorSettings = components["schemas"]["DirectorSettings"];
 export type UpdateDirectorSettingsRequest = components["schemas"]["UpdateDirectorSettingsRequest"];
 export type DebugSettings = components["schemas"]["DebugSettings"];
 export type CallDebug = components["schemas"]["CallDebug"];
 export type DebugBody = components["schemas"]["DebugBody"];
-export type UpdateDebugSettingsRequest = NonNullable<paths["/api/v1/settings/debug"]["put"]["requestBody"]>["content"]["application/json"];
+export type UpdateDebugSettingsRequest = NonNullable<
+  paths["/api/v1/settings/debug"]["put"]["requestBody"]
+>["content"]["application/json"];
 export type CallLog = components["schemas"]["CallLog"];
 export type CallLogPage = components["schemas"]["CallLogPage"];
 export type CallLogFilters = NonNullable<paths["/api/v1/call-logs"]["get"]["parameters"]["query"]>;
@@ -221,7 +352,8 @@ export type RunningHubField = components["schemas"]["RunningHubField"];
 export type CreatorInputField = components["schemas"]["CreatorInputField"];
 export type NativeMediaProfiles = components["schemas"]["NativeMediaProfiles"];
 export type NativeMediaProfile = NativeMediaProfiles["profiles"][number];
-export type KlingProfiles = paths["/api/v1/settings/kling/profiles"]["get"]["responses"][200]["content"]["application/json"];
+export type KlingProfiles =
+  paths["/api/v1/settings/kling/profiles"]["get"]["responses"][200]["content"]["application/json"];
 export type KlingProfile = KlingProfiles["profiles"][number];
 export type RunningHubImportRequest = components["schemas"]["RunningHubImportRequest"];
 export type RunningHubImportPreview = components["schemas"]["RunningHubImportPreview"];
@@ -266,18 +398,25 @@ export async function createMediaStyle(request: CreateMediaStyleRequest): Promis
 
 export async function updateMediaStyle(id: string, request: UpdateMediaStyleRequest): Promise<MediaStyle> {
   return writeJson<MediaStyle>(`/api/v1/settings/media-styles/${encodeURIComponent(id)}`, {
-    method: "PUT", body: JSON.stringify(request),
+    method: "PUT",
+    body: JSON.stringify(request),
   });
 }
 
 export async function uploadMediaStyleThumbnail(id: string, file: File, expectedVersion: number): Promise<MediaStyle> {
-  if (file.size > MAX_MEDIA_STYLE_UPLOAD_BYTES) throw new ApiError(413, "STYLE_THUMBNAIL_TOO_LARGE", t("styles.previewSizeLimit"), false);
+  if (file.size > MAX_MEDIA_STYLE_UPLOAD_BYTES)
+    throw new ApiError(413, "STYLE_THUMBNAIL_TOO_LARGE", t("styles.previewSizeLimit"), false);
   const form = new FormData();
   form.append("file", file);
   form.append("expectedVersion", String(expectedVersion));
-  return writeJson<MediaStyle>(`/api/v1/settings/media-styles/${encodeURIComponent(id)}/thumbnail`, {
-    method: "POST", body: form,
-  }, t("styles.uploadFailed"));
+  return writeJson<MediaStyle>(
+    `/api/v1/settings/media-styles/${encodeURIComponent(id)}/thumbnail`,
+    {
+      method: "POST",
+      body: form,
+    },
+    t("styles.uploadFailed"),
+  );
 }
 
 /** Reads a server-filtered audit page; this never contacts a model or media Provider. */
@@ -291,16 +430,23 @@ export async function listCallLogs(filters: CallLogFilters): Promise<CallLogPage
 
 export async function cleanupCallLogs(request: CleanupCallLogsRequest): Promise<CallLogCleanupResult> {
   return writeJson<CallLogCleanupResult>("/api/v1/settings/call-log-retention/cleanup", {
-    method: "POST", body: JSON.stringify(request),
+    method: "POST",
+    body: JSON.stringify(request),
   });
 }
 
 export async function getCallLogRetentionSettings(): Promise<CallLogRetentionSettings> {
-  return readJson<CallLogRetentionSettings>("/api/v1/settings/call-log-retention", t("api.errors.retentionSettingsUnavailable"));
+  return readJson<CallLogRetentionSettings>(
+    "/api/v1/settings/call-log-retention",
+    t("api.errors.retentionSettingsUnavailable"),
+  );
 }
-export async function updateCallLogRetentionSettings(request: UpdateCallLogRetentionRequest): Promise<CallLogRetentionSettings> {
+export async function updateCallLogRetentionSettings(
+  request: UpdateCallLogRetentionRequest,
+): Promise<CallLogRetentionSettings> {
   return writeJson<CallLogRetentionSettings>("/api/v1/settings/call-log-retention", {
-    method: "PUT", body: JSON.stringify(request),
+    method: "PUT",
+    body: JSON.stringify(request),
   });
 }
 
@@ -308,7 +454,11 @@ export function getDirectorSettings(): Promise<DirectorSettings> {
   return readJson("/api/v1/settings/director", t("settings.director.loadFailed"));
 }
 export function updateDirectorSettings(request: UpdateDirectorSettingsRequest): Promise<DirectorSettings> {
-  return writeJson("/api/v1/settings/director", { method: "PUT", body: JSON.stringify(request) }, t("settings.director.saveFailed"));
+  return writeJson(
+    "/api/v1/settings/director",
+    { method: "PUT", body: JSON.stringify(request) },
+    t("settings.director.saveFailed"),
+  );
 }
 
 export async function getDebugSettings(): Promise<DebugSettings> {
@@ -317,7 +467,8 @@ export async function getDebugSettings(): Promise<DebugSettings> {
 
 export async function updateDebugSettings(request: UpdateDebugSettingsRequest): Promise<DebugSettings> {
   return writeJson<DebugSettings>("/api/v1/settings/debug", {
-    method: "PUT", body: JSON.stringify(request),
+    method: "PUT",
+    body: JSON.stringify(request),
   });
 }
 
@@ -351,24 +502,44 @@ export async function getAssetMetadata(projectId: string, assetId: string): Prom
 
 /** Uploads real image bytes with the session CSRF token; the browser supplies the multipart boundary. */
 export async function uploadImageAsset(projectId: string, file: File): Promise<Asset> {
-  return uploadAsset(`/api/v1/projects/${encodeURIComponent(projectId)}/assets`, file,
-    MAX_IMAGE_UPLOAD_BYTES, t("api.errors.imageSizeLimit"), t("api.errors.imageUploadFailed"));
+  return uploadAsset(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/assets`,
+    file,
+    MAX_IMAGE_UPLOAD_BYTES,
+    t("api.errors.imageSizeLimit"),
+    t("api.errors.imageUploadFailed"),
+  );
 }
 
 /** Uploads audio with the same session protection and backend decoding as images. */
 export async function uploadAudioAsset(projectId: string, file: File): Promise<Asset> {
-  return uploadAsset(`/api/v1/projects/${encodeURIComponent(projectId)}/assets/audio`, file,
-    MAX_AUDIO_UPLOAD_BYTES, t("api.errors.audioSizeLimit"), t("api.errors.audioUploadFailed"));
+  return uploadAsset(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/assets/audio`,
+    file,
+    MAX_AUDIO_UPLOAD_BYTES,
+    t("api.errors.audioSizeLimit"),
+    t("api.errors.audioUploadFailed"),
+  );
 }
 
 /** MP4 uploads use actual backend decoding and the selected per-asset storage destination. */
 export async function uploadVideoAsset(projectId: string, file: File): Promise<Asset> {
-  return uploadAsset(`/api/v1/projects/${encodeURIComponent(projectId)}/assets/video`, file,
-    MAX_VIDEO_UPLOAD_BYTES, t("api.errors.videoSizeLimit"), t("api.errors.videoUploadFailed"));
+  return uploadAsset(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/assets/video`,
+    file,
+    MAX_VIDEO_UPLOAD_BYTES,
+    t("api.errors.videoSizeLimit"),
+    t("api.errors.videoUploadFailed"),
+  );
 }
 
-async function uploadAsset(path: string, file: File, maxBytes: number,
-  sizeError: string, failureMessage: string): Promise<Asset> {
+async function uploadAsset(
+  path: string,
+  file: File,
+  maxBytes: number,
+  sizeError: string,
+  failureMessage: string,
+): Promise<Asset> {
   if (file.size > maxBytes) throw new ApiError(413, "ASSET_TOO_LARGE", sizeError, false);
   const form = new FormData();
   form.append("file", file);
@@ -399,9 +570,7 @@ export async function getSetupStatus(): Promise<SetupStatus> {
 }
 
 /** Creates the sole administrator; the server permanently closes setup after success. */
-export async function setupAdministrator(
-  input: SetupRequest,
-): Promise<CurrentUser> {
+export async function setupAdministrator(input: SetupRequest): Promise<CurrentUser> {
   return writeJson<CurrentUser>("/api/v1/auth/setup", {
     method: "POST",
     body: JSON.stringify(input),
@@ -436,21 +605,24 @@ export async function listLlmConnections(): Promise<LlmConnections> {
 /** Saves a connection independently; an omitted or blank key keeps its server-side credential. */
 export async function saveLlmConnection(id: string, input: SaveLlmConnectionRequest): Promise<LlmConnection> {
   return writeJson<LlmConnection>(`/api/v1/settings/llm/connections/${encodeURIComponent(id)}`, {
-    method: "PUT", body: JSON.stringify(input),
+    method: "PUT",
+    body: JSON.stringify(input),
   });
 }
 
 /** Explicitly switches the active connection after checking both connection and active versions. */
 export async function activateLlmConnection(id: string, input: ActivateLlmConnectionRequest): Promise<LlmConnections> {
   return writeJson<LlmConnections>(`/api/v1/settings/llm/connections/${encodeURIComponent(id)}/activate`, {
-    method: "POST", body: JSON.stringify(input),
+    method: "POST",
+    body: JSON.stringify(input),
   });
 }
 
 /** Runs the acknowledged billable probe against a saved connection without activating it. */
 export async function diagnoseLlmConnection(id: string, input: DiagnoseLlmRequest): Promise<LlmConnection> {
   return writeJson<LlmConnection>(`/api/v1/settings/llm/connections/${encodeURIComponent(id)}/diagnose`, {
-    method: "POST", body: JSON.stringify(input),
+    method: "POST",
+    body: JSON.stringify(input),
   });
 }
 export type LlmModelProvider = components["schemas"]["LlmModelProvider"];
@@ -460,26 +632,41 @@ export type LlmModelPreview = components["schemas"]["LlmModelPreview"];
 export type LlmModelMetadata = components["schemas"]["LlmModelMetadata"];
 export type LlmModelPreviewRequest = components["schemas"]["LlmModelPreviewRequest"];
 export function previewLlmModels(input: LlmModelPreviewRequest, signal?: AbortSignal): Promise<LlmModelPreview> {
-  return writeJson<LlmModelPreview>("/api/v1/settings/llm/models", { method: "POST", body: JSON.stringify(input), signal });
+  return writeJson<LlmModelPreview>("/api/v1/settings/llm/models", {
+    method: "POST",
+    body: JSON.stringify(input),
+    signal,
+  });
 }
 
 export type LocalServiceKind = components["schemas"]["LocalServiceKind"];
 export type LocalServiceDiscoveryResult = components["schemas"]["LocalServiceDiscoveryResult"];
 
 /** Checks only the server-selected local status endpoint; callers cannot supply a target address. */
-export function discoverLocalService(service: LocalServiceKind, signal?: AbortSignal): Promise<LocalServiceDiscoveryResult> {
+export function discoverLocalService(
+  service: LocalServiceKind,
+  signal?: AbortSignal,
+): Promise<LocalServiceDiscoveryResult> {
   return writeJson("/api/v1/settings/local-services/discover", {
-    method: "POST", body: JSON.stringify({ service }), signal,
+    method: "POST",
+    body: JSON.stringify({ service }),
+    signal,
   });
 }
 
 /** Media settings expose only public connection and capability metadata. */
-export async function getAutoDlWorkflowCatalog(): Promise<operations["listAutoDlWorkflows"]["responses"][200]["content"]["application/json"]> {
+export async function getAutoDlWorkflowCatalog(): Promise<
+  operations["listAutoDlWorkflows"]["responses"][200]["content"]["application/json"]
+> {
   return readJson("/api/v1/settings/autodl-workflows", t("api.errors.workflowCatalogUnavailable"));
 }
-export async function previewAutoDlWorkflow(workflowId: string, source?: object): Promise<components["schemas"]["AutoDlWorkflowDefinition"]> {
+export async function previewAutoDlWorkflow(
+  workflowId: string,
+  source?: object,
+): Promise<components["schemas"]["AutoDlWorkflowDefinition"]> {
   return writeJson("/api/v1/settings/autodl-workflows/preview", {
-    method: "POST", body: JSON.stringify({ workflowId, ...(source ? { source } : {}) }),
+    method: "POST",
+    body: JSON.stringify({ workflowId, ...(source ? { source } : {}) }),
   });
 }
 
@@ -495,56 +682,96 @@ export async function getKlingProfiles(): Promise<KlingProfiles> {
   return readJson<KlingProfiles>("/api/v1/settings/kling/profiles", t("api.errors.mediaSettingsUnavailable"));
 }
 
-export async function createMediaConnection(input: CreateMediaConnectionRequest,
-  idempotencyKey: string): Promise<MediaSettings> {
+export async function createMediaConnection(
+  input: CreateMediaConnectionRequest,
+  idempotencyKey: string,
+): Promise<MediaSettings> {
   return writeJson<MediaSettings>("/api/v1/settings/media-connections", {
-    method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input),
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(input),
   });
 }
 
-export async function updateMediaConnection(connectionId: string,
-  input: UpdateMediaConnectionRequest): Promise<MediaSettings> {
+export async function updateMediaConnection(
+  connectionId: string,
+  input: UpdateMediaConnectionRequest,
+): Promise<MediaSettings> {
   return writeJson<MediaSettings>(`/api/v1/settings/media-connections/${encodeURIComponent(connectionId)}`, {
-    method: "PUT", body: JSON.stringify(input),
+    method: "PUT",
+    body: JSON.stringify(input),
   });
 }
 
 export async function previewComfyWorkflow(connectionId: string, workflowJson: string): Promise<ComfyUiGraph> {
-  return writeJson<ComfyUiGraph>(`/api/v1/settings/media-connections/${encodeURIComponent(connectionId)}/comfyui/preview`, {
-    method: "POST", body: JSON.stringify({ workflowJson }),
-  });
+  return writeJson<ComfyUiGraph>(
+    `/api/v1/settings/media-connections/${encodeURIComponent(connectionId)}/comfyui/preview`,
+    {
+      method: "POST",
+      body: JSON.stringify({ workflowJson }),
+    },
+  );
 }
 
-export async function previewRunningHubImport(connectionId: string, input: RunningHubImportRequest): Promise<RunningHubImportPreview> {
-  return writeJson<RunningHubImportPreview>(`/api/v1/settings/media-connections/${encodeURIComponent(connectionId)}/runninghub/preview`,
-    { method: "POST", body: JSON.stringify(input) });
+export async function previewRunningHubImport(
+  connectionId: string,
+  input: RunningHubImportRequest,
+): Promise<RunningHubImportPreview> {
+  return writeJson<RunningHubImportPreview>(
+    `/api/v1/settings/media-connections/${encodeURIComponent(connectionId)}/runninghub/preview`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
 }
 
-export async function createMediaCapability(connectionId: string,
-  input: CreateMediaCapabilityRequest, idempotencyKey: string): Promise<MediaSettings> {
-  return writeJson<MediaSettings>(`/api/v1/settings/media-connections/${encodeURIComponent(connectionId)}/capabilities`, {
-    method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify(input),
-  });
+export async function createMediaCapability(
+  connectionId: string,
+  input: CreateMediaCapabilityRequest,
+  idempotencyKey: string,
+): Promise<MediaSettings> {
+  return writeJson<MediaSettings>(
+    `/api/v1/settings/media-connections/${encodeURIComponent(connectionId)}/capabilities`,
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify(input),
+    },
+  );
 }
 
-export async function updateMediaCapability(connectionId: string, capabilityId: string,
-  input: UpdateMediaCapabilityRequest): Promise<MediaSettings> {
-  return writeJson<MediaSettings>(`/api/v1/settings/media-connections/${encodeURIComponent(connectionId)}/capabilities/${encodeURIComponent(capabilityId)}`, {
-    method: "PUT", body: JSON.stringify(input),
-  });
+export async function updateMediaCapability(
+  connectionId: string,
+  capabilityId: string,
+  input: UpdateMediaCapabilityRequest,
+): Promise<MediaSettings> {
+  return writeJson<MediaSettings>(
+    `/api/v1/settings/media-connections/${encodeURIComponent(connectionId)}/capabilities/${encodeURIComponent(capabilityId)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify(input),
+    },
+  );
 }
 
-export async function deleteMediaCapability(connectionId: string, capabilityId: string,
-  expectedVersion: number): Promise<MediaSettings> {
-  return writeJson<MediaSettings>(`/api/v1/settings/media-connections/${encodeURIComponent(connectionId)}/capabilities/${encodeURIComponent(capabilityId)}?expectedVersion=${expectedVersion}`, {
-    method: "DELETE",
-  });
+export async function deleteMediaCapability(
+  connectionId: string,
+  capabilityId: string,
+  expectedVersion: number,
+): Promise<MediaSettings> {
+  return writeJson<MediaSettings>(
+    `/api/v1/settings/media-connections/${encodeURIComponent(connectionId)}/capabilities/${encodeURIComponent(capabilityId)}?expectedVersion=${expectedVersion}`,
+    {
+      method: "DELETE",
+    },
+  );
 }
 
-export async function setMediaDefault(kind: "IMAGE_GENERATION" | "VIDEO_GENERATION" | "AUDIO_GENERATION",
-  input: SetMediaDefaultRequest): Promise<MediaSettings> {
+export async function setMediaDefault(
+  kind: "IMAGE_GENERATION" | "VIDEO_GENERATION" | "AUDIO_GENERATION",
+  input: SetMediaDefaultRequest,
+): Promise<MediaSettings> {
   return writeJson<MediaSettings>(`/api/v1/settings/media-defaults/${kind}`, {
-    method: "PUT", body: JSON.stringify(input),
+    method: "PUT",
+    body: JSON.stringify(input),
   });
 }
 
@@ -590,24 +817,37 @@ export function listMcpTokens(): Promise<McpTokenSummary[]> {
 
 /** The caller must keep the returned secret in ephemeral component memory, never a query cache. */
 export function createMcpToken(input: CreateMcpTokenRequest): Promise<McpTokenCreatedResponse> {
-  return writeJson("/api/v1/account/mcp-tokens", {
-    method: "POST", cache: "no-store", body: JSON.stringify(input),
-  }, t("mcp.tokens.createFailed"));
+  return writeJson(
+    "/api/v1/account/mcp-tokens",
+    {
+      method: "POST",
+      cache: "no-store",
+      body: JSON.stringify(input),
+    },
+    t("mcp.tokens.createFailed"),
+  );
 }
 
 /** Revocation is idempotent; an already revoked credential stays revoked. */
 export function revokeMcpToken(token: McpTokenSummary): Promise<McpTokenSummary> {
-  return writeJson(`/api/v1/account/mcp-tokens/${encodeURIComponent(token.id)}/revoke`, {
-    method: "POST", body: JSON.stringify({ expectedVersion: token.version }),
-  }, t("mcp.tokens.revokeFailed"));
+  return writeJson(
+    `/api/v1/account/mcp-tokens/${encodeURIComponent(token.id)}/revoke`,
+    {
+      method: "POST",
+      body: JSON.stringify({ expectedVersion: token.version }),
+    },
+    t("mcp.tokens.revokeFailed"),
+  );
 }
 
 /** Lists an owner-scoped project page. */
-export async function listProjects(options: {
-  includeArchived?: boolean;
-  cursor?: string;
-  limit?: number;
-} = {}): Promise<ProjectList> {
+export async function listProjects(
+  options: {
+    includeArchived?: boolean;
+    cursor?: string;
+    limit?: number;
+  } = {},
+): Promise<ProjectList> {
   const query = new URLSearchParams();
   if (options.includeArchived) query.set("includeArchived", "true");
   if (options.cursor) query.set("cursor", options.cursor);
@@ -631,17 +871,11 @@ export async function getProject(projectId: string): Promise<Project> {
 
 /** Loads workspace entities and the exclusive event replay cursor from one database snapshot. */
 export async function getProjectSnapshot(projectId: string): Promise<ProjectSnapshot> {
-  return readJson<ProjectSnapshot>(
-    `/api/v1/projects/${projectId}/snapshot`,
-    t("api.errors.snapshotUnavailable"),
-  );
+  return readJson<ProjectSnapshot>(`/api/v1/projects/${projectId}/snapshot`, t("api.errors.snapshotUnavailable"));
 }
 
 /** Renames or reconfigures a project with optimistic concurrency. */
-export async function updateProject(
-  projectId: string,
-  input: UpdateProjectRequest,
-): Promise<Project> {
+export async function updateProject(projectId: string, input: UpdateProjectRequest): Promise<Project> {
   return writeJson<Project>(`/api/v1/projects/${projectId}`, {
     method: "PATCH",
     body: JSON.stringify(input),
@@ -698,20 +932,27 @@ export async function getMediaDraft(projectId: string, canvasItemId: string): Pr
 }
 
 /** Saves the complete working draft with its own optimistic version. */
-export async function saveMediaDraft(projectId: string, canvasItemId: string,
-  input: SaveMediaDraftRequest): Promise<MediaDraft> {
-  return writeJson<MediaDraft>(
-    `/api/v1/projects/${projectId}/canvas-items/${canvasItemId}/media-draft`,
-    { method: "PUT", body: JSON.stringify(input) },
-  );
+export async function saveMediaDraft(
+  projectId: string,
+  canvasItemId: string,
+  input: SaveMediaDraftRequest,
+): Promise<MediaDraft> {
+  return writeJson<MediaDraft>(`/api/v1/projects/${projectId}/canvas-items/${canvasItemId}/media-draft`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
 }
 
 /** Atomically removes an exact image input together with every owning canvas line and mention. */
-export async function removeMediaDraftMediaInput(projectId: string, canvasItemId: string,
-  versionId: string, input: RemoveMediaDraftMediaInputRequest): Promise<MediaDraft> {
+export async function removeMediaDraftMediaInput(
+  projectId: string,
+  canvasItemId: string,
+  versionId: string,
+  input: RemoveMediaDraftMediaInputRequest,
+): Promise<MediaDraft> {
   return writeJson<MediaDraft>(
-    `/api/v1/projects/${encodeURIComponent(projectId)}/canvas-items/${encodeURIComponent(canvasItemId)}`
-      + `/media-draft/media-inputs/${encodeURIComponent(versionId)}/remove`,
+    `/api/v1/projects/${encodeURIComponent(projectId)}/canvas-items/${encodeURIComponent(canvasItemId)}` +
+      `/media-draft/media-inputs/${encodeURIComponent(versionId)}/remove`,
     { method: "POST", body: JSON.stringify(input) },
   );
 }
@@ -725,17 +966,22 @@ export async function listCanvasConnections(projectId: string): Promise<CanvasCo
 }
 
 /** Atomically creates a line and the corresponding target input source. */
-export async function createCanvasConnection(projectId: string,
-  input: CreateCanvasConnectionRequest): Promise<CanvasConnectionResult> {
-  return writeJson<CanvasConnectionResult>(
-    `/api/v1/projects/${encodeURIComponent(projectId)}/canvas/connections`,
-    { method: "POST", body: JSON.stringify(input) },
-  );
+export async function createCanvasConnection(
+  projectId: string,
+  input: CreateCanvasConnectionRequest,
+): Promise<CanvasConnectionResult> {
+  return writeJson<CanvasConnectionResult>(`/api/v1/projects/${encodeURIComponent(projectId)}/canvas/connections`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 /** Atomically removes one media input or derivation relation and returns the updated target state. */
-export async function disconnectCanvasConnection(projectId: string, connectionId: string,
-  input: DisconnectCanvasConnectionRequest): Promise<CanvasConnectionResult> {
+export async function disconnectCanvasConnection(
+  projectId: string,
+  connectionId: string,
+  input: DisconnectCanvasConnectionRequest,
+): Promise<CanvasConnectionResult> {
   return writeJson<CanvasConnectionResult>(
     `/api/v1/projects/${encodeURIComponent(projectId)}/canvas/connections/${encodeURIComponent(connectionId)}/disconnect`,
     { method: "POST", body: JSON.stringify(input) },
@@ -743,8 +989,11 @@ export async function disconnectCanvasConnection(projectId: string, connectionId
 }
 
 /** Copies one persisted media branch while intentionally dropping tasks and topology ownership. */
-export async function duplicateCanvasItem(projectId: string, sourceItemId: string,
-  input: DuplicateCanvasItemRequest): Promise<DuplicateCanvasItemResponse> {
+export async function duplicateCanvasItem(
+  projectId: string,
+  sourceItemId: string,
+  input: DuplicateCanvasItemRequest,
+): Promise<DuplicateCanvasItemResponse> {
   return writeJson<DuplicateCanvasItemResponse>(
     `/api/v1/projects/${encodeURIComponent(projectId)}/canvas/items/${encodeURIComponent(sourceItemId)}/duplicate`,
     { method: "POST", body: JSON.stringify(input) },
@@ -754,75 +1003,121 @@ export async function duplicateCanvasItem(projectId: string, sourceItemId: strin
 /** Result history belonging to one media node. */
 export async function listCanvasMediaVersions(projectId: string, itemId: string): Promise<ArtifactVersionList> {
   return readJson<ArtifactVersionList>(
-    `/api/v1/projects/${projectId}/canvas/items/${itemId}/media-versions`, t("api.errors.mediaVersionsUnavailable"));
+    `/api/v1/projects/${projectId}/canvas/items/${itemId}/media-versions`,
+    t("api.errors.mediaVersionsUnavailable"),
+  );
 }
 
-export async function selectCanvasMediaVersion(projectId: string, itemId: string,
-  input: SelectMediaVersionRequest): Promise<CanvasItem> {
-  return writeJson<CanvasItem>(
-    `/api/v1/projects/${projectId}/canvas/items/${itemId}/select-media-version`,
-    { method: "POST", body: JSON.stringify(input) });
+export async function selectCanvasMediaVersion(
+  projectId: string,
+  itemId: string,
+  input: SelectMediaVersionRequest,
+): Promise<CanvasItem> {
+  return writeJson<CanvasItem>(`/api/v1/projects/${projectId}/canvas/items/${itemId}/select-media-version`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 /** The saved draft is fixed into a direct media Task on one explicit click. */
-export async function runMediaDraft(projectId: string, artifactId: string,
-  input: RunMediaDraftRequest, idempotencyKey: string): Promise<Task> {
-  return writeJson<Task>(
-    `/api/v1/projects/${projectId}/artifacts/${artifactId}/run`,
-    { method: "POST", headers: { "Idempotency-Key": idempotencyKey },
-      body: JSON.stringify(input) },
-  );
+export async function runMediaDraft(
+  projectId: string,
+  artifactId: string,
+  input: RunMediaDraftRequest,
+  idempotencyKey: string,
+): Promise<Task> {
+  return writeJson<Task>(`/api/v1/projects/${projectId}/artifacts/${artifactId}/run`, {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(input),
+  });
 }
 
 /** Pins the visible image, creates a connected result branch, and dispatches post-processing. */
-export async function runImageOperation(projectId: string, artifactId: string,
-  input: RunImageOperationRequest, idempotencyKey: string): Promise<Task> {
-  return writeJson<Task>(
-    `/api/v1/projects/${projectId}/artifacts/${artifactId}/image-operations`,
-    { method: "POST", headers: { "Idempotency-Key": idempotencyKey },
-      body: JSON.stringify(input) },
-  );
+export async function runImageOperation(
+  projectId: string,
+  artifactId: string,
+  input: RunImageOperationRequest,
+  idempotencyKey: string,
+): Promise<Task> {
+  return writeJson<Task>(`/api/v1/projects/${projectId}/artifacts/${artifactId}/image-operations`, {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(input),
+  });
 }
 
 export function getMediaFunctions(): Promise<MediaFunctionSetting[]> {
   return readJson("/api/v1/settings/media-functions", t("api.errors.mediaSettingsUnavailable"));
 }
 
-export function updateMediaFunction(operation: MediaFunction, expectedVersion: number, capabilityId: string | null): Promise<MediaFunctionSetting[]> {
+export function updateMediaFunction(
+  operation: MediaFunction,
+  expectedVersion: number,
+  capabilityId: string | null,
+): Promise<MediaFunctionSetting[]> {
   return writeJson(`/api/v1/settings/media-functions/${operation}`, {
-    method: "PUT", body: JSON.stringify({ expectedVersion, capabilityId }),
+    method: "PUT",
+    body: JSON.stringify({ expectedVersion, capabilityId }),
   });
 }
 
-export function runVideoOperation(projectId: string, artifactId: string, input: RunVideoOperationRequest, commandKey: string): Promise<Task> {
+export function runVideoOperation(
+  projectId: string,
+  artifactId: string,
+  input: RunVideoOperationRequest,
+  commandKey: string,
+): Promise<Task> {
   return writeJson(`/api/v1/projects/${projectId}/artifacts/${artifactId}/video-operations`, {
-    method: "POST", headers: { "Idempotency-Key": commandKey }, body: JSON.stringify(input),
+    method: "POST",
+    headers: { "Idempotency-Key": commandKey },
+    body: JSON.stringify(input),
   });
 }
 
 /** Creates a derived audio node from a fixed source version and exact millisecond range. */
-export function runAudioTrim(projectId: string, artifactId: string, input: RunAudioTrimRequest, commandKey: string): Promise<Task> {
-  return writeJson(`/api/v1/projects/${projectId}/artifacts/${artifactId}/audio-trims`, {
-    method: "POST", headers: { "Idempotency-Key": commandKey }, body: JSON.stringify(input),
-  }, t("audio.trim.failed"));
+export function runAudioTrim(
+  projectId: string,
+  artifactId: string,
+  input: RunAudioTrimRequest,
+  commandKey: string,
+): Promise<Task> {
+  return writeJson(
+    `/api/v1/projects/${projectId}/artifacts/${artifactId}/audio-trims`,
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": commandKey },
+      body: JSON.stringify(input),
+    },
+    t("audio.trim.failed"),
+  );
 }
 
 /** Card media history includes direct requests and user-approved Agent tasks. */
-export async function listDirectMediaTasks(projectId: string, artifactId: string,
-  canvasItemId: string): Promise<Task[]> {
+export async function listDirectMediaTasks(
+  projectId: string,
+  artifactId: string,
+  canvasItemId: string,
+): Promise<Task[]> {
   const query = new URLSearchParams({ canvasItemId });
-  return readJson<Task[]>(`/api/v1/projects/${projectId}/artifacts/${artifactId}/run?${query}`,
-    t("api.errors.cardTasksUnavailable"));
+  return readJson<Task[]>(
+    `/api/v1/projects/${projectId}/artifacts/${artifactId}/run?${query}`,
+    t("api.errors.cardTasksUnavailable"),
+  );
 }
 
 /** Pins the visible text version and sends one prompt to the configured text model. */
-export async function runDirectTextGeneration(projectId: string, artifactId: string,
-  input: RunTextGenerationRequest, idempotencyKey: string): Promise<Task> {
-  return writeJson<Task>(
-    `/api/v1/projects/${projectId}/artifacts/${artifactId}/text-generations`,
-    { method: "POST", headers: { "Idempotency-Key": idempotencyKey },
-      body: JSON.stringify(input) },
-  );
+export async function runDirectTextGeneration(
+  projectId: string,
+  artifactId: string,
+  input: RunTextGenerationRequest,
+  idempotencyKey: string,
+): Promise<Task> {
+  return writeJson<Task>(`/api/v1/projects/${projectId}/artifacts/${artifactId}/text-generations`, {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(input),
+  });
 }
 
 export async function listDirectTextTasks(projectId: string, artifactId: string): Promise<Task[]> {
@@ -833,14 +1128,14 @@ export async function listDirectTextTasks(projectId: string, artifactId: string)
 }
 
 export async function cancelQueuedDirectMediaTask(projectId: string, taskId: string): Promise<Task> {
-  return writeJson<Task>(`/api/v1/projects/${projectId}/tasks/${taskId}/cancel-queued`,
-    { method: "POST" });
+  return writeJson<Task>(`/api/v1/projects/${projectId}/tasks/${taskId}/cancel-queued`, { method: "POST" });
 }
 
-export async function getDirectMediaQueueStatus(projectId: string,
-  taskId: string): Promise<DirectMediaQueueStatus> {
+export async function getDirectMediaQueueStatus(projectId: string, taskId: string): Promise<DirectMediaQueueStatus> {
   return readJson<DirectMediaQueueStatus>(
-    `/api/v1/projects/${projectId}/tasks/${taskId}/queue`, t("api.errors.queueUnavailable"));
+    `/api/v1/projects/${projectId}/tasks/${taskId}/queue`,
+    t("api.errors.queueUnavailable"),
+  );
 }
 
 /** Appends and selects a complete content revision with optimistic concurrency. */
@@ -849,17 +1144,14 @@ export async function reviseArtifact(
   artifactId: string,
   input: ReviseArtifactRequest,
 ): Promise<Artifact> {
-  return writeJson<Artifact>(
-    `/api/v1/projects/${projectId}/artifacts/${artifactId}/revisions`,
-    { method: "POST", body: JSON.stringify(input) },
-  );
+  return writeJson<Artifact>(`/api/v1/projects/${projectId}/artifacts/${artifactId}/revisions`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 /** Lists immutable revision history newest first. */
-export async function listArtifactVersions(
-  projectId: string,
-  artifactId: string,
-): Promise<ArtifactVersionList> {
+export async function listArtifactVersions(projectId: string, artifactId: string): Promise<ArtifactVersionList> {
   return readJson<ArtifactVersionList>(
     `/api/v1/projects/${projectId}/artifacts/${artifactId}/versions`,
     t("api.errors.versionHistoryUnavailable"),
@@ -873,13 +1165,10 @@ export async function setArtifactResourceDefaultVersion(
   versionId: string,
   expectedVersion: number,
 ): Promise<Artifact> {
-  return writeJson<Artifact>(
-    `/api/v1/projects/${projectId}/artifacts/${artifactId}/set-default-version`,
-    {
-      method: "POST",
-      body: JSON.stringify({ versionId, expectedVersion }),
-    },
-  );
+  return writeJson<Artifact>(`/api/v1/projects/${projectId}/artifacts/${artifactId}/set-default-version`, {
+    method: "POST",
+    body: JSON.stringify({ versionId, expectedVersion }),
+  });
 }
 
 /** Fills an empty media node, or derives a new node when the source already has a result. */
@@ -888,10 +1177,10 @@ export async function uploadCanvasItemVersion(
   canvasItemId: string,
   input: UploadCanvasItemVersionRequest,
 ): Promise<CanvasItem> {
-  return writeJson<CanvasItem>(
-    `/api/v1/projects/${projectId}/canvas-items/${canvasItemId}/upload-version`,
-    { method: "POST", body: JSON.stringify(input) },
-  );
+  return writeJson<CanvasItem>(`/api/v1/projects/${projectId}/canvas-items/${canvasItemId}/upload-version`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 /** Loads the authoritative canvas projection for refresh recovery. */
@@ -905,20 +1194,27 @@ export function getCanvasEditor(projectId: string): Promise<CanvasEditorState> {
 
 /** A reversible edit is acknowledged by the server before entering the session history. */
 export function editCanvas(projectId: string, input: CanvasEditRequest): Promise<CanvasEditResponse> {
-  return writeJson("/api/v1/projects/" + projectId + "/canvas/edits",
-    { method: "POST", body: JSON.stringify(input) }, t("canvas.edit.failed"));
+  return writeJson(
+    "/api/v1/projects/" + projectId + "/canvas/edits",
+    { method: "POST", body: JSON.stringify(input) },
+    t("canvas.edit.failed"),
+  );
 }
 
-export function replayCanvasEdit(projectId: string, receiptId: string, input: CanvasEditReplayRequest): Promise<CanvasEditResponse> {
-  return writeJson("/api/v1/projects/" + projectId + "/canvas/edits/" + receiptId + "/replay",
-    { method: "POST", body: JSON.stringify(input) }, t("canvas.edit.failed"));
+export function replayCanvasEdit(
+  projectId: string,
+  receiptId: string,
+  input: CanvasEditReplayRequest,
+): Promise<CanvasEditResponse> {
+  return writeJson(
+    "/api/v1/projects/" + projectId + "/canvas/edits/" + receiptId + "/replay",
+    { method: "POST", body: JSON.stringify(input) },
+    t("canvas.edit.failed"),
+  );
 }
 
 /** Atomically applies one or more presentation-only canvas commands. */
-export async function applyCanvasCommands(
-  projectId: string,
-  commands: CanvasCommand[],
-): Promise<Canvas> {
+export async function applyCanvasCommands(projectId: string, commands: CanvasCommand[]): Promise<Canvas> {
   return writeJson<Canvas>(`/api/v1/projects/${projectId}/canvas/commands`, {
     method: "POST",
     body: JSON.stringify({ commands }),
@@ -931,11 +1227,7 @@ export function ensureProjectDirector(projectId: string): Promise<Agent> {
 }
 
 /** Replaces project assistant role configuration using CAS. */
-export async function updateAgent(
-  projectId: string,
-  agentId: string,
-  input: UpdateAgentRequest,
-): Promise<Agent> {
+export async function updateAgent(projectId: string, agentId: string, input: UpdateAgentRequest): Promise<Agent> {
   return writeJson<Agent>(`/api/v1/projects/${projectId}/agents/${agentId}`, {
     method: "PATCH",
     body: JSON.stringify(input),
@@ -943,11 +1235,17 @@ export async function updateAgent(
 }
 
 /** Reads current trusted model status, pinned inputs and server policy before user consent. */
-export async function getRunPreflight(projectId: string, agentId: string,
-  conversationId?: string, skillSelection?: SkillSelection): Promise<RunPreflight> {
-  if (skillSelection) return writeJson<RunPreflight>(`/api/v1/projects/${projectId}/runs/preflight`, {
-    method: "POST", body: JSON.stringify({ agentId, conversationId, skillSelection }),
-  });
+export async function getRunPreflight(
+  projectId: string,
+  agentId: string,
+  conversationId?: string,
+  skillSelection?: SkillSelection,
+): Promise<RunPreflight> {
+  if (skillSelection)
+    return writeJson<RunPreflight>(`/api/v1/projects/${projectId}/runs/preflight`, {
+      method: "POST",
+      body: JSON.stringify({ agentId, conversationId, skillSelection }),
+    });
   const params = new URLSearchParams({ agentId });
   if (conversationId) params.set("conversationId", conversationId);
   return readJson<RunPreflight>(
@@ -957,45 +1255,62 @@ export async function getRunPreflight(projectId: string, agentId: string,
 }
 
 /** Reads durable conversations and the Agent's selected conversation without loading model traces. */
-export async function listAgentConversations(projectId: string, agentId: string,
-  cursor?: string, limit = 20): Promise<AgentConversationList> {
+export async function listAgentConversations(
+  projectId: string,
+  agentId: string,
+  cursor?: string,
+  limit = 20,
+): Promise<AgentConversationList> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (cursor) params.set("cursor", cursor);
   return readJson<AgentConversationList>(
-    `/api/v1/projects/${projectId}/agents/${agentId}/conversations?${params}`, t("api.errors.conversationsUnavailable"));
+    `/api/v1/projects/${projectId}/agents/${agentId}/conversations?${params}`,
+    t("api.errors.conversationsUnavailable"),
+  );
 }
 
 /** Creates and selects an empty conversation; reuse the same key after an uncertain response. */
-export async function createAgentConversation(projectId: string, agentId: string,
-  idempotencyKey: string): Promise<AgentConversation> {
+export async function createAgentConversation(
+  projectId: string,
+  agentId: string,
+  idempotencyKey: string,
+): Promise<AgentConversation> {
   return writeJson<AgentConversation>(`/api/v1/projects/${projectId}/agents/${agentId}/conversations`, {
-    method: "POST", headers: { "Idempotency-Key": idempotencyKey },
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
   });
 }
 
 /** Changes only the selected conversation, leaving any active Run in its original conversation. */
-export async function selectAgentConversation(projectId: string, agentId: string,
-  conversationId: string): Promise<AgentConversation> {
+export async function selectAgentConversation(
+  projectId: string,
+  agentId: string,
+  conversationId: string,
+): Promise<AgentConversation> {
   return writeJson<AgentConversation>(
-    `/api/v1/projects/${projectId}/agents/${agentId}/conversations/${conversationId}/select`, { method: "POST" });
+    `/api/v1/projects/${projectId}/agents/${agentId}/conversations/${conversationId}/select`,
+    { method: "POST" },
+  );
 }
 
 /** Lists one conversation's messages newest first using the durable Run turn order. */
-export async function listConversationRuns(projectId: string, agentId: string,
-  conversationId: string, cursor?: string, limit = 20): Promise<AgentRunList> {
+export async function listConversationRuns(
+  projectId: string,
+  agentId: string,
+  conversationId: string,
+  cursor?: string,
+  limit = 20,
+): Promise<AgentRunList> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (cursor) params.set("cursor", cursor);
   return readJson<AgentRunList>(
     `/api/v1/projects/${projectId}/agents/${agentId}/conversations/${conversationId}/runs?${params}`,
-    t("api.errors.conversationMessagesUnavailable"));
+    t("api.errors.conversationMessagesUnavailable"),
+  );
 }
 
 /** Creates or exactly replays one durable Run command under a project activity slot. */
-export async function createRun(
-  projectId: string,
-  idempotencyKey: string,
-  input: CreateRunRequest,
-): Promise<AgentRun> {
+export async function createRun(projectId: string, idempotencyKey: string, input: CreateRunRequest): Promise<AgentRun> {
   return writeJson<AgentRun>(`/api/v1/projects/${projectId}/runs`, {
     method: "POST",
     headers: { "Idempotency-Key": idempotencyKey },
@@ -1019,15 +1334,27 @@ export async function listRunMediaApprovals(projectId: string, runId: string): P
   );
 }
 
-export function reviseRunMediaApproval(projectId: string, runId: string, approvalId: string,
-  body: AgentMediaApprovalRevision): Promise<AgentMediaApproval> {
-  return writeJson(`/api/v1/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(runId)}`
-    + `/media-approvals/${encodeURIComponent(approvalId)}`, { method: "PUT", body: JSON.stringify(body) });
+export function reviseRunMediaApproval(
+  projectId: string,
+  runId: string,
+  approvalId: string,
+  body: AgentMediaApprovalRevision,
+): Promise<AgentMediaApproval> {
+  return writeJson(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(runId)}` +
+      `/media-approvals/${encodeURIComponent(approvalId)}`,
+    { method: "PUT", body: JSON.stringify(body) },
+  );
 }
 
 /** An explicit user decision authorizes one frozen batch under CAS and command deduplication. */
-export async function decideRunMediaApproval(projectId: string, runId: string, approvalId: string,
-  body: AgentMediaApprovalDecision, idempotencyKey: string): Promise<AgentMediaApproval> {
+export async function decideRunMediaApproval(
+  projectId: string,
+  runId: string,
+  approvalId: string,
+  body: AgentMediaApprovalDecision,
+  idempotencyKey: string,
+): Promise<AgentMediaApproval> {
   return writeJson<AgentMediaApproval>(
     `/api/v1/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(runId)}` +
       `/media-approvals/${encodeURIComponent(approvalId)}/decision`,
@@ -1048,8 +1375,12 @@ export async function getTask(projectId: string, taskId: string): Promise<Task> 
 }
 
 /** Creates a separately reserved generation attempt for an unknown or accepted blocked direct task. */
-export async function createManualUnknownAttempt(projectId: string, taskId: string,
-  key: string, request: ManualUnknownAttemptRequest): Promise<Task> {
+export async function createManualUnknownAttempt(
+  projectId: string,
+  taskId: string,
+  key: string,
+  request: ManualUnknownAttemptRequest,
+): Promise<Task> {
   return writeJson<Task>(`/api/v1/projects/${projectId}/tasks/${taskId}/new-attempt`, {
     method: "POST",
     headers: { "Idempotency-Key": key },
@@ -1059,13 +1390,13 @@ export async function createManualUnknownAttempt(projectId: string, taskId: stri
 
 /** Loads all task outcomes for one owned Run. */
 export async function listRunTasks(projectId: string, runId: string): Promise<Task[]> {
-  return readJson<Task[]>(`/api/v1/projects/${projectId}/runs/${runId}/tasks`,
-    t("api.errors.runTasksUnavailable"));
+  return readJson<Task[]>(`/api/v1/projects/${projectId}/runs/${runId}/tasks`, t("api.errors.runTasksUnavailable"));
 }
 
 export async function readJson<T>(path: string, fallbackMessage: string, signal?: AbortSignal): Promise<T> {
   const response = await apiFetch(path, {
-    credentials: "same-origin", signal,
+    credentials: "same-origin",
+    signal,
     headers: { Accept: "application/json" },
   });
   if (!response.ok) {
@@ -1076,14 +1407,20 @@ export async function readJson<T>(path: string, fallbackMessage: string, signal?
 
 /** Authenticated text artifacts use the same ProblemDetail and session handling as JSON reads. */
 export async function readText(path: string, fallbackMessage: string, signal?: AbortSignal): Promise<string> {
-  const response = await apiFetch(path, { credentials: "same-origin", signal,
-    headers: { Accept: "text/vtt, application/x-subrip, application/problem+json" } });
+  const response = await apiFetch(path, {
+    credentials: "same-origin",
+    signal,
+    headers: { Accept: "text/vtt, application/x-subrip, application/problem+json" },
+  });
   if (!response.ok) throw await apiError(response, fallbackMessage);
   return response.text();
 }
 
-export async function writeJson<T>(path: string, init: RequestInit,
-  failureMessage = t("api.errors.requestFailed")): Promise<T> {
+export async function writeJson<T>(
+  path: string,
+  init: RequestInit,
+  failureMessage = t("api.errors.requestFailed"),
+): Promise<T> {
   const response = await write(path, init, failureMessage);
   return (await response.json()) as T;
 }
@@ -1092,8 +1429,11 @@ export async function writeEmpty(path: string, init: RequestInit): Promise<void>
   await write(path, init);
 }
 
-async function write(path: string, init: RequestInit,
-  failureMessage = t("api.errors.requestFailed")): Promise<Response> {
+async function write(
+  path: string,
+  init: RequestInit,
+  failureMessage = t("api.errors.requestFailed"),
+): Promise<Response> {
   const token = await getCsrfToken();
   const response = await apiFetch(path, {
     ...init,
@@ -1124,21 +1464,25 @@ async function apiError(response: Response, fallbackMessage: string): Promise<Ap
   const contentType = response.headers.get("content-type") ?? "";
   if (contentType.includes("application/problem+json")) {
     const problem = (await response.json()) as Problem;
-    return new ApiError(
-      response.status,
-      problem.code,
-      problem.detail ?? problem.title,
-      problem.retryable,
-    );
+    return new ApiError(response.status, problem.code, problem.detail ?? problem.title, problem.retryable);
   }
-  return new ApiError(response.status, "HTTP_ERROR", fallbackMessage, response.status >= HTTP_STATUS.INTERNAL_SERVER_ERROR);
+  return new ApiError(
+    response.status,
+    "HTTP_ERROR",
+    fallbackMessage,
+    response.status >= HTTP_STATUS.INTERNAL_SERVER_ERROR,
+  );
 }
 
 export type SystemLogSnapshot = components["schemas"]["SystemLogSnapshot"];
 export type SystemLogStream = components["schemas"]["SystemLogEntry"]["stream"];
 
 /** Reads bounded, sanitized Java console output; no generated work is triggered. */
-export async function listSystemLogs(input: { stream?: SystemLogStream; search?: string; limit: number }): Promise<SystemLogSnapshot> {
+export async function listSystemLogs(input: {
+  stream?: SystemLogStream;
+  search?: string;
+  limit: number;
+}): Promise<SystemLogSnapshot> {
   const params = new URLSearchParams({ limit: String(input.limit) });
   if (input.stream) params.set("stream", input.stream);
   if (input.search) params.set("search", input.search);
@@ -1158,25 +1502,44 @@ export type UpdateLibraryRequest = components["schemas"]["UpdateLibraryRequest"]
 export type LibraryFilters = NonNullable<paths["/api/v1/library/entries"]["get"]["parameters"]["query"]>;
 export function listLibraryEntries(filters: LibraryFilters): Promise<LibraryPage> {
   const query = new URLSearchParams();
-  Object.entries(filters).forEach(([key, value]) => { if (value !== undefined) query.set(key, String(value)); });
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined) query.set(key, String(value));
+  });
   return readJson(`/api/v1/library/entries?${query}`, t("api.errors.libraryUnavailable"));
 }
 export function getLibraryEntry(id: string): Promise<LibraryEntry> {
   return readJson(`/api/v1/library/entries/${id}`, t("api.errors.libraryEntryUnavailable"));
 }
-export function libraryContentUrl(id: string) { return `/api/v1/library/entries/${id}/content`; }
-export function libraryThumbnailUrl(id: string) { return `/api/v1/library/entries/${id}/thumbnail`; }
+export function libraryContentUrl(id: string) {
+  return `/api/v1/library/entries/${id}/content`;
+}
+export function libraryThumbnailUrl(id: string) {
+  return `/api/v1/library/entries/${id}/thumbnail`;
+}
 export function getLibrarySource(project: string, item: string): Promise<LibrarySource> {
-  return readJson(`/api/v1/projects/${project}/canvas-items/${item}/library-saves`, t("api.errors.selectedResultUnavailable"));
+  return readJson(
+    `/api/v1/projects/${project}/canvas-items/${item}/library-saves`,
+    t("api.errors.selectedResultUnavailable"),
+  );
 }
 export function saveLibraryEntry(project: string, item: string, request: SaveLibraryRequest): Promise<LibraryCommand> {
-  return writeJson(`/api/v1/projects/${project}/canvas-items/${item}/library-saves`, { method: "POST", body: JSON.stringify(request) });
+  return writeJson(`/api/v1/projects/${project}/canvas-items/${item}/library-saves`, {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
 }
 export function importLibraryEntry(project: string, request: ImportLibraryRequest): Promise<LibraryCommand> {
   return writeJson(`/api/v1/projects/${project}/library-imports`, { method: "POST", body: JSON.stringify(request) });
 }
-export function referenceLibraryEntry(project: string, item: string, request: ReferenceLibraryRequest): Promise<LibraryCommand> {
-  return writeJson(`/api/v1/projects/${project}/canvas-items/${item}/library-references`, { method: "POST", body: JSON.stringify(request) });
+export function referenceLibraryEntry(
+  project: string,
+  item: string,
+  request: ReferenceLibraryRequest,
+): Promise<LibraryCommand> {
+  return writeJson(`/api/v1/projects/${project}/canvas-items/${item}/library-references`, {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
 }
 export function getLibraryCommand(id: string): Promise<LibraryCommand> {
   return readJson(`/api/v1/library/commands/${id}`, t("api.errors.transferStatusUnavailable"));
@@ -1188,7 +1551,10 @@ export function updateLibraryEntry(id: string, request: UpdateLibraryRequest): P
   return writeJson(`/api/v1/library/entries/${id}`, { method: "PATCH", body: JSON.stringify(request) });
 }
 export function setLibraryTrash(id: string, expectedVersion: number, restore = false): Promise<LibraryEntry> {
-  return writeJson(`/api/v1/library/entries/${id}/${restore ? "restore" : "trash"}`, { method: "POST", body: JSON.stringify({ expectedVersion }) });
+  return writeJson(`/api/v1/library/entries/${id}/${restore ? "restore" : "trash"}`, {
+    method: "POST",
+    body: JSON.stringify({ expectedVersion }),
+  });
 }
 export function deleteLibraryEntry(id: string, expectedVersion: number): Promise<void> {
   return writeEmpty(`/api/v1/library/entries/${id}?expectedVersion=${expectedVersion}`, { method: "DELETE" });
@@ -1196,7 +1562,8 @@ export function deleteLibraryEntry(id: string, expectedVersion: number): Promise
 
 export type MediaTemplate = components["schemas"]["MediaTemplate"];
 export type MediaTemplateImage = components["schemas"]["MediaTemplateImage"];
-export type WriteMediaTemplateRequest = components["schemas"]["CreateMediaTemplateRequest"] | components["schemas"]["UpdateMediaTemplateRequest"];
+export type WriteMediaTemplateRequest =
+  components["schemas"]["CreateMediaTemplateRequest"] | components["schemas"]["UpdateMediaTemplateRequest"];
 export type MediaTemplateImport = components["schemas"]["MediaTemplateImport"];
 export type MediaTemplateKind = MediaTemplate["targetKind"];
 export type MediaTemplateScope = MediaTemplate["scope"];
@@ -1204,7 +1571,9 @@ export type ThirdPartyPromptSyncSettings = components["schemas"]["ThirdPartyProm
 export function getThirdPartyPromptSyncSettings(): Promise<ThirdPartyPromptSyncSettings> {
   return readJson("/api/v1/settings/media-template-sync", t("templates.loadFailed"));
 }
-export function updateThirdPartyPromptSyncSettings(input: components["schemas"]["UpdateThirdPartyPromptSyncSettings"]): Promise<ThirdPartyPromptSyncSettings> {
+export function updateThirdPartyPromptSyncSettings(
+  input: components["schemas"]["UpdateThirdPartyPromptSyncSettings"],
+): Promise<ThirdPartyPromptSyncSettings> {
   return writeJson("/api/v1/settings/media-template-sync", { method: "PUT", body: JSON.stringify(input) });
 }
 export type ThirdPartyPromptEntry = components["schemas"]["ThirdPartyPromptEntry"];
@@ -1214,23 +1583,42 @@ export type ThirdPartyPromptReference = components["schemas"]["ThirdPartyPromptR
 export function listThirdPartyPromptSources(): Promise<components["schemas"]["ThirdPartyPromptSources"]> {
   return readJson("/api/v1/media-templates/third-party/sources", t("templates.loadFailed"));
 }
-export function listThirdPartyPrompts(kind: MediaTemplateKind, sourceId: string, query: string, offset: number): Promise<ThirdPartyPromptPage> {
+export function listThirdPartyPrompts(
+  kind: MediaTemplateKind,
+  sourceId: string,
+  query: string,
+  offset: number,
+): Promise<ThirdPartyPromptPage> {
   const params = new URLSearchParams({ targetKind: kind, query, offset: String(offset), limit: "50" });
   if (sourceId) params.set("sourceId", sourceId);
   return readJson(`/api/v1/media-templates/third-party?${params}`, t("templates.loadFailed"));
 }
-export function createThirdPartyPromptSource(input: components["schemas"]["CreateThirdPartyPromptSource"]): Promise<ThirdPartyPromptSource> {
+export function createThirdPartyPromptSource(
+  input: components["schemas"]["CreateThirdPartyPromptSource"],
+): Promise<ThirdPartyPromptSource> {
   return writeJson("/api/v1/settings/media-template-sources", { method: "POST", body: JSON.stringify(input) });
 }
-export function setThirdPartyPromptSource(source: ThirdPartyPromptSource, enabled: boolean): Promise<ThirdPartyPromptSource> {
-  return writeJson(`/api/v1/settings/media-template-sources/${encodeURIComponent(source.id)}`, { method: "PATCH", body: JSON.stringify({ enabled, expectedVersion: source.version }) });
+export function setThirdPartyPromptSource(
+  source: ThirdPartyPromptSource,
+  enabled: boolean,
+): Promise<ThirdPartyPromptSource> {
+  return writeJson(`/api/v1/settings/media-template-sources/${encodeURIComponent(source.id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ enabled, expectedVersion: source.version }),
+  });
 }
 export function syncThirdPartyPromptSource(id: string): Promise<components["schemas"]["ThirdPartyPromptSync"]> {
   return writeJson(`/api/v1/settings/media-template-sources/${encodeURIComponent(id)}/sync`, { method: "POST" });
 }
-export function importThirdPartyPrompt(projectId: string, entry: ThirdPartyPromptEntry, commandKey: string): Promise<MediaTemplateImport> {
-  return writeJson(`/api/v1/projects/${encodeURIComponent(projectId)}/media-templates/third-party/import`,
-    { method: "POST", body: JSON.stringify({ promptId: entry.id, expectedVersion: entry.version, commandKey }) });
+export function importThirdPartyPrompt(
+  projectId: string,
+  entry: ThirdPartyPromptEntry,
+  commandKey: string,
+): Promise<MediaTemplateImport> {
+  return writeJson(`/api/v1/projects/${encodeURIComponent(projectId)}/media-templates/third-party/import`, {
+    method: "POST",
+    body: JSON.stringify({ promptId: entry.id, expectedVersion: entry.version, commandKey }),
+  });
 }
 
 /** Templates contain reusable text and independently archived images; they never run a Provider. */
@@ -1238,44 +1626,78 @@ export async function listMediaTemplates(targetKind?: MediaTemplateKind, system 
   const query = new URLSearchParams();
   if (targetKind) query.set("targetKind", targetKind);
   if (system) query.set("scope", "SYSTEM");
-  const result = await readJson<components["schemas"]["MediaTemplateList"]>(`/api/v1/media-templates?${query}`, t("templates.loadFailed"));
+  const result = await readJson<components["schemas"]["MediaTemplateList"]>(
+    `/api/v1/media-templates?${query}`,
+    t("templates.loadFailed"),
+  );
   return result.items;
 }
-export function saveMediaTemplate(input: WriteMediaTemplateRequest, scope: MediaTemplateScope,
-  id?: string): Promise<MediaTemplate> {
+export function saveMediaTemplate(
+  input: WriteMediaTemplateRequest,
+  scope: MediaTemplateScope,
+  id?: string,
+): Promise<MediaTemplate> {
   const path = `/api/v1/${scope === "SYSTEM" ? "settings/" : ""}media-templates`;
-  return writeJson(id ? `${path}/${encodeURIComponent(id)}` : path,
-    { method: id ? "PATCH" : "POST", body: JSON.stringify(input) });
+  return writeJson(id ? `${path}/${encodeURIComponent(id)}` : path, {
+    method: id ? "PATCH" : "POST",
+    body: JSON.stringify(input),
+  });
 }
 export function deleteMediaTemplate(template: MediaTemplate): Promise<void> {
-  return writeEmpty(`/api/v1/${template.scope === "SYSTEM" ? "settings/" : ""}media-templates/${encodeURIComponent(template.id)}?expectedVersion=${template.version}`,
-    { method: "DELETE" });
+  return writeEmpty(
+    `/api/v1/${template.scope === "SYSTEM" ? "settings/" : ""}media-templates/${encodeURIComponent(template.id)}?expectedVersion=${template.version}`,
+    { method: "DELETE" },
+  );
 }
 export function uploadMediaTemplateImage(file: File): Promise<MediaTemplateImage> {
-  const body = new FormData(); body.append("file", file);
+  const body = new FormData();
+  body.append("file", file);
   return writeJson("/api/v1/media-templates/images", { method: "POST", body });
 }
 export function copyMediaTemplateImage(projectId: string, versionId: string): Promise<MediaTemplateImage> {
-  return writeJson("/api/v1/media-templates/images/from-version",
-    { method: "POST", body: JSON.stringify({ projectId, versionId }) });
+  return writeJson("/api/v1/media-templates/images/from-version", {
+    method: "POST",
+    body: JSON.stringify({ projectId, versionId }),
+  });
 }
 export function deleteMediaTemplateImage(imageId: string): Promise<void> {
   return writeEmpty(`/api/v1/media-templates/images/${encodeURIComponent(imageId)}`, { method: "DELETE" });
 }
-export function importMediaTemplate(projectId: string, template: MediaTemplate,
-  commandKey: string): Promise<MediaTemplateImport> {
-  return writeJson(`/api/v1/projects/${encodeURIComponent(projectId)}/media-templates/${encodeURIComponent(template.id)}/import`,
-    { method: "POST", body: JSON.stringify({ expectedTemplateVersion: template.version, commandKey }) });
+export function importMediaTemplate(
+  projectId: string,
+  template: MediaTemplate,
+  commandKey: string,
+): Promise<MediaTemplateImport> {
+  return writeJson(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/media-templates/${encodeURIComponent(template.id)}/import`,
+    { method: "POST", body: JSON.stringify({ expectedTemplateVersion: template.version, commandKey }) },
+  );
 }
 /** Replaces a complete draft and its connected reference sources in one CAS transaction. */
-export function replaceMediaDraftInputs(projectId: string, canvasItemId: string,
-  input: SaveMediaDraftRequest): Promise<MediaDraft> {
-  return writeJson(`/api/v1/projects/${encodeURIComponent(projectId)}/canvas-items/${encodeURIComponent(canvasItemId)}/media-draft/replace-inputs`,
-    { method: "POST", body: JSON.stringify(input) });
+export function replaceMediaDraftInputs(
+  projectId: string,
+  canvasItemId: string,
+  input: SaveMediaDraftRequest,
+): Promise<MediaDraft> {
+  return writeJson(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/canvas-items/${encodeURIComponent(canvasItemId)}/media-draft/replace-inputs`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
 }
-export async function uploadLibraryEntry(request: { file: File; kind: "IMAGE" | "VIDEO" | "AUDIO"; name: string; category: LibraryCategory; commandKey: string }): Promise<LibraryCommand> {
-  const body = new FormData(); Object.entries(request).forEach(([key, value]) => body.append(key, value));
-  return writeJson<LibraryCommand>("/api/v1/library/uploads", { method: "POST", body }, t("api.errors.libraryUploadFailed"));
+export async function uploadLibraryEntry(request: {
+  file: File;
+  kind: "IMAGE" | "VIDEO" | "AUDIO";
+  name: string;
+  category: LibraryCategory;
+  commandKey: string;
+}): Promise<LibraryCommand> {
+  const body = new FormData();
+  Object.entries(request).forEach(([key, value]) => body.append(key, value));
+  return writeJson<LibraryCommand>(
+    "/api/v1/library/uploads",
+    { method: "POST", body },
+    t("api.errors.libraryUploadFailed"),
+  );
 }
 
 export type MediaRelaySettingsRequest = components["schemas"]["MediaRelaySettingsRequest"];
@@ -1290,32 +1712,47 @@ export async function getStorageSettings(): Promise<StorageSettings> {
 }
 export async function createStorageProfile(input: CreateStorageProfileRequest): Promise<StorageSettings> {
   return writeJson<StorageSettings>("/api/v1/settings/storage/profiles", {
-    method: "POST", body: JSON.stringify(input),
+    method: "POST",
+    body: JSON.stringify(input),
   });
 }
 export async function updateStorageProfile(id: string, input: UpdateStorageProfileRequest): Promise<StorageSettings> {
   return writeJson<StorageSettings>(`/api/v1/settings/storage/profiles/${encodeURIComponent(id)}`, {
-    method: "PUT", body: JSON.stringify(input),
+    method: "PUT",
+    body: JSON.stringify(input),
   });
 }
 export async function deleteStorageProfile(id: string, expectedVersion: number): Promise<StorageSettings> {
-  return writeJson<StorageSettings>(`/api/v1/settings/storage/profiles/${encodeURIComponent(id)}?expectedVersion=${expectedVersion}`, {
-    method: "DELETE",
-  });
+  return writeJson<StorageSettings>(
+    `/api/v1/settings/storage/profiles/${encodeURIComponent(id)}?expectedVersion=${expectedVersion}`,
+    {
+      method: "DELETE",
+    },
+  );
 }
-export async function activateStorageProfile(input: components["schemas"]["ActivateStorageProfileRequest"]): Promise<StorageSettings> {
+export async function activateStorageProfile(
+  input: components["schemas"]["ActivateStorageProfileRequest"],
+): Promise<StorageSettings> {
   return writeJson<StorageSettings>("/api/v1/settings/storage/active", {
-    method: "PUT", body: JSON.stringify(input),
+    method: "PUT",
+    body: JSON.stringify(input),
   });
 }
-export async function activateMediaRelayProfile(input: components["schemas"]["MediaRelaySettingsRequest"]): Promise<StorageSettings> {
+export async function activateMediaRelayProfile(
+  input: components["schemas"]["MediaRelaySettingsRequest"],
+): Promise<StorageSettings> {
   return writeJson<StorageSettings>("/api/v1/settings/storage/relay", {
-    method: "PUT", body: JSON.stringify(input),
+    method: "PUT",
+    body: JSON.stringify(input),
   });
 }
-export async function rotateStorageCredentials(id: string, input: RotateStorageCredentialsRequest): Promise<StorageSettings> {
+export async function rotateStorageCredentials(
+  id: string,
+  input: RotateStorageCredentialsRequest,
+): Promise<StorageSettings> {
   return writeJson<StorageSettings>(`/api/v1/settings/storage/profiles/${encodeURIComponent(id)}/credentials`, {
-    method: "PUT", body: JSON.stringify(input),
+    method: "PUT",
+    body: JSON.stringify(input),
   });
 }
 
@@ -1335,7 +1772,9 @@ export type SkillOperation = components["schemas"]["SkillOperation"];
 export type SkillSelection = components["schemas"]["SkillSelection"];
 export type AgentSkillBinding = components["schemas"]["AgentSkillBinding"];
 export type SaveAgentSkillBindingRequest = components["schemas"]["SaveAgentSkillBindingRequest"];
-export type SaveSkillDraftRequest = NonNullable<paths["/api/v1/skills/{skillId}/draft"]["put"]["requestBody"]>["content"]["application/json"];
+export type SaveSkillDraftRequest = NonNullable<
+  paths["/api/v1/skills/{skillId}/draft"]["put"]["requestBody"]
+>["content"]["application/json"];
 
 export function listSkills(query = "", cursor?: string, trash = false, category?: SkillCategory) {
   const params = new URLSearchParams({ query });
@@ -1360,7 +1799,10 @@ export function saveSkillDraft(skillId: string, request: SaveSkillDraftRequest) 
   return writeJson<SkillDraft>(`/api/v1/skills/${skillId}/draft`, { method: "PUT", body: JSON.stringify(request) });
 }
 export function publishSkillVersion(skillId: string, expectedDraftVersion: number, commandKey: string) {
-  return writeJson<SkillOperation>(`/api/v1/skills/${skillId}/versions`, { method: "POST", body: JSON.stringify({ expectedDraftVersion, commandKey }) });
+  return writeJson<SkillOperation>(`/api/v1/skills/${skillId}/versions`, {
+    method: "POST",
+    body: JSON.stringify({ expectedDraftVersion, commandKey }),
+  });
 }
 export function getSkillOperation(operationId: string) {
   return readJson<SkillOperation>(`/api/v1/skills/operations/${operationId}`, t("api.errors.requestFailed"));
@@ -1369,24 +1811,43 @@ export function retrySkillOperation(operationId: string) {
   return writeJson<SkillOperation>(`/api/v1/skills/operations/${operationId}/retry`, { method: "POST" });
 }
 export function listSkillVersions(skillId: string) {
-  return readJson<components["schemas"]["SkillVersionList"]>(`/api/v1/skills/${skillId}/versions`, t("api.errors.requestFailed"));
+  return readJson<components["schemas"]["SkillVersionList"]>(
+    `/api/v1/skills/${skillId}/versions`,
+    t("api.errors.requestFailed"),
+  );
 }
 export function getSkillVersion(skillId: string, versionId: string) {
   return readJson<SkillVersion>(`/api/v1/skills/${skillId}/versions/${versionId}`, t("api.errors.requestFailed"));
 }
 export function copySkillVersion(skillId: string, versionId: string, expectedDraftVersion: number) {
-  return writeJson<SkillDraft>(`/api/v1/skills/${skillId}/versions/${versionId}/copy`, { method: "POST", body: JSON.stringify({ expectedDraftVersion }) });
+  return writeJson<SkillDraft>(`/api/v1/skills/${skillId}/versions/${versionId}/copy`, {
+    method: "POST",
+    body: JSON.stringify({ expectedDraftVersion }),
+  });
 }
 export function getAgentSkillBinding(projectId: string, agentId: string) {
-  return readJson<AgentSkillBinding>(`/api/v1/projects/${projectId}/agents/${agentId}/skill-binding`, t("api.errors.requestFailed"));
+  return readJson<AgentSkillBinding>(
+    `/api/v1/projects/${projectId}/agents/${agentId}/skill-binding`,
+    t("api.errors.requestFailed"),
+  );
 }
-export function saveAgentSkillBinding(projectId: string, agentId: string, request: components["schemas"]["SaveAgentSkillBindingRequest"], key: string) {
+export function saveAgentSkillBinding(
+  projectId: string,
+  agentId: string,
+  request: components["schemas"]["SaveAgentSkillBindingRequest"],
+  key: string,
+) {
   return writeJson<AgentSkillBinding>(`/api/v1/projects/${projectId}/agents/${agentId}/skill-binding`, {
-    method: "PUT", headers: { "Idempotency-Key": key }, body: JSON.stringify(request),
+    method: "PUT",
+    headers: { "Idempotency-Key": key },
+    body: JSON.stringify(request),
   });
 }
 export function copySkill(skillId: string, skillVersionId: string, title: string) {
-  return writeJson<CreativeSkill>(`/api/v1/skills/${skillId}/copy`, { method: "POST", body: JSON.stringify({title,skillVersionId}) });
+  return writeJson<CreativeSkill>(`/api/v1/skills/${skillId}/copy`, {
+    method: "POST",
+    body: JSON.stringify({ title, skillVersionId }),
+  });
 }
 export function skillAssetThumbnailUrl(skillId: string, versionId: string, alias: string) {
   return `/api/v1/skills/${encodeURIComponent(skillId)}/versions/${encodeURIComponent(versionId)}/assets/${encodeURIComponent(alias)}/thumbnail`;

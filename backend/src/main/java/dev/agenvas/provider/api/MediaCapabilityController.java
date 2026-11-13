@@ -63,10 +63,14 @@ public class MediaCapabilityController {
         Objects.requireNonNull(administrator, "Authenticated administrator required");
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new KlingProfiles(
                 KlingModels.profiles().stream().map(profile -> new KlingProfile(
-                        profile.kind() == Task.Kind.IMAGE_GENERATION ? KlingModels.IMAGE_ADAPTER_ID : KlingModels.VIDEO_ADAPTER_ID,
+                        profile.kind() == Task.Kind.IMAGE_GENERATION
+                                ? KlingModels.IMAGE_ADAPTER_ID
+                                : KlingModels.VIDEO_ADAPTER_ID,
                         profile.model().isEmpty() ? null : profile.model(), profile.operation().name(), profile.kind(),
-                        KlingModels.inputs(profile), new KlingInputLimits(KlingModels.declaration(profile).maxReferenceImages(),
-                                KlingModels.declaration(profile).maxReferenceVideos()))).toList()));
+                        KlingModels.inputs(profile),
+                        new KlingInputLimits(KlingModels.declaration(profile).maxReferenceImages(),
+                                KlingModels.declaration(profile).maxReferenceVideos())))
+                        .toList()));
     }
 
     @GetMapping("/media-profiles")
@@ -75,8 +79,11 @@ public class MediaCapabilityController {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new NativeProfiles(
                 dev.agenvas.provider.domain.NativeMediaProfiles.profiles().stream().map(p -> new NativeProfile(
                         p.profile().adapterId(), p.profile().model(), p.profile().operation(), p.profile().kind(),
-                        p.inputs(), new NativeInputLimits(p.declaration().maxReferenceImages(), p.declaration().maxReferenceVideos(),
-                                p.declaration().maxReferenceAudios()))).toList()));
+                        p.inputs(),
+                        new NativeInputLimits(p.declaration().maxReferenceImages(),
+                                p.declaration().maxReferenceVideos(),
+                                p.declaration().maxReferenceAudios())))
+                        .toList()));
     }
 
     @PostMapping("/media-connections")
@@ -154,10 +161,11 @@ public class MediaCapabilityController {
 
     private ResponseEntity<MediaSettingsResponse> response() {
         List<ConnectionView> connections = catalog.connections().stream().map(this::view).toList();
-        List<DefaultView> defaults = Arrays.stream(new Task.Kind[] {
+        List<DefaultView> defaults = Arrays.stream(new Task.Kind[]{
                 Task.Kind.IMAGE_GENERATION, Task.Kind.VIDEO_GENERATION, Task.Kind.AUDIO_GENERATION})
                 .map(kind -> new DefaultView(kind, catalog.defaultCapabilityId(kind),
-                        catalog.defaultVersion(kind))).toList();
+                        catalog.defaultVersion(kind)))
+                .toList();
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .body(new MediaSettingsResponse(connections, defaults));
     }
@@ -179,52 +187,75 @@ public class MediaCapabilityController {
         return new CapabilityView(capability.id(), capability.name(), capability.enabled(),
                 capability.version(), capability.currentVersion(), snapshot.adapterId(),
                 declaration.kind(), declaration.minimumSeconds(), declaration.maximumSeconds(),
-                declaration.maxReferenceImages(), declaration.maxReferenceAudios(), declaration.maxReferenceVideos(), declaration.supportedVideoInputModes().stream()
-                        .sorted().toList(), declaration.defaultVideoInputMode(),
+                declaration.maxReferenceImages(), declaration.maxReferenceAudios(), declaration.maxReferenceVideos(),
+                declaration.supportedVideoInputModes().stream()
+                        .sorted().toList(),
+                declaration.defaultVideoInputMode(),
                 declaration.supportsEndFrame(),
                 declaration.supportedImageAspectRatios().stream().sorted().toList(),
                 declaration.supportedImageResolutions().stream().sorted().toList(),
                 declaration.supportedImageQualities().stream().sorted().toList(),
                 declaration.supportsTransparentBackground(), declaration.supportsImageMask(),
-                MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(snapshot.adapterId()) && declaration.maxReferenceImages() > 0
+                MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(snapshot.adapterId())
+                        && declaration.maxReferenceImages() > 0
                         && dev.agenvas.provider.domain.OpenAiImageOptions.supportsMarkup(settings),
                 snapshot.mappingSha256(), settings.isMissingNode()
-                        ? mapper.createObjectNode() : settings);
+                        ? mapper.createObjectNode()
+                        : settings);
     }
 
-    public record ComfyWorkflowImportRequest(@NotBlank @Size(max = ComfyUiWorkflowDefinition.MAX_JSON_BYTES) String workflowJson) {}
+    public record ComfyWorkflowImportRequest(
+            @NotBlank @Size(max = ComfyUiWorkflowDefinition.MAX_JSON_BYTES) String workflowJson) {
+    }
     public record CreateConnectionRequest(@NotBlank @Size(max = 160) String name,
-            @NotBlank String platform, String origin, String apiKey) {}
+            @NotBlank String platform, String origin, String apiKey) {
+    }
     public record UpdateConnectionRequest(@Min(0) long expectedVersion,
             @NotBlank @Size(max = 160) String name, boolean enabled,
-            String origin, String apiKey) {}
+            String origin, String apiKey) {
+    }
     public record CreateCapabilityRequest(@NotBlank @Size(max = 160) String name,
-            @NotBlank String adapterId, JsonNode settings) {}
+            @NotBlank String adapterId, JsonNode settings) {
+    }
     public record UpdateCapabilityRequest(@Min(0) long expectedVersion,
             @NotBlank @Size(max = 160) String name, boolean enabled,
-            @NotBlank String adapterId, JsonNode settings) {}
-    public record SetDefaultRequest(@Min(0) long expectedVersion, UUID capabilityId) {}
+            @NotBlank String adapterId, JsonNode settings) {
+    }
+    public record SetDefaultRequest(@Min(0) long expectedVersion, UUID capabilityId) {
+    }
     public record MediaSettingsResponse(List<ConnectionView> connections,
-            List<DefaultView> defaults) {}
+            List<DefaultView> defaults) {
+    }
     public record ConnectionView(UUID id, String name, String platform, boolean enabled,
             long version, int connectionVersion, String origin, String keyMask,
             String connectivityStatus, boolean realGenerationTested,
-            List<CapabilityView> capabilities) {}
+            List<CapabilityView> capabilities) {
+    }
     public record CapabilityView(UUID id, String name, boolean enabled, long version,
             int capabilityVersion, String adapterId, Task.Kind kind,
-            int minimumSeconds, int maximumSeconds, int maxReferenceImages, int maxReferenceAudios, int maxReferenceVideos,
+            int minimumSeconds, int maximumSeconds, int maxReferenceImages, int maxReferenceAudios,
+            int maxReferenceVideos,
             List<String> supportedVideoInputModes, String defaultVideoInputMode,
             boolean supportsEndFrame, List<String> supportedImageAspectRatios,
             List<String> supportedImageResolutions, List<String> supportedImageQualities,
-            boolean supportsTransparentBackground, boolean supportsImageMask, boolean supportsImageMarkup, String mappingSha256,
-            JsonNode settings) {}
-    public record DefaultView(Task.Kind kind, UUID capabilityId, long version) {}
-    public record NativeProfiles(List<NativeProfile> profiles) {}
+            boolean supportsTransparentBackground, boolean supportsImageMask, boolean supportsImageMarkup,
+            String mappingSha256,
+            JsonNode settings) {
+    }
+    public record DefaultView(Task.Kind kind, UUID capabilityId, long version) {
+    }
+    public record NativeProfiles(List<NativeProfile> profiles) {
+    }
     public record NativeProfile(String adapterId, String model, String operation, Task.Kind kind,
-            List<dev.agenvas.provider.domain.CreatorInputField> inputs, NativeInputLimits inputLimits) {}
-    public record NativeInputLimits(int maxReferenceImages, int maxReferenceVideos, int maxReferenceAudios) {}
-    public record KlingProfiles(List<KlingProfile> profiles) {}
+            List<dev.agenvas.provider.domain.CreatorInputField> inputs, NativeInputLimits inputLimits) {
+    }
+    public record NativeInputLimits(int maxReferenceImages, int maxReferenceVideos, int maxReferenceAudios) {
+    }
+    public record KlingProfiles(List<KlingProfile> profiles) {
+    }
     public record KlingProfile(String adapterId, String model, String operation, Task.Kind kind,
-            List<KlingModels.Field> inputs, KlingInputLimits inputLimits) {}
-    public record KlingInputLimits(int maxReferenceImages, int maxReferenceVideos) {}
+            List<KlingModels.Field> inputs, KlingInputLimits inputLimits) {
+    }
+    public record KlingInputLimits(int maxReferenceImages, int maxReferenceVideos) {
+    }
 }

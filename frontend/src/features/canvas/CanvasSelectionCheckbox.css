@@ -8,7 +8,10 @@
 }
 
 /* Node selection keeps a larger pointer target than inline form checkboxes. */
-.canvas-selection-checkbox[data-slot="checkbox"] { width: 24px; height: 24px; }
+.canvas-selection-checkbox[data-slot="checkbox"] {
+  width: 24px;
+  height: 24px;
+}
 
 .canvas-selection-checkbox--inline {
   position: relative;

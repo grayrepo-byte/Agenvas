@@ -39,12 +39,20 @@ public class ImagePromptTaskService {
     private final Clock clock;
     private final dev.agenvas.shared.i18n.ApiMessages messages;
 
-    public ImagePromptTaskService(TaskRepository tasks, ArtifactService artifacts, ProjectService projects, CanvasItemQueryService canvas,
+    public ImagePromptTaskService(TaskRepository tasks, ArtifactService artifacts, ProjectService projects,
+            CanvasItemQueryService canvas,
             ChatGateway gateway, PromptService prompts, ProjectEventService events, UsageService usage,
             ObjectMapper mapper, Clock clock, dev.agenvas.shared.i18n.ApiMessages messages) {
-        this.tasks = tasks; this.artifacts = artifacts; this.canvas = canvas; this.gateway = gateway;
+        this.tasks = tasks;
+        this.artifacts = artifacts;
+        this.canvas = canvas;
+        this.gateway = gateway;
         this.projects = projects;
-        this.prompts = prompts; this.events = events; this.usage = usage; this.mapper = mapper; this.clock = clock;
+        this.prompts = prompts;
+        this.events = events;
+        this.usage = usage;
+        this.mapper = mapper;
+        this.clock = clock;
         this.messages = messages;
     }
 
@@ -53,8 +61,9 @@ public class ImagePromptTaskService {
     public Task run(UUID owner, UUID project, UUID artifact, UUID item, UUID version,
             long expectedItemVersion, String language, String commandKey) {
         if (item == null || version == null || expectedItemVersion < 0 || commandKey == null
-                || commandKey.isBlank() || commandKey.length() > 160) throw problem(HttpStatus.BAD_REQUEST,
-                        "VALIDATION_ERROR", "invalid", false);
+                || commandKey.isBlank() || commandKey.length() > 160)
+            throw problem(HttpStatus.BAD_REQUEST,
+                    "VALIDATION_ERROR", "invalid", false);
         ObjectNode request = mapper.createObjectNode().put("artifactId", artifact.toString())
                 .put("canvasItemId", item.toString()).put("sourceVersionId", version.toString())
                 .put("expectedCanvasItemVersion", expectedItemVersion);
@@ -78,28 +87,36 @@ public class ImagePromptTaskService {
             if (requireImage(owner, project, artifact).archivedAt() != null)
                 throw problem(HttpStatus.CONFLICT, "IMAGE_PROMPT_CONFLICT", "conflict", false);
             var image = artifacts.requireImageVersionForTask(owner, project, version);
-            if (!artifact.equals(image.artifactId())) throw problem(HttpStatus.CONFLICT,
-                    "IMAGE_PROMPT_CONFLICT", "conflict", false);
+            if (!artifact.equals(image.artifactId()))
+                throw problem(HttpStatus.CONFLICT,
+                        "IMAGE_PROMPT_CONFLICT", "conflict", false);
             Task active = tasks.listImagePrompts(owner, project, item).stream()
                     .filter(task -> task.status() == Task.Status.READY || task.status() == Task.Status.RUNNING)
                     .findFirst().orElse(null);
             // A different command cannot alias an existing task without its own durable replay record.
-            if (active != null) throw problem(HttpStatus.CONFLICT, "IMAGE_PROMPT_IN_PROGRESS", "in-progress", false);
+            if (active != null)
+                throw problem(HttpStatus.CONFLICT, "IMAGE_PROMPT_IN_PROGRESS", "in-progress", false);
             var config = gateway.configIdentity();
             var model = gateway.modelDetailsFor(config);
-            if (!model.available()) throw problem(HttpStatus.CONFLICT, "LLM_CONFIG_UNAVAILABLE", "model-unavailable", false);
+            if (!model.available())
+                throw problem(HttpStatus.CONFLICT, "LLM_CONFIG_UNAVAILABLE", "model-unavailable", false);
             var prompt = prompts.require(PROMPT_KEY, PromptService.Kind.FUNCTION);
             ObjectNode input = request.deepCopy().put("schemaVersion", INPUT_SCHEMA_VERSION)
                     .put("purpose", Task.IMAGE_PROMPT_PURPOSE).put("language", language)
                     .put("outputTitle", messages.text(ApiMessage.of("mock".equals(config.source())
-                            ? "api.image-prompt.mock-card-title" : "api.image-prompt.card-title"), java.util.Locale.forLanguageTag(language)))
-                    .put("systemPrompt", prompt.content()).put("promptKey", prompt.key()).put("promptVersion", prompt.version())
+                            ? "api.image-prompt.mock-card-title"
+                            : "api.image-prompt.card-title"), java.util.Locale.forLanguageTag(language)))
+                    .put("systemPrompt", prompt.content()).put("promptKey", prompt.key())
+                    .put("promptVersion", prompt.version())
                     .put("modelConfigSource", config.source()).put("modelConfigVersion", config.version());
             var budget = gateway.requestBudgetFor(config);
-            if (budget != null) input.set("requestBudget", mapper.valueToTree(budget));
+            if (budget != null)
+                input.set("requestBudget", mapper.valueToTree(budget));
             input.set("request", request);
-            if (model.providerAdapter() != null) input.put("providerAdapter", model.providerAdapter());
-            if (model.modelId() != null) input.put("modelId", model.modelId());
+            if (model.providerAdapter() != null)
+                input.put("providerAdapter", model.providerAdapter());
+            if (model.modelId() != null)
+                input.put("modelId", model.modelId());
             var now = clock.instant();
             Task task = new Task(UUID.randomUUID(), project, null, commandKey, Task.Kind.TEXT_GENERATION,
                     Task.Status.READY, false, input, Sha256.hex(input.toString()), null, null, 1, now,
@@ -126,11 +143,13 @@ public class ImagePromptTaskService {
             Task current = tasks.find(owner, project, taskId).filter(Task::isImagePrompt)
                     .filter(task -> artifact.toString().equals(task.input().path("artifactId").asText()))
                     .orElseThrow(() -> problem(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", "not-found", false));
-            if (current.status() == Task.Status.CANCELED) return ProjectEventService.Change.unchanged(current);
+            if (current.status() == Task.Status.CANCELED)
+                return ProjectEventService.Change.unchanged(current);
             if (!tasks.cancelPromptTask(current, clock.instant()))
                 throw problem(HttpStatus.CONFLICT, "IMAGE_PROMPT_CONFLICT", "conflict", false);
             Task canceled = tasks.find(owner, project, taskId).orElseThrow();
-            if (current.output() == null) usage.releaseDirectTextTask(owner, canceled);
+            if (current.output() == null)
+                usage.releaseDirectTextTask(owner, canceled);
             appendEvent(owner, canceled);
             return ProjectEventService.Change.unchanged(canceled);
         }).value();

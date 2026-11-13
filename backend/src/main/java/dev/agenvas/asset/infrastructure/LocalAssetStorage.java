@@ -97,7 +97,8 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
      */
     public record StoredImage(String objectKey, String contentType, long byteSize,
             String sha256, int width, int height, String thumbnailKey,
-            long thumbnailByteSize, String thumbnailSha256) {}
+            long thumbnailByteSize, String thumbnailSha256) {
+    }
 
     /**
      * 已探测的 MP4 和已提取 PNG 海报图，均以不可变键安装。
@@ -114,7 +115,8 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
      */
     public record StoredVideo(String objectKey, long byteSize, String sha256,
             int width, int height, int durationMs, String thumbnailKey, long thumbnailByteSize,
-            String thumbnailSha256) {}
+            String thumbnailSha256) {
+    }
 
     /** 使用共享卷文件锁保护一个任务的图片恢复或归档临界区。 */
     public <T> T withTaskImageLock(UUID projectId, UUID assetId, Supplier<T> action) {
@@ -201,7 +203,8 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
                     "-of", "json", path.toString())));
         } catch (MediaToolRunner.MediaToolException exception) {
             if (exception.invalidInput()) {
-                throw invalid(ApiMessage.of("api.local-asset-storage.unable-to-parse-video-media"), "ASSET_INVALID_VIDEO");
+                throw invalid(ApiMessage.of("api.local-asset-storage.unable-to-parse-video-media"),
+                        "ASSET_INVALID_VIDEO");
             }
             throw exception;
         }
@@ -214,11 +217,13 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
                 || !format.contains("mp4") || width < 1 || height < 1
                 || (long) width * height > MAX_IMAGE_PIXELS
                 || !Double.isFinite(duration) || duration <= 0 || duration * 1000 > MAX_VIDEO_DURATION_MS) {
-            throw invalid(ApiMessage.of("api.local-asset-storage.video-must-be-decodable-mp4-within-archive-limits"), "ASSET_INVALID_VIDEO");
+            throw invalid(ApiMessage.of("api.local-asset-storage.video-must-be-decodable-mp4-within-archive-limits"),
+                    "ASSET_INVALID_VIDEO");
         }
         int durationMs = Math.toIntExact(Math.round(duration * 1_000));
         if (durationMs < 1 || durationMs > MAX_VIDEO_DURATION_MS) {
-            throw invalid(ApiMessage.of("api.local-asset-storage.the-video-length-exceeds-the-supported-range"), "ASSET_INVALID_VIDEO");
+            throw invalid(ApiMessage.of("api.local-asset-storage.the-video-length-exceeds-the-supported-range"),
+                    "ASSET_INVALID_VIDEO");
         }
         return new VideoDetails(width, height, durationMs);
     }
@@ -228,7 +233,8 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
      * @param height 视频流像素高度
      * @param durationMs 视频时长，已验证为 1 到 600,000 毫秒
      */
-    private record VideoDetails(int width, int height, int durationMs) {}
+    private record VideoDetails(int width, int height, int durationMs) {
+    }
 
     /** 限流保存视频字节，实测容器与视频流后解码首帧并原子安装 MP4 和海报。 */
     public static final long MAX_AUDIO_BYTES = dev.agenvas.asset.domain.MediaUploadLimits.AUDIO_BYTES;
@@ -237,7 +243,8 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
     private static final int AUDIO_VALIDATION_BYTES_PER_SECOND = AUDIO_VALIDATION_SAMPLE_RATE * Short.BYTES;
     private static final int MIN_AUDIO_DURATION_MS = 100;
     public record StoredAudio(String objectKey, String contentType, long byteSize,
-            String sha256, int durationMs) {}
+            String sha256, int durationMs) {
+    }
 
     public <T> T withTaskAudioLock(UUID projectId, UUID assetId, Supplier<T> action) {
         return withTaskArchiveLock(projectId, assetId, "audio", action);
@@ -266,7 +273,9 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
             return new StoredAudio(key, details.contentType(), size, details.sha256(), details.durationMs());
         } catch (IOException | NoSuchAlgorithmException failure) {
             throw new IllegalStateException("Private audio archive failed", failure);
-        } finally { cleanup(temporary); }
+        } finally {
+            cleanup(temporary);
+        }
     }
 
     /** Recover installed bytes after a database failure without requesting synthesis again. */
@@ -275,7 +284,8 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
             for (String extension : java.util.List.of(".mp3", ".wav", ".ogg")) {
                 String key = projectId + "/" + assetId + extension;
                 Path file = checkedPath(key);
-                if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS)) continue;
+                if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS))
+                    continue;
                 if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)
                         || Files.size(file) < 1 || Files.size(file) > MAX_AUDIO_BYTES)
                     throw new IllegalStateException("Recovered audio exceeds archive bounds");
@@ -302,10 +312,12 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
                 case "ogg" -> "audio/ogg";
                 default -> null;
             };
-            if (mime == null || "audio/ogg".equals(mime) && !"opus".equals(streams.path(0).path("codec_name").asText()) || !streams.isArray() || streams.size() != 1
+            if (mime == null || "audio/ogg".equals(mime) && !"opus".equals(streams.path(0).path("codec_name").asText())
+                    || !streams.isArray() || streams.size() != 1
                     || !"audio".equals(streams.path(0).path("codec_type").asText())
                     || !Double.isFinite(seconds) || seconds < 0.1)
-                throw invalid(ApiMessage.of("api.local-asset-storage.audio-must-be-decodable-mp3-wav-or-ogg-and-no"), "ASSET_INVALID_AUDIO");
+                throw invalid(ApiMessage.of("api.local-asset-storage.audio-must-be-decodable-mp3-wav-or-ogg-and-no"),
+                        "ASSET_INVALID_AUDIO");
             // MP3 container duration includes encoder padding. Count decoded fixed-rate samples
             // instead; the extra second bounds scratch space while still rejecting overlong audio.
             decoded = Files.createTempFile(file.getParent(), ".audio-decode-", ".pcm");
@@ -318,11 +330,13 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
             if (decodedBytes % Short.BYTES != 0
                     || decodedBytes < (long) AUDIO_VALIDATION_BYTES_PER_SECOND * MIN_AUDIO_DURATION_MS / 1000
                     || decodedBytes > (long) AUDIO_VALIDATION_BYTES_PER_SECOND * MAX_AUDIO_DURATION_MS / 1000)
-                throw invalid(ApiMessage.of("api.local-asset-storage.audio-must-be-decodable-mp3-wav-or-ogg-and-no"), "ASSET_INVALID_AUDIO");
+                throw invalid(ApiMessage.of("api.local-asset-storage.audio-must-be-decodable-mp3-wav-or-ogg-and-no"),
+                        "ASSET_INVALID_AUDIO");
             return new StoredAudio(key, mime, size, hash,
                     (int) Math.round((double) decodedBytes * 1000 / AUDIO_VALIDATION_BYTES_PER_SECOND));
         } catch (MediaToolRunner.MediaToolException failure) {
-            if (failure.invalidInput()) throw invalid(ApiMessage.of("api.local-asset-storage.audio-cannot-be-decoded"), "ASSET_INVALID_AUDIO");
+            if (failure.invalidInput())
+                throw invalid(ApiMessage.of("api.local-asset-storage.audio-cannot-be-decoded"), "ASSET_INVALID_AUDIO");
             throw failure;
         } catch (IOException failure) {
             throw new IllegalStateException("Private audio validation failed", failure);
@@ -341,7 +355,8 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
             byte[] header = source.readNBytes(4096);
             boolean webm = hasWebmDocType(header);
             InputStream complete = new java.io.SequenceInputStream(new java.io.ByteArrayInputStream(header), source);
-            copyBounded(complete, original, MessageDigest.getInstance("SHA-256"), webm ? MAX_WEBM_BYTES : MAX_VIDEO_BYTES);
+            copyBounded(complete, original, MessageDigest.getInstance("SHA-256"),
+                    webm ? MAX_WEBM_BYTES : MAX_VIDEO_BYTES);
             if (!webm) {
                 try (InputStream input = Files.newInputStream(original)) {
                     return storeVideo(projectId, assetId, input);
@@ -349,7 +364,8 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
             }
             JsonNode probe = mapper.readTree(mediaTools.ffprobe(java.util.List.of(
                     "-v", "error", "-protocol_whitelist", "file,pipe", "-max_pixels", "921600", "-show_entries",
-                    "stream=codec_type,codec_name,width,height:format=format_name,duration", "-of", "json", original.toString())));
+                    "stream=codec_type,codec_name,width,height:format=format_name,duration", "-of", "json",
+                    original.toString())));
             JsonNode streams = probe.path("streams"), stream = streams.path(0);
             int width = stream.path("width").asInt(), height = stream.path("height").asInt();
             double duration = probe.path("format").path("duration").asDouble(Double.NaN);
@@ -358,15 +374,18 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
                     || !java.util.Set.of("vp8", "vp9").contains(stream.path("codec_name").asText())
                     || !"matroska,webm".equals(probe.path("format").path("format_name").asText())
                     || width < 1 || height < 1 || width > MAX_WEBM_SIDE || height > MAX_WEBM_SIDE
-                    || (!Double.isNaN(duration) && (!Double.isFinite(duration) || duration <= 0 || duration * 1000 > MAX_WEBM_DURATION_MS)))
+                    || (!Double.isNaN(duration)
+                            && (!Double.isFinite(duration) || duration <= 0 || duration * 1000 > MAX_WEBM_DURATION_MS)))
                 throw invalidWebm();
             // MediaRecorder usually omits duration. Decode/count all frames under the existing
             // tool deadline before conversion; compare counts afterwards so -t/-fs never publish a truncation.
             long frames = countVideoFrames(original);
-            if (frames < 1 || frames > MAX_WEBM_FRAMES) throw invalidWebm();
+            if (frames < 1 || frames > MAX_WEBM_FRAMES)
+                throw invalidWebm();
             converted = Files.createTempFile(directory, ".video-converted-", ".mp4");
             mediaTools.ffmpeg(java.util.List.of("-hide_banner", "-loglevel", "error", "-xerror", "-nostdin",
-                    "-protocol_whitelist", "file,pipe", "-threads", "2", "-max_pixels", "921600", "-i", original.toString(),
+                    "-protocol_whitelist", "file,pipe", "-threads", "2", "-max_pixels", "921600", "-i",
+                    original.toString(),
                     "-map", "0:v:0", "-an", "-sn", "-dn", "-map_metadata", "-1", "-t", "122",
                     "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2", "-fps_mode", "passthrough",
                     "-c:v", "libx264", "-threads", "2", "-preset", "ultrafast", "-crf", "23",
@@ -374,12 +393,14 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
             VideoDetails details = inspectVideo(converted);
             if (Files.size(converted) > MAX_WEBM_BYTES || details.durationMs() > MAX_WEBM_DURATION_MS
                     || details.width() > MAX_WEBM_SIDE || details.height() > MAX_WEBM_SIDE
-                    || countVideoFrames(converted) != frames) throw invalidWebm();
+                    || countVideoFrames(converted) != frames)
+                throw invalidWebm();
             try (InputStream input = Files.newInputStream(converted)) {
                 return storeVideo(projectId, assetId, input);
             }
         } catch (MediaToolRunner.MediaToolException failure) {
-            if (failure.invalidInput()) throw invalidWebm();
+            if (failure.invalidInput())
+                throw invalidWebm();
             throw failure;
         } catch (IOException | NoSuchAlgorithmException failure) {
             throw new IllegalStateException("Private video import failed", failure);
@@ -391,7 +412,8 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
 
     private long countVideoFrames(Path file) {
         JsonNode probe = mapper.readTree(mediaTools.ffprobe(java.util.List.of(
-                "-v", "error", "-protocol_whitelist", "file,pipe", "-threads", "2", "-max_pixels", "921600", "-select_streams", "v:0",
+                "-v", "error", "-protocol_whitelist", "file,pipe", "-threads", "2", "-max_pixels", "921600",
+                "-select_streams", "v:0",
                 "-count_frames", "-show_entries", "stream=nb_read_frames", "-of", "json", file.toString())));
         return probe.path("streams").path(0).path("nb_read_frames").asLong(-1);
     }
@@ -404,29 +426,39 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
     /** Read only the bounded EBML header, not a filename or MIME hint; Matroska is not WebM. */
     private boolean hasWebmDocType(byte[] header) {
         if (header.length < 5 || header[0] != 0x1a || header[1] != 0x45
-                || (header[2] & 255) != 0xdf || (header[3] & 255) != 0xa3) return false;
+                || (header[2] & 255) != 0xdf || (header[3] & 255) != 0xa3)
+            return false;
         int[] offset = {4};
         long length = ebmlNumber(header, offset, false);
-        if (length < 0 || length > header.length - offset[0]) return false;
+        if (length < 0 || length > header.length - offset[0])
+            return false;
         int end = offset[0] + (int) length;
         while (offset[0] < end) {
             long id = ebmlNumber(header, offset, true);
             long size = ebmlNumber(header, offset, false);
-            if (id < 0 || size < 0 || size > end - offset[0]) return false;
-            if (id == 0x4282) return size == 4 && header[offset[0]] == 'w'
-                    && header[offset[0] + 1] == 'e' && header[offset[0] + 2] == 'b' && header[offset[0] + 3] == 'm';
+            if (id < 0 || size < 0 || size > end - offset[0])
+                return false;
+            if (id == 0x4282)
+                return size == 4 && header[offset[0]] == 'w'
+                        && header[offset[0] + 1] == 'e' && header[offset[0] + 2] == 'b' && header[offset[0] + 3] == 'm';
             offset[0] += (int) size;
         }
         return false;
     }
 
     private long ebmlNumber(byte[] bytes, int[] offset, boolean keepMarker) {
-        if (offset[0] >= bytes.length) return -1;
+        if (offset[0] >= bytes.length)
+            return -1;
         int first = bytes[offset[0]++] & 255, mask = 128, width = 1;
-        while (mask != 0 && (first & mask) == 0) { mask >>= 1; width++; }
-        if (mask == 0 || width > (keepMarker ? 4 : 8) || width - 1 > bytes.length - offset[0]) return -1;
+        while (mask != 0 && (first & mask) == 0) {
+            mask >>= 1;
+            width++;
+        }
+        if (mask == 0 || width > (keepMarker ? 4 : 8) || width - 1 > bytes.length - offset[0])
+            return -1;
         long result = keepMarker ? first : first & (mask - 1);
-        for (int index = 1; index < width; index++) result = (result << 8) | (bytes[offset[0]++] & 255);
+        for (int index = 1; index < width; index++)
+            result = (result << 8) | (bytes[offset[0]++] & 255);
         return result;
     }
 
@@ -446,13 +478,16 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
                         "-vf", "scale=480:-2", "-y", posterTemporary.toString()));
             } catch (MediaToolRunner.MediaToolException exception) {
                 if (exception.invalidInput()) {
-                    throw invalid(ApiMessage.of("api.local-asset-storage.unable-to-decode-the-first-frame-of-the-video"), "ASSET_INVALID_VIDEO");
+                    throw invalid(
+                            ApiMessage.of("api.local-asset-storage.unable-to-decode-the-first-frame-of-the-video"),
+                            "ASSET_INVALID_VIDEO");
                 }
                 throw exception;
             }
             if (Files.size(posterTemporary) < 1 || Files.size(posterTemporary) > MAX_IMAGE_BYTES
                     || ImageIO.read(posterTemporary.toFile()) == null) {
-                throw invalid(ApiMessage.of("api.local-asset-storage.unable-to-decode-the-first-frame-of-the-video"), "ASSET_INVALID_VIDEO");
+                throw invalid(ApiMessage.of("api.local-asset-storage.unable-to-decode-the-first-frame-of-the-video"),
+                        "ASSET_INVALID_VIDEO");
             }
             String key = projectId + "/" + assetId + ".mp4";
             String posterKey = projectId + "/" + assetId + ".thumb.png";
@@ -520,8 +555,10 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
             return result;
         } finally {
             if (!installed) {
-                if (originalMoved) cleanup(originalStable);
-                if (previewMoved) cleanup(previewStable);
+                if (originalMoved)
+                    cleanup(originalStable);
+                if (previewMoved)
+                    cleanup(previewStable);
             }
         }
     }
@@ -538,7 +575,8 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
         Path original = null;
         for (String suffix : PREPARED_IMAGE_ORIGINAL_SUFFIXES) {
             Path candidate = checkedPath(prefix + suffix);
-            if (!Files.exists(candidate, LinkOption.NOFOLLOW_LINKS)) continue;
+            if (!Files.exists(candidate, LinkOption.NOFOLLOW_LINKS))
+                continue;
             if (!Files.isRegularFile(candidate, LinkOption.NOFOLLOW_LINKS)) {
                 throw new IllegalStateException("Task image path is not a regular file");
             }
@@ -687,16 +725,22 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
                 count += read;
                 if (count > maximum) {
                     throw new ApiProblemException(HttpStatus.PAYLOAD_TOO_LARGE,
-                            "ASSET_TOO_LARGE", ApiMessage.of("api.local-asset-storage.material-is-too-large"), ApiMessage.of("api.local-asset-storage.the-material-exceeds-the-archive-size-limit"), false);
+                            "ASSET_TOO_LARGE", ApiMessage.of("api.local-asset-storage.material-is-too-large"),
+                            ApiMessage.of("api.local-asset-storage.the-material-exceeds-the-archive-size-limit"),
+                            false);
                 }
                 output.write(buffer, 0, read);
             }
         }
         if (count == 0) {
             throw maximum == MAX_VIDEO_BYTES
-                    ? invalid(ApiMessage.of("api.local-asset-storage.video-file-cannot-be-empty"), "ASSET_INVALID_VIDEO")
-                    : maximum == MAX_AUDIO_BYTES ? invalid(ApiMessage.of("api.local-asset-storage.audio-file-cannot-be-empty"), "ASSET_INVALID_AUDIO")
-                    : invalid(ApiMessage.of("api.local-asset-storage.image-file-cannot-be-empty"), "ASSET_INVALID_IMAGE");
+                    ? invalid(ApiMessage.of("api.local-asset-storage.video-file-cannot-be-empty"),
+                            "ASSET_INVALID_VIDEO")
+                    : maximum == MAX_AUDIO_BYTES
+                            ? invalid(ApiMessage.of("api.local-asset-storage.audio-file-cannot-be-empty"),
+                                    "ASSET_INVALID_AUDIO")
+                            : invalid(ApiMessage.of("api.local-asset-storage.image-file-cannot-be-empty"),
+                                    "ASSET_INVALID_IMAGE");
         }
         return count;
     }
@@ -714,7 +758,9 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
             }
             Iterator<ImageReader> readers = ImageIO.getImageReaders(input);
             if (!readers.hasNext()) {
-                throw invalid(ApiMessage.of("api.local-asset-storage.only-decodable-png-jpeg-or-webp-images-are-supported"), "ASSET_INVALID_IMAGE");
+                throw invalid(
+                        ApiMessage.of("api.local-asset-storage.only-decodable-png-jpeg-or-webp-images-are-supported"),
+                        "ASSET_INVALID_IMAGE");
             }
             ImageReader reader = readers.next();
             try {
@@ -724,11 +770,13 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
                         channel.position(Files.size(file) - 1);
                         var trailer = java.nio.ByteBuffer.allocate(1);
                         if (channel.read(trailer) != 1 || trailer.array()[0] != 0x3b)
-                            throw invalid(ApiMessage.of("api.local-asset-storage.image-decoding-failed"), "ASSET_INVALID_IMAGE");
+                            throw invalid(ApiMessage.of("api.local-asset-storage.image-decoding-failed"),
+                                    "ASSET_INVALID_IMAGE");
                     }
                 }
                 reader.setInput(input, !format.equals("gif"), !format.equals("gif"));
-                if (format.equals("gif")) return inspectGif(reader);
+                if (format.equals("gif"))
+                    return inspectGif(reader);
                 String contentType;
                 String extension;
                 if (format.equals("png")) {
@@ -741,17 +789,20 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
                     contentType = "image/webp";
                     extension = ".webp";
                 } else {
-                    throw invalid(ApiMessage.of("api.local-asset-storage.this-image-encoding-is-not-supported-yet"), "ASSET_UNSUPPORTED_IMAGE");
+                    throw invalid(ApiMessage.of("api.local-asset-storage.this-image-encoding-is-not-supported-yet"),
+                            "ASSET_UNSUPPORTED_IMAGE");
                 }
                 int width = reader.getWidth(0);
                 int height = reader.getHeight(0);
                 if (width < 1 || height < 1 || (long) width * height > MAX_IMAGE_PIXELS) {
-                    throw invalid(ApiMessage.of("api.local-asset-storage.image-pixels-exceed-40-mp-limit"), "ASSET_TOO_MANY_PIXELS");
+                    throw invalid(ApiMessage.of("api.local-asset-storage.image-pixels-exceed-40-mp-limit"),
+                            "ASSET_TOO_MANY_PIXELS");
                 }
                 BufferedImage decoded = reader.read(0);
                 if (decoded == null || decoded.getWidth() != width
                         || decoded.getHeight() != height) {
-                    throw invalid(ApiMessage.of("api.local-asset-storage.image-decoding-failed"), "ASSET_INVALID_IMAGE");
+                    throw invalid(ApiMessage.of("api.local-asset-storage.image-decoding-failed"),
+                            "ASSET_INVALID_IMAGE");
                 }
                 return new ImageDetails(contentType, extension, width, height, decoded);
             } catch (IOException | IndexOutOfBoundsException exception) {
@@ -764,18 +815,23 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
 
     /** Decode all frames for validation, while preserving the original animation bytes for storage. */
     private ImageDetails inspectGif(ImageReader reader) throws IOException {
-        var metadata = (javax.imageio.metadata.IIOMetadataNode) reader.getStreamMetadata().getAsTree("javax_imageio_gif_stream_1.0");
-        var screen = (javax.imageio.metadata.IIOMetadataNode) metadata.getElementsByTagName("LogicalScreenDescriptor").item(0);
+        var metadata = (javax.imageio.metadata.IIOMetadataNode) reader.getStreamMetadata()
+                .getAsTree("javax_imageio_gif_stream_1.0");
+        var screen = (javax.imageio.metadata.IIOMetadataNode) metadata.getElementsByTagName("LogicalScreenDescriptor")
+                .item(0);
         int width = Integer.parseInt(screen.getAttribute("logicalScreenWidth"));
         int height = Integer.parseInt(screen.getAttribute("logicalScreenHeight"));
         int frames = reader.getNumImages(true);
         long pixels = (long) width * height;
         if (width < 1 || height < 1 || pixels > MAX_IMAGE_PIXELS || frames < 1 || frames > MAX_GIF_FRAMES
-                || pixels * frames > MAX_GIF_DECODED_PIXELS) throw invalid(ApiMessage.of("api.asset.gif-limit"), "ASSET_TOO_MANY_PIXELS");
+                || pixels * frames > MAX_GIF_DECODED_PIXELS)
+            throw invalid(ApiMessage.of("api.asset.gif-limit"), "ASSET_TOO_MANY_PIXELS");
         BufferedImage preview = null;
         for (int index = 0; index < frames; index++) {
-            var frame = (javax.imageio.metadata.IIOMetadataNode) reader.getImageMetadata(index).getAsTree("javax_imageio_gif_image_1.0");
-            var descriptor = (javax.imageio.metadata.IIOMetadataNode) frame.getElementsByTagName("ImageDescriptor").item(0);
+            var frame = (javax.imageio.metadata.IIOMetadataNode) reader.getImageMetadata(index)
+                    .getAsTree("javax_imageio_gif_image_1.0");
+            var descriptor = (javax.imageio.metadata.IIOMetadataNode) frame.getElementsByTagName("ImageDescriptor")
+                    .item(0);
             int left = Integer.parseInt(descriptor.getAttribute("imageLeftPosition"));
             int top = Integer.parseInt(descriptor.getAttribute("imageTopPosition"));
             int frameWidth = reader.getWidth(index), frameHeight = reader.getHeight(index);
@@ -788,7 +844,11 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
             if (index == 0) {
                 preview = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
                 Graphics2D graphics = preview.createGraphics();
-                try { graphics.drawImage(decoded, left, top, null); } finally { graphics.dispose(); }
+                try {
+                    graphics.drawImage(decoded, left, top, null);
+                } finally {
+                    graphics.dispose();
+                }
             }
             decoded.flush();
         }
@@ -809,5 +869,6 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
      * @param decoded 已完整解码的首帧像素数据
      */
     private record ImageDetails(String contentType, String extension, int width, int height,
-            BufferedImage decoded) {}
+            BufferedImage decoded) {
+    }
 }

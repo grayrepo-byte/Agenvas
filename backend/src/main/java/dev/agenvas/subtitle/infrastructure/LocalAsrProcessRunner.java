@@ -51,7 +51,8 @@ public class LocalAsrProcessRunner {
             }
             // A very fast native process can finish between polls, including after cancellation.
             check(scratch, deadline, canceled);
-            if (process.exitValue() != 0) throw new LocalAsrException(LocalAsrException.Code.FAILED);
+            if (process.exitValue() != 0)
+                throw new LocalAsrException(LocalAsrException.Code.FAILED);
             heartbeat.run();
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
@@ -70,9 +71,12 @@ public class LocalAsrProcessRunner {
                     // original timeout/cancellation. Configure the native binary, not a wrapper.
                     org.slf4j.LoggerFactory.getLogger(LocalAsrProcessRunner.class)
                             .debug("Local ASR descendant enumeration unavailable");
-                } finally { process.destroyForcibly(); }
+                } finally {
+                    process.destroyForcibly();
+                }
                 try {
-                    if (!process.waitFor(5, TimeUnit.SECONDS)) throw new LocalAsrException(LocalAsrException.Code.FAILED);
+                    if (!process.waitFor(5, TimeUnit.SECONDS))
+                        throw new LocalAsrException(LocalAsrException.Code.FAILED);
                 } catch (InterruptedException interrupted) {
                     Thread.currentThread().interrupt();
                 }
@@ -82,16 +86,21 @@ public class LocalAsrProcessRunner {
 
     /** Shared by decoding and recognition, so each poll enforces the same disk and cancel boundary. */
     public static void check(Path scratch, long deadline, BooleanSupplier canceled) {
-        if (Thread.currentThread().isInterrupted() || canceled.getAsBoolean()) throw new CancellationException("Local ASR canceled");
-        if (System.nanoTime() >= deadline) throw new LocalAsrException(LocalAsrException.Code.TIMED_OUT);
+        if (Thread.currentThread().isInterrupted() || canceled.getAsBoolean())
+            throw new CancellationException("Local ASR canceled");
+        if (System.nanoTime() >= deadline)
+            throw new LocalAsrException(LocalAsrException.Code.TIMED_OUT);
         try (var paths = Files.walk(scratch)) {
             long bytes = 0;
             var iterator = paths.iterator();
             while (iterator.hasNext()) {
                 Path file = iterator.next();
-                if (Files.isSymbolicLink(file)) throw new LocalAsrException(LocalAsrException.Code.INVALID_OUTPUT);
-                if (Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) bytes = Math.addExact(bytes, Files.size(file));
-                if (bytes > MAX_SCRATCH_BYTES) throw new LocalAsrException(LocalAsrException.Code.SCRATCH_LIMIT);
+                if (Files.isSymbolicLink(file))
+                    throw new LocalAsrException(LocalAsrException.Code.INVALID_OUTPUT);
+                if (Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
+                    bytes = Math.addExact(bytes, Files.size(file));
+                if (bytes > MAX_SCRATCH_BYTES)
+                    throw new LocalAsrException(LocalAsrException.Code.SCRATCH_LIMIT);
             }
         } catch (IOException | ArithmeticException failure) {
             throw new LocalAsrException(LocalAsrException.Code.FAILED);

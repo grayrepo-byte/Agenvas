@@ -56,7 +56,8 @@ public class TaskController {
     /** 请求必须带用户读取到的任务版本，防止对已变化的任务重复重试。
      * @param expectedTaskVersion 用户读取到的原任务版本
      */
-    public record NewAttemptRequest(long expectedTaskVersion) {}
+    public record NewAttemptRequest(long expectedTaskVersion) {
+    }
 
     /** 返回同一 Run 的活动与已完成任务，供恢复视图和关键帧选择使用。 */
     @GetMapping("/runs/{runId}/tasks")
@@ -120,7 +121,8 @@ public class TaskController {
                 // A RUNNING Task may contain the private full-response checkpoint. Only the
                 // terminal public artifact summary is returned to the browser.
                 output = task.status() == Task.Status.SUCCEEDED
-                        ? task.output().path("result") : null;
+                        ? task.output().path("result")
+                        : null;
             }
             return new TaskResponse(
                     task.id(),

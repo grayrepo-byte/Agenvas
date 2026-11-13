@@ -1,9 +1,9 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent,render,screen,waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http,HttpResponse } from "msw";
+import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
-import { describe,expect,it,vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { ReviseArtifactRequest } from "../../shared/api/client";
 import { selectValue } from "../../test/controls";
@@ -16,27 +16,55 @@ const REVISIONS_URL = "/api/v1/projects/:projectId/artifacts/:artifactId/revisio
 
 /** The text card is the surviving in-node editing path; editing it must never rewrite version 2. */
 function artifact(): VersionedArtifact {
-  return { id: "artifact-1", projectId: "project-1", kind: "TEXT", title: "Draft",
-    resourceDefaultVersionId: "version-2", version: 4, createdAt: now, updatedAt: now,
-    resourceDefaultVersion: { id: "version-2", versionNo: 2, schemaVersion: 2,
-      content: { format: "PLAIN_TEXT", text: "Draft" }, inputReferences: [],
-      createdByKind: "USER", runId: null, createdAt: now },
+  return {
+    id: "artifact-1",
+    projectId: "project-1",
+    kind: "TEXT",
+    title: "Draft",
+    resourceDefaultVersionId: "version-2",
+    version: 4,
+    createdAt: now,
+    updatedAt: now,
+    resourceDefaultVersion: {
+      id: "version-2",
+      versionNo: 2,
+      schemaVersion: 2,
+      content: { format: "PLAIN_TEXT", text: "Draft" },
+      inputReferences: [],
+      createdByKind: "USER",
+      runId: null,
+      createdAt: now,
+    },
   };
 }
 
-function updatedArtifact(base: VersionedArtifact, text: string,
-  format: "PLAIN_TEXT" | "MARKDOWN" = "PLAIN_TEXT"): VersionedArtifact {
-  return { ...base, version: base.version + 1, resourceDefaultVersionId: "version-3", resourceDefaultVersion: {
-    ...base.resourceDefaultVersion, id: "version-3", versionNo: 3, content: { format, text },
-  } };
+function updatedArtifact(
+  base: VersionedArtifact,
+  text: string,
+  format: "PLAIN_TEXT" | "MARKDOWN" = "PLAIN_TEXT",
+): VersionedArtifact {
+  return {
+    ...base,
+    version: base.version + 1,
+    resourceDefaultVersionId: "version-3",
+    resourceDefaultVersion: {
+      ...base.resourceDefaultVersion,
+      id: "version-3",
+      versionNo: 3,
+      content: { format, text },
+    },
+  };
 }
 
 function renderEditor(element: ReactNode) {
   const client = createQueryClient();
   client.setDefaultOptions({ queries: { retry: false } });
   const rendered = render(<QueryClientProvider client={client}>{element}</QueryClientProvider>);
-  return { client, container: rendered.container, rerender: (next: ReactNode) =>
-    rendered.rerender(<QueryClientProvider client={client}>{next}</QueryClientProvider>) };
+  return {
+    client,
+    container: rendered.container,
+    rerender: (next: ReactNode) => rendered.rerender(<QueryClientProvider client={client}>{next}</QueryClientProvider>),
+  };
 }
 
 function textEditor(value: VersionedArtifact, onDone: () => void = vi.fn()) {
@@ -44,25 +72,40 @@ function textEditor(value: VersionedArtifact, onDone: () => void = vi.fn()) {
 }
 
 function csrf() {
-  return http.get("/api/v1/auth/csrf", () => HttpResponse.json({
-    headerName: "X-XSRF-TOKEN", token: "test-token" }));
+  return http.get("/api/v1/auth/csrf", () =>
+    HttpResponse.json({
+      headerName: "X-XSRF-TOKEN",
+      token: "test-token",
+    }),
+  );
 }
 
 function conflict(message = "旧版本已变化。") {
-  return HttpResponse.json({ title: "冲突", detail: message,
-    code: "ARTIFACT_VERSION_CONFLICT", retryable: false },
-  { status: 409, headers: { "Content-Type": "application/problem+json" } });
+  return HttpResponse.json(
+    { title: "冲突", detail: message, code: "ARTIFACT_VERSION_CONFLICT", retryable: false },
+    { status: 409, headers: { "Content-Type": "application/problem+json" } },
+  );
 }
 
 describe("Artifact version editing", () => {
-  it.each([["PLAIN_TEXT", "save"], ["MARKDOWN", "save"], ["PLAIN_TEXT", "exit"], ["MARKDOWN", "exit"]] as const)("preserves meaningful whitespace in %s content on %s", async (format, action) => {
+  it.each([
+    ["PLAIN_TEXT", "save"],
+    ["MARKDOWN", "save"],
+    ["PLAIN_TEXT", "exit"],
+    ["MARKDOWN", "exit"],
+  ] as const)("preserves meaningful whitespace in %s content on %s", async (format, action) => {
     const text = "\n    first line  \n\tsecond line  \n\n";
     let posted: ReviseArtifactRequest | undefined;
-    server.use(csrf(), http.post(REVISIONS_URL, async ({ request }) => {
-      posted = await request.json() as ReviseArtifactRequest;
-      if (!("text" in posted.content)) throw new Error("Expected a text revision");
-      return HttpResponse.json(updatedArtifact(artifact(), posted.content.text, posted.content.format), { status: 201 });
-    }));
+    server.use(
+      csrf(),
+      http.post(REVISIONS_URL, async ({ request }) => {
+        posted = (await request.json()) as ReviseArtifactRequest;
+        if (!("text" in posted.content)) throw new Error("Expected a text revision");
+        return HttpResponse.json(updatedArtifact(artifact(), posted.content.text, posted.content.format), {
+          status: 201,
+        });
+      }),
+    );
     const onDone = vi.fn();
     renderEditor(textEditor(artifact(), onDone));
     if (format === "MARKDOWN") await selectValue(screen.getByLabelText("文字格式"), format);
@@ -93,10 +136,12 @@ describe("Artifact version editing", () => {
       csrf(),
       http.post(REVISIONS_URL, async ({ request }) => {
         revisions++;
-        expect(await request.json()).toEqual({ expectedVersion: 4, title: "Draft",
-          content: { format: "MARKDOWN", text: "Revised" } });
-        return HttpResponse.json(updatedArtifact(artifact(), "Revised", "MARKDOWN"),
-          { status: 201 });
+        expect(await request.json()).toEqual({
+          expectedVersion: 4,
+          title: "Draft",
+          content: { format: "MARKDOWN", text: "Revised" },
+        });
+        return HttpResponse.json(updatedArtifact(artifact(), "Revised", "MARKDOWN"), { status: 201 });
       }),
     );
     renderEditor(textEditor(artifact()));
@@ -111,14 +156,16 @@ describe("Artifact version editing", () => {
   });
 
   it("retains text edits after a 409 conflict instead of claiming they were saved", async () => {
-    server.use(csrf(), http.post(REVISIONS_URL, () => conflict()));
+    server.use(
+      csrf(),
+      http.post(REVISIONS_URL, () => conflict()),
+    );
     renderEditor(textEditor(artifact()));
     const user = userEvent.setup();
     await user.clear(screen.getByLabelText("内容"));
     await user.type(screen.getByLabelText("内容"), "Local edit");
     await user.click(screen.getByRole("button", { name: "保存新版本" }));
-    expect(await screen.findByText("内容有冲突，修改未保存；请核对当前版本后重试。"))
-      .toBeInTheDocument();
+    expect(await screen.findByText("内容有冲突，修改未保存；请核对当前版本后重试。")).toBeInTheDocument();
     expect(screen.getByLabelText("内容")).toHaveValue("Local edit");
     expect(screen.queryByText("新版本已保存")).not.toBeInTheDocument();
   });
@@ -144,8 +191,9 @@ describe("Artifact version editing", () => {
     expect(screen.getByText(/当前版本已更新，本地修改仍保留/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "保存新版本" }));
     await screen.findByRole("alert");
-    expect(requests).toEqual([{ expectedVersion: 4, title: "Draft",
-      content: { format: "PLAIN_TEXT", text: "Local draft" } }]);
+    expect(requests).toEqual([
+      { expectedVersion: 4, title: "Draft", content: { format: "PLAIN_TEXT", text: "Local draft" } },
+    ]);
     expect(screen.getByLabelText("内容")).toHaveValue("Local draft");
     await user.click(screen.getByRole("button", { name: "载入最新版本" }));
     await waitFor(() => expect(screen.getByLabelText("内容")).toHaveValue("Remote revision"));
@@ -156,19 +204,25 @@ describe("Artifact version editing", () => {
   it("blocks duplicate submission while saving and retains text after a failed response", async () => {
     let attempts = 0;
     let finish: (() => void) | undefined;
-    const gate = new Promise<void>((resolve) => { finish = resolve; });
+    const gate = new Promise<void>(resolve => {
+      finish = resolve;
+    });
     server.use(
       csrf(),
       http.post(REVISIONS_URL, async () => {
-        attempts++; await gate;
-        return HttpResponse.json({ title: "暂时失败", detail: "保存暂不可用" },
-          { status: 503, headers: { "Content-Type": "application/problem+json" } });
+        attempts++;
+        await gate;
+        return HttpResponse.json(
+          { title: "暂时失败", detail: "保存暂不可用" },
+          { status: 503, headers: { "Content-Type": "application/problem+json" } },
+        );
       }),
     );
     renderEditor(textEditor(artifact()));
     const user = userEvent.setup();
     const input = screen.getByLabelText("内容");
-    await user.clear(input); await user.type(input, "Keep my text");
+    await user.clear(input);
+    await user.type(input, "Keep my text");
     await user.click(screen.getByRole("button", { name: "保存新版本" }));
     await waitFor(() => expect(attempts).toBe(1));
     expect(input).toBeDisabled();
@@ -192,5 +246,4 @@ describe("Artifact version editing", () => {
     expect(screen.getByLabelText("文字格式")).toHaveValue("MARKDOWN");
     expect(screen.queryByRole("button", { name: "载入最新版本" })).not.toBeInTheDocument();
   });
-
 });

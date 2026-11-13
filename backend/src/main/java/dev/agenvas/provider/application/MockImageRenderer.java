@@ -100,7 +100,8 @@ public class MockImageRenderer {
         int width = Integer.parseInt(size[0]);
         int height = Integer.parseInt(size[1]);
         BufferedImage image = new BufferedImage(width, height,
-                parameters.transparentBackground() ? BufferedImage.TYPE_INT_ARGB
+                parameters.transparentBackground()
+                        ? BufferedImage.TYPE_INT_ARGB
                         : BufferedImage.TYPE_INT_RGB);
         Graphics2D graphics = image.createGraphics();
         try {
@@ -113,7 +114,8 @@ public class MockImageRenderer {
             }
             graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
                     RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-            graphics.setColor(parameters.transparentBackground() ? new Color(245, 55, 170)
+            graphics.setColor(parameters.transparentBackground()
+                    ? new Color(245, 55, 170)
                     : Color.WHITE);
             int titleSize = Math.max(24, Math.min(width, height) / 10);
             graphics.setFont(new Font(Font.SANS_SERIF, Font.BOLD, titleSize));

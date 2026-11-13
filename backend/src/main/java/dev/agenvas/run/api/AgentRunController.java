@@ -51,9 +51,12 @@ public class AgentRunController {
     @PostMapping("/preflight")
     public AgentRunService.RunPreflight preview(@AuthenticationPrincipal AdminPrincipal principal,
             @PathVariable UUID projectId, @Valid @RequestBody PreflightRequest request) {
-        return runs.preflight(principal.userId(), projectId, request.agentId(), request.conversationId(), request.skillSelection());
+        return runs.preflight(principal.userId(), projectId, request.agentId(), request.conversationId(),
+                request.skillSelection());
     }
-    public record PreflightRequest(@NotNull UUID agentId, UUID conversationId, @Valid SkillRunService.Selection skillSelection) {}
+    public record PreflightRequest(@NotNull UUID agentId, UUID conversationId,
+            @Valid SkillRunService.Selection skillSelection) {
+    }
 
     /** 固定请求键与用户预览版本，原子占用项目活动槽位并返回持久化 Run。 */
     @PostMapping
@@ -121,7 +124,8 @@ public class AgentRunController {
             @jakarta.validation.constraints.Positive Integer expectedSystemPromptVersion,
             UUID conversationId,
             @jakarta.validation.constraints.PositiveOrZero Long expectedConversationVersion,
-            @Valid SkillRunService.Selection skillSelection) {}
+            @Valid SkillRunService.Selection skillSelection) {
+    }
 
     /** 列表摘要省略完整上下文、策略细节和模型原始消息。
      * @param id Run UUID
@@ -134,14 +138,16 @@ public class AgentRunController {
      * @param updatedAt 最近状态更新时间
      * @param completedAt 进入终态的时间；仍在运行时为空
      */
-    public record RunSummary(UUID id, UUID agentInstanceId, UUID conversationId, long conversationTurn, AgentRun.Status status,
+    public record RunSummary(UUID id, UUID agentInstanceId, UUID conversationId, long conversationTurn,
+            AgentRun.Status status,
             String instruction, Instant createdAt, Instant updatedAt, Instant completedAt) {
         /** 提取列表展示所需字段，不复制模型消息或策略快照。
          * @param run 已授权的领域 Run
          * @return 列表摘要
          */
         public static RunSummary from(AgentRun run) {
-            return new RunSummary(run.id(), run.agentInstanceId(), run.conversationId(), run.conversationTurn(), run.status(),
+            return new RunSummary(run.id(), run.agentInstanceId(), run.conversationId(), run.conversationTurn(),
+                    run.status(),
                     run.instruction(), run.createdAt(), run.updatedAt(), run.completedAt());
         }
     }
@@ -152,7 +158,8 @@ public class AgentRunController {
      * @param items 当前页摘要
      * @param nextCursor 后续历史游标；无下一页时为空
      */
-    public record RunListResponse(List<RunSummary> items, String nextCursor) {}
+    public record RunListResponse(List<RunSummary> items, String nextCursor) {
+    }
 
     /**
      * 对外 Run 状态；不含模型私有推理和凭证。

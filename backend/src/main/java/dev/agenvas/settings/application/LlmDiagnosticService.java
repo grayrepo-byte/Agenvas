@@ -56,20 +56,29 @@ public class LlmDiagnosticService {
     public LlmProviderConfigService.Status diagnose(int expectedVersion, boolean acknowledgeCost) {
         if (!acknowledgeCost || expectedVersion < 1) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST,
-                    "PROVIDER_DIAGNOSTIC_CONFIRMATION_REQUIRED", ApiMessage.of("api.llm-diagnostic-service.need-to-confirm-diagnostic-call"),
-                    ApiMessage.of("api.llm-diagnostic-service.please-confirm-that-this-diagnostic-makes-up-to-two-potentially"), false);
+                    "PROVIDER_DIAGNOSTIC_CONFIRMATION_REQUIRED",
+                    ApiMessage.of("api.llm-diagnostic-service.need-to-confirm-diagnostic-call"),
+                    ApiMessage.of(
+                            "api.llm-diagnostic-service.please-confirm-that-this-diagnostic-makes-up-to-two-potentially"),
+                    false);
         }
         if (!inFlight.compareAndSet(false, true)) {
             throw new ApiProblemException(HttpStatus.CONFLICT,
-                    "PROVIDER_DIAGNOSTIC_IN_PROGRESS", ApiMessage.of("api.llm-diagnostic-service.model-diagnostics-running"),
-                    ApiMessage.of("api.llm-diagnostic-service.please-wait-until-the-current-diagnosis-is-complete-and-try"), true);
+                    "PROVIDER_DIAGNOSTIC_IN_PROGRESS",
+                    ApiMessage.of("api.llm-diagnostic-service.model-diagnostics-running"),
+                    ApiMessage.of(
+                            "api.llm-diagnostic-service.please-wait-until-the-current-diagnosis-is-complete-and-try"),
+                    true);
         }
         try {
             LlmProviderConfig config = repository.active().orElseThrow(this::changed);
-            if (config.version() != expectedVersion) throw changed();
-            if (config.toolCallingVerified()) return configs.status();
+            if (config.version() != expectedVersion)
+                throw changed();
+            if (config.toolCallingVerified())
+                return configs.status();
             probe(config);
-            if (!repository.markToolCallingVerified(expectedVersion)) throw changed();
+            if (!repository.markToolCallingVerified(expectedVersion))
+                throw changed();
             return configs.status();
         } finally {
             inFlight.set(false);
@@ -77,29 +86,39 @@ public class LlmDiagnosticService {
     }
 
     /** Diagnose a selected saved connection without switching the service used by new work. */
-    public LlmProviderConfigService.ConnectionStatus diagnoseConnection(UUID id, int expectedVersion, boolean acknowledgeCost) {
+    public LlmProviderConfigService.ConnectionStatus diagnoseConnection(UUID id, int expectedVersion,
+            boolean acknowledgeCost) {
         if (!acknowledgeCost || expectedVersion < 1) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "PROVIDER_DIAGNOSTIC_CONFIRMATION_REQUIRED",
                     ApiMessage.of("api.llm-diagnostic-service.need-to-confirm-diagnostic-call"),
-                    ApiMessage.of("api.llm-diagnostic-service.please-confirm-that-this-diagnostic-makes-up-to-two-potentially"), false);
+                    ApiMessage.of(
+                            "api.llm-diagnostic-service.please-confirm-that-this-diagnostic-makes-up-to-two-potentially"),
+                    false);
         }
         if (!inFlight.compareAndSet(false, true)) {
             throw new ApiProblemException(HttpStatus.CONFLICT, "PROVIDER_DIAGNOSTIC_IN_PROGRESS",
                     ApiMessage.of("api.llm-diagnostic-service.model-diagnostics-running"),
-                    ApiMessage.of("api.llm-diagnostic-service.please-wait-until-the-current-diagnosis-is-complete-and-try"), true);
+                    ApiMessage.of(
+                            "api.llm-diagnostic-service.please-wait-until-the-current-diagnosis-is-complete-and-try"),
+                    true);
         }
         try {
             var head = repository.findConnection(id).orElseThrow(this::changed);
-            if (head.currentConfigVersion() != expectedVersion) throw changed();
+            if (head.currentConfigVersion() != expectedVersion)
+                throw changed();
             var config = repository.findVersion(expectedVersion).orElseThrow(this::changed);
             if (!config.toolCallingVerified()) {
                 probe(config);
-                if (!repository.markConnectionToolCallingVerified(id, expectedVersion)) throw changed();
+                if (!repository.markConnectionToolCallingVerified(id, expectedVersion))
+                    throw changed();
             }
             var result = configs.connection(id);
-            if (result.version() != expectedVersion) throw changed();
+            if (result.version() != expectedVersion)
+                throw changed();
             return result;
-        } finally { inFlight.set(false); }
+        } finally {
+            inFlight.set(false);
+        }
     }
 
     /** 要求模型发起唯一探针调用，再将工具结果回填并验证第二轮文本响应。 */
@@ -138,7 +157,8 @@ public class LlmDiagnosticService {
                         AssistantMessage finalMessage = output(exchange);
                         if (!finalMessage.getToolCalls().isEmpty() || finalMessage.getText() == null
                                 || !resultProof.equals(finalMessage.getText().strip())) {
-                            throw protocolFailure("PROVIDER_DIAGNOSTIC_PROOF_MISMATCH", "second-response-invalid-proof");
+                            throw protocolFailure("PROVIDER_DIAGNOSTIC_PROOF_MISMATCH",
+                                    "second-response-invalid-proof");
                         }
                     });
         } catch (ApiProblemException known) {
@@ -153,8 +173,11 @@ public class LlmDiagnosticService {
             throw known;
         } catch (RuntimeException failure) {
             throw new ApiProblemException(HttpStatus.BAD_GATEWAY,
-                    "PROVIDER_DIAGNOSTIC_UNAVAILABLE", ApiMessage.of("api.llm-diagnostic-service.model-diagnostic-call-failed"),
-                    ApiMessage.of("api.llm-diagnostic-service.the-endpoint-did-not-complete-diagnostics-please-check-the-service"), true);
+                    "PROVIDER_DIAGNOSTIC_UNAVAILABLE",
+                    ApiMessage.of("api.llm-diagnostic-service.model-diagnostic-call-failed"),
+                    ApiMessage.of(
+                            "api.llm-diagnostic-service.the-endpoint-did-not-complete-diagnostics-please-check-the-service"),
+                    true);
         }
     }
 
@@ -204,7 +227,8 @@ public class LlmDiagnosticService {
 
     /** 限制参数长度并检查模型工具参数中的 nonce 与本次随机值完全一致。 */
     private boolean matchesArguments(String arguments, String nonce) {
-        if (arguments == null || arguments.length() > 4_096) return false;
+        if (arguments == null || arguments.length() > 4_096)
+            return false;
         try {
             var value = mapper.readTree(arguments);
             return value != null && value.isObject() && value.size() == 1
@@ -217,8 +241,10 @@ public class LlmDiagnosticService {
     /** 构造诊断期间配置版本被修改时使用的冲突响应。 */
     private ApiProblemException changed() {
         return new ApiProblemException(HttpStatus.CONFLICT,
-                "PROVIDER_CONFIG_VERSION_CONFLICT", ApiMessage.of("api.llm-provider-config-service.model-configuration-has-changed"),
-                ApiMessage.of("api.llm-diagnostic-service.please-re-read-the-model-configuration-before-diagnosing"), false);
+                "PROVIDER_CONFIG_VERSION_CONFLICT",
+                ApiMessage.of("api.llm-provider-config-service.model-configuration-has-changed"),
+                ApiMessage.of("api.llm-diagnostic-service.please-re-read-the-model-configuration-before-diagnosing"),
+                false);
     }
 
     /** Spring AI 回调若被自动执行即视为失败，确保工具结果只由诊断流程回填。 */

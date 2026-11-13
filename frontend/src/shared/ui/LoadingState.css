@@ -42,7 +42,12 @@
 .canvas-loading-state__label {
   min-width: 0;
   overflow: hidden;
-  background-image: linear-gradient(90deg, var(--canvas-loader-muted) 35%, var(--canvas-loader-ink) 50%, var(--canvas-loader-muted) 65%);
+  background-image: linear-gradient(
+    90deg,
+    var(--canvas-loader-muted) 35%,
+    var(--canvas-loader-ink) 50%,
+    var(--canvas-loader-muted) 65%
+  );
   background-size: 200% 100%;
   background-clip: text;
   color: transparent;
@@ -63,14 +68,26 @@
 }
 
 @keyframes canvas-loader-pixel-on {
-  0%, 100% { opacity: 0.15; }
-  18%, 42% { opacity: 1; }
-  62% { opacity: 0.15; }
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  18%,
+  42% {
+    opacity: 1;
+  }
+  62% {
+    opacity: 0.15;
+  }
 }
 
 @keyframes canvas-loader-shimmer {
-  from { background-position: 150% center; }
-  to { background-position: -50% center; }
+  from {
+    background-position: 150% center;
+  }
+  to {
+    background-position: -50% center;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

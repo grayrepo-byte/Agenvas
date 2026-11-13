@@ -74,17 +74,21 @@ class LlmDebugCaptureStreamingTest {
             var gateway = gateway(server);
             var message = UserMessage.builder().text("Inspect synthetic image")
                     .media(new org.springframework.ai.content.Media(org.springframework.util.MimeTypeUtils.IMAGE_PNG,
-                            new org.springframework.core.io.ByteArrayResource(image))).build();
+                            new org.springframework.core.io.ByteArrayResource(image)))
+                    .build();
             var policy = MAPPER.createObjectNode().put("toolPolicyVersion", RunToolPolicy.CURRENT_VERSION)
                     .put("schemaVersion", RunToolPolicy.CURRENT_SCHEMA_VERSION)
-                    .put("systemPromptVersion", dev.agenvas.llm.application.InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
+                    .put("systemPromptVersion",
+                            dev.agenvas.llm.application.InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
             policy.set("allowedTools", MAPPER.valueToTree(RunToolPolicy.current(false, false)));
             var tools = new ToolRegistry().modelDefinitions(policy);
             try (var scope = DebugHttpCapture.openLlm(saved::accept)) {
                 // Synthetic credential collision inside the image Base64 must not leave a suffix.
                 DebugHttpCapture.registerSecret("dGhl");
                 var result = streaming
-                        ? gateway.callStreaming(List.of(message), tools, Map.of(), gateway.configIdentity(), ignored -> {})
+                        ? gateway.callStreaming(List.of(message), tools, Map.of(), gateway.configIdentity(),
+                                ignored -> {
+                                })
                         : gateway.call(List.of(message), tools, Map.of(), gateway.configIdentity());
                 assertThat(result.response().getResult().getOutput().getText()).isEqualTo("ok");
             }
@@ -105,7 +109,8 @@ class LlmDebugCaptureStreamingTest {
             assertThat(MAPPER.readTree(saved.current().getFirst().requestBody().content())).isEqualTo(wire);
             assertThat(saved.current().getFirst().requestBody().content()).doesNotContain(encoded);
             assertThat(saved.current().getFirst().responseBody().content()).contains("ok");
-            assertThat(MAPPER.writeValueAsString(saved.current())).doesNotContain(API_KEY, REQUEST_COOKIE, RESPONSE_COOKIE,
+            assertThat(MAPPER.writeValueAsString(saved.current())).doesNotContain(API_KEY, REQUEST_COOKIE,
+                    RESPONSE_COOKIE,
                     DEFAULT_HEADER_VALUE, "Set-Cookie", "Authorization");
             if (streaming) {
                 assertThat(saved.current().getFirst().responseBody().content()).contains("private stream reasoning")
@@ -172,13 +177,15 @@ class LlmDebugCaptureStreamingTest {
             var gateway = gateway(server);
             try (var scope = DebugHttpCapture.openLlm(http::accept)) {
                 gateway.callStreaming(List.of(new UserMessage("semantic capture")), List.of(), Map.of(),
-                        gateway.configIdentity(), ignored -> {}, true, log::set);
+                        gateway.configIdentity(), ignored -> {
+                        }, true, log::set);
                 assertThat(scope.sanitizeJson(log.get().content().response())).contains("ok").doesNotContain(API_KEY);
             }
             assertThat(http.current().getFirst().responseBody().encoding()).isEqualTo(DebugHttpCapture.Encoding.UTF8);
             assertThat(http.current().getFirst().responseBody().content()).contains("private stream reasoning")
                     .doesNotContain(API_KEY, "data:", "[DONE]");
-            assertThat(log.get().metrics().status()).isEqualTo(dev.agenvas.audit.domain.LlmStreamLog.EndStatus.COMPLETED);
+            assertThat(log.get().metrics().status())
+                    .isEqualTo(dev.agenvas.audit.domain.LlmStreamLog.EndStatus.COMPLETED);
             assertThat(log.get().metrics().firstTextMs()).isNotNull();
             assertThat(log.get().metrics().totalTokens()).isEqualTo(2);
             assertThat(server.received()).hasSize(1);
@@ -212,7 +219,8 @@ class LlmDebugCaptureStreamingTest {
         CountDownLatch release = new CountDownLatch(1);
         ExecutorService calls = Executors.newFixedThreadPool(CONCURRENT_CALLS);
         try (LocalServer server = new LocalServer(body -> body.contains(firstPrompt)
-                ? first.current() : second.current(), arrived, release)) {
+                ? first.current()
+                : second.current(), arrived, release)) {
             var gateway = gateway(server);
             var firstCall = calls.submit(() -> captureStream(gateway, firstPrompt, first));
             var secondCall = calls.submit(() -> captureStream(gateway, secondPrompt, second));
@@ -282,7 +290,8 @@ class LlmDebugCaptureStreamingTest {
         CaptureLog failed = new CaptureLog();
         CaptureLog following = new CaptureLog();
         try (LocalServer server = new LocalServer(body -> body.contains(failedPrompt)
-                ? failed.current() : following.current())) {
+                ? failed.current()
+                : following.current())) {
             var gateway = gateway(server);
             Throwable failure;
             try (var scope = DebugHttpCapture.open(failed::accept)) {
@@ -320,7 +329,8 @@ class LlmDebugCaptureStreamingTest {
         CaptureLog following = new CaptureLog();
         CallbackStreamGate gate = new CallbackStreamGate();
         try (LocalServer server = new LocalServer(body -> body.contains(CALLBACK_FAILURE_PROMPT)
-                ? failed.current() : following.current(), new CountDownLatch(0), new CountDownLatch(0), gate)) {
+                ? failed.current()
+                : following.current(), new CountDownLatch(0), new CountDownLatch(0), gate)) {
             var gateway = gateway(server);
             Throwable failure;
             try (var scope = DebugHttpCapture.openLlm(failed::accept)) {
@@ -375,7 +385,8 @@ class LlmDebugCaptureStreamingTest {
     }
 
     private static void assertCheckpointBeforeArrival(Received received, String prompt) {
-        assertThat(received.checkpoint()).as("Request checkpoint exists before the HTTP server receives the request").hasSize(1);
+        assertThat(received.checkpoint()).as("Request checkpoint exists before the HTTP server receives the request")
+                .hasSize(1);
         assertThat(received.checkpoint().getFirst().requestBody().content()).contains(prompt);
         assertThat(received.checkpoint().getFirst().responseStatus()).isNull();
         assertThat(received.captureMarker()).as("Internal correlation header never leaves the process").isNull();
@@ -401,7 +412,8 @@ class LlmDebugCaptureStreamingTest {
     private static OpenAiChatOptions options(LocalServer server) {
         return OpenAiChatOptions.builder()
                 .baseUrl("http://127.0.0.1:" + server.port() + "/v1").apiKey(API_KEY).model(MODEL_ID).maxRetries(0)
-                .temperature(DEFAULT_TEMPERATURE).customHeaders(Map.of(DEFAULT_HEADER, DEFAULT_HEADER_VALUE, "Cookie", REQUEST_COOKIE))
+                .temperature(DEFAULT_TEMPERATURE)
+                .customHeaders(Map.of(DEFAULT_HEADER, DEFAULT_HEADER_VALUE, "Cookie", REQUEST_COOKIE))
                 .timeout(Duration.ofSeconds(SDK_TIMEOUT_SECONDS)).build();
     }
 
@@ -421,11 +433,15 @@ class LlmDebugCaptureStreamingTest {
                 terminal.countDown();
             }
         }
-        private List<DebugHttpCapture.Exchange> current() { return saved.get(); }
+        private List<DebugHttpCapture.Exchange> current() {
+            return saved.get();
+        }
     }
 
-    private record Received(String body, String authorization, String cookie, String captureMarker, String defaultHeader,
-            List<DebugHttpCapture.Exchange> checkpoint) {}
+    private record Received(String body, String authorization, String cookie, String captureMarker,
+            String defaultHeader,
+            List<DebugHttpCapture.Exchange> checkpoint) {
+    }
 
     private static final class CallbackStreamGate {
         private final CountDownLatch callbackInvoked = new CountDownLatch(1);
@@ -463,8 +479,12 @@ class LlmDebugCaptureStreamingTest {
             server.start();
         }
 
-        private int port() { return server.getAddress().getPort(); }
-        private List<Received> received() { return List.copyOf(received); }
+        private int port() {
+            return server.getAddress().getPort();
+        }
+        private List<Received> received() {
+            return List.copyOf(received);
+        }
 
         private void respond(HttpExchange exchange) throws IOException {
             try {
@@ -480,26 +500,33 @@ class LlmDebugCaptureStreamingTest {
                     return;
                 }
                 try {
-                    if (!release.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)) throw new IOException("Synthetic response gate timed out");
+                    if (!release.await(TIMEOUT_SECONDS, TimeUnit.SECONDS))
+                        throw new IOException("Synthetic response gate timed out");
                 } catch (InterruptedException interrupted) {
                     Thread.currentThread().interrupt();
                     throw new IOException("Synthetic response gate interrupted", interrupted);
                 }
                 boolean failed = body.contains("capture HTTP failure");
                 boolean streaming = body.contains("\"stream\":true");
-                exchange.getResponseHeaders().set("Content-Type", failed || !streaming ? "application/json" : SSE_CONTENT_TYPE);
-                if (failed) exchange.getResponseHeaders().set("Retry-After", "0");
+                exchange.getResponseHeaders().set("Content-Type",
+                        failed || !streaming ? "application/json" : SSE_CONTENT_TYPE);
+                if (failed)
+                    exchange.getResponseHeaders().set("Retry-After", "0");
                 byte[] response = failed ? errorBody() : streaming ? sseBody() : jsonBody();
                 exchange.sendResponseHeaders(failed ? HTTP_UNAVAILABLE : HTTP_OK, response.length);
-                try (OutputStream output = exchange.getResponseBody()) { output.write(response); }
+                try (OutputStream output = exchange.getResponseBody()) {
+                    output.write(response);
+                }
             } finally {
                 exchange.close();
             }
         }
 
-        @Override public void close() throws InterruptedException {
+        @Override
+        public void close() throws InterruptedException {
             release.countDown();
-            if (callbackGate != null) callbackGate.finish.countDown();
+            if (callbackGate != null)
+                callbackGate.finish.countDown();
             server.stop(0);
             shutdown(requests);
         }
@@ -565,5 +592,7 @@ class LlmDebugCaptureStreamingTest {
         return body.toString().getBytes(StandardCharsets.UTF_8);
     }
 
-    private static String event(String value) { return "data: " + value + "\n\n"; }
+    private static String event(String value) {
+        return "data: " + value + "\n\n";
+    }
 }

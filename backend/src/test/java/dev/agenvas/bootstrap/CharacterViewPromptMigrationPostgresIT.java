@@ -25,7 +25,9 @@ class CharacterViewPromptMigrationPostgresIT {
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
 
     @BeforeEach
-    void cleanDisposableDatabase() { migration(null).clean(); }
+    void cleanDisposableDatabase() {
+        migration(null).clean();
+    }
 
     @Test
     void upgradeRefreshesFactoryBodyAndDescriptionWithoutChangingOtherPromptsOrFrozenTasks() throws Exception {
@@ -39,18 +41,26 @@ class CharacterViewPromptMigrationPostgresIT {
             createHistoricalTask(db);
             othersBefore = otherPrompts(db);
             tasksBefore = scalar(db, "select jsonb_agg(to_jsonb(t) order by id)::text from task t");
-            metadataBefore = scalar(db, "select (to_jsonb(p)-'content'-'description'-'version'-'updated_at')::text from prompt_definition p where key=?", KEY);
+            metadataBefore = scalar(db,
+                    "select (to_jsonb(p)-'content'-'description'-'version'-'updated_at')::text from prompt_definition p where key=?",
+                    KEY);
             versionBefore = Long.parseLong(scalar(db, "select version::text from prompt_definition where key=?", KEY));
         }
         migration(null).migrate();
         try (Connection db = connection()) {
             assertNewBody(db);
             assertThat(scalar(db, "select description from prompt_definition where key=?", KEY)).isEqualTo(DESCRIPTION);
-            assertThat(scalar(db, "select version::text from prompt_definition where key=?", KEY)).isEqualTo(Long.toString(versionBefore + 1));
-            assertThat(scalar(db, "select (updated_at > '2000-01-01T00:00:00Z')::text from prompt_definition where key=?", KEY)).isEqualTo("true");
-            assertThat(scalar(db, "select (to_jsonb(p)-'content'-'description'-'version'-'updated_at')::text from prompt_definition p where key=?", KEY)).isEqualTo(metadataBefore);
+            assertThat(scalar(db, "select version::text from prompt_definition where key=?", KEY))
+                    .isEqualTo(Long.toString(versionBefore + 1));
+            assertThat(scalar(db,
+                    "select (updated_at > '2000-01-01T00:00:00Z')::text from prompt_definition where key=?", KEY))
+                    .isEqualTo("true");
+            assertThat(scalar(db,
+                    "select (to_jsonb(p)-'content'-'description'-'version'-'updated_at')::text from prompt_definition p where key=?",
+                    KEY)).isEqualTo(metadataBefore);
             assertThat(otherPrompts(db)).isEqualTo(othersBefore);
-            assertThat(scalar(db, "select jsonb_agg(to_jsonb(t) order by id)::text from task t")).isEqualTo(tasksBefore);
+            assertThat(scalar(db, "select jsonb_agg(to_jsonb(t) order by id)::text from task t"))
+                    .isEqualTo(tasksBefore);
         }
         assertThat(migration(null).migrate().migrationsExecuted).isZero();
     }
@@ -59,20 +69,25 @@ class CharacterViewPromptMigrationPostgresIT {
     void upgradePreservesCustomNameAndDescriptionWhileRefreshingFactoryBody() throws Exception {
         migration("60").migrate();
         try (Connection db = connection()) {
-            execute(db, "update prompt_definition set name='Synthetic custom name',description='Synthetic custom description',version=8 where key=?", KEY);
+            execute(db,
+                    "update prompt_definition set name='Synthetic custom name',description='Synthetic custom description',version=8 where key=?",
+                    KEY);
         }
         migration(null).migrate();
         try (Connection db = connection()) {
             assertNewBody(db);
-            assertThat(scalar(db, "select name from prompt_definition where key=?", KEY)).isEqualTo("Synthetic custom name");
-            assertThat(scalar(db, "select description from prompt_definition where key=?", KEY)).isEqualTo("Synthetic custom description");
+            assertThat(scalar(db, "select name from prompt_definition where key=?", KEY))
+                    .isEqualTo("Synthetic custom name");
+            assertThat(scalar(db, "select description from prompt_definition where key=?", KEY))
+                    .isEqualTo("Synthetic custom description");
             assertThat(scalar(db, "select version::text from prompt_definition where key=?", KEY)).isEqualTo("9");
         }
     }
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
-    void upgradeLeavesCustomBodyCompletelyUntouchedIncludingWhitespaceOnlyEdits(boolean whitespaceOnly) throws Exception {
+    void upgradeLeavesCustomBodyCompletelyUntouchedIncludingWhitespaceOnlyEdits(boolean whitespaceOnly)
+            throws Exception {
         migration("60").migrate();
         String before;
         try (Connection db = connection()) {
@@ -83,31 +98,41 @@ class CharacterViewPromptMigrationPostgresIT {
         }
         migration(null).migrate();
         try (Connection db = connection()) {
-            assertThat(scalar(db, "select to_jsonb(p)::text from prompt_definition p where key=?", KEY)).isEqualTo(before);
+            assertThat(scalar(db, "select to_jsonb(p)::text from prompt_definition p where key=?", KEY))
+                    .isEqualTo(before);
         }
     }
 
     @Test
     void freshInstallUsesTheStyleFlexibleFourPartSheet() throws Exception {
         migration(null).migrate();
-        try (Connection db = connection()) { assertNewBody(db); }
+        try (Connection db = connection()) {
+            assertNewBody(db);
+        }
     }
 
     private void assertNewBody(Connection db) throws SQLException {
         assertThat(scalar(db, "select content from prompt_definition where key=?", KEY))
-                .contains("landscape 4:3", "four clearly separated parts", "front-facing head-and-shoulders close-up on the left",
+                .contains("landscape 4:3", "four clearly separated parts",
+                        "front-facing head-and-shoulders close-up on the left",
                         "full-body character turnaround", "front view, exact 90-degree side profile, and back view",
-                        "same scale", "aligned foot baseline", "without cropping heads or feet", "facial identity", "hairstyle",
+                        "same scale", "aligned foot baseline", "without cropping heads or feet", "facial identity",
+                        "hairstyle",
                         "skin tone", "clothing", "color palette", "body proportions", "accessories", "visible details",
-                        "explicit user style instructions taking priority", "high-definition detail", "simple, unobtrusive background")
+                        "explicit user style instructions taking priority", "high-definition detail",
+                        "simple, unobtrusive background")
                 .doesNotContain("16:9", "3D", "semi-realistic", "cinematic", "studio", "4K");
     }
 
     private void createHistoricalTask(Connection db) throws SQLException {
         UUID owner = UUID.randomUUID();
         UUID project = UUID.randomUUID();
-        execute(db, "insert into app_user(id,login_name,password_hash,status,created_at) values (?,'synthetic-migration-user','synthetic-hash','ACTIVE',now())", owner);
-        execute(db, "insert into project(id,owner_id,name,aspect_ratio,status,created_at,updated_at) values (?,?,'Synthetic migration project','LANDSCAPE_16_9','ACTIVE',now(),now())", project, owner);
+        execute(db,
+                "insert into app_user(id,login_name,password_hash,status,created_at) values (?,'synthetic-migration-user','synthetic-hash','ACTIVE',now())",
+                owner);
+        execute(db,
+                "insert into project(id,owner_id,name,aspect_ratio,status,created_at,updated_at) values (?,?,'Synthetic migration project','LANDSCAPE_16_9','ACTIVE',now(),now())",
+                project, owner);
         execute(db, """
                 insert into task(id,project_id,step_key,kind,status,input_json,input_hash,attempt_no,next_action_at,created_at,updated_at)
                 select ?,?,'synthetic-frozen-task','IMAGE_GENERATION','READY',
@@ -119,11 +144,13 @@ class CharacterViewPromptMigrationPostgresIT {
     }
 
     private String otherPrompts(Connection db) throws SQLException {
-        return scalar(db, "select jsonb_agg(to_jsonb(p) order by key)::text from prompt_definition p where key<>?", KEY);
+        return scalar(db, "select jsonb_agg(to_jsonb(p) order by key)::text from prompt_definition p where key<>?",
+                KEY);
     }
 
     private Flyway migration(String target) {
-        var config = Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+        var config = Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").cleanDisabled(false);
         // Pin preservation evidence to this upgrade, independently of future migrations.
         config.target(target == null ? "61" : target);
@@ -135,7 +162,9 @@ class CharacterViewPromptMigrationPostgresIT {
     }
 
     private void execute(Connection db, String sql, Object... values) throws SQLException {
-        try (PreparedStatement statement = prepare(db, sql, values)) { statement.executeUpdate(); }
+        try (PreparedStatement statement = prepare(db, sql, values)) {
+            statement.executeUpdate();
+        }
     }
 
     private String scalar(Connection db, String sql, Object... values) throws SQLException {
@@ -147,7 +176,8 @@ class CharacterViewPromptMigrationPostgresIT {
 
     private PreparedStatement prepare(Connection db, String sql, Object... values) throws SQLException {
         var statement = db.prepareStatement(sql);
-        for (int index = 0; index < values.length; index++) statement.setObject(index + 1, values[index]);
+        for (int index = 0; index < values.length; index++)
+            statement.setObject(index + 1, values[index]);
         return statement;
     }
 }

@@ -20,14 +20,19 @@ class RunHistoryCleanupServiceTest {
     private final AgentRunRepository runs = mock(AgentRunRepository.class);
     private final ProjectService projects = mock(ProjectService.class);
     private final ProjectEventService events = mock(ProjectEventService.class);
-    private final RunHistoryCleanupService service = new RunHistoryCleanupService(runs, projects, events, new ObjectMapper());
+    private final RunHistoryCleanupService service = new RunHistoryCleanupService(runs, projects, events,
+            new ObjectMapper());
 
-    @Test void releasesOnlyTheStoppedRunsSlotAndEmitsItsNewVersion() {
+    @Test
+    void releasesOnlyTheStoppedRunsSlotAndEmitsItsNewVersion() {
         UUID id = UUID.randomUUID(), project = UUID.randomUUID(), owner = UUID.randomUUID();
         AgentRun stopped = mock(AgentRun.class);
-        when(stopped.id()).thenReturn(id); when(stopped.projectId()).thenReturn(project);
-        when(stopped.userId()).thenReturn(owner); when(stopped.status()).thenReturn(AgentRun.Status.CANCELED);
-        when(stopped.version()).thenReturn(4L); when(stopped.nextStepIndex()).thenReturn(2);
+        when(stopped.id()).thenReturn(id);
+        when(stopped.projectId()).thenReturn(project);
+        when(stopped.userId()).thenReturn(owner);
+        when(stopped.status()).thenReturn(AgentRun.Status.CANCELED);
+        when(stopped.version()).thenReturn(4L);
+        when(stopped.nextStepIndex()).thenReturn(2);
         when(runs.stopForHistoryCleanup(List.of(id), NOW)).thenReturn(List.of(stopped));
         service.stopFor(List.of(id), NOW);
         verify(projects).releaseRunSlotIfHeld(owner, project, id);
@@ -38,12 +43,15 @@ class RunHistoryCleanupServiceTest {
         assertThat(event.getValue().payload().path("nextStepIndex").asInt()).isEqualTo(2);
     }
 
-    @Test void finishedRunsKeepTheirStateAndDoNotReleaseAnySlot() {
+    @Test
+    void finishedRunsKeepTheirStateAndDoNotReleaseAnySlot() {
         when(runs.stopForHistoryCleanup(List.of(), NOW)).thenReturn(List.of());
-        service.stopFor(List.of(), NOW); verifyNoInteractions(projects, events);
+        service.stopFor(List.of(), NOW);
+        verifyNoInteractions(projects, events);
     }
 
-    @Test void repositoryFailurePropagatesWithoutEmittingEvents() {
+    @Test
+    void repositoryFailurePropagatesWithoutEmittingEvents() {
         UUID id = UUID.randomUUID();
         when(runs.stopForHistoryCleanup(List.of(id), NOW)).thenThrow(new IllegalStateException("write failed"));
         assertThatThrownBy(() -> service.stopFor(List.of(id), NOW)).isInstanceOf(IllegalStateException.class);

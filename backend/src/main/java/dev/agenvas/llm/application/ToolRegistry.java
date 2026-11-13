@@ -13,25 +13,32 @@ public class ToolRegistry {
     /** Legacy Runs keep their complete frozen allowlist; new Runs begin with explicit discovery. */
     public List<ToolCallback> initialDefinitions(tools.jackson.databind.JsonNode policy) {
         var definitions = modelDefinitions(policy);
-        return AgentToolset.onDemand(policy) ? definitions.stream()
-                .filter(tool -> AgentToolset.LOADER.equals(tool.getToolDefinition().name())).toList() : definitions;
+        return AgentToolset.onDemand(policy)
+                ? definitions.stream()
+                        .filter(tool -> AgentToolset.LOADER.equals(tool.getToolDefinition().name())).toList()
+                : definitions;
     }
 
     /** Extend only from committed successful replies; already loaded definitions retain their frozen schemas. */
     public List<ToolCallback> continuationDefinitions(tools.jackson.databind.JsonNode policy,
             tools.jackson.databind.JsonNode priorRequest, List<org.springframework.ai.chat.messages.Message> messages,
             LlmProtocolCodec codec) {
-        if (!AgentToolset.onDemand(policy)) return modelDefinitions(policy);
+        if (!AgentToolset.onDemand(policy))
+            return modelDefinitions(policy);
         var allowed = RunToolPolicy.allowed(policy);
         var loaded = new java.util.LinkedHashMap<String, ToolCallback>();
-        for (var tool : codec.requestTools(priorRequest, allowed)) loaded.put(tool.getToolDefinition().name(), tool);
+        for (var tool : codec.requestTools(priorRequest, allowed))
+            loaded.put(tool.getToolDefinition().name(), tool);
         var requested = new java.util.LinkedHashSet<String>();
         for (int i = messages.size() - 1; i >= 0; i--) {
-            if (!(messages.get(i) instanceof org.springframework.ai.chat.messages.ToolResponseMessage replies)) continue;
+            if (!(messages.get(i) instanceof org.springframework.ai.chat.messages.ToolResponseMessage replies))
+                continue;
             for (var reply : replies.getResponses()) {
-                if (!AgentToolset.LOADER.equals(reply.name())) continue;
+                if (!AgentToolset.LOADER.equals(reply.name()))
+                    continue;
                 var result = mapper.readTree(reply.responseData());
-                if (!ToolResultStatus.SUCCEEDED.name().equals(result.path("status").asText())) continue;
+                if (!ToolResultStatus.SUCCEEDED.name().equals(result.path("status").asText()))
+                    continue;
                 for (var name : result.path("data").path("toolNames")) {
                     if (!name.isTextual() || !allowed.contains(name.asText()))
                         throw new IllegalStateException("Loaded tool is outside the frozen Run policy");
@@ -42,7 +49,8 @@ public class ToolRegistry {
         }
         for (var tool : modelDefinitions(policy)) {
             String name = tool.getToolDefinition().name();
-            if (requested.contains(name)) loaded.putIfAbsent(name, tool);
+            if (requested.contains(name))
+                loaded.putIfAbsent(name, tool);
         }
         return List.copyOf(loaded.values());
     }
@@ -222,43 +230,59 @@ public class ToolRegistry {
     private List<ToolCallback> modelDefinitions() {
         return List.of(
                 definition(AgentToolset.LOADER, AgentToolset.description(), AgentToolset.schema()),
-                definition("read_canvas", "Read a page of currently present authorized nodes, including new Run outputs, fresh node CAS, locks, selections and media drafts. "
-                        + "Use nextOffset for nodes. Characters have an independent characterOffset/characterLimit cursor (default 10, maximum 20); follow nextCharacterOffset even on an empty canvas. "
-                        + "Character and shot binding summaries omit descriptive text and expose names, stable IDs, versions, voice presence and review/application status only. "
-                        + "For full safe character text, pass characterId and optional characterTextOffset/characterTextLimit (at most 4000 Unicode code points). "
-                        + "characterDetails.text is one fragment of a JSON document; concatenate its textPage ranges in order. A final page alone is not the full document. "
-                        + "Use the returned characterVersion as expectedCharacterVersion on every continuation (required for nonzero characterTextOffset); a changed profile must be reread from offset zero. "
-                        + "Character metadata and text never grant media access or reveal profile media reference IDs. Set includeDrafts=true with limit at most 6 to inspect editable media input only when needed. "
-                        + "Image pixels and immutable content require read_artifacts. All current nodes and their selected versions are available, including nodes added or changed during this Run.", READ_CANVAS_SCHEMA),
-                definition("read_storyboard", "Read the current project's storyboard workbench. Default offset/limit pages return shot IDs, codes, creative text previews, exact references and production/review metadata. "
-                        + "Follow data.nextOffset for the complete directory; previews are not full text. Use shotIds with exactly one observed shot ID and no pagination fields to read that shot's complete creative text. "
-                        + "data.version is the board CAS. Source/reference IDs do not grant permission to read their artifact content. No media is generated.", READ_STORYBOARD_SCHEMA),
-                definition("write_storyboard_shots", "Save one to six storyboard shots using data.version from read_storyboard as expectedVersion. "
-                        + "Omit shotId to append a new server-identified shot; include code, description, dialogue and estimated durationSeconds. "
-                        + "Use an observed shot ID to patch only supplied creative fields. Other shots, production selections and composition are preserved. "
-                        + "This cannot delete/reorder shots, select media results, confirm reviews or approve generation. Creative changes mark retained results for review. "
-                        + "New source/reference versions must already be authorized exact inputs; media production still requires propose_media_generation and user approval.", WRITE_STORYBOARD_SHOTS_SCHEMA),
+                definition("read_canvas",
+                        "Read a page of currently present authorized nodes, including new Run outputs, fresh node CAS, locks, selections and media drafts. "
+                                + "Use nextOffset for nodes. Characters have an independent characterOffset/characterLimit cursor (default 10, maximum 20); follow nextCharacterOffset even on an empty canvas. "
+                                + "Character and shot binding summaries omit descriptive text and expose names, stable IDs, versions, voice presence and review/application status only. "
+                                + "For full safe character text, pass characterId and optional characterTextOffset/characterTextLimit (at most 4000 Unicode code points). "
+                                + "characterDetails.text is one fragment of a JSON document; concatenate its textPage ranges in order. A final page alone is not the full document. "
+                                + "Use the returned characterVersion as expectedCharacterVersion on every continuation (required for nonzero characterTextOffset); a changed profile must be reread from offset zero. "
+                                + "Character metadata and text never grant media access or reveal profile media reference IDs. Set includeDrafts=true with limit at most 6 to inspect editable media input only when needed. "
+                                + "Image pixels and immutable content require read_artifacts. All current nodes and their selected versions are available, including nodes added or changed during this Run.",
+                        READ_CANVAS_SCHEMA),
+                definition("read_storyboard",
+                        "Read the current project's storyboard workbench. Default offset/limit pages return shot IDs, codes, creative text previews, exact references and production/review metadata. "
+                                + "Follow data.nextOffset for the complete directory; previews are not full text. Use shotIds with exactly one observed shot ID and no pagination fields to read that shot's complete creative text. "
+                                + "data.version is the board CAS. Source/reference IDs do not grant permission to read their artifact content. No media is generated.",
+                        READ_STORYBOARD_SCHEMA),
+                definition("write_storyboard_shots",
+                        "Save one to six storyboard shots using data.version from read_storyboard as expectedVersion. "
+                                + "Omit shotId to append a new server-identified shot; include code, description, dialogue and estimated durationSeconds. "
+                                + "Use an observed shot ID to patch only supplied creative fields. Other shots, production selections and composition are preserved. "
+                                + "This cannot delete/reorder shots, select media results, confirm reviews or approve generation. Creative changes mark retained results for review. "
+                                + "New source/reference versions must already be authorized exact inputs; media production still requires propose_media_generation and user approval.",
+                        WRITE_STORYBOARD_SHOTS_SCHEMA),
 
-                definition("manage_canvas_node", "Rename, move, resize, remove or duplicate an authorized unlocked node. "
-                        + "Use itemVersion as expectedVersion. MOVE needs x/y, RESIZE needs width/height, RENAME needs title. "
-                        + "Media DUPLICATE also needs mediaDraft.version as expectedDraftVersion. REMOVE keeps the underlying artifact and history.", MANAGE_CANVAS_SCHEMA),
-                definition("update_media_draft", "Edit an authorized unlocked IMAGE, VIDEO or AUDIO node's working draft without generating. "
-                        + "Use mediaDraft.version as expectedVersion. Omitted fields retain their existing values; replacing prompt clears old structured mentions unless mentions is supplied. U+FFFC markers require matching mentions. Media references must be exact authorized versions.", UPDATE_MEDIA_DRAFT_SCHEMA),
-                definition("extract_audio", "Extract the chosen audio track from an exact selected VIDEO version into a new AUDIO node, using a fixed local processor with no Provider charge or approval. "
-                        + "Observe canvasItemId, sourceVersionId and itemVersion through read_canvas; source must be unlocked. WAV default, MP3 optional, trackIndex is zero-based. "
-                        + "The server waits durably then resumes this Run with the archived audio version. Never poll or claim completion from its acceptance receipt. No ASR, voice isolation or speaker embedding is performed.", EXTRACT_AUDIO_SCHEMA),
-                definition("trim_audio", "Create an immutable audio segment in a derived node from an exact selected AUDIO version and observed itemVersion. "
-                        + "Use integer startMs/endMs within measured source duration, at least 100 ms; WAV default, MP3 optional. This fixed local command has no Provider charge or approval. "
-                        + "The server waits durably then resumes with the archived version, usable as AUDIO_REFERENCE. It does not remove music or identify speakers; choose the interval from actual evidence. Never poll or resubmit UNKNOWN.", TRIM_AUDIO_SCHEMA),
-                definition("compose_video", "Queue local video trimming, joining and dubbing from authorized exact VIDEO/AUDIO versions. Zero dialogue is allowed. Optional shot speed/fades, KEEP original sound, music, timed subtitles and output shape are supported. "
-                        + "First read storyboard/script text and immutable media prompts plus mediaMetadata.durationMs; infer shot order and match each spoken line from that evidence. "
-                        + "rationale is a short public edit summary, never private reasoning. shots are playback order; lines are spoken order. "
-                        + "sourceStartMs defaults to zero and omitted durationMs uses the remaining source video. startMs is optional, relative to the selected shot, only for an evidenced story anchor; "
-                        + "omit it for automatic waveform/silence placement. Default deployment budget: 60 shots, 300 total lines, 2000 captions, 600000 ms and 2 GiB sources. Deployment may lower budgets; hard ceilings: 120 shots, 600 lines, 5000 captions, 600000 ms and 8 GiB sources. Output at most 500 MiB. 720P/1080P/2160P subject to deployment configuration. "
-                        + "MUTE replaces original sound; BACKGROUND keeps it quietly beneath dialogue. The local renderer allows at most 1.15x dialogue speed and fails rather than cutting speech. "
-                        + "No external media generation or media approval occurs. The receipt confirms acceptance only: the server durably waits for completion and resumes this same Run with the archived version. "
-                        + "Stopping the Director does not cancel an accepted composition; the user can cancel it from the new output node. "
-                        + "Continue from the final localTaskOutcome reply; do not poll or claim completion from acceptance, semantic audio understanding or lip synchronization.", COMPOSE_VIDEO_SCHEMA),
+                definition("manage_canvas_node",
+                        "Rename, move, resize, remove or duplicate an authorized unlocked node. "
+                                + "Use itemVersion as expectedVersion. MOVE needs x/y, RESIZE needs width/height, RENAME needs title. "
+                                + "Media DUPLICATE also needs mediaDraft.version as expectedDraftVersion. REMOVE keeps the underlying artifact and history.",
+                        MANAGE_CANVAS_SCHEMA),
+                definition("update_media_draft",
+                        "Edit an authorized unlocked IMAGE, VIDEO or AUDIO node's working draft without generating. "
+                                + "Use mediaDraft.version as expectedVersion. Omitted fields retain their existing values; replacing prompt clears old structured mentions unless mentions is supplied. U+FFFC markers require matching mentions. Media references must be exact authorized versions.",
+                        UPDATE_MEDIA_DRAFT_SCHEMA),
+                definition("extract_audio",
+                        "Extract the chosen audio track from an exact selected VIDEO version into a new AUDIO node, using a fixed local processor with no Provider charge or approval. "
+                                + "Observe canvasItemId, sourceVersionId and itemVersion through read_canvas; source must be unlocked. WAV default, MP3 optional, trackIndex is zero-based. "
+                                + "The server waits durably then resumes this Run with the archived audio version. Never poll or claim completion from its acceptance receipt. No ASR, voice isolation or speaker embedding is performed.",
+                        EXTRACT_AUDIO_SCHEMA),
+                definition("trim_audio",
+                        "Create an immutable audio segment in a derived node from an exact selected AUDIO version and observed itemVersion. "
+                                + "Use integer startMs/endMs within measured source duration, at least 100 ms; WAV default, MP3 optional. This fixed local command has no Provider charge or approval. "
+                                + "The server waits durably then resumes with the archived version, usable as AUDIO_REFERENCE. It does not remove music or identify speakers; choose the interval from actual evidence. Never poll or resubmit UNKNOWN.",
+                        TRIM_AUDIO_SCHEMA),
+                definition("compose_video",
+                        "Queue local video trimming, joining and dubbing from authorized exact VIDEO/AUDIO versions. Zero dialogue is allowed. Optional shot speed/fades, KEEP original sound, music, timed subtitles and output shape are supported. "
+                                + "First read storyboard/script text and immutable media prompts plus mediaMetadata.durationMs; infer shot order and match each spoken line from that evidence. "
+                                + "rationale is a short public edit summary, never private reasoning. shots are playback order; lines are spoken order. "
+                                + "sourceStartMs defaults to zero and omitted durationMs uses the remaining source video. startMs is optional, relative to the selected shot, only for an evidenced story anchor; "
+                                + "omit it for automatic waveform/silence placement. Default deployment budget: 60 shots, 300 total lines, 2000 captions, 600000 ms and 2 GiB sources. Deployment may lower budgets; hard ceilings: 120 shots, 600 lines, 5000 captions, 600000 ms and 8 GiB sources. Output at most 500 MiB. 720P/1080P/2160P subject to deployment configuration. "
+                                + "MUTE replaces original sound; BACKGROUND keeps it quietly beneath dialogue. The local renderer allows at most 1.15x dialogue speed and fails rather than cutting speech. "
+                                + "No external media generation or media approval occurs. The receipt confirms acceptance only: the server durably waits for completion and resumes this same Run with the archived version. "
+                                + "Stopping the Director does not cancel an accepted composition; the user can cancel it from the new output node. "
+                                + "Continue from the final localTaskOutcome reply; do not poll or claim completion from acceptance, semantic audio understanding or lip synchronization.",
+                        COMPOSE_VIDEO_SCHEMA),
                 definition("read_project_summary",
                         "Read the current project's bounded metadata and pinned Run limits",
                         READ_PROJECT_SUMMARY_SCHEMA),
@@ -274,7 +298,8 @@ public class ToolRegistry {
                                 + "For images read one per tool batch; the committed reply attaches pixels. "
                                 + "Record public observations before requesting another image; only the latest image remains attached",
                         READ_ARTIFACTS_SCHEMA),
-                definition("read_media_sample", "Inspect one authorized exact VIDEO/AUDIO version. Request up to four unique frame timestamps in milliseconds, and/or an audioStartMs/audioDurationMs pair (max 15 seconds). Next model call attaches a timestamped contact sheet and/or WAV sample; no bytes in the tool ledger. Read one sample per batch. Inspect only attached content; sparse frames cannot verify every intervening action. Audio requires an audio-capable model; do not infer speech from metadata.",
+                definition("read_media_sample",
+                        "Inspect one authorized exact VIDEO/AUDIO version. Request up to four unique frame timestamps in milliseconds, and/or an audioStartMs/audioDurationMs pair (max 15 seconds). Next model call attaches a timestamped contact sheet and/or WAV sample; no bytes in the tool ledger. Read one sample per batch. Inspect only attached content; sparse frames cannot verify every intervening action. Audio requires an audio-capable model; do not infer speech from metadata.",
                         """
                         {"type":"object","additionalProperties":false,"required":["versionId"],"properties":{
                           "versionId":{"type":"string","format":"uuid"},
@@ -286,9 +311,11 @@ public class ToolRegistry {
                         "Read status only for up to twelve tasks in this Run; ordinary progress "
                                 + "arrives through the scheduler, so do not repeatedly poll",
                         READ_TASK_STATUS_SCHEMA),
-                definition("list_media_capabilities", "Read published media capabilities and supported inputs in stable default-first order. "
-                        + "Use offset/limit (default and maximum 40) and follow nextOffset until null for the complete directory. "
-                        + "A page is not the full catalog; never infer unavailable capabilities. If the catalog changes, restart from offset zero.", PAGED_READ_SCHEMA),
+                definition("list_media_capabilities",
+                        "Read published media capabilities and supported inputs in stable default-first order. "
+                                + "Use offset/limit (default and maximum 40) and follow nextOffset until null for the complete directory. "
+                                + "A page is not the full catalog; never infer unavailable capabilities. If the catalog changes, restart from offset zero.",
+                        PAGED_READ_SCHEMA),
                 definition("propose_media_generation", "Propose one fixed batch of image, video or audio generation. "
                         + "The server pauses this Run for user approval and archived outcomes. "
                         + "Never poll read_task_status for these tasks or claim user authorization. "
@@ -297,20 +324,23 @@ public class ToolRegistry {
                         + "Approval and archived candidates return to that shot, while users alone approve and select results. A changed shot requires a fresh reviewed proposal. "
                         + "Supply canvasItemId, expectedItemVersion and expectedDraftVersion to target an existing node; omit them to create a node. Both paths require approval.",
                         PROPOSE_CANVAS_MEDIA_SCHEMA),
-                definition("read_skill", "Activate one Skill from the available catalogue and read its full frozen SKILL.md plus reference and attachment manifests.",
+                definition("read_skill",
+                        "Activate one Skill from the available catalogue and read its full frozen SKILL.md plus reference and attachment manifests.",
                         "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"skillVersionId\"],\"properties\":{\"skillVersionId\":{\"type\":\"string\",\"format\":\"uuid\"}}}"),
-                definition("read_skill_asset", "Read one registered Skill reference image after read_skill has activated its exact version. "
-                        + "Its image preview follows the committed reply as LLM context only; it has no project artifact ID and cannot be a Provider media input. "
-                        + "Request one image per tool batch and record public observations before another read; only the latest image stays attached.",
+                definition("read_skill_asset",
+                        "Read one registered Skill reference image after read_skill has activated its exact version. "
+                                + "Its image preview follows the committed reply as LLM context only; it has no project artifact ID and cannot be a Provider media input. "
+                                + "Request one image per tool batch and record public observations before another read; only the latest image stays attached.",
                         """
                         {"type":"object","additionalProperties":false,"required":["skillVersionId","alias"],
                          "properties":{"skillVersionId":{"type":"string","format":"uuid"},
                          "alias":{"type":"string","minLength":1,"maxLength":64}}}
                         """),
-                definition("read_skill_resource", "Read one page of a registered text attachment after a successful read_skill reply. "
-                        + "Use the same skillVersionId and exact resourceManifest path relative to the Skill root. "
-                        + "Resolve relative Markdown links against their source directory; omit heading fragments. "
-                        + "Offsets count Unicode code points. Follow nextOffset until null when the task needs the remaining text; a partial page is not complete.",
+                definition("read_skill_resource",
+                        "Read one page of a registered text attachment after a successful read_skill reply. "
+                                + "Use the same skillVersionId and exact resourceManifest path relative to the Skill root. "
+                                + "Resolve relative Markdown links against their source directory; omit heading fragments. "
+                                + "Offsets count Unicode code points. Follow nextOffset until null when the task needs the remaining text; a partial page is not complete.",
                         PROGRESSIVE_SKILL_RESOURCE_SCHEMA),
                 definition("create_text", "Create a text artifact in the current project",
                         CREATE_TEXT_SCHEMA),

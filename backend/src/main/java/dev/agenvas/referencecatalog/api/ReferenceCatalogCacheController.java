@@ -15,15 +15,48 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1/settings/reference-catalog/cache")
 public class ReferenceCatalogCacheController {
     private final ReferenceCatalogCacheService cache;
-    public ReferenceCatalogCacheController(ReferenceCatalogCacheService cache){this.cache=cache;}
-    public record Create(@NotBlank @Size(max=100) String sourceId,@NotNull UUID snapshotId,@NotNull @Size(max=5000) List<@NotBlank @Size(max=100) String> entryIds,@NotBlank @Size(max=200) String commandKey){}
-    public record Clear(@Size(max=100) String sourceId,UUID snapshotId,@Size(max=5000) List<@NotBlank @Size(max=100) String> entryIds){}
-    public record Jobs(List<ReferenceCatalogCacheService.Job> items){}
-    @GetMapping public ReferenceCatalogImageCache.Stats stats(){return cache.stats();}
-    @GetMapping("/jobs") public Jobs jobs(){return new Jobs(cache.list());}
-    @GetMapping("/jobs/{jobId}") public ReferenceCatalogCacheService.Job job(@PathVariable UUID jobId){return cache.get(jobId);}
-    @PostMapping("/jobs") @ResponseStatus(HttpStatus.ACCEPTED) public ReferenceCatalogCacheService.Job create(@AuthenticationPrincipal AdminPrincipal principal,@Valid @RequestBody Create input){return cache.create(principal.userId(),input.sourceId(),input.snapshotId(),input.entryIds(),input.commandKey());}
-    @PostMapping("/jobs/{jobId}/retry") public ReferenceCatalogCacheService.Job retry(@PathVariable UUID jobId){return cache.retry(jobId);}
-    @PostMapping("/jobs/{jobId}/cancel") public ReferenceCatalogCacheService.Job cancel(@PathVariable UUID jobId){return cache.cancel(jobId);}
-    @PostMapping("/clear") public ReferenceCatalogImageCache.Removed clear(@Valid @RequestBody Clear input){return cache.clear(input.sourceId(),input.snapshotId(),input.entryIds()==null?List.of():input.entryIds());}
+    public ReferenceCatalogCacheController(ReferenceCatalogCacheService cache) {
+        this.cache = cache;
+    }
+    public record Create(@NotBlank @Size(max = 100) String sourceId, @NotNull UUID snapshotId,
+            @NotNull @Size(max = 5000) List<@NotBlank @Size(max = 100) String> entryIds,
+            @NotBlank @Size(max = 200) String commandKey) {
+    }
+    public record Clear(@Size(max = 100) String sourceId, UUID snapshotId,
+            @Size(max = 5000) List<@NotBlank @Size(max = 100) String> entryIds) {
+    }
+    public record Jobs(List<ReferenceCatalogCacheService.Job> items) {
+    }
+    @GetMapping
+    public ReferenceCatalogImageCache.Stats stats() {
+        return cache.stats();
+    }
+    @GetMapping("/jobs")
+    public Jobs jobs() {
+        return new Jobs(cache.list());
+    }
+    @GetMapping("/jobs/{jobId}")
+    public ReferenceCatalogCacheService.Job job(@PathVariable UUID jobId) {
+        return cache.get(jobId);
+    }
+    @PostMapping("/jobs")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public ReferenceCatalogCacheService.Job create(@AuthenticationPrincipal AdminPrincipal principal,
+            @Valid @RequestBody Create input) {
+        return cache.create(principal.userId(), input.sourceId(), input.snapshotId(), input.entryIds(),
+                input.commandKey());
+    }
+    @PostMapping("/jobs/{jobId}/retry")
+    public ReferenceCatalogCacheService.Job retry(@PathVariable UUID jobId) {
+        return cache.retry(jobId);
+    }
+    @PostMapping("/jobs/{jobId}/cancel")
+    public ReferenceCatalogCacheService.Job cancel(@PathVariable UUID jobId) {
+        return cache.cancel(jobId);
+    }
+    @PostMapping("/clear")
+    public ReferenceCatalogImageCache.Removed clear(@Valid @RequestBody Clear input) {
+        return cache.clear(input.sourceId(), input.snapshotId(),
+                input.entryIds() == null ? List.of() : input.entryIds());
+    }
 }

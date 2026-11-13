@@ -6,5 +6,6 @@ public final class MediaUploadLimits {
     public static final long AUDIO_BYTES = 50L * 1024 * 1024;
     public static final long VIDEO_BYTES = 500L * 1024 * 1024;
 
-    private MediaUploadLimits() {}
+    private MediaUploadLimits() {
+    }
 }

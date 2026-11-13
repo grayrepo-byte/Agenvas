@@ -51,11 +51,16 @@ class MediaCapabilityPostgresIT {
         properties.add("agenvas.credentials.master-key-base64", () -> Base64.getEncoder().encodeToString(new byte[32]));
     }
 
-    @Autowired private MediaCapabilityService catalog;
-    @Autowired private ObjectMapper mapper;
-    @Autowired private JooqMediaCapabilityRepository repository;
-    @Autowired private PlatformTransactionManager transactions;
-    @Autowired private JdbcClient jdbc;
+    @Autowired
+    private MediaCapabilityService catalog;
+    @Autowired
+    private ObjectMapper mapper;
+    @Autowired
+    private JooqMediaCapabilityRepository repository;
+    @Autowired
+    private PlatformTransactionManager transactions;
+    @Autowired
+    private JdbcClient jdbc;
 
     @AfterEach
     void restoreMockDefaults() {
@@ -141,10 +146,10 @@ class MediaCapabilityPostgresIT {
         UUID capabilityId = UUID.fromString("00000000-0000-4000-8000-000000000202");
         var connection = catalog.getConnection(connectionId);
 
-        assertThat(catalog.publishedCandidates()).noneMatch(candidate ->
-                candidate.binding().capabilityId().equals(capabilityId));
-        assertThat(catalog.candidates(Task.Kind.IMAGE_GENERATION, 0)).noneMatch(candidate ->
-                candidate.binding().capabilityId().equals(capabilityId));
+        assertThat(catalog.publishedCandidates())
+                .noneMatch(candidate -> candidate.binding().capabilityId().equals(capabilityId));
+        assertThat(catalog.candidates(Task.Kind.IMAGE_GENERATION, 0))
+                .noneMatch(candidate -> candidate.binding().capabilityId().equals(capabilityId));
         assertThatThrownBy(() -> catalog.setDefault(Task.Kind.IMAGE_GENERATION,
                 catalog.defaultVersion(Task.Kind.IMAGE_GENERATION), capabilityId))
                 .isInstanceOf(ApiProblemException.class);
@@ -164,12 +169,14 @@ class MediaCapabilityPostgresIT {
             """);
         var capability = catalog.publishCapability(connection.id(), "Synthetic workflow", "RUNNINGHUB_IMAGE", settings);
         var original = catalog.resolve(capability.id(), Task.Kind.IMAGE_GENERATION, 0);
-        catalog.setDefault(Task.Kind.IMAGE_GENERATION, catalog.defaultVersion(Task.Kind.IMAGE_GENERATION), capability.id());
+        catalog.setDefault(Task.Kind.IMAGE_GENERATION, catalog.defaultVersion(Task.Kind.IMAGE_GENERATION),
+                capability.id());
         long previousDefaultVersion = catalog.defaultVersion(Task.Kind.IMAGE_GENERATION);
         var videoDefault = catalog.defaultCapabilityId(Task.Kind.VIDEO_GENERATION);
         long videoDefaultVersion = catalog.defaultVersion(Task.Kind.VIDEO_GENERATION);
         var replacement = settings.deepCopy();
-        ((tools.jackson.databind.node.ObjectNode) replacement.path("runningHub").path("outputs").get(0)).put("kind", "VIDEO");
+        ((tools.jackson.databind.node.ObjectNode) replacement.path("runningHub").path("outputs").get(0)).put("kind",
+                "VIDEO");
 
         assertThatThrownBy(() -> catalog.updateCapability(connection.id(), capability.id(), capability.version(),
                 "Invalid output", true, "RUNNINGHUB_IMAGE", replacement)).isInstanceOf(ApiProblemException.class);
@@ -177,24 +184,29 @@ class MediaCapabilityPostgresIT {
         var changed = catalog.updateCapability(connection.id(), capability.id(), capability.version(),
                 "Video workflow", true, "RUNNINGHUB_VIDEO", replacement);
         assertThat(changed.currentVersion()).isEqualTo(capability.currentVersion() + 1);
-        assertThat(catalog.resolve(capability.id(), Task.Kind.VIDEO_GENERATION, 5).adapterId()).isEqualTo("RUNNINGHUB_VIDEO");
+        assertThat(catalog.resolve(capability.id(), Task.Kind.VIDEO_GENERATION, 5).adapterId())
+                .isEqualTo("RUNNINGHUB_VIDEO");
         assertThat(catalog.pinnedSnapshot(original).adapterId()).isEqualTo("RUNNINGHUB_IMAGE");
-        assertThat(catalog.settings(original).path("runningHub").path("outputs").get(0).path("kind").asText()).isEqualTo("IMAGE");
+        assertThat(catalog.settings(original).path("runningHub").path("outputs").get(0).path("kind").asText())
+                .isEqualTo("IMAGE");
         assertThat(catalog.defaultCapabilityId(Task.Kind.IMAGE_GENERATION)).isNull();
         assertThat(catalog.defaultVersion(Task.Kind.IMAGE_GENERATION)).isEqualTo(previousDefaultVersion + 1);
         assertThat(catalog.defaultCapabilityId(Task.Kind.VIDEO_GENERATION)).isEqualTo(videoDefault);
         assertThat(catalog.defaultVersion(Task.Kind.VIDEO_GENERATION)).isEqualTo(videoDefaultVersion);
         assertThatThrownBy(() -> catalog.setDefault(Task.Kind.IMAGE_GENERATION,
-                catalog.defaultVersion(Task.Kind.IMAGE_GENERATION), capability.id())).isInstanceOf(ApiProblemException.class);
+                catalog.defaultVersion(Task.Kind.IMAGE_GENERATION), capability.id()))
+                .isInstanceOf(ApiProblemException.class);
         assertThatThrownBy(() -> catalog.updateCapability(connection.id(), capability.id(), capability.version(),
                 "Stale save", true, "RUNNINGHUB_VIDEO", replacement)).isInstanceOfSatisfying(ApiProblemException.class,
                         error -> assertThat(error.status()).isEqualTo(HttpStatus.CONFLICT));
 
-        ((tools.jackson.databind.node.ObjectNode) replacement.path("runningHub").path("outputs").get(0)).put("kind", "AUDIO");
+        ((tools.jackson.databind.node.ObjectNode) replacement.path("runningHub").path("outputs").get(0)).put("kind",
+                "AUDIO");
         var audio = catalog.updateCapability(connection.id(), capability.id(), changed.version(),
                 "Audio workflow", true, "RUNNINGHUB_AUDIO", replacement);
         assertThat(audio.currentVersion()).isEqualTo(changed.currentVersion() + 1);
-        assertThat(catalog.resolve(capability.id(), Task.Kind.AUDIO_GENERATION, 0).adapterId()).isEqualTo("RUNNINGHUB_AUDIO");
+        assertThat(catalog.resolve(capability.id(), Task.Kind.AUDIO_GENERATION, 0).adapterId())
+                .isEqualTo("RUNNINGHUB_AUDIO");
         assertThat(catalog.defaultCapabilityId(Task.Kind.VIDEO_GENERATION)).isEqualTo(videoDefault);
     }
 
@@ -217,7 +229,8 @@ class MediaCapabilityPostgresIT {
                 repository.lockCapability(capability.id());
                 // Prime statistics before the other thread starts, covering an initially empty observation.
                 assertThat(capabilitySelectionBlocked()).isFalse();
-                selection.set(executor.submit(() -> catalog.setDefault(Task.Kind.IMAGE_GENERATION, defaultVersion, capability.id())));
+                selection.set(executor
+                        .submit(() -> catalog.setDefault(Task.Kind.IMAGE_GENERATION, defaultVersion, capability.id())));
                 long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(LOCK_WAIT_SECONDS);
                 boolean blocked = false;
                 while (!blocked && System.nanoTime() < deadline) {
@@ -225,8 +238,12 @@ class MediaCapabilityPostgresIT {
                     jdbc.sql("select pg_stat_clear_snapshot()").query().listOfRows();
                     blocked = capabilitySelectionBlocked();
                     if (!blocked) {
-                        try { Thread.sleep(LOCK_POLL_MILLIS); }
-                        catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new IllegalStateException(interrupted); }
+                        try {
+                            Thread.sleep(LOCK_POLL_MILLIS);
+                        } catch (InterruptedException interrupted) {
+                            Thread.currentThread().interrupt();
+                            throw new IllegalStateException(interrupted);
+                        }
                     }
                 }
                 assertThat(blocked).isTrue();

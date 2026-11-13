@@ -25,9 +25,15 @@ public record DirectorSettings(int contextWindowTokens, int compactionThresholdP
         return new DirectorSettings(32768, 50, 4096, 1024, 4, 1440, 288, 300, 4, 1);
     }
 
-    Duration recoveryWindow() { return Duration.ofMinutes(recoveryWindowMinutes); }
-    Duration retryMaxDelay() { return Duration.ofSeconds(retryMaxDelaySeconds); }
-    int inputBudget() { return contextWindowTokens - responseReserveTokens; }
+    Duration recoveryWindow() {
+        return Duration.ofMinutes(recoveryWindowMinutes);
+    }
+    Duration retryMaxDelay() {
+        return Duration.ofSeconds(retryMaxDelaySeconds);
+    }
+    int inputBudget() {
+        return contextWindowTokens - responseReserveTokens;
+    }
 
     /** The soft trigger uses the whole model window; response space is a separate hard bound. */
     int compactionTriggerTokens() {

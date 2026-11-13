@@ -54,22 +54,27 @@ class ProjectEventTimeoutTest {
                                 new HttpServletResponseWrapper((HttpServletResponse) response) {
                                     @Override
                                     public void setHeader(String name, String value) {
-                                        if (!isCommitted()) super.setHeader(name, value);
+                                        if (!isCommitted())
+                                            super.setHeader(name, value);
                                     }
 
                                     @Override
                                     public void setContentType(String type) {
-                                        if (!isCommitted()) super.setContentType(type);
+                                        if (!isCommitted())
+                                            super.setContentType(type);
                                     }
 
                                     @Override
                                     public void setStatus(int status) {
-                                        if (!isCommitted()) super.setStatus(status);
+                                        if (!isCommitted())
+                                            super.setStatus(status);
                                     }
-                                })).build();
+                                }))
+                        .build();
                 var opened = mvc.perform(get("/test/events"))
                         .andExpect(request().asyncStarted()).andReturn();
-                if (committed) controller.emitter.send(SseEmitter.event().comment("heartbeat"));
+                if (committed)
+                    controller.emitter.send(SseEmitter.event().comment("heartbeat"));
                 assertThat(opened.getResponse().isCommitted()).isEqualTo(committed);
                 var context = (MockAsyncContext) opened.getRequest().getAsyncContext();
                 for (var listener : context.getListeners()) {

@@ -8,7 +8,8 @@ import { usePromptContentHeight } from "./usePromptContentHeight";
 
 type DraftFields = Pick<SaveMediaDraftRequest, "mentions">;
 export type PromptReference = SaveMediaDraftRequest["mediaInputs"][number] & {
-  label: string; thumbnailUrl?: string;
+  label: string;
+  thumbnailUrl?: string;
 };
 const MENTION_MENU_MIN_TOP = 30;
 const MENTION_MENU_OFFSET = 8;
@@ -65,24 +66,44 @@ function mentionToken(reference: PromptReference) {
   return token;
 }
 
-function renderPromptEditor(root: HTMLElement, prompt: string,
-    mentions: DraftFields["mentions"], references: PromptReference[]) {
+function renderPromptEditor(
+  root: HTMLElement,
+  prompt: string,
+  mentions: DraftFields["mentions"],
+  references: PromptReference[],
+) {
   root.replaceChildren();
   let mentionIndex = 0;
   for (const fragment of prompt.split(PROMPT_DELIMITERS)) {
     if (fragment === MENTION_MARKER) {
       const mention = mentions[mentionIndex++];
-      const reference = mention && references.find((candidate) =>
-        candidate.versionId === mention.versionId && candidate.role === mention.role);
+      const reference =
+        mention &&
+        references.find(candidate => candidate.versionId === mention.versionId && candidate.role === mention.role);
       if (reference) root.append(mentionToken(reference));
     } else if (fragment === "\n") root.append(document.createElement("br"));
     else if (fragment) root.append(document.createTextNode(fragment));
   }
 }
 
-export function PromptMentionEditor({ id, label, placeholder, prompt, mentions, references, maxLength, readOnly = false, onChange }: {
-  id: string; label: string; placeholder: string; prompt: string;
-  mentions: DraftFields["mentions"]; references: PromptReference[]; maxLength: number;
+export function PromptMentionEditor({
+  id,
+  label,
+  placeholder,
+  prompt,
+  mentions,
+  references,
+  maxLength,
+  readOnly = false,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  placeholder: string;
+  prompt: string;
+  mentions: DraftFields["mentions"];
+  references: PromptReference[];
+  maxLength: number;
   readOnly?: boolean;
   onChange: (prompt: string, mentions: DraftFields["mentions"]) => void;
 }) {
@@ -91,17 +112,27 @@ export function PromptMentionEditor({ id, label, placeholder, prompt, mentions, 
   const triggerRange = useRef<Range | null>(null);
   const presentationRef = useRef("");
   const [menu, setMenu] = useState<{
-    left: number; top: number; selected: number; upward?: boolean; maxHeight?: number;
+    left: number;
+    top: number;
+    selected: number;
+    upward?: boolean;
+    maxHeight?: number;
   } | null>(null);
 
   useLayoutEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
     const current = readPromptEditor(editor);
-    const presentation = references.map((reference) => [reference.versionId, reference.role,
-      reference.label, reference.thumbnailUrl, reference.color].join(":")).join("|");
-    if (current.prompt !== prompt || JSON.stringify(current.mentions) !== JSON.stringify(mentions)
-        || presentationRef.current !== presentation) {
+    const presentation = references
+      .map(reference =>
+        [reference.versionId, reference.role, reference.label, reference.thumbnailUrl, reference.color].join(":"),
+      )
+      .join("|");
+    if (
+      current.prompt !== prompt ||
+      JSON.stringify(current.mentions) !== JSON.stringify(mentions) ||
+      presentationRef.current !== presentation
+    ) {
       renderPromptEditor(editor, prompt, mentions, references);
       presentationRef.current = presentation;
     }
@@ -129,15 +160,18 @@ export function PromptMentionEditor({ id, label, placeholder, prompt, mentions, 
     const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
     const container = range?.startContainer;
     const offset = range?.startOffset ?? 0;
-    if (references.length && range?.collapsed && container?.nodeType === Node.TEXT_NODE
-        && (container.textContent ?? "").slice(offset - 1, offset) === "@") {
+    if (
+      references.length &&
+      range?.collapsed &&
+      container?.nodeType === Node.TEXT_NODE &&
+      (container.textContent ?? "").slice(offset - 1, offset) === "@"
+    ) {
       triggerRange.current = range.cloneRange();
       // Workspace menus escape the scrolling editor into its screen-sized overlay.
       const overlay = editor.closest(".workspace-media-editor");
       const editorBounds = editor.getBoundingClientRect();
       const bounds = overlay?.getBoundingClientRect() ?? editorBounds;
-      const caret = typeof range.getBoundingClientRect === "function"
-        ? range.getBoundingClientRect() : editorBounds;
+      const caret = typeof range.getBoundingClientRect === "function" ? range.getBoundingClientRect() : editorBounds;
       let top = Math.max(MENTION_MENU_MIN_TOP, caret.bottom - bounds.top + MENTION_MENU_OFFSET);
       let upward = false;
       let maxHeight: number | undefined;
@@ -150,11 +184,9 @@ export function PromptMentionEditor({ id, label, placeholder, prompt, mentions, 
         // Only the suggestion menu changes direction; the editor stays anchored below the node.
         upward = below < MENTION_MENU_HEIGHT_LIMIT && above > below;
         maxHeight = Math.min(MENTION_MENU_HEIGHT_LIMIT, upward ? above : below);
-        top = upward ? caret.top - bounds.top - MENTION_MENU_OFFSET
-          : caret.bottom - bounds.top + MENTION_MENU_OFFSET;
+        top = upward ? caret.top - bounds.top - MENTION_MENU_OFFSET : caret.bottom - bounds.top + MENTION_MENU_OFFSET;
       }
-      setMenu({ left: Math.max(0, caret.left - bounds.left),
-        top, selected: 0, upward, maxHeight });
+      setMenu({ left: Math.max(0, caret.left - bounds.left), top, selected: 0, upward, maxHeight });
     } else {
       triggerRange.current = null;
       setMenu(null);
@@ -206,23 +238,64 @@ export function PromptMentionEditor({ id, label, placeholder, prompt, mentions, 
     }
   }
 
-  return <div className="media-draft-prompt-shell">
-    <label className="media-draft-prompt-label" htmlFor={id}>{label}</label>
-    <div ref={editorRef} id={id} className="media-draft-prompt ui-multiline" role="textbox"
-      aria-label={label} aria-multiline="true" aria-readonly={readOnly} contentEditable={!readOnly} suppressContentEditableWarning
-      data-placeholder={placeholder} onInput={update} onKeyDown={onKeyDown} />
-    {menu && !readOnly ? <Command shouldFilter={false} value={references[menu.selected]?.versionId ?? ""} className="media-draft-mention-menu" aria-label={t("media.mentions.imageReferences")}
-      style={{ left: menu.left, top: menu.top, maxHeight: menu.maxHeight,
-        transform: menu.upward ? "translateY(-100%)" : undefined }}>
-      <CommandList label={t("media.mentions.imageReferences")}><CommandGroup heading="Image">
-      {references.map((reference, index) => <CommandItem key={reference.versionId} value={reference.versionId}
-        role="option" aria-selected={index === menu.selected}
-        aria-label={`${reference.label} ${reference.versionId}`}
-        onMouseDown={(event) => event.preventDefault()} onSelect={() => insert(reference)}>
-        {reference.thumbnailUrl ? <img src={reference.thumbnailUrl} alt="" /> : reference.role === "AUDIO_REFERENCE" ? <MusicNotes size={MENTION_ICON_SIZE} /> : <ImageSquare size={MENTION_ICON_SIZE} />}
-        <span>{reference.label}</span>
-      </CommandItem>)}
-    </CommandGroup></CommandList></Command> : null}
-  </div>;
+  return (
+    <div className="media-draft-prompt-shell">
+      <label className="media-draft-prompt-label" htmlFor={id}>
+        {label}
+      </label>
+      <div
+        ref={editorRef}
+        id={id}
+        className="media-draft-prompt ui-multiline"
+        role="textbox"
+        aria-label={label}
+        aria-multiline="true"
+        aria-readonly={readOnly}
+        contentEditable={!readOnly}
+        suppressContentEditableWarning
+        data-placeholder={placeholder}
+        onInput={update}
+        onKeyDown={onKeyDown}
+      />
+      {menu && !readOnly ? (
+        <Command
+          shouldFilter={false}
+          value={references[menu.selected]?.versionId ?? ""}
+          className="media-draft-mention-menu"
+          aria-label={t("media.mentions.imageReferences")}
+          style={{
+            left: menu.left,
+            top: menu.top,
+            maxHeight: menu.maxHeight,
+            transform: menu.upward ? "translateY(-100%)" : undefined,
+          }}
+        >
+          <CommandList label={t("media.mentions.imageReferences")}>
+            <CommandGroup heading="Image">
+              {references.map((reference, index) => (
+                <CommandItem
+                  key={reference.versionId}
+                  value={reference.versionId}
+                  role="option"
+                  aria-selected={index === menu.selected}
+                  aria-label={`${reference.label} ${reference.versionId}`}
+                  onMouseDown={event => event.preventDefault()}
+                  onSelect={() => insert(reference)}
+                >
+                  {reference.thumbnailUrl ? (
+                    <img src={reference.thumbnailUrl} alt="" />
+                  ) : reference.role === "AUDIO_REFERENCE" ? (
+                    <MusicNotes size={MENTION_ICON_SIZE} />
+                  ) : (
+                    <ImageSquare size={MENTION_ICON_SIZE} />
+                  )}
+                  <span>{reference.label}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      ) : null}
+    </div>
+  );
 }
-

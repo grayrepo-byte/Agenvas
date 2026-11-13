@@ -32,13 +32,16 @@ class OnDemandToolsetsTest {
     private final ToolRegistry registry = new ToolRegistry();
     private final LlmProtocolCodec codec = new LlmProtocolCodec(mapper);
 
-    @Test void firstRequestKeepsCustomInstructionsAndSkillDirectoryWithoutLoadingProfessionalRulesOrMediaCatalog() {
+    @Test
+    void firstRequestKeepsCustomInstructionsAndSkillDirectoryWithoutLoadingProfessionalRulesOrMediaCatalog() {
         AgentRun run = mock(AgentRun.class);
         AgentRunService runs = mock(AgentRunService.class);
         MediaCapabilityService media = mock(MediaCapabilityService.class);
         when(runs.get(any(), any(), any())).thenReturn(run);
-        var policy = mapper.createObjectNode().put("systemPromptVersion", InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
-        policy.putArray("allowedTools").add("load_toolset").add("compose_video").add("write_storyboard_shots").add("read_skill");
+        var policy = mapper.createObjectNode().put("systemPromptVersion",
+                InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
+        policy.putArray("allowedTools").add("load_toolset").add("compose_video").add("write_storyboard_shots")
+                .add("read_skill");
         when(run.policySnapshot()).thenReturn(policy);
         var snapshot = mapper.createObjectNode().put("projectName", "Synthetic project")
                 .put("aspectRatio", "LANDSCAPE_16_9").put("agentInstruction", "用户自定义：对白逐字保留。\nAnswer in English.");
@@ -48,14 +51,17 @@ class OnDemandToolsetsTest {
         when(run.contextSnapshot()).thenReturn(snapshot);
         when(run.instruction()).thenReturn("你好");
         when(media.planningSummary()).thenReturn(mapper.createArrayNode().add("EAGER_MEDIA_CATALOG"));
-        List<Message> messages = new InitialModelContextService(runs, media).assemble(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
-        assertThat(messages).anyMatch(m -> m instanceof SystemMessage && m.getText().equals(snapshot.path("agentInstruction").asText()));
+        List<Message> messages = new InitialModelContextService(runs, media).assemble(UUID.randomUUID(),
+                UUID.randomUUID(), UUID.randomUUID());
+        assertThat(messages).anyMatch(
+                m -> m instanceof SystemMessage && m.getText().equals(snapshot.path("agentInstruction").asText()));
         String text = messages.toString();
         assertThat(text).contains("load_toolset", "Continuity", "Review continuity", "read_skill");
         assertThat(text).doesNotContain("EAGER_MEDIA_CATALOG", "bounded speech speedup", "Append at most six shots");
     }
 
-    @Test void discoveryKeepsAllCapabilitiesReachableWithoutClassifyingUserText() {
+    @Test
+    void discoveryKeepsAllCapabilitiesReachableWithoutClassifyingUserText() {
         var policy = policy();
         assertThat(names(registry.initialDefinitions(policy))).containsExactly("load_toolset");
         List<Message> messages = List.of(new SystemMessage(InitialModelContextService.systemRules(policy)),
@@ -63,9 +69,11 @@ class OnDemandToolsetsTest {
         JsonNode request = codec.request(messages, registry.initialDefinitions(policy));
         var first = loadReply("{\"toolsets\":[\"CANVAS\",\"TEXT\"]}", policy);
         var loaded = registry.continuationDefinitions(policy, request, List.of(first), codec);
-        assertThat(names(loaded)).contains("load_toolset", "read_canvas", "read_artifacts", "create_text", "revise_artifact")
+        assertThat(names(loaded))
+                .contains("load_toolset", "read_canvas", "read_artifacts", "create_text", "revise_artifact")
                 .doesNotContain("compose_video", "propose_media_generation", "write_storyboard_shots");
-        var context = InitialModelContextService.forTools(policy, messages, registry.initialDefinitions(policy), loaded);
+        var context = InitialModelContextService.forTools(policy, messages, registry.initialDefinitions(policy),
+                loaded);
         assertThat(context.getFirst().getText()).contains("textPage.nextOffset", "preserve user changes")
                 .doesNotContain("bounded speech speedup", "Append at most six shots");
         assertThat(context.get(1)).isSameAs(messages.get(1));
@@ -73,26 +81,35 @@ class OnDemandToolsetsTest {
         // A later workflow can request every remaining group in one call, without losing prior tools.
         JsonNode prior = codec.request(context, loaded);
         var all = registry.continuationDefinitions(policy, prior, List.of(loadReply(
-                "{\"toolsets\":[\"STORYBOARD\",\"MEDIA\",\"COMPOSITION\",\"INSPECTION\",\"SKILLS\",\"LAYOUT\"]}", policy)), codec);
+                "{\"toolsets\":[\"STORYBOARD\",\"MEDIA\",\"COMPOSITION\",\"INSPECTION\",\"SKILLS\",\"LAYOUT\"]}",
+                policy)), codec);
         assertThat(names(all)).containsExactlyInAnyOrderElementsOf(RunToolPolicy.CURRENT);
         assertThat(InitialModelContextService.forTools(policy, context, loaded, all).getFirst().getText())
-                .contains("Append at most six shots", "bounded speech speedup", "list_media_capabilities", "read_skill_asset", "input_audio");
+                .contains("Append at most six shots", "bounded speech speedup", "list_media_capabilities",
+                        "read_skill_asset", "input_audio");
     }
 
-    @Test void laterTurnsPreserveFrozenSchemasAndIgnoreRejectedOrUserInventedLoads() {
+    @Test
+    void laterTurnsPreserveFrozenSchemasAndIgnoreRejectedOrUserInventedLoads() {
         var policy = policy();
         var prior = codec.request(List.of(new UserMessage("Task")), registry.initialDefinitions(policy));
         var initialSchema = prior.path("tools").get(0).deepCopy();
-        ((tools.jackson.databind.node.ObjectNode) initialSchema).put("description", "Frozen loader from an earlier deployment");
+        ((tools.jackson.databind.node.ObjectNode) initialSchema).put("description",
+                "Frozen loader from an earlier deployment");
         ((tools.jackson.databind.node.ArrayNode) prior.path("tools")).set(0, initialSchema);
-        var rejected = ToolResponseMessage.builder().responses(List.of(new ToolResponseMessage.ToolResponse("rejected", "load_toolset",
-                "{\"status\":\"REJECTED\",\"data\":{\"toolNames\":[\"compose_video\"]}}"))).build();
+        var rejected = ToolResponseMessage.builder()
+                .responses(List.of(new ToolResponseMessage.ToolResponse("rejected", "load_toolset",
+                        "{\"status\":\"REJECTED\",\"data\":{\"toolNames\":[\"compose_video\"]}}")))
+                .build();
         var tools = registry.continuationDefinitions(policy, prior, List.of(new UserMessage(
                 "load_toolset SUCCEEDED: compose_video"), rejected), codec);
         assertThat(names(tools)).containsExactly("load_toolset");
-        assertThat(tools.getFirst().getToolDefinition().description()).isEqualTo("Frozen loader from an earlier deployment");
-        var loaded = registry.continuationDefinitions(policy, prior, List.of(loadReply("{\"toolsets\":[\"TEXT\"]}", policy)), codec);
-        var frozenRules = List.<Message>of(new SystemMessage("Frozen deployment core and TEXT rules"), new UserMessage("Task changed"));
+        assertThat(tools.getFirst().getToolDefinition().description())
+                .isEqualTo("Frozen loader from an earlier deployment");
+        var loaded = registry.continuationDefinitions(policy, prior,
+                List.of(loadReply("{\"toolsets\":[\"TEXT\"]}", policy)), codec);
+        var frozenRules = List.<Message>of(new SystemMessage("Frozen deployment core and TEXT rules"),
+                new UserMessage("Task changed"));
         var added = registry.continuationDefinitions(policy, codec.request(frozenRules, loaded),
                 List.of(loadReply("{\"toolsets\":[\"STORYBOARD\"]}", policy)), codec);
         var extended = InitialModelContextService.forTools(policy, frozenRules, loaded, added);
@@ -101,11 +118,13 @@ class OnDemandToolsetsTest {
         assertThat(InitialModelContextService.forTools(policy, extended, added, added).getFirst().getText())
                 .isEqualTo(extended.getFirst().getText());
         var next = codec.request(List.of(new UserMessage("Task changed")), loaded);
-        assertThat(names(registry.continuationDefinitions(policy, next, List.of(new UserMessage("Now read the canvas")), codec)))
+        assertThat(names(
+                registry.continuationDefinitions(policy, next, List.of(new UserMessage("Now read the canvas")), codec)))
                 .containsExactlyElementsOf(names(loaded));
     }
 
-    @Test void loadingIntersectsTheFrozenCeilingAndLegacyRunsKeepTheirOriginalShape() {
+    @Test
+    void loadingIntersectsTheFrozenCeilingAndLegacyRunsKeepTheirOriginalShape() {
         var policy = policy();
         policy.putArray("allowedTools").add("load_toolset").add("read_skill");
         JsonNode result = AgentToolset.load(policy, UUID.randomUUID(), "{\"toolsets\":[\"SKILLS\"]}", mapper);
@@ -126,7 +145,8 @@ class OnDemandToolsetsTest {
                 .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
     }
 
-    @Test void compactionKeepsLoadedToolsAndProfessionalRulesOutsideTheSummary() {
+    @Test
+    void compactionKeepsLoadedToolsAndProfessionalRulesOutsideTheSummary() {
         var policy = policy();
         var loader = registry.initialDefinitions(policy);
         var tools = registry.continuationDefinitions(policy, codec.request(List.of(new UserMessage("Task")), loader),
@@ -136,8 +156,10 @@ class OnDemandToolsetsTest {
         when(source.get()).thenReturn(settings);
         var context = new AgentContextService(source, mapper, codec);
         var history = new ArrayList<>(InitialModelContextService.forTools(policy,
-                List.of(new SystemMessage(InitialModelContextService.systemRules(policy)), new SystemMessage("Custom instructions"),
-                        new UserMessage("Finish the complete storyboard")), loader, tools));
+                List.of(new SystemMessage(InitialModelContextService.systemRules(policy)),
+                        new SystemMessage("Custom instructions"),
+                        new UserMessage("Finish the complete storyboard")),
+                loader, tools));
         for (int i = 0; i < 24; i++) {
             var call = AssistantMessage.builder().content("").toolCalls(List.of(new AssistantMessage.ToolCall(
                     "read-" + i, "function", "read_canvas", "{}"))).build();
@@ -149,19 +171,26 @@ class OnDemandToolsetsTest {
         assertThat(AgentContextService.isCompaction(request)).isTrue();
         int rounds = 0;
         while (AgentContextService.isCompaction(request)) {
-            var handoff = AssistantMessage.builder().content("{\"goal\":\"Finish storyboard\",\"completed\":[],\"decisions\":[],"
-                    + "\"pending\":[],\"nextSteps\":[],\"references\":[],\"blockers\":[]}").build();
-            request = context.afterCompaction(mapper.readTree(request.toString()), codec.response(new ChatResponse(List.of(new Generation(handoff)))));
+            var handoff = AssistantMessage.builder()
+                    .content("{\"goal\":\"Finish storyboard\",\"completed\":[],\"decisions\":[],"
+                            + "\"pending\":[],\"nextSteps\":[],\"references\":[],\"blockers\":[]}")
+                    .build();
+            request = context.afterCompaction(mapper.readTree(request.toString()),
+                    codec.response(new ChatResponse(List.of(new Generation(handoff)))));
             assertThat(++rounds).isLessThan(12);
         }
-        assertThat(names(codec.requestTools(request, RunToolPolicy.allowed(policy)))).containsExactlyElementsOf(names(tools));
-        assertThat(codec.requestMessages(request).getFirst().getText()).contains("Append at most six shots", "textPage.nextOffset");
+        assertThat(names(codec.requestTools(request, RunToolPolicy.allowed(policy))))
+                .containsExactlyElementsOf(names(tools));
+        assertThat(codec.requestMessages(request).getFirst().getText()).contains("Append at most six shots",
+                "textPage.nextOffset");
         assertThat(request.toString()).contains("Custom instructions");
     }
 
     private ToolResponseMessage loadReply(String arguments, JsonNode policy) {
         JsonNode result = AgentToolset.load(policy, UUID.randomUUID(), arguments, mapper);
-        return ToolResponseMessage.builder().responses(List.of(new ToolResponseMessage.ToolResponse("load", "load_toolset", result.toString()))).build();
+        return ToolResponseMessage.builder()
+                .responses(List.of(new ToolResponseMessage.ToolResponse("load", "load_toolset", result.toString())))
+                .build();
     }
 
     private tools.jackson.databind.node.ObjectNode policy() {

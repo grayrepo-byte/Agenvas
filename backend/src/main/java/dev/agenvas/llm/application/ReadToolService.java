@@ -101,7 +101,8 @@ public class ReadToolService {
                 .put("content", skill.path("skillMd").asText());
         for (String field : List.of("name", "description", "outputKinds", "resourceManifest", "assets", "inputs"))
             data.set(field, skill.path(field).deepCopy());
-        if (skill.has("assetDelivery")) data.set("assetDelivery", skill.path("assetDelivery").deepCopy());
+        if (skill.has("assetDelivery"))
+            data.set("assetDelivery", skill.path("assetDelivery").deepCopy());
         // Lengths aid selective paging; attachment bodies remain behind the resource tool.
         ArrayNode manifest = data.putArray("resourceManifest");
         for (JsonNode resource : skill.path("resources")) {
@@ -121,10 +122,12 @@ public class ReadToolService {
                 || !input.path("alias").isTextual())
             throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
         JsonNode skill = selectedSkill(run, input, true);
-        if (!dev.agenvas.skill.domain.SkillContent.AssetDelivery.LLM_CONTEXT.name().equals(skill.path("assetDelivery").asText()))
+        if (!dev.agenvas.skill.domain.SkillContent.AssetDelivery.LLM_CONTEXT.name()
+                .equals(skill.path("assetDelivery").asText()))
             throw invalid(ApiMessage.of("api.read-tool-service.skill-resource-is-not-in-this-run"));
         for (JsonNode asset : skill.path("assets")) {
-            if (!input.path("alias").asText().equals(asset.path("alias").asText())) continue;
+            if (!input.path("alias").asText().equals(asset.path("alias").asText()))
+                continue;
             if (!"IMAGE".equals(asset.path("kind").asText()) || !asset.path("contentHash").isTextual())
                 throw new IllegalStateException("Frozen Skill image descriptor is malformed");
             ObjectNode output = result(operationId, "已读取本次 Skill 的参考图片");
@@ -134,7 +137,8 @@ public class ReadToolService {
                     .put("alias", asset.path("alias").asText()).put("kind", "IMAGE")
                     .put("contentHash", asset.path("contentHash").asText())
                     .put(AgentImageInputService.PREVIEW_REQUEST_KEY, true);
-            for (String field : List.of("title", "purpose")) data.set(field, asset.path(field).deepCopy());
+            for (String field : List.of("title", "purpose"))
+                data.set(field, asset.path(field).deepCopy());
             return output;
         }
         throw invalid(ApiMessage.of("api.read-tool-service.skill-resource-is-not-in-this-run"));
@@ -143,8 +147,12 @@ public class ReadToolService {
     private JsonNode selectedSkill(AgentRun run, ObjectNode input, boolean requireActivation) {
         if (!input.path("skillVersionId").isTextual())
             throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
-        var candidates = requireActivation ? RunSkills.activated(run, ledger.skillReads(run.projectId(), run.id())) : RunSkills.available(run);
-        return candidates.stream().filter(skill -> skill.path("skillVersionId").asText().equals(input.path("skillVersionId").asText())).findFirst()
+        var candidates = requireActivation
+                ? RunSkills.activated(run, ledger.skillReads(run.projectId(), run.id()))
+                : RunSkills.available(run);
+        return candidates.stream()
+                .filter(skill -> skill.path("skillVersionId").asText().equals(input.path("skillVersionId").asText()))
+                .findFirst()
                 .orElseThrow(() -> invalid(ApiMessage.of("api.read-tool-service.skill-resource-is-not-in-this-run")));
     }
 
@@ -171,19 +179,25 @@ public class ReadToolService {
             if (resource.path("path").asText().equals(input.path("path").asText())) {
                 String text = resource.path("content").asText();
                 int total = text.codePointCount(0, text.length());
-                if (offset > total) throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
+                if (offset > total)
+                    throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
                 int end = Math.min(total, offset + limit);
                 ObjectNode output = result(operationId, "已读取本次 Skill 的固定资源");
                 ObjectNode data = output.putObject("data");
                 data.put("skillVersionId", skill.path("skillVersionId").asText());
                 data.put("path", resource.path("path").asText());
                 data.put("contentHash", resource.path("contentHash").asText());
-                data.put("content", text.substring(text.offsetByCodePoints(0, offset), text.offsetByCodePoints(0, end)));
+                data.put("content",
+                        text.substring(text.offsetByCodePoints(0, offset), text.offsetByCodePoints(0, end)));
                 data.put("offset", offset);
                 data.put("total", total);
                 data.put("endOffset", end);
-                if (end < total) data.put("nextOffset", end); else data.putNull("nextOffset");
-                if (offset > 0 || end < total) output.put("userVisibleSummary", "已读取 Skill 资源的部分内容；固定原文保留，可继续分页读取");
+                if (end < total)
+                    data.put("nextOffset", end);
+                else
+                    data.putNull("nextOffset");
+                if (offset > 0 || end < total)
+                    output.put("userVisibleSummary", "已读取 Skill 资源的部分内容；固定原文保留，可继续分页读取");
                 return output;
             }
         }
@@ -204,17 +218,23 @@ public class ReadToolService {
         int offset = pageInteger(input, "offset", 0);
         int limit = pageInteger(input, "limit", 20);
         int total = selected.size();
-        if (limit < 1 || limit > 40 || offset > total) throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
+        if (limit < 1 || limit > 40 || offset > total)
+            throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
         int end = Math.min(total, offset + limit);
         output.put("offset", offset).put("total", total);
-        if (end < total) output.put("nextOffset", end); else output.putNull("nextOffset");
+        if (end < total)
+            output.put("nextOffset", end);
+        else
+            output.putNull("nextOffset");
         var data = output.putArray("data");
-        for (int index = offset; index < end; index++) data.add(selected.get(index).deepCopy());
+        for (int index = offset; index < end; index++)
+            data.add(selected.get(index).deepCopy());
         return output;
     }
 
     private int pageInteger(ObjectNode input, String field, int fallback) {
-        if (!input.has(field)) return fallback;
+        if (!input.has(field))
+            return fallback;
         JsonNode value = input.path(field);
         if (!value.isIntegralNumber() || !value.canConvertToInt() || value.intValue() < 0)
             throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
@@ -261,20 +281,26 @@ public class ReadToolService {
             item.put("kind", view.artifact().kind().name());
             if (view.artifact().kind() == Artifact.Kind.VIDEO || view.artifact().kind() == Artifact.Kind.AUDIO) {
                 // Only verified metadata is projected: storage keys, URLs and Provider settings never enter model context.
-                Asset asset = assets.metadata(context.ownerId(), context.projectId(), uuid(version.content().path("assetId")));
+                Asset asset = assets.metadata(context.ownerId(), context.projectId(),
+                        uuid(version.content().path("assetId")));
                 if (!asset.mediaKind().name().equals(view.artifact().kind().name()))
                     throw new IllegalStateException("Media version kind does not match its archived asset");
                 ObjectNode metadata = item.putObject("mediaMetadata");
-                if (asset.durationMs() != null) metadata.put("durationMs", asset.durationMs());
-                if (asset.width() != null) metadata.put("width", asset.width());
-                if (asset.height() != null) metadata.put("height", asset.height());
+                if (asset.durationMs() != null)
+                    metadata.put("durationMs", asset.durationMs());
+                if (asset.width() != null)
+                    metadata.put("width", asset.width());
+                if (asset.height() != null)
+                    metadata.put("height", asset.height());
                 metadata.put("contentType", asset.contentType());
-                if (version.createdByKind() != null) item.put("createdByKind", version.createdByKind().name());
+                if (version.createdByKind() != null)
+                    item.put("createdByKind", version.createdByKind().name());
                 item.set("inputReferences", mapper.valueToTree(version.inputReferences()));
             }
             if (view.artifact().kind() == Artifact.Kind.IMAGE) {
                 // Pixel hydration happens after commit; each model turn receives one image.
-                if (++imageCount > 1) throw oneImageAtATime();
+                if (++imageCount > 1)
+                    throw oneImageAtATime();
                 item.put(AgentImageInputService.PREVIEW_REQUEST_KEY, true);
             }
             // 已归档的媒体可由节点选用，而资源库默认版本仍为空；读取不改变这两个独立选择。
@@ -290,7 +316,8 @@ public class ReadToolService {
             }
             if (textPageRequested) {
                 appendTextPage(item, version.content(), textOffset, textLimit);
-                if (item.path("contentTruncated").asBoolean()) output.put("userVisibleSummary", "已读取产物的部分内容；原始版本保留，可继续分页读取");
+                if (item.path("contentTruncated").asBoolean())
+                    output.put("userVisibleSummary", "已读取产物的部分内容；原始版本保留，可继续分页读取");
                 continue;
             }
             String content = version.content().toString();
@@ -324,7 +351,10 @@ public class ReadToolService {
                 .put("text", text.substring(text.offsetByCodePoints(0, offset), text.offsetByCodePoints(0, end)));
         item.put("contentTruncated", offset > 0 || end < total);
         ObjectNode page = item.putObject("textPage").put("offset", offset).put("endOffset", end).put("total", total);
-        if (end < total) page.put("nextOffset", end); else page.putNull("nextOffset");
+        if (end < total)
+            page.put("nextOffset", end);
+        else
+            page.putNull("nextOffset");
     }
 
     /** Record exact requested sample times without decoding while the tool ledger transaction is open. */
@@ -333,17 +363,23 @@ public class ReadToolService {
         if (!Set.of("versionId", "timestampsMs", "audioStartMs", "audioDurationMs").containsAll(input.propertyNames()))
             throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
         UUID versionId;
-        try { versionId = UUID.fromString(input.path("versionId").asText()); }
-        catch (IllegalArgumentException malformed) { throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid")); }
-        var version = artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), run.contextSnapshot(), context.runId(), versionId);
+        try {
+            versionId = UUID.fromString(input.path("versionId").asText());
+        } catch (IllegalArgumentException malformed) {
+            throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
+        }
+        var version = artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(),
+                run.contextSnapshot(), context.runId(), versionId);
         input.put("artifactId", version.artifactId().toString());
         var sample = AgentMediaSampleService.parse(input);
-        var asset = samples.authorize(context.ownerId(), context.projectId(), run.contextSnapshot(), context.runId(), sample);
+        var asset = samples.authorize(context.ownerId(), context.projectId(), run.contextSnapshot(), context.runId(),
+                sample);
         ObjectNode output = result(operationId, "已请求精确时间点的媒体样本");
         ObjectNode data = output.putObject("data");
         data.setAll(input);
         data.put("kind", asset.mediaKind().name()).put("sampleRequested", true)
-                .put("notice", "Only the requested sampled frames/audio are supplied on the next model call; sparse samples do not prove full-video continuity. Audio requires a model supporting input_audio; metadata is not speech recognition.");
+                .put("notice",
+                        "Only the requested sampled frames/audio are supplied on the next model call; sparse samples do not prove full-video continuity. Audio requires a model supporting input_audio; metadata is not speech recognition.");
         return output;
     }
 
@@ -373,7 +409,8 @@ public class ReadToolService {
                     && ledger.ownsLocalTask(context.projectId(), context.runId(), task.id());
             if (!context.runId().equals(task.runId()) && !localFromRun) {
                 throw new ApiProblemException(HttpStatus.NOT_FOUND, "TASK_NOT_FOUND",
-                        ApiMessage.of("api.read-tool-service.task-does-not-exist"), ApiMessage.of("api.read-tool-service.task-is-not-accessible-to-this-run"), false);
+                        ApiMessage.of("api.read-tool-service.task-does-not-exist"),
+                        ApiMessage.of("api.read-tool-service.task-is-not-accessible-to-this-run"), false);
             }
             ObjectNode item = items.addObject();
             item.put("taskId", task.id().toString());
@@ -390,7 +427,8 @@ public class ReadToolService {
             }
             if (localFromRun && task.output() != null) {
                 for (String field : List.of("artifactId", "artifactVersionId", "selected")) {
-                    if (task.output().has(field)) item.set(field, task.output().get(field));
+                    if (task.output().has(field))
+                        item.set(field, task.output().get(field));
                 }
             }
         }

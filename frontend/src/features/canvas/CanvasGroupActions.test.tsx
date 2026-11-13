@@ -9,8 +9,8 @@ import { CANVAS_GROUP_INPUT_HANDLE, CANVAS_GROUP_OUTPUT_HANDLE, canvasGroupNodeI
 
 // Handle geometry is exercised in native Chromium; jsdom has no DOMMatrix implementation.
 const updateNodeInternals = vi.hoisted(() => vi.fn());
-vi.mock("@xyflow/react", async (importOriginal) => ({
-  ...await importOriginal<typeof import("@xyflow/react")>(),
+vi.mock("@xyflow/react", async importOriginal => ({
+  ...(await importOriginal<typeof import("@xyflow/react")>()),
   useUpdateNodeInternals: () => updateNodeInternals,
 }));
 
@@ -44,7 +44,12 @@ describe("canvas group name form", () => {
 
   it("prevents duplicate submission, cancellation and Escape during a pending save", async () => {
     let finish: () => void = () => {};
-    const onSave = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
+    const onSave = vi.fn(
+      () =>
+        new Promise<void>(resolve => {
+          finish = resolve;
+        }),
+    );
     const onClose = vi.fn();
     render(<CanvasGroupRenameDialog mode="rename" initialName="测试分组" onSave={onSave} onClose={onClose} />);
     const save = screen.getByRole("button", { name: t("canvas.group.save") });
@@ -63,12 +68,16 @@ describe("canvas group name form", () => {
   it("freezes a failed request's name and explicitly retries the same intent while allowing cancellation", async () => {
     const onSave = vi.fn().mockRejectedValueOnce(new Error("synthetic unavailable")).mockResolvedValueOnce(undefined);
     const onClose = vi.fn();
-    const editor = render(<CanvasGroupRenameDialog mode="rename" initialName="原名称" onSave={onSave} onClose={onClose} />);
+    const editor = render(
+      <CanvasGroupRenameDialog mode="rename" initialName="原名称" onSave={onSave} onClose={onClose} />,
+    );
     const name = screen.getByRole("textbox", { name: t("canvas.group.name") });
     fireEvent.change(name, { target: { value: "待重试的名称" } });
     await clickControl(screen.getByRole("button", { name: t("canvas.group.save") }));
     expect(await screen.findByRole("alert")).toHaveTextContent("synthetic unavailable");
-    editor.rerender(<CanvasGroupRenameDialog mode="rename" initialName="原名称" retrying onSave={onSave} onClose={onClose} />);
+    editor.rerender(
+      <CanvasGroupRenameDialog mode="rename" initialName="原名称" retrying onSave={onSave} onClose={onClose} />,
+    );
     expect(name).toHaveValue("待重试的名称");
     expect(name).toBeDisabled();
     expect(screen.getByRole("button", { name: t("common.cancel") })).toBeEnabled();
@@ -84,11 +93,22 @@ describe("canvas group name form", () => {
 const nodeTypes = { canvasGroup: CanvasGroupNode };
 function renderGroup(data: Partial<CanvasGroupNodeData> = {}) {
   const callbacks = { onAdd: vi.fn(), onRename: vi.fn(), onToggle: vi.fn(), onDuplicate: vi.fn(), onUngroup: vi.fn() };
-  const node: CanvasGroupFlowNode = { id: canvasGroupNodeId("group-1"), type: "canvasGroup", position: { x: 0, y: 0 },
-    width: 400, height: 300, selected: true, data: { groupId: "group-1", name: "镜头组", memberCount: 3, collapsed: false,
-      ...callbacks, ...data } };
-  render(<ReactFlowProvider><div style={{ width: 1000, height: 800 }}>
-    <ReactFlow nodes={[node]} nodeTypes={nodeTypes} /></div></ReactFlowProvider>);
+  const node: CanvasGroupFlowNode = {
+    id: canvasGroupNodeId("group-1"),
+    type: "canvasGroup",
+    position: { x: 0, y: 0 },
+    width: 400,
+    height: 300,
+    selected: true,
+    data: { groupId: "group-1", name: "镜头组", memberCount: 3, collapsed: false, ...callbacks, ...data },
+  };
+  render(
+    <ReactFlowProvider>
+      <div style={{ width: 1000, height: 800 }}>
+        <ReactFlow nodes={[node]} nodeTypes={nodeTypes} />
+      </div>
+    </ReactFlowProvider>,
+  );
   return callbacks;
 }
 
@@ -101,8 +121,11 @@ describe("canvas group node", () => {
     const add = screen.getByRole("button", { name: t("canvas.group.addNode") });
     await clickControl(add);
     expect(callbacks.onAdd).toHaveBeenCalledWith("group-1", add);
-    for (const [key, callback] of [["canvas.group.rename", callbacks.onRename], ["canvas.group.duplicate", callbacks.onDuplicate],
-      ["canvas.group.ungroup", callbacks.onUngroup]] as const) {
+    for (const [key, callback] of [
+      ["canvas.group.rename", callbacks.onRename],
+      ["canvas.group.duplicate", callbacks.onDuplicate],
+      ["canvas.group.ungroup", callbacks.onUngroup],
+    ] as const) {
       await clickControl(screen.getByRole("button", { name: t("canvas.group.actions") }));
       await clickControl(await screen.findByRole("menuitem", { name: t(key) }));
       expect(callback).toHaveBeenCalledWith("group-1");

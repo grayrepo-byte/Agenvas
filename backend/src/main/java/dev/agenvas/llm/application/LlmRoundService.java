@@ -80,16 +80,19 @@ public class LlmRoundService {
     public JsonNode callLeased(UUID ownerId, UUID projectId, UUID runId, int stepIndex,
             JsonNode request, List<ToolCallback> tools, Map<String, Object> trustedContext,
             Task lease, String workerId) {
-        if (lease == null) throw new IllegalArgumentException("Missing model task lease");
+        if (lease == null)
+            throw new IllegalArgumentException("Missing model task lease");
         if (TransactionSynchronizationManager.isActualTransactionActive()) {
             throw new IllegalStateException("Model calls must not hold a database transaction");
         }
         List<Message> messages = codec.requestMessages(request);
         boolean compacting = AgentContextService.isCompaction(request);
-        if (compacting && !tools.isEmpty()) throw new IllegalArgumentException("Compaction cannot have tools");
+        if (compacting && !tools.isEmpty())
+            throw new IllegalArgumentException("Compaction cannot have tools");
         AgentRun run = runs.find(ownerId, projectId, runId)
                 .orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND,
-                        "RUN_NOT_FOUND", ApiMessage.of("api.llm-round-service.run-does-not-exist"), ApiMessage.of("api.llm-round-service.unable-to-access-the-project-s-runtime"), false));
+                        "RUN_NOT_FOUND", ApiMessage.of("api.llm-round-service.run-does-not-exist"),
+                        ApiMessage.of("api.llm-round-service.unable-to-access-the-project-s-runtime"), false));
         ChatGateway.ConfigIdentity selected = new ChatGateway.ConfigIdentity(
                 run.policySnapshot().path("modelConfigSource").asText(""),
                 run.policySnapshot().path("modelConfigVersion").asInt(-1));
@@ -103,7 +106,8 @@ public class LlmRoundService {
             return turn.response();
         }
         LlmRequestBudget budget = codec.requestBudget(request);
-        if (budget != null) budget.requireInput(messages, tools);
+        if (budget != null)
+            budget.requireInput(messages, tools);
         List<Message> dispatched = images.hydrate(ownerId, projectId, runId, run.contextSnapshot(), messages);
         ChatGateway.ModelDetails model = gateway.modelDetailsFor(selected);
         boolean mock = "mock".equals(selected.source());
@@ -111,13 +115,18 @@ public class LlmRoundService {
                 projectId, null, runId, stepIndex, CallLog.Kind.LLM, CallLog.Operation.CHAT,
                 mock ? "mock" : model.providerAdapter(), model.modelId(), mock);
         PublicStreamSink stream = new PublicStreamSink(lease, workerId);
-        if (!compacting) tasks.startAgentStream(lease, workerId);
+        if (!compacting)
+            tasks.startAgentStream(lease, workerId);
         Map<String, Object> callContext = new java.util.HashMap<>(trustedContext);
-        if (compacting) callContext.put(AgentContextService.CALL_PURPOSE, true);
+        if (compacting)
+            callContext.put(AgentContextService.CALL_PURPOSE, true);
         ChatGateway.Exchange exchange = callLogs.recordStream(descriptor,
                 (captureContent, log) -> modelCall(() -> budget == null
-                        ? gateway.callStreaming(dispatched, tools, callContext, selected, compacting ? ignored -> {} : stream, captureContent, log)
-                        : gateway.callStreaming(dispatched, tools, callContext, selected, budget, compacting ? ignored -> {} : stream, captureContent, log)),
+                        ? gateway.callStreaming(dispatched, tools, callContext, selected, compacting ? ignored -> {
+                        } : stream, captureContent, log)
+                        : gateway.callStreaming(dispatched, tools, callContext, selected, budget,
+                                compacting ? ignored -> {
+                                } : stream, captureContent, log)),
                 value -> CallLogService.CallOutcome.succeeded(value.response().getMetadata().getId()));
         if (exchange.configVersion() != turn.modelConfigVersion()) {
             throw new IllegalStateException("ChatGateway configuration changed during model call");
@@ -127,10 +136,12 @@ public class LlmRoundService {
                 exchange.configVersion(), response, lease, workerId).response();
     }
     private ChatGateway.Exchange modelCall(java.util.function.Supplier<ChatGateway.Exchange> call) {
-        try { return call.get(); }
-        catch (RuntimeException failure) {
+        try {
+            return call.get();
+        } catch (RuntimeException failure) {
             ModelCallFailure gatewayFailure = new ModelCallFailure(failure);
-            if (AgentModelRetryPolicy.retryableCode(gatewayFailure) != null) throw gatewayFailure;
+            if (AgentModelRetryPolicy.retryableCode(gatewayFailure) != null)
+                throw gatewayFailure;
             throw failure;
         }
     }
@@ -148,8 +159,10 @@ public class LlmRoundService {
 
         @Override
         public void accept(String delta) {
-            if (Thread.currentThread().isInterrupted()) throw new IllegalStateException("Model stream was interrupted");
-            if (delta == null || delta.isEmpty()) return;
+            if (Thread.currentThread().isInterrupted())
+                throw new IllegalStateException("Model stream was interrupted");
+            if (delta == null || delta.isEmpty())
+                return;
             chunkIndex = tasks.appendAgentStream(lease, workerId, chunkIndex, delta);
         }
     }

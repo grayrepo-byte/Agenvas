@@ -12,7 +12,8 @@ public class AgentMediaApprovalOwnershipReadService {
     private final ProjectService projects;
 
     public AgentMediaApprovalOwnershipReadService(AgentMediaApprovalRepository approvals, ProjectService projects) {
-        this.approvals = approvals; this.projects = projects;
+        this.approvals = approvals;
+        this.projects = projects;
     }
 
     @Transactional(readOnly = true)

@@ -73,8 +73,8 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 @Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = {AgenvasApplication.class, AgentHeartbeatPostgresIT.FakeConfig.class},
-        properties = "agenvas.task.lease-duration=3s")
+@SpringBootTest(classes = {AgenvasApplication.class,
+        AgentHeartbeatPostgresIT.FakeConfig.class}, properties = "agenvas.task.lease-duration=3s")
 class AgentHeartbeatPostgresIT {
     private static final String WORKER = "heartbeat-worker";
     private static final String PREFIX = "Synthetic public prefix";
@@ -86,25 +86,39 @@ class AgentHeartbeatPostgresIT {
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry properties) {
         // PER_CLASS injection can create the Spring context before the container extension starts it.
-        if (!POSTGRES.isRunning()) POSTGRES.start();
+        if (!POSTGRES.isRunning())
+            POSTGRES.start();
         properties.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         properties.add("spring.datasource.username", POSTGRES::getUsername);
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private AgentRunService runs;
-    @Autowired private TaskService tasks;
-    @Autowired private AgentTurnWorker worker;
-    @Autowired private AgentTurnCommitService commits;
-    @Autowired private LlmTurnCheckpointService checkpoints;
-    @Autowired private LlmProtocolCodec codec;
-    @Autowired private ToolBatchExecutionService tools;
-    @Autowired private FakeGateway gateway;
-    @Autowired private HeartbeatClock clock;
-    @Autowired private JdbcClient jdbc;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private AgentInstanceService agents;
+    @Autowired
+    private AgentRunService runs;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private AgentTurnWorker worker;
+    @Autowired
+    private AgentTurnCommitService commits;
+    @Autowired
+    private LlmTurnCheckpointService checkpoints;
+    @Autowired
+    private LlmProtocolCodec codec;
+    @Autowired
+    private ToolBatchExecutionService tools;
+    @Autowired
+    private FakeGateway gateway;
+    @Autowired
+    private HeartbeatClock clock;
+    @Autowired
+    private JdbcClient jdbc;
 
     private AdminPrincipal owner;
     private Project project;
@@ -138,7 +152,8 @@ class AgentHeartbeatPostgresIT {
     void releaseGatesAndStopCaller() throws InterruptedException {
         try {
             gateway.control.release.countDown();
-            if (invocation != null) invocation.cancel(true);
+            if (invocation != null)
+                invocation.cancel(true);
             caller.shutdownNow();
             assertThat(caller.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
             if (gateway.control.entered.getCount() == 0) {
@@ -231,8 +246,8 @@ class AgentHeartbeatPostgresIT {
             }
         }
 
-        await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
-                assertThat(checkpointStatus()).isEqualTo("RESPONDED"));
+        await().atMost(Duration.ofSeconds(5))
+                .untilAsserted(() -> assertThat(checkpointStatus()).isEqualTo("RESPONDED"));
         Task responded = task();
         assertThat(responded.status()).isEqualTo(Task.Status.RUNNING);
         assertThat(responded.leaseEpoch()).isEqualTo(lease.leaseEpoch());
@@ -265,10 +280,11 @@ class AgentHeartbeatPostgresIT {
         assertThat(projectArtifactCount()).isEqualTo(1);
         assertThat(usageTypes()).containsExactlyInAnyOrder("RESERVATION", "SETTLEMENT");
         assertThat(jdbc.sql("select quantity_json->>'inputTokens' from usage_ledger "
-                        + "where run_id=:run and operation_key=:operation")
-                .param("run", run.id()).param("operation", usageKey("settle")).query(String.class).single()).isEqualTo("17");
+                + "where run_id=:run and operation_key=:operation")
+                .param("run", run.id()).param("operation", usageKey("settle")).query(String.class).single())
+                .isEqualTo("17");
         assertThat(jdbc.sql("select count(*) from project_event where project_id=:project "
-                        + "and type='llm.turn.recorded' and aggregate_id=:run and (payload_json->>'stepIndex')::int=:step")
+                + "and type='llm.turn.recorded' and aggregate_id=:run and (payload_json->>'stepIndex')::int=:step")
                 .param("project", project.id()).param("run", run.id()).param("step", gatedStepIndex)
                 .query(Long.class).single()).isEqualTo(1);
         assertThat(gateway.calls).hasValue(1);
@@ -346,15 +362,32 @@ class AgentHeartbeatPostgresIT {
 
     @TestConfiguration
     static class FakeConfig {
-        @Bean @Primary FakeGateway fakeGateway() { return new FakeGateway(); }
-        @Bean @Primary HeartbeatClock heartbeatClock() { return new HeartbeatClock(); }
+        @Bean
+        @Primary
+        FakeGateway fakeGateway() {
+            return new FakeGateway();
+        }
+        @Bean
+        @Primary
+        HeartbeatClock heartbeatClock() {
+            return new HeartbeatClock();
+        }
     }
 
     static class HeartbeatClock extends Clock {
         volatile Instant now = Instant.now();
-        @Override public ZoneId getZone() { return ZoneOffset.UTC; }
-        @Override public Clock withZone(ZoneId zone) { return this; }
-        @Override public Instant instant() { return now; }
+        @Override
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return this;
+        }
+        @Override
+        public Instant instant() {
+            return now;
+        }
     }
 
     static class CallControl {
@@ -371,9 +404,18 @@ class AgentHeartbeatPostgresIT {
         volatile boolean prepareTools;
         volatile CallControl control = new CallControl();
 
-        @Override public String configSource() { return "test-heartbeat"; }
-        @Override public int configVersion() { return 1; }
-        @Override public Capabilities capabilities() { return new Capabilities(true, false, false); }
+        @Override
+        public String configSource() {
+            return "test-heartbeat";
+        }
+        @Override
+        public int configVersion() {
+            return 1;
+        }
+        @Override
+        public Capabilities capabilities() {
+            return new Capabilities(true, false, false);
+        }
 
         @Override
         public Exchange callStreaming(List<Message> messages, List<ToolCallback> definitions,
@@ -390,8 +432,10 @@ class AgentHeartbeatPostgresIT {
         @Override
         public Exchange call(List<Message> messages, List<ToolCallback> definitions, Map<String, Object> context) {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
-            if (prepareTools && onlyLoader(definitions)) return load("TEXT");
-            if (prepareTools) assertThat(definitions).extracting(tool -> tool.getToolDefinition().name()).contains("create_text");
+            if (prepareTools && onlyLoader(definitions))
+                return load("TEXT");
+            if (prepareTools)
+                assertThat(definitions).extracting(tool -> tool.getToolDefinition().name()).contains("create_text");
             if (calls.incrementAndGet() != 1) {
                 return new Exchange(1, new ChatResponse(List.of(new Generation(new AssistantMessage("Finished.")))));
             }
@@ -423,7 +467,8 @@ class AgentHeartbeatPostgresIT {
                             "{\"title\":\"Synthetic text\",\"text\":\"One result\",\"format\":\"PLAIN_TEXT\"}")))
                     .build();
             return new ChatResponse(List.of(new Generation(assistant)), ChatResponseMetadata.builder()
-                    .id("synthetic-heartbeat-response").model("synthetic-model").usage(new DefaultUsage(17, 9)).build());
+                    .id("synthetic-heartbeat-response").model("synthetic-model").usage(new DefaultUsage(17, 9))
+                    .build());
         }
     }
 }

@@ -7,8 +7,11 @@ type InputFields = PromptFields & Pick<SaveMediaDraftRequest, "mediaInputs">;
 export const MENTION_MARKER = "\uFFFC";
 
 /** Removes all mentions of the selected versions in one pass, including repeated mentions. */
-export function removePromptReferences(prompt: string, mentions: PromptFields["mentions"],
-  ...versionIds: string[]): PromptFields {
+export function removePromptReferences(
+  prompt: string,
+  mentions: PromptFields["mentions"],
+  ...versionIds: string[]
+): PromptFields {
   const removed = new Set(versionIds);
   let mentionIndex = 0;
   let nextPrompt = "";
@@ -29,10 +32,11 @@ export function removePromptReferences(prompt: string, mentions: PromptFields["m
 
 /** Mode/capability changes prune removed versions and rebind the roles of surviving mentions. */
 export function promptForMediaInputs(fields: InputFields, inputs: InputFields["mediaInputs"]): PromptFields {
-  const roles = new Map(inputs.map((input) => [input.versionId, input.role]));
-  const removed = fields.mediaInputs.filter((input) => !roles.has(input.versionId))
-    .map((input) => input.versionId);
+  const roles = new Map(inputs.map(input => [input.versionId, input.role]));
+  const removed = fields.mediaInputs.filter(input => !roles.has(input.versionId)).map(input => input.versionId);
   const result = removed.length ? removePromptReferences(fields.prompt, fields.mentions, ...removed) : fields;
-  return { prompt: result.prompt, mentions: result.mentions.map((mention) => ({ ...mention,
-    role: roles.get(mention.versionId) ?? mention.role })) };
+  return {
+    prompt: result.prompt,
+    mentions: result.mentions.map(mention => ({ ...mention, role: roles.get(mention.versionId) ?? mention.role })),
+  };
 }

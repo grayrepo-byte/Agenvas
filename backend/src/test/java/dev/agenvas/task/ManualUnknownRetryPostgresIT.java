@@ -66,19 +66,32 @@ class ManualUnknownRetryPostgresIT {
         registry.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private ArtifactService artifacts;
-    @Autowired private MediaDraftService drafts;
-    @Autowired private CanvasService canvas;
-    @Autowired private DirectMediaTaskService directMedia;
-    @Autowired private TaskService tasks;
-    @Autowired private TaskRepository taskRepository;
-    @Autowired private ManualUnknownRetryService retries;
-    @Autowired private dev.agenvas.provider.application.MediaCapabilityService mediaCapabilities;
-    @Autowired private tools.jackson.databind.ObjectMapper mapper;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private WebApplicationContext webContext;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private ArtifactService artifacts;
+    @Autowired
+    private MediaDraftService drafts;
+    @Autowired
+    private CanvasService canvas;
+    @Autowired
+    private DirectMediaTaskService directMedia;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private TaskRepository taskRepository;
+    @Autowired
+    private ManualUnknownRetryService retries;
+    @Autowired
+    private dev.agenvas.provider.application.MediaCapabilityService mediaCapabilities;
+    @Autowired
+    private tools.jackson.databind.ObjectMapper mapper;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private WebApplicationContext webContext;
 
     @Test
     void explicitRiskCreatesOneNewReservationWithoutReusingTheOriginal() throws Exception {
@@ -141,8 +154,10 @@ class ManualUnknownRetryPostgresIT {
         jdbc.sql("update task set version=version+1 where id=:id").param("id", unknown.id()).update();
         assertThat(retries.create(owner.userId(), project.id(), unknown.id(), unknown.version(), "retry-1").id())
                 .isEqualTo(replacement.id());
-        assertThatThrownBy(() -> retries.create(owner.userId(), project.id(), unknown.id(), unknown.version() + 1, "retry-1"))
-                .isInstanceOfSatisfying(ApiProblemException.class, problem -> assertThat(problem.code()).isEqualTo("UNKNOWN_RETRY_CONFLICT"));
+        assertThatThrownBy(
+                () -> retries.create(owner.userId(), project.id(), unknown.id(), unknown.version() + 1, "retry-1"))
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        problem -> assertThat(problem.code()).isEqualTo("UNKNOWN_RETRY_CONFLICT"));
         assertThatThrownBy(() -> retries.create(owner.userId(), project.id(), unknown.id(),
                 unknown.version(), "retry-2"))
                 .isInstanceOf(ApiProblemException.class);
@@ -154,17 +169,17 @@ class ManualUnknownRetryPostgresIT {
                 + "/new-attempt";
         String body = "{\"expectedTaskVersion\":" + unknown.version() + "}";
         mvc.perform(post(path).with(authenticated).header("Idempotency-Key", "retry-1")
-                        .contentType("application/json").content(body))
+                .contentType("application/json").content(body))
                 .andExpect(status().isForbidden());
         mvc.perform(post(path).with(authenticated).with(csrf())
-                        .header("Idempotency-Key", "retry-1")
-                        .contentType("application/json").content(body))
+                .header("Idempotency-Key", "retry-1")
+                .contentType("application/json").content(body))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(replacement.id().toString()));
         mvc.perform(post("/api/v1/projects/" + UUID.randomUUID() + "/tasks/"
-                        + unknown.id() + "/new-attempt").with(authenticated).with(csrf())
-                        .header("Idempotency-Key", "foreign")
-                        .contentType("application/json").content(body))
+                + unknown.id() + "/new-attempt").with(authenticated).with(csrf())
+                .header("Idempotency-Key", "foreign")
+                .contentType("application/json").content(body))
                 .andExpect(status().isNotFound());
 
         // Accepted requests whose result collection stopped must also have an explicit
@@ -178,7 +193,7 @@ class ManualUnknownRetryPostgresIT {
         Task accepted = directMedia.run(owner.userId(), project.id(), blockedCard.artifact().id(),
                 blockedItem, 1, "blocked-direct");
         jdbc.sql("update task set status='BLOCKED', provider_request_id='synthetic-accepted', "
-                        + "error_code='PROVIDER_POLL_RETRY_EXHAUSTED', version=version+1 where id=:id")
+                + "error_code='PROVIDER_POLL_RETRY_EXHAUSTED', version=version+1 where id=:id")
                 .param("id", accepted.id()).update();
         Task blocked = tasks.get(owner.userId(), project.id(), accepted.id());
         assertThatThrownBy(() -> retries.create(owner.userId(), project.id(), blocked.id(),
@@ -212,10 +227,11 @@ class ManualUnknownRetryPostgresIT {
                 .param("old", blocked.id()).param("new", blockedReplacement.id())
                 .query(Long.class).single()).isGreaterThanOrEqualTo(2L);
         mvc.perform(post("/api/v1/projects/" + project.id() + "/tasks/" + blocked.id() + "/new-attempt")
-                        .with(authenticated).with(csrf()).header("Idempotency-Key", "blocked-retry")
-                        .contentType("application/json").content("{\"expectedTaskVersion\":" + blocked.version() + "}"))
+                .with(authenticated).with(csrf()).header("Idempotency-Key", "blocked-retry")
+                .contentType("application/json").content("{\"expectedTaskVersion\":" + blocked.version() + "}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(blockedReplacement.id().toString()));
-        assertThatThrownBy(() -> retries.create(owner.userId(), project.id(), blocked.id(), blocked.version(), "another-blocked-retry"))
+        assertThatThrownBy(() -> retries.create(owner.userId(), project.id(), blocked.id(), blocked.version(),
+                "another-blocked-retry"))
                 .isInstanceOf(ApiProblemException.class);
         // 切到 ComfyUI 适配器后仍由通用认领路径处理；原 UNKNOWN 记录保留，
         // 但不会阻塞用户显式创建的替代任务。
@@ -233,9 +249,12 @@ class ManualUnknownRetryPostgresIT {
         var mvc = webAppContextSetup(webContext).apply(springSecurity()).build();
         var auth = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of()));
         for (String status : List.of("UNKNOWN", "BLOCKED")) {
-            var project = projects.create(owner.userId(), "Synthetic current draft " + status, Project.AspectRatio.SQUARE_1_1);
-            var card = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE, "Synthetic new generation", null);
-            UUID item = dev.agenvas.support.CanvasMediaFixture.place(canvas, owner.userId(), project.id(), card.artifact().id());
+            var project = projects.create(owner.userId(), "Synthetic current draft " + status,
+                    Project.AspectRatio.SQUARE_1_1);
+            var card = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE, "Synthetic new generation",
+                    null);
+            UUID item = dev.agenvas.support.CanvasMediaFixture.place(canvas, owner.userId(), project.id(),
+                    card.artifact().id());
             dev.agenvas.support.CanvasMediaFixture.save(drafts, owner.userId(), project.id(), item, 0,
                     "Original prompt", null, null, null);
             Task original = directMedia.run(owner.userId(), project.id(), card.artifact().id(), item, 1, "original");
@@ -249,8 +268,8 @@ class ManualUnknownRetryPostgresIT {
             String path = "/api/v1/projects/" + project.id() + "/artifacts/" + card.artifact().id() + "/run";
             String body = "{\"canvasItemId\":\"" + item + "\",\"expectedDraftVersion\":" + changed.version() + "}";
             mvc.perform(post(path).with(auth).with(csrf()).header("Idempotency-Key", "stale-draft")
-                            .contentType("application/json").content("{\"canvasItemId\":\"" + item
-                                    + "\",\"expectedDraftVersion\":" + (changed.version() - 1) + "}"))
+                    .contentType("application/json").content("{\"canvasItemId\":\"" + item
+                            + "\",\"expectedDraftVersion\":" + (changed.version() - 1) + "}"))
                     .andExpect(status().isConflict());
             assertThat(taskRepository.findManualReplacement(project.id(), original.id())).isEmpty();
             assertThat(taskRepository.findOccupyingDirectMediaTask(project.id(), item))
@@ -271,7 +290,7 @@ class ManualUnknownRetryPostgresIT {
                 assertThat(first.get().id()).isEqualTo(duplicate.get().id());
             }
             var accepted = mapper.readTree(mvc.perform(post(path).with(auth).with(csrf())
-                            .header("Idempotency-Key", "current-draft").contentType("application/json").content(body))
+                    .header("Idempotency-Key", "current-draft").contentType("application/json").content(body))
                     .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
             UUID replacementId = UUID.fromString(accepted.path("id").asText());
             assertThat(replacementId).isNotEqualTo(original.id());
@@ -287,42 +306,54 @@ class ManualUnknownRetryPostgresIT {
                     .param("project", project.id()).query(Long.class).single()).isEqualTo(2);
             // Replaying the accepted command and another click while READY cannot submit again.
             mvc.perform(post(path).with(auth).with(csrf()).header("Idempotency-Key", "current-draft")
-                            .contentType("application/json").content(body))
+                    .contentType("application/json").content(body))
                     .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(replacementId.toString()));
             assertThat(directMedia.run(owner.userId(), project.id(), card.artifact().id(), item,
                     changed.version(), "another-click").id()).isEqualTo(replacementId);
             // Finish the fixture so the class's later worker assertions see only their own work.
-            jdbc.sql("update task set status='FAILED',completed_at=now(),version=version+1 where id=:id").param("id", replacementId).update();
+            jdbc.sql("update task set status='FAILED',completed_at=now(),version=version+1 where id=:id")
+                    .param("id", replacementId).update();
         }
     }
 
     private void repeatedUnknownOnOneCardRequiresANewCommand(AdminPrincipal owner) {
         var project = projects.create(owner.userId(), "Synthetic chained retry", Project.AspectRatio.SQUARE_1_1);
         var card = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE, "Synthetic retry card", null);
-        UUID item = dev.agenvas.support.CanvasMediaFixture.place(canvas, owner.userId(), project.id(), card.artifact().id());
+        UUID item = dev.agenvas.support.CanvasMediaFixture.place(canvas, owner.userId(), project.id(),
+                card.artifact().id());
         dev.agenvas.support.CanvasMediaFixture.save(drafts, owner.userId(), project.id(), item, 0,
                 "Synthetic chained task", null, null, null);
-        Task original = directMedia.run(owner.userId(), project.id(), card.artifact().id(), item, 1, "synthetic-chain-run");
+        Task original = directMedia.run(owner.userId(), project.id(), card.artifact().id(), item, 1,
+                "synthetic-chain-run");
         jdbc.sql("update task set status='UNKNOWN',version=version+1 where id=:id").param("id", original.id()).update();
         original = tasks.get(owner.userId(), project.id(), original.id());
-        Task first = retries.create(owner.userId(), project.id(), original.id(), original.version(), "synthetic-original-command");
+        Task first = retries.create(owner.userId(), project.id(), original.id(), original.version(),
+                "synthetic-original-command");
         jdbc.sql("update task set status='UNKNOWN',version=version+1 where id=:id").param("id", first.id()).update();
         Task firstUnknown = tasks.get(owner.userId(), project.id(), first.id());
-        assertThatThrownBy(() -> retries.create(owner.userId(), project.id(), firstUnknown.id(), firstUnknown.version(), "synthetic-original-command"))
-                .isInstanceOfSatisfying(ApiProblemException.class, problem -> assertThat(problem.code()).isEqualTo("UNKNOWN_RETRY_CONFLICT"));
-        Task next = retries.create(owner.userId(), project.id(), firstUnknown.id(), firstUnknown.version(), "synthetic-replacement-command");
+        assertThatThrownBy(() -> retries.create(owner.userId(), project.id(), firstUnknown.id(), firstUnknown.version(),
+                "synthetic-original-command"))
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        problem -> assertThat(problem.code()).isEqualTo("UNKNOWN_RETRY_CONFLICT"));
+        Task next = retries.create(owner.userId(), project.id(), firstUnknown.id(), firstUnknown.version(),
+                "synthetic-replacement-command");
         assertThat(next.attemptNo()).isEqualTo(3);
         assertThat(next.status()).isEqualTo(Task.Status.READY);
-        assertThat(retries.create(owner.userId(), project.id(), firstUnknown.id(), firstUnknown.version(), "synthetic-replacement-command").id())
+        assertThat(retries.create(owner.userId(), project.id(), firstUnknown.id(), firstUnknown.version(),
+                "synthetic-replacement-command").id())
                 .isEqualTo(next.id());
-        assertThat(taskRepository.listMediaForCanvasItem(owner.userId(), project.id(), item)).extracting(Task::id).containsExactly(next.id());
+        assertThat(taskRepository.listMediaForCanvasItem(owner.userId(), project.id(), item)).extracting(Task::id)
+                .containsExactly(next.id());
         assertThat(tasks.get(owner.userId(), project.id(), original.id()).status()).isEqualTo(Task.Status.UNKNOWN);
         assertThat(tasks.get(owner.userId(), project.id(), firstUnknown.id()).status()).isEqualTo(Task.Status.UNKNOWN);
-        assertThat(jdbc.sql("select count(*) from task_artifact_target where artifact_id=:id").param("id", card.artifact().id()).query(Long.class).single())
+        assertThat(jdbc.sql("select count(*) from task_artifact_target where artifact_id=:id")
+                .param("id", card.artifact().id()).query(Long.class).single())
                 .isEqualTo(3);
-        assertThat(jdbc.sql("select count(*) from task_manual_replacement where project_id=:project").param("project", project.id()).query(Long.class).single())
+        assertThat(jdbc.sql("select count(*) from task_manual_replacement where project_id=:project")
+                .param("project", project.id()).query(Long.class).single())
                 .isEqualTo(2);
-        assertThat(jdbc.sql("select count(*) from usage_ledger where project_id=:project").param("project", project.id()).query(Long.class).single())
+        assertThat(jdbc.sql("select count(*) from usage_ledger where project_id=:project")
+                .param("project", project.id()).query(Long.class).single())
                 .isEqualTo(3);
     }
 }

@@ -28,7 +28,8 @@ import tools.jackson.databind.node.ObjectNode;
 class WanClientTest {
     private final ObjectMapper mapper = new ObjectMapper();
     private final WanModels models = new WanModels();
-    private final NativeMediaProtocol.Profile image = profile("wan2.7-image"), pro = profile("wan2.7-image-pro"), video = profile("wan3.0-video");
+    private final NativeMediaProtocol.Profile image = profile("wan2.7-image"), pro = profile("wan2.7-image-pro"),
+            video = profile("wan3.0-video");
     private final List<String> paths = new ArrayList<>(), methods = new ArrayList<>();
     private final List<JsonNode> bodies = new ArrayList<>();
     private static final String ORIGIN = "https://llm-synthetic.cn-beijing.maas.aliyuncs.com";
@@ -36,10 +37,12 @@ class WanClientTest {
     private WanClient client;
     private int status = 200;
     private String response = "{}";
-    @BeforeEach void start() throws IOException {
+    @BeforeEach
+    void start() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> {
-            methods.add(exchange.getRequestMethod()); paths.add(exchange.getRequestURI().toString());
+            methods.add(exchange.getRequestMethod());
+            paths.add(exchange.getRequestURI().toString());
             assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isEqualTo("Bearer synthetic-key");
             byte[] request = exchange.getRequestBody().readAllBytes();
             if (request.length > 0) {
@@ -47,14 +50,22 @@ class WanClientTest {
                 bodies.add(mapper.readTree(request));
             }
             byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().set("Content-Type", "application/json"); exchange.getResponseHeaders().set("Retry-After", "0");
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.getResponseHeaders().set("Retry-After", "0");
             exchange.sendResponseHeaders(status, bytes.length);
-            try (var output = exchange.getResponseBody()) { output.write(bytes); }
-        }); server.start();
+            try (var output = exchange.getResponseBody()) {
+                output.write(bytes);
+            }
+        });
+        server.start();
         client = new WanClient(mapper, URI.create("http://127.0.0.1:" + server.getAddress().getPort()));
     }
-    @AfterEach void stop() { server.stop(0); }
-    @Test void imageCreatesOnceWithMultiResultsAndPinnedOriginalTaskQueries() {
+    @AfterEach
+    void stop() {
+        server.stop(0);
+    }
+    @Test
+    void imageCreatesOnceWithMultiResultsAndPinnedOriginalTaskQueries() {
         response = "{\"output\":{\"task_id\":\"task-original\",\"task_status\":\"PENDING\"}}";
         var body = client.build(image, values(image).put("n", 2), Map.of());
         assertThat(client.create(image, ORIGIN, "synthetic-key", body)).isEqualTo("task-original");
@@ -62,17 +73,23 @@ class WanClientTest {
         assertThat(body.path("parameters").path("n").asInt()).isEqualTo(2);
         response = "{\"output\":{\"task_id\":\"task-original\",\"task_status\":\"SUCCEEDED\",\"finished\":true,\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"private upstream text\"},{\"type\":\"image\",\"image\":\"https://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/one.png\"},{\"type\":\"image\",\"image\":\"https://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/two.png\"}]}}]},\"usage\":{\"image_count\":2,\"input_tokens\":888,\"private\":\"not persisted\"}}";
         var result = client.query(image, ORIGIN, "synthetic-key", "task-original");
-        assertThat(result.outputs()).extracting(WanClient.Output::identity).containsExactly("choice0:content1", "choice0:content2");
+        assertThat(result.outputs()).extracting(WanClient.Output::identity).containsExactly("choice0:content1",
+                "choice0:content2");
         assertThat(result.usage().propertyNames()).containsExactly("image_count");
         assertThat(methods).containsExactly("POST", "GET");
         assertThat(paths).containsExactly(WanClient.IMAGE_PATH, "/api/v1/tasks/task-original");
     }
-    @Test void editedImagesBoxesAndPaletteFollowDenseMediaOrderWithoutForwardingLocalFields() {
-        var values = values(pro).put("image_2", UUID.randomUUID().toString()).put("image_9", UUID.randomUUID().toString())
-                .put("image_9_bbox_2_x1", 10).put("image_9_bbox_2_y1", 20).put("image_9_bbox_2_x2", 100).put("image_9_bbox_2_y2", 200)
-                .put("color_1_hex", "#000000").put("color_1_ratio", 25).put("color_2_hex", "#112233").put("color_2_ratio", 25)
+    @Test
+    void editedImagesBoxesAndPaletteFollowDenseMediaOrderWithoutForwardingLocalFields() {
+        var values = values(pro).put("image_2", UUID.randomUUID().toString())
+                .put("image_9", UUID.randomUUID().toString())
+                .put("image_9_bbox_2_x1", 10).put("image_9_bbox_2_y1", 20).put("image_9_bbox_2_x2", 100)
+                .put("image_9_bbox_2_y2", 200)
+                .put("color_1_hex", "#000000").put("color_1_ratio", 25).put("color_2_hex", "#112233")
+                .put("color_2_ratio", 25)
                 .put("color_10_hex", "#FFFFFF").put("color_10_ratio", 50);
-        var body = client.build(pro, values, Map.of("image_2", "data:image/jpeg;base64,AQID", "image_9", "data:image/png;base64,BAUG"));
+        var body = client.build(pro, values,
+                Map.of("image_2", "data:image/jpeg;base64,AQID", "image_9", "data:image/png;base64,BAUG"));
         var content = body.at("/input/messages/0/content");
         assertThat(content.get(0).path("image").asText()).isEqualTo("data:image/jpeg;base64,AQID");
         assertThat(content.get(1).path("image").asText()).isEqualTo("data:image/png;base64,BAUG");
@@ -83,16 +100,21 @@ class WanClientTest {
         assertThat(body.path("parameters").has("thinking_mode")).isFalse();
         assertThat(body.toString()).doesNotContain("image_9_bbox_", "color_10", "image_9", "dynamicValues");
     }
-    @Test void videoReferencesAreTypedAndAutomaticDurationSerializesMinusOne() {
-        var values = values(video).put("image_10", UUID.randomUUID().toString()).put("video_5", UUID.randomUUID().toString())
+    @Test
+    void videoReferencesAreTypedAndAutomaticDurationSerializesMinusOne() {
+        var values = values(video).put("image_10", UUID.randomUUID().toString())
+                .put("video_5", UUID.randomUUID().toString())
                 .put("audio_3", UUID.randomUUID().toString()).put("smart_duration", true).put("seed", -1);
-        var body = client.build(video, values, Map.of("image_10", "data:image/png;base64,AQID", "video_5", "http://relay.example:9000/video.mp4?signature=synthetic",
-                "audio_3", "https://relay.example/audio.wav?signature=synthetic"));
+        var body = client.build(video, values,
+                Map.of("image_10", "data:image/png;base64,AQID", "video_5",
+                        "http://relay.example:9000/video.mp4?signature=synthetic",
+                        "audio_3", "https://relay.example/audio.wav?signature=synthetic"));
         assertThat(body.path("parameters").path("duration").asInt()).isEqualTo(-1);
         assertThat(body.path("parameters").has("smart_duration")).isFalse();
         assertThat(body.path("parameters").path("audio").asBoolean()).isTrue();
         var mediaTypes = new ArrayList<String>();
-        for (var media : body.path("input").path("media")) mediaTypes.add(media.path("type").asText());
+        for (var media : body.path("input").path("media"))
+            mediaTypes.add(media.path("type").asText());
         assertThat(mediaTypes).containsExactly("reference_image", "reference_video", "reference_audio");
         response = "{\"output\":{\"task_id\":\"video-original\",\"task_status\":\"RUNNING\"}}";
         assertThat(client.create(video, ORIGIN, "synthetic-key", body)).isEqualTo("video-original");
@@ -102,43 +124,61 @@ class WanClientTest {
         assertThat(state.outputs()).singleElement().extracting(WanClient.Output::identity).isEqualTo("video");
         assertThat(state.usage().path("input_video_duration").asDouble()).isEqualTo(5.5);
     }
-    @Test void malformedReceiptAndServerErrorsStayUnknownAndCannotRetryPost() {
+    @Test
+    void malformedReceiptAndServerErrorsStayUnknownAndCannotRetryPost() {
         var body = client.build(image, values(image), Map.of());
-        for (String invalid : List.of("{}", "not-json", "{\"output\":{\"task_id\":\"../other\",\"task_status\":\"PENDING\"}}", "{\"code\":\"InternalError\"}")) {
+        for (String invalid : List.of("{}", "not-json",
+                "{\"output\":{\"task_id\":\"../other\",\"task_status\":\"PENDING\"}}",
+                "{\"code\":\"InternalError\"}")) {
             response = invalid;
-            assertThatThrownBy(() -> client.create(image, ORIGIN, "synthetic-key", body)).isInstanceOf(WanClient.Uncertain.class);
+            assertThatThrownBy(() -> client.create(image, ORIGIN, "synthetic-key", body))
+                    .isInstanceOf(WanClient.Uncertain.class);
         }
-        status = 503; response = "{}";
-        assertThatThrownBy(() -> client.create(image, ORIGIN, "synthetic-key", body)).isInstanceOf(WanClient.Uncertain.class);
+        status = 503;
+        response = "{}";
+        assertThatThrownBy(() -> client.create(image, ORIGIN, "synthetic-key", body))
+                .isInstanceOf(WanClient.Uncertain.class);
         assertThat(methods).containsExactly("POST", "POST", "POST", "POST", "POST");
         status = 200;
         for (String code : List.of("InvalidApiKey", "InvalidParameter", "DataInspectionFailed")) {
             response = "{\"code\":\"" + code + "\"}";
-            assertThatThrownBy(() -> client.create(image, ORIGIN, "synthetic-key", body)).isInstanceOf(WanClient.Rejected.class);
+            assertThatThrownBy(() -> client.create(image, ORIGIN, "synthetic-key", body))
+                    .isInstanceOf(WanClient.Rejected.class);
         }
     }
-    @Test void queryCannotSubstituteIdentityAndDistinguishesCredentialOrTaskExpiry() {
+    @Test
+    void queryCannotSubstituteIdentityAndDistinguishesCredentialOrTaskExpiry() {
         response = "{\"output\":{\"task_id\":\"other\",\"task_status\":\"RUNNING\"}}";
-        assertThatThrownBy(() -> client.query(video, ORIGIN, "synthetic-key", "original")).isInstanceOf(NativeMediaFailure.class).hasMessage("PROVIDER_PROTOCOL_INVALID");
+        assertThatThrownBy(() -> client.query(video, ORIGIN, "synthetic-key", "original"))
+                .isInstanceOf(NativeMediaFailure.class).hasMessage("PROVIDER_PROTOCOL_INVALID");
         response = "{\"output\":{\"task_id\":\"original\",\"task_status\":\"UNKNOWN\"}}";
-        assertThatThrownBy(() -> client.query(video, ORIGIN, "synthetic-key", "original")).hasMessage(WanClient.TASK_EXPIRED);
+        assertThatThrownBy(() -> client.query(video, ORIGIN, "synthetic-key", "original"))
+                .hasMessage(WanClient.TASK_EXPIRED);
         status = 403;
-        assertThatThrownBy(() -> client.query(video, ORIGIN, "synthetic-key", "original")).hasMessage("MEDIA_CREDENTIAL_UNAVAILABLE");
-        assertThatThrownBy(() -> client.query(video, ORIGIN, "synthetic-key", "../other")).hasMessage("PROVIDER_PROTOCOL_INVALID");
+        assertThatThrownBy(() -> client.query(video, ORIGIN, "synthetic-key", "original"))
+                .hasMessage("MEDIA_CREDENTIAL_UNAVAILABLE");
+        assertThatThrownBy(() -> client.query(video, ORIGIN, "synthetic-key", "../other"))
+                .hasMessage("PROVIDER_PROTOCOL_INVALID");
         assertThat(methods).containsExactly("GET", "GET", "GET");
     }
-    @Test void compatibleWorkspaceRootsDoNotNeedAnOfficialHostOrRegion() {
+    @Test
+    void compatibleWorkspaceRootsDoNotNeedAnOfficialHostOrRegion() {
         for (String url : List.of("http://localhost:8090", "https://proxy.invalid:8443", ORIGIN)) {
             WanClient.validateOrigin(image, url);
             WanClient.validateOrigin(video, url);
             assertThat(WanClient.validatedOrigin(url + "/")).isEqualTo(url);
         }
-        for (String url : List.of(ORIGIN + "/api/v1", ORIGIN + "?apiKey=synthetic", "https://user@localhost", "file:///tmp"))
+        for (String url : List.of(ORIGIN + "/api/v1", ORIGIN + "?apiKey=synthetic", "https://user@localhost",
+                "file:///tmp"))
             assertThatThrownBy(() -> WanClient.validatedOrigin(url)).isInstanceOf(ApiProblemException.class);
     }
     private NativeMediaProtocol.Profile profile(String model) {
-        return models.profiles().stream().filter(profile -> profile.model().equals(model) && profile.operation().equals("GENERATE"))
+        return models.profiles().stream()
+                .filter(profile -> profile.model().equals(model) && profile.operation().equals("GENERATE"))
                 .findFirst().orElseThrow();
     }
-    private ObjectNode values(NativeMediaProtocol.Profile p) { return NativeMediaProfiles.effectiveValues(new NativeMediaProfiles.Selection(models, p), mapper.createObjectNode(), "A synthetic landscape", 5, mapper); }
+    private ObjectNode values(NativeMediaProtocol.Profile p) {
+        return NativeMediaProfiles.effectiveValues(new NativeMediaProfiles.Selection(models, p),
+                mapper.createObjectNode(), "A synthetic landscape", 5, mapper);
+    }
 }

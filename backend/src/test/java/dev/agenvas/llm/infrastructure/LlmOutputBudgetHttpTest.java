@@ -20,7 +20,8 @@ import org.springframework.ai.chat.messages.UserMessage;
 import tools.jackson.databind.ObjectMapper;
 
 class LlmOutputBudgetHttpTest {
-    @Test void legacyDiagnosticUsesGenericCapacityWithoutRequiringAConfigurationResave() {
+    @Test
+    void legacyDiagnosticUsesGenericCapacityWithoutRequiringAConfigurationResave() {
         var cipher = mock(CredentialCipher.class);
         when(cipher.decrypt(any(), anyInt(), any())).thenReturn("synthetic-key");
         var config = new LlmProviderConfig(UUID.randomUUID(), 1, "http://127.0.0.1:1/v1", "synthetic",
@@ -30,7 +31,8 @@ class LlmOutputBudgetHttpTest {
         assertThat(config.modelPolicy()).isNull();
     }
 
-    @Test void unloadedSmallerOrReplacedOllamaRuntimeCannotReachGeneration() {
+    @Test
+    void unloadedSmallerOrReplacedOllamaRuntimeCannotReachGeneration() {
         var cipher = mock(CredentialCipher.class);
         when(cipher.decrypt(any(), anyInt(), any())).thenReturn("synthetic-key");
         var metadata = mock(dev.agenvas.settings.infrastructure.ModelMetadataClient.class);
@@ -52,14 +54,18 @@ class LlmOutputBudgetHttpTest {
         }
         var busy = mock(dev.agenvas.settings.infrastructure.ModelMetadataClient.MetadataFailure.class);
         when(busy.getMessage()).thenReturn("MODEL_METADATA_BUSY");
-        when(metadata.fetch(ModelCatalog.Provider.OLLAMA, config.endpoint(), "synthetic-key", "synthetic")).thenThrow(busy);
+        when(metadata.fetch(ModelCatalog.Provider.OLLAMA, config.endpoint(), "synthetic-key", "synthetic"))
+                .thenThrow(busy);
         assertThatThrownBy(() -> factory.create(config, budget)).isInstanceOf(java.io.UncheckedIOException.class)
                 .hasMessageNotContaining("MODEL_RUNTIME_CONTEXT_CHANGED");
         // These failures occur before any generation dispatch.
     }
 
-    @ParameterizedTest @EnumSource(LlmModelPolicy.OutputParameter.class) @NullSource
-    void frozenOutputLimitIsSentAsExactlyOneSupportedParameter(LlmModelPolicy.OutputParameter parameter) throws Exception {
+    @ParameterizedTest
+    @EnumSource(LlmModelPolicy.OutputParameter.class)
+    @NullSource
+    void frozenOutputLimitIsSentAsExactlyOneSupportedParameter(LlmModelPolicy.OutputParameter parameter)
+            throws Exception {
         var body = new AtomicReference<String>();
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1/chat/completions", exchange -> {
@@ -69,22 +75,35 @@ class LlmOutputBudgetHttpTest {
                      "choices":[{"index":0,"message":{"role":"assistant","content":"done"},"finish_reason":"stop"}]}
                     """.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, reply.length); exchange.getResponseBody().write(reply); exchange.close();
-        }); server.start();
+            exchange.sendResponseHeaders(200, reply.length);
+            exchange.getResponseBody().write(reply);
+            exchange.close();
+        });
+        server.start();
         try {
             var cipher = mock(CredentialCipher.class);
             when(cipher.decrypt(any(), anyInt(), any())).thenReturn("synthetic-key");
-            var policy = parameter == null ? null : LlmModelPolicy.manual(ModelCatalog.Provider.COMPATIBLE, 4096, null, 1024, parameter);
-            var config = new LlmProviderConfig(UUID.randomUUID(), 1, "http://127.0.0.1:"+server.getAddress().getPort()+"/v1",
+            var policy = parameter == null
+                    ? null
+                    : LlmModelPolicy.manual(ModelCatalog.Provider.COMPATIBLE, 4096, null, 1024, parameter);
+            var config = new LlmProviderConfig(UUID.randomUUID(), 1,
+                    "http://127.0.0.1:" + server.getAddress().getPort() + "/v1",
                     "synthetic", new byte[]{1}, new byte[]{2}, 1, "masked", true, true, Instant.EPOCH, policy);
             var factory = new StoredChatModelFactory(cipher, new LlmEndpointPolicy());
             var budget = LlmRequestBudget.resolve(DirectorSettings.defaults(), policy);
-            factory.create(config, budget).call(List.of(new UserMessage("small synthetic request")), List.of(), Map.of());
+            factory.create(config, budget).call(List.of(new UserMessage("small synthetic request")), List.of(),
+                    Map.of());
             var sent = new ObjectMapper().readTree(body.get());
-            String field = parameter == LlmModelPolicy.OutputParameter.MAX_COMPLETION_TOKENS ? "max_completion_tokens" : "max_tokens";
-            String other = parameter == LlmModelPolicy.OutputParameter.MAX_COMPLETION_TOKENS ? "max_tokens" : "max_completion_tokens";
+            String field = parameter == LlmModelPolicy.OutputParameter.MAX_COMPLETION_TOKENS
+                    ? "max_completion_tokens"
+                    : "max_tokens";
+            String other = parameter == LlmModelPolicy.OutputParameter.MAX_COMPLETION_TOKENS
+                    ? "max_tokens"
+                    : "max_completion_tokens";
             assertThat(sent.path(field).asInt()).isEqualTo(parameter == null ? 4096 : 1024);
             assertThat(sent.has(other)).isFalse();
-        } finally { server.stop(0); }
+        } finally {
+            server.stop(0);
+        }
     }
 }

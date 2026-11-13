@@ -56,18 +56,28 @@ public class GoogleVideoClient {
             .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION).build())
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
 
-    @Autowired public GoogleVideoClient(ObjectMapper mapper) { this(mapper, null); }
+    @Autowired
+    public GoogleVideoClient(ObjectMapper mapper) {
+        this(mapper, null);
+    }
     public GoogleVideoClient(ObjectMapper mapper, URI testOrigin) {
-        if (testOrigin != null) dev.agenvas.shared.security.ServiceEndpointPolicy.origin(testOrigin.toString());
-        this.mapper = mapper; this.testOrigin = testOrigin;
+        if (testOrigin != null)
+            dev.agenvas.shared.security.ServiceEndpointPolicy.origin(testOrigin.toString());
+        this.mapper = mapper;
+        this.testOrigin = testOrigin;
         this.http = PinnedHttpClients.pinned(Dns.SYSTEM,
                 Duration.ofSeconds(10), Duration.ofMinutes(8), Duration.ofMinutes(10));
     }
     /** Existing Google image base versions are accepted, but native video always chooses its fixed v1beta route. */
     public static String validatedOrigin(String origin) {
-        if (origin == null || origin.isBlank()) return ORIGIN;
+        if (origin == null || origin.isBlank())
+            return ORIGIN;
         URI parsed;
-        try { parsed = URI.create(origin); } catch (IllegalArgumentException invalid) { throw GoogleVideoModels.invalid(); }
+        try {
+            parsed = URI.create(origin);
+        } catch (IllegalArgumentException invalid) {
+            throw GoogleVideoModels.invalid();
+        }
         if (!("https".equals(parsed.getScheme()) || "http".equals(parsed.getScheme()))
                 || parsed.getHost() == null
                 || parsed.getRawUserInfo() != null || parsed.getRawQuery() != null || parsed.getRawFragment() != null
@@ -77,60 +87,88 @@ public class GoogleVideoClient {
         return parsed.getScheme() + "://" + parsed.getRawAuthority();
     }
     public record Input(String mimeType, byte[] bytes, String fileName) {
-        public Input(String mimeType, byte[] bytes) { this(mimeType, bytes, null); }
-        @Override public String toString() { return "GoogleVideoInput[mimeType=" + mimeType + "]"; }
+        public Input(String mimeType, byte[] bytes) {
+            this(mimeType, bytes, null);
+        }
+        @Override
+        public String toString() {
+            return "GoogleVideoInput[mimeType=" + mimeType + "]";
+        }
     }
     public record Video(byte[] bytes, String fileName) {
-        @Override public String toString() { return "GoogleVideoOutput[inline=" + (bytes != null) + "]"; }
+        @Override
+        public String toString() {
+            return "GoogleVideoOutput[inline=" + (bytes != null) + "]";
+        }
     }
-    public record State(String status, Video video) {}
+    public record State(String status, Video video) {
+    }
 
     public ObjectNode build(Profile p, JsonNode values, Map<String, Input> media) {
         GoogleVideoModels.requireProfile(p);
         NativeMediaProfiles.validateValues(new NativeMediaProfiles.Selection(new GoogleVideoModels(), p), values, true);
         Set<String> expected = new java.util.HashSet<>();
-        for (var field : new GoogleVideoModels().inputs(p)) if (field.media() && GoogleVideoModels.present(values, field.key())) expected.add(field.key());
-        if (!expected.equals(media.keySet())) throw GoogleVideoModels.invalid();
+        for (var field : new GoogleVideoModels().inputs(p))
+            if (field.media() && GoogleVideoModels.present(values, field.key()))
+                expected.add(field.key());
+        if (!expected.equals(media.keySet()))
+            throw GoogleVideoModels.invalid();
         ObjectNode body = mapper.createObjectNode();
         if (GoogleVideoModels.veo(p)) {
             ObjectNode instance = body.putArray("instances").addObject();
             copy(values, instance, "prompt");
-            for (String slot : List.of("first_frame", "last_frame")) if (media.containsKey(slot)) {
-                Input image = media.get(slot); validateInput(image, false);
-                ObjectNode node = instance.putObject("first_frame".equals(slot) ? "image" : "lastFrame");
-                node.put("bytesBase64Encoded", Base64.getEncoder().encodeToString(image.bytes())).put("mimeType", image.mimeType());
-            }
-            for (int i = 1; i <= 3; i++) if (media.containsKey("image_" + i)) {
-                Input image = media.get("image_" + i); validateInput(image, false);
-                var images = instance.has("referenceImages") ? (tools.jackson.databind.node.ArrayNode) instance.path("referenceImages") : instance.putArray("referenceImages");
-                images.addObject().put("referenceType", "asset").putObject("image")
-                        .put("bytesBase64Encoded", Base64.getEncoder().encodeToString(image.bytes())).put("mimeType", image.mimeType());
-            }
+            for (String slot : List.of("first_frame", "last_frame"))
+                if (media.containsKey(slot)) {
+                    Input image = media.get(slot);
+                    validateInput(image, false);
+                    ObjectNode node = instance.putObject("first_frame".equals(slot) ? "image" : "lastFrame");
+                    node.put("bytesBase64Encoded", Base64.getEncoder().encodeToString(image.bytes())).put("mimeType",
+                            image.mimeType());
+                }
+            for (int i = 1; i <= 3; i++)
+                if (media.containsKey("image_" + i)) {
+                    Input image = media.get("image_" + i);
+                    validateInput(image, false);
+                    var images = instance.has("referenceImages")
+                            ? (tools.jackson.databind.node.ArrayNode) instance.path("referenceImages")
+                            : instance.putArray("referenceImages");
+                    images.addObject().put("referenceType", "asset").putObject("image")
+                            .put("bytesBase64Encoded", Base64.getEncoder().encodeToString(image.bytes()))
+                            .put("mimeType", image.mimeType());
+                }
             if (media.containsKey("base_video")) {
                 Input video = media.get("base_video");
-                if (!validFileName(video.fileName()) || video.bytes() != null) throw GoogleVideoModels.invalid();
+                if (!validFileName(video.fileName()) || video.bytes() != null)
+                    throw GoogleVideoModels.invalid();
                 instance.putObject("video").put("uri", ORIGIN + "/v1beta/" + video.fileName());
             }
-            copy(values, body.putObject("parameters"), "durationSeconds", "aspectRatio", "resolution", "personGeneration", "negativePrompt", "enhancePrompt", "seed");
+            copy(values, body.putObject("parameters"), "durationSeconds", "aspectRatio", "resolution",
+                    "personGeneration", "negativePrompt", "enhancePrompt", "seed");
             ((ObjectNode) body.path("parameters")).put("sampleCount", 1);
         } else {
             body.put("model", p.model()).put("store", true).put("stream", false)
                     .put("background", values.path("background").asBoolean(true));
             var input = body.putArray("input");
-            for (var field : new GoogleVideoModels().inputs(p)) if (field.media() && media.containsKey(field.key())) {
-                Input item = media.get(field.key());
-                boolean video = field.type() == dev.agenvas.provider.domain.RunningHubDefinition.FieldType.VIDEO;
-                validateInput(item, video);
-                input.addObject().put("type", video ? "video" : "image").put("mime_type", "video/quicktime".equals(item.mimeType()) ? "video/mov" : item.mimeType())
-                        .put("data", Base64.getEncoder().encodeToString(item.bytes()));
-            }
-            input.addObject().put("type", "text").put("text", omniRolePrefix(p, media) + values.path("prompt").asText());
+            for (var field : new GoogleVideoModels().inputs(p))
+                if (field.media() && media.containsKey(field.key())) {
+                    Input item = media.get(field.key());
+                    boolean video = field.type() == dev.agenvas.provider.domain.RunningHubDefinition.FieldType.VIDEO;
+                    validateInput(item, video);
+                    input.addObject().put("type", video ? "video" : "image")
+                            .put("mime_type", "video/quicktime".equals(item.mimeType()) ? "video/mov" : item.mimeType())
+                            .put("data", Base64.getEncoder().encodeToString(item.bytes()));
+                }
+            input.addObject().put("type", "text").put("text",
+                    omniRolePrefix(p, media) + values.path("prompt").asText());
             ObjectNode format = body.putObject("response_format").put("type", "video");
             copy(values, format, "aspect_ratio", "resolution", "duration", "delivery");
             ObjectNode generation = body.putObject("generation_config");
             copy(values, generation, "seed", "max_output_tokens");
-            String task = GoogleVideoModels.GENERATE.equals(p.operation()) ? values.path("task").asText("auto") : p.operation().toLowerCase(java.util.Locale.ROOT);
-            if (!"auto".equals(task)) generation.putObject("video_config").put("task", task);
+            String task = GoogleVideoModels.GENERATE.equals(p.operation())
+                    ? values.path("task").asText("auto")
+                    : p.operation().toLowerCase(java.util.Locale.ROOT);
+            if (!"auto".equals(task))
+                generation.putObject("video_config").put("task", task);
         }
         return body;
     }
@@ -139,91 +177,129 @@ public class GoogleVideoClient {
         var sources = new java.util.ArrayList<String>();
         var references = new java.util.ArrayList<String>();
         int image = 0, video = 0, imageReference = 0, videoReference = 0;
-        for (var field : new GoogleVideoModels().inputs(profile)) if (field.media() && media.containsKey(field.key())) {
-            boolean videoInput = field.type() == dev.agenvas.provider.domain.RunningHubDefinition.FieldType.VIDEO;
-            String position = videoInput ? "@Video" + ++video : "@Image" + ++image;
-            switch (field.key()) {
-                case "first_frame" -> sources.add("<FIRST_FRAME>" + position);
-                case "last_frame" -> sources.add("<LAST_FRAME>" + position);
-                case "base_video" -> sources.add("<VIDEO_0>" + position);
-                default -> references.add("<" + (videoInput ? "VIDEO_REF_" + videoReference++ : "IMAGE_REF_" + imageReference++) + ">" + position);
+        for (var field : new GoogleVideoModels().inputs(profile))
+            if (field.media() && media.containsKey(field.key())) {
+                boolean videoInput = field.type() == dev.agenvas.provider.domain.RunningHubDefinition.FieldType.VIDEO;
+                String position = videoInput ? "@Video" + ++video : "@Image" + ++image;
+                switch (field.key()) {
+                    case "first_frame" -> sources.add("<FIRST_FRAME>" + position);
+                    case "last_frame" -> sources.add("<LAST_FRAME>" + position);
+                    case "base_video" -> sources.add("<VIDEO_0>" + position);
+                    default -> references
+                            .add("<" + (videoInput ? "VIDEO_REF_" + videoReference++ : "IMAGE_REF_" + imageReference++)
+                                    + ">" + position);
+                }
             }
-        }
         return (sources.isEmpty() ? "" : "[# Sources " + String.join(" ", sources) + "] ")
                 + (references.isEmpty() ? "" : "[# References " + String.join(" ", references) + "] ");
     }
     private static void validateInput(Input item, boolean video) {
         if (item == null || item.bytes() == null || item.bytes().length < 1
                 || item.bytes().length > (video ? GoogleVideoModels.MAX_INPUT_BYTES : GoogleVideoModels.MAX_IMAGE_BYTES)
-                || !(video ? GoogleVideoModels.VIDEO_TYPES : GoogleVideoModels.IMAGE_TYPES).contains(item.mimeType()) || item.fileName() != null)
+                || !(video ? GoogleVideoModels.VIDEO_TYPES : GoogleVideoModels.IMAGE_TYPES).contains(item.mimeType())
+                || item.fileName() != null)
             throw GoogleVideoModels.invalid();
     }
     private static void copy(JsonNode from, ObjectNode to, String... fields) {
-        for (String field : fields) if (GoogleVideoModels.present(from, field)) to.set(field, from.path(field).deepCopy());
+        for (String field : fields)
+            if (GoogleVideoModels.present(from, field))
+                to.set(field, from.path(field).deepCopy());
     }
 
     public String create(Profile p, String origin, String key, ObjectNode body) {
         GoogleVideoModels.requireProfile(p);
-        String path = GoogleVideoModels.veo(p) ? "/v1beta/models/" + p.model() + ":predictLongRunning" : "/v1beta/interactions";
+        String path = GoogleVideoModels.veo(p)
+                ? "/v1beta/models/" + p.model() + ":predictLongRunning"
+                : "/v1beta/interactions";
         try {
             JsonNode response = request(origin, key, path, body);
             String id = response.path(GoogleVideoModels.veo(p) ? "name" : "id").asText();
-            if (!validId(p, id)) throw protocol();
+            if (!validId(p, id))
+                throw protocol();
             if (!GoogleVideoModels.veo(p) && (!p.model().equals(response.path("model").asText())
-                    || !INTERACTION_STATUSES.contains(response.path("status").asText()))) throw protocol();
+                    || !INTERACTION_STATUSES.contains(response.path("status").asText())))
+                throw protocol();
             return id;
         } catch (NativeMediaFailure failed) {
-            if (CREATE_REJECTED.equals(failed.code()) || "MEDIA_CREDENTIAL_UNAVAILABLE".equals(failed.code())) throw failed;
+            if (CREATE_REJECTED.equals(failed.code()) || "MEDIA_CREDENTIAL_UNAVAILABLE".equals(failed.code()))
+                throw failed;
             throw new Unknown(failed.code());
         }
     }
     public State query(Profile p, String origin, String key, String originalId) {
         GoogleVideoModels.requireProfile(p);
-        if (!validId(p, originalId)) throw protocol();
-        JsonNode response = request(origin, key, "/v1beta/" + (GoogleVideoModels.veo(p) ? originalId : "interactions/" + originalId), null);
-        if (!originalId.equals(response.path(GoogleVideoModels.veo(p) ? "name" : "id").asText())) throw protocol();
+        if (!validId(p, originalId))
+            throw protocol();
+        JsonNode response = request(origin, key,
+                "/v1beta/" + (GoogleVideoModels.veo(p) ? originalId : "interactions/" + originalId), null);
+        if (!originalId.equals(response.path(GoogleVideoModels.veo(p) ? "name" : "id").asText()))
+            throw protocol();
         if (GoogleVideoModels.veo(p)) {
-            if (response.has("done") && !response.path("done").isBoolean()) throw protocol();
-            if (!response.path("done").asBoolean(false)) return new State("pending", null);
-            if (response.hasNonNull("error")) return new State("failed", null);
+            if (response.has("done") && !response.path("done").isBoolean())
+                throw protocol();
+            if (!response.path("done").asBoolean(false))
+                return new State("pending", null);
+            if (response.hasNonNull("error"))
+                return new State("failed", null);
             JsonNode result = response.at("/response/generateVideoResponse");
             JsonNode samples = result.path("generatedSamples");
-            if (result.path("raiMediaFilteredCount").asInt(0) > 0 && (!samples.isArray() || samples.isEmpty())) return new State("failed", null);
-            if (!samples.isArray() || samples.size() != 1) throw protocol();
+            if (result.path("raiMediaFilteredCount").asInt(0) > 0 && (!samples.isArray() || samples.isEmpty()))
+                return new State("failed", null);
+            if (!samples.isArray() || samples.size() != 1)
+                throw protocol();
             JsonNode video = samples.path(0).path("video");
-            if (!video.path("uri").isTextual()) throw protocol();
+            if (!video.path("uri").isTextual())
+                throw protocol();
             return new State("completed", new Video(null, fileName(video.path("uri").asText())));
         }
-        if (!p.model().equals(response.path("model").asText())) throw protocol();
+        if (!p.model().equals(response.path("model").asText()))
+            throw protocol();
         String status = response.path("status").asText();
-        if (!INTERACTION_STATUSES.contains(status)) throw protocol();
-        if (Set.of("queued", "in_progress").contains(status)) return new State("pending", null);
-        if (!"completed".equals(status)) return new State("failed", null);
-        if (!response.path("steps").isArray()) throw protocol();
+        if (!INTERACTION_STATUSES.contains(status))
+            throw protocol();
+        if (Set.of("queued", "in_progress").contains(status))
+            return new State("pending", null);
+        if (!"completed".equals(status))
+            return new State("failed", null);
+        if (!response.path("steps").isArray())
+            throw protocol();
         Video output = null;
-        for (JsonNode step : response.path("steps")) if ("model_output".equals(step.path("type").asText())) {
-            if (!step.path("content").isArray()) throw protocol();
-            for (JsonNode content : step.path("content")) if ("video".equals(content.path("type").asText())) {
-                if (output != null || !"video/mp4".equals(content.path("mime_type").asText())) throw protocol();
-                boolean inline = content.path("data").isTextual(), uri = content.path("uri").isTextual();
-                if (inline == uri) throw protocol();
-                if (inline) {
-                    byte[] bytes;
-                    try { bytes = Base64.getDecoder().decode(content.path("data").asText()); }
-                    catch (IllegalArgumentException invalid) { throw protocol(); }
-                    if (!mp4(bytes) || bytes.length > MAX_VIDEO_BYTES) throw protocol();
-                    output = new Video(bytes, null);
-                } else output = new Video(null, fileName(content.path("uri").asText()));
+        for (JsonNode step : response.path("steps"))
+            if ("model_output".equals(step.path("type").asText())) {
+                if (!step.path("content").isArray())
+                    throw protocol();
+                for (JsonNode content : step.path("content"))
+                    if ("video".equals(content.path("type").asText())) {
+                        if (output != null || !"video/mp4".equals(content.path("mime_type").asText()))
+                            throw protocol();
+                        boolean inline = content.path("data").isTextual(), uri = content.path("uri").isTextual();
+                        if (inline == uri)
+                            throw protocol();
+                        if (inline) {
+                            byte[] bytes;
+                            try {
+                                bytes = Base64.getDecoder().decode(content.path("data").asText());
+                            } catch (IllegalArgumentException invalid) {
+                                throw protocol();
+                            }
+                            if (!mp4(bytes) || bytes.length > MAX_VIDEO_BYTES)
+                                throw protocol();
+                            output = new Video(bytes, null);
+                        } else
+                            output = new Video(null, fileName(content.path("uri").asText()));
+                    }
             }
-        }
-        if (output == null) throw protocol();
+        if (output == null)
+            throw protocol();
         return new State("completed", output);
     }
 
     public boolean fileActive(String origin, String key, String name) {
-        if (!validFileName(name)) throw protocol();
+        if (!validFileName(name))
+            throw protocol();
         JsonNode file = request(origin, key, "/v1beta/" + name, null);
-        if (!name.equals(file.path("name").asText()) || !"video/mp4".equals(file.path("mimeType").asText())) throw protocol();
+        if (!name.equals(file.path("name").asText()) || !"video/mp4".equals(file.path("mimeType").asText()))
+            throw protocol();
         return switch (file.path("state").asText()) {
             case "ACTIVE" -> true;
             case "PROCESSING" -> false;
@@ -234,65 +310,108 @@ public class GoogleVideoClient {
 
     /** The only authenticated download is the fixed Files route; a single result redirect is credential-free. */
     public void download(String origin, String key, String name, OutputStream target) {
-        if (!validFileName(name)) throw new NativeMediaFailure(ProviderFailureCodes.RESULT_URL_INVALID);
-        Request request = new Request.Builder().url(endpoint(origin, "/v1beta/" + name + ":download?alt=media").toString())
+        if (!validFileName(name))
+            throw new NativeMediaFailure(ProviderFailureCodes.RESULT_URL_INVALID);
+        Request request = new Request.Builder()
+                .url(endpoint(origin, "/v1beta/" + name + ":download?alt=media").toString())
                 .header("x-goog-api-key", checkedKey(key)).get().build();
         try (Response response = http.newCall(request).execute()) {
             if (Set.of(301, 302, 303, 307, 308).contains(response.code())) {
                 String location = response.header("Location");
                 URI redirect;
-                try { redirect = URI.create(location == null ? "" : location); } catch (IllegalArgumentException invalid) { throw resultUrl(); }
-                if (!("https".equals(redirect.getScheme()) || "http".equals(redirect.getScheme())) || redirect.getHost() == null
-                        || redirect.getRawUserInfo() != null || redirect.getRawFragment() != null || redirect.getPort() == 0 || redirect.getPort() > 65535
-                        || redirect.toString().length() > 8192 || redirect.getRawPath() == null || redirect.getRawPath().length() < 2)
+                try {
+                    redirect = URI.create(location == null ? "" : location);
+                } catch (IllegalArgumentException invalid) {
+                    throw resultUrl();
+                }
+                if (!("https".equals(redirect.getScheme()) || "http".equals(redirect.getScheme()))
+                        || redirect.getHost() == null
+                        || redirect.getRawUserInfo() != null || redirect.getRawFragment() != null
+                        || redirect.getPort() == 0 || redirect.getPort() > 65535
+                        || redirect.toString().length() > 8192 || redirect.getRawPath() == null
+                        || redirect.getRawPath().length() < 2)
                     throw resultUrl();
                 dev.agenvas.shared.http.DebugHttpCapture.registerMediaRelayUrl(redirect.toString());
                 // Build a new request: no API key, authorization, cookies or caller-selected headers cross hosts.
-                try (Response object = http.newCall(new Request.Builder().url(redirect.toString()).get().build()).execute()) {
+                try (Response object = http.newCall(new Request.Builder().url(redirect.toString()).get().build())
+                        .execute()) {
                     transfer(object, target);
                 }
-            } else transfer(response, target);
-        } catch (IOException unavailable) { throw new TechnicalFailure(); }
+            } else
+                transfer(response, target);
+        } catch (IOException unavailable) {
+            throw new TechnicalFailure();
+        }
     }
     private static void transfer(Response response, OutputStream target) throws IOException {
-        if (response.code() == 404 || response.code() == 410) throw new NativeMediaFailure(RESULT_EXPIRED);
-        if (response.code() == 401 || response.code() == 403) throw new NativeMediaFailure("MEDIA_CREDENTIAL_UNAVAILABLE");
-        if (response.code() == 429 || response.code() >= 500) throw new TechnicalFailure();
-        if (response.code() != 200 || response.body() == null) throw resultUrl();
-        String contentType = response.body().contentType() == null ? "" : response.body().contentType().toString().split(";", 2)[0];
-        if (!Set.of("video/mp4", "application/octet-stream").contains(contentType)) throw protocol();
-        if (response.body().contentLength() > MAX_VIDEO_BYTES) throw new NativeMediaFailure(ProviderFailureCodes.RESULT_TOO_LARGE);
+        if (response.code() == 404 || response.code() == 410)
+            throw new NativeMediaFailure(RESULT_EXPIRED);
+        if (response.code() == 401 || response.code() == 403)
+            throw new NativeMediaFailure("MEDIA_CREDENTIAL_UNAVAILABLE");
+        if (response.code() == 429 || response.code() >= 500)
+            throw new TechnicalFailure();
+        if (response.code() != 200 || response.body() == null)
+            throw resultUrl();
+        String contentType = response.body().contentType() == null
+                ? ""
+                : response.body().contentType().toString().split(";", 2)[0];
+        if (!Set.of("video/mp4", "application/octet-stream").contains(contentType))
+            throw protocol();
+        if (response.body().contentLength() > MAX_VIDEO_BYTES)
+            throw new NativeMediaFailure(ProviderFailureCodes.RESULT_TOO_LARGE);
         try (InputStream input = response.body().byteStream()) {
-            byte[] buffer = new byte[65536]; int count; long total = 0;
+            byte[] buffer = new byte[65536];
+            int count;
+            long total = 0;
             while ((count = input.read(buffer)) != -1) {
-                total += count; if (total > MAX_VIDEO_BYTES) throw new NativeMediaFailure(ProviderFailureCodes.RESULT_TOO_LARGE);
+                total += count;
+                if (total > MAX_VIDEO_BYTES)
+                    throw new NativeMediaFailure(ProviderFailureCodes.RESULT_TOO_LARGE);
                 target.write(buffer, 0, count);
             }
-            if (total == 0) throw protocol();
+            if (total == 0)
+                throw protocol();
         }
     }
     private JsonNode request(String origin, String key, String path, ObjectNode body) {
         Request.Builder request = new Request.Builder().url(endpoint(origin, path).toString())
                 .header("x-goog-api-key", checkedKey(key)).header("Accept", "application/json");
-        if (body != null) request.post(RequestBody.create(body.toString().getBytes(StandardCharsets.UTF_8), MediaType.parse("application/json")));
+        if (body != null)
+            request.post(RequestBody.create(body.toString().getBytes(StandardCharsets.UTF_8),
+                    MediaType.parse("application/json")));
         try (Response response = http.newCall(request.build()).execute()) {
             int status = response.code();
-            if (status == 401 || status == 403) throw new NativeMediaFailure("MEDIA_CREDENTIAL_UNAVAILABLE");
-            if (body == null && (status == 404 || status == 410)) throw new NativeMediaFailure(TASK_EXPIRED);
-            if (status >= 400 && status < 500 && status != 429) throw new NativeMediaFailure(CREATE_REJECTED);
-            if (status != 200) { if (body != null) throw new Unknown(ProviderFailureCodes.SUBMISSION_UNKNOWN); throw new TechnicalFailure(); }
-            if (response.body() == null) throw protocol();
+            if (status == 401 || status == 403)
+                throw new NativeMediaFailure("MEDIA_CREDENTIAL_UNAVAILABLE");
+            if (body == null && (status == 404 || status == 410))
+                throw new NativeMediaFailure(TASK_EXPIRED);
+            if (status >= 400 && status < 500 && status != 429)
+                throw new NativeMediaFailure(CREATE_REJECTED);
+            if (status != 200) {
+                if (body != null)
+                    throw new Unknown(ProviderFailureCodes.SUBMISSION_UNKNOWN);
+                throw new TechnicalFailure();
+            }
+            if (response.body() == null)
+                throw protocol();
             try (InputStream input = response.body().byteStream()) {
                 byte[] bytes = input.readNBytes(MAX_RESPONSE_BYTES + 1);
-                if (bytes.length > MAX_RESPONSE_BYTES) throw new NativeMediaFailure(ProviderFailureCodes.RESPONSE_TOO_LARGE);
+                if (bytes.length > MAX_RESPONSE_BYTES)
+                    throw new NativeMediaFailure(ProviderFailureCodes.RESPONSE_TOO_LARGE);
                 return responses.readTree(bytes);
             }
         } catch (IOException unavailable) {
-            if (body != null) throw new Unknown(OutboundTimeouts.isTimeout(unavailable) ? ProviderFailureCodes.CALL_TIMEOUT : ProviderFailureCodes.RESPONSE_LOST);
+            if (body != null)
+                throw new Unknown(OutboundTimeouts.isTimeout(unavailable)
+                        ? ProviderFailureCodes.CALL_TIMEOUT
+                        : ProviderFailureCodes.RESPONSE_LOST);
             throw new TechnicalFailure();
         } catch (RuntimeException invalid) {
-            if (invalid instanceof NativeMediaFailure || invalid instanceof Unknown || invalid instanceof TechnicalFailure) throw invalid;
-            if (body != null) throw new Unknown(ProviderFailureCodes.PROTOCOL_INVALID);
+            if (invalid instanceof NativeMediaFailure || invalid instanceof Unknown
+                    || invalid instanceof TechnicalFailure)
+                throw invalid;
+            if (body != null)
+                throw new Unknown(ProviderFailureCodes.PROTOCOL_INVALID);
             throw protocol();
         }
     }
@@ -301,21 +420,35 @@ public class GoogleVideoClient {
         return (testOrigin == null ? URI.create(selected) : testOrigin).resolve(path);
     }
     public static boolean validId(Profile p, String id) {
-        if (id == null || id.length() > 512) return false;
-        if (!GoogleVideoModels.veo(p)) return id.matches("[A-Za-z0-9_-]{1,512}");
+        if (id == null || id.length() > 512)
+            return false;
+        if (!GoogleVideoModels.veo(p))
+            return id.matches("[A-Za-z0-9_-]{1,512}");
         return id.matches("operations/[A-Za-z0-9._-]{1,512}")
-                || id.matches("models/" + java.util.regex.Pattern.quote(p.model()) + "/operations/[A-Za-z0-9._-]{1,512}");
+                || id.matches(
+                        "models/" + java.util.regex.Pattern.quote(p.model()) + "/operations/[A-Za-z0-9._-]{1,512}");
     }
-    public static boolean validFileName(String name) { return name != null && name.matches("files/[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?"); }
+    public static boolean validFileName(String name) {
+        return name != null && name.matches("files/[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?");
+    }
     public static String fileName(String value) {
         URI uri;
-        try { uri = URI.create(value); } catch (IllegalArgumentException invalid) { throw resultUrl(); }
+        try {
+            uri = URI.create(value);
+        } catch (IllegalArgumentException invalid) {
+            throw resultUrl();
+        }
         if (!("https".equals(uri.getScheme()) || "http".equals(uri.getScheme())) || uri.getHost() == null
-                || uri.getRawUserInfo() != null || uri.getRawFragment() != null || uri.getPort() == 0 || uri.getPort() > 65535
-                || uri.getRawQuery() != null && !"alt=media".equals(uri.getRawQuery())) throw resultUrl();
+                || uri.getRawUserInfo() != null || uri.getRawFragment() != null || uri.getPort() == 0
+                || uri.getPort() > 65535
+                || uri.getRawQuery() != null && !"alt=media".equals(uri.getRawQuery()))
+            throw resultUrl();
         String path = uri.getRawPath();
-        String name = path != null ? path.replaceFirst("^/(?:download/)?v1beta/", "").replaceFirst(":download$", "") : "";
-        if (!validFileName(name)) throw resultUrl();
+        String name = path != null
+                ? path.replaceFirst("^/(?:download/)?v1beta/", "").replaceFirst(":download$", "")
+                : "";
+        if (!validFileName(name))
+            throw resultUrl();
         return name;
     }
     private static String checkedKey(String key) {
@@ -323,13 +456,28 @@ public class GoogleVideoClient {
             throw new NativeMediaFailure("MEDIA_CREDENTIAL_UNAVAILABLE");
         return key;
     }
-    private static boolean mp4(byte[] bytes) { return bytes.length >= 12 && bytes[4] == 'f' && bytes[5] == 't' && bytes[6] == 'y' && bytes[7] == 'p'; }
-    private static NativeMediaFailure protocol() { return new NativeMediaFailure(ProviderFailureCodes.PROTOCOL_INVALID); }
-    private static NativeMediaFailure resultUrl() { return new NativeMediaFailure(ProviderFailureCodes.RESULT_URL_INVALID); }
+    private static boolean mp4(byte[] bytes) {
+        return bytes.length >= 12 && bytes[4] == 'f' && bytes[5] == 't' && bytes[6] == 'y' && bytes[7] == 'p';
+    }
+    private static NativeMediaFailure protocol() {
+        return new NativeMediaFailure(ProviderFailureCodes.PROTOCOL_INVALID);
+    }
+    private static NativeMediaFailure resultUrl() {
+        return new NativeMediaFailure(ProviderFailureCodes.RESULT_URL_INVALID);
+    }
     public static final class Unknown extends RuntimeException {
         private final String code;
-        public Unknown(String code) { super(code); this.code = code; }
-        public String code() { return code; }
+        public Unknown(String code) {
+            super(code);
+            this.code = code;
+        }
+        public String code() {
+            return code;
+        }
     }
-    public static final class TechnicalFailure extends RuntimeException { public TechnicalFailure() { super(ProviderFailureCodes.DOWNLOAD_FAILED); } }
+    public static final class TechnicalFailure extends RuntimeException {
+        public TechnicalFailure() {
+            super(ProviderFailureCodes.DOWNLOAD_FAILED);
+        }
+    }
 }

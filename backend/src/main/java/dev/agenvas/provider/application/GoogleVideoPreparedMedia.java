@@ -14,7 +14,9 @@ import tools.jackson.databind.JsonNode;
 @Component
 public class GoogleVideoPreparedMedia {
     private final NativeMediaReferences references;
-    public GoogleVideoPreparedMedia(NativeMediaReferences references) { this.references = references; }
+    public GoogleVideoPreparedMedia(NativeMediaReferences references) {
+        this.references = references;
+    }
 
     public Map<String, GoogleVideoClient.Input> load(AttemptContext context, NativeMediaProfiles.Selection selected,
             JsonNode values, boolean submitting) {
@@ -28,7 +30,8 @@ public class GoogleVideoPreparedMedia {
                 prepared.put(entry.getKey(), new GoogleVideoClient.Input("video/mp4", null, name));
             } else {
                 total += input.bytes().length;
-                if (total > GoogleVideoModels.MAX_INPUT_BYTES || input.url() != null) throw GoogleVideoModels.invalid();
+                if (total > GoogleVideoModels.MAX_INPUT_BYTES || input.url() != null)
+                    throw GoogleVideoModels.invalid();
                 prepared.put(entry.getKey(), new GoogleVideoClient.Input(input.contentType(), input.bytes()));
             }
         }
@@ -37,13 +40,16 @@ public class GoogleVideoPreparedMedia {
 
     static String extensionFile(AttemptContext context, JsonNode content) {
         JsonNode result = content.at("/parameters/nativeProviderResult");
-        if (!result.isObject() || !result.propertyNames().equals(Set.of("adapterId", "model", "connectionId", "connectionVersion", "fileName"))
+        if (!result.isObject()
+                || !result.propertyNames()
+                        .equals(Set.of("adapterId", "model", "connectionId", "connectionVersion", "fileName"))
                 || !GoogleVideoModels.VEO.equals(result.path("adapterId").asText())
                 || !GoogleVideoModels.VEO_MODELS.contains(result.path("model").asText())
                 || !context.binding().connectionId().toString().equals(result.path("connectionId").asText())
                 || !result.path("connectionVersion").isIntegralNumber()
                 || context.binding().connectionVersion() != result.path("connectionVersion").asInt(-1)
-                || !GoogleVideoClient.validFileName(result.path("fileName").asText())) throw GoogleVideoModels.invalid();
+                || !GoogleVideoClient.validFileName(result.path("fileName").asText()))
+            throw GoogleVideoModels.invalid();
         return result.path("fileName").asText();
     }
 }

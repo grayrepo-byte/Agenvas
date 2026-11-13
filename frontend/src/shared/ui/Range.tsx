@@ -25,22 +25,48 @@ export function setRangeValue(element: HTMLInputElement, value: number) {
  * form, pointer and media-clock behavior; all visual variants belong to this layer. */
 export function Range({ variant = "parameter", className, ref, onChange, onInput, ...props }: RangeProps) {
   const input = useRef<HTMLInputElement>(null);
-  const bind = useCallback((element: HTMLInputElement | null) => {
-    input.current = element;
-    if (typeof ref === "function") return ref(element);
-    if (ref) ref.current = element;
-  }, [ref]);
-  useLayoutEffect(() => { if (input.current) syncProgress(input.current); });
+  const bind = useCallback(
+    (element: HTMLInputElement | null) => {
+      input.current = element;
+      if (typeof ref === "function") return ref(element);
+      if (ref) ref.current = element;
+    },
+    [ref],
+  );
+  useLayoutEffect(() => {
+    if (input.current) syncProgress(input.current);
+  });
   useLayoutEffect(() => {
     const element = input.current;
     const form = element?.form;
     if (!element || !form) return;
     let attached = true;
-    const reset = () => queueMicrotask(() => { if (attached) syncProgress(element); });
+    const reset = () =>
+      queueMicrotask(() => {
+        if (attached) syncProgress(element);
+      });
     form.addEventListener("reset", reset);
-    return () => { attached = false; form.removeEventListener("reset", reset); };
+    return () => {
+      attached = false;
+      form.removeEventListener("reset", reset);
+    };
   }, []);
-  return <Input {...props} type="range" ref={bind} data-slot="range" data-variant={variant}
-    className={cn("ui-range", className)} onInput={(event) => { syncProgress(event.currentTarget); onInput?.(event); }}
-    onChange={(event) => { syncProgress(event.currentTarget); onChange?.(event); }} />;
+  return (
+    <Input
+      {...props}
+      type="range"
+      ref={bind}
+      data-slot="range"
+      data-variant={variant}
+      className={cn("ui-range", className)}
+      onInput={event => {
+        syncProgress(event.currentTarget);
+        onInput?.(event);
+      }}
+      onChange={event => {
+        syncProgress(event.currentTarget);
+        onChange?.(event);
+      }}
+    />
+  );
 }

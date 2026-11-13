@@ -59,29 +59,46 @@ import tools.jackson.databind.ObjectMapper;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = {AgenvasApplication.class, SequentialAgentImagesPostgresIT.FakeConfig.class})
 class SequentialAgentImagesPostgresIT {
-    @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     private static final Path STORAGE = temporaryRoot();
-    @DynamicPropertySource static void properties(DynamicPropertyRegistry registry) {
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("agenvas.storage.root", STORAGE::toString);
     }
-    @Autowired IdentityService identities;
-    @Autowired ProjectService projects;
-    @Autowired ArtifactService artifacts;
-    @Autowired AssetService assets;
-    @Autowired AgentInstanceService agents;
-    @Autowired CanvasService canvas;
-    @Autowired AgentRunService runs;
-    @Autowired AgentTurnWorker worker;
-    @Autowired AgentImageInputService images;
-    @Autowired LlmProtocolCodec codec;
-    @Autowired FakeGateway gateway;
-    @Autowired JdbcClient jdbc;
-    @Autowired ObjectMapper mapper;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    ProjectService projects;
+    @Autowired
+    ArtifactService artifacts;
+    @Autowired
+    AssetService assets;
+    @Autowired
+    AgentInstanceService agents;
+    @Autowired
+    CanvasService canvas;
+    @Autowired
+    AgentRunService runs;
+    @Autowired
+    AgentTurnWorker worker;
+    @Autowired
+    AgentImageInputService images;
+    @Autowired
+    LlmProtocolCodec codec;
+    @Autowired
+    FakeGateway gateway;
+    @Autowired
+    JdbcClient jdbc;
+    @Autowired
+    ObjectMapper mapper;
 
-    @Test void rejectsMultiImageBatchesAtomicallyThenObservesNineImagesSequentiallyAndRestoresTheCurrentPreview() throws Exception {
+    @Test
+    void rejectsMultiImageBatchesAtomicallyThenObservesNineImagesSequentiallyAndRestoresTheCurrentPreview()
+            throws Exception {
         var owner = identities.setup("sequential-admin", "synthetic-password-123");
         var project = projects.create(owner.userId(), "Sequential image fixture", Project.AspectRatio.LANDSCAPE_16_9);
         var versions = new ArrayList<ArtifactService.ArtifactView>();
@@ -91,54 +108,81 @@ class SequentialAgentImagesPostgresIT {
             var png = new ByteArrayOutputStream();
             ImageIO.write(image, "png", png);
             var asset = assets.archiveImage(owner.userId(), project.id(), new ByteArrayInputStream(png.toByteArray()));
-            var version = artifacts.createTemplateImport(owner.userId(), project.id(), "Synthetic image " + index, asset.id());
+            var version = artifacts.createTemplateImport(owner.userId(), project.id(), "Synthetic image " + index,
+                    asset.id());
             versions.add(version);
             gateway.versions.add(version.resourceDefaultVersion().id());
             var preview = assets.content(owner.userId(), project.id(), asset.id(), true);
-            try (var stream = assets.open(preview, 0, preview.size())) { gateway.previews.add(stream.readAllBytes()); }
+            try (var stream = assets.open(preview, 0, preview.size())) {
+                gateway.previews.add(stream.readAllBytes());
+            }
         }
         var first = versions.getFirst();
         var agent = AgentImageInputFixture.withCanvasImage(agents, canvas, owner.userId(), project.id(),
-                first.artifact().id(), first.resourceDefaultVersion().id(), "Image observer", "Record visible continuity anchors");
+                first.artifact().id(), first.resourceDefaultVersion().id(), "Image observer",
+                "Record visible continuity anchors");
         for (var version : versions.subList(1, versions.size())) {
             UUID source = UUID.randomUUID();
             canvas.apply(owner.userId(), project.id(), List.of(new CanvasService.PlaceArtifact(source,
-                    version.artifact().id(), BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("320"), new BigDecimal("240"), 2, null, false)));
+                    version.artifact().id(), BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("320"),
+                    new BigDecimal("240"), 2, null, false)));
         }
-        var run = runs.create(owner.userId(), project.id(), agent.id(), "Observe each image before reading the next", "sequential-fixture").run();
-        for (int index = 0; index < 13; index++) assertThat(worker.runOnce("sequential-worker")).isEqualTo(1);
+        var run = runs.create(owner.userId(), project.id(), agent.id(), "Observe each image before reading the next",
+                "sequential-fixture").run();
+        for (int index = 0; index < 13; index++)
+            assertThat(worker.runOnce("sequential-worker")).isEqualTo(1);
         assertThat(runs.get(owner.userId(), project.id(), run.id()).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
         assertThat(gateway.calls).hasValue(12);
         assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :id").param("id", run.id())
                 .query(Long.class).single()).isEqualTo(10);
         assertThat(jdbc.sql("select count(*) from artifact where project_id = :id").param("id", project.id())
                 .query(Long.class).single()).isEqualTo(9);
-        var saved = mapper.readTree(jdbc.sql("select request_json::text from llm_turn where run_id = :id and step_index = 12")
-                .param("id", run.id()).query(String.class).single());
+        var saved = mapper
+                .readTree(jdbc.sql("select request_json::text from llm_turn where run_id = :id and step_index = 12")
+                        .param("id", run.id()).query(String.class).single());
         var restored = codec.requestMessages(saved);
-        assertThat(restored.stream().filter(message -> message.getMetadata().containsKey(AgentImageInputService.METADATA_KEY)))
+        assertThat(restored.stream()
+                .filter(message -> message.getMetadata().containsKey(AgentImageInputService.METADATA_KEY)))
                 .singleElement();
-        assertThat(saved.toString()).contains("Observed exact image", gateway.versions.getFirst().toString(), gateway.versions.getLast().toString())
+        assertThat(saved.toString())
+                .contains("Observed exact image", gateway.versions.getFirst().toString(),
+                        gateway.versions.getLast().toString())
                 .doesNotContain("base64", "image_url");
         var dispatched = images.hydrate(owner.userId(), project.id(), run.id(), run.contextSnapshot(), restored);
         assertThat(dispatched.stream().filter(UserMessage.class::isInstance).map(UserMessage.class::cast)
                 .flatMap(message -> message.getMedia().stream()).toList()).singleElement()
                 .satisfies(media -> assertThat(media.getDataAsByteArray()).isEqualTo(gateway.previews.getLast()));
-        assertThat(codec.request(restored, codec.requestTools(saved, dev.agenvas.llm.application.RunToolPolicy.allowed(run.policySnapshot()))))
+        assertThat(codec.request(restored,
+                codec.requestTools(saved, dev.agenvas.llm.application.RunToolPolicy.allowed(run.policySnapshot()))))
                 .isEqualTo(saved);
     }
 
-    @TestConfiguration static class FakeConfig {
-        @Bean @Primary FakeGateway fakeGateway() { return new FakeGateway(); }
+    @TestConfiguration
+    static class FakeConfig {
+        @Bean
+        @Primary
+        FakeGateway fakeGateway() {
+            return new FakeGateway();
+        }
     }
     static class FakeGateway implements ChatGateway {
         final AtomicInteger calls = new AtomicInteger();
         final List<UUID> versions = new ArrayList<>();
         final List<byte[]> previews = new ArrayList<>();
-        @Override public String configSource() { return "test-fake"; }
-        @Override public int configVersion() { return 1; }
-        @Override public Capabilities capabilities() { return new Capabilities(true, false, false); }
-        @Override public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context) {
+        @Override
+        public String configSource() {
+            return "test-fake";
+        }
+        @Override
+        public int configVersion() {
+            return 1;
+        }
+        @Override
+        public Capabilities capabilities() {
+            return new Capabilities(true, false, false);
+        }
+        @Override
+        public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context) {
             if (tools.size() == 1 && "load_toolset".equals(tools.getFirst().getToolDefinition().name())) {
                 var load = AssistantMessage.builder().content("").toolCalls(List.of(new AssistantMessage.ToolCall(
                         "load-tools", "function", "load_toolset", "{\"toolsets\":[\"CANVAS\",\"TEXT\"]}"))).build();
@@ -147,35 +191,56 @@ class SequentialAgentImagesPostgresIT {
             int index = calls.getAndIncrement();
             var pixels = messages.stream().filter(UserMessage.class::isInstance).map(UserMessage.class::cast)
                     .flatMap(message -> message.getMedia().stream()).toList();
-            if (index < 3) assertThat(pixels).isEmpty();
-            else assertThat(pixels).singleElement().satisfies(media -> assertThat(media.getDataAsByteArray()).isEqualTo(previews.get(index - 3)));
+            if (index < 3)
+                assertThat(pixels).isEmpty();
+            else
+                assertThat(pixels).singleElement()
+                        .satisfies(media -> assertThat(media.getDataAsByteArray()).isEqualTo(previews.get(index - 3)));
             if (index == 1 || index == 2) {
-                var replies = messages.stream().filter(ToolResponseMessage.class::isInstance).map(ToolResponseMessage.class::cast)
+                var replies = messages.stream().filter(ToolResponseMessage.class::isInstance)
+                        .map(ToolResponseMessage.class::cast)
                         .reduce((before, after) -> after).orElseThrow();
-                assertThat(replies.getResponses()).allSatisfy(reply -> assertThat(reply.responseData()).contains("TOOL_ARGUMENT_INVALID"));
+                assertThat(replies.getResponses())
+                        .allSatisfy(reply -> assertThat(reply.responseData()).contains("TOOL_ARGUMENT_INVALID"));
             }
             AssistantMessage assistant;
-            if (index == 0) assistant = AssistantMessage.builder().content("Invalid batch fixture").toolCalls(List.of(
-                    new AssistantMessage.ToolCall("create", "function", "create_text", "{\"title\":\"Must roll back\",\"text\":\"Synthetic\",\"format\":\"PLAIN_TEXT\"}"),
-                    read("a", List.of(versions.get(0))), read("b", List.of(versions.get(1))))).build();
-            else if (index == 1) assistant = AssistantMessage.builder().content("Invalid single call fixture")
-                    .toolCalls(List.of(read("multi", versions.subList(0, 2)))).build();
-            else if (index < 11) assistant = AssistantMessage.builder()
-                    .content(index == 2 ? "Read first image" : "Observed exact image " + versions.get(index - 3) + ": synthetic visual anchors")
-                    .toolCalls(List.of(read("sequential-" + index, List.of(versions.get(index - 2))))).build();
-            else assistant = new AssistantMessage("Observed exact image " + versions.getLast() + ": all nine observations complete");
+            if (index == 0)
+                assistant = AssistantMessage.builder().content("Invalid batch fixture").toolCalls(List.of(
+                        new AssistantMessage.ToolCall("create", "function", "create_text",
+                                "{\"title\":\"Must roll back\",\"text\":\"Synthetic\",\"format\":\"PLAIN_TEXT\"}"),
+                        read("a", List.of(versions.get(0))), read("b", List.of(versions.get(1))))).build();
+            else if (index == 1)
+                assistant = AssistantMessage.builder().content("Invalid single call fixture")
+                        .toolCalls(List.of(read("multi", versions.subList(0, 2)))).build();
+            else if (index < 11)
+                assistant = AssistantMessage.builder()
+                        .content(index == 2
+                                ? "Read first image"
+                                : "Observed exact image " + versions.get(index - 3) + ": synthetic visual anchors")
+                        .toolCalls(List.of(read("sequential-" + index, List.of(versions.get(index - 2))))).build();
+            else
+                assistant = new AssistantMessage(
+                        "Observed exact image " + versions.getLast() + ": all nine observations complete");
             return new Exchange(1, new ChatResponse(List.of(new Generation(assistant))));
         }
         private AssistantMessage.ToolCall read(String id, List<UUID> ids) {
-            String values = ids.stream().map(value -> "\"" + value + "\"").collect(java.util.stream.Collectors.joining(","));
+            String values = ids.stream().map(value -> "\"" + value + "\"")
+                    .collect(java.util.stream.Collectors.joining(","));
             return new AssistantMessage.ToolCall(id, "function", "read_artifacts", "{\"versionIds\":[" + values + "]}");
         }
     }
     private static Path temporaryRoot() {
-        try { return Files.createTempDirectory("agenvas-sequential-images-"); }
-        catch (java.io.IOException failed) { throw new java.io.UncheckedIOException(failed); }
+        try {
+            return Files.createTempDirectory("agenvas-sequential-images-");
+        } catch (java.io.IOException failed) {
+            throw new java.io.UncheckedIOException(failed);
+        }
     }
-    @AfterAll static void cleanup() throws Exception {
-        try (var paths = Files.walk(STORAGE)) { for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(path); }
+    @AfterAll
+    static void cleanup() throws Exception {
+        try (var paths = Files.walk(STORAGE)) {
+            for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
+                Files.deleteIfExists(path);
+        }
     }
 }

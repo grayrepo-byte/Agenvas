@@ -48,15 +48,24 @@ class MediaCapabilityConfigurationPostgresIT {
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private ArtifactService artifacts;
-    @Autowired private CanvasService canvas;
-    @Autowired private MediaDraftService drafts;
-    @Autowired private MediaCapabilityService catalog;
-    @Autowired private DirectMediaTaskService direct;
-    @Autowired private UsageService usage;
-    @Autowired private ObjectMapper mapper;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private ArtifactService artifacts;
+    @Autowired
+    private CanvasService canvas;
+    @Autowired
+    private MediaDraftService drafts;
+    @Autowired
+    private MediaCapabilityService catalog;
+    @Autowired
+    private DirectMediaTaskService direct;
+    @Autowired
+    private UsageService usage;
+    @Autowired
+    private ObjectMapper mapper;
 
     @Test
     void freezesDefaultsLimitsAndDecimalPricesAndReleasesTheOriginalEstimate() {
@@ -71,15 +80,16 @@ class MediaCapabilityConfigurationPostgresIT {
         var before = catalog.resolve(capability.id(), Task.Kind.VIDEO_GENERATION, 8);
         assertThatThrownBy(() -> catalog.resolve(capability.id(), Task.Kind.VIDEO_GENERATION, 4))
                 .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
-        assertThat(catalog.candidates(Task.Kind.VIDEO_GENERATION, 11)).noneMatch(candidate ->
-                candidate.binding().capabilityId().equals(capability.id()));
+        assertThat(catalog.candidates(Task.Kind.VIDEO_GENERATION, 11))
+                .noneMatch(candidate -> candidate.binding().capabilityId().equals(capability.id()));
 
         var video = artifacts.create(owner.userId(), project.id(), Artifact.Kind.VIDEO, "Video", null).artifact();
         UUID card = UUID.randomUUID();
         canvas.apply(owner.userId(), project.id(), List.of(new CanvasService.PlaceArtifact(card, video.id(),
                 BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("280"), new BigDecimal("240"), 0, null, false)));
         var draft = drafts.save(owner.userId(), project.id(), card, 0, "A moving landscape",
-                mapper.createObjectNode(), null, capability.id(), MediaDraft.VideoInputMode.TEXT, List.of(), List.of(), null);
+                mapper.createObjectNode(), null, capability.id(), MediaDraft.VideoInputMode.TEXT, List.of(), List.of(),
+                null);
         Task task = direct.run(owner.userId(), project.id(), video.id(), card, draft.version(), "priced-video-run");
         assertThat(task.input().path("durationSeconds").asInt()).isEqualTo(8);
         assertThat(task.input().at("/mediaInput/parameters/aspectRatio").asText()).isEqualTo("9:16");

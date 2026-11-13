@@ -127,7 +127,8 @@ class GoogleNanoBananaClientTest {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1/models/gemini-3.1-flash-image:generateContent", exchange -> {
             exchange.getRequestBody().readAllBytes();
-            if (status.get() == 302) exchange.getResponseHeaders().set("Location", "/redirected");
+            if (status.get() == 302)
+                exchange.getResponseHeaders().set("Location", "/redirected");
             exchange.sendResponseHeaders(status.get(), -1);
             exchange.close();
         });
@@ -185,7 +186,7 @@ class GoogleNanoBananaClientTest {
 
     @Test
     void orderedReferencesBecomeOrderedInlineDataParts() throws IOException {
-        byte[] png = new byte[] {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10};
+        byte[] png = new byte[]{(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10};
         ObjectMapper mapper = new ObjectMapper();
         AtomicInteger calls = new AtomicInteger();
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -238,7 +239,7 @@ class GoogleNanoBananaClientTest {
         List<GoogleNanoBananaClient.InputImage> references = java.util.stream.IntStream
                 .range(0, 15)
                 .mapToObj(index -> new GoogleNanoBananaClient.InputImage(
-                        new byte[] {(byte) index}, "image/png"))
+                        new byte[]{(byte) index}, "image/png"))
                 .toList();
         assertThatThrownBy(() -> client.generate("key", GoogleNanoBananaClient.DEFAULT_MODEL,
                 null, "draw", "1:1", references))

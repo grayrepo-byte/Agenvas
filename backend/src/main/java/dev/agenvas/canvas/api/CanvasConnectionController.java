@@ -60,10 +60,13 @@ public class CanvasConnectionController {
     public record ConnectRequest(@NotNull UUID sourceCanvasItemId,
             @NotNull UUID targetCanvasItemId, @NotNull UUID sourceVersionId,
             @NotNull CanvasConnection.RelationType relationType,
-            @PositiveOrZero Long expectedTargetDraftVersion) {}
+            @PositiveOrZero Long expectedTargetDraftVersion) {
+    }
     public record DisconnectRequest(@NotNull @PositiveOrZero Long expectedVersion,
-            @PositiveOrZero Long expectedTargetDraftVersion) {}
-    public record ConnectionList(List<ConnectionView> items) {}
+            @PositiveOrZero Long expectedTargetDraftVersion) {
+    }
+    public record ConnectionList(List<ConnectionView> items) {
+    }
     public record ConnectionResult(ConnectionView connection, MediaDraftView draft) {
         private static ConnectionResult from(CanvasConnectionService.ConnectionResult result) {
             return new ConnectionResult(ConnectionView.from(result.connection()),
@@ -86,7 +89,8 @@ public class CanvasConnectionController {
             List<PromptMentionView> mentions, String displayMode, long version,
             Instant createdAt, Instant updatedAt) {
         private static MediaDraftView from(MediaDraft draft) {
-            if (draft == null) return null;
+            if (draft == null)
+                return null;
             return new MediaDraftView(draft.projectId(), draft.canvasItemId(), draft.prompt(),
                     draft.parameters(), draft.durationSeconds(), draft.capabilityId(),
                     draft.videoInputMode() == null ? null : draft.videoInputMode().name(),

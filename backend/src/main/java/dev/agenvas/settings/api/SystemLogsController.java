@@ -12,7 +12,9 @@ import org.springframework.web.bind.annotation.RestController;
 public class SystemLogsController {
     private final SystemLogBuffer logs;
 
-    public SystemLogsController(SystemLogBuffer logs) { this.logs = logs; }
+    public SystemLogsController(SystemLogBuffer logs) {
+        this.logs = logs;
+    }
 
     @GetMapping("/api/v1/settings/system-logs")
     public ResponseEntity<SystemLogBuffer.Snapshot> list(

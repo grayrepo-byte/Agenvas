@@ -9,8 +9,7 @@ import org.springframework.stereotype.Component;
 
 /** Polls persisted direct text work only when the configured LLM scheduler is enabled. */
 @Component
-@ConditionalOnProperty(prefix = "agenvas", name = "recovery-mode",
-        havingValue = "false", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "agenvas", name = "recovery-mode", havingValue = "false", matchIfMissing = true)
 @ConditionalOnProperty(prefix = "agenvas.llm", name = "scheduler-enabled", havingValue = "true")
 public class DirectTextGenerationScheduler {
     private static final Logger LOGGER = LoggerFactory.getLogger(DirectTextGenerationScheduler.class);

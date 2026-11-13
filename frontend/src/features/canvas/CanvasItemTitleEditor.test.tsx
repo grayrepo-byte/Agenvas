@@ -31,32 +31,54 @@ const item: CanvasItem = {
   height: 180,
   zIndex: 1,
   groupId: null,
-  locked: false, selectedVersionId: null, selectedVersion: null,
+  locked: false,
+  selectedVersionId: null,
+  selectedVersion: null,
   version: 3,
   artifact,
 };
 
 function EditableTitle() {
   const editing = useCanvasEditing("project-title-id");
-  return <CanvasEditingContext.Provider value={editing.execute}>
-    <CanvasItemTitleEditor projectId="project-title-id" item={item} kindLabel="图片" />
-  </CanvasEditingContext.Provider>;
+  return (
+    <CanvasEditingContext.Provider value={editing.execute}>
+      <CanvasItemTitleEditor projectId="project-title-id" item={item} kindLabel="图片" />
+    </CanvasEditingContext.Provider>
+  );
 }
 
 function showTitle() {
-  return render(<QueryClientProvider client={createQueryClient()}>
-    <EditableTitle />
-  </QueryClientProvider>);
+  return render(
+    <QueryClientProvider client={createQueryClient()}>
+      <EditableTitle />
+    </QueryClientProvider>,
+  );
 }
 
 /** Exercise the global receipt retry separately from the title field's own mutation. */
 function RetriableTitle() {
   const editing = useCanvasEditing("project-title-id");
-  return <CanvasEditingContext.Provider value={editing.execute}>
-    <CanvasItemTitleEditor projectId="project-title-id" item={item} kindLabel="图片" />
-    <button disabled={!editing.error || editing.busy} onClick={() => { void editing.retry().catch(() => {}); }}>重试本次操作</button>
-    <button disabled={!editing.canUndo} onClick={() => { void editing.replay("UNDO").catch(() => {}); }}>撤销标题操作</button>
-  </CanvasEditingContext.Provider>;
+  return (
+    <CanvasEditingContext.Provider value={editing.execute}>
+      <CanvasItemTitleEditor projectId="project-title-id" item={item} kindLabel="图片" />
+      <button
+        disabled={!editing.error || editing.busy}
+        onClick={() => {
+          void editing.retry().catch(() => {});
+        }}
+      >
+        重试本次操作
+      </button>
+      <button
+        disabled={!editing.canUndo}
+        onClick={() => {
+          void editing.replay("UNDO").catch(() => {});
+        }}
+      >
+        撤销标题操作
+      </button>
+    </CanvasEditingContext.Provider>
+  );
 }
 
 function showRetriableTitle() {
@@ -65,31 +87,46 @@ function showRetriableTitle() {
   server.use(
     http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "title-token" })),
     http.post("/api/v1/projects/:projectId/canvas/edits", async ({ request }) => {
-      const input = await request.json() as CanvasEditRequest;
+      const input = (await request.json()) as CanvasEditRequest;
       requests.push(input);
-      if (requests.length === 1) return HttpResponse.json({ code: "TEMPORARILY_UNAVAILABLE", detail: "Synthetic unavailable" },
-        { status: 503, headers: { "Content-Type": "application/problem+json" } });
-      return HttpResponse.json({ items: [{ ...item, title: input.itemChanges![0]!.title, version: requests.length + 2 }], groups: [],
-        receipt: { id: input.commandId, operation: input.operation, revision: 0, state: "APPLIED" } });
+      if (requests.length === 1)
+        return HttpResponse.json(
+          { code: "TEMPORARILY_UNAVAILABLE", detail: "Synthetic unavailable" },
+          { status: 503, headers: { "Content-Type": "application/problem+json" } },
+        );
+      return HttpResponse.json({
+        items: [{ ...item, title: input.itemChanges![0]!.title, version: requests.length + 2 }],
+        groups: [],
+        receipt: { id: input.commandId, operation: input.operation, revision: 0, state: "APPLIED" },
+      });
     }),
     http.post("/api/v1/projects/:projectId/canvas/edits/:receiptId/replay", async ({ request, params }) => {
-      const input = await request.json() as CanvasEditReplayRequest;
+      const input = (await request.json()) as CanvasEditReplayRequest;
       replays.push(input);
-      return HttpResponse.json({ items: [{ ...item, version: 5 }], groups: [],
-        receipt: { id: params.receiptId, operation: "DISPLAY", revision: input.expectedRevision + 1, state: "UNDONE" } });
+      return HttpResponse.json({
+        items: [{ ...item, version: 5 }],
+        groups: [],
+        receipt: { id: params.receiptId, operation: "DISPLAY", revision: input.expectedRevision + 1, state: "UNDONE" },
+      });
     }),
   );
-  render(<QueryClientProvider client={createQueryClient()}><RetriableTitle /></QueryClientProvider>);
+  render(
+    <QueryClientProvider client={createQueryClient()}>
+      <RetriableTitle />
+    </QueryClientProvider>,
+  );
   return { requests, replays };
 }
 
 describe("CanvasItemTitleEditor", () => {
-  it.each(["Enter", "Escape"])("preserves the title draft when the input method handles %s", async (key) => {
+  it.each(["Enter", "Escape"])("preserves the title draft when the input method handles %s", async key => {
     let requests = 0;
-    server.use(http.post("/api/v1/projects/:projectId/canvas/edits", () => {
-      requests += 1;
-      return HttpResponse.json({ items: [item] });
-    }));
+    server.use(
+      http.post("/api/v1/projects/:projectId/canvas/edits", () => {
+        requests += 1;
+        return HttpResponse.json({ items: [item] });
+      }),
+    );
     showTitle();
     const user = userEvent.setup();
     await user.dblClick(screen.getByRole("button", { name: "重命名图片：新图片" }));
@@ -112,14 +149,20 @@ describe("CanvasItemTitleEditor", () => {
   it("edits one node title with CanvasItem CAS and leaves the Artifact name unchanged", async () => {
     let requestBody: unknown;
     server.use(
-      http.get("/api/v1/auth/csrf", () => HttpResponse.json({
-        headerName: "X-XSRF-TOKEN", token: "title-token",
-      })),
+      http.get("/api/v1/auth/csrf", () =>
+        HttpResponse.json({
+          headerName: "X-XSRF-TOKEN",
+          token: "title-token",
+        }),
+      ),
       http.post("/api/v1/projects/:projectId/canvas/edits", async ({ request }) => {
-        const input = await request.json() as CanvasEditRequest;
+        const input = (await request.json()) as CanvasEditRequest;
         requestBody = input;
-        return HttpResponse.json({ items: [{ ...item, title: "九宫格自拍", version: 4 }], groups: [],
-          receipt: { id: input.commandId, operation: input.operation, revision: 0, state: "APPLIED" } });
+        return HttpResponse.json({
+          items: [{ ...item, title: "九宫格自拍", version: 4 }],
+          groups: [],
+          receipt: { id: input.commandId, operation: input.operation, revision: 0, state: "APPLIED" },
+        });
       }),
     );
     showTitle();
@@ -130,10 +173,26 @@ describe("CanvasItemTitleEditor", () => {
     expect(editor).toHaveClass("artifact-card-title-input");
     await user.clear(editor);
     await user.type(editor, "  九宫格自拍  {Enter}");
-    await waitFor(() => expect(requestBody).toEqual({ commandId: expect.any(String), operation: "DISPLAY", itemChanges: [{
-      itemId: item.id, expectedVersion: 3, title: "九宫格自拍", x: 20, y: 40, width: 280, height: 180,
-      zIndex: 1, groupId: null, locked: false,
-    }] }));
+    await waitFor(() =>
+      expect(requestBody).toEqual({
+        commandId: expect.any(String),
+        operation: "DISPLAY",
+        itemChanges: [
+          {
+            itemId: item.id,
+            expectedVersion: 3,
+            title: "九宫格自拍",
+            x: 20,
+            y: 40,
+            width: 280,
+            height: 180,
+            zIndex: 1,
+            groupId: null,
+            locked: false,
+          },
+        ],
+      }),
+    );
     expect(await screen.findByRole("button", { name: "重命名图片：九宫格自拍" })).toBeVisible();
     expect(artifact.title).toBe("资源名称");
   });
@@ -141,15 +200,25 @@ describe("CanvasItemTitleEditor", () => {
   it("keeps invalid and failed drafts in edit mode while Escape cancels without saving", async () => {
     let requests = 0;
     server.use(
-      http.get("/api/v1/auth/csrf", () => HttpResponse.json({
-        headerName: "X-XSRF-TOKEN", token: "title-token",
-      })),
+      http.get("/api/v1/auth/csrf", () =>
+        HttpResponse.json({
+          headerName: "X-XSRF-TOKEN",
+          token: "title-token",
+        }),
+      ),
       http.post("/api/v1/projects/:projectId/canvas/edits", () => {
         requests += 1;
-        return HttpResponse.json({ title: "冲突", status: 409,
-          code: "CANVAS_VERSION_CONFLICT", detail: "卡片已被其他操作更新。",
-          traceId: "trace", retryable: false }, { status: 409,
-          headers: { "Content-Type": "application/problem+json" } });
+        return HttpResponse.json(
+          {
+            title: "冲突",
+            status: 409,
+            code: "CANVAS_VERSION_CONFLICT",
+            detail: "卡片已被其他操作更新。",
+            traceId: "trace",
+            retryable: false,
+          },
+          { status: 409, headers: { "Content-Type": "application/problem+json" } },
+        );
       }),
     );
     showTitle();
@@ -173,10 +242,12 @@ describe("CanvasItemTitleEditor", () => {
 
   it("supports keyboard editing without sending unchanged titles", async () => {
     let requests = 0;
-    server.use(http.post("/api/v1/projects/:projectId/canvas/edits", () => {
-      requests += 1;
-      return HttpResponse.json({ items: [item] });
-    }));
+    server.use(
+      http.post("/api/v1/projects/:projectId/canvas/edits", () => {
+        requests += 1;
+        return HttpResponse.json({ items: [item] });
+      }),
+    );
     showTitle();
     const button = screen.getByRole("button", { name: "重命名图片：新图片" });
     button.focus();

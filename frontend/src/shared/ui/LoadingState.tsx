@@ -50,23 +50,23 @@ export function LoadingState({ label, startedAt, compact = false }: LoadingState
 
   const elapsed = startTime === undefined ? undefined : elapsedLabel(Math.max(0, now - startTime));
 
-  return <div
-    className={`canvas-loading-state${compact ? " canvas-loading-state--compact" : ""}`}
-    role="status"
-    aria-label={label}
-  >
-    <span className="canvas-loading-state__grid" aria-hidden="true">
-      {CHEVRON_DELAYS.map((delay, index) => <span
-        key={index}
-        className="canvas-loading-state__pixel"
-        style={{ animationDelay: `${delay}ms` }}
-      />)}
-    </span>
-    <span className="canvas-loading-state__label">{label}</span>
-    {elapsed !== undefined && <span
-      className="canvas-loading-state__elapsed"
-      aria-hidden="true"
-      title={t("ui.loadingState.elapsedTimeHint")}
-    >{elapsed}</span>}
-  </div>;
+  return (
+    <div
+      className={`canvas-loading-state${compact ? " canvas-loading-state--compact" : ""}`}
+      role="status"
+      aria-label={label}
+    >
+      <span className="canvas-loading-state__grid" aria-hidden="true">
+        {CHEVRON_DELAYS.map((delay, index) => (
+          <span key={index} className="canvas-loading-state__pixel" style={{ animationDelay: `${delay}ms` }} />
+        ))}
+      </span>
+      <span className="canvas-loading-state__label">{label}</span>
+      {elapsed !== undefined && (
+        <span className="canvas-loading-state__elapsed" aria-hidden="true" title={t("ui.loadingState.elapsedTimeHint")}>
+          {elapsed}
+        </span>
+      )}
+    </div>
+  );
 }

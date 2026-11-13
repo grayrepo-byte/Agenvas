@@ -15,18 +15,22 @@ public class McpTaskResultListener {
     private final McpOperationRepository operations;
     private final TaskService tasks;
     public McpTaskResultListener(McpOperationRepository operations, TaskService tasks) {
-        this.operations = operations; this.tasks = tasks;
+        this.operations = operations;
+        this.tasks = tasks;
     }
     @EventListener
     public void recorded(ProjectEventRecorded recorded) {
         if (!"task.status.changed".equals(recorded.event().type())
-                || !recorded.event().payload().hasNonNull("artifactVersionId")) return;
+                || !recorded.event().payload().hasNonNull("artifactVersionId"))
+            return;
         UUID taskId = recorded.event().aggregateId();
         operations.operationForTask(taskId).ifPresent(operation -> {
             var task = tasks.get(recorded.ownerId(), recorded.event().projectId(), taskId);
-            if (task.output() == null) throw new IllegalStateException("Archived MCP task has no result");
+            if (task.output() == null)
+                throw new IllegalStateException("Archived MCP task has no result");
             link(operation, task.output());
-            for (JsonNode extra : task.output().path("additionalResults")) link(operation, extra);
+            for (JsonNode extra : task.output().path("additionalResults"))
+                link(operation, extra);
         });
     }
     private void link(UUID operation, JsonNode output) {

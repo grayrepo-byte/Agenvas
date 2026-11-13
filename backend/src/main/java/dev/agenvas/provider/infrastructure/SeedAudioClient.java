@@ -30,15 +30,19 @@ public final class SeedAudioClient {
     private final ObjectMapper mapper;
 
     @Autowired
-    public SeedAudioClient(ObjectMapper mapper) { this(mapper, OFFICIAL); }
+    public SeedAudioClient(ObjectMapper mapper) {
+        this(mapper, OFFICIAL);
+    }
     public SeedAudioClient(ObjectMapper mapper, URI origin) {
         dev.agenvas.shared.security.ServiceEndpointPolicy.origin(origin.toString());
-        this.mapper = mapper; this.origin = origin;
+        this.mapper = mapper;
+        this.origin = origin;
         http = PinnedHttpClients.pinned(Dns.SYSTEM,
                 Duration.ofSeconds(10), Duration.ofMinutes(5), Duration.ofMinutes(5));
     }
 
-    public record Reference(String field, byte[] bytes) {}
+    public record Reference(String field, byte[] bytes) {
+    }
 
     public byte[] synthesize(String key, String requestId, String text,
             AudioGenerationParameters parameters, List<Reference> references) {
@@ -50,7 +54,8 @@ public final class SeedAudioClient {
                 throw new IllegalArgumentException("Unsupported reference field");
             resources.addObject().put(reference.field(), Base64.getEncoder().encodeToString(reference.bytes()));
         }
-        if (!parameters.speaker().isEmpty()) resources.addObject().put("speaker", parameters.speaker());
+        if (!parameters.speaker().isEmpty())
+            resources.addObject().put("speaker", parameters.speaker());
         body.putObject("audio_config").put("format", "mp3").put("sample_rate", 48000)
                 .put("speech_rate", parameters.speechRate()).put("loudness_rate", parameters.loudnessRate())
                 .put("pitch_rate", parameters.pitchRate());
@@ -58,21 +63,31 @@ public final class SeedAudioClient {
                 .header("X-Api-Key", key).header("X-Api-Request-Id", requestId)
                 .post(RequestBody.create(body.toString(), MediaType.get("application/json"))).build();
         try (var response = http.newCall(request).execute()) {
-            if (response.code() >= 400 && response.code() < 500 && response.code() != 429) throw new Rejected();
-            if (!response.isSuccessful() || response.body() == null) throw new Uncertain();
+            if (response.code() >= 400 && response.code() < 500 && response.code() != 429)
+                throw new Rejected();
+            if (!response.isSuccessful() || response.body() == null)
+                throw new Uncertain();
             byte[] responseBytes = response.body().byteStream().readNBytes(MAX_RESPONSE_BYTES + 1);
-            if (responseBytes.length > MAX_RESPONSE_BYTES) throw new Uncertain();
+            if (responseBytes.length > MAX_RESPONSE_BYTES)
+                throw new Uncertain();
             JsonNode result = mapper.readTree(responseBytes);
             // Success may omit code. A malformed 2xx can have been billed: retain UNKNOWN.
-            if (result == null || !result.isObject()) throw new Uncertain();
+            if (result == null || !result.isObject())
+                throw new Uncertain();
             if (result.has("code") && result.path("code").asInt(-1) != 0
-                    && result.path("code").asInt(-1) != 20000000) throw new Rejected();
+                    && result.path("code").asInt(-1) != 20000000)
+                throw new Rejected();
             byte[] audio = Base64.getDecoder().decode(result.path("audio").asText());
-            if (audio.length == 0 || audio.length > MAX_AUDIO_BYTES) throw new Uncertain();
+            if (audio.length == 0 || audio.length > MAX_AUDIO_BYTES)
+                throw new Uncertain();
             return audio;
-        } catch (IOException | IllegalArgumentException | tools.jackson.core.JacksonException failure) { throw new Uncertain(); }
+        } catch (IOException | IllegalArgumentException | tools.jackson.core.JacksonException failure) {
+            throw new Uncertain();
+        }
     }
 
-    public static final class Rejected extends RuntimeException {}
-    public static final class Uncertain extends RuntimeException {}
+    public static final class Rejected extends RuntimeException {
+    }
+    public static final class Uncertain extends RuntimeException {
+    }
 }

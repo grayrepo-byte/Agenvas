@@ -179,44 +179,57 @@ public class AgentTurnWorker {
             execution.checkActive();
             JsonNode recorded = commits.modelFailed(lease, workerId, AgentModelRetryPolicy.progress(lease)
                     .path("lastErrorCode").asText());
-            if (recorded != null) applyResponse(lease, workerId, ownerId, stepIndex, recorded, execution);
+            if (recorded != null)
+                applyResponse(lease, workerId, ownerId, stepIndex, recorded, execution);
             return;
         }
         JsonNode request = frozenRequest(lease, ownerId, stepIndex, saved, run);
         List<ToolCallback> definitions = codec.requestTools(request, RunToolPolicy.allowed(run.policySnapshot()));
         JsonNode response = awaitModelResponse(lease, workerId, ownerId, stepIndex,
-                request, definitions, remaining, saved != null && saved.status() == LlmTurn.Status.RESPONDED, execution);
+                request, definitions, remaining, saved != null && saved.status() == LlmTurn.Status.RESPONDED,
+                execution);
         applyResponse(lease, workerId, ownerId, stepIndex, response, execution);
     }
 
     /** Retry and restart replay the saved request instead of assembling changed user content. */
     private JsonNode frozenRequest(Task lease, UUID ownerId, int stepIndex, LlmTurn saved, AgentRun run) {
-        if (saved != null) return saved.request();
+        if (saved != null)
+            return saved.request();
         LlmTurn previous = null;
         if (stepIndex > 0) {
             previous = turns.find(lease.projectId(), lease.runId(), stepIndex - 1).orElseThrow();
             if (AgentContextService.isCompaction(previous.request())) {
-                return lease.input().has("repairFromStep") ? context.repair(previous.request())
+                return lease.input().has("repairFromStep")
+                        ? context.repair(previous.request())
                         : context.afterCompaction(previous.request(), previous.response());
             }
         }
-        List<Message> messages = lease.input().has("repairFromStep") ? repairContext.assemble(ownerId, lease)
-                : stepIndex == 0 ? initialContext.assemble(ownerId, lease.projectId(), lease.runId())
-                : conversation.afterToolRound(ownerId, lease.projectId(), lease.runId(), stepIndex - 1);
+        List<Message> messages = lease.input().has("repairFromStep")
+                ? repairContext.assemble(ownerId, lease)
+                : stepIndex == 0
+                        ? initialContext.assemble(ownerId, lease.projectId(), lease.runId())
+                        : conversation.afterToolRound(ownerId, lease.projectId(), lease.runId(), stepIndex - 1);
         boolean repairing = lease.input().has("repairFromStep");
         // Repairs keep the rejected request's exact exposure; a rejected load batch cannot activate tools.
-        var definitions = repairing ? codec.requestTools(java.util.Objects.requireNonNull(previous).request(),
-                RunToolPolicy.allowed(run.policySnapshot()))
-                : previous == null ? registry.initialDefinitions(run.policySnapshot())
-                : registry.continuationDefinitions(run.policySnapshot(), previous.request(), messages, codec);
-        if (!repairing) messages = InitialModelContextService.forTools(run.policySnapshot(), messages,
-                previous == null ? List.of() : codec.requestTools(previous.request(), RunToolPolicy.allowed(run.policySnapshot())), definitions);
+        var definitions = repairing
+                ? codec.requestTools(java.util.Objects.requireNonNull(previous).request(),
+                        RunToolPolicy.allowed(run.policySnapshot()))
+                : previous == null
+                        ? registry.initialDefinitions(run.policySnapshot())
+                        : registry.continuationDefinitions(run.policySnapshot(), previous.request(), messages, codec);
+        if (!repairing)
+            messages = InitialModelContextService.forTools(run.policySnapshot(), messages,
+                    previous == null
+                            ? List.of()
+                            : codec.requestTools(previous.request(), RunToolPolicy.allowed(run.policySnapshot())),
+                    definitions);
         var selected = new ChatGateway.ConfigIdentity(run.policySnapshot().path("modelConfigSource").asText(),
                 run.policySnapshot().path("modelConfigVersion").asInt());
         // A repair belongs to the rejected request, including its frozen output reserve.
         // Old envelopes with no budget keep that legacy shape instead of adopting live settings.
         LlmRequestBudget budget = lease.input().has("repairFromStep")
-                ? codec.requestBudget(java.util.Objects.requireNonNull(previous).request()) : gateway.requestBudgetFor(selected);
+                ? codec.requestBudget(java.util.Objects.requireNonNull(previous).request())
+                : gateway.requestBudgetFor(selected);
         return budget == null ? context.prepare(messages, definitions) : context.prepare(messages, definitions, budget);
     }
 
@@ -231,7 +244,8 @@ public class AgentTurnWorker {
                 lease.projectId(), lease.runId(), stepIndex, request,
                 definitions,
                 Map.of("projectId", lease.projectId().toString(),
-                        "runId", lease.runId().toString()), lease, workerId), timeout);
+                        "runId", lease.runId().toString()),
+                lease, workerId), timeout);
     }
 
     private void recordFailure(Task lease, String workerId, Exception failure,
@@ -245,7 +259,8 @@ public class AgentTurnWorker {
                 return;
             }
             JsonNode recorded = commits.modelFailed(lease, workerId, retryCode);
-            if (recorded == null) return;
+            if (recorded == null)
+                return;
             // A complete checkpoint can win the timeout race. Continue it immediately,
             // without another model request or waiting for this lease to expire.
             try {
@@ -274,7 +289,8 @@ public class AgentTurnWorker {
             try {
                 context.summary(saved.request(), response);
             } catch (IllegalArgumentException invalid) {
-                commits.scheduleRepair(lease, workerId, "AGENT_CONTEXT_SUMMARY_INVALID", "Return a bounded public task handoff JSON");
+                commits.scheduleRepair(lease, workerId, "AGENT_CONTEXT_SUMMARY_INVALID",
+                        "Return a bounded public task handoff JSON");
                 return;
             }
             commits.complete(lease, workerId);
@@ -311,11 +327,15 @@ public class AgentTurnWorker {
      * @return 明确的版本冲突/凭证/配置/超时错误码，或通用的 {@code AGENT_TURN_FAILED}
      */
     static String failureCode(Throwable failure) {
-        if (LlmStreamIncompleteException.matches(failure)) return LlmStreamIncompleteException.ERROR_CODE;
+        if (LlmStreamIncompleteException.matches(failure))
+            return LlmStreamIncompleteException.ERROR_CODE;
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
-            if (cause instanceof AgentContextService.BudgetExceeded) return AgentContextService.BUDGET_EXCEEDED;
-            if (cause instanceof LlmRequestBudget.Failure budget) return budget.getMessage();
-            if (cause instanceof LlmProtocolCodec.OutputTruncated) return LlmProtocolCodec.OUTPUT_TRUNCATED;
+            if (cause instanceof AgentContextService.BudgetExceeded)
+                return AgentContextService.BUDGET_EXCEEDED;
+            if (cause instanceof LlmRequestBudget.Failure budget)
+                return budget.getMessage();
+            if (cause instanceof LlmProtocolCodec.OutputTruncated)
+                return LlmProtocolCodec.OUTPUT_TRUNCATED;
             if (cause instanceof ApiProblemException problem
                     && ("CREDENTIAL_KEY_VERSION_MISSING".equals(problem.code())
                             || "LLM_CONFIG_UNAVAILABLE".equals(problem.code())
@@ -327,10 +347,13 @@ public class AgentTurnWorker {
                 return problem.code();
             }
         }
-        if (LlmBillingFailures.matches(failure)) return LlmBillingFailures.ERROR_CODE;
-        if (LlmMediaInputFailures.matches(failure)) return LlmMediaInputFailures.ERROR_CODE;
+        if (LlmBillingFailures.matches(failure))
+            return LlmBillingFailures.ERROR_CODE;
+        if (LlmMediaInputFailures.matches(failure))
+            return LlmMediaInputFailures.ERROR_CODE;
         String retryCode = AgentModelRetryPolicy.retryableCode(failure);
-        if (retryCode != null) return retryCode;
+        if (retryCode != null)
+            return retryCode;
         return LlmCallTimeouts.isTimeout(failure) ? LlmCallTimeouts.ERROR_CODE : "AGENT_TURN_FAILED";
     }
 

@@ -8,6 +8,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record LocalImageProperties(String depthModel) {
     public Path depthModelPath() {
         return depthModel == null || depthModel.isBlank()
-                ? null : Path.of(depthModel).toAbsolutePath().normalize();
+                ? null
+                : Path.of(depthModel).toAbsolutePath().normalize();
     }
 }

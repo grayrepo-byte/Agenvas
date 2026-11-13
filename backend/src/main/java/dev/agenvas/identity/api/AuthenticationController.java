@@ -49,8 +49,7 @@ public class AuthenticationController {
     /** 密码更新后使其他管理员会话失效。 */
     private final AdminSessionService sessionService;
     /** 当前线程的 Spring Security 上下文策略，用于安全地清理和保存认证。 */
-    private final SecurityContextHolderStrategy contextHolder =
-            SecurityContextHolder.getContextHolderStrategy();
+    private final SecurityContextHolderStrategy contextHolder = SecurityContextHolder.getContextHolderStrategy();
 
     /** 注入账户、认证、Session 和失败限流组件。 */
     public AuthenticationController(
@@ -157,11 +156,9 @@ public class AuthenticationController {
      * @param password 初始密码，至少 12 个字符且最多 128 个字符
      */
     public record SetupRequest(
-            @NotBlank
-                    @Size(min = 3, max = 64)
-                    @Pattern(regexp = "[A-Za-z0-9._-]+", message = "{validation.username-pattern}")
-                    String loginName,
-            @NotBlank @Size(min = 12, max = 128) String password) {}
+            @NotBlank @Size(min = 3, max = 64) @Pattern(regexp = "[A-Za-z0-9._-]+", message = "{validation.username-pattern}") String loginName,
+            @NotBlank @Size(min = 12, max = 128) String password) {
+    }
 
     /** 经过 Bean Validation 的登录请求。
      * @param loginName 待验证的管理员登录名
@@ -169,7 +166,8 @@ public class AuthenticationController {
      */
     public record LoginRequest(
             @NotBlank @Size(min = 3, max = 64) String loginName,
-            @NotBlank @Size(max = 128) String password) {}
+            @NotBlank @Size(max = 128) String password) {
+    }
 
     /** 经过 Bean Validation 的密码修改请求。
      * @param currentPassword 当前明文密码
@@ -177,7 +175,8 @@ public class AuthenticationController {
      */
     public record ChangePasswordRequest(
             @NotBlank @Size(max = 128) String currentPassword,
-            @NotBlank @Size(min = 12, max = 128) String newPassword) {}
+            @NotBlank @Size(min = 12, max = 128) String newPassword) {
+    }
 
     /** 对外返回的管理员身份，不包含账户状态或认证凭据。
      * @param id 管理员 UUID 字符串

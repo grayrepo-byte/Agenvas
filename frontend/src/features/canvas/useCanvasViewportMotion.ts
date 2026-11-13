@@ -3,10 +3,12 @@ import type { FitViewOptions, ReactFlowInstance } from "@xyflow/react";
 import { canvasViewportMotionOptions } from "./canvasViewportMotion";
 
 type FitOptions = Omit<FitViewOptions, "nodes" | "duration" | "ease" | "interpolate"> & { nodes?: { id: string }[] };
-type FlowViewport = Pick<ReactFlowInstance,
-  "getViewport" | "setViewport" | "setCenter" | "zoomIn" | "zoomOut" | "zoomTo"> & {
-    fitView: (options?: FitOptions) => Promise<boolean>;
-  };
+type FlowViewport = Pick<
+  ReactFlowInstance,
+  "getViewport" | "setViewport" | "setCenter" | "zoomIn" | "zoomOut" | "zoomTo"
+> & {
+  fitView: (options?: FitOptions) => Promise<boolean>;
+};
 export type CanvasViewportNavigation = {
   center: (x: number, y: number, zoom: number) => void;
   fit: (options: FitOptions) => void;
@@ -20,8 +22,10 @@ export type CanvasViewportNavigation = {
  * a node drag records its world coordinates. An interrupted D3 promise never settles,
  * so editing and gesture availability must not depend on awaiting camera animation.
  */
-export function useCanvasViewportMotion(flow: RefObject<FlowViewport | null>,
-  canvas: RefObject<HTMLElement | null>): CanvasViewportNavigation {
+export function useCanvasViewportMotion(
+  flow: RefObject<FlowViewport | null>,
+  canvas: RefObject<HTMLElement | null>,
+): CanvasViewportNavigation {
   const active = useRef(false);
   const expiry = useRef<number | null>(null);
   const navigation = useMemo<CanvasViewportNavigation>(() => {
@@ -81,8 +85,12 @@ export function useCanvasViewportMotion(flow: RefObject<FlowViewport | null>,
   }, [flow, canvas]);
   useEffect(() => {
     const preference = window.matchMedia?.("(prefers-reduced-motion: reduce)");
-    const changed = () => { if (preference?.matches) navigation.cancel(); };
-    const hidden = () => { if (document.hidden) navigation.cancel(); };
+    const changed = () => {
+      if (preference?.matches) navigation.cancel();
+    };
+    const hidden = () => {
+      if (document.hidden) navigation.cancel();
+    };
     preference?.addEventListener?.("change", changed);
     document.addEventListener("visibilitychange", hidden);
     window.addEventListener("blur", navigation.cancel);

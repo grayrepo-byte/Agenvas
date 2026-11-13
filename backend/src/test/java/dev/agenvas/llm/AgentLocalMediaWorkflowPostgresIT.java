@@ -82,57 +82,92 @@ import tools.jackson.databind.node.ObjectNode;
 class AgentLocalMediaWorkflowPostgresIT {
     private static final String MODEL_WORKER = "local-workflow-model";
     private static final String MEDIA_WORKER = "local-workflow-media";
-    @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
-    @TempDir static Path storage;
-    @TempDir Path temp;
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    @TempDir
+    static Path storage;
+    @TempDir
+    Path temp;
 
-    @DynamicPropertySource static void properties(DynamicPropertyRegistry properties) {
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry properties) {
         properties.add("agenvas.storage.root", () -> storage.toString());
         properties.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         properties.add("spring.datasource.username", POSTGRES::getUsername);
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired IdentityService identities;
-    @Autowired ProjectService projects;
-    @Autowired ArtifactService artifacts;
-    @Autowired AssetService assets;
-    @Autowired MediaToolRunner mediaTools;
-    @Autowired CanvasService canvas;
-    @Autowired AgentInstanceService agents;
-    @Autowired AgentRunService runs;
-    @Autowired TaskService tasks;
-    @Autowired DirectMediaTaskService directTasks;
-    @Autowired AgentTurnCommitService commits;
-    @Autowired LlmTurnCheckpointService checkpoints;
-    @Autowired LlmProtocolCodec codec;
-    @Autowired ToolRegistry registry;
-    @Autowired ToolExecutionService execution;
-    @Autowired AgentMediaOutcomeService outcomes;
-    @Autowired LlmConversationService conversation;
-    @Autowired ReadToolService reader;
-    @Autowired MediaExecutionWorker mediaWorker;
-    @Autowired MediaFunctionService functions;
-    @Autowired ProjectEventService events;
-    @Autowired ObjectMapper mapper;
-    @Autowired JdbcClient jdbc;
-    @Autowired PlatformTransactionManager transactions;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    ProjectService projects;
+    @Autowired
+    ArtifactService artifacts;
+    @Autowired
+    AssetService assets;
+    @Autowired
+    MediaToolRunner mediaTools;
+    @Autowired
+    CanvasService canvas;
+    @Autowired
+    AgentInstanceService agents;
+    @Autowired
+    AgentRunService runs;
+    @Autowired
+    TaskService tasks;
+    @Autowired
+    DirectMediaTaskService directTasks;
+    @Autowired
+    AgentTurnCommitService commits;
+    @Autowired
+    LlmTurnCheckpointService checkpoints;
+    @Autowired
+    LlmProtocolCodec codec;
+    @Autowired
+    ToolRegistry registry;
+    @Autowired
+    ToolExecutionService execution;
+    @Autowired
+    AgentMediaOutcomeService outcomes;
+    @Autowired
+    LlmConversationService conversation;
+    @Autowired
+    ReadToolService reader;
+    @Autowired
+    MediaExecutionWorker mediaWorker;
+    @Autowired
+    MediaFunctionService functions;
+    @Autowired
+    ProjectEventService events;
+    @Autowired
+    ObjectMapper mapper;
+    @Autowired
+    JdbcClient jdbc;
+    @Autowired
+    PlatformTransactionManager transactions;
     private static AdminPrincipal owner;
     private final List<Scenario> scenarios = new ArrayList<>();
 
-    @BeforeEach void setup() {
-        if (owner == null) owner = identities.setup("local-workflow-test", "synthetic-workflow-password-123");
+    @BeforeEach
+    void setup() {
+        if (owner == null)
+            owner = identities.setup("local-workflow-test", "synthetic-workflow-password-123");
         // A configurable UI operation route must not turn the built-in local tool into external generation.
-        var extraction = functions.list().stream().filter(setting -> setting.operation() == MediaFunction.VIDEO_EXTRACT_AUDIO)
+        var extraction = functions.list().stream()
+                .filter(setting -> setting.operation() == MediaFunction.VIDEO_EXTRACT_AUDIO)
                 .findFirst().orElseThrow();
-        if (extraction.capabilityId() != null) functions.update(MediaFunction.VIDEO_EXTRACT_AUDIO, extraction.version(), null);
+        if (extraction.capabilityId() != null)
+            functions.update(MediaFunction.VIDEO_EXTRACT_AUDIO, extraction.version(), null);
     }
 
-    @AfterEach void stopRemainingRuns() {
+    @AfterEach
+    void stopRemainingRuns() {
         for (Scenario scenario : scenarios) {
-            if (!currentRun(scenario).status().terminal()) runs.cancel(owner.userId(), scenario.project(), scenario.run());
+            if (!currentRun(scenario).status().terminal())
+                runs.cancel(owner.userId(), scenario.project(), scenario.run());
             // Accepted local work is independent of Run cancellation. Do not leak READY work into another test.
-            for (UUID taskId : jdbc.sql("select id from task where project_id=:project and run_id is null and status='READY'")
+            for (UUID taskId : jdbc
+                    .sql("select id from task where project_id=:project and run_id is null and status='READY'")
                     .param("project", scenario.project()).query(UUID.class).list()) {
                 directTasks.cancelQueued(owner.userId(), scenario.project(), taskId);
             }
@@ -142,10 +177,13 @@ class AgentLocalMediaWorkflowPostgresIT {
     @Test
     void builtinToolsExtractTrimAndComposeWithOneDurableContinuationPerResult() throws Exception {
         Scenario scenario = scenario();
-        byte[] originalBytes = Files.readAllBytes(assets.get(owner.userId(), scenario.project(), scenario.sourceAsset()).path());
-        JsonNode originalContent = artifacts.requireVersionById(owner.userId(), scenario.project(), scenario.sourceVersion()).content();
+        byte[] originalBytes = Files
+                .readAllBytes(assets.get(owner.userId(), scenario.project(), scenario.sourceAsset()).path());
+        JsonNode originalContent = artifacts
+                .requireVersionById(owner.userId(), scenario.project(), scenario.sourceVersion()).content();
 
-        Round extraction = begin(scenario, 0, "extract_audio", sourceRequest(scenario, scenario.sourceItem(), scenario.sourceVersion()));
+        Round extraction = begin(scenario, 0, "extract_audio",
+                sourceRequest(scenario, scenario.sourceItem(), scenario.sourceVersion()));
         JsonNode extractReceipt = execute(extraction);
         assertThat(execute(extraction)).isEqualTo(extractReceipt);
         assertReceipt(extractReceipt);
@@ -159,13 +197,16 @@ class AgentLocalMediaWorkflowPostgresIT {
                 .isInstanceOf(IllegalStateException.class);
         Task extracted = completeLocal(extraction, extractReceipt);
         assertThat(extracted.output().path("additionalResults")).isNotEmpty();
-        extracted.output().path("additionalResults").forEach(result -> assertThat(artifacts.requireVersionById(owner.userId(),
-                scenario.project(), UUID.fromString(result.path("artifactVersionId").asText())).runId()).isEqualTo(scenario.run()));
+        extracted.output().path("additionalResults")
+                .forEach(result -> assertThat(artifacts.requireVersionById(owner.userId(),
+                        scenario.project(), UUID.fromString(result.path("artifactVersionId").asText())).runId())
+                        .isEqualTo(scenario.run()));
         UUID extractedVersion = outputVersion(extracted);
         UUID extractedItem = UUID.fromString(extractReceipt.at("/data/canvasItemId").asText());
         assertFinalReply(extraction, extracted);
 
-        ObjectNode trim = sourceRequest(scenario, extractedItem, extractedVersion).put("startMs", 250).put("endMs", 1250);
+        ObjectNode trim = sourceRequest(scenario, extractedItem, extractedVersion).put("startMs", 250).put("endMs",
+                1250);
         Round trimming = begin(scenario, 1, "trim_audio", trim);
         JsonNode trimReceipt = execute(trimming);
         assertReceipt(trimReceipt);
@@ -174,8 +215,10 @@ class AgentLocalMediaWorkflowPostgresIT {
         UUID trimmedVersion = outputVersion(trimmed);
         assertThat(trimmedVersion).isNotEqualTo(extractedVersion);
         assertThat(item(scenario, extractedItem).selectedVersionId()).isEqualTo(extractedVersion);
-        var audio = artifacts.requireMediaVersionForTask(owner.userId(), scenario.project(), trimmedVersion, Artifact.Kind.AUDIO);
-        var audioAsset = assets.metadata(owner.userId(), scenario.project(), UUID.fromString(audio.content().path("assetId").asText()));
+        var audio = artifacts.requireMediaVersionForTask(owner.userId(), scenario.project(), trimmedVersion,
+                Artifact.Kind.AUDIO);
+        var audioAsset = assets.metadata(owner.userId(), scenario.project(),
+                UUID.fromString(audio.content().path("assetId").asText()));
         assertThat(audioAsset.durationMs()).isEqualTo(1000);
         Path decoded = temp.resolve("trimmed.pcm");
         mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-i",
@@ -193,19 +236,24 @@ class AgentLocalMediaWorkflowPostgresIT {
         assertReceipt(composeReceipt);
         awaitLocal(composing);
         Task composed = completeLocal(composing, composeReceipt);
-        var video = artifacts.requireMediaVersionForTask(owner.userId(), scenario.project(), outputVersion(composed), Artifact.Kind.VIDEO);
-        var videoAsset = assets.metadata(owner.userId(), scenario.project(), UUID.fromString(video.content().path("assetId").asText()));
+        var video = artifacts.requireMediaVersionForTask(owner.userId(), scenario.project(), outputVersion(composed),
+                Artifact.Kind.VIDEO);
+        var videoAsset = assets.metadata(owner.userId(), scenario.project(),
+                UUID.fromString(video.content().path("assetId").asText()));
         assertThat(videoAsset.durationMs()).isBetween(1900, 2100);
         assertFinalReply(composing, composed);
 
         assertThat(item(scenario, scenario.sourceItem()).selectedVersionId()).isEqualTo(scenario.sourceVersion());
-        assertThat(artifacts.requireVersionById(owner.userId(), scenario.project(), scenario.sourceVersion()).content()).isEqualTo(originalContent);
-        assertThat(Files.readAllBytes(assets.get(owner.userId(), scenario.project(), scenario.sourceAsset()).path())).isEqualTo(originalBytes);
+        assertThat(artifacts.requireVersionById(owner.userId(), scenario.project(), scenario.sourceVersion()).content())
+                .isEqualTo(originalContent);
+        assertThat(Files.readAllBytes(assets.get(owner.userId(), scenario.project(), scenario.sourceAsset()).path()))
+                .isEqualTo(originalBytes);
         assertThat(ledgerCount(scenario)).isEqualTo(3);
         assertThat(mediaTaskCount(scenario)).isEqualTo(3);
-        assertThat(jdbc.sql("select count(*) from agent_media_approval where run_id=:run").param("run", scenario.run()).query(Long.class).single()).isZero();
+        assertThat(jdbc.sql("select count(*) from agent_media_approval where run_id=:run").param("run", scenario.run())
+                .query(Long.class).single()).isZero();
         assertThat(jdbc.sql("select count(*) from usage_ledger u join task t on t.id=u.task_id "
-                        + "where u.project_id=:project and t.kind <> 'AGENT_TURN' and u.cost_source <> 'LOCAL_NO_COST'")
+                + "where u.project_id=:project and t.kind <> 'AGENT_TURN' and u.cost_source <> 'LOCAL_NO_COST'")
                 .param("project", scenario.project()).query(Long.class).single()).isZero();
         finish(scenario, 3);
         assertThat(turnCount(scenario)).isEqualTo(4);
@@ -215,7 +263,8 @@ class AgentLocalMediaWorkflowPostgresIT {
     @Test
     void toolTaskNodesAndLedgerRollbackTogetherAndReplayQueuesOnlyOnce() throws Exception {
         Scenario scenario = scenario();
-        Round round = begin(scenario, 0, "extract_audio", sourceRequest(scenario, scenario.sourceItem(), scenario.sourceVersion()));
+        Round round = begin(scenario, 0, "extract_audio",
+                sourceRequest(scenario, scenario.sourceItem(), scenario.sourceVersion()));
         int originalNodes = canvas.list(owner.userId(), scenario.project()).size();
         assertThatThrownBy(() -> new TransactionTemplate(transactions).execute(status -> {
             assertReceipt(execute(round));
@@ -235,20 +284,29 @@ class AgentLocalMediaWorkflowPostgresIT {
     @Test
     void localTaskReadsStayInOriginatingRunAndProjectAndForgedSourceCreatesNothing() throws Exception {
         Scenario scenario = scenario();
-        Round round = begin(scenario, 0, "extract_audio", sourceRequest(scenario, scenario.sourceItem(), scenario.sourceVersion()));
+        Round round = begin(scenario, 0, "extract_audio",
+                sourceRequest(scenario, scenario.sourceItem(), scenario.sourceVersion()));
         JsonNode accepted = execute(round);
-        String query = mapper.createObjectNode().set("taskIds", mapper.createArrayNode().add(accepted.at("/data/taskId").asText())).toString();
-        assertThat(reader.taskStatus(round.context(), UUID.randomUUID(), query).at("/data/0/status").asText()).isEqualTo("READY");
-        assertThatThrownBy(() -> reader.taskStatus(new TrustedToolContext(owner.userId(), scenario.project(), UUID.randomUUID()), UUID.randomUUID(), query))
-                .isInstanceOfSatisfying(ApiProblemException.class, failure -> assertThat(failure.code()).isEqualTo("TASK_NOT_FOUND"));
-        var otherProject = projects.create(owner.userId(), "Foreign local workflow", Project.AspectRatio.LANDSCAPE_16_9);
-        assertThatThrownBy(() -> reader.taskStatus(new TrustedToolContext(owner.userId(), otherProject.id(), scenario.run()), UUID.randomUUID(), query))
+        String query = mapper.createObjectNode()
+                .set("taskIds", mapper.createArrayNode().add(accepted.at("/data/taskId").asText())).toString();
+        assertThat(reader.taskStatus(round.context(), UUID.randomUUID(), query).at("/data/0/status").asText())
+                .isEqualTo("READY");
+        assertThatThrownBy(
+                () -> reader.taskStatus(new TrustedToolContext(owner.userId(), scenario.project(), UUID.randomUUID()),
+                        UUID.randomUUID(), query))
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        failure -> assertThat(failure.code()).isEqualTo("TASK_NOT_FOUND"));
+        var otherProject = projects.create(owner.userId(), "Foreign local workflow",
+                Project.AspectRatio.LANDSCAPE_16_9);
+        assertThatThrownBy(() -> reader.taskStatus(
+                new TrustedToolContext(owner.userId(), otherProject.id(), scenario.run()), UUID.randomUUID(), query))
                 .isInstanceOf(ApiProblemException.class);
         awaitLocal(round);
         runs.cancel(owner.userId(), scenario.project(), scenario.run());
 
         Scenario denied = scenario();
-        Round invalid = begin(denied, 0, "extract_audio", sourceRequest(denied, denied.sourceItem(), scenario.sourceVersion()));
+        Round invalid = begin(denied, 0, "extract_audio",
+                sourceRequest(denied, denied.sourceItem(), scenario.sourceVersion()));
         assertThatThrownBy(() -> execute(invalid)).isInstanceOf(ApiProblemException.class);
         assertThat(ledgerCount(denied)).isZero();
         assertThat(mediaTaskCount(denied)).isZero();
@@ -258,7 +316,8 @@ class AgentLocalMediaWorkflowPostgresIT {
     @Test
     void canceledRunKeepsIndependentLocalResultWithoutResumingFromRepeatedSignals() throws Exception {
         Scenario scenario = scenario();
-        Round round = begin(scenario, 0, "extract_audio", sourceRequest(scenario, scenario.sourceItem(), scenario.sourceVersion()));
+        Round round = begin(scenario, 0, "extract_audio",
+                sourceRequest(scenario, scenario.sourceItem(), scenario.sourceVersion()));
         JsonNode accepted = execute(round);
         awaitLocal(round);
         runs.cancel(owner.userId(), scenario.project(), scenario.run());
@@ -276,13 +335,14 @@ class AgentLocalMediaWorkflowPostgresIT {
     @EnumSource(value = Task.Status.class, names = {"FAILED", "UNKNOWN"})
     void recoveryReturnsFrozenFailureOrUnknownWithoutResubmission(Task.Status resolved) throws Exception {
         Scenario scenario = scenario();
-        Round round = begin(scenario, 0, "extract_audio", sourceRequest(scenario, scenario.sourceItem(), scenario.sourceVersion()));
+        Round round = begin(scenario, 0, "extract_audio",
+                sourceRequest(scenario, scenario.sourceItem(), scenario.sourceVersion()));
         JsonNode accepted = execute(round);
         awaitLocal(round);
         Task original = task(scenario, accepted);
         // Deliberately bypass the event publisher to reproduce a restart after durable task completion.
         jdbc.sql("update task set status=:status,error_code='SYNTHETIC_LOCAL_RESULT',completed_at="
-                        + (resolved == Task.Status.FAILED ? "now()" : "null") + " where id=:id")
+                + (resolved == Task.Status.FAILED ? "now()" : "null") + " where id=:id")
                 .param("status", resolved.name()).param("id", original.id()).update();
         assertThat(currentRun(scenario).status()).isEqualTo(AgentRun.Status.WAITING_TASKS);
         outcomes.reconcileLocalTasks(owner.userId(), scenario.project(), scenario.run());
@@ -303,20 +363,29 @@ class AgentLocalMediaWorkflowPostgresIT {
     }
 
     private Scenario scenario() throws Exception {
-        Project project = projects.create(owner.userId(), "Built-in local workflow", Project.AspectRatio.LANDSCAPE_16_9);
+        Project project = projects.create(owner.userId(), "Built-in local workflow",
+                Project.AspectRatio.LANDSCAPE_16_9);
         Path file = temp.resolve(UUID.randomUUID() + ".mp4");
         mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i",
                 "testsrc2=s=160x90:r=12", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
                 "-t", "2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-y", file.toString()));
         var asset = assets.archiveTaskVideo(owner.userId(), project.id(), UUID.randomUUID(), () -> {
-            try { return Files.newInputStream(file); } catch (IOException failure) { throw new IllegalStateException(failure); }
+            try {
+                return Files.newInputStream(file);
+            } catch (IOException failure) {
+                throw new IllegalStateException(failure);
+            }
         });
         var source = artifacts.create(owner.userId(), project.id(), Artifact.Kind.VIDEO, "Synthetic source voice",
                 mapper.createObjectNode().put("sourceType", "UPLOAD").put("assetId", asset.id().toString()));
-        UUID item = dev.agenvas.support.CanvasMediaFixture.place(canvas, owner.userId(), project.id(), source.artifact().id());
-        var director = configureDirector(agents, owner.userId(), project.id(), "Local workflow director", "Use the built-in media tools");
-        var run = runs.create(owner.userId(), project.id(), director.id(), "Extract, trim and compose this voice", "local-workflow-run").run();
-        Scenario scenario = new Scenario(project.id(), run.id(), item, source.resourceDefaultVersion().id(), asset.id());
+        UUID item = dev.agenvas.support.CanvasMediaFixture.place(canvas, owner.userId(), project.id(),
+                source.artifact().id());
+        var director = configureDirector(agents, owner.userId(), project.id(), "Local workflow director",
+                "Use the built-in media tools");
+        var run = runs.create(owner.userId(), project.id(), director.id(), "Extract, trim and compose this voice",
+                "local-workflow-run").run();
+        Scenario scenario = new Scenario(project.id(), run.id(), item, source.resourceDefaultVersion().id(),
+                asset.id());
         scenarios.add(scenario);
         return scenario;
     }
@@ -326,18 +395,23 @@ class AgentLocalMediaWorkflowPostgresIT {
         assertThat(lease.runId()).isEqualTo(scenario.run());
         assertThat(lease.input().path("stepIndex").asInt()).isEqualTo(step);
         AgentRun run = commits.start(lease, MODEL_WORKER);
-        List<Message> history = step == 0 ? List.of(new UserMessage("Extract, trim and compose the existing voice"))
+        List<Message> history = step == 0
+                ? List.of(new UserMessage("Extract, trim and compose the existing voice"))
                 : conversation.afterToolRound(owner.userId(), scenario.project(), scenario.run(), step - 1);
         String callId = "local-call-" + step;
         saveResponse(scenario, run, lease, step, history, AssistantMessage.builder().content("")
-                .toolCalls(List.of(new AssistantMessage.ToolCall(callId, "function", tool, arguments.toString()))).build());
-        return new Round(scenario, new TrustedToolContext(owner.userId(), scenario.project(), scenario.run()), lease, step, callId);
+                .toolCalls(List.of(new AssistantMessage.ToolCall(callId, "function", tool, arguments.toString())))
+                .build());
+        return new Round(scenario, new TrustedToolContext(owner.userId(), scenario.project(), scenario.run()), lease,
+                step, callId);
     }
 
-    private void saveResponse(Scenario scenario, AgentRun run, Task lease, int step, List<Message> history, AssistantMessage assistant) {
+    private void saveResponse(Scenario scenario, AgentRun run, Task lease, int step, List<Message> history,
+            AssistantMessage assistant) {
         int config = run.policySnapshot().path("modelConfigVersion").asInt();
         checkpoints.reserveLeased(owner.userId(), scenario.project(), scenario.run(), step, config,
-                run.policySnapshot().path("modelConfigSource").asText(), codec.request(history, registry.modelDefinitions(run.policySnapshot())), lease, MODEL_WORKER);
+                run.policySnapshot().path("modelConfigSource").asText(),
+                codec.request(history, registry.modelDefinitions(run.policySnapshot())), lease, MODEL_WORKER);
         tasks.startAgentStream(lease, MODEL_WORKER);
         checkpoints.saveResponseLeased(owner.userId(), scenario.project(), scenario.run(), step, config,
                 codec.response(new ChatResponse(List.of(new Generation(assistant)))), lease, MODEL_WORKER);
@@ -381,14 +455,18 @@ class AgentLocalMediaWorkflowPostgresIT {
         assertThat(result.at("/data/artifactVersionId").asText()).isEqualTo(outputVersion(completed).toString());
         assertThat(result.at("/localTaskOutcome/tasks/0/status").asText()).isEqualTo("SUCCEEDED");
         assertThat(result.toString()).doesNotContain("objectKey", "thumbnailKey", "providerRequestId", "requestKey");
-        assertThat(artifacts.requireVersionById(owner.userId(), round.scenario().project(), outputVersion(completed)).runId())
+        assertThat(artifacts.requireVersionById(owner.userId(), round.scenario().project(), outputVersion(completed))
+                .runId())
                 .isEqualTo(round.scenario().run());
     }
 
     private JsonNode reply(Round round) {
-        return conversation.afterToolRound(owner.userId(), round.scenario().project(), round.scenario().run(), round.step()).stream()
+        return conversation
+                .afterToolRound(owner.userId(), round.scenario().project(), round.scenario().run(), round.step())
+                .stream()
                 .filter(ToolResponseMessage.class::isInstance).map(ToolResponseMessage.class::cast)
-                .flatMap(message -> message.getResponses().stream()).filter(response -> response.id().equals(round.callId()))
+                .flatMap(message -> message.getResponses().stream())
+                .filter(response -> response.id().equals(round.callId()))
                 .map(response -> mapper.readTree(response.responseData())).findFirst().orElseThrow();
     }
 
@@ -405,7 +483,8 @@ class AgentLocalMediaWorkflowPostgresIT {
         assertThat(lease.runId()).isEqualTo(scenario.run());
         assertThat(lease.input().path("stepIndex").asInt()).isEqualTo(step);
         var run = commits.start(lease, MODEL_WORKER);
-        saveResponse(scenario, run, lease, step, conversation.afterToolRound(owner.userId(), scenario.project(), scenario.run(), step - 1),
+        saveResponse(scenario, run, lease, step,
+                conversation.afterToolRound(owner.userId(), scenario.project(), scenario.run(), step - 1),
                 AssistantMessage.builder().content("The recorded local task outcome is available.").build());
         assertThat(commits.complete(lease, MODEL_WORKER)).isEqualTo(AgentTurnCommitService.Decision.FINISH);
     }
@@ -416,21 +495,45 @@ class AgentLocalMediaWorkflowPostgresIT {
     }
 
     private CanvasItem item(Scenario scenario, UUID item) {
-        return canvas.list(owner.userId(), scenario.project()).stream().filter(view -> view.item().id().equals(item)).findFirst().orElseThrow().item();
+        return canvas.list(owner.userId(), scenario.project()).stream().filter(view -> view.item().id().equals(item))
+                .findFirst().orElseThrow().item();
     }
-    private AgentRun currentRun(Scenario scenario) { return runs.get(owner.userId(), scenario.project(), scenario.run()); }
-    private Task task(Scenario scenario, JsonNode receipt) { return tasks.get(owner.userId(), scenario.project(), UUID.fromString(receipt.at("/data/taskId").asText())); }
-    private UUID outputVersion(Task task) { return UUID.fromString(task.output().path("artifactVersionId").asText()); }
-    private long turnCount(Scenario scenario) { return jdbc.sql("select count(*) from task where run_id=:run and kind='AGENT_TURN'").param("run", scenario.run()).query(Long.class).single(); }
-    private long ledgerCount(Scenario scenario) { return jdbc.sql("select count(*) from tool_execution where run_id=:run").param("run", scenario.run()).query(Long.class).single(); }
-    private long mediaTaskCount(Scenario scenario) { return jdbc.sql("select count(*) from task where project_id=:project and kind <> 'AGENT_TURN'").param("project", scenario.project()).query(Long.class).single(); }
-    private record Scenario(UUID project, UUID run, UUID sourceItem, UUID sourceVersion, UUID sourceAsset) {}
-    private record Round(Scenario scenario, TrustedToolContext context, Task lease, int step, String callId) {}
+    private AgentRun currentRun(Scenario scenario) {
+        return runs.get(owner.userId(), scenario.project(), scenario.run());
+    }
+    private Task task(Scenario scenario, JsonNode receipt) {
+        return tasks.get(owner.userId(), scenario.project(), UUID.fromString(receipt.at("/data/taskId").asText()));
+    }
+    private UUID outputVersion(Task task) {
+        return UUID.fromString(task.output().path("artifactVersionId").asText());
+    }
+    private long turnCount(Scenario scenario) {
+        return jdbc.sql("select count(*) from task where run_id=:run and kind='AGENT_TURN'")
+                .param("run", scenario.run()).query(Long.class).single();
+    }
+    private long ledgerCount(Scenario scenario) {
+        return jdbc.sql("select count(*) from tool_execution where run_id=:run").param("run", scenario.run())
+                .query(Long.class).single();
+    }
+    private long mediaTaskCount(Scenario scenario) {
+        return jdbc.sql("select count(*) from task where project_id=:project and kind <> 'AGENT_TURN'")
+                .param("project", scenario.project()).query(Long.class).single();
+    }
+    private record Scenario(UUID project, UUID run, UUID sourceItem, UUID sourceVersion, UUID sourceAsset) {
+    }
+    private record Round(Scenario scenario, TrustedToolContext context, Task lease, int step, String callId) {
+    }
 
-    @TestConfiguration static class TestConfig {
+    @TestConfiguration
+    static class TestConfig {
         /** Keep restart/recovery assertions deterministic; the test calls recovery through the application API. */
-        @Bean(name = "taskRecoveryScheduler") TaskRecoveryScheduler disabledRecovery(TaskService tasks, TaskProperties properties) {
-            return new TaskRecoveryScheduler(tasks, properties) { @Override public void scan() {} };
+        @Bean(name = "taskRecoveryScheduler")
+        TaskRecoveryScheduler disabledRecovery(TaskService tasks, TaskProperties properties) {
+            return new TaskRecoveryScheduler(tasks, properties) {
+                @Override
+                public void scan() {
+                }
+            };
         }
     }
 }

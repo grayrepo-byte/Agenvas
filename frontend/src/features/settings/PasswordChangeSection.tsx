@@ -1,10 +1,10 @@
 import { Field, FieldLabel } from "../../shared/ui/primitives/field";
 import { Key } from "@/shared/ui/icons";
-import { type FormEvent,useState } from "react";
-import { ApiError,changePassword } from "../../shared/api/client";
-import { t,useLocale } from "../../shared/i18n";
+import { type FormEvent, useState } from "react";
+import { ApiError, changePassword } from "../../shared/api/client";
+import { t, useLocale } from "../../shared/i18n";
 import { LoadingState } from "../../shared/ui/LoadingState";
-import { Notice,Panel } from "../../shared/ui/PagePrimitives";
+import { Notice, Panel } from "../../shared/ui/PagePrimitives";
 import { Button } from "../../shared/ui/primitives/button";
 import { Input } from "../../shared/ui/primitives/input";
 
@@ -44,25 +44,90 @@ export function PasswordChangeSection() {
     }
   }
 
-  return <Panel title={t("settings.password.title")} description={t("settings.password.sessionHint")}>
-    <form className="ui-form" onSubmit={(event) => { void submit(event); }} aria-busy={saving}>
-      <div className="ui-stack password-fields">
-        <Field><FieldLabel className="ui-field block">{t("settings.password.currentPassword")}<Input autoComplete="current-password" type="password" required maxLength={PASSWORD_MAX_LENGTH} disabled={saving} value={currentPassword} onChange={(event) => { setCurrentPassword(event.target.value); setSaved(false); }} />
-        </FieldLabel></Field>
-        <div className="ui-form-grid">
-          <Field><FieldLabel className="ui-field block">{t("settings.password.newPassword")}<Input autoComplete="new-password" type="password" required minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} disabled={saving} value={newPassword} onChange={(event) => { setNewPassword(event.target.value); setSaved(false); }} aria-describedby="password-length-hint" />
-          </FieldLabel></Field>
-          <Field><FieldLabel className="ui-field block">{t("settings.password.confirmPassword")}<Input autoComplete="new-password" type="password" required minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} disabled={saving} value={confirmation} onChange={(event) => { setConfirmation(event.target.value); setSaved(false); }} />
-          </FieldLabel></Field>
+  return (
+    <Panel title={t("settings.password.title")} description={t("settings.password.sessionHint")}>
+      <form
+        className="ui-form"
+        onSubmit={event => {
+          void submit(event);
+        }}
+        aria-busy={saving}
+      >
+        <div className="ui-stack password-fields">
+          <Field>
+            <FieldLabel className="ui-field block">
+              {t("settings.password.currentPassword")}
+              <Input
+                autoComplete="current-password"
+                type="password"
+                required
+                maxLength={PASSWORD_MAX_LENGTH}
+                disabled={saving}
+                value={currentPassword}
+                onChange={event => {
+                  setCurrentPassword(event.target.value);
+                  setSaved(false);
+                }}
+              />
+            </FieldLabel>
+          </Field>
+          <div className="ui-form-grid">
+            <Field>
+              <FieldLabel className="ui-field block">
+                {t("settings.password.newPassword")}
+                <Input
+                  autoComplete="new-password"
+                  type="password"
+                  required
+                  minLength={PASSWORD_MIN_LENGTH}
+                  maxLength={PASSWORD_MAX_LENGTH}
+                  disabled={saving}
+                  value={newPassword}
+                  onChange={event => {
+                    setNewPassword(event.target.value);
+                    setSaved(false);
+                  }}
+                  aria-describedby="password-length-hint"
+                />
+              </FieldLabel>
+            </Field>
+            <Field>
+              <FieldLabel className="ui-field block">
+                {t("settings.password.confirmPassword")}
+                <Input
+                  autoComplete="new-password"
+                  type="password"
+                  required
+                  minLength={PASSWORD_MIN_LENGTH}
+                  maxLength={PASSWORD_MAX_LENGTH}
+                  disabled={saving}
+                  value={confirmation}
+                  onChange={event => {
+                    setConfirmation(event.target.value);
+                    setSaved(false);
+                  }}
+                />
+              </FieldLabel>
+            </Field>
+          </div>
+          <p className="ui-muted" id="password-length-hint">
+            {t("settings.password.lengthHint", { "0": PASSWORD_MIN_LENGTH, "1": PASSWORD_MAX_LENGTH })}
+          </p>
         </div>
-        <p className="ui-muted" id="password-length-hint">{t("settings.password.lengthHint", { "0": PASSWORD_MIN_LENGTH, "1": PASSWORD_MAX_LENGTH })}</p>
-      </div>
-      {error ? <Notice tone="danger">{error}</Notice> : null}
-      {saved ? <Notice tone="success">{t("settings.password.saved")}</Notice> : null}
-      <div className="ui-form-actions">
-        {saving ? <LoadingState compact label={t("settings.password.submittingStatus")} /> : <span className="ui-muted">{t("settings.password.clearInputsHint")}</span>}
-        <Button variant="default"  type="submit" disabled={saving}><Key size={16} aria-hidden />{saving ? t("settings.password.submitting") : t("settings.password.submit")}</Button>
-      </div>
-    </form>
-  </Panel>;
+        {error ? <Notice tone="danger">{error}</Notice> : null}
+        {saved ? <Notice tone="success">{t("settings.password.saved")}</Notice> : null}
+        <div className="ui-form-actions">
+          {saving ? (
+            <LoadingState compact label={t("settings.password.submittingStatus")} />
+          ) : (
+            <span className="ui-muted">{t("settings.password.clearInputsHint")}</span>
+          )}
+          <Button variant="default" type="submit" disabled={saving}>
+            <Key size={16} aria-hidden />
+            {saving ? t("settings.password.submitting") : t("settings.password.submit")}
+          </Button>
+        </div>
+      </form>
+    </Panel>
+  );
 }

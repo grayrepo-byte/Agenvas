@@ -73,61 +73,90 @@ import tools.jackson.databind.ObjectMapper;
 @SpringBootTest(classes = {AgenvasApplication.class, VideoPromptPostgresIT.FakeConfig.class}, properties = {
         "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class VideoPromptPostgresIT {
-    @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
-    @DynamicPropertySource static void properties(DynamicPropertyRegistry registry) {
-        if (!POSTGRES.isRunning()) POSTGRES.start();
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry registry) {
+        if (!POSTGRES.isRunning())
+            POSTGRES.start();
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
     }
-    @Autowired IdentityService identities;
-    @Autowired ProjectService projects;
-    @Autowired ArtifactService artifacts;
-    @Autowired MediaDraftService drafts;
-    @Autowired CanvasService canvas;
-    @Autowired VideoPromptTaskService prompts;
-    @Autowired PromptService definitions;
-    @Autowired SkillService skills;
-    @Autowired TaskService tasks;
-    @Autowired DirectTextGenerationWorker worker;
-    @Autowired LlmProtocolCodec codec;
-    @Autowired FakeGateway gateway;
-    @Autowired JdbcClient jdbc;
-    @Autowired ObjectMapper mapper;
-    @Autowired WebApplicationContext context;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    ProjectService projects;
+    @Autowired
+    ArtifactService artifacts;
+    @Autowired
+    MediaDraftService drafts;
+    @Autowired
+    CanvasService canvas;
+    @Autowired
+    VideoPromptTaskService prompts;
+    @Autowired
+    PromptService definitions;
+    @Autowired
+    SkillService skills;
+    @Autowired
+    TaskService tasks;
+    @Autowired
+    DirectTextGenerationWorker worker;
+    @Autowired
+    LlmProtocolCodec codec;
+    @Autowired
+    FakeGateway gateway;
+    @Autowired
+    JdbcClient jdbc;
+    @Autowired
+    ObjectMapper mapper;
+    @Autowired
+    WebApplicationContext context;
     AdminPrincipal owner;
     MockMvc mvc;
 
-    @BeforeEach void setup() {
-        if (owner == null) owner = identities.setup("video-prompt-admin", "synthetic-password-123");
+    @BeforeEach
+    void setup() {
+        if (owner == null)
+            owner = identities.setup("video-prompt-admin", "synthetic-password-123");
         mvc = MockMvcBuilders.webAppContextSetup(context)
-                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
-        gateway.calls = 0; gateway.reply = "[[REF_1]] walks slowly; the camera tracks left.";
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build();
+        gateway.calls = 0;
+        gateway.reply = "[[REF_1]] walks slowly; the camera tracks left.";
     }
-    @Test void freezesSkillAndPromptThenPublishesOnlyTextWithoutChangingTheVideoDraft() {
+    @Test
+    void freezesSkillAndPromptThenPublishesOnlyTextWithoutChangingTheVideoDraft() {
         var source = source();
         var skill = skills.create(owner.userId(), "Synthetic motion", "Synthetic guide");
         skills.saveDraft(owner.userId(), skill.id(), 0, new SkillContent.DraftContent(1,
                 "---\nname: motion-method\ndescription: Synthetic camera guidance\n---\nUse a slow tracking shot.",
-                List.of(Artifact.Kind.VIDEO), List.of(), List.of(new SkillContent.Resource("references/motion.md", "Preserve subject identity.")), List.of()));
+                List.of(Artifact.Kind.VIDEO), List.of(),
+                List.of(new SkillContent.Resource("references/motion.md", "Preserve subject identity.")), List.of()));
         var publish = skills.publish(owner.userId(), skill.id(), 1, "publish-method");
         assertThat(skills.processNext()).isTrue();
         var version = skills.getOperation(owner.userId(), publish.id()).resultVersionId();
-        var request = new VideoPromptTaskService.Request("[[REF_1]] walks", 20000, new VideoPromptTaskService.SkillRef(skill.id(), version));
+        var request = new VideoPromptTaskService.Request("[[REF_1]] walks", 20000,
+                new VideoPromptTaskService.SkillRef(skill.id(), version));
         var before = drafts.get(owner.userId(), source.project(), source.item());
         Task accepted = run(source, request, "skill-command");
         var definition = definitions.require(VideoPromptTaskService.PROMPT_KEY, PromptService.Kind.FUNCTION);
-        var changed = definitions.update(definition.id(), definition.version(), definition.name(), definition.description(), "Later settings edit");
+        var changed = definitions.update(definition.id(), definition.version(), definition.name(),
+                definition.description(), "Later settings edit");
         var metadata = skills.get(owner.userId(), skill.id());
-        skills.updateMetadata(owner.userId(), skill.id(), metadata.version(), metadata.title(), metadata.description(), true);
+        skills.updateMetadata(owner.userId(), skill.id(), metadata.version(), metadata.title(), metadata.description(),
+                true);
         assertThat(run(source, request, "skill-command").id()).isEqualTo(accepted.id());
         assertThat(worker.runOnce("video-prompt-worker")).isEqualTo(1);
         var completed = tasks.get(owner.userId(), source.project(), accepted.id());
         assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
         assertThatThrownBy(() -> run(source, request, "trashed-method")).isInstanceOf(ApiProblemException.class)
-                .satisfies(error -> assertThat(((ApiProblemException) error).code()).isNotEqualTo("VIDEO_PROMPT_IN_PROGRESS"));
+                .satisfies(error -> assertThat(((ApiProblemException) error).code())
+                        .isNotEqualTo("VIDEO_PROMPT_IN_PROGRESS"));
         assertThat(gateway.messages.getFirst().getText()).isEqualTo(definition.content());
-        assertThat(gateway.messages.get(1).getText()).contains("Use a slow tracking shot.", "references/motion.md", "Preserve subject identity.");
+        assertThat(gateway.messages.get(1).getText()).contains("Use a slow tracking shot.", "references/motion.md",
+                "Preserve subject identity.");
         var safe = TaskController.TaskResponse.from(completed);
         assertThat(safe.output().path("prompt").asText()).isEqualTo(gateway.reply);
         assertThat(safe.output().path("mock").asBoolean()).isTrue();
@@ -139,11 +168,15 @@ class VideoPromptPostgresIT {
         assertThat(drafts.get(owner.userId(), source.project(), source.item())).isEqualTo(before);
         assertThat(artifacts.listVersions(owner.userId(), source.project(), source.artifact())).isEmpty();
         assertThat(canvas.list(owner.userId(), source.project())).hasSize(1);
-        assertThat(jdbc.sql("select count(*) from task_artifact_target where task_id=:id").param("id", accepted.id()).query(Long.class).single()).isZero();
-        assertThat(jdbc.sql("select count(*) from usage_ledger where task_id=:id").param("id", accepted.id()).query(Long.class).single()).isEqualTo(2);
-        definitions.update(changed.id(), changed.version(), definition.name(), definition.description(), definition.content());
+        assertThat(jdbc.sql("select count(*) from task_artifact_target where task_id=:id").param("id", accepted.id())
+                .query(Long.class).single()).isZero();
+        assertThat(jdbc.sql("select count(*) from usage_ledger where task_id=:id").param("id", accepted.id())
+                .query(Long.class).single()).isEqualTo(2);
+        definitions.update(changed.id(), changed.version(), definition.name(), definition.description(),
+                definition.content());
     }
-    @Test void serializesConcurrentAcceptanceAndRejectsChangedReplayAndNewActiveCommands() throws Exception {
+    @Test
+    void serializesConcurrentAcceptanceAndRejectsChangedReplayAndNewActiveCommands() throws Exception {
         var source = source();
         var request = request();
         try (var executor = Executors.newFixedThreadPool(2)) {
@@ -152,8 +185,10 @@ class VideoPromptPostgresIT {
             assertThat(one.get(10, TimeUnit.SECONDS).id()).isEqualTo(two.get(10, TimeUnit.SECONDS).id());
         }
         assertThat(prompts.list(owner.userId(), source.project(), source.item())).hasSize(1);
-        assertThatThrownBy(() -> run(source, new VideoPromptTaskService.Request("Changed", 20000, null), "same-command"))
-                .isInstanceOf(ApiProblemException.class).satisfies(error -> assertThat(((ApiProblemException) error).code()).isEqualTo("VIDEO_PROMPT_CONFLICT"));
+        assertThatThrownBy(
+                () -> run(source, new VideoPromptTaskService.Request("Changed", 20000, null), "same-command"))
+                .isInstanceOf(ApiProblemException.class).satisfies(
+                        error -> assertThat(((ApiProblemException) error).code()).isEqualTo("VIDEO_PROMPT_CONFLICT"));
         assertThatThrownBy(() -> run(source, request, "other-command")).isInstanceOf(ApiProblemException.class);
         Task current = prompts.list(owner.userId(), source.project(), source.item()).getFirst();
         prompts.cancel(owner.userId(), source.project(), source.item(), current.id());
@@ -161,37 +196,47 @@ class VideoPromptPostgresIT {
         assertThat(run(source, request, "same-command").id()).isEqualTo(current.id());
         assertThatThrownBy(() -> run(source, request, "archived-project")).isInstanceOf(ApiProblemException.class);
     }
-    @Test void recoversTheCheckpointWithoutAnotherCallAndFencesLateCanceledResponses() {
+    @Test
+    void recoversTheCheckpointWithoutAnotherCallAndFencesLateCanceledResponses() {
         var source = source();
         var accepted = run(source, request(), "recover");
         var lease = tasks.claimTextGenerations("before-crash", 1).getFirst();
         var checkpoint = mapper.createObjectNode().put("schemaVersion", 1);
         checkpoint.set("request", codec.request(List.of(new UserMessage("Synthetic request")), List.of()));
-        checkpoint.set("response", codec.response(new ChatResponse(List.of(new Generation(new AssistantMessage(gateway.reply))))));
+        checkpoint.set("response",
+                codec.response(new ChatResponse(List.of(new Generation(new AssistantMessage(gateway.reply))))));
         tasks.checkpointTextResponse(lease, "before-crash", checkpoint);
         jdbc.sql("update task set lease_until=now()-interval '1 second' where id=:id").param("id", lease.id()).update();
         worker.runOnce("after-crash");
-        assertThat(tasks.get(owner.userId(), source.project(), accepted.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(tasks.get(owner.userId(), source.project(), accepted.id()).status())
+                .isEqualTo(Task.Status.SUCCEEDED);
         assertThat(gateway.calls).isZero();
         var next = run(source, request(), "cancel");
         var old = tasks.claimTextGenerations("late-worker", 1).getFirst();
-        assertThat(prompts.cancel(owner.userId(), source.project(), source.item(), next.id()).status()).isEqualTo(Task.Status.CANCELED);
-        assertThat(prompts.cancel(owner.userId(), source.project(), source.item(), next.id()).id()).isEqualTo(next.id());
-        assertThatThrownBy(() -> tasks.checkpointTextResponse(old, "late-worker", checkpoint)).isInstanceOf(ApiProblemException.class);
+        assertThat(prompts.cancel(owner.userId(), source.project(), source.item(), next.id()).status())
+                .isEqualTo(Task.Status.CANCELED);
+        assertThat(prompts.cancel(owner.userId(), source.project(), source.item(), next.id()).id())
+                .isEqualTo(next.id());
+        assertThatThrownBy(() -> tasks.checkpointTextResponse(old, "late-worker", checkpoint))
+                .isInstanceOf(ApiProblemException.class);
         tasks.succeed(old, "late-worker", checkpoint);
-        assertThat(TaskController.TaskResponse.from(tasks.get(owner.userId(), source.project(), next.id())).output()).isNull();
+        assertThat(TaskController.TaskResponse.from(tasks.get(owner.userId(), source.project(), next.id())).output())
+                .isNull();
         var queued = run(source, request(), "third-queued");
-        assertThat(prompts.cancel(owner.userId(), source.project(), source.item(), queued.id()).status()).isEqualTo(Task.Status.CANCELED);
+        assertThat(prompts.cancel(owner.userId(), source.project(), source.item(), queued.id()).status())
+                .isEqualTo(Task.Status.CANCELED);
         var replay = run(source, request(), "recover");
         assertThat(replay.id()).isEqualTo(accepted.id());
         assertThat(replay.status()).isEqualTo(Task.Status.SUCCEEDED);
         assertThat(replay.version()).isGreaterThan(accepted.version());
-        assertThat(prompts.cancel(owner.userId(), source.project(), source.item(), next.id()).id()).isEqualTo(next.id());
+        assertThat(prompts.cancel(owner.userId(), source.project(), source.item(), next.id()).id())
+                .isEqualTo(next.id());
         assertThat(prompts.list(owner.userId(), source.project(), source.item())).extracting(Task::id)
                 .containsExactly(queued.id(), next.id(), accepted.id());
         assertThat(gateway.calls).isZero();
     }
-    @Test void rejectsModelOutputThatDropsAReference() {
+    @Test
+    void rejectsModelOutputThatDropsAReference() {
         var source = source();
         var accepted = run(source, request(), "invalid-output");
         gateway.reply = "Missing reference";
@@ -201,65 +246,109 @@ class VideoPromptPostgresIT {
         assertThat(failed.errorCode()).isEqualTo("MODEL_OUTPUT_INVALID");
         assertThat(TaskController.TaskResponse.from(failed).output()).isNull();
     }
-    @Test void enforcesHttpAuthorizationCsrfRequestContractAndProjectBoundary() throws Exception {
+    @Test
+    void enforcesHttpAuthorizationCsrfRequestContractAndProjectBoundary() throws Exception {
         var source = source();
         String path = path(source);
         String body = mapper.writeValueAsString(request());
-        var auth = authentication(new UsernamePasswordAuthenticationToken(owner, "unused", List.of(new SimpleGrantedAuthority("ROLE_USER"))));
+        var auth = authentication(new UsernamePasswordAuthenticationToken(owner, "unused",
+                List.of(new SimpleGrantedAuthority("ROLE_USER"))));
         mvc.perform(get(path)).andExpect(status().isUnauthorized());
-        mvc.perform(post(path).with(auth).header("Idempotency-Key", "http").contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
-        mvc.perform(post(path).with(auth).with(csrf()).header("Idempotency-Key", "invalid").contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(post(path).with(auth).header("Idempotency-Key", "http").contentType(MediaType.APPLICATION_JSON)
+                .content(body)).andExpect(status().isForbidden());
+        mvc.perform(post(path).with(auth).with(csrf()).header("Idempotency-Key", "invalid")
+                .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"prompt\":\"Test\"}")).andExpect(status().isBadRequest());
         var another = source();
-        mvc.perform(get(path.replace(source.project().toString(), another.project().toString())).with(auth)).andExpect(status().isNotFound());
-        mvc.perform(post(path).with(auth).with(csrf()).header("Idempotency-Key", "http").contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.input.systemPrompt").doesNotExist()).andExpect(jsonPath("$.output").isEmpty());
+        mvc.perform(get(path.replace(source.project().toString(), another.project().toString())).with(auth))
+                .andExpect(status().isNotFound());
+        mvc.perform(post(path).with(auth).with(csrf()).header("Idempotency-Key", "http")
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.input.systemPrompt").doesNotExist())
+                .andExpect(jsonPath("$.output").isEmpty());
         Task accepted = prompts.list(owner.userId(), source.project(), source.item()).getFirst();
         mvc.perform(post(path + "/" + accepted.id() + "/cancel").with(auth).with(csrf()))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("CANCELED"));
         var outsider = new AdminPrincipal(UUID.randomUUID(), "outsider");
-        assertThatThrownBy(() -> prompts.list(outsider.userId(), source.project(), source.item())).isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> prompts.list(outsider.userId(), source.project(), source.item()))
+                .isInstanceOf(ApiProblemException.class);
     }
-    @Test void upgradesV39WithoutChangingExistingPromptEdits() throws Exception {
+    @Test
+    void upgradesV39WithoutChangingExistingPromptEdits() throws Exception {
         jdbc.sql("create database video_prompt_upgrade").update();
-        String url = "jdbc:postgresql://" + POSTGRES.getHost() + ":" + POSTGRES.getMappedPort(5432) + "/video_prompt_upgrade";
-        Flyway.configure().dataSource(url, POSTGRES.getUsername(), POSTGRES.getPassword()).locations("classpath:db/migration")
+        String url = "jdbc:postgresql://" + POSTGRES.getHost() + ":" + POSTGRES.getMappedPort(5432)
+                + "/video_prompt_upgrade";
+        Flyway.configure().dataSource(url, POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration")
                 .target(MigrationVersion.fromVersion("39")).load().migrate();
-        try (var connection = java.sql.DriverManager.getConnection(url, POSTGRES.getUsername(), POSTGRES.getPassword()); var statement = connection.createStatement()) {
-            statement.executeUpdate("update prompt_definition set content='Synthetic existing edit' where key='image.reverse-prompt'");
+        try (var connection = java.sql.DriverManager.getConnection(url, POSTGRES.getUsername(), POSTGRES.getPassword());
+                var statement = connection.createStatement()) {
+            statement.executeUpdate(
+                    "update prompt_definition set content='Synthetic existing edit' where key='image.reverse-prompt'");
         }
-        Flyway.configure().dataSource(url, POSTGRES.getUsername(), POSTGRES.getPassword()).locations("classpath:db/migration").load().migrate();
-        try (var connection = java.sql.DriverManager.getConnection(url, POSTGRES.getUsername(), POSTGRES.getPassword()); var statement = connection.createStatement();
-                var rows = statement.executeQuery("select key,content from prompt_definition where key in ('image.reverse-prompt','video.optimize-prompt') order by key")) {
-            assertThat(rows.next()).isTrue(); assertThat(rows.getString("content")).isEqualTo("Synthetic existing edit");
-            assertThat(rows.next()).isTrue(); assertThat(rows.getString("key")).isEqualTo(VideoPromptTaskService.PROMPT_KEY);
+        Flyway.configure().dataSource(url, POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration").load().migrate();
+        try (var connection = java.sql.DriverManager.getConnection(url, POSTGRES.getUsername(), POSTGRES.getPassword());
+                var statement = connection.createStatement();
+                var rows = statement.executeQuery(
+                        "select key,content from prompt_definition where key in ('image.reverse-prompt','video.optimize-prompt') order by key")) {
+            assertThat(rows.next()).isTrue();
+            assertThat(rows.getString("content")).isEqualTo("Synthetic existing edit");
+            assertThat(rows.next()).isTrue();
+            assertThat(rows.getString("key")).isEqualTo(VideoPromptTaskService.PROMPT_KEY);
         }
     }
-    private VideoPromptTaskService.Request request() { return new VideoPromptTaskService.Request("[[REF_1]] walks", 20000, null); }
+    private VideoPromptTaskService.Request request() {
+        return new VideoPromptTaskService.Request("[[REF_1]] walks", 20000, null);
+    }
     private Task run(Source source, VideoPromptTaskService.Request request, String key) {
         return prompts.run(owner.userId(), source.project(), source.item(), request, "zh", key);
     }
     private Source source() {
         var project = projects.create(owner.userId(), "Synthetic video prompt", Project.AspectRatio.LANDSCAPE_16_9);
         var artifact = artifacts.create(owner.userId(), project.id(), Artifact.Kind.VIDEO, "Synthetic video", null);
-        UUID item = dev.agenvas.support.CanvasMediaFixture.place(canvas, owner.userId(), project.id(), artifact.artifact().id());
+        UUID item = dev.agenvas.support.CanvasMediaFixture.place(canvas, owner.userId(), project.id(),
+                artifact.artifact().id());
         return new Source(project.id(), artifact.artifact().id(), item);
     }
-    private String path(Source source) { return "/api/v1/projects/" + source.project() + "/canvas-items/" + source.item() + "/video-prompt-optimizations"; }
-    record Source(UUID project, UUID artifact, UUID item) {}
-    @TestConfiguration static class FakeConfig { @Bean @Primary FakeGateway gateway() { return new FakeGateway(); } }
+    private String path(Source source) {
+        return "/api/v1/projects/" + source.project() + "/canvas-items/" + source.item()
+                + "/video-prompt-optimizations";
+    }
+    record Source(UUID project, UUID artifact, UUID item) {
+    }
+    @TestConfiguration
+    static class FakeConfig {
+        @Bean
+        @Primary
+        FakeGateway gateway() {
+            return new FakeGateway();
+        }
+    }
     static class FakeGateway implements ChatGateway {
-        int calls; String reply; List<Message> messages;
+        int calls;
+        String reply;
+        List<Message> messages;
         public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context) {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
-            assertThat(tools).isEmpty(); assertThat(context).isEmpty();
-            this.messages = messages; calls++;
+            assertThat(tools).isEmpty();
+            assertThat(context).isEmpty();
+            this.messages = messages;
+            calls++;
             return new Exchange(1, new ChatResponse(List.of(new Generation(AssistantMessage.builder().content(reply)
                     .properties(Map.of("reasoning_content", "private thought")).build()))));
         }
-        public Capabilities capabilities() { return new Capabilities(true, false, false); }
-        public int configVersion() { return 1; }
-        public String configSource() { return "mock"; }
-        public ModelDetails modelDetails() { return new ModelDetails(true, "synthetic", "synthetic-text", true); }
+        public Capabilities capabilities() {
+            return new Capabilities(true, false, false);
+        }
+        public int configVersion() {
+            return 1;
+        }
+        public String configSource() {
+            return "mock";
+        }
+        public ModelDetails modelDetails() {
+            return new ModelDetails(true, "synthetic", "synthetic-text", true);
+        }
     }
 }

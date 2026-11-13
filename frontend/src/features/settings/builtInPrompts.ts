@@ -50,8 +50,11 @@ export function getPromptLabels(prompt: Pick<PromptDefinition, "key" | "builtIn"
   const original = originalMetadata[prompt.key];
   return {
     name: defaults && prompt.name === original?.name ? t(defaults.name) : prompt.name,
-    description: defaults && prompt.description === original?.description ? t(defaults.description)
-      : defaults && prompt.key === "image.three-view.character" && prompt.description === legacyCharacterDescription
-        ? t("prompts.builtIn.characterViews.legacyDescription") : prompt.description,
+    description:
+      defaults && prompt.description === original?.description
+        ? t(defaults.description)
+        : defaults && prompt.key === "image.three-view.character" && prompt.description === legacyCharacterDescription
+          ? t("prompts.builtIn.characterViews.legacyDescription")
+          : prompt.description,
   };
 }

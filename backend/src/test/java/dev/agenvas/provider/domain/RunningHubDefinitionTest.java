@@ -9,13 +9,15 @@ import tools.jackson.databind.node.ObjectNode;
 
 class RunningHubDefinitionTest {
     private final ObjectMapper mapper = new ObjectMapper();
-    @Test void emptyOptionalPromptRemainsOmittedWithoutSharedText() {
+    @Test
+    void emptyOptionalPromptRemainsOmittedWithoutSharedText() {
         ObjectNode source = schema();
         source.putArray("fields").addObject().put("key", "prompt").put("label", "Prompt").put("nodeId", "1")
                 .put("fieldName", "text").put("type", "STRING").put("source", "PROMPT").put("required", false);
         var definition = RunningHubDefinition.parse(mapper, source, Task.Kind.IMAGE_GENERATION);
         assertThat(definition.values(mapper, mapper.createObjectNode(), "", null, true).has("prompt")).isFalse();
-        assertThat(definition.values(mapper, mapper.createObjectNode(), "", null, true, local -> "Shared").path("prompt").asText())
+        assertThat(definition.values(mapper, mapper.createObjectNode(), "", null, true, local -> "Shared")
+                .path("prompt").asText())
                 .isEqualTo("Shared");
     }
 
@@ -27,14 +29,17 @@ class RunningHubDefinitionTest {
              "outputs":[{"kind":"IMAGE","primary":true,"maxCount":2}]}
             """);
     }
-    @Test void incompleteDraftIsAllowedButRunRequiresNamedMediaAndUsesDefaults() {
+    @Test
+    void incompleteDraftIsAllowedButRunRequiresNamedMediaAndUsesDefaults() {
         var definition = RunningHubDefinition.parse(mapper, schema(), Task.Kind.IMAGE_GENERATION);
         assertThat(definition.values(mapper, mapper.createObjectNode(), "", null, false).isEmpty()).isTrue();
-        assertThatThrownBy(() -> definition.values(mapper, mapper.createObjectNode(), "", null, true)).hasMessageContaining("人物图");
+        assertThatThrownBy(() -> definition.values(mapper, mapper.createObjectNode(), "", null, true))
+                .hasMessageContaining("人物图");
         var input = mapper.readTree("{\"dynamicValues\":{\"person\":\"a07a49a9-cca1-4730-92ee-b6c3c7c8ab94\"}}");
         assertThat(definition.values(mapper, input, "", null, true).path("strength").asDouble()).isEqualTo(0.5);
     }
-    @Test void optionalCreatorGroupsRoundTripWithoutChangingFieldIdentityOrExecutionValues() {
+    @Test
+    void optionalCreatorGroupsRoundTripWithoutChangingFieldIdentityOrExecutionValues() {
         var schema = schema();
         ((ObjectNode) schema.path("fields").get(0)).put("group", "基础生成");
         ((ObjectNode) schema.path("fields").get(1)).put("group", "放大输出");
@@ -50,17 +55,20 @@ class RunningHubDefinitionTest {
             assertThat(strength.fieldName()).isEqualTo("denoise");
             assertThat(strength.group()).isEqualTo("基础生成");
             assertThat(strength.defaultValue().decimalValue()).isEqualByComparingTo("0.5");
-            assertThat(contract.values(mapper, mapper.readTree("{\"dynamicValues\":{\"strength\":0.3}}"), "", null, false))
+            assertThat(
+                    contract.values(mapper, mapper.readTree("{\"dynamicValues\":{\"strength\":0.3}}"), "", null, false))
                     .isEqualTo(mapper.readTree("{\"strength\":0.3}"));
         }
         var parsedFields = RunningHubDefinition.parseFields(mapper, schema.path("fields"));
         assertThat(mapper.writeValueAsString(parsedFields)).isEqualTo(mapper.writeValueAsString(definition.fields()));
     }
-    @Test void creatorGroupsAcceptEightyCharactersAndRejectLongOrNonTextValues() {
+    @Test
+    void creatorGroupsAcceptEightyCharactersAndRejectLongOrNonTextValues() {
         var schema = schema();
         var field = (ObjectNode) schema.path("fields").get(0);
         field.put("group", "组".repeat(80));
-        assertThat(RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION).fields().getFirst().group()).hasSize(80);
+        assertThat(RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION).fields().getFirst().group())
+                .hasSize(80);
         field.put("group", "组".repeat(81));
         assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION))
                 .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
@@ -70,7 +78,8 @@ class RunningHubDefinitionTest {
         assertThatThrownBy(() -> RunningHubDefinition.parseFields(mapper, schema.path("fields")))
                 .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
     }
-    @Test void publishedFieldsAccept1024AndReject1025() {
+    @Test
+    void publishedFieldsAccept1024AndReject1025() {
         var schema = schema();
         var fields = schema.putArray("fields");
         for (int index = 1; index <= 1024; index++)
@@ -82,18 +91,21 @@ class RunningHubDefinitionTest {
         assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION))
                 .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
     }
-    @Test void fixedBindingsAccept1024AndReject1025() {
+    @Test
+    void fixedBindingsAccept1024AndReject1025() {
         var schema = schema();
         schema.putArray("fields");
         var bindings = schema.putArray("fixedBindings");
         for (int index = 1; index <= 1024; index++)
             bindings.addObject().put("nodeId", Integer.toString(index)).put("fieldName", "steps").put("value", 20);
-        assertThat(RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION).fixedBindings()).hasSize(1024);
+        assertThat(RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION).fixedBindings())
+                .hasSize(1024);
         bindings.addObject().put("nodeId", "1025").put("fieldName", "steps").put("value", 20);
         assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION))
                 .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
     }
-    @Test void serverPromptCompositionKeepsTheDefaultAndRechecksFinalLengths() {
+    @Test
+    void serverPromptCompositionKeepsTheDefaultAndRechecksFinalLengths() {
         ObjectNode schema = schema();
         var fields = schema.putArray("fields");
         for (int index = 1; index <= 1; index++) {
@@ -111,21 +123,30 @@ class RunningHubDefinitionTest {
                 .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
     }
 
-    @Test void numericBoundsUnknownKeysAndMediaUrlsAreRejected() {
+    @Test
+    void numericBoundsUnknownKeysAndMediaUrlsAreRejected() {
         var definition = RunningHubDefinition.parse(mapper, schema(), Task.Kind.IMAGE_GENERATION);
-        for (String json : new String[]{"{\"dynamicValues\":{\"strength\":2}}", "{\"dynamicValues\":{\"unknown\":1}}", "{\"dynamicValues\":{\"person\":\"https://example.com/a.png\"}}", "{\"generationCount\":2}"})
-            assertThatThrownBy(() -> definition.values(mapper, mapper.readTree(json), "", null, false)).isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
+        for (String json : new String[]{"{\"dynamicValues\":{\"strength\":2}}", "{\"dynamicValues\":{\"unknown\":1}}",
+                "{\"dynamicValues\":{\"person\":\"https://example.com/a.png\"}}", "{\"generationCount\":2}"})
+            assertThatThrownBy(() -> definition.values(mapper, mapper.readTree(json), "", null, false))
+                    .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
     }
-    @Test void mappingsCannotDuplicateOrContainCredentialsScriptsAndUnknownProperties() {
+    @Test
+    void mappingsCannotDuplicateOrContainCredentialsScriptsAndUnknownProperties() {
         var duplicate = schema();
         ((ObjectNode) duplicate.path("fields").get(1)).put("nodeId", "3").put("fieldName", "denoise");
-        assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, duplicate, Task.Kind.IMAGE_GENERATION)).hasMessageContaining("映射");
+        assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, duplicate, Task.Kind.IMAGE_GENERATION))
+                .hasMessageContaining("映射");
         var unknown = schema().put("script", "anything");
-        assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, unknown, Task.Kind.IMAGE_GENERATION)).isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
-        var credential = schema(); ((ObjectNode) credential.path("fields").get(0)).put("fieldName", "apiKey");
-        assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, credential, Task.Kind.IMAGE_GENERATION)).isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
+        assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, unknown, Task.Kind.IMAGE_GENERATION))
+                .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
+        var credential = schema();
+        ((ObjectNode) credential.path("fields").get(0)).put("fieldName", "apiKey");
+        assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, credential, Task.Kind.IMAGE_GENERATION))
+                .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
     }
-    @Test void dottedNamesAreExactBindingsForWorkflowAndAppButLocalKeysStayIdentifiers() {
+    @Test
+    void dottedNamesAreExactBindingsForWorkflowAndAppButLocalKeysStayIdentifiers() {
         for (var targetType : RunningHubDefinition.TargetType.values()) {
             var schema = schema().put("targetType", targetType.name());
             ((ObjectNode) schema.path("fields").get(0)).put("fieldName", "sampling_mode.top_p");
@@ -135,40 +156,52 @@ class RunningHubDefinitionTest {
             assertThat(definition.fields().getFirst().fieldName()).isEqualTo("sampling_mode.top_p");
             assertThat(definition.fixedBindings().getFirst().fieldName()).isEqualTo("sampling_mode.seed");
             ((ObjectNode) schema.path("fixedBindings").get(0)).put("fieldName", "sampling_mode.top_p");
-            assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION)).hasMessageContaining("映射");
+            assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION))
+                    .hasMessageContaining("映射");
             ((ObjectNode) schema.path("fixedBindings").get(0)).put("fieldName", "sampling_mode.seed");
             ((ObjectNode) schema.path("fields").get(0)).put("key", "sampling_mode.top_p");
             assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION))
                     .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
         }
     }
-    @Test void dottedNamesKeepLengthCharacterAndReservedNameConstraints() {
+    @Test
+    void dottedNamesKeepLengthCharacterAndReservedNameConstraints() {
         assertThat(RunningHubDefinition.bindableFieldName("a." + "b".repeat(78))).isTrue();
-        for (String name : new String[]{"a." + "b".repeat(79), ".top_p", "sampling_mode/top_p", "sampling mode.top_p", "apiKey", "__proto__"})
+        for (String name : new String[]{"a." + "b".repeat(79), ".top_p", "sampling_mode/top_p", "sampling mode.top_p",
+                "apiKey", "__proto__"})
             assertThat(RunningHubDefinition.bindableFieldName(name)).as(name).isFalse();
     }
-    @Test void inactiveRequiredFieldDoesNotBlockRun() {
+    @Test
+    void inactiveRequiredFieldDoesNotBlockRun() {
         var schema = schema();
-        ((ObjectNode) schema.path("fields").get(1)).set("enabledWhen", mapper.readTree("{\"field\":\"strength\",\"value\":1}"));
+        ((ObjectNode) schema.path("fields").get(1)).set("enabledWhen",
+                mapper.readTree("{\"field\":\"strength\",\"value\":1}"));
         var definition = RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION);
         assertThat(definition.values(mapper, mapper.createObjectNode(), "", null, true).has("person")).isFalse();
     }
-    @Test void directValidationRejectsNullOutputEntriesBeforeReadingTheirProperties() {
+    @Test
+    void directValidationRejectsNullOutputEntriesBeforeReadingTheirProperties() {
         var valid = RunningHubDefinition.parse(mapper, schema(), Task.Kind.IMAGE_GENERATION);
         var invalid = new RunningHubDefinition(valid.schemaVersion(), valid.protocolVersion(), valid.targetType(),
-                valid.targetId(), valid.fields(), valid.fixedBindings(), java.util.Arrays.asList((RunningHubDefinition.Output) null),
+                valid.targetId(), valid.fields(), valid.fixedBindings(),
+                java.util.Arrays.asList((RunningHubDefinition.Output) null),
                 valid.instanceType(), valid.usePersonalQueue(), valid.addMetadata(), valid.retainSeconds(),
                 valid.sourceSha256(), valid.nodeOptions(), valid.importSource());
         assertThatThrownBy(() -> invalid.validate(Task.Kind.IMAGE_GENERATION))
                 .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class).hasMessageContaining("输出映射");
     }
 
-    @Test void outputKindAndMissingPrimaryCannotBePublished() {
-        assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema(), Task.Kind.VIDEO_GENERATION)).hasMessageContaining("主输出");
-        var schema = schema(); ((ObjectNode) schema.path("outputs").get(0)).put("primary", false);
-        assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION)).hasMessageContaining("主输出");
+    @Test
+    void outputKindAndMissingPrimaryCannotBePublished() {
+        assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema(), Task.Kind.VIDEO_GENERATION))
+                .hasMessageContaining("主输出");
+        var schema = schema();
+        ((ObjectNode) schema.path("outputs").get(0)).put("primary", false);
+        assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION))
+                .hasMessageContaining("主输出");
     }
-    @Test void optionalNodeCatalogIsBoundedAndNeverRestrictsLegacyOutputMappings() {
+    @Test
+    void optionalNodeCatalogIsBoundedAndNeverRestrictsLegacyOutputMappings() {
         var schema = schema();
         assertThat(RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION).nodeOptions()).isNull();
         var nodes = schema.putArray("nodeOptions");
@@ -186,11 +219,13 @@ class RunningHubDefinitionTest {
                     .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
         }
         nodes = schema.putArray("nodeOptions");
-        for (int index = 0; index <= RunningHubDefinition.MAX_NODE_OPTIONS; index++) nodes.addObject().put("nodeId", Integer.toString(index)).put("label", "节点");
+        for (int index = 0; index <= RunningHubDefinition.MAX_NODE_OPTIONS; index++)
+            nodes.addObject().put("nodeId", Integer.toString(index)).put("label", "节点");
         assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION))
                 .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
     }
-    @Test void importSourceIsCredentialCheckedBoundedAndExcludedFromExecutionSnapshots() {
+    @Test
+    void importSourceIsCredentialCheckedBoundedAndExcludedFromExecutionSnapshots() {
         var schema = schema();
         var source = mapper.readTree("{\"3\":{\"class_type\":\"Sampler\",\"inputs\":{\"denoise\":0.5}}}");
         schema.set("importSource", source);
@@ -206,12 +241,14 @@ class RunningHubDefinitionTest {
             assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION))
                     .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
         }
-        schema.set("importSource", mapper.createObjectNode().put("large", "x".repeat(RunningHubDefinition.MAX_IMPORT_SOURCE_BYTES)));
+        schema.set("importSource",
+                mapper.createObjectNode().put("large", "x".repeat(RunningHubDefinition.MAX_IMPORT_SOURCE_BYTES)));
         assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION))
                 .hasMessageContaining("大小上限");
     }
 
-    @Test void overlappingOutputsAndCombinedLimitsCannotBePublished() {
+    @Test
+    void overlappingOutputsAndCombinedLimitsCannotBePublished() {
         var overlapping = schema();
         ((tools.jackson.databind.node.ArrayNode) overlapping.path("outputs")).addObject()
                 .put("nodeId", "9").put("kind", "IMAGE").put("primary", false).put("maxCount", 1);
@@ -225,54 +262,70 @@ class RunningHubDefinitionTest {
                 .hasMessageContaining("合计");
     }
 
-    @Test void numericEnumsAndConditionsSurviveBrowserJsonNumberNormalization() {
+    @Test
+    void numericEnumsAndConditionsSurviveBrowserJsonNumberNormalization() {
         var schema = schema();
         var field = (ObjectNode) schema.path("fields").get(0);
         field.put("type", "SELECT").put("defaultValue", 1.0);
-        var options = field.putArray("options"); options.addObject().put("label", "开启").put("value", 1.0);
-        ((ObjectNode) schema.path("fields").get(1)).set("enabledWhen", mapper.readTree("{\"field\":\"strength\",\"value\":1.0}"));
+        var options = field.putArray("options");
+        options.addObject().put("label", "开启").put("value", 1.0);
+        ((ObjectNode) schema.path("fields").get(1)).set("enabledWhen",
+                mapper.readTree("{\"field\":\"strength\",\"value\":1.0}"));
         var definition = RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION);
         var input = mapper.readTree("{\"dynamicValues\":{\"strength\":1}}");
         assertThat(definition.values(mapper, input, "", null, false).path("strength").asInt()).isEqualTo(1);
         assertThatThrownBy(() -> definition.values(mapper, input, "", null, true)).hasMessageContaining("人物图");
         options.addObject().put("label", "重复数字").put("value", 1);
-        assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION)).hasMessageContaining("重复");
+        assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION))
+                .hasMessageContaining("重复");
     }
 
-    @Test void reviewedYzWorkflowUsesItsOwnBindingsAndKeepsBothSamplingStagesConsistent() throws Exception {
+    @Test
+    void reviewedYzWorkflowUsesItsOwnBindingsAndKeepsBothSamplingStagesConsistent() throws Exception {
         try (var input = getClass().getResourceAsStream("/runninghub/yz-minimax-h3-workflow-settings.json")) {
             assertThat(input).isNotNull();
-            var definition = RunningHubDefinition.parse(mapper, mapper.readTree(input).path("runningHub"), Task.Kind.VIDEO_GENERATION);
+            var definition = RunningHubDefinition.parse(mapper, mapper.readTree(input).path("runningHub"),
+                    Task.Kind.VIDEO_GENERATION);
             assertThat(definition.targetType()).isEqualTo(RunningHubDefinition.TargetType.WORKFLOW);
             assertThat(definition.targetId()).isEqualTo("2093983063180054529");
-            assertThat(definition.fields()).anyMatch(field -> field.key().equals("prompt") && field.nodeId().equals("263") && field.fieldName().equals("text"));
-            var parameters = mapper.readTree("{\"dynamicValues\":{\"reference\":\"a07a49a9-cca1-4730-92ee-b6c3c7c8ab94\"}}");
+            assertThat(definition.fields()).anyMatch(field -> field.key().equals("prompt")
+                    && field.nodeId().equals("263") && field.fieldName().equals("text"));
+            var parameters = mapper
+                    .readTree("{\"dynamicValues\":{\"reference\":\"a07a49a9-cca1-4730-92ee-b6c3c7c8ab94\"}}");
             var values = definition.values(mapper, parameters, "Synthetic geometry in a studio", 5, true);
             assertThat(values.path("megapixels").decimalValue()).isEqualByComparingTo("0.2");
             assertThat(values.path("upscale").decimalValue()).isEqualByComparingTo("1");
-            assertThat(definition.fixedBindings()).anyMatch(binding -> binding.nodeId().equals("261") && binding.value().asInt() == 12);
-            assertThat(definition.fixedBindings()).anyMatch(binding -> binding.nodeId().equals("289") && binding.value().asInt() == 8);
+            assertThat(definition.fixedBindings())
+                    .anyMatch(binding -> binding.nodeId().equals("261") && binding.value().asInt() == 12);
+            assertThat(definition.fixedBindings())
+                    .anyMatch(binding -> binding.nodeId().equals("289") && binding.value().asInt() == 8);
             assertThat(definition.outputs()).anyMatch(output -> output.primary() && output.nodeId().equals("214"));
             assertThat(definition.retainSeconds()).isNull();
         }
     }
 
-    @Test void reviewedMinimaxAppContractResolvesLowCostDefaultsAndDisablesUnusedSampleReferences() throws Exception {
+    @Test
+    void reviewedMinimaxAppContractResolvesLowCostDefaultsAndDisablesUnusedSampleReferences() throws Exception {
         try (var input = getClass().getResourceAsStream("/runninghub/minimax-h3-app-settings.json")) {
             assertThat(input).isNotNull();
-            var definition = RunningHubDefinition.parse(mapper, mapper.readTree(input).path("runningHub"), Task.Kind.VIDEO_GENERATION);
+            var definition = RunningHubDefinition.parse(mapper, mapper.readTree(input).path("runningHub"),
+                    Task.Kind.VIDEO_GENERATION);
             assertThat(definition.targetId()).isEqualTo("2084320751339032577");
-            var parameters = mapper.readTree("{\"dynamicValues\":{\"reference\":\"a07a49a9-cca1-4730-92ee-b6c3c7c8ab94\"}}");
+            var parameters = mapper
+                    .readTree("{\"dynamicValues\":{\"reference\":\"a07a49a9-cca1-4730-92ee-b6c3c7c8ab94\"}}");
             var values = definition.values(mapper, parameters, "Synthetic geometry in a studio", 5, true);
             assertThat(values.path("megapixels").decimalValue()).isEqualByComparingTo("0.2");
             assertThat(values.path("seconds").asInt()).isEqualTo(5);
             assertThat(values.path("steps").asInt()).isEqualTo(8);
             assertThat(values.path("aspectRatio").asText()).isEqualTo("16:9 (Widescreen)");
-            assertThat(definition.fixedBindings().stream().filter(binding -> binding.fieldName().equals("image") || binding.fieldName().equals("audio")))
+            assertThat(definition.fixedBindings().stream()
+                    .filter(binding -> binding.fieldName().equals("image") || binding.fieldName().equals("audio")))
                     .hasSize(8).allMatch(binding -> binding.value().asText().equals("None"));
-            assertThat(definition.fixedBindings()).anyMatch(binding -> binding.nodeId().equals("158") && !binding.value().asBoolean());
+            assertThat(definition.fixedBindings())
+                    .anyMatch(binding -> binding.nodeId().equals("158") && !binding.value().asBoolean());
             assertThat(definition.retainSeconds()).isNull();
-            assertThatThrownBy(() -> definition.values(mapper, parameters, "Synthetic geometry in a studio", 4, true)).hasMessageContaining("时长");
+            assertThatThrownBy(() -> definition.values(mapper, parameters, "Synthetic geometry in a studio", 4, true))
+                    .hasMessageContaining("时长");
         }
     }
 }

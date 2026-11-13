@@ -21,12 +21,16 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/settings/media-functions")
 public class MediaFunctionController {
     private final MediaFunctionService functions;
-    public MediaFunctionController(MediaFunctionService functions) { this.functions = functions; }
+    public MediaFunctionController(MediaFunctionService functions) {
+        this.functions = functions;
+    }
 
     @GetMapping
     public List<FunctionResponse> list(@AuthenticationPrincipal AdminPrincipal admin) {
         Objects.requireNonNull(admin);
-        return functions.list().stream().map(setting -> new FunctionResponse(setting.operation(), setting.capabilityId(), setting.version())).toList();
+        return functions.list().stream()
+                .map(setting -> new FunctionResponse(setting.operation(), setting.capabilityId(), setting.version()))
+                .toList();
     }
 
     @PutMapping("/{operation}")
@@ -34,10 +38,14 @@ public class MediaFunctionController {
             @PathVariable MediaFunction operation, @Valid @RequestBody UpdateRequest request) {
         Objects.requireNonNull(admin);
         functions.update(operation, request.expectedVersion(), request.capabilityId());
-        return functions.list().stream().map(setting -> new FunctionResponse(setting.operation(), setting.capabilityId(), setting.version())).toList();
+        return functions.list().stream()
+                .map(setting -> new FunctionResponse(setting.operation(), setting.capabilityId(), setting.version()))
+                .toList();
     }
 
-    public record FunctionResponse(MediaFunction operation, UUID capabilityId, long version) {}
+    public record FunctionResponse(MediaFunction operation, UUID capabilityId, long version) {
+    }
 
-    public record UpdateRequest(@PositiveOrZero long expectedVersion, UUID capabilityId) {}
+    public record UpdateRequest(@PositiveOrZero long expectedVersion, UUID capabilityId) {
+    }
 }

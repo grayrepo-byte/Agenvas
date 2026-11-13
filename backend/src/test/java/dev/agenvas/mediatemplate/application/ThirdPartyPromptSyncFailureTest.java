@@ -27,26 +27,35 @@ class ThirdPartyPromptSyncFailureTest {
     private final ThirdPartyPromptHttpClient http = mock(ThirdPartyPromptHttpClient.class);
     private final ThirdPartyPromptAdapter adapter = mock(ThirdPartyPromptAdapter.class);
     private final ThirdPartyPromptSyncSettingsService settings = mock(ThirdPartyPromptSyncSettingsService.class);
-    private final ThirdPartyPromptSource source = new ThirdPartyPromptSource("fixture", "Synthetic source", TargetKind.IMAGE,
+    private final ThirdPartyPromptSource source = new ThirdPartyPromptSource("fixture", "Synthetic source",
+            TargetKind.IMAGE,
             Format.NATIVE_JSON, "https://example.com/feed", "", true, 0, now, now.minusSeconds(60), null, 7, false);
 
-    @Test void recordsKnownDownloadCategoriesWithoutUpstreamDetailsOrCacheWrites() {
+    @Test
+    void recordsKnownDownloadCategoriesWithoutUpstreamDetailsOrCacheWrites() {
         for (FailureReason reason : FailureReason.values()) {
-            verifyFailure(new DownloadFailure(reason, new IllegalStateException("PRIVATE URL/ERROR BODY")), "THIRD_PARTY_SOURCE_" + reason.name());
+            verifyFailure(new DownloadFailure(reason, new IllegalStateException("PRIVATE URL/ERROR BODY")),
+                    "THIRD_PARTY_SOURCE_" + reason.name());
             clearInvocations(repository, settings);
         }
     }
 
-    @Test void recordsValidationAndMalformedJsonWithoutGuessingHistoricalSourceFailure() {
+    @Test
+    void recordsValidationAndMalformedJsonWithoutGuessingHistoricalSourceFailure() {
         verifyFailure(ThirdPartyPromptValidation.invalid(), "THIRD_PARTY_SOURCE_INVALID_DATA");
         clearInvocations(repository, settings);
         RuntimeException malformed;
-        try { new ObjectMapper().readTree("not JSON"); throw new AssertionError("Expected malformed synthetic feed"); }
-        catch (RuntimeException failure) { malformed = failure; }
+        try {
+            new ObjectMapper().readTree("not JSON");
+            throw new AssertionError("Expected malformed synthetic feed");
+        } catch (RuntimeException failure) {
+            malformed = failure;
+        }
         verifyFailure(malformed, "THIRD_PARTY_SOURCE_INVALID_DATA");
     }
 
-    @Test void unexpectedFailureRetainsLegacyGenericCategoryRatherThanExceptionProse() {
+    @Test
+    void unexpectedFailureRetainsLegacyGenericCategoryRatherThanExceptionProse() {
         verifyFailure(new IllegalStateException("PRIVATE INTERNAL DETAILS"), "THIRD_PARTY_SYNC_FAILED");
     }
 
@@ -62,6 +71,8 @@ class ThirdPartyPromptSyncFailureTest {
             verify(repository).finish(eq(source.id()), any(), eq(now), eq(code));
             verify(repository, never()).upsert(any(), any(), any());
             verifyNoInteractions(settings); // Explicit manual sync does not silently enable automatic downloads.
-        } finally { service.close(); }
+        } finally {
+            service.close();
+        }
     }
 }

@@ -45,9 +45,18 @@ public class AudioTrimService {
             CanvasItemQueryService items, CanvasService canvas, MediaDraftService drafts,
             ProjectService projects, MediaCapabilityService catalog, ProjectEventService events,
             UsageService usage, ObjectMapper mapper, Clock clock, CreationMessages creationMessages) {
-        this.tasks = tasks; this.artifacts = artifacts; this.assets = assets; this.items = items;
-        this.canvas = canvas; this.drafts = drafts; this.projects = projects; this.catalog = catalog;
-        this.events = events; this.usage = usage; this.mapper = mapper; this.clock = clock;
+        this.tasks = tasks;
+        this.artifacts = artifacts;
+        this.assets = assets;
+        this.items = items;
+        this.canvas = canvas;
+        this.drafts = drafts;
+        this.projects = projects;
+        this.catalog = catalog;
+        this.events = events;
+        this.usage = usage;
+        this.mapper = mapper;
+        this.clock = clock;
         this.creationMessages = creationMessages;
     }
 
@@ -61,7 +70,8 @@ public class AudioTrimService {
     public Task runFromAgent(UUID ownerId, UUID projectId, UUID artifactId, UUID canvasItemId,
             UUID sourceVersionId, long expectedCanvasItemVersion, AudioTrimParameters parameters,
             String commandKey, UUID runId, UUID operationId) {
-        if (runId == null || operationId == null) throw AudioTrimParameters.invalid();
+        if (runId == null || operationId == null)
+            throw AudioTrimParameters.invalid();
         return accept(ownerId, projectId, artifactId, canvasItemId, sourceVersionId,
                 expectedCanvasItemVersion, parameters, commandKey, runId, operationId);
     }
@@ -76,8 +86,9 @@ public class AudioTrimService {
                 .put("canvasItemId", canvasItemId.toString()).put("sourceVersionId", sourceVersionId.toString())
                 .put("expectedCanvasItemVersion", expectedCanvasItemVersion);
         request.set("parameters", parameters.toJson(mapper));
-        if (runId != null) request.putObject("agentLocalOrigin").put("runId", runId.toString())
-                .put("operationId", operationId.toString());
+        if (runId != null)
+            request.putObject("agentLocalOrigin").put("runId", runId.toString())
+                    .put("operationId", operationId.toString());
         return events.recordChange(ownerId, projectId, () -> {
             projects.requireActiveProject(ownerId, projectId);
             Task prior = tasks.findDirectByStepKey(ownerId, projectId, commandKey).orElse(null);
@@ -95,11 +106,13 @@ public class AudioTrimService {
                     || !sourceVersionId.equals(sourceItem.selectedVersionId()))
                 throw conflict("DIRECT_MEDIA_CONFLICT", ApiMessage.of("api.media-function.source-changed"));
             var source = artifacts.requireMediaVersionForTask(ownerId, projectId, sourceVersionId, Artifact.Kind.AUDIO);
-            if (!artifactId.equals(source.artifactId())) throw AudioTrimParameters.invalid();
+            if (!artifactId.equals(source.artifactId()))
+                throw AudioTrimParameters.invalid();
             var asset = assets.metadata(ownerId, projectId, UUID.fromString(source.content().path("assetId").asText()));
             parameters.requireSource(asset);
             var binding = catalog.resolve(CAPABILITY_ID, Task.Kind.AUDIO_GENERATION, 0);
-            if (runId != null && !dev.agenvas.provider.domain.MediaAdapterRegistry.LOCAL_AUDIO_TRIMMER.equals(binding.adapterId()))
+            if (runId != null && !dev.agenvas.provider.domain.MediaAdapterRegistry.LOCAL_AUDIO_TRIMMER
+                    .equals(binding.adapterId()))
                 throw AudioTrimParameters.invalid();
             var sourceDraft = drafts.get(ownerId, projectId, canvasItemId);
             String resultLabel = creationMessages.text(ApiMessage.of("creation.audio.trim"));
@@ -115,25 +128,31 @@ public class AudioTrimService {
                     .put("prompt", resultLabel).put("sourceDurationMs", asset.durationMs())
                     .put("workflowVersion", binding.adapterId() + ":" + binding.mappingSha256());
             input.set("audioTrimRequest", request);
-            if (runId != null) input.set("agentLocalOrigin", request.path("agentLocalOrigin"));
+            if (runId != null)
+                input.set("agentLocalOrigin", request.path("agentLocalOrigin"));
             input.putObject("audioTrim").put("sourceVersionId", sourceVersionId.toString())
                     .set("parameters", parameters.toJson(mapper));
             var frozen = input.putObject("mediaInput");
             frozen.put("mode", "GENERAL_REFERENCE").put("prompt", resultLabel).put("renderedPrompt", resultLabel)
-                    .put("capabilityId", binding.capabilityId().toString()).put("capabilityVersion", binding.capabilityVersion());
+                    .put("capabilityId", binding.capabilityId().toString())
+                    .put("capabilityVersion", binding.capabilityVersion());
             frozen.set("parameters", parameters.toJson(mapper));
-            frozen.putArray("images"); frozen.putArray("videos"); frozen.putArray("mentions");
+            frozen.putArray("images");
+            frozen.putArray("videos");
+            frozen.putArray("mentions");
             frozen.putArray("audios").addObject().put("artifactId", artifactId.toString())
                     .put("versionId", sourceVersionId.toString()).put("role", "AUDIO_REFERENCE").put("order", 0);
             var now = clock.instant();
             Task task = new Task(UUID.randomUUID(), projectId, null, commandKey, Task.Kind.AUDIO_GENERATION,
                     Task.Status.READY, false, input, Sha256.hex(input.toString()), null, null, 1,
                     now, null, null, 0, 0, null, now, now, null);
-            tasks.create(task); tasks.bindMediaTask(task.id(), binding);
+            tasks.create(task);
+            tasks.bindMediaTask(task.id(), binding);
             tasks.createArtifactTarget(new TaskRepository.ArtifactTarget(task.id(), projectId,
                     target.id(), output.selectedVersionId(), target.version(), output.id()));
             usage.reserveMediaTask(ownerId, task, "LOCAL_NO_COST", binding.connectionVersion());
-            var payload = mapper.createObjectNode().put("taskId", task.id().toString()).put("artifactId", target.id().toString())
+            var payload = mapper.createObjectNode().put("taskId", task.id().toString())
+                    .put("artifactId", target.id().toString())
                     .put("canvasItemId", output.id().toString()).put("sourceCanvasItemId", canvasItemId.toString())
                     .put("status", task.status().name());
             events.append(ownerId, projectId, new ProjectEventService.EventDraft("task.status.changed", 1,

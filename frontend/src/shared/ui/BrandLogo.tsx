@@ -10,14 +10,26 @@ const LOGO_ASSETS = {
 } satisfies Record<BrandLogoVariant, { src: string; width: number; height: number }>;
 
 /** Use decorative logos when the enclosing link already names its destination. */
-export function BrandLogo({ variant = "horizontal", decorative = false, className = "" }: {
+export function BrandLogo({
+  variant = "horizontal",
+  decorative = false,
+  className = "",
+}: {
   variant?: BrandLogoVariant;
   decorative?: boolean;
   className?: string;
 }) {
   const asset = LOGO_ASSETS[variant];
-  return <span className={`brand-logo brand-logo--${variant} ${className}`}>
-    <img src={asset.src} alt={decorative ? "" : "agenvas"} width={asset.width} height={asset.height}
-      draggable={false} decoding="async" />
-  </span>;
+  return (
+    <span className={`brand-logo brand-logo--${variant} ${className}`}>
+      <img
+        src={asset.src}
+        alt={decorative ? "" : "agenvas"}
+        width={asset.width}
+        height={asset.height}
+        draggable={false}
+        decoding="async"
+      />
+    </span>
+  );
 }

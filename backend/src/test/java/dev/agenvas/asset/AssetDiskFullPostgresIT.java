@@ -72,22 +72,34 @@ class AssetDiskFullPostgresIT {
         properties.add("agenvas.storage.root", STORAGE_ROOT::toString);
     }
 
-    @Autowired private dev.agenvas.task.application.TaskRepository taskRepository;
+    @Autowired
+    private dev.agenvas.task.application.TaskRepository taskRepository;
 
     @Autowired
     private dev.agenvas.audit.application.CallLogService callLogs;
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private AgentRunService runs;
-    @Autowired private TaskService tasks;
-    @Autowired private AssetService assets;
-    @Autowired private ArtifactService artifacts;
-    @Autowired private FaultingStorage storage;
-    @Autowired private MediaToolRunner mediaTools;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private ObjectMapper mapper;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private AgentInstanceService agents;
+    @Autowired
+    private AgentRunService runs;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private AssetService assets;
+    @Autowired
+    private ArtifactService artifacts;
+    @Autowired
+    private FaultingStorage storage;
+    @Autowired
+    private MediaToolRunner mediaTools;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private ObjectMapper mapper;
 
     /** A failed archive cannot claim success and its original Provider ID remains retryable. */
     @Test
@@ -100,7 +112,9 @@ class AssetDiskFullPostgresIT {
                 "Create image", "disk-full-run").run();
         runs.transition(owner.userId(), project.id(), run.id(), run.version(),
                 AgentRun.Status.RUNNING);
-        Task task = dev.agenvas.task.application.TaskMediaFixture.create(tasks, taskRepository, artifacts, owner.userId(), project.id(), run.id(), "image", Task.Kind.IMAGE_GENERATION, mapper.createObjectNode(), artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
+        Task task = dev.agenvas.task.application.TaskMediaFixture.create(tasks, taskRepository, artifacts,
+                owner.userId(), project.id(), run.id(), "image", Task.Kind.IMAGE_GENERATION, mapper.createObjectNode(),
+                artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
                         "Disk image", null).artifact().id());
         Task lease = tasks.claimDue("disk-submitter", 1).getFirst();
         tasks.beginSubmission(lease, "disk-submitter");
@@ -112,8 +126,8 @@ class AssetDiskFullPostgresIT {
         byte[] image = png();
         storage.failNextIngestWrite();
         TaskWorker worker = new TaskWorker(tasks, callLogs);
-        assertThat(worker.runProviderPollsOnce("disk-poller", 1, poll ->
-                generated(owner.userId(), project.id(), poll, image))).isEqualTo(1);
+        assertThat(worker.runProviderPollsOnce("disk-poller", 1,
+                poll -> generated(owner.userId(), project.id(), poll, image))).isEqualTo(1);
         Task afterFailure = tasks.get(owner.userId(), project.id(), task.id());
         assertThat(afterFailure.status()).isEqualTo(Task.Status.WAITING_PROVIDER);
         assertThat(afterFailure.providerRequestId()).isEqualTo(requestId);
@@ -121,7 +135,7 @@ class AssetDiskFullPostgresIT {
         assertThat(jdbc.sql("select count(*) from asset where project_id = :projectId")
                 .param("projectId", project.id()).query(Integer.class).single()).isZero();
         assertThat(jdbc.sql("select count(*) from project_event where project_id = :projectId "
-                        + "and type = 'asset.ready'")
+                + "and type = 'asset.ready'")
                 .param("projectId", project.id()).query(Integer.class).single()).isZero();
         assertThat(jdbc.sql("select count(*) from provider_attempt where task_id = :taskId")
                 .param("taskId", task.id()).query(Integer.class).single()).isEqualTo(1);
@@ -132,8 +146,8 @@ class AssetDiskFullPostgresIT {
         }
 
         due(task.id());
-        assertThat(worker.runProviderPollsOnce("disk-poller", 1, poll ->
-                generated(owner.userId(), project.id(), poll, image))).isEqualTo(1);
+        assertThat(worker.runProviderPollsOnce("disk-poller", 1,
+                poll -> generated(owner.userId(), project.id(), poll, image))).isEqualTo(1);
         Task completed = tasks.get(owner.userId(), project.id(), task.id());
         assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
         assertThat(completed.providerRequestId()).isEqualTo(requestId);

@@ -28,7 +28,8 @@ class LocalServiceDiscoveryServiceTest {
     private final LocalServiceProbe probe = mock(LocalServiceProbe.class);
     private final MutableClock clock = new MutableClock();
 
-    @Test void foundServicesCanBeSelectedWithoutAddressPermissionSwitches() throws Exception {
+    @Test
+    void foundServicesCanBeSelectedWithoutAddressPermissionSwitches() throws Exception {
         when(probe.runtime()).thenReturn(Runtime.NATIVE);
         when(probe.discover(eq(Service.OLLAMA), eq(Runtime.NATIVE), any(), any()))
                 .thenReturn(found("http://127.0.0.1:11434/v1", "127.0.0.1"));
@@ -46,7 +47,8 @@ class LocalServiceDiscoveryServiceTest {
         }
     }
 
-    @Test void completedProbesImmediatelyReleaseCapacityForTheNextAcceptedRequest() {
+    @Test
+    void completedProbesImmediatelyReleaseCapacityForTheNextAcceptedRequest() {
         when(probe.runtime()).thenReturn(Runtime.NATIVE);
         when(probe.discover(any(), any(), any(), any()))
                 .thenReturn(new LocalServiceProbe.Detected(Status.NOT_FOUND, null, null));
@@ -59,7 +61,8 @@ class LocalServiceDiscoveryServiceTest {
         verify(probe, times(500)).discover(any(), any(), any(), any());
     }
 
-    @Test void failedProbeReleasesCapacityBeforePublishingItsFailure() {
+    @Test
+    void failedProbeReleasesCapacityBeforePublishingItsFailure() {
         when(probe.runtime()).thenReturn(Runtime.NATIVE);
         when(probe.discover(any(), any(), any(), any()))
                 .thenThrow(new IllegalStateException("synthetic probe failure"))
@@ -73,7 +76,8 @@ class LocalServiceDiscoveryServiceTest {
         }
     }
 
-    @Test void defaultPrivateHttpAllowsThePinnedContainerCandidate() throws Exception {
+    @Test
+    void defaultPrivateHttpAllowsThePinnedContainerCandidate() throws Exception {
         when(probe.runtime()).thenReturn(Runtime.CONTAINER);
         when(probe.discover(eq(Service.OLLAMA), eq(Runtime.CONTAINER), any(), any()))
                 .thenReturn(found("http://host.docker.internal:11434/v1", "192.168.65.254"));
@@ -82,7 +86,8 @@ class LocalServiceDiscoveryServiceTest {
         }
     }
 
-    @Test void timedOutUninterruptibleResolverRetainsActualWorkerCapacity() throws Exception {
+    @Test
+    void timedOutUninterruptibleResolverRetainsActualWorkerCapacity() throws Exception {
         when(probe.runtime()).thenReturn(Runtime.CONTAINER);
         CountDownLatch started = new CountDownLatch(1), release = new CountDownLatch(1), exited = new CountDownLatch(1);
         AtomicBoolean workerInterrupted = new AtomicBoolean();
@@ -90,10 +95,16 @@ class LocalServiceDiscoveryServiceTest {
             started.countDown();
             try {
                 boolean done = false;
-                while (!done) try { done = release.await(2, TimeUnit.SECONDS); }
-                catch (InterruptedException ignored) { workerInterrupted.set(true); }
+                while (!done)
+                    try {
+                        done = release.await(2, TimeUnit.SECONDS);
+                    } catch (InterruptedException ignored) {
+                        workerInterrupted.set(true);
+                    }
                 return new LocalServiceProbe.Detected(Status.UNRESOLVED, null, null);
-            } finally { exited.countDown(); }
+            } finally {
+                exited.countDown();
+            }
         });
         try (var service = service(Duration.ofMillis(100))) {
             assertThat(service.discover(Service.OLLAMA).status()).isEqualTo(Status.TIMEOUT);
@@ -104,12 +115,16 @@ class LocalServiceDiscoveryServiceTest {
             release.countDown();
             assertThat(exited.await(1, TimeUnit.SECONDS)).isTrue();
             assertThat(workerInterrupted).isFalse();
-        } finally { release.countDown(); }
+        } finally {
+            release.countDown();
+        }
     }
 
-    @Test void enforcesRequestIntervalAndDeploymentDisableWithoutNetwork() {
+    @Test
+    void enforcesRequestIntervalAndDeploymentDisableWithoutNetwork() {
         when(probe.runtime()).thenReturn(Runtime.NATIVE);
-        when(probe.discover(any(), any(), any(), any())).thenReturn(new LocalServiceProbe.Detected(Status.NOT_FOUND, null, null));
+        when(probe.discover(any(), any(), any(), any()))
+                .thenReturn(new LocalServiceProbe.Detected(Status.NOT_FOUND, null, null));
         try (var service = service(Duration.ofSeconds(1))) {
             assertThat(service.discover(Service.OLLAMA).status()).isEqualTo(Status.NOT_FOUND);
             assertBusy(() -> service.discover(Service.OLLAMA));
@@ -117,7 +132,8 @@ class LocalServiceDiscoveryServiceTest {
         reset(probe);
         try (var disabled = new LocalServiceDiscoveryService(new LocalServiceDiscoveryProperties(false,
                 LocalServiceDiscoveryProperties.Mode.AUTO), probe, clock)) {
-            assertThatThrownBy(() -> disabled.discover(Service.OLLAMA)).isInstanceOfSatisfying(ApiProblemException.class,
+            assertThatThrownBy(() -> disabled.discover(Service.OLLAMA)).isInstanceOfSatisfying(
+                    ApiProblemException.class,
                     failure -> assertThat(failure.status()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE));
             verifyNoInteractions(probe);
         }
@@ -136,9 +152,20 @@ class LocalServiceDiscoveryServiceTest {
     }
     private static final class MutableClock extends Clock {
         private final AtomicLong millis = new AtomicLong(10000);
-        void advance() { millis.addAndGet(2000); }
-        @Override public ZoneId getZone() { return ZoneOffset.UTC; }
-        @Override public Clock withZone(ZoneId zone) { return this; }
-        @Override public Instant instant() { return Instant.ofEpochMilli(millis.get()); }
+        void advance() {
+            millis.addAndGet(2000);
+        }
+        @Override
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return this;
+        }
+        @Override
+        public Instant instant() {
+            return Instant.ofEpochMilli(millis.get());
+        }
     }
 }

@@ -33,15 +33,13 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 /** PostgreSQL integration evidence for migrations and one-time setup arbitration. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(
-        classes = AgenvasApplication.class)
+@SpringBootTest(classes = AgenvasApplication.class)
 class IdentityPostgresIT {
 
     private static final int CONCURRENT_ATTEMPTS = 20;
 
     @Container
-    static final PostgreSQLContainer POSTGRES =
-            new PostgreSQLContainer("postgres:17.11-alpine");
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
 
     @DynamicPropertySource
     static void postgresProperties(DynamicPropertyRegistry properties) {
@@ -62,8 +60,8 @@ class IdentityPostgresIT {
     @Test
     void emptyDatabaseMigratesAndConcurrentSetupCreatesOneAdministrator() throws Exception {
         assertThat(jdbcClient.sql("select version from flyway_schema_history order by installed_rank desc limit 1")
-                        .query(String.class)
-                        .single())
+                .query(String.class)
+                .single())
                 .isEqualTo(MigrationVersions.latest());
         CountDownLatch start = new CountDownLatch(1);
         List<Future<SetupOutcome>> futures = new ArrayList<>();
@@ -93,8 +91,8 @@ class IdentityPostgresIT {
                     .containsOnly("SETUP_ALREADY_COMPLETED");
         }
         assertThat(jdbcClient.sql("select count(*) from app_user")
-                        .query(Integer.class)
-                        .single())
+                .query(Integer.class)
+                .single())
                 .isEqualTo(1);
 
         UUID ownerId = jdbcClient.sql("select id from app_user")
@@ -159,8 +157,7 @@ class IdentityPostgresIT {
         Project second = projectService.create(ownerId, "Second", Project.AspectRatio.SQUARE_1_1);
         Project third = projectService.create(ownerId, "Third", Project.AspectRatio.SQUARE_1_1);
         ProjectService.ProjectPage firstPage = projectService.list(ownerId, false, null, 2);
-        ProjectService.ProjectPage secondPage =
-                projectService.list(ownerId, false, firstPage.nextCursor(), 2);
+        ProjectService.ProjectPage secondPage = projectService.list(ownerId, false, firstPage.nextCursor(), 2);
         assertThat(firstPage.items()).hasSize(2);
         assertThat(firstPage.nextCursor()).isNotBlank();
         assertThat(secondPage.items()).hasSize(1);
@@ -183,5 +180,6 @@ class IdentityPostgresIT {
         }
     }
 
-    private record SetupOutcome(boolean created, String result) {}
+    private record SetupOutcome(boolean created, String result) {
+    }
 }

@@ -18,7 +18,8 @@ public final class LocalVideoOperationBounds {
     public static final long AUDIO_MAX_BYTES = 500L * 1024 * 1024;
     public static final long AUDIO_MAX_INPUT_PIXELS = 40_000_000;
     public static final long MAX_AUDIO_OUTPUT_BYTES = 50L * 1024 * 1024;
-    private LocalVideoOperationBounds() {}
+    private LocalVideoOperationBounds() {
+    }
 
     public static void require(Asset asset, VideoOperation operation) {
         boolean audio = operation == VideoOperation.EXTRACT_AUDIO;
@@ -28,10 +29,13 @@ public final class LocalVideoOperationBounds {
         if (asset.mediaKind() != Asset.MediaKind.VIDEO || asset.durationMs() == null
                 || asset.durationMs() < 1 || asset.durationMs() > durationLimit
                 || asset.width() == null || asset.height() == null || asset.width() < 1 || asset.height() < 1
-                || (long) asset.width() * asset.height() > pixelLimit || asset.byteSize() < 1 || asset.byteSize() > byteLimit) {
+                || (long) asset.width() * asset.height() > pixelLimit || asset.byteSize() < 1
+                || asset.byteSize() > byteLimit) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "LOCAL_VIDEO_LIMIT_EXCEEDED",
                     ApiMessage.of("api.media-function.title"), audio
-                            ? ApiMessage.of("api.media-function.local-audio-limits") : ApiMessage.of("api.media-function.local-limits"), false);
+                            ? ApiMessage.of("api.media-function.local-audio-limits")
+                            : ApiMessage.of("api.media-function.local-limits"),
+                    false);
         }
     }
 
@@ -39,7 +43,8 @@ public final class LocalVideoOperationBounds {
     public static void requireAudioOutput(Asset asset, AudioExtractionParameters parameters) {
         if (parameters.maximumOutputBytes(asset.durationMs()) > MAX_AUDIO_OUTPUT_BYTES) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "LOCAL_VIDEO_AUDIO_OUTPUT_TOO_LARGE",
-                    ApiMessage.of("api.media-function.title"), ApiMessage.of("api.media-function.local-audio-output-too-large"), false);
+                    ApiMessage.of("api.media-function.title"),
+                    ApiMessage.of("api.media-function.local-audio-output-too-large"), false);
         }
     }
 }

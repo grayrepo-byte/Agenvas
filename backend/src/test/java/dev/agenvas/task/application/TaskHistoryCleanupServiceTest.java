@@ -19,11 +19,14 @@ class TaskHistoryCleanupServiceTest {
     private final ProjectEventService events = mock(ProjectEventService.class);
     private final TaskHistoryCleanupService service = new TaskHistoryCleanupService(tasks, events, new ObjectMapper());
 
-    @Test void emitsVersionedCancellationUsingTheActualProjectOwner() {
+    @Test
+    void emitsVersionedCancellationUsingTheActualProjectOwner() {
         UUID id = UUID.randomUUID(), project = UUID.randomUUID(), owner = UUID.randomUUID();
         Task stopped = mock(Task.class);
-        when(stopped.id()).thenReturn(id); when(stopped.projectId()).thenReturn(project);
-        when(stopped.status()).thenReturn(Task.Status.CANCELED); when(stopped.version()).thenReturn(7L);
+        when(stopped.id()).thenReturn(id);
+        when(stopped.projectId()).thenReturn(project);
+        when(stopped.status()).thenReturn(Task.Status.CANCELED);
+        when(stopped.version()).thenReturn(7L);
         when(tasks.stopForHistoryCleanup(List.of(id), NOW)).thenReturn(List.of(stopped));
         when(tasks.ownerId(id)).thenReturn(Optional.of(owner));
         service.stopFor(List.of(id), NOW);
@@ -36,14 +39,19 @@ class TaskHistoryCleanupServiceTest {
         assertThat(event.getValue().payload().path("status").asText()).isEqualTo("CANCELED");
     }
 
-    @Test void alreadyFinishedUnitsDoNotEmitCancellation() {
+    @Test
+    void alreadyFinishedUnitsDoNotEmitCancellation() {
         when(tasks.stopForHistoryCleanup(List.of(), NOW)).thenReturn(List.of());
-        service.stopFor(List.of(), NOW); verifyNoInteractions(events);
+        service.stopFor(List.of(), NOW);
+        verifyNoInteractions(events);
     }
 
-    @Test void eventFailurePropagatesSoTheCoordinatorCanRollbackTheBatch() {
-        UUID id = UUID.randomUUID(); Task stopped = mock(Task.class);
-        when(stopped.id()).thenReturn(id); when(stopped.projectId()).thenReturn(id);
+    @Test
+    void eventFailurePropagatesSoTheCoordinatorCanRollbackTheBatch() {
+        UUID id = UUID.randomUUID();
+        Task stopped = mock(Task.class);
+        when(stopped.id()).thenReturn(id);
+        when(stopped.projectId()).thenReturn(id);
         when(stopped.status()).thenReturn(Task.Status.CANCELED);
         when(tasks.stopForHistoryCleanup(List.of(id), NOW)).thenReturn(List.of(stopped));
         when(tasks.ownerId(id)).thenReturn(Optional.of(id));

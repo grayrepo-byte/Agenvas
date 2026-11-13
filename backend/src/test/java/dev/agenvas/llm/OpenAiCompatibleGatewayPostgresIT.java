@@ -66,9 +66,12 @@ class OpenAiCompatibleGatewayPostgresIT {
         SERVER.stop(0);
     }
 
-    @Autowired private ChatGateway gateway;
-    @Autowired private ChatModel model;
-    @Autowired private LlmProtocolCodec codec;
+    @Autowired
+    private ChatGateway gateway;
+    @Autowired
+    private ChatModel model;
+    @Autowired
+    private LlmProtocolCodec codec;
 
     @Test
     void actualAdapterPreservesToolIdAcrossCallerDrivenRounds() {
@@ -131,8 +134,10 @@ class OpenAiCompatibleGatewayPostgresIT {
                 JsonNode request = new ObjectMapper().readTree(
                         exchange.getRequestBody().readAllBytes());
                 int call = CALLS.incrementAndGet();
-                if (call == 1) FIRST_REQUEST.set(request);
-                else SECOND_REQUEST.set(request);
+                if (call == 1)
+                    FIRST_REQUEST.set(request);
+                else
+                    SECOND_REQUEST.set(request);
                 String message = call == 1
                         ? "{\"role\":\"assistant\",\"content\":null,\"tool_calls\":[{\"id\":\"call_project_1\",\"type\":\"function\",\"function\":{\"name\":\"read_project_summary\",\"arguments\":\"{}\"}}]}"
                         : "{\"role\":\"assistant\",\"content\":\"Project summary received.\"}";

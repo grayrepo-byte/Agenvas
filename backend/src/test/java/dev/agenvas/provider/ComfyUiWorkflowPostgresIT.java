@@ -87,7 +87,8 @@ import tools.jackson.databind.ObjectMapper;
         "agenvas.llm.scheduler-enabled=false", "agenvas.provider.mode=configured",
         "agenvas.provider.media.scheduler-enabled=false"})
 class ComfyUiWorkflowPostgresIT {
-    @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     private static final String PROXY_PREFIX = "/proxy/synthetic-key";
     private static final long SYNTHETIC_PROMPT_ID_BASE = 2_100_000_000_000_000_000L;
     private static final ConcurrentHashMap<String, JsonNode> GRAPHS = new ConcurrentHashMap<>();
@@ -98,79 +99,123 @@ class ComfyUiWorkflowPostgresIT {
     private static final HttpServer SERVER = server();
     private static final Path STORAGE = storage();
 
-    @DynamicPropertySource static void properties(DynamicPropertyRegistry registry) {
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("agenvas.storage.root", STORAGE::toString);
-        registry.add("agenvas.credentials.master-key-base64", () -> java.util.Base64.getEncoder().encodeToString(new byte[32]));
+        registry.add("agenvas.credentials.master-key-base64",
+                () -> java.util.Base64.getEncoder().encodeToString(new byte[32]));
     }
 
-    @AfterAll static void close() throws IOException {
+    @AfterAll
+    static void close() throws IOException {
         SERVER.stop(0);
         try (var files = Files.walk(STORAGE)) {
-            for (Path path : files.sorted(java.util.Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
+            for (Path path : files.sorted(java.util.Comparator.reverseOrder()).toList())
+                Files.deleteIfExists(path);
         }
     }
 
-    @Autowired IdentityService identities;
-    @Autowired ProjectService projects;
-    @Autowired ArtifactService artifacts;
-    @Autowired AssetService assets;
-    @Autowired MediaToolRunner mediaTools;
-    @Autowired CanvasService canvas;
-    @Autowired MediaDraftService drafts;
-    @Autowired DirectMediaTaskService direct;
-    @Autowired TaskService tasks;
-    @Autowired MediaCapabilityService catalog;
-    @Autowired MediaExecutionWorker worker;
-    @Autowired ObjectMapper mapper;
-    @Autowired JdbcClient jdbc;
-    @Autowired WebApplicationContext context;
-    @Autowired AgentInstanceService agents;
-    @Autowired AgentRunService runs;
-    @Autowired AgentTurnWorker agentWorker;
-    @Autowired ToolExecutionService toolExecutor;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    ProjectService projects;
+    @Autowired
+    ArtifactService artifacts;
+    @Autowired
+    AssetService assets;
+    @Autowired
+    MediaToolRunner mediaTools;
+    @Autowired
+    CanvasService canvas;
+    @Autowired
+    MediaDraftService drafts;
+    @Autowired
+    DirectMediaTaskService direct;
+    @Autowired
+    TaskService tasks;
+    @Autowired
+    MediaCapabilityService catalog;
+    @Autowired
+    MediaExecutionWorker worker;
+    @Autowired
+    ObjectMapper mapper;
+    @Autowired
+    JdbcClient jdbc;
+    @Autowired
+    WebApplicationContext context;
+    @Autowired
+    AgentInstanceService agents;
+    @Autowired
+    AgentRunService runs;
+    @Autowired
+    AgentTurnWorker agentWorker;
+    @Autowired
+    ToolExecutionService toolExecutor;
 
-    @Test void importedGraphsPublishThroughAdminApiExecutePinnedMappingsAndArchiveSelectedOutput() throws Exception {
+    @Test
+    void importedGraphsPublishThroughAdminApiExecutePinnedMappingsAndArchiveSelectedOutput() throws Exception {
         var owner = identities.setup("workflow-admin", "synthetic-password-123");
-        var auth = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
-        var user = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of(new SimpleGrantedAuthority("ROLE_USER"))));
+        var auth = authentication(new UsernamePasswordAuthenticationToken(owner, null,
+                List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+        var user = authentication(
+                new UsernamePasswordAuthenticationToken(owner, null, List.of(new SimpleGrantedAuthority("ROLE_USER"))));
         var mvc = webAppContextSetup(context).apply(springSecurity()).build();
-        var connection = catalog.createConnection("Synthetic ComfyUI", "http://127.0.0.1:" + SERVER.getAddress().getPort() + PROXY_PREFIX);
+        var connection = catalog.createConnection("Synthetic ComfyUI",
+                "http://127.0.0.1:" + SERVER.getAddress().getPort() + PROXY_PREFIX);
         var settings = ComfyWorkflowFixture.settings(mapper, false, true);
         var workflow = settings.withObject("comfyWorkflow");
-        workflow.withObject("graph").putObject("23").put("class_type", "LoadImage").putObject("inputs").put("image", "second.png");
+        workflow.withObject("graph").putObject("23").put("class_type", "LoadImage").putObject("inputs").put("image",
+                "second.png");
         workflow.withObject("graph").withObject("14").withObject("inputs").putArray("secondReference").add("23").add(0);
-        workflow.withArray("bindings").addObject().put("nodeId", "23").put("inputName", "image").put("source", "REFERENCE_IMAGE").put("referenceIndex", 1);
+        workflow.withArray("bindings").addObject().put("nodeId", "23").put("inputName", "image")
+                .put("source", "REFERENCE_IMAGE").put("referenceIndex", 1);
         String previewPath = "/api/v1/settings/media-connections/" + connection.id() + "/comfyui/preview";
-        String importBody = mapper.createObjectNode().put("workflowJson", settings.at("/comfyWorkflow/graph").toString()).toString();
-        mvc.perform(post(previewPath).with(csrf()).contentType("application/json").content(importBody)).andExpect(status().isUnauthorized());
-        mvc.perform(post(previewPath).with(user).with(csrf()).contentType("application/json").content(importBody)).andExpect(status().isForbidden());
-        mvc.perform(post(previewPath).with(auth).with(csrf()).contentType("application/json").content(importBody)).andExpect(status().isOk());
+        String importBody = mapper.createObjectNode()
+                .put("workflowJson", settings.at("/comfyWorkflow/graph").toString()).toString();
+        mvc.perform(post(previewPath).with(csrf()).contentType("application/json").content(importBody))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(post(previewPath).with(user).with(csrf()).contentType("application/json").content(importBody))
+                .andExpect(status().isForbidden());
+        mvc.perform(post(previewPath).with(auth).with(csrf()).contentType("application/json").content(importBody))
+                .andExpect(status().isOk());
         assertThat(GRAPHS).isEmpty();
         assertThat(catalog.capabilities(connection.id())).isEmpty();
         String publishPath = "/api/v1/settings/media-connections/" + connection.id() + "/capabilities";
-        var payload = mapper.createObjectNode().put("name", "Imported image").put("adapterId", "COMFY_IMAGE_V1").set("settings", settings);
-        mvc.perform(post(publishPath).with(auth).with(csrf()).header("Idempotency-Key", "imported-create").contentType("application/json").content(payload.toString())).andExpect(status().isOk());
-        mvc.perform(post(publishPath).with(auth).with(csrf()).header("Idempotency-Key", "imported-create").contentType("application/json").content(payload.toString())).andExpect(status().isOk());
+        var payload = mapper.createObjectNode().put("name", "Imported image").put("adapterId", "COMFY_IMAGE_V1")
+                .set("settings", settings);
+        mvc.perform(post(publishPath).with(auth).with(csrf()).header("Idempotency-Key", "imported-create")
+                .contentType("application/json").content(payload.toString())).andExpect(status().isOk());
+        mvc.perform(post(publishPath).with(auth).with(csrf()).header("Idempotency-Key", "imported-create")
+                .contentType("application/json").content(payload.toString())).andExpect(status().isOk());
         var capability = catalog.capabilities(connection.id()).getFirst();
         assertThat(catalog.capabilities(connection.id())).hasSize(1);
         assertThatThrownBy(() -> catalog.updateCapability(connection.id(), capability.id(), capability.version(),
-                "Model-only edit", true, "COMFY_IMAGE_V1", mapper.createObjectNode().put("checkpoint", "synthetic.safetensors")))
+                "Model-only edit", true, "COMFY_IMAGE_V1",
+                mapper.createObjectNode().put("checkpoint", "synthetic.safetensors")))
                 .isInstanceOf(ApiProblemException.class);
-        assertThat(catalog.candidates(Task.Kind.IMAGE_GENERATION, 0).getFirst().settings().has("comfyWorkflow")).isFalse();
+        assertThat(catalog.candidates(Task.Kind.IMAGE_GENERATION, 0).getFirst().settings().has("comfyWorkflow"))
+                .isFalse();
         payload.put("name", "Different payload");
-        mvc.perform(post(publishPath).with(auth).with(csrf()).header("Idempotency-Key", "imported-create").contentType("application/json").content(payload.toString())).andExpect(status().isConflict());
-        mvc.perform(post(publishPath).with(auth).with(csrf()).header("Idempotency-Key", "old-model-create").contentType("application/json")
-                .content("{\"name\":\"Old model-only\",\"adapterId\":\"COMFY_IMAGE_V1\",\"settings\":{\"checkpoint\":\"synthetic.safetensors\"}}"))
+        mvc.perform(post(publishPath).with(auth).with(csrf()).header("Idempotency-Key", "imported-create")
+                .contentType("application/json").content(payload.toString())).andExpect(status().isConflict());
+        mvc.perform(post(publishPath).with(auth).with(csrf()).header("Idempotency-Key", "old-model-create")
+                .contentType("application/json")
+                .content(
+                        "{\"name\":\"Old model-only\",\"adapterId\":\"COMFY_IMAGE_V1\",\"settings\":{\"checkpoint\":\"synthetic.safetensors\"}}"))
                 .andExpect(status().isUnprocessableEntity());
-        catalog.setDefault(Task.Kind.IMAGE_GENERATION, catalog.defaultVersion(Task.Kind.IMAGE_GENERATION), capability.id());
+        catalog.setDefault(Task.Kind.IMAGE_GENERATION, catalog.defaultVersion(Task.Kind.IMAGE_GENERATION),
+                capability.id());
         var project = projects.create(owner.userId(), "Workflow fixture", Project.AspectRatio.LANDSCAPE_16_9);
         var card = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE, "Image", null);
         UUID item = CanvasMediaFixture.place(canvas, owner.userId(), project.id(), card.artifact().id());
-        var incomplete = CanvasMediaFixture.save(drafts, owner.userId(), project.id(), item, 0, "Mapped prompt", null, null, null);
-        assertThatThrownBy(() -> direct.preflight(owner.userId(), project.id(), card.artifact().id(), item, incomplete.version())).isInstanceOf(ApiProblemException.class);
+        var incomplete = CanvasMediaFixture.save(drafts, owner.userId(), project.id(), item, 0, "Mapped prompt", null,
+                null, null);
+        assertThatThrownBy(
+                () -> direct.preflight(owner.userId(), project.id(), card.artifact().id(), item, incomplete.version()))
+                .isInstanceOf(ApiProblemException.class);
         UUID assetId = ImageAssetFixture.archive(assets, owner.userId(), project.id());
         var content = mapper.createObjectNode().put("assetId", assetId.toString()).put("sourceType", "UPLOAD");
         var reference = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE, "Reference", content);
@@ -179,9 +224,13 @@ class ComfyUiWorkflowPostgresIT {
                 mapper.createObjectNode().put("assetId", secondAsset.toString()).put("sourceType", "UPLOAD"));
         var draft = drafts.save(owner.userId(), project.id(), item, incomplete.version(), "Mapped prompt",
                 mapper.createObjectNode(), null, capability.id(), null, List.of(
-                        new MediaDraftService.SaveMediaInput(reference.resourceDefaultVersion().id(), MediaDraft.InputRole.REFERENCE, "#7C3AED"),
-                        new MediaDraftService.SaveMediaInput(secondReference.resourceDefaultVersion().id(), MediaDraft.InputRole.REFERENCE, "#0EA5E9")), List.of(), null);
-        var task = direct.run(owner.userId(), project.id(), card.artifact().id(), item, draft.version(), "imported-image-run");
+                        new MediaDraftService.SaveMediaInput(reference.resourceDefaultVersion().id(),
+                                MediaDraft.InputRole.REFERENCE, "#7C3AED"),
+                        new MediaDraftService.SaveMediaInput(secondReference.resourceDefaultVersion().id(),
+                                MediaDraft.InputRole.REFERENCE, "#0EA5E9")),
+                List.of(), null);
+        var task = direct.run(owner.userId(), project.id(), card.artifact().id(), item, draft.version(),
+                "imported-image-run");
         assertThat(task.input().at("/mediaInput/providerParameters/height").asInt()).isEqualTo(360);
         assertThat(worker.submitOnce("workflow-submit")).isEqualTo(1);
         var submitted = tasks.get(owner.userId(), project.id(), task.id());
@@ -202,8 +251,10 @@ class ComfyUiWorkflowPostgresIT {
         assertThat(graph.at("/12/inputs/batch_size").asInt()).isEqualTo(1);
         assertThat(UPLOADS).hasValue(2);
         settings.withObject("comfyWorkflow").withObject("graph").withObject("14").withObject("inputs").put("steps", 40);
-        catalog.updateCapability(connection.id(), capability.id(), capability.version(), "Updated image", true, "COMFY_IMAGE_V1", settings);
-        assertThat(catalog.settings(tasks.mediaBinding(task).orElseThrow()).at("/comfyWorkflow/graph/14/inputs/steps").asInt()).isEqualTo(20);
+        catalog.updateCapability(connection.id(), capability.id(), capability.version(), "Updated image", true,
+                "COMFY_IMAGE_V1", settings);
+        assertThat(catalog.settings(tasks.mediaBinding(task).orElseThrow()).at("/comfyWorkflow/graph/14/inputs/steps")
+                .asInt()).isEqualTo(20);
         due(task.id());
         assertThat(worker.pollOnce("workflow-poll")).isEqualTo(1);
         assertThat(tasks.get(owner.userId(), project.id(), task.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
@@ -211,13 +262,15 @@ class ComfyUiWorkflowPostgresIT {
         assertThat(SUBMISSIONS).hasValue(1);
         assertThat(QUERIES).hasValue(1);
 
-        var video = catalog.publishCapability(connection.id(), "Imported video", "COMFY_VIDEO_V1", ComfyWorkflowFixture.settings(mapper, true, false));
+        var video = catalog.publishCapability(connection.id(), "Imported video", "COMFY_VIDEO_V1",
+                ComfyWorkflowFixture.settings(mapper, true, false));
         catalog.setDefault(Task.Kind.VIDEO_GENERATION, catalog.defaultVersion(Task.Kind.VIDEO_GENERATION), video.id());
         var videoCard = artifacts.create(owner.userId(), project.id(), Artifact.Kind.VIDEO, "Video", null);
         UUID videoItem = CanvasMediaFixture.place(canvas, owner.userId(), project.id(), videoCard.artifact().id());
         var videoDraft = drafts.save(owner.userId(), project.id(), videoItem, 0, "Video prompt",
                 mapper.createObjectNode(), 8, video.id(), MediaDraft.VideoInputMode.TEXT, List.of(), List.of(), null);
-        var videoTask = direct.run(owner.userId(), project.id(), videoCard.artifact().id(), videoItem, videoDraft.version(), "imported-video-run");
+        var videoTask = direct.run(owner.userId(), project.id(), videoCard.artifact().id(), videoItem,
+                videoDraft.version(), "imported-video-run");
         assertThat(worker.submitOnce("workflow-video-submit")).isEqualTo(1);
         String videoPrompt = tasks.get(owner.userId(), project.id(), videoTask.id()).providerRequestId();
         assertThat(videoPrompt).isEqualTo(Long.toString(SYNTHETIC_PROMPT_ID_BASE + 2));
@@ -226,7 +279,8 @@ class ComfyUiWorkflowPostgresIT {
         assertThat(UPLOADS).hasValue(2);
         due(videoTask.id());
         assertThat(worker.pollOnce("workflow-video-poll")).isEqualTo(1);
-        assertThat(tasks.get(owner.userId(), project.id(), videoTask.id()).status()).isEqualTo(Task.Status.WAITING_PROVIDER);
+        assertThat(tasks.get(owner.userId(), project.id(), videoTask.id()).status())
+                .isEqualTo(Task.Status.WAITING_PROVIDER);
         assertThat(SUBMISSIONS).hasValue(2);
         assertThat(QUERIES).hasValue(2);
 
@@ -236,10 +290,14 @@ class ComfyUiWorkflowPostgresIT {
         var extendedWorkflow = extendedSettings.withObject("comfyWorkflow");
         extendedWorkflow.withArray("bindings").remove(0);
         extendedWorkflow.withArray("bindings").remove(2); // Expose seed as a scalar instead of random semantic binding.
-        extendedWorkflow.withObject("graph").putObject("23").put("class_type", "LoadImage").putObject("inputs").put("image", "second.png");
-        extendedWorkflow.withObject("graph").withObject("14").withObject("inputs").putArray("secondReference").add("23").add(0);
-        extendedWorkflow.withObject("graph").withObject("14").withObject("inputs").put("lora", "synthetic-lora.safetensors");
-        extendedWorkflow.withArray("bindings").addObject().put("nodeId", "23").put("inputName", "image").put("source", "REFERENCE_IMAGE").put("referenceIndex", 1);
+        extendedWorkflow.withObject("graph").putObject("23").put("class_type", "LoadImage").putObject("inputs")
+                .put("image", "second.png");
+        extendedWorkflow.withObject("graph").withObject("14").withObject("inputs").putArray("secondReference").add("23")
+                .add(0);
+        extendedWorkflow.withObject("graph").withObject("14").withObject("inputs").put("lora",
+                "synthetic-lora.safetensors");
+        extendedWorkflow.withArray("bindings").addObject().put("nodeId", "23").put("inputName", "image")
+                .put("source", "REFERENCE_IMAGE").put("referenceIndex", 1);
         var extendedFields = extendedWorkflow.putArray("parameters");
         extendedFields.addObject().put("key", "stepCount").put("label", "Steps").put("type", "INTEGER")
                 .put("nodeId", "14").put("fieldName", "steps").put("minimum", 1).put("maximum", 50);
@@ -247,32 +305,43 @@ class ComfyUiWorkflowPostgresIT {
                 .put("nodeId", "12").put("fieldName", "seed").put("minimum", 0);
         extendedFields.addObject().put("key", "loraModel").put("label", "LoRA").put("type", "STRING")
                 .put("nodeId", "14").put("fieldName", "lora");
-        var extended = catalog.publishCapability(connection.id(), "Named ComfyUI inputs", "COMFY_IMAGE_V1", extendedSettings);
-        var publicInputs = catalog.publishedCandidates().stream().filter(candidate -> candidate.binding().capabilityId().equals(extended.id()))
+        var extended = catalog.publishCapability(connection.id(), "Named ComfyUI inputs", "COMFY_IMAGE_V1",
+                extendedSettings);
+        var publicInputs = catalog.publishedCandidates().stream()
+                .filter(candidate -> candidate.binding().capabilityId().equals(extended.id()))
                 .findFirst().orElseThrow().settings();
         assertThat(publicInputs.has("comfyWorkflow")).isFalse();
         assertThat(publicInputs.path("comfyInputs")).hasSize(5);
-        assertThat(publicInputs.path("comfyInputs").toString()).doesNotContain("synthetic prompt").doesNotContain("conditioning");
+        assertThat(publicInputs.path("comfyInputs").toString()).doesNotContain("synthetic prompt")
+                .doesNotContain("conditioning");
         var extendedCard = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE, "Named slots", null);
-        UUID extendedItem = CanvasMediaFixture.place(canvas, owner.userId(), project.id(), extendedCard.artifact().id());
+        UUID extendedItem = CanvasMediaFixture.place(canvas, owner.userId(), project.id(),
+                extendedCard.artifact().id());
         var slotParameters = mapper.createObjectNode();
-        slotParameters.putObject("dynamicValues").put("reference_1", reference.resourceDefaultVersion().id().toString());
+        slotParameters.putObject("dynamicValues").put("reference_1",
+                reference.resourceDefaultVersion().id().toString());
         var uniqueReferences = List.of(new MediaDraftService.SaveMediaInput(reference.resourceDefaultVersion().id(),
                 MediaDraft.InputRole.REFERENCE, "#7C3AED"));
         var partial = drafts.save(owner.userId(), project.id(), extendedItem, 0, "", slotParameters,
                 null, extended.id(), null, uniqueReferences, List.of(), null);
-        assertThatThrownBy(() -> direct.preflight(owner.userId(), project.id(), extendedCard.artifact().id(), extendedItem, partial.version()))
+        assertThatThrownBy(() -> direct.preflight(owner.userId(), project.id(), extendedCard.artifact().id(),
+                extendedItem, partial.version()))
                 .isInstanceOf(ApiProblemException.class);
-        slotParameters.withObject("dynamicValues").put("reference_0", reference.resourceDefaultVersion().id().toString())
+        slotParameters.withObject("dynamicValues")
+                .put("reference_0", reference.resourceDefaultVersion().id().toString())
                 .put("stepCount", 12).put("seedValue", 321).put("loraModel", "synthetic-other.safetensors");
         var complete = drafts.save(owner.userId(), project.id(), extendedItem, partial.version(), "", slotParameters,
                 null, extended.id(), null, uniqueReferences, List.of(), null);
         var invalidParameters = slotParameters.deepCopy();
         invalidParameters.withObject("dynamicValues").put("arbitraryTarget", "replacement");
-        assertThatThrownBy(() -> drafts.save(owner.userId(), project.id(), extendedItem, complete.version(), "", invalidParameters,
-                null, extended.id(), null, uniqueReferences, List.of(), null)).isInstanceOf(ApiProblemException.class);
-        var namedTask = direct.run(owner.userId(), project.id(), extendedCard.artifact().id(), extendedItem, complete.version(), "named-comfy-run");
-        assertThat(namedTask.input().at("/mediaInput/providerParameters/dynamicValues/stepCount").asInt()).isEqualTo(12);
+        assertThatThrownBy(
+                () -> drafts.save(owner.userId(), project.id(), extendedItem, complete.version(), "", invalidParameters,
+                        null, extended.id(), null, uniqueReferences, List.of(), null))
+                .isInstanceOf(ApiProblemException.class);
+        var namedTask = direct.run(owner.userId(), project.id(), extendedCard.artifact().id(), extendedItem,
+                complete.version(), "named-comfy-run");
+        assertThat(namedTask.input().at("/mediaInput/providerParameters/dynamicValues/stepCount").asInt())
+                .isEqualTo(12);
         assertThat(namedTask.input().at("/mediaInput/parameters/dynamicValues/seedValue").asInt()).isEqualTo(321);
         slotParameters.withObject("dynamicValues").put("stepCount", 22);
         drafts.save(owner.userId(), project.id(), extendedItem, complete.version(), "", slotParameters,
@@ -291,18 +360,23 @@ class ComfyUiWorkflowPostgresIT {
         due(namedTask.id());
         assertThat(worker.pollOnce("named-comfy-poll")).isEqualTo(1);
         assertThat(tasks.get(owner.userId(), project.id(), namedTask.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
-        assertThat(drafts.get(owner.userId(), project.id(), extendedItem).parameters().at("/dynamicValues/stepCount").asInt()).isEqualTo(22);
+        assertThat(drafts.get(owner.userId(), project.id(), extendedItem).parameters().at("/dynamicValues/stepCount")
+                .asInt()).isEqualTo(22);
 
-        var agent = configureDirector(agents, owner.userId(), project.id(), "Catalog reader", "Read the published media inputs");
-        var queuedRun = runs.create(owner.userId(), project.id(), agent.id(), "List media inputs", "comfy-catalog-run").run();
+        var agent = configureDirector(agents, owner.userId(), project.id(), "Catalog reader",
+                "Read the published media inputs");
+        var queuedRun = runs.create(owner.userId(), project.id(), agent.id(), "List media inputs", "comfy-catalog-run")
+                .run();
         String modelWorker = "comfy-catalog-worker";
-        long mediaTasksBeforeCatalog = jdbc.sql("select count(*) from task where kind <> 'AGENT_TURN'").query(Long.class).single();
+        long mediaTasksBeforeCatalog = jdbc.sql("select count(*) from task where kind <> 'AGENT_TURN'")
+                .query(Long.class).single();
         assertThat(agentWorker.runOnce(modelWorker)).isEqualTo(1); // Commit MEDIA discovery first.
         assertThat(agentWorker.runOnce(modelWorker)).isEqualTo(1); // Read through the exposed catalog tool.
         var trusted = new TrustedToolContext(owner.userId(), project.id(), queuedRun.id());
         JsonNode toolResult = toolExecutor.execute(trusted, 1, "comfy-catalog-call");
         JsonNode listed = java.util.stream.StreamSupport.stream(toolResult.path("capabilities").spliterator(), false)
-                .filter(entry -> entry.path("capabilityId").asText().equals(extended.id().toString())).findFirst().orElseThrow();
+                .filter(entry -> entry.path("capabilityId").asText().equals(extended.id().toString())).findFirst()
+                .orElseThrow();
         assertThat(listed.path("fields")).hasSize(5);
         assertThat(listed.toString()).doesNotContain("\"graph\"").doesNotContain("synthetic prompt")
                 .doesNotContain("filename_prefix").doesNotContain("127.0.0.1");
@@ -310,33 +384,53 @@ class ComfyUiWorkflowPostgresIT {
         assertThat(toolExecutor.execute(trusted, 1, "comfy-catalog-call")).isEqualTo(toolResult);
         assertThat(jdbc.sql("select count(*) from task").query(Long.class).single()).isEqualTo(taskCountBeforeReplay);
         assertThat(agentWorker.runOnce(modelWorker)).isEqualTo(1);
-        assertThat(runs.get(owner.userId(), project.id(), queuedRun.id()).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
-        assertThat(jdbc.sql("select count(*) from task where kind <> 'AGENT_TURN'").query(Long.class).single()).isEqualTo(mediaTasksBeforeCatalog);
+        assertThat(runs.get(owner.userId(), project.id(), queuedRun.id()).status())
+                .isEqualTo(AgentRun.Status.SUCCEEDED);
+        assertThat(jdbc.sql("select count(*) from task where kind <> 'AGENT_TURN'").query(Long.class).single())
+                .isEqualTo(mediaTasksBeforeCatalog);
         assertMixedMediaInputs(owner.userId(), project.id(), connection.id(), reference.resourceDefaultVersion().id());
     }
 
-    @TestConfiguration static class FakeConfig {
-        @Bean @Primary CatalogGateway comfyCatalogGateway() { return new CatalogGateway(); }
+    @TestConfiguration
+    static class FakeConfig {
+        @Bean
+        @Primary
+        CatalogGateway comfyCatalogGateway() {
+            return new CatalogGateway();
+        }
     }
 
     static class CatalogGateway implements ChatGateway {
         private final AtomicInteger turns = new AtomicInteger();
-        @Override public String configSource() { return "synthetic-comfy-catalog"; }
-        @Override public int configVersion() { return 1; }
-        @Override public Capabilities capabilities() { return new Capabilities(true, false, false); }
-        @Override public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context) {
+        @Override
+        public String configSource() {
+            return "synthetic-comfy-catalog";
+        }
+        @Override
+        public int configVersion() {
+            return 1;
+        }
+        @Override
+        public Capabilities capabilities() {
+            return new Capabilities(true, false, false);
+        }
+        @Override
+        public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context) {
             int turn = turns.getAndIncrement();
             AssistantMessage response;
             if (turn == 0) {
                 assertThat(tools).extracting(tool -> tool.getToolDefinition().name()).containsExactly("load_toolset");
                 response = tool("comfy-discovery", "load_toolset", "{\"toolsets\":[\"MEDIA\"]}");
             } else {
-                assertThat(tools).extracting(tool -> tool.getToolDefinition().name()).contains("list_media_capabilities");
-                var reply = messages.stream().filter(ToolResponseMessage.class::isInstance).map(ToolResponseMessage.class::cast)
+                assertThat(tools).extracting(tool -> tool.getToolDefinition().name())
+                        .contains("list_media_capabilities");
+                var reply = messages.stream().filter(ToolResponseMessage.class::isInstance)
+                        .map(ToolResponseMessage.class::cast)
                         .reduce((before, after) -> after).orElseThrow();
-                assertThat(reply.getResponses()).singleElement().satisfies(result ->
-                        assertThat(result.name()).isEqualTo(turn == 1 ? "load_toolset" : "list_media_capabilities"));
-                if (turn == 1) response = tool("comfy-catalog-call", "list_media_capabilities", "{}");
+                assertThat(reply.getResponses()).singleElement().satisfies(result -> assertThat(result.name())
+                        .isEqualTo(turn == 1 ? "load_toolset" : "list_media_capabilities"));
+                if (turn == 1)
+                    response = tool("comfy-catalog-call", "list_media_capabilities", "{}");
                 else {
                     assertThat(turn).isEqualTo(2);
                     response = new AssistantMessage("The published media input fields were read.");
@@ -350,8 +444,10 @@ class ComfyUiWorkflowPostgresIT {
         }
     }
 
-    private void assertMixedMediaInputs(UUID ownerId, UUID projectId, UUID connectionId, UUID imageVersion) throws Exception {
-        jdbc.sql("update task set next_action_at=now() + interval '1 hour' where project_id=:project and status='WAITING_PROVIDER'")
+    private void assertMixedMediaInputs(UUID ownerId, UUID projectId, UUID connectionId, UUID imageVersion)
+            throws Exception {
+        jdbc.sql(
+                "update task set next_action_at=now() + interval '1 hour' where project_id=:project and status='WAITING_PROVIDER'")
                 .param("project", projectId).update();
         var settings = ComfyWorkflowFixture.settings(mapper, false, true);
         var workflow = settings.withObject("comfyWorkflow");
@@ -360,18 +456,25 @@ class ComfyUiWorkflowPostgresIT {
         graph.putObject("24").put("class_type", "LoadAudio").putObject("inputs").put("file", "fixed.wav");
         graph.withObject("14").withObject("inputs").putArray("video").add("23").add(0);
         graph.withObject("14").withObject("inputs").putArray("audio").add("24").add(0);
-        workflow.withArray("bindings").addObject().put("nodeId", "23").put("inputName", "file").put("source", "REFERENCE_VIDEO").put("referenceIndex", 0);
-        workflow.withArray("bindings").addObject().put("nodeId", "24").put("inputName", "file").put("source", "REFERENCE_AUDIO").put("referenceIndex", 0);
+        workflow.withArray("bindings").addObject().put("nodeId", "23").put("inputName", "file")
+                .put("source", "REFERENCE_VIDEO").put("referenceIndex", 0);
+        workflow.withArray("bindings").addObject().put("nodeId", "24").put("inputName", "file")
+                .put("source", "REFERENCE_AUDIO").put("referenceIndex", 0);
         var capability = catalog.publishCapability(connectionId, "Mixed media to image", "COMFY_IMAGE_V1", settings);
         Path video = Files.createTempFile(STORAGE, "comfy-source-", ".mp4");
         UUID videoAsset;
         byte[] videoBytes;
         try {
             mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i",
-                    "color=c=blue:s=64x64:r=24", "-t", "1", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", video.toString()));
+                    "color=c=blue:s=64x64:r=24", "-t", "1", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-y",
+                    video.toString()));
             videoBytes = Files.readAllBytes(video);
-            try (var input = Files.newInputStream(video)) { videoAsset = assets.archiveVideo(ownerId, projectId, input).id(); }
-        } finally { Files.deleteIfExists(video); }
+            try (var input = Files.newInputStream(video)) {
+                videoAsset = assets.archiveVideo(ownerId, projectId, input).id();
+            }
+        } finally {
+            Files.deleteIfExists(video);
+        }
         UUID audioAsset = AudioAssetFixture.archive(assets, mediaTools, ownerId, projectId);
         var audioFile = assets.get(ownerId, projectId, audioAsset);
         byte[] audioBytes = Files.readAllBytes(audioFile.path());
@@ -379,16 +482,19 @@ class ComfyUiWorkflowPostgresIT {
                 mapper.createObjectNode().put("assetId", videoAsset.toString()).put("sourceType", "UPLOAD"));
         var audioReference = artifacts.create(ownerId, projectId, Artifact.Kind.AUDIO, "Source audio",
                 mapper.createObjectNode().put("assetId", audioAsset.toString()).put("sourceType", "UPLOAD"));
-        UUID videoVersion = videoReference.resourceDefaultVersion().id(), audioVersion = audioReference.resourceDefaultVersion().id();
+        UUID videoVersion = videoReference.resourceDefaultVersion().id(),
+                audioVersion = audioReference.resourceDefaultVersion().id();
         var card = artifacts.create(ownerId, projectId, Artifact.Kind.IMAGE, "Media extraction", null);
         UUID item = CanvasMediaFixture.place(canvas, ownerId, projectId, card.artifact().id());
         var parameters = mapper.createObjectNode();
         parameters.putObject("dynamicValues").put("reference_0", imageVersion.toString())
                 .put("video_reference_0", videoVersion.toString()).put("audio_reference_0", audioVersion.toString());
-        var media = List.of(new MediaDraftService.SaveMediaInput(audioVersion, MediaDraft.InputRole.AUDIO_REFERENCE, "#7C3AED"),
+        var media = List.of(
+                new MediaDraftService.SaveMediaInput(audioVersion, MediaDraft.InputRole.AUDIO_REFERENCE, "#7C3AED"),
                 new MediaDraftService.SaveMediaInput(videoVersion, MediaDraft.InputRole.VIDEO_REFERENCE, "#0EA5E9"),
                 new MediaDraftService.SaveMediaInput(imageVersion, MediaDraft.InputRole.REFERENCE, "#22C55E"));
-        var draft = drafts.save(ownerId, projectId, item, 0, "Use exact media", parameters, null, capability.id(), null, media, List.of(), null);
+        var draft = drafts.save(ownerId, projectId, item, 0, "Use exact media", parameters, null, capability.id(), null,
+                media, List.of(), null);
         var task = direct.run(ownerId, projectId, card.artifact().id(), item, draft.version(), "comfy-mixed-run");
         assertThat(task.input().at("/mediaInput/videos/0/versionId").asText()).isEqualTo(videoVersion.toString());
         assertThat(task.input().at("/mediaInput/audios/0/versionId").asText()).isEqualTo(audioVersion.toString());
@@ -408,26 +514,33 @@ class ComfyUiWorkflowPostgresIT {
         assertThat(tasks.get(ownerId, projectId, task.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
 
         // A changed archive must fail before any reference upload or generation POST.
-        var tampered = direct.run(ownerId, projectId, card.artifact().id(), item, draft.version(), "comfy-mixed-tampered");
+        var tampered = direct.run(ownerId, projectId, card.artifact().id(), item, draft.version(),
+                "comfy-mixed-tampered");
         int uploadsBeforeTamper = UPLOADS.get(), submissionsBeforeTamper = SUBMISSIONS.get();
         try {
-            Files.write(audioFile.path(), new byte[] {0}, java.nio.file.StandardOpenOption.APPEND);
+            Files.write(audioFile.path(), new byte[]{0}, java.nio.file.StandardOpenOption.APPEND);
             assertThat(worker.submitOnce("comfy-mixed-tamper-submit")).isEqualTo(1);
             var blocked = tasks.get(ownerId, projectId, tampered.id());
             assertThat(blocked.status()).isEqualTo(Task.Status.BLOCKED);
             assertThat(blocked.errorCode()).isEqualTo("PROVIDER_UNSUPPORTED_INPUT");
             assertThat(UPLOADS).hasValue(uploadsBeforeTamper);
             assertThat(SUBMISSIONS).hasValue(submissionsBeforeTamper);
-        } finally { Files.write(audioFile.path(), audioBytes); }
+        } finally {
+            Files.write(audioFile.path(), audioBytes);
+        }
     }
 
     private void due(UUID taskId) {
-        jdbc.sql("update task set next_action_at = now() - interval '1 second' where id = :id").param("id", taskId).update();
+        jdbc.sql("update task set next_action_at = now() - interval '1 second' where id = :id").param("id", taskId)
+                .update();
     }
 
     private static Path storage() {
-        try { return Files.createTempDirectory("agenvas-comfy-workflow-it-"); }
-        catch (IOException failure) { throw new ExceptionInInitializerError(failure); }
+        try {
+            return Files.createTempDirectory("agenvas-comfy-workflow-it-");
+        } catch (IOException failure) {
+            throw new ExceptionInInitializerError(failure);
+        }
     }
 
     private static HttpServer server() {
@@ -437,10 +550,15 @@ class ComfyUiWorkflowPostgresIT {
                 int index = UPLOADS.incrementAndGet();
                 byte[] bytes = exchange.getRequestBody().readAllBytes();
                 String body = new String(bytes, StandardCharsets.ISO_8859_1);
-                String type = body.contains("Content-Type: video/mp4") ? "video/mp4" : body.contains("Content-Type: audio/wav") ? "audio/wav" : "image/png";
-                if (!"image/png".equals(type)) MEDIA_UPLOADS.put(type, java.util.Arrays.copyOfRange(bytes, body.indexOf("\r\n\r\n") + 4, body.lastIndexOf("\r\n--")));
+                String type = body.contains("Content-Type: video/mp4")
+                        ? "video/mp4"
+                        : body.contains("Content-Type: audio/wav") ? "audio/wav" : "image/png";
+                if (!"image/png".equals(type))
+                    MEDIA_UPLOADS.put(type, java.util.Arrays.copyOfRange(bytes, body.indexOf("\r\n\r\n") + 4,
+                            body.lastIndexOf("\r\n--")));
                 String extension = "video/mp4".equals(type) ? "mp4" : "audio/wav".equals(type) ? "wav" : "png";
-                respond(exchange, "{\"name\":\"uploaded-" + index + "." + extension + "\",\"type\":\"input\",\"subfolder\":\"\"}");
+                respond(exchange, "{\"name\":\"uploaded-" + index + "." + extension
+                        + "\",\"type\":\"input\",\"subfolder\":\"\"}");
             });
             server.createContext(PROXY_PREFIX + "/prompt", exchange -> {
                 exchange.getResponseHeaders().add("Location", "/submit/prompt");
@@ -472,7 +590,8 @@ class ComfyUiWorkflowPostgresIT {
                     return;
                 }
                 // Native proxies can report a terminal status without ComfyUI's optional completed flag.
-                respond(exchange, "{\"" + id + "\":{\"status\":{\"status_str\":\"success\"},\"outputs\":{\"99\":{\"images\":[{\"filename\":\"preview.png\",\"type\":\"temp\"},{\"filename\":\"image.png\",\"type\":\"output\",\"subfolder\":\"render/day\"},{\"filename\":\"unused.png\",\"type\":\"output\"}]}}}}");
+                respond(exchange, "{\"" + id
+                        + "\":{\"status\":{\"status_str\":\"success\"},\"outputs\":{\"99\":{\"images\":[{\"filename\":\"preview.png\",\"type\":\"temp\"},{\"filename\":\"image.png\",\"type\":\"output\",\"subfolder\":\"render/day\"},{\"filename\":\"unused.png\",\"type\":\"output\"}]}}}}");
             });
             server.createContext(PROXY_PREFIX + "/view", exchange -> {
                 assertThat(exchange.getRequestURI().getRawQuery()).contains("subfolder=render%2Fday");
@@ -487,15 +606,22 @@ class ComfyUiWorkflowPostgresIT {
                 var bytes = new ByteArrayOutputStream();
                 ImageIO.write(new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB), "png", bytes);
                 exchange.sendResponseHeaders(200, bytes.size());
-                try (var stream = exchange.getResponseBody()) { stream.write(bytes.toByteArray()); }
+                try (var stream = exchange.getResponseBody()) {
+                    stream.write(bytes.toByteArray());
+                }
             });
-            server.start(); return server;
-        } catch (IOException failure) { throw new ExceptionInInitializerError(failure); }
+            server.start();
+            return server;
+        } catch (IOException failure) {
+            throw new ExceptionInInitializerError(failure);
+        }
     }
 
     private static void respond(HttpExchange exchange, String value) throws IOException {
         byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
         exchange.sendResponseHeaders(200, bytes.length);
-        try (var stream = exchange.getResponseBody()) { stream.write(bytes); }
+        try (var stream = exchange.getResponseBody()) {
+            stream.write(bytes);
+        }
     }
 }

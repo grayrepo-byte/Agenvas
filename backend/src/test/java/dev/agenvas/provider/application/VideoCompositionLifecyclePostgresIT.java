@@ -57,43 +57,70 @@ import tools.jackson.databind.node.ObjectNode;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false", "agenvas.provider.mode=mock"})
+        "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false",
+        "agenvas.provider.mode=mock"})
 class VideoCompositionLifecyclePostgresIT {
-    @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
-    @TempDir static Path storage;
-    @TempDir Path temp;
-    @DynamicPropertySource static void database(DynamicPropertyRegistry properties) {
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    @TempDir
+    static Path storage;
+    @TempDir
+    Path temp;
+    @DynamicPropertySource
+    static void database(DynamicPropertyRegistry properties) {
         properties.add("agenvas.storage.root", () -> storage.toString());
         properties.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         properties.add("spring.datasource.username", POSTGRES::getUsername);
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
-    @Autowired IdentityService identities;
-    @Autowired ProjectService projects;
-    @Autowired ArtifactService artifacts;
-    @Autowired AssetService assets;
-    @Autowired MediaToolRunner mediaTools;
-    @Autowired CanvasService canvas;
-    @Autowired MediaDraftService drafts;
-    @Autowired VideoCompositionService compositions;
-    @Autowired TaskService tasks;
-    @Autowired TaskRepository repository;
-    @Autowired DirectMediaTaskService direct;
-    @Autowired ManualUnknownRetryService retries;
-    @Autowired UsageService usage;
-    @Autowired AgentInstanceService agents;
-    @Autowired AgentRunService runs;
-    @Autowired MediaExecutionWorker worker;
-    @Autowired JdbcClient jdbc;
-    @Autowired ObjectMapper mapper;
-    @MockitoSpyBean LocalVideoCompositionRenderer renderer;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    ProjectService projects;
+    @Autowired
+    ArtifactService artifacts;
+    @Autowired
+    AssetService assets;
+    @Autowired
+    MediaToolRunner mediaTools;
+    @Autowired
+    CanvasService canvas;
+    @Autowired
+    MediaDraftService drafts;
+    @Autowired
+    VideoCompositionService compositions;
+    @Autowired
+    TaskService tasks;
+    @Autowired
+    TaskRepository repository;
+    @Autowired
+    DirectMediaTaskService direct;
+    @Autowired
+    ManualUnknownRetryService retries;
+    @Autowired
+    UsageService usage;
+    @Autowired
+    AgentInstanceService agents;
+    @Autowired
+    AgentRunService runs;
+    @Autowired
+    MediaExecutionWorker worker;
+    @Autowired
+    JdbcClient jdbc;
+    @Autowired
+    ObjectMapper mapper;
+    @MockitoSpyBean
+    LocalVideoCompositionRenderer renderer;
     static AdminPrincipal owner;
 
-    @BeforeEach void setup() {
-        if (owner == null) owner = identities.setup("composition-lifecycle", "synthetic-lifecycle-password-123");
+    @BeforeEach
+    void setup() {
+        if (owner == null)
+            owner = identities.setup("composition-lifecycle", "synthetic-lifecycle-password-123");
     }
 
-    @Test void preSubmissionCancellationFencesTheClaimedWorkerAndDoesNotOpenExternalCancellation() throws Exception {
+    @Test
+    void preSubmissionCancellationFencesTheClaimedWorkerAndDoesNotOpenExternalCancellation() throws Exception {
         Fixture fixture = fixture();
         Task accepted = compositions.run(owner.userId(), fixture.project(), request(fixture), "before-submit");
         Task lease = tasks.claimBoundMedia("cancel-before-submit", 1).getFirst();
@@ -106,13 +133,19 @@ class VideoCompositionLifecyclePostgresIT {
                         failure -> assertThat(failure.code()).isEqualTo("TASK_LEASE_LOST"));
         assertThat(tasks.listProviderAttempts(owner.userId(), fixture.project(), accepted.id())).isEmpty();
         assertThat(repository.cancelLocalProcessing(lease, java.time.Instant.now())).isFalse();
-        assertThat(usage.listProject(owner.userId(), fixture.project())).filteredOn(e -> e.taskId().equals(accepted.id()))
-                .extracting(UsageEntry::entryType).containsExactlyInAnyOrder(UsageEntry.EntryType.RESERVATION, UsageEntry.EntryType.RELEASE);
+        assertThat(usage.listProject(owner.userId(), fixture.project()))
+                .filteredOn(e -> e.taskId().equals(accepted.id()))
+                .extracting(UsageEntry::entryType)
+                .containsExactlyInAnyOrder(UsageEntry.EntryType.RESERVATION, UsageEntry.EntryType.RELEASE);
 
-        var card = artifacts.create(owner.userId(), fixture.project(), Artifact.Kind.IMAGE, "External generation", null);
-        UUID item = dev.agenvas.support.CanvasMediaFixture.place(canvas, owner.userId(), fixture.project(), card.artifact().id());
-        dev.agenvas.support.CanvasMediaFixture.save(drafts, owner.userId(), fixture.project(), item, 0, "Synthetic", null, null, null);
-        Task external = direct.run(owner.userId(), fixture.project(), card.artifact().id(), item, 1, "external-running");
+        var card = artifacts.create(owner.userId(), fixture.project(), Artifact.Kind.IMAGE, "External generation",
+                null);
+        UUID item = dev.agenvas.support.CanvasMediaFixture.place(canvas, owner.userId(), fixture.project(),
+                card.artifact().id());
+        dev.agenvas.support.CanvasMediaFixture.save(drafts, owner.userId(), fixture.project(), item, 0, "Synthetic",
+                null, null, null);
+        Task external = direct.run(owner.userId(), fixture.project(), card.artifact().id(), item, 1,
+                "external-running");
         Task externalLease = tasks.claimBoundMedia("ordinary-worker", 1).getFirst();
         assertThat(externalLease.id()).isEqualTo(external.id());
         assertThatThrownBy(() -> direct.cancelQueued(owner.userId(), fixture.project(), external.id()))
@@ -138,11 +171,14 @@ class VideoCompositionLifecyclePostgresIT {
                 .isInstanceOfSatisfying(ApiProblemException.class,
                         failure -> assertThat(failure.code()).isEqualTo("TASK_LEASE_LOST"));
         if (recoverFirst) {
-            jdbc.sql("update task set lease_until=now()-interval '1 second' where id=:id").param("id", accepted.id()).update();
+            jdbc.sql("update task set lease_until=now()-interval '1 second' where id=:id").param("id", accepted.id())
+                    .update();
             assertThat(tasks.recoverExpiredSubmissions(10)).isEqualTo(1);
-            assertThat(tasks.get(owner.userId(), fixture.project(), accepted.id()).status()).isEqualTo(Task.Status.UNKNOWN);
+            assertThat(tasks.get(owner.userId(), fixture.project(), accepted.id()).status())
+                    .isEqualTo(Task.Status.UNKNOWN);
             assertThat(tasks.recoverExpiredCancellations(10)).isEqualTo(1);
-            assertThat(tasks.get(owner.userId(), fixture.project(), accepted.id()).status()).isEqualTo(Task.Status.CANCELED);
+            assertThat(tasks.get(owner.userId(), fixture.project(), accepted.id()).status())
+                    .isEqualTo(Task.Status.CANCELED);
         }
         ObjectNode content = mapper.createObjectNode().put("assetId", fixture.videoAsset().toString())
                 .put("prompt", "Synthetic late local result").put("workflowVersion", "synthetic-local-v1")
@@ -150,22 +186,26 @@ class VideoCompositionLifecyclePostgresIT {
         content.putObject("parameters");
         var result = tasks.succeedWithArtifact(lease, workerId, content);
         assertThat(result.selected()).isFalse();
-        assertThat(tasks.get(owner.userId(), fixture.project(), accepted.id()).status()).isEqualTo(Task.Status.CANCELED);
+        assertThat(tasks.get(owner.userId(), fixture.project(), accepted.id()).status())
+                .isEqualTo(Task.Status.CANCELED);
         UUID item = UUID.fromString(accepted.input().path("canvasItemId").asText());
         assertThat(canvas.list(owner.userId(), fixture.project()).stream().filter(e -> e.item().id().equals(item))
                 .findFirst().orElseThrow().selectedVersion()).isNull();
         assertThat(jdbc.sql("select count(*) from task_late_result where task_id=:id").param("id", accepted.id())
                 .query(Long.class).single()).isEqualTo(1);
-        assertThat(artifacts.requireMediaVersionForTask(owner.userId(), fixture.project(), result.versionId(), Artifact.Kind.VIDEO)
+        assertThat(artifacts
+                .requireMediaVersionForTask(owner.userId(), fixture.project(), result.versionId(), Artifact.Kind.VIDEO)
                 .inputReferences()).hasSize(2);
         assertThatThrownBy(() -> tasks.succeedWithArtifact(lease, workerId, content))
                 .isInstanceOfSatisfying(ApiProblemException.class,
                         failure -> assertThat(failure.code()).isEqualTo("TASK_LEASE_LOST"));
         assertThat(jdbc.sql("select count(*) from artifact_version where artifact_id=:id")
-                .param("id", UUID.fromString(accepted.input().path("artifactId").asText())).query(Long.class).single()).isEqualTo(1);
+                .param("id", UUID.fromString(accepted.input().path("artifactId").asText())).query(Long.class).single())
+                .isEqualTo(1);
     }
 
-    @Test void activeRendererObservesCancellationAndFinishesWithoutSelectingOutput() throws Exception {
+    @Test
+    void activeRendererObservesCancellationAndFinishesWithoutSelectingOutput() throws Exception {
         Fixture fixture = fixture();
         Task accepted = compositions.run(owner.userId(), fixture.project(), request(fixture), "renderer-cancel");
         CountDownLatch entered = new CountDownLatch(1), proceed = new CountDownLatch(1);
@@ -173,15 +213,19 @@ class VideoCompositionLifecyclePostgresIT {
         doAnswer(invocation -> {
             scratch.set(invocation.getArgument(2));
             entered.countDown();
-            if (!proceed.await(20, TimeUnit.SECONDS)) throw new IllegalStateException("Test renderer gate timed out");
+            if (!proceed.await(20, TimeUnit.SECONDS))
+                throw new IllegalStateException("Test renderer gate timed out");
             return invocation.callRealMethod();
         }).when(renderer).render(any(), any(), any(), any(), any());
         try (var executor = Executors.newSingleThreadExecutor()) {
             var rendering = executor.submit(() -> worker.submitOnce("renderer-cancel-worker"));
             try {
                 assertThat(entered.await(20, TimeUnit.SECONDS)).isTrue();
-                assertThat(direct.cancelQueued(owner.userId(), fixture.project(), accepted.id()).cancelRequested()).isTrue();
-            } finally { proceed.countDown(); }
+                assertThat(direct.cancelQueued(owner.userId(), fixture.project(), accepted.id()).cancelRequested())
+                        .isTrue();
+            } finally {
+                proceed.countDown();
+            }
             assertThat(rendering.get(30, TimeUnit.SECONDS)).isEqualTo(1);
         }
         Task completed = tasks.get(owner.userId(), fixture.project(), accepted.id());
@@ -189,43 +233,59 @@ class VideoCompositionLifecyclePostgresIT {
         assertThat(completed.output()).isNull();
         assertThat(scratch.get()).isNotNull();
         assertThat(Files.exists(scratch.get())).isFalse();
-        assertThat(usage.listProject(owner.userId(), fixture.project())).filteredOn(e -> e.taskId().equals(accepted.id()))
+        assertThat(usage.listProject(owner.userId(), fixture.project()))
+                .filteredOn(e -> e.taskId().equals(accepted.id()))
                 .extracting(UsageEntry::entryType).contains(UsageEntry.EntryType.RELEASE);
     }
 
-    @Test void resourceAndTimeoutFailuresRemovePrivateScratchAndDoNotArchivePartialResults() throws Exception {
+    @Test
+    void resourceAndTimeoutFailuresRemovePrivateScratchAndDoNotArchivePartialResults() throws Exception {
         for (boolean timeout : List.of(false, true)) {
             Fixture fixture = fixture();
             Task accepted = compositions.run(owner.userId(), fixture.project(), request(fixture), "resource-failure");
             var scratch = new java.util.concurrent.atomic.AtomicReference<Path>();
             doAnswer(invocation -> {
-                Path path = invocation.getArgument(2); scratch.set(path);
+                Path path = invocation.getArgument(2);
+                scratch.set(path);
                 Files.write(path.resolve("partial.f32"), new byte[4096]);
-                if (timeout) throw new MediaToolRunner.MediaToolException("Composition timed out", false, null);
+                if (timeout)
+                    throw new MediaToolRunner.MediaToolException("Composition timed out", false, null);
                 throw new IllegalStateException("Composition scratch bound exceeded");
             }).when(renderer).render(any(), any(), any(), any(), any());
             assertThat(worker.submitOnce("resource-failure-worker")).isEqualTo(1);
             var failed = tasks.get(owner.userId(), fixture.project(), accepted.id());
             assertThat(failed.status()).isEqualTo(Task.Status.FAILED);
-            assertThat(failed.errorCode()).isEqualTo(timeout ? "LOCAL_VIDEO_COMPOSITION_TIMEOUT" : "LOCAL_VIDEO_COMPOSITION_FAILED");
+            assertThat(failed.errorCode())
+                    .isEqualTo(timeout ? "LOCAL_VIDEO_COMPOSITION_TIMEOUT" : "LOCAL_VIDEO_COMPOSITION_FAILED");
             assertThat(failed.output()).isNull();
             assertThat(Files.exists(scratch.get())).isFalse();
-            assertThat(artifacts.get(owner.userId(), fixture.project(), UUID.fromString(accepted.input().path("artifactId").asText())).resourceDefaultVersion()).isNull();
+            assertThat(
+                    artifacts
+                            .get(owner.userId(), fixture.project(),
+                                    UUID.fromString(accepted.input().path("artifactId").asText()))
+                            .resourceDefaultVersion())
+                    .isNull();
         }
     }
 
-    @Test void explicitRetryOfDirectorCompositionHasZeroCostAndNewUserIdentity() throws Exception {
+    @Test
+    void explicitRetryOfDirectorCompositionHasZeroCostAndNewUserIdentity() throws Exception {
         Fixture fixture = fixture();
-        var agent = dev.agenvas.testing.AgentFixture.configureDirector(agents, owner.userId(), fixture.project(), "Director", "Compose");
+        var agent = dev.agenvas.testing.AgentFixture.configureDirector(agents, owner.userId(), fixture.project(),
+                "Director", "Compose");
         var run = runs.create(owner.userId(), fixture.project(), agent.id(), "Compose", "retry-director").run();
-        Task original = compositions.runFromAgent(owner.userId(), fixture.project(), run.id(), UUID.randomUUID(), request(fixture), "director-composition");
+        Task original = compositions.runFromAgent(owner.userId(), fixture.project(), run.id(), UUID.randomUUID(),
+                request(fixture), "director-composition");
         Task lease = tasks.claimBoundMedia("interrupted-local-worker", 1).getFirst();
         tasks.beginSubmission(lease, "interrupted-local-worker");
-        jdbc.sql("update task set lease_until=now()-interval '1 second' where id=:id").param("id", original.id()).update();
+        jdbc.sql("update task set lease_until=now()-interval '1 second' where id=:id").param("id", original.id())
+                .update();
         assertThat(tasks.recoverExpiredSubmissions(10)).isEqualTo(1);
         Task unknown = tasks.get(owner.userId(), fixture.project(), original.id());
-        Task replacement = retries.create(owner.userId(), fixture.project(), original.id(), unknown.version(), "user-local-retry");
-        assertThat(retries.create(owner.userId(), fixture.project(), original.id(), unknown.version(), "user-local-retry").id())
+        Task replacement = retries.create(owner.userId(), fixture.project(), original.id(), unknown.version(),
+                "user-local-retry");
+        assertThat(retries
+                .create(owner.userId(), fixture.project(), original.id(), unknown.version(), "user-local-retry").id())
                 .isEqualTo(replacement.id());
         assertThat(replacement.initiator()).isEqualTo(Task.Initiator.USER_DIRECT);
         assertThat(replacement.compositionRunId()).isNull();
@@ -235,7 +295,8 @@ class VideoCompositionLifecyclePostgresIT {
         assertThat(repository.findManualReplacement(fixture.project(), original.id())).get()
                 .extracting(TaskRepository.ManualReplacement::replacementTaskId).isEqualTo(replacement.id());
         assertThat(tasks.get(owner.userId(), fixture.project(), original.id()).compositionRunId()).isEqualTo(run.id());
-        assertThat(usage.listProject(owner.userId(), fixture.project())).filteredOn(e -> replacement.id().equals(e.taskId()))
+        assertThat(usage.listProject(owner.userId(), fixture.project()))
+                .filteredOn(e -> replacement.id().equals(e.taskId()))
                 .singleElement().satisfies(entry -> {
                     assertThat(entry.costSource()).isEqualTo("LOCAL_NO_COST");
                     assertThat(entry.costStatus()).isEqualTo(UsageEntry.CostStatus.KNOWN);
@@ -256,10 +317,14 @@ class VideoCompositionLifecyclePostgresIT {
         UUID project = projects.create(owner.userId(), "Lifecycle", Project.AspectRatio.LANDSCAPE_16_9).id();
         Path videoFile = temp.resolve(UUID.randomUUID() + ".mp4");
         mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i",
-                "color=c=blue:s=160x90:r=12:d=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", videoFile.toString()));
+                "color=c=blue:s=160x90:r=12:d=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-y",
+                videoFile.toString()));
         var videoAsset = assets.archiveTaskVideo(owner.userId(), project, UUID.randomUUID(), () -> {
-            try { return Files.newInputStream(videoFile); }
-            catch (java.io.IOException failure) { throw new IllegalStateException(failure); }
+            try {
+                return Files.newInputStream(videoFile);
+            } catch (java.io.IOException failure) {
+                throw new IllegalStateException(failure);
+            }
         });
         UUID audioAsset = dev.agenvas.testing.AudioAssetFixture.archive(assets, mediaTools, owner.userId(), project);
         return new Fixture(project, media(project, Artifact.Kind.VIDEO, videoAsset.id()),
@@ -272,5 +337,6 @@ class VideoCompositionLifecyclePostgresIT {
         dev.agenvas.support.CanvasMediaFixture.place(canvas, owner.userId(), project, artifact.artifact().id());
         return artifact.resourceDefaultVersion().id();
     }
-    private record Fixture(UUID project, UUID video, UUID audio, UUID videoAsset) {}
+    private record Fixture(UUID project, UUID video, UUID audio, UUID videoAsset) {
+    }
 }

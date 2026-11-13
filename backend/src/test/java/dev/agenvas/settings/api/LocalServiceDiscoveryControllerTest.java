@@ -39,16 +39,28 @@ import tools.jackson.databind.ObjectMapper;
 /** Actual application security chain, without database or external service. */
 class LocalServiceDiscoveryControllerTest {
     private static final String PATH = "/api/v1/settings/local-services/discover";
-    @Configuration @EnableWebMvc @EnableWebSecurity
+    @Configuration
+    @EnableWebMvc
+    @EnableWebSecurity
     @Import({SecurityConfiguration.class, ApiExceptionHandler.class, LocalServiceDiscoveryController.class,
             I18nConfiguration.class, ApiMessages.class, LocaleResponseFilter.class, RecoveryModeWriteGuard.class})
     static class WebConfiguration {
-        @Bean AdminAuthenticationProvider authenticationProvider() { return mock(AdminAuthenticationProvider.class); }
-        @Bean LocalServiceDiscoveryService discovery() { return mock(LocalServiceDiscoveryService.class); }
-        @Bean ObjectMapper objectMapper() { return new ObjectMapper(); }
+        @Bean
+        AdminAuthenticationProvider authenticationProvider() {
+            return mock(AdminAuthenticationProvider.class);
+        }
+        @Bean
+        LocalServiceDiscoveryService discovery() {
+            return mock(LocalServiceDiscoveryService.class);
+        }
+        @Bean
+        ObjectMapper objectMapper() {
+            return new ObjectMapper();
+        }
     }
 
-    @Test void requiresAdministratorAndCsrfAndRejectsArbitraryTargets() throws Exception {
+    @Test
+    void requiresAdministratorAndCsrfAndRejectsArbitraryTargets() throws Exception {
         try (var context = context(false)) {
             var mvc = mvc(context);
             var discovery = context.getBean(LocalServiceDiscoveryService.class);
@@ -72,33 +84,41 @@ class LocalServiceDiscoveryControllerTest {
             var result = mvc.perform(post(PATH).with(csrf()).with(user("admin").roles("ADMIN"))
                     .contentType("application/json").content("{\"service\":\"OLLAMA\"}"))
                     .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
-                    .andExpect(jsonPath("$.service").value("OLLAMA")).andExpect(jsonPath("$.runtime").value("CONTAINER"))
+                    .andExpect(jsonPath("$.service").value("OLLAMA"))
+                    .andExpect(jsonPath("$.runtime").value("CONTAINER"))
                     .andExpect(jsonPath("$.status").value("FOUND"))
                     .andReturn();
             assertThat(new ObjectMapper().readTree(result.getResponse().getContentAsString()).size()).isEqualTo(4);
         }
     }
 
-    @Test void recoveryModeRejectsBeforeProbe() throws Exception {
+    @Test
+    void recoveryModeRejectsBeforeProbe() throws Exception {
         try (var context = context(true)) {
             mvc(context).perform(post(PATH).with(csrf()).with(user("admin").roles("ADMIN"))
                     .contentType("application/json").content("{\"service\":\"OLLAMA\"}"))
-                    .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value("RECOVERY_MODE_READ_ONLY"));
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.code").value("RECOVERY_MODE_READ_ONLY"));
             verifyNoInteractions(context.getBean(LocalServiceDiscoveryService.class));
         }
     }
 
-    @Test void busyProblemUsesFourLocaleCatalogsWithoutUpstreamMetadata() throws Exception {
+    @Test
+    void busyProblemUsesFourLocaleCatalogsWithoutUpstreamMetadata() throws Exception {
         try (var context = context(false)) {
             when(context.getBean(LocalServiceDiscoveryService.class).discover(Service.OLLAMA)).thenThrow(
                     new ApiProblemException(HttpStatus.TOO_MANY_REQUESTS, "LOCAL_SERVICE_DISCOVERY_BUSY",
-                            ApiMessage.of("api.local-service-discovery.title"), ApiMessage.of("api.local-service-discovery.busy"), true));
+                            ApiMessage.of("api.local-service-discovery.title"),
+                            ApiMessage.of("api.local-service-discovery.busy"), true));
             for (String language : new String[]{"en", "zh", "ru", "ja"}) {
                 var result = mvc(context).perform(post(PATH).with(csrf()).with(user("admin").roles("ADMIN"))
-                        .header("Accept-Language", language).contentType("application/json").content("{\"service\":\"OLLAMA\"}"))
-                        .andExpect(status().isTooManyRequests()).andExpect(jsonPath("$.code").value("LOCAL_SERVICE_DISCOVERY_BUSY"))
+                        .header("Accept-Language", language).contentType("application/json")
+                        .content("{\"service\":\"OLLAMA\"}"))
+                        .andExpect(status().isTooManyRequests())
+                        .andExpect(jsonPath("$.code").value("LOCAL_SERVICE_DISCOVERY_BUSY"))
                         .andExpect(header().string("Content-Language", language)).andReturn();
-                assertThat(result.getResponse().getContentAsString()).doesNotContain("api.local-service-discovery", "/private/", "argv", "version");
+                assertThat(result.getResponse().getContentAsString()).doesNotContain("api.local-service-discovery",
+                        "/private/", "argv", "version");
             }
         }
     }
@@ -106,8 +126,11 @@ class LocalServiceDiscoveryControllerTest {
     private static AnnotationConfigWebApplicationContext context(boolean recovery) {
         var context = new AnnotationConfigWebApplicationContext();
         context.setServletContext(new MockServletContext());
-        context.getEnvironment().getPropertySources().addFirst(new MapPropertySource("test", Map.of("agenvas.recovery-mode", recovery)));
-        context.register(WebConfiguration.class); context.refresh(); return context;
+        context.getEnvironment().getPropertySources()
+                .addFirst(new MapPropertySource("test", Map.of("agenvas.recovery-mode", recovery)));
+        context.register(WebConfiguration.class);
+        context.refresh();
+        return context;
     }
     private static MockMvc mvc(AnnotationConfigWebApplicationContext context) {
         return MockMvcBuilders.webAppContextSetup(context).addFilters(context.getBean(LocaleResponseFilter.class))

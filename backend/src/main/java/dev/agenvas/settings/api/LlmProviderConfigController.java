@@ -91,7 +91,8 @@ public class LlmProviderConfigController {
      * @param acknowledgeCost 用户是否确认 Provider 可能对两次调用收费
      */
     public record DiagnoseLlmRequest(@Min(1) int expectedVersion,
-            boolean acknowledgeCost) {}
+            boolean acknowledgeCost) {
+    }
 
     /** 替换当前连接的命令；缺省或空白密钥保留当前连接的服务端凭据。
      * @param expectedVersion 客户端读取配置时的版本
@@ -104,43 +105,59 @@ public class LlmProviderConfigController {
             @NotBlank @Size(max = 160) String modelId,
             @Size(max = 4096) String apiKey,
             LlmModelDiscoveryService.Selection modelSelection) {
-        @Override public String toString() { return "ReplaceLlmSettingsRequest[redacted]"; }
+        @Override
+        public String toString() {
+            return "ReplaceLlmSettingsRequest[redacted]";
+        }
     }
 
     @GetMapping("/connections")
-    public ResponseEntity<LlmProviderConfigService.Connections> connections(@AuthenticationPrincipal AdminPrincipal administrator) {
+    public ResponseEntity<LlmProviderConfigService.Connections> connections(
+            @AuthenticationPrincipal AdminPrincipal administrator) {
         Objects.requireNonNull(administrator, "Authenticated administrator required");
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(configs.connections());
     }
 
     @PutMapping("/connections/{id}")
-    public ResponseEntity<LlmProviderConfigService.ConnectionStatus> saveConnection(@AuthenticationPrincipal AdminPrincipal administrator,
+    public ResponseEntity<LlmProviderConfigService.ConnectionStatus> saveConnection(
+            @AuthenticationPrincipal AdminPrincipal administrator,
             @PathVariable UUID id, @Valid @RequestBody SaveConnectionRequest request) {
         Objects.requireNonNull(administrator, "Authenticated administrator required");
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(configs.saveConnection(id, request.name(), request.expectedVersion(),
-                request.endpoint(), request.modelId(), request.apiKey(), request.modelSelection()));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(configs.saveConnection(id, request.name(), request.expectedVersion(),
+                        request.endpoint(), request.modelId(), request.apiKey(), request.modelSelection()));
     }
 
     @PostMapping("/connections/{id}/activate")
-    public ResponseEntity<LlmProviderConfigService.Connections> activateConnection(@AuthenticationPrincipal AdminPrincipal administrator,
+    public ResponseEntity<LlmProviderConfigService.Connections> activateConnection(
+            @AuthenticationPrincipal AdminPrincipal administrator,
             @PathVariable UUID id, @Valid @RequestBody ActivateConnectionRequest request) {
         Objects.requireNonNull(administrator, "Authenticated administrator required");
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(configs.activate(id, request.expectedVersion(), request.expectedActiveVersion()));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(configs.activate(id, request.expectedVersion(), request.expectedActiveVersion()));
     }
 
     @PostMapping("/connections/{id}/diagnose")
-    public ResponseEntity<LlmProviderConfigService.ConnectionStatus> diagnoseConnection(@AuthenticationPrincipal AdminPrincipal administrator,
+    public ResponseEntity<LlmProviderConfigService.ConnectionStatus> diagnoseConnection(
+            @AuthenticationPrincipal AdminPrincipal administrator,
             @PathVariable UUID id, @Valid @RequestBody DiagnoseLlmRequest request) {
         Objects.requireNonNull(administrator, "Authenticated administrator required");
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(diagnostics.diagnoseConnection(id, request.expectedVersion(), request.acknowledgeCost()));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(diagnostics.diagnoseConnection(id, request.expectedVersion(), request.acknowledgeCost()));
     }
 
-    public record SaveConnectionRequest(@NotBlank @Size(max = 120) String name, @NotNull @Min(0) Integer expectedVersion,
+    public record SaveConnectionRequest(@NotBlank @Size(max = 120) String name,
+            @NotNull @Min(0) Integer expectedVersion,
             @NotBlank @Size(max = 500) String endpoint, @NotBlank @Size(max = 160) String modelId,
             @Size(max = 4096) String apiKey, LlmModelDiscoveryService.Selection modelSelection) {
-        @Override public String toString() { return "SaveLlmConnectionRequest[redacted]"; }
+        @Override
+        public String toString() {
+            return "SaveLlmConnectionRequest[redacted]";
+        }
     }
-    public record ActivateConnectionRequest(@NotNull @Min(1) Integer expectedVersion, @NotNull @Min(0) Integer expectedActiveVersion) {}
+    public record ActivateConnectionRequest(@NotNull @Min(1) Integer expectedVersion,
+            @NotNull @Min(0) Integer expectedActiveVersion) {
+    }
 
     /** 可安全展示给 UI 的配置状态。
      * @param configured 当前是否已配置 Provider
@@ -152,7 +169,8 @@ public class LlmProviderConfigController {
      * @param updatedAt 最近更新时间
      */
     public record LlmSettingsResponse(boolean configured, int version, String endpoint,
-            String modelId, String keyMask, boolean toolCallingVerified, Instant updatedAt, LlmModelPolicy modelPolicy) {
+            String modelId, String keyMask, boolean toolCallingVerified, Instant updatedAt,
+            LlmModelPolicy modelPolicy) {
         /** 映射服务状态到不含密钥材料的响应 DTO。
          * @param value 配置服务生成的安全状态视图
          * @return UI 可用的配置状态

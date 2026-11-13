@@ -124,7 +124,8 @@ public class ToolExecutionService {
             String toolCallId, Task lease, String workerId) {
         if (lease == null || context == null || !lease.projectId().equals(context.projectId())
                 || !lease.runId().equals(context.runId())) {
-            throw invalid(ApiMessage.of("api.tool-execution-service.agent-turn-lease-and-trusted-run-scope-do-not-match"));
+            throw invalid(
+                    ApiMessage.of("api.tool-execution-service.agent-turn-lease-and-trusted-run-scope-do-not-match"));
         }
         return executeInternal(context, stepIndex, toolCallId, lease, workerId);
     }
@@ -167,9 +168,11 @@ public class ToolExecutionService {
         AgentRun run = runs.findForUpdate(context.ownerId(), context.projectId(), context.runId())
                 .orElseThrow(() -> conflict(ApiMessage.of("api.tool-execution-service.run-is-not-accessible")));
         LlmTurn turn = turns.find(context.projectId(), context.runId(), stepIndex)
-                .orElseThrow(() -> conflict(ApiMessage.of("api.tool-execution-service.model-turn-checkpoint-is-missing")));
+                .orElseThrow(
+                        () -> conflict(ApiMessage.of("api.tool-execution-service.model-turn-checkpoint-is-missing")));
         if (turn.status() != LlmTurn.Status.RESPONDED) {
-            throw conflict(ApiMessage.of("api.tool-execution-service.complete-model-response-must-be-committed-before-tool-execution"));
+            throw conflict(ApiMessage
+                    .of("api.tool-execution-service.complete-model-response-must-be-committed-before-tool-execution"));
         }
         JsonNode call = findCall(turn.response(), toolCallId);
         String toolName = call.path("name").asText();
@@ -182,7 +185,8 @@ public class ToolExecutionService {
             if (!existing.toolName().equals(toolName)
                     || !existing.argumentHash().equals(argumentHash)
                     || existing.status() != ToolExecution.Status.COMPLETED) {
-                throw conflict(ApiMessage.of("api.tool-execution-service.tool-call-ledger-conflicts-with-recorded-model-response"));
+                throw conflict(ApiMessage
+                        .of("api.tool-execution-service.tool-call-ledger-conflicts-with-recorded-model-response"));
             }
             return existing.result();
         }
@@ -194,8 +198,8 @@ public class ToolExecutionService {
         }
         if (AgentToolset.onDemand(run.policySnapshot())
                 && (AgentContextService.isCompaction(turn.request())
-                || java.util.stream.StreamSupport.stream(turn.request().path("tools").spliterator(), false)
-                        .noneMatch(tool -> toolName.equals(tool.path("name").asText())))) {
+                        || java.util.stream.StreamSupport.stream(turn.request().path("tools").spliterator(), false)
+                                .noneMatch(tool -> toolName.equals(tool.path("name").asText())))) {
             // A load in this same atomic batch is insufficient; only the saved request grants exposure.
             throw invalid(ApiMessage.of("api.tool-execution-service.tool-is-not-allowlisted-for-this-runtime"));
         }
@@ -207,39 +211,43 @@ public class ToolExecutionService {
         JsonNode result;
         try {
             result = switch (toolName) {
-            case AgentToolset.LOADER -> AgentToolset.load(run.policySnapshot(), operationId, arguments, mapper);
-            case "read_canvas" -> canvasTools.readCanvas(context, run, operationId, arguments);
-            case "read_storyboard" -> storyboards.readStoryboard(context, run, operationId, arguments);
-            case "write_storyboard_shots" -> storyboards.writeShots(context, run, operationId, arguments);
-            case "manage_canvas_node" -> canvasTools.manageNode(context, run, operationId, arguments);
-            case "update_media_draft" -> canvasTools.updateMediaDraft(context, run, operationId, arguments);
-            case "extract_audio" -> localMedia.extract(context, run, operationId, arguments);
-            case "trim_audio" -> localMedia.trim(context, run, operationId, arguments);
-            case "compose_video" -> videoCompositions.compose(context, run, operationId, arguments);
-            case "read_project_summary" -> reader.projectSummary(context, run,
-                    operationId, arguments);
-            case "read_skill" -> reader.skill(run, operationId, arguments);
-            case "read_skill_asset" -> reader.skillAsset(run, operationId, arguments);
-            case "read_skill_resource" -> reader.skillResource(run, operationId, arguments);
-            case "read_selection" -> reader.selection(run, operationId, arguments);
-            case "read_artifacts" -> reader.artifacts(context, run, operationId, arguments);
-            case "read_media_sample" -> reader.mediaSample(context, run, operationId, arguments);
-            case "read_task_status" -> reader.taskStatus(context, operationId, arguments);
-            case "list_media_capabilities" -> mediaCapabilities(operationId, arguments);
-            case "propose_media_generation" -> mediaApprovals.propose(context, run,
-                    operationId, stepIndex, toolCallId, arguments);
-            case "create_text" -> createText(context, run, operationId, arguments);
-            case "revise_artifact" -> creative.reviseArtifact(context, run, operationId, arguments);
-            case "arrange_items" -> creative.arrangeItems(context, run,
-                    operationId, arguments);
-            default -> throw invalid(ApiMessage.of("api.tool-execution-service.tool-is-not-allowlisted-for-this-runtime"));
+                case AgentToolset.LOADER -> AgentToolset.load(run.policySnapshot(), operationId, arguments, mapper);
+                case "read_canvas" -> canvasTools.readCanvas(context, run, operationId, arguments);
+                case "read_storyboard" -> storyboards.readStoryboard(context, run, operationId, arguments);
+                case "write_storyboard_shots" -> storyboards.writeShots(context, run, operationId, arguments);
+                case "manage_canvas_node" -> canvasTools.manageNode(context, run, operationId, arguments);
+                case "update_media_draft" -> canvasTools.updateMediaDraft(context, run, operationId, arguments);
+                case "extract_audio" -> localMedia.extract(context, run, operationId, arguments);
+                case "trim_audio" -> localMedia.trim(context, run, operationId, arguments);
+                case "compose_video" -> videoCompositions.compose(context, run, operationId, arguments);
+                case "read_project_summary" -> reader.projectSummary(context, run,
+                        operationId, arguments);
+                case "read_skill" -> reader.skill(run, operationId, arguments);
+                case "read_skill_asset" -> reader.skillAsset(run, operationId, arguments);
+                case "read_skill_resource" -> reader.skillResource(run, operationId, arguments);
+                case "read_selection" -> reader.selection(run, operationId, arguments);
+                case "read_artifacts" -> reader.artifacts(context, run, operationId, arguments);
+                case "read_media_sample" -> reader.mediaSample(context, run, operationId, arguments);
+                case "read_task_status" -> reader.taskStatus(context, operationId, arguments);
+                case "list_media_capabilities" -> mediaCapabilities(operationId, arguments);
+                case "propose_media_generation" -> mediaApprovals.propose(context, run,
+                        operationId, stepIndex, toolCallId, arguments);
+                case "create_text" -> createText(context, run, operationId, arguments);
+                case "revise_artifact" -> creative.reviseArtifact(context, run, operationId, arguments);
+                case "arrange_items" -> creative.arrangeItems(context, run,
+                        operationId, arguments);
+                default ->
+                    throw invalid(ApiMessage.of("api.tool-execution-service.tool-is-not-allowlisted-for-this-runtime"));
             };
         } catch (ApiProblemException problem) {
-            if (Set.of("read_canvas", "manage_canvas_node", "update_media_draft", "compose_video", "extract_audio", "trim_audio",
+            if (Set.of("read_canvas", "manage_canvas_node", "update_media_draft", "compose_video", "extract_audio",
+                    "trim_audio",
                     "read_storyboard", "write_storyboard_shots").contains(toolName)
-                    && (problem.status() == HttpStatus.BAD_REQUEST || problem.status() == HttpStatus.UNPROCESSABLE_ENTITY)
+                    && (problem.status() == HttpStatus.BAD_REQUEST
+                            || problem.status() == HttpStatus.UNPROCESSABLE_ENTITY)
                     && !"TOOL_ARGUMENT_INVALID".equals(problem.code())) {
-                throw new ApiProblemException(problem.status(), "TOOL_ARGUMENT_INVALID", problem.title(), problem.detail(), false);
+                throw new ApiProblemException(problem.status(), "TOOL_ARGUMENT_INVALID", problem.title(),
+                        problem.detail(), false);
             }
             throw problem;
         }
@@ -273,14 +281,19 @@ public class ToolExecutionService {
         if (offset < 0 || limit < 1 || limit > 40)
             throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
         JsonNode catalog = capabilities.planningCatalog();
-        if (offset > catalog.size()) throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
+        if (offset > catalog.size())
+            throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
         int end = offset + Math.min(limit, catalog.size() - offset);
         var result = mapper.createObjectNode().put("status", ToolResultStatus.SUCCEEDED.name())
                 .put("operationId", operationId.toString()).put("userVisibleSummary", "已读取可用媒体能力")
                 .put("offset", offset).put("total", catalog.size());
-        if (end < catalog.size()) result.put("nextOffset", end); else result.putNull("nextOffset");
+        if (end < catalog.size())
+            result.put("nextOffset", end);
+        else
+            result.putNull("nextOffset");
         var page = result.putArray("capabilities");
-        for (int index = offset; index < end; index++) page.add(catalog.get(index));
+        for (int index = offset; index < end; index++)
+            page.add(catalog.get(index));
         return result;
     }
 
@@ -369,7 +382,8 @@ public class ToolExecutionService {
                 if (matched != null || !"function".equals(call.path("type").asText())
                         || !call.path("name").isTextual()
                         || !call.path("arguments").isTextual()) {
-                    throw conflict(ApiMessage.of("api.tool-execution-service.saved-model-tool-call-is-ambiguous-or-malformed"));
+                    throw conflict(ApiMessage
+                            .of("api.tool-execution-service.saved-model-tool-call-is-ambiguous-or-malformed"));
                 }
                 matched = call;
             }

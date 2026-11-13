@@ -53,22 +53,29 @@ public class ComfyUiImageAdapter implements MediaAdapter {
         this.published = published;
     }
 
-    @Override public String adapterId() { return "COMFY_IMAGE_V1"; }
+    @Override
+    public String adapterId() {
+        return "COMFY_IMAGE_V1";
+    }
 
-    @Override public boolean supports(PortInput input) {
+    @Override
+    public boolean supports(PortInput input) {
         return input.kind() == Task.Kind.IMAGE_GENERATION;
     }
 
-    @Override public String preflightFailure(AttemptContext context) {
+    @Override
+    public String preflightFailure(AttemptContext context) {
         var settings = mapper.readTree(catalog.pinnedSnapshot(context.binding()).specJson()).path("settings");
         return ComfyUiWorkflowDefinition.configured(settings) ? published.preflightFailure(context) : null;
     }
 
-    @Override public Submission submit(AttemptContext context) {
+    @Override
+    public Submission submit(AttemptContext context) {
         Snapshot snapshot = catalog.pinnedSnapshot(context.binding());
         ComfyUiClient client = clients.create(snapshot.connectionVersion());
         var settings = mapper.readTree(snapshot.specJson()).path("settings");
-        if (ComfyUiWorkflowDefinition.configured(settings)) return published.submit(context, client, settings);
+        if (ComfyUiWorkflowDefinition.configured(settings))
+            return published.submit(context, client, settings);
         ComfyUiImageWorkflow workflow = workflow(settings);
         Task task = context.lease();
         UUID requestKey = UUID.fromString(context.requestKey());
@@ -82,18 +89,20 @@ public class ComfyUiImageAdapter implements MediaAdapter {
         return new Submission.Accepted(promptId);
     }
 
-    @Override public Submission reconcile(AttemptContext context) {
+    @Override
+    public Submission reconcile(AttemptContext context) {
         Snapshot snapshot = catalog.pinnedSnapshot(context.binding());
         ComfyUiClient client = clients.create(snapshot.connectionVersion());
         var settings = mapper.readTree(snapshot.specJson()).path("settings");
-        if (ComfyUiWorkflowDefinition.configured(settings)) return published.reconcile(context, client, settings);
+        if (ComfyUiWorkflowDefinition.configured(settings))
+            return published.reconcile(context, client, settings);
         String promptId = context.originalRequestId();
         try {
             return switch (client.imageStatus(promptId, ComfyUiImageWorkflow.OUTPUT_NODE_ID)) {
                 case ComfyUiHistory.Pending ignored ->
-                        new Submission.Pending(Instant.now().plusSeconds(5));
+                    new Submission.Pending(Instant.now().plusSeconds(5));
                 case ComfyUiHistory.Failed ignored ->
-                        new Submission.Rejected("PROVIDER_EXECUTION_FAILED");
+                    new Submission.Rejected("PROVIDER_EXECUTION_FAILED");
                 case ComfyUiHistory.Ready ready -> new Submission.Completed(
                         new dev.agenvas.provider.domain.MediaPayload(
                                 client.output(ready.filename()), "image/png"));
@@ -136,7 +145,8 @@ public class ComfyUiImageAdapter implements MediaAdapter {
             } catch (IOException failure) {
                 throw new IllegalStateException("Cannot decode pinned reference", failure);
             }
-            if (source == null) throw new IllegalStateException("Pinned reference is not decodable");
+            if (source == null)
+                throw new IllegalStateException("Pinned reference is not decodable");
         }
         try {
             return ComfyUiInputImage.png(source, width, height);

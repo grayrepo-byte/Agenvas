@@ -58,7 +58,8 @@ public class JooqAgentRunRepository implements AgentRunRepository {
                 .set(AGENT_RUN.VERSION, AGENT_RUN.VERSION.plus(1))
                 .set(AGENT_RUN.COMPLETED_AT, utc(now)).set(AGENT_RUN.UPDATED_AT, utc(now))
                 .where(AGENT_RUN.ID.in(runIds))
-                .and(AGENT_RUN.STATUS.notIn(AgentRun.Status.SUCCEEDED.name(), AgentRun.Status.FAILED.name(), AgentRun.Status.CANCELED.name()))
+                .and(AGENT_RUN.STATUS.notIn(AgentRun.Status.SUCCEEDED.name(), AgentRun.Status.FAILED.name(),
+                        AgentRun.Status.CANCELED.name()))
                 .returning().fetch(this::map);
     }
 
@@ -104,8 +105,8 @@ public class JooqAgentRunRepository implements AgentRunRepository {
     public Optional<IdempotencyRecord> findIdempotency(
             UUID principalId, String scope, String key) {
         return dsl.select(IDEMPOTENCY_RECORD.REQUEST_HASH, IDEMPOTENCY_RECORD.STATE,
-                        IDEMPOTENCY_RECORD.RESOURCE_ID, IDEMPOTENCY_RECORD.RESPONSE_JSON,
-                        IDEMPOTENCY_RECORD.EXPIRES_AT)
+                IDEMPOTENCY_RECORD.RESOURCE_ID, IDEMPOTENCY_RECORD.RESPONSE_JSON,
+                IDEMPOTENCY_RECORD.EXPIRES_AT)
                 .from(IDEMPOTENCY_RECORD)
                 .where(IDEMPOTENCY_RECORD.PRINCIPAL_ID.eq(principalId))
                 .and(IDEMPOTENCY_RECORD.SCOPE.eq(scope))
@@ -114,7 +115,8 @@ public class JooqAgentRunRepository implements AgentRunRepository {
                         row.get(IDEMPOTENCY_RECORD.REQUEST_HASH),
                         IdempotencyState.valueOf(row.get(IDEMPOTENCY_RECORD.STATE)),
                         row.get(IDEMPOTENCY_RECORD.RESOURCE_ID),
-                        row.get(IDEMPOTENCY_RECORD.RESPONSE_JSON) == null ? null
+                        row.get(IDEMPOTENCY_RECORD.RESPONSE_JSON) == null
+                                ? null
                                 : row.get(IDEMPOTENCY_RECORD.RESPONSE_JSON).data(),
                         row.get(IDEMPOTENCY_RECORD.EXPIRES_AT).toInstant()));
     }

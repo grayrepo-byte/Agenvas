@@ -8,10 +8,25 @@ import { ReferenceSourcesDialog } from "./ReferenceSourcesDialog";
 import { ReferenceCacheManager } from "./ReferenceCacheManager";
 
 export function ReferenceSourcesSettings({ enabled }: { enabled: boolean }) {
-  useLocale(); const [open, setOpen] = useState(false);
-  const sources = useQuery({ queryKey: ["reference-catalog-sources"], queryFn: listReferenceSources, enabled, retry: false });
-  return <Panel title={t("reference.sources")} actions={<Button type="button" variant="outline" disabled={!enabled} onClick={() => setOpen(true)}>{t("reference.manageSources")}</Button>}>
-    {enabled ? <ReferenceCacheManager sources={sources.data?.items ?? []} /> : null}
-    {open ? <ReferenceSourcesDialog onClose={() => setOpen(false)} /> : null}
-  </Panel>;
+  useLocale();
+  const [open, setOpen] = useState(false);
+  const sources = useQuery({
+    queryKey: ["reference-catalog-sources"],
+    queryFn: listReferenceSources,
+    enabled,
+    retry: false,
+  });
+  return (
+    <Panel
+      title={t("reference.sources")}
+      actions={
+        <Button type="button" variant="outline" disabled={!enabled} onClick={() => setOpen(true)}>
+          {t("reference.manageSources")}
+        </Button>
+      }
+    >
+      {enabled ? <ReferenceCacheManager sources={sources.data?.items ?? []} /> : null}
+      {open ? <ReferenceSourcesDialog onClose={() => setOpen(false)} /> : null}
+    </Panel>
+  );
 }

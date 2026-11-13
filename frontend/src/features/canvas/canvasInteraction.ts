@@ -22,8 +22,15 @@ export function useCanvasInteraction() {
       if (pressedAt !== null) usedAsGesture = true;
     };
     const keyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || event.altKey ||
-        (event.target instanceof Element && event.target.closest(SHORTCUT_TARGETS))) return;
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        (event.target instanceof Element && event.target.closest(SHORTCUT_TARGETS))
+      )
+        return;
       if (event.code === "Space") {
         if (event.target instanceof Element && event.target.closest("button, a")) return;
         event.preventDefault();
@@ -39,11 +46,13 @@ export function useCanvasInteraction() {
     };
     const keyUp = (event: KeyboardEvent) => {
       if (event.code !== "Space") return;
-      if (pressedAt !== null && !usedAsGesture &&
-        performance.now() - pressedAt < SPACE_HOLD_THRESHOLD_MS) setTool("hand");
+      if (pressedAt !== null && !usedAsGesture && performance.now() - pressedAt < SPACE_HOLD_THRESHOLD_MS)
+        setTool("hand");
       release();
     };
-    const visibility = () => { if (document.hidden) release(); };
+    const visibility = () => {
+      if (document.hidden) release();
+    };
     window.addEventListener("pointerdown", pointerDown, true);
     window.addEventListener("keydown", keyDown);
     window.addEventListener("keyup", keyUp);

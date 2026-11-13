@@ -22,7 +22,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class CanvasSubgraphCopySupportTest {
-    private final UUID owner = UUID.randomUUID(), project = UUID.randomUUID(), a = UUID.randomUUID(), b = UUID.randomUUID();
+    private final UUID owner = UUID.randomUUID(), project = UUID.randomUUID(), a = UUID.randomUUID(),
+            b = UUID.randomUUID();
     private final Instant now = Instant.parse("2026-11-07T00:00:00Z");
     private final CanvasConnectionRepository edges = mock(CanvasConnectionRepository.class);
     private final CanvasCharacterNodeRepository characters = mock(CanvasCharacterNodeRepository.class);
@@ -30,7 +31,8 @@ class CanvasSubgraphCopySupportTest {
     private final CanvasSubgraphCopySupport support = new CanvasSubgraphCopySupport(edges, characters,
             mock(ProjectService.class), artifacts, Clock.fixed(now, ZoneOffset.UTC));
 
-    @Test void selectionCopiesOnlyInternalRelationshipsAndRejectsStaleOrForeignTopology() {
+    @Test
+    void selectionCopiesOnlyInternalRelationshipsAndRejectsStaleOrForeignTopology() {
         var internal = edge(a, b, CanvasConnection.RelationType.PROMPT_INPUT);
         var external = edge(a, UUID.randomUUID(), CanvasConnection.RelationType.PROMPT_INPUT);
         when(edges.list(owner, project)).thenReturn(List.of(internal, external));
@@ -52,15 +54,18 @@ class CanvasSubgraphCopySupportTest {
         assertThat(support.prepare(owner, project, List.of(copy(a)), List.of()).source().connections()).isEmpty();
     }
 
-    @Test void promptInputsUseIndependentTextVersionsWhileMediaLineageKeepsExactVersionsAndOrder() {
+    @Test
+    void promptInputsUseIndependentTextVersionsWhileMediaLineageKeepsExactVersionsAndOrder() {
         var prompt = edge(a, b, CanvasConnection.RelationType.PROMPT_INPUT);
         var media = edge(b, a, CanvasConnection.RelationType.MEDIA_DERIVATION);
         UUID first = UUID.randomUUID(), second = UUID.randomUUID(), newVersion = UUID.randomUUID();
         CanvasItem source = item(first), target = item(second);
         ArtifactVersion version = mock(ArtifactVersion.class);
         when(version.id()).thenReturn(newVersion);
-        when(artifacts.get(owner, project, source.subjectId())).thenReturn(new ArtifactService.ArtifactView(mock(Artifact.class), version));
-        var prepared = new CanvasSubgraphCopySupport.Prepared(new CanvasSubgraphCopySupport.Graph(List.of(prompt, media), List.of()),
+        when(artifacts.get(owner, project, source.subjectId()))
+                .thenReturn(new ArtifactService.ArtifactView(mock(Artifact.class), version));
+        var prepared = new CanvasSubgraphCopySupport.Prepared(
+                new CanvasSubgraphCopySupport.Graph(List.of(prompt, media), List.of()),
                 Map.of(prompt.id(), UUID.randomUUID(), media.id(), UUID.randomUUID()));
         var graph = support.remap(owner, project, prepared, Map.of(a, source, b, target));
         assertThat(graph.connections()).hasSize(2);
@@ -69,13 +74,19 @@ class CanvasSubgraphCopySupportTest {
         assertThat(graph.connections().getFirst().sourceArtifactVersionId()).isEqualTo(newVersion);
         assertThat(graph.connections().getLast().sourceArtifactVersionId()).isEqualTo(media.sourceArtifactVersionId());
         assertThat(graph.connections().getFirst().createdAt()).isBefore(graph.connections().getLast().createdAt());
-        assertThat(support.nextIncarnation(graph).connections()).allSatisfy(edge -> assertThat(edge.version()).isEqualTo(1));
+        assertThat(support.nextIncarnation(graph).connections())
+                .allSatisfy(edge -> assertThat(edge.version()).isEqualTo(1));
     }
 
-    private Copy copy(UUID id) { return new Copy(id, UUID.randomUUID(), 0, null, null, BigDecimal.ZERO,
-            BigDecimal.ZERO, BigDecimal.valueOf(320), BigDecimal.valueOf(240), 0, null); }
-    private CanvasItem item(UUID id) { return new CanvasItem(id, project, CanvasItem.SubjectType.ARTIFACT, UUID.randomUUID(), null,
-            "Synthetic", BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.valueOf(320), BigDecimal.valueOf(240), 0, null, false, 0, now, now); }
+    private Copy copy(UUID id) {
+        return new Copy(id, UUID.randomUUID(), 0, null, null, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.valueOf(320), BigDecimal.valueOf(240), 0, null);
+    }
+    private CanvasItem item(UUID id) {
+        return new CanvasItem(id, project, CanvasItem.SubjectType.ARTIFACT, UUID.randomUUID(), null,
+                "Synthetic", BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.valueOf(320), BigDecimal.valueOf(240), 0,
+                null, false, 0, now, now);
+    }
     private CanvasConnection edge(UUID source, UUID target, CanvasConnection.RelationType kind) {
         return new CanvasConnection(UUID.randomUUID(), project, source, target, kind, UUID.randomUUID(), 0, now, now);
     }

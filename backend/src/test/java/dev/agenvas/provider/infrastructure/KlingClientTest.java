@@ -28,25 +28,33 @@ class KlingClientTest {
     private int status = 200;
     private String response;
 
-    @BeforeEach void start() throws IOException {
+    @BeforeEach
+    void start() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> {
             paths.add(exchange.getRequestURI().toString());
             assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isEqualTo("Bearer synthetic-key");
             byte[] request = exchange.getRequestBody().readAllBytes();
-            if (request.length > 0) bodies.add(mapper.readTree(request));
+            if (request.length > 0)
+                bodies.add(mapper.readTree(request));
             byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "application/json");
             exchange.getResponseHeaders().set("Retry-After", "0");
             exchange.sendResponseHeaders(status, bytes.length);
-            try (var output = exchange.getResponseBody()) { output.write(bytes); }
+            try (var output = exchange.getResponseBody()) {
+                output.write(bytes);
+            }
         });
         server.start();
         client = new KlingClient(mapper, URI.create("http://127.0.0.1:" + server.getAddress().getPort()));
     }
-    @AfterEach void stop() { server.stop(0); }
+    @AfterEach
+    void stop() {
+        server.stop(0);
+    }
 
-    @Test void imageUsesLegacySchemaAndOneResultPerTask() {
+    @Test
+    void imageUsesLegacySchemaAndOneResultPerTask() {
         var body = client.prepareImage("A mountain", "2:3", "2K", List.of(new Reference("REFERENCE", "AQID")));
         response = "{\"code\":0,\"data\":{\"task_id\":\"image-1\",\"task_status\":\"submitted\"}}";
         assertThat(client.createImage(null, "synthetic-key", body)).isEqualTo("image-1");
@@ -56,11 +64,13 @@ class KlingClientTest {
         assertThat(bodies.getFirst().path("image").asText()).isEqualTo("AQID");
         assertThat(bodies.getFirst().path("resolution").asText()).isEqualTo("2k");
         response = "{\"code\":0,\"data\":{\"task_id\":\"image-1\",\"task_status\":\"succeed\",\"task_result\":{\"images\":[{\"index\":0,\"url\":\"https://h1.inkwai.com/result.png\"}]}}}";
-        assertThat(client.queryImage(null, "synthetic-key", "image-1").url()).isEqualTo("https://h1.inkwai.com/result.png");
+        assertThat(client.queryImage(null, "synthetic-key", "image-1").url())
+                .isEqualTo("https://h1.inkwai.com/result.png");
         assertThat(paths.getLast()).isEqualTo("/v1/images/generations/image-1");
     }
 
-    @Test void videoTextAndFramesUseNewSchemasAndExplicitExternalIdentity() {
+    @Test
+    void videoTextAndFramesUseNewSchemasAndExplicitExternalIdentity() {
         var text = client.prepareVideo("A mountain", "9:16", "2160p", 15, List.of(), "request-1");
         response = "{\"code\":0,\"data\":{\"id\":\"video-1\",\"status\":\"processing\"}}";
         assertThat(client.createVideo(null, "synthetic-key", text)).isEqualTo("video-1");
@@ -80,7 +90,8 @@ class KlingClientTest {
         assertThat(frames.path("contents").get(2).path("type").asText()).isEqualTo("last_frame");
     }
 
-    @Test void queryMatchesTheOriginalIdAndRejectsDuplicateOrMissingIdentity() {
+    @Test
+    void queryMatchesTheOriginalIdAndRejectsDuplicateOrMissingIdentity() {
         response = "{\"code\":0,\"data\":[{\"id\":\"other\",\"status\":\"processing\"},{\"id\":\"video-1\",\"status\":\"succeeded\",\"outputs\":[{\"type\":\"video\",\"url\":\"https://h1.inkwai.com/a.mp4\",\"duration\":\"5\"}]}]}";
         assertThat(client.queryVideo(null, "synthetic-key", "video-1").url()).isEqualTo("https://h1.inkwai.com/a.mp4");
         assertThat(paths).containsExactly("/tasks?task_ids=video-1");
@@ -89,50 +100,69 @@ class KlingClientTest {
                 "{\"code\":0,\"data\":[{\"id\":\"video-1\",\"status\":\"succeed\"}]}",
                 "{\"code\":0,\"data\":[{\"id\":\"video-1\",\"status\":\"succeeded\",\"outputs\":[{\"type\":\"audio\",\"url\":\"https://h1.inkwai.com/a.mp3\"}]}]}")) {
             response = invalid;
-            assertThatThrownBy(() -> client.queryVideo(null, "synthetic-key", "video-1")).isInstanceOf(KlingClient.ProtocolFailure.class);
+            assertThatThrownBy(() -> client.queryVideo(null, "synthetic-key", "video-1"))
+                    .isInstanceOf(KlingClient.ProtocolFailure.class);
         }
-        assertThatThrownBy(() -> client.queryVideo(null, "synthetic-key", "../task")).isInstanceOf(KlingClient.ProtocolFailure.class);
+        assertThatThrownBy(() -> client.queryVideo(null, "synthetic-key", "../task"))
+                .isInstanceOf(KlingClient.ProtocolFailure.class);
     }
 
-    @Test void refusesUnsupportedRequestsBeforeAnyNetworkCall() {
-        assertThatThrownBy(() -> client.prepareImage("A mountain", "1:1", "4K", List.of())).isInstanceOf(ApiProblemException.class);
-        assertThatThrownBy(() -> client.prepareVideo("A mountain", "16:9", null, 2, List.of(), "request")).isInstanceOf(ApiProblemException.class);
+    @Test
+    void refusesUnsupportedRequestsBeforeAnyNetworkCall() {
+        assertThatThrownBy(() -> client.prepareImage("A mountain", "1:1", "4K", List.of()))
+                .isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> client.prepareVideo("A mountain", "16:9", null, 2, List.of(), "request"))
+                .isInstanceOf(ApiProblemException.class);
         assertThatThrownBy(() -> client.prepareVideo("A mountain", "16:9", null, 5,
                 List.of(new Reference("END_FRAME", "AQID")), "request")).isInstanceOf(ApiProblemException.class);
         assertThatThrownBy(() -> client.prepareImage("A mountain", "1:1", "1K",
-                List.of(new Reference("REFERENCE", "data:image/png;base64,AQID")))).isInstanceOf(ApiProblemException.class);
+                List.of(new Reference("REFERENCE", "data:image/png;base64,AQID"))))
+                .isInstanceOf(ApiProblemException.class);
         assertThat(paths).isEmpty();
     }
 
-    @Test void malformedReceiptAndServerFailureStayUnknownWithoutAutomaticResubmission() {
+    @Test
+    void malformedReceiptAndServerFailureStayUnknownWithoutAutomaticResubmission() {
         var body = client.prepareImage("A mountain", "1:1", "1K", List.of());
-        for (String invalid : List.of("{\"code\":0,\"data\":{}}", "not-json", "{\"code\":0,\"data\":{\"task_id\":\"image-1\",\"task_status\":\"succeeded\"}}")) {
+        for (String invalid : List.of("{\"code\":0,\"data\":{}}", "not-json",
+                "{\"code\":0,\"data\":{\"task_id\":\"image-1\",\"task_status\":\"succeeded\"}}")) {
             response = invalid;
-            assertThatThrownBy(() -> client.createImage(null, "synthetic-key", body)).isInstanceOf(KlingClient.Uncertain.class);
+            assertThatThrownBy(() -> client.createImage(null, "synthetic-key", body))
+                    .isInstanceOf(KlingClient.Uncertain.class);
         }
-        response = "{}"; status = 503;
-        assertThatThrownBy(() -> client.createImage(null, "synthetic-key", body)).isInstanceOf(KlingClient.Uncertain.class);
+        response = "{}";
+        status = 503;
+        assertThatThrownBy(() -> client.createImage(null, "synthetic-key", body))
+                .isInstanceOf(KlingClient.Uncertain.class);
         assertThat(paths).hasSize(4);
         status = 200;
         for (int code : List.of(1001, 1101, 1201, 1303)) {
             response = "{\"code\":" + code + ",\"message\":\"documented refusal\"}";
-            assertThatThrownBy(() -> client.createImage(null, "synthetic-key", body)).isInstanceOf(KlingClient.Rejected.class);
+            assertThatThrownBy(() -> client.createImage(null, "synthetic-key", body))
+                    .isInstanceOf(KlingClient.Rejected.class);
         }
         response = "{\"code\":5000,\"message\":\"internal failure\"}";
-        assertThatThrownBy(() -> client.createImage(null, "synthetic-key", body)).isInstanceOf(KlingClient.Uncertain.class);
-        response = "{}"; status = 401;
-        assertThatThrownBy(() -> client.createImage(null, "synthetic-key", body)).isInstanceOf(KlingClient.Rejected.class);
+        assertThatThrownBy(() -> client.createImage(null, "synthetic-key", body))
+                .isInstanceOf(KlingClient.Uncertain.class);
+        response = "{}";
+        status = 401;
+        assertThatThrownBy(() -> client.createImage(null, "synthetic-key", body))
+                .isInstanceOf(KlingClient.Rejected.class);
         status = 410;
-        assertThatThrownBy(() -> client.queryImage(null, "synthetic-key", "image-1")).isInstanceOf(KlingClient.TaskExpired.class);
+        assertThatThrownBy(() -> client.queryImage(null, "synthetic-key", "image-1"))
+                .isInstanceOf(KlingClient.TaskExpired.class);
         status = 403;
-        assertThatThrownBy(() -> client.queryImage(null, "synthetic-key", "image-1")).isInstanceOf(KlingClient.CredentialUnavailable.class);
+        assertThatThrownBy(() -> client.queryImage(null, "synthetic-key", "image-1"))
+                .isInstanceOf(KlingClient.CredentialUnavailable.class);
     }
 
-    @Test void acceptsCompatibleServiceRootsWithoutAnOfficialHostAllowlist() {
+    @Test
+    void acceptsCompatibleServiceRootsWithoutAnOfficialHostAllowlist() {
         assertThat(KlingClient.validatedOrigin(null)).isEqualTo(KlingClient.ORIGIN);
         for (String url : List.of("http://localhost:8090", "https://proxy.invalid:8443", KlingClient.BEIJING_ORIGIN))
             assertThat(KlingClient.validatedOrigin(url + "/")).isEqualTo(url);
-        for (String url : List.of("https://user:secret@localhost", "http://localhost/v1", "file:///tmp", "http://localhost:0"))
+        for (String url : List.of("https://user:secret@localhost", "http://localhost/v1", "file:///tmp",
+                "http://localhost:0"))
             assertThatThrownBy(() -> KlingClient.validatedOrigin(url)).isInstanceOf(ApiProblemException.class);
     }
 }

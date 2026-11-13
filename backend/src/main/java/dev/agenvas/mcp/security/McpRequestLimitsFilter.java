@@ -70,8 +70,9 @@ public class McpRequestLimitsFilter extends OncePerRequestFilter {
                         throw rejected(HttpStatus.FORBIDDEN, "MCP_SCOPE_DENIED", "api.mcp.scope-denied");
                     if (request.getHeader(HttpHeaders.ORIGIN) != null)
                         throw rejected(HttpStatus.FORBIDDEN, "MCP_ORIGIN_DENIED", "mcp.upload.origin-denied");
-                    if (recoveryMode) throw rejected(HttpStatus.SERVICE_UNAVAILABLE, "RECOVERY_MODE_READ_ONLY",
-                            "api.recovery-mode-write-guard.database-and-media-backups-are-being-reconciled-project-and-model");
+                    if (recoveryMode)
+                        throw rejected(HttpStatus.SERVICE_UNAVAILABLE, "RECOVERY_MODE_READ_ONLY",
+                                "api.recovery-mode-write-guard.database-and-media-backups-are-being-reconciled-project-and-model");
                     if (request.getContentLengthLong() > McpHttpEndpoints.MAX_UPLOAD_REQUEST_BYTES)
                         throw rejected(HttpStatus.PAYLOAD_TOO_LARGE, "MCP_UPLOAD_TOO_LARGE", "mcp.upload.too-large");
                 } catch (ApiProblemException rejected) {
@@ -86,10 +87,12 @@ public class McpRequestLimitsFilter extends OncePerRequestFilter {
             }
             byte[] body;
             try {
-                if (request.getContentLengthLong() > MAX_BODY_BYTES) throw tooLarge();
+                if (request.getContentLengthLong() > MAX_BODY_BYTES)
+                    throw tooLarge();
                 // Check bytes read, not just Content-Length: native clients may use chunked transfer.
                 body = request.getInputStream().readNBytes(MAX_BODY_BYTES + 1);
-                if (body.length > MAX_BODY_BYTES) throw tooLarge();
+                if (body.length > MAX_BODY_BYTES)
+                    throw tooLarge();
             } catch (ApiProblemException rejected) {
                 resolver.resolveException(request, response, null, rejected);
                 return;
@@ -106,15 +109,18 @@ public class McpRequestLimitsFilter extends OncePerRequestFilter {
     }
 
     private boolean acquire(UUID userId) {
-        if (!total.tryAcquire()) return false;
+        if (!total.tryAcquire())
+            return false;
         AtomicBoolean acquired = new AtomicBoolean();
         activeByUser.compute(userId, (user, count) -> {
             int current = count == null ? 0 : count;
-            if (current >= MAX_PER_USER) return count;
+            if (current >= MAX_PER_USER)
+                return count;
             acquired.set(true);
             return current + 1;
         });
-        if (!acquired.get()) total.release();
+        if (!acquired.get())
+            total.release();
         return acquired.get();
     }
 
@@ -144,7 +150,8 @@ public class McpRequestLimitsFilter extends OncePerRequestFilter {
 
         @Override
         public BufferedReader getReader() {
-            var charset = getCharacterEncoding() == null ? StandardCharsets.UTF_8
+            var charset = getCharacterEncoding() == null
+                    ? StandardCharsets.UTF_8
                     : java.nio.charset.Charset.forName(getCharacterEncoding());
             return new BufferedReader(new InputStreamReader(getInputStream(), charset));
         }
@@ -190,11 +197,14 @@ public class McpRequestLimitsFilter extends OncePerRequestFilter {
 
         @Override
         public void setReadListener(ReadListener next) {
-            if (next == null || listener != null) throw new IllegalStateException("Read listener unavailable");
+            if (next == null || listener != null)
+                throw new IllegalStateException("Read listener unavailable");
             listener = next;
             try {
-                if (!isFinished()) next.onDataAvailable();
-                if (isFinished()) next.onAllDataRead();
+                if (!isFinished())
+                    next.onDataAvailable();
+                if (isFinished())
+                    next.onAllDataRead();
             } catch (IOException failure) {
                 next.onError(failure);
             }

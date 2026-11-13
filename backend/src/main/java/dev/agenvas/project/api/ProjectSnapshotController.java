@@ -36,8 +36,7 @@ public class ProjectSnapshotController {
     public ProjectSnapshotResponse get(
             @AuthenticationPrincipal AdminPrincipal principal,
             @PathVariable UUID projectId) {
-        ProjectSnapshotService.ProjectSnapshot snapshot =
-                snapshots.snapshot(principal.userId(), projectId);
+        ProjectSnapshotService.ProjectSnapshot snapshot = snapshots.snapshot(principal.userId(), projectId);
         return new ProjectSnapshotResponse(
                 ProjectResponse.from(snapshot.project()),
                 CanvasResponse.from(snapshot.canvas()),
@@ -69,5 +68,6 @@ public class ProjectSnapshotController {
             RunResponse activeRun,
             List<TaskResponse> activeTasks,
             List<TaskResponse> unknownTasks,
-            long snapshotSeq) {}
+            long snapshotSeq) {
+    }
 }

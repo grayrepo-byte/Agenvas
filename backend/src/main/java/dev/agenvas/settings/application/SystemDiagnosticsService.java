@@ -101,10 +101,10 @@ public class SystemDiagnosticsService {
             if (databaseAvailable) {
                 try {
                     var candidates = mediaCapabilities.publishedCandidates();
-                    imageConfigured = candidates.stream().anyMatch(candidate ->
-                            candidate.kind() == Task.Kind.IMAGE_GENERATION);
-                    videoConfigured = candidates.stream().anyMatch(candidate ->
-                            candidate.kind() == Task.Kind.VIDEO_GENERATION);
+                    imageConfigured = candidates.stream()
+                            .anyMatch(candidate -> candidate.kind() == Task.Kind.IMAGE_GENERATION);
+                    videoConfigured = candidates.stream()
+                            .anyMatch(candidate -> candidate.kind() == Task.Kind.VIDEO_GENERATION);
                 } catch (DataAccessException unavailable) {
                     databaseAvailable = false;
                     recentErrors = List.of();
@@ -141,7 +141,8 @@ public class SystemDiagnosticsService {
      * @param count 该状态对应的任务数量
      * @param lastAt 该状态任务最近一次更新时间
      */
-    public record RecentError(String status, long count, Instant lastAt) {}
+    public record RecentError(String status, long count, Instant lastAt) {
+    }
 
     /** 返回给管理员的安装诊断快照；配置字段不代表远端连通性。
      * @param checkedAt 生成快照的时刻
@@ -158,5 +159,6 @@ public class SystemDiagnosticsService {
     public record Snapshot(Instant checkedAt, Status database, Status storage,
             String llmMode, boolean llmConfigured, boolean llmToolCallingVerified,
             String mediaMode, boolean imageConfigured, boolean videoConfigured,
-            List<RecentError> recentErrors) {}
+            List<RecentError> recentErrors) {
+    }
 }

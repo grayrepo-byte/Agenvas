@@ -49,9 +49,12 @@ class AgentSkillImageInputServiceTest {
     private final AssetService assets = mock(AssetService.class);
     private final SkillService skills = mock(SkillService.class);
     private final ToolExecutionRepository ledger = mock(ToolExecutionRepository.class);
-    private final AgentImageInputService service = new AgentImageInputService(artifacts, assets, mapper, skills, ledger, mock(AgentMediaSampleService.class));
-    private final AgentImageInputService.SkillInput input = new AgentImageInputService.SkillInput(skill, version, "style", hash);
-    @TempDir Path directory;
+    private final AgentImageInputService service = new AgentImageInputService(artifacts, assets, mapper, skills, ledger,
+            mock(AgentMediaSampleService.class));
+    private final AgentImageInputService.SkillInput input = new AgentImageInputService.SkillInput(skill, version,
+            "style", hash);
+    @TempDir
+    Path directory;
 
     private ObjectNode snapshot() {
         var snapshot = mapper.createObjectNode();
@@ -69,13 +72,16 @@ class AgentSkillImageInputServiceTest {
         var media = new PrivateMediaArchive.Media(1, UUID.randomUUID(), owner, Asset.MediaKind.IMAGE,
                 "private-original-key", "image/png", PNG.length, hash, 1, 1, null,
                 "private-thumbnail-key", size, hash);
-        var bundle = new SkillContent.Bundle(1, "style", "Style reference", "Instructions", List.of(Artifact.Kind.IMAGE),
+        var bundle = new SkillContent.Bundle(1, "style", "Style reference", "Instructions",
+                List.of(Artifact.Kind.IMAGE),
                 List.of(), List.of(), List.of(new SkillContent.PublishedAsset("style", Artifact.Kind.IMAGE,
-                "Style reference", hash, SkillContent.Usage.PROVIDER_REFERENCE, true, "Style", media)));
-        when(skills.getBundle(owner, skill, version)).thenReturn(new SkillContent.Version(version, owner, skill, 1, "bundle-hash", bundle, Instant.now()));
+                        "Style reference", hash, SkillContent.Usage.PROVIDER_REFERENCE, true, "Style", media)));
+        when(skills.getBundle(owner, skill, version))
+                .thenReturn(new SkillContent.Version(version, owner, skill, 1, "bundle-hash", bundle, Instant.now()));
         Path preview = directory.resolve("preview.png");
         Files.write(preview, PNG);
-        when(skills.file(owner, skill, version, "style", true)).thenReturn(new LibraryService.MediaFile(preview, "image/png", size));
+        when(skills.file(owner, skill, version, "style", true))
+                .thenReturn(new LibraryService.MediaFile(preview, "image/png", size));
         when(ledger.skillReads(project, run)).thenReturn(List.of(mapper.createObjectNode()
                 .put("skillVersionId", version.toString()).put("path", "SKILL.md"), assetRead()));
     }
@@ -84,12 +90,14 @@ class AgentSkillImageInputServiceTest {
                 .metadata(Map.of(AgentImageInputService.SKILL_METADATA_KEY, List.of(input))).build();
     }
 
-    @Test void committedImageReadHydratesRealPixelsOnEveryRecoveryWithoutImportingProjectAssets() throws Exception {
+    @Test
+    void committedImageReadHydratesRealPixelsOnEveryRecoveryWithoutImportingProjectAssets() throws Exception {
         authorize(PNG.length);
         var codec = new LlmProtocolCodec(mapper);
         var saved = codec.request(List.of(checkpointMessage()), List.of());
         assertThat(saved.toString()).contains("agentSkillImageInputs", version.toString(), "style", hash)
-                .doesNotContain("private-original-key", "private-thumbnail-key", Base64.getEncoder().encodeToString(PNG));
+                .doesNotContain("private-original-key", "private-thumbnail-key",
+                        Base64.getEncoder().encodeToString(PNG));
         for (int recovery = 0; recovery < 2; recovery++) {
             var messages = service.hydrate(owner, project, run, snapshot(), codec.requestMessages(saved));
             var attached = (UserMessage) messages.getFirst();
@@ -100,22 +108,28 @@ class AgentSkillImageInputServiceTest {
         verifyNoInteractions(artifacts, assets);
     }
 
-    @Test void selectingOrActivatingSkillDoesNotAutoloadImagesAndRejectedReadsDoNotAppend() {
+    @Test
+    void selectingOrActivatingSkillDoesNotAutoloadImagesAndRejectedReadsDoNotAppend() {
         List<Message> history = new ArrayList<>(List.of(new UserMessage("Skill metadata")));
         var main = AssistantMessage.builder().content("").toolCalls(List.of(
                 new AssistantMessage.ToolCall("main", "function", "read_skill", "{}"))).build();
-        service.appendReadPreviews(history, main, Map.of("main", mapper.createObjectNode().put("status", "SUCCEEDED").set("data", assetRead())));
+        service.appendReadPreviews(history, main,
+                Map.of("main", mapper.createObjectNode().put("status", "SUCCEEDED").set("data", assetRead())));
         var read = AssistantMessage.builder().content("").toolCalls(List.of(
                 new AssistantMessage.ToolCall("image", "function", "read_skill_asset", "{}"))).build();
-        service.appendReadPreviews(history, read, Map.of("image", mapper.createObjectNode().put("status", "REJECTED").set("data", assetRead())));
+        service.appendReadPreviews(history, read,
+                Map.of("image", mapper.createObjectNode().put("status", "REJECTED").set("data", assetRead())));
         assertThat(service.hydrate(owner, project, run, snapshot(), history)).isEqualTo(history);
         verifyNoInteractions(skills, ledger, artifacts, assets);
-        service.appendReadPreviews(history, read, Map.of("image", mapper.createObjectNode().put("status", "SUCCEEDED").set("data", assetRead())));
-        service.appendReadPreviews(history, read, Map.of("image", mapper.createObjectNode().put("status", "SUCCEEDED").set("data", assetRead())));
+        service.appendReadPreviews(history, read,
+                Map.of("image", mapper.createObjectNode().put("status", "SUCCEEDED").set("data", assetRead())));
+        service.appendReadPreviews(history, read,
+                Map.of("image", mapper.createObjectNode().put("status", "SUCCEEDED").set("data", assetRead())));
         assertThat(history).hasSize(2);
     }
 
-    @Test void frozenHashAliasAndCommittedReadAreRequiredBeforeOpeningTheSkillFile() throws Exception {
+    @Test
+    void frozenHashAliasAndCommittedReadAreRequiredBeforeOpeningTheSkillFile() throws Exception {
         authorize(PNG.length);
         when(ledger.skillReads(project, run)).thenReturn(List.of(assetRead()));
         assertThatThrownBy(() -> service.hydrate(owner, project, run, snapshot(), List.of(checkpointMessage())))
@@ -124,13 +138,15 @@ class AgentSkillImageInputServiceTest {
         when(ledger.skillReads(project, run)).thenReturn(List.of(mapper.createObjectNode()
                 .put("skillVersionId", version.toString()).put("path", "SKILL.md"), assetRead()));
         var changed = snapshot();
-        ((ObjectNode) changed.path("creativeSkills").path(0).path("assets").path(0)).put("contentHash", "different-hash");
+        ((ObjectNode) changed.path("creativeSkills").path(0).path("assets").path(0)).put("contentHash",
+                "different-hash");
         assertThatThrownBy(() -> service.hydrate(owner, project, run, changed, List.of(checkpointMessage())))
                 .isInstanceOf(ApiProblemException.class);
         verify(skills, never()).file(any(), any(), any(), any(), anyBoolean());
     }
 
-    @Test void projectAndSkillReferencesShareTheImageCountAndByteLimits() throws Exception {
+    @Test
+    void projectAndSkillReferencesShareTheImageCountAndByteLimits() throws Exception {
         var projectRefs = java.util.stream.IntStream.range(0, AgentImageInputService.MAX_IMAGES)
                 .mapToObj(i -> new AgentImageInputService.Input(UUID.randomUUID(), UUID.randomUUID())).toList();
         var bound = UserMessage.builder().text("Project references")
@@ -161,7 +177,8 @@ class AgentSkillImageInputServiceTest {
         verify(assets, never()).content(any(), any(), any(), anyBoolean());
     }
 
-    @Test void oversizedSkillPreviewIsRejectedAndUnavailableStorageCannotFallBackToMetadata() throws Exception {
+    @Test
+    void oversizedSkillPreviewIsRejectedAndUnavailableStorageCannotFallBackToMetadata() throws Exception {
         authorize(AgentImageInputService.MAX_IMAGE_BYTES + 1);
         assertThatThrownBy(() -> service.hydrate(owner, project, run, snapshot(), List.of(checkpointMessage())))
                 .isInstanceOf(ApiProblemException.class);

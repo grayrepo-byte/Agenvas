@@ -17,16 +17,35 @@ const USER_INSTRUCTION = "请描述这次创作，并在开始前给我确认。
 
 function task(overrides: Partial<Task>): Task {
   return {
-    id: "task-1", projectId: PROJECT_ID, runId: RUN_ID, stepKey: "agent-turn-1",
-    kind: "AGENT_TURN", status: "SUCCEEDED", cancelRequested: false,
-    input: {}, output: {}, attemptNo: 1, nextActionAt: NOW, version: 1,
-    createdAt: NOW, updatedAt: NOW, completedAt: NOW, ...overrides,
+    id: "task-1",
+    projectId: PROJECT_ID,
+    runId: RUN_ID,
+    stepKey: "agent-turn-1",
+    kind: "AGENT_TURN",
+    status: "SUCCEEDED",
+    cancelRequested: false,
+    input: {},
+    output: {},
+    attemptNo: 1,
+    nextActionAt: NOW,
+    version: 1,
+    createdAt: NOW,
+    updatedAt: NOW,
+    completedAt: NOW,
+    ...overrides,
   };
 }
 
 function action(overrides: Partial<RunAction>): RunAction {
-  return { id: "action-1", stepIndex: 0, toolName: "create_text", status: "SUCCEEDED",
-    summary: "已创建一份文字说明", completedAt: NOW, ...overrides };
+  return {
+    id: "action-1",
+    stepIndex: 0,
+    toolName: "create_text",
+    status: "SUCCEEDED",
+    summary: "已创建一份文字说明",
+    completedAt: NOW,
+    ...overrides,
+  };
 }
 
 function mockConversation(tasks: Task[], actions: RunAction[] = []) {
@@ -41,15 +60,23 @@ function mountConversation(status: AgentRun["status"] = "SUCCEEDED", active = fa
   const client = createQueryClient();
   // Deterministic failures belong to each test; do not add query retries to test timing.
   client.setDefaultOptions({ queries: { retry: false } });
-  render(<QueryClientProvider client={client}>
-    <AgentRunConversation projectId={PROJECT_ID} active={active}
-      run={{ id: RUN_ID, status, instruction: USER_INSTRUCTION, createdAt: NOW }} />
-  </QueryClientProvider>);
+  render(
+    <QueryClientProvider client={client}>
+      <AgentRunConversation
+        projectId={PROJECT_ID}
+        active={active}
+        run={{ id: RUN_ID, status, instruction: USER_INSTRUCTION, createdAt: NOW }}
+      />
+    </QueryClientProvider>,
+  );
   return client;
 }
 
 function taskSummary(label: string, index = 0) {
-  const summary = screen.getAllByText(label)[index]?.closest(".agent-chat-task")?.querySelector<HTMLElement>(".agent-chat-task__headline");
+  const summary = screen
+    .getAllByText(label)
+    [index]?.closest(".agent-chat-task")
+    ?.querySelector<HTMLElement>(".agent-chat-task__headline");
   if (!summary) throw new Error(`Missing task summary: ${label}`);
   return within(summary);
 }
@@ -57,11 +84,14 @@ function taskSummary(label: string, index = 0) {
 describe("AgentRunConversation", () => {
   it("localizes completed and failed local-tool outcomes while keeping custom summaries literal", async () => {
     setLocale("en");
-    mockConversation([], [
-      action({ id: "done", toolName: "trim_audio", summary: "本地媒体处理已完成，结果已归档" }),
-      action({ id: "failed", toolName: "compose_video", summary: "本地媒体处理已结束，状态：FAILED" }),
-      action({ id: "authored", toolName: "compose_video", summary: "保留用户的中文说明" }),
-    ]);
+    mockConversation(
+      [],
+      [
+        action({ id: "done", toolName: "trim_audio", summary: "本地媒体处理已完成，结果已归档" }),
+        action({ id: "failed", toolName: "compose_video", summary: "本地媒体处理已结束，状态：FAILED" }),
+        action({ id: "authored", toolName: "compose_video", summary: "保留用户的中文说明" }),
+      ],
+    );
     mountConversation();
     expect(await screen.findByText("Local media processing completed; results archived")).toBeInTheDocument();
     expect(screen.getByText("Local media processing ended. Status: FAILED")).toBeInTheDocument();
@@ -70,33 +100,56 @@ describe("AgentRunConversation", () => {
   });
   it("shows context compression and partial tool reads without changing the current instruction", async () => {
     setLocale("en");
-    mockConversation([task({ output: { contextCompacted: true } })],
-      [action({ toolName: "read_artifacts", summary: "已读取产物的部分内容；原始版本保留，可继续分页读取" })]);
+    mockConversation(
+      [task({ output: { contextCompacted: true } })],
+      [action({ toolName: "read_artifacts", summary: "已读取产物的部分内容；原始版本保留，可继续分页读取" })],
+    );
     mountConversation();
-    expect(await screen.findByText("Read partial artifact content; original versions remain available for paging")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Read partial artifact content; original versions remain available for paging"),
+    ).toBeInTheDocument();
     expect(screen.getByText(/Earlier steps were summarized/)).toBeInTheDocument();
     expect(screen.getByText(USER_INSTRUCTION)).toBeInTheDocument();
   });
   it("localizes recognized server action summaries and step labels while retaining authored content", async () => {
     setLocale("en");
-    mockConversation([], [action({ summary: "已创建文本产物" }),
-      action({ id: "custom-action", summary: "保留这份创作记录" })]);
+    mockConversation(
+      [],
+      [action({ summary: "已创建文本产物" }), action({ id: "custom-action", summary: "保留这份创作记录" })],
+    );
     mountConversation();
     expect(await screen.findByText("Created a text artifact")).toBeInTheDocument();
     expect(screen.getByText("Step 1")).toBeInTheDocument();
     expect(screen.getByText(USER_INSTRUCTION)).toBeInTheDocument();
     expect(screen.getByText("保留这份创作记录")).toBeInTheDocument();
     expect(screen.queryByText("已创建文本产物")).not.toBeInTheDocument();
-    act(() => { setLocale("zh"); });
+    act(() => {
+      setLocale("zh");
+    });
     expect(screen.getByText("已创建文本产物")).toBeInTheDocument();
     expect(screen.getByText("第 1 步")).toBeInTheDocument();
     expect(screen.getByText("保留这份创作记录")).toBeInTheDocument();
   });
 
   it("shows the safe image moderation diagnosis in the persisted task trace", async () => {
-    mockConversation([task({ kind: "IMAGE_GENERATION", status: "FAILED", errorCode: "OPENAI_IMAGE_MODERATION_BLOCKED",
-      output: { providerFailure: { stage: "SUBMIT", category: "MODERATION", httpStatus: 400, upstreamCode: null, nodeId: null, fieldName: null,
-        moderation: { code: "moderation_blocked", stage: "output", categories: ["sexual"] } } } })]);
+    mockConversation([
+      task({
+        kind: "IMAGE_GENERATION",
+        status: "FAILED",
+        errorCode: "OPENAI_IMAGE_MODERATION_BLOCKED",
+        output: {
+          providerFailure: {
+            stage: "SUBMIT",
+            category: "MODERATION",
+            httpStatus: 400,
+            upstreamCode: null,
+            nodeId: null,
+            fieldName: null,
+            moderation: { code: "moderation_blocked", stage: "output", categories: ["sexual"] },
+          },
+        },
+      }),
+    ]);
     mountConversation("FAILED");
     const detail = await screen.findByText(/moderation_blocked/);
     expect(detail).toHaveTextContent("安全检查");
@@ -108,10 +161,17 @@ describe("AgentRunConversation", () => {
   });
 
   it("shows a local composition task and its committed summary without a media approval", async () => {
-    mockConversation([
-      task({ kind: "VIDEO_GENERATION", status: "FAILED", input: { videoComposition: { clips: [] } },
-        errorCode: "VIDEO_COMPOSITION_AUDIO_OVERFLOW" }),
-    ], [action({ toolName: "compose_video", summary: "已提交三段镜头的本地配音合成" })]);
+    mockConversation(
+      [
+        task({
+          kind: "VIDEO_GENERATION",
+          status: "FAILED",
+          input: { videoComposition: { clips: [] } },
+          errorCode: "VIDEO_COMPOSITION_AUDIO_OVERFLOW",
+        }),
+      ],
+      [action({ toolName: "compose_video", summary: "已提交三段镜头的本地配音合成" })],
+    );
     mountConversation("FAILED", true);
     expect(await screen.findByText("已提交三段镜头的本地配音合成")).toBeInTheDocument();
     expect(await screen.findAllByText("本地配音合成")).not.toHaveLength(0);
@@ -123,23 +183,54 @@ describe("AgentRunConversation", () => {
   it("explains that stopping the director does not cancel an independently accepted composition", async () => {
     mockConversation([], [action({ toolName: "compose_video", summary: "已提交本地合成任务" })]);
     mountConversation("CANCELED");
-    expect(await screen.findByText("停止导演不会取消已受理的本地合成；请在成片节点查看进度或取消。")).toBeInTheDocument();
+    expect(
+      await screen.findByText("停止导演不会取消已受理的本地合成；请在成片节点查看进度或取消。"),
+    ).toBeInTheDocument();
   });
 
   it("places media approvals after the reply that proposed them and before later replies", async () => {
     mockConversation([
-      task({ id: "proposal-turn", completedAt: "2026-09-26T00:01:01Z",
-        output: { stepIndex: 0, assistantText: "准备生成参考图片。" } }),
-      task({ id: "result-turn", createdAt: "2026-09-26T00:02:00Z", completedAt: "2026-09-26T00:03:00Z",
-        output: { stepIndex: 1, assistantText: "图片已完成。" } }),
+      task({
+        id: "proposal-turn",
+        completedAt: "2026-09-26T00:01:01Z",
+        output: { stepIndex: 0, assistantText: "准备生成参考图片。" },
+      }),
+      task({
+        id: "result-turn",
+        createdAt: "2026-09-26T00:02:00Z",
+        completedAt: "2026-09-26T00:03:00Z",
+        output: { stepIndex: 1, assistantText: "图片已完成。" },
+      }),
     ]);
-    server.use(http.get(`${RUN_URL}/media-approvals`, () => HttpResponse.json([{
-      id: "approval-1", projectId: PROJECT_ID, runId: RUN_ID, operationId: "operation-1",
-      status: "SUCCEEDED", version: 2, outputs: [{ kind: "IMAGE", title: "合成图片", artifactId: "image-1",
-        canvasItemId: "image-item-1", draftVersion: 0, preview: { prompt: "合成图片", priceUnknown: true } }],
-      taskIds: [], result: null,
-      createdAt: "2026-09-26T00:01:00Z", expiresAt: "2026-09-27T00:01:00Z", executionDeadline: null,
-    }])));
+    server.use(
+      http.get(`${RUN_URL}/media-approvals`, () =>
+        HttpResponse.json([
+          {
+            id: "approval-1",
+            projectId: PROJECT_ID,
+            runId: RUN_ID,
+            operationId: "operation-1",
+            status: "SUCCEEDED",
+            version: 2,
+            outputs: [
+              {
+                kind: "IMAGE",
+                title: "合成图片",
+                artifactId: "image-1",
+                canvasItemId: "image-item-1",
+                draftVersion: 0,
+                preview: { prompt: "合成图片", priceUnknown: true },
+              },
+            ],
+            taskIds: [],
+            result: null,
+            createdAt: "2026-09-26T00:01:00Z",
+            expiresAt: "2026-09-27T00:01:00Z",
+            executionDeadline: null,
+          },
+        ]),
+      ),
+    );
     mountConversation();
     const approval = (await screen.findByText("批准媒体生成 · 1 项")).closest("section");
     const before = await screen.findByText("准备生成参考图片。");
@@ -152,10 +243,15 @@ describe("AgentRunConversation", () => {
   it("formats historical assistant Markdown while keeping the user instruction literal", async () => {
     mockConversation([task({ output: { assistantText: "**结果**\n\n- 视频已完成\n\n版本 `synthetic-version`" } })]);
     const client = createQueryClient();
-    render(<QueryClientProvider client={client}>
-      <AgentRunConversation projectId={PROJECT_ID} active={false}
-        run={{ id: RUN_ID, status: "SUCCEEDED", instruction: "**保留用户原文**", createdAt: NOW }} />
-    </QueryClientProvider>);
+    render(
+      <QueryClientProvider client={client}>
+        <AgentRunConversation
+          projectId={PROJECT_ID}
+          active={false}
+          run={{ id: RUN_ID, status: "SUCCEEDED", instruction: "**保留用户原文**", createdAt: NOW }}
+        />
+      </QueryClientProvider>,
+    );
     expect((await screen.findByText("结果")).tagName).toBe("STRONG");
     const reply = screen.getByRole("article", { name: "Agent" });
     expect(within(reply).getByRole("listitem")).toHaveTextContent("视频已完成");
@@ -177,10 +273,13 @@ describe("AgentRunConversation", () => {
   });
 
   it("shows actual actions and media states without first-attempt filler", async () => {
-    mockConversation([
-      task({ id: "model-round", output: { stepIndex: 0 } }),
-      task({ id: "media-task", kind: "IMAGE_GENERATION", status: "WAITING_PROVIDER", input: { stepIndex: 0 } }),
-    ], [action({ summary: "已读取参考图片" })]);
+    mockConversation(
+      [
+        task({ id: "model-round", output: { stepIndex: 0 } }),
+        task({ id: "media-task", kind: "IMAGE_GENERATION", status: "WAITING_PROVIDER", input: { stepIndex: 0 } }),
+      ],
+      [action({ summary: "已读取参考图片" })],
+    );
     mountConversation("WAITING_TASKS", true);
 
     expect(await screen.findByText("已读取参考图片")).toBeInTheDocument();
@@ -191,10 +290,14 @@ describe("AgentRunConversation", () => {
   });
 
   it("renders persisted public streaming text and replaces it with one committed final reply", async () => {
-    const streaming = task({ status: "RUNNING", input: { stepIndex: 0 }, output: {
-      assistantStream: { streamEpoch: 1, chunkIndex: 1, text: "**收到的公开片段**", status: "STREAMING" },
-      reasoning: "PRIVATE_STREAM_REASONING",
-    } });
+    const streaming = task({
+      status: "RUNNING",
+      input: { stepIndex: 0 },
+      output: {
+        assistantStream: { streamEpoch: 1, chunkIndex: 1, text: "**收到的公开片段**", status: "STREAMING" },
+        reasoning: "PRIVATE_STREAM_REASONING",
+      },
+    });
     mockConversation([streaming]);
     const client = mountConversation("RUNNING", true);
     expect(await screen.findByText("收到的公开片段")).toBeInTheDocument();
@@ -204,13 +307,20 @@ describe("AgentRunConversation", () => {
     expect(screen.queryByText("PRIVATE_STREAM_REASONING")).not.toBeInTheDocument();
 
     act(() => {
-      client.setQueryData<AssistantTurnStream[]>(runAssistantStreamKey(PROJECT_ID, RUN_ID), [{
-        taskId: streaming.id, stepIndex: 0, streamEpoch: 1, chunkIndex: 2,
-        text: "收到的公开片段以及后续内容", status: "COMPLETED",
-      }]);
-      client.setQueryData(["run-history-tasks", PROJECT_ID, RUN_ID], [
-        { ...streaming, status: "SUCCEEDED", output: { stepIndex: 0, assistantText: "## 持久化最终回复" } },
+      client.setQueryData<AssistantTurnStream[]>(runAssistantStreamKey(PROJECT_ID, RUN_ID), [
+        {
+          taskId: streaming.id,
+          stepIndex: 0,
+          streamEpoch: 1,
+          chunkIndex: 2,
+          text: "收到的公开片段以及后续内容",
+          status: "COMPLETED",
+        },
       ]);
+      client.setQueryData(
+        ["run-history-tasks", PROJECT_ID, RUN_ID],
+        [{ ...streaming, status: "SUCCEEDED", output: { stepIndex: 0, assistantText: "## 持久化最终回复" } }],
+      );
     });
     expect(await screen.findByText("持久化最终回复")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "持久化最终回复", level: 2 })).toBeInTheDocument();
@@ -220,9 +330,14 @@ describe("AgentRunConversation", () => {
     expect(screen.queryByText("正在输出")).not.toBeInTheDocument();
   });
 
-  it.each(["FAILED", "BLOCKED"] as const)("exposes %s failure feedback even for a historical run", async (status) => {
-    mockConversation([task({ status: "FAILED", errorCode: "LLM_CONFIG_UNAVAILABLE",
-      output: { rawResponse: "PRIVATE_PROVIDER_FAILURE" } })]);
+  it.each(["FAILED", "BLOCKED"] as const)("exposes %s failure feedback even for a historical run", async status => {
+    mockConversation([
+      task({
+        status: "FAILED",
+        errorCode: "LLM_CONFIG_UNAVAILABLE",
+        output: { rawResponse: "PRIVATE_PROVIDER_FAILURE" },
+      }),
+    ]);
     mountConversation(status, false);
     const error = await screen.findByRole("alert");
     await waitFor(() => expect(error).toHaveTextContent("固定的模型配置或工具调用能力不可用"));
@@ -232,9 +347,15 @@ describe("AgentRunConversation", () => {
   });
 
   it("keeps an interrupted public stream visible and identifies the interruption", async () => {
-    mockConversation([task({ status: "FAILED", input: { stepIndex: 0 }, output: {
-      assistantStream: { streamEpoch: 1, chunkIndex: 1, text: "**中断前收到的内容**", status: "INTERRUPTED" },
-    } })]);
+    mockConversation([
+      task({
+        status: "FAILED",
+        input: { stepIndex: 0 },
+        output: {
+          assistantStream: { streamEpoch: 1, chunkIndex: 1, text: "**中断前收到的内容**", status: "INTERRUPTED" },
+        },
+      }),
+    ]);
     mountConversation("FAILED");
     expect(await screen.findByText("中断前收到的内容")).toBeInTheDocument();
     expect(screen.getByText("中断前收到的内容").tagName).toBe("STRONG");
@@ -244,12 +365,25 @@ describe("AgentRunConversation", () => {
 
   it("renders only committed public assistant text and never raw task input or output metadata", async () => {
     mockConversation([
-      task({ id: "later-turn", output: { stepIndex: 2, assistantText: "镜头草稿已保存。",
-        rawResponse: "PRIVATE_RAW_RESPONSE", metadata: { secret: "PRIVATE_OUTPUT_METADATA" } } }),
-      task({ id: "first-turn", input: { privatePrompt: "PRIVATE_TASK_INPUT" },
-        output: { stepIndex: 0, assistantText: "我会先整理镜头说明。", reasoning: "PRIVATE_REASONING" } }),
-      task({ id: "uncommitted-turn", status: "RUNNING",
-        output: { stepIndex: 3, assistantText: "UNCOMMITTED_ASSISTANT_TEXT" } }),
+      task({
+        id: "later-turn",
+        output: {
+          stepIndex: 2,
+          assistantText: "镜头草稿已保存。",
+          rawResponse: "PRIVATE_RAW_RESPONSE",
+          metadata: { secret: "PRIVATE_OUTPUT_METADATA" },
+        },
+      }),
+      task({
+        id: "first-turn",
+        input: { privatePrompt: "PRIVATE_TASK_INPUT" },
+        output: { stepIndex: 0, assistantText: "我会先整理镜头说明。", reasoning: "PRIVATE_REASONING" },
+      }),
+      task({
+        id: "uncommitted-turn",
+        status: "RUNNING",
+        output: { stepIndex: 3, assistantText: "UNCOMMITTED_ASSISTANT_TEXT" },
+      }),
     ]);
     mountConversation();
 
@@ -261,8 +395,16 @@ describe("AgentRunConversation", () => {
     expect(replies[0]).toHaveTextContent("我会先整理镜头说明。");
     expect(replies[1]).toHaveTextContent("镜头草稿已保存。");
     expect(screen.queryByText("模型调用")).not.toBeInTheDocument();
-    for (const hidden of ["PRIVATE_TASK_INPUT", "PRIVATE_RAW_RESPONSE", "PRIVATE_OUTPUT_METADATA",
-      "PRIVATE_REASONING", "UNCOMMITTED_ASSISTANT_TEXT", "assistantText", "stepIndex", "agent-turn-1"]) {
+    for (const hidden of [
+      "PRIVATE_TASK_INPUT",
+      "PRIVATE_RAW_RESPONSE",
+      "PRIVATE_OUTPUT_METADATA",
+      "PRIVATE_REASONING",
+      "UNCOMMITTED_ASSISTANT_TEXT",
+      "assistantText",
+      "stepIndex",
+      "agent-turn-1",
+    ]) {
       expect(conversation).not.toHaveTextContent(hidden);
     }
   });
@@ -299,17 +441,25 @@ describe("AgentRunConversation", () => {
   it("shows committed action summaries without leaking tool arguments or results", async () => {
     const createdSummary = "已创建一份文字说明";
     const revisedSummary = "已按说明改写文字产物";
-    mockConversation([], [
-      action({ summary: createdSummary }),
-      action({ id: "revise-action", stepIndex: 1, toolName: "revise_artifact",
-        summary: revisedSummary }),
-    ]);
-    server.use(http.get(`${RUN_URL}/actions`, () => HttpResponse.json([
-      { ...action({ summary: createdSummary }), arguments: { private: "PRIVATE_TOOL_ARGUMENT" },
-        result: { raw: "PRIVATE_TOOL_RESULT" } },
-      action({ id: "revise-action", stepIndex: 1, toolName: "revise_artifact",
-        summary: revisedSummary }),
-    ])));
+    mockConversation(
+      [],
+      [
+        action({ summary: createdSummary }),
+        action({ id: "revise-action", stepIndex: 1, toolName: "revise_artifact", summary: revisedSummary }),
+      ],
+    );
+    server.use(
+      http.get(`${RUN_URL}/actions`, () =>
+        HttpResponse.json([
+          {
+            ...action({ summary: createdSummary }),
+            arguments: { private: "PRIVATE_TOOL_ARGUMENT" },
+            result: { raw: "PRIVATE_TOOL_RESULT" },
+          },
+          action({ id: "revise-action", stepIndex: 1, toolName: "revise_artifact", summary: revisedSummary }),
+        ]),
+      ),
+    );
     mountConversation();
 
     expect(await screen.findByText(createdSummary)).toBeInTheDocument();
@@ -320,11 +470,14 @@ describe("AgentRunConversation", () => {
   });
 
   it("names preparation and storyboard actions without exposing their saved payloads", async () => {
-    mockConversation([], [
-      action({ id: "load-tools", toolName: "load_toolset", summary: "已准备所需能力" }),
-      action({ id: "read-board", toolName: "read_storyboard", summary: "已读取镜头目录" }),
-      action({ id: "write-board", stepIndex: 1, toolName: "write_storyboard_shots", summary: "已保存第 3 镜的台词" }),
-    ]);
+    mockConversation(
+      [],
+      [
+        action({ id: "load-tools", toolName: "load_toolset", summary: "已准备所需能力" }),
+        action({ id: "read-board", toolName: "read_storyboard", summary: "已读取镜头目录" }),
+        action({ id: "write-board", stepIndex: 1, toolName: "write_storyboard_shots", summary: "已保存第 3 镜的台词" }),
+      ],
+    );
     mountConversation();
     expect(await screen.findByText("已保存第 3 镜的台词")).toBeInTheDocument();
     expect(taskSummary("已准备所需能力").getByText("准备所需能力")).toBeInTheDocument();
@@ -335,9 +488,27 @@ describe("AgentRunConversation", () => {
 
   it("keeps failed, canceled, unknown and queued task outcomes distinct", async () => {
     mockConversation([
-      task({ id: "failed-planning", kind: "AGENT_TURN", stepKey: "planning-failed", status: "FAILED", errorCode: "MODEL_OUTPUT_INVALID" }),
-      task({ id: "failed-image", kind: "IMAGE_GENERATION", stepKey: "shot-failed", status: "FAILED", errorCode: "PROVIDER_TIMEOUT" }),
-      task({ id: "canceled-video", kind: "VIDEO_GENERATION", stepKey: "shot-canceled", status: "CANCELED", cancelRequested: true }),
+      task({
+        id: "failed-planning",
+        kind: "AGENT_TURN",
+        stepKey: "planning-failed",
+        status: "FAILED",
+        errorCode: "MODEL_OUTPUT_INVALID",
+      }),
+      task({
+        id: "failed-image",
+        kind: "IMAGE_GENERATION",
+        stepKey: "shot-failed",
+        status: "FAILED",
+        errorCode: "PROVIDER_TIMEOUT",
+      }),
+      task({
+        id: "canceled-video",
+        kind: "VIDEO_GENERATION",
+        stepKey: "shot-canceled",
+        status: "CANCELED",
+        cancelRequested: true,
+      }),
       task({ id: "unknown-image", kind: "IMAGE_GENERATION", stepKey: "shot-unknown", status: "UNKNOWN" }),
       task({ id: "queued-text", kind: "TEXT_GENERATION", stepKey: "text", status: "READY" }),
     ]);
@@ -362,10 +533,20 @@ describe("AgentRunConversation", () => {
   });
 
   it("labels media tools in the public trace and never offers direct retry for an approved unknown task", async () => {
-    mockConversation([
-      task({ kind: "AUDIO_GENERATION", stepKey: "approved-audio", status: "UNKNOWN", input: { agentApprovalId: "approval-1" } }),
-    ], [action({ toolName: "list_media_capabilities", summary: "已读取可用能力" }),
-      action({ id: "proposal", toolName: "propose_media_generation", summary: "已提交生成审批" })]);
+    mockConversation(
+      [
+        task({
+          kind: "AUDIO_GENERATION",
+          stepKey: "approved-audio",
+          status: "UNKNOWN",
+          input: { agentApprovalId: "approval-1" },
+        }),
+      ],
+      [
+        action({ toolName: "list_media_capabilities", summary: "已读取可用能力" }),
+        action({ id: "proposal", toolName: "propose_media_generation", summary: "已提交生成审批" }),
+      ],
+    );
     mountConversation("WAITING_TASKS", true);
     expect(await screen.findByText("已读取可用能力")).toBeInTheDocument();
     expect(taskSummary("已读取可用能力").getByText("查看媒体能力")).toBeInTheDocument();

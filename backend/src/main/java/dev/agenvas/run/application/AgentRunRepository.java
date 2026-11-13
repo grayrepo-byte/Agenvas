@@ -84,5 +84,6 @@ public interface AgentRunRepository {
             IdempotencyState state,
             UUID resourceId,
             String responseJson,
-            Instant expiresAt) {}
+            Instant expiresAt) {
+    }
 }

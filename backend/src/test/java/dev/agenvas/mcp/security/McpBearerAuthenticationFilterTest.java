@@ -52,18 +52,22 @@ class McpBearerAuthenticationFilterTest {
 
     @Test
     void cookieBasicAndDuplicateAuthorizationCannotBypassBearerAuthentication() throws Exception {
-        for (String scheme : new String[] {null, "Basic dGVzdDp0ZXN0", "Bearer first"}) {
+        for (String scheme : new String[]{null, "Basic dGVzdDp0ZXN0", "Bearer first"}) {
             var request = request();
             request.addHeader("Cookie", "SESSION=synthetic-web-session");
-            if (scheme != null) request.addHeader(HttpHeaders.AUTHORIZATION, scheme);
-            if ("Bearer first".equals(scheme)) request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer second");
+            if (scheme != null)
+                request.addHeader(HttpHeaders.AUTHORIZATION, scheme);
+            if ("Bearer first".equals(scheme))
+                request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer second");
             var response = new MockHttpServletResponse();
             doAnswer(call -> {
                 ApiProblemException failure = call.getArgument(3);
                 ((MockHttpServletResponse) call.getArgument(1)).setStatus(failure.status().value());
                 return null;
             }).when(errors).resolveException(any(), any(), any(), any());
-            filter.doFilter(request, response, (a, b) -> { throw new AssertionError("must reject before dispatch"); });
+            filter.doFilter(request, response, (a, b) -> {
+                throw new AssertionError("must reject before dispatch");
+            });
             assertThat(response.getStatus()).isEqualTo(401);
             assertThat(response.getHeader(HttpHeaders.CACHE_CONTROL)).isEqualTo("no-store");
             assertThat(response.getHeader(HttpHeaders.WWW_AUTHENTICATE)).isEqualTo("Bearer realm=\"agenvas-mcp\"");
@@ -77,7 +81,9 @@ class McpBearerAuthenticationFilterTest {
         var request = request();
         request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer revoked");
         filter.doFilter(request, new MockHttpServletResponse(),
-                (a, b) -> { throw new AssertionError("must reject before dispatch"); });
+                (a, b) -> {
+                    throw new AssertionError("must reject before dispatch");
+                });
         verify(tokens).authenticate("revoked");
         verify(errors).resolveException(any(), any(), any(), any(ApiProblemException.class));
     }

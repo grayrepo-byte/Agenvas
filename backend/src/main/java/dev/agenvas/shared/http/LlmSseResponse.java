@@ -18,12 +18,14 @@ final class LlmSseResponse {
     private static final String DELTA = "delta";
     private static final String MESSAGE = "message";
     private static final String TOOL_CALLS = "tool_calls";
-    private static final Set<String> TEXT_DELTAS = Set.of("content", "reasoning_content", "reasoning", "refusal", "arguments", "name");
+    private static final Set<String> TEXT_DELTAS = Set.of("content", "reasoning_content", "reasoning", "refusal",
+            "arguments", "name");
     private final ObjectNode response = MAPPER.createObjectNode();
     private final Map<Integer, ObjectNode> choices = new TreeMap<>();
     private boolean partial;
 
-    record Result(String content, boolean partial) {}
+    record Result(String content, boolean partial) {
+    }
 
     static Result aggregate(String events) {
         var result = new LlmSseResponse();
@@ -33,7 +35,8 @@ final class LlmSseResponse {
                 result.frame(data.toString());
                 data.setLength(0);
             } else if (line.startsWith(DATA_PREFIX)) {
-                if (!data.isEmpty()) data.append('\n');
+                if (!data.isEmpty())
+                    data.append('\n');
                 data.append(line.substring(DATA_PREFIX.length()).stripLeading());
             }
         });
@@ -49,24 +52,35 @@ final class LlmSseResponse {
     }
 
     private void frame(String data) {
-        if (data.isBlank() || DONE.equals(data)) return;
+        if (data.isBlank() || DONE.equals(data))
+            return;
         try {
             JsonNode event = MAPPER.readTree(data);
-            if (!event.isObject()) { partial = true; return; }
+            if (!event.isObject()) {
+                partial = true;
+                return;
+            }
             for (String name : event.propertyNames()) {
-                if (!CHOICES.equals(name)) mergeValue(response, name, event.get(name), false);
+                if (!CHOICES.equals(name))
+                    mergeValue(response, name, event.get(name), false);
             }
             int position = 0;
             for (JsonNode choice : event.path(CHOICES)) {
-                if (!choice.isObject()) { partial = true; continue; }
+                if (!choice.isObject()) {
+                    partial = true;
+                    continue;
+                }
                 int index = choice.path(INDEX).asInt(position++);
-                ObjectNode saved = choices.computeIfAbsent(index, ignored -> MAPPER.createObjectNode().put(INDEX, index));
+                ObjectNode saved = choices.computeIfAbsent(index,
+                        ignored -> MAPPER.createObjectNode().put(INDEX, index));
                 for (String name : choice.propertyNames()) {
                     if (DELTA.equals(name)) {
                         ObjectNode message = saved.path(MESSAGE).isObject()
-                                ? (ObjectNode) saved.get(MESSAGE) : saved.putObject(MESSAGE);
+                                ? (ObjectNode) saved.get(MESSAGE)
+                                : saved.putObject(MESSAGE);
                         merge(message, choice.get(name), true);
-                    } else mergeValue(saved, name, choice.get(name), false);
+                    } else
+                        mergeValue(saved, name, choice.get(name), false);
                 }
             }
         } catch (RuntimeException invalidEvent) {
@@ -76,13 +90,18 @@ final class LlmSseResponse {
     }
 
     private void merge(ObjectNode target, JsonNode patch, boolean delta) {
-        if (!patch.isObject()) { partial = true; return; }
-        for (String name : patch.propertyNames()) mergeValue(target, name, patch.get(name), delta);
+        if (!patch.isObject()) {
+            partial = true;
+            return;
+        }
+        for (String name : patch.propertyNames())
+            mergeValue(target, name, patch.get(name), delta);
     }
 
     private void mergeValue(ObjectNode target, String name, JsonNode value, boolean delta) {
         JsonNode old = target.get(name);
-        if (value.isNull() && old != null && !old.isNull()) return;
+        if (value.isNull() && old != null && !old.isNull())
+            return;
         if (delta && TOOL_CALLS.equals(name) && value.isArray()) {
             mergeTools(target, value);
         } else if (value.isObject()) {
@@ -90,7 +109,8 @@ final class LlmSseResponse {
             merge(object, value, delta);
         } else if (delta && TEXT_DELTAS.contains(name) && value.isTextual() && old != null && old.isTextual()) {
             target.put(name, "name".equals(name) && old.equals(value) ? old.asText() : old.asText() + value.asText());
-        } else target.set(name, value.deepCopy());
+        } else
+            target.set(name, value.deepCopy());
     }
 
     private void mergeTools(ObjectNode target, JsonNode patch) {
@@ -101,7 +121,10 @@ final class LlmSseResponse {
         }
         position = 0;
         for (JsonNode tool : patch) {
-            if (!tool.isObject()) { partial = true; continue; }
+            if (!tool.isObject()) {
+                partial = true;
+                continue;
+            }
             int index = tool.path(INDEX).asInt(position++);
             ObjectNode saved = tools.computeIfAbsent(index, ignored -> MAPPER.createObjectNode().put(INDEX, index));
             merge(saved, tool, true);

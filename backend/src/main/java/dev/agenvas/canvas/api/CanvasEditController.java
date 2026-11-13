@@ -18,7 +18,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/projects/{projectId}/canvas")
 public class CanvasEditController {
     private final CanvasEditService edits;
-    public CanvasEditController(CanvasEditService edits) { this.edits = edits; }
+    public CanvasEditController(CanvasEditService edits) {
+        this.edits = edits;
+    }
     @GetMapping("/editor")
     public EditorResponse editor(@AuthenticationPrincipal AdminPrincipal principal, @PathVariable UUID projectId) {
         return EditorResponse.from(edits.get(principal.userId(), projectId));
@@ -37,7 +39,10 @@ public class CanvasEditController {
             List<CanvasConnectionController.ConnectionView> connections,
             List<dev.agenvas.canvas.application.CanvasCharacterNodeModels.CharacterConnection> characterConnections) {
         static EditorResponse from(Editor editor) {
-            return new EditorResponse(editor.items().stream().map(CanvasController.CanvasItemResponse::from).toList(), editor.groups(), editor.receipt(), editor.connections().stream().map(CanvasConnectionController.ConnectionView::from).toList(), editor.characterConnections());
+            return new EditorResponse(editor.items().stream().map(CanvasController.CanvasItemResponse::from).toList(),
+                    editor.groups(), editor.receipt(),
+                    editor.connections().stream().map(CanvasConnectionController.ConnectionView::from).toList(),
+                    editor.characterConnections());
         }
     }
 }

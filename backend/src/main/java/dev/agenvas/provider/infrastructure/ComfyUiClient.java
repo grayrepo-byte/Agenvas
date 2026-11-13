@@ -82,8 +82,11 @@ public class ComfyUiClient {
     }
 
     private static Dns serviceDns(URI origin) {
-        try { return ServiceEndpointPolicy.dns(origin, Dns.SYSTEM); }
-        catch (UnknownHostException blocked) { throw new IllegalArgumentException("Invalid ComfyUI service address"); }
+        try {
+            return ServiceEndpointPolicy.dns(origin, Dns.SYSTEM);
+        } catch (UnknownHostException blocked) {
+            throw new IllegalArgumentException("Invalid ComfyUI service address");
+        }
     }
 
     /** 对管理员固定的规范化 origin 计算摘要，供轮询校验；不接收浏览器 URL。 */
@@ -116,7 +119,8 @@ public class ComfyUiClient {
 
     /** 读取原 prompt 历史；空历史表示暂无证据，不代表拒绝或允许重提。 */
     public JsonNode history(String promptId) {
-        if (!safePromptId(promptId)) throw new IllegalArgumentException("A safe promptId is required");
+        if (!safePromptId(promptId))
+            throw new IllegalArgumentException("A safe promptId is required");
         return json("GET", "/history/" + promptId, null);
     }
 
@@ -156,7 +160,8 @@ public class ComfyUiClient {
 
     /** ComfyUI's generic /upload/image route stores audio/video from the same image form field. */
     public String uploadMedia(UUID requestId, Path verifiedFile, String contentType) {
-        if (requestId == null || verifiedFile == null) throw new IllegalArgumentException("Verified project media required");
+        if (requestId == null || verifiedFile == null)
+            throw new IllegalArgumentException("Verified project media required");
         String extension = switch (contentType) {
             case "video/mp4" -> "mp4";
             case "audio/mpeg" -> "mp3";
@@ -168,8 +173,11 @@ public class ComfyUiClient {
                 : dev.agenvas.provider.domain.ComfyUiWorkflowDefinition.MAX_AUDIO_INPUT_BYTES;
         try {
             long size = Files.size(verifiedFile);
-            if (size < 1 || size > maximum) throw new IllegalArgumentException("ComfyUI input media exceeds upload bounds");
-        } catch (IOException failure) { throw new IllegalStateException("Cannot read verified ComfyUI input", failure); }
+            if (size < 1 || size > maximum)
+                throw new IllegalArgumentException("ComfyUI input media exceeds upload bounds");
+        } catch (IOException failure) {
+            throw new IllegalStateException("Cannot read verified ComfyUI input", failure);
+        }
         // A file-backed request avoids copying a potentially large video into a multipart byte array.
         var payload = new MultipartBody.Builder().setType(MultipartBody.FORM)
                 .addFormDataPart("image", "agenvas-" + requestId + "." + extension,
@@ -242,8 +250,10 @@ public class ComfyUiClient {
         return new Request.Builder().url(base.resolve(path.substring(1)).toString());
     }
 
-    private record TransportResponse(InputStream body) {}
-    private record RedirectTarget(HttpUrl url, String method) {}
+    private record TransportResponse(InputStream body) {
+    }
+    private record RedirectTarget(HttpUrl url, String method) {
+    }
 
     /** Redirects are bounded and explicit; HTTP method rules never become an implicit retry of the original URL. */
     private TransportResponse send(Request initialRequest) {
@@ -252,14 +262,16 @@ public class ComfyUiClient {
         Request request = initialRequest;
         Set<RedirectTarget> visited = new HashSet<>();
         visited.add(new RedirectTarget(initialRequest.url(), initialRequest.method()));
-        for (int redirects = 0; ; redirects++) {
+        for (int redirects = 0;; redirects++) {
             OkHttpClient transport = sameOrigin(origin, request.url().uri()) ? client : redirectClient;
             Response response = execute(transport, request);
-            if (!REDIRECT_STATUSES.contains(response.code())) return checkedResponse(response);
+            if (!REDIRECT_STATUSES.contains(response.code()))
+                return checkedResponse(response);
             try (response) {
                 String location = response.header("Location");
                 DebugHttpCapture.registerSecret(location);
-                if (redirects >= MAX_REDIRECTS) throw new ProtocolFailure("ComfyUI redirect limit exceeded");
+                if (redirects >= MAX_REDIRECTS)
+                    throw new ProtocolFailure("ComfyUI redirect limit exceeded");
                 URI target = checkedRedirect(origin, request.url().uri(), location, redirectClient.dns());
                 Request nextRequest = redirectedRequest(request, target, response.code());
                 // Register before closing the redirect body, which may echo a signed destination.
@@ -281,29 +293,37 @@ public class ComfyUiClient {
         }
         Request.Builder request = new Request.Builder().url(target.toASCIIString()).method(method, body);
         String accept = previous.header("Accept");
-        if (accept != null) request.header("Accept", accept);
+        if (accept != null)
+            request.header("Accept", accept);
         String contentType = previous.header("Content-Type");
-        if (body != null && contentType != null) request.header("Content-Type", contentType);
+        if (body != null && contentType != null)
+            request.header("Content-Type", contentType);
         return request.build();
     }
 
     private static void registerRedirectSecrets(Request request) {
-        if (!DebugHttpCapture.enabled()) return;
+        if (!DebugHttpCapture.enabled())
+            return;
         var url = request.url();
         DebugHttpCapture.registerSecret(url.toString());
-        for (String segment : url.pathSegments()) DebugHttpCapture.registerSecret(segment);
-        for (String segment : url.encodedPathSegments()) DebugHttpCapture.registerSecret(segment);
+        for (String segment : url.pathSegments())
+            DebugHttpCapture.registerSecret(segment);
+        for (String segment : url.encodedPathSegments())
+            DebugHttpCapture.registerSecret(segment);
         for (int index = 0; index < url.querySize(); index++)
             DebugHttpCapture.registerSecret(url.queryParameterValue(index));
         String query = url.encodedQuery();
-        if (query != null) for (String parameter : query.split("&")) {
-            int separator = parameter.indexOf('=');
-            if (separator >= 0) DebugHttpCapture.registerSecret(parameter.substring(separator + 1));
-        }
+        if (query != null)
+            for (String parameter : query.split("&")) {
+                int separator = parameter.indexOf('=');
+                if (separator >= 0)
+                    DebugHttpCapture.registerSecret(parameter.substring(separator + 1));
+            }
     }
 
     private void registerOriginSecrets() {
-        for (String segment : origin.getPath().split("/")) DebugHttpCapture.registerSecret(segment);
+        for (String segment : origin.getPath().split("/"))
+            DebugHttpCapture.registerSecret(segment);
     }
 
     private Response execute(OkHttpClient transport, Request request) {
@@ -327,7 +347,8 @@ public class ComfyUiClient {
                     }
                 }
             }
-            if (status >= 500) throw new TransportFailure("ComfyUI returned ambiguous HTTP " + status);
+            if (status >= 500)
+                throw new TransportFailure("ComfyUI returned ambiguous HTTP " + status);
             throw new ProtocolFailure("ComfyUI returned HTTP " + status);
         }
         if (response.body() == null) {
@@ -335,8 +356,13 @@ public class ComfyUiClient {
             throw new ProtocolFailure("ComfyUI returned an empty body");
         }
         return new TransportResponse(new FilterInputStream(response.body().byteStream()) {
-            @Override public void close() throws IOException {
-                try { super.close(); } finally { response.close(); }
+            @Override
+            public void close() throws IOException {
+                try {
+                    super.close();
+                } finally {
+                    response.close();
+                }
             }
         });
     }
@@ -401,7 +427,8 @@ public class ComfyUiClient {
     private byte[] readBounded(TransportResponse response, int maximum) {
         try (InputStream input = response.body()) {
             byte[] bytes = input.readNBytes(maximum + 1);
-            if (bytes.length > maximum) throw new ProtocolFailure("ComfyUI response exceeded limit");
+            if (bytes.length > maximum)
+                throw new ProtocolFailure("ComfyUI response exceeded limit");
             return bytes;
         } catch (IOException failure) {
             throw new TransportFailure("ComfyUI response stream failed");
@@ -421,19 +448,25 @@ public class ComfyUiClient {
     }
 
     /** Shared validation keeps saved addresses and execution transport in agreement. */
-    static URI checkedOrigin(String endpoint) { return ComfyUiEndpoint.checked(endpoint); }
+    static URI checkedOrigin(String endpoint) {
+        return ComfyUiEndpoint.checked(endpoint);
+    }
 
     /** 明确的协议或格式错误；不能据此再次提交生成请求。 */
     public static class ProtocolFailure extends RuntimeException {
         /**
          * @param message 安全摘要，不包含上游响应正文
          */
-        public ProtocolFailure(String message) { super(message); }
+        public ProtocolFailure(String message) {
+            super(message);
+        }
         /**
          * @param message 安全错误摘要
          * @param cause 解析或协议异常
          */
-        public ProtocolFailure(String message, Throwable cause) { super(message, cause); }
+        public ProtocolFailure(String message, Throwable cause) {
+            super(message, cause);
+        }
     }
 
     /** 提交时网络结果不确定；任务可能已被 ComfyUI 接受，因此不能当作安全失败。 */
@@ -441,11 +474,15 @@ public class ComfyUiClient {
         /**
          * @param message 不暴露远端正文的错误摘要
          */
-        public TransportFailure(String message) { super(message); }
+        public TransportFailure(String message) {
+            super(message);
+        }
         /**
          * @param message 错误摘要
          * @param cause 网络或流读取异常
          */
-        public TransportFailure(String message, Throwable cause) { super(message, cause); }
+        public TransportFailure(String message, Throwable cause) {
+            super(message, cause);
+        }
     }
 }

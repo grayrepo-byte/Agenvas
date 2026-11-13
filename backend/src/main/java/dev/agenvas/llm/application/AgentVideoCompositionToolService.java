@@ -17,8 +17,10 @@ import tools.jackson.databind.node.ObjectNode;
 /** Converts a model-authored edit into one local task after checking every exact input in the Run scope. */
 @Service
 public class AgentVideoCompositionToolService {
-    private static final Set<String> REQUEST_FIELDS = Set.of("title", "rationale", "originalAudioMode", "shots", "music", "output", "subtitles");
-    private static final Set<String> SHOT_FIELDS = Set.of("videoVersionId", "sourceStartMs", "durationMs", "lines", "speed", "fadeMs");
+    private static final Set<String> REQUEST_FIELDS = Set.of("title", "rationale", "originalAudioMode", "shots",
+            "music", "output", "subtitles");
+    private static final Set<String> SHOT_FIELDS = Set.of("videoVersionId", "sourceStartMs", "durationMs", "lines",
+            "speed", "fadeMs");
     private static final Set<String> LINE_FIELDS = Set.of("audioVersionId", "startMs");
     private final ArtifactService artifacts;
     private final VideoCompositionService compositions;
@@ -41,19 +43,24 @@ public class AgentVideoCompositionToolService {
         }
         requireFields(request, REQUEST_FIELDS);
         JsonNode shots = request.path("shots");
-        if (!shots.isArray() || shots.isEmpty() || shots.size() > dev.agenvas.provider.application.VideoCompositionLimits.SHOT_CEILING) throw invalid();
+        if (!shots.isArray() || shots.isEmpty()
+                || shots.size() > dev.agenvas.provider.application.VideoCompositionLimits.SHOT_CEILING)
+            throw invalid();
         int lineCount = 0;
         for (JsonNode shot : shots) {
             requireFields(shot, SHOT_FIELDS);
             requireSource(context, run, shot.path("videoVersionId"), Artifact.Kind.VIDEO);
             JsonNode lines = shot.path("lines");
-            if (!lines.isArray() || (lineCount += lines.size()) > dev.agenvas.provider.application.VideoCompositionLimits.LINE_CEILING) throw invalid();
+            if (!lines.isArray() || (lineCount += lines
+                    .size()) > dev.agenvas.provider.application.VideoCompositionLimits.LINE_CEILING)
+                throw invalid();
             for (JsonNode line : lines) {
                 requireFields(line, LINE_FIELDS);
                 requireSource(context, run, line.path("audioVersionId"), Artifact.Kind.AUDIO);
             }
         }
-        if (request.has("music")) requireSource(context, run, request.path("music").path("audioVersionId"), Artifact.Kind.AUDIO);
+        if (request.has("music"))
+            requireSource(context, run, request.path("music").path("audioVersionId"), Artifact.Kind.AUDIO);
         var task = compositions.runFromAgent(context.ownerId(), context.projectId(), context.runId(), operationId,
                 request, "agent-video-composition:" + operationId);
         String artifactId = task.input().path("artifactId").asText();
@@ -74,7 +81,8 @@ public class AgentVideoCompositionToolService {
     }
 
     private void requireSource(TrustedToolContext context, AgentRun run, JsonNode supplied, Artifact.Kind kind) {
-        if (!supplied.isTextual()) throw invalid();
+        if (!supplied.isTextual())
+            throw invalid();
         UUID id;
         try {
             id = UUID.fromString(supplied.asText());
@@ -89,7 +97,8 @@ public class AgentVideoCompositionToolService {
 
     private static void requireFields(JsonNode object, Set<String> allowed) {
         if (object == null || !object.isObject()
-                || object.propertyNames().stream().anyMatch(field -> !allowed.contains(field))) throw invalid();
+                || object.propertyNames().stream().anyMatch(field -> !allowed.contains(field)))
+            throw invalid();
     }
 
     private static ApiProblemException invalid() {

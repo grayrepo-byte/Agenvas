@@ -29,13 +29,14 @@ const GENERATED_SUMMARIES: Readonly<Record<string, readonly MessageKey[]>> = {
 
 export function runActionSummary(action: Pick<RunAction, "toolName" | "summary">): string {
   if (["extract_audio", "trim_audio", "compose_video"].includes(action.toolName)) {
-    if (action.summary === translate("zh", "agent.action.localMediaCompleted")) return t("agent.action.localMediaCompleted");
+    if (action.summary === translate("zh", "agent.action.localMediaCompleted"))
+      return t("agent.action.localMediaCompleted");
     for (const status of ["FAILED", "CANCELED", "BLOCKED", "UNKNOWN"]) {
       if (action.summary === translate("zh", "agent.action.localMediaEnded", { status })) {
         return t("agent.action.localMediaEnded", { status });
       }
     }
   }
-  const key = GENERATED_SUMMARIES[action.toolName]?.find((candidate) => translate("zh", candidate) === action.summary);
+  const key = GENERATED_SUMMARIES[action.toolName]?.find(candidate => translate("zh", candidate) === action.summary);
   return key ? t(key) : action.summary;
 }

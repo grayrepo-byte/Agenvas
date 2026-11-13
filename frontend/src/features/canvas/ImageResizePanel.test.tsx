@@ -6,9 +6,22 @@ import { imageResizeDimensions } from "./imageResize";
 function mount(overrides: Partial<Parameters<typeof ImageResizePanel>[0]> = {}) {
   const onSubmit = vi.fn();
   const onRetryMetadata = vi.fn();
-  render(<ImageResizePanel sourceWidth={1200} sourceHeight={800} loading={false} metadataError={null}
-    busy={false} error={null} extraControls={null} submitDisabled={false} onClose={vi.fn()}
-    onSubmit={onSubmit} onRetryMetadata={onRetryMetadata} {...overrides} />);
+  render(
+    <ImageResizePanel
+      sourceWidth={1200}
+      sourceHeight={800}
+      loading={false}
+      metadataError={null}
+      busy={false}
+      error={null}
+      extraControls={null}
+      submitDisabled={false}
+      onClose={vi.fn()}
+      onSubmit={onSubmit}
+      onRetryMetadata={onRetryMetadata}
+      {...overrides}
+    />,
+  );
   return { onSubmit, onRetryMetadata };
 }
 

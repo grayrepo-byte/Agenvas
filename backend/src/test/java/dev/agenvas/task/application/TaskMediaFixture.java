@@ -12,7 +12,8 @@ import tools.jackson.databind.node.ObjectNode;
  * enter through direct generation or a user-approved batch; this fixture does not call a provider.
  */
 public final class TaskMediaFixture {
-    private TaskMediaFixture() {}
+    private TaskMediaFixture() {
+    }
 
     public static Task create(TaskService tasks, TaskRepository repository, ArtifactService artifacts,
             UUID ownerId, UUID projectId, UUID runId, String stepKey, Task.Kind kind,

@@ -1,7 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import { Navigate } from "react-router";
-import { ApiError, HTTP_STATUS, createPrompt, deletePrompt, listPrompts, updatePrompt, type PromptDefinition } from "../../shared/api/client";
+import {
+  ApiError,
+  HTTP_STATUS,
+  createPrompt,
+  deletePrompt,
+  listPrompts,
+  updatePrompt,
+  type PromptDefinition,
+} from "../../shared/api/client";
 import { getFormatLocale, t, useLocale } from "../../shared/i18n";
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { EmptyState, Notice, Panel, StatusBadge } from "../../shared/ui/PagePrimitives";
@@ -22,7 +30,9 @@ type Draft = Pick<PromptDefinition, "key" | "kind" | "name" | "description" | "c
 const blankDraft: Draft = { key: "", kind: "FUNCTION", name: "", description: "", content: "", version: 1 };
 
 export function PromptManagementSection({ enabled }: { enabled: boolean }) {
-  useLocale(); const id = useId(); const client = useQueryClient();
+  useLocale();
+  const id = useId();
+  const client = useQueryClient();
   const settings = useQuery({ queryKey: SETTINGS_KEY, queryFn: listPrompts, enabled, retry: false });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
@@ -30,101 +40,291 @@ export function PromptManagementSection({ enabled }: { enabled: boolean }) {
   const [kind, setKind] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const selection = selectedId ?? settings.data?.items[0]?.id;
-  const record = settings.data?.items.find((value) => value.id === selection);
+  const record = settings.data?.items.find(value => value.id === selection);
   const draft = selection ? drafts[selection] : undefined;
   const value = draft ?? record;
   const labels = value && record ? getPromptLabels({ ...record, ...value }) : value;
   const isNew = selection === NEW_PROMPT;
-  const save = useMutation({ mutationFn: ({ selection, draft }: { selection: string; draft: Draft }) => {
-    const { key, name, description, content, version } = draft;
-    return selection === NEW_PROMPT ? createPrompt({ key, name, description, content })
-      : updatePrompt(selection, { name, description, content, expectedVersion: version });
-  }, onSuccess: (saved, input) => {
-    client.setQueryData(SETTINGS_KEY, { items: input.selection === NEW_PROMPT
-      ? [...(settings.data?.items ?? []), saved] : (settings.data?.items ?? []).map((row) => row.id === saved.id ? saved : row) });
-    setDrafts((old) => { const next = { ...old }; delete next[input.selection]; return next; });
-    setSelectedId(saved.id);
-  } });
-  const remove = useMutation({ mutationFn: ({ id, version }: { id: string; version: number }) => deletePrompt(id, version),
+  const save = useMutation({
+    mutationFn: ({ selection, draft }: { selection: string; draft: Draft }) => {
+      const { key, name, description, content, version } = draft;
+      return selection === NEW_PROMPT
+        ? createPrompt({ key, name, description, content })
+        : updatePrompt(selection, { name, description, content, expectedVersion: version });
+    },
+    onSuccess: (saved, input) => {
+      client.setQueryData(SETTINGS_KEY, {
+        items:
+          input.selection === NEW_PROMPT
+            ? [...(settings.data?.items ?? []), saved]
+            : (settings.data?.items ?? []).map(row => (row.id === saved.id ? saved : row)),
+      });
+      setDrafts(old => {
+        const next = { ...old };
+        delete next[input.selection];
+        return next;
+      });
+      setSelectedId(saved.id);
+    },
+  });
+  const remove = useMutation({
+    mutationFn: ({ id, version }: { id: string; version: number }) => deletePrompt(id, version),
     onSuccess: (_, input) => {
-      client.setQueryData(SETTINGS_KEY, { items: (settings.data?.items ?? []).filter((row) => row.id !== input.id) });
-      setDrafts((old) => { const next = { ...old }; delete next[input.id]; return next; });
-      setSelectedId(null); setConfirmDelete(false);
-    } });
+      client.setQueryData(SETTINGS_KEY, { items: (settings.data?.items ?? []).filter(row => row.id !== input.id) });
+      setDrafts(old => {
+        const next = { ...old };
+        delete next[input.id];
+        return next;
+      });
+      setSelectedId(null);
+      setConfirmDelete(false);
+    },
+  });
   const error = save.error ?? remove.error ?? settings.error;
   if (error instanceof ApiError && error.status === HTTP_STATUS.UNAUTHORIZED) return <Navigate to="/login" replace />;
   const forbidden = error instanceof ApiError && error.status === HTTP_STATUS.FORBIDDEN;
   const conflict = error instanceof ApiError && error.status === HTTP_STATUS.CONFLICT;
   const pending = save.isPending || remove.isPending || settings.isFetching;
   const disabled = pending || !settings.data || settings.isError || forbidden;
-  function select(selection: string) { setSelectedId(selection); setConfirmDelete(false); save.reset(); remove.reset(); }
+  function select(selection: string) {
+    setSelectedId(selection);
+    setConfirmDelete(false);
+    save.reset();
+    remove.reset();
+  }
   function change(fields: Partial<Draft>) {
     if (save.error instanceof ApiError && save.error.code === "PROMPT_KEY_CONFLICT") save.reset();
     if (remove.isError) remove.reset();
-    if (value && selection) setDrafts((old) => ({ ...old, [selection]: { ...value, ...fields } }));
+    if (value && selection) setDrafts(old => ({ ...old, [selection]: { ...value, ...fields } }));
   }
-  const rows = (settings.data?.items ?? []).filter((row) => {
+  const rows = (settings.data?.items ?? []).filter(row => {
     const labels = getPromptLabels(row);
-    return (!kind || row.kind === kind) && `${labels.name} ${row.key} ${labels.description}`.toLowerCase().includes(filter.toLowerCase());
+    return (
+      (!kind || row.kind === kind) &&
+      `${labels.name} ${row.key} ${labels.description}`.toLowerCase().includes(filter.toLowerCase())
+    );
   });
-  return <div className="prompt-management-layout">
-    <Panel className="prompt-management-catalog" title={t("prompts.title")} description={t("prompts.hint")} actions={settings.data ? <StatusBadge>{rows.length}</StatusBadge> : null}>
-      <div className="ui-stack">
-        <Input aria-label={t("prompts.search")} placeholder={t("prompts.search")} value={filter} onChange={(event) => setFilter(event.target.value)} />
-        <Select aria-label={t("prompts.filter")} value={kind} onChange={(event) => setKind(event.target.value)}>
-          <option value="">{t("prompts.all")}</option><option value="AGENT">{t("prompts.agent")}</option><option value="FUNCTION">{t("prompts.function")}</option>
-        </Select>
-        <Button type="button" variant="ghost" disabled={disabled} onClick={() => { select(NEW_PROMPT); setDrafts((old) => ({ ...old, [NEW_PROMPT]: old[NEW_PROMPT] ?? { ...blankDraft } })); }}>{t("prompts.create")}</Button>
-        {settings.isPending && enabled ? <LoadingState compact label={t("prompts.loading")} /> : null}
-        {settings.isSuccess && !rows.length ? <EmptyState title={t("prompts.empty")} /> : null}
-        {rows.map((row) => <Button type="button" variant={selection === row.id ? "secondary" : "ghost"} size="content" className="prompt-management-record justify-start text-left"
-          disabled={pending} key={row.id} onClick={() => select(row.id)} aria-pressed={selection === row.id} title={`${getPromptLabels(row).name} · ${row.key}${drafts[row.id] ? ` · ${t("prompts.unsaved")}` : ""}`}>
-          <span className="min-w-0"><span className="block">{getPromptLabels(row).name}</span><span className="block break-all text-xs text-muted-foreground">{row.key}</span></span>
-          {drafts[row.id] ? <StatusBadge tone="warning">{t("prompts.unsaved")}</StatusBadge> : null}
-          <StatusBadge>{row.kind === "AGENT" ? t("prompts.agent") : t("prompts.function")}</StatusBadge>
-        </Button>)}
-      </div>
-    </Panel>
-    <Panel className="prompt-management-editor" title={isNew ? t("prompts.create") : record ? getPromptLabels(record).name : t("prompts.editor")} description={t("prompts.copyHint")}
-      actions={draft ? <StatusBadge tone="warning">{t("prompts.unsaved")}</StatusBadge> : value ? <StatusBadge>{`v${value.version}`}</StatusBadge> : null}>
-      <form className="ui-stack prompt-management-form" onSubmit={(event) => { event.preventDefault(); if (selection && draft && !disabled && !conflict) save.mutate({ selection, draft }); }}>
-        {error ? <Notice tone="danger" title={forbidden ? t("prompts.forbidden") : conflict ? t("prompts.conflict") : t("prompts.operationFailed")}>
-          {!forbidden ? <Button type="button" variant="outline" disabled={pending} onClick={() => void settings.refetch()}>{t("settings.shared.refresh")}</Button> : null}
-        </Notice> : null}
-        {value ? <FieldGroup className="prompt-management-form-fields">
-          <FieldGroup className="prompt-management-fields">
-          <Field className="prompt-management-field-wide"><FieldLabel htmlFor={`${id}-key`}>{t("prompts.key")}</FieldLabel>
-            <Input id={`${id}-key`} required maxLength={MAX_NAME_LENGTH} pattern={KEY_PATTERN} disabled={disabled || !isNew} value={value.key} onChange={(event) => change({ key: event.target.value })} />
-            <FieldDescription>{t("prompts.keyHint")}</FieldDescription></Field>
-          <Field><FieldLabel htmlFor={`${id}-kind`}>{t("prompts.kind")}</FieldLabel>
-            <Input id={`${id}-kind`} readOnly value={value.kind === "AGENT" ? t("prompts.agent") : t("prompts.function")} /></Field>
-          <Field><FieldLabel htmlFor={`${id}-name`}>{t("prompts.name")}</FieldLabel>
-            <Input id={`${id}-name`} required maxLength={MAX_NAME_LENGTH} disabled={disabled} value={labels?.name ?? value.name} onChange={(event) => change({ name: event.target.value })} /></Field>
-          <Field className="prompt-management-field-wide"><FieldLabel htmlFor={`${id}-description`}>{t("prompts.description")}</FieldLabel>
-            <Input id={`${id}-description`} maxLength={MAX_DESCRIPTION_LENGTH} disabled={disabled} value={labels?.description ?? value.description} onChange={(event) => change({ description: event.target.value })} /></Field>
-          </FieldGroup>
-          <Field className="prompt-management-content-field"><FieldLabel htmlFor={`${id}-content`}>{t("prompts.content")}</FieldLabel>
-            <Textarea id={`${id}-content`} required rows={18} maxLength={MAX_CONTENT_LENGTH} disabled={disabled} value={value.content} onChange={(event) => change({ content: event.target.value })} />
-            <FieldDescription>{t("prompts.languageHint")}</FieldDescription>
-            <FieldDescription className="prompt-management-length">{value.content.length.toLocaleString(getFormatLocale())} / {MAX_CONTENT_LENGTH.toLocaleString(getFormatLocale())}</FieldDescription>
-            {value.kind === "FUNCTION" ? <FieldDescription>{t("prompts.functionHint")}</FieldDescription> : null}</Field>
-        </FieldGroup> : null}
-        {save.isSuccess && !draft ? <p role="status">{t("prompts.saved")}</p> : null}
-        {record?.builtIn ? <p className="text-sm text-muted-foreground">{t("prompts.builtInHint")}</p> : null}
-        <div className="ui-form-actions prompt-management-actions">
-          {draft && selection ? <Button type="button" variant="outline" disabled={pending} onClick={() => {
-            setDrafts((old) => { const next = { ...old }; delete next[selection]; return next; }); save.reset(); remove.reset(); if (isNew) setSelectedId(null);
-          }}>{t("agent.defaults.discard")}</Button> : null}
-          {conflict && draft && record && draft.version !== record.version ? <Button type="button" variant="outline" disabled={pending}
-            onClick={() => { change({ version: record.version }); save.reset(); remove.reset(); }}>{t("agent.defaults.keepDraft")}</Button> : null}
-          <Button type="submit" disabled={disabled || conflict || !draft || !value?.name.trim() || !value.content.trim() || !value.key.trim()}>{save.isPending ? t("common.savingProgress") : t("common.saveConfig")}</Button>
-          {record && !record.builtIn ? <Button type="button" variant="outline" disabled={disabled} onClick={() => setConfirmDelete(true)}>{t("prompts.delete")}</Button> : null}
+  return (
+    <div className="prompt-management-layout">
+      <Panel
+        className="prompt-management-catalog"
+        title={t("prompts.title")}
+        description={t("prompts.hint")}
+        actions={settings.data ? <StatusBadge>{rows.length}</StatusBadge> : null}
+      >
+        <div className="ui-stack">
+          <Input
+            aria-label={t("prompts.search")}
+            placeholder={t("prompts.search")}
+            value={filter}
+            onChange={event => setFilter(event.target.value)}
+          />
+          <Select aria-label={t("prompts.filter")} value={kind} onChange={event => setKind(event.target.value)}>
+            <option value="">{t("prompts.all")}</option>
+            <option value="AGENT">{t("prompts.agent")}</option>
+            <option value="FUNCTION">{t("prompts.function")}</option>
+          </Select>
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={disabled}
+            onClick={() => {
+              select(NEW_PROMPT);
+              setDrafts(old => ({ ...old, [NEW_PROMPT]: old[NEW_PROMPT] ?? { ...blankDraft } }));
+            }}
+          >
+            {t("prompts.create")}
+          </Button>
+          {settings.isPending && enabled ? <LoadingState compact label={t("prompts.loading")} /> : null}
+          {settings.isSuccess && !rows.length ? <EmptyState title={t("prompts.empty")} /> : null}
+          {rows.map(row => (
+            <Button
+              type="button"
+              variant={selection === row.id ? "secondary" : "ghost"}
+              size="content"
+              className="prompt-management-record justify-start text-left"
+              disabled={pending}
+              key={row.id}
+              onClick={() => select(row.id)}
+              aria-pressed={selection === row.id}
+              title={`${getPromptLabels(row).name} · ${row.key}${drafts[row.id] ? ` · ${t("prompts.unsaved")}` : ""}`}
+            >
+              <span className="min-w-0">
+                <span className="block">{getPromptLabels(row).name}</span>
+                <span className="block break-all text-xs text-muted-foreground">{row.key}</span>
+              </span>
+              {drafts[row.id] ? <StatusBadge tone="warning">{t("prompts.unsaved")}</StatusBadge> : null}
+              <StatusBadge>{row.kind === "AGENT" ? t("prompts.agent") : t("prompts.function")}</StatusBadge>
+            </Button>
+          ))}
         </div>
-        {confirmDelete && record ? <Notice title={t("prompts.deleteConfirm", { "0": record.name })}>
-          <Button type="button" variant="destructive" disabled={pending} onClick={() => remove.mutate({ id: record.id, version: draft?.version ?? record.version })}>{t("prompts.confirmDelete")}</Button>
-          <Button type="button" variant="outline" disabled={pending} onClick={() => setConfirmDelete(false)}>{t("common.cancel")}</Button>
-        </Notice> : null}
-      </form>
-    </Panel>
-  </div>;
+      </Panel>
+      <Panel
+        className="prompt-management-editor"
+        title={isNew ? t("prompts.create") : record ? getPromptLabels(record).name : t("prompts.editor")}
+        description={t("prompts.copyHint")}
+        actions={
+          draft ? (
+            <StatusBadge tone="warning">{t("prompts.unsaved")}</StatusBadge>
+          ) : value ? (
+            <StatusBadge>{`v${value.version}`}</StatusBadge>
+          ) : null
+        }
+      >
+        <form
+          className="ui-stack prompt-management-form"
+          onSubmit={event => {
+            event.preventDefault();
+            if (selection && draft && !disabled && !conflict) save.mutate({ selection, draft });
+          }}
+        >
+          {error ? (
+            <Notice
+              tone="danger"
+              title={
+                forbidden ? t("prompts.forbidden") : conflict ? t("prompts.conflict") : t("prompts.operationFailed")
+              }
+            >
+              {!forbidden ? (
+                <Button type="button" variant="outline" disabled={pending} onClick={() => void settings.refetch()}>
+                  {t("settings.shared.refresh")}
+                </Button>
+              ) : null}
+            </Notice>
+          ) : null}
+          {value ? (
+            <FieldGroup className="prompt-management-form-fields">
+              <FieldGroup className="prompt-management-fields">
+                <Field className="prompt-management-field-wide">
+                  <FieldLabel htmlFor={`${id}-key`}>{t("prompts.key")}</FieldLabel>
+                  <Input
+                    id={`${id}-key`}
+                    required
+                    maxLength={MAX_NAME_LENGTH}
+                    pattern={KEY_PATTERN}
+                    disabled={disabled || !isNew}
+                    value={value.key}
+                    onChange={event => change({ key: event.target.value })}
+                  />
+                  <FieldDescription>{t("prompts.keyHint")}</FieldDescription>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor={`${id}-kind`}>{t("prompts.kind")}</FieldLabel>
+                  <Input
+                    id={`${id}-kind`}
+                    readOnly
+                    value={value.kind === "AGENT" ? t("prompts.agent") : t("prompts.function")}
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor={`${id}-name`}>{t("prompts.name")}</FieldLabel>
+                  <Input
+                    id={`${id}-name`}
+                    required
+                    maxLength={MAX_NAME_LENGTH}
+                    disabled={disabled}
+                    value={labels?.name ?? value.name}
+                    onChange={event => change({ name: event.target.value })}
+                  />
+                </Field>
+                <Field className="prompt-management-field-wide">
+                  <FieldLabel htmlFor={`${id}-description`}>{t("prompts.description")}</FieldLabel>
+                  <Input
+                    id={`${id}-description`}
+                    maxLength={MAX_DESCRIPTION_LENGTH}
+                    disabled={disabled}
+                    value={labels?.description ?? value.description}
+                    onChange={event => change({ description: event.target.value })}
+                  />
+                </Field>
+              </FieldGroup>
+              <Field className="prompt-management-content-field">
+                <FieldLabel htmlFor={`${id}-content`}>{t("prompts.content")}</FieldLabel>
+                <Textarea
+                  id={`${id}-content`}
+                  required
+                  rows={18}
+                  maxLength={MAX_CONTENT_LENGTH}
+                  disabled={disabled}
+                  value={value.content}
+                  onChange={event => change({ content: event.target.value })}
+                />
+                <FieldDescription>{t("prompts.languageHint")}</FieldDescription>
+                <FieldDescription className="prompt-management-length">
+                  {value.content.length.toLocaleString(getFormatLocale())} /{" "}
+                  {MAX_CONTENT_LENGTH.toLocaleString(getFormatLocale())}
+                </FieldDescription>
+                {value.kind === "FUNCTION" ? <FieldDescription>{t("prompts.functionHint")}</FieldDescription> : null}
+              </Field>
+            </FieldGroup>
+          ) : null}
+          {save.isSuccess && !draft ? <p role="status">{t("prompts.saved")}</p> : null}
+          {record?.builtIn ? <p className="text-sm text-muted-foreground">{t("prompts.builtInHint")}</p> : null}
+          <div className="ui-form-actions prompt-management-actions">
+            {draft && selection ? (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={pending}
+                onClick={() => {
+                  setDrafts(old => {
+                    const next = { ...old };
+                    delete next[selection];
+                    return next;
+                  });
+                  save.reset();
+                  remove.reset();
+                  if (isNew) setSelectedId(null);
+                }}
+              >
+                {t("agent.defaults.discard")}
+              </Button>
+            ) : null}
+            {conflict && draft && record && draft.version !== record.version ? (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={pending}
+                onClick={() => {
+                  change({ version: record.version });
+                  save.reset();
+                  remove.reset();
+                }}
+              >
+                {t("agent.defaults.keepDraft")}
+              </Button>
+            ) : null}
+            <Button
+              type="submit"
+              disabled={
+                disabled || conflict || !draft || !value?.name.trim() || !value.content.trim() || !value.key.trim()
+              }
+            >
+              {save.isPending ? t("common.savingProgress") : t("common.saveConfig")}
+            </Button>
+            {record && !record.builtIn ? (
+              <Button type="button" variant="outline" disabled={disabled} onClick={() => setConfirmDelete(true)}>
+                {t("prompts.delete")}
+              </Button>
+            ) : null}
+          </div>
+          {confirmDelete && record ? (
+            <Notice title={t("prompts.deleteConfirm", { "0": record.name })}>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={pending}
+                onClick={() => remove.mutate({ id: record.id, version: draft?.version ?? record.version })}
+              >
+                {t("prompts.confirmDelete")}
+              </Button>
+              <Button type="button" variant="outline" disabled={pending} onClick={() => setConfirmDelete(false)}>
+                {t("common.cancel")}
+              </Button>
+            </Notice>
+          ) : null}
+        </form>
+      </Panel>
+    </div>
+  );
 }

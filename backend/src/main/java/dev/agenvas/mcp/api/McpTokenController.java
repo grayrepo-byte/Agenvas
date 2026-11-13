@@ -58,13 +58,16 @@ public class McpTokenController {
     }
 
     private UUID userId(AdminPrincipal principal) {
-        if (principal == null) throw McpTokenService.unauthenticated();
+        if (principal == null)
+            throw McpTokenService.unauthenticated();
         return principal.userId();
     }
 
     public record CreateRequest(@NotBlank @Size(max = 100) String name,
             @NotEmpty @Size(max = 3) Set<@NotNull McpScope> scopes,
-            @Min(1) @Max(90) Integer expiresInDays) {}
+            @Min(1) @Max(90) Integer expiresInDays) {
+    }
 
-    public record RevokeRequest(@NotNull @Min(0) Long expectedVersion) {}
+    public record RevokeRequest(@NotNull @Min(0) Long expectedVersion) {
+    }
 }

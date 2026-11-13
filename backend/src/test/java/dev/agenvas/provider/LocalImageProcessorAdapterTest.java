@@ -29,7 +29,8 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 class LocalImageProcessorAdapterTest {
-    @TempDir Path temporary;
+    @TempDir
+    Path temporary;
 
     private final ObjectMapper mapper = new ObjectMapper();
     private final ArtifactService artifacts = mock(ArtifactService.class);
@@ -45,9 +46,10 @@ class LocalImageProcessorAdapterTest {
     void sourceImage() throws Exception {
         sourceFile = temporary.resolve("source.png");
         BufferedImage source = new BufferedImage(4, 3, BufferedImage.TYPE_INT_RGB);
-        for (int y = 0; y < source.getHeight(); y++) for (int x = 0; x < source.getWidth(); x++) {
-            source.setRGB(x, y, new Color(x * 40, y * 60, 100).getRGB());
-        }
+        for (int y = 0; y < source.getHeight(); y++)
+            for (int x = 0; x < source.getWidth(); x++) {
+                source.setRGB(x, y, new Color(x * 40, y * 60, 100).getRGB());
+            }
         ImageIO.write(source, "png", sourceFile.toFile());
         ObjectNode content = mapper.createObjectNode();
         content.put("sourceType", "UPLOAD");
@@ -147,7 +149,9 @@ class LocalImageProcessorAdapterTest {
                 new LocalImageProperties(depthModel));
     }
 
-    private ObjectNode parameters() { return mapper.createObjectNode(); }
+    private ObjectNode parameters() {
+        return mapper.createObjectNode();
+    }
 
     private AttemptContext context(String operation, ObjectNode parameters) {
         ObjectNode input = mapper.createObjectNode();
