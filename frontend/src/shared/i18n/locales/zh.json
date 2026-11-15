@@ -4131,5 +4131,20 @@
   "settings.llm.connections.actions": "操作",
   "settings.llm.connections.editAction": "编辑",
   "settings.llm.connections.modeUnavailable": "运行模式暂时无法读取，连接列表与当前输入已保留。",
-  "settings.llm.connections.keyCleared": "新密钥输入已清空。编辑已有连接时可留空保留服务端密钥。"
+  "settings.llm.connections.keyCleared": "新密钥输入已清空。编辑已有连接时可留空保留服务端密钥。",
+  "settings.httpTimeouts.title": "请求超时",
+  "settings.httpTimeouts.connectSeconds": "连接超时（秒）",
+  "settings.httpTimeouts.writeSeconds": "写入超时（秒）",
+  "settings.httpTimeouts.readSeconds": "读取超时（秒）",
+  "settings.httpTimeouts.callSeconds": "整次请求超时（秒）",
+  "settings.httpTimeouts.connectHint": "建立连接的最长等待时间。",
+  "settings.httpTimeouts.writeHint": "请求体单次写入阻塞的最长时间。",
+  "settings.httpTimeouts.readHint": "等待响应数据时单次读取阻塞的最长时间。",
+  "settings.httpTimeouts.callHint": "一次完整 HTTP 请求的总期限，包含连接、发送和读取。进入下一阶段或持续传输都不会重置总期限，各阶段上限不能相加。",
+  "settings.httpTimeouts.scopeHint": "分别约束每次 API、输入上传和结果下载请求，不是整个生成任务的时长。",
+  "settings.httpTimeouts.legacyHint": "以下为发布默认值。未编辑超时时，旧能力继续沿用原协议设置；修改后四项一起保存到新的能力版本。",
+  "settings.httpTimeouts.defaultsUnavailable": "服务端未返回超时默认值。请填写全部四项，或重新载入设置后再发布。",
+  "settings.httpTimeouts.integerRange": "{0}必须为 1 到 {1} 之间的整数。",
+  "settings.httpTimeouts.phaseExceedsCall": "{0}不能超过整次请求超时。",
+  "settings.editor.timeoutsHint": "设置连接、传输等待与整次请求的上限"
 }

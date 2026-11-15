@@ -17,7 +17,7 @@ import tools.jackson.databind.node.ObjectNode;
 public final class MediaCapabilityConfiguration {
     public static final Set<String> FIELDS = Set.of("defaultParameters", "defaultDurationSeconds",
             "minimumSeconds", "maximumSeconds", "maxReferenceImages", "maxReferenceAudios", "maxReferenceVideos",
-            "pricing", "pricingByResolution", "tokenPricing");
+            "pricing", "pricingByResolution", "tokenPricing", MediaHttpTimeouts.SETTINGS_KEY);
     private static final Set<String> PRICE_FIELDS = Set.of("amount", "currency", "unit");
     private static final Set<String> CURRENCIES = Set.of("CNY", "USD");
     private static final String PRICE_PATTERN = "[0-9]{1,10}(\\.[0-9]{1,6})?";
@@ -27,6 +27,11 @@ public final class MediaCapabilityConfiguration {
 
     public static void normalize(ObjectMapper mapper, MediaAdapterRegistry.Declaration adapter,
             JsonNode source, ObjectNode target) {
+        if (source.has(MediaHttpTimeouts.SETTINGS_KEY)) {
+            if (adapter.platform() == MediaPlatform.LOCAL || adapter.platform() == MediaPlatform.MOCK)
+                throw invalid(ApiMessage.of("api.media-http-timeouts.not-supported"));
+            target.set(MediaHttpTimeouts.SETTINGS_KEY, mapper.valueToTree(MediaHttpTimeouts.configured(source)));
+        }
         var policy = policy(adapter, source);
         for (String field : List.of("minimumSeconds", "maximumSeconds", "maxReferenceImages", "maxReferenceAudios",
                 "maxReferenceVideos")) {

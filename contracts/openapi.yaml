@@ -9682,6 +9682,10 @@ components:
       additionalProperties: false
       required: [connections, defaults]
       properties:
+        httpTimeoutDefaults:
+          type: object
+          additionalProperties: {$ref: "#/components/schemas/MediaHttpTimeouts"}
+          description: Server-owned publication defaults keyed by network adapter ID. LOCAL and MOCK have no entry. Omitted only by older servers; never invent protocol defaults in the browser.
         connections:
           type: array
           items: {$ref: "#/components/schemas/MediaConnection"}
@@ -9760,6 +9764,9 @@ components:
       additionalProperties: false
       description: Versioned settings within a compiled adapter protocol. New ComfyUI publication requires comfyWorkflow; legacy model-only capabilities retain their snapshot for recovery and metadata changes. OPENAI and GOOGLE image adapters accept a compatible model name and a connection API base URL; native video uses its fixed official protocol. Defaults fill missing draft fields; limits narrow the published declaration. Pricing is an administrator estimate, never an actual provider charge.
       properties:
+        httpTimeouts:
+          $ref: "#/components/schemas/MediaHttpTimeouts"
+          description: Optional complete policy frozen in this capability version for Provider API calls, input uploads and result downloads. Only network adapters accept it. Absence preserves legacy API and dedicated download defaults. Each phase limit must be at most callSeconds; the whole-call deadline never resets between phases. Editing settings does not retry an UNKNOWN request.
         comfyWorkflow: {$ref: "#/components/schemas/ComfyUiWorkflowDefinition"}
         comfyInputs:
           type: array
@@ -9828,6 +9835,15 @@ components:
           propertyNames: {pattern: '^[1-9][0-9]{2,3}p$'}
           additionalProperties: {$ref: '#/components/schemas/MediaCapabilityPricing'}
           description: AutoDL published tiers, MINIMAX_H3 768p/1440p, or the declared KLING video model 720p/1080p/2160p tiers (2160p maps to native 4k). Matching tier overrides pricing; otherwise pricing is the fallback. Missing both means unknown cost.
+    MediaHttpTimeouts:
+      type: object
+      additionalProperties: false
+      required: [connectSeconds, writeSeconds, readSeconds, callSeconds]
+      properties:
+        connectSeconds: {type: integer, minimum: 1, maximum: 120, description: Connection establishment timeout in seconds; no greater than callSeconds.}
+        writeSeconds: {type: integer, minimum: 1, maximum: 3600, description: Timeout for a blocked request-body write in seconds; no greater than callSeconds.}
+        readSeconds: {type: integer, minimum: 1, maximum: 3600, description: Timeout for a blocked response read including first-byte wait in seconds; no greater than callSeconds.}
+        callSeconds: {type: integer, minimum: 1, maximum: 3600, description: Whole HTTP call deadline in seconds including connection, sending and reading; continuous progress does not extend it.}
     ImageTokenPricing:
       type: object
       additionalProperties: false

@@ -46,9 +46,20 @@ public final class RunningHubClient {
     private final ObjectMapper mapper;
     private final OkHttpClient http;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public RunningHubClient(ObjectMapper mapper) {
         this.mapper = mapper;
         http = PinnedHttpClients.pinned(Dns.SYSTEM, CONNECT_TIMEOUT, READ_TIMEOUT, CALL_TIMEOUT);
+    }
+
+    /** The copy is used only for a task's uploads, submission, queries and existing-result downloads. */
+    public RunningHubClient withTimeouts(dev.agenvas.shared.http.HttpTimeouts timeouts) {
+        return timeouts == null ? this : new RunningHubClient(this, timeouts);
+    }
+
+    private RunningHubClient(RunningHubClient source, dev.agenvas.shared.http.HttpTimeouts timeouts) {
+        this.mapper = source.mapper;
+        this.http = timeouts.configure(source.http);
     }
 
     /** Admin-configured API origin; request paths stay compiled and redirects stay disabled. */
@@ -292,7 +303,7 @@ public final class RunningHubClient {
     }
 
     private JsonNode json(Request request, boolean submission) {
-        return json(request, submission, CALL_TIMEOUT);
+        return json(request, submission, Duration.ofMillis(http.callTimeoutMillis()));
     }
 
     private JsonNode json(Request request, boolean submission, Duration timeout) {

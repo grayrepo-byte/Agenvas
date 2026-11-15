@@ -3,6 +3,7 @@ package dev.agenvas.provider.application;
 import dev.agenvas.artifact.domain.VideoGenerationParameters;
 import dev.agenvas.asset.infrastructure.MediaToolRunner;
 import dev.agenvas.provider.domain.AttemptContext;
+import dev.agenvas.provider.domain.MediaHttpTimeouts;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaPayload;
 import dev.agenvas.provider.domain.MiniMaxH3Protocol;
@@ -13,6 +14,7 @@ import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapsho
 import dev.agenvas.provider.infrastructure.MiniMaxH3Client;
 import dev.agenvas.provider.infrastructure.MiniMaxMediaDownloadPolicy;
 import dev.agenvas.settings.application.CredentialCipher;
+import dev.agenvas.shared.http.HttpTimeouts;
 import dev.agenvas.shared.error.ProviderFailureCodes;
 import dev.agenvas.task.domain.Task;
 import java.io.FilterInputStream;
@@ -89,7 +91,7 @@ public class MiniMaxH3Adapter implements MediaAdapter {
             return new Submission.Rejected("MEDIA_REFERENCE_PREPARATION_FAILED");
         }
         try {
-            return new Submission.Accepted(client.create(snapshot.connectionVersion().origin(), key, body));
+            return new Submission.Accepted(api(snapshot).create(snapshot.connectionVersion().origin(), key, body));
         } catch (MiniMaxH3Client.Rejected rejected) {
             return new Submission.Rejected(ProviderFailureCodes.MINIMAX_CREATE_REJECTED);
         } catch (MiniMaxH3Client.Uncertain uncertain) {
@@ -112,7 +114,7 @@ public class MiniMaxH3Adapter implements MediaAdapter {
     public Submission reconcile(AttemptContext context) {
         Snapshot snapshot = snapshot(context);
         try {
-            var state = client.query(snapshot.connectionVersion().origin(), credential(snapshot),
+            var state = api(snapshot).query(snapshot.connectionVersion().origin(), credential(snapshot),
                     context.originalRequestId());
             return switch (state.status()) {
                 case "queued", "running" -> new Submission.Pending(Instant.now().plusSeconds(5));
@@ -132,26 +134,26 @@ public class MiniMaxH3Adapter implements MediaAdapter {
         if (state.videoUrl() == null || state.videoUrl().isBlank())
             return new Submission.Blocked(ProviderFailureCodes.PROTOCOL_INVALID);
         try {
-            return new Submission.Completed(downloadVideo(URI.create(state.videoUrl()),
+            return new Submission.Completed(downloadVideo(snapshot, URI.create(state.videoUrl()),
                     context.lease().input().path("durationSeconds").asInt(-1)));
         } catch (IllegalArgumentException invalid) {
             return new Submission.Blocked(ProviderFailureCodes.RESULT_URL_INVALID);
         } catch (MiniMaxMediaDownloadPolicy.Expired expired) {
             // Refresh only this accepted task's URL; a missing/expired result never resubmits generation.
-            var refreshed = client.query(snapshot.connectionVersion().origin(), credential(snapshot),
+            var refreshed = api(snapshot).query(snapshot.connectionVersion().origin(), credential(snapshot),
                     context.originalRequestId());
             if (!"succeeded".equals(refreshed.status()) || refreshed.videoUrl() == null
                     || refreshed.videoUrl().equals(state.videoUrl()))
                 return new Submission.Blocked(ProviderFailureCodes.MINIMAX_RESULT_EXPIRED);
             try {
-                return new Submission.Completed(downloadVideo(URI.create(refreshed.videoUrl()),
+                return new Submission.Completed(downloadVideo(snapshot, URI.create(refreshed.videoUrl()),
                         context.lease().input().path("durationSeconds").asInt(-1)));
             } catch (IllegalArgumentException | MiniMaxMediaDownloadPolicy.Expired invalid) {
                 return new Submission.Blocked(ProviderFailureCodes.MINIMAX_RESULT_EXPIRED);
             }
         }
     }
-    private MediaPayload downloadVideo(URI url, int expectedSeconds) {
+    private MediaPayload downloadVideo(Snapshot snapshot, URI url, int expectedSeconds) {
         downloads.validate(url);
         Path directory;
         try {
@@ -162,7 +164,7 @@ public class MiniMaxH3Adapter implements MediaAdapter {
         Path raw = directory.resolve("result.mp4");
         try {
             try (OutputStream sink = Files.newOutputStream(raw)) {
-                downloads.download(url, sink, 500L * 1024 * 1024);
+                downloads(snapshot).download(url, sink, 500L * 1024 * 1024);
             }
             probe(raw, expectedSeconds);
             InputStream file = Files.newInputStream(raw);
@@ -230,6 +232,22 @@ public class MiniMaxH3Adapter implements MediaAdapter {
             throw new IllegalStateException("Pinned MiniMax mapping differs");
         }
         return snapshot;
+    }
+
+    /** Read only the immutable capability version selected when this task was accepted. */
+    private HttpTimeouts httpTimeouts(Snapshot snapshot) {
+        return snapshot.specJson() == null ? null
+                : MediaHttpTimeouts.configured(mapper.readTree(snapshot.specJson()).path("settings"));
+    }
+
+    private MiniMaxH3Client api(Snapshot snapshot) {
+        var timeouts = httpTimeouts(snapshot);
+        return timeouts == null ? client : client.withTimeouts(timeouts);
+    }
+
+    private MiniMaxMediaDownloadPolicy downloads(Snapshot snapshot) {
+        var timeouts = httpTimeouts(snapshot);
+        return timeouts == null ? downloads : downloads.withTimeouts(timeouts);
     }
 
     private String credential(Snapshot snapshot) {

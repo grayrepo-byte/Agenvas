@@ -42,7 +42,7 @@ class AutoDlVideoAdapterTest {
                 "https://autodl.art", "origin-hash", new byte[]{1}, new byte[]{2}, 1, "fake");
         when(catalog.snapshotAt(binding.capabilityId(), 1, binding.connectionId(), 1))
                 .thenReturn(Optional.of(new JooqMediaCapabilityRepository.Snapshot(null, null, version,
-                        binding.adapterId(), binding.mappingSha256(), null)));
+                        binding.adapterId(), binding.mappingSha256(), "{\"settings\":{}}")));
         when(cipher.decryptMedia(eq(binding.connectionId()), eq(1), any())).thenReturn("fake-test-token");
     }
 

@@ -95,6 +95,7 @@ public final class RunningHubAdapter implements MediaAdapter {
     @Override
     public Submission submit(AttemptContext context) {
         var snapshot = snapshot(context);
+        RunningHubClient invocation = client(snapshot);
         RunningHubDefinition definition = definition(snapshot);
         String key = credential(snapshot);
         String origin = snapshot.connectionVersion().origin();
@@ -113,7 +114,7 @@ public final class RunningHubAdapter implements MediaAdapter {
                     if (remote == null) {
                         var file = reference(context, field, value);
                         try {
-                            remote = client.upload(origin, key, file.path(), file.asset().contentType(),
+                            remote = invocation.upload(origin, key, file.path(), file.asset().contentType(),
                                     field.effectiveResourceFormat());
                         } catch (RunningHubClient.Failure failure) {
                             // The current frozen slot supplies a trusted location when an upload endpoint omits one.
@@ -147,7 +148,7 @@ public final class RunningHubAdapter implements MediaAdapter {
             return new Submission.Rejected(safe.code(), safe);
         }
         try {
-            return new Submission.Accepted(client.submit(origin, key, definition, nodes));
+            return new Submission.Accepted(invocation.submit(origin, key, definition, nodes));
         } catch (RunningHubClient.Rejected rejected) {
             var safe = safeFailure(rejected.diagnostic(), definition);
             return new Submission.Rejected(safe.code(), safe);
@@ -169,7 +170,8 @@ public final class RunningHubAdapter implements MediaAdapter {
                 yield new Submission.Rejected(failure.code(), failure);
             }
             case "SUCCESS" ->
-                new Submission.CompletedResults(manifest(response, definition, snapshot.connectionVersion().origin()));
+                new Submission.CompletedResults(manifest(response, definition, snapshot.connectionVersion().origin(),
+                        client(snapshot)));
             default -> throw new RunningHubClient.ProtocolFailure();
         };
     }
@@ -187,7 +189,7 @@ public final class RunningHubAdapter implements MediaAdapter {
     private JsonNode query(AttemptContext context, JooqMediaCapabilityRepository.Snapshot snapshot,
             RunningHubDefinition definition) {
         try {
-            return client.query(snapshot.connectionVersion().origin(), credential(snapshot),
+            return client(snapshot).query(snapshot.connectionVersion().origin(), credential(snapshot),
                     context.originalRequestId());
         } catch (RunningHubClient.Rejected failure) {
             throw new RunningHubClient.Rejected(safeFailure(failure.diagnostic(), definition));
@@ -297,17 +299,19 @@ public final class RunningHubAdapter implements MediaAdapter {
 
     @Override
     public ResultDownloads openResultDownloads(AttemptContext context) {
-        String origin = snapshot(context).connectionVersion().origin();
+        var snapshot = snapshot(context);
+        String origin = snapshot.connectionVersion().origin();
+        RunningHubClient invocation = client(snapshot);
         return new ResultDownloads() {
             private final Map<String, RunningHubResultArchive> archives = new HashMap<>();
             @Override
             public MediaPayload download(ProviderResultManifest.Result result) {
                 if (result.archiveEntry() == null)
-                    return client.download(origin, result.url());
+                    return invocation.download(origin, result.url());
                 // Download/extract each ZIP once per archive attempt, including mixed-media batches.
                 return archives
                         .computeIfAbsent(result.url(),
-                                url -> RunningHubResultArchive.open(client.download(origin, url)))
+                                url -> RunningHubResultArchive.open(invocation.download(origin, url)))
                         .download(result.archiveEntry());
             }
             @Override
@@ -330,6 +334,17 @@ public final class RunningHubAdapter implements MediaAdapter {
     }
 
     ProviderResultManifest manifest(JsonNode response, RunningHubDefinition definition, String origin) {
+        return manifest(response, definition, origin, client);
+    }
+
+    private RunningHubClient client(JooqMediaCapabilityRepository.Snapshot snapshot) {
+        var timeouts = dev.agenvas.provider.domain.MediaHttpTimeouts.configured(
+                mapper.readTree(snapshot.specJson()).path("settings"));
+        return timeouts == null ? client : client.withTimeouts(timeouts);
+    }
+
+    private ProviderResultManifest manifest(JsonNode response, RunningHubDefinition definition, String origin,
+            RunningHubClient invocation) {
         JsonNode raw = response.path("results");
         if (!raw.isArray() || raw.isEmpty())
             throw new RunningHubClient.ProtocolFailure();
@@ -343,7 +358,7 @@ public final class RunningHubAdapter implements MediaAdapter {
                 if (!selection.needsArchive(nodeId))
                     continue;
                 RunningHubClient.validateDownload(origin, url);
-                try (var archive = RunningHubResultArchive.open(client.download(origin, url))) {
+                try (var archive = RunningHubResultArchive.open(invocation.download(origin, url))) {
                     for (var member : archive.members())
                         selection.add(nodeId, member.kind(), url, member.entry());
                 }

@@ -1,6 +1,7 @@
 package dev.agenvas.provider.application;
 
 import dev.agenvas.provider.domain.AttemptContext;
+import dev.agenvas.provider.domain.MediaHttpTimeouts;
 import dev.agenvas.provider.domain.KlingModels;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaPayload;
@@ -13,6 +14,7 @@ import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapsho
 import dev.agenvas.provider.infrastructure.KlingClient;
 import dev.agenvas.provider.infrastructure.KlingMediaDownloadPolicy;
 import dev.agenvas.settings.application.CredentialCipher;
+import dev.agenvas.shared.http.HttpTimeouts;
 import dev.agenvas.shared.error.ProviderFailureCodes;
 import dev.agenvas.task.domain.Task;
 import java.io.FilterInputStream;
@@ -95,7 +97,7 @@ abstract class KlingProtocolAdapter implements MediaAdapter {
             return new Submission.Rejected("MEDIA_REFERENCE_PREPARATION_FAILED");
         }
         try {
-            return new Submission.Accepted(client.create(request.frozen().profile(),
+            return new Submission.Accepted(api(snapshot).create(request.frozen().profile(),
                     snapshot.connectionVersion().origin(), key, request.body()));
         } catch (KlingClient.Rejected rejected) {
             return new Submission.Rejected(ProviderFailureCodes.KLING_CREATE_REJECTED);
@@ -137,7 +139,7 @@ abstract class KlingProtocolAdapter implements MediaAdapter {
                 || result.ordinal() > 8 || !validNodeId(frozen, result.nodeId()))
             throw new KlingClient.ProtocolFailure();
         try {
-            return download(context, frozen, URI.create(result.url()));
+            return download(context, snapshot, frozen, URI.create(result.url()));
         } catch (KlingMediaDownloadPolicy.Expired expired) {
             // A persisted manifest may outlive a signed result URL. Refresh only its original task and output index.
             var state = query(context, snapshot, frozen);
@@ -147,7 +149,7 @@ abstract class KlingProtocolAdapter implements MediaAdapter {
                     .filter(item -> item.nodeId().equals(result.nodeId())).toList();
             if (fresh.size() != 1 || fresh.getFirst().url().equals(result.url()))
                 throw new KlingMediaDownloadPolicy.Expired();
-            return download(context, frozen, URI.create(fresh.getFirst().url()));
+            return download(context, snapshot, frozen, URI.create(fresh.getFirst().url()));
         }
     }
 
@@ -194,7 +196,7 @@ abstract class KlingProtocolAdapter implements MediaAdapter {
     }
 
     private KlingClient.State query(AttemptContext context, Snapshot snapshot, Frozen frozen) {
-        return client.query(frozen.profile(), snapshot.connectionVersion().origin(), credential(snapshot),
+        return api(snapshot).query(frozen.profile(), snapshot.connectionVersion().origin(), credential(snapshot),
                 context.originalRequestId(), frozen.values().path("result_type").asText("single"));
     }
 
@@ -232,6 +234,22 @@ abstract class KlingProtocolAdapter implements MediaAdapter {
         return snapshot;
     }
 
+    /** Read only the immutable capability version selected when this task was accepted. */
+    private HttpTimeouts httpTimeouts(Snapshot snapshot) {
+        return snapshot.specJson() == null ? null
+                : MediaHttpTimeouts.configured(mapper.readTree(snapshot.specJson()).path("settings"));
+    }
+
+    private KlingClient api(Snapshot snapshot) {
+        var timeouts = httpTimeouts(snapshot);
+        return timeouts == null ? client : client.withTimeouts(timeouts);
+    }
+
+    private KlingMediaDownloadPolicy downloads(Snapshot snapshot) {
+        var timeouts = httpTimeouts(snapshot);
+        return timeouts == null ? downloads : downloads.withTimeouts(timeouts);
+    }
+
     private String credential(Snapshot snapshot) {
         var version = snapshot.connectionVersion();
         if (version.credentialCiphertext() == null || version.credentialNonce() == null
@@ -250,7 +268,7 @@ abstract class KlingProtocolAdapter implements MediaAdapter {
         return key;
     }
 
-    private MediaPayload download(AttemptContext context, Frozen frozen, URI url) {
+    private MediaPayload download(AttemptContext context, Snapshot snapshot, Frozen frozen, URI url) {
         downloads.validate(url);
         Path directory;
         try {
@@ -262,7 +280,7 @@ abstract class KlingProtocolAdapter implements MediaAdapter {
         try {
             String mime;
             try (OutputStream target = Files.newOutputStream(file)) {
-                mime = downloads.download(url, target, kind == Task.Kind.VIDEO_GENERATION,
+                mime = downloads(snapshot).download(url, target, kind == Task.Kind.VIDEO_GENERATION,
                         kind == Task.Kind.VIDEO_GENERATION ? 500L * 1024 * 1024 : 50L * 1024 * 1024);
             }
             validateResult(context, frozen.profile(), frozen.values(), file);

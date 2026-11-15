@@ -9,6 +9,7 @@ import dev.agenvas.asset.infrastructure.MediaToolRunner;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.domain.AttemptContext;
+import dev.agenvas.provider.domain.MediaHttpTimeouts;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaPayload;
 import dev.agenvas.provider.domain.PortInput;
@@ -18,6 +19,7 @@ import dev.agenvas.provider.infrastructure.ArkMediaDownloadPolicy;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapshot;
 import dev.agenvas.settings.application.CredentialCipher;
+import dev.agenvas.shared.http.HttpTimeouts;
 import dev.agenvas.task.domain.Task;
 import java.awt.Color;
 import java.awt.Graphics2D;
@@ -109,7 +111,8 @@ public class ArkSeedance2Adapter implements MediaAdapter {
 
     @Override
     public Submission submit(AttemptContext context) {
-        String key = credential(snapshot(context));
+        Snapshot snapshot = snapshot(context);
+        String key = credential(snapshot);
         Task task = context.lease();
         String prompt = task.input().path("prompt").asText();
         String negative = task.input().path("negativePrompt").asText("");
@@ -123,7 +126,7 @@ public class ArkSeedance2Adapter implements MediaAdapter {
                 // No Ark create call occurred. A relay PUT failure cannot be a generation UNKNOWN.
                 return new Submission.Rejected("MEDIA_REFERENCE_PREPARATION_FAILED");
             }
-            String id = client.create(key, prompt, references,
+            String id = api(snapshot).create(key, prompt, references,
                     task.input().path("durationSeconds").asInt(-1), ratio(context));
             return new Submission.Accepted(id);
         } catch (ArkSeedanceClient.Rejected rejected) {
@@ -136,13 +139,14 @@ public class ArkSeedance2Adapter implements MediaAdapter {
     @Override
     public Submission reconcile(AttemptContext context) {
         try {
-            ArkSeedanceClient.TaskState state = client.query(
-                    credential(snapshot(context)), context.originalRequestId());
+            Snapshot snapshot = snapshot(context);
+            ArkSeedanceClient.TaskState state = api(snapshot).query(
+                    credential(snapshot), context.originalRequestId());
             return switch (state.status()) {
                 case "queued", "running" -> new Submission.Pending(Instant.now().plusSeconds(5));
                 case "failed", "cancelled" -> new Submission.Rejected("ARK_TASK_FAILED");
                 case "expired" -> new Submission.Blocked("ARK_TASK_EXPIRED");
-                case "succeeded" -> completed(context, state);
+                case "succeeded" -> completed(context, snapshot, state);
                 default -> new Submission.Blocked("PROVIDER_PROTOCOL_INVALID");
             };
         } catch (ArkSeedanceClient.ProtocolFailure invalid) {
@@ -155,7 +159,7 @@ public class ArkSeedance2Adapter implements MediaAdapter {
     }
 
     /** An expired TOS URL can only be refreshed by querying the same persisted task ID. */
-    private Submission completed(AttemptContext context, ArkSeedanceClient.TaskState state) {
+    private Submission completed(AttemptContext context, Snapshot snapshot, ArkSeedanceClient.TaskState state) {
         if (state.videoUrl() == null || state.videoUrl().isBlank()) {
             return new Submission.Blocked("ARK_RESULT_MISSING_URL");
         }
@@ -166,17 +170,17 @@ public class ArkSeedance2Adapter implements MediaAdapter {
             return new Submission.Blocked("ARK_MEDIA_URL_REJECTED");
         }
         try {
-            return new Submission.Completed(downloadVideo(url,
+            return new Submission.Completed(downloadVideo(snapshot, url,
                     context.lease().input().path("durationSeconds").asInt(-1)));
         } catch (ArkMediaDownloadPolicy.Expired expired) {
-            ArkSeedanceClient.TaskState refreshed = client.query(
-                    credential(snapshot(context)), context.originalRequestId());
+            ArkSeedanceClient.TaskState refreshed = api(snapshot).query(
+                    credential(snapshot), context.originalRequestId());
             if (!"succeeded".equals(refreshed.status()) || refreshed.videoUrl() == null
                     || refreshed.videoUrl().equals(state.videoUrl())) {
                 return new Submission.Blocked("ARK_MEDIA_URL_EXPIRED");
             }
             try {
-                return new Submission.Completed(downloadVideo(URI.create(refreshed.videoUrl()),
+                return new Submission.Completed(downloadVideo(snapshot, URI.create(refreshed.videoUrl()),
                         context.lease().input().path("durationSeconds").asInt(-1)));
             } catch (IllegalArgumentException | ArkMediaDownloadPolicy.Expired invalid) {
                 return new Submission.Blocked("ARK_MEDIA_URL_EXPIRED");
@@ -185,7 +189,7 @@ public class ArkSeedance2Adapter implements MediaAdapter {
     }
 
     /** Archive the provider's original bytes, including every audio track, regardless of input references. */
-    private MediaPayload downloadVideo(URI url, int expectedSeconds) {
+    private MediaPayload downloadVideo(Snapshot snapshot, URI url, int expectedSeconds) {
         downloads.validate(url);
         Path directory;
         try {
@@ -196,7 +200,7 @@ public class ArkSeedance2Adapter implements MediaAdapter {
         Path raw = directory.resolve("result.mp4");
         try {
             try (OutputStream sink = Files.newOutputStream(raw)) {
-                downloads.download(url, sink, 500L * 1024 * 1024);
+                downloads(snapshot).download(url, sink, 500L * 1024 * 1024);
             }
             probe(raw, expectedSeconds);
             InputStream file = Files.newInputStream(raw);
@@ -264,6 +268,22 @@ public class ArkSeedance2Adapter implements MediaAdapter {
             throw new IllegalStateException("Pinned Seedance mapping differs");
         }
         return snapshot;
+    }
+
+    /** Read only the immutable capability version selected when this task was accepted. */
+    private HttpTimeouts httpTimeouts(Snapshot snapshot) {
+        return snapshot.specJson() == null ? null
+                : MediaHttpTimeouts.configured(mapper.readTree(snapshot.specJson()).path("settings"));
+    }
+
+    private ArkSeedanceClient api(Snapshot snapshot) {
+        var timeouts = httpTimeouts(snapshot);
+        return timeouts == null ? client : client.withTimeouts(timeouts);
+    }
+
+    private ArkMediaDownloadPolicy downloads(Snapshot snapshot) {
+        var timeouts = httpTimeouts(snapshot);
+        return timeouts == null ? downloads : downloads.withTimeouts(timeouts);
     }
 
     private String credential(Snapshot snapshot) {

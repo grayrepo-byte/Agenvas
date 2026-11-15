@@ -10,6 +10,7 @@ import { selectValue } from "../../test/controls";
 import { nativePlatform, nativeProfiles } from "../../test/nativeProfiles";
 import { server } from "../../test/server";
 import { MediaSettingsPage } from "./MediaSettingsPage";
+import { syntheticHttpTimeoutDefaults, syntheticHttpTimeouts } from "./mediaHttpTimeoutTestFixture";
 
 function mount(platform: MediaSettings["connections"][number]["platform"]) {
   const fixture: MediaSettings = {
@@ -28,6 +29,7 @@ function mount(platform: MediaSettings["connections"][number]["platform"]) {
         capabilities: [],
       },
     ],
+    httpTimeoutDefaults: syntheticHttpTimeoutDefaults,
     defaults: [],
   };
   server.use(http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)));
@@ -94,6 +96,7 @@ describe("native media settings", () => {
           name: "原生能力",
           adapterId: profile.adapterId,
           settings: {
+            httpTimeouts: syntheticHttpTimeouts,
             model: profile.model,
             operation: profile.operation,
             ...(Object.keys(defaults).length ? { defaultParameters: { dynamicValues: defaults } } : {}),
@@ -141,6 +144,7 @@ describe("native media settings", () => {
       name: "完整组图",
       adapterId: "ARK_SEEDREAM_IMAGE",
       settings: {
+        httpTimeouts: syntheticHttpTimeouts,
         model: "doubao-seedream-5-0-260128",
         operation: "GENERATE",
         defaultParameters: { dynamicValues: { sequential_image_generation: "auto", max_images: 6 } },

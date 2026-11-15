@@ -2,6 +2,7 @@ package dev.agenvas.provider.application;
 
 import dev.agenvas.asset.infrastructure.MediaToolRunner;
 import dev.agenvas.provider.domain.AttemptContext;
+import dev.agenvas.provider.domain.MediaHttpTimeouts;
 import dev.agenvas.provider.domain.GoogleVideoModels;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaPayload;
@@ -13,6 +14,7 @@ import dev.agenvas.provider.infrastructure.GoogleVideoClient;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapshot;
 import dev.agenvas.settings.application.CredentialCipher;
+import dev.agenvas.shared.http.HttpTimeouts;
 import dev.agenvas.shared.error.ProviderFailureCodes;
 import dev.agenvas.task.domain.Task;
 import java.io.FilterInputStream;
@@ -72,7 +74,7 @@ abstract class GoogleVideoAdapter implements MediaAdapter {
             var body = client.build(frozen.selection().profile(), frozen.values(),
                     references.load(context, frozen.selection(), frozen.values(), true));
             return new Submission.Accepted(
-                    client.create(frozen.selection().profile(), snapshot.connectionVersion().origin(), key, body));
+                    api(snapshot).create(frozen.selection().profile(), snapshot.connectionVersion().origin(), key, body));
         } catch (GoogleVideoClient.Unknown unknown) {
             return new Submission.Unknown(unknown.code());
         } catch (NativeMediaFailure rejected) {
@@ -87,7 +89,7 @@ abstract class GoogleVideoAdapter implements MediaAdapter {
             Snapshot snapshot = snapshot(context);
             Frozen frozen = frozen(context, snapshot);
             String key = credential(snapshot);
-            var state = client.query(frozen.selection().profile(), snapshot.connectionVersion().origin(), key,
+            var state = api(snapshot).query(frozen.selection().profile(), snapshot.connectionVersion().origin(), key,
                     context.originalRequestId());
             if ("pending".equals(state.status()))
                 return new Submission.Pending(Instant.now().plusSeconds(10));
@@ -96,7 +98,7 @@ abstract class GoogleVideoAdapter implements MediaAdapter {
             if (!"completed".equals(state.status()) || state.video() == null)
                 throw new NativeMediaFailure(ProviderFailureCodes.PROTOCOL_INVALID);
             if (state.video().fileName() != null
-                    && !client.fileActive(snapshot.connectionVersion().origin(), key, state.video().fileName()))
+                    && !api(snapshot).fileActive(snapshot.connectionVersion().origin(), key, state.video().fileName()))
                 return new Submission.Pending(Instant.now().plusSeconds(5));
             return new Submission.Completed(payload(context, frozen, snapshot, key, state.video()));
         } catch (NativeMediaFailure blocked) {
@@ -118,7 +120,7 @@ abstract class GoogleVideoAdapter implements MediaAdapter {
                 Files.write(file, video.bytes());
             else
                 try (var target = Files.newOutputStream(file)) {
-                    client.download(snapshot.connectionVersion().origin(), key, video.fileName(), target);
+                    api(snapshot).download(snapshot.connectionVersion().origin(), key, video.fileName(), target);
                 }
             validateResult(frozen, file);
             JsonNode metadata = null;
@@ -222,6 +224,17 @@ abstract class GoogleVideoAdapter implements MediaAdapter {
             throw protocol();
         return snapshot;
     }
+    /** Read only the immutable capability version selected when this task was accepted. */
+    private HttpTimeouts httpTimeouts(Snapshot snapshot) {
+        return snapshot.specJson() == null ? null
+                : MediaHttpTimeouts.configured(mapper.readTree(snapshot.specJson()).path("settings"));
+    }
+
+    private GoogleVideoClient api(Snapshot snapshot) {
+        var timeouts = httpTimeouts(snapshot);
+        return timeouts == null ? client : client.withTimeouts(timeouts);
+    }
+
     private String credential(Snapshot snapshot) {
         var version = snapshot.connectionVersion();
         try {

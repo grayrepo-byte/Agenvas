@@ -41,10 +41,11 @@ public class MediaExecutionWorker {
     private final AssetService assets;
     private final ObjectMapper mapper;
     private final LocalVideoProcessor videoProcessor;
+    private final MediaLeaseHeartbeat leases;
 
     public MediaExecutionWorker(TaskService tasks, MediaCapabilityService catalog,
             MediaAdapterRegistry adapters, AssetService assets, ObjectMapper mapper, CallLogService callLogs,
-            LocalVideoProcessor videoProcessor) {
+            LocalVideoProcessor videoProcessor, MediaLeaseHeartbeat leases) {
         this.callLogs = callLogs;
         this.tasks = tasks;
         this.catalog = catalog;
@@ -52,52 +53,57 @@ public class MediaExecutionWorker {
         this.assets = assets;
         this.mapper = mapper;
         this.videoProcessor = videoProcessor;
+        this.leases = leases;
     }
 
     /** The claim and checkpoint are short transactions; provider traffic happens afterward. */
     public int submitOnce(String workerId) {
         List<Task> claimed = tasks.claimBoundMedia(workerId, 1);
         for (Task task : claimed) {
-            MediaCapabilityBinding binding = tasks.mediaBinding(task).orElseThrow();
-            int seconds = task.kind() == Task.Kind.VIDEO_GENERATION
-                    ? task.input().path("durationSeconds").asInt(-1)
-                    : 0;
-            if (!catalog.isCurrentBinding(binding, task.kind(), seconds)) {
-                tasks.blockPreSubmission(task, workerId, "MEDIA_CAPABILITY_CHANGED");
-                continue;
-            }
-            MediaAdapter adapter;
-            try {
-                adapter = adapters.require(binding.adapterId());
-            } catch (RuntimeException unavailable) {
-                tasks.blockPreSubmission(task, workerId, "PROVIDER_UNSUPPORTED_CAPABILITY");
-                continue;
-            }
-            UUID ownerId = tasks.ownerForWorker(task);
-            AttemptContext preflight = new AttemptContext(task, binding, ownerId, null, null);
-            String preflightFailure = adapter.preflightFailure(preflight);
-            if (preflightFailure != null) {
-                tasks.blockPreSubmission(task, workerId, preflightFailure);
-                continue;
-            }
-            UUID requestKey;
-            try {
-                requestKey = tasks.beginSubmission(task, workerId, binding);
-            } catch (dev.agenvas.shared.error.ApiProblemException problem) {
-                if ("TASK_INPUT_STALE".equals(problem.code())
-                        || "TASK_PROJECT_ARCHIVED".equals(problem.code())
-                        || "MEDIA_CAPABILITY_CHANGED".equals(problem.code())) {
-                    tasks.blockPreSubmission(task, workerId, problem.code());
+            try (var renewal = leases.open(task, workerId)) {
+                MediaCapabilityBinding binding = tasks.mediaBinding(task).orElseThrow();
+                int seconds = task.kind() == Task.Kind.VIDEO_GENERATION
+                        ? task.input().path("durationSeconds").asInt(-1)
+                        : 0;
+                if (!catalog.isCurrentBinding(binding, task.kind(), seconds)) {
+                    tasks.blockPreSubmission(task, workerId, "MEDIA_CAPABILITY_CHANGED");
                     continue;
                 }
-                throw problem;
+                MediaAdapter adapter;
+                try {
+                    adapter = adapters.require(binding.adapterId());
+                } catch (RuntimeException unavailable) {
+                    tasks.blockPreSubmission(task, workerId, "PROVIDER_UNSUPPORTED_CAPABILITY");
+                    continue;
+                }
+                UUID ownerId = tasks.ownerForWorker(task);
+                AttemptContext preflight = new AttemptContext(task, binding, ownerId, null, null);
+                String preflightFailure = adapter.preflightFailure(preflight);
+                if (preflightFailure != null) {
+                    tasks.blockPreSubmission(task, workerId, preflightFailure);
+                    continue;
+                }
+                UUID requestKey;
+                try {
+                    requestKey = tasks.beginSubmission(task, workerId, binding);
+                } catch (dev.agenvas.shared.error.ApiProblemException problem) {
+                    if ("TASK_INPUT_STALE".equals(problem.code())
+                            || "TASK_PROJECT_ARCHIVED".equals(problem.code())
+                            || "MEDIA_CAPABILITY_CHANGED".equals(problem.code())) {
+                        tasks.blockPreSubmission(task, workerId, problem.code());
+                        continue;
+                    }
+                    throw problem;
+                }
+                AttemptContext attempt = new AttemptContext(task, binding, ownerId,
+                        requestKey.toString(), null);
+                renewal.checkActive();
+                // A network exception leaves SUBMITTING for lease expiry and UNKNOWN recovery.
+                Submission result = callLogs.record(descriptor(task, binding, CallLog.Operation.SUBMIT),
+                        () -> adapter.submit(attempt), resultValue -> callOutcome(resultValue, null));
+                requireActive(renewal, result);
+                recordSubmission(task, workerId, attempt, result);
             }
-            AttemptContext attempt = new AttemptContext(task, binding, ownerId,
-                    requestKey.toString(), null);
-            // A network exception leaves SUBMITTING for lease expiry and UNKNOWN recovery.
-            Submission result = callLogs.record(descriptor(task, binding, CallLog.Operation.SUBMIT),
-                    () -> adapter.submit(attempt), resultValue -> callOutcome(resultValue, null));
-            recordSubmission(task, workerId, attempt, result);
         }
         return claimed.size();
     }
@@ -106,58 +112,79 @@ public class MediaExecutionWorker {
     public int pollOnce(String workerId) {
         List<Task> claimed = tasks.claimBoundMediaPolls(workerId, 1);
         for (Task task : claimed) {
-            MediaCapabilityBinding binding = tasks.mediaBinding(task).orElseThrow();
-            MediaAdapter adapter = adapters.require(binding.adapterId());
-            AttemptContext attempt = new AttemptContext(task, binding,
-                    tasks.ownerForWorker(task), null, task.providerRequestId());
-            Submission result;
-            try {
-                var savedManifest = tasks.providerResultManifest(task);
-                result = savedManifest.isPresent()
-                        ? new Submission.CompletedResults(savedManifest.get())
-                        : callLogs.record(descriptor(task, binding, CallLog.Operation.POLL),
-                                () -> adapter.reconcile(attempt),
-                                resultValue -> callOutcome(resultValue, task.providerRequestId()));
-            } catch (RuntimeException transientFailure) {
-                recordProviderFailure(task, workerId, transientFailure);
-                String runningHub = runningHubPermanentFailure(transientFailure);
-                if (runningHub != null) {
-                    tasks.blockProviderPoll(task, workerId, runningHub);
-                    continue;
-                }
-                String permanent = klingArchiveFailure(binding, transientFailure);
-                if (permanent != null) {
-                    tasks.blockProviderPoll(task, workerId, permanent);
-                    continue;
-                }
-                tasks.retryProviderPoll(task, workerId, "PROVIDER_POLL_TECHNICAL_FAILURE");
-                continue;
-            }
-            switch (result) {
-                case Submission.Pending pending ->
-                    tasks.deferProviderPoll(task, workerId, pending.nextActionAt());
-                case Submission.Completed completed ->
-                    finishPolledPayload(attempt, workerId, completed.payload());
-                case Submission.CompletedArtifact completed ->
-                    completeArtifact(attempt, workerId, completed.content());
-                case Submission.CompletedResults completed ->
-                    finishPolledManifest(attempt, workerId, adapter, completed.manifest());
-                case Submission.Rejected rejected -> {
-                    if (rejected.providerFailure() != null)
-                        tasks.recordProviderFailure(task, workerId, rejected.providerFailure());
-                    tasks.fail(task, workerId, rejected.code());
-                }
-                case Submission.Blocked blocked -> tasks.blockProviderPoll(task, workerId,
-                        blocked.code());
-                case Submission.Unknown ignored ->
+            try (var renewal = leases.open(task, workerId)) {
+                MediaCapabilityBinding binding = tasks.mediaBinding(task).orElseThrow();
+                MediaAdapter adapter = adapters.require(binding.adapterId());
+                AttemptContext attempt = new AttemptContext(task, binding,
+                        tasks.ownerForWorker(task), null, task.providerRequestId());
+                Submission result;
+                renewal.checkActive();
+                try {
+                    var savedManifest = tasks.providerResultManifest(task);
+                    result = savedManifest.isPresent()
+                            ? new Submission.CompletedResults(savedManifest.get())
+                            : callLogs.record(descriptor(task, binding, CallLog.Operation.POLL),
+                                    () -> adapter.reconcile(attempt),
+                                    resultValue -> callOutcome(resultValue, task.providerRequestId()));
+                } catch (RuntimeException transientFailure) {
+                    renewal.checkActive();
+                    recordProviderFailure(task, workerId, transientFailure);
+                    String runningHub = runningHubPermanentFailure(transientFailure);
+                    if (runningHub != null) {
+                        tasks.blockProviderPoll(task, workerId, runningHub);
+                        continue;
+                    }
+                    String permanent = klingArchiveFailure(binding, transientFailure);
+                    if (permanent != null) {
+                        tasks.blockProviderPoll(task, workerId, permanent);
+                        continue;
+                    }
                     tasks.retryProviderPoll(task, workerId, "PROVIDER_POLL_TECHNICAL_FAILURE");
-                case Submission.AcceptedResults ignored ->
-                    tasks.retryProviderPoll(task, workerId, "PROVIDER_PROTOCOL_INVALID");
-                case Submission.Accepted ignored ->
-                    tasks.deferProviderPoll(task, workerId, Instant.now().plusSeconds(5));
+                    continue;
+                }
+                requireActive(renewal, result);
+                switch (result) {
+                    case Submission.Pending pending ->
+                        tasks.deferProviderPoll(task, workerId, pending.nextActionAt());
+                    case Submission.Completed completed ->
+                        finishPolledPayload(attempt, workerId, completed.payload());
+                    case Submission.CompletedArtifact completed ->
+                        completeArtifact(attempt, workerId, completed.content());
+                    case Submission.CompletedResults completed ->
+                        finishPolledManifest(attempt, workerId, adapter, completed.manifest());
+                    case Submission.Rejected rejected -> {
+                        if (rejected.providerFailure() != null)
+                            tasks.recordProviderFailure(task, workerId, rejected.providerFailure());
+                        tasks.fail(task, workerId, rejected.code());
+                    }
+                    case Submission.Blocked blocked -> tasks.blockProviderPoll(task, workerId,
+                            blocked.code());
+                    case Submission.Unknown ignored ->
+                        tasks.retryProviderPoll(task, workerId, "PROVIDER_POLL_TECHNICAL_FAILURE");
+                    case Submission.AcceptedResults ignored ->
+                        tasks.retryProviderPoll(task, workerId, "PROVIDER_PROTOCOL_INVALID");
+                    case Submission.Accepted ignored ->
+                        tasks.deferProviderPoll(task, workerId, Instant.now().plusSeconds(5));
+                }
             }
         }
         return claimed.size();
+    }
+
+    /** A completed response still owns its HTTP stream when a concurrent heartbeat loses the lease. */
+    private void requireActive(MediaLeaseHeartbeat.Scope renewal, Submission result) {
+        try {
+            renewal.checkActive();
+        } catch (MediaLeaseHeartbeat.LeaseLost lost) {
+            if (result instanceof Submission.Completed completed) {
+                try {
+                    completed.payload().close();
+                } catch (IOException closeFailure) {
+                    lost.addSuppressed(closeFailure);
+                }
+            }
+            throw lost;
+        }
     }
 
     private String klingArchiveFailure(MediaCapabilityBinding binding, RuntimeException failure) {

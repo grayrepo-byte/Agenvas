@@ -642,6 +642,19 @@ public class TaskService {
         }
     }
 
+    /**
+     * Media submissions and original-ID polls retain their lease after a cancellation request so late
+     * results can still enter history. This never changes the request identity or permits resubmission;
+     * the database still fences every write by owner, epoch, expiry and expected media state.
+     */
+    @Transactional
+    public void heartbeatMediaLease(UUID taskId, String workerId, long leaseEpoch) {
+        Instant now = clock.instant();
+        if (!tasks.heartbeatMediaLease(taskId, validateWorkerId(workerId), leaseEpoch, now,
+                now.plus(properties.leaseDuration())))
+            throw leaseLost();
+    }
+
     /** 仅当前租约 epoch 可提交成功结果；取消后的晚到结果只保留历史。 */
     @Transactional
     public void succeed(Task lease, String workerId, JsonNode output) {

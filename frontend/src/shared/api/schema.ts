@@ -6464,6 +6464,10 @@ export interface components {
             mock: boolean;
         };
         MediaSettings: {
+            /** @description Server-owned publication defaults keyed by network adapter ID. LOCAL and MOCK have no entry. Omitted only by older servers; never invent protocol defaults in the browser. */
+            httpTimeoutDefaults?: {
+                [key: string]: components["schemas"]["MediaHttpTimeouts"];
+            };
             connections: components["schemas"]["MediaConnection"][];
             defaults: components["schemas"]["MediaDefault"][];
         };
@@ -6516,6 +6520,8 @@ export interface components {
         };
         /** @description Versioned settings within a compiled adapter protocol. New ComfyUI publication requires comfyWorkflow; legacy model-only capabilities retain their snapshot for recovery and metadata changes. OPENAI and GOOGLE image adapters accept a compatible model name and a connection API base URL; native video uses its fixed official protocol. Defaults fill missing draft fields; limits narrow the published declaration. Pricing is an administrator estimate, never an actual provider charge. */
         FixedMediaAdapterSettings: {
+            /** @description Optional complete policy frozen in this capability version for Provider API calls, input uploads and result downloads. Only network adapters accept it. Absence preserves legacy API and dedicated download defaults. Each phase limit must be at most callSeconds; the whole-call deadline never resets between phases. Editing settings does not retry an UNKNOWN request. */
+            httpTimeouts?: components["schemas"]["MediaHttpTimeouts"];
             comfyWorkflow?: components["schemas"]["ComfyUiWorkflowDefinition"];
             /** @description Derived creator input metadata for a published ComfyUI graph. Includes declared scalar parameters and synthesized PROMPT, reference_0 through reference_13 IMAGE slots, and video DURATION_SECONDS. Does not expose the graph or fixed private literals. Ignored on administrator writes and recomputed by the server. */
             readonly comfyInputs?: components["schemas"]["RunningHubField"][];
@@ -6585,6 +6591,16 @@ export interface components {
             pricingByResolution?: {
                 [key: string]: components["schemas"]["MediaCapabilityPricing"];
             };
+        };
+        MediaHttpTimeouts: {
+            /** @description Connection establishment timeout in seconds; no greater than callSeconds. */
+            connectSeconds: number;
+            /** @description Timeout for a blocked request-body write in seconds; no greater than callSeconds. */
+            writeSeconds: number;
+            /** @description Timeout for a blocked response read including first-byte wait in seconds; no greater than callSeconds. */
+            readSeconds: number;
+            /** @description Whole HTTP call deadline in seconds including connection */
+            callSeconds: number;
         };
         /** @description OpenAI Images API only. Administrator rates in currency per million tokens, mutually exclusive with pricing/pricingByResolution. Frozen on task acceptance. Missing usage keeps cost unknown. Missing cache counts stay unknown; the estimate uses undiscounted input rates. Positive cache usage needs both modality counts and applicable rates. Never an actual provider invoice. */
         ImageTokenPricing: {

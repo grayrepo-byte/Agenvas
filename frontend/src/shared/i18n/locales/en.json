@@ -4131,5 +4131,20 @@
   "settings.llm.connections.actions": "Actions",
   "settings.llm.connections.editAction": "Edit",
   "settings.llm.connections.modeUnavailable": "Runtime mode is temporarily unavailable. Connections and your input are retained.",
-  "settings.llm.connections.keyCleared": "The new key input was cleared. Leave it blank when editing to retain the server-side key."
+  "settings.llm.connections.keyCleared": "The new key input was cleared. Leave it blank when editing to retain the server-side key.",
+  "settings.httpTimeouts.title": "Request timeouts",
+  "settings.httpTimeouts.connectSeconds": "Connection timeout (seconds)",
+  "settings.httpTimeouts.writeSeconds": "Write timeout (seconds)",
+  "settings.httpTimeouts.readSeconds": "Read timeout (seconds)",
+  "settings.httpTimeouts.callSeconds": "Whole request timeout (seconds)",
+  "settings.httpTimeouts.connectHint": "Maximum time to establish a connection.",
+  "settings.httpTimeouts.writeHint": "Maximum time a request body write can remain blocked.",
+  "settings.httpTimeouts.readHint": "Maximum time waiting for response data between reads.",
+  "settings.httpTimeouts.callHint": "One deadline for the complete HTTP request, including connection, sending and reading. It does not reset between phases or during transfer; the phase limits are not added together.",
+  "settings.httpTimeouts.scopeHint": "Applies to each API, input upload and result download request, rather than the entire generation task.",
+  "settings.httpTimeouts.legacyHint": "These are publication defaults. Until you edit a timeout, this legacy capability keeps its original protocol settings. An edit saves all four values in a new capability version.",
+  "settings.httpTimeouts.defaultsUnavailable": "The server did not return timeout defaults. Enter all four values or reload settings before publishing.",
+  "settings.httpTimeouts.integerRange": "{0} must be an integer from 1 to {1}.",
+  "settings.httpTimeouts.phaseExceedsCall": "{0} cannot exceed the whole request timeout.",
+  "settings.editor.timeoutsHint": "Bound connection, transfer waits and the complete request"
 }

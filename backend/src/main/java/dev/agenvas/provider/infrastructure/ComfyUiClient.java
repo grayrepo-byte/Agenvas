@@ -81,6 +81,18 @@ public class ComfyUiClient {
                 CONNECT_TIMEOUT, REQUEST_TIMEOUT, REQUEST_TIMEOUT);
     }
 
+    /** Apply the task's limits to both its original service and checked redirect destinations. */
+    public ComfyUiClient withTimeouts(dev.agenvas.shared.http.HttpTimeouts timeouts) {
+        return timeouts == null ? this : new ComfyUiClient(this, timeouts);
+    }
+
+    private ComfyUiClient(ComfyUiClient source, dev.agenvas.shared.http.HttpTimeouts timeouts) {
+        this.origin = source.origin;
+        this.mapper = source.mapper;
+        this.client = timeouts.configure(source.client);
+        this.redirectClient = timeouts.configure(source.redirectClient);
+    }
+
     private static Dns serviceDns(URI origin) {
         try {
             return ServiceEndpointPolicy.dns(origin, Dns.SYSTEM);

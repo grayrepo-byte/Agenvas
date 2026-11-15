@@ -1,5 +1,6 @@
 package dev.agenvas.provider.infrastructure;
 
+import dev.agenvas.shared.http.HttpTimeouts;
 import dev.agenvas.shared.http.PinnedHttpClients;
 import java.io.IOException;
 import java.io.InputStream;
@@ -19,6 +20,15 @@ import org.springframework.stereotype.Component;
 @Component
 public class KlingMediaDownloadPolicy {
     private final OkHttpClient http;
+
+    private KlingMediaDownloadPolicy(KlingMediaDownloadPolicy source, HttpTimeouts timeouts) {
+        this.http = timeouts.configure(source.http);
+    }
+
+    /** Each capability uses a private transport copy; injected defaults remain unchanged. */
+    public KlingMediaDownloadPolicy withTimeouts(HttpTimeouts timeouts) {
+        return new KlingMediaDownloadPolicy(this, timeouts);
+    }
 
     @Autowired
     public KlingMediaDownloadPolicy() {

@@ -170,6 +170,9 @@ public interface TaskRepository {
             Instant now,
             Instant leaseUntil);
 
+    /** Media-only renewal: accepted/canceled submission and original-ID polling may still archive late results. */
+    boolean heartbeatMediaLease(UUID taskId, String workerId, long leaseEpoch, Instant now, Instant leaseUntil);
+
     /** Fenced model-only backoff; releases the lease without allowing any media resubmission. */
     boolean deferAgentTurnRetry(Task lease, String workerId, JsonNode output,
             String errorCode, Instant nextActionAt, Instant now);

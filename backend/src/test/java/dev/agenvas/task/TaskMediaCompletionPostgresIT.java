@@ -21,6 +21,8 @@ import dev.agenvas.task.domain.Task;
 import dev.agenvas.testing.ImageAssetFixture;
 import java.util.List;
 import java.util.UUID;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -71,6 +73,63 @@ class TaskMediaCompletionPostgresIT {
     private ObjectMapper mapper;
     @Autowired
     private JdbcClient jdbc;
+
+    @Test
+    void canceledSubmittingAndOriginalIdPollingLeasesRenewAndArchiveLateResultsWithoutSelection() {
+        Fixture fixture = submitting("canceled-media-heartbeat");
+        jdbc.sql("update task set cancel_requested=true where id=:id").param("id", fixture.lease().id()).update();
+        // Cancellation after submission must not disable renewal while an acceptance/response is still in flight.
+        tasks.heartbeatMediaLease(fixture.lease().id(), fixture.workerId(), fixture.lease().leaseEpoch());
+        tasks.waitForProvider(fixture.lease(), fixture.workerId(), "same-original-provider-id", Instant.now().plusSeconds(1));
+        jdbc.sql("update task set next_action_at=now() - interval '1 second' where id=:id")
+                .param("id", fixture.lease().id()).update();
+        Task poll = tasks.claimBoundMediaPolls("canceled-media-poller", 1).getFirst();
+        assertThat(poll.id()).isEqualTo(fixture.lease().id());
+        assertThat(poll.providerRequestId()).isEqualTo("same-original-provider-id");
+        assertThat(poll.cancelRequested()).isTrue();
+        tasks.heartbeatMediaLease(poll.id(), poll.leaseOwner(), poll.leaseEpoch());
+        tasks.succeedWithArtifacts(poll, poll.leaseOwner(), List.of(result(0, true, content(fixture, "late"))), null);
+
+        Task completed = current(fixture);
+        assertThat(completed.status()).isEqualTo(Task.Status.CANCELED);
+        var late = mapper.readTree(jdbc.sql("select output_json::text from task_late_result where task_id=:id")
+                .param("id", poll.id()).query(String.class).single());
+        assertThat(late.path("artifactVersionId").asText()).isNotBlank();
+        assertThat(late.path("selected").asBoolean()).isFalse();
+        assertThat(card(fixture, fixture.cardId()).item().selectedVersionId()).isNull();
+        assertThat(artifacts.listVersions(fixture.owner().userId(), fixture.project().id(), fixture.artifactId()))
+                .hasSize(1);
+        assertThat(jdbc.sql("select count(*) from provider_attempt where task_id=:id")
+                .param("id", poll.id()).query(Integer.class).single()).isEqualTo(1);
+    }
+
+    @Test
+    void mediaRenewalPreservesOriginalRequestAndEpochFencesAnExpiredArchiver() {
+        Fixture fixture = submitting("media-heartbeat-fencing");
+        tasks.waitForProvider(fixture.lease(), fixture.workerId(), "retained-provider-id", Instant.now().plusSeconds(1));
+        jdbc.sql("update task set next_action_at=now() - interval '1 second' where id=:id")
+                .param("id", fixture.lease().id()).update();
+        Task first = tasks.claimBoundMediaPolls("first-media-archiver", 1).getFirst();
+        tasks.heartbeatMediaLease(first.id(), first.leaseOwner(), first.leaseEpoch());
+        jdbc.sql("update task set lease_until=:expired where id=:id")
+                .param("expired", Instant.now().minusSeconds(1).atOffset(ZoneOffset.UTC)).param("id", first.id())
+                .update();
+        Task takeover = tasks.claimBoundMediaPolls("replacement-media-archiver", 1).getFirst();
+        assertThat(takeover.leaseEpoch()).isEqualTo(first.leaseEpoch() + 1);
+        assertThat(takeover.providerRequestId()).isEqualTo("retained-provider-id");
+        assertThatThrownBy(() -> tasks.heartbeatMediaLease(first.id(), first.leaseOwner(), first.leaseEpoch()))
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        failure -> assertThat(failure.code()).isEqualTo("TASK_LEASE_LOST"));
+        var output = List.of(result(0, true, content(fixture, "retained result")));
+        assertThatThrownBy(() -> tasks.succeedWithArtifacts(first, first.leaseOwner(), output, null))
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        failure -> assertThat(failure.code()).isEqualTo("TASK_LEASE_LOST"));
+        tasks.heartbeatMediaLease(takeover.id(), takeover.leaseOwner(), takeover.leaseEpoch());
+        tasks.succeedWithArtifacts(takeover, takeover.leaseOwner(), output, null);
+        assertThat(current(fixture).status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(artifacts.listVersions(fixture.owner().userId(), fixture.project().id(), fixture.artifactId()))
+                .hasSize(1);
+    }
 
     @Test
     void aPrimaryInTheMiddleKeepsTheTargetAndTheAdditionalOutputOrder() {

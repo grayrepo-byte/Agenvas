@@ -74,6 +74,9 @@ public class ComfyUiImageAdapter implements MediaAdapter {
         Snapshot snapshot = catalog.pinnedSnapshot(context.binding());
         ComfyUiClient client = clients.create(snapshot.connectionVersion());
         var settings = mapper.readTree(snapshot.specJson()).path("settings");
+        var timeouts = dev.agenvas.provider.domain.MediaHttpTimeouts.configured(settings);
+        if (timeouts != null)
+            client = client.withTimeouts(timeouts);
         if (ComfyUiWorkflowDefinition.configured(settings))
             return published.submit(context, client, settings);
         ComfyUiImageWorkflow workflow = workflow(settings);
@@ -94,6 +97,9 @@ public class ComfyUiImageAdapter implements MediaAdapter {
         Snapshot snapshot = catalog.pinnedSnapshot(context.binding());
         ComfyUiClient client = clients.create(snapshot.connectionVersion());
         var settings = mapper.readTree(snapshot.specJson()).path("settings");
+        var timeouts = dev.agenvas.provider.domain.MediaHttpTimeouts.configured(settings);
+        if (timeouts != null)
+            client = client.withTimeouts(timeouts);
         if (ComfyUiWorkflowDefinition.configured(settings))
             return published.reconcile(context, client, settings);
         String promptId = context.originalRequestId();

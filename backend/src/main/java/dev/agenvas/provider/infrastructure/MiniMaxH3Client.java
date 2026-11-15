@@ -1,6 +1,7 @@
 package dev.agenvas.provider.infrastructure;
 
 import dev.agenvas.provider.domain.MiniMaxH3Protocol;
+import dev.agenvas.shared.http.HttpTimeouts;
 import dev.agenvas.shared.http.PinnedHttpClients;
 import java.io.IOException;
 import java.net.URI;
@@ -28,6 +29,17 @@ public class MiniMaxH3Client {
     private final ObjectMapper mapper;
     private final URI testOrigin;
     private final OkHttpClient http;
+
+    private MiniMaxH3Client(MiniMaxH3Client source, HttpTimeouts timeouts) {
+        this.mapper = source.mapper;
+        this.testOrigin = source.testOrigin;
+        this.http = timeouts.configure(source.http);
+    }
+
+    /** Each capability uses a private transport copy; injected defaults remain unchanged. */
+    public MiniMaxH3Client withTimeouts(HttpTimeouts timeouts) {
+        return new MiniMaxH3Client(this, timeouts);
+    }
 
     @Autowired
     public MiniMaxH3Client(ObjectMapper mapper) {

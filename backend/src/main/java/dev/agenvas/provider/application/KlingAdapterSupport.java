@@ -1,6 +1,7 @@
 package dev.agenvas.provider.application;
 
 import dev.agenvas.provider.domain.AttemptContext;
+import dev.agenvas.provider.domain.MediaHttpTimeouts;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaPayload;
 import dev.agenvas.provider.domain.Submission;
@@ -9,6 +10,7 @@ import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapsho
 import dev.agenvas.provider.infrastructure.KlingClient;
 import dev.agenvas.provider.infrastructure.KlingMediaDownloadPolicy;
 import dev.agenvas.settings.application.CredentialCipher;
+import dev.agenvas.shared.http.HttpTimeouts;
 import dev.agenvas.shared.error.ProviderFailureCodes;
 import java.io.FilterInputStream;
 import java.io.IOException;
@@ -72,8 +74,8 @@ abstract class KlingAdapterSupport implements MediaAdapter {
         }
         try {
             String id = video()
-                    ? client.createVideo(snapshot.connectionVersion().origin(), key, body)
-                    : client.createImage(snapshot.connectionVersion().origin(), key, body);
+                    ? api(snapshot).createVideo(snapshot.connectionVersion().origin(), key, body)
+                    : api(snapshot).createImage(snapshot.connectionVersion().origin(), key, body);
             return new Submission.Accepted(id);
         } catch (KlingClient.Rejected rejected) {
             return new Submission.Rejected(ProviderFailureCodes.KLING_CREATE_REJECTED);
@@ -107,13 +109,13 @@ abstract class KlingAdapterSupport implements MediaAdapter {
     private KlingClient.TaskState query(AttemptContext context, Snapshot snapshot) {
         String origin = snapshot.connectionVersion().origin(), key = credential(snapshot);
         return video()
-                ? client.queryVideo(origin, key, context.originalRequestId())
-                : client.queryImage(origin, key, context.originalRequestId());
+                ? api(snapshot).queryVideo(origin, key, context.originalRequestId())
+                : api(snapshot).queryImage(origin, key, context.originalRequestId());
     }
 
     private Submission completed(AttemptContext context, Snapshot snapshot, KlingClient.TaskState state) {
         try {
-            return new Submission.Completed(download(context, URI.create(state.url())));
+            return new Submission.Completed(download(context, snapshot, URI.create(state.url())));
         } catch (IllegalArgumentException invalid) {
             return new Submission.Blocked(ProviderFailureCodes.RESULT_URL_INVALID);
         } catch (KlingMediaDownloadPolicy.Expired expired) {
@@ -123,14 +125,14 @@ abstract class KlingAdapterSupport implements MediaAdapter {
                     || refreshed.url() == null || refreshed.url().equals(state.url()))
                 return new Submission.Blocked(ProviderFailureCodes.KLING_RESULT_EXPIRED);
             try {
-                return new Submission.Completed(download(context, URI.create(refreshed.url())));
+                return new Submission.Completed(download(context, snapshot, URI.create(refreshed.url())));
             } catch (IllegalArgumentException | KlingMediaDownloadPolicy.Expired invalid) {
                 return new Submission.Blocked(ProviderFailureCodes.KLING_RESULT_EXPIRED);
             }
         }
     }
 
-    private MediaPayload download(AttemptContext context, URI url) {
+    private MediaPayload download(AttemptContext context, Snapshot snapshot, URI url) {
         downloads.validate(url);
         Path directory;
         try {
@@ -142,7 +144,7 @@ abstract class KlingAdapterSupport implements MediaAdapter {
         try {
             String mime;
             try (OutputStream output = Files.newOutputStream(file)) {
-                mime = downloads.download(url, output, video(), video() ? 500L * 1024 * 1024 : 50L * 1024 * 1024);
+                mime = downloads(snapshot).download(url, output, video(), video() ? 500L * 1024 * 1024 : 50L * 1024 * 1024);
             }
             validateResult(context, file);
             return new MediaPayload(new FilterInputStream(Files.newInputStream(file)) {
@@ -180,6 +182,22 @@ abstract class KlingAdapterSupport implements MediaAdapter {
         if (!adapterId().equals(snapshot.adapterId()) || !binding.mappingSha256().equals(snapshot.mappingSha256()))
             throw new IllegalStateException("Pinned Kling mapping differs");
         return snapshot;
+    }
+
+    /** Read only the immutable capability version selected when this task was accepted. */
+    private HttpTimeouts httpTimeouts(Snapshot snapshot) {
+        return snapshot.specJson() == null ? null
+                : MediaHttpTimeouts.configured(mapper.readTree(snapshot.specJson()).path("settings"));
+    }
+
+    private KlingClient api(Snapshot snapshot) {
+        var timeouts = httpTimeouts(snapshot);
+        return timeouts == null ? client : client.withTimeouts(timeouts);
+    }
+
+    private KlingMediaDownloadPolicy downloads(Snapshot snapshot) {
+        var timeouts = httpTimeouts(snapshot);
+        return timeouts == null ? downloads : downloads.withTimeouts(timeouts);
     }
 
     private String credential(Snapshot snapshot) {

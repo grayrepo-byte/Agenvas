@@ -861,6 +861,23 @@ public class JooqTaskRepository
                 .execute() == 1;
     }
 
+    /** Cancellation after submission stops orchestration, not original-request reconciliation or archival. */
+    @Override
+    public boolean heartbeatMediaLease(UUID taskId, String workerId, long leaseEpoch, Instant now, Instant leaseUntil) {
+        return dsl.update(TASK)
+                .set(TASK.LEASE_UNTIL, utc(leaseUntil))
+                .set(TASK.UPDATED_AT, utc(now))
+                .set(TASK.VERSION, TASK.VERSION.plus(1))
+                .where(currentWorkerLease(taskId, workerId, leaseEpoch, now))
+                .and(TASK.KIND.in(Task.Kind.IMAGE_GENERATION.name(), Task.Kind.VIDEO_GENERATION.name(),
+                        Task.Kind.AUDIO_GENERATION.name()))
+                .and(TASK.STATUS.in(Task.Status.RUNNING.name(), Task.Status.SUBMITTING.name(),
+                        Task.Status.WAITING_PROVIDER.name()))
+                .and(TASK.CANCEL_REQUESTED.isFalse().or(TASK.STATUS.eq(Task.Status.SUBMITTING.name()))
+                        .or(TASK.PROVIDER_REQUEST_ID.isNotNull()))
+                .execute() == 1;
+    }
+
     /** 仅当前未过期且未取消的 RUNNING 租约可写终态、输出和错误码。 */
     @Override
     public boolean finish(

@@ -4,6 +4,7 @@ import dev.agenvas.provider.domain.NativeMediaFailure;
 import dev.agenvas.provider.domain.NativeMediaProfiles;
 import dev.agenvas.provider.domain.NativeMediaProtocol;
 import dev.agenvas.provider.domain.WanModels;
+import dev.agenvas.shared.http.HttpTimeouts;
 import dev.agenvas.shared.http.PinnedHttpClients;
 import java.io.IOException;
 import java.math.RoundingMode;
@@ -53,6 +54,17 @@ public class WanClient {
     private final URI testOrigin;
     private final OkHttpClient http;
     private final WanModels models = new WanModels();
+
+    private WanClient(WanClient source, HttpTimeouts timeouts) {
+        this.mapper = source.mapper;
+        this.testOrigin = source.testOrigin;
+        this.http = timeouts.configure(source.http);
+    }
+
+    /** Each capability uses a private transport copy; injected defaults remain unchanged. */
+    public WanClient withTimeouts(HttpTimeouts timeouts) {
+        return new WanClient(this, timeouts);
+    }
 
     @Autowired
     public WanClient(ObjectMapper mapper) {

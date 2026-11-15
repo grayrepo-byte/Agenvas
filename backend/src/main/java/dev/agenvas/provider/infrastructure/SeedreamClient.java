@@ -7,6 +7,7 @@ import dev.agenvas.provider.domain.ProviderResultManifest;
 import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.provider.domain.SeedreamModels;
 import dev.agenvas.shared.error.ProviderFailureCodes;
+import dev.agenvas.shared.http.HttpTimeouts;
 import dev.agenvas.shared.http.PinnedHttpClients;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
@@ -59,6 +60,17 @@ public class SeedreamClient {
                     .maxStringLength(4 * ((MAX_RESULT_BYTES + 2) / 3)).maxNumberLength(32).build())
             .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION).build())
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
+
+    private SeedreamClient(SeedreamClient source, HttpTimeouts timeouts) {
+        this.mapper = source.mapper;
+        this.testOrigin = source.testOrigin;
+        this.http = timeouts.configure(source.http);
+    }
+
+    /** Each capability uses a private transport copy; injected defaults remain unchanged. */
+    public SeedreamClient withTimeouts(HttpTimeouts timeouts) {
+        return new SeedreamClient(this, timeouts);
+    }
 
     @Autowired
     public SeedreamClient(ObjectMapper mapper) {

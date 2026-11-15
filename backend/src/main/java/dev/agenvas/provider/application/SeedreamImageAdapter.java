@@ -1,6 +1,7 @@
 package dev.agenvas.provider.application;
 
 import dev.agenvas.provider.domain.AttemptContext;
+import dev.agenvas.provider.domain.MediaHttpTimeouts;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaPayload;
 import dev.agenvas.provider.domain.NativeMediaFailure;
@@ -14,6 +15,7 @@ import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapshot;
 import dev.agenvas.provider.infrastructure.SeedreamClient;
 import dev.agenvas.settings.application.CredentialCipher;
+import dev.agenvas.shared.http.HttpTimeouts;
 import dev.agenvas.shared.error.ProviderFailureCodes;
 import dev.agenvas.task.domain.Task;
 import java.io.ByteArrayInputStream;
@@ -73,7 +75,7 @@ public class SeedreamImageAdapter implements MediaAdapter {
             String key = credential(snapshot);
             Frozen frozen = frozen(context, snapshot);
             var body = client.build(frozen.selection().profile(), frozen.values(), prepare(context, frozen, true));
-            var response = client.create(frozen.selection().profile(), frozen.values(),
+            var response = api(snapshot).create(frozen.selection().profile(), frozen.values(),
                     snapshot.connectionVersion().origin(),
                     key, body, context.requestKey());
             return new Submission.AcceptedResults(response.requestId(), response.manifest());
@@ -152,6 +154,17 @@ public class SeedreamImageAdapter implements MediaAdapter {
             throw protocol();
         return snapshot;
     }
+    /** Read only the immutable capability version selected when this task was accepted. */
+    private HttpTimeouts httpTimeouts(Snapshot snapshot) {
+        return snapshot.specJson() == null ? null
+                : MediaHttpTimeouts.configured(mapper.readTree(snapshot.specJson()).path("settings"));
+    }
+
+    private SeedreamClient api(Snapshot snapshot) {
+        var timeouts = httpTimeouts(snapshot);
+        return timeouts == null ? client : client.withTimeouts(timeouts);
+    }
+
     private String credential(Snapshot snapshot) {
         var version = snapshot.connectionVersion();
         try {

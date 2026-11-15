@@ -9,6 +9,7 @@ import dev.agenvas.provider.domain.ComfyUiWorkflowDefinition;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Capability;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Connection;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.ConnectionVersion;
+import dev.agenvas.shared.http.HttpTimeouts;
 import dev.agenvas.task.domain.Task;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
@@ -16,6 +17,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import org.springframework.http.CacheControl;
@@ -167,7 +169,7 @@ public class MediaCapabilityController {
                         catalog.defaultVersion(kind)))
                 .toList();
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
-                .body(new MediaSettingsResponse(connections, defaults));
+                .body(new MediaSettingsResponse(connections, defaults, catalog.httpTimeoutDefaults()));
     }
 
     private ConnectionView view(Connection connection) {
@@ -224,7 +226,7 @@ public class MediaCapabilityController {
     public record SetDefaultRequest(@Min(0) long expectedVersion, UUID capabilityId) {
     }
     public record MediaSettingsResponse(List<ConnectionView> connections,
-            List<DefaultView> defaults) {
+            List<DefaultView> defaults, Map<String, HttpTimeouts> httpTimeoutDefaults) {
     }
     public record ConnectionView(UUID id, String name, String platform, boolean enabled,
             long version, int connectionVersion, String origin, String keyMask,

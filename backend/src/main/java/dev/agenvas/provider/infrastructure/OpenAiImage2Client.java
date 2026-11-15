@@ -55,8 +55,8 @@ public class OpenAiImage2Client {
      * 生成；短于生成耗时会让客户端先超时，把已经生成好的结果判成 UNKNOWN 并丢弃。
      *
      * <p>该上限已被真实链路撞破两次：先是 10 秒（生成要 30-40 秒，见 T21 证据），
-     * 改为 3 分钟后仍有中转站实测 216 秒才返回。故取 5 分钟，并由
-     * {@code agenvas.task.lease-duration}（默认 30 分钟）保证租约长于它。
+     * 改为 3 分钟后仍有中转站实测 216 秒才返回。缺省取 5 分钟；能力版本可显式覆盖，
+     * 媒体 Worker 的独立心跳在线程阻塞期间保持任务租约。
      */
     private static final Duration GENERATION_READ_TIMEOUT = Duration.ofMinutes(5);
     /** 整次生成调用的上限；与读超时同量级，由它兜住总时长。 */
@@ -88,8 +88,11 @@ public class OpenAiImage2Client {
     OpenAiImage2Client(ObjectMapper mapper, Duration readTimeout, Duration callTimeout) {
         this.mapper = mapper;
         // Each selected endpoint installs a scheme-aware pinned DNS policy before sending credentials.
+        // Multipart reference images can block while being sent. Cover writes with the generation
+        // budget too, rather than OkHttp's default 10 seconds; callTimeout still bounds the whole call.
         this.http = PinnedHttpClients.pinned(Dns.SYSTEM,
-                CONNECT_TIMEOUT, readTimeout, callTimeout);
+                CONNECT_TIMEOUT, readTimeout, callTimeout).newBuilder()
+                .writeTimeout(callTimeout).build();
         // Result redirects are followed manually after destination and DNS validation, without credentials.
         this.downloads = PinnedHttpClients.pinned(Dns.SYSTEM,
                 DOWNLOAD_CONNECT_TIMEOUT, DOWNLOAD_READ_TIMEOUT, DOWNLOAD_CALL_TIMEOUT);
@@ -98,6 +101,17 @@ public class OpenAiImage2Client {
     private OkHttpClient serviceClient(Request request) throws IOException {
         return http.newBuilder().dns(ServiceEndpointPolicy.dns(
                 request.url().uri(), Dns.SYSTEM)).build();
+    }
+
+    /** Apply the frozen capability policy to this invocation, including credential-free result downloads. */
+    public OpenAiImage2Client withTimeouts(dev.agenvas.shared.http.HttpTimeouts timeouts) {
+        return timeouts == null ? this : new OpenAiImage2Client(this, timeouts);
+    }
+
+    private OpenAiImage2Client(OpenAiImage2Client source, dev.agenvas.shared.http.HttpTimeouts timeouts) {
+        this.mapper = source.mapper;
+        this.http = timeouts.configure(source.http);
+        this.downloads = timeouts.configure(source.downloads);
     }
 
     public MediaPayload generate(String key, String model, String prompt, String quality,

@@ -1,5 +1,6 @@
 package dev.agenvas.provider.infrastructure;
 
+import dev.agenvas.shared.http.HttpTimeouts;
 import dev.agenvas.shared.http.PinnedHttpClients;
 import java.io.IOException;
 import java.io.InputStream;
@@ -17,6 +18,15 @@ import org.springframework.stereotype.Component;
 @Component
 public class MiniMaxMediaDownloadPolicy {
     private final OkHttpClient http;
+
+    private MiniMaxMediaDownloadPolicy(MiniMaxMediaDownloadPolicy source, HttpTimeouts timeouts) {
+        this.http = timeouts.configure(source.http);
+    }
+
+    /** Each capability uses a private transport copy; injected defaults remain unchanged. */
+    public MiniMaxMediaDownloadPolicy withTimeouts(HttpTimeouts timeouts) {
+        return new MiniMaxMediaDownloadPolicy(this, timeouts);
+    }
 
     @Autowired
     public MiniMaxMediaDownloadPolicy() {

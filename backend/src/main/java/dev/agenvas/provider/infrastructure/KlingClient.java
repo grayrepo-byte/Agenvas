@@ -2,6 +2,7 @@ package dev.agenvas.provider.infrastructure;
 
 import dev.agenvas.provider.domain.KlingProtocol;
 import dev.agenvas.provider.domain.KlingModels;
+import dev.agenvas.shared.http.HttpTimeouts;
 import dev.agenvas.shared.http.PinnedHttpClients;
 import java.io.IOException;
 import java.net.URI;
@@ -39,6 +40,17 @@ public class KlingClient {
     private final ObjectMapper mapper;
     private final URI targetOrigin;
     private final OkHttpClient http;
+
+    private KlingClient(KlingClient source, HttpTimeouts timeouts) {
+        this.mapper = source.mapper;
+        this.targetOrigin = source.targetOrigin;
+        this.http = timeouts.configure(source.http);
+    }
+
+    /** Each capability uses a private transport copy; injected defaults remain unchanged. */
+    public KlingClient withTimeouts(HttpTimeouts timeouts) {
+        return new KlingClient(this, timeouts);
+    }
 
     @Autowired
     public KlingClient(ObjectMapper mapper) {

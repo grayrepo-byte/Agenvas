@@ -170,7 +170,8 @@ class RunningHubAdapterTest {
         var connection = new JooqMediaCapabilityRepository.ConnectionVersion(binding.connectionId(), 1,
                 "https://www.runninghub.ai", "origin-hash", null, null, null, null);
         when(catalog.snapshotAt(binding.capabilityId(), 1, binding.connectionId(), 1)).thenReturn(Optional.of(
-                new JooqMediaCapabilityRepository.Snapshot(null, null, connection, "RUNNINGHUB_VIDEO", "hash", null)));
+                new JooqMediaCapabilityRepository.Snapshot(null, null, connection, "RUNNINGHUB_VIDEO", "hash",
+                        "{\"settings\":{}}")));
         var adapter = adapter(client, catalog);
         var two = new RunningHubDefinition(1, "V2", definition.targetType(), definition.targetId(), List.of(),
                 List.of(),

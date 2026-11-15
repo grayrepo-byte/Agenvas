@@ -4131,5 +4131,20 @@
   "settings.llm.connections.actions": "操作",
   "settings.llm.connections.editAction": "編集",
   "settings.llm.connections.modeUnavailable": "実行モードを読み込めません。接続と入力は保持されています。",
-  "settings.llm.connections.keyCleared": "新しいキー入力を消去しました。既存接続の編集では空欄でサーバーのキーを維持できます。"
+  "settings.llm.connections.keyCleared": "新しいキー入力を消去しました。既存接続の編集では空欄でサーバーのキーを維持できます。",
+  "settings.httpTimeouts.title": "リクエストのタイムアウト",
+  "settings.httpTimeouts.connectSeconds": "接続タイムアウト（秒）",
+  "settings.httpTimeouts.writeSeconds": "書き込みタイムアウト（秒）",
+  "settings.httpTimeouts.readSeconds": "読み取りタイムアウト（秒）",
+  "settings.httpTimeouts.callSeconds": "リクエスト全体のタイムアウト（秒）",
+  "settings.httpTimeouts.connectHint": "接続の確立を待つ最大時間。",
+  "settings.httpTimeouts.writeHint": "リクエスト本文の1回の書き込みがブロックされる最大時間。",
+  "settings.httpTimeouts.readHint": "応答データを待つ際の1回の読み取りがブロックされる最大時間。",
+  "settings.httpTimeouts.callHint": "接続、送信、読み取りを含む1回の HTTP リクエスト全体の期限です。段階が変わっても転送が続いてもリセットされず、各段階の上限を足し合わせることはできません。",
+  "settings.httpTimeouts.scopeHint": "API、入力アップロード、結果ダウンロードの各リクエストに適用され、生成タスク全体の時間ではありません。",
+  "settings.httpTimeouts.legacyHint": "以下は公開時の既定値です。タイムアウトを編集するまでは、この既存機能は元のプロトコル設定を維持します。変更すると4つの値を新しい機能バージョンに保存します。",
+  "settings.httpTimeouts.defaultsUnavailable": "サーバーからタイムアウトの既定値が返されませんでした。4項目をすべて入力するか、設定を再読み込みしてから公開してください。",
+  "settings.httpTimeouts.integerRange": "{0}は 1 から {1} までの整数にしてください。",
+  "settings.httpTimeouts.phaseExceedsCall": "{0}はリクエスト全体のタイムアウト以下にしてください。",
+  "settings.editor.timeoutsHint": "接続、転送待機、リクエスト全体の上限を設定"
 }

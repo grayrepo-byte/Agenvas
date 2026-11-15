@@ -310,6 +310,52 @@ class OpenAiImage2PostgresIT {
         verifyTokenBilling(owner.userId(), connection.id(), ability);
         verifyGifGeneration(owner, connection.id());
         verifyFrozenModerationAcrossTransports(owner.userId(), connection.id());
+        verifyFrozenTimeoutsReachTheActualProviderCall(owner.userId(), connection.id());
+    }
+
+    /** Publishing while a request is running cannot replace its timeout; a new task uses the new version. */
+    private void verifyFrozenTimeoutsReachTheActualProviderCall(UUID owner, UUID connectionId) {
+        var shortSettings = mapper.readTree("""
+                {"httpTimeouts":{"connectSeconds":1,"writeSeconds":2,"readSeconds":1,"callSeconds":3}}
+                """);
+        var longSettings = mapper.readTree("""
+                {"httpTimeouts":{"connectSeconds":1,"writeSeconds":2,"readSeconds":2,"callSeconds":3}}
+                """);
+        var capability = catalog.publishCapability(connectionId, "Synthetic configured timeout", "OPENAI_GPT_IMAGE_2",
+                shortSettings);
+        catalog.setDefault(Task.Kind.IMAGE_GENERATION, catalog.defaultVersion(Task.Kind.IMAGE_GENERATION),
+                capability.id());
+        var oldBinding = catalog.resolve(capability.id(), Task.Kind.IMAGE_GENERATION, 0);
+        int before = GENERATIONS.get();
+        Fixture first = fixture(owner, "Synthetic frozen short timeout", 0);
+        RESPONSE_ACTION.set(() -> {
+            catalog.updateCapability(connectionId, capability.id(), capability.version(), "Synthetic longer timeout",
+                    true, "OPENAI_GPT_IMAGE_2", longSettings);
+            pauseForConfiguredReadLimit();
+        });
+        assertThat(worker.submitOnce("configured-short-timeout-worker")).isEqualTo(1);
+        Task unknown = tasks.get(owner, first.project().id(), first.task().id());
+        assertThat(unknown.status()).isEqualTo(Task.Status.UNKNOWN);
+        assertThat(unknown.errorCode()).isEqualTo(ProviderFailureCodes.CALL_TIMEOUT);
+        assertThat(catalog.httpTimeouts(oldBinding).readSeconds()).isEqualTo(1);
+        assertThat(catalog.httpTimeouts(catalog.resolve(capability.id(), Task.Kind.IMAGE_GENERATION, 0))
+                .readSeconds()).isEqualTo(2);
+
+        Fixture second = fixture(owner, "Synthetic new longer timeout", 0);
+        RESPONSE_ACTION.set(OpenAiImage2PostgresIT::pauseForConfiguredReadLimit);
+        assertThat(worker.submitOnce("configured-long-timeout-worker")).isEqualTo(1);
+        assertThat(tasks.get(owner, second.project().id(), second.task().id()).status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(tasks.get(owner, first.project().id(), first.task().id()).status()).isEqualTo(Task.Status.UNKNOWN);
+        assertThat(GENERATIONS).hasValue(before + 2);
+        assertThat(worker.submitOnce("configured-timeout-no-retry-worker")).isZero();
+    }
+
+    private static void pauseForConfiguredReadLimit() {
+        try {
+            Thread.sleep(1_250);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private void verifyFrozenModerationAcrossTransports(UUID owner, UUID connectionId) {

@@ -3,6 +3,7 @@ package dev.agenvas.provider.application;
 import dev.agenvas.artifact.domain.AudioGenerationParameters;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.provider.domain.AttemptContext;
+import dev.agenvas.provider.domain.MediaHttpTimeouts;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.Submission;
@@ -13,8 +14,10 @@ import java.util.UUID;
 import java.util.ArrayList;
 import java.util.List;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
+import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapshot;
 import dev.agenvas.provider.infrastructure.SeedAudioClient;
 import dev.agenvas.settings.application.CredentialCipher;
+import dev.agenvas.shared.http.HttpTimeouts;
 import dev.agenvas.task.domain.Task;
 import java.io.ByteArrayInputStream;
 import org.springframework.stereotype.Component;
@@ -52,7 +55,7 @@ public final class SeedAudioAdapter implements MediaAdapter {
     @Override
     public String preflightFailure(AttemptContext context) {
         try {
-            credential(context);
+            credential(snapshot(context));
         } catch (RuntimeException unavailable) {
             return "MEDIA_CREDENTIAL_UNAVAILABLE";
         }
@@ -69,8 +72,11 @@ public final class SeedAudioAdapter implements MediaAdapter {
         var parameters = AudioGenerationParameters.parse(task.input().path("mediaInput").path("parameters"));
         try {
             var asset = assets.archiveTaskAudio(context.ownerId(), task.projectId(), task.id(),
-                    () -> new ByteArrayInputStream(client.synthesize(credential(context), context.requestKey(),
-                            task.input().path("prompt").asText(), parameters, references(context))));
+                    () -> {
+                        Snapshot snapshot = snapshot(context);
+                        return new ByteArrayInputStream(api(snapshot).synthesize(credential(snapshot), context.requestKey(),
+                                task.input().path("prompt").asText(), parameters, references(context)));
+                    });
             return completed(task, asset.id().toString(), false);
         } catch (SeedAudioClient.Rejected rejected) {
             return new Submission.Rejected("SEED_AUDIO_REJECTED");
@@ -120,13 +126,28 @@ public final class SeedAudioAdapter implements MediaAdapter {
         return List.copyOf(result);
     }
 
-    private String credential(AttemptContext context) {
+    /** Read only the immutable capability version selected when this task was accepted. */
+    private HttpTimeouts httpTimeouts(Snapshot snapshot) {
+        return snapshot.specJson() == null ? null
+                : MediaHttpTimeouts.configured(mapper.readTree(snapshot.specJson()).path("settings"));
+    }
+
+    private SeedAudioClient api(Snapshot snapshot) {
+        var timeouts = httpTimeouts(snapshot);
+        return timeouts == null ? client : client.withTimeouts(timeouts);
+    }
+
+    private Snapshot snapshot(AttemptContext context) {
         var b = context.binding();
         var snapshot = catalog
                 .snapshotAt(b.capabilityId(), b.capabilityVersion(), b.connectionId(), b.connectionVersion())
                 .orElseThrow(() -> new IllegalStateException("Pinned speech capability missing"));
         if (!adapterId().equals(snapshot.adapterId()) || !b.mappingSha256().equals(snapshot.mappingSha256()))
             throw new IllegalStateException("Pinned speech mapping differs");
+        return snapshot;
+    }
+
+    private String credential(Snapshot snapshot) {
         var version = snapshot.connectionVersion();
         return cipher.decryptMedia(version.connectionId(), version.version(), new CredentialCipher.Encrypted(
                 version.credentialCiphertext(), version.credentialNonce(), version.credentialKeyVersion()));

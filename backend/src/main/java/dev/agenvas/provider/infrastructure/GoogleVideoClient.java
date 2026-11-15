@@ -6,6 +6,7 @@ import dev.agenvas.provider.domain.NativeMediaProfiles;
 import dev.agenvas.provider.domain.NativeMediaProtocol.Profile;
 import dev.agenvas.shared.error.ProviderFailureCodes;
 import dev.agenvas.shared.http.OutboundTimeouts;
+import dev.agenvas.shared.http.HttpTimeouts;
 import dev.agenvas.shared.http.PinnedHttpClients;
 import java.io.IOException;
 import java.io.InputStream;
@@ -49,12 +50,24 @@ public class GoogleVideoClient {
     private final ObjectMapper mapper;
     private final URI testOrigin;
     private final OkHttpClient http;
+
     /** Inline video exceeds Jackson's ordinary text budget; this bounded parser is private to native media responses. */
     private final ObjectMapper responses = JsonMapper.builder(JsonFactory.builder()
             .streamReadConstraints(StreamReadConstraints.builder().maxNestingDepth(32)
                     .maxStringLength(4 * ((MAX_VIDEO_BYTES + 2) / 3)).maxNumberLength(32).build())
             .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION).build())
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
+
+    private GoogleVideoClient(GoogleVideoClient source, HttpTimeouts timeouts) {
+        this.mapper = source.mapper;
+        this.testOrigin = source.testOrigin;
+        this.http = timeouts.configure(source.http);
+    }
+
+    /** Each capability uses a private transport copy; injected defaults remain unchanged. */
+    public GoogleVideoClient withTimeouts(HttpTimeouts timeouts) {
+        return new GoogleVideoClient(this, timeouts);
+    }
 
     @Autowired
     public GoogleVideoClient(ObjectMapper mapper) {

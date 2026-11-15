@@ -9,6 +9,8 @@ import type { ComfyUiWorkflowDefinition, MediaCapability, RunningHubField } from
 import { changeControl, selectValue } from "../../test/controls";
 import { server } from "../../test/server";
 import { ComfyWorkflowEditor } from "./ComfyWorkflowEditor";
+import type { MediaCapabilityDraft } from "./mediaCapabilityDraft";
+import { syntheticHttpTimeouts } from "./mediaHttpTimeoutTestFixture";
 import { definition, graph } from "./comfyWorkflowFixture";
 import { comfyParameterKey, comfyReferenceCount, comfyWorkflowProblem, mapComfyInput } from "./comfyWorkflow";
 
@@ -81,6 +83,34 @@ describe("ComfyWorkflowEditor", () => {
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
     ),
   );
+  it("keeps saved and raw timeout drafts when replacing a workflow graph", async () => {
+    const values: MediaCapabilityDraft = {
+      comfyWorkflow: definition,
+      httpTimeouts: syntheticHttpTimeouts,
+      httpTimeoutDraft: { connectSeconds: "7", writeSeconds: "", readSeconds: "83", callSeconds: "101" },
+    };
+    const changes: MediaCapabilityDraft[] = [];
+    server.use(http.post("/api/v1/settings/media-connections/comfy/comfyui/preview", () => HttpResponse.json(graph)));
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <ComfyWorkflowEditor
+          connectionId="comfy"
+          adapterId="COMFY_VIDEO_V1"
+          values={values}
+          onChange={next => changes.push(next)}
+          onReadyChange={() => {}}
+        />
+      </QueryClientProvider>,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /1\./ }));
+    await user.click(screen.getByRole("button", { name: "替换工作流并重新映射" }));
+    await waitFor(() => expect(changes).toHaveLength(1));
+    expect(changes[0]?.httpTimeouts).toEqual(syntheticHttpTimeouts);
+    expect(changes[0]?.httpTimeoutDraft).toEqual(values.httpTimeoutDraft);
+    expect(changes[0]?.comfyWorkflow?.graph).toEqual(graph);
+  });
+
   it("accepts the active editor's preview after StrictMode effect replay", async () => {
     let previews = 0;
     server.use(

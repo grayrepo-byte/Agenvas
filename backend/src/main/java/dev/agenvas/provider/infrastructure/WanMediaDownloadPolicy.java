@@ -1,6 +1,7 @@
 package dev.agenvas.provider.infrastructure;
 
 import dev.agenvas.provider.domain.NativeMediaFailure;
+import dev.agenvas.shared.http.HttpTimeouts;
 import dev.agenvas.shared.http.PinnedHttpClients;
 import java.io.IOException;
 import java.io.InputStream;
@@ -20,6 +21,15 @@ import org.springframework.stereotype.Component;
 @Component
 public class WanMediaDownloadPolicy {
     private final OkHttpClient http;
+
+    private WanMediaDownloadPolicy(WanMediaDownloadPolicy source, HttpTimeouts timeouts) {
+        this.http = timeouts.configure(source.http);
+    }
+
+    /** Each capability uses a private transport copy; injected defaults remain unchanged. */
+    public WanMediaDownloadPolicy withTimeouts(HttpTimeouts timeouts) {
+        return new WanMediaDownloadPolicy(this, timeouts);
+    }
 
     @Autowired
     public WanMediaDownloadPolicy() {

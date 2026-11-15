@@ -97,7 +97,7 @@ const FILTER_KEYS = {
 const MAX_OUTPUTS = 16;
 const MAX_IMPORT_SOURCE_CHARACTERS = 1024 * 1024;
 const NODE_LABEL_SEPARATOR = " · ";
-const WORKBENCH_SECTION_IDS = ["target", "inputs", "outputs", "preview"] as const;
+const WORKBENCH_SECTION_IDS = ["target", "inputs", "outputs", "timeouts", "preview"] as const;
 type OutputKind = RunningHubDefinition["outputs"][number]["kind"];
 function nodeLabel(
   nodeId: string,
@@ -227,6 +227,7 @@ type RunningHubDefinitionEditorProps = {
   resetKey?: number;
   identityFields?: ReactNode;
   pricingFields?: ReactNode;
+  timeoutFields?: ReactNode;
   /** Parent-owned raw text survives closing the modal without changing the published definition. */
   sourceDraft?: string;
   /** User edits only; import normalization updates the local view without rewriting the parent contract. */
@@ -250,6 +251,7 @@ function RunningHubWorkbench({
   onBusyChange,
   identityFields,
   pricingFields,
+  timeoutFields,
   sourceDraft,
   onSourceDraftChange,
 }: RunningHubDefinitionEditorProps) {
@@ -633,6 +635,7 @@ function RunningHubWorkbench({
     { id: "target", label: t("settings.runningHub.targetSection") },
     { id: "inputs", label: t("settings.runningHub.inputsSection") },
     { id: "outputs", label: t("settings.runningHub.outputsSection") },
+    ...(timeoutFields ? [{ id: "timeouts" as const, label: t("settings.httpTimeouts.title") }] : []),
     { id: "preview", label: t("settings.runningHub.previewSection") },
   ];
   function navigateSection(id: (typeof WORKBENCH_SECTION_IDS)[number]) {
@@ -2268,13 +2271,24 @@ function RunningHubWorkbench({
             </fieldset>
           </details>
         </section>
+        {timeoutFields ? (
+          <section
+            data-workbench-section="timeouts"
+            id={`${sectionId}-timeouts`}
+            className="runninghub-workbench-section"
+            aria-label={t("settings.httpTimeouts.title")}
+          >
+            {sectionHeading(3)}
+            {timeoutFields}
+          </section>
+        ) : null}
         <section
           data-workbench-section="preview"
           id={`${sectionId}-preview`}
           className="runninghub-workbench-section"
-          aria-label={sections[3]!.label}
+          aria-label={sections[sections.length - 1]!.label}
         >
-          {sectionHeading(3)}
+          {sectionHeading(sections.length - 1)}
           <div className="runninghub-scope-summary" aria-label={t("settings.runningHub.scopeSummary")}>
             <Badge variant="outline">{t("settings.runningHub.nodeCount", { "0": selectedNodes.length })}</Badge>
             <Badge variant="outline">{t("settings.runningHub.exposedCount", { "0": exposedFields.length })}</Badge>

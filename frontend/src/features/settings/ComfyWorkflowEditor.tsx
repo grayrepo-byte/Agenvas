@@ -1,11 +1,10 @@
 import { useMutation } from "@tanstack/react-query";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import {
   ApiError,
   previewComfyWorkflow,
   type ComfyUiGraph,
   type ComfyUiWorkflowDefinition,
-  type MediaCapability,
   type RunningHubField,
 } from "../../shared/api/client";
 import { t, useLocale } from "../../shared/i18n";
@@ -39,7 +38,9 @@ import {
   type ComfyInputMapping,
 } from "./comfyWorkflow";
 
-type Settings = MediaCapability["settings"];
+import type { MediaCapabilityDraft } from "./mediaCapabilityDraft";
+
+type Settings = MediaCapabilityDraft;
 type Binding = ComfyUiWorkflowDefinition["bindings"][number];
 type Source = Binding["source"];
 const STEPS = ["import", "mapping", "review"] as const;
@@ -91,12 +92,14 @@ export function ComfyWorkflowEditor({
   values,
   onChange,
   onReadyChange,
+  timeoutFields,
 }: {
   connectionId: string;
   adapterId: string;
   values: Settings;
   onChange: (value: Settings) => void;
   onReadyChange: (ready: boolean) => void;
+  timeoutFields?: ReactNode;
 }) {
   useLocale();
   const fieldId = useId();
@@ -118,7 +121,12 @@ export function ComfyWorkflowEditor({
     // A preview can outlive its output-type editor and still call the parent's setter.
     onSuccess: graph => {
       if (!active.current) return;
-      onChange({ comfyWorkflow: initialDefinition(graph, video), pricing: values.pricing });
+      onChange({
+        comfyWorkflow: initialDefinition(graph, video),
+        pricing: values.pricing,
+        httpTimeouts: values.httpTimeouts,
+        httpTimeoutDraft: values.httpTimeoutDraft,
+      });
       setSource(editableGraphJson(graph));
       setSourceEdited(false);
       setSelectedNode(Object.keys(graph)[0] ?? "");
@@ -857,6 +865,7 @@ export function ComfyWorkflowEditor({
               onChange={onChange}
             />
           </FieldSet>
+          {timeoutFields}
           {problem ? <Notice tone="warning">{problem}</Notice> : null}
         </div>
       ) : null}

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { MediaCapability, RunningHubDefinition } from "../../shared/api/client";
 import { AUTODL_ADAPTER, getAutoDlWorkflow } from "../../shared/autodlWorkflows";
 import { definition as comfyDefinition } from "./comfyWorkflowFixture";
+import { mediaAdapters } from "./mediaAdapterCatalog";
 import {
   applyAutoDlDraftDefinition,
   buildMediaCapabilitySettings,
@@ -362,3 +363,92 @@ it.each(["auto", "low"] as const)(
     expect(buildMediaCapabilitySettings("MOCK_IMAGE", { moderation })).not.toHaveProperty("moderation");
   },
 );
+
+const timeoutPolicy = { connectSeconds: 7, writeSeconds: 61, readSeconds: 83, callSeconds: 101 };
+const timeoutDraft = { connectSeconds: "7", writeSeconds: "61", readSeconds: "83", callSeconds: "101" };
+
+describe("capability HTTP timeout publication", () => {
+  const networkAdapters = Object.keys(mediaAdapters).filter(id => !id.startsWith("LOCAL_") && !id.startsWith("MOCK_"));
+  it.each(networkAdapters)("preserves a complete explicit policy for %s", adapterId => {
+    const draft = { httpTimeouts: timeoutPolicy, ...(adapterId.startsWith("RUNNINGHUB_") ? { runningHub } : {}) };
+    expect(buildMediaCapabilitySettings(adapterId, draft).httpTimeouts).toEqual(timeoutPolicy);
+  });
+
+  it("publishes server defaults for new capabilities without mutating an untouched draft", () => {
+    const draft = { model: "custom-image" };
+    const settings = buildMediaCapabilitySettings("OPENAI_GPT_IMAGE_2", draft, {
+      publishing: true,
+      httpTimeoutDefaults: { OPENAI_GPT_IMAGE_2: timeoutPolicy },
+    });
+    expect(settings.httpTimeouts).toEqual(timeoutPolicy);
+    expect(draft).toEqual({ model: "custom-image" });
+    expect(buildMediaCapabilitySettings("OPENAI_GPT_IMAGE_2", draft)).not.toHaveProperty("httpTimeouts");
+  });
+
+  it("requires the server policy or explicit input for a new network capability", () => {
+    expect(() => buildMediaCapabilitySettings("OPENAI_GPT_IMAGE_2", {}, { publishing: true })).toThrow(
+      CapabilityDraftError,
+    );
+  });
+
+  it.each(["LOCAL_IMAGE_PROCESSOR", "LOCAL_VIDEO_PROCESSOR", "MOCK_IMAGE", "MOCK_VIDEO", "MOCK_AUDIO"])(
+    "omits HTTP settings and editing metadata for %s",
+    adapterId => {
+      const draft = { httpTimeouts: timeoutPolicy, httpTimeoutDraft: timeoutDraft };
+      const settings = buildMediaCapabilitySettings(adapterId, draft, { publishing: true });
+      expect(settings).not.toHaveProperty("httpTimeouts");
+      expect(settings).not.toHaveProperty("httpTimeoutDraft");
+    },
+  );
+
+  it.each(["", "0", "-1", "1.5", "121", "Infinity", "abc"])(
+    "rejects invalid connect input %s without rewriting the draft",
+    connectSeconds => {
+      const draft = { httpTimeoutDraft: { ...timeoutDraft, callSeconds: "3600", connectSeconds } };
+      const before = structuredClone(draft);
+      expect(() => buildMediaCapabilitySettings("OPENAI_GPT_IMAGE_2", draft)).toThrow(CapabilityDraftError);
+      expect(draft).toEqual(before);
+    },
+  );
+
+  it.each(["writeSeconds", "readSeconds", "callSeconds"])("rejects out-of-range %s", field => {
+    for (const value of ["", "0", "-1", "2.5", "3601"]) {
+      expect(() =>
+        buildMediaCapabilitySettings("OPENAI_GPT_IMAGE_2", {
+          httpTimeoutDraft: {
+            connectSeconds: "1",
+            writeSeconds: "1",
+            readSeconds: "1",
+            callSeconds: "3600",
+            [field]: value,
+          },
+        }),
+      ).toThrow(CapabilityDraftError);
+    }
+  });
+
+  it.each(["connectSeconds", "writeSeconds", "readSeconds"])("rejects %s above the whole request deadline", field => {
+    expect(() =>
+      buildMediaCapabilitySettings("OPENAI_GPT_IMAGE_2", {
+        httpTimeoutDraft: { connectSeconds: "5", writeSeconds: "5", readSeconds: "5", callSeconds: "5", [field]: "6" },
+      }),
+    ).toThrow(CapabilityDraftError);
+  });
+
+  it("accepts complete lower/upper bounds and never sends local draft metadata", () => {
+    for (const policy of [
+      { connectSeconds: 1, writeSeconds: 1, readSeconds: 1, callSeconds: 1 },
+      { connectSeconds: 120, writeSeconds: 3600, readSeconds: 3600, callSeconds: 3600 },
+    ]) {
+      const httpTimeoutDraft = {
+        connectSeconds: String(policy.connectSeconds),
+        writeSeconds: String(policy.writeSeconds),
+        readSeconds: String(policy.readSeconds),
+        callSeconds: String(policy.callSeconds),
+      };
+      const saved = buildMediaCapabilitySettings("OPENAI_GPT_IMAGE_2", { httpTimeoutDraft });
+      expect(saved.httpTimeouts).toEqual(policy);
+      expect(saved).not.toHaveProperty("httpTimeoutDraft");
+    }
+  });
+});

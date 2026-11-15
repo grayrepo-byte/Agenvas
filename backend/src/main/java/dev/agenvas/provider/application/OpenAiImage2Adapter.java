@@ -110,6 +110,8 @@ public class OpenAiImage2Adapter implements MediaAdapter {
         Snapshot snapshot = snapshot(context);
         String key = credential(snapshot);
         var settings = mapper.readTree(snapshot.specJson()).path("settings");
+        var timeouts = dev.agenvas.provider.domain.MediaHttpTimeouts.configured(settings);
+        OpenAiImage2Client invocation = timeouts == null ? client : client.withTimeouts(timeouts);
         ImageGenerationParameters parameters = parameters(context);
         String quality = parameters.quality();
         String configuredModel = settings.path("model").asText("");
@@ -126,9 +128,9 @@ public class OpenAiImage2Adapter implements MediaAdapter {
             if (FrozenMediaInputs.images(context.lease()).isEmpty()) {
                 return new Submission.Completed(
                         options.animated() || options.complexity() != null || options.moderation() != null
-                                ? client.generate(key, model, prompt, quality, size(context),
+                                ? invocation.generate(key, model, prompt, quality, size(context),
                                         parameters.transparentBackground(), origin, options)
-                                : client.generate(key, model, prompt, quality, size(context),
+                                : invocation.generate(key, model, prompt, quality, size(context),
                                         parameters.transparentBackground(), origin));
             }
             if (options.animated())
@@ -138,14 +140,14 @@ public class OpenAiImage2Adapter implements MediaAdapter {
             byte[] mask = maskPng(context);
             UUID profile = relayProfile(context);
             if (profile == null && markup != null)
-                return new Submission.Completed(client.edit(key, model, prompt, quality,
+                return new Submission.Completed(invocation.edit(key, model, prompt, quality,
                         size(context), references, null, parameters.transparentBackground(), origin,
                         options.complexity(), options.moderation(), markup.markup()));
             if (profile == null)
                 return new Submission.Completed(options.complexity() == null && options.moderation() == null
-                        ? client.edit(key, model, prompt, quality, size(context), references, mask,
+                        ? invocation.edit(key, model, prompt, quality, size(context), references, mask,
                                 parameters.transparentBackground(), origin)
-                        : client.edit(key, model, prompt, quality, size(context), references, mask,
+                        : invocation.edit(key, model, prompt, quality, size(context), references, mask,
                                 parameters.transparentBackground(), origin, options.complexity(),
                                 options.moderation()));
             List<String> urls;
@@ -163,13 +165,13 @@ public class OpenAiImage2Adapter implements MediaAdapter {
                 return new Submission.Rejected(ProviderFailureCodes.MEDIA_RELAY_PREPARATION_FAILED);
             }
             if (markupUrl != null)
-                return new Submission.Completed(client.editUrls(key, model, prompt, quality,
+                return new Submission.Completed(invocation.editUrls(key, model, prompt, quality,
                         size(context), urls, null, parameters.transparentBackground(), origin, options.complexity(),
                         options.moderation(), markupUrl));
             return new Submission.Completed(options.complexity() == null && options.moderation() == null
-                    ? client.editUrls(key, model, prompt, quality, size(context), urls, maskUrl,
+                    ? invocation.editUrls(key, model, prompt, quality, size(context), urls, maskUrl,
                             parameters.transparentBackground(), origin)
-                    : client.editUrls(key, model, prompt, quality, size(context), urls, maskUrl,
+                    : invocation.editUrls(key, model, prompt, quality, size(context), urls, maskUrl,
                             parameters.transparentBackground(), origin, options.complexity(), options.moderation()));
         } catch (OpenAiImage2Client.Rejected rejected) {
             return new Submission.Rejected(rejected.code(), rejected.providerFailure());

@@ -12,6 +12,13 @@ import { isNativeMediaAdapter } from "../../shared/nativeMedia";
 import { MINIMAX_H3_ADAPTER } from "../../shared/minimaxH3";
 import { isComfyAdapter } from "./comfyWorkflow";
 import { selectRunningHubNodes } from "./runningHubSelection";
+import {
+  mediaHttpTimeoutDraft,
+  mediaHttpTimeoutErrors,
+  mediaHttpTimeoutPolicy,
+  supportsMediaHttpTimeouts,
+  type MediaHttpTimeoutDraft,
+} from "./mediaHttpTimeouts";
 
 type Settings = MediaCapability["settings"];
 type AutoDlDefinition = NonNullable<Settings["workflowDefinition"]>;
@@ -21,10 +28,21 @@ export type MediaCapabilityDraft = Settings & {
   /** Local provenance only: manual changes clear it; never published to the API. */
   openAiPricePresetModel?: string;
   openAiPricePresetOrigin?: string | null;
+  /** Raw local input preserves empty/invalid values and records an explicit timeout edit. Never sent to the API. */
+  httpTimeoutDraft?: MediaHttpTimeoutDraft;
   runningHubSourceDraft?: string;
   runningHubSelectedNodeIds?: string[];
   runningHubSelectedFieldKeys?: string[];
 };
+/** Freeze the server's proposed policy with a new publishing draft, including across failed saves. */
+export function newMediaCapabilityDraft(
+  adapterId: string,
+  defaults?: Record<string, NonNullable<Settings["httpTimeouts"]>>,
+): MediaCapabilityDraft {
+  const policy = supportsMediaHttpTimeouts(adapterId) ? defaults?.[adapterId] : undefined;
+  return policy ? { httpTimeouts: { ...policy } } : {};
+}
+
 export class CapabilityDraftError extends Error {}
 
 /** A blank administrator price means unknown; preserve explicit zero and the original decimal string. */
@@ -91,7 +109,13 @@ function providerSettings(adapterId: string, draft: Settings): Settings {
 }
 
 /** Build the provider's existing settings whitelist without changing or normalizing the editor draft. */
-export function buildMediaCapabilitySettings(adapterId: string, draft: MediaCapabilityDraft): Settings {
+export function buildMediaCapabilitySettings(
+  adapterId: string,
+  draft: MediaCapabilityDraft,
+  publication?: { publishing: boolean; httpTimeoutDefaults?: Record<string, NonNullable<Settings["httpTimeouts"]>> },
+): Settings {
+  const httpTimeouts = configuredHttpTimeouts(adapterId, draft, publication);
+  const timeoutSettings = httpTimeouts ? { httpTimeouts } : {};
   if (adapterId.startsWith("RUNNINGHUB_")) {
     const runningHub = draft.runningHub
       ? selectRunningHubNodes(draft.runningHub, draft.runningHubSelectedNodeIds, draft.runningHubSelectedFieldKeys)
@@ -101,9 +125,9 @@ export function buildMediaCapabilitySettings(adapterId: string, draft: MediaCapa
     );
     if (orphaned) throw new CapabilityDraftError(t("settings.runningHub.unselectedCondition", { "0": orphaned.label }));
     // RunningHub has its own contract and does not publish ordinary-model defaults or limits.
-    return { runningHub, ...(draft.pricing?.amount.trim() ? { pricing: draft.pricing } : {}) };
+    return { runningHub, ...timeoutSettings, ...(draft.pricing?.amount.trim() ? { pricing: draft.pricing } : {}) };
   }
-  const settings = { ...providerSettings(adapterId, draft), ...commonSettings(draft) };
+  const settings = { ...providerSettings(adapterId, draft), ...commonSettings(draft), ...timeoutSettings };
   if (adapterId === "OPENAI_GPT_IMAGE_2" && draft.tokenPricing) {
     const { cachedTextInputPerMillion, cachedImageInputPerMillion, ...required } = draft.tokenPricing;
     settings.tokenPricing = {
@@ -114,6 +138,25 @@ export function buildMediaCapabilitySettings(adapterId: string, draft: MediaCapa
     delete settings.pricing;
   }
   return settings;
+}
+
+/** A legacy metadata edit must keep the absent policy; only a new publication or explicit edit adds one. */
+function configuredHttpTimeouts(
+  adapterId: string,
+  draft: MediaCapabilityDraft,
+  publication?: { publishing: boolean; httpTimeoutDefaults?: Record<string, NonNullable<Settings["httpTimeouts"]>> },
+): Settings["httpTimeouts"] {
+  if (!supportsMediaHttpTimeouts(adapterId)) return undefined;
+  const policy =
+    draft.httpTimeouts ?? (publication?.publishing ? publication.httpTimeoutDefaults?.[adapterId] : undefined);
+  const raw = draft.httpTimeoutDraft ?? (policy ? mediaHttpTimeoutDraft(policy) : undefined);
+  if (!raw) {
+    if (publication?.publishing) throw new CapabilityDraftError(t("settings.httpTimeouts.defaultsUnavailable"));
+    return undefined;
+  }
+  const error = Object.values(mediaHttpTimeoutErrors(raw))[0];
+  if (error) throw new CapabilityDraftError(error);
+  return mediaHttpTimeoutPolicy(raw);
 }
 
 /** Administrator drafts offer all supported tiers when unset; published legacy capabilities remain single-tier. */

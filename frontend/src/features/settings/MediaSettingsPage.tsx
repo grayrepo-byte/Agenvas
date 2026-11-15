@@ -64,6 +64,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../shared/ui/primit
 import { Select } from "../../shared/ui/Select";
 import { AutoDlWorkflowFields } from "./AutoDlWorkflowFields";
 import { CapabilityConfigurationFields } from "./CapabilityConfigurationFields";
+import { MediaHttpTimeoutFields } from "./MediaHttpTimeoutFields";
+import { supportsMediaHttpTimeouts } from "./mediaHttpTimeouts";
 import { GoogleImageConnectionHelp, googleImageApiLabel } from "./GoogleImageConnectionHelp";
 import { LocalServiceDiscovery } from "./LocalServiceDiscovery";
 import { MediaConnectionAddressField } from "./MediaConnectionAddressField";
@@ -80,7 +82,12 @@ import "./MediaSettingsPage.css";
 import { ComfyWorkflowEditor } from "./ComfyWorkflowEditor";
 import { isComfyAdapter } from "./comfyWorkflow";
 import { RunningHubDefinitionEditor } from "./RunningHubDefinitionEditor";
-import { buildMediaCapabilitySettings, CapabilityDraftError, type MediaCapabilityDraft } from "./mediaCapabilityDraft";
+import {
+  buildMediaCapabilitySettings,
+  newMediaCapabilityDraft,
+  CapabilityDraftError,
+  type MediaCapabilityDraft,
+} from "./mediaCapabilityDraft";
 import {
   applyOpenAiImageTokenPreset,
   openAiImagePricePreset,
@@ -279,6 +286,12 @@ const EDITOR_TABS = [
     },
   },
   {
+    id: "timeouts",
+    get label() {
+      return t("settings.httpTimeouts.title");
+    },
+  },
+  {
     id: "pricing",
     get label() {
       return t("media.pricing.estimated");
@@ -296,6 +309,7 @@ function CapabilityEditorFields({
   onAdapterChange,
   availableAdapters,
   values,
+  httpTimeoutDefaults,
   onChange: onSettingsChange,
   onWorkflowReady,
   onBusyChange,
@@ -312,6 +326,7 @@ function CapabilityEditorFields({
   onAdapterChange: (value: string) => void;
   availableAdapters: string[];
   values: AdapterSettings;
+  httpTimeoutDefaults?: MediaSettings["httpTimeoutDefaults"];
   onChange: (value: AdapterSettings) => void;
   creating?: boolean;
   disabled: boolean;
@@ -324,6 +339,16 @@ function CapabilityEditorFields({
   const fieldId = useId();
   const [tab, setTab] = useState<EditorTab>("model");
   const initializedPreset = useRef<string | null>(null);
+  const editorTabs = EDITOR_TABS.filter(item => item.id !== "timeouts" || supportsMediaHttpTimeouts(adapterId));
+  const timeoutFields = supportsMediaHttpTimeouts(adapterId) ? (
+    <MediaHttpTimeoutFields
+      values={values}
+      defaults={httpTimeoutDefaults?.[adapterId]}
+      onChange={onChange}
+      creating={creating}
+      hideLegend={!isComfyAdapter(adapterId)}
+    />
+  ) : undefined;
   function onChange(next: AdapterSettings) {
     onSettingsChange(
       adapterId === "OPENAI_GPT_IMAGE_2" ? updateOpenAiImagePricingDraft(values, next, connectionOrigin) : next,
@@ -468,6 +493,7 @@ function CapabilityEditorFields({
           values={values}
           onChange={onChange}
           onReadyChange={onWorkflowReady}
+          timeoutFields={timeoutFields}
         />
       </fieldset>
     );
@@ -520,6 +546,7 @@ function CapabilityEditorFields({
               </Field>
             </FieldGroup>
           }
+          timeoutFields={timeoutFields}
           pricingFields={
             <CapabilityConfigurationFields
               section="pricing"
@@ -551,7 +578,7 @@ function CapabilityEditorFields({
         if (!(input instanceof HTMLElement)) return;
         const panel = input.closest<HTMLElement>("[data-editor-tab]");
         const section = panel?.dataset.editorTab;
-        if (section && EDITOR_TABS.some(item => item.id === section)) {
+        if (section && editorTabs.some(item => item.id === section)) {
           if (panel?.hidden) event.preventDefault();
           setTab(section as EditorTab);
           requestAnimationFrame(() => input.focus());
@@ -563,7 +590,7 @@ function CapabilityEditorFields({
         orientation="vertical"
         value={tab}
         onValueChange={value => {
-          const next = EDITOR_TABS.find(item => item.id === value);
+          const next = editorTabs.find(item => item.id === value);
           if (next) setTab(next.id);
         }}
       >
@@ -572,7 +599,7 @@ function CapabilityEditorFields({
           className="capability-editor-navigation"
           aria-label={t("settings.mediaSettings.configurationSections")}
         >
-          {EDITOR_TABS.map((item, index) => (
+          {editorTabs.map((item, index) => (
             <TabsTrigger key={item.id} value={item.id} aria-label={item.label}>
               <span className="capability-step-number" aria-hidden>
                 {String(index + 1).padStart(2, "0")}
@@ -584,7 +611,7 @@ function CapabilityEditorFields({
             </TabsTrigger>
           ))}
         </TabsList>
-        {EDITOR_TABS.map(item => (
+        {editorTabs.map(item => (
           <TabsContent
             key={item.id}
             value={item.id}
@@ -596,8 +623,8 @@ function CapabilityEditorFields({
             <header className="capability-editor-section-heading">
               <span className="ui-muted">
                 {t("settings.editor.step", {
-                  "0": EDITOR_TABS.findIndex(entry => entry.id === item.id) + 1,
-                  "1": EDITOR_TABS.length,
+                  "0": editorTabs.findIndex(entry => entry.id === item.id) + 1,
+                  "1": editorTabs.length,
                 })}
               </span>
               <h3>{item.label}</h3>
@@ -684,6 +711,8 @@ function CapabilityEditorFields({
                       <FixedModelFields adapterId={adapterId} values={values} onChange={onChange} />
                     )}
                   </>
+                ) : item.id === "timeouts" ? (
+                  timeoutFields
                 ) : (
                   <CapabilityConfigurationFields
                     section={item.id}
@@ -701,7 +730,7 @@ function CapabilityEditorFields({
                 <Button
                   variant="ghost"
                   type="button"
-                  onClick={() => setTab(EDITOR_TABS[EDITOR_TABS.findIndex(entry => entry.id === item.id) - 1]!.id)}
+                  onClick={() => setTab(editorTabs[editorTabs.findIndex(entry => entry.id === item.id) - 1]!.id)}
                 >
                   <ArrowLeft data-icon="inline-start" />
                   {t("settings.editor.previous")}
@@ -713,7 +742,7 @@ function CapabilityEditorFields({
                 <Button
                   variant="outline"
                   type="button"
-                  onClick={() => setTab(EDITOR_TABS[EDITOR_TABS.findIndex(entry => entry.id === item.id) + 1]!.id)}
+                  onClick={() => setTab(editorTabs[editorTabs.findIndex(entry => entry.id === item.id) + 1]!.id)}
                 >
                   {t("settings.editor.next")}
                   <ArrowRight data-icon="inline-end" />
@@ -823,6 +852,7 @@ function CapabilityRow({
   connectionId,
   connectionName,
   connectionOrigin,
+  httpTimeoutDefaults,
   capability,
   isDefault,
   connectionEnabled,
@@ -835,6 +865,7 @@ function CapabilityRow({
   connectionId: string;
   connectionName: string;
   connectionOrigin: string | null;
+  httpTimeoutDefaults?: MediaSettings["httpTimeoutDefaults"];
   capability: MediaCapability;
   isDefault: boolean;
   connectionEnabled: boolean;
@@ -1143,6 +1174,7 @@ function CapabilityRow({
             <CapabilityEditorFields
               connectionId={connectionId}
               connectionOrigin={connectionOrigin}
+              httpTimeoutDefaults={httpTimeoutDefaults}
               name={name}
               onNameChange={setName}
               adapterId={adapterId}
@@ -1275,6 +1307,7 @@ function ConnectionCapabilities({
             connectionId={connection.id}
             connectionName={connection.name}
             connectionOrigin={connection.origin}
+            httpTimeoutDefaults={settings.httpTimeoutDefaults}
             capability={capability}
             isDefault={settings.defaults.some(
               item => item.kind === capability.kind && item.capabilityId === capability.id,
@@ -1324,7 +1357,9 @@ function ConnectionRow({
   const [apiKey, setApiKey] = useState("");
   const [capabilityName, setCapabilityName] = useState("");
   const [adapterId, setAdapterId] = useState(platformAdapters[connection.platform][0] ?? "");
-  const [newModelNames, setNewModelNames] = useState<AdapterSettings>({});
+  const [newModelNames, setNewModelNames] = useState<AdapterSettings>(() =>
+    newMediaCapabilityDraft(adapterId, settings.httpTimeoutDefaults),
+  );
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [dialog, setDialog] = useState<"connection" | null>(null);
@@ -1370,7 +1405,10 @@ function ConnectionRow({
       const payload = {
         name: capabilityName.trim(),
         adapterId,
-        settings: buildMediaCapabilitySettings(adapterId, newModelNames),
+        settings: buildMediaCapabilitySettings(adapterId, newModelNames, {
+          publishing: true,
+          httpTimeoutDefaults: settings.httpTimeoutDefaults,
+        }),
       };
       capabilityCreateKey.current = stableCreateKey(capabilityCreateKey.current, JSON.stringify(payload));
       return createMediaCapability(connection.id, payload, capabilityCreateKey.current.key);
@@ -1379,7 +1417,7 @@ function ConnectionRow({
       capabilityCreateKey.current = null;
       apply(result);
       setCapabilityName("");
-      setNewModelNames({});
+      setNewModelNames(newMediaCapabilityDraft(adapterId, result.httpTimeoutDefaults));
       setError("");
       setNotice(t("settings.mediaSettings.capabilityPublished"));
       onPublishClose();
@@ -1609,12 +1647,13 @@ function ConnectionRow({
             <CapabilityEditorFields
               connectionId={connection.id}
               connectionOrigin={connection.origin}
+              httpTimeoutDefaults={settings.httpTimeoutDefaults}
               name={capabilityName}
               onNameChange={setCapabilityName}
               adapterId={adapterId}
               onAdapterChange={value => {
                 setAdapterId(value);
-                setNewModelNames({});
+                setNewModelNames(newMediaCapabilityDraft(value, settings.httpTimeoutDefaults));
               }}
               availableAdapters={availableAdapters}
               values={newModelNames}

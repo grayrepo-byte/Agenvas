@@ -34,6 +34,7 @@ import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Connection;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapshot;
 import dev.agenvas.task.application.TaskService;
+import dev.agenvas.task.application.TaskProperties;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.task.domain.VideoOperation;
 import java.io.ByteArrayInputStream;
@@ -41,10 +42,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -56,6 +60,79 @@ import tools.jackson.databind.node.ObjectNode;
 /** Synthetic provider responses exercise recovery and archival boundaries without external traffic. */
 class MediaExecutionWorkerTest {
     private static final String WORKER = "media-worker";
+
+    @ParameterizedTest
+    @ValueSource(strings = {"SUBMIT", "POLL", "ARCHIVE"})
+    void blockingSubmissionPollingAndArchivalKeepRenewingIndependently(String stage) throws Exception {
+        Fixture fixture = new Fixture(!"SUBMIT".equals(stage));
+        CountDownLatch renewed = new CountDownLatch(1);
+        org.mockito.Mockito.doAnswer(call -> {
+            renewed.countDown();
+            return null;
+        }).when(fixture.tasks).heartbeatMediaLease(fixture.task.id(), WORKER, fixture.task.leaseEpoch());
+        try (var leases = new MediaLeaseHeartbeat(fixture.tasks, new TaskProperties(Duration.ofMillis(90), 4))) {
+            var worker = new MediaExecutionWorker(fixture.tasks, fixture.catalog,
+                    new MediaAdapterRegistry(List.of(fixture.adapter)), fixture.assets, fixture.mapper,
+                    fixture.callLogs, fixture.videoProcessor, leases);
+            if ("SUBMIT".equals(stage)) {
+                when(fixture.adapter.submit(any())).thenAnswer(call -> {
+                    assertThat(renewed.await(2, TimeUnit.SECONDS)).isTrue();
+                    return new Submission.Accepted("same-accepted-id");
+                });
+                assertThat(worker.submitOnce(WORKER)).isEqualTo(1);
+                verify(fixture.tasks).waitForProvider(eq(fixture.task), eq(WORKER), eq("same-accepted-id"), any());
+            } else if ("POLL".equals(stage)) {
+                when(fixture.adapter.reconcile(any())).thenAnswer(call -> {
+                    assertThat(renewed.await(2, TimeUnit.SECONDS)).isTrue();
+                    return new Submission.CompletedArtifact(fixture.mapper.createObjectNode());
+                });
+                assertThat(worker.pollOnce(WORKER)).isEqualTo(1);
+                verify(fixture.tasks).succeedWithArtifacts(eq(fixture.task), eq(WORKER), anyList(), any());
+            } else {
+                var manifest = fixture.manifest(List.of(result(0, OutputKind.IMAGE, true)));
+                when(fixture.tasks.providerResultManifest(fixture.task)).thenReturn(Optional.of(manifest));
+                fixture.downloads(manifest);
+                when(fixture.downloads.download(any())).thenAnswer(call -> {
+                    assertThat(renewed.await(2, TimeUnit.SECONDS)).isTrue();
+                    return new MediaPayload(new TrackingInputStream(false), "image/png");
+                });
+                assertThat(worker.pollOnce(WORKER)).isEqualTo(1);
+                verify(fixture.tasks).succeedWithArtifacts(eq(fixture.task), eq(WORKER), anyList(), eq(manifest.usage()));
+            }
+            verify(fixture.tasks, never()).heartbeat(any(), anyString(), org.mockito.ArgumentMatchers.anyLong());
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void lostRenewalClosesAnInFlightResponseWithoutClassifyingItAsAProviderFailure(boolean polling) {
+        Fixture fixture = new Fixture(polling);
+        MediaLeaseHeartbeat.Scope scope = mock(MediaLeaseHeartbeat.Scope.class);
+        when(fixture.leases.open(fixture.task, WORKER)).thenReturn(scope);
+        TrackingInputStream response = new TrackingInputStream(false);
+        org.mockito.stubbing.Answer<Submission> responseAfterLeaseLoss = call -> {
+            doThrow(new MediaLeaseHeartbeat.LeaseLost("Lost after provider response"))
+                    .when(scope).checkActive();
+            return new Submission.Completed(new MediaPayload(response, "image/png"));
+        };
+        when(fixture.adapter.submit(any())).thenAnswer(responseAfterLeaseLoss);
+        when(fixture.adapter.reconcile(any())).thenAnswer(responseAfterLeaseLoss);
+
+        assertThatThrownBy(() -> {
+            if (polling)
+                fixture.worker.pollOnce(WORKER);
+            else
+                fixture.worker.submitOnce(WORKER);
+        })
+                .isInstanceOf(MediaLeaseHeartbeat.LeaseLost.class);
+
+        assertThat(response.closed).isTrue();
+        verify(fixture.tasks, never()).markSubmissionUnknown(any(), anyString(), anyString());
+        verify(fixture.tasks, never()).rejectSubmission(any(), anyString(), anyString());
+        verify(fixture.tasks, never()).retryProviderPoll(any(), anyString(), anyString());
+        verify(fixture.assets, never()).archiveTaskImage(any(), any(), any(), any());
+        verify(scope).close();
+    }
 
     @Test
     void expiredRunningHubDownloadRefreshesTheOriginalTaskOnceAndCheckpointsUrlsBeforeArchiving() {
@@ -386,6 +463,7 @@ class MediaExecutionWorkerTest {
         final AssetService assets = mock(AssetService.class);
         final CallLogService callLogs = mock(CallLogService.class);
         final LocalVideoProcessor videoProcessor = mock(LocalVideoProcessor.class);
+        final MediaLeaseHeartbeat leases = mock(MediaLeaseHeartbeat.class);
         final MediaAdapter adapter = mock(MediaAdapter.class);
         final MediaAdapter.ResultDownloads downloads = mock(MediaAdapter.ResultDownloads.class);
         final UUID owner = UUID.randomUUID();
@@ -413,8 +491,9 @@ class MediaExecutionWorkerTest {
                     false, input, "frozen-input", null, polling ? "original-request" : null,
                     1, now, WORKER, now.plusSeconds(60), 2, 3, null, now, now, null);
             when(adapter.adapterId()).thenReturn(binding.adapterId());
+            when(leases.open(any(), anyString())).thenReturn(mock(MediaLeaseHeartbeat.Scope.class));
             worker = new MediaExecutionWorker(tasks, catalog, new MediaAdapterRegistry(List.of(adapter)),
-                    assets, mapper, callLogs, videoProcessor);
+                    assets, mapper, callLogs, videoProcessor, leases);
             when(tasks.claimBoundMedia(WORKER, 1)).thenReturn(List.of(task));
             when(tasks.claimBoundMediaPolls(WORKER, 1)).thenReturn(List.of(task));
             when(tasks.mediaBinding(task)).thenReturn(Optional.of(binding));

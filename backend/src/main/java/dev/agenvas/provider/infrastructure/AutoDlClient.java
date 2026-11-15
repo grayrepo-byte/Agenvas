@@ -47,6 +47,17 @@ public class AutoDlClient {
         http = PinnedHttpClients.pinned(Dns.SYSTEM,
                 Duration.ofSeconds(10), Duration.ofSeconds(30), Duration.ofMinutes(2));
     }
+    /** Preserve the fixed origin and transport constraints while applying one capability's frozen limits. */
+    public AutoDlClient withTimeouts(dev.agenvas.shared.http.HttpTimeouts timeouts) {
+        return timeouts == null ? this : new AutoDlClient(this, timeouts);
+    }
+
+    private AutoDlClient(AutoDlClient source, dev.agenvas.shared.http.HttpTimeouts timeouts) {
+        this.origin = source.origin;
+        this.mapper = source.mapper;
+        this.http = timeouts.configure(source.http);
+    }
+
     public String create(String key, String workflowId, ObjectNode body) {
         if (workflowId == null || !workflowId.matches(dev.agenvas.provider.domain.AutoDlWorkflowDefinition.ID_PATTERN))
             throw new IllegalArgumentException("Invalid workflow ID");

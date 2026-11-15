@@ -72,7 +72,7 @@ public final class AutoDlVideoAdapter implements MediaAdapter {
         ObjectNode body = body(context);
         String workflow = settings(context).path("workflowId").asText();
         try {
-            return new Submission.Accepted(client.create(credential(context), workflow, body));
+            return new Submission.Accepted(client(context).create(credential(context), workflow, body));
         } catch (AutoDlClient.Rejected rejected) {
             return new Submission.Rejected(
                     rejected.status == 401 || rejected.status == 403
@@ -87,7 +87,7 @@ public final class AutoDlVideoAdapter implements MediaAdapter {
         if (context.originalRequestId() == null)
             return new Submission.Unknown("AUTODL_CREATE_UNCERTAIN");
         try {
-            var state = client.query(credential(context), context.originalRequestId());
+            var state = client(context).query(credential(context), context.originalRequestId());
             return switch (state.status()) {
                 case "QUEUED", "RUNNING" -> new Submission.Pending(clock.instant().plus(POLL_INTERVAL));
                 case "FAILED", "CANCELLED", "CANCELED" -> new Submission.Rejected("AUTODL_TASK_FAILED");
@@ -108,15 +108,15 @@ public final class AutoDlVideoAdapter implements MediaAdapter {
         if (result.isEmpty())
             return new Submission.Blocked("AUTODL_RESULT_MISSING_VIDEO");
         try {
-            return new Submission.Completed(client.downloadVideo(result.get().url()));
+            return new Submission.Completed(client(context).downloadVideo(result.get().url()));
         } catch (AutoDlClient.ResultExpired expired) {
             // A fresh signed URL may be obtained only from the original task, never a new submission.
-            var refreshed = client.query(credential(context), context.originalRequestId());
+            var refreshed = client(context).query(credential(context), context.originalRequestId());
             var video = refreshed.results().stream().filter(candidate -> "video".equals(candidate.type())).findFirst();
             if (!"SUCCESS".equals(refreshed.status()) || video.isEmpty()
                     || video.get().url().equals(result.get().url()))
                 throw expired;
-            return new Submission.Completed(client.downloadVideo(video.get().url()));
+            return new Submission.Completed(client(context).downloadVideo(video.get().url()));
         }
     }
     private Snapshot snapshot(AttemptContext context) {
@@ -130,6 +130,10 @@ public final class AutoDlVideoAdapter implements MediaAdapter {
     }
     private JsonNode settings(AttemptContext context) {
         return mapper.readTree(snapshot(context).specJson()).path("settings");
+    }
+    private AutoDlClient client(AttemptContext context) {
+        var timeouts = dev.agenvas.provider.domain.MediaHttpTimeouts.configured(settings(context));
+        return timeouts == null ? client : client.withTimeouts(timeouts);
     }
     private String credential(AttemptContext context) {
         var version = snapshot(context).connectionVersion();

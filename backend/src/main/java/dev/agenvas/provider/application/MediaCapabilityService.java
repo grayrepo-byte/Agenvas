@@ -6,6 +6,7 @@ import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.provider.domain.MediaCapabilityConfiguration;
+import dev.agenvas.provider.domain.MediaHttpTimeouts;
 import dev.agenvas.provider.domain.MediaPlatform;
 import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.provider.domain.AutoDlWorkflows;
@@ -22,11 +23,13 @@ import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Connect
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.ConnectionVersion;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapshot;
 import dev.agenvas.shared.error.ApiProblemException;
+import dev.agenvas.shared.http.HttpTimeouts;
 import dev.agenvas.settings.application.CredentialCipher;
 import dev.agenvas.task.domain.Task;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
@@ -433,7 +436,8 @@ public class MediaCapabilityService {
         if (!source.isObject())
             throw invalid(ApiMessage.of("api.media-capability-service.capability-template-parameters-must-be-objects"));
         if (MediaAdapterRegistry.RUNNINGHUB_ADAPTERS.contains(adapterId)) {
-            if (!java.util.Set.of("runningHub", "pricing").containsAll(source.propertyNames()))
+            if (!java.util.Set.of("runningHub", "pricing", MediaHttpTimeouts.SETTINGS_KEY)
+                    .containsAll(source.propertyNames()))
                 throw invalid(ApiMessage.of(
                         "api.media-capability-service.runninghub-capabilities-only-accept-parameter-definitions-and-estimated-prices"));
             var definition = RunningHubDefinition.parse(mapper, source.get("runningHub"), declaration.kind());
@@ -441,6 +445,8 @@ public class MediaCapabilityService {
             ObjectNode price = mapper.createObjectNode();
             if (source.has("pricing"))
                 price.set("pricing", source.get("pricing"));
+            if (source.has(MediaHttpTimeouts.SETTINGS_KEY))
+                price.set(MediaHttpTimeouts.SETTINGS_KEY, source.get(MediaHttpTimeouts.SETTINGS_KEY));
             MediaCapabilityConfiguration.normalize(mapper, declaration, price, settings);
             return normalized.toString();
         }
@@ -615,6 +621,16 @@ public class MediaCapabilityService {
         JsonNode settings = mapper.readTree(snapshot.specJson()).path("settings");
         var declaration = declaration(snapshot.adapterId(), settings);
         return MediaCapabilityConfiguration.policy(declaration, settings);
+    }
+
+    /** Every HTTP operation reads the immutable capability version retained by this attempt. */
+    public HttpTimeouts httpTimeouts(MediaCapabilityBinding binding) {
+        return MediaHttpTimeouts.configured(settings(binding));
+    }
+
+    /** New configuration drafts use one server-owned table, independent from historical absence. */
+    public Map<String, HttpTimeouts> httpTimeoutDefaults() {
+        return MediaHttpTimeouts.defaults();
     }
 
     public RunningHubDefinition runningHubDefinition(MediaCapabilityBinding binding) {

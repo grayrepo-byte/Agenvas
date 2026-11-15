@@ -4131,5 +4131,20 @@
   "settings.llm.connections.actions": "Действия",
   "settings.llm.connections.editAction": "Изменить",
   "settings.llm.connections.modeUnavailable": "Не удалось получить режим работы. Подключения и ввод сохранены.",
-  "settings.llm.connections.keyCleared": "Поле нового ключа очищено. При редактировании оставьте его пустым для сохранения ключа на сервере."
+  "settings.llm.connections.keyCleared": "Поле нового ключа очищено. При редактировании оставьте его пустым для сохранения ключа на сервере.",
+  "settings.httpTimeouts.title": "Таймауты запросов",
+  "settings.httpTimeouts.connectSeconds": "Таймаут соединения (секунды)",
+  "settings.httpTimeouts.writeSeconds": "Таймаут записи (секунды)",
+  "settings.httpTimeouts.readSeconds": "Таймаут чтения (секунды)",
+  "settings.httpTimeouts.callSeconds": "Таймаут всего запроса (секунды)",
+  "settings.httpTimeouts.connectHint": "Максимальное время установления соединения.",
+  "settings.httpTimeouts.writeHint": "Максимальное время блокировки одной записи тела запроса.",
+  "settings.httpTimeouts.readHint": "Максимальное время блокировки одного чтения при ожидании данных ответа.",
+  "settings.httpTimeouts.callHint": "Единый срок для всего HTTP-запроса, включая соединение, отправку и чтение. Он не сбрасывается при смене этапов или во время передачи; лимиты этапов не складываются.",
+  "settings.httpTimeouts.scopeHint": "Применяется к каждому запросу API, загрузке входных данных и скачиванию результата, а не ко всей задаче генерации.",
+  "settings.httpTimeouts.legacyHint": "Ниже указаны значения по умолчанию для публикации. Пока вы не измените таймаут, существующая возможность использует прежние настройки протокола. Изменение сохраняет все четыре значения в новой версии возможности.",
+  "settings.httpTimeouts.defaultsUnavailable": "Сервер не вернул таймауты по умолчанию. Заполните все четыре поля или перезагрузите настройки перед публикацией.",
+  "settings.httpTimeouts.integerRange": "{0}: требуется целое число от 1 до {1}.",
+  "settings.httpTimeouts.phaseExceedsCall": "{0} не может превышать таймаут всего запроса.",
+  "settings.editor.timeoutsHint": "Ограничьте соединение, ожидание передачи и весь запрос"
 }

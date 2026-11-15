@@ -78,6 +78,9 @@ public class GoogleNanoBananaAdapter implements MediaAdapter {
     @Override
     public Submission submit(AttemptContext context) {
         Snapshot snapshot = snapshot(context);
+        var timeouts = dev.agenvas.provider.domain.MediaHttpTimeouts.configured(
+                mapper.readTree(snapshot.specJson()).path("settings"));
+        GoogleNanoBananaClient invocation = timeouts == null ? client : client.withTimeouts(timeouts);
         String key = credential(snapshot);
         String configuredModel = modelName(snapshot);
         String prompt = context.lease().input().path("prompt").asText();
@@ -86,7 +89,7 @@ public class GoogleNanoBananaAdapter implements MediaAdapter {
             prompt += "\nAvoid: " + negative;
         List<GoogleNanoBananaClient.InputImage> references = references(context);
         try {
-            return new Submission.Completed(client.generate(key, configuredModel,
+            return new Submission.Completed(invocation.generate(key, configuredModel,
                     snapshot.connectionVersion().origin(), prompt, aspectRatio(context),
                     parameters(context).resolution(), references));
         } catch (GoogleNanoBananaClient.Rejected rejected) {

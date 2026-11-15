@@ -1,6 +1,7 @@
 package dev.agenvas.provider.infrastructure;
 
 import dev.agenvas.artifact.domain.AudioGenerationParameters;
+import dev.agenvas.shared.http.HttpTimeouts;
 import dev.agenvas.shared.http.PinnedHttpClients;
 import java.io.IOException;
 import java.net.URI;
@@ -28,6 +29,17 @@ public final class SeedAudioClient {
     private final URI origin;
     private final OkHttpClient http;
     private final ObjectMapper mapper;
+
+    private SeedAudioClient(SeedAudioClient source, HttpTimeouts timeouts) {
+        this.mapper = source.mapper;
+        this.origin = source.origin;
+        this.http = timeouts.configure(source.http);
+    }
+
+    /** Each capability uses a private transport copy; injected defaults remain unchanged. */
+    public SeedAudioClient withTimeouts(HttpTimeouts timeouts) {
+        return new SeedAudioClient(this, timeouts);
+    }
 
     @Autowired
     public SeedAudioClient(ObjectMapper mapper) {

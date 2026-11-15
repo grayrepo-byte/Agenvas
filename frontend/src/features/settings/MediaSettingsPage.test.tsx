@@ -12,6 +12,7 @@ import { server } from "../../test/server";
 import { klingField, klingProfiles } from "../../test/klingProfiles";
 import { definition as comfyDefinition, graph as comfyGraph } from "./comfyWorkflowFixture";
 import { MediaSettingsPage } from "./MediaSettingsPage";
+import { syntheticHttpTimeoutDefaults, syntheticHttpTimeouts } from "./mediaHttpTimeoutTestFixture";
 
 const mockDefault = [
   { kind: "IMAGE_GENERATION", capabilityId: "mock-image", version: 0 },
@@ -35,6 +36,7 @@ function settingsFixture(
   capabilityChanges: Partial<MediaCapability> = {},
 ): MediaSettings {
   return {
+    httpTimeoutDefaults: syntheticHttpTimeoutDefaults,
     defaults: [
       { kind: "IMAGE_GENERATION", capabilityId: "portrait", version: 0 },
       { kind: "VIDEO_GENERATION", capabilityId: "mock-video", version: 0 },
@@ -135,7 +137,11 @@ describe("MediaSettingsPage", () => {
       server.use(
         http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
         http.get("/api/v1/settings/media-connections", () =>
-          HttpResponse.json({ connections: [], defaults: mockDefault }),
+          HttpResponse.json({
+            connections: [],
+            httpTimeoutDefaults: syntheticHttpTimeoutDefaults,
+            defaults: mockDefault,
+          }),
         ),
         http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
         http.post("/api/v1/settings/media-connections", async ({ request }) => {
@@ -293,6 +299,7 @@ describe("MediaSettingsPage", () => {
           name: "完整可灵能力",
           adapterId: profile.adapterId,
           settings: {
+            httpTimeouts: syntheticHttpTimeouts,
             model: profile.model ?? "",
             operation: profile.operation,
             ...(Object.keys(dynamicValues).length ? { defaultParameters: { dynamicValues } } : {}),
@@ -431,6 +438,7 @@ describe("MediaSettingsPage", () => {
             name: "组合限制",
             adapterId: "KLING_VIDEO",
             settings: {
+              httpTimeouts: syntheticHttpTimeouts,
               model: profile.model,
               operation,
               maxReferenceImages: profile.inputLimits!.maxReferenceImages,
@@ -512,6 +520,7 @@ describe("MediaSettingsPage", () => {
           name: "MiniMax H3 2K",
           adapterId: "MINIMAX_H3",
           settings: {
+            httpTimeouts: syntheticHttpTimeouts,
             defaultParameters: { aspectRatio: "AUTO", videoResolution: "1440p" },
             defaultDurationSeconds: 6,
             maxReferenceVideos: 2,
@@ -528,7 +537,11 @@ describe("MediaSettingsPage", () => {
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
       http.get("/api/v1/settings/media-connections", () =>
-        HttpResponse.json({ connections: [], defaults: mockDefault }),
+        HttpResponse.json({
+          connections: [],
+          httpTimeoutDefaults: syntheticHttpTimeoutDefaults,
+          defaults: mockDefault,
+        }),
       ),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
       http.post("/api/v1/settings/media-connections", async ({ request }) => {
@@ -559,7 +572,11 @@ describe("MediaSettingsPage", () => {
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
       http.get("/api/v1/settings/media-connections", () =>
-        HttpResponse.json({ connections: [], defaults: mockDefault }),
+        HttpResponse.json({
+          connections: [],
+          httpTimeoutDefaults: syntheticHttpTimeoutDefaults,
+          defaults: mockDefault,
+        }),
       ),
       http.post("/api/v1/settings/media-connections", () => {
         requests.push("create");
@@ -608,7 +625,11 @@ describe("MediaSettingsPage", () => {
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
       http.get("/api/v1/settings/media-connections", () =>
-        HttpResponse.json({ connections: [], defaults: mockDefault }),
+        HttpResponse.json({
+          connections: [],
+          httpTimeoutDefaults: syntheticHttpTimeoutDefaults,
+          defaults: mockDefault,
+        }),
       ),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
       http.post("/api/v1/settings/media-connections", async ({ request }) => {
@@ -681,7 +702,11 @@ describe("MediaSettingsPage", () => {
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
       http.get("/api/v1/settings/media-connections", () =>
-        HttpResponse.json({ connections: [], defaults: mockDefault }),
+        HttpResponse.json({
+          connections: [],
+          httpTimeoutDefaults: syntheticHttpTimeoutDefaults,
+          defaults: mockDefault,
+        }),
       ),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
       http.post("/api/v1/settings/media-connections", async ({ request }) => {
@@ -814,7 +839,10 @@ describe("MediaSettingsPage", () => {
         {
           name: "背景应用",
           adapterId: "RUNNINGHUB_IMAGE",
-          settings: { runningHub: { ...definition, fields: [definition.fields[0]], fixedBindings: [] } },
+          settings: {
+            httpTimeouts: syntheticHttpTimeouts,
+            runningHub: { ...definition, fields: [definition.fields[0]], fixedBindings: [] },
+          },
         },
       ]),
     );
@@ -1074,7 +1102,14 @@ describe("MediaSettingsPage", () => {
       await user.click(within(dialog).getByRole("button", { name: "发布能力" }));
       await waitFor(() =>
         expect(writes).toEqual([
-          { name: targetName ?? "手动命名", adapterId: "RUNNINGHUB_IMAGE", settings: { runningHub: definition } },
+          {
+            name: targetName ?? "手动命名",
+            adapterId: "RUNNINGHUB_IMAGE",
+            settings: {
+              httpTimeouts: syntheticHttpTimeouts,
+              runningHub: definition,
+            },
+          },
         ]),
       );
     },
@@ -1238,6 +1273,7 @@ describe("MediaSettingsPage", () => {
       name: "智能工作流",
       adapterId: "RUNNINGHUB_IMAGE",
       settings: {
+        httpTimeouts: syntheticHttpTimeouts,
         runningHub: { ...definition, fields: [definition.fields[0], definition.fields[2], definition.fields[3]] },
       },
     });
@@ -1802,6 +1838,7 @@ describe("MediaSettingsPage", () => {
   it("sets the first configured default and edits a capability in a tabbed dialog", async () => {
     let defaultSelection: unknown;
     const settings: MediaSettings = {
+      httpTimeoutDefaults: syntheticHttpTimeoutDefaults,
       defaults: [
         { kind: "IMAGE_GENERATION", capabilityId: null, version: 2 },
         { kind: "VIDEO_GENERATION", capabilityId: null, version: 0 },
@@ -1855,6 +1892,7 @@ describe("MediaSettingsPage", () => {
         defaultSelection = await request.json();
         return HttpResponse.json({
           ...settings,
+          httpTimeoutDefaults: syntheticHttpTimeoutDefaults,
           defaults: [{ kind: "IMAGE_GENERATION", capabilityId: "portrait", version: 3 }, settings.defaults[1]],
         });
       }),
@@ -1884,7 +1922,11 @@ describe("MediaSettingsPage", () => {
         reads += 1;
         return reads === 1
           ? HttpResponse.json({ detail: "Unavailable", status: 503 }, { status: 503 })
-          : HttpResponse.json({ connections: [], defaults: mockDefault });
+          : HttpResponse.json({
+              connections: [],
+              httpTimeoutDefaults: syntheticHttpTimeoutDefaults,
+              defaults: mockDefault,
+            });
       }),
     );
     mount();
@@ -1904,13 +1946,18 @@ describe("MediaSettingsPage", () => {
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
       http.get("/api/v1/settings/media-connections", () =>
-        HttpResponse.json({ connections: [], defaults: mockDefault }),
+        HttpResponse.json({
+          connections: [],
+          httpTimeoutDefaults: syntheticHttpTimeoutDefaults,
+          defaults: mockDefault,
+        }),
       ),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
       http.post("/api/v1/settings/media-connections", async ({ request }) => {
         posted.push(await request.json());
         await pending;
         return HttpResponse.json({
+          httpTimeoutDefaults: syntheticHttpTimeoutDefaults,
           defaults: mockDefault,
           connections: [
             {
@@ -1971,6 +2018,7 @@ describe("MediaSettingsPage", () => {
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
       http.get("/api/v1/settings/media-connections", () =>
         HttpResponse.json({
+          httpTimeoutDefaults: syntheticHttpTimeoutDefaults,
           defaults: mockDefault,
           connections: [
             {
@@ -1992,7 +2040,11 @@ describe("MediaSettingsPage", () => {
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
       http.put("/api/v1/settings/media-connections/openai-1", async ({ request }) => {
         submitted = await request.json();
-        return HttpResponse.json({ defaults: mockDefault, connections: [] });
+        return HttpResponse.json({
+          httpTimeoutDefaults: syntheticHttpTimeoutDefaults,
+          defaults: mockDefault,
+          connections: [],
+        });
       }),
     );
     mount();
@@ -2017,6 +2069,7 @@ describe("MediaSettingsPage", () => {
       http.get("/api/v1/settings/media-connections", () => {
         reads += 1;
         return HttpResponse.json({
+          httpTimeoutDefaults: syntheticHttpTimeoutDefaults,
           defaults: mockDefault,
           connections: [
             {
@@ -2077,6 +2130,7 @@ describe("MediaSettingsPage", () => {
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
       http.get("/api/v1/settings/media-connections", () =>
         HttpResponse.json({
+          httpTimeoutDefaults: syntheticHttpTimeoutDefaults,
           defaults: mockDefault,
           connections: [
             {
@@ -2098,7 +2152,11 @@ describe("MediaSettingsPage", () => {
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
       http.post("/api/v1/settings/media-connections/comfy-1/capabilities", async ({ request }) => {
         submitted = await request.json();
-        return HttpResponse.json({ defaults: mockDefault, connections: [] });
+        return HttpResponse.json({
+          httpTimeoutDefaults: syntheticHttpTimeoutDefaults,
+          defaults: mockDefault,
+          connections: [],
+        });
       }),
     );
     server.use(
@@ -2144,6 +2202,7 @@ describe("MediaSettingsPage", () => {
         name: "Wan video",
         adapterId: "COMFY_VIDEO_V1",
         settings: {
+          httpTimeouts: syntheticHttpTimeouts,
           comfyWorkflow: { ...comfyDefinition, minimumSeconds: 3 },
           defaultDurationSeconds: 4,
           pricing: { amount: "1.25", currency: "CNY", unit: "SECOND" },
@@ -2257,6 +2316,7 @@ describe("MediaSettingsPage", () => {
       expect(submitted).toMatchObject({
         adapterId: "OPENAI_GPT_IMAGE_2",
         settings: {
+          httpTimeouts: syntheticHttpTimeouts,
           model,
           quality: "max",
           tokenPricing: {
@@ -2368,6 +2428,7 @@ describe("MediaSettingsPage", () => {
           name: "Looping illustration",
           adapterId: "OPENAI_GPT_IMAGE_2",
           settings: {
+            httpTimeouts: syntheticHttpTimeouts,
             model,
             quality: "xhigh",
             outputFormat: "gif",
@@ -2394,6 +2455,7 @@ describe("MediaSettingsPage", () => {
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
       http.get("/api/v1/settings/media-connections", () =>
         HttpResponse.json({
+          httpTimeoutDefaults: syntheticHttpTimeoutDefaults,
           defaults: mockDefault,
           connections: [
             {
@@ -2415,7 +2477,11 @@ describe("MediaSettingsPage", () => {
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
       http.post("/api/v1/settings/media-connections/openai-1/capabilities", async ({ request }) => {
         submitted = await request.json();
-        return HttpResponse.json({ defaults: mockDefault, connections: [] });
+        return HttpResponse.json({
+          httpTimeoutDefaults: syntheticHttpTimeoutDefaults,
+          defaults: mockDefault,
+          connections: [],
+        });
       }),
     );
     mount();
@@ -2431,6 +2497,7 @@ describe("MediaSettingsPage", () => {
         name: "Portrait image",
         adapterId: "OPENAI_GPT_IMAGE_2",
         settings: {
+          httpTimeouts: syntheticHttpTimeouts,
           model: "",
           quality: "high",
           tokenPricing: {
@@ -2707,6 +2774,7 @@ describe("MediaSettingsPage", () => {
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
       http.get("/api/v1/settings/media-connections", () =>
         HttpResponse.json({
+          httpTimeoutDefaults: syntheticHttpTimeoutDefaults,
           defaults: mockDefault,
           connections: [
             {
@@ -2728,7 +2796,11 @@ describe("MediaSettingsPage", () => {
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
       http.post("/api/v1/settings/media-connections/google-1/capabilities", async ({ request }) => {
         submitted = await request.json();
-        return HttpResponse.json({ defaults: mockDefault, connections: [] });
+        return HttpResponse.json({
+          httpTimeoutDefaults: syntheticHttpTimeoutDefaults,
+          defaults: mockDefault,
+          connections: [],
+        });
       }),
     );
     mount();
@@ -2746,7 +2818,14 @@ describe("MediaSettingsPage", () => {
     expect(screen.getByText("Google Gemini", { selector: "strong" })).toBeInTheDocument();
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "发布能力" }));
     await waitFor(() =>
-      expect(submitted).toEqual({ name: "Nano Banana 2", adapterId: "GOOGLE_NANO_BANANA_2", settings: { model: "" } }),
+      expect(submitted).toEqual({
+        name: "Nano Banana 2",
+        adapterId: "GOOGLE_NANO_BANANA_2",
+        settings: {
+          httpTimeouts: syntheticHttpTimeouts,
+          model: "",
+        },
+      }),
     );
   });
 
@@ -2842,12 +2921,20 @@ describe("MediaSettingsPage", () => {
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
       http.get("/api/v1/settings/media-connections", () =>
-        HttpResponse.json({ connections: [], defaults: mockDefault }),
+        HttpResponse.json({
+          connections: [],
+          httpTimeoutDefaults: syntheticHttpTimeoutDefaults,
+          defaults: mockDefault,
+        }),
       ),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
       http.post("/api/v1/settings/media-connections", async ({ request }) => {
         submitted = await request.json();
-        return HttpResponse.json({ connections: [], defaults: mockDefault });
+        return HttpResponse.json({
+          connections: [],
+          httpTimeoutDefaults: syntheticHttpTimeoutDefaults,
+          defaults: mockDefault,
+        });
       }),
     );
     mount();
@@ -2876,7 +2963,7 @@ describe("MediaSettingsPage", () => {
   });
 
   it("creates an AutoDL token connection and publishes a versioned H3 workflow", async () => {
-    let config: MediaSettings = { connections: [], defaults: [] };
+    let config: MediaSettings = { connections: [], httpTimeoutDefaults: syntheticHttpTimeoutDefaults, defaults: [] };
     const connectionWrites: unknown[] = [];
     const capabilityWrites: unknown[] = [];
     server.use(
@@ -2929,6 +3016,7 @@ describe("MediaSettingsPage", () => {
           name: "H3 mixed",
           adapterId: "AUTODL_COMFY_VIDEO",
           settings: {
+            httpTimeouts: syntheticHttpTimeouts,
             workflowId: "minimax_h3_z0903",
             videoResolution: "480p",
             videoResolutions: ["480p", "768p"],
@@ -2995,6 +3083,7 @@ describe("MediaSettingsPage", () => {
           name: "Future video",
           adapterId: "AUTODL_COMFY_VIDEO",
           settings: {
+            httpTimeouts: syntheticHttpTimeouts,
             workflowId: definition.id,
             workflowDefinition: definition,
             videoResolution: "720p",
@@ -3026,6 +3115,7 @@ describe("capability deletion", () => {
         return HttpResponse.json({
           ...settings,
           connections: [{ ...settings.connections[0], capabilities: [] }],
+          httpTimeoutDefaults: syntheticHttpTimeoutDefaults,
           defaults: settings.defaults.map(item =>
             item.capabilityId === "portrait" ? { ...item, capabilityId: null, version: 1 } : item,
           ),
@@ -3256,7 +3346,11 @@ it.each([false, true])("fills ComfyUI explicitly without saving or losing the dr
   server.use(
     http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
     http.get("/api/v1/settings/media-connections", () =>
-      HttpResponse.json(editing ? fixture : { connections: [], defaults: mockDefault }),
+      HttpResponse.json(
+        editing
+          ? fixture
+          : { connections: [], httpTimeoutDefaults: syntheticHttpTimeoutDefaults, defaults: mockDefault },
+      ),
     ),
     http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
     http.post("/api/v1/settings/local-services/discover", async ({ request }) => {

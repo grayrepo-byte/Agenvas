@@ -1,5 +1,6 @@
 package dev.agenvas.provider.infrastructure;
 
+import dev.agenvas.shared.http.HttpTimeouts;
 import dev.agenvas.shared.http.PinnedHttpClients;
 import java.io.IOException;
 import java.net.URI;
@@ -29,6 +30,17 @@ public class ArkSeedanceClient {
     private final URI origin;
     private final OkHttpClient http;
     private final ObjectMapper mapper;
+
+    private ArkSeedanceClient(ArkSeedanceClient source, HttpTimeouts timeouts) {
+        this.mapper = source.mapper;
+        this.origin = source.origin;
+        this.http = timeouts.configure(source.http);
+    }
+
+    /** Each capability uses a private transport copy; injected defaults remain unchanged. */
+    public ArkSeedanceClient withTimeouts(HttpTimeouts timeouts) {
+        return new ArkSeedanceClient(this, timeouts);
+    }
 
     @Autowired
     public ArkSeedanceClient(ObjectMapper mapper) {

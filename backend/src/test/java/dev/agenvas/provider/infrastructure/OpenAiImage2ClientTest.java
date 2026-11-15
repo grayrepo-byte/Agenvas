@@ -755,7 +755,7 @@ class OpenAiImage2ClientTest {
     /**
      * 同步生成要数十秒才回第一个字节。读超时若短于生成耗时，客户端会先超时、把已经生成好的
      * 结果判成 UNKNOWN，所以这里必须能等下去。延迟取 11 秒 —— 高于曾经写死的 10 秒读超时，
-     * 低于现在的 3 分钟；把读超时改回 10 秒时此用例立即失败。
+     * 低于现在的 5 分钟；把读超时改回 10 秒时此用例立即失败。
      */
     @Test
     void slowGenerationIsWaitedForInsteadOfTimedOut() throws IOException {
@@ -775,6 +775,62 @@ class OpenAiImage2ClientTest {
                 "ridge", "medium", "1024x1024", "http://127.0.0.1:" + port + "/v1")) {
             assertThat(generated.stream().readAllBytes()).isEqualTo(png);
         }
+    }
+
+    /** 大图请求体发送可能阻塞超过 10 秒，必须使用生成预算而不是 OkHttp 的默认写超时。 */
+    @Test
+    @org.junit.jupiter.api.Timeout(30)
+    void slowMultipartUploadUsesTheGenerationBudget() throws IOException {
+        byte[] reference = new byte[12 * 1024 * 1024];
+        byte[] png = new byte[]{(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10};
+        AtomicInteger submissions = new AtomicInteger();
+        var receivedBytes = new java.util.concurrent.atomic.AtomicLong();
+        server.createContext("/v1/images/edits", exchange -> {
+            submissions.incrementAndGet();
+            try {
+                // 不读取请求体，让真实 socket 产生背压；延迟高于旧的 10 秒写入上限。
+                Thread.sleep(SLOW_GENERATION_DELAY_MS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                exchange.close();
+                return;
+            }
+            receivedBytes.set(exchange.getRequestBody().transferTo(java.io.OutputStream.nullOutputStream()));
+            respond(exchange, 200, "{\"data\":[{\"b64_json\":\""
+                    + Base64.getEncoder().encodeToString(png) + "\"}]}");
+        });
+
+        try (var generated = client.edit("synthetic-key", OpenAiImage2Client.DEFAULT_MODEL,
+                "Synthetic slow upload", "medium", "1024x1024", List.of(reference), false,
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/v1")) {
+            assertThat(generated.stream().readAllBytes()).isEqualTo(png);
+        }
+        assertThat(submissions).hasValue(1);
+        assertThat(receivedBytes.get()).isGreaterThan(reference.length);
+    }
+
+    /** 总预算包含发送请求体，发送和等待响应不能各自重新获得一份调用期限。 */
+    @Test
+    void generationBudgetAlsoBoundsMultipartUploadWithoutResubmitting() {
+        AtomicInteger submissions = new AtomicInteger();
+        server.createContext("/v1/images/edits", exchange -> {
+            submissions.incrementAndGet();
+            try {
+                Thread.sleep(SLOW_RESPONSE_DELAY_MS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            exchange.close();
+        });
+        var impatient = new OpenAiImage2Client(mapper, Duration.ofSeconds(5), IMPATIENT_TIMEOUT);
+
+        assertThatThrownBy(() -> impatient.edit("synthetic-key", OpenAiImage2Client.DEFAULT_MODEL,
+                "Synthetic bounded upload", "medium", "1024x1024",
+                List.of(new byte[12 * 1024 * 1024]), false,
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/v1"))
+                .isInstanceOfSatisfying(OpenAiImage2Client.Uncertain.class,
+                        failure -> assertThat(failure.reasonCode()).isEqualTo(ProviderFailureCodes.CALL_TIMEOUT));
+        assertThat(submissions).hasValue(1);
     }
 
     @Test

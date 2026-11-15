@@ -1,6 +1,7 @@
 package dev.agenvas.provider.application;
 
 import dev.agenvas.provider.domain.AttemptContext;
+import dev.agenvas.provider.domain.MediaHttpTimeouts;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaPayload;
 import dev.agenvas.provider.domain.NativeMediaFailure;
@@ -16,6 +17,7 @@ import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapsho
 import dev.agenvas.provider.infrastructure.WanClient;
 import dev.agenvas.provider.infrastructure.WanMediaDownloadPolicy;
 import dev.agenvas.settings.application.CredentialCipher;
+import dev.agenvas.shared.http.HttpTimeouts;
 import dev.agenvas.task.domain.Task;
 import java.io.ByteArrayInputStream;
 import java.io.FilterInputStream;
@@ -97,7 +99,7 @@ abstract class WanProtocolAdapter implements MediaAdapter {
             return new Submission.Rejected("MEDIA_REFERENCE_PREPARATION_FAILED");
         }
         try {
-            return new Submission.Accepted(client.create(prepared.frozen().selected().profile(),
+            return new Submission.Accepted(api(snapshot).create(prepared.frozen().selected().profile(),
                     snapshot.connectionVersion().origin(), key, prepared.body()));
         } catch (WanClient.Rejected refused) {
             return new Submission.Rejected(WanClient.CREATE_REJECTED);
@@ -134,7 +136,7 @@ abstract class WanProtocolAdapter implements MediaAdapter {
                 || result.nodeId() == null || !result.nodeId().startsWith(nodePrefix(frozen)))
             throw WanClient.protocolFailure();
         try {
-            return download(context, frozen, URI.create(result.url()));
+            return download(context, snapshot, frozen, URI.create(result.url()));
         } catch (WanMediaDownloadPolicy.Expired expired) {
             // The original acknowledged task is the only refresh authority; never submit again.
             var state = query(context, snapshot, frozen);
@@ -146,7 +148,7 @@ abstract class WanProtocolAdapter implements MediaAdapter {
                     || fresh.getFirst().url().equals(result.url()))
                 throw new NativeMediaFailure(WanClient.RESULT_EXPIRED);
             try {
-                return download(context, frozen, URI.create(fresh.getFirst().url()));
+                return download(context, snapshot, frozen, URI.create(fresh.getFirst().url()));
             } catch (WanMediaDownloadPolicy.Expired stillExpired) {
                 throw new NativeMediaFailure(WanClient.RESULT_EXPIRED);
             }
@@ -215,6 +217,22 @@ abstract class WanProtocolAdapter implements MediaAdapter {
             throw new IllegalStateException("Pinned Wan mapping differs");
         return snapshot;
     }
+    /** Read only the immutable capability version selected when this task was accepted. */
+    private HttpTimeouts httpTimeouts(Snapshot snapshot) {
+        return snapshot.specJson() == null ? null
+                : MediaHttpTimeouts.configured(mapper.readTree(snapshot.specJson()).path("settings"));
+    }
+
+    private WanClient api(Snapshot snapshot) {
+        var timeouts = httpTimeouts(snapshot);
+        return timeouts == null ? client : client.withTimeouts(timeouts);
+    }
+
+    private WanMediaDownloadPolicy downloads(Snapshot snapshot) {
+        var timeouts = httpTimeouts(snapshot);
+        return timeouts == null ? downloads : downloads.withTimeouts(timeouts);
+    }
+
     private String credential(Snapshot snapshot) {
         var version = snapshot.connectionVersion();
         String key;
@@ -233,7 +251,7 @@ abstract class WanProtocolAdapter implements MediaAdapter {
         return key;
     }
     private WanClient.State query(AttemptContext context, Snapshot snapshot, Frozen frozen) {
-        return client.query(frozen.selected().profile(), snapshot.connectionVersion().origin(), credential(snapshot),
+        return api(snapshot).query(frozen.selected().profile(), snapshot.connectionVersion().origin(), credential(snapshot),
                 context.originalRequestId());
     }
     private ProviderResultManifest manifest(Frozen frozen, WanClient.State state) {
@@ -262,7 +280,7 @@ abstract class WanProtocolAdapter implements MediaAdapter {
                 ? RunningHubDefinition.OutputKind.IMAGE
                 : RunningHubDefinition.OutputKind.VIDEO;
     }
-    private MediaPayload download(AttemptContext context, Frozen frozen, URI url) {
+    private MediaPayload download(AttemptContext context, Snapshot snapshot, Frozen frozen, URI url) {
         downloads.validate(url);
         Path directory;
         try {
@@ -274,7 +292,7 @@ abstract class WanProtocolAdapter implements MediaAdapter {
         try {
             String mime;
             try (OutputStream target = Files.newOutputStream(file)) {
-                mime = downloads.download(url, target, kind == Task.Kind.VIDEO_GENERATION);
+                mime = downloads(snapshot).download(url, target, kind == Task.Kind.VIDEO_GENERATION);
             }
             validateResult(context, frozen.selected().profile(), frozen.values(), file);
             return new MediaPayload(new FilterInputStream(Files.newInputStream(file)) {
