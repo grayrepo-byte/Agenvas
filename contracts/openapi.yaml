@@ -5011,7 +5011,7 @@ paths:
     post:
       operationId: composeVideo
       summary: 按分镜和台词对应关系智能排布配音并本地合成
-      description: 固定有序视频片段与配音精确版本，后台分析原片和配音的声音能量/静音区间并自动适配。声音活动不等于语音识别；无可靠窗口时回退时长排布并记录警告。预算由 capabilities 端点提供，默认60镜、300句、2000条字幕、10分钟和2GiB源素材；绝对上界为120镜、600句、5000条字幕、10分钟和8GiB源素材。单个音视频最多10分钟，输出最多500MiB。最多1.15倍保音高加速，无法完整容纳时失败，不截断配音。输出720p/1080p/2160p（受服务端配置约束）、16:9/9:16/1:1、30fps的新视频节点，逐镜向下对齐整帧（少于34ms）并记录实际时间表；支持零配音、取源裁切、0.5–2倍视频速度、首尾淡黑、定时字幕与背景音乐；默认去除原声，KEEP保留完整原声，BACKGROUND保留15%原声（包括原对白）。本地处理无Provider费用，复用Task查询/取消/显式重试；同键异参冲突。
+      description: 固定有序视频片段与配音精确版本，后台分析原片和配音的声音能量/静音区间并自动适配。声音活动不等于语音识别；无可靠窗口时回退时长排布并记录警告。预算由 capabilities 端点提供，默认60镜、300句、2000条字幕、10分钟和2GiB源素材；绝对上界为120镜、600句、5000条字幕、10分钟和8GiB源素材。单个音视频最多10分钟，输出最多500MiB。最多1.15倍保音高加速，无法完整容纳时失败，不截断配音。输出720p/1080p/2160p（每次导出在程序内选择）、16:9/9:16/1:1、30fps的新视频节点，逐镜向下对齐整帧（少于34ms）并记录实际时间表；支持零配音、取源裁切、0.5–2倍视频速度、首尾淡黑、定时字幕与背景音乐；默认去除原声，KEEP保留完整原声，BACKGROUND保留15%原声（包括原对白）。本地处理无Provider费用，复用Task查询/取消/显式重试；同键异参冲突。
       tags: [Tasks]
       parameters:
         - name: Idempotency-Key
@@ -5044,7 +5044,7 @@ paths:
       tags: [Tasks]
       responses:
         "200":
-          description: 受部署配置和绝对协议上界约束的有效预算，不包含本机路径
+          description: 有效资源预算与程序支持的输出分辨率，不包含本机路径；分辨率由每次导出选择，部署配置不筛选选项
           content:
             application/json:
               schema: {$ref: "#/components/schemas/VideoCompositionCapabilities"}
@@ -11155,7 +11155,8 @@ components:
         timeoutSeconds: {type: number, exclusiveMinimum: 0, maximum: 3600}
         resolutions:
           type: array
-          minItems: 1
+          description: 程序支持的全部输出分辨率，由每次导出选择，不受部署配置筛选
+          minItems: 3
           maxItems: 3
           uniqueItems: true
           items: {type: string, enum: [720P, 1080P, 2160P]}

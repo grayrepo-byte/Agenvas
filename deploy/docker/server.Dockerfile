@@ -74,7 +74,8 @@ RUN --mount=type=cache,id=agenvas-maven,target=/root/.m2-cache,sharing=locked \
 # Source is content-pinned and compiled for the target Linux architecture. No model is fetched here.
 FROM maven:3.9.12-eclipse-temurin-21-noble@sha256:c3c9d3ac4ce8431a3995c0318b8d390f448e693dd4fabc16e9b68d2e1f3d7b46 AS whisper-build
 ENV WHISPER_COMMIT=d1be6fde11ac6e0407606b4e42fe72d34add8037
-RUN apt-get update && apt-get install --yes --no-install-recommends cmake g++ git ca-certificates \
+# CMake's default Unix Makefiles generator needs make even when recommendations are disabled.
+RUN apt-get update && apt-get install --yes --no-install-recommends cmake g++ make git ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && git init /workspace/whisper \
     && git -C /workspace/whisper remote add origin https://github.com/ggml-org/whisper.cpp.git \

@@ -13,12 +13,17 @@ class VideoCompositionLimitsTest {
                 VideoCompositionLimits.class).orElseThrow(() -> new IllegalArgumentException("Missing limits"));
     }
     @Test
+    void deploymentBudgetsDoNotFilterTheApplicationsExportResolutions() {
+        var limits = configured(Map.of("agenvas.video-composition.limits.max-duration-ms", "120000",
+                "agenvas.video-composition.limits.max-resolution", "720P"));
+        assertThat(limits.maxFrames()).isEqualTo(3600);
+        assertThat(limits.resolutions()).containsExactly("720P", "1080P", "2160P");
+    }
+    @Test
     void deploymentCanLowerBudgetsAndCannotExceedArchiveOrProtocolCeilings() {
         var limits = configured(Map.of("agenvas.video-composition.limits.max-duration-ms", "120000",
-                "agenvas.video-composition.limits.max-shots", "20", "agenvas.video-composition.limits.max-resolution",
-                "1080P"));
+                "agenvas.video-composition.limits.max-shots", "20"));
         assertThat(limits.maxFrames()).isEqualTo(3600);
-        assertThat(limits.resolutions()).containsExactly("720P", "1080P");
         for (var entry : Map.of("max-duration-ms", "2147483647", "max-shots", "121", "max-lines", "601",
                 "max-subtitles", "5001", "max-output-bytes", "524288001", "max-scratch-bytes", "8589934593",
                 "timeout", "PT2H", "preview-timeout", "PT3M", "scratch-root", "relative").entrySet()) {

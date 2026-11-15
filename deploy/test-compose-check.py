@@ -64,6 +64,20 @@ if '--quiet' not in args:
             with self.subTest(extra_hosts=hosts):
                 self.assertNotEqual(self.run_check(hosts).returncode, 0)
 
+    def test_export_resolution_is_not_a_deployment_setting(self):
+        environment = dict(os.environ, AGENVAS_VIDEO_COMPOSITION_LIMITS_MAX_RESOLUTION="720P")
+        environment.pop("COMPOSE_FILE", None)
+        environment.pop("COMPOSE_PROJECT_NAME", None)
+        for name in COMPOSE_FILES:
+            with self.subTest(compose_file=name):
+                result = subprocess.run([
+                    "docker", "compose", "--env-file", "/dev/null", "-f", str(REPO / name),
+                    "config", "--format", "json",
+                ], env=environment, capture_output=True, text=True, check=True, timeout=30)
+                config = json.loads(result.stdout)
+                server_environment = config["services"]["server"]["environment"]
+                self.assertNotIn("AGENVAS_VIDEO_COMPOSITION_LIMITS_MAX_RESOLUTION", server_environment)
+
 
 if __name__ == "__main__":
     unittest.main()

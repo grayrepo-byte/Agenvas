@@ -181,8 +181,10 @@ SMB 新增固定正式版 [`com.hierynomus:smbj:0.15.0`](https://github.com/hier
 导演上下文预算复用 Spring AI 2.0.1 已解析的 `JTokkitTokenCountEstimator`（`spring-ai-commons` 及其既有传递依赖），不新增依赖或 Provider 专属压缩 API。估算包含文本、工具定义、参数、回复与媒体预留；25% 余量用于不同模型 tokenizer 的差异，不能当作真实计费用量。语义交接使用原 ChatGateway 与持久回合。编译、定向单元与真实 PostgreSQL 的长任务/恢复验证见开发清单；真实模型摘要质量和墙钟十几小时运行另行验收。
 
 
-## 可选托管 ASR 构建清单（尚未实构建）
+## 可选托管 ASR 构建清单与验证范围
 
 服务器 Dockerfile 现声明 whisper.cpp v1.9.5、Git提交 `d1be6fde11ac6e0407606b4e42fe72d34add8037` 的 Linux CPU 源码构建，沿用现有固定 Maven/Temurin Ubuntu 镜像。构建关闭本机指令、GPU、OpenMP、隐式下载及server；不新增Maven/前端运行依赖。Tiny Q5_1多语言模型单独按管理员明确请求下载，固定修订、字节数、SHA-256和MIT许可见[ADR 0086](adr/0086-managed-local-asr-model-download.md)。初稿1.8.3并无真实验收依据，最终核验官方1.9.5仍支持现有CLI参数后保持已讨论的1.9.5。
 
-本轮只运行Java/TypeScript定向检查、真实PostgreSQL、受控下载流及C启动器的本机语法检查；没有执行Git源码获取、apt工具链安装、Linux引擎构建或真实模型下载/加载。编译工具链使用固定基础镜像中的Ubuntu包源，尚未做到二进制逐字节可复现，也未测具体下载量。amd64/arm64构建、原生依赖、512MiB地址限制下模型加载及1536MB应用并行峰值仍须真实验收，不能把此构建声明视为已验证的镜像。
+初次实现只运行Java/TypeScript定向检查、真实PostgreSQL、受控下载流及C启动器的本机语法检查；当时没有执行Git源码获取、apt工具链安装、Linux引擎构建或真实模型下载/加载。编译工具链使用固定基础镜像中的Ubuntu包源，尚未做到二进制逐字节可复现。
+
+2026-11-15 源码构建补验：`whisper-build` 显式安装 `make`，避免 `--no-install-recommends` 排除 CMake 默认 Unix Makefiles 生成器所需的构建工具。实际 Linux ARM64 固定源码获取、CMake 配置、whisper-cli 编译及 C 启动器编译通过；源码 Compose 的 server/web 镜像成功构建，最终 server 镜像内受限启动器的 `--help` 检查通过。amd64 构建、真实模型加载/识别及1536MB应用并行峰值不在本次验证范围；脚本回归与后续分辨率决策验证见开发清单。

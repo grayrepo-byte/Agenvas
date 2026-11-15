@@ -45,7 +45,8 @@ import tools.jackson.databind.node.ObjectNode;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
+        "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false",
+        "agenvas.video-composition.limits.max-resolution=720P"})
 class VideoCompositionPostgresIT {
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
@@ -207,6 +208,8 @@ class VideoCompositionPostgresIT {
         assertThat(budget.path("maxDurationMs").asInt()).isEqualTo(600_000);
         assertThat(budget.path("maxShots").asInt()).isEqualTo(60);
         assertThat(budget.path("maxSubtitles").asInt()).isEqualTo(2000);
+        assertThat(budget.path("resolutions").valueStream().map(value -> value.asText()).toList())
+                .containsExactly("720P", "1080P", "2160P");
         assertThat(budget.toString()).doesNotContain("scratchRoot", "fontFamily", "file:");
     }
 
@@ -352,6 +355,7 @@ class VideoCompositionPostgresIT {
     void zeroDialoguePostproductionFreezesMusicSubtitlesAndOutputAndReplaysTheSameCommand() throws Exception {
         var fixture = fixture();
         ObjectNode request = postproduction(fixture);
+        ((ObjectNode) request.path("output")).put("resolution", "2160P");
         var accepted = compositions.run(owner.userId(), fixture.project(), request, "postproduction-freeze");
         assertThat(
                 compositions.run(owner.userId(), fixture.project(), request.deepCopy(), "postproduction-freeze").id())
@@ -362,7 +366,7 @@ class VideoCompositionPostgresIT {
         assertThat(stored.input().at("/videoComposition/shots/0/durationMs").asInt()).isEqualTo(2000);
         assertThat(stored.input().at("/videoComposition/shots/0/speed").asDouble()).isEqualTo(2);
         assertThat(stored.input().path("sourceDurationMs").asInt()).isEqualTo(1000);
-        assertThat(stored.input().at("/videoComposition/output/resolution").asText()).isEqualTo("1080P");
+        assertThat(stored.input().at("/videoComposition/output/resolution").asText()).isEqualTo("2160P");
         assertThat(stored.input().at("/videoComposition/output/aspectRatio").asText()).isEqualTo("9:16");
         assertThat(stored.input().at("/mediaInput/audios")).hasSize(1);
         assertThat(stored.input().at("/mediaInput/audios/0/versionId").asText()).isEqualTo(fixture.audio().toString());

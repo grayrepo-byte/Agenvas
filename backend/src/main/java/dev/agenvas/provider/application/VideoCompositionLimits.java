@@ -10,7 +10,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "agenvas.video-composition.limits")
 public record VideoCompositionLimits(Integer maxDurationMs, Integer maxShots, Integer maxLines,
         Integer maxSubtitles, Long maxSourceBytes, Long maxScratchBytes, Long maxOutputBytes,
-        Long minFreeBytes, Duration timeout, Duration previewTimeout, Path scratchRoot, String maxResolution) {
+        Long minFreeBytes, Duration timeout, Duration previewTimeout, Path scratchRoot) {
+    private static final List<String> OUTPUT_RESOLUTIONS = List.of("720P", "1080P", "2160P");
     public static final int SOURCE_DURATION_MS = 600_000;
     public static final int DURATION_CEILING_MS = 600_000;
     public static final int SHOT_CEILING = 120;
@@ -34,19 +35,16 @@ public record VideoCompositionLimits(Integer maxDurationMs, Integer maxShots, In
         scratchRoot = scratchRoot == null ? Path.of(System.getProperty("java.io.tmpdir")) : scratchRoot;
         if (!scratchRoot.isAbsolute())
             throw new IllegalArgumentException("Composition scratch root must be absolute");
-        maxResolution = maxResolution == null ? "2160P" : maxResolution;
-        if (!List.of("720P", "1080P", "2160P").contains(maxResolution))
-            throw new IllegalArgumentException("Invalid composition maximum resolution");
     }
     public static VideoCompositionLimits defaults() {
-        return new VideoCompositionLimits(null, null, null, null, null, null, null, null, null, null, null, null);
+        return new VideoCompositionLimits(null, null, null, null, null, null, null, null, null, null, null);
     }
     public int maxFrames() {
         return (int) ((long) maxDurationMs * VideoCompositionPlanner.FPS / 1000);
     }
+    /** Output resolution is selected per export, rather than filtered by deployment budgets. */
     public List<String> resolutions() {
-        var values = List.of("720P", "1080P", "2160P");
-        return values.subList(0, values.indexOf(maxResolution) + 1);
+        return OUTPUT_RESOLUTIONS;
     }
     private static long bound(Number value, long fallback, long min, long max) {
         long result = value == null ? fallback : value.longValue();

@@ -4100,3 +4100,21 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 修复 Linux launcher 的虚拟地址空间限制：512 MiB 令固定 tiny 引擎初始化计算缓冲区失败；无 launcher 原引擎对照成功，1 GiB 虚拟上限后完整托管识别成功，保留 CPU/cgroup 预算和单任务约束。正式基础镜像 metadata 获取阻塞，改用已有项目镜像、官方工具链、固定源码及相同编译参数构建的隔离镜像验证，不代表正式完整 Dockerfile 构建通过。
 - [x] 27 项定向回归测试通过，含预算 JSON 数字存储往返及 ASR 100 ms 接受/101 ms 拒绝边界；独立审查未发现阻断问题。
 - [ ] 本轮未运行全量测试、长音频/静音/纯音乐质量评估、1536 MiB 容器下 JVM/识别/成片并发峰值与压力测试、浏览器交互、完整新版 Docker 构建与生产部署。内存准入预留不是 RSS 硬上限，不能由单任务成功推断并发安全。
+
+## 2026-11-15 本地源码构建工具补齐
+
+- [x] 通过源码 Compose 构建复现 whisper.cpp 的 `Unix Makefiles` / `CMAKE_MAKE_PROGRAM` 错误；构建阶段的 `--no-install-recommends` 不会安装推荐的 `make`。显式安装 `make`，保留固定源码、基础镜像和运行时配置。
+- [x] Linux ARM64 的 whisper.cpp 及 C 启动器实际编译通过，`docker compose -f docker-compose.local.yml build server web` 重试成功；包含前端 API 类型生成、TypeScript 与 Vite 构建。最终 server 镜像在只读根、无网络、默认非 root 用户下执行启动器 `--help` 成功，不代表真实模型识别验证。
+- [x] 更新脚本 9 项 Mock 回归、Bash 语法、源码 Compose 静默解析和差异空白检查通过。
+- [x] 后续按用户决定移除分辨率部署限制，四份 Compose 回归与等价 host gateway 用例通过；最终行为与验证见下节。
+- [ ] 全量测试、amd64 构建、真实 ASR 及运行中容器更新未运行；未更改 API、数据库迁移或应用依赖版本。
+
+## 2026-11-15 在程序内选择导出分辨率
+
+- [x] 移除 `max-resolution` 服务端配置项和四份 Compose 中的对应环境变量；剪辑器继续默认 720p，每次导出可直接选择 720p、1080p 或 4K。capabilities 固定返回三个输出选项，所选值冻结进任务；其他资源预算继续生效。
+- [x] 同步 OpenAPI、正式生成的 TypeScript、规格、ADR 0084 和资源预算指南；无数据库迁移。旧部署的分辨率上限不再生效，升级说明要求删除旧配置。
+- [x] 新增回归先复现部署值导致输出选项被过滤，再验证移除；4 项后端定向测试（含真实 FFmpeg 4K 小样）、22 项剪辑器组件测试、3 项 Compose 回归、9 项更新脚本 Mock 回归通过，四份配置检查、TypeScript、相关 Java 格式和 Bash 语法检查通过。
+- [x] 2 项真实 PostgreSQL 17.11 检查通过，覆盖授权 capabilities 的完整分辨率选项及 4K 受理、持久冻结和幂等重放；测试显式带有旧部署上限，验证它不再限制程序选择。
+- [x] 修改后的 ARM64 server 镜像构建成功，最终镜像内 whisper 启动器 `--help` 检查通过。
+- [x] ARM64 web 镜像重建成功，包含 API 类型生成、TypeScript 和 Vite 生产构建；Docker Hub metadata 的间歇性 TLS 超时经重试恢复。
+- [ ] 全量测试、真实浏览器到后端联调、amd64 构建、长片 4K 资源压力及运行中容器更新未运行。
