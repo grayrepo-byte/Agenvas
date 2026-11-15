@@ -137,25 +137,17 @@ button:disabled {
 }
 
 .workspace-header {
-  position: relative;
+  position: absolute;
+  inset: 0 0 auto;
   z-index: 12;
   display: flex;
-  flex: none;
   align-items: center;
   justify-content: space-between;
-  background: var(--canvas);
+  background: transparent;
   min-height: var(--workspace-header-height);
   gap: 0.75rem;
   padding: 16px var(--ui-canvas-gutter) 12px;
-}
-
-/* Fade into the dot grid while preserving the canvas bounds and pointer gestures. */
-.workspace-header::after {
-  content: "";
-  position: absolute;
-  inset: 100% 0 auto;
-  height: 1rem;
-  background: linear-gradient(to bottom, var(--canvas), transparent);
+  /* Only the two floating panels intercept input; the open center belongs to the canvas. */
   pointer-events: none;
 }
 
@@ -166,10 +158,13 @@ button:disabled {
   gap: 4px;
   min-height: 40px;
   padding: 4px;
-  border: 1px solid var(--ui-canvas-border);
+  border: 1px solid var(--ui-canvas-glass-border);
   border-radius: var(--ui-canvas-radius);
-  background: var(--ui-canvas-chrome);
-  box-shadow: var(--ui-canvas-shadow);
+  background: var(--ui-canvas-glass);
+  -webkit-backdrop-filter: blur(20px) saturate(130%);
+  backdrop-filter: blur(20px) saturate(130%);
+  box-shadow: var(--ui-canvas-glass-shadow);
+  pointer-events: auto;
 }
 
 .workspace-header-identity {
@@ -213,6 +208,8 @@ button:disabled {
   }
   .workspace-header-actions {
     flex-wrap: wrap;
+    gap: 0;
+    max-width: 100%;
   }
 }
 

@@ -105,6 +105,9 @@
   --ui-canvas-dot: #354154;
   --ui-canvas-card: #1d2633;
   --ui-canvas-chrome: #202a38;
+  --ui-canvas-glass: color-mix(in srgb, var(--ui-canvas-chrome) 68%, transparent);
+  --ui-canvas-glass-border: color-mix(in srgb, var(--ui-text-secondary) 14%, transparent);
+  --ui-canvas-glass-shadow: 0 6px 24px #0000001f, inset 0 1px 0 #ffffff08;
   --ui-canvas-border: #a7c4eb1c;
   --ui-canvas-shadow: 0 3px 10px #00000026, inset 0 1px 0 #ffffff04;
   --ui-canvas-shadow-raised: 0 8px 28px #0000003d, inset 0 1px 0 #ffffff08;

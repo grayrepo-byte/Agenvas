@@ -4182,3 +4182,12 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] `node e2e/director-workbench-browser.mjs --insecure-http` 通过三种窗口尺寸、WebGL 恢复、四种 PNG 导出尺寸、场景 JSON 与 WebM 导出／取消／重复／不支持反馈。实际导出 960×540 VP9 WebM，由 FFprobe／FFmpeg 确认约一秒、21 个编码包与四个不同解码帧；浏览器明确断言非安全上下文。图片、视频和服务响应均为合成验证，不调用真实 Provider。
 - [x] 单独更新本地 web 容器，三个服务健康；实际 HTTP 返回的入口与 67 个 JavaScript 文件逐字节匹配本次构建，仍未引入原生 UUID API。后端与数据库容器保持运行，未在用户项目或实际 MCP 令牌上执行测试写入。
 - [ ] 未运行全量、后端或真实 Provider 测试；Firefox、Safari 和移动设备上的实际浏览器未验证。选区复制仍可能被浏览器策略拒绝，此时保留原有手动复制提示。
+
+## 画布顶部磨砂悬浮导航（2026-11-15）
+
+- [x] 左右导航改为统一语义 Token 的半透明磨砂面板，保留清晰文字、细边框与轻阴影。外层绝对定位并完全透明，移除整宽背景和渐变，画布从视口顶部开始；中央空白不拦截指针，左右按钮继续可用。窄屏收紧右侧按钮间距，面板边框及圆角保持在视口内。同步规格 §6.2 与 ADR 0005；仅改 CSS，无 API、迁移或依赖变化。
+- [x] `vitest run src/features/canvas/CanvasEditorOverlay.test.tsx src/features/canvas/ProjectWorkspacePage.test.tsx` 共 56 项通过；保留既有 jsdom 媒体 pause 未实现提示。相关 Prettier、主题色检查及生产构建通过，构建保留既有配置加载器与大分块提示。
+- [x] 通过既有合成画布夹具与临时浏览器复核脚本，实际检查 1920×1080、1440×900、1024×768、800×844、390×844。确认画布顶部与视口对齐、背景 alpha 为 0.68、实际背景模糊生效、按钮和面板边界可达；桌面导航中央原生拖动可平移画布且不保存节点布局。窄屏修订后复核边框完整，并目视检查截图；临时脚本已清理，证据位于仓库外。
+- [x] `node e2e/canvas-editing-browser.mjs --insecure-http --text-node-drag-only` 通过原生平移、文字／空白文字／图片／视频节点拖动及单次布局保存，文字选择与编辑保持独立。浏览器使用 Mock API 和合成内容，没有操作用户项目。
+- [x] 已单独更新本地 web 容器并恢复健康，后端与数据库容器保持运行；实际 HTTP 返回的 CSS 已核对悬浮定位、磨砂面板、中央指针穿透及旧渐变遮罩移除。
+- [ ] 未运行全量、后端或真实 Provider 测试；Firefox、Safari 与实际移动设备未验证。
