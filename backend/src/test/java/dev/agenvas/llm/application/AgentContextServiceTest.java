@@ -164,6 +164,22 @@ class AgentContextServiceTest {
         assertThat(context.prepare(fixed, List.of())).isEqualTo(codec.request(fixed, List.of()));
     }
     @Test
+    void frozenCompactionBudgetsKeepTheirJsonNumbersAcrossStorage() {
+        for (long version : List.of(1L, (long) Integer.MAX_VALUE + 1)) {
+            var settings = new DirectorSettings(8192, 50, 1024, 512, 2, 1440, 288, 300, 4, version);
+            var budget = LlmRequestBudget.application(settings);
+            JsonNode request = context.prepare(history(12, "public fact ".repeat(1000)), List.of(), budget);
+            assertThat(AgentContextService.isCompaction(request)).isTrue();
+            JsonNode stored = mapper.readTree(request.toString());
+            assertThat(request.path(AgentContextService.COMPACTION).path("requestBudget"))
+                    .as("stored compaction budget for director version %s", version)
+                    .isEqualTo(stored.path(AgentContextService.COMPACTION).path("requestBudget"));
+            assertThat(request).isEqualTo(stored);
+            assertThat(context.repair(stored)).isEqualTo(mapper.readTree(context.repair(stored).toString()));
+        }
+    }
+
+    @Test
     void confirmedBudgetSurvivesChunkedCompactionRepairAndContinuation() {
         var policy = dev.agenvas.settings.application.LlmModelPolicy.manual(
                 dev.agenvas.settings.application.ModelCatalog.Provider.COMPATIBLE, 8192, null, 1024,

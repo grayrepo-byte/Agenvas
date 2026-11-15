@@ -136,7 +136,8 @@ public class AgentContextService {
                 .put("estimatedTokensBefore", estimate(history, tools));
         plan.set("continuation", plannedRequest(retained, tools, properties, freeze));
         if (freeze)
-            plan.set("requestBudget", mapper.valueToTree(properties));
+            // Nested budgets cross the same JSONB boundary as the outer request checkpoint.
+            codec.withBudget(plan, properties);
         return compaction(plan, publicTranscript(source), null);
     }
     private ObjectNode plannedRequest(List<Message> messages, List<ToolCallback> tools, LlmRequestBudget budget,

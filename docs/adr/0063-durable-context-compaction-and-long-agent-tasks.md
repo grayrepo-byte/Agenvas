@@ -6,6 +6,8 @@
 
 整个 Run 继续没有累计轮次、工具次数或自然时长上限。临时模型故障默认在首次失败起 24 小时内最多重试 288 次，退避从 2 秒增长到最多 5 分钟；等待依赖数据库调度并释放线程。部署可调整窗口、次数、退避和局部修复次数（默认 4 次）；首次失败的次数上限、截止时间以及修复链上限持久化，重启或调整配置不能重置。已有恢复中的请求继续使用已保存的期限和次数。单次 HTTP/Worker 的有限超时、取消、配置与鉴权错误、媒体审批及 UNKNOWN 规则保持原义，恢复不重提媒体。
 
+2026-11-15 检查点修复：摘要计划内嵌的 requestBudget 与外层请求复用同一 JSON 数字序列化规则，避免 Java long 的小版本号写入 JSONB 后读成整数节点，被误判为请求已改变。请求相等、配置版本和 CAS 校验继续执行，不通过放宽比较规避冲突；已保存摘要的恢复仍只重放原响应。可纠正工具失败的修复优先规则见 ADR 0039 的同日修订。
+
 取舍是压缩增加模型调用和费用，语义摘要也可能遗漏事实；原始检查点及业务内容保留，关键内容按精确版本重读。默认模型窗口预算为 1,000,000 Token，达到窗口的 50%（500,000 个估算 Token）触发压缩，预留 8,192 Token 给响应，摘要最多 2,048 个估算 Token，近期最多保留 4 个完整工具回合。部署者应按实际模型容量配置，估算器不是 Provider tokenizer，也不代表已测得真实模型窗口；固定指令与主说明超出预算时明确结束并给出配置提示。此工作不新增数据库迁移或专属远程服务，Mock 保持离线可运行；升级需同步部署后端及生成类型后的前端，以接受可配置的重试次数和跨日时间显示。
 
 设计参考：[Effective context engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents) 的 compaction 与结构化记录，以及 [Effective harnesses for long-running agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents) 的持久任务交接；实现使用现有 Spring AI ChatGateway，不依赖这些厂商的专属运行服务。验证范围与未完成的真实长时间验收见开发清单。

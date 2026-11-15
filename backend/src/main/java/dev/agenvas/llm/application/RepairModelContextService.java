@@ -65,7 +65,10 @@ public class RepairModelContextService {
         appendRejectedCalls(messages, failed.response(), code, detail);
         messages.add(new UserMessage("The previous structured tool output was rejected ("
                 + code + "): " + detail + ". Regenerate the entire response with valid "
-                + "tool arguments. No tools from that response were applied. Do not claim approval."));
+                + "tool arguments. No tools from that response were applied. Earlier committed rounds remain applied. "
+                + "For a version conflict or missing reference, first read the current canvas, artifact or storyboard "
+                + "to obtain fresh IDs and expectedVersion, then reconsider the change. Respect concurrent user edits; "
+                + "do not force a stale write. Do not claim approval."));
         return List.copyOf(messages);
     }
 

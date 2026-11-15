@@ -16,6 +16,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import dev.agenvas.run.domain.AgentRun;
+import dev.agenvas.shared.error.ApiProblemException;
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.task.application.TaskProperties;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
@@ -41,6 +43,7 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.metadata.ChatGenerationMetadata;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
+import org.springframework.http.HttpStatus;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -105,6 +108,42 @@ class AgentTurnWorkerTest {
                     Callable<JsonNode> submitted = invocation.getArgument(0);
                     return submitted.call();
                 });
+    }
+
+    @ParameterizedTest
+    @CsvSource({"BAD_REQUEST,TOOL_ARGUMENT_INVALID", "UNPROCESSABLE_ENTITY,ARTIFACT_ORIGIN_INVALID",
+            "CONFLICT,ARTIFACT_VERSION_CONFLICT", "CONFLICT,CANVAS_VERSION_CONFLICT",
+            "CONFLICT,STORYBOARD_VERSION_CONFLICT", "CONFLICT,VERSION_CONFLICT",
+            "CONFLICT,CHARACTER_VERSION_CONFLICT", "CONFLICT,CHARACTER_NODE_VERSION_CONFLICT",
+            "CONFLICT,CANVAS_EDIT_CONFLICT",
+            "NOT_FOUND,RESOURCE_NOT_FOUND"})
+    void recoverableToolErrorsReturnToTheModelInsteadOfEndingTheRun(HttpStatus status, String code) {
+        var detail = ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid");
+        doThrow(new ApiProblemException(status, code, detail, detail, false)).when(tools)
+                .executeLeased(any(), eq(0), anyList(), eq(lease), eq(WORKER));
+
+        worker.runOnce(WORKER);
+
+        verify(commits).scheduleRepair(eq(lease), eq(WORKER), eq(code), anyString());
+        verify(commits, never()).finishFailure(any(), anyString(), anyString());
+        verify(commits, never()).complete(any(), anyString());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"UNAUTHORIZED,UNAUTHORIZED", "FORBIDDEN,TOOL_ARGUMENT_INVALID",
+            "CONFLICT,IDEMPOTENCY_CONFLICT", "CONFLICT,TOOL_EXECUTION_CONFLICT",
+            "CONFLICT,CANVAS_ITEM_LOCKED",
+            "CONFLICT,LLM_TURN_CONFLICT", "NOT_FOUND,RUN_NOT_FOUND"})
+    void authorityAndExecutionConflictsNeverBecomeNewModelRepairs(HttpStatus status, String code) {
+        var detail = ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid");
+        doThrow(new ApiProblemException(status, code, detail, detail, false)).when(tools)
+                .executeLeased(any(), eq(0), anyList(), eq(lease), eq(WORKER));
+
+        worker.runOnce(WORKER);
+
+        verify(commits).finishFailure(eq(lease), eq(WORKER), anyString());
+        verify(commits, never()).scheduleRepair(any(), anyString(), anyString(), anyString());
+        verify(commits, never()).complete(any(), anyString());
     }
 
     @AfterEach

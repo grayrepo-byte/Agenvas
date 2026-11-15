@@ -10,6 +10,7 @@ import java.time.Duration;
 import java.time.Clock;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,6 +19,7 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.http.HttpStatus;
 import tools.jackson.databind.JsonNode;
 
 /**
@@ -25,6 +27,9 @@ import tools.jackson.databind.JsonNode;
  */
 @Service
 public class AgentTurnWorker {
+    private static final Set<String> REPAIRABLE_TOOL_CONFLICTS = Set.of("ARTIFACT_VERSION_CONFLICT",
+            "CANVAS_VERSION_CONFLICT", "STORYBOARD_VERSION_CONFLICT", "VERSION_CONFLICT",
+            "CHARACTER_VERSION_CONFLICT", "CHARACTER_NODE_VERSION_CONFLICT", "CANVAS_EDIT_CONFLICT");
 
     /** 模型调用或任务失败时只记录安全摘要，不输出提示词、模型响应和工具参数。 */
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentTurnWorker.class);
@@ -304,7 +309,7 @@ public class AgentTurnWorker {
             executor.executeLeased(context, stepIndex, assistant.getToolCalls(),
                     lease, workerId);
         } catch (ApiProblemException invalid) {
-            if (!"TOOL_ARGUMENT_INVALID".equals(invalid.code())) {
+            if (!repairableToolFailure(invalid)) {
                 throw invalid;
             }
             execution.checkActive();
@@ -318,6 +323,14 @@ public class AgentTurnWorker {
         }
         execution.checkActive();
         commits.complete(lease, workerId);
+    }
+
+    /** The rejected tool transaction has rolled back, so the model may correct inputs or reread CAS.
+     * Authority, execution/idempotency conflicts and uncertain external submissions are not repairs. */
+    private static boolean repairableToolFailure(ApiProblemException failure) {
+        return failure.status() == HttpStatus.BAD_REQUEST || failure.status() == HttpStatus.UNPROCESSABLE_ENTITY
+                || failure.status() == HttpStatus.CONFLICT && REPAIRABLE_TOOL_CONFLICTS.contains(failure.code())
+                || failure.status() == HttpStatus.NOT_FOUND && "RESOURCE_NOT_FOUND".equals(failure.code());
     }
 
     /**
@@ -343,7 +356,8 @@ public class AgentTurnWorker {
                             // Archived media may be unselected after a draft edit. Preserve
                             // the conflict without exposing exception text or overriding the card.
                             || "ARTIFACT_VERSION_CONFLICT".equals(problem.code())
-                            || "STORYBOARD_VERSION_CONFLICT".equals(problem.code()))) {
+                            || "STORYBOARD_VERSION_CONFLICT".equals(problem.code())
+                            || "LLM_TURN_CONFLICT".equals(problem.code()))) {
                 return problem.code();
             }
         }

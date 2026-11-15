@@ -19,6 +19,8 @@ import dev.agenvas.llm.application.AgentTurnCommitService;
 import dev.agenvas.llm.application.AgentTurnWorker;
 import dev.agenvas.llm.application.ChatGateway;
 import dev.agenvas.llm.application.LlmProtocolCodec;
+import dev.agenvas.llm.application.LlmRequestBudget;
+import dev.agenvas.llm.application.DirectorSettingsService;
 import dev.agenvas.llm.application.LlmRoundService;
 import dev.agenvas.llm.application.ToolRegistry;
 import dev.agenvas.project.application.ProjectService;
@@ -96,6 +98,8 @@ class AgentLongTaskPostgresIT {
     AgentTurnCommitService commits;
     @Autowired
     AgentContextService context;
+    @Autowired
+    DirectorSettingsService directorSettings;
     @Autowired
     LlmProtocolCodec codec;
     @Autowired
@@ -203,7 +207,8 @@ class AgentLongTaskPostgresIT {
         gateway.finishAt = 1;
         Task lease = tasks.claimAgentTurns("before-restart", 1).getFirst();
         AgentRun started = commits.start(lease, "before-restart");
-        JsonNode compact = context.prepare(syntheticHistory(), registry.modelDefinitions(started.policySnapshot()));
+        JsonNode compact = context.prepare(syntheticHistory(), registry.modelDefinitions(started.policySnapshot()),
+                LlmRequestBudget.resolve(directorSettings.get(), null));
         assertThat(AgentContextService.isCompaction(compact)).isTrue();
         JsonNode response = rounds.callLeased(owner.userId(), project.id(), run.id(), 0, compact,
                 List.of(), Map.of(), lease, "before-restart");
