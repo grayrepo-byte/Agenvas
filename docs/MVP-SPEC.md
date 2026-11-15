@@ -1979,6 +1979,10 @@ frontend/src/
 
 TS strict、noUncheckedIndexedAccess；接口边界返回 unknown 后校验，或使用经过契约测试的生成 DTO。禁止随意 `as any`、`@ts-ignore` 和关闭 ESLint 来“修复”构建。
 
+前端支持局域网 HTTP 访问。客户端预分配身份与幂等键统一通过 `shared/lib/clientId` 使用 `crypto.getRandomValues()` 生成，不调用要求安全上下文的 `crypto.randomUUID()`；实体身份保留 API 要求的 UUID 格式，同一次未决命令及其重试复用已冻结的身份与命令键。
+
+文本复制统一使用 `shared/lib/clipboard.copyText`：优先使用可用的异步剪贴板 API，不可用或被拒绝时使用选区复制兼容 HTTP。临时复制字段放在当前对话框内以遵循焦点约束，完成或失败后清空并移除，恢复原焦点、输入选区和正文选择；两种方式均失败时显示原有手动复制提示，不报告成功。MCP 一次性令牌仍只保留在原有组件内存中，不进入浏览器持久存储、查询缓存或日志。
+
 组件关注展示，业务写入集中到命令/hooks/API 层。长任务以 taskId 跟踪，不能把一次 Promise 的 pending 状态当业务状态。
 
 生成类型目录禁止手工改。公共组件没有业务 Provider Key 和具体模型名。

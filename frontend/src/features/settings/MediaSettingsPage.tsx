@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { OpenAiImageFields } from "./OpenAiImageFields";
 import { OPENAI_IMAGE_QUICK_MODELS, changeOpenAiImageModel, openAiImageQualities } from "./openAiImageOptions";
 import { mediaDisplayName } from "../../shared/mediaDisplayNames";
@@ -813,7 +814,7 @@ function stableCreateKey(
   previous: { payload: string; key: string } | null,
   payload: string,
 ): { payload: string; key: string } {
-  return previous?.payload === payload ? previous : { payload, key: crypto.randomUUID() };
+  return previous?.payload === payload ? previous : { payload, key: createClientId() };
 }
 
 function errorMessage(cause: unknown): string {

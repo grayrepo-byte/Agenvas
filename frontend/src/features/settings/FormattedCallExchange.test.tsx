@@ -42,6 +42,38 @@ const exchange: CallDebug["exchanges"][number] = {
 };
 
 describe("FormattedCallExchange", () => {
+  it("copies complete log text inside a modal over LAN HTTP without the Clipboard API", async () => {
+    const user = userEvent.setup();
+    const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    const execCommand = Object.getOwnPropertyDescriptor(document, "execCommand");
+    let copied = "";
+    const copy = vi.fn(() => {
+      const selected = document.activeElement;
+      if (!(selected instanceof HTMLTextAreaElement)) return false;
+      copied = selected.value.slice(selected.selectionStart, selected.selectionEnd);
+      return true;
+    });
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+    Object.defineProperty(document, "execCommand", { configurable: true, value: copy });
+    try {
+      render(<FormattedCallExchange exchange={exchange} mode="formatted" llm />);
+      await user.click(screen.getByRole("button", { name: "展开 Prompt" }));
+      const dialog = screen.getByRole("dialog", { name: "Prompt" });
+      const button = within(dialog).getByRole("button", { name: "复制" });
+      await user.click(button);
+      expect(within(dialog).getByRole("status")).toHaveTextContent("已复制");
+      expect(copied).toBe(request.messages[0]?.content);
+      expect(copy).toHaveBeenCalledWith("copy");
+      expect(button).toHaveFocus();
+      expect(dialog.querySelector("textarea")).toBeNull();
+    } finally {
+      if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard);
+      else Reflect.deleteProperty(navigator, "clipboard");
+      if (execCommand) Object.defineProperty(document, "execCommand", execCommand);
+      else Reflect.deleteProperty(document, "execCommand");
+    }
+  });
+
   it("keeps deeply nested serialized tool arguments readable without crashing the message dialog", async () => {
     const argumentsText = "[".repeat(10_000) + "0" + "]".repeat(10_000);
     const requestBody = JSON.stringify({

@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { Popover as PopoverPrimitive } from "radix-ui";
 import { ToggleGroup, ToggleGroupItem } from "../../shared/ui/primitives/toggle-group";
 import { FieldSet, FieldLegend } from "../../shared/ui/primitives/field";
@@ -710,7 +711,7 @@ export function MediaDraftEditor({
       if (expectedVersion === null) throw new Error(t("media.editor.waitForDraft"));
       // A lost response may still have advanced the server draft. Retrying that submission
       // must replay its exact payload, even when SSE/refetch has supplied a newer CAS version.
-      runIntent.current ??= { key: crypto.randomUUID(), expectedDraftVersion: expectedVersion };
+      runIntent.current ??= { key: createClientId(), expectedDraftVersion: expectedVersion };
       return runMediaDraft(
         artifact.projectId,
         artifact.id,
@@ -1394,7 +1395,7 @@ export function MediaDraftEditor({
   }
 
   async function uploadReferenceArtifact(file: File, kind: "IMAGE" | "AUDIO" | "VIDEO") {
-    const progress = uploadProgress.current.get(file) ?? { createKey: crypto.randomUUID() };
+    const progress = uploadProgress.current.get(file) ?? { createKey: createClientId() };
     uploadProgress.current.set(file, progress);
     if (!progress.assetId) {
       const asset = await (
@@ -1413,7 +1414,7 @@ export function MediaDraftEditor({
   async function uploadDynamicSlot(field: CreatorInputField, file: File, options?: { requireEmptySlot: boolean }) {
     if (runningHub && file.size > MAX_RUNNINGHUB_INPUT_BYTES) throw new Error(t("media.editor.runningHubSizeLimit"));
     const scope = chosenCapabilityRef.current;
-    const uploadToken = crypto.randomUUID();
+    const uploadToken = createClientId();
     workflowUploads.current.add(uploadToken);
     setWorkflowUploading(true);
     try {

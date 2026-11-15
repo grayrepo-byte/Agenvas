@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { ApiError, getCurrentUser } from "../../shared/api/client";
 import { saveCostumeReference, type SaveCostumeReferenceRequest } from "../../shared/api/referenceCatalog";
 import { t, useLocale } from "../../shared/i18n";
+import { createCommandKey } from "../../shared/lib/clientId";
 import { Dialog } from "../../shared/ui/Dialog";
 import { Notice } from "../../shared/ui/PagePrimitives";
 import { Button } from "../../shared/ui/primitives/button";
@@ -56,7 +57,7 @@ export function SaveCostumeReferenceButton(props: SaveCostumeReferenceButtonProp
         sourceVersionId: source.sourceVersionId,
         expectedCanvasItemVersion: source.expectedCanvasItemVersion,
         ...costumeMetadataRequest(fields),
-        commandKey: crypto.randomUUID(),
+        commandKey: createCommandKey(),
       },
     };
     submitting.current = true;

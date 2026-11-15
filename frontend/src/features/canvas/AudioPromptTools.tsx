@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { ArrowsOutSimple, MagicWand, Translate } from "@/shared/ui/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
@@ -152,8 +153,8 @@ function PromptToolDialog({
             : t("audio.promptTools.assistInstruction");
         // Retrying an unacknowledged request keeps its original content as well as its key.
         progress.current = {
-          key: crypto.randomUUID(),
-          itemId: crypto.randomUUID(),
+          key: createClientId(),
+          itemId: createClientId(),
           title: LABELS[mode],
           prompt: `${instruction} ${t("audio.promptTools.outputInstruction")}\n\n${text}`,
         };

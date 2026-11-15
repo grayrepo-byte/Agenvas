@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { BookOpen, CaretDown, Check } from "@/shared/ui/icons";
 import { useInfiniteQuery, useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
@@ -249,7 +250,7 @@ export function AgentSkillSettings({
         skills: clear ? [] : choices,
       };
       const fingerprint = JSON.stringify(request);
-      if (intent.current?.fingerprint !== fingerprint) intent.current = { fingerprint, key: crypto.randomUUID() };
+      if (intent.current?.fingerprint !== fingerprint) intent.current = { fingerprint, key: createClientId() };
       return saveAgentSkillBinding(projectId, agent.id, request, intent.current.key);
     },
     onSuccess: saved => {

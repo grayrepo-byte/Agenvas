@@ -17,11 +17,34 @@ const sharedControlSyntax = [
     message: "Use shared/ui/Range. Slider tracks, thumbs, focus and disabled states belong to the shared UI layer.",
   },
 ];
+const nativeUuidRestriction = {
+  property: "randomUUID",
+  message: "Use shared/lib/clientId helpers; the UI must support LAN HTTP without a secure context.",
+};
 
 export default tseslint.config(
   { ignores: ["dist", "src/shared/api/schema.ts"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
+  {
+    rules: {
+      "no-restricted-properties": ["error", nativeUuidRestriction],
+    },
+  },
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/shared/lib/clipboard.ts", "**/*.test.ts", "**/*.test.tsx"],
+    rules: {
+      "no-restricted-properties": [
+        "error",
+        nativeUuidRestriction,
+        {
+          property: "clipboard",
+          message: "Use shared/lib/clipboard.copyText so copying also works over LAN HTTP.",
+        },
+      ],
+    },
+  },
   {
     files: ["**/*.{ts,tsx}"],
     languageOptions: {

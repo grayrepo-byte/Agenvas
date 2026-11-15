@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import type { CanvasItem, SaveMediaDraftRequest } from "../../shared/api/client";
 import { prepareMediaNode, type PreparedMediaNode } from "./mediaNodeActions";
 import type { ProductionInput, ShotInput } from "./storyboardDraft";
@@ -46,7 +47,7 @@ export function createStoryboardNodePreparation(
       mediaInputs: [],
       mentions: [],
     },
-    progress: { createKey: crypto.randomUUID(), itemId: crypto.randomUUID() },
+    progress: { createKey: createClientId(), itemId: createClientId() },
   };
 }
 

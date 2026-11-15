@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
 import {
@@ -173,7 +174,7 @@ export function CharacterBindingsDialog({
         request,
         result,
         before,
-        commandId: crypto.randomUUID(),
+        commandId: createClientId(),
         stateHash: JSON.stringify({
           fields: latest.fields,
           version: latest.expectedVersion,

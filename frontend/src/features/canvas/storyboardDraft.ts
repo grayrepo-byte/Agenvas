@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { create } from "zustand";
 import type {
   Storyboard,
@@ -65,7 +66,7 @@ export function storyboardInput(board: Storyboard): SaveStoryboardRequest {
 }
 export function newStoryboardShot(index: number): ShotInput {
   return {
-    id: crypto.randomUUID(),
+    id: createClientId(),
     code: `SHOT-${String(index + 1).padStart(2, "0")}`,
     scene: "",
     title: "",

@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -152,7 +153,7 @@ try {
         agentId: agent.id,
         instruction: "Make three shots",
       },
-      { "Idempotency-Key": crypto.randomUUID() },
+      { "Idempotency-Key": randomBytes(16).toString("hex") },
     );
     return { projectId: project.id, runId: run.id, initialStatus: run.status };
   }, bootstrapSecret);

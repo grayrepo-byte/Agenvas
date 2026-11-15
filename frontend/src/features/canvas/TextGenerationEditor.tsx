@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { ArrowUp, Coins, Cube } from "@/shared/ui/icons";
 import { useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef } from "react";
@@ -105,7 +106,7 @@ export function TextGenerationEditor({ artifact, canvasItemId }: { artifact: Art
   function submit() {
     if (!canRun || queryClient.isMutating({ mutationKey, exact: true }) || !hasCurrentVersion(artifact)) return;
     const intent = useCanvasStore.getState().textGenerationDrafts[draftKey]?.intent ?? {
-      key: crypto.randomUUID(),
+      key: createClientId(),
       projectId: artifact.projectId,
       artifactId: artifact.id,
       draftKey,

@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { WarningCircle } from "@/shared/ui/icons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
@@ -48,7 +49,7 @@ function TaskRetryAttempt({
   const retry = useMutation({
     mutationFn: async () => {
       // Keep both key and payload when acknowledgement is lost, even if SSE advances the task.
-      command.current ??= { key: crypto.randomUUID(), request: { expectedTaskVersion: taskVersion } };
+      command.current ??= { key: createClientId(), request: { expectedTaskVersion: taskVersion } };
       try {
         return await createManualUnknownAttempt(projectId, taskId, command.current.key, command.current.request);
       } catch (error) {

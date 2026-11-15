@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { createContext, useCallback, useContext, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -152,7 +153,7 @@ export function useCanvasEditing(projectId: string) {
       if (pending.current) throw new Error(t("canvas.edit.failed"));
       return run({
         type: "EDIT",
-        request: { ...input, commandId: input.commandId ?? crypto.randomUUID() },
+        request: { ...input, commandId: input.commandId ?? createClientId() },
         onAccepted,
         showPendingNotice: feedback?.showPendingNotice,
       });
@@ -174,7 +175,7 @@ export function useCanvasEditing(projectId: string) {
       return run({
         type: "REPLAY",
         receiptId: entry.receipt.id,
-        request: { commandId: crypto.randomUUID(), expectedRevision: entry.receipt.revision, direction },
+        request: { commandId: createClientId(), expectedRevision: entry.receipt.revision, direction },
       });
     },
     [projectId, queryClient, run],

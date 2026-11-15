@@ -4162,3 +4162,23 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 合成浏览器场景重放 12 次增长更新，文字不再播放渐变且前景色可见，对话和回复始终显示；增加可复用运行中夹具及现有浏览器脚本的相关检查。该脚本整套命令未运行，本次通过 CUA 执行同一可见性与样式验收。
 - [x] AgentChatPanel、AgentRunConversation、AgentChatDock 共 76 项测试、TypeScript、相关 ESLint/格式和浏览器脚本语法检查通过。无 API、迁移或依赖改动；未运行全量和后端测试。
 - [x] 已通过 update-local.sh web 更新测试环境，三个服务健康。真实模型文字回答期间采集 90 个样本（含 76 个“正在处理”样本），状态文字无渐变动画、前景色可见、对话区域始终可见，回复持续增长并最终成功；未执行媒体生成。证据保存在仓库外私有目录。
+
+## 局域网 HTTP 标识生成与画布保存修复（2026-11-15）
+
+- [x] 禁用原生 UUID API 后，参考卡片渲染和画布编辑／布局保存分别复现 `crypto.randomUUID is not a function`。新增 `shared/lib/clientId`，使用 HTTP 可用的 `crypto.getRandomValues()`；参考图库命令改用 128 位随机字符串，实体与其他既有接口身份保留 UUID v4 格式。统一替换前端、测试与浏览器夹具中的直接调用，重试继续使用原冻结命令及目标身份。
+- [x] ESLint 禁止访问 `randomUUID`，标准输入反例确认会被拒绝。规格 §19.2 同步 HTTP 兼容要求；无 API 合约、生成代码、数据库迁移或依赖变化。
+- [x] 按改动功能选择 52 个单元／组件测试文件，`vitest run --maxWorkers=4` 共 1074 项通过；包含 UUID 格式／随机键、未提供原生 UUID API 的图库、画布创建、保存、复制与撤销／重做回归。TypeScript、ESLint、相关 Prettier、主题、四语言、生产构建及差异空白检查通过。测试保留既有 jsdom 媒体／Canvas 未实现提示，构建保留配置加载器与大分块提示。
+- [x] `node e2e/reference-catalog-browser.mjs --insecure-http` 通过四种选择器窗口和三种页面工具栏尺寸，覆盖姿势／服装预览、自动缓存、精确导入、保存与来源／缓存管理。`node e2e/canvas-editing-browser.mjs --insecure-http --text-node-drag-only` 验证文字、空白文字、图片和视频节点拖动后仅保存一次。两组浏览器使用合成内容与内存 API，明确断言 `isSecureContext=false`、原生 UUID API 不存在且 `getRandomValues` 可用。
+- [x] 分组拖入浏览器检查首次并发执行出现命中区域超时；随后默认地址对照与 `node e2e/canvas-editing-browser.mjs --insecure-http --group-entry-only` 均通过，覆盖原生拖入、成员／位置原子保存、失败重试、四类节点创建及回执丢失恢复。保留首次超时记录，不将其描述为一次无提示通过。
+- [x] 已单独构建并以 `--no-deps --no-build --pull never` 更新本地 web 容器，三个服务健康；核对运行中 HTTP 入口及 66 个 JavaScript 文件，与本次生产构建逐字节一致且不含原生 UUID API。后端和数据库容器保持运行。
+- [ ] 未运行全量测试、后端测试、真实来源下载或真实 Provider；浏览器行为验证使用 Mock API，未在实际用户项目执行写入。
+
+## 浏览器 API 的局域网 HTTP 兼容审计（2026-11-15）
+
+- [x] 通过 TypeScript DOM 符号清单与源码调用搜索，对照 [安全上下文受限 API 清单](https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Secure_Contexts/features_restricted_to_secure_contexts) 核查当前前端。除已修复的原生 UUID API 外，发现 MCP 一次性令牌与调用日志正文两处直接异步剪贴板写入；未发现使用 `crypto.subtle`、摄像头／屏幕采集、WebCodecs、WebGPU、文件系统选择器、Web Share、Service Worker、定位或通知等安全上下文专属入口。
+- [x] 两处复制改用 `shared/lib/clipboard.copyText`，保留可用的原生写入，并为缺失／拒绝提供选区复制回退。临时字段放在当前弹窗内，成功和失败均清空移除；保留输入、焦点与选区，失败继续显示手动复制提示。令牌不进入持久存储、查询缓存或日志；调用正文内容与权限规则保持。ESLint 禁止业务代码直接访问 Clipboard API，TS／TSX 标准输入反例均被拒绝；规格 §19.2 同步，无 API、生成代码、数据库迁移或依赖变化。
+- [x] 日志弹窗的 HTTP 复制回归先失败后通过。剪贴板及设置六文件 68 项、音频／视频录制／标识三文件 12 项，共 80 项定向单元和组件测试通过，覆盖完整长文本、模态焦点、选区恢复、原生拒绝、回退失败、一次性令牌与旧复制回执隔离。TypeScript、ESLint、相关 Prettier、主题、四语言、生产构建及差异空白检查通过。
+- [x] `node e2e/mcp-settings-browser.mjs --insecure-http` 在真实非安全 HTTP 下验证桌面／窄屏令牌复制、日志弹窗复制与原生粘贴的完整文本一致，并断言异步 Clipboard API 不存在；使用合成令牌和 Mock API。实际 `AudioContext.decodeAudioData` 成功解码合成 PCM 音频；默认地址的既有 MCP 浏览器检查同样通过。
+- [x] `node e2e/director-workbench-browser.mjs --insecure-http` 通过三种窗口尺寸、WebGL 恢复、四种 PNG 导出尺寸、场景 JSON 与 WebM 导出／取消／重复／不支持反馈。实际导出 960×540 VP9 WebM，由 FFprobe／FFmpeg 确认约一秒、21 个编码包与四个不同解码帧；浏览器明确断言非安全上下文。图片、视频和服务响应均为合成验证，不调用真实 Provider。
+- [x] 单独更新本地 web 容器，三个服务健康；实际 HTTP 返回的入口与 67 个 JavaScript 文件逐字节匹配本次构建，仍未引入原生 UUID API。后端与数据库容器保持运行，未在用户项目或实际 MCP 令牌上执行测试写入。
+- [ ] 未运行全量、后端或真实 Provider 测试；Firefox、Safari 和移动设备上的实际浏览器未验证。选区复制仍可能被浏览器策略拒绝，此时保留原有手动复制提示。

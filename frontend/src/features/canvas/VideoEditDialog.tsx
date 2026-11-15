@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CaretDown,
@@ -121,7 +122,7 @@ export function VideoEditDialog({
     ).values(),
   ];
   const createShot = (item: CanvasItem): EditShot => ({
-    id: crypto.randomUUID(),
+    id: createClientId(),
     videoVersionId: item.selectedVersionId!,
     startMs: 0,
     endMs: null,
@@ -251,7 +252,7 @@ export function VideoEditDialog({
   const submit = useMutation({
     mutationFn: (input: VideoCompositionRequest) => {
       const payload = JSON.stringify(input);
-      if (command.current?.payload !== payload) command.current = { payload, key: crypto.randomUUID() };
+      if (command.current?.payload !== payload) command.current = { payload, key: createClientId() };
       return composeVideo(projectId, input, command.current.key);
     },
     onSuccess: async () => {
@@ -1142,7 +1143,7 @@ export function VideoEditDialog({
                           setCaptionPage(Math.floor(captions.length / CAPTIONS_PER_PAGE));
                           setCaptions(current => [
                             ...current,
-                            { id: crypto.randomUUID(), text: "", startMs: 0, endMs: Math.max(100, safeTotal) },
+                            { id: createClientId(), text: "", startMs: 0, endMs: Math.max(100, safeTotal) },
                           ]);
                         }}
                       >

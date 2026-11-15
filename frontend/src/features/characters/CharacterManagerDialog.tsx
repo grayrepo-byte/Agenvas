@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useRef, useState } from "react";
 import {
@@ -42,7 +43,7 @@ import { characterBindingStale, characterQueryOptions } from "./characterQueries
 
 const emptyContent = (): CharacterContent => ({ name: "", description: "", looks: [], voice: null });
 const newLook = (): CharacterLook => ({
-  id: crypto.randomUUID(),
+  id: createClientId(),
   name: "",
   clothing: "",
   expression: "",
@@ -107,7 +108,7 @@ export function CharacterManagerDialog({ projectId, onClose }: { projectId: stri
       const request =
         confirmed && confirmation
           ? confirmation.request
-          : { commandId: crypto.randomUUID(), expectedVersion: editor.version, content: editor.content };
+          : { commandId: createClientId(), expectedVersion: editor.version, content: editor.content };
       if (!confirmed) {
         const preview = await previewCharacterChange(projectId, editor.id, request);
         setConfirmation({ mode, preview, request });
@@ -232,7 +233,7 @@ export function CharacterManagerDialog({ projectId, onClose }: { projectId: stri
             type="button"
             variant="outline"
             onClick={() => {
-              setEditor({ id: crypto.randomUUID(), version: 0, archived: false, content: emptyContent() });
+              setEditor({ id: createClientId(), version: 0, archived: false, content: emptyContent() });
               setError(null);
               setConfirmation(null);
               setSaved(false);

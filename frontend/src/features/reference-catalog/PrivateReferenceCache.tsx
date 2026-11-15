@@ -10,6 +10,7 @@ import {
   type ReferenceVariant,
 } from "../../shared/api/referenceCatalog";
 import { formatNumber, t, useLocale, type MessageKey } from "../../shared/i18n";
+import { createCommandKey } from "../../shared/lib/clientId";
 import { Notice } from "../../shared/ui/PagePrimitives";
 import { Button } from "../../shared/ui/primitives/button";
 import { referenceFailureMessage } from "./referenceFailure";
@@ -90,7 +91,7 @@ export function usePrivateReferenceCache(
   // Keep the accepted command key with the shared query so a lost response can be
   // retried from either the card or preview without creating another command.
   const existingCommandKey = client.getQueryCache().find({ queryKey: acquisitionKey })?.meta?.commandKey;
-  const commandKey = typeof existingCommandKey === "string" ? existingCommandKey : crypto.randomUUID();
+  const commandKey = typeof existingCommandKey === "string" ? existingCommandKey : createCommandKey();
   const acquisition = useQuery({
     queryKey: acquisitionKey,
     meta: { commandKey },

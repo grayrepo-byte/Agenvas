@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useEffectEvent, useId, useRef, useState } from "react";
 import {
@@ -81,7 +82,7 @@ export function CharacterConnectionDialog({
         ? null
         : source?.characterNode && !source.characterNode.connections.some(edge => edge.targetCanvasItemId === target.id)
           ? {
-              connectionId: crypto.randomUUID(),
+              connectionId: createClientId(),
               sourceCanvasItemId: source.id,
               targetCanvasItemId: target.id,
               expectedSourceItemVersion: source.version,
@@ -148,7 +149,7 @@ export function CharacterConnectionDialog({
       setPrepared({
         result,
         before,
-        request: { ...request, commandId: crypto.randomUUID(), previewHash: result.previewHash },
+        request: { ...request, commandId: createClientId(), previewHash: result.previewHash },
       });
     } catch (failure) {
       if (connecting && characterRequestUncertain(failure) && connection.current) retainConnection(connection.current);

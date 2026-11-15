@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { Range } from "../../shared/ui/Range";
 import {
   ArrowClockwise,
@@ -161,7 +162,7 @@ export function BrushMarkupEditor(props: {
       if (!attempt.assetId) attempt.assetId = (await uploadImageAsset(projectId, attempt.file)).id;
       if (!attempt.request)
         attempt.request = {
-          targetItemId: crypto.randomUUID(),
+          targetItemId: createClientId(),
           expectedVersion,
           purpose: "BRUSH_MARKUP",
           sourceVersionId,

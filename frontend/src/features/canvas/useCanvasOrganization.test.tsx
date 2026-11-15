@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import type { PropsWithChildren } from "react";
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { CanvasEditRequest, CanvasItem, CanvasConnection } from "../../shared/api/client";
 import { server } from "../../test/server";
 import { useCanvasStore } from "./canvasStore";
@@ -49,8 +49,10 @@ const edge = (id: string, sourceCanvasItemId: string, targetCanvasItemId: string
   updatedAt: "2026-11-07T00:00:00Z",
 });
 beforeEach(() => {
+  vi.stubGlobal("crypto", { getRandomValues: crypto.getRandomValues.bind(crypto) });
   useCanvasStore.setState({ drafts: {}, mediaDraftRecoveries: {}, selectedIds: [], saveState: "saved" });
 });
+afterEach(() => vi.unstubAllGlobals());
 
 it("copies only internal topology with new identities on every paste and preserves full groups", async () => {
   const requests: CanvasEditRequest[] = [];

@@ -1,3 +1,4 @@
+import { createClientId } from "../src/shared/lib/clientId";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 import { useEffect } from "react";
@@ -492,7 +493,7 @@ function persistEdit(request: CanvasEditRequest): CanvasEditResponse | Response 
     });
   }
   const receipt: CanvasEditReceipt = {
-    id: crypto.randomUUID(),
+    id: createClientId(),
     operation: request.operation,
     state: "APPLIED",
     revision: 0,
@@ -603,7 +604,7 @@ window.fetch = async (input, init) => {
     const before = mediaDraft(request.targetCanvasItemId);
     if (request.relationType === "PROMPT_INPUT") {
       const connection: ProjectSnapshot["connections"][number] = {
-        id: crypto.randomUUID(),
+        id: createClientId(),
         projectId,
         sourceCanvasItemId: request.sourceCanvasItemId,
         targetCanvasItemId: request.targetCanvasItemId,
@@ -624,7 +625,7 @@ window.fetch = async (input, init) => {
     if (!model || model.maxReferenceImages < 1) return problem(400, "Synthetic text-only model rejects image inputs");
     if (before.version !== request.expectedTargetDraftVersion) return problem(409, "Synthetic stale draft version");
     const connection: ProjectSnapshot["connections"][number] = {
-      id: crypto.randomUUID(),
+      id: createClientId(),
       projectId,
       sourceCanvasItemId: request.sourceCanvasItemId,
       targetCanvasItemId: request.targetCanvasItemId,
@@ -644,7 +645,7 @@ window.fetch = async (input, init) => {
           role: "REFERENCE",
           order: 0,
           color: "#67C7F3",
-          sources: [{ id: crypto.randomUUID(), type: "CONNECTION", connectionId: connection.id }],
+          sources: [{ id: createClientId(), type: "CONNECTION", connectionId: connection.id }],
         },
       ],
     };
@@ -660,7 +661,7 @@ window.fetch = async (input, init) => {
     const body = JSON.parse(String(init?.body)) as { canvasItemId: string };
     generationRequests.push({ artifactId: path.split("/").at(-2)!, body });
     value = {
-      id: crypto.randomUUID(),
+      id: createClientId(),
       projectId,
       runId: null,
       stepKey: "synthetic-run",
@@ -685,10 +686,10 @@ window.fetch = async (input, init) => {
     value = replay(path.split("/").at(-2)!, request);
   } else if (path.endsWith("/artifacts") && method === "POST") {
     const request = JSON.parse(String(init?.body)) as CreateArtifactRequest;
-    const id = crypto.randomUUID();
+    const id = createClientId();
     const version: Artifact["resourceDefaultVersion"] = request.content
       ? {
-          id: crypto.randomUUID(),
+          id: createClientId(),
           versionNo: 1,
           schemaVersion: 1,
           content: request.content,
@@ -768,7 +769,7 @@ window.fetch = async (input, init) => {
     if (!item || item.artifact.version !== request.expectedVersion)
       return problem(409, "Synthetic text version conflict");
     const version: NonNullable<Artifact["resourceDefaultVersion"]> = {
-      id: crypto.randomUUID(),
+      id: createClientId(),
       versionNo: (item.artifact.resourceDefaultVersion?.versionNo ?? 0) + 1,
       schemaVersion: 1,
       content: request.content,

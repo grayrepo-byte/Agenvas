@@ -13,6 +13,7 @@ import {
   type McpTokenSummary,
 } from "../../shared/api/client";
 import { formatDate, t, useLocale } from "../../shared/i18n";
+import { copyText } from "../../shared/lib/clipboard";
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { EmptyState, Notice, Panel, StatusBadge } from "../../shared/ui/PagePrimitives";
 import { Button } from "../../shared/ui/primitives/button";
@@ -145,7 +146,7 @@ export function McpTokensSection({ enabled, userId }: { enabled: boolean; userId
     setCopyPending(true);
     setCopyState("idle");
     try {
-      await navigator.clipboard.writeText(created.token);
+      await copyText(created.token);
       if (request.epoch === epoch) setCopyState("copied");
     } catch {
       if (request.epoch === epoch) setCopyState("failed");

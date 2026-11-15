@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowCounterClockwise,
@@ -570,7 +571,7 @@ function SkillEditorForm({
   const publish = useMutation({
     mutationFn: async () => {
       const saved = dirty ? await save.mutateAsync(submission()) : initial;
-      publishKey.current ??= crypto.randomUUID();
+      publishKey.current ??= createClientId();
       return publishSkillVersion(skill.id, dirty ? saved.version : baseVersion, publishKey.current);
     },
     onSuccess: result => {

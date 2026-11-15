@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { ImageSquare, Plus, Trash } from "@/shared/ui/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useRef, useState } from "react";
@@ -118,7 +119,7 @@ function MediaTemplateCatalog({
     setError(null);
     try {
       const intent = `${selected.id}:${selected.version}`;
-      const commandKey = importKeys.current.get(intent) ?? crypto.randomUUID();
+      const commandKey = importKeys.current.get(intent) ?? createClientId();
       importKeys.current.set(intent, commandKey);
       const imported = await importMediaTemplate(context.projectId, selected, commandKey);
       if (imported.targetKind !== context.targetKind) throw new Error(t("templates.kindMismatch"));

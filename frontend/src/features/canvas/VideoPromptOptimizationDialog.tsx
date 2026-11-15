@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { MagicWand } from "@/shared/ui/icons";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useRef, useState } from "react";
@@ -97,7 +98,7 @@ export function VideoPromptOptimizationDialog({
   const run = useMutation({
     mutationFn: () => {
       command.current ??= {
-        key: crypto.randomUUID(),
+        key: createClientId(),
         request: { prompt, maxLength, skill: skillId ? { skillId, skillVersionId: selectedVersionId } : null },
       };
       return runVideoPromptOptimization(projectId, canvasItemId, command.current.request, command.current.key);

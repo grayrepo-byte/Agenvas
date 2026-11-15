@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { useQueryClient } from "@tanstack/react-query";
 import { useId, useRef, useState } from "react";
 import {
@@ -39,7 +40,7 @@ const emptyContent = (): LibraryCharacterContent => ({
   voice: null,
 });
 const newLook = (): LibraryCharacterLook => ({
-  id: crypto.randomUUID(),
+  id: createClientId(),
   name: "",
   clothing: "",
   expression: "",
@@ -52,7 +53,7 @@ type SaveIntent =
 export function CharacterLibraryEditor({ initial, onClose }: { initial?: LibraryCharacter; onClose: () => void }) {
   useLocale();
   const id = useId();
-  const [profileId] = useState(() => initial?.id ?? crypto.randomUUID());
+  const [profileId] = useState(() => initial?.id ?? createClientId());
   const [version, setVersion] = useState(initial?.version ?? 0);
   const [content, setContent] = useState<LibraryCharacterContent>(() =>
     structuredClone(initial?.content ?? emptyContent()),
@@ -95,8 +96,8 @@ export function CharacterLibraryEditor({ initial, onClose }: { initial?: Library
     const fixed =
       intent.current ??
       (mode === "SAVE"
-        ? { mode, commandId: crypto.randomUUID(), expectedVersion: version, content: structuredClone(content) }
-        : { mode, commandId: crypto.randomUUID(), expectedVersion: version });
+        ? { mode, commandId: createClientId(), expectedVersion: version, content: structuredClone(content) }
+        : { mode, commandId: createClientId(), expectedVersion: version });
     intent.current = fixed;
     let acknowledged = false;
     try {

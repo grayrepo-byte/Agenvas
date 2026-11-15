@@ -8,6 +8,8 @@ import { build, createServer, preview } from "vite";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const route = "/e2e/director-workbench.html";
+const insecureHttp = process.argv.includes("--insecure-http");
+const httpHost = "agenvas-http.test";
 const chromePath = process.env.AGENVAS_E2E_CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const profile = await mkdtemp(join(tmpdir(), "agenvas-director-browser-"));
 const screenshots = await mkdtemp(join(tmpdir(), "agenvas-director-screenshots-"));
@@ -178,11 +180,15 @@ const captureButton = '[data-director-action="capture"]';
 const generateButton = '[data-director-action="generate-angle"]';
 async function ready() {
   await waitFor(selector => document.querySelector(selector)?.disabled === false, captureButton);
+  if (insecureHttp) assert.equal(await page(() => isSecureContext), false, "3D export must run over non-secure HTTP");
 }
 
 try {
   if (process.argv.includes("--dev")) {
-    server = await createServer({ ...config, server: { host: "127.0.0.1", port: 0, open: false } });
+    server = await createServer({
+      ...config,
+      server: { host: "127.0.0.1", port: 0, open: false, allowedHosts: [httpHost] },
+    });
     await server.listen();
   } else {
     await build({
@@ -190,7 +196,11 @@ try {
       logLevel: "warn",
       build: { outDir, emptyOutDir: true, rollupOptions: { input: join(root, route) } },
     });
-    server = await preview({ ...config, build: { outDir }, preview: { host: "127.0.0.1", port: 0, open: false } });
+    server = await preview({
+      ...config,
+      build: { outDir },
+      preview: { host: "127.0.0.1", port: 0, open: false, allowedHosts: [httpHost] },
+    });
   }
   chrome = spawn(
     chromePath,
@@ -201,6 +211,7 @@ try {
       "--disable-background-networking",
       "--enable-unsafe-swiftshader",
       "--remote-debugging-port=0",
+      ...(insecureHttp ? [`--host-resolver-rules=MAP ${httpHost} 127.0.0.1`, "--no-proxy-server"] : []),
       `--user-data-dir=${profile}`,
       "about:blank",
     ],
@@ -237,7 +248,8 @@ try {
   });
   await cdp("Page.enable");
   await cdp("Runtime.enable");
-  const baseUrl = server.resolvedUrls.local[0];
+  const baseUrl = new URL(server.resolvedUrls.local[0]);
+  if (insecureHttp) baseUrl.hostname = httpHost;
   for (const viewport of [
     { width: 1440, height: 900 },
     { width: 390, height: 844 },

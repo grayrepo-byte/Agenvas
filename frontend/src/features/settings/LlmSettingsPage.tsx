@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { ArrowUpRight, CheckCircle, Plus, PlugsConnected, ShieldCheck } from "@/shared/ui/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -152,7 +153,7 @@ export function LlmSettingsPage() {
           disabled={busy || !catalog}
           onClick={() => {
             setFeedback("");
-            setEditor({ id: crypto.randomUUID(), connection: null });
+            setEditor({ id: createClientId(), connection: null });
           }}
         >
           <Plus data-icon="inline-start" />
@@ -335,7 +336,7 @@ export function LlmSettingsPage() {
                 icon={<PlugsConnected />}
                 title={t("settings.llm.connections.empty")}
                 action={
-                  <Button type="button" onClick={() => setEditor({ id: crypto.randomUUID(), connection: null })}>
+                  <Button type="button" onClick={() => setEditor({ id: createClientId(), connection: null })}>
                     {t("settings.llm.connections.add")}
                   </Button>
                 }

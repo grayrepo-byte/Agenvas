@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import { listProjects } from "../../shared/api/client";
@@ -103,7 +104,7 @@ export function CharacterLibraryMediaPicker({
             variant="outline"
             disabled={!validFile || frozen}
             onClick={() => {
-              if (file && validFile) transfer.start({ commandId: crypto.randomUUID(), file, kind });
+              if (file && validFile) transfer.start({ commandId: createClientId(), file, kind });
             }}
           >
             {cl("upload")}
@@ -116,7 +117,7 @@ export function CharacterLibraryMediaPicker({
             onPick={entry => {
               if (entry.kind === kind)
                 transfer.start({
-                  commandId: crypto.randomUUID(),
+                  commandId: createClientId(),
                   sourceType: "LIBRARY_ENTRY",
                   entryId: entry.id,
                   expectedEntryVersion: entry.version,
@@ -192,7 +193,7 @@ export function CharacterLibraryMediaPicker({
           onClose={() => setCanvas(false)}
           onSelect={versionId =>
             transfer.start({
-              commandId: crypto.randomUUID(),
+              commandId: createClientId(),
               sourceType: "PROJECT_VERSION",
               entryId: null,
               expectedEntryVersion: null,

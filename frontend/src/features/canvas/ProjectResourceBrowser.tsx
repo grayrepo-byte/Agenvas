@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { FileText, ImageSquare, Images, MusicNotes, VideoCamera } from "@/shared/ui/icons";
 import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
 import { useId, useRef, useState } from "react";
@@ -97,8 +98,8 @@ export function ProjectResourceBrowser({
       if (!pending.current.has(resource.versionId))
         pending.current.set(resource.versionId, {
           versionId: resource.versionId,
-          itemId: crypto.randomUUID(),
-          commandKey: crypto.randomUUID(),
+          itemId: createClientId(),
+          commandKey: createClientId(),
           ...position(),
           zIndex,
         });

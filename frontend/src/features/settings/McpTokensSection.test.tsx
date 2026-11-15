@@ -47,6 +47,45 @@ describe("McpTokensSection", () => {
   );
   afterEach(() => vi.restoreAllMocks());
 
+  it("copies the one-time token over LAN HTTP without leaving temporary secret content", async () => {
+    server.use(
+      http.get("/api/v1/account/mcp-tokens", () => HttpResponse.json([])),
+      http.post("/api/v1/account/mcp-tokens", () => HttpResponse.json({ credential: SAFE_TOKEN, token: SECRET })),
+    );
+    const user = userEvent.setup();
+    renderSection();
+    await screen.findByText("还没有 MCP 访问令牌");
+    await user.type(screen.getByLabelText("令牌名称"), "Synthetic client");
+    await user.click(screen.getByRole("button", { name: "创建访问令牌" }));
+    await screen.findByLabelText("新访问令牌");
+    const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    const execCommand = Object.getOwnPropertyDescriptor(document, "execCommand");
+    let copied = "";
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: () => {
+        if (!(document.activeElement instanceof HTMLTextAreaElement)) return false;
+        copied = document.activeElement.value;
+        return true;
+      },
+    });
+    try {
+      const button = screen.getByRole("button", { name: "复制令牌" });
+      await user.click(button);
+      expect(await screen.findByText("令牌已复制")).toBeInTheDocument();
+      expect(copied).toBe(SECRET);
+      expect(button).toHaveFocus();
+      expect(document.querySelector("textarea")).toBeNull();
+      expect(JSON.stringify(localStorage) + JSON.stringify(sessionStorage)).not.toContain(SECRET);
+    } finally {
+      if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard);
+      else Reflect.deleteProperty(navigator, "clipboard");
+      if (execCommand) Object.defineProperty(document, "execCommand", execCommand);
+      else Reflect.deleteProperty(document, "execCommand");
+    }
+  });
+
   it.each(["create", "revoke"])(
     "preserves confirmed %s metadata when an older list response arrives late",
     async operation => {

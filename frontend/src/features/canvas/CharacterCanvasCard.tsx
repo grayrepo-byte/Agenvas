@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import {
   CopySimple,
   LockSimple,
@@ -641,7 +642,7 @@ export function CharacterNodePlacementDialog({
     if (busyRef.current || readOnly || uncertain || profile?.archived) return;
     if (!pending.current && profile)
       pending.current = {
-        id: crypto.randomUUID(),
+        id: createClientId(),
         request: {
           selection: defaultCharacterSelection(profile),
           ...point,

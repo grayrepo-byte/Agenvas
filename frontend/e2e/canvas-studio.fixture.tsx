@@ -1,3 +1,4 @@
+import { createClientId } from "../src/shared/lib/clientId";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router";
@@ -246,7 +247,7 @@ window.fetch = async (input, init) => {
         const subject = artifacts.find(entry => entry.id === command.artifactId);
         if (subject)
           items.push({
-            id: command.itemId ?? crypto.randomUUID(),
+            id: command.itemId ?? createClientId(),
             subjectType: "ARTIFACT",
             subjectId: subject.id,
             title: subject.title,
@@ -338,7 +339,7 @@ window.fetch = async (input, init) => {
     if (init?.method === "POST") {
       const request = JSON.parse(String(init.body)) as CreateArtifactRequest;
       const created = artifact(
-        crypto.randomUUID(),
+        createClientId(),
         request.kind,
         request.title,
         request.content && "text" in request.content ? request.content.text : undefined,

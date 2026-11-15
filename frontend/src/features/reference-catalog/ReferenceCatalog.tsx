@@ -20,6 +20,7 @@ import {
   type ReferenceVariant,
 } from "../../shared/api/referenceCatalog";
 import { t, useLocale } from "../../shared/i18n";
+import { createCommandKey } from "../../shared/lib/clientId";
 import { Dialog } from "../../shared/ui/Dialog";
 import { Notice } from "../../shared/ui/PagePrimitives";
 import { Select } from "../../shared/ui/Select";
@@ -516,7 +517,7 @@ function ReferencePreview({
   async function apply() {
     if (!projectId || !onApply || !variant || !allowed || disabledReason || working || submitting.current) return;
     if (!transfer.intent) {
-      const command = { commandKey: crypto.randomUUID(), ...(placement ? { placement } : {}) };
+      const command = { commandKey: createCommandKey(), ...(placement ? { placement } : {}) };
       if (entry.origin === "SELF_CREATED") {
         if (entry.version === undefined) return;
         transfer.intent = { kind: "COSTUME", id: entry.id, request: { ...command, expectedVersion: entry.version } };

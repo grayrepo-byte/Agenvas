@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -113,7 +114,7 @@ export function useCanvasOrganization({
         return;
       }
       await safely(async () => {
-        const groupId = dialog.mode === "rename" ? dialog.group.id : crypto.randomUUID();
+        const groupId = dialog.mode === "rename" ? dialog.group.id : createClientId();
         const result = await editing.execute(
           {
             operation: "GROUP",
@@ -253,10 +254,10 @@ export function useCanvasOrganization({
         const offset = COPY_OFFSET * (pasteCount.current + 1);
         const dx = point ? point.x - left : offset;
         const dy = point ? point.y - top : offset;
-        const groupIds = new Map(buffer.groups.map(group => [group.id, crypto.randomUUID()]));
+        const groupIds = new Map(buffer.groups.map(group => [group.id, createClientId()]));
         const copies = buffer.items.map(({ sourceGroupId, ...item }) => ({
           ...item,
-          targetItemId: crypto.randomUUID(),
+          targetItemId: createClientId(),
           x: item.x + dx,
           y: item.y + dy,
           zIndex: Math.min(1000, item.zIndex + 1),
@@ -266,7 +267,7 @@ export function useCanvasOrganization({
           {
             operation: "DUPLICATE",
             copies,
-            connectionCopies: buffer.connections.map(edge => ({ ...edge, targetConnectionId: crypto.randomUUID() })),
+            connectionCopies: buffer.connections.map(edge => ({ ...edge, targetConnectionId: createClientId() })),
             groupChanges: buffer.groups.map(group => ({
               type: "UPSERT",
               groupId: groupIds.get(group.id)!,

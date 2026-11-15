@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import {
   CharacterCanvasCard,
   CharacterNodeEditor,
@@ -586,8 +587,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       if (textProgress.current?.fingerprint !== fingerprint) {
         textProgress.current = {
           fingerprint,
-          createKey: crypto.randomUUID(),
-          itemId: crypto.randomUUID(),
+          createKey: createClientId(),
+          itemId: createClientId(),
           zIndex: canvas.data?.items.length ?? 0,
           title: t(DEFAULT_TEXT_CARD_TITLE),
         };
@@ -691,8 +692,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       if (mediaProgress.current?.fingerprint !== fingerprint) {
         mediaProgress.current = {
           fingerprint,
-          createKey: crypto.randomUUID(),
-          itemId: crypto.randomUUID(),
+          createKey: createClientId(),
+          itemId: createClientId(),
           title: director ? t("director.title") : t("canvas.workspace.newMediaTitle", { "0": ARTIFACT_LABELS[kind] }),
         };
       }
@@ -763,8 +764,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     mutationFn: async (source: CanvasItem) => {
       if (!source.selectedVersionId) throw new Error(t("canvas.workspace.audioResultRequired"));
       const progress = mvProgress.current.get(source.id) ?? {
-        createKey: crypto.randomUUID(),
-        itemId: crypto.randomUUID(),
+        createKey: createClientId(),
+        itemId: createClientId(),
       };
       mvProgress.current.set(source.id, progress);
       const prepared = await prepareMediaNode(
@@ -835,7 +836,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       )
         return;
       setAgentRunRequest({
-        id: crypto.randomUUID(),
+        id: createClientId(),
         instruction: t("agent.chat.compositionInstruction"),
         selectedItemIds: items.map(item => item.id),
       });
@@ -984,7 +985,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         setCharacterConnection({
           sourceId: character.source.id,
           targetId: character.target.id,
-          key: crypto.randomUUID(),
+          key: createClientId(),
         });
         return;
       }
@@ -1291,9 +1292,9 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             item,
             projectId,
             onEditCharacter: item => setCharacterEditorId(item.id),
-            onPreviewCharacterTarget: targetId => setCharacterConnection({ targetId, key: crypto.randomUUID() }),
+            onPreviewCharacterTarget: targetId => setCharacterConnection({ targetId, key: createClientId() }),
             onConnectCharacterTarget: (sourceId, targetId) =>
-              setCharacterConnection({ sourceId, targetId, key: crypto.randomUUID() }),
+              setCharacterConnection({ sourceId, targetId, key: createClientId() }),
             characterReadOnly: characterNarrow || project.data?.status !== "ACTIVE",
             characterLabel:
               bindingsByItem
@@ -1757,8 +1758,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               file,
               point: uploadPoint.current,
               title: (file.name.replace(/\.[^.]+$/, "").trim() || file.name).slice(0, MAX_ARTIFACT_TITLE_LENGTH),
-              createKey: crypto.randomUUID(),
-              itemId: crypto.randomUUID(),
+              createKey: createClientId(),
+              itemId: createClientId(),
               zIndex: canvas.data?.items.length ?? 0,
             };
             uploadProgress.current = intent;
@@ -1804,7 +1805,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
                       setCharacterConnection({
                         targetId,
                         sourceId: recovery.kind === "connection" ? recovery.request.sourceCanvasItemId : undefined,
-                        key: crypto.randomUUID(),
+                        key: createClientId(),
                       })
                     }
                   >

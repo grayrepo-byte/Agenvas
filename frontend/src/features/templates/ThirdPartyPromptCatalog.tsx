@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useRef, useState } from "react";
 import {
@@ -85,7 +86,7 @@ export function ThirdPartyPromptCatalog({
     setError(null);
     try {
       const intent = `${selected.id}:${selected.version}`;
-      const key = keys.current.get(intent) ?? crypto.randomUUID();
+      const key = keys.current.get(intent) ?? createClientId();
       keys.current.set(intent, key);
       const imported = await importThirdPartyPrompt(context.projectId, selected, key);
       if (imported.targetKind !== context.targetKind) throw new Error(t("templates.kindMismatch"));

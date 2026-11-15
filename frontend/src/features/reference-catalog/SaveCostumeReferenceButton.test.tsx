@@ -2,11 +2,15 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import { setLocale } from "../../shared/i18n";
 import { server } from "../../test/server";
 import { SaveCostumeReferenceButton } from "./SaveCostumeReferenceButton";
+
+// LAN HTTP exposes getRandomValues but no randomUUID.
+beforeEach(() => vi.stubGlobal("crypto", { getRandomValues: crypto.getRandomValues.bind(crypto) }));
+afterEach(() => vi.unstubAllGlobals());
 
 const props = {
   projectId: "project",

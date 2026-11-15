@@ -1,3 +1,4 @@
+import { createClientId } from "../../../shared/lib/clientId";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createStore } from "zustand/vanilla";
@@ -218,13 +219,7 @@ export function useSubtitleWorkbench(projectId: string, sources: readonly Subtit
     await perform(async () => {
       const current =
         queryClient.getQueryData<api.SubtitleDraft[]>(queryKey)?.find(draft => draft.id === selected.id) ?? selected;
-      const accepted = await api.recognizeSubtitles(
-        projectId,
-        current.id,
-        current.version,
-        language,
-        crypto.randomUUID(),
-      );
+      const accepted = await api.recognizeSubtitles(projectId, current.id, current.version, language, createClientId());
       queryClient.setQueryData(["subtitle-task-status", projectId, accepted.id], api.subtitleTaskStatus(accepted));
       // Acceptance already persisted attachTask's CAS increment. Publish that identity
       // before the follow-up GET: a failed read must not lose polling/cancel or unlock export.

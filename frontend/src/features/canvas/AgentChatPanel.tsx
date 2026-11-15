@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import {
   ArrowLeft,
   ArrowUp,
@@ -280,7 +281,7 @@ function AgentChatPanelContent({ data, headerActions }: { data: AgentChatPanelDa
   const createConversation = useMutation({
     mutationFn: async (request: { transferDraft: boolean }) => {
       void request;
-      createKey.current ??= crypto.randomUUID();
+      createKey.current ??= createClientId();
       return createAgentConversation(data.projectId, agent.id, createKey.current);
     },
     onSuccess: (conversation, input) => {
@@ -508,7 +509,7 @@ function AgentChatPanelContent({ data, headerActions }: { data: AgentChatPanelDa
           selectedItemIds: selectedIds,
           skillSelection,
         };
-        runIntent.current = { fingerprint, key: crypto.randomUUID(), input, requestId: request?.id };
+        runIntent.current = { fingerprint, key: createClientId(), input, requestId: request?.id };
       }
       // Once createRun is sent it must be reconciled by its original key, never canceled by navigation.
       if (!requestIsCurrent() || !runIntent.current) return;

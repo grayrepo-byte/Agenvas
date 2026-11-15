@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { hasCanvasArtifact, type ArtifactCanvasItem } from "./versionedArtifact";
 import { AudioPlayer } from "./AudioPlayer";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -582,7 +583,7 @@ export function StoryboardWorkbench({
               const operation = `${projectId}:${entry.item.id}:${entry.draft.version}`;
               let key = submissionKeys.current.get(operation);
               if (!key) {
-                key = crypto.randomUUID();
+                key = createClientId();
                 submissionKeys.current.set(operation, key);
               }
               const task = await runMediaDraft(

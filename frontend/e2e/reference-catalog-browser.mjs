@@ -12,6 +12,8 @@ const chromePath = process.env.AGENVAS_E2E_CHROME ?? "/Applications/Google Chrom
 const route = "/e2e/reference-catalog.html";
 // Exercise the shipped modal layout with long details and a paged catalogue.
 const production = !process.argv.includes("--dev");
+const insecureHttp = process.argv.includes("--insecure-http");
+const httpHost = "agenvas-http.test";
 const pollMs = 50;
 const timeoutMs = 15_000;
 const tolerance = 1;
@@ -153,9 +155,16 @@ try {
         rollupOptions: { input: join(root, route) },
       },
     });
-    server = await preview({ ...config, build: { outDir }, preview: { host: "127.0.0.1", port: 0, open: false } });
+    server = await preview({
+      ...config,
+      build: { outDir },
+      preview: { host: "127.0.0.1", port: 0, open: false, allowedHosts: [httpHost] },
+    });
   } else {
-    server = await createServer({ ...config, server: { host: "127.0.0.1", port: 0, open: false } });
+    server = await createServer({
+      ...config,
+      server: { host: "127.0.0.1", port: 0, open: false, allowedHosts: [httpHost] },
+    });
     await server.listen();
   }
   chrome = spawn(
@@ -166,6 +175,7 @@ try {
       "--no-default-browser-check",
       "--disable-background-networking",
       "--remote-debugging-port=0",
+      ...(insecureHttp ? [`--host-resolver-rules=MAP ${httpHost} 127.0.0.1`, "--no-proxy-server"] : []),
       `--user-data-dir=${profile}`,
       "about:blank",
     ],
@@ -200,7 +210,8 @@ try {
     else waiting.resolve(message.result);
   });
   await cdp("Page.enable");
-  const baseUrl = server.resolvedUrls.local[0];
+  const baseUrl = new URL(server.resolvedUrls.local[0]);
+  if (insecureHttp) baseUrl.hostname = httpHost;
   for (const viewport of viewports) {
     await cdp("Emulation.setDeviceMetricsOverride", { ...viewport, deviceScaleFactor: 1, mobile: false });
     await cdp("Page.navigate", { url: new URL(route, baseUrl).href });
@@ -511,6 +522,13 @@ try {
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   await cdp("Page.navigate", { url: new URL(`${route}?preferred`, baseUrl).href });
   await pointerClick("#open-reference");
+  if (insecureHttp) {
+    assert.deepEqual(
+      await page(() => [isSecureContext, "randomUUID" in crypto, typeof crypto.getRandomValues]),
+      [false, false, "function"],
+      "The reference catalog must run in a real non-secure HTTP context",
+    );
+  }
   try {
     await waitFor(
       () =>

@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
 import {
@@ -20,7 +21,7 @@ export function useLibraryTransfer<T extends object>(
   const client = useQueryClient();
   const send = useMutation({
     mutationFn: (input: T) => {
-      intent.current ??= { ...input, commandKey: crypto.randomUUID() };
+      intent.current ??= { ...input, commandKey: createClientId() };
       return submit(intent.current);
     },
     onError: error => {

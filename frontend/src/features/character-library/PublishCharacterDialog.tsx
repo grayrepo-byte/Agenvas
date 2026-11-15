@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { type CharacterProfile } from "../../shared/api/client";
@@ -18,7 +19,7 @@ export function PublishCharacterDialog({
   onClose: () => void;
 }) {
   useLocale();
-  const [libraryId] = useState(() => crypto.randomUUID());
+  const [libraryId] = useState(() => createClientId());
   const [identityVersions, setIdentityVersions] = useState<string[]>([]);
   const [picker, setPicker] = useState(false);
   const client = useQueryClient();
@@ -41,7 +42,7 @@ export function PublishCharacterDialog({
       onSubmit={event => {
         event.preventDefault();
         transfer.start({
-          commandId: crypto.randomUUID(),
+          commandId: createClientId(),
           expectedVersion: 0,
           sourceProjectId: projectId,
           sourceCharacterId: profile.id,

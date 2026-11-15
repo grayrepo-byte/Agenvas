@@ -3,6 +3,7 @@ import { ArrowsOut, CaretLeft, CaretRight, Copy } from "@/shared/ui/icons";
 import { useMemo, useState } from "react";
 import type { CallDebug, DebugBody } from "../../shared/api/client";
 import { formatNumber, t, useLocale } from "../../shared/i18n";
+import { copyText } from "../../shared/lib/clipboard";
 import { Dialog } from "../../shared/ui/Dialog";
 import { Button } from "../../shared/ui/primitives/button";
 import { Input } from "../../shared/ui/primitives/input";
@@ -602,7 +603,7 @@ export function CopyButton({ content }: { content: string }) {
         onClick={async () => {
           setPending(true);
           try {
-            await navigator.clipboard.writeText(content);
+            await copyText(content);
             setStatus("done");
           } catch {
             setStatus("failed");

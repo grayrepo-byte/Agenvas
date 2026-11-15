@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { listCharacters } from "../../shared/api/client";
@@ -45,7 +46,7 @@ export function CharacterLibraryImportDialog({
   useLocale();
   const client = useQueryClient();
   const [selected, setSelected] = useState(source ?? null);
-  const [newId] = useState(() => crypto.randomUUID());
+  const [newId] = useState(() => createClientId());
   const [preview, setPreview] = useState<LibraryTransferPreview | null>(null);
   const [loading, setLoading] = useState(false);
   const lock = useRef(false);
@@ -216,7 +217,7 @@ export function CharacterLibraryImportDialog({
                       characterId: preview.characterId,
                       expectedCharacterVersion: preview.expectedCharacterVersion,
                       previewHash: preview.previewHash,
-                      commandId: crypto.randomUUID(),
+                      commandId: createClientId(),
                     })
                   }
                 >

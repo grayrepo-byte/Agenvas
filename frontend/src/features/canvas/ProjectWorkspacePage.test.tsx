@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import type { ArtifactCanvasItem } from "./versionedArtifact";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -5,7 +6,7 @@ import userEvent from "@testing-library/user-event";
 import type { ReactFlowInstance, ReactFlowProps } from "@xyflow/react";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type {
   Agent,
@@ -194,8 +195,12 @@ function measureCreationCanvas() {
   vi.spyOn(flow, "getBoundingClientRect").mockReturnValue(bounds);
 }
 
+afterEach(() => vi.unstubAllGlobals());
+
 describe("ProjectWorkspacePage", () => {
   beforeEach(() => {
+    // Exercise node creation, layout saves and media commands as served over LAN HTTP.
+    vi.stubGlobal("crypto", { getRandomValues: crypto.getRandomValues.bind(crypto) });
     projectName = "Workspace snapshot";
     readCanvasItems = () => [];
     readConnections = () => [];
@@ -1163,7 +1168,7 @@ describe("ProjectWorkspacePage", () => {
       server.use(
         http.get("/api/v1/auth/me", () =>
           HttpResponse.json({
-            id: crypto.randomUUID(),
+            id: createClientId(),
             loginName: "admin",
             role: "ADMIN",
           }),
@@ -1241,8 +1246,8 @@ describe("ProjectWorkspacePage", () => {
   );
 
   it("creates an empty image card from the canvas menu and autosaves its bottom draft", async () => {
-    const artifactId = crypto.randomUUID();
-    const itemId = crypto.randomUUID();
+    const artifactId = createClientId();
+    const itemId = createClientId();
     let prompt = "";
     let draftVersion = 0;
     let created = 0;
@@ -1251,7 +1256,7 @@ describe("ProjectWorkspacePage", () => {
     server.use(
       http.get("/api/v1/auth/me", () =>
         HttpResponse.json({
-          id: crypto.randomUUID(),
+          id: createClientId(),
           loginName: "admin",
           role: "ADMIN",
         }),
@@ -1557,7 +1562,7 @@ describe("ProjectWorkspacePage", () => {
     server.use(
       http.get("/api/v1/auth/me", () =>
         HttpResponse.json({
-          id: crypto.randomUUID(),
+          id: createClientId(),
           loginName: "admin",
           role: "ADMIN",
         }),
@@ -1658,7 +1663,7 @@ describe("ProjectWorkspacePage", () => {
     server.use(
       http.get("/api/v1/auth/me", () =>
         HttpResponse.json({
-          id: crypto.randomUUID(),
+          id: createClientId(),
           loginName: "admin",
           role: "ADMIN",
         }),
@@ -1695,7 +1700,7 @@ describe("ProjectWorkspacePage", () => {
     server.use(
       http.get("/api/v1/auth/me", () =>
         HttpResponse.json({
-          id: crypto.randomUUID(),
+          id: createClientId(),
           loginName: "admin",
           role: "ADMIN",
         }),
@@ -1770,7 +1775,7 @@ describe("ProjectWorkspacePage", () => {
     try {
       server.use(
         http.get("/api/v1/auth/me", () =>
-          HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" }),
+          HttpResponse.json({ id: createClientId(), loginName: "admin", role: "ADMIN" }),
         ),
         projectProjection("SSE project"),
         canvasProjection(() => []),
@@ -1834,7 +1839,7 @@ describe("ProjectWorkspacePage", () => {
           data: JSON.stringify({
             projectId: "project-1",
             seq: 1,
-            eventId: crypto.randomUUID(),
+            eventId: createClientId(),
             type: "agent.conversation.changed",
             schemaVersion: 1,
             aggregateId: "conversation-1",
@@ -1858,7 +1863,7 @@ describe("ProjectWorkspacePage", () => {
           data: JSON.stringify({
             projectId: "project-1",
             seq: 2,
-            eventId: crypto.randomUUID(),
+            eventId: createClientId(),
             type: "canvas.item.selected_version.changed",
             schemaVersion: 1,
             aggregateId: "card-1",
@@ -1878,10 +1883,10 @@ describe("ProjectWorkspacePage", () => {
           data: JSON.stringify({
             projectId: "project-1",
             seq: 7,
-            eventId: crypto.randomUUID(),
+            eventId: createClientId(),
             type: "task.status.changed",
             schemaVersion: 1,
-            aggregateId: crypto.randomUUID(),
+            aggregateId: createClientId(),
             aggregateVersion: 1,
             payload: { status: "SUCCEEDED" },
             occurredAt: "2026-09-24T00:00:00Z",
@@ -1907,15 +1912,13 @@ describe("ProjectWorkspacePage", () => {
     { kind: "IMAGE", endpoint: "assets", filename: "Product reference.webp", mime: "image/webp" },
     { kind: "AUDIO", endpoint: "assets/audio", filename: "Product reference.mp3", mime: "audio/mpeg" },
   ] as const)("uploads $kind directly and places an exact-version card", async ({ kind, endpoint, filename, mime }) => {
-    const assetId = crypto.randomUUID();
-    const artifactId = crypto.randomUUID();
-    const versionId = crypto.randomUUID();
+    const assetId = createClientId();
+    const artifactId = createClientId();
+    const versionId = createClientId();
     let uploaded = false;
     let created = false;
     server.use(
-      http.get("/api/v1/auth/me", () =>
-        HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" }),
-      ),
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: createClientId(), loginName: "admin", role: "ADMIN" })),
       projectProjection("Reference project"),
       canvasProjection(() => []),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
@@ -1941,7 +1944,7 @@ describe("ProjectWorkspacePage", () => {
         return HttpResponse.json({
           items: [
             {
-              id: crypto.randomUUID(),
+              id: createClientId(),
               subjectType: "ARTIFACT",
               subjectId: artifactId,
               title: "Product reference",
@@ -2014,15 +2017,13 @@ describe("ProjectWorkspacePage", () => {
   });
 
   it("uploads MP4 directly from the local picker and places a VIDEO card at the menu point", async () => {
-    const assetId = crypto.randomUUID();
-    const artifactId = crypto.randomUUID();
-    const versionId = crypto.randomUUID();
+    const assetId = createClientId();
+    const artifactId = createClientId();
+    const versionId = createClientId();
     let uploaded = false;
     let created = false;
     server.use(
-      http.get("/api/v1/auth/me", () =>
-        HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" }),
-      ),
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: createClientId(), loginName: "admin", role: "ADMIN" })),
       projectProjection("Reference project"),
       canvasProjection(() => []),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
@@ -2053,7 +2054,7 @@ describe("ProjectWorkspacePage", () => {
         return HttpResponse.json({
           items: [
             {
-              id: crypto.randomUUID(),
+              id: createClientId(),
               subjectType: "ARTIFACT",
               subjectId: artifactId,
               title: "Uploaded video",
@@ -2122,9 +2123,7 @@ describe("ProjectWorkspacePage", () => {
   it("offers explicit retry after a rejected local upload", async () => {
     let creates = 0;
     server.use(
-      http.get("/api/v1/auth/me", () =>
-        HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" }),
-      ),
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: createClientId(), loginName: "admin", role: "ADMIN" })),
       projectProjection("Reference project"),
       canvasProjection(() => []),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
@@ -2163,8 +2162,8 @@ describe("ProjectWorkspacePage", () => {
   it.each(["placementConflict", "artifactUncertain", "placementUncertain"])(
     "reuses confirmed stages and identities after %s",
     async stage => {
-      const assetId = crypto.randomUUID();
-      const artifactId = crypto.randomUUID();
+      const assetId = createClientId();
+      const artifactId = createClientId();
       let uploads = 0;
       let artifacts = 0;
       let placements = 0;
@@ -2172,7 +2171,7 @@ describe("ProjectWorkspacePage", () => {
       let createKey: string | null = null;
       server.use(
         http.get("/api/v1/auth/me", () =>
-          HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" }),
+          HttpResponse.json({ id: createClientId(), loginName: "admin", role: "ADMIN" }),
         ),
         projectProjection("Reference project"),
         canvasProjection(() => []),
@@ -2248,15 +2247,13 @@ describe("ProjectWorkspacePage", () => {
   );
 
   it.each(["artifact", "placement"])("reuses the text creation intent after an uncertain %s response", async stage => {
-    const artifactId = crypto.randomUUID();
+    const artifactId = createClientId();
     const keys: string[] = [];
     const requests: unknown[] = [];
     const placements: unknown[] = [];
     let placedItemId: string | undefined;
     server.use(
-      http.get("/api/v1/auth/me", () =>
-        HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" }),
-      ),
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: createClientId(), loginName: "admin", role: "ADMIN" })),
       projectProjection("Text project"),
       canvasProjection(() => []),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
@@ -2350,15 +2347,13 @@ describe("ProjectWorkspacePage", () => {
 
   it("keeps the card while Delete edits a focused text input", async () => {
     server.use(
-      http.get("/api/v1/auth/me", () =>
-        HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" }),
-      ),
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: createClientId(), loginName: "admin", role: "ADMIN" })),
       projectProjection("Canvas test"),
       canvasProjection(() => [
         {
-          id: crypto.randomUUID(),
+          id: createClientId(),
           subjectType: "ARTIFACT",
-          subjectId: crypto.randomUUID(),
+          subjectId: createClientId(),
           title: "Existing card",
           x: 10,
           y: 10,
@@ -2371,16 +2366,16 @@ describe("ProjectWorkspacePage", () => {
           selectedVersion: null,
           version: 0,
           artifact: {
-            id: crypto.randomUUID(),
-            projectId: crypto.randomUUID(),
+            id: createClientId(),
+            projectId: createClientId(),
             kind: "TEXT",
             title: "Existing card",
-            resourceDefaultVersionId: crypto.randomUUID(),
+            resourceDefaultVersionId: createClientId(),
             version: 0,
             createdAt: "2026-09-23T00:00:00Z",
             updatedAt: "2026-09-23T00:00:00Z",
             resourceDefaultVersion: {
-              id: crypto.randomUUID(),
+              id: createClientId(),
               versionNo: 1,
               schemaVersion: 1,
               content: { format: "PLAIN_TEXT", text: "Persisted" },
@@ -2423,7 +2418,7 @@ describe("ProjectWorkspacePage", () => {
       server.use(
         http.get("/api/v1/auth/me", () =>
           HttpResponse.json({
-            id: crypto.randomUUID(),
+            id: createClientId(),
             loginName: "admin",
             role: "ADMIN",
           }),
@@ -2620,7 +2615,7 @@ describe("ProjectWorkspacePage", () => {
   });
 
   it("saves project Agent configuration and preflights the current canvas", async () => {
-    const agentId = crypto.randomUUID();
+    const agentId = createClientId();
     let updated = false;
     let activeRun: {
       id: string;
@@ -2635,9 +2630,7 @@ describe("ProjectWorkspacePage", () => {
     let modelAvailable = false;
     const idempotencyKeys: string[] = [];
     server.use(
-      http.get("/api/v1/auth/me", () =>
-        HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" }),
-      ),
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: createClientId(), loginName: "admin", role: "ADMIN" })),
       projectProjection("Agent canvas"),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
       http.post("/api/v1/projects/:projectId/runs/preflight", async ({ request }) => {
@@ -2714,7 +2707,7 @@ describe("ProjectWorkspacePage", () => {
             { status: 409, headers: { "Content-Type": "application/problem+json" } },
           );
         activeRun = {
-          id: crypto.randomUUID(),
+          id: createClientId(),
           agentInstanceId: agentId,
           status: "RUNNING",
           conversationId: `conversation-${agentId}`,
@@ -2823,9 +2816,9 @@ describe("ProjectWorkspacePage", () => {
   });
 
   it("loads the archived original for a generated image card", async () => {
-    const assetId = crypto.randomUUID();
-    const artifactId = crypto.randomUUID();
-    const versionId = crypto.randomUUID();
+    const assetId = createClientId();
+    const artifactId = createClientId();
+    const versionId = createClientId();
     const selectedVersion: NonNullable<CanvasItem["selectedVersion"]> = {
       id: versionId,
       versionNo: 1,
@@ -2834,22 +2827,20 @@ describe("ProjectWorkspacePage", () => {
         assetId,
         prompt: "Ridge sunrise",
         workflowVersion: "mock-image-v1",
-        sourceTaskId: crypto.randomUUID(),
+        sourceTaskId: createClientId(),
         parameters: { mock: true, displayLabel: "演示素材" },
       },
       inputReferences: [],
       createdByKind: "TASK",
-      runId: crypto.randomUUID(),
+      runId: createClientId(),
       createdAt: "2026-09-23T00:00:00Z",
     };
     server.use(
-      http.get("/api/v1/auth/me", () =>
-        HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" }),
-      ),
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: createClientId(), loginName: "admin", role: "ADMIN" })),
       projectProjection("Image canvas"),
       canvasProjection(() => [
         {
-          id: crypto.randomUUID(),
+          id: createClientId(),
           subjectType: "ARTIFACT",
           subjectId: artifactId,
           title: "Demo still",
@@ -2858,7 +2849,7 @@ describe("ProjectWorkspacePage", () => {
           width: 300,
           height: 300,
           zIndex: 0,
-          groupId: crypto.randomUUID(),
+          groupId: createClientId(),
           locked: false,
           selectedVersionId: versionId,
           selectedVersion,
@@ -2899,9 +2890,9 @@ describe("ProjectWorkspacePage", () => {
   it("keeps generated video on its poster until hover playback without selecting the node", async () => {
     const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
     const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
-    const assetId = crypto.randomUUID();
-    const artifactId = crypto.randomUUID();
-    const versionId = crypto.randomUUID();
+    const assetId = createClientId();
+    const artifactId = createClientId();
+    const versionId = createClientId();
     const selectedVersion: NonNullable<CanvasItem["selectedVersion"]> = {
       id: versionId,
       versionNo: 1,
@@ -2910,22 +2901,20 @@ describe("ProjectWorkspacePage", () => {
         assetId,
         prompt: "Coffee",
         workflowVersion: "mock-video-v1",
-        sourceTaskId: crypto.randomUUID(),
+        sourceTaskId: createClientId(),
         parameters: { mock: true },
       },
       inputReferences: [],
       createdByKind: "TASK",
-      runId: crypto.randomUUID(),
+      runId: createClientId(),
       createdAt: "2026-09-23T00:00:00Z",
     };
     server.use(
-      http.get("/api/v1/auth/me", () =>
-        HttpResponse.json({ id: crypto.randomUUID(), loginName: "admin", role: "ADMIN" }),
-      ),
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: createClientId(), loginName: "admin", role: "ADMIN" })),
       projectProjection("Video canvas"),
       canvasProjection(() => [
         {
-          id: crypto.randomUUID(),
+          id: createClientId(),
           subjectType: "ARTIFACT",
           subjectId: artifactId,
           title: "Demo clip",

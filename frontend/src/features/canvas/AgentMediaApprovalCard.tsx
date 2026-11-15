@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { CheckCircle, Clock, WarningCircle } from "@/shared/ui/icons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
@@ -119,7 +120,7 @@ export function AgentMediaApprovalCard({
     const operation = `${approval.version}:${choice}`;
     let key = decisionKeys.current.get(operation);
     if (!key) {
-      key = crypto.randomUUID();
+      key = createClientId();
       decisionKeys.current.set(operation, key);
     }
     pending.current = true;

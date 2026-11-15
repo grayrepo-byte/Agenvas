@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router";
 import { createQueryClient } from "../src/app/queryClient";
 import { SystemSettingsPage } from "../src/features/settings/SystemSettingsPage";
+import { FormattedCallExchange } from "../src/features/settings/FormattedCallExchange";
 import { type CreateMcpTokenRequest, type McpTokenSummary } from "../src/shared/api/client";
 import { setLocale } from "../src/shared/i18n";
 import "../src/styles.css";
@@ -28,6 +29,7 @@ let tokens: McpTokenSummary[] = [
   { ...token, id: "synthetic-revoked", name: "Revoked synthetic client", revokedAt: now },
 ];
 const client = createQueryClient();
+const httpCompatibility = new URLSearchParams(location.search).has("http-compatibility");
 window.fetch = async (input, init) => {
   const url = new URL(input instanceof Request ? input.url : String(input), location.href);
   const method = init?.method ?? (input instanceof Request ? input.method : "GET");
@@ -59,6 +61,24 @@ createRoot(document.getElementById("root")!).render(
   <QueryClientProvider client={client}>
     <MemoryRouter initialEntries={["/settings/general?tab=security"]}>
       <SystemSettingsPage />
+      {httpCompatibility ? (
+        <FormattedCallExchange
+          exchange={{
+            method: "POST",
+            url: "https://provider.invalid/v1/chat/completions",
+            responseStatus: 200,
+            responseIdentifiers: {},
+            requestBody: {
+              content: JSON.stringify({ messages: [{ role: "user", content: "Synthetic HTTP log\n完整正文" }] }),
+              encoding: "UTF8",
+              truncated: false,
+            },
+            responseBody: null,
+          }}
+          mode="formatted"
+          llm
+        />
+      ) : null}
     </MemoryRouter>
   </QueryClientProvider>,
 );

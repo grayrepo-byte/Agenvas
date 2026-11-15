@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import type { PropsWithChildren } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   Canvas,
   CanvasEditReplayRequest,
@@ -71,11 +71,14 @@ function gate() {
 }
 
 beforeEach(() => {
+  // LAN HTTP exposes getRandomValues but no randomUUID.
+  vi.stubGlobal("crypto", { getRandomValues: crypto.getRandomValues.bind(crypto) });
   useCanvasStore.setState({ drafts: {}, selectedIds: [], mediaDraftRecoveries: {}, saveState: "saved" });
   server.use(
     http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
   );
 });
+afterEach(() => vi.unstubAllGlobals());
 
 describe("canvas editing receipts over HTTP", () => {
   it.each([false, true])(

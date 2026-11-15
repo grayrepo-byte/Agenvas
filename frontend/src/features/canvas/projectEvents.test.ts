@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { describe, expect, it, vi } from "vitest";
 import type { ProjectEvent, ProjectSnapshot } from "../../shared/api/client";
 import { subscribeProjectEvents, type EventSyncStatus } from "./projectEvents";
@@ -56,7 +57,7 @@ function event(seq: number, aggregateVersion: number): ProjectEvent {
   return {
     projectId,
     seq,
-    eventId: crypto.randomUUID(),
+    eventId: createClientId(),
     type: "artifact.version.created",
     schemaVersion: 1,
     aggregateId,
@@ -332,7 +333,7 @@ describe("project event subscription", () => {
     stream.emit({
       ...event(2, 1),
       type: "usage.changed",
-      aggregateId: crypto.randomUUID(),
+      aggregateId: createClientId(),
       payload: { operationKey: "llm:one:0:settle" },
     });
     expect(changes.map(change => change.type)).toEqual(["agent.run.changed", "usage.changed"]);
@@ -406,7 +407,7 @@ describe("project event subscription", () => {
     stream.emit({
       ...event(1, 1),
       type: "canvas.item.selected_version.changed",
-      payload: { canvasItemId: aggregateId, selectedVersionId: crypto.randomUUID() },
+      payload: { canvasItemId: aggregateId, selectedVersionId: createClientId() },
     });
     expect(changes).toHaveLength(1);
     stop();
@@ -457,7 +458,7 @@ describe("project event subscription", () => {
     stream.emit({
       ...event(1, 9),
       type: "canvas.item.selected_version.changed",
-      payload: { canvasItemId: aggregateId, selectedVersionId: crypto.randomUUID() },
+      payload: { canvasItemId: aggregateId, selectedVersionId: createClientId() },
     });
     stream.emit({ ...event(2, 2), type: "media.draft.changed", payload: { canvasItemId: aggregateId } });
     expect(changes.map(value => value.type)).toEqual(["canvas.item.selected_version.changed", "media.draft.changed"]);

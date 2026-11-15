@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { Range } from "../../shared/ui/Range";
 import {
   ArrowClockwise,
@@ -429,7 +430,7 @@ export function SmartEditDialog({
             title: baseName.slice(0, MAX_ARTIFACT_TITLE_LENGTH),
             content: { sourceType: "UPLOAD", assetId: asset.id },
           },
-          crypto.randomUUID(),
+          createClientId(),
         );
         if (!artifact.resourceDefaultVersionId) throw new Error(t("image.smartEdit.uploadedVersionPending"));
         uploaded.push({

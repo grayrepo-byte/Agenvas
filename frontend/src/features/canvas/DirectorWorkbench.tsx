@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import {
   ArrowClockwise,
   ArrowCounterClockwise,
@@ -188,7 +189,7 @@ export function DirectorWorkbench(props: Props) {
       if (!pending.assetId) pending.assetId = (await uploadImageAsset(source.projectId, pending.file)).id;
       if (!pending.request)
         pending.request = {
-          targetItemId: source.sourceVersionId ? crypto.randomUUID() : source.canvasItemId,
+          targetItemId: source.sourceVersionId ? createClientId() : source.canvasItemId,
           expectedVersion: source.expectedVersion,
           sourceVersionId: source.sourceVersionId,
           purpose: "DIRECTOR_3D",
@@ -209,7 +210,7 @@ export function DirectorWorkbench(props: Props) {
       if (angleAttempt.current?.fingerprint !== fingerprint)
         angleAttempt.current = {
           fingerprint,
-          key: crypto.randomUUID(),
+          key: createClientId(),
           request: {
             ...input,
             operation: "VIEW_ANGLE",
@@ -373,7 +374,7 @@ export function DirectorWorkbench(props: Props) {
     if (editingDisabled || scene.objects.length >= MAX_OBJECTS) return;
     const index = scene.objects.length;
     const object: DirectorObject = {
-      id: crypto.randomUUID(),
+      id: createClientId(),
       name: `${t(OBJECT_LABELS[kind])} ${index + 1}`,
       kind,
       position: { x: index % 2 ? 1.5 : -1.5, y: 0, z: Math.floor(index / 2) * 0.8 },
@@ -1140,7 +1141,7 @@ export function DirectorWorkbench(props: Props) {
                     seek(frame.timeSeconds);
                   }}
                   onRecord={() => {
-                    const id = crypto.randomUUID(),
+                    const id = createClientId(),
                       timeSeconds = previewTime ?? playbackTime.current;
                     change({
                       ...scene,

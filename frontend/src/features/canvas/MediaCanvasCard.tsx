@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import {
   ArrowClockwise,
   ArrowsOutSimple,
@@ -336,8 +337,7 @@ export function MediaCanvasCard({
   const operation = useMutation({
     mutationFn: (input: RunImageOperationRequest) => {
       const payload = JSON.stringify({ ...input, expectedCanvasItemVersion: undefined });
-      if (imageCommand.current?.payload !== payload)
-        imageCommand.current = { payload, key: crypto.randomUUID(), input };
+      if (imageCommand.current?.payload !== payload) imageCommand.current = { payload, key: createClientId(), input };
       return runImageOperation(artifact.projectId, artifact.id, imageCommand.current.input, imageCommand.current.key);
     },
     onSuccess: async () => {
@@ -354,8 +354,7 @@ export function MediaCanvasCard({
     mutationFn: (input: RunVideoOperationRequest) => {
       // A layout save after an uncertain response must replay the original command.
       const payload = JSON.stringify({ ...input, expectedCanvasItemVersion: undefined });
-      if (videoCommand.current?.payload !== payload)
-        videoCommand.current = { payload, key: crypto.randomUUID(), input };
+      if (videoCommand.current?.payload !== payload) videoCommand.current = { payload, key: createClientId(), input };
       return runVideoOperation(artifact.projectId, artifact.id, videoCommand.current.input, videoCommand.current.key);
     },
     onSuccess: async () => {

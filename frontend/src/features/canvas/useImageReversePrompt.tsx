@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { MagicWand } from "@/shared/ui/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
@@ -50,7 +51,7 @@ export function useImageReversePrompt({
     mutationFn: () => {
       if (!command.current) {
         if (!request) throw new Error(t("image.reversePrompt.inputUnavailable"));
-        command.current = { key: crypto.randomUUID(), request };
+        command.current = { key: createClientId(), request };
       }
       return runImagePrompt(projectId, artifactId, command.current.request, command.current.key);
     },

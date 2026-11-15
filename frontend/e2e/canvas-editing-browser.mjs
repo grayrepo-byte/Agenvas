@@ -16,6 +16,8 @@ const screenshots = await mkdtemp(join(tmpdir(), "agenvas-canvas-editing-proof-"
 await chmod(profile, 0o700);
 await chmod(screenshots, 0o700);
 const production = !process.argv.includes("--dev");
+const insecureHttp = process.argv.includes("--insecure-http");
+const httpHost = "agenvas-http.test";
 const motionOnly = process.argv.includes("--motion-only");
 const groupEntryOnly = process.argv.includes("--group-entry-only");
 const connectionDropOnly = process.argv.includes("--connection-drop-only");
@@ -263,6 +265,13 @@ async function navigate(baseUrl, nextLocale = "zh", { motionLarge = false } = {}
     ).href,
   });
   await ready(motionLarge ? 100 : undefined);
+  if (insecureHttp) {
+    assert.deepEqual(
+      await page(() => [isSecureContext, "randomUUID" in crypto, typeof crypto.getRandomValues]),
+      [false, false, "function"],
+      "Canvas editing must run in a real non-secure HTTP context",
+    );
+  }
 }
 async function zoomToFirstCard() {
   // A large-canvas fit can leave the first title under the fixed header. Pan from
@@ -1663,10 +1672,13 @@ try {
     server = await preview({
       ...config,
       build: { outDir },
-      preview: { host: "127.0.0.1", port: 0, open: false, proxy: {} },
+      preview: { host: "127.0.0.1", port: 0, open: false, proxy: {}, allowedHosts: [httpHost] },
     });
   } else {
-    server = await createServer({ ...config, server: { host: "127.0.0.1", port: 0, open: false } });
+    server = await createServer({
+      ...config,
+      server: { host: "127.0.0.1", port: 0, open: false, allowedHosts: [httpHost] },
+    });
     await server.listen();
   }
   chrome = spawn(
@@ -1677,6 +1689,7 @@ try {
       "--no-default-browser-check",
       "--disable-background-networking",
       "--remote-debugging-port=0",
+      ...(insecureHttp ? [`--host-resolver-rules=MAP ${httpHost} 127.0.0.1`, "--no-proxy-server"] : []),
       `--user-data-dir=${profile}`,
       "about:blank",
     ],
@@ -1716,7 +1729,8 @@ try {
   });
   await cdp("Page.enable");
   await cdp("Runtime.enable");
-  const baseUrl = server.resolvedUrls.local[0];
+  const baseUrl = new URL(server.resolvedUrls.local[0]);
+  if (insecureHttp) baseUrl.hostname = httpHost;
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   if (editorFocusOnly) await runEditorFocusRegression(baseUrl);
   else if (subgraphCopyOnly) await runSubgraphCopyRegression(baseUrl);

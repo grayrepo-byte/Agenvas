@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
 import { ApiError, HTTP_STATUS, runAudioTrim, type RunAudioTrimRequest } from "../../shared/api/client";
@@ -144,7 +145,7 @@ export function AudioTrimDialog({
     stopPreview();
     const input: RunAudioTrimRequest = { ...session.source, startMs, endMs, format };
     const payload = JSON.stringify(input);
-    if (command.current?.payload !== payload) command.current = { payload, input, key: crypto.randomUUID() };
+    if (command.current?.payload !== payload) command.current = { payload, input, key: createClientId() };
     submitting.current = true;
     mutation.mutate(command.current);
   }

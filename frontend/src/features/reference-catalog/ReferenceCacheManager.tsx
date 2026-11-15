@@ -14,6 +14,7 @@ import {
   type ReferenceSource,
 } from "../../shared/api/referenceCatalog";
 import { formatDate, formatNumber, t, useLocale, type MessageKey } from "../../shared/i18n";
+import { createCommandKey } from "../../shared/lib/clientId";
 import { Notice } from "../../shared/ui/PagePrimitives";
 import { Select } from "../../shared/ui/Select";
 import { Button } from "../../shared/ui/primitives/button";
@@ -80,7 +81,7 @@ export function ReferenceCacheManager({
           sourceId: source.id,
           snapshotId: source.currentSnapshotId,
           entryIds: [],
-          commandKey: crypto.randomUUID(),
+          commandKey: createCommandKey(),
         };
       }
       setRequestFrozen(true);

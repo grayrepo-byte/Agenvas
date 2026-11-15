@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import type { RunImageOperationRequest } from "../../shared/api/client";
 
 export const DIRECTOR_OBJECT_KINDS = ["ACTOR", "BOX", "SPHERE", "CYLINDER"] as const;
@@ -66,7 +67,7 @@ export function createDirectorScene(): DirectorScene {
     camera: { azimuth: 25, elevation: 12, distance: 7, target: { x: 0, y: 0.9, z: 0 }, focalLength: 35 },
     objects: [
       {
-        id: crypto.randomUUID(),
+        id: createClientId(),
         name: "Actor 1",
         kind: "ACTOR",
         position: { x: 0, y: 0, z: 0 },

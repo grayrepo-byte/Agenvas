@@ -1,3 +1,4 @@
+import { createClientId } from "../../shared/lib/clientId";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
@@ -42,14 +43,14 @@ export function MediaCardUpload({
   const initialUploadStarted = useRef(false);
   const progress = useRef<{ file: File; targetItemId: string; assetId?: string } | null>({
     file: initialFile,
-    targetItemId: item.selectedVersionId ? crypto.randomUUID() : item.id,
+    targetItemId: item.selectedVersionId ? createClientId() : item.id,
   });
   const upload = useMutation({
     mutationFn: async (media: File) => {
       if (progress.current?.file !== media)
         progress.current = {
           file: media,
-          targetItemId: item.selectedVersionId ? crypto.randomUUID() : item.id,
+          targetItemId: item.selectedVersionId ? createClientId() : item.id,
         };
       const pending = progress.current;
       if (!pending.assetId)
