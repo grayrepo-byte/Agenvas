@@ -361,6 +361,12 @@
 .agent-chat-run-date {
   text-align: center;
 }
+/* Keep processing/tool labels readable as replies stream; only the activity icon animates. */
+.agent-chat-surface .canvas-loading-state__label {
+  animation: none;
+  background-image: none;
+  color: var(--canvas-loader-ink);
+}
 .agent-chat-tasks {
   display: flex;
   flex-direction: column;

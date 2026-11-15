@@ -13,14 +13,13 @@ class DirectorSettingsTest {
         var settings = DirectorSettings.defaults();
         assertThat(settings.contextWindowTokens()).isEqualTo(32_768);
         assertThat(settings.responseReserveTokens()).isEqualTo(4_096);
-        assertThat(settings.summaryTokens()).isEqualTo(1_024);
         assertThat(settings.compactionTriggerTokens()).isEqualTo(16_384);
         assertThat(settings.recoveryWindow()).isEqualTo(java.time.Duration.ofHours(24));
     }
 
     @Test
     void triggerPercentageIsIndependentOfResponseReserve() {
-        var settings = new DirectorSettings(65536, 75, 8192, 2048, 4, 1440, 288, 300, 4, 1);
+        var settings = new DirectorSettings(65536, 75, 8192, 1440, 288, 300, 4, 1);
         assertThat(settings.compactionTriggerTokens()).isEqualTo(49_152);
         assertThat(settings.inputBudget()).isEqualTo(57_344);
     }
@@ -28,14 +27,12 @@ class DirectorSettingsTest {
     @ParameterizedTest
     @ValueSource(ints = {0, 101})
     void invalidPercentagesAreRejected(int percent) {
-        assertThatThrownBy(() -> new DirectorSettings(1_000_000, percent, 8192, 2048, 4,
-                1440, 288, 300, 4, 1)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new DirectorSettings(1_000_000, percent, 8192, 1440, 288, 300, 4, 1)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void responseReserveStillBoundsAConfiguredFullWindowTrigger() {
-        var properties = new DirectorSettings(8192, 100, 1024, 512, 2,
-                1440, 288, 300, 4, 1);
+        var properties = new DirectorSettings(8192, 100, 1024, 1440, 288, 300, 4, 1);
         assertThat(properties.compactionTriggerTokens()).isEqualTo(properties.inputBudget()).isEqualTo(7168);
     }
 }

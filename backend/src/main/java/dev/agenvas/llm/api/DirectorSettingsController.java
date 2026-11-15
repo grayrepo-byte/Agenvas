@@ -30,10 +30,7 @@ public class DirectorSettingsController {
     public ResponseEntity<DirectorSettings> update(@Valid @RequestBody Request request) {
         DirectorSettings value;
         try {
-            value = new DirectorSettings(request.contextWindowTokens(), request.compactionThresholdPercent(),
-                    request.responseReserveTokens(), request.summaryTokens(), request.recentToolRounds(),
-                    request.recoveryWindowMinutes(), request.maxModelRetries(), request.retryMaxDelaySeconds(),
-                    request.maxRepairAttempts(), request.expectedVersion());
+            value = new DirectorSettings(request.contextWindowTokens(), request.compactionThresholdPercent(), request.responseReserveTokens(), request.recoveryWindowMinutes(), request.maxModelRetries(), request.retryMaxDelaySeconds(), request.maxRepairAttempts(), request.expectedVersion());
         } catch (IllegalArgumentException invalid) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
                     ApiMessage.of("api.director-settings.title"), ApiMessage.of("api.director-settings.invalid"),
@@ -45,7 +42,7 @@ public class DirectorSettingsController {
         return ResponseEntity.ok().header("Cache-Control", "no-store").body(value);
     }
     public record Request(@NotNull Integer contextWindowTokens, @NotNull Integer compactionThresholdPercent,
-            @NotNull Integer responseReserveTokens, @NotNull Integer summaryTokens, @NotNull Integer recentToolRounds,
+            @NotNull Integer responseReserveTokens,
             @NotNull Integer recoveryWindowMinutes, @NotNull Integer maxModelRetries,
             @NotNull Integer retryMaxDelaySeconds,
             @NotNull Integer maxRepairAttempts, @NotNull Long expectedVersion) {

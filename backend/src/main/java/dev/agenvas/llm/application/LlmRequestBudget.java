@@ -6,15 +6,14 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.tool.ToolCallback;
 
 /** Trusted per-request planning and wire limits, persisted before the model call. */
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties({"summaryTokens", "recentToolRounds"})
 public record LlmRequestBudget(int schemaVersion, int contextWindowTokens, int responseReserveTokens,
-        int inputBudget, int summaryTokens, int recentToolRounds, int compactionTriggerTokens,
+        int inputBudget, int compactionTriggerTokens,
         LlmModelPolicy.OutputParameter outputParameter, long directorVersion) {
     public LlmRequestBudget {
         if (schemaVersion != 1 || contextWindowTokens < 2 || contextWindowTokens > 2_000_000
                 || responseReserveTokens < 1 || responseReserveTokens >= contextWindowTokens
                 || inputBudget < 1 || inputBudget > contextWindowTokens - responseReserveTokens
-                || summaryTokens < 1 || summaryTokens > inputBudget / 4
-                || recentToolRounds < 0 || recentToolRounds > 16
                 || compactionTriggerTokens < 1 || compactionTriggerTokens > inputBudget
                 || outputParameter == null || directorVersion < 1)
             throw new Failure("MODEL_POLICY_INVALID");
@@ -33,21 +32,10 @@ public record LlmRequestBudget(int schemaVersion, int contextWindowTokens, int r
             input = Math.min(input, policy.inputLimitTokens());
         if (input < 4)
             throw new Failure("AGENT_CONTEXT_BUDGET_EXCEEDED");
-        return new LlmRequestBudget(1, window, output, input, Math.min(settings.summaryTokens(), input / 4),
-                settings.recentToolRounds(),
-                Math.min(input, (int) ((long) window * settings.compactionThresholdPercent() / 100)),
-                policy.outputParameter(), settings.version());
+        return new LlmRequestBudget(1, window, output, input, Math.min(input, (int) ((long) window * settings.compactionThresholdPercent() / 100)), policy.outputParameter(), settings.version());
     }
     static LlmRequestBudget application(DirectorSettings settings) {
-        return new LlmRequestBudget(1, settings.contextWindowTokens(), settings.responseReserveTokens(),
-                settings.inputBudget(),
-                settings.summaryTokens(), settings.recentToolRounds(), settings.compactionTriggerTokens(),
-                LlmModelPolicy.OutputParameter.MAX_TOKENS, settings.version());
-    }
-    public LlmRequestBudget summaryBudget() {
-        int output = Math.min(responseReserveTokens, summaryTokens);
-        return new LlmRequestBudget(1, contextWindowTokens, output, inputBudget, summaryTokens, recentToolRounds,
-                compactionTriggerTokens, outputParameter, directorVersion);
+        return new LlmRequestBudget(1, settings.contextWindowTokens(), settings.responseReserveTokens(), settings.inputBudget(), settings.compactionTriggerTokens(), LlmModelPolicy.OutputParameter.MAX_TOKENS, settings.version());
     }
     public void requireInput(List<Message> messages, List<ToolCallback> tools) {
         if (messages.size() > LlmProtocolCodec.MAX_MESSAGES

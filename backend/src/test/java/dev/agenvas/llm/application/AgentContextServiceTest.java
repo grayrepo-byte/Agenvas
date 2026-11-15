@@ -20,14 +20,22 @@ import tools.jackson.databind.json.JsonMapper;
 class AgentContextServiceTest {
     private final JsonMapper mapper = new JsonMapper();
     private final LlmProtocolCodec codec = new LlmProtocolCodec(mapper);
-    private final DirectorSettings properties = new DirectorSettings(8192, 50, 1024, 512, 2,
-            1440, 288, 300, 4, 1);
+    private final DirectorSettings properties = new DirectorSettings(8192, 50, 1024, 1440, 288, 300, 4, 1);
     private final AgentContextService context = new AgentContextService(source(properties), mapper, codec);
     private static final String HANDOFF = """
             {"goal":"Finish all 100 shots","completed":["Shots 1-20 saved"],"decisions":["Keep the blue coat"],
              "pending":["Shots 21-100"],"nextSteps":["Read the current storyboard CAS"],
              "references":["exact-version-1"],"blockers":["Approval PENDING; UNKNOWN must not be resubmitted"]}
             """;
+
+    @Test
+    void compactionHasNoSummaryLengthSettingOrNumericLengthPrompt() {
+        JsonNode request = context.prepare(history(80, "Public fact"), List.of(),
+                LlmRequestBudget.resolve(properties, null));
+        assertThat(request.path(AgentContextService.COMPACTION).has("summaryTokens")).isFalse();
+        assertThat(request.path("requestBudget").has("summaryTokens")).isFalse();
+        assertThat(codec.requestMessages(request).getFirst().getText()).doesNotContain("summary tokens");
+    }
 
     @Test
     void shortRequestsRemainByteForByteUnchangedAndToolSchemasConsumeBudget() {
@@ -42,7 +50,7 @@ class AgentContextServiceTest {
     }
 
     @Test
-    void compactsBeforeMessageLimitWithoutDiscardingSourceAndKeepsCompleteRecentToolPairs() {
+    void compactsOrdinaryToolHistoryIntoAHandoffWithoutDiscardingItsSource() {
         List<Message> history = history(8, "连续性事实与精确镜头引用。".repeat(200));
         JsonNode original = codec.request(history, List.of());
         JsonNode request = context.prepare(history, List.of());
@@ -60,10 +68,7 @@ class AgentContextServiceTest {
         List<Message> resumed = codec.requestMessages(request);
         assertThat(resumed).contains(history.getFirst(), history.get(1));
         assertThat(request.toString()).contains("Finish all 100 shots", "blue coat", "UNKNOWN", "exact-version-1");
-        for (int index = 0; index < resumed.size(); index++)
-            if (resumed.get(index) instanceof ToolResponseMessage) {
-                assertThat(resumed.get(index - 1)).isInstanceOf(AssistantMessage.class);
-            }
+        assertThat(resumed).noneMatch(ToolResponseMessage.class::isInstance);
         assertThat(codec.request(history, List.of())).isEqualTo(original);
         assertThat(context.estimate(resumed, List.of())).isLessThanOrEqualTo(properties.inputBudget());
     }
@@ -71,7 +76,7 @@ class AgentContextServiceTest {
     @Test
     void resourceMessageGuardStillCompactsBelowTheTokenTriggerAndKeepsPreviousHandoffs() {
         var large = new AgentContextService(
-                source(new DirectorSettings(1_000_000, 50, 8192, 2048, 4, 1440, 288, 300, 4, 1)), mapper, codec);
+                source(new DirectorSettings(1_000_000, 50, 8192, 1440, 288, 300, 4, 1)), mapper, codec);
         var history = history(LlmProtocolCodec.MAX_MESSAGES / 2, "Small public fact");
         history.add(2, UserMessage.builder().text("Earlier summary: keep the blue coat")
                 .metadata(Map.of(AgentContextService.SUMMARY, 1)).build());
@@ -82,7 +87,7 @@ class AgentContextServiceTest {
         assertThat(AgentContextService.isCompaction(next)).isFalse();
         assertThat(codec.requestMessages(next).size()).isLessThan(20);
         assertThat(codec.requestMessages(next).stream().filter(ToolResponseMessage.class::isInstance).count())
-                .isEqualTo(4);
+                .isZero();
     }
 
     @Test
@@ -107,10 +112,10 @@ class AgentContextServiceTest {
     }
 
     @Test
-    void rejectsMalformedUnboundedOrToolBearingSummariesAndRepairsWithoutChangingSource() {
+    void rejectsMalformedOversizedForContinuationOrToolBearingSummariesWithoutChangingSource() {
         JsonNode request = context.prepare(history(80, "Public fact"), List.of());
         for (String invalid : List.of("", "not JSON", "{\"goal\":\"invented\"}",
-                HANDOFF.replace("Shots 21-100", "word ".repeat(1000)))) {
+                HANDOFF.replace("Shots 21-100", "word ".repeat(10000)))) {
             assertThatThrownBy(() -> context.summary(request, response(invalid)))
                     .isInstanceOf(IllegalArgumentException.class);
         }
@@ -127,6 +132,47 @@ class AgentContextServiceTest {
     }
 
     @Test
+    void acceptsDetailedSummariesWhenTheyFitAndReduceTheContinuation() {
+        JsonNode request = context.prepare(history(80, "Public fact"), List.of());
+        String larger = HANDOFF.replace("Shots 21-100", "word ".repeat(1000));
+        assertThat(new org.springframework.ai.tokenizer.JTokkitTokenCountEstimator().estimate(larger))
+                .isGreaterThan(1024);
+        assertThat(context.summary(request, response(larger))).contains("word");
+        JsonNode next = context.afterCompaction(request, response(larger));
+        int chunks = 1;
+        while (AgentContextService.isCompaction(next)) {
+            assertThat(++chunks).isLessThan(10);
+            next = context.afterCompaction(next, response(larger));
+        }
+        assertThat(context.estimate(codec.requestMessages(next), List.of())).isLessThan(properties.inputBudget());
+    }
+
+    @Test
+    void repairsOldCompactionsWithinTheOriginalResponseReserveWithoutChangingTheCheckpoint() {
+        var budget = LlmRequestBudget.resolve(properties, null);
+        var request = context.prepare(history(80, "Public fact"), List.of(), budget);
+        codec.withBudget(request, new LlmRequestBudget(1, budget.contextWindowTokens(), 512, budget.inputBudget(), budget.compactionTriggerTokens(), budget.outputParameter(), budget.directorVersion()));
+        ((tools.jackson.databind.node.ObjectNode) request.path("requestBudget")).put("summaryTokens", 512)
+                .put("recentToolRounds", 2);
+        JsonNode original = request.deepCopy();
+        JsonNode repaired = context.repair(request);
+        assertThat(codec.requestBudget(repaired)).isEqualTo(budget);
+        assertThat(request).isEqualTo(original);
+        assertThat(repaired.path(AgentContextService.COMPACTION)).isEqualTo(original.path(AgentContextService.COMPACTION));
+        assertThat(context.repair(repaired)).isEqualTo(repaired);
+    }
+
+    @Test
+    void repairsSummariesThatFitTheWindowButMakeNoCompactionProgress() {
+        var early = new AgentContextService(source(new DirectorSettings(8192, 1, 1024, 1440, 288, 300, 4, 1)), mapper, codec);
+        JsonNode request = early.prepare(history(4, "Public fact"), List.of());
+        assertThat(AgentContextService.isCompaction(request)).isTrue();
+        assertThatThrownBy(() -> early.summary(request,
+                response(HANDOFF.replace("Shots 21-100", "word ".repeat(1000)))))
+                .hasMessage("AGENT_CONTEXT_SUMMARY_INVALID");
+    }
+
+    @Test
     void neverTruncatesFixedInstructionsToPretendTheyFit() {
         assertThatThrownBy(() -> context.prepare(List.of(new SystemMessage("hard constraint ".repeat(10_000)),
                 new UserMessage("Task")), List.of())).isInstanceOf(IllegalArgumentException.class)
@@ -135,7 +181,7 @@ class AgentContextServiceTest {
 
     @Test
     void explicitlyConfiguredMillionWindowTriggersAtHalfBeforeTheHardInputBudget() {
-        var defaults = new DirectorSettings(1_000_000, 50, 8192, 2048, 4, 1440, 288, 300, 4, 1);
+        var defaults = new DirectorSettings(1_000_000, 50, 8192, 1440, 288, 300, 4, 1);
         assertThat(defaults.contextWindowTokens()).isEqualTo(1_000_000);
         assertThat(defaults.compactionThresholdPercent()).isEqualTo(50);
         assertThat(defaults.compactionTriggerTokens()).isEqualTo(500_000);
@@ -166,7 +212,7 @@ class AgentContextServiceTest {
     @Test
     void frozenCompactionBudgetsKeepTheirJsonNumbersAcrossStorage() {
         for (long version : List.of(1L, (long) Integer.MAX_VALUE + 1)) {
-            var settings = new DirectorSettings(8192, 50, 1024, 512, 2, 1440, 288, 300, 4, version);
+            var settings = new DirectorSettings(8192, 50, 1024, 1440, 288, 300, 4, version);
             var budget = LlmRequestBudget.application(settings);
             JsonNode request = context.prepare(history(12, "public fact ".repeat(1000)), List.of(), budget);
             assertThat(AgentContextService.isCompaction(request)).isTrue();
@@ -187,8 +233,8 @@ class AgentContextServiceTest {
         var budget = LlmRequestBudget.resolve(properties, policy);
         JsonNode next = context.prepare(history(12, "public fact ".repeat(1000)), List.of(), budget);
         assertThat(AgentContextService.isCompaction(next)).isTrue();
-        assertThat(codec.requestBudget(next)).isEqualTo(budget.summaryBudget());
-        assertThat(codec.requestBudget(context.repair(next))).isEqualTo(budget.summaryBudget());
+        assertThat(codec.requestBudget(next)).isEqualTo(budget);
+        assertThat(codec.requestBudget(context.repair(next))).isEqualTo(budget);
         int chunks = 0;
         while (AgentContextService.isCompaction(next)) {
             assertThat(++chunks).isLessThan(30);

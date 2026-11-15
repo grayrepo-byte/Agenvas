@@ -78,18 +78,6 @@ public class DirectorSettings extends TableImpl<DirectorSettingsRecord> {
     public final TableField<DirectorSettingsRecord, Integer> RESPONSE_RESERVE_TOKENS = createField(DSL.name("response_reserve_tokens"), SQLDataType.INTEGER.nullable(false).defaultValue(DSL.field(DSL.raw("4096"), SQLDataType.INTEGER)), this, "响应预留 Token，不是供应商输出参数");
 
     /**
-     * The column <code>public.director_settings.summary_tokens</code>. 交接摘要的
-     * Token 上限
-     */
-    public final TableField<DirectorSettingsRecord, Integer> SUMMARY_TOKENS = createField(DSL.name("summary_tokens"), SQLDataType.INTEGER.nullable(false).defaultValue(DSL.field(DSL.raw("1024"), SQLDataType.INTEGER)), this, "交接摘要的 Token 上限");
-
-    /**
-     * The column <code>public.director_settings.recent_tool_rounds</code>.
-     * 压缩时最多保留的完整近期工具回合
-     */
-    public final TableField<DirectorSettingsRecord, Integer> RECENT_TOOL_ROUNDS = createField(DSL.name("recent_tool_rounds"), SQLDataType.INTEGER.nullable(false).defaultValue(DSL.field(DSL.raw("4"), SQLDataType.INTEGER)), this, "压缩时最多保留的完整近期工具回合");
-
-    /**
      * The column <code>public.director_settings.recovery_window_minutes</code>.
      * 从首次临时模型失败开始的恢复期限分钟数
      */
@@ -160,7 +148,7 @@ public class DirectorSettings extends TableImpl<DirectorSettingsRecord> {
     @Override
     public List<Check<DirectorSettingsRecord>> getChecks() {
         return Arrays.asList(
-            Internal.createCheck(this, DSL.name("director_settings_budgets"), "((((context_window_tokens >= 8192) AND (context_window_tokens <= 2000000)) AND ((compaction_threshold_percent >= 1) AND (compaction_threshold_percent <= 100)) AND (response_reserve_tokens >= 1024) AND (response_reserve_tokens < (context_window_tokens / 2)) AND ((summary_tokens >= 256) AND (summary_tokens <= ((context_window_tokens - response_reserve_tokens) / 4))) AND ((recent_tool_rounds >= 0) AND (recent_tool_rounds <= 16)) AND ((recovery_window_minutes >= 1) AND (recovery_window_minutes <= 10080)) AND ((max_model_retries >= 1) AND (max_model_retries <= 10000)) AND ((retry_max_delay_seconds >= 2) AND (retry_max_delay_seconds <= 3600)) AND ((max_repair_attempts >= 1) AND (max_repair_attempts <= 10)) AND (version >= 1)))", true),
+            Internal.createCheck(this, DSL.name("director_settings_budgets"), "((((context_window_tokens >= 8192) AND (context_window_tokens <= 2000000)) AND ((compaction_threshold_percent >= 1) AND (compaction_threshold_percent <= 100)) AND (response_reserve_tokens >= 1024) AND (response_reserve_tokens < (context_window_tokens / 2)) AND ((recovery_window_minutes >= 1) AND (recovery_window_minutes <= 10080)) AND ((max_model_retries >= 1) AND (max_model_retries <= 10000)) AND ((retry_max_delay_seconds >= 2) AND (retry_max_delay_seconds <= 3600)) AND ((max_repair_attempts >= 1) AND (max_repair_attempts <= 10)) AND (version >= 1)))", true),
             Internal.createCheck(this, DSL.name("director_settings_singleton"), "((id = 1))", true)
         );
     }

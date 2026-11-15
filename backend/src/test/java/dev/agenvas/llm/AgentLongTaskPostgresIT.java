@@ -44,11 +44,14 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.metadata.ChatGenerationMetadata;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -133,6 +136,7 @@ class AgentLongTaskPostgresIT {
         gateway.compactions = 0;
         gateway.failed = false;
         gateway.invalidSummary = false;
+        gateway.truncatedSummary = false;
         gateway.failAt = 21;
         gateway.finishAt = 70;
         project = projects.create(owner.userId(), "Synthetic long task", Project.AspectRatio.LANDSCAPE_16_9);
@@ -243,14 +247,17 @@ class AgentLongTaskPostgresIT {
         assertThat(gateway.compactions).isEqualTo(1);
     }
 
-    @Test
-    void aToolBearingCompactionIsRepairedDurablyAndItsToolCanNeverRun() {
-        gateway.invalidSummary = true;
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void invalidCompactionsAreRepairedDurablyWithoutExecutingTheirTools(boolean truncated) {
+        gateway.invalidSummary = !truncated;
+        gateway.truncatedSummary = truncated;
         gateway.failAt = -1;
         gateway.finishAt = 1;
         Task lease = tasks.claimAgentTurns("invalid-summary", 1).getFirst();
         AgentRun started = commits.start(lease, "invalid-summary");
-        JsonNode compact = context.prepare(syntheticHistory(), registry.modelDefinitions(started.policySnapshot()));
+        var budget = LlmRequestBudget.resolve(directorSettings.get(), null);
+        JsonNode compact = context.prepare(syntheticHistory(), registry.modelDefinitions(started.policySnapshot()), budget);
         rounds.callLeased(owner.userId(), project.id(), run.id(), 0, compact, List.of(), Map.of(), lease,
                 "invalid-summary");
         clock.now = clock.now.plus(Duration.ofMinutes(31));
@@ -259,10 +266,13 @@ class AgentLongTaskPostgresIT {
         assertThat(tasks.listByRun(owner.userId(), project.id(), run.id()).getLast().input().path("maxRepairAttempts")
                 .asInt())
                 .isEqualTo(4);
+        assertThat(tasks.listByRun(owner.userId(), project.id(), run.id()).getLast().input().path("repairErrorCode")
+                .asText()).isEqualTo(truncated ? "LLM_OUTPUT_TRUNCATED" : "AGENT_CONTEXT_SUMMARY_INVALID");
         for (int index = 0; index < 15 && !currentRun().status().terminal(); index++)
             worker.runOnce("repaired-summary");
         assertThat(currentRun().status()).isEqualTo(AgentRun.Status.SUCCEEDED);
         assertThat(request(0)).isEqualTo(compact);
+        assertThat(codec.requestBudget(request(1))).isEqualTo(budget);
         assertThat(gateway.compactions).isEqualTo(2);
         assertThat(count("select count(*) from tool_execution where run_id=:run")).isEqualTo(1);
     }
@@ -324,7 +334,7 @@ class AgentLongTaskPostgresIT {
     }
     static class FakeGateway implements ChatGateway {
         volatile int written, compactions, finishAt, failAt;
-        volatile boolean failed, invalidSummary;
+        volatile boolean failed, invalidSummary, truncatedSummary;
         @Override
         public String configSource() {
             return "test-fake";
@@ -354,6 +364,11 @@ class AgentLongTaskPostgresIT {
                             new AssistantMessage.ToolCall("forged-compaction-tool", "function", "create_text",
                                     "{\"title\":\"Must never be created\",\"text\":\"Forged action\",\"format\":\"PLAIN_TEXT\"}")))
                             .build();
+                }
+                if (truncatedSummary) {
+                    truncatedSummary = false;
+                    return new Exchange(1, new ChatResponse(List.of(new Generation(
+                            new AssistantMessage(""), ChatGenerationMetadata.builder().finishReason("LENGTH").build()))));
                 }
             } else if (tools.size() == 1 && "load_toolset".equals(tools.getFirst().getToolDefinition().name())) {
                 assistant = AssistantMessage.builder().content("").toolCalls(List.of(

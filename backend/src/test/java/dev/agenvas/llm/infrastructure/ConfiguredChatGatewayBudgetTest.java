@@ -63,14 +63,13 @@ class ConfiguredChatGatewayBudgetTest {
     @Test
     void environmentBudgetUsesSavedDirectorSettingsAndGenericOutputCeiling() {
         var settings = mock(DirectorSettingsService.class);
-        when(settings.get()).thenReturn(new DirectorSettings(65536, 50, 8192, 2048, 2, 60, 5, 30, 2, 12));
+        when(settings.get()).thenReturn(new DirectorSettings(65536, 50, 8192, 60, 5, 30, 2, 12));
         var factory = new StoredChatModelFactory(null, null, null, settings, null);
 
         var budget = gateway(new ProbeModel(), factory).requestBudgetFor(ENVIRONMENT);
 
         assertThat(budget.contextWindowTokens()).isEqualTo(65536);
         assertThat(budget.responseReserveTokens()).isEqualTo(4096);
-        assertThat(budget.summaryTokens()).isEqualTo(2048);
         assertThat(budget.directorVersion()).isEqualTo(12);
     }
 
@@ -222,7 +221,7 @@ class ConfiguredChatGatewayBudgetTest {
     }
 
     private static LlmRequestBudget frozenBudget(LlmModelPolicy.OutputParameter parameter) {
-        return new LlmRequestBudget(1, 8192, 512, 7680, 256, 0, 4096, parameter, 3);
+        return new LlmRequestBudget(1, 8192, 512, 7680, 4096, parameter, 3);
     }
 
     private static final class ProbeModel implements ChatModel {

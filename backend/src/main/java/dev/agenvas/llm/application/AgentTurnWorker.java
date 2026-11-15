@@ -293,6 +293,10 @@ public class AgentTurnWorker {
         if (saved != null && AgentContextService.isCompaction(saved.request())) {
             try {
                 context.summary(saved.request(), response);
+            } catch (LlmProtocolCodec.OutputTruncated truncated) {
+                commits.scheduleRepair(lease, workerId, "LLM_OUTPUT_TRUNCATED",
+                        "Return a complete concise public task handoff JSON; the previous summary was cut off");
+                return;
             } catch (IllegalArgumentException invalid) {
                 commits.scheduleRepair(lease, workerId, "AGENT_CONTEXT_SUMMARY_INVALID",
                         "Return a bounded public task handoff JSON");

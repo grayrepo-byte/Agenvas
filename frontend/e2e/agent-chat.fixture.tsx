@@ -1,9 +1,10 @@
-import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AgentChatDock } from "../src/features/canvas/AgentChatDock";
 import { AgentMediaApprovalCard } from "../src/features/canvas/AgentMediaApprovalCard";
-import type { Agent, AgentMediaApproval, MediaDraft, MediaSettings } from "../src/shared/api/client";
+import { runAssistantStreamKey, type AssistantTurnStream } from "../src/features/canvas/agentRunStream";
+import type { Agent, AgentRun, AgentMediaApproval, MediaDraft, MediaSettings } from "../src/shared/api/client";
 import { setLocale } from "../src/shared/i18n";
 import { Button } from "../src/shared/ui/primitives/button";
 import "../src/styles.css";
@@ -23,30 +24,49 @@ const agent: Agent = {
   updatedAt: now,
 };
 const history = new URLSearchParams(location.search).has("history");
-const runs = history
-  ? Array.from({ length: 12 }, (_, index) => ({
-      id: `synthetic-run-${index}`,
-      projectId: agent.projectId,
-      agentInstanceId: agent.id,
-      conversationId: "synthetic-conversation",
-      conversationTurn: index + 1,
-      status: "SUCCEEDED",
-      instruction: `第 ${index + 1} 轮：帮我整理画布中的创意。`,
-      contextSnapshot: {},
-      policySnapshot: {
-        schemaVersion: 7,
-        toolPolicyVersion: 6,
-        systemPromptVersion: 14,
-        allowedTools: ["read_canvas"],
-        modelConfigSource: "MOCK",
-        modelConfigVersion: 0,
-        maxModelTurns: null,
-        maxToolExecutions: null,
-      },
-      createdAt: now,
-      updatedAt: now,
-    }))
-  : [];
+const runningMode = new URLSearchParams(location.search).has("running");
+const runningRun: AgentRun = {
+  id: "synthetic-running-run",
+  projectId: agent.projectId,
+  agentInstanceId: agent.id,
+  conversationId: "synthetic-conversation",
+  conversationTurn: 1,
+  status: "RUNNING",
+  instruction: "合成运行状态，用于检查处理提示和流式内容的显示。",
+  contextSnapshot: {},
+  policySnapshot: {},
+  profileVersion: 1,
+  nextStepIndex: 0,
+  version: 1,
+  createdAt: now,
+  updatedAt: now,
+};
+const runs = runningMode
+  ? [runningRun]
+  : history
+    ? Array.from({ length: 12 }, (_, index) => ({
+        id: `synthetic-run-${index}`,
+        projectId: agent.projectId,
+        agentInstanceId: agent.id,
+        conversationId: "synthetic-conversation",
+        conversationTurn: index + 1,
+        status: "SUCCEEDED",
+        instruction: `第 ${index + 1} 轮：帮我整理画布中的创意。`,
+        contextSnapshot: {},
+        policySnapshot: {
+          schemaVersion: 7,
+          toolPolicyVersion: 6,
+          systemPromptVersion: 14,
+          allowedTools: ["read_canvas"],
+          modelConfigSource: "MOCK",
+          modelConfigVersion: 0,
+          maxModelTurns: null,
+          maxToolExecutions: null,
+        },
+        createdAt: now,
+        updatedAt: now,
+      }))
+    : [];
 const approvalMode = new URLSearchParams(location.search).has("approval");
 const videoDraft: MediaDraft = {
   projectId: agent.projectId,
@@ -199,7 +219,7 @@ window.fetch = async (input, init) => {
       {
         id: `task-${runId}`,
         kind: "AGENT_TURN",
-        status: "SUCCEEDED",
+        status: runningMode ? "RUNNING" : "SUCCEEDED",
         runId,
         attemptNo: 1,
         input: { stepIndex: 0 },
@@ -225,8 +245,24 @@ function ApprovalFixture() {
   return <AgentMediaApprovalCard projectId={agent.projectId} runId="synthetic-run" approval={approval.data[0]!} />;
 }
 function Fixture() {
+  const client = useQueryClient();
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState(false);
+  const [chunkIndex, setChunkIndex] = useState(0);
+  const appendChunk = () => {
+    const next = chunkIndex + 1;
+    setChunkIndex(next);
+    client.setQueryData<AssistantTurnStream[]>(runAssistantStreamKey(agent.projectId, runningRun.id), [
+      {
+        taskId: `task-${runningRun.id}`,
+        stepIndex: 0,
+        streamEpoch: 1,
+        chunkIndex: next,
+        text: `持续显示的合成回复\n\n${"内容持续增长时，已显示的文字应保持可读。\n\n".repeat(next * 3)}`,
+        status: "STREAMING",
+      },
+    ]);
+  };
   if (approvalMode)
     return (
       <main style={{ maxWidth: 640, margin: "auto", padding: 16 }}>
@@ -280,13 +316,18 @@ function Fixture() {
         data={{
           agent,
           projectId: agent.projectId,
-          activeRun: null,
+          activeRun: runningMode ? runningRun : null,
           canvasNodeCount: 3,
           selectedNodeCount: selected ? 1 : 0,
           onUpdateAgent: () => undefined,
           updatingAgent: false,
         }}
       />
+      {runningMode ? (
+        <Button onClick={appendChunk} style={{ position: "absolute", left: 38, top: 420 }}>
+          追加流式片段
+        </Button>
+      ) : null}
     </main>
   );
 }

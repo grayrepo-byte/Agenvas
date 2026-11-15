@@ -188,3 +188,5 @@ SMB 新增固定正式版 [`com.hierynomus:smbj:0.15.0`](https://github.com/hier
 初次实现只运行Java/TypeScript定向检查、真实PostgreSQL、受控下载流及C启动器的本机语法检查；当时没有执行Git源码获取、apt工具链安装、Linux引擎构建或真实模型下载/加载。编译工具链使用固定基础镜像中的Ubuntu包源，尚未做到二进制逐字节可复现。
 
 2026-11-15 源码构建补验：`whisper-build` 显式安装 `make`，避免 `--no-install-recommends` 排除 CMake 默认 Unix Makefiles 生成器所需的构建工具。实际 Linux ARM64 固定源码获取、CMake 配置、whisper-cli 编译及 C 启动器编译通过；源码 Compose 的 server/web 镜像成功构建，最终 server 镜像内受限启动器的 `--help` 检查通过。amd64 构建、真实模型加载/识别及1536MB应用并行峰值不在本次验证范围；脚本回归与后续分辨率决策验证见开发清单。
+
+导演压缩主流程按固定提交的 Codex 本地历史替换策略移植到现有 Java/Spring AI Runtime；未引入 Codex/OpenCode 运行依赖或专属远程 API。V64 移除摘要长度和近期回合配置，并用原 jOOQ codegen profile 对隔离 PostgreSQL 17.11 重生字段；OpenAPI TypeScript 使用既有生成命令同步。核验来源见[研究记录](research/agent-compaction-summary-budgets.md)，实际测试与真实模型验证范围见开发清单。

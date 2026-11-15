@@ -31,8 +31,6 @@ public class DirectorSettingsService {
                 .set(DIRECTOR_SETTINGS.CONTEXT_WINDOW_TOKENS, settings.contextWindowTokens())
                 .set(DIRECTOR_SETTINGS.COMPACTION_THRESHOLD_PERCENT, settings.compactionThresholdPercent())
                 .set(DIRECTOR_SETTINGS.RESPONSE_RESERVE_TOKENS, settings.responseReserveTokens())
-                .set(DIRECTOR_SETTINGS.SUMMARY_TOKENS, settings.summaryTokens())
-                .set(DIRECTOR_SETTINGS.RECENT_TOOL_ROUNDS, settings.recentToolRounds())
                 .set(DIRECTOR_SETTINGS.RECOVERY_WINDOW_MINUTES, settings.recoveryWindowMinutes())
                 .set(DIRECTOR_SETTINGS.MAX_MODEL_RETRIES, settings.maxModelRetries())
                 .set(DIRECTOR_SETTINGS.RETRY_MAX_DELAY_SECONDS, settings.retryMaxDelaySeconds())
@@ -48,9 +46,6 @@ public class DirectorSettingsService {
     }
 
     private DirectorSettings from(DirectorSettingsRecord row) {
-        return new DirectorSettings(row.getContextWindowTokens(), row.getCompactionThresholdPercent(),
-                row.getResponseReserveTokens(), row.getSummaryTokens(), row.getRecentToolRounds(),
-                row.getRecoveryWindowMinutes(), row.getMaxModelRetries(), row.getRetryMaxDelaySeconds(),
-                row.getMaxRepairAttempts(), row.getVersion());
+        return new DirectorSettings(row.getContextWindowTokens(), row.getCompactionThresholdPercent(), row.getResponseReserveTokens(), row.getRecoveryWindowMinutes(), row.getMaxModelRetries(), row.getRetryMaxDelaySeconds(), row.getMaxRepairAttempts(), row.getVersion());
     }
 }

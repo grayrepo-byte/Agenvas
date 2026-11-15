@@ -73,7 +73,7 @@ class DirectorSettingsPostgresIT {
     void reset() {
         jdbc.sql("""
                 update director_settings set context_window_tokens=32768, compaction_threshold_percent=50,
-                response_reserve_tokens=4096, summary_tokens=1024, recent_tool_rounds=4,
+                response_reserve_tokens=4096,
                 recovery_window_minutes=1440, max_model_retries=288, retry_max_delay_seconds=300,
                 max_repair_attempts=4, version=1
                 """).update();
@@ -92,7 +92,9 @@ class DirectorSettingsPostgresIT {
         mvc.perform(get(ENDPOINT).with(user("administrator").roles("ADMIN")))
                 .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.contextWindowTokens").value(8192))
-                .andExpect(jsonPath("$.version").value(2));
+                .andExpect(jsonPath("$.version").value(2))
+                .andExpect(jsonPath("$.summaryTokens").doesNotExist())
+                .andExpect(jsonPath("$.recentToolRounds").doesNotExist());
     }
 
     @Test
@@ -105,11 +107,11 @@ class DirectorSettingsPostgresIT {
         mvc.perform(put(ENDPOINT).with(user("administrator").roles("ADMIN"))
                 .contentType("application/json").content(body)).andExpect(status().isForbidden());
         var missing = request();
-        missing.remove("summaryTokens");
+        missing.remove("responseReserveTokens");
         mvc.perform(put(ENDPOINT).with(user("administrator").roles("ADMIN")).with(csrf())
                 .contentType("application/json").content(mapper.writeValueAsString(missing)))
                 .andExpect(status().isBadRequest());
-        for (String field : List.of("contextWindowTokens", "compactionThresholdPercent", "summaryTokens",
+        for (String field : List.of("contextWindowTokens", "compactionThresholdPercent", "responseReserveTokens",
                 "expectedVersion")) {
             var invalid = request();
             invalid.put(field, 0);
@@ -154,7 +156,7 @@ class DirectorSettingsPostgresIT {
             assertThat(winners).isEqualTo(1);
         }
         assertThat(settings.get()).isEqualTo(small(2));
-        assertThatThrownBy(() -> jdbc.sql("update director_settings set summary_tokens=20000").update())
+        assertThatThrownBy(() -> jdbc.sql("update director_settings set response_reserve_tokens=20000").update())
                 .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
         assertThat(settings.get()).isEqualTo(small(2));
     }
@@ -178,10 +180,7 @@ class DirectorSettingsPostgresIT {
                 """)))));
         var expected = context.afterCompaction(frozen, response);
         var current = DirectorSettings.defaults();
-        settings.update(new DirectorSettings(current.contextWindowTokens(), current.compactionThresholdPercent(),
-                current.responseReserveTokens(), current.summaryTokens(), current.recentToolRounds(),
-                current.recoveryWindowMinutes(), current.maxModelRetries(), current.retryMaxDelaySeconds(),
-                current.maxRepairAttempts(), 2));
+        settings.update(new DirectorSettings(current.contextWindowTokens(), current.compactionThresholdPercent(), current.responseReserveTokens(), current.recoveryWindowMinutes(), current.maxModelRetries(), current.retryMaxDelaySeconds(), current.maxRepairAttempts(), 2));
         assertThat(context.afterCompaction(frozen, response)).isEqualTo(expected);
         assertThat(AgentContextService.isCompaction(context.prepare(history, List.of()))).isFalse();
         assertThat(jdbc.sql("select count(*) from llm_turn").query(Long.class).single()).isZero();
@@ -218,7 +217,7 @@ class DirectorSettingsPostgresIT {
     }
 
     private DirectorSettings small(long version) {
-        return new DirectorSettings(8192, 50, 1024, 512, 0, 60, 12, 30, 2, version);
+        return new DirectorSettings(8192, 50, 1024, 60, 12, 30, 2, version);
     }
     private tools.jackson.databind.node.ObjectNode request() {
         var result = (tools.jackson.databind.node.ObjectNode) mapper.valueToTree(small(1));

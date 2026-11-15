@@ -41,7 +41,7 @@ class LlmCapacityMigrationPostgresIT {
             try (var rows = sql.executeQuery("select context_window_tokens,version from director_settings")) {
                 rows.next();
                 assertThat(rows.getInt(1)).isEqualTo(explicitlySaved ? 65536 : 32768);
-                assertThat(rows.getLong(2)).isEqualTo(2);
+                assertThat(rows.getLong(2)).isEqualTo(3);
             }
             try (var rows = sql.executeQuery(
                     "select model_policy,encode(credential_ciphertext,'hex'),octet_length(credential_nonce),endpoint from llm_provider_config")) {

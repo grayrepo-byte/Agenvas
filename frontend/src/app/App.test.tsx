@@ -69,8 +69,6 @@ describe("App routes", () => {
           contextWindowTokens: 1_000_000,
           compactionThresholdPercent: 50,
           responseReserveTokens: 8192,
-          summaryTokens: 2048,
-          recentToolRounds: 4,
           recoveryWindowMinutes: 1440,
           maxModelRetries: 288,
           retryMaxDelaySeconds: 300,

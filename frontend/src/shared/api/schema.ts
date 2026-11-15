@@ -6303,10 +6303,6 @@ export interface components {
             compactionThresholdPercent: number;
             /** @default 4096 */
             responseReserveTokens: number;
-            /** @default 1024 */
-            summaryTokens: number;
-            /** @default 4 */
-            recentToolRounds: number;
             /** @default 1440 */
             recoveryWindowMinutes: number;
             /** @default 288 */
@@ -6325,10 +6321,6 @@ export interface components {
             compactionThresholdPercent: number;
             /** @default 4096 */
             responseReserveTokens: number;
-            /** @default 1024 */
-            summaryTokens: number;
-            /** @default 4 */
-            recentToolRounds: number;
             /** @default 1440 */
             recoveryWindowMinutes: number;
             /** @default 288 */

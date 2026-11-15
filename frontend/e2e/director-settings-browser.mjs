@@ -138,7 +138,7 @@ try {
       text: document.body.innerText,
     }));
     assert.equal(layout.scrollWidth, layout.width, "Director settings must fit desktop and mobile viewports");
-    assert.equal(layout.fields.length, 9);
+    assert.equal(layout.fields.length, 7);
     assert.ok(layout.fields.every(field => field.width > 100 && field.left >= 0 && field.right <= layout.width));
     assert.ok(layout.text.includes("500,000 个估算 Token"));
     const screenshotDirectory = process.env.AGENVAS_DIRECTOR_SCREENSHOTS;

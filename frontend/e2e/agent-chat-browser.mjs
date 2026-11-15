@@ -357,9 +357,35 @@ try {
       "Saving revised parameters preserves a separate user approval step",
     );
   }
+  await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+  await cdp("Page.navigate", { url: new URL(`${route}?running`, baseUrl).href });
+  await waitFor(() => Boolean(document.querySelector(".agent-chat-launcher")));
+  await page(() => document.querySelector(".agent-chat-launcher").click());
+  await waitFor(() => Boolean(document.querySelector(".agent-chat-run-status .canvas-loading-state__label")));
+  for (let index = 0; index < 12; index++) {
+    await page(() =>
+      [...document.querySelectorAll("button")].find(button => button.textContent === "追加流式片段").click(),
+    );
+    await waitFor(() => Boolean(document.querySelector(".agent-chat-message--assistant")));
+    const state = await page(() => {
+      const label = document.querySelector(".agent-chat-run-status .canvas-loading-state__label");
+      const viewport = document.querySelector('[data-slot="message-scroller-viewport"]');
+      const style = getComputedStyle(label);
+      return {
+        animation: style.animationName,
+        background: style.backgroundImage,
+        color: style.color,
+        visible: getComputedStyle(viewport).visibility,
+      };
+    });
+    assert.equal(state.animation, "none", "Processing text stays steady while the reply grows");
+    assert.equal(state.background, "none", "Processing text does not cycle through a moving gradient");
+    assert.notEqual(state.color, "rgba(0, 0, 0, 0)", "Processing text has a visible foreground");
+    assert.equal(state.visible, "visible", "Streaming updates keep the conversation visible");
+  }
   assert.deepEqual(browserErrors, [], "Director chat has no browser runtime errors");
   console.log(
-    "Director chat passed: five viewports, canvas interaction, selection context, expand/collapse draft retention, Escape focus, paged history anchoring jump to latest and video approval resolution editing on desktop/mobile; synthetic only",
+    "Director chat passed: five viewports, canvas interaction, selection context, expand/collapse draft retention, Escape focus, paged history anchoring jump to latest and video approval resolution editing on desktop/mobile and steady processing labels during streamed updates; synthetic only",
   );
 } finally {
   socket?.close();

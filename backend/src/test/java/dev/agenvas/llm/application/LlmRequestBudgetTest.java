@@ -33,13 +33,12 @@ class LlmRequestBudgetTest {
     void untouchedDefaultIsAnApplicationCeilingNotAMillionTokenCapacityClaim() {
         assertThat(DirectorSettings.defaults().contextWindowTokens()).isEqualTo(32768);
         assertThat(DirectorSettings.defaults().responseReserveTokens()).isEqualTo(4096);
-        assertThat(DirectorSettings.defaults().summaryTokens()).isEqualTo(1024);
     }
     @ParameterizedTest
     @CsvSource({"32768,32768", "2000000,1000000"})
     void missingCapacityUsesGenericMillionTokenDefaultWithinTheApplicationCeiling(int applicationWindow,
             int expectedWindow) {
-        var settings = new DirectorSettings(applicationWindow, 50, 8192, 1024, 4, 1440, 288, 300, 4, 1);
+        var settings = new DirectorSettings(applicationWindow, 50, 8192, 1440, 288, 300, 4, 1);
         var budget = LlmRequestBudget.resolve(settings, null);
         assertThat(budget.contextWindowTokens()).isEqualTo(expectedWindow);
         assertThat(budget.responseReserveTokens()).isEqualTo(4096);
@@ -55,7 +54,6 @@ class LlmRequestBudgetTest {
         assertThat(budget.responseReserveTokens()).isEqualTo(1024);
         assertThat(budget.inputBudget()).isEqualTo(3072);
         assertThat(budget.compactionTriggerTokens()).isEqualTo(2048);
-        assertThat(budget.summaryTokens()).isLessThanOrEqualTo(768);
     }
     @Test
     void independentInputLimitAndGlobalCeilingBothApply() {

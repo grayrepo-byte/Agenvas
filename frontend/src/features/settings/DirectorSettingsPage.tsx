@@ -41,20 +41,6 @@ const CONTEXT_FIELDS = [
     min: 1024,
     max: 999_999,
   },
-  {
-    name: "summaryTokens",
-    label: "settings.director.summary",
-    hint: "settings.director.summaryHint",
-    min: 256,
-    max: 499_744,
-  },
-  {
-    name: "recentToolRounds",
-    label: "settings.director.recent",
-    hint: "settings.director.recentHint",
-    min: 0,
-    max: 16,
-  },
 ] as const;
 const RECOVERY_FIELDS = [
   {
@@ -139,8 +125,6 @@ export function DirectorSettingsPage() {
     }
     if (numbers.responseReserveTokens >= Math.floor(numbers.contextWindowTokens / 2))
       errors.responseReserveTokens = t("settings.director.reserveInvalid");
-    if (numbers.summaryTokens > Math.floor((numbers.contextWindowTokens - numbers.responseReserveTokens) / 4))
-      errors.summaryTokens = t("settings.director.summaryInvalid");
   }
   const valid = numbers !== null && Object.keys(errors).length === 0;
   const disabled = !administrator || forbidden || settings.isError || settings.isFetching || save.isPending;

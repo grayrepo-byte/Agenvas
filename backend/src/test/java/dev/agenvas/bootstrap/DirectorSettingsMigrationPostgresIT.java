@@ -43,7 +43,7 @@ class DirectorSettingsMigrationPostgresIT {
                 assertThat(rows.getInt("context_window_tokens")).isEqualTo(32768);
                 assertThat(rows.getInt("compaction_threshold_percent")).isEqualTo(50);
                 assertThat(rows.getInt("recovery_window_minutes")).isEqualTo(1440);
-                assertThat(rows.getLong("version")).isEqualTo(2);
+                assertThat(rows.getLong("version")).isEqualTo(3);
                 assertThat(rows.next()).isFalse();
             }
             if (upgrade)
@@ -76,5 +76,49 @@ class DirectorSettingsMigrationPostgresIT {
             }
         }
         assertThat(migration.migrate().migrationsExecuted).isZero();
+    }
+
+    @org.junit.jupiter.api.Test
+    void removesObsoleteCompactionSettingsAndPreservesTheOtherSavedValues() throws Exception {
+        var previous = Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration").target("63").cleanDisabled(false).load();
+        previous.clean();
+        previous.migrate();
+        try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(),
+                POSTGRES.getPassword()); var statement = connection.createStatement()) {
+            statement.executeUpdate("""
+                    update director_settings set context_window_tokens=65536,compaction_threshold_percent=75,
+                    response_reserve_tokens=8192,summary_tokens=4096,recent_tool_rounds=5,
+                    recovery_window_minutes=120,max_model_retries=44,retry_max_delay_seconds=27,
+                    max_repair_attempts=8,version=7
+                    """);
+        }
+        var upgraded = Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration").load();
+        assertThat(upgraded.migrate().migrationsExecuted).isEqualTo(1);
+        try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(),
+                POSTGRES.getPassword()); var statement = connection.createStatement()) {
+            try (var rows = statement.executeQuery("select * from director_settings")) {
+                assertThat(rows.next()).isTrue();
+                assertThat(rows.getInt("context_window_tokens")).isEqualTo(65536);
+                assertThat(rows.getInt("compaction_threshold_percent")).isEqualTo(75);
+                assertThat(rows.getInt("response_reserve_tokens")).isEqualTo(8192);
+                assertThat(rows.getInt("recovery_window_minutes")).isEqualTo(120);
+                assertThat(rows.getInt("max_model_retries")).isEqualTo(44);
+                assertThat(rows.getInt("retry_max_delay_seconds")).isEqualTo(27);
+                assertThat(rows.getInt("max_repair_attempts")).isEqualTo(8);
+                assertThat(rows.getLong("version")).isEqualTo(8);
+            }
+            try (var rows = statement.executeQuery("""
+                    select count(*) from information_schema.columns where table_schema='public'
+                    and table_name='director_settings' and column_name in ('summary_tokens','recent_tool_rounds')
+                    """)) {
+                rows.next();
+                assertThat(rows.getInt(1)).isZero();
+            }
+        }
+        assertThat(upgraded.migrate().migrationsExecuted).isZero();
     }
 }

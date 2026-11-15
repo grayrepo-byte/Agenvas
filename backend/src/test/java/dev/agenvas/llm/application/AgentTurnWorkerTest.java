@@ -233,7 +233,7 @@ class AgentTurnWorkerTest {
     }
 
     @Test
-    void tokenLimitedCompactionCannotAdvanceOrScheduleAnAutomaticRepair() {
+    void tokenLimitedCompactionSchedulesBoundedRepairWithoutAdvancingOrExecutingTools() {
         JsonNode truncated = codec.response(new ChatResponse(List.of(new Generation(
                 new AssistantMessage("{\"goal\":\"Incomplete handoff\"}"),
                 ChatGenerationMetadata.builder().finishReason("LENGTH").build()))));
@@ -246,9 +246,9 @@ class AgentTurnWorkerTest {
         worker.runOnce(WORKER);
 
         verifyNoInteractions(tools, rounds);
-        verify(commits).finishFailure(lease, WORKER, "LLM_OUTPUT_TRUNCATED");
+        verify(commits).scheduleRepair(eq(lease), eq(WORKER), eq("LLM_OUTPUT_TRUNCATED"), anyString());
+        verify(commits, never()).finishFailure(any(), anyString(), anyString());
         verify(commits, never()).complete(any(), anyString());
-        verify(commits, never()).scheduleRepair(any(), anyString(), anyString(), anyString());
     }
 
     @Test

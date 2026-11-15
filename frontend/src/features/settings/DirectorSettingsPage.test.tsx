@@ -14,8 +14,6 @@ const initial: DirectorSettings = {
   contextWindowTokens: 1_000_000,
   compactionThresholdPercent: 50,
   responseReserveTokens: 8192,
-  summaryTokens: 2048,
-  recentToolRounds: 4,
   recoveryWindowMinutes: 1440,
   maxModelRetries: 288,
   retryMaxDelaySeconds: 300,
@@ -56,7 +54,7 @@ describe("DirectorSettingsPage", () => {
     expect(screen.getByText("500,000 个估算 Token")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "导演设置" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("button", { name: "保存导演设置" })).toBeDisabled();
-    expect(screen.getAllByRole("spinbutton")).toHaveLength(9);
+    expect(screen.getAllByRole("spinbutton")).toHaveLength(7);
   });
 
   it("saves the complete configuration with the edited version and shows the new trigger", async () => {
@@ -149,11 +147,12 @@ describe("DirectorSettingsPage", () => {
   it("validates cross-field budgets, percentages, integers and empty values", async () => {
     show();
     await screen.findByLabelText("上下文窗口（Token）");
+    expect(screen.queryByLabelText(/摘要/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/近期工具/)).not.toBeInTheDocument();
     change("上下文窗口（Token）", "8192");
     expect(screen.getByLabelText("响应预留（Token）")).toHaveAttribute("aria-invalid", "true");
     expect(screen.getByRole("button", { name: "保存导演设置" })).toBeDisabled();
     change("响应预留（Token）", "1024");
-    change("摘要预算（Token）", "512");
     expect(screen.getByRole("button", { name: "保存导演设置" })).toBeEnabled();
     for (const invalid of ["101", "0", "20.5", ""]) {
       change("自动压缩阈值（%）", invalid);
