@@ -71,17 +71,28 @@ class AgentImageInputsPostgresIT {
         registry.add("agenvas.storage.root", STORAGE_ROOT::toString);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private ArtifactService artifacts;
-    @Autowired private AssetService assets;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private CanvasService canvas;
-    @Autowired private AgentRunService runs;
-    @Autowired private AgentTurnWorker worker;
-    @Autowired private FakeGateway gateway;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private ObjectMapper mapper;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private ArtifactService artifacts;
+    @Autowired
+    private AssetService assets;
+    @Autowired
+    private AgentInstanceService agents;
+    @Autowired
+    private CanvasService canvas;
+    @Autowired
+    private AgentRunService runs;
+    @Autowired
+    private AgentTurnWorker worker;
+    @Autowired
+    private FakeGateway gateway;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private ObjectMapper mapper;
 
     @Test
     void sendsOnlyRequestedImagesAfterCommittedReadsAndRetainsThemWithoutDuplicateAttachments() throws Exception {
@@ -93,15 +104,19 @@ class AgentImageInputsPostgresIT {
         var artifact = artifacts.createTemplateImport(owner.userId(), project.id(), "Synthetic reference", asset.id());
         var agent = AgentImageInputFixture.withCanvasImage(agents, canvas, owner.userId(), project.id(),
                 artifact.artifact().id(), artifact.resourceDefaultVersion().id(), "Image reader", "Read bound images");
-        var unrequested = artifacts.createTemplateImport(owner.userId(), project.id(), "Unrequested reference", asset.id());
+        var unrequested = artifacts.createTemplateImport(owner.userId(), project.id(), "Unrequested reference",
+                asset.id());
         UUID source = UUID.randomUUID();
         canvas.apply(owner.userId(), project.id(), List.of(new CanvasService.PlaceArtifact(source,
                 unrequested.artifact().id(), BigDecimal.ZERO, new BigDecimal("300"),
                 new BigDecimal("320"), new BigDecimal("240"), 2, null, false)));
         gateway.versionId = artifact.resourceDefaultVersion().id();
         var preview = assets.content(owner.userId(), project.id(), asset.id(), true);
-        try (var input = assets.open(preview, 0, preview.size())) { gateway.expectedImage = input.readAllBytes(); }
-        var run = runs.create(owner.userId(), project.id(), agent.id(), "Describe this image", "synthetic-image-run").run();
+        try (var input = assets.open(preview, 0, preview.size())) {
+            gateway.expectedImage = input.readAllBytes();
+        }
+        var run = runs.create(owner.userId(), project.id(), agent.id(), "Describe this image", "synthetic-image-run")
+                .run();
         assertThat(run.policySnapshot().path("allowedTools").toString()).doesNotContain("read_skill_resource");
         // Discovery is a committed turn before any read is exposed to the model.
         assertThat(worker.runOnce("image-worker")).isEqualTo(1);
@@ -121,7 +136,8 @@ class AgentImageInputsPostgresIT {
                 .param("id", run.id()).query(String.class).list();
         assertThat(requests).hasSize(5);
         assertThat(mapper.readTree(requests.getFirst()).path("tools")).hasSize(1);
-        assertThat(mapper.readTree(requests.getFirst()).path("tools").get(0).path("name").asText()).isEqualTo("load_toolset");
+        assertThat(mapper.readTree(requests.getFirst()).path("tools").get(0).path("name").asText())
+                .isEqualTo("load_toolset");
         assertThat(requests.subList(0, 3)).allSatisfy(request -> assertThat(request)
                 .doesNotContain(AgentImageInputService.METADATA_KEY));
         for (String request : requests.subList(3, requests.size())) {
@@ -132,17 +148,31 @@ class AgentImageInputsPostgresIT {
 
     @TestConfiguration
     static class FakeConfig {
-        @Bean @Primary FakeGateway imageGateway() { return new FakeGateway(); }
+        @Bean
+        @Primary
+        FakeGateway imageGateway() {
+            return new FakeGateway();
+        }
     }
 
     static class FakeGateway implements ChatGateway {
         final AtomicInteger calls = new AtomicInteger();
         UUID versionId;
         byte[] expectedImage;
-        @Override public String configSource() { return "test-fake"; }
-        @Override public int configVersion() { return 1; }
-        @Override public Capabilities capabilities() { return new Capabilities(true, false, false); }
-        @Override public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context) {
+        @Override
+        public String configSource() {
+            return "test-fake";
+        }
+        @Override
+        public int configVersion() {
+            return 1;
+        }
+        @Override
+        public Capabilities capabilities() {
+            return new Capabilities(true, false, false);
+        }
+        @Override
+        public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context) {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
             var images = messages.stream().filter(UserMessage.class::isInstance).map(UserMessage.class::cast)
                     .flatMap(message -> message.getMedia().stream()).toList();
@@ -154,7 +184,8 @@ class AgentImageInputsPostgresIT {
                 return new Exchange(1, new ChatResponse(List.of(new Generation(load))));
             }
             int step = calls.incrementAndGet();
-            if (step <= 2) assertThat(images).isEmpty();
+            if (step <= 2)
+                assertThat(images).isEmpty();
             else {
                 assertThat(images).hasSize(1);
                 assertThat(images.getFirst().getDataAsByteArray()).containsExactly(expectedImage);
@@ -170,22 +201,26 @@ class AgentImageInputsPostgresIT {
                         new AssistantMessage.ToolCall("rejected-image", "function", "read_artifacts",
                                 "{\"versionIds\":[\"" + versionId + "\"]}"),
                         new AssistantMessage.ToolCall("invalid-resource", "function", "read_skill_resource",
-                                "{\"path\":\"unlisted.md\"}"))).build();
+                                "{\"path\":\"unlisted.md\"}")))
+                        .build();
             } else if (step == 2) {
                 assertThat(messages.getLast().getText()).contains("No tools from that response were applied");
                 assistant = AssistantMessage.builder().content("").toolCalls(List.of(
                         new AssistantMessage.ToolCall("summary", "function", "read_project_summary", "{}"),
                         new AssistantMessage.ToolCall("image-meta", "function", "read_artifacts",
-                                "{\"versionIds\":[\"" + versionId + "\"]}"))).build();
+                                "{\"versionIds\":[\"" + versionId + "\"]}")))
+                        .build();
             } else {
                 var reply = messages.stream().filter(ToolResponseMessage.class::isInstance)
                         .map(ToolResponseMessage.class::cast).toList().getLast();
                 assertThat(reply.getResponses()).hasSize(step == 3 ? 2 : 1);
                 assertThat(reply.getResponses()).allSatisfy(result -> assertThat(result.responseData())
                         .doesNotContain("TOOL_ARGUMENT_INVALID"));
-                assistant = step == 3 ? AssistantMessage.builder().content("").toolCalls(List.of(
-                        new AssistantMessage.ToolCall("image-again", "function", "read_artifacts",
-                                "{\"versionIds\":[\"" + versionId + "\"]}"))).build()
+                assistant = step == 3
+                        ? AssistantMessage.builder().content("").toolCalls(List.of(
+                                new AssistantMessage.ToolCall("image-again", "function", "read_artifacts",
+                                        "{\"versionIds\":[\"" + versionId + "\"]}")))
+                                .build()
                         : new AssistantMessage("合成图片已收到，读取工具可用。");
             }
             return new Exchange(1, new ChatResponse(List.of(new Generation(assistant))));
@@ -193,14 +228,18 @@ class AgentImageInputsPostgresIT {
     }
 
     private static Path temporaryRoot() {
-        try { return Files.createTempDirectory("agenvas-synthetic-agent-images-"); }
-        catch (IOException failure) { throw new ExceptionInInitializerError(failure); }
+        try {
+            return Files.createTempDirectory("agenvas-synthetic-agent-images-");
+        } catch (IOException failure) {
+            throw new ExceptionInInitializerError(failure);
+        }
     }
 
     @AfterAll
     static void cleanupSyntheticFiles() throws IOException {
         try (var paths = Files.walk(STORAGE_ROOT)) {
-            for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.delete(path);
+            for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
+                Files.delete(path);
         }
     }
 }

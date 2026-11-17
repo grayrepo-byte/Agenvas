@@ -20,7 +20,8 @@ import tools.jackson.databind.ObjectMapper;
 
 /** Real MP3s distinguish decoded audio duration from encoder/container padding. */
 class LocalAssetStorageAudioTest {
-    @TempDir Path root;
+    @TempDir
+    Path root;
     private final MediaToolRunner tools = new MediaToolRunner(new MediaToolsProperties(null, null, null));
 
     @Test
@@ -51,7 +52,7 @@ class LocalAssetStorageAudioTest {
 
     @Test
     void rejectsMalformedAudioWithoutInstallingAnyArchive() throws Exception {
-        assertInvalidAndEmptyArchive(new ByteArrayInputStream(new byte[] {0, 1, 2, 3}));
+        assertInvalidAndEmptyArchive(new ByteArrayInputStream(new byte[]{0, 1, 2, 3}));
     }
 
     private void assertInvalidAndEmptyArchive(InputStream input) throws Exception {

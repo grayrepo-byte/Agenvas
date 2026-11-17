@@ -102,7 +102,8 @@ public class TaskWorker {
         boolean mock = workflow.startsWith("mock-");
         String provider = mock ? "mock" : workflow.startsWith("comfyui-") ? "comfyui" : null;
         return new CallLogService.CallDescriptor(task.projectId(), task.id(), task.runId(), null,
-                task.kind() == Task.Kind.AUDIO_GENERATION ? CallLog.Kind.AUDIO
+                task.kind() == Task.Kind.AUDIO_GENERATION
+                        ? CallLog.Kind.AUDIO
                         : task.kind() == Task.Kind.IMAGE_GENERATION ? CallLog.Kind.IMAGE : CallLog.Kind.VIDEO,
                 operation, provider, null, mock);
     }
@@ -117,8 +118,10 @@ public class TaskWorker {
 
     private CallLogService.CallOutcome pollOutcome(PollResult result, String requestId) {
         return switch (result) {
-            case PollFailed failed -> new CallLogService.CallOutcome(CallLog.Status.FAILED, requestId, failed.errorCode());
-            case PollBlocked blocked -> new CallLogService.CallOutcome(CallLog.Status.FAILED, requestId, blocked.errorCode());
+            case PollFailed failed ->
+                new CallLogService.CallOutcome(CallLog.Status.FAILED, requestId, failed.errorCode());
+            case PollBlocked blocked ->
+                new CallLogService.CallOutcome(CallLog.Status.FAILED, requestId, blocked.errorCode());
             default -> CallLogService.CallOutcome.succeeded(requestId);
         };
     }
@@ -153,21 +156,21 @@ public class TaskWorker {
      */
     private void persistOutcome(Task task, String workerId, boolean media, Outcome outcome) {
         switch (outcome) {
-                case Succeeded succeeded -> tasks.succeed(task, workerId, succeeded.output());
-                case GeneratedArtifact generated ->
-                    tasks.succeedWithArtifact(task, workerId, generated.content());
-                case Failed failed -> {
-                    if (media) {
-                        tasks.rejectSubmission(task, workerId, failed.errorCode());
-                    } else {
-                        tasks.fail(task, workerId, failed.errorCode());
-                    }
+            case Succeeded succeeded -> tasks.succeed(task, workerId, succeeded.output());
+            case GeneratedArtifact generated ->
+                tasks.succeedWithArtifact(task, workerId, generated.content());
+            case Failed failed -> {
+                if (media) {
+                    tasks.rejectSubmission(task, workerId, failed.errorCode());
+                } else {
+                    tasks.fail(task, workerId, failed.errorCode());
                 }
-                case WaitingProvider waiting -> tasks.waitForProvider(
-                        task,
-                        workerId,
-                        waiting.providerRequestId(),
-                        waiting.nextActionAt());
+            }
+            case WaitingProvider waiting -> tasks.waitForProvider(
+                    task,
+                    workerId,
+                    waiting.providerRequestId(),
+                    waiting.nextActionAt());
         }
     }
 
@@ -193,37 +196,48 @@ public class TaskWorker {
 
     /** 一次只读状态查询的封闭结果类型。 */
     public sealed interface PollResult permits PollPending, PollGenerated, PollFailed,
-            PollBlocked {}
+            PollBlocked {
+    }
 
     /** @param nextActionAt 原请求下一次允许查询的时间，当前轮询租约会被释放 */
-    public record PollPending(Instant nextActionAt) implements PollResult {}
+    public record PollPending(Instant nextActionAt) implements PollResult {
+    }
 
     /** @param content 从原请求取得、准备归档到任务固定目标的媒体内容 */
-    public record PollGenerated(JsonNode content) implements PollResult {}
+    public record PollGenerated(JsonNode content) implements PollResult {
+    }
 
     /** @param errorCode Provider 明确报告的终态失败代码，不代表查询超时 */
-    public record PollFailed(String errorCode) implements PollResult {}
+    public record PollFailed(String errorCode) implements PollResult {
+    }
 
     /** @param errorCode 阻断原请求继续轮询的配置或安全错误代码 */
-    public record PollBlocked(String errorCode) implements PollResult {}
+    public record PollBlocked(String errorCode) implements PollResult {
+    }
 
     /** 外部提交或本地执行返回的封闭结果类型。 */
     public sealed interface Outcome permits Succeeded, Failed, WaitingProvider,
-            GeneratedArtifact {}
+            GeneratedArtifact {
+    }
 
     /** @param output 本地任务已确认成功的结构化输出 */
-    public record Succeeded(JsonNode output) implements Outcome {}
+    public record Succeeded(JsonNode output) implements Outcome {
+    }
 
     /** @param content 同步得到的媒体内容，归档时仍须校验任务固定版本与选择条件 */
-    public record GeneratedArtifact(JsonNode content) implements Outcome {}
+    public record GeneratedArtifact(JsonNode content) implements Outcome {
+    }
 
     /** @param errorCode Provider 明确拒绝或本地处理确认失败的稳定错误码 */
-    public record Failed(String errorCode) implements Outcome {}
+    public record Failed(String errorCode) implements Outcome {
+    }
 
     /**
      * @param providerRequestId Provider 已受理请求的原始 ID，后续轮询只能查询此 ID
      * @param nextActionAt 首次轮询原请求的计划时间
      */
     public record WaitingProvider(String providerRequestId, Instant nextActionAt)
-            implements Outcome {}
+            implements
+                Outcome {
+    }
 }

@@ -69,8 +69,7 @@ class ProjectEventHubTest {
                     .isZero();
             assertThat(meters.get("agenvas.sse.connections.closed").counter().count())
                     .isEqualTo(1);
-            assertThat(meters.getMeters()).allSatisfy(meter ->
-                    assertThat(meter.getId().getTags()).isEmpty());
+            assertThat(meters.getMeters()).allSatisfy(meter -> assertThat(meter.getId().getTags()).isEmpty());
         } finally {
             meters.close();
         }
@@ -99,7 +98,7 @@ class ProjectEventHubTest {
                     .isEqualTo(ProjectEventHub.OfferResult.QUEUED);
         }
         assertThat(subscriber.offerEvent(event(
-                        projectId, ProjectEventHub.MAX_PENDING_PER_SUBSCRIBER + 1, mapper)))
+                projectId, ProjectEventHub.MAX_PENDING_PER_SUBSCRIBER + 1, mapper)))
                 .isEqualTo(ProjectEventHub.OfferResult.OVERFLOW);
     }
 

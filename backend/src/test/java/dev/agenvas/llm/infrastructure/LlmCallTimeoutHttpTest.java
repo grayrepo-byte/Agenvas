@@ -79,22 +79,28 @@ class LlmCallTimeoutHttpTest {
             try (OutputStream output = exchange.getResponseBody()) {
                 String response = streaming
                         ? "data: {\"id\":\"synthetic-stream\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,"
-                                + "\"model\":\"" + MODEL_ID + "\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Synthetic complete\"},\"finish_reason\":\"stop\"}]}\n\n"
+                                + "\"model\":\"" + MODEL_ID
+                                + "\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Synthetic complete\"},\"finish_reason\":\"stop\"}]}\n\n"
                                 + "data: [DONE]\n\n"
                         : "{\"id\":\"synthetic-normal\",\"object\":\"chat.completion\",\"created\":1700000000,"
-                                + "\"model\":\"" + MODEL_ID + "\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Synthetic complete\"},\"finish_reason\":\"stop\"}]}";
+                                + "\"model\":\"" + MODEL_ID
+                                + "\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Synthetic complete\"},\"finish_reason\":\"stop\"}]}";
                 output.write(response.getBytes(StandardCharsets.UTF_8));
-            } finally { exchange.close(); }
+            } finally {
+                exchange.close();
+            }
         });
         server.start();
         try {
             SpringAiChatGateway gateway = new StoredChatModelFactory(cipher, localPolicy).create(config(server));
             List<UserMessage> messages = List.of(new UserMessage("Synthetic timeout check"));
-            try (DebugHttpCapture capture = debug ? DebugHttpCapture.openLlm(ignored -> {}) : null) {
+            try (DebugHttpCapture capture = debug ? DebugHttpCapture.openLlm(ignored -> {
+            }) : null) {
                 assertThat(gateway.call(List.copyOf(messages), List.of(), Map.of()).response()
                         .getResult().getOutput().getText()).isEqualTo("Synthetic complete");
                 assertThat(gateway.callStreaming(List.copyOf(messages), List.of(), Map.of(),
-                        gateway.configIdentity(), ignored -> {}).response().getResult().getOutput().getText())
+                        gateway.configIdentity(), ignored -> {
+                        }).response().getResult().getOutput().getText())
                         .isEqualTo("Synthetic complete");
             }
             assertThat(normalTimeout).hasValue(Long.toString(EXPECTED_MODEL_TIMEOUT.toSeconds()));
@@ -104,7 +110,9 @@ class LlmCallTimeoutHttpTest {
             assertThat(normalReadTimeout).hasValue(Long.toString(EXPECTED_MODEL_TIMEOUT.toSeconds()));
             assertThat(streamReadTimeout).hasValue(Long.toString(EXPECTED_MODEL_TIMEOUT.toSeconds()));
             assertThat(requests).hasValue(2);
-        } finally { server.stop(0); }
+        } finally {
+            server.stop(0);
+        }
     }
 
     @ParameterizedTest
@@ -134,7 +142,9 @@ class LlmCallTimeoutHttpTest {
                 // The short deadline closes its connection before the fixture finishes.
             } catch (InterruptedException stopped) {
                 Thread.currentThread().interrupt();
-            } finally { exchange.close(); }
+            } finally {
+                exchange.close();
+            }
         });
         server.start();
         try {
@@ -145,20 +155,24 @@ class LlmCallTimeoutHttpTest {
                     silentRead ? SHORT_TEST_TIMEOUT : LONG_TEST_TIMEOUT);
             Throwable failure = catchThrowable(() -> shortCall.callStreaming(
                     List.of(new UserMessage("Synthetic unfinished stream")), List.of(), Map.of(),
-                    shortCall.configIdentity(), ignored -> {}));
+                    shortCall.configIdentity(), ignored -> {
+                    }));
             assertThat(failure).isNotNull();
             boolean timedOut = false;
             for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
                 if (!silentRead && cause instanceof InterruptedIOException
-                        && "timeout".equals(cause.getMessage())) timedOut = true;
-                if (silentRead && cause instanceof SocketTimeoutException) timedOut = true;
+                        && "timeout".equals(cause.getMessage()))
+                    timedOut = true;
+                if (silentRead && cause instanceof SocketTimeoutException)
+                    timedOut = true;
             }
             assertThat(timedOut).as("Finite call/read deadline before the synthetic finish marker").isTrue();
             assertThat(sentFragments.get()).isPositive();
 
             SpringAiChatGateway longCall = factory.create(config, LONG_TEST_TIMEOUT, LONG_TEST_TIMEOUT);
             var completed = longCall.callStreaming(List.of(new UserMessage("Synthetic unfinished stream")),
-                    List.of(), Map.of(), longCall.configIdentity(), ignored -> {});
+                    List.of(), Map.of(), longCall.configIdentity(), ignored -> {
+                    });
             assertThat(completed.response().getResult().getOutput().getText())
                     .isEqualTo("x".repeat(silentRead ? 1 : STREAM_FRAGMENTS));
             assertThat(requests).as("Neither deadline path retries a billable request").hasValue(2);
@@ -171,7 +185,8 @@ class LlmCallTimeoutHttpTest {
     private static void streamEvent(OutputStream output, String delta, String finish) throws IOException {
         String event = "data: {\"id\":\"synthetic-timeout-stream\",\"object\":\"chat.completion.chunk\","
                 + "\"created\":1700000000,\"model\":\"" + MODEL_ID + "\",\"choices\":[{\"index\":0,"
-                + "\"delta\":" + delta + ",\"finish_reason\":" + (finish == null ? "null" : "\"" + finish + "\"") + "}]}\n\n";
+                + "\"delta\":" + delta + ",\"finish_reason\":" + (finish == null ? "null" : "\"" + finish + "\"")
+                + "}]}\n\n";
         output.write(event.getBytes(StandardCharsets.UTF_8));
         output.flush();
     }

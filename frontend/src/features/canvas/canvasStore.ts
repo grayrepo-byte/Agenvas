@@ -4,8 +4,13 @@ import type { ImageGenerationParameters, SaveMediaDraftRequest } from "../../sha
 export type MediaDraftRecovery = { request: SaveMediaDraftRequest; saving: boolean; error: Error | null };
 
 export type TextGenerationIntent = {
-  key: string; projectId: string; artifactId: string; draftKey: string; prompt: string;
-  expectedArtifactVersion: number; expectedCurrentVersionId: string;
+  key: string;
+  projectId: string;
+  artifactId: string;
+  draftKey: string;
+  prompt: string;
+  expectedArtifactVersion: number;
+  expectedCurrentVersionId: string;
 };
 type TextGenerationDraft = { prompt: string; intent: TextGenerationIntent | null };
 
@@ -21,7 +26,7 @@ export type LayoutDraft = {
 type SaveState = "saved" | "saving" | "failed" | "conflict";
 
 export const CANVAS_SELECTION_MODE = { SINGLE: "single", MULTIPLE: "multiple" } as const;
-type CanvasSelectionMode = typeof CANVAS_SELECTION_MODE[keyof typeof CANVAS_SELECTION_MODE];
+type CanvasSelectionMode = (typeof CANVAS_SELECTION_MODE)[keyof typeof CANVAS_SELECTION_MODE];
 
 type CanvasInteractionState = {
   drafts: Record<string, LayoutDraft>;
@@ -50,7 +55,7 @@ type CanvasInteractionState = {
 };
 
 /** Interaction-only state: persisted entities remain exclusively in TanStack Query. */
-export const useCanvasStore = create<CanvasInteractionState>((set) => ({
+export const useCanvasStore = create<CanvasInteractionState>(set => ({
   drafts: {},
   selectedIds: [],
   selectionMode: CANVAS_SELECTION_MODE.SINGLE,
@@ -58,64 +63,78 @@ export const useCanvasStore = create<CanvasInteractionState>((set) => ({
   imageRatioDrafts: {},
   mediaDraftRecoveries: {},
   textGenerationDrafts: {},
-  setTextGenerationPrompt: (key, prompt) => set((state) => ({
-    textGenerationDrafts: { ...state.textGenerationDrafts, [key]: { prompt, intent: null } },
-  })),
-  setTextGenerationIntent: (key, intent) => set((state) => ({
-    textGenerationDrafts: { ...state.textGenerationDrafts, [key]: {
-      prompt: state.textGenerationDrafts[key]?.prompt ?? intent.prompt, intent,
-    } },
-  })),
-  clearTextGenerationIntent: (key, intentKey) => set((state) => {
-    const draft = state.textGenerationDrafts[key];
-    if (!draft || draft.intent?.key !== intentKey) return state;
-    return { textGenerationDrafts: { ...state.textGenerationDrafts, [key]: { ...draft, intent: null } } };
-  }),
+  setTextGenerationPrompt: (key, prompt) =>
+    set(state => ({
+      textGenerationDrafts: { ...state.textGenerationDrafts, [key]: { prompt, intent: null } },
+    })),
+  setTextGenerationIntent: (key, intent) =>
+    set(state => ({
+      textGenerationDrafts: {
+        ...state.textGenerationDrafts,
+        [key]: {
+          prompt: state.textGenerationDrafts[key]?.prompt ?? intent.prompt,
+          intent,
+        },
+      },
+    })),
+  clearTextGenerationIntent: (key, intentKey) =>
+    set(state => {
+      const draft = state.textGenerationDrafts[key];
+      if (!draft || draft.intent?.key !== intentKey) return state;
+      return { textGenerationDrafts: { ...state.textGenerationDrafts, [key]: { ...draft, intent: null } } };
+    }),
   clearTextGenerationDrafts: () => set({ textGenerationDrafts: {} }),
-  setMediaDraftRecovery: (key, recovery) => set((state) => ({
-    mediaDraftRecoveries: { ...state.mediaDraftRecoveries, [key]: recovery },
-  })),
-  clearMediaDraftRecovery: (key) => set((state) => {
-    if (!(key in state.mediaDraftRecoveries)) return state;
-    const { [key]: ignored, ...remaining } = state.mediaDraftRecoveries;
-    void ignored;
-    return { mediaDraftRecoveries: remaining };
-  }),
-  setImageRatioDraft: (key, ratio) => set((state) => state.imageRatioDrafts[key] === ratio
-    ? state : { imageRatioDrafts: { ...state.imageRatioDrafts, [key]: ratio } }),
-  clearImageRatioDraft: (key) => set((state) => {
-    if (!(key in state.imageRatioDrafts)) return state;
-    const { [key]: ignored, ...remaining } = state.imageRatioDrafts;
-    void ignored;
-    return { imageRatioDrafts: remaining };
-  }),
+  setMediaDraftRecovery: (key, recovery) =>
+    set(state => ({
+      mediaDraftRecoveries: { ...state.mediaDraftRecoveries, [key]: recovery },
+    })),
+  clearMediaDraftRecovery: key =>
+    set(state => {
+      if (!(key in state.mediaDraftRecoveries)) return state;
+      const { [key]: ignored, ...remaining } = state.mediaDraftRecoveries;
+      void ignored;
+      return { mediaDraftRecoveries: remaining };
+    }),
+  setImageRatioDraft: (key, ratio) =>
+    set(state =>
+      state.imageRatioDrafts[key] === ratio ? state : { imageRatioDrafts: { ...state.imageRatioDrafts, [key]: ratio } },
+    ),
+  clearImageRatioDraft: key =>
+    set(state => {
+      if (!(key in state.imageRatioDrafts)) return state;
+      const { [key]: ignored, ...remaining } = state.imageRatioDrafts;
+      void ignored;
+      return { imageRatioDrafts: remaining };
+    }),
   updateDraft: (itemId, patch) =>
-    set((state) => ({
+    set(state => ({
       drafts: {
         ...state.drafts,
         [itemId]: { ...state.drafts[itemId], ...patch },
       },
     })),
-  clearDraft: (itemId) =>
-    set((state) => {
+  clearDraft: itemId =>
+    set(state => {
       const { [itemId]: ignored, ...remaining } = state.drafts;
       void ignored;
       return { drafts: remaining };
     }),
-  clearDraftIfUnchanged: (itemId, submitted) => set((state) => {
-    if (!submitted || state.drafts[itemId] !== submitted) return state;
-    const { [itemId]: ignored, ...remaining } = state.drafts;
-    void ignored;
-    return { drafts: remaining };
-  }),
+  clearDraftIfUnchanged: (itemId, submitted) =>
+    set(state => {
+      if (!submitted || state.drafts[itemId] !== submitted) return state;
+      const { [itemId]: ignored, ...remaining } = state.drafts;
+      void ignored;
+      return { drafts: remaining };
+    }),
   setSelectedIds: (selectedIds, mode) =>
-    set((state) => {
-      const selectionMode = selectedIds.length > 1 ? CANVAS_SELECTION_MODE.MULTIPLE
-        : mode ?? CANVAS_SELECTION_MODE.SINGLE;
-      return state.selectionMode === selectionMode && state.selectedIds.length === selectedIds.length &&
+    set(state => {
+      const selectionMode =
+        selectedIds.length > 1 ? CANVAS_SELECTION_MODE.MULTIPLE : (mode ?? CANVAS_SELECTION_MODE.SINGLE);
+      return state.selectionMode === selectionMode &&
+        state.selectedIds.length === selectedIds.length &&
         state.selectedIds.every((itemId, index) => itemId === selectedIds[index])
         ? state
         : { selectedIds, selectionMode };
     }),
-  setSaveState: (saveState) => set({ saveState }),
+  setSaveState: saveState => set({ saveState }),
 }));

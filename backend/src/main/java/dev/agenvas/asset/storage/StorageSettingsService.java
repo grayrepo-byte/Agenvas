@@ -25,16 +25,23 @@ public class StorageSettingsService {
     private final Clock clock;
     private final TaskStorageReferences tasks;
 
-    public StorageSettingsService(StorageRepository repository, CredentialCipher cipher, Clock clock, TaskStorageReferences tasks) {
-        this.repository = repository; this.cipher = cipher; this.clock = clock; this.tasks = tasks;
+    public StorageSettingsService(StorageRepository repository, CredentialCipher cipher, Clock clock,
+            TaskStorageReferences tasks) {
+        this.repository = repository;
+        this.cipher = cipher;
+        this.clock = clock;
+        this.tasks = tasks;
     }
 
     @Transactional(readOnly = true)
     public Status status() {
         var state = repository.state();
-        return new Status(state.version(), state.activeProfileId(), state.relayProfileId(), state.llmRelayEnabled(), state.imageRelayEnabled(), repository.profiles().stream()
-                .map(p -> new ProfileStatus(p.id(), p.name(), p.provider(), p.endpoint(), p.region(),
-                        p.bucket(), p.keyPrefix(), p.pathStyle(), p.accessKeyMask(), p.createdAt(), inUse(p.id()))).toList());
+        return new Status(state.version(), state.activeProfileId(), state.relayProfileId(), state.llmRelayEnabled(),
+                state.imageRelayEnabled(), repository.profiles().stream()
+                        .map(p -> new ProfileStatus(p.id(), p.name(), p.provider(), p.endpoint(), p.region(),
+                                p.bucket(), p.keyPrefix(), p.pathStyle(), p.accessKeyMask(), p.createdAt(),
+                                inUse(p.id())))
+                        .toList());
     }
 
     /** Credential fields carry access keys for objects, or username/password for remote file protocols. */
@@ -46,36 +53,46 @@ public class StorageSettingsService {
         var location = normalizeLocation(name, provider, endpoint, region, bucket, prefix, pathStyle);
         validateOssRegion(provider, region);
         UUID id = UUID.randomUUID();
-        var encrypted = cipher.encryptStorage(id, FIRST_CREDENTIAL_VERSION, credentials(provider, accessKeyId, secretAccessKey));
-        repository.insertProfile(new StorageProfile(id, location.name(), provider, location.endpoint(), location.region(),
-                location.bucket(), location.prefix(), pathStyle, FIRST_CREDENTIAL_VERSION, encrypted, mask(accessKeyId), clock.instant()));
+        var encrypted = cipher.encryptStorage(id, FIRST_CREDENTIAL_VERSION,
+                credentials(provider, accessKeyId, secretAccessKey));
+        repository
+                .insertProfile(new StorageProfile(id, location.name(), provider, location.endpoint(), location.region(),
+                        location.bucket(), location.prefix(), pathStyle, FIRST_CREDENTIAL_VERSION, encrypted,
+                        mask(accessKeyId), clock.instant()));
         repository.advance(expectedVersion, repository.state().activeProfileId());
         return status();
     }
 
     @Transactional
     public Status update(int expectedVersion, UUID id, String name, StorageProfile.Provider provider, String endpoint,
-            String region, String bucket, String prefix, boolean pathStyle, String accessKeyId, String secretAccessKey) {
+            String region, String bucket, String prefix, boolean pathStyle, String accessKeyId,
+            String secretAccessKey) {
         lock(expectedVersion);
         StorageProfile previous = lockProfile(id);
         var location = normalizeLocation(name, provider, endpoint, region, bucket, prefix, pathStyle);
         boolean locationChanged = provider != previous.provider() || !location.endpoint().equals(previous.endpoint())
                 || !location.region().equals(previous.region()) || !location.bucket().equals(previous.bucket())
                 || !location.prefix().equals(previous.keyPrefix()) || pathStyle != previous.pathStyle();
-        if (locationChanged && inUse(id)) throw referenced();
-        if (provider != previous.provider() || !location.region().equals(previous.region())) validateOssRegion(provider, region);
+        if (locationChanged && inUse(id))
+            throw referenced();
+        if (provider != previous.provider() || !location.region().equals(previous.region()))
+            validateOssRegion(provider, region);
         if (!provider.supportsRelay() && id.equals(repository.state().relayProfileId()))
             throw invalid(ApiMessage.of("api.remote-storage.relay-unsupported"));
         boolean changeCredentials = accessKeyId != null && !accessKeyId.isBlank()
                 || secretAccessKey != null && !secretAccessKey.isBlank();
         if (provider != previous.provider() && !changeCredentials)
             throw invalid(ApiMessage.of("api.remote-storage.protocol-credentials-required"));
-        int revision = changeCredentials ? Math.addExact(previous.credentialVersion(), 1) : previous.credentialVersion();
-        var encrypted = changeCredentials ? cipher.encryptStorage(id, revision, credentials(provider, accessKeyId, secretAccessKey))
+        int revision = changeCredentials
+                ? Math.addExact(previous.credentialVersion(), 1)
+                : previous.credentialVersion();
+        var encrypted = changeCredentials
+                ? cipher.encryptStorage(id, revision, credentials(provider, accessKeyId, secretAccessKey))
                 : previous.credentials();
-        repository.updateProfile(new StorageProfile(id, location.name(), provider, location.endpoint(), location.region(),
-                location.bucket(), location.prefix(), pathStyle, revision, encrypted,
-                changeCredentials ? mask(accessKeyId) : previous.accessKeyMask(), previous.createdAt()));
+        repository
+                .updateProfile(new StorageProfile(id, location.name(), provider, location.endpoint(), location.region(),
+                        location.bucket(), location.prefix(), pathStyle, revision, encrypted,
+                        changeCredentials ? mask(accessKeyId) : previous.accessKeyMask(), previous.createdAt()));
         repository.advance(expectedVersion, repository.state().activeProfileId());
         return status();
     }
@@ -85,7 +102,8 @@ public class StorageSettingsService {
     public Status delete(int expectedVersion, UUID id) {
         lock(expectedVersion);
         lockProfile(id);
-        if (inUse(id)) throw referenced();
+        if (inUse(id))
+            throw referenced();
         repository.detachProfile(expectedVersion, id);
         repository.deleteProfile(id);
         return status();
@@ -97,7 +115,8 @@ public class StorageSettingsService {
 
     private StorageProfile lockProfile(UUID id) {
         return repository.lockProfile(id).orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND,
-                "STORAGE_PROFILE_NOT_FOUND", ApiMessage.of("api.storage-settings-service.storage-connection-does-not-exist"),
+                "STORAGE_PROFILE_NOT_FOUND",
+                ApiMessage.of("api.storage-settings-service.storage-connection-does-not-exist"),
                 ApiMessage.of("api.storage-settings-service.the-storage-connection-cannot-be-found"), false));
     }
 
@@ -107,25 +126,37 @@ public class StorageSettingsService {
                 ApiMessage.of("api.storage-settings-service.referenced-location-must-be-retained"), false);
     }
 
-    private record Location(String name, String endpoint, String region, String bucket, String prefix) {}
+    private record Location(String name, String endpoint, String region, String bucket, String prefix) {
+    }
     private Location normalizeLocation(String name, StorageProfile.Provider provider, String endpoint,
             String region, String bucket, String prefix, boolean pathStyle) {
         name = name == null ? "" : name.trim();
-        if (name.isEmpty() || name.length() > NAME_MAX_LENGTH) throw invalid(ApiMessage.of("api.storage-settings-service.please-enter-a-connection-name-of-no-more-than-120"));
-        if (provider == null) throw invalid(ApiMessage.of("api.storage-settings-service.please-select-a-storage-type"));
-        endpoint = provider.supportsRelay() ? normalizeEndpoint(endpoint) : RemoteFileSupport.endpoint(provider, endpoint);
+        if (name.isEmpty() || name.length() > NAME_MAX_LENGTH)
+            throw invalid(
+                    ApiMessage.of("api.storage-settings-service.please-enter-a-connection-name-of-no-more-than-120"));
+        if (provider == null)
+            throw invalid(ApiMessage.of("api.storage-settings-service.please-select-a-storage-type"));
+        endpoint = provider.supportsRelay()
+                ? normalizeEndpoint(endpoint)
+                : RemoteFileSupport.endpoint(provider, endpoint);
         if (!provider.supportsRelay()) {
             if (pathStyle || region != null && !region.isBlank() || bucket != null && !bucket.isBlank())
                 throw invalid(ApiMessage.of("api.remote-storage.no-object-fields"));
-            region = ""; bucket = "";
+            region = "";
+            bucket = "";
         }
-        if (provider.supportsRelay() && (region == null || !region.matches("[a-z0-9][a-z0-9-]{0,79}"))) throw invalid(ApiMessage.of("api.storage-settings-service.region-format-is-invalid"));
+        if (provider.supportsRelay() && (region == null || !region.matches("[a-z0-9][a-z0-9-]{0,79}")))
+            throw invalid(ApiMessage.of("api.storage-settings-service.region-format-is-invalid"));
         if (provider.supportsRelay() && (bucket == null || !bucket.matches("[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]")
-                || bucket.contains("..") || bucket.matches("[0-9.]+"))) throw invalid(ApiMessage.of("api.storage-settings-service.bucket-name-format-is-invalid"));
+                || bucket.contains("..") || bucket.matches("[0-9.]+")))
+            throw invalid(ApiMessage.of("api.storage-settings-service.bucket-name-format-is-invalid"));
         prefix = prefix == null ? "" : prefix.trim().replaceAll("^/+|/+$", "");
         if (prefix.length() > PREFIX_MAX_LENGTH || !prefix.matches("[A-Za-z0-9_/-]*")
-                || prefix.contains("//")) throw invalid(ApiMessage.of("api.storage-settings-service.object-prefixes-only-support-letters-numbers-underscores-dashes-and-directory"));
-        if (provider != StorageProfile.Provider.S3 && pathStyle) throw invalid(ApiMessage.of("api.storage-settings-service.oss-and-cos-use-virtual-host-addressing"));
+                || prefix.contains("//"))
+            throw invalid(ApiMessage.of(
+                    "api.storage-settings-service.object-prefixes-only-support-letters-numbers-underscores-dashes-and-directory"));
+        if (provider != StorageProfile.Provider.S3 && pathStyle)
+            throw invalid(ApiMessage.of("api.storage-settings-service.oss-and-cos-use-virtual-host-addressing"));
         return new Location(name, endpoint, region, bucket, prefix);
     }
 
@@ -137,7 +168,8 @@ public class StorageSettingsService {
     @Transactional
     public Status activate(int expectedVersion, UUID profileId) {
         lock(expectedVersion);
-        if (profileId != null) requireProfile(profileId);
+        if (profileId != null)
+            requireProfile(profileId);
         repository.advance(expectedVersion, profileId);
         return status();
     }
@@ -154,7 +186,10 @@ public class StorageSettingsService {
 
     /** Join task acceptance's transaction: edits/deletion wait until its frozen relay reference is durable. */
     @Transactional
-    public UUID relayProfileId() { repository.lockVersion(); return repository.state().relayProfileId(); }
+    public UUID relayProfileId() {
+        repository.lockVersion();
+        return repository.state().relayProfileId();
+    }
 
     /** Join image task acceptance: the function switch and selected connection are frozen together. */
     @Transactional
@@ -176,7 +211,8 @@ public class StorageSettingsService {
         lock(expectedVersion);
         StorageProfile profile = requireProfile(profileId);
         int revision = Math.addExact(profile.credentialVersion(), 1);
-        var encrypted = cipher.encryptStorage(profileId, revision, credentials(profile.provider(), accessKeyId, secretAccessKey));
+        var encrypted = cipher.encryptStorage(profileId, revision,
+                credentials(profile.provider(), accessKeyId, secretAccessKey));
         repository.rotate(profileId, revision, encrypted, mask(accessKeyId));
         repository.advance(expectedVersion, repository.state().activeProfileId());
         return status();
@@ -184,7 +220,9 @@ public class StorageSettingsService {
 
     public StorageProfile requireProfile(UUID id) {
         return repository.profile(id).orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND,
-                "STORAGE_PROFILE_NOT_FOUND", ApiMessage.of("api.storage-settings-service.storage-connection-does-not-exist"), ApiMessage.of("api.storage-settings-service.the-storage-connection-cannot-be-found"), false));
+                "STORAGE_PROFILE_NOT_FOUND",
+                ApiMessage.of("api.storage-settings-service.storage-connection-does-not-exist"),
+                ApiMessage.of("api.storage-settings-service.the-storage-connection-cannot-be-found"), false));
     }
 
     String[] credentials(StorageProfile profile) {
@@ -192,9 +230,15 @@ public class StorageSettingsService {
     }
 
     private void lock(int expectedVersion) {
-        if (expectedVersion < 0) throw invalid(ApiMessage.of("api.storage-settings-service.the-configuration-version-is-invalid"));
-        if (repository.lockVersion() != expectedVersion) throw new ApiProblemException(HttpStatus.CONFLICT,
-                "STORAGE_VERSION_CONFLICT", ApiMessage.of("api.storage-settings-service.storage-configuration-has-changed"), ApiMessage.of("api.storage-settings-service.please-refresh-the-configuration-and-try-again-the-current-input"), false);
+        if (expectedVersion < 0)
+            throw invalid(ApiMessage.of("api.storage-settings-service.the-configuration-version-is-invalid"));
+        if (repository.lockVersion() != expectedVersion)
+            throw new ApiProblemException(HttpStatus.CONFLICT,
+                    "STORAGE_VERSION_CONFLICT",
+                    ApiMessage.of("api.storage-settings-service.storage-configuration-has-changed"),
+                    ApiMessage.of(
+                            "api.storage-settings-service.please-refresh-the-configuration-and-try-again-the-current-input"),
+                    false);
     }
 
     static String normalizeEndpoint(String requested) {
@@ -203,30 +247,43 @@ public class StorageSettingsService {
             if (!("https".equals(uri.getScheme()) || "http".equals(uri.getScheme())) || uri.getHost() == null
                     || uri.getHost().contains("%") || uri.getPort() == 0 || uri.getPort() > 65535
                     || uri.getUserInfo() != null || uri.getQuery() != null || uri.getFragment() != null
-                    || !(uri.getPath().isEmpty() || uri.getPath().equals("/"))) throw invalid(ApiMessage.of("api.storage-settings-service.the-endpoint-must-be-an-https-address-without-path-credentials"));
+                    || !(uri.getPath().isEmpty() || uri.getPath().equals("/")))
+                throw invalid(ApiMessage.of(
+                        "api.storage-settings-service.the-endpoint-must-be-an-https-address-without-path-credentials"));
             return uri.toString().replaceAll("/+$", "");
-        } catch (IllegalArgumentException failure) { throw invalid(ApiMessage.of("api.storage-settings-service.endpoint-format-is-invalid")); }
+        } catch (IllegalArgumentException failure) {
+            throw invalid(ApiMessage.of("api.storage-settings-service.endpoint-format-is-invalid"));
+        }
     }
 
     private String credentials(StorageProfile.Provider provider, String id, String secret) {
         if (!provider.supportsRelay()) {
             if (id == null || id.isBlank() || id.length() > 128 || id.matches("(?s).*[\\p{Cntrl}].*")
                     || provider == StorageProfile.Provider.WEBDAV && id.contains(":")
-                    || secret == null || secret.isEmpty() || secret.length() > 4096 || secret.matches("(?s).*[\\p{Cntrl}].*"))
+                    || secret == null || secret.isEmpty() || secret.length() > 4096
+                    || secret.matches("(?s).*[\\p{Cntrl}].*"))
                 throw invalid(ApiMessage.of("api.remote-storage.invalid-credentials"));
             if (provider == StorageProfile.Provider.SMB && id.contains("\\") && !id.matches("[^\\\\]+\\\\[^\\\\]+"))
                 throw invalid(ApiMessage.of("api.remote-storage.invalid-credentials"));
             return id + "\n" + secret;
         }
         if (id == null || !id.matches("[A-Za-z0-9_-]{4,128}") || secret == null
-                || !secret.matches("[\\x21-\\x7E]{8,4096}")) throw invalid(ApiMessage.of("api.storage-settings-service.please-enter-a-valid-accesskey-id-and-secret"));
+                || !secret.matches("[\\x21-\\x7E]{8,4096}"))
+            throw invalid(ApiMessage.of("api.storage-settings-service.please-enter-a-valid-accesskey-id-and-secret"));
         return id + "\n" + secret;
     }
-    private String mask(String id) { return "••••" + id.substring(Math.max(0, id.length() - VISIBLE_KEY_SUFFIX_LENGTH)); }
-    static ApiProblemException invalid(ApiMessage detail) {
-        return new ApiProblemException(HttpStatus.BAD_REQUEST, "STORAGE_CONFIG_INVALID", ApiMessage.of("api.storage-settings-service.invalid-storage-configuration"), detail, false);
+    private String mask(String id) {
+        return "••••" + id.substring(Math.max(0, id.length() - VISIBLE_KEY_SUFFIX_LENGTH));
     }
-    public record Status(int version, UUID activeProfileId, UUID relayProfileId, boolean llmRelayEnabled, boolean imageRelayEnabled, List<ProfileStatus> profiles) {}
+    static ApiProblemException invalid(ApiMessage detail) {
+        return new ApiProblemException(HttpStatus.BAD_REQUEST, "STORAGE_CONFIG_INVALID",
+                ApiMessage.of("api.storage-settings-service.invalid-storage-configuration"), detail, false);
+    }
+    public record Status(int version, UUID activeProfileId, UUID relayProfileId, boolean llmRelayEnabled,
+            boolean imageRelayEnabled, List<ProfileStatus> profiles) {
+    }
     public record ProfileStatus(UUID id, String name, StorageProfile.Provider provider, String endpoint,
-            String region, String bucket, String keyPrefix, boolean pathStyle, String accessKeyMask, Instant createdAt, boolean inUse) {}
+            String region, String bucket, String keyPrefix, boolean pathStyle, String accessKeyMask, Instant createdAt,
+            boolean inUse) {
+    }
 }

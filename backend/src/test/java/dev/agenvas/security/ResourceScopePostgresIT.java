@@ -59,14 +59,22 @@ class ResourceScopePostgresIT {
         registry.add("agenvas.storage.root", STORAGE_ROOT::toString);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private ArtifactService artifacts;
-    @Autowired private AssetService assets;
-    @Autowired private AgentRunService runs;
-    @Autowired private ObjectMapper mapper;
-    @Autowired private WebApplicationContext context;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private AgentInstanceService agents;
+    @Autowired
+    private ArtifactService artifacts;
+    @Autowired
+    private AssetService assets;
+    @Autowired
+    private AgentRunService runs;
+    @Autowired
+    private ObjectMapper mapper;
+    @Autowired
+    private WebApplicationContext context;
 
     @Test
     void guessedIdsDoNotExposeArtifactAssetRunOrEventStream() throws Exception {
@@ -89,15 +97,15 @@ class ResourceScopePostgresIT {
         String base = "/api/v1/projects/" + target.id();
         String otherBase = "/api/v1/projects/" + other.id();
         mvc.perform(get(base + "/artifacts/" + artifactId)
-                        .with(authentication(asUser(owner))))
+                .with(authentication(asUser(owner))))
                 .andExpect(status().isOk())
                 .andExpect(result -> assertThat(result.getResponse().getContentAsString())
                         .contains("SECRET_SCOPE_MARKER"));
         mvc.perform(get(base + "/assets/" + assetId)
-                        .with(authentication(asUser(owner))))
+                .with(authentication(asUser(owner))))
                 .andExpect(status().isOk());
         mvc.perform(get(base + "/runs/" + runId)
-                        .with(authentication(asUser(owner))))
+                .with(authentication(asUser(owner))))
                 .andExpect(status().isOk())
                 .andExpect(result -> assertThat(result.getResponse().getContentAsString())
                         .contains("SECRET_SCOPE_MARKER"));
@@ -121,14 +129,14 @@ class ResourceScopePostgresIT {
         for (int index = 0; index < targetPaths.length; index++) {
             String requested = targetPaths[index];
             mvc.perform(get(requested).accept(MediaType.TEXT_EVENT_STREAM)
-                            .with(authentication(asUser(foreign))))
+                    .with(authentication(asUser(foreign))))
                     .andExpect(status().isNotFound())
                     .andExpect(result -> assertNoPrivateContent(result.getResponse().getContentAsString()));
             // A different project event stream belongs to this same owner and is valid;
             // only the resource-specific paths above can be "misplaced" by an ID.
             if (index < misplacedPaths.length) {
                 mvc.perform(get(misplacedPaths[index]).accept(MediaType.TEXT_EVENT_STREAM)
-                                .with(authentication(asUser(owner))))
+                        .with(authentication(asUser(owner))))
                         .andExpect(status().isNotFound())
                         .andExpect(result -> assertNoPrivateContent(result.getResponse().getContentAsString()));
             }

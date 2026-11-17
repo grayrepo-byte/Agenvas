@@ -29,7 +29,8 @@ public record AudioGenerationParameters(String speaker, int speechRate, int loud
         if (source == null || source.isMissingNode() || source.isNull())
             return new AudioGenerationParameters(DEFAULT_SPEAKER, DEFAULT_RATE, DEFAULT_RATE, DEFAULT_RATE);
         if (!source.isObject() || !FIELDS.containsAll(source.propertyNames()))
-            throw invalid(ApiMessage.of("api.audio-generation-parameters.audio-parameters-only-accept-timbre-speech-rate-volume-and-pitch"));
+            throw invalid(ApiMessage.of(
+                    "api.audio-generation-parameters.audio-parameters-only-accept-timbre-speech-rate-volume-and-pitch"));
         JsonNode voice = source.get("speaker");
         String speaker = voice == null ? DEFAULT_SPEAKER : voice.asText("");
         if ((voice != null && !voice.isTextual()) || !speaker.matches(SPEAKER_PATTERN))
@@ -47,7 +48,8 @@ public record AudioGenerationParameters(String speaker, int speechRate, int loud
 
     private static int rate(JsonNode source, String field, int minimum, int maximum) {
         JsonNode value = source.get(field);
-        if (value == null) return DEFAULT_RATE;
+        if (value == null)
+            return DEFAULT_RATE;
         if (!value.isIntegralNumber() || !value.canConvertToInt()
                 || value.intValue() < minimum || value.intValue() > maximum)
             throw invalid("speechRate".equals(field)
@@ -57,7 +59,7 @@ public record AudioGenerationParameters(String speaker, int speechRate, int loud
     }
 
     private static ApiProblemException invalid(ApiMessage detail) {
-        return new ApiProblemException(HttpStatus.BAD_REQUEST,"VALIDATION_ERROR",
-                ApiMessage.of("api.audio-generation-parameters.invalid-audio-parameter"),detail,false);
+        return new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
+                ApiMessage.of("api.audio-generation-parameters.invalid-audio-parameter"), detail, false);
     }
 }

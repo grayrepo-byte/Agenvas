@@ -21,7 +21,7 @@ class VideoDurationTest {
         assertThat(VideoDuration.fromFrozenTask(mapper.readTree("""
                 {"schemaVersion":3,"durationSeconds":5}
                 """))).isEqualTo(Duration.ofSeconds(5));
-        for (String invalid : new String[] {
+        for (String invalid : new String[]{
                 "{\"schemaVersion\":1,\"durationMs\":1250}",
                 "{\"durationMs\":5000}",
                 "{\"schemaVersion\":2,\"durationSeconds\":1.25}",
@@ -42,7 +42,7 @@ class VideoDurationTest {
         assertThat(VideoDuration.fromFrozenTask(mapper.readTree("""
                 {"schemaVersion":5,"durationSeconds":5,"mediaInput":{"images":[]}}
                 """))).isEqualTo(Duration.ofSeconds(5));
-        for (String invalid : new String[] {
+        for (String invalid : new String[]{
                 "{\"schemaVersion\":4,\"durationSeconds\":1.25}",
                 "{\"schemaVersion\":4,\"durationSeconds\":0}",
                 "{\"schemaVersion\":4,\"durationSeconds\":31}",

@@ -1,7 +1,7 @@
 import { Range } from "../../shared/ui/Range";
-import { ArrowClockwise,ArrowsOutSimple,SpeakerHigh,SpeakerSlash,VideoCamera } from "@/shared/ui/icons";
-import { useEffect,useRef,useState,type SyntheticEvent } from "react";
-import { t,useLocale } from "../../shared/i18n";
+import { ArrowClockwise, ArrowsOutSimple, SpeakerHigh, SpeakerSlash, VideoCamera } from "@/shared/ui/icons";
+import { useEffect, useRef, useState, type SyntheticEvent } from "react";
+import { t, useLocale } from "../../shared/i18n";
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { Button } from "../../shared/ui/primitives/button";
 import { MediaPreviewDialog } from "./MediaPreviewDialog";
@@ -17,11 +17,27 @@ function timeLabel(value: number) {
   return `${String(Math.floor(seconds / SECONDS_PER_MINUTE)).padStart(TIME_DIGITS, "0")}:${String(seconds % SECONDS_PER_MINUTE).padStart(TIME_DIGITS, "0")}`;
 }
 
-function isolateControl(event: SyntheticEvent) { event.stopPropagation(); }
+function isolateControl(event: SyntheticEvent) {
+  event.stopPropagation();
+}
 
 /** A sustained hover plays the original muted; picture clicks reach node selection. */
-export function VideoPreview({ src, posterSrc, title, demo, width, height, contentType }: {
-  src: string; posterSrc: string; title: string; demo: boolean; width?: number; height?: number; contentType?: string;
+export function VideoPreview({
+  src,
+  posterSrc,
+  title,
+  demo,
+  width,
+  height,
+  contentType,
+}: {
+  src: string;
+  posterSrc: string;
+  title: string;
+  demo: boolean;
+  width?: number;
+  height?: number;
+  contentType?: string;
 }) {
   useLocale();
   const video = useRef<HTMLVideoElement>(null);
@@ -52,7 +68,10 @@ export function VideoPreview({ src, posterSrc, title, demo, width, height, conte
         setBuffering(false);
       });
     } else element.pause();
-    return () => { active = false; element.pause(); };
+    return () => {
+      active = false;
+      element.pause();
+    };
   }, [hovered, expanded, attempt, playbackFailed]);
 
   function startHover() {
@@ -77,65 +96,164 @@ export function VideoPreview({ src, posterSrc, title, demo, width, height, conte
     setBuffering(true);
     setDuration(0);
     setPosition(0);
-    setAttempt((value) => value + 1);
+    setAttempt(value => value + 1);
   }
 
-  return <div className={`media-card-preview video-card-preview${hovered ? " is-hovered" : ""}`}
-    onMouseEnter={startHover} onMouseLeave={stopHover}>
-    {activated && !playbackFailed ? <video key={attempt} ref={video} className="nowheel nopan"
-      aria-label={t("media.card.videoLabel", { "0": title })} src={src} poster={posterSrc}
-      muted={muted} loop playsInline preload="metadata"
-      onLoadedMetadata={(event) => {
-        const value = event.currentTarget.duration;
-        setDuration(Number.isFinite(value) && value > 0 ? value : 0);
-      }}
-      onTimeUpdate={(event) => setPosition(event.currentTarget.currentTime)}
-      onCanPlay={() => setBuffering(false)} onPlaying={() => setBuffering(false)} onWaiting={() => setBuffering(true)}
-      onError={() => { setPlaybackFailed(true); setBuffering(false); }} />
-      : !posterFailed ? <img alt={t("media.card.mediaLabel", { "0": title, "1": t("media.card.videoPoster") })}
-        decoding="async" draggable={false} loading="lazy" onError={() => setPosterFailed(true)} src={posterSrc} />
-        : <div className="media-card-empty"><VideoCamera size={36} /><span>{t("media.card.posterUnavailable")}</span>
-          <div className="nodrag nowheel nopan" onPointerDown={isolateControl} onMouseDown={isolateControl} onClick={isolateControl}>
-            <Button variant="ghost" type="button" className="media-upload-button" onClick={() => setPosterFailed(false)}>
-              {t("media.card.retryPreview")}</Button>
+  return (
+    <div
+      className={`media-card-preview video-card-preview${hovered ? " is-hovered" : ""}`}
+      onMouseEnter={startHover}
+      onMouseLeave={stopHover}
+    >
+      {activated && !playbackFailed ? (
+        <video
+          key={attempt}
+          ref={video}
+          className="nowheel nopan"
+          aria-label={t("media.card.videoLabel", { "0": title })}
+          src={src}
+          poster={posterSrc}
+          muted={muted}
+          loop
+          playsInline
+          preload="metadata"
+          onLoadedMetadata={event => {
+            const value = event.currentTarget.duration;
+            setDuration(Number.isFinite(value) && value > 0 ? value : 0);
+          }}
+          onTimeUpdate={event => setPosition(event.currentTarget.currentTime)}
+          onCanPlay={() => setBuffering(false)}
+          onPlaying={() => setBuffering(false)}
+          onWaiting={() => setBuffering(true)}
+          onError={() => {
+            setPlaybackFailed(true);
+            setBuffering(false);
+          }}
+        />
+      ) : !posterFailed ? (
+        <img
+          alt={t("media.card.mediaLabel", { "0": title, "1": t("media.card.videoPoster") })}
+          decoding="async"
+          draggable={false}
+          loading="lazy"
+          onError={() => setPosterFailed(true)}
+          src={posterSrc}
+        />
+      ) : (
+        <div className="media-card-empty">
+          <VideoCamera size={36} />
+          <span>{t("media.card.posterUnavailable")}</span>
+          <div
+            className="nodrag nowheel nopan"
+            onPointerDown={isolateControl}
+            onMouseDown={isolateControl}
+            onClick={isolateControl}
+          >
+            <Button
+              variant="ghost"
+              type="button"
+              className="media-upload-button"
+              onClick={() => setPosterFailed(false)}
+            >
+              {t("media.card.retryPreview")}
+            </Button>
           </div>
-        </div>}
-    {hovered && buffering ? <div className="media-playback-loading">
-      <LoadingState compact label={t("media.card.videoLoading")} />
-    </div> : null}
-    {playbackFailed ? <div className="media-playback-error" role="alert">
-      <VideoCamera size={28} /><p>{t("media.card.videoPlaybackFailed")}</p><span>{t("media.card.videoRetryHint")}</span>
-      <div className="nodrag nowheel nopan" onPointerDown={isolateControl} onMouseDown={isolateControl}
-        onClick={isolateControl} onDoubleClick={isolateControl}>
-        <Button variant="ghost" type="button" className="media-upload-button" onClick={retryPlayback}>
-          <ArrowClockwise size={15} />{t("media.retryPlayback")}</Button>
-      </div>
-    </div> : null}
-    {activated && !playbackFailed ? <div className="video-preview-controls nodrag nowheel nopan"
-      onPointerDown={isolateControl} onMouseDown={isolateControl} onTouchStart={isolateControl}
-      onClick={isolateControl} onDoubleClick={isolateControl} onKeyDown={isolateControl}>
-      <Button variant="ghost" type="button" className="video-preview-mute" onClick={() => setMuted((value) => !value)}
-        aria-label={muted ? t("media.card.unmuteVideo") : t("media.card.muteVideo")}>
-        {muted ? <SpeakerSlash size={16} /> : <SpeakerHigh size={16} />}</Button>
-      <Range variant="media" className="video-preview-seek" aria-label={t("media.card.videoProgressLabel")}
-        aria-valuetext={`${timeLabel(position)} / ${timeLabel(duration)}`} min={0} max={duration}
-        step={SEEK_STEP_SECONDS} value={Math.min(position, duration)} disabled={duration <= 0}
-        onChange={(event) => {
-          const value = Number(event.currentTarget.value);
-          if (video.current) video.current.currentTime = value;
-          setPosition(value);
-        }} />
-      <span className="video-preview-time">{timeLabel(position)} / {timeLabel(duration)}</span>
-    </div> : null}
-    {demo ? <span className="media-demo-badge">{t("media.card.mockVideo")}</span> : null}
-    <Button variant="media-overlay" size="icon-lg" type="button" className="media-expand-button nodrag nowheel nopan"
-      aria-label={t("media.card.openVideo")} title={t("media.card.openVideo")}
-      onPointerDown={isolateControl} onMouseDown={isolateControl} onClick={(event) => {
-        event.stopPropagation();
-        stopHover();
-        setExpanded(true);
-      }}><ArrowsOutSimple size={19} /></Button>
-    {expanded ? <MediaPreviewDialog kind="video" title={title} sourceUrl={src} posterSrc={posterSrc}
-      width={width} height={height} contentType={contentType} onClose={() => setExpanded(false)} /> : null}
-  </div>;
+        </div>
+      )}
+      {hovered && buffering ? (
+        <div className="media-playback-loading">
+          <LoadingState compact label={t("media.card.videoLoading")} />
+        </div>
+      ) : null}
+      {playbackFailed ? (
+        <div className="media-playback-error" role="alert">
+          <VideoCamera size={28} />
+          <p>{t("media.card.videoPlaybackFailed")}</p>
+          <span>{t("media.card.videoRetryHint")}</span>
+          <div
+            className="nodrag nowheel nopan"
+            onPointerDown={isolateControl}
+            onMouseDown={isolateControl}
+            onClick={isolateControl}
+            onDoubleClick={isolateControl}
+          >
+            <Button variant="ghost" type="button" className="media-upload-button" onClick={retryPlayback}>
+              <ArrowClockwise size={15} />
+              {t("media.retryPlayback")}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+      {activated && !playbackFailed ? (
+        <div
+          className="video-preview-controls nodrag nowheel nopan"
+          onPointerDown={isolateControl}
+          onMouseDown={isolateControl}
+          onTouchStart={isolateControl}
+          onClick={isolateControl}
+          onDoubleClick={isolateControl}
+          onKeyDown={isolateControl}
+        >
+          <Button
+            variant="ghost"
+            type="button"
+            className="video-preview-mute"
+            onClick={() => setMuted(value => !value)}
+            aria-label={muted ? t("media.card.unmuteVideo") : t("media.card.muteVideo")}
+          >
+            {muted ? <SpeakerSlash size={16} /> : <SpeakerHigh size={16} />}
+          </Button>
+          <Range
+            variant="media"
+            className="video-preview-seek"
+            aria-label={t("media.card.videoProgressLabel")}
+            aria-valuetext={`${timeLabel(position)} / ${timeLabel(duration)}`}
+            min={0}
+            max={duration}
+            step={SEEK_STEP_SECONDS}
+            value={Math.min(position, duration)}
+            disabled={duration <= 0}
+            onChange={event => {
+              const value = Number(event.currentTarget.value);
+              if (video.current) video.current.currentTime = value;
+              setPosition(value);
+            }}
+          />
+          <span className="video-preview-time">
+            {timeLabel(position)} / {timeLabel(duration)}
+          </span>
+        </div>
+      ) : null}
+      {demo ? <span className="media-demo-badge">{t("media.card.mockVideo")}</span> : null}
+      <Button
+        variant="media-overlay"
+        size="icon-lg"
+        type="button"
+        className="media-expand-button nodrag nowheel nopan"
+        aria-label={t("media.card.openVideo")}
+        title={t("media.card.openVideo")}
+        onPointerDown={isolateControl}
+        onMouseDown={isolateControl}
+        onClick={event => {
+          event.stopPropagation();
+          stopHover();
+          setExpanded(true);
+        }}
+      >
+        <ArrowsOutSimple size={19} />
+      </Button>
+      {expanded ? (
+        <MediaPreviewDialog
+          kind="video"
+          title={title}
+          sourceUrl={src}
+          posterSrc={posterSrc}
+          width={width}
+          height={height}
+          contentType={contentType}
+          onClose={() => setExpanded(false)}
+        />
+      ) : null}
+    </div>
+  );
 }

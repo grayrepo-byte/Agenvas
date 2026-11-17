@@ -42,19 +42,25 @@ public final class BuiltinSkillSearch {
     }
 
     public List<SkillRepository.BuiltinSearchMatch> matching(String query) {
-        if (query == null || query.isBlank()) return List.of();
+        if (query == null || query.isBlank())
+            return List.of();
         Locale locale = RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes
-                ? SupportedLocales.resolve(attributes.getRequest()) : Locale.ENGLISH;
+                ? SupportedLocales.resolve(attributes.getRequest())
+                : Locale.ENGLISH;
         String search = query.toLowerCase(Locale.ROOT);
         var matches = new ArrayList<SkillRepository.BuiltinSearchMatch>();
         for (var entry : catalogue.entries()) {
             String prefix = MESSAGE_PREFIXES.get(entry.bundle().name());
-            if (prefix == null) continue;
-            boolean title = messages.text(ApiMessage.of(prefix + ".title"), locale).toLowerCase(Locale.ROOT).contains(search);
-            boolean description = messages.text(ApiMessage.of(prefix + ".description"), locale).toLowerCase(Locale.ROOT).contains(search);
+            if (prefix == null)
+                continue;
+            boolean title = messages.text(ApiMessage.of(prefix + ".title"), locale).toLowerCase(Locale.ROOT)
+                    .contains(search);
+            boolean description = messages.text(ApiMessage.of(prefix + ".description"), locale).toLowerCase(Locale.ROOT)
+                    .contains(search);
             if (title || description) {
                 // The UI localizes a packaged title independently, but descriptions require their original text too.
-                matches.add(new SkillRepository.BuiltinSearchMatch(entry.key(), entry.title(), title ? null : entry.bundle().description()));
+                matches.add(new SkillRepository.BuiltinSearchMatch(entry.key(), entry.title(),
+                        title ? null : entry.bundle().description()));
             }
         }
         return List.copyOf(matches);

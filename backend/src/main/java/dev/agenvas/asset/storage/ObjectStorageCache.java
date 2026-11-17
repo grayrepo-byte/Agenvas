@@ -24,32 +24,43 @@ public class ObjectStorageCache {
     private static final int LOCK_STRIPES = 64;
     private static final Object[] LOCKS = new Object[LOCK_STRIPES];
     private static final Duration MINIMUM_RETENTION = Duration.ofHours(1);
-    static { java.util.Arrays.setAll(LOCKS, ignored -> new Object()); }
+    static {
+        java.util.Arrays.setAll(LOCKS, ignored -> new Object());
+    }
     private final Path root;
     private final Clock clock;
     private final Duration retention;
     public ObjectStorageCache(AssetProperties storage, Clock clock,
             @Value("${agenvas.storage.cache-retention:PT24H}") Duration retention) {
-        if (retention.compareTo(MINIMUM_RETENTION) < 0) throw new IllegalArgumentException("Processing cache retention must be at least one hour");
+        if (retention.compareTo(MINIMUM_RETENTION) < 0)
+            throw new IllegalArgumentException("Processing cache retention must be at least one hour");
         this.root = storage.root().toAbsolutePath().normalize().resolve(".cloud-cache");
-        this.clock = clock; this.retention = retention;
+        this.clock = clock;
+        this.retention = retention;
     }
-    static Object lock(Path path) { return LOCKS[Math.floorMod(path.toAbsolutePath().normalize().hashCode(), LOCKS.length)]; }
+    static Object lock(Path path) {
+        return LOCKS[Math.floorMod(path.toAbsolutePath().normalize().hashCode(), LOCKS.length)];
+    }
     @Scheduled(fixedDelayString = "${agenvas.storage.cache-cleanup-interval:PT1H}")
     public void cleanup() {
-        if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) return;
+        if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS))
+            return;
         Instant cutoff = clock.instant().minus(retention);
         try {
             Files.walkFileTree(root, new SimpleFileVisitor<>() {
-                @Override public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
                     synchronized (lock(file)) {
                         if (Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)
-                                && Files.getLastModifiedTime(file, LinkOption.NOFOLLOW_LINKS).toInstant().isBefore(cutoff))
+                                && Files.getLastModifiedTime(file, LinkOption.NOFOLLOW_LINKS).toInstant()
+                                        .isBefore(cutoff))
                             Files.deleteIfExists(file);
                     }
                     return FileVisitResult.CONTINUE;
                 }
             });
-        } catch (IOException failure) { LOGGER.warn("Object storage processing cache cleanup failed"); }
+        } catch (IOException failure) {
+            LOGGER.warn("Object storage processing cache cleanup failed");
+        }
     }
 }

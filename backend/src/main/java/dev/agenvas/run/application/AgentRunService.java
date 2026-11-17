@@ -224,7 +224,8 @@ public class AgentRunService {
         String key = validateIdempotencyKey(requestedIdempotencyKey);
         List<UUID> selection = validateSelection(selectedItemIds);
         if ((expectedModelConfigSource == null) != (expectedModelConfigVersion == null)) {
-            throw validation(ApiMessage.of("api.agent-run-service.model-configuration-source-and-version-must-be-submitted-together"));
+            throw validation(ApiMessage
+                    .of("api.agent-run-service.model-configuration-source-and-version-must-be-submitted-together"));
         }
         String scope = "project:" + projectId + ":create-run";
         String requestFingerprint = agentId + "\n" + instruction + "\n"
@@ -238,9 +239,12 @@ public class AgentRunService {
         }
         // Omitted conversation fields mean "use current" at acceptance. Replays hash
         // that submitted intent, so a later current-conversation change cannot duplicate it.
-        if (requestedConversationId != null) requestFingerprint += "\nconversation:" + requestedConversationId;
-        if (expectedConversationVersion != null) requestFingerprint += "\nconversation-version:" + expectedConversationVersion;
-        if (skillSelection != null) requestFingerprint += "\nskill:" + objectMapper.valueToTree(skillSelection);
+        if (requestedConversationId != null)
+            requestFingerprint += "\nconversation:" + requestedConversationId;
+        if (expectedConversationVersion != null)
+            requestFingerprint += "\nconversation-version:" + expectedConversationVersion;
+        if (skillSelection != null)
+            requestFingerprint += "\nskill:" + objectMapper.valueToTree(skillSelection);
         String requestHash = Sha256.hex(requestFingerprint);
         Instant now = clock.instant();
         boolean reserved = runs.reserveIdempotency(
@@ -253,7 +257,8 @@ public class AgentRunService {
                         HttpStatus.CONFLICT,
                         "IDEMPOTENCY_CONFLICT",
                         ApiMessage.of("api.artifact-service.idempotent-keys-have-been-used-for-different-requests"),
-                        ApiMessage.of("api.agent-run-service.please-use-new-idempotency-key-for-different-agents-or-commands"),
+                        ApiMessage.of(
+                                "api.agent-run-service.please-use-new-idempotency-key-for-different-agents-or-commands"),
                         false);
             }
             if (existing.state() != IdempotencyState.COMPLETED
@@ -268,68 +273,81 @@ public class AgentRunService {
         AgentInstance agent = agents.get(ownerId, projectId, agentId);
         if (expectedAgentVersion != null && agent.version() != expectedAgentVersion) {
             throw new ApiProblemException(HttpStatus.CONFLICT, "AGENT_VERSION_CONFLICT",
-                    ApiMessage.of("api.agent-run-service.agent-configuration-has-changed"), ApiMessage.of("api.agent-run-service.the-input-or-instructions-may-have-changed-please-recheck-the"), false);
+                    ApiMessage.of("api.agent-run-service.agent-configuration-has-changed"),
+                    ApiMessage
+                            .of("api.agent-run-service.the-input-or-instructions-may-have-changed-please-recheck-the"),
+                    false);
         }
         ObjectNode policy = policySnapshot();
         if (expectedModelConfigSource != null
                 && (!expectedModelConfigSource.equals(
                         policy.path("modelConfigSource").asText())
-                    || expectedModelConfigVersion != policy.path("modelConfigVersion").asInt())) {
+                        || expectedModelConfigVersion != policy.path("modelConfigVersion").asInt())) {
             throw new ApiProblemException(HttpStatus.CONFLICT, "MODEL_CONFIG_CONFLICT",
-                    ApiMessage.of("api.llm-provider-config-service.model-configuration-has-changed"), ApiMessage.of("api.agent-run-service.the-model-configuration-that-will-be-used-is-different-from"), false);
+                    ApiMessage.of("api.llm-provider-config-service.model-configuration-has-changed"),
+                    ApiMessage.of("api.agent-run-service.the-model-configuration-that-will-be-used-is-different-from"),
+                    false);
         }
         if (expectedSystemPromptVersion != null
                 && expectedSystemPromptVersion != policy.path("systemPromptVersion").asInt(-1)) {
             throw new ApiProblemException(HttpStatus.CONFLICT, "SYSTEM_PROMPT_CONFLICT",
-                    ApiMessage.of("api.agent-run-service.the-system-prompt-word-has-changed"), ApiMessage.of("api.agent-run-service.the-running-rules-are-different-from-the-pre-run-preview"), false);
+                    ApiMessage.of("api.agent-run-service.the-system-prompt-word-has-changed"),
+                    ApiMessage.of("api.agent-run-service.the-running-rules-are-different-from-the-pre-run-preview"),
+                    false);
         }
         UUID runId = UUID.randomUUID();
         CreatedRun created = shutdownGate.admitRun(() -> events.recordChange(ownerId, projectId, () -> {
-                    shutdownGate.requireAcceptingRuns();
-                    projects.requireAvailableRunSlot(ownerId, projectId);
-                    AgentInstance pinnedAgent = agents.get(ownerId, projectId, agentId);
-                    if (pinnedAgent.version() != agent.version()) {
-                        throw new ApiProblemException(HttpStatus.CONFLICT, "AGENT_VERSION_CONFLICT",
-                                ApiMessage.of("api.agent-run-service.agent-configuration-has-changed"), ApiMessage.of("api.agent-run-service.the-input-or-instructions-may-have-changed-please-recheck-the"), false);
-                    }
-                    AgentConversation conversation = conversations.resolveOrCreate(ownerId, projectId,
-                            agentId, requestedConversationId);
-                    if (expectedConversationVersion != null && expectedConversationVersion != conversation.version()) {
-                        throw new ApiProblemException(HttpStatus.CONFLICT, "CONVERSATION_VERSION_CONFLICT",
-                                ApiMessage.of("api.agent-run-service.session-has-changed"), ApiMessage.of("api.agent-run-service.there-is-a-new-message-in-the-conversation-please-recheck"), false);
-                    }
-                    ObjectNode snapshot = contextSnapshot(ownerId, agent, project, selection);
-                    snapshot.set("conversationMemory", objectMapper.valueToTree(conversationMemory(projectId, conversation)));
-                    snapshot.put("conversationId", conversation.id().toString());
-                    snapshot.put("conversationHistoryThroughTurn", conversation.turnCount());
-                    skills.freezeIntoRun(ownerId, projectId, pinnedAgent, runId, skillSelection, snapshot);
-                    policy.set("allowedTools", objectMapper.valueToTree(RunToolPolicy.current(
-                            !snapshot.path("creativeSkills").isEmpty(),
-                            java.util.stream.StreamSupport.stream(snapshot.path("creativeSkills").spliterator(), false)
-                                    .anyMatch(skill -> !skill.path("resources").isEmpty()),
-                            java.util.stream.StreamSupport.stream(snapshot.path("creativeSkills").spliterator(), false)
-                                    .anyMatch(skill -> !skill.path("assets").isEmpty()))));
-                    AgentConversation advanced = conversations.appendTurn(ownerId, conversation,
-                            instruction, expectedConversationVersion, now);
-                    AgentRun run = new AgentRun(runId, projectId, agentId, conversation.id(),
-                            advanced.turnCount(), ownerId, AgentRun.Status.QUEUED, instruction,
-                            snapshot, policy, agent.profileVersion(), 0, 0, now, now, null);
-                    runs.create(run);
-                    projects.assignRunSlot(ownerId, projectId, runId);
-                    UUID firstTaskId = taskCreation.createInitialTurn(projectId, runId, now);
-                    if (!runs.completeIdempotency(
-                            ownerId,
-                            scope,
-                            key,
-                            requestHash,
-                            runId,
-                            "{\"runId\":\"" + runId + "\"}",
-                            now)) {
-                        throw new IllegalStateException(
-                                "Failed to complete reserved Run idempotency record");
-                    }
-                    return ProjectEventService.Change.changed(new CreatedRun(run, firstTaskId), runEvent(run));
-                })
+            shutdownGate.requireAcceptingRuns();
+            projects.requireAvailableRunSlot(ownerId, projectId);
+            AgentInstance pinnedAgent = agents.get(ownerId, projectId, agentId);
+            if (pinnedAgent.version() != agent.version()) {
+                throw new ApiProblemException(HttpStatus.CONFLICT, "AGENT_VERSION_CONFLICT",
+                        ApiMessage.of("api.agent-run-service.agent-configuration-has-changed"),
+                        ApiMessage.of(
+                                "api.agent-run-service.the-input-or-instructions-may-have-changed-please-recheck-the"),
+                        false);
+            }
+            AgentConversation conversation = conversations.resolveOrCreate(ownerId, projectId,
+                    agentId, requestedConversationId);
+            if (expectedConversationVersion != null && expectedConversationVersion != conversation.version()) {
+                throw new ApiProblemException(HttpStatus.CONFLICT, "CONVERSATION_VERSION_CONFLICT",
+                        ApiMessage.of("api.agent-run-service.session-has-changed"),
+                        ApiMessage
+                                .of("api.agent-run-service.there-is-a-new-message-in-the-conversation-please-recheck"),
+                        false);
+            }
+            ObjectNode snapshot = contextSnapshot(ownerId, agent, project, selection);
+            snapshot.set("conversationMemory", objectMapper.valueToTree(conversationMemory(projectId, conversation)));
+            snapshot.put("conversationId", conversation.id().toString());
+            snapshot.put("conversationHistoryThroughTurn", conversation.turnCount());
+            skills.freezeIntoRun(ownerId, projectId, pinnedAgent, runId, skillSelection, snapshot);
+            policy.set("allowedTools", objectMapper.valueToTree(RunToolPolicy.current(
+                    !snapshot.path("creativeSkills").isEmpty(),
+                    java.util.stream.StreamSupport.stream(snapshot.path("creativeSkills").spliterator(), false)
+                            .anyMatch(skill -> !skill.path("resources").isEmpty()),
+                    java.util.stream.StreamSupport.stream(snapshot.path("creativeSkills").spliterator(), false)
+                            .anyMatch(skill -> !skill.path("assets").isEmpty()))));
+            AgentConversation advanced = conversations.appendTurn(ownerId, conversation,
+                    instruction, expectedConversationVersion, now);
+            AgentRun run = new AgentRun(runId, projectId, agentId, conversation.id(),
+                    advanced.turnCount(), ownerId, AgentRun.Status.QUEUED, instruction,
+                    snapshot, policy, agent.profileVersion(), 0, 0, now, now, null);
+            runs.create(run);
+            projects.assignRunSlot(ownerId, projectId, runId);
+            UUID firstTaskId = taskCreation.createInitialTurn(projectId, runId, now);
+            if (!runs.completeIdempotency(
+                    ownerId,
+                    scope,
+                    key,
+                    requestHash,
+                    runId,
+                    "{\"runId\":\"" + runId + "\"}",
+                    now)) {
+                throw new IllegalStateException(
+                        "Failed to complete reserved Run idempotency record");
+            }
+            return ProjectEventService.Change.changed(new CreatedRun(run, firstTaskId), runEvent(run));
+        })
                 .value());
         conversations.publishChange(ownerId, projectId, agentId, created.run().conversationId());
         ObjectNode taskPayload = objectMapper.createObjectNode();
@@ -358,14 +376,16 @@ public class AgentRunService {
     /** Internal bounded recovery scan; it does not change frozen policies or restart any work. */
     @Transactional(readOnly = true)
     public List<BlockedRunCandidate> blockedRecoveryCandidates(UUID afterId, int limit) {
-        if (limit < 1 || limit > MAX_RECOVERY_BATCH_SIZE) throw new IllegalArgumentException("Invalid recovery batch size");
+        if (limit < 1 || limit > MAX_RECOVERY_BATCH_SIZE)
+            throw new IllegalArgumentException("Invalid recovery batch size");
         return runs.blockedRecoveryCandidates(afterId, limit);
     }
 
     /** A missed local-task event must not leave an otherwise finished tool round waiting forever. */
     @Transactional(readOnly = true)
     public List<WaitingRunCandidate> waitingRecoveryCandidates(UUID afterId, int limit) {
-        if (limit < 1 || limit > MAX_RECOVERY_BATCH_SIZE) throw new IllegalArgumentException("Invalid recovery batch size");
+        if (limit < 1 || limit > MAX_RECOVERY_BATCH_SIZE)
+            throw new IllegalArgumentException("Invalid recovery batch size");
         return runs.waitingRecoveryCandidates(afterId, limit);
     }
 
@@ -375,21 +395,28 @@ public class AgentRunService {
             String encodedCursor, Integer requestedLimit) {
         conversations.get(ownerId, projectId, agentId, conversationId);
         int limit = requestedLimit == null ? DEFAULT_PAGE_SIZE : requestedLimit;
-        if (limit < 1 || limit > MAX_PAGE_SIZE) throw validation(ApiMessage.of("api.project-service.limit-must-be-between-1-and-100"));
+        if (limit < 1 || limit > MAX_PAGE_SIZE)
+            throw validation(ApiMessage.of("api.project-service.limit-must-be-between-1-and-100"));
         Long beforeTurn = null;
         if (encodedCursor != null) {
             try {
-                if (encodedCursor.length() > 40) throw new IllegalArgumentException();
+                if (encodedCursor.length() > 40)
+                    throw new IllegalArgumentException();
                 beforeTurn = Long.parseLong(new String(Base64.getUrlDecoder().decode(encodedCursor),
                         StandardCharsets.UTF_8));
-                if (beforeTurn < 1) throw new IllegalArgumentException();
-            } catch (IllegalArgumentException invalid) { throw validation(ApiMessage.of("api.project-service.the-cursor-is-invalid-or-corrupt")); }
+                if (beforeTurn < 1)
+                    throw new IllegalArgumentException();
+            } catch (IllegalArgumentException invalid) {
+                throw validation(ApiMessage.of("api.project-service.the-cursor-is-invalid-or-corrupt"));
+            }
         }
         List<AgentRun> rows = runs.listConversation(ownerId, projectId, agentId, conversationId, beforeTurn, limit + 1);
         boolean more = rows.size() > limit;
         List<AgentRun> items = more ? rows.subList(0, limit) : rows;
-        String next = more ? Base64.getUrlEncoder().withoutPadding().encodeToString(
-                Long.toString(items.getLast().conversationTurn()).getBytes(StandardCharsets.UTF_8)) : null;
+        String next = more
+                ? Base64.getUrlEncoder().withoutPadding().encodeToString(
+                        Long.toString(items.getLast().conversationTurn()).getBytes(StandardCharsets.UTF_8))
+                : null;
         return new RunPage(List.copyOf(items), next);
     }
 
@@ -397,7 +424,8 @@ public class AgentRunService {
      * @param items 当前页的 Run 记录
      * @param nextCursor 下一页位置；没有更多结果时为空
      */
-    public record RunPage(List<AgentRun> items, String nextCursor) {}
+    public record RunPage(List<AgentRun> items, String nextCursor) {
+    }
 
     /** 模型调用前展示助手配置、会话输出版本和策略，供用户核对运行范围。 */
     @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
@@ -412,7 +440,8 @@ public class AgentRunService {
     }
 
     @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
-    public RunPreflight preflight(UUID ownerId, UUID projectId, UUID agentId, UUID conversationId, SkillRunService.Selection selection) {
+    public RunPreflight preflight(UUID ownerId, UUID projectId, UUID agentId, UUID conversationId,
+            SkillRunService.Selection selection) {
         projects.requireRunSlotAvailableSnapshot(ownerId, projectId);
         AgentInstance agent = agents.get(ownerId, projectId, agentId);
         AgentConversation conversation = conversations.resolve(ownerId, projectId, agentId, conversationId);
@@ -449,7 +478,8 @@ public class AgentRunService {
             String agentInstruction,
             boolean modelAvailable, String providerAdapter, String modelId,
             boolean toolCalling, ObjectNode policySnapshot, UUID conversationId, Long conversationVersion,
-            long conversationTurnCount, boolean memoryTruncated, List<SkillRunService.Summary> creativeSkills) {}
+            long conversationTurnCount, boolean memoryTruncated, List<SkillRunService.Summary> creativeSkills) {
+    }
 
     /**
      * 在项目事务内按预期版本校验 Run 状态机；终态释放项目槽位，取消请求同时取消未提交任务。
@@ -470,31 +500,31 @@ public class AgentRunService {
             long expectedVersion,
             AgentRun.Status target) {
         return events.recordChange(ownerId, projectId, () -> {
-                    AgentRun current = runs.findForUpdate(ownerId, projectId, runId)
-                            .orElseThrow(this::notFound);
-                    if (current.version() != expectedVersion) {
-                        throw versionConflict();
-                    }
-                    if (current.status() == target) {
-                        return ProjectEventService.Change.unchanged(current);
-                    }
-                    if (!current.status().canTransitionTo(target)) {
-                        throw new ApiProblemException(
-                                HttpStatus.CONFLICT,
-                                "RUN_STATE_CONFLICT",
-                                ApiMessage.of("api.agent-run-service.run-status-cannot-be-converted"),
-                                ApiMessage.of("api.agent-run-service.cannot-transition-from-to", current.status(), target),
-                                false);
-                    }
-                    AgentRun updated = updateStatusLocked(
-                            ownerId, projectId, runId, expectedVersion, target);
-                    if (target == AgentRun.Status.CANCEL_REQUESTED) {
-                        cancelUnsubmittedTasks(projectId, runId);
-                        events.append(ownerId, projectId, runEvent(updated));
-                        return ProjectEventService.Change.unchanged(updated);
-                    }
-                    return ProjectEventService.Change.changed(updated, runEvent(updated));
-                })
+            AgentRun current = runs.findForUpdate(ownerId, projectId, runId)
+                    .orElseThrow(this::notFound);
+            if (current.version() != expectedVersion) {
+                throw versionConflict();
+            }
+            if (current.status() == target) {
+                return ProjectEventService.Change.unchanged(current);
+            }
+            if (!current.status().canTransitionTo(target)) {
+                throw new ApiProblemException(
+                        HttpStatus.CONFLICT,
+                        "RUN_STATE_CONFLICT",
+                        ApiMessage.of("api.agent-run-service.run-status-cannot-be-converted"),
+                        ApiMessage.of("api.agent-run-service.cannot-transition-from-to", current.status(), target),
+                        false);
+            }
+            AgentRun updated = updateStatusLocked(
+                    ownerId, projectId, runId, expectedVersion, target);
+            if (target == AgentRun.Status.CANCEL_REQUESTED) {
+                cancelUnsubmittedTasks(projectId, runId);
+                events.append(ownerId, projectId, runEvent(updated));
+                return ProjectEventService.Change.unchanged(updated);
+            }
+            return ProjectEventService.Change.changed(updated, runEvent(updated));
+        })
                 .value();
     }
 
@@ -528,29 +558,29 @@ public class AgentRunService {
     @Transactional
     public AgentRun cancel(UUID ownerId, UUID projectId, UUID runId) {
         return events.recordChange(ownerId, projectId, () -> {
-                    AgentRun current = runs.findForUpdate(ownerId, projectId, runId)
-                            .orElseThrow(this::notFound);
-                    if (current.status().terminal()) {
-                        return ProjectEventService.Change.unchanged(current);
-                    }
-                    if (current.status() != AgentRun.Status.CANCEL_REQUESTED) {
-                        current = updateStatusLocked(
-                                ownerId,
-                                projectId,
-                                runId,
-                                current.version(),
-                                AgentRun.Status.CANCEL_REQUESTED);
-                    }
-                    cancelUnsubmittedTasks(projectId, runId);
-                    AgentRun canceled = updateStatusLocked(
-                            ownerId,
-                            projectId,
-                            runId,
-                            current.version(),
-                            AgentRun.Status.CANCELED);
-                    events.append(ownerId, projectId, runEvent(canceled));
-                    return ProjectEventService.Change.unchanged(canceled);
-                })
+            AgentRun current = runs.findForUpdate(ownerId, projectId, runId)
+                    .orElseThrow(this::notFound);
+            if (current.status().terminal()) {
+                return ProjectEventService.Change.unchanged(current);
+            }
+            if (current.status() != AgentRun.Status.CANCEL_REQUESTED) {
+                current = updateStatusLocked(
+                        ownerId,
+                        projectId,
+                        runId,
+                        current.version(),
+                        AgentRun.Status.CANCEL_REQUESTED);
+            }
+            cancelUnsubmittedTasks(projectId, runId);
+            AgentRun canceled = updateStatusLocked(
+                    ownerId,
+                    projectId,
+                    runId,
+                    current.version(),
+                    AgentRun.Status.CANCELED);
+            events.append(ownerId, projectId, runEvent(canceled));
+            return ProjectEventService.Change.unchanged(canceled);
+        })
                 .value();
     }
 
@@ -596,10 +626,14 @@ public class AgentRunService {
     /** 只冻结已核验会话的终态 Run 公开文本与动作；历史内容不授予产物权限。 */
     private ConversationMemoryReader.ConversationMemory conversationMemory(UUID projectId,
             AgentConversation conversation) {
-        List<UUID> priorIds = conversation == null ? List.of() : runs.contextRunIds(projectId,
-                conversation.id(), conversation.turnCount(), MAX_CONTEXT_RUNS);
-        long priorCount = conversation == null ? 0 : runs.contextRunCount(projectId,
-                conversation.id(), conversation.turnCount());
+        List<UUID> priorIds = conversation == null
+                ? List.of()
+                : runs.contextRunIds(projectId,
+                        conversation.id(), conversation.turnCount(), MAX_CONTEXT_RUNS);
+        long priorCount = conversation == null
+                ? 0
+                : runs.contextRunCount(projectId,
+                        conversation.id(), conversation.turnCount());
         ConversationMemoryReader.ConversationMemory memory = memoryReader.read(projectId, priorIds);
         return new ConversationMemoryReader.ConversationMemory(memory.entries(),
                 memory.truncated() || priorCount > priorIds.size(),
@@ -620,12 +654,14 @@ public class AgentRunService {
         snapshot.put("agentInstruction", agent.instruction());
         ArrayNode selection = snapshot.putArray("selection");
         List<CanvasService.CanvasEntry> items = selectedItemIds.isEmpty()
-                ? List.of() : canvas.list(ownerId, project.id());
+                ? List.of()
+                : canvas.list(ownerId, project.id());
         for (UUID itemId : selectedItemIds) {
             CanvasService.CanvasEntry selected = items.stream()
                     .filter(entry -> entry.item().id().equals(itemId))
                     .findFirst().orElseThrow(() -> validation(
-                            ApiMessage.of("api.agent-run-service.the-selected-card-no-longer-exists-or-does-not-belong")));
+                            ApiMessage.of(
+                                    "api.agent-run-service.the-selected-card-no-longer-exists-or-does-not-belong")));
             CanvasItem item = selected.item();
             ObjectNode reference = selection.addObject();
             reference.put("itemId", item.id().toString());
@@ -636,7 +672,8 @@ public class AgentRunService {
             } else if (selected.artifact() != null) {
                 // Text owns its current Artifact version; media owns the node's exact selection, including an empty draft.
                 ArtifactVersion selectedVersion = selected.artifact().artifact().kind() == Artifact.Kind.TEXT
-                        ? selected.artifact().resourceDefaultVersion() : selected.selectedVersion();
+                        ? selected.artifact().resourceDefaultVersion()
+                        : selected.selectedVersion();
                 if (selectedVersion != null) {
                     reference.put("versionId", selectedVersion.id().toString());
                 }
@@ -652,7 +689,8 @@ public class AgentRunService {
         policy.put("schemaVersion", RunToolPolicy.CURRENT_SCHEMA_VERSION);
         policy.put("toolPolicyVersion", RunToolPolicy.CURRENT_VERSION);
         policy.set("allowedTools", objectMapper.valueToTree(RunToolPolicy.CURRENT));
-        policy.put("systemPromptVersion", dev.agenvas.llm.application.InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
+        policy.put("systemPromptVersion",
+                dev.agenvas.llm.application.InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
         ChatGateway.ConfigIdentity model = chatGateway.configIdentity();
         chatGateway.requestBudgetFor(model); // Reject unknown capacity before creating a new paid Run.
         policy.put("modelConfigVersion", model.version());
@@ -671,14 +709,16 @@ public class AgentRunService {
     private String validateInstruction(String value) {
         String normalized = value == null ? "" : value.trim();
         if (normalized.isEmpty() || normalized.length() > MAX_INSTRUCTION_LENGTH) {
-            throw validation(ApiMessage.of("api.agent-run-service.run-instructions-must-be-between-1-and-20-000-characters"));
+            throw validation(
+                    ApiMessage.of("api.agent-run-service.run-instructions-must-be-between-1-and-20-000-characters"));
         }
         return normalized;
     }
 
     /** 在计算幂等摘要前拒绝空 ID、重复 ID 或超过 20 个的画布选择。 */
     private List<UUID> validateSelection(List<UUID> requested) {
-        if (requested == null) return List.of();
+        if (requested == null)
+            return List.of();
         if (requested.size() > MAX_SELECTED_ITEMS
                 || requested.stream().anyMatch(Objects::isNull)
                 || new HashSet<>(requested).size() != requested.size()) {
@@ -740,11 +780,13 @@ public class AgentRunService {
      * @param run 新创建或通过幂等键找到的持久化 Run
      * @param replayed 是否为相同请求的幂等重放
      */
-    public record CreateResult(AgentRun run, boolean replayed) {}
+    public record CreateResult(AgentRun run, boolean replayed) {
+    }
 
     /** 在同一个项目事件序号锁下提交的 Run 和首个模型回合任务。
      * @param run 已创建的 Run
      * @param firstTaskId 首个模型回合任务 ID
      */
-    private record CreatedRun(AgentRun run, UUID firstTaskId) {}
+    private record CreatedRun(AgentRun run, UUID firstTaskId) {
+    }
 }

@@ -13,22 +13,28 @@ import org.springframework.http.HttpStatus;
 /** Validation and bounded integrity checks shared by the two remote file protocols. */
 final class RemoteFileSupport {
     private static final int BUFFER_BYTES = 64 * 1024;
-    private RemoteFileSupport() {}
+    private RemoteFileSupport() {
+    }
     static String endpoint(StorageProfile.Provider provider, String requested) {
         try {
             URI uri = URI.create(requested == null ? "" : requested.trim());
             boolean web = provider == StorageProfile.Provider.WEBDAV;
-            boolean schemeAllowed = web ? ("http".equals(uri.getScheme()) || "https".equals(uri.getScheme()))
+            boolean schemeAllowed = web
+                    ? ("http".equals(uri.getScheme()) || "https".equals(uri.getScheme()))
                     : "smb".equals(uri.getScheme());
             if (!schemeAllowed || uri.getHost() == null || uri.getHost().contains("%") || uri.getUserInfo() != null
-                    || uri.getQuery() != null || uri.getFragment() != null || uri.getPort() == 0 || uri.getPort() > 65535
-                    || uri.toASCIIString().length() > 512) throw new IllegalArgumentException();
+                    || uri.getQuery() != null || uri.getFragment() != null || uri.getPort() == 0
+                    || uri.getPort() > 65535
+                    || uri.toASCIIString().length() > 512)
+                throw new IllegalArgumentException();
             String path = uri.getPath();
             for (String raw : uri.getRawPath().split("/", -1)) {
-                if (raw.isEmpty()) continue;
+                if (raw.isEmpty())
+                    continue;
                 String segment = URI.create("/" + raw).getPath().substring(1);
                 if (segment.equals(".") || segment.equals("..") || segment.contains("/")
-                        || segment.contains("\\") || segment.contains("%") || segment.matches("(?s).*[\\p{Cntrl}:<>\"|?*].*"))
+                        || segment.contains("\\") || segment.contains("%")
+                        || segment.matches("(?s).*[\\p{Cntrl}:<>\"|?*].*"))
                     throw new IllegalArgumentException();
             }
             if (path.contains("//") || provider == StorageProfile.Provider.SMB && (path.isEmpty() || path.equals("/")))
@@ -40,7 +46,8 @@ final class RemoteFileSupport {
     }
     static void key(String key) {
         if (key == null || !key.matches("[A-Za-z0-9_./-]+") || key.contains("..") || key.contains("//")
-                || key.startsWith("/") || key.endsWith("/")) throw new IllegalArgumentException("Invalid archive key");
+                || key.startsWith("/") || key.endsWith("/"))
+            throw new IllegalArgumentException("Invalid archive key");
     }
     static boolean digestMatches(InputStream input, long size, String hash) throws IOException {
         try {
@@ -50,20 +57,25 @@ final class RemoteFileSupport {
             int read;
             while ((read = input.read(buffer, 0, (int) Math.min(buffer.length, size - count + 1))) != -1) {
                 count += read;
-                if (count > size) return false;
+                if (count > size)
+                    return false;
                 digest.update(buffer, 0, read);
             }
             return count == size && hash.equals(HexFormat.of().formatHex(digest.digest()));
-        } catch (NoSuchAlgorithmException failure) { throw new IllegalStateException(failure); }
+        } catch (NoSuchAlgorithmException failure) {
+            throw new IllegalStateException(failure);
+        }
     }
     static ApiProblemException unavailable() {
         // Protocol exceptions include hosts, paths and usernames. Keep them out of public errors/logs.
         return new ApiProblemException(HttpStatus.SERVICE_UNAVAILABLE, "REMOTE_STORAGE_UNAVAILABLE",
-                ApiMessage.of("api.remote-storage.unavailable"), ApiMessage.of("api.remote-storage.check-connection"), true);
+                ApiMessage.of("api.remote-storage.unavailable"), ApiMessage.of("api.remote-storage.check-connection"),
+                true);
     }
     static ApiProblemException conflict() {
         return new ApiProblemException(HttpStatus.CONFLICT, "STORAGE_OBJECT_CONFLICT",
                 ApiMessage.of("api.object-storage-client.archive-object-conflict"),
-                ApiMessage.of("api.object-storage-client.the-object-content-is-different-from-the-archive-record-and"), false);
+                ApiMessage.of("api.object-storage-client.the-object-content-is-different-from-the-archive-record-and"),
+                false);
     }
 }

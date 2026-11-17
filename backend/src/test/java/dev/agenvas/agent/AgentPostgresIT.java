@@ -66,14 +66,22 @@ class AgentPostgresIT {
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private CanvasService canvas;
-    @Autowired private ProjectSnapshotService snapshots;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private ObjectMapper mapper;
-    @Autowired private WebApplicationContext webContext;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private AgentInstanceService agents;
+    @Autowired
+    private CanvasService canvas;
+    @Autowired
+    private ProjectSnapshotService snapshots;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private ObjectMapper mapper;
+    @Autowired
+    private WebApplicationContext webContext;
 
     @Test
     void oneProjectDirectorIsInitializedOnceAndSettingsNeverRevertOnEnsure() throws Exception {
@@ -83,7 +91,8 @@ class AgentPostgresIT {
         assertThat(agents.findProjectDirector(owner.userId(), project.id())).isEmpty();
         assertThat(snapshots.snapshot(owner.userId(), project.id()).director()).isNull();
         var mvc = MockMvcBuilders.webAppContextSetup(webContext)
-                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build();
         var auth = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of()));
         String base = "/api/v1/projects/" + project.id();
         mvc.perform(put(base + "/director").with(csrf())).andExpect(status().isUnauthorized());
@@ -134,12 +143,14 @@ class AgentPostgresIT {
         try (var pool = Executors.newFixedThreadPool(2)) {
             var futures = List.of(1, 2).stream().map(ignored -> pool.submit(() -> {
                 ready.countDown();
-                if (!start.await(10, TimeUnit.SECONDS)) throw new AssertionError("Director race timed out");
+                if (!start.await(10, TimeUnit.SECONDS))
+                    throw new AssertionError("Director race timed out");
                 return agents.ensureDirector(owner.userId(), other.id());
             })).toList();
             assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
             start.countDown();
-            concurrent = List.of(futures.getFirst().get(20, TimeUnit.SECONDS), futures.getLast().get(20, TimeUnit.SECONDS));
+            concurrent = List.of(futures.getFirst().get(20, TimeUnit.SECONDS),
+                    futures.getLast().get(20, TimeUnit.SECONDS));
         }
         assertThat(concurrent.getFirst()).isEqualTo(concurrent.getLast());
         assertThat(concurrent.getFirst().id()).isNotEqualTo(id);
@@ -158,7 +169,8 @@ class AgentPostgresIT {
     }
 
     private long directorChanges(UUID projectId) {
-        return jdbc.sql("select count(*) from project_event where project_id = :project and type = 'agent.instance.changed'")
+        return jdbc.sql(
+                "select count(*) from project_event where project_id = :project and type = 'agent.instance.changed'")
                 .param("project", projectId).query(Long.class).single();
     }
 
@@ -170,7 +182,9 @@ class AgentPostgresIT {
     /** PostgreSQL stores microseconds; use nanoseconds so create/read equality is exercised on every OS. */
     @TestConfiguration
     static class PreciseClock {
-        @Bean @Primary Clock directorTestClock() {
+        @Bean
+        @Primary
+        Clock directorTestClock() {
             return Clock.fixed(Instant.parse("2026-10-23T00:00:00.123456789Z"), ZoneOffset.UTC);
         }
     }

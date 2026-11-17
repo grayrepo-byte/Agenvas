@@ -59,15 +59,12 @@ import tools.jackson.databind.ObjectMapper;
  * Uses the explicit Mock budget; missing configured-model capacity is a separate rejection case. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(
-        classes = AgenvasApplication.class,
-        properties = {
-                "agenvas.llm.mode=mock"})
+@SpringBootTest(classes = AgenvasApplication.class, properties = {
+        "agenvas.llm.mode=mock"})
 class AgentRunPostgresIT {
 
     @Container
-    static final PostgreSQLContainer POSTGRES =
-            new PostgreSQLContainer("postgres:17.11-alpine");
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
 
     @DynamicPropertySource
     static void postgresProperties(DynamicPropertyRegistry properties) {
@@ -91,7 +88,8 @@ class AgentRunPostgresIT {
     @Autowired
     private AgentRunService runService;
 
-    @Autowired private AgentConversationService conversations;
+    @Autowired
+    private AgentConversationService conversations;
 
     @Autowired
     private TaskService taskService;
@@ -152,7 +150,7 @@ class AgentRunPostgresIT {
         String preflightPath = "/api/v1/projects/" + project.id()
                 + "/runs/preflight?agentId=" + agent.id();
         mvc.perform(get(preflightPath).with(authentication(
-                        new UsernamePasswordAuthenticationToken(owner, null, List.of()))))
+                new UsernamePasswordAuthenticationToken(owner, null, List.of()))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.bindings").doesNotExist())
                 .andExpect(jsonPath("$.inheritedBindingCount").doesNotExist())
@@ -162,18 +160,19 @@ class AgentRunPostgresIT {
                         .value(reviewedModelVersion))
                 .andExpect(jsonPath("$.policySnapshot.maxModelTurns").value(org.hamcrest.Matchers.nullValue()))
                 .andExpect(jsonPath("$.policySnapshot.maxToolExecutions").value(org.hamcrest.Matchers.nullValue()))
-                .andExpect(jsonPath("$.policySnapshot.systemPromptVersion").value(InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION))
+                .andExpect(jsonPath("$.policySnapshot.systemPromptVersion")
+                        .value(InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION))
                 .andExpect(jsonPath("$.modelAvailable").value(true));
         mvc.perform(get(preflightPath)).andExpect(status().isUnauthorized());
         mvc.perform(post("/api/v1/projects/" + project.id() + "/runs")
-                        .with(authentication(new UsernamePasswordAuthenticationToken(
-                                owner, null, List.of())))
-                        .with(csrf())
-                        .header("Idempotency-Key", "stale-prompt-http")
-                        .contentType("application/json")
-                        .content("{\"agentId\":\"" + agent.id()
-                                + "\",\"instruction\":\"Create three shots\""
-                                + ",\"expectedSystemPromptVersion\":1}"))
+                .with(authentication(new UsernamePasswordAuthenticationToken(
+                        owner, null, List.of())))
+                .with(csrf())
+                .header("Idempotency-Key", "stale-prompt-http")
+                .contentType("application/json")
+                .content("{\"agentId\":\"" + agent.id()
+                        + "\",\"instruction\":\"Create three shots\""
+                        + ",\"expectedSystemPromptVersion\":1}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("SYSTEM_PROMPT_CONFLICT"));
         assertThat(jdbcClient.sql("select count(*) from agent_run where project_id = :projectId")
@@ -199,7 +198,8 @@ class AgentRunPostgresIT {
         assertThat(run.contextSnapshot().has("canvasScope")).isFalse();
         assertThat(run.contextSnapshot().has("outputGroupId")).isFalse();
         assertThat(run.policySnapshot().get("maxModelTurns").isNull()).isTrue();
-        assertThat(run.policySnapshot().path("systemPromptVersion").asInt()).isEqualTo(InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
+        assertThat(run.policySnapshot().path("systemPromptVersion").asInt())
+                .isEqualTo(InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
         assertThat(initialContext.assemble(owner.userId(), project.id(), run.id())
                 .getFirst().getText()).contains("No source content or pixels",
                         "Inspect only actually attached content", "call load_toolset");
@@ -244,8 +244,7 @@ class AgentRunPostgresIT {
         AgentRun canceled = runService.cancel(owner.userId(), project.id(), waiting.id());
         assertThat(canceled.status()).isEqualTo(AgentRun.Status.CANCELED);
         assertThat(taskService.listByRun(owner.userId(), project.id(), run.id()))
-                .singleElement().satisfies(task ->
-                        assertThat(task.status()).isEqualTo(Task.Status.CANCELED));
+                .singleElement().satisfies(task -> assertThat(task.status()).isEqualTo(Task.Status.CANCELED));
         assertThat(canceled.completedAt()).isNotNull();
         assertThat(activeRun(project.id())).isNull();
         assertThat(runService.cancel(owner.userId(), project.id(), waiting.id()))
@@ -278,12 +277,12 @@ class AgentRunPostgresIT {
                 AgentRun.Status.FAILED);
         assertThat(activeRun(project.id())).isNull();
         AgentRun afterTerminal = runService.create(
-                                owner.userId(),
-                                project.id(),
-                                agent.id(),
-                                "Allowed after terminal state",
-                                "after-terminal")
-                        .run();
+                owner.userId(),
+                project.id(),
+                agent.id(),
+                "Allowed after terminal state",
+                "after-terminal")
+                .run();
         assertThat(afterTerminal.status()).isEqualTo(AgentRun.Status.QUEUED);
         var separateConversation = conversations.create(owner.userId(), project.id(), agent.id(), "isolated-history");
         assertThat(runService.listConversation(owner.userId(), project.id(), agent.id(),
@@ -307,7 +306,7 @@ class AgentRunPostgresIT {
         String historyPath = "/api/v1/projects/" + project.id() + "/agents/" + agent.id()
                 + "/conversations/" + run.conversationId() + "/runs";
         mvc.perform(get(historyPath).with(authentication(
-                        new UsernamePasswordAuthenticationToken(owner, null, List.of()))))
+                new UsernamePasswordAuthenticationToken(owner, null, List.of()))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items.length()").value(3))
                 .andExpect(jsonPath("$.items[0].id").value(afterTerminal.id().toString()))
@@ -337,8 +336,8 @@ class AgentRunPostgresIT {
                 "RESOURCE_NOT_FOUND",
                 () -> runService.get(UUID.randomUUID(), project.id(), run.id()));
         assertThat(jdbcClient.sql("select version from flyway_schema_history order by installed_rank desc limit 1")
-                        .query(String.class)
-                        .single())
+                .query(String.class)
+                .single())
                 .isEqualTo(MigrationVersions.latest());
 
         Project httpProject = projectService.create(owner.userId(), "HTTP replay project",
@@ -369,12 +368,12 @@ class AgentRunPostgresIT {
                 requests.add(executor.submit(() -> {
                     start.await();
                     return mvc.perform(post(path)
-                                    .with(authentication(new UsernamePasswordAuthenticationToken(
-                                            owner, null, List.of())))
-                                    .with(csrf())
-                                    .header("Idempotency-Key", "http-same-key")
-                                    .contentType("application/json")
-                                    .content(body))
+                            .with(authentication(new UsernamePasswordAuthenticationToken(
+                                    owner, null, List.of())))
+                            .with(csrf())
+                            .header("Idempotency-Key", "http-same-key")
+                            .contentType("application/json")
+                            .content(body))
                             .andExpect(status().isAccepted()).andReturn();
                 }));
             }
@@ -432,7 +431,7 @@ class AgentRunPostgresIT {
                     start.await();
                     try {
                         AgentRun run = runService.create(
-                                        ownerId, projectId, agentId, "Competing", key)
+                                ownerId, projectId, agentId, "Competing", key)
                                 .run();
                         return "CREATED:" + run.id();
                     } catch (ApiProblemException problem) {

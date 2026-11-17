@@ -16,7 +16,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 
 /** Model-script helpers only: the worker must commit this loader before business tools appear. */
 public final class OnDemandToolsetFixture {
-    private OnDemandToolsetFixture() {}
+    private OnDemandToolsetFixture() {
+    }
 
     public static boolean onlyLoader(List<ToolCallback> tools) {
         return tools.stream().map(tool -> tool.getToolDefinition().name()).toList()
@@ -28,7 +29,8 @@ public final class OnDemandToolsetFixture {
                 .collect(Collectors.joining(","));
         var response = AssistantMessage.builder().content("").toolCalls(List.of(
                 new AssistantMessage.ToolCall("prepare-toolsets", "function", "load_toolset",
-                        "{\"toolsets\":[" + groups + "]}"))).build();
+                        "{\"toolsets\":[" + groups + "]}")))
+                .build();
         return new ChatGateway.Exchange(1, new ChatResponse(List.of(new Generation(response))));
     }
 

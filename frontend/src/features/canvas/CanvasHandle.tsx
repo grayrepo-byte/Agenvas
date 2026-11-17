@@ -26,10 +26,24 @@ type CanvasHandleConfig = {
 
 /** 每个连接点只在这里声明一次，卡片之间不会出现位置、方向或图标分叉。 */
 const CANVAS_HANDLES = {
-  "artifact-output": { role: "out", position: Position.Right, direction: "source",
-    icon: PlusCircle, get hint() { return t("canvas.connections.connectHint"); } },
-  "artifact-input": { role: "in", position: Position.Left, direction: "target",
-    icon: PlusCircle, get hint() { return t("canvas.connections.mixedInputHint"); } },
+  "artifact-output": {
+    role: "out",
+    position: Position.Right,
+    direction: "source",
+    icon: PlusCircle,
+    get hint() {
+      return t("canvas.connections.connectHint");
+    },
+  },
+  "artifact-input": {
+    role: "in",
+    position: Position.Left,
+    direction: "target",
+    icon: PlusCircle,
+    get hint() {
+      return t("canvas.connections.mixedInputHint");
+    },
+  },
 } as const satisfies Record<string, CanvasHandleConfig>;
 
 export type CanvasHandleId = keyof typeof CANVAS_HANDLES;
@@ -50,8 +64,13 @@ export function CanvasHandle({ id, label }: { id: CanvasHandleId; label?: string
 
   function followPointer(event: PointerEvent<HTMLDivElement>) {
     const home = homeRef.current;
-    if (role !== "out" || !home || event.pointerType !== "mouse" || event.buttons !== 0
-      || window.matchMedia?.(REDUCED_MOTION_QUERY).matches) {
+    if (
+      role !== "out" ||
+      !home ||
+      event.pointerType !== "mouse" ||
+      event.buttons !== 0 ||
+      window.matchMedia?.(REDUCED_MOTION_QUERY).matches
+    ) {
       resetOffset(event);
       return;
     }
@@ -75,15 +94,24 @@ export function CanvasHandle({ id, label }: { id: CanvasHandleId; label?: string
   }
 
   return (
-    <Handle className={`canvas-handle canvas-handle--${role}`} id={id}
-      onPointerMove={followPointer} onPointerLeave={resetOffset}
-      onPointerDown={resetOffset} onPointerCancel={resetOffset}
-      isConnectable position={position} title={label ?? hint} aria-label={label ?? hint} type={direction}>
+    <Handle
+      className={`canvas-handle canvas-handle--${role}`}
+      id={id}
+      onPointerMove={followPointer}
+      onPointerLeave={resetOffset}
+      onPointerDown={resetOffset}
+      onPointerCancel={resetOffset}
+      isConnectable
+      position={position}
+      title={label ?? hint}
+      aria-label={label ?? hint}
+      type={direction}
+    >
       <span className="canvas-handle-home" ref={homeRef}>
-          <span className="canvas-handle-dot">
-            <IconComponent aria-hidden="true" className="canvas-handle-icon" size={HANDLE_ICON_SIZE} weight="light" />
-          </span>
+        <span className="canvas-handle-dot">
+          <IconComponent aria-hidden="true" className="canvas-handle-icon" size={HANDLE_ICON_SIZE} weight="light" />
         </span>
+      </span>
     </Handle>
   );
 }

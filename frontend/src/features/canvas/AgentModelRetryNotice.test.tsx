@@ -3,12 +3,30 @@ import { describe, expect, it } from "vitest";
 import type { Task } from "../../shared/api/client";
 import { AgentModelRetryNotice } from "./AgentModelRetryNotice";
 
-const retry = { schemaVersion: 1 as const, retryCount: 2, maxRetries: 10 as const,
-  firstFailureAt: "2026-10-04T01:00:00Z", deadlineAt: "2026-10-04T01:05:00Z", lastErrorCode: "LLM_CALL_TIMEOUT" as const };
-const task: Task = { id: "retry-task", projectId: "project-1", runId: "run-1", stepKey: "agent-turn-1",
-  kind: "AGENT_TURN", status: "READY", cancelRequested: false, input: { prompt: "private-test-input" },
-  output: { modelRetry: retry }, attemptNo: 3, nextActionAt: "2026-10-04T01:00:04Z", version: 1,
-  createdAt: "2026-10-04T01:00:00Z", updatedAt: "2026-10-04T01:00:00Z" };
+const retry = {
+  schemaVersion: 1 as const,
+  retryCount: 2,
+  maxRetries: 10 as const,
+  firstFailureAt: "2026-10-04T01:00:00Z",
+  deadlineAt: "2026-10-04T01:05:00Z",
+  lastErrorCode: "LLM_CALL_TIMEOUT" as const,
+};
+const task: Task = {
+  id: "retry-task",
+  projectId: "project-1",
+  runId: "run-1",
+  stepKey: "agent-turn-1",
+  kind: "AGENT_TURN",
+  status: "READY",
+  cancelRequested: false,
+  input: { prompt: "private-test-input" },
+  output: { modelRetry: retry },
+  attemptNo: 3,
+  nextActionAt: "2026-10-04T01:00:04Z",
+  version: 1,
+  createdAt: "2026-10-04T01:00:00Z",
+  updatedAt: "2026-10-04T01:00:00Z",
+};
 
 describe("AgentModelRetryNotice", () => {
   it("shows the safe failure, scheduled retry and persistent deadline", () => {
@@ -26,11 +44,13 @@ describe("AgentModelRetryNotice", () => {
   });
   it("shows the date and configured attempt limit for recovery on the following day", () => {
     const deadlineAt = "2026-10-05T01:00:00Z";
-    render(<AgentModelRetryNotice task={{ ...task, output: { modelRetry: { ...retry, maxRetries: 288, deadlineAt } } }} />);
+    render(
+      <AgentModelRetryNotice task={{ ...task, output: { modelRetry: { ...retry, maxRetries: 288, deadlineAt } } }} />,
+    );
     expect(screen.getByRole("status")).toHaveTextContent("重试 2/288");
     expect(screen.getByText(/^重试截止：/)).toHaveTextContent(new Date(deadlineAt).toLocaleString("zh-CN"));
   });
-  it.each(["SUCCEEDED", "FAILED", "CANCELED", "UNKNOWN"] as const)("hides historical metadata in %s", (status) => {
+  it.each(["SUCCEEDED", "FAILED", "CANCELED", "UNKNOWN"] as const)("hides historical metadata in %s", status => {
     render(<AgentModelRetryNotice task={{ ...task, status }} />);
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });

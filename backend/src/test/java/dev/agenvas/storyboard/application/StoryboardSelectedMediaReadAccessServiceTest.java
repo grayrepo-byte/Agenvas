@@ -18,9 +18,11 @@ class StoryboardSelectedMediaReadAccessServiceTest {
     private final UUID node = UUID.randomUUID(), version = UUID.randomUUID();
     private final StoryboardRepository boards = mock(StoryboardRepository.class);
     private final CanvasItemQueryService items = mock(CanvasItemQueryService.class);
-    private final StoryboardSelectedMediaReadAccessService service = new StoryboardSelectedMediaReadAccessService(boards, items);
+    private final StoryboardSelectedMediaReadAccessService service = new StoryboardSelectedMediaReadAccessService(
+            boards, items);
 
-    @Test void grantsOnlyExactSavedProductionAndCompositionSelections() {
+    @Test
+    void grantsOnlyExactSavedProductionAndCompositionSelections() {
         current(List.of(new Storyboard.Production(Storyboard.Role.KEYFRAME, node, version, 1, false)), null);
         assertThat(allows(version)).isTrue();
         assertThat(allows(UUID.randomUUID())).isFalse();
@@ -28,12 +30,14 @@ class StoryboardSelectedMediaReadAccessServiceTest {
         assertThat(allows(version)).isTrue();
     }
 
-    @Test void sourceReferencesAndEmptyProductionBindingsDoNotGrantMediaReads() {
+    @Test
+    void sourceReferencesAndEmptyProductionBindingsDoNotGrantMediaReads() {
         current(List.of(new Storyboard.Production(Storyboard.Role.KEYFRAME, node, null, 1, false)), null);
         assertThat(allows(version)).isFalse();
     }
 
-    @Test void aRemovedNodeOrDifferentArtifactCannotReuseASavedSelectionAsAuthority() {
+    @Test
+    void aRemovedNodeOrDifferentArtifactCannotReuseASavedSelectionAsAuthority() {
         current(List.of(new Storyboard.Production(Storyboard.Role.KEYFRAME, node, version, 1, false)), null);
         when(items.artifactItems(owner, project, artifact)).thenReturn(List.of());
         assertThat(allows(version)).isFalse();
@@ -49,5 +53,7 @@ class StoryboardSelectedMediaReadAccessServiceTest {
         when(item.id()).thenReturn(node);
         when(items.artifactItems(owner, project, artifact)).thenReturn(List.of(item));
     }
-    private boolean allows(UUID selected) { return service.allows(owner, project, artifact, selected); }
+    private boolean allows(UUID selected) {
+        return service.allows(owner, project, artifact, selected);
+    }
 }

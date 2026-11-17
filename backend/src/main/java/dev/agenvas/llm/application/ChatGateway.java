@@ -24,14 +24,17 @@ public interface ChatGateway {
      */
     Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> toolContext);
     /** Mock has no external capacity. Real configured adapters must resolve a confirmed policy. */
-    default LlmRequestBudget requestBudgetFor(ConfigIdentity expected) { return null; }
+    default LlmRequestBudget requestBudgetFor(ConfigIdentity expected) {
+        return null;
+    }
     default Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context,
             ConfigIdentity expected, LlmRequestBudget budget) {
         budget.requireInput(messages, tools);
         return call(messages, tools, context, expected);
     }
     default Exchange callStreaming(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context,
-            ConfigIdentity expected, LlmRequestBudget budget, Consumer<String> delta, boolean captureContent, Consumer<LlmStreamLog> log) {
+            ConfigIdentity expected, LlmRequestBudget budget, Consumer<String> delta, boolean captureContent,
+            Consumer<LlmStreamLog> log) {
         budget.requireInput(messages, tools);
         return callStreaming(messages, tools, context, expected, delta, captureContent, log);
     }
@@ -51,7 +54,8 @@ public interface ChatGateway {
         Exchange exchange = call(messages, tools, toolContext, expected);
         var safe = PublicAssistantResponse.sanitize(exchange.response());
         String text = PublicAssistantResponse.text(safe);
-        if (!text.isEmpty()) publicDelta.accept(text);
+        if (!text.isEmpty())
+            publicDelta.accept(text);
         return new Exchange(exchange.configVersion(), safe);
     }
 
@@ -66,14 +70,18 @@ public interface ChatGateway {
             var safe = PublicAssistantResponse.sanitize(exchange.response());
             log.chunk(safe);
             String text = PublicAssistantResponse.text(safe);
-            if (!text.isEmpty()) publicDelta.accept(text);
+            if (!text.isEmpty())
+                publicDelta.accept(text);
             log.complete(safe);
             status = LlmStreamLog.EndStatus.COMPLETED;
             return new Exchange(exchange.configVersion(), safe);
         } finally {
-            try { streamLog.accept(log.snapshot(status, status == LlmStreamLog.EndStatus.COMPLETED ? null : "CALL_STREAM_FAILED")); }
-            catch (RuntimeException failure) {
-                org.slf4j.LoggerFactory.getLogger(ChatGateway.class).error("LLM stream snapshot failed code=CALL_STREAM_SNAPSHOT_FAILED");
+            try {
+                streamLog.accept(
+                        log.snapshot(status, status == LlmStreamLog.EndStatus.COMPLETED ? null : "CALL_STREAM_FAILED"));
+            } catch (RuntimeException failure) {
+                org.slf4j.LoggerFactory.getLogger(ChatGateway.class)
+                        .error("LLM stream snapshot failed code=CALL_STREAM_SNAPSHOT_FAILED");
             }
         }
     }
@@ -84,14 +92,17 @@ public interface ChatGateway {
     /** 只报告指定固定配置的能力；配置变化或版本不符时全部返回 false。 */
     default Capabilities capabilitiesFor(ConfigIdentity expected) {
         return configIdentity().equals(expected)
-                ? capabilities() : new Capabilities(false, false, false);
+                ? capabilities()
+                : new Capabilities(false, false, false);
     }
 
     /** 预留模型回合前确认固定配置仍可用且支持工具调用，不回退到其他配置。 */
     default void requireToolCalling(ConfigIdentity expected) {
         if (!capabilitiesFor(expected).toolCalling()) {
             throw new ApiProblemException(HttpStatus.CONFLICT, "LLM_CONFIG_UNAVAILABLE",
-                    ApiMessage.of("api.chat-gateway.the-original-model-configuration-is-not-available"), ApiMessage.of("api.chat-gateway.run-the-fixed-model-configuration-or-tool-capability-is-no"), false);
+                    ApiMessage.of("api.chat-gateway.the-original-model-configuration-is-not-available"),
+                    ApiMessage.of("api.chat-gateway.run-the-fixed-model-configuration-or-tool-capability-is-no"),
+                    false);
         }
     }
 
@@ -113,7 +124,8 @@ public interface ChatGateway {
 
     /** Audit metadata follows the exact pinned configuration, never a newer active model. */
     default ModelDetails modelDetailsFor(ConfigIdentity expected) {
-        return configIdentity().equals(expected) ? modelDetails()
+        return configIdentity().equals(expected)
+                ? modelDetails()
                 : new ModelDetails(false, null, null, false);
     }
 
@@ -123,7 +135,8 @@ public interface ChatGateway {
      * @param configVersion 返回该响应的配置版本
      * @param response 未经工具执行改写的模型原始响应
      */
-    record Exchange(int configVersion, ChatResponse response) {}
+    record Exchange(int configVersion, ChatResponse response) {
+    }
 
     /**
      * 带来源命名空间的配置身份。
@@ -131,7 +144,8 @@ public interface ChatGateway {
      * @param source 模型配置来源标识
      * @param version 该来源内的正整数配置版本
      */
-    record ConfigIdentity(String source, int version) {}
+    record ConfigIdentity(String source, int version) {
+    }
 
     /**
      * 明确区分已验证能力和未经验证的模型特性。
@@ -140,7 +154,8 @@ public interface ChatGateway {
      * @param vision 是否已验证视觉输入能力
      * @param nativeStructuredOutput 是否已验证原生结构化输出能力
      */
-    record Capabilities(boolean toolCalling, boolean vision, boolean nativeStructuredOutput) {}
+    record Capabilities(boolean toolCalling, boolean vision, boolean nativeStructuredOutput) {
+    }
 
     /**
      * 用于运行前用户确认的非敏感模型信息。
@@ -151,5 +166,6 @@ public interface ChatGateway {
      * @param toolCalling 固定配置是否支持工具调用
      */
     record ModelDetails(boolean available, String providerAdapter, String modelId,
-            boolean toolCalling) {}
+            boolean toolCalling) {
+    }
 }

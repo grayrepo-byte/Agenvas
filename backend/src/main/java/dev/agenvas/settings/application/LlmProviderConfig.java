@@ -5,7 +5,7 @@ import java.util.UUID;
 
 /** 一个不可变的 LLM 配置版本；更新配置时新增版本，仅活动版本指针会变化。
  * @param id 配置版本 UUID
- * @param version 项目级配置递增版本
+ * @param version 全局分配的不可变运行配置版本，不同命名连接共享版本空间
  * @param endpoint 经管理员配置并由策略校验的 Provider 地址
  * @param modelId 此版本使用的模型标识
  * @param credentialCiphertext API 密钥密文，不得记录日志或传入前端

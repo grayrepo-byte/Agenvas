@@ -19,7 +19,8 @@ public final class AutoDlWorkflows {
     public static final long MAX_SEED = 999_999_999_999_999L;
     public static final int MAX_REFERENCE_BYTES = 15 * 1024 * 1024;
     public static final int MAX_TOTAL_REFERENCE_BYTES = 60 * 1024 * 1024;
-    public static final Set<String> SETTINGS = Set.of("workflowId", "videoResolution", "videoResolutions", "seed", "workflowDefinition");
+    public static final Set<String> SETTINGS = Set.of("workflowId", "videoResolution", "videoResolutions", "seed",
+            "workflowDefinition");
     public static final List<Workflow> ALL = load();
 
     public record Workflow(String id, String label, int minimumSeconds, int maximumSeconds,
@@ -40,18 +41,23 @@ public final class AutoDlWorkflows {
                 default -> throw invalid(ApiMessage.of("api.auto-dl-workflows.autodl-does-not-support-this-frame"));
             };
             return resolutions.stream().filter(value -> value.startsWith(tier + orientation))
-                    .findFirst().orElseThrow(() -> invalid(ApiMessage.of("api.auto-dl-workflows.this-workflow-does-not-support", tier, ratio)));
+                    .findFirst().orElseThrow(() -> invalid(
+                            ApiMessage.of("api.auto-dl-workflows.this-workflow-does-not-support", tier, ratio)));
         }
         public void validate(String prompt, int seconds, String inputMode, int images, int audios) {
             if (prompt.isBlank() || prompt.codePointCount(0, prompt.length()) > promptLimit
                     || seconds < minimumSeconds || seconds > maximumSeconds || !mode.equals(inputMode)
                     || images < minimumImages || images > imageFields.size()
                     || audios < minimumAudios || audios > audioFields.size()) {
-                throw invalid(ApiMessage.of("api.auto-dl-workflows.autodl-workflow-input-mismatch-requires-images-audio-inputs-and-a", label, minimumImages, imageFields.size(), minimumAudios, audioFields.size(), minimumSeconds, maximumSeconds));
+                throw invalid(ApiMessage.of(
+                        "api.auto-dl-workflows.autodl-workflow-input-mismatch-requires-images-audio-inputs-and-a",
+                        label, minimumImages, imageFields.size(), minimumAudios, audioFields.size(), minimumSeconds,
+                        maximumSeconds));
             }
         }
     }
-    private AutoDlWorkflows() {}
+    private AutoDlWorkflows() {
+    }
     public static Workflow require(JsonNode settings) {
         if (settings.has("workflowDefinition")) {
             var workflow = AutoDlWorkflowDefinition.parse(settings.get("workflowDefinition"));
@@ -68,50 +74,64 @@ public final class AutoDlWorkflows {
     public static void normalize(JsonNode source, ObjectNode target) {
         Workflow workflow = require(source);
         target.put("workflowId", workflow.id());
-        if (source.has("workflowDefinition")) target.set("workflowDefinition",
-                source.get("workflowDefinition").deepCopy());
+        if (source.has("workflowDefinition"))
+            target.set("workflowDefinition",
+                    source.get("workflowDefinition").deepCopy());
         JsonNode value = source.get("videoResolution");
         String tier = value == null ? workflow.defaultResolution() : value.asText();
-        List<String> supported = workflow.resolutions().stream().map(resolution ->
-                resolution.substring(0, resolution.indexOf('p') + 1)).distinct().toList();
+        List<String> supported = workflow.resolutions().stream()
+                .map(resolution -> resolution.substring(0, resolution.indexOf('p') + 1)).distinct().toList();
         if (value != null && !value.isTextual() || !supported.contains(tier))
             throw invalid(ApiMessage.of("api.auto-dl-workflows.this-workflow-does-not-support-this-resolution"));
         JsonNode published = source.get("videoResolutions");
         if (published != null) {
-            if (!published.isArray() || published.isEmpty() || published.size() > Math.min(supported.size(), AutoDlWorkflowDefinition.MAX_TIERS))
+            if (!published.isArray() || published.isEmpty()
+                    || published.size() > Math.min(supported.size(), AutoDlWorkflowDefinition.MAX_TIERS))
                 throw invalid(ApiMessage.of("api.auto-dl-workflows.this-workflow-does-not-support-this-resolution"));
             Set<String> seen = new java.util.HashSet<>();
             for (JsonNode resolution : published) {
-                if (!resolution.isTextual() || !supported.contains(resolution.asText()) || !seen.add(resolution.asText()))
-                    throw invalid(ApiMessage.of("api.auto-dl-workflows.this-workflow-does-not-support-this-resolution"));
+                if (!resolution.isTextual() || !supported.contains(resolution.asText())
+                        || !seen.add(resolution.asText()))
+                    throw invalid(
+                            ApiMessage.of("api.auto-dl-workflows.this-workflow-does-not-support-this-resolution"));
             }
             if (!seen.contains(tier))
                 throw invalid(ApiMessage.of("api.auto-dl-workflows.this-workflow-does-not-support-this-resolution"));
             target.set("videoResolutions", published.deepCopy());
-        } else target.putArray("videoResolutions").add(tier);
+        } else
+            target.putArray("videoResolutions").add(tier);
         target.put("videoResolution", tier);
         if (source.has("seed")) {
             JsonNode seed = source.get("seed");
             if (!workflow.supportsSeed() || !seed.isIntegralNumber() || !seed.canConvertToLong()
                     || seed.longValue() < 1 || seed.longValue() > MAX_SEED)
-                throw invalid(ApiMessage.of("api.auto-dl-workflows.this-workflow-does-not-support-this-seed-the-valid-range", MAX_SEED));
+                throw invalid(ApiMessage.of(
+                        "api.auto-dl-workflows.this-workflow-does-not-support-this-seed-the-valid-range", MAX_SEED));
             target.put("seed", seed.longValue());
         }
     }
     /** Historical capabilities without a published list keep their single configured tier. */
     public static String selectedResolution(JsonNode settings, String requested) {
-        String tier = requested == null ? settings.path("videoResolution").asText(require(settings).defaultResolution()) : requested;
+        String tier = requested == null
+                ? settings.path("videoResolution").asText(require(settings).defaultResolution())
+                : requested;
         JsonNode published = settings.get("videoResolutions");
-        boolean allowed = published == null ? tier.equals(settings.path("videoResolution").asText(require(settings).defaultResolution()))
-                : java.util.stream.StreamSupport.stream(published.spliterator(), false).anyMatch(value -> tier.equals(value.asText()));
-        if (!allowed) throw invalid(ApiMessage.of("api.auto-dl-workflows.this-workflow-does-not-support-this-resolution"));
+        boolean allowed = published == null
+                ? tier.equals(settings.path("videoResolution").asText(require(settings).defaultResolution()))
+                : java.util.stream.StreamSupport.stream(published.spliterator(), false)
+                        .anyMatch(value -> tier.equals(value.asText()));
+        if (!allowed)
+            throw invalid(ApiMessage.of("api.auto-dl-workflows.this-workflow-does-not-support-this-resolution"));
         return tier;
     }
     private static List<Workflow> load() {
         try (var stream = AutoDlWorkflows.class.getResourceAsStream("/providers/autodl-h3-workflows.json")) {
-            if (stream == null) throw new IllegalStateException("AutoDL manifest missing");
+            if (stream == null)
+                throw new IllegalStateException("AutoDL manifest missing");
             return List.copyOf(Arrays.asList(new ObjectMapper().readValue(stream, Workflow[].class)));
-        } catch (IOException failure) { throw new IllegalStateException("AutoDL manifest unreadable", failure); }
+        } catch (IOException failure) {
+            throw new IllegalStateException("AutoDL manifest unreadable", failure);
+        }
     }
     private static ApiProblemException invalid(ApiMessage detail) {
         return new ApiProblemException(HttpStatus.UNPROCESSABLE_ENTITY, "PROVIDER_UNSUPPORTED_INPUT",

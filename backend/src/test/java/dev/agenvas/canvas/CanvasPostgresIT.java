@@ -28,13 +28,11 @@ import tools.jackson.databind.ObjectMapper;
 /** PostgreSQL evidence for atomic layout commands and presentation/content separation. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(
-        classes = AgenvasApplication.class)
+@SpringBootTest(classes = AgenvasApplication.class)
 class CanvasPostgresIT {
 
     @Container
-    static final PostgreSQLContainer POSTGRES =
-            new PostgreSQLContainer("postgres:17.11-alpine");
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
 
     @DynamicPropertySource
     static void postgresProperties(DynamicPropertyRegistry properties) {
@@ -58,7 +56,8 @@ class CanvasPostgresIT {
     @Autowired
     private ObjectMapper objectMapper;
 
-    @Autowired private org.springframework.web.context.WebApplicationContext webContext;
+    @Autowired
+    private org.springframework.web.context.WebApplicationContext webContext;
 
     @Test
     void layoutPersistsFailedBatchRollsBackAndRemovingCardKeepsArtifact() throws Exception {
@@ -71,12 +70,10 @@ class CanvasPostgresIT {
         UUID secondItemId = UUID.randomUUID();
         UUID duplicateItemId = UUID.randomUUID();
 
-        CanvasService.PlaceArtifact firstPlacement =
-                place(firstItemId, firstArtifact.artifact().id(), "20", "40");
-        CanvasService.PlaceArtifact secondPlacement =
-                place(secondItemId, secondArtifact.artifact().id(), "360", "40");
-        CanvasService.PlaceArtifact duplicatePlacement =
-                place(duplicateItemId, firstArtifact.artifact().id(), "700", "40");
+        CanvasService.PlaceArtifact firstPlacement = place(firstItemId, firstArtifact.artifact().id(), "20", "40");
+        CanvasService.PlaceArtifact secondPlacement = place(secondItemId, secondArtifact.artifact().id(), "360", "40");
+        CanvasService.PlaceArtifact duplicatePlacement = place(duplicateItemId, firstArtifact.artifact().id(), "700",
+                "40");
         canvasService.apply(owner.userId(), project.id(),
                 List.of(firstPlacement, secondPlacement, duplicatePlacement));
         canvasService.apply(owner.userId(), project.id(), List.of(firstPlacement));
@@ -180,32 +177,41 @@ class CanvasPostgresIT {
                 .extracting(entry -> entry.item().id())
                 .containsExactlyInAnyOrder(secondItemId, duplicateItemId);
         assertThat(artifactService
-                        .get(owner.userId(), project.id(), firstArtifact.artifact().id())
-                        .artifact()
-                        .kind())
+                .get(owner.userId(), project.id(), firstArtifact.artifact().id())
+                .artifact()
+                .kind())
                 .isEqualTo(Artifact.Kind.TEXT);
         var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup(webContext)
-                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
-        var auth = org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(
-                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(owner, null,
-                        List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN"))));
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build();
+        var auth = org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                .authentication(
+                        new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(owner, null,
+                                List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority(
+                                        "ROLE_ADMIN"))));
         String canvasPath = "/api/v1/projects/" + project.id() + "/canvas";
         var retiredCommand = objectMapper.createObjectNode();
         retiredCommand.putArray("commands").addObject().put("type", "PLACE_AGENT")
                 .put("itemId", UUID.randomUUID().toString()).put("agentId", UUID.randomUUID().toString())
                 .put("x", 0).put("y", 0).put("width", 300).put("height", 300).put("zIndex", 0).put("locked", false);
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(canvasPath + "/commands")
-                        .with(auth).with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
-                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON).content(retiredCommand.toString()))
+                .with(auth)
+                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON).content(retiredCommand.toString()))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
         var retiredConnection = objectMapper.createObjectNode().put("sourceCanvasItemId", secondItemId.toString())
-                .put("targetCanvasItemId", duplicateItemId.toString()).put("sourceVersionId", UUID.randomUUID().toString())
+                .put("targetCanvasItemId", duplicateItemId.toString())
+                .put("sourceVersionId", UUID.randomUUID().toString())
                 .put("relationType", "AGENT_IMAGE_INPUT").put("expectedTargetAgentVersion", 0);
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(canvasPath + "/connections")
-                        .with(auth).with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
-                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON).content(retiredConnection.toString()))
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .post(canvasPath + "/connections")
+                .with(auth)
+                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON).content(retiredConnection.toString()))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
-        String visible = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(canvasPath + "/items").with(auth))
+        String visible = mvc
+                .perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(canvasPath + "/items")
+                        .with(auth))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
                 .andReturn().getResponse().getContentAsString();
         assertThat(visible).doesNotContain("\"agent\"", "\"AGENT\"");

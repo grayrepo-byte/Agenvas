@@ -54,19 +54,25 @@ public final class LocalImageProcessorAdapter implements MediaAdapter {
         this.properties = properties;
     }
 
-    @Override public String adapterId() { return MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR; }
+    @Override
+    public String adapterId() {
+        return MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR;
+    }
 
-    @Override public boolean supports(PortInput input) {
+    @Override
+    public boolean supports(PortInput input) {
         return input.kind() == Task.Kind.IMAGE_GENERATION;
     }
 
-    @Override public String preflightFailure(AttemptContext context) {
+    @Override
+    public String preflightFailure(AttemptContext context) {
         try {
             JsonNode operation = operation(context.lease());
             String name = operation.path("name").asText();
             BufferedImage image = source(context, operation);
-            if ("RESIZE".equals(name)) ImageResizeSpec.parse(operation.path("parameters"))
-                    .dimensions(image.getWidth(), image.getHeight());
+            if ("RESIZE".equals(name))
+                ImageResizeSpec.parse(operation.path("parameters"))
+                        .dimensions(image.getWidth(), image.getHeight());
             if ("DEPTH_MAP".equals(name)) {
                 Path model = properties.depthModelPath();
                 if (model == null || !Files.isRegularFile(model)) {
@@ -80,7 +86,8 @@ public final class LocalImageProcessorAdapter implements MediaAdapter {
         }
     }
 
-    @Override public Submission submit(AttemptContext context) {
+    @Override
+    public Submission submit(AttemptContext context) {
         try {
             JsonNode operation = operation(context.lease());
             BufferedImage source = source(context, operation);
@@ -97,7 +104,8 @@ public final class LocalImageProcessorAdapter implements MediaAdapter {
         }
     }
 
-    @Override public Submission reconcile(AttemptContext context) {
+    @Override
+    public Submission reconcile(AttemptContext context) {
         return new Submission.Blocked("LOCAL_IMAGE_HAS_NO_EXTERNAL_REQUEST");
     }
 
@@ -117,7 +125,8 @@ public final class LocalImageProcessorAdapter implements MediaAdapter {
         Path file = assets.get(context.ownerId(), context.lease().projectId(), assetId).path();
         try {
             BufferedImage image = ImageIO.read(file.toFile());
-            if (image == null) throw new IllegalArgumentException("Source image cannot be decoded");
+            if (image == null)
+                throw new IllegalArgumentException("Source image cannot be decoded");
             return image;
         } catch (IOException failure) {
             throw new IllegalStateException("Cannot decode source image", failure);
@@ -143,11 +152,13 @@ public final class LocalImageProcessorAdapter implements MediaAdapter {
 
     private void validateParameters(String name, JsonNode parameters) {
         switch (name) {
-            case "DEPTH_MAP", "FLIP_HORIZONTAL", "FLIP_VERTICAL" -> { }
+            case "DEPTH_MAP", "FLIP_HORIZONTAL", "FLIP_VERTICAL" -> {
+            }
             case "RESIZE" -> ImageResizeSpec.parse(parameters);
             case "UPSCALE" -> {
                 int scale = parameters.path("scale").asInt();
-                if (scale != 2 && scale != 4) throw new IllegalArgumentException("Invalid scale");
+                if (scale != 2 && scale != 4)
+                    throw new IllegalArgumentException("Invalid scale");
             }
             case "CROP" -> {
                 double x = parameters.path("x").asDouble(-1);
@@ -161,7 +172,8 @@ public final class LocalImageProcessorAdapter implements MediaAdapter {
             }
             case "ROTATE" -> {
                 int turns = parameters.path("quarterTurns").asInt();
-                if (turns < 1 || turns > 3) throw new IllegalArgumentException("Invalid rotation");
+                if (turns < 1 || turns > 3)
+                    throw new IllegalArgumentException("Invalid rotation");
             }
             default -> throw new IllegalArgumentException("Unsupported local operation");
         }
@@ -213,9 +225,18 @@ public final class LocalImageProcessorAdapter implements MediaAdapter {
         try {
             AffineTransform transform = new AffineTransform();
             switch (quarterTurns) {
-                case 1 -> { transform.translate(width, 0); transform.rotate(Math.PI / 2); }
-                case 2 -> { transform.translate(width, height); transform.rotate(Math.PI); }
-                case 3 -> { transform.translate(0, height); transform.rotate(-Math.PI / 2); }
+                case 1 -> {
+                    transform.translate(width, 0);
+                    transform.rotate(Math.PI / 2);
+                }
+                case 2 -> {
+                    transform.translate(width, height);
+                    transform.rotate(Math.PI);
+                }
+                case 3 -> {
+                    transform.translate(0, height);
+                    transform.rotate(-Math.PI / 2);
+                }
                 default -> throw new IllegalArgumentException("Invalid rotation");
             }
             graphics.drawImage(source, transform, null);
@@ -292,7 +313,8 @@ public final class LocalImageProcessorAdapter implements MediaAdapter {
     }
 
     private synchronized OrtSession depthSession() {
-        if (depthSession != null) return depthSession;
+        if (depthSession != null)
+            return depthSession;
         Path model = properties.depthModelPath();
         if (model == null || !Files.isRegularFile(model)) {
             throw new IllegalStateException("Depth model is not configured");
@@ -310,31 +332,36 @@ public final class LocalImageProcessorAdapter implements MediaAdapter {
     }
 
     private float[][] flattenDepth(Object value) {
-        if (value instanceof float[][][] batch && batch.length == 1) return batch[0];
+        if (value instanceof float[][][] batch && batch.length == 1)
+            return batch[0];
         if (value instanceof float[][][][] batch && batch.length == 1
-                && batch[0].length == 1) return batch[0][0];
-        if (value instanceof float[][] plane) return plane;
+                && batch[0].length == 1)
+            return batch[0][0];
+        if (value instanceof float[][] plane)
+            return plane;
         throw new IllegalStateException("Unsupported depth model output");
     }
 
     private BufferedImage normalizeDepth(float[][] values, int width, int height) {
         float minimum = Float.POSITIVE_INFINITY;
         float maximum = Float.NEGATIVE_INFINITY;
-        for (float[] row : values) for (float value : row) {
-            if (Float.isFinite(value)) {
-                minimum = Math.min(minimum, value);
-                maximum = Math.max(maximum, value);
+        for (float[] row : values)
+            for (float value : row) {
+                if (Float.isFinite(value)) {
+                    minimum = Math.min(minimum, value);
+                    maximum = Math.max(maximum, value);
+                }
             }
-        }
         if (!Float.isFinite(minimum) || maximum <= minimum) {
             throw new IllegalStateException("Depth model produced no usable range");
         }
         BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
         float range = maximum - minimum;
-        for (int y = 0; y < height; y++) for (int x = 0; x < width; x++) {
-            int gray = Math.clamp(Math.round((values[y][x] - minimum) / range * 255f), 0, 255);
-            image.getRaster().setSample(x, y, 0, gray);
-        }
+        for (int y = 0; y < height; y++)
+            for (int x = 0; x < width; x++) {
+                int gray = Math.clamp(Math.round((values[y][x] - minimum) / range * 255f), 0, 255);
+                image.getRaster().setSample(x, y, 0, gray);
+            }
         return image;
     }
 
@@ -354,7 +381,8 @@ public final class LocalImageProcessorAdapter implements MediaAdapter {
     private BufferedImage compatible(BufferedImage source, int width, int height) {
         requirePixelLimit(width, height);
         return new BufferedImage(width, height, source.getColorModel().hasAlpha()
-                ? BufferedImage.TYPE_INT_ARGB : BufferedImage.TYPE_INT_RGB);
+                ? BufferedImage.TYPE_INT_ARGB
+                : BufferedImage.TYPE_INT_RGB);
     }
 
     private void requirePixelLimit(int width, int height) {
@@ -365,6 +393,7 @@ public final class LocalImageProcessorAdapter implements MediaAdapter {
 
     @PreDestroy
     public void close() throws OrtException {
-        if (depthSession != null) depthSession.close();
+        if (depthSession != null)
+            depthSession.close();
     }
 }

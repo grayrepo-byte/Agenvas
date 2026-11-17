@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
@@ -44,6 +45,8 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /** Fake-model, real-PostgreSQL proof that invalid rounds are atomic and repair is bounded. */
 @Testcontainers
@@ -61,19 +64,36 @@ class AgentTurnRepairPostgresIT {
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private AgentRunService runs;
-    @Autowired private TaskService tasks;
-    @Autowired private AgentTurnWorker worker;
-    @Autowired private FakeGateway gateway;
-    @Autowired private JdbcClient jdbc;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private AgentInstanceService agents;
+    @Autowired
+    private AgentRunService runs;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private AgentTurnWorker worker;
+    @Autowired
+    private FakeGateway gateway;
+    @Autowired
+    private JdbcClient jdbc;
+    private AdminPrincipal owner;
+
+    @BeforeEach
+    void prepareOwnerAndModelScenario() {
+        owner = jdbc.sql("select id from app_user order by created_at limit 1").query(UUID.class).optional()
+                .map(id -> new AdminPrincipal(id, "repair-admin"))
+                .orElseGet(() -> identities.setup("repair-admin", "repair-password-123"));
+        gateway.alwaysInvalid = false;
+        gateway.versionConflict = false;
+    }
 
     @Test
     void repairsWholeInvalidRoundOnceAndBlocksAfterTwoFailedRepairs() {
         jdbc.sql("update director_settings set max_repair_attempts=2").update();
-        AdminPrincipal owner = identities.setup("repair-admin", "repair-password-123");
         Project project = projects.create(owner.userId(), "Repair project",
                 Project.AspectRatio.LANDSCAPE_16_9);
         AgentInstance agent = configureDirector(agents, owner.userId(), project.id(), "Creator",
@@ -109,7 +129,8 @@ class AgentTurnRepairPostgresIT {
         }
         assertThat(runs.get(owner.userId(), project.id(), exhausted.id()).status())
                 .isEqualTo(AgentRun.Status.FAILED);
-        assertThat(jdbc.sql("select active_run_id is null from project where id=:id").param("id", project.id()).query(Boolean.class).single()).isTrue();
+        assertThat(jdbc.sql("select active_run_id is null from project where id=:id").param("id", project.id())
+                .query(Boolean.class).single()).isTrue();
         assertThat(tasks.listByRun(owner.userId(), project.id(), exhausted.id()))
                 .extracting(Task::status)
                 .containsExactly(Task.Status.SUCCEEDED, Task.Status.SUCCEEDED, Task.Status.SUCCEEDED,
@@ -126,6 +147,41 @@ class AgentTurnRepairPostgresIT {
         assertThat(jdbc.sql("select count(*) from llm_turn where run_id = :runId")
                 .param("runId", exhausted.id()).query(Long.class).single()).isEqualTo(4);
         assertThat(worker.runOnce("repair-test")).isZero();
+    }
+
+    @Test
+    void repairsVersionConflictsByRereadingStateWithoutCommittingTheRejectedBatch() {
+        gateway.versionConflict = true;
+        Project project = projects.create(owner.userId(), "Recoverable version conflict",
+                Project.AspectRatio.LANDSCAPE_16_9);
+        AgentInstance agent = configureDirector(agents, owner.userId(), project.id(), "Creator",
+                "Revise the opening after checking its current version");
+        AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
+                "Write and revise the opening", "repair-version-conflict").run();
+        prepare(worker, jdbc, run.id());
+
+        for (int index = 0; index < 3; index++)
+            assertThat(worker.runOnce("version-repair")).isEqualTo(1);
+        assertThat(runs.get(owner.userId(), project.id(), run.id()).status()).isEqualTo(AgentRun.Status.RUNNING);
+        Task repair = tasks.listByRun(owner.userId(), project.id(), run.id()).getLast();
+        assertThat(repair.status()).isEqualTo(Task.Status.READY);
+        assertThat(repair.input().path("repairErrorCode").asText()).isEqualTo("ARTIFACT_VERSION_CONFLICT");
+        assertThat(repair.input().path("repairAttempt").asInt()).isEqualTo(1);
+        assertThat(artifactCount(project.id())).isEqualTo(1);
+        assertThat(jdbc.sql("select count(*) from tool_execution where run_id=:run and step_index=3")
+                .param("run", run.id()).query(Long.class).single()).isZero();
+
+        for (int index = 0; index < 3; index++)
+            assertThat(worker.runOnce("version-repair")).isEqualTo(1);
+        assertThat(runs.get(owner.userId(), project.id(), run.id()).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
+        assertThat(artifactCount(project.id())).isEqualTo(1);
+        assertThat(jdbc.sql("select count(*) from tool_execution where run_id=:run and tool_name='create_text'")
+                .param("run", run.id()).query(Long.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("select count(*) from artifact_version where artifact_id=:id")
+                .param("id", gateway.conflictArtifact).query(Long.class).single()).isEqualTo(2);
+        assertThat(jdbc.sql("select content_json->>'text' from artifact_version where artifact_id=:id "
+                + "order by version_no desc limit 1").param("id", gateway.conflictArtifact)
+                .query(String.class).single()).isEqualTo("Revised after rereading current state");
     }
 
     private long artifactCount(UUID projectId) {
@@ -151,15 +207,24 @@ class AgentTurnRepairPostgresIT {
     static class FakeGateway implements ChatGateway {
         private final Map<String, AtomicInteger> callCounts = new ConcurrentHashMap<>();
         private volatile boolean alwaysInvalid;
+        private volatile boolean versionConflict;
+        private UUID conflictArtifact;
+        private final JsonMapper mapper = new JsonMapper();
 
         @Override
-        public String configSource() { return "test-fake"; }
+        public String configSource() {
+            return "test-fake";
+        }
 
         @Override
-        public int configVersion() { return 1; }
+        public int configVersion() {
+            return 1;
+        }
 
         @Override
-        public Capabilities capabilities() { return new Capabilities(true, false, false); }
+        public Capabilities capabilities() {
+            return new Capabilities(true, false, false);
+        }
 
         int calls(UUID runId) {
             return callCounts.get(runId.toString()).get();
@@ -168,10 +233,13 @@ class AgentTurnRepairPostgresIT {
         @Override
         public Exchange call(List<Message> messages, List<ToolCallback> tools,
                 Map<String, Object> toolContext) {
-            if (onlyLoader(tools)) return load("TEXT");
+            if (onlyLoader(tools))
+                return versionConflict ? load("TEXT", "CANVAS") : load("TEXT");
             assertThat(tools.stream().map(tool -> tool.getToolDefinition().name())).contains("create_text");
             int count = callCounts.computeIfAbsent((String) toolContext.get("runId"),
                     ignored -> new AtomicInteger()).incrementAndGet();
+            if (versionConflict)
+                return conflictRound(count, messages);
             if (count == 2) {
                 assertThat(messages.getLast().getText()).contains("TOOL_ARGUMENT_INVALID")
                         .contains("No tools from that response were applied");
@@ -182,8 +250,8 @@ class AgentTurnRepairPostgresIT {
                 assertThat(failedCalls.getResponses().stream().map(ToolResponseMessage.ToolResponse::id))
                         .containsExactlyElementsOf(rejected.getToolCalls().stream()
                                 .map(AssistantMessage.ToolCall::id).toList());
-                assertThat(failedCalls.getResponses()).allSatisfy(reply ->
-                        assertThat(reply.responseData()).contains("\"businessEffect\":false"));
+                assertThat(failedCalls.getResponses())
+                        .allSatisfy(reply -> assertThat(reply.responseData()).contains("\"businessEffect\":false"));
             }
             AssistantMessage response;
             if (alwaysInvalid) {
@@ -205,6 +273,36 @@ class AgentTurnRepairPostgresIT {
                 response = new AssistantMessage("Done.");
             }
             return new Exchange(1, new ChatResponse(List.of(new Generation(response))));
+        }
+
+        private Exchange conflictRound(int count, List<Message> messages) {
+            List<AssistantMessage.ToolCall> calls;
+            if (count == 1) {
+                calls = List.of(textCall("conflict-source"));
+            } else if (count == 2 || count == 4) {
+                if (count == 4)
+                    assertThat(messages.getLast().getText()).contains("ARTIFACT_VERSION_CONFLICT")
+                            .contains("first read the current canvas")
+                            .contains("Earlier committed rounds remain applied");
+                calls = List
+                        .of(new AssistantMessage.ToolCall("read-current-" + count, "function", "read_canvas", "{}"));
+            } else if (count == 3 || count == 5) {
+                var reply = ((ToolResponseMessage) messages.getLast()).getResponses().getFirst();
+                JsonNode current = mapper.readTree(reply.responseData()).path("data").get(0);
+                conflictArtifact = UUID.fromString(current.path("artifactId").asText());
+                long expected = current.path("artifactVersion").asLong() + (count == 3 ? 1 : 0);
+                var input = mapper.createObjectNode().put("artifactId", conflictArtifact.toString())
+                        .put("expectedVersion", expected);
+                input.putObject("content").put("format", "PLAIN_TEXT")
+                        .put("text", "Revised after rereading current state");
+                var revise = new AssistantMessage.ToolCall("revise-" + count, "function", "revise_artifact",
+                        input.toString());
+                calls = count == 3 ? List.of(textCall("rolled-back-text"), revise) : List.of(revise);
+            } else {
+                return new Exchange(1, new ChatResponse(List.of(new Generation(new AssistantMessage("Done.")))));
+            }
+            return new Exchange(1, new ChatResponse(List.of(new Generation(
+                    AssistantMessage.builder().content("").toolCalls(calls).build()))));
         }
 
         private AssistantMessage.ToolCall textCall(String id) {

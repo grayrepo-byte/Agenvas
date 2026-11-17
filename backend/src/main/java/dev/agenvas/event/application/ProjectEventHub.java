@@ -72,9 +72,8 @@ public class ProjectEventHub {
     /** 当前已接纳 SSE 连接数，用于上限检查及指标采集。 */
     private final AtomicInteger subscriberCount = new AtomicInteger();
     /** 单线程调度项目补发、post-commit 提示和过期清理。 */
-    private final java.util.concurrent.ScheduledExecutorService poller =
-            Executors.newSingleThreadScheduledExecutor(runnable ->
-                    Thread.ofPlatform().daemon().name("project-event-poller").unstarted(runnable));
+    private final java.util.concurrent.ScheduledExecutorService poller = Executors.newSingleThreadScheduledExecutor(
+            runnable -> Thread.ofPlatform().daemon().name("project-event-poller").unstarted(runnable));
     /** 有界线程池隔离慢速 HTTP 写入，发送任务饱和时关闭对应客户端。 */
     private final ThreadPoolExecutor senders = new ThreadPoolExecutor(
             4,
@@ -118,20 +117,23 @@ public class ProjectEventHub {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onCommitted(ProjectEventCommitted committed) {
         ProjectChannel channel = channels.get(committed.projectId());
-        if (channel == null || channel.subscribers.isEmpty()) return;
+        if (channel == null || channel.subscribers.isEmpty())
+            return;
         channel.wakeRequested.set(true);
         scheduleWake(channel);
     }
 
     /** 每个项目最多排队一个唤醒任务，并限制单次连续轮询次数让出调度线程。 */
     private void scheduleWake(ProjectChannel channel) {
-        if (!channel.wakeQueued.compareAndSet(false, true)) return;
+        if (!channel.wakeQueued.compareAndSet(false, true))
+            return;
         try {
             poller.execute(() -> {
                 try {
                     // 单次最多连续读取四轮，让其他项目和周期兜底轮询有机会运行。
                     for (int attempt = 0; attempt < 4; attempt++) {
-                        if (!channel.wakeRequested.getAndSet(false)) break;
+                        if (!channel.wakeRequested.getAndSet(false))
+                            break;
                         try {
                             pollProject(channel);
                         } catch (RuntimeException failure) {
@@ -141,7 +143,8 @@ public class ProjectEventHub {
                     }
                 } finally {
                     channel.wakeQueued.set(false);
-                    if (channel.wakeRequested.get()) scheduleWake(channel);
+                    if (channel.wakeRequested.get())
+                        scheduleWake(channel);
                 }
             });
         } catch (RejectedExecutionException stopping) {
@@ -163,8 +166,7 @@ public class ProjectEventHub {
                     true);
         }
         SseEmitter emitter = new SseEmitter(EMITTER_TIMEOUT_MILLIS);
-        Subscriber subscriber =
-                new Subscriber(projectId, afterSequence, emitter, heartbeatInterval);
+        Subscriber subscriber = new Subscriber(projectId, afterSequence, emitter, heartbeatInterval);
         emitter.onCompletion(() -> close(subscriber, false));
         // 到达连接存活上限时正常完成 DeferredResult，阻止 MVC 把超时交给 JSON 错误处理器。
         // 发送失败和容器错误仍只清理订阅，不能再次完成已不可写的响应。
@@ -201,8 +203,7 @@ public class ProjectEventHub {
             return;
         }
         Subscriber first = subscribers.getFirst();
-        ProjectEventService.ReplayWindow window =
-                events.replayWindow(channel.ownerId, first.projectId);
+        ProjectEventService.ReplayWindow window = events.replayWindow(channel.ownerId, first.projectId);
         for (Subscriber subscriber : subscribers) {
             if (!subscriber.closed.get()
                     && !subscriber.cursorGap
@@ -330,7 +331,8 @@ public class ProjectEventHub {
 
     /** Servlet 已报错时不再派发完成回调，并容忍完成与终态回调竞争。 */
     static void completeIfNeeded(SseEmitter emitter, boolean shouldComplete) {
-        if (!shouldComplete) return;
+        if (!shouldComplete)
+            return;
         try {
             emitter.complete();
         } catch (IllegalStateException alreadyEnded) {
@@ -470,18 +472,22 @@ public class ProjectEventHub {
     }
 
     /** 发送线程消费的封闭帧类型。 */
-    private sealed interface Frame permits EventFrame, HeartbeatFrame, CursorExpiredFrame {}
+    private sealed interface Frame permits EventFrame, HeartbeatFrame, CursorExpiredFrame {
+    }
 
     /**
      * 待发送的不可变项目事件。
      *
      * @param value 数据库补发得到的项目序号事件
      */
-    private record EventFrame(ProjectEvent value) implements Frame {}
+    private record EventFrame(ProjectEvent value) implements Frame {
+    }
 
     /** 仅用于保持代理连接的 SSE 注释帧。 */
-    private record HeartbeatFrame() implements Frame {}
+    private record HeartbeatFrame() implements Frame {
+    }
 
     /** 通知客户端游标过期并重新获取快照的控制帧。 */
-    private record CursorExpiredFrame() implements Frame {}
+    private record CursorExpiredFrame() implements Frame {
+    }
 }

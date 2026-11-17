@@ -11,7 +11,8 @@ import javax.imageio.stream.MemoryCacheImageOutputStream;
 
 /** Synthetic looping red/green animation. No external artwork or paid service. */
 public final class GifFixture {
-    private GifFixture() {}
+    private GifFixture() {
+    }
 
     public static byte[] animation(int frames) throws IOException {
         var writer = ImageIO.getImageWritersByFormatName("gif").next();
@@ -22,8 +23,12 @@ public final class GifFixture {
             for (int frame = 0; frame < frames; frame++) {
                 var image = new BufferedImage(8, 8, BufferedImage.TYPE_INT_RGB);
                 var graphics = image.createGraphics();
-                try { graphics.setColor(frame % 2 == 0 ? java.awt.Color.RED : java.awt.Color.GREEN); graphics.fillRect(0, 0, 8, 8); }
-                finally { graphics.dispose(); }
+                try {
+                    graphics.setColor(frame % 2 == 0 ? java.awt.Color.RED : java.awt.Color.GREEN);
+                    graphics.fillRect(0, 0, 8, 8);
+                } finally {
+                    graphics.dispose();
+                }
                 var metadata = writer.getDefaultImageMetadata(ImageTypeSpecifier.createFromRenderedImage(image), null);
                 var tree = (IIOMetadataNode) metadata.getAsTree("javax_imageio_gif_image_1.0");
                 var control = (IIOMetadataNode) tree.getElementsByTagName("GraphicControlExtension").item(0);
@@ -33,7 +38,7 @@ public final class GifFixture {
                     var loop = new IIOMetadataNode("ApplicationExtension");
                     loop.setAttribute("applicationID", "NETSCAPE");
                     loop.setAttribute("authenticationCode", "2.0");
-                    loop.setUserObject(new byte[] {1, 0, 0});
+                    loop.setUserObject(new byte[]{1, 0, 0});
                     extensions.appendChild(loop);
                     tree.appendChild(extensions);
                 }
@@ -41,7 +46,9 @@ public final class GifFixture {
                 writer.writeToSequence(new IIOImage(image, null, metadata), null);
             }
             writer.endWriteSequence();
-        } finally { writer.dispose(); }
+        } finally {
+            writer.dispose();
+        }
         return bytes.toByteArray();
     }
 }

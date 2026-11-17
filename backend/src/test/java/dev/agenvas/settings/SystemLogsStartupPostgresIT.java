@@ -26,35 +26,40 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 @SpringBootTest(classes = AgenvasApplication.class, useMainMethod = SpringBootTest.UseMainMethod.ALWAYS)
 class SystemLogsStartupPostgresIT {
     private static final PrintStream ORIGINAL_OUT = System.out;
-    @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
 
-    @DynamicPropertySource static void database(DynamicPropertyRegistry properties) {
+    @DynamicPropertySource
+    static void database(DynamicPropertyRegistry properties) {
         properties.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         properties.add("spring.datasource.username", POSTGRES::getUsername);
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
-    @Autowired WebApplicationContext context;
-    @Autowired SystemLogBuffer logs;
+    @Autowired
+    WebApplicationContext context;
+    @Autowired
+    SystemLogBuffer logs;
 
-    @Test void mainCapturesStartupAndBothChannelsInAdministratorApi() throws Exception {
+    @Test
+    void mainCapturesStartupAndBothChannelsInAdministratorApi() throws Exception {
         assertThat(System.out).isNotSameAs(ORIGINAL_OUT);
         assertThat(logs.snapshot(null, "Started", 100).entries()).isNotEmpty();
         System.out.println("system-log-stdout-fixture apiKey=synthetic-private-value");
         System.err.println("system-log-stderr-fixture");
         var mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         mvc.perform(get("/api/v1/settings/system-logs").param("stream", "STDOUT")
-                        .param("search", "system-log-stdout-fixture").with(user("admin").roles("ADMIN")))
+                .param("search", "system-log-stdout-fixture").with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.entries[0].stream").value("STDOUT"))
                 .andExpect(jsonPath("$.entries[0].message").value("system-log-stdout-fixture apiKey=[REDACTED]"));
         mvc.perform(get("/api/v1/settings/system-logs").param("stream", "STDERR")
-                        .param("search", "system-log-stderr-fixture").with(user("admin").roles("ADMIN")))
+                .param("search", "system-log-stderr-fixture").with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.entries[0].stream").value("STDERR"));
         String longLine = "system-log-boundary-fixture " + "a-".repeat(4000);
         System.out.println(longLine);
         System.out.println("system-log-boundary-fixture healthy");
         mvc.perform(get("/api/v1/settings/system-logs").param("stream", "STDOUT")
-                        .param("search", "system-log-boundary-fixture").with(user("admin").roles("ADMIN")))
+                .param("search", "system-log-boundary-fixture").with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.entries.length()").value(2))
                 .andExpect(jsonPath("$.entries[0].message").value(longLine))

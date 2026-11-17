@@ -1,8 +1,12 @@
 import { create } from "zustand";
-import type { ApplyCharacterNodeBindings, ConnectCharacterNode, CreateCharacterNode } from "../../shared/api/characterNodes";
+import type {
+  ApplyCharacterNodeBindings,
+  ConnectCharacterNode,
+  CreateCharacterNode,
+} from "../../shared/api/characterNodes";
 
-export type CharacterNodeRecovery = { kind: "connection"; request: ConnectCharacterNode }
-  | { kind: "apply"; request: ApplyCharacterNodeBindings };
+export type CharacterNodeRecovery =
+  { kind: "connection"; request: ConnectCharacterNode } | { kind: "apply"; request: ApplyCharacterNodeBindings };
 
 export type CharacterPlacementRecovery = { id: string; request: CreateCharacterNode };
 
@@ -14,19 +18,22 @@ export const useCharacterNodeRecovery = create<{
   clearPlacement: (projectId: string) => void;
   retain: (key: string, recovery: CharacterNodeRecovery) => void;
   clear: (key: string) => void;
-}>((set) => ({
+}>(set => ({
   pending: {},
   placements: {},
-  retainPlacement: (projectId, recovery) => set((state) => ({ placements: { ...state.placements, [projectId]: recovery } })),
-  clearPlacement: (projectId) => set((state) => {
-    const placements = { ...state.placements };
-    delete placements[projectId];
-    return { placements };
-  }),
-  retain: (key, recovery) => set((state) => ({ pending: { ...state.pending, [key]: recovery } })),
-  clear: (key) => set((state) => {
-    const pending = { ...state.pending };
-    delete pending[key];
-    return { pending };
-  }),
+  retainPlacement: (projectId, recovery) =>
+    set(state => ({ placements: { ...state.placements, [projectId]: recovery } })),
+  clearPlacement: projectId =>
+    set(state => {
+      const placements = { ...state.placements };
+      delete placements[projectId];
+      return { placements };
+    }),
+  retain: (key, recovery) => set(state => ({ pending: { ...state.pending, [key]: recovery } })),
+  clear: key =>
+    set(state => {
+      const pending = { ...state.pending };
+      delete pending[key];
+      return { pending };
+    }),
 }));

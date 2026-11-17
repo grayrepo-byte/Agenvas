@@ -34,7 +34,8 @@ class MediaCharacterDraftGatewayTest {
     private final MediaCapabilityService capabilities = mock(MediaCapabilityService.class);
     private final DirectMediaTaskService tasks = mock(DirectMediaTaskService.class);
     private final ObjectMapper mapper = new ObjectMapper();
-    private final MediaCharacterDraftGateway gateway = new MediaCharacterDraftGateway(drafts, artifacts, items, capabilities, tasks);
+    private final MediaCharacterDraftGateway gateway = new MediaCharacterDraftGateway(drafts, artifacts, items,
+            capabilities, tasks);
     private final Instant now = Instant.parse("2026-10-23T00:00:00Z");
 
     @BeforeEach
@@ -45,9 +46,12 @@ class MediaCharacterDraftGatewayTest {
         Artifact media = mock(Artifact.class);
         when(media.kind()).thenReturn(Artifact.Kind.IMAGE);
         when(artifacts.get(owner, project, artifact)).thenReturn(new ArtifactService.ArtifactView(media, null));
-        when(drafts.pruneRemovedMentions(anyString(), anyList(), anyList())).thenAnswer(invocation -> invocation.getArgument(0));
-        when(drafts.previewSave(eq(owner), eq(project), eq(item), anyLong(), anyString(), any(), any(), any(), any(), anyList(), anyList(), any()))
-                .thenAnswer(invocation -> candidate(invocation.getArgument(4), invocation.getArgument(5), invocation.getArgument(8), invocation.getArgument(9)));
+        when(drafts.pruneRemovedMentions(anyString(), anyList(), anyList()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(drafts.previewSave(eq(owner), eq(project), eq(item), anyLong(), anyString(), any(), any(), any(), any(),
+                anyList(), anyList(), any()))
+                .thenAnswer(invocation -> candidate(invocation.getArgument(4), invocation.getArgument(5),
+                        invocation.getArgument(8), invocation.getArgument(9)));
     }
 
     @Test
@@ -66,7 +70,8 @@ class MediaCharacterDraftGatewayTest {
         assertThat(plan.state().ownedReferenceSources()).containsOnlyKeys(next);
         assertThat(plan.candidateDraft().prompt()).contains("My scene", "Character: Alice", "Clothing: Blue coat");
         assertThat(plan.changes()).contains("REFERENCES_ADDED", "REFERENCES_REMOVED", "PROMPT_UPDATED");
-        verify(drafts, never()).save(any(), any(), any(), anyLong(), anyString(), any(), any(), any(), any(), anyList(), anyList(), any());
+        verify(drafts, never()).save(any(), any(), any(), anyLong(), anyString(), any(), any(), any(), any(), anyList(),
+                anyList(), any());
         verify(tasks).validateLibraryReference(owner, project, Artifact.Kind.IMAGE, plan.candidateDraft());
     }
 
@@ -77,7 +82,8 @@ class MediaCharacterDraftGatewayTest {
         when(drafts.get(owner, project, item)).thenReturn(draft("User scene", List.of(readded)));
         var oldOwnership = new DraftState(Map.of(reference, List.of(UUID.randomUUID())), "", null);
         var plan = gateway.preview(owner, project, item, 4, oldOwnership, List.of(), ClearMode.REMOVE_OWNED);
-        assertThat(plan.candidateDraft().mediaInputs()).extracting(MediaDraft.MediaInput::versionId).containsExactly(reference);
+        assertThat(plan.candidateDraft().mediaInputs()).extracting(MediaDraft.MediaInput::versionId)
+                .containsExactly(reference);
         assertThat(plan.state().ownedReferenceSources()).isEmpty();
     }
 
@@ -86,7 +92,8 @@ class MediaCharacterDraftGatewayTest {
         UUID reference = UUID.randomUUID();
         var manual = input(reference, MediaDraft.SourceType.MANUAL);
         var connected = new MediaDraft.MediaInput(reference, artifact, MediaDraft.InputRole.REFERENCE, 0, "#7C3AED",
-                List.of(manual.sources().getFirst(), input(reference, MediaDraft.SourceType.CONNECTION).sources().getFirst()));
+                List.of(manual.sources().getFirst(),
+                        input(reference, MediaDraft.SourceType.CONNECTION).sources().getFirst()));
         when(drafts.get(owner, project, item)).thenReturn(draft("Scene", List.of(connected)));
         var plan = gateway.preview(owner, project, item, 4,
                 new DraftState(Map.of(reference, List.of(manual.sources().getFirst().id())), "", null),
@@ -108,8 +115,10 @@ class MediaCharacterDraftGatewayTest {
         assertThat(removed.candidateDraft().mediaInputs()).hasSize(1);
         assertThat(removed.warnings()).contains("MANUAL_REFERENCES_RETAINED");
 
-        var retained = gateway.preview(owner, project, item, 4, beforeState, List.of(snapshot(reference)), ClearMode.REMOVE_OWNED);
-        when(drafts.save(eq(owner), eq(project), eq(item), eq(4L), anyString(), any(), any(), any(), any(), anyList(), anyList(), any()))
+        var retained = gateway.preview(owner, project, item, 4, beforeState, List.of(snapshot(reference)),
+                ClearMode.REMOVE_OWNED);
+        when(drafts.save(eq(owner), eq(project), eq(item), eq(4L), anyString(), any(), any(), any(), any(), anyList(),
+                anyList(), any()))
                 .thenReturn(draft(retained.candidateDraft().prompt(), List.of(shared)));
         assertThat(gateway.apply(owner, project, item, 4, retained).state().ownedReferenceSources().get(reference))
                 .containsExactly(ownedSource.id()).doesNotContain(userSource.id());
@@ -122,9 +131,11 @@ class MediaCharacterDraftGatewayTest {
         UUID voice = UUID.randomUUID();
         var spoken = new CharacterSnapshot(UUID.randomUUID(), 3, "Alice", "Clear diction", null,
                 new CharacterVoice(voice, "speaker_1", "Soft voice"), false, true);
-        var plan = gateway.preview(owner, project, item, 4, DraftState.empty(), List.of(spoken), ClearMode.REMOVE_OWNED);
+        var plan = gateway.preview(owner, project, item, 4, DraftState.empty(), List.of(spoken),
+                ClearMode.REMOVE_OWNED);
         assertThat(plan.candidateDraft().parameters().path("speaker").asText()).isEqualTo("speaker_1");
-        assertThat(plan.candidateDraft().mediaInputs()).extracting(MediaDraft.MediaInput::versionId).containsExactly(voice);
+        assertThat(plan.candidateDraft().mediaInputs()).extracting(MediaDraft.MediaInput::versionId)
+                .containsExactly(voice);
         assertThat(plan.candidateDraft().prompt()).contains("Voice: Soft voice");
         verify(artifacts).requireMediaVersionForTask(owner, project, voice, Artifact.Kind.AUDIO);
         verify(tasks).validateLibraryReference(owner, project, Artifact.Kind.AUDIO, plan.candidateDraft());
@@ -138,22 +149,27 @@ class MediaCharacterDraftGatewayTest {
                 null, capability, null, null, List.of(), List.of(), MediaDraft.DisplayMode.DRAFT, 4, now, now));
         var spoken = new CharacterSnapshot(UUID.randomUUID(), 1, "Alice", "", null,
                 new CharacterVoice(null, "speaker_1", "Soft"), false, true);
-        var applied = gateway.preview(owner, project, item, 4, DraftState.empty(), List.of(spoken), ClearMode.REMOVE_OWNED);
+        var applied = gateway.preview(owner, project, item, 4, DraftState.empty(), List.of(spoken),
+                ClearMode.REMOVE_OWNED);
         assertThat(applied.state().speakerId()).isNull();
-        when(drafts.get(owner, project, item)).thenReturn(new MediaDraft(project, item, applied.candidateDraft().prompt(), parameters,
-                null, capability, null, null, List.of(), List.of(), MediaDraft.DisplayMode.DRAFT, 4, now, now));
+        when(drafts.get(owner, project, item))
+                .thenReturn(new MediaDraft(project, item, applied.candidateDraft().prompt(), parameters,
+                        null, capability, null, null, List.of(), List.of(), MediaDraft.DisplayMode.DRAFT, 4, now, now));
         var cleared = gateway.preview(owner, project, item, 4, applied.state(), List.of(), ClearMode.REMOVE_OWNED);
         assertThat(cleared.candidateDraft().parameters().path("speaker").asText()).isEqualTo("speaker_1");
     }
 
     @Test
     void editedCharacterBlockRequiresResolutionWithoutOverwritingUserText() {
-        when(drafts.get(owner, project, item)).thenReturn(draft("Scene\n[Character continuity]\nMy custom edit", List.of()));
+        when(drafts.get(owner, project, item))
+                .thenReturn(draft("Scene\n[Character continuity]\nMy custom edit", List.of()));
         var state = new DraftState(Map.of(), "\n[Character continuity]\nOriginal", null);
         assertThatThrownBy(() -> gateway.preview(owner, project, item, 4, state,
                 List.of(snapshot(UUID.randomUUID())), ClearMode.REMOVE_OWNED))
-                .isInstanceOfSatisfying(ApiProblemException.class, error -> assertThat(error.code()).isEqualTo("CHARACTER_PROMPT_EDITED"));
-        verify(drafts, never()).save(any(), any(), any(), anyLong(), anyString(), any(), any(), any(), any(), anyList(), anyList(), any());
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        error -> assertThat(error.code()).isEqualTo("CHARACTER_PROMPT_EDITED"));
+        verify(drafts, never()).save(any(), any(), any(), anyLong(), anyString(), any(), any(), any(), any(), anyList(),
+                anyList(), any());
     }
 
     @Test
@@ -163,7 +179,8 @@ class MediaCharacterDraftGatewayTest {
         var plan = gateway.preview(owner, project, item, 4, DraftState.empty(), List.of(), ClearMode.KEEP_INPUTS);
         assertThat(plan.candidateDraft().prompt()).isEqualTo(before.prompt());
         assertThat(plan.candidateDraft().mediaInputs()).extracting(MediaDraft.MediaInput::versionId)
-                .containsExactlyElementsOf(before.mediaInputs().stream().map(MediaDraft.MediaInput::versionId).toList());
+                .containsExactlyElementsOf(
+                        before.mediaInputs().stream().map(MediaDraft.MediaInput::versionId).toList());
         assertThat(plan.state()).isEqualTo(DraftState.empty());
         assertThat(plan.changes()).containsExactly("KEEP_INPUTS");
     }
@@ -172,12 +189,15 @@ class MediaCharacterDraftGatewayTest {
     void applyCapturesActualSavedSourceIdsForTheNextRevision() {
         UUID reference = UUID.randomUUID();
         when(drafts.get(owner, project, item)).thenReturn(draft("Scene", List.of()));
-        var plan = gateway.preview(owner, project, item, 4, DraftState.empty(), List.of(snapshot(reference)), ClearMode.REMOVE_OWNED);
+        var plan = gateway.preview(owner, project, item, 4, DraftState.empty(), List.of(snapshot(reference)),
+                ClearMode.REMOVE_OWNED);
         var savedInput = input(reference, MediaDraft.SourceType.MANUAL);
         var saved = draft(plan.candidateDraft().prompt(), List.of(savedInput));
-        when(drafts.save(eq(owner), eq(project), eq(item), eq(4L), anyString(), any(), any(), any(), any(), anyList(), anyList(), any())).thenReturn(saved);
+        when(drafts.save(eq(owner), eq(project), eq(item), eq(4L), anyString(), any(), any(), any(), any(), anyList(),
+                anyList(), any())).thenReturn(saved);
         var result = gateway.apply(owner, project, item, 4, plan);
-        assertThat(result.state().ownedReferenceSources().get(reference)).containsExactly(savedInput.sources().getFirst().id());
+        assertThat(result.state().ownedReferenceSources().get(reference))
+                .containsExactly(savedInput.sources().getFirst().id());
         assertThat(result.draft()).isSameAs(saved);
         verify(tasks, times(2)).requireUnoccupied(owner, project, artifact, item);
     }
@@ -188,8 +208,10 @@ class MediaCharacterDraftGatewayTest {
         var look = snapshot(UUID.randomUUID()).look();
         var voiceOnly = new CharacterSnapshot(UUID.randomUUID(), 1, "Alice", "", look,
                 new CharacterVoice(null, "voice_1", "Soft"), false, true);
-        assertThatThrownBy(() -> gateway.preview(owner, project, item, 4, DraftState.empty(), List.of(voiceOnly), ClearMode.REMOVE_OWNED))
-                .isInstanceOfSatisfying(ApiProblemException.class, error -> assertThat(error.code()).isEqualTo("CHARACTER_INPUT_INCOMPATIBLE"));
+        assertThatThrownBy(() -> gateway.preview(owner, project, item, 4, DraftState.empty(), List.of(voiceOnly),
+                ClearMode.REMOVE_OWNED))
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        error -> assertThat(error.code()).isEqualTo("CHARACTER_INPUT_INCOMPATIBLE"));
     }
 
     @Test
@@ -200,7 +222,8 @@ class MediaCharacterDraftGatewayTest {
                 List.of(snapshot(reference)), ClearMode.REMOVE_OWNED))
                 .isInstanceOfSatisfying(ApiProblemException.class,
                         error -> assertThat(error.code()).isEqualTo("CHARACTER_INPUT_INCOMPATIBLE"));
-        verify(drafts, never()).previewSave(any(), any(), any(), anyLong(), anyString(), any(), any(), any(), any(), anyList(), anyList(), any());
+        verify(drafts, never()).previewSave(any(), any(), any(), anyLong(), anyString(), any(), any(), any(), any(),
+                anyList(), anyList(), any());
     }
 
     @Test
@@ -211,18 +234,23 @@ class MediaCharacterDraftGatewayTest {
                 List.of(snapshot(reference)), ClearMode.REMOVE_OWNED))
                 .isInstanceOfSatisfying(ApiProblemException.class,
                         error -> assertThat(error.code()).isEqualTo("CHARACTER_REFERENCE_MODE_REQUIRED"));
-        assertThat(drafts.get(owner, project, item).mediaInputs().getFirst().role()).isEqualTo(MediaDraft.InputRole.START_FRAME);
+        assertThat(drafts.get(owner, project, item).mediaInputs().getFirst().role())
+                .isEqualTo(MediaDraft.InputRole.START_FRAME);
     }
 
     @Test
     void emptyVideoDraftCanPreviewGeneralReferencesWithoutInventingBoundaryFrames() {
         UUID reference = UUID.randomUUID();
         videoFrameFixture(reference, java.util.Set.of("START_END", "GENERAL_REFERENCE"));
-        when(drafts.get(owner, project, item)).thenReturn(new MediaDraft(project, item, "Scene", mapper.createObjectNode(),
-                5, capability, null, MediaDraft.VideoInputMode.START_END, List.of(), List.of(), MediaDraft.DisplayMode.DRAFT, 4, now, now));
-        var plan = gateway.preview(owner, project, item, 4, DraftState.empty(), List.of(snapshot(reference)), ClearMode.REMOVE_OWNED);
+        when(drafts.get(owner, project, item))
+                .thenReturn(new MediaDraft(project, item, "Scene", mapper.createObjectNode(),
+                        5, capability, null, MediaDraft.VideoInputMode.START_END, List.of(), List.of(),
+                        MediaDraft.DisplayMode.DRAFT, 4, now, now));
+        var plan = gateway.preview(owner, project, item, 4, DraftState.empty(), List.of(snapshot(reference)),
+                ClearMode.REMOVE_OWNED);
         assertThat(plan.candidateDraft().videoInputMode()).isEqualTo(MediaDraft.VideoInputMode.GENERAL_REFERENCE);
-        assertThat(plan.candidateDraft().mediaInputs()).extracting(MediaDraft.MediaInput::role).containsExactly(MediaDraft.InputRole.REFERENCE);
+        assertThat(plan.candidateDraft().mediaInputs()).extracting(MediaDraft.MediaInput::role)
+                .containsExactly(MediaDraft.InputRole.REFERENCE);
         assertThat(plan.changes()).contains("INPUT_MODE_CHANGED");
     }
 
@@ -230,8 +258,10 @@ class MediaCharacterDraftGatewayTest {
         when(artifacts.get(owner, project, artifact).artifact().kind()).thenReturn(Artifact.Kind.VIDEO);
         var frame = new MediaDraft.MediaInput(reference, artifact, MediaDraft.InputRole.START_FRAME, 0, "#7C3AED",
                 List.of(new MediaDraft.InputSource(UUID.randomUUID(), MediaDraft.SourceType.MANUAL, null)));
-        when(drafts.get(owner, project, item)).thenReturn(new MediaDraft(project, item, "Scene", mapper.createObjectNode(),
-                5, capability, null, MediaDraft.VideoInputMode.START_END, List.of(frame), List.of(), MediaDraft.DisplayMode.DRAFT, 4, now, now));
+        when(drafts.get(owner, project, item))
+                .thenReturn(new MediaDraft(project, item, "Scene", mapper.createObjectNode(),
+                        5, capability, null, MediaDraft.VideoInputMode.START_END, List.of(frame), List.of(),
+                        MediaDraft.DisplayMode.DRAFT, 4, now, now));
         var binding = mock(dev.agenvas.provider.domain.MediaCapabilityBinding.class);
         var declaration = mock(dev.agenvas.provider.domain.MediaAdapterRegistry.Declaration.class);
         when(capabilities.forDraft(capability, dev.agenvas.task.domain.Task.Kind.VIDEO_GENERATION)).thenReturn(binding);
@@ -241,18 +271,21 @@ class MediaCharacterDraftGatewayTest {
 
     private CharacterSnapshot snapshot(UUID version) {
         return new CharacterSnapshot(UUID.randomUUID(), 1, "Alice", "Curly hair",
-                new CharacterLook(UUID.randomUUID(), "Travel", "Blue coat", "Calm", "", List.of(new CharacterView(version, "FRONT", ""))),
+                new CharacterLook(UUID.randomUUID(), "Travel", "Blue coat", "Calm", "",
+                        List.of(new CharacterView(version, "FRONT", ""))),
                 null, true, false);
     }
     private MediaDraft.MediaInput input(UUID version, MediaDraft.SourceType type) {
         return new MediaDraft.MediaInput(version, artifact, MediaDraft.InputRole.REFERENCE, 0, "#7C3AED",
-                List.of(new MediaDraft.InputSource(UUID.randomUUID(), type, type == MediaDraft.SourceType.CONNECTION ? UUID.randomUUID() : null)));
+                List.of(new MediaDraft.InputSource(UUID.randomUUID(), type,
+                        type == MediaDraft.SourceType.CONNECTION ? UUID.randomUUID() : null)));
     }
     private MediaDraft draft(String prompt, List<MediaDraft.MediaInput> inputs) {
         return new MediaDraft(project, item, prompt, mapper.createObjectNode(), null, capability, null,
                 null, inputs, List.of(), MediaDraft.DisplayMode.DRAFT, 4, now, now);
     }
-    private MediaDraft candidate(String prompt, tools.jackson.databind.JsonNode parameters, MediaDraft.VideoInputMode mode, List<MediaDraftService.SaveMediaInput> inputs) {
+    private MediaDraft candidate(String prompt, tools.jackson.databind.JsonNode parameters,
+            MediaDraft.VideoInputMode mode, List<MediaDraftService.SaveMediaInput> inputs) {
         return new MediaDraft(project, item, prompt, parameters, null, capability, null, mode,
                 inputs.stream().map(input -> input(input.versionId(), MediaDraft.SourceType.MANUAL)).toList(),
                 List.of(), MediaDraft.DisplayMode.DRAFT, 5, now, now);

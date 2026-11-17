@@ -10,9 +10,13 @@ import tools.jackson.databind.ObjectMapper;
 
 @Component
 public class GoogleOmniVideoAdapter extends GoogleVideoAdapter {
-    public GoogleOmniVideoAdapter(JooqMediaCapabilityRepository catalog, CredentialCipher cipher, GoogleVideoClient client,
+    public GoogleOmniVideoAdapter(JooqMediaCapabilityRepository catalog, CredentialCipher cipher,
+            GoogleVideoClient client,
             GoogleVideoPreparedMedia references, MediaToolRunner tools, ObjectMapper mapper) {
         super(catalog, cipher, client, references, tools, mapper);
     }
-    @Override public String adapterId() { return GoogleVideoModels.OMNI; }
+    @Override
+    public String adapterId() {
+        return GoogleVideoModels.OMNI;
+    }
 }

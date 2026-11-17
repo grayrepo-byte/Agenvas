@@ -26,7 +26,9 @@ public class JooqAgentConversationRepository implements AgentConversationReposit
     private final DSLContext dsl;
 
     /** 注入会话查询上下文。 */
-    public JooqAgentConversationRepository(DSLContext dsl) { this.dsl = dsl; }
+    public JooqAgentConversationRepository(DSLContext dsl) {
+        this.dsl = dsl;
+    }
 
     @Override
     public Optional<AgentConversation> find(UUID ownerId, UUID projectId, UUID agentId, UUID id) {
@@ -133,5 +135,7 @@ public class JooqAgentConversationRepository implements AgentConversationReposit
                 row.getCreatedAt().toInstant(), row.getUpdatedAt().toInstant());
     }
 
-    private OffsetDateTime utc(Instant instant) { return instant.atOffset(ZoneOffset.UTC); }
+    private OffsetDateTime utc(Instant instant) {
+        return instant.atOffset(ZoneOffset.UTC);
+    }
 }

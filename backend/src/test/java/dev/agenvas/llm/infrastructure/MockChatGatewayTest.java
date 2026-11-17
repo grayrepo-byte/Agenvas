@@ -33,8 +33,7 @@ class MockChatGatewayTest {
 
     @Test
     void answersToolLessRoundsWithPlainText() {
-        ChatGateway.Exchange exchange =
-                gateway.call(List.of(new UserMessage("写一句标语")), List.of(), Map.of());
+        ChatGateway.Exchange exchange = gateway.call(List.of(new UserMessage("写一句标语")), List.of(), Map.of());
 
         assertThat(exchange.configVersion()).isEqualTo(CONFIG_VERSION);
         assertThat(exchange.response().getResult().getOutput().getText())

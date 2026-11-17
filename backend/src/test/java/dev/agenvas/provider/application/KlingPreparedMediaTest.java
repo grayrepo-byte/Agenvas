@@ -35,7 +35,8 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 class KlingPreparedMediaTest {
-    @TempDir Path directory;
+    @TempDir
+    Path directory;
     private final ObjectMapper mapper = new ObjectMapper();
     private final UUID owner = UUID.randomUUID(), project = UUID.randomUUID();
     private final ArtifactService artifacts = mock(ArtifactService.class);
@@ -45,7 +46,8 @@ class KlingPreparedMediaTest {
     private final KlingPreparedMedia loader = new KlingPreparedMedia(artifacts, assets, relay, tools, mapper);
     private final ObjectNode input = mapper.createObjectNode();
 
-    @Test void loadsOnlyAssignedAuthorizedOriginalImageVersionsAsRawBase64() throws Exception {
+    @Test
+    void loadsOnlyAssignedAuthorizedOriginalImageVersionsAsRawBase64() throws Exception {
         var profile = KlingModels.resolve("kling-3.0-omni", "GENERATE", Task.Kind.VIDEO_GENERATION);
         var context = context(profile);
         var values = values(profile);
@@ -63,7 +65,8 @@ class KlingPreparedMediaTest {
         verify(relay, never()).signedVideo(any(), any(), any(), any());
     }
 
-    @Test void rejectsUnassignedDuplicateWrongRoleOrUnavailableVersions() throws Exception {
+    @Test
+    void rejectsUnassignedDuplicateWrongRoleOrUnavailableVersions() throws Exception {
         var profile = KlingModels.resolve("kling-v3-omni", "GENERATE", Task.Kind.IMAGE_GENERATION);
         var context = context(profile);
         var values = values(profile);
@@ -79,7 +82,8 @@ class KlingPreparedMediaTest {
         assertThatThrownBy(() -> loader.load(context, profile, values, false)).isInstanceOf(ApiProblemException.class);
     }
 
-    @Test void validatesOriginalHashActualEncodingAndActualDimensions() throws Exception {
+    @Test
+    void validatesOriginalHashActualEncodingAndActualDimensions() throws Exception {
         var profile = KlingModels.resolve("kling-v3", "GENERATE", Task.Kind.IMAGE_GENERATION);
         var context = context(profile);
         var values = values(profile);
@@ -88,20 +92,24 @@ class KlingPreparedMediaTest {
         Files.write(image.path(), png(301, 300));
         assertThatThrownBy(() -> loader.load(context, profile, values, false)).isInstanceOf(ApiProblemException.class);
         ((ObjectNode) input.path("mediaInput")).putArray("images");
-        var wrongMime = reference("images", "REFERENCE", Asset.MediaKind.IMAGE, "image/jpeg", png(300, 300), 300, 300, null);
+        var wrongMime = reference("images", "REFERENCE", Asset.MediaKind.IMAGE, "image/jpeg", png(300, 300), 300, 300,
+                null);
         values.put("image_1", wrongMime.version().toString());
         assertThatThrownBy(() -> loader.load(context, profile, values, false)).isInstanceOf(ApiProblemException.class);
         ((ObjectNode) input.path("mediaInput")).putArray("images");
-        var wrongDimensions = reference("images", "REFERENCE", Asset.MediaKind.IMAGE, "image/png", png(300, 300), 301, 300, null);
+        var wrongDimensions = reference("images", "REFERENCE", Asset.MediaKind.IMAGE, "image/png", png(300, 300), 301,
+                300, null);
         values.put("image_1", wrongDimensions.version().toString());
         assertThatThrownBy(() -> loader.load(context, profile, values, false)).isInstanceOf(ApiProblemException.class);
     }
 
-    @Test void preflightPinsRelayWithoutUploadingAndSubmitSignsOriginalVideo() throws Exception {
+    @Test
+    void preflightPinsRelayWithoutUploadingAndSubmitSignsOriginalVideo() throws Exception {
         var profile = KlingModels.resolve("kling-3.0-omni", "GENERATE", Task.Kind.VIDEO_GENERATION);
         var context = context(profile);
         var values = values(profile).put("audio", "off");
-        var video = reference("videos", "VIDEO_REFERENCE", Asset.MediaKind.VIDEO, "video/mp4", new byte[128], 700, 700, 5000);
+        var video = reference("videos", "VIDEO_REFERENCE", Asset.MediaKind.VIDEO, "video/mp4", new byte[128], 700, 700,
+                5000);
         UUID pinnedRelay = UUID.randomUUID();
         ((ObjectNode) input.at("/mediaInput/videos/0")).put("relayProfileId", pinnedRelay.toString());
         values.put("feature_video", video.version().toString());
@@ -110,16 +118,20 @@ class KlingPreparedMediaTest {
         assertThat(preflight.get("feature_video")).startsWith("https://reference.example.invalid/");
         verify(relay).preflight(video.asset(), pinnedRelay);
         verify(relay, never()).signedVideo(any(), any(), any(), any());
-        when(relay.signedVideo(owner, project, video.asset().id(), pinnedRelay)).thenReturn("https://public-storage.example/video.mp4?synthetic=signature");
-        assertThat(loader.load(context, profile, values, true)).containsEntry("feature_video", "https://public-storage.example/video.mp4?synthetic=signature");
+        when(relay.signedVideo(owner, project, video.asset().id(), pinnedRelay))
+                .thenReturn("https://public-storage.example/video.mp4?synthetic=signature");
+        assertThat(loader.load(context, profile, values, true)).containsEntry("feature_video",
+                "https://public-storage.example/video.mp4?synthetic=signature");
         verify(relay).signedVideo(owner, project, video.asset().id(), pinnedRelay);
     }
 
-    @Test void enforcesOmniFpsButDoesNotInventTheSameMotionControlRestriction() throws Exception {
+    @Test
+    void enforcesOmniFpsButDoesNotInventTheSameMotionControlRestriction() throws Exception {
         var omni = KlingModels.resolve("kling-o1", "GENERATE", Task.Kind.VIDEO_GENERATION);
         var context = context(omni);
         var values = values(omni);
-        var video = reference("videos", "VIDEO_REFERENCE", Asset.MediaKind.VIDEO, "video/mp4", new byte[128], 700, 700, 5000);
+        var video = reference("videos", "VIDEO_REFERENCE", Asset.MediaKind.VIDEO, "video/mp4", new byte[128], 700, 700,
+                5000);
         values.put("feature_video", video.version().toString());
         probe(5, 700, 700, "12/1");
         assertThatThrownBy(() -> loader.load(context, omni, values, false)).isInstanceOf(ApiProblemException.class);
@@ -130,11 +142,13 @@ class KlingPreparedMediaTest {
         assertThat(loader.load(context, motion, motionValues, false)).containsKey("motion_video");
     }
 
-    @Test void rejectsProbedDurationOutsideContractEvenWhenRoundedMetadataIsInside() throws Exception {
+    @Test
+    void rejectsProbedDurationOutsideContractEvenWhenRoundedMetadataIsInside() throws Exception {
         var profile = KlingModels.resolve("kling-3.0-omni", "GENERATE", Task.Kind.VIDEO_GENERATION);
         var context = context(profile);
         var values = values(profile).put("audio", "off");
-        var video = reference("videos", "VIDEO_REFERENCE", Asset.MediaKind.VIDEO, "video/mp4", new byte[128], 700, 700, 15500);
+        var video = reference("videos", "VIDEO_REFERENCE", Asset.MediaKind.VIDEO, "video/mp4", new byte[128], 700, 700,
+                15500);
         values.put("feature_video", video.version().toString());
         probe(15.59, 700, 700, "24/1");
         assertThatThrownBy(() -> loader.load(context, profile, values, false)).isInstanceOf(ApiProblemException.class);
@@ -143,9 +157,13 @@ class KlingPreparedMediaTest {
 
     private AttemptContext context(KlingModels.Profile profile) {
         var media = input.putObject("mediaInput");
-        media.putArray("images"); media.putArray("videos"); media.putArray("audios");
+        media.putArray("images");
+        media.putArray("videos");
+        media.putArray("audios");
         Task task = mock(Task.class);
-        when(task.projectId()).thenReturn(project); when(task.input()).thenReturn(input); when(task.kind()).thenReturn(profile.kind());
+        when(task.projectId()).thenReturn(project);
+        when(task.input()).thenReturn(input);
+        when(task.kind()).thenReturn(profile.kind());
         return new AttemptContext(task, null, owner, "synthetic-request-key", null);
     }
 
@@ -165,7 +183,8 @@ class KlingPreparedMediaTest {
         String hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
         Asset asset = new Asset(assetId, project, kind, "synthetic", mime, bytes.length, hash,
                 width, height, duration, null, null, null, Instant.now());
-        Path file = directory.resolve(assetId.toString()); Files.write(file, bytes);
+        Path file = directory.resolve(assetId.toString());
+        Files.write(file, bytes);
         when(assets.requireReadyMedia(owner, project, assetId, kind)).thenReturn(asset);
         when(assets.get(owner, project, assetId)).thenReturn(new AssetService.AssetFile(asset, file));
         return new Reference(artifact, version, asset, file);
@@ -184,5 +203,6 @@ class KlingPreparedMediaTest {
         ImageIO.write(new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB), "png", output);
         return output.toByteArray();
     }
-    private record Reference(UUID artifact, UUID version, Asset asset, Path path) {}
+    private record Reference(UUID artifact, UUID version, Asset asset, Path path) {
+    }
 }

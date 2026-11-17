@@ -53,33 +53,46 @@ import tools.jackson.databind.ObjectMapper;
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.library.worker-enabled=false", "agenvas.skill.worker-enabled=false"})
 class SkillAssetArchivePostgresIT {
-    @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     private static final Path STORAGE_ROOT = temporaryRoot();
     private static AdminPrincipal owner;
 
-    @DynamicPropertySource static void properties(DynamicPropertyRegistry registry) {
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("agenvas.storage.root", STORAGE_ROOT::toString);
     }
 
-    @Autowired IdentityService identities;
-    @Autowired ProjectService projects;
-    @Autowired AssetService assets;
-    @Autowired ArtifactService artifacts;
-    @Autowired CanvasService canvas;
-    @Autowired LibraryService library;
-    @Autowired SkillAssetArchiveService skillAssets;
-    @Autowired ObjectMapper mapper;
-    @Autowired WebApplicationContext context;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    ProjectService projects;
+    @Autowired
+    AssetService assets;
+    @Autowired
+    ArtifactService artifacts;
+    @Autowired
+    CanvasService canvas;
+    @Autowired
+    LibraryService library;
+    @Autowired
+    SkillAssetArchiveService skillAssets;
+    @Autowired
+    ObjectMapper mapper;
+    @Autowired
+    WebApplicationContext context;
 
-    @BeforeEach void setup() {
+    @BeforeEach
+    void setup() {
         if (owner == null)
             owner = identities.setup("skill-archive-admin", "skill-password-123");
     }
 
-    @Test void fixedSkillBytesSurvivePermanentSourceDeletionAndRemainOutsideProjects() throws Exception {
+    @Test
+    void fixedSkillBytesSurvivePermanentSourceDeletionAndRemainOutsideProjects() throws Exception {
         var fixture = source("Surviving reference");
         var source = library.skillAssetSource(owner.userId(), fixture.entryId(), 0);
         UUID pinId = UUID.randomUUID();
@@ -110,7 +123,8 @@ class SkillAssetArchivePostgresIT {
                 .isInstanceOf(IllegalStateException.class);
     }
 
-    @Test void sourceSelectionRequiresOwnershipAndActiveExactVersionAndHttpCannotForgeSkillOrigin() throws Exception {
+    @Test
+    void sourceSelectionRequiresOwnershipAndActiveExactVersionAndHttpCannotForgeSkillOrigin() throws Exception {
         var fixture = source("Owned reference");
         assertThatThrownBy(() -> library.pinForSkill(UUID.randomUUID(), fixture.entryId(), 0, UUID.randomUUID()))
                 .isInstanceOfSatisfying(ApiProblemException.class,
@@ -119,7 +133,8 @@ class SkillAssetArchivePostgresIT {
                 .isInstanceOfSatisfying(ApiProblemException.class,
                         problem -> assertThat(problem.code()).isEqualTo("VERSION_CONFLICT"));
         var trashed = library.trash(owner.userId(), fixture.entryId(), 0, false);
-        assertThatThrownBy(() -> library.pinForSkill(owner.userId(), fixture.entryId(), trashed.version(), UUID.randomUUID()))
+        assertThatThrownBy(
+                () -> library.pinForSkill(owner.userId(), fixture.entryId(), trashed.version(), UUID.randomUUID()))
                 .isInstanceOfSatisfying(ApiProblemException.class,
                         problem -> assertThat(problem.code()).isEqualTo("LIBRARY_ENTRY_TRASHED"));
 
@@ -135,13 +150,15 @@ class SkillAssetArchivePostgresIT {
         assertThat(artifacts.listProject(owner.userId(), fixture.projectId())).isEmpty();
     }
 
-    @Test void plannedCleanupHandlesPartialFilesAndNeverDeletesRegisteredProjectReferences() throws Exception {
+    @Test
+    void plannedCleanupHandlesPartialFilesAndNeverDeletesRegisteredProjectReferences() throws Exception {
         var fixture = source("Cleanup reference");
         var pin = library.pinForSkill(owner.userId(), fixture.entryId(), 0, UUID.randomUUID());
         var retained = skillAssets.archivePinned(owner.userId(), UUID.randomUUID(), pin);
         skillAssets.discardPin(owner.userId(), pin.pinKey());
         Project target = projects.create(owner.userId(), "Cleanup target", Project.AspectRatio.LANDSCAPE_16_9);
-        var partial = assets.prepareLibraryImport(owner.userId(), target.id(), UUID.randomUUID(), Asset.MediaKind.IMAGE, skillAssets.file(owner.userId(), retained, false).path());
+        var partial = assets.prepareLibraryImport(owner.userId(), target.id(), UUID.randomUUID(), Asset.MediaKind.IMAGE,
+                skillAssets.file(owner.userId(), retained, false).path());
         // Synthetic crash fixture: the thumbnail remains but the installed original is gone.
         Files.delete(STORAGE_ROOT.resolve(partial.objectKey()));
         assertThat(Files.exists(STORAGE_ROOT.resolve(partial.thumbnailKey()))).isTrue();
@@ -149,18 +166,21 @@ class SkillAssetArchivePostgresIT {
         assertThat(Files.exists(STORAGE_ROOT.resolve(partial.thumbnailKey()))).isFalse();
         assertThat(skillAssets.cleanupPlannedSkillImport(owner.userId(), target.id(), partial.id())).isTrue();
 
-        var ready = assets.prepareLibraryImport(owner.userId(), target.id(), UUID.randomUUID(), Asset.MediaKind.IMAGE, skillAssets.file(owner.userId(), retained, false).path());
+        var ready = assets.prepareLibraryImport(owner.userId(), target.id(), UUID.randomUUID(), Asset.MediaKind.IMAGE,
+                skillAssets.file(owner.userId(), retained, false).path());
         // Historical registered Skill import: upgrade cleanup must preserve this business content.
         assets.registerLibraryImport(owner.userId(), ready);
         artifacts.createSkillImport(owner.userId(), target.id(), "Retained reference", ready.id());
         assertThat(skillAssets.cleanupPreparedProjectImport(owner.userId(), ready)).isTrue();
         assertThat(skillAssets.cleanupPlannedSkillImport(owner.userId(), target.id(), ready.id())).isTrue();
-        assertThat(Files.readAllBytes(assets.get(owner.userId(), target.id(), ready.id()).path())).containsExactly(fixture.bytes());
+        assertThat(Files.readAllBytes(assets.get(owner.userId(), target.id(), ready.id()).path()))
+                .containsExactly(fixture.bytes());
         assertThatThrownBy(() -> skillAssets.cleanupPlannedSkillImport(UUID.randomUUID(), target.id(), ready.id()))
                 .isInstanceOf(ApiProblemException.class);
     }
 
-    @Test void expiredPreparationCannotRecreateFilesAfterPlannedCleanup() throws Exception {
+    @Test
+    void expiredPreparationCannotRecreateFilesAfterPlannedCleanup() throws Exception {
         var fixture = source("Fenced reference");
         var pin = library.pinForSkill(owner.userId(), fixture.entryId(), 0, UUID.randomUUID());
         var retained = skillAssets.archivePinned(owner.userId(), UUID.randomUUID(), pin);
@@ -168,7 +188,8 @@ class SkillAssetArchivePostgresIT {
         Project target = projects.create(owner.userId(), "Fenced target", Project.AspectRatio.LANDSCAPE_16_9);
         UUID id = UUID.randomUUID();
         assertThat(skillAssets.cleanupPlannedSkillImport(owner.userId(), target.id(), id)).isTrue();
-        assertThatThrownBy(() -> assets.prepareLibraryImport(owner.userId(), target.id(), id, Asset.MediaKind.IMAGE, skillAssets.file(owner.userId(), retained, false).path(), () -> false))
+        assertThatThrownBy(() -> assets.prepareLibraryImport(owner.userId(), target.id(), id, Asset.MediaKind.IMAGE,
+                skillAssets.file(owner.userId(), retained, false).path(), () -> false))
                 .isInstanceOf(IllegalStateException.class).hasMessage("Import preparation lease changed");
         assertThat(assets.listProjectAssets(owner.userId(), target.id())).isEmpty();
         try (var files = Files.walk(STORAGE_ROOT)) {
@@ -177,14 +198,16 @@ class SkillAssetArchivePostgresIT {
         }
     }
 
-    private record Source(UUID projectId, UUID assetId, UUID entryId, byte[] bytes) {}
+    private record Source(UUID projectId, UUID assetId, UUID entryId, byte[] bytes) {
+    }
 
     private Source source(String title) throws Exception {
         Project project = projects.create(owner.userId(), title, Project.AspectRatio.LANDSCAPE_16_9);
         UUID assetId = ImageAssetFixture.archive(assets, owner.userId(), project.id());
         byte[] bytes = Files.readAllBytes(assets.get(owner.userId(), project.id(), assetId).path());
         var command = library.upload(owner.userId(), title, LibraryEntry.Category.OTHER, Asset.MediaKind.IMAGE,
-                "skill-fixture-" + UUID.randomUUID(), new MockMultipartFile("file", "reference.png", "image/png", bytes));
+                "skill-fixture-" + UUID.randomUUID(),
+                new MockMultipartFile("file", "reference.png", "image/png", bytes));
         assertThat(library.processNext()).isTrue();
         var finished = library.command(owner.userId(), command.id());
         assertThat(finished.status()).isEqualTo(LibraryCommand.Status.SUCCEEDED);
@@ -196,12 +219,16 @@ class SkillAssetArchivePostgresIT {
             Path root = Files.createTempDirectory("agenvas-skill-archive-test-");
             Files.setPosixFilePermissions(root, java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"));
             return root;
-        } catch (java.io.IOException failure) { throw new IllegalStateException(failure); }
+        } catch (java.io.IOException failure) {
+            throw new IllegalStateException(failure);
+        }
     }
 
-    @AfterAll static void cleanupThisTestsFiles() throws java.io.IOException {
+    @AfterAll
+    static void cleanupThisTestsFiles() throws java.io.IOException {
         try (var paths = Files.walk(STORAGE_ROOT)) {
-            for (Path path : paths.sorted(java.util.Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
+            for (Path path : paths.sorted(java.util.Comparator.reverseOrder()).toList())
+                Files.deleteIfExists(path);
         }
     }
 }

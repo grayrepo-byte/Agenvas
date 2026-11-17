@@ -76,7 +76,8 @@ class LlmConversationServiceTest {
         assertThat(turn.request()).isEqualTo(frozen);
         ToolResponseMessage rejected = (ToolResponseMessage) repair.get(repair.size() - 2);
         assertThat(rejected.getResponses().getFirst().id()).isEqualTo("current-call");
-        assertThat(rejected.getResponses().getFirst().responseData()).contains("TOOL_ARGUMENT_INVALID", "\"businessEffect\":false");
+        assertThat(rejected.getResponses().getFirst().responseData()).contains("TOOL_ARGUMENT_INVALID",
+                "\"businessEffect\":false");
         org.mockito.Mockito.verifyNoInteractions(tools, outcomes, images);
     }
 
@@ -99,7 +100,8 @@ class LlmConversationServiceTest {
 
         assertThat(projected.at("/data/creativeSkills")).hasSize(2);
         assertThat(projected.path("mediaApproval")).isEqualTo(outcome);
-        assertThat(projected.at("/data/outputs/0/preview/parameters")).isEqualTo(receipt.at("/data/outputs/0/preview/parameters"));
+        assertThat(projected.at("/data/outputs/0/preview/parameters"))
+                .isEqualTo(receipt.at("/data/outputs/0/preview/parameters"));
         assertThat(projected.toString()).doesNotContain("skillMd", "SECOND_BODY", "RESOURCE_BODY", "DUPLICATE_PROMPT");
         assertThat(AgentMediaToolResult.forModel(projected)).isEqualTo(projected);
         assertThat(receipt).isEqualTo(original);
@@ -110,16 +112,19 @@ class LlmConversationServiceTest {
         history.add(new UserMessage("Synthetic creative request"));
         var skillCall = assistant("skill-read", "read_skill");
         history.add(skillCall);
-        history.add(codec.toolResults(skillCall, Map.of("skill-read", mapper.createObjectNode().put("content", "x".repeat(32 * 1024)))));
+        history.add(codec.toolResults(skillCall,
+                Map.of("skill-read", mapper.createObjectNode().put("content", "x".repeat(32 * 1024)))));
         for (int index = 0; index < 3; index++) {
             var call = assistant("old-media-" + index, "propose_media_generation");
             history.add(call);
             var reply = codec.toolResults(call, Map.of("old-media-" + index, receipt()));
-            history.add(ToolResponseMessage.builder().responses(reply.getResponses()).metadata(Map.of("protocol_marker", "keep")).build());
+            history.add(ToolResponseMessage.builder().responses(reply.getResponses())
+                    .metadata(Map.of("protocol_marker", "keep")).build());
         }
         ObjectNode request = codec.request(history, List.of());
         var turn = new LlmTurn(project, runId, 4, LlmTurn.Status.RESPONDED, 1, request,
-                codec.response(new ChatResponse(List.of(new Generation(assistant("current-call", "read_project_summary"))))),
+                codec.response(
+                        new ChatResponse(List.of(new Generation(assistant("current-call", "read_project_summary"))))),
                 Instant.now(), Instant.now());
         AgentRun run = mock(AgentRun.class);
         when(run.policySnapshot()).thenReturn(mapper.createObjectNode());
@@ -141,8 +146,10 @@ class LlmConversationServiceTest {
             assertThat(after.getMetadata()).isEqualTo(before.getMetadata());
             assertThat(after.getResponses().getFirst().id()).isEqualTo(before.getResponses().getFirst().id());
             assertThat(after.getResponses().getFirst().name()).isEqualTo(before.getResponses().getFirst().name());
-            if ("read_skill".equals(before.getResponses().getFirst().name())) assertThat(after).isEqualTo(before);
-            else assertThat(after.getResponses().getFirst().responseData()).doesNotContain("skillMd", "RESOURCE_BODY");
+            if ("read_skill".equals(before.getResponses().getFirst().name()))
+                assertThat(after).isEqualTo(before);
+            else
+                assertThat(after.getResponses().getFirst().responseData()).doesNotContain("skillMd", "RESOURCE_BODY");
         }
     }
 
@@ -152,15 +159,18 @@ class LlmConversationServiceTest {
     }
 
     private ObjectNode receipt() {
-        var receipt = mapper.createObjectNode().put("status", "SUCCEEDED").put("approvalId", UUID.randomUUID().toString());
+        var receipt = mapper.createObjectNode().put("status", "SUCCEEDED").put("approvalId",
+                UUID.randomUUID().toString());
         var data = receipt.putObject("data").put("status", "PENDING");
-        var skill = mapper.createObjectNode().put("skillVersionId", skillVersion.toString()).put("name", "Synthetic method")
+        var skill = mapper.createObjectNode().put("skillVersionId", skillVersion.toString())
+                .put("name", "Synthetic method")
                 .put("skillMd", "x".repeat(32 * 1024));
         skill.putArray("resources").addObject().put("content", "RESOURCE_BODY");
         var outputs = data.putArray("outputs");
         for (int index = 0; index < 6; index++) {
             var preview = outputs.addObject().put("kind", "IMAGE").put("title", "Synthetic image")
-                    .put("artifactId", UUID.randomUUID().toString()).putObject("preview").put("prompt", "DUPLICATE_PROMPT");
+                    .put("artifactId", UUID.randomUUID().toString()).putObject("preview")
+                    .put("prompt", "DUPLICATE_PROMPT");
             preview.putObject("parameters").put("aspectRatio", "16:9");
             preview.putObject("creativeSkill").put("schemaVersion", 2).putArray("skills").add(skill.deepCopy());
         }

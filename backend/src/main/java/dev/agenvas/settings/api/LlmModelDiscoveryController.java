@@ -17,13 +17,16 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1/settings/llm/models")
 public class LlmModelDiscoveryController {
     private final LlmModelDiscoveryService discovery;
-    public LlmModelDiscoveryController(LlmModelDiscoveryService discovery) { this.discovery = discovery; }
+    public LlmModelDiscoveryController(LlmModelDiscoveryService discovery) {
+        this.discovery = discovery;
+    }
     @PostMapping
     public ResponseEntity<LlmModelDiscoveryService.Preview> preview(@AuthenticationPrincipal AdminPrincipal admin,
             @RequestBody LlmModelDiscoveryService.PreviewRequest request) {
         Objects.requireNonNull(admin, "Authenticated administrator required");
-        try { return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(discovery.preview(request)); }
-        catch (ModelMetadataClient.MetadataFailure failure) {
+        try {
+            return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(discovery.preview(request));
+        } catch (ModelMetadataClient.MetadataFailure failure) {
             var status = switch (failure.getMessage()) {
                 case "MODEL_METADATA_BUSY" -> HttpStatus.TOO_MANY_REQUESTS;
                 case "MODEL_METADATA_INVALID" -> HttpStatus.BAD_REQUEST;
@@ -31,7 +34,9 @@ public class LlmModelDiscoveryController {
                 default -> HttpStatus.BAD_GATEWAY;
             };
             throw problem(status, failure.getMessage());
-        } catch (IllegalArgumentException invalid) { throw problem(HttpStatus.BAD_REQUEST, "MODEL_PREVIEW_INVALID"); }
+        } catch (IllegalArgumentException invalid) {
+            throw problem(HttpStatus.BAD_REQUEST, "MODEL_PREVIEW_INVALID");
+        }
     }
     private static ApiProblemException problem(HttpStatus status, String code) {
         return new ApiProblemException(status, code, ApiMessage.of("api.model-metadata.title"),

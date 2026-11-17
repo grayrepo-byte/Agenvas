@@ -8,7 +8,8 @@ import java.time.Clock;
 import org.junit.jupiter.api.Test;
 
 class SystemLogCaptureTest {
-    @Test void splitUtf8AndFlushPreserveConsoleAndCompleteLines() {
+    @Test
+    void splitUtf8AndFlushPreserveConsoleAndCompleteLines() {
         var logs = new SystemLogBuffer(Clock.systemUTC());
         var original = new ByteArrayOutputStream();
         var output = new SystemLogCapture.LineOutput(new PrintStream(original), logs, SystemLogBuffer.Stream.STDERR);
@@ -16,19 +17,22 @@ class SystemLogCaptureTest {
         output.write(bytes, 0, 2);
         output.flush();
         assertThat(logs.snapshot(null, null, 10).entries()).isEmpty();
-        for (int i = 2; i < bytes.length; i++) output.write(bytes[i]);
+        for (int i = 2; i < bytes.length; i++)
+            output.write(bytes[i]);
         assertThat(original.toByteArray()).isEqualTo(bytes);
         assertThat(logs.snapshot(null, null, 10).entries()).extracting(SystemLogBuffer.Entry::message)
                 .containsExactly("调试中文 apiKey=[REDACTED]", "next");
-        assertThat(logs.snapshot(null, null, 10).entries()).allSatisfy(entry ->
-                assertThat(entry.stream()).isEqualTo(SystemLogBuffer.Stream.STDERR));
+        assertThat(logs.snapshot(null, null, 10).entries())
+                .allSatisfy(entry -> assertThat(entry.stream()).isEqualTo(SystemLogBuffer.Stream.STDERR));
     }
 
-    @Test void oversizeTailIsDiscardedUntilNewlineWithoutLosingFollowingLines() {
+    @Test
+    void oversizeTailIsDiscardedUntilNewlineWithoutLosingFollowingLines() {
         var logs = new SystemLogBuffer(Clock.systemUTC());
         var original = new ByteArrayOutputStream();
         var output = new SystemLogCapture.LineOutput(new PrintStream(original), logs, SystemLogBuffer.Stream.STDOUT);
-        byte[] bytes = ("x".repeat(SystemLogBuffer.MAX_LINE_BYTES + 100) + "\nhealthy\n").getBytes(StandardCharsets.UTF_8);
+        byte[] bytes = ("x".repeat(SystemLogBuffer.MAX_LINE_BYTES + 100) + "\nhealthy\n")
+                .getBytes(StandardCharsets.UTF_8);
         output.write(bytes, 0, bytes.length);
         var entries = logs.snapshot(null, null, 10).entries();
         assertThat(entries.getFirst().message()).hasSize(SystemLogBuffer.MAX_LINE_BYTES);
@@ -41,7 +45,8 @@ class SystemLogCaptureTest {
         assertThat(original.toByteArray()[bytes.length]).isEqualTo((byte) '!');
     }
 
-    @Test void installingCaptureRestoresBothJvmStreams() {
+    @Test
+    void installingCaptureRestoresBothJvmStreams() {
         PrintStream out = System.out;
         PrintStream err = System.err;
         var logs = new SystemLogBuffer(Clock.systemUTC());
@@ -56,7 +61,8 @@ class SystemLogCaptureTest {
                 .containsExactly(SystemLogBuffer.Stream.STDOUT, SystemLogBuffer.Stream.STDERR);
     }
 
-    @Test void boundedHyphenatedOutputDoesNotBreakCaptureOrFollowingLines() {
+    @Test
+    void boundedHyphenatedOutputDoesNotBreakCaptureOrFollowingLines() {
         var logs = new SystemLogBuffer(Clock.systemUTC());
         var original = new ByteArrayOutputStream();
         var output = new SystemLogCapture.LineOutput(new PrintStream(original), logs, SystemLogBuffer.Stream.STDOUT);
@@ -68,13 +74,16 @@ class SystemLogCaptureTest {
                 .containsExactly(line, "healthy");
     }
 
-    @Test void oversizedPrefixedCredentialsStayMaskedAndFollowingLinesRecover() {
+    @Test
+    void oversizedPrefixedCredentialsStayMaskedAndFollowingLinesRecover() {
         for (String separator : new String[]{"_", "-"}) {
             var logs = new SystemLogBuffer(Clock.systemUTC());
             var original = new ByteArrayOutputStream();
-            var output = new SystemLogCapture.LineOutput(new PrintStream(original), logs, SystemLogBuffer.Stream.STDERR);
+            var output = new SystemLogCapture.LineOutput(new PrintStream(original), logs,
+                    SystemLogBuffer.Stream.STDERR);
             String field = ("a" + separator).repeat(4000) + "MASTER_KEY=";
-            byte[] bytes = (field + "synthetic-sensitive-value".repeat(20) + "\nhealthy\n").getBytes(StandardCharsets.UTF_8);
+            byte[] bytes = (field + "synthetic-sensitive-value".repeat(20) + "\nhealthy\n")
+                    .getBytes(StandardCharsets.UTF_8);
             output.write(bytes, 0, bytes.length);
             var entries = logs.snapshot(null, null, 10).entries();
             assertThat(entries).hasSize(2);

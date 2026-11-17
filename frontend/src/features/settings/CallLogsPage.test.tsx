@@ -1,11 +1,11 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render,screen,waitFor,within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http,HttpResponse } from "msw";
-import { MemoryRouter,Route,Routes } from "react-router";
-import { beforeEach,describe,expect,it,vi } from "vitest";
+import { http, HttpResponse } from "msw";
+import { MemoryRouter, Route, Routes } from "react-router";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { CallLog,CallLogPage,Task } from "../../shared/api/client";
+import type { CallLog, CallLogPage, Task } from "../../shared/api/client";
 import { selectValue } from "../../test/controls";
 import { server } from "../../test/server";
 import { CallLogsPage } from "./CallLogsPage";
@@ -13,26 +13,57 @@ import { CallLogsPage } from "./CallLogsPage";
 const PROJECT_ID = "b567877f-f57e-477a-a941-c61241542738";
 const TASK_ID = "f23290b2-e6f1-4864-8dce-fca53d0203cb";
 const LOG: CallLog = {
-  id: "call-1", projectId: PROJECT_ID, projectTitle: "审计测试项目", taskId: null, runId: "run-1",
-  kind: "IMAGE", operation: "SUBMIT", status: "SUCCEEDED", taskStatus: "SUCCEEDED",
-  provider: "test-provider", model: "test-model", traceId: "trace-123", providerRequestId: "provider-request-789", errorCode: null,
-  startedAt: "2026-09-26T01:00:00Z", respondedAt: "2026-09-26T01:00:02.125Z", durationMs: 2125, historical: false, mock: true,
+  id: "call-1",
+  projectId: PROJECT_ID,
+  projectTitle: "审计测试项目",
+  taskId: null,
+  runId: "run-1",
+  kind: "IMAGE",
+  operation: "SUBMIT",
+  status: "SUCCEEDED",
+  taskStatus: "SUCCEEDED",
+  provider: "test-provider",
+  model: "test-model",
+  traceId: "trace-123",
+  providerRequestId: "provider-request-789",
+  errorCode: null,
+  startedAt: "2026-09-26T01:00:00Z",
+  respondedAt: "2026-09-26T01:00:02.125Z",
+  durationMs: 2125,
+  historical: false,
+  mock: true,
 };
 const TASK: Task = {
-  id: TASK_ID, projectId: PROJECT_ID, runId: null, stepKey: "direct-image", kind: "IMAGE_GENERATION", status: "UNKNOWN",
-  cancelRequested: false, input: {}, attemptNo: 1, nextActionAt: "2026-09-26T01:00:00Z", version: 7,
-  createdAt: "2026-09-26T01:00:00Z", updatedAt: "2026-09-26T01:00:00Z",
+  id: TASK_ID,
+  projectId: PROJECT_ID,
+  runId: null,
+  stepKey: "direct-image",
+  kind: "IMAGE_GENERATION",
+  status: "UNKNOWN",
+  cancelRequested: false,
+  input: {},
+  attemptNo: 1,
+  nextActionAt: "2026-09-26T01:00:00Z",
+  version: 7,
+  createdAt: "2026-09-26T01:00:00Z",
+  updatedAt: "2026-09-26T01:00:00Z",
 };
 function page(items: CallLog[] = [LOG], overrides: Partial<CallLogPage> = {}): CallLogPage {
   return { items, page: 0, size: 20, totalElements: items.length, totalPages: items.length ? 1 : 0, ...overrides };
 }
 function showPage(path = "/settings/calls") {
   const client = createQueryClient();
-  render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]}><Routes>
-    <Route path="/settings/calls" element={<CallLogsPage />} />
-    <Route path="/login" element={<h1>登录页</h1>} />
-    <Route path="/projects/:projectId" element={<h1>项目画布</h1>} />
-  </Routes></MemoryRouter></QueryClientProvider>);
+  render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/settings/calls" element={<CallLogsPage />} />
+          <Route path="/login" element={<h1>登录页</h1>} />
+          <Route path="/projects/:projectId" element={<h1>项目画布</h1>} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
   return client;
 }
 
@@ -41,8 +72,10 @@ async function chooseDateTime(label: string, value: string) {
   const date = new Date(value);
   await user.click(screen.getByRole("button", { name: label }));
   const dialog = screen.getByRole("dialog", { name: label });
-  const findDay = () => [...dialog.querySelectorAll<HTMLButtonElement>("button[data-day]")]
-    .find((button) => button.dataset.day === date.toLocaleDateString());
+  const findDay = () =>
+    [...dialog.querySelectorAll<HTMLButtonElement>("button[data-day]")].find(
+      button => button.dataset.day === date.toLocaleDateString(),
+    );
   let day = findDay();
   for (let month = 0; !day && month < 24; month++) {
     await user.click(within(dialog).getByRole("button", { name: date < new Date() ? "上个月" : "下个月" }));
@@ -57,11 +90,27 @@ async function chooseDateTime(label: string, value: string) {
 
 describe("CallLogsPage", () => {
   it("shows system model diagnostics without a project link in list and details", async () => {
-    server.use(http.get("/api/v1/call-logs", () => HttpResponse.json(page([{ ...LOG,
-      projectId: null, projectTitle: null, taskId: null, runId: null,
-      kind: "LLM", operation: "DIAGNOSTIC", mock: false,
-    }]))), http.get("/api/v1/call-logs/:id/debug", ({ params }) =>
-      HttpResponse.json({ id: params.id, captured: false, exchanges: [] })));
+    server.use(
+      http.get("/api/v1/call-logs", () =>
+        HttpResponse.json(
+          page([
+            {
+              ...LOG,
+              projectId: null,
+              projectTitle: null,
+              taskId: null,
+              runId: null,
+              kind: "LLM",
+              operation: "DIAGNOSTIC",
+              mock: false,
+            },
+          ]),
+        ),
+      ),
+      http.get("/api/v1/call-logs/:id/debug", ({ params }) =>
+        HttpResponse.json({ id: params.id, captured: false, exchanges: [] }),
+      ),
+    );
     showPage();
     expect(await screen.findByText("系统诊断")).toBeInTheDocument();
     const table = screen.getByRole("table");
@@ -71,15 +120,28 @@ describe("CallLogsPage", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: /call-1/ }));
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText("系统诊断")).toBeInTheDocument();
-    expect([...dialog.querySelectorAll("a")].some((link) => link.getAttribute("href")?.startsWith("/projects/"))).toBe(false);
+    expect([...dialog.querySelectorAll("a")].some(link => link.getAttribute("href")?.startsWith("/projects/"))).toBe(
+      false,
+    );
   });
 
-  beforeEach(() => server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" }))));
+  beforeEach(() =>
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+    ),
+  );
 
   it("browses adjacent records inside the dialog and clears the previous debug body", async () => {
     const reads: string[] = [];
-    server.use(http.get("/api/v1/call-logs", () => HttpResponse.json(page([LOG, { ...LOG, id: "call-2", model: "second-model", traceId: "trace-456" }]))),
-      http.get("/api/v1/call-logs/:id/debug", ({ params }) => { reads.push(String(params.id)); return HttpResponse.json({ id: params.id, captured: false, exchanges: [] }); }));
+    server.use(
+      http.get("/api/v1/call-logs", () =>
+        HttpResponse.json(page([LOG, { ...LOG, id: "call-2", model: "second-model", traceId: "trace-456" }])),
+      ),
+      http.get("/api/v1/call-logs/:id/debug", ({ params }) => {
+        reads.push(String(params.id));
+        return HttpResponse.json({ id: params.id, captured: false, exchanges: [] });
+      }),
+    );
     const client = showPage();
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "查看调用详情 call-1" }));
@@ -99,10 +161,13 @@ describe("CallLogsPage", () => {
 
   it("fetches raw details only after opening the modal and clears them on close", async () => {
     const reads = vi.fn();
-    server.use(http.get("/api/v1/call-logs", () => HttpResponse.json(page())),
+    server.use(
+      http.get("/api/v1/call-logs", () => HttpResponse.json(page())),
       http.get("/api/v1/call-logs/:id/debug", ({ params }) => {
-        reads(); return HttpResponse.json({ id: params.id, captured: false, exchanges: [] });
-      }));
+        reads();
+        return HttpResponse.json({ id: params.id, captured: false, exchanges: [] });
+      }),
+    );
     const client = showPage();
     await screen.findByText("test-model");
     expect(reads).not.toHaveBeenCalled();
@@ -133,23 +198,61 @@ describe("CallLogsPage", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "查看调用详情 call-1" }));
     expect(screen.getByText("trace-123")).toBeInTheDocument();
     expect(screen.getByText("provider-request-789")).toBeInTheDocument();
-    expect(within(screen.getByRole("dialog", { name: "调用详情" })).getByRole("link", { name: "审计测试项目" })).toHaveAttribute("href", `/projects/${PROJECT_ID}`);
+    expect(
+      within(screen.getByRole("dialog", { name: "调用详情" })).getByRole("link", { name: "审计测试项目" }),
+    ).toHaveAttribute("href", `/projects/${PROJECT_ID}`);
     expect(screen.queryByRole("button", { name: "重试" })).not.toBeInTheDocument();
   });
 
   it("shows a generation ID once and separates local and provider correlation IDs", async () => {
     server.use(
-      http.get("/api/v1/call-logs", () => HttpResponse.json(page([{ ...LOG, kind: "LLM", operation: "CHAT", mock: false }]))),
-      http.get("/api/v1/call-logs/call-1/debug", () => HttpResponse.json({ id: "call-1", captured: true,
-        exchanges: [{ method: "POST", url: "https://provider.invalid/chat/completions", responseStatus: 200,
-          responseIdentifiers: { "x-trace-id": "synthetic-platform-trace", "x-request-id": "synthetic-platform-request" },
-          requestBody: null, responseBody: null }],
-        llmStream: { metrics: { schemaVersion: 2, firstChunkMs: 1, firstTextMs: 2, durationMs: 3, chunkCount: 1,
-          promptTokens: 1, completionTokens: 1, totalTokens: 2, model: LOG.model, responseId: LOG.providerRequestId,
-          finishReasons: ["STOP"], status: "COMPLETED", errorCode: null }, content: {
-            response: JSON.stringify({ id: LOG.providerRequestId, model: LOG.model,
-              choices: [{ message: { role: "assistant", content: "synthetic answer" }, finish_reason: "stop" }] }), truncated: false } },
-      })),
+      http.get("/api/v1/call-logs", () =>
+        HttpResponse.json(page([{ ...LOG, kind: "LLM", operation: "CHAT", mock: false }])),
+      ),
+      http.get("/api/v1/call-logs/call-1/debug", () =>
+        HttpResponse.json({
+          id: "call-1",
+          captured: true,
+          exchanges: [
+            {
+              method: "POST",
+              url: "https://provider.invalid/chat/completions",
+              responseStatus: 200,
+              responseIdentifiers: {
+                "x-trace-id": "synthetic-platform-trace",
+                "x-request-id": "synthetic-platform-request",
+              },
+              requestBody: null,
+              responseBody: null,
+            },
+          ],
+          llmStream: {
+            metrics: {
+              schemaVersion: 2,
+              firstChunkMs: 1,
+              firstTextMs: 2,
+              durationMs: 3,
+              chunkCount: 1,
+              promptTokens: 1,
+              completionTokens: 1,
+              totalTokens: 2,
+              model: LOG.model,
+              responseId: LOG.providerRequestId,
+              finishReasons: ["STOP"],
+              status: "COMPLETED",
+              errorCode: null,
+            },
+            content: {
+              response: JSON.stringify({
+                id: LOG.providerRequestId,
+                model: LOG.model,
+                choices: [{ message: { role: "assistant", content: "synthetic answer" }, finish_reason: "stop" }],
+              }),
+              truncated: false,
+            },
+          },
+        }),
+      ),
     );
     const user = userEvent.setup();
     showPage();
@@ -162,17 +265,21 @@ describe("CallLogsPage", () => {
     expect(screen.getByText("synthetic-platform-trace")).toBeInTheDocument();
     expect(screen.getByText("synthetic-platform-request")).toBeInTheDocument();
     const copy = vi.spyOn(navigator.clipboard, "writeText");
-    await user.click(within(screen.getByText("synthetic-platform-trace").closest("dd")!).getByRole("button", { name: "复制" }));
+    await user.click(
+      within(screen.getByText("synthetic-platform-trace").closest("dd")!).getByRole("button", { name: "复制" }),
+    );
     expect(copy).toHaveBeenCalledWith("synthetic-platform-trace");
   });
 
   it("sends applied filters and pagination to the server, resetting page when filters change", async () => {
     const requests: URLSearchParams[] = [];
-    server.use(http.get("/api/v1/call-logs", ({ request }) => {
-      const params = new URL(request.url).searchParams;
-      requests.push(params);
-      return HttpResponse.json(page([LOG], { page: Number(params.get("page")), totalElements: 21, totalPages: 2 }));
-    }));
+    server.use(
+      http.get("/api/v1/call-logs", ({ request }) => {
+        const params = new URL(request.url).searchParams;
+        requests.push(params);
+        return HttpResponse.json(page([LOG], { page: Number(params.get("page")), totalElements: 21, totalPages: 2 }));
+      }),
+    );
     const user = userEvent.setup();
     showPage(`/settings/calls?projectId=${PROJECT_ID}`);
     await screen.findByText("test-model");
@@ -188,19 +295,29 @@ describe("CallLogsPage", () => {
     await chooseDateTime("结束时间", "2026-09-26T09:00:00");
     await user.click(screen.getByRole("button", { name: "筛选日志" }));
     await waitFor(() => expect(requests.at(-1)?.get("traceId")).toBe("trace-filter"));
-    expect(Object.fromEntries(requests.at(-1)!)).toEqual({ projectId: PROJECT_ID, kind: "VIDEO", status: "UNKNOWN", traceId: "trace-filter",
-      from: new Date("2026-09-25T08:00:00").toISOString(), to: new Date("2026-09-26T09:00:00").toISOString(), page: "0", size: "20" });
+    expect(Object.fromEntries(requests.at(-1)!)).toEqual({
+      projectId: PROJECT_ID,
+      kind: "VIDEO",
+      status: "UNKNOWN",
+      traceId: "trace-filter",
+      from: new Date("2026-09-25T08:00:00").toISOString(),
+      to: new Date("2026-09-26T09:00:00").toISOString(),
+      page: "0",
+      size: "20",
+    });
     await user.click(screen.getByRole("button", { name: "清空筛选" }));
     await waitFor(() => expect(Object.fromEntries(requests.at(-1)!)).toEqual({ page: "0", size: "20" }));
   });
 
-  it.each(["", "trace-filter"])("fetches fresh logs when submitting unchanged filters (%s)", async (traceId) => {
+  it.each(["", "trace-filter"])("fetches fresh logs when submitting unchanged filters (%s)", async traceId => {
     const reads = vi.fn();
     let model = "test-model";
-    server.use(http.get("/api/v1/call-logs", () => {
-      reads();
-      return HttpResponse.json(page([{ ...LOG, model }]));
-    }));
+    server.use(
+      http.get("/api/v1/call-logs", () => {
+        reads();
+        return HttpResponse.json(page([{ ...LOG, model }]));
+      }),
+    );
     const user = userEvent.setup();
     showPage();
     await screen.findByText("test-model");
@@ -220,12 +337,19 @@ describe("CallLogsPage", () => {
   it("resets to the first page and reads it once when filtering from a later page", async () => {
     const requestedPages: string[] = [];
     let firstPageModel = "first-page-model";
-    server.use(http.get("/api/v1/call-logs", ({ request }) => {
-      const requestedPage = new URL(request.url).searchParams.get("page")!;
-      requestedPages.push(requestedPage);
-      return HttpResponse.json(page([{ ...LOG, model: requestedPage === "0" ? firstPageModel : "second-page-model" }],
-        { page: Number(requestedPage), totalElements: 21, totalPages: 2 }));
-    }));
+    server.use(
+      http.get("/api/v1/call-logs", ({ request }) => {
+        const requestedPage = new URL(request.url).searchParams.get("page")!;
+        requestedPages.push(requestedPage);
+        return HttpResponse.json(
+          page([{ ...LOG, model: requestedPage === "0" ? firstPageModel : "second-page-model" }], {
+            page: Number(requestedPage),
+            totalElements: 21,
+            totalPages: 2,
+          }),
+        );
+      }),
+    );
     const user = userEvent.setup();
     showPage();
     await screen.findByText("first-page-model");
@@ -245,11 +369,15 @@ describe("CallLogsPage", () => {
   it("reads fresh logs once when returning to a recently queried filter", async () => {
     const requestedTraceIds: string[] = [];
     let firstFilterModel = "first-filter-model";
-    server.use(http.get("/api/v1/call-logs", ({ request }) => {
-      const traceId = new URL(request.url).searchParams.get("traceId")!;
-      requestedTraceIds.push(traceId);
-      return HttpResponse.json(page([{ ...LOG, model: traceId === "trace-first" ? firstFilterModel : "second-filter-model" }]));
-    }));
+    server.use(
+      http.get("/api/v1/call-logs", ({ request }) => {
+        const traceId = new URL(request.url).searchParams.get("traceId")!;
+        requestedTraceIds.push(traceId);
+        return HttpResponse.json(
+          page([{ ...LOG, model: traceId === "trace-first" ? firstFilterModel : "second-filter-model" }]),
+        );
+      }),
+    );
     const user = userEvent.setup();
     showPage("/settings/calls?traceId=trace-first");
     await screen.findByText("first-filter-model");
@@ -269,14 +397,18 @@ describe("CallLogsPage", () => {
 
   it("disables filter actions and preserves records while an explicit read is pending", async () => {
     let finishRead: (() => void) | undefined;
-    const pendingRead = new Promise<void>((resolve) => { finishRead = resolve; });
+    const pendingRead = new Promise<void>(resolve => {
+      finishRead = resolve;
+    });
     const reads = vi.fn();
-    server.use(http.get("/api/v1/call-logs", async () => {
-      reads();
-      if (reads.mock.calls.length === 1) return HttpResponse.json(page());
-      await pendingRead;
-      return HttpResponse.json(page([{ ...LOG, model: "latest-model" }]));
-    }));
+    server.use(
+      http.get("/api/v1/call-logs", async () => {
+        reads();
+        if (reads.mock.calls.length === 1) return HttpResponse.json(page());
+        await pendingRead;
+        return HttpResponse.json(page([{ ...LOG, model: "latest-model" }]));
+      }),
+    );
     const user = userEvent.setup();
     showPage();
     await screen.findByText("test-model");
@@ -301,10 +433,12 @@ describe("CallLogsPage", () => {
     const requests: URLSearchParams[] = [];
     const from = new Date("2026-09-25T08:12:34").toISOString();
     const to = new Date("2026-09-26T09:23:45").toISOString();
-    server.use(http.get("/api/v1/call-logs", ({ request }) => {
-      requests.push(new URL(request.url).searchParams);
-      return HttpResponse.json(page());
-    }));
+    server.use(
+      http.get("/api/v1/call-logs", ({ request }) => {
+        requests.push(new URL(request.url).searchParams);
+        return HttpResponse.json(page());
+      }),
+    );
     const user = userEvent.setup();
     showPage(`/settings/calls?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
     await screen.findByText("test-model");
@@ -319,7 +453,9 @@ describe("CallLogsPage", () => {
     await user.keyboard("{Escape}");
     expect(screen.getByRole("button", { name: "开始时间" })).toHaveFocus();
     await user.click(screen.getByRole("button", { name: "开始时间" }));
-    await user.click(within(screen.getByRole("dialog", { name: "开始时间" })).getByRole("button", { name: "清空日期" }));
+    await user.click(
+      within(screen.getByRole("dialog", { name: "开始时间" })).getByRole("button", { name: "清空日期" }),
+    );
     expect(screen.getByRole("textbox", { name: "开始时间（时:分:秒）" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "筛选日志" }));
     await waitFor(() => expect(requests.at(-1)?.has("from")).toBe(false));
@@ -328,7 +464,12 @@ describe("CallLogsPage", () => {
 
   it("keeps an invalid time draft without sending a request", async () => {
     const reads = vi.fn();
-    server.use(http.get("/api/v1/call-logs", () => { reads(); return HttpResponse.json(page()); }));
+    server.use(
+      http.get("/api/v1/call-logs", () => {
+        reads();
+        return HttpResponse.json(page());
+      }),
+    );
     showPage(`/settings/calls?from=${encodeURIComponent(new Date("2026-09-25T08:00:00").toISOString())}`);
     await screen.findByText("test-model");
     const user = userEvent.setup();
@@ -343,7 +484,12 @@ describe("CallLogsPage", () => {
 
   it("rejects an inverted date range before issuing another read", async () => {
     const reads = vi.fn();
-    server.use(http.get("/api/v1/call-logs", () => { reads(); return HttpResponse.json(page()); }));
+    server.use(
+      http.get("/api/v1/call-logs", () => {
+        reads();
+        return HttpResponse.json(page());
+      }),
+    );
     showPage();
     await screen.findByText("test-model");
     await chooseDateTime("开始时间", "2026-09-27T08:00:00");
@@ -354,10 +500,27 @@ describe("CallLogsPage", () => {
   });
 
   it("keeps historical unavailable timing and IDs distinct from zero and live running states", async () => {
-    server.use(http.get("/api/v1/call-logs", () => HttpResponse.json(page([
-      { ...LOG, id: "legacy", historical: true, mock: false, operation: "LEGACY", status: "UNKNOWN", respondedAt: null, durationMs: null, traceId: null, providerRequestId: null },
-      { ...LOG, id: "running", status: "RUNNING", respondedAt: null, durationMs: null },
-    ]))));
+    server.use(
+      http.get("/api/v1/call-logs", () =>
+        HttpResponse.json(
+          page([
+            {
+              ...LOG,
+              id: "legacy",
+              historical: true,
+              mock: false,
+              operation: "LEGACY",
+              status: "UNKNOWN",
+              respondedAt: null,
+              durationMs: null,
+              traceId: null,
+              providerRequestId: null,
+            },
+            { ...LOG, id: "running", status: "RUNNING", respondedAt: null, durationMs: null },
+          ]),
+        ),
+      ),
+    );
     showPage();
     expect(await screen.findByText("历史记录")).toBeInTheDocument();
     expect(screen.getByText("等待响应")).toBeInTheDocument();
@@ -370,12 +533,18 @@ describe("CallLogsPage", () => {
 
   it("shows loading, retries a failed read, and preserves data when refreshing fails", async () => {
     let respond: (() => void) | undefined;
-    const started = new Promise<void>((resolve) => { respond = resolve; });
+    const started = new Promise<void>(resolve => {
+      respond = resolve;
+    });
     let failed = true;
-    server.use(http.get("/api/v1/call-logs", async () => {
-      await started;
-      return failed ? HttpResponse.json({ title: "Unavailable", status: 503 }, { status: 503 }) : HttpResponse.json(page());
-    }));
+    server.use(
+      http.get("/api/v1/call-logs", async () => {
+        await started;
+        return failed
+          ? HttpResponse.json({ title: "Unavailable", status: 503 }, { status: 503 })
+          : HttpResponse.json(page());
+      }),
+    );
     showPage();
     expect(await screen.findByText("正在读取调用日志")).toBeInTheDocument();
     respond?.();
@@ -398,7 +567,7 @@ describe("CallLogsPage", () => {
     expect(screen.getByRole("button", { name: "上一页" })).toBeDisabled();
   });
 
-  it.each([400, 401, 403])("handles invalid filters and unauthorized audit responses (%s)", async (status) => {
+  it.each([400, 401, 403])("handles invalid filters and unauthorized audit responses (%s)", async status => {
     server.use(http.get("/api/v1/call-logs", () => HttpResponse.json({ title: "Denied", status }, { status })));
     showPage();
     if (status === 401) expect(await screen.findByRole("heading", { name: "登录页" })).toBeInTheDocument();
@@ -411,10 +580,18 @@ describe("CallLogsPage", () => {
     const attemptReads = vi.fn();
     const created = vi.fn();
     server.use(
-      http.get("/api/v1/call-logs", () => HttpResponse.json(page([{ ...LOG, status: "UNKNOWN", taskStatus: "UNKNOWN", taskId: TASK_ID }]))),
+      http.get("/api/v1/call-logs", () =>
+        HttpResponse.json(page([{ ...LOG, status: "UNKNOWN", taskStatus: "UNKNOWN", taskId: TASK_ID }])),
+      ),
       http.get(`/api/v1/projects/${PROJECT_ID}/tasks/${TASK_ID}`, () => HttpResponse.json(TASK)),
-      http.get(`/api/v1/projects/${PROJECT_ID}/tasks/${TASK_ID}/attempts`, () => { attemptReads(); return HttpResponse.json([]); }),
-      http.post(`/api/v1/projects/${PROJECT_ID}/tasks/${TASK_ID}/new-attempt`, () => { created(); return HttpResponse.json({ ...TASK, id: "new-task", status: "READY" }); }),
+      http.get(`/api/v1/projects/${PROJECT_ID}/tasks/${TASK_ID}/attempts`, () => {
+        attemptReads();
+        return HttpResponse.json([]);
+      }),
+      http.post(`/api/v1/projects/${PROJECT_ID}/tasks/${TASK_ID}/new-attempt`, () => {
+        created();
+        return HttpResponse.json({ ...TASK, id: "new-task", status: "READY" });
+      }),
     );
     showPage();
     const user = userEvent.setup();
@@ -428,11 +605,28 @@ describe("CallLogsPage", () => {
   });
 
   it("closes the Prompt modal with Escape while keeping call details and scroll locked", async () => {
-    server.use(http.get("/api/v1/call-logs", () => HttpResponse.json(page([{ ...LOG, kind: "LLM", operation: "CHAT" }]))),
-      http.get("/api/v1/call-logs/call-1/debug", () => HttpResponse.json({ id: "call-1", captured: true,
-        exchanges: [{ method: "POST", url: "https://provider.invalid/v1/chat/completions", responseStatus: 200,
-          requestBody: { content: '{"messages":[{"role":"user","content":"hello"}]}', encoding: "UTF8", truncated: false },
-          responseBody: null }] })));
+    server.use(
+      http.get("/api/v1/call-logs", () => HttpResponse.json(page([{ ...LOG, kind: "LLM", operation: "CHAT" }]))),
+      http.get("/api/v1/call-logs/call-1/debug", () =>
+        HttpResponse.json({
+          id: "call-1",
+          captured: true,
+          exchanges: [
+            {
+              method: "POST",
+              url: "https://provider.invalid/v1/chat/completions",
+              responseStatus: 200,
+              requestBody: {
+                content: '{"messages":[{"role":"user","content":"hello"}]}',
+                encoding: "UTF8",
+                truncated: false,
+              },
+              responseBody: null,
+            },
+          ],
+        }),
+      ),
+    );
     const user = userEvent.setup();
     showPage();
     await user.click(await screen.findByRole("button", { name: "查看调用详情 call-1" }));
@@ -453,8 +647,12 @@ describe("CallLogsPage", () => {
 
   it("reads the related task's latest state instead of the logged status", async () => {
     server.use(
-      http.get("/api/v1/call-logs", () => HttpResponse.json(page([{ ...LOG, status: "UNKNOWN", taskStatus: "UNKNOWN", taskId: TASK_ID }]))),
-      http.get(`/api/v1/projects/${PROJECT_ID}/tasks/${TASK_ID}`, () => HttpResponse.json({ ...TASK, status: "WAITING_PROVIDER" })),
+      http.get("/api/v1/call-logs", () =>
+        HttpResponse.json(page([{ ...LOG, status: "UNKNOWN", taskStatus: "UNKNOWN", taskId: TASK_ID }])),
+      ),
+      http.get(`/api/v1/projects/${PROJECT_ID}/tasks/${TASK_ID}`, () =>
+        HttpResponse.json({ ...TASK, status: "WAITING_PROVIDER" }),
+      ),
     );
     showPage();
     await userEvent.setup().click(await screen.findByRole("button", { name: "查看调用详情 call-1" }));

@@ -72,20 +72,35 @@ class ArkSeedancePostgresIT {
                 () -> Base64.getEncoder().encodeToString(new byte[32]));
     }
 
-    @AfterAll static void stopServer() { SERVER.stop(0); }
+    @AfterAll
+    static void stopServer() {
+        SERVER.stop(0);
+    }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private ArtifactService artifacts;
-    @Autowired private AssetService assets;
-    @Autowired private MediaDraftService drafts;
-    @Autowired private CanvasService canvas;
-    @Autowired private DirectMediaTaskService directMedia;
-    @Autowired private MediaCapabilityService catalog;
-    @Autowired private MediaExecutionWorker worker;
-    @Autowired private TaskService tasks;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private ObjectMapper mapper;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private ArtifactService artifacts;
+    @Autowired
+    private AssetService assets;
+    @Autowired
+    private MediaDraftService drafts;
+    @Autowired
+    private CanvasService canvas;
+    @Autowired
+    private DirectMediaTaskService directMedia;
+    @Autowired
+    private MediaCapabilityService catalog;
+    @Autowired
+    private MediaExecutionWorker worker;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private ObjectMapper mapper;
 
     @Test
     void acceptedTaskPollsOnlyOriginalIdAndLostCreateResponseStaysUnknown() {
@@ -184,7 +199,10 @@ class ArkSeedancePostgresIT {
                     assertThat(body.path("content").get(1).path("role").asText())
                             .isEqualTo("first_frame");
                     CREATES.incrementAndGet();
-                    if (DROP_NEXT_CREATE.getAndSet(false)) { exchange.close(); return; }
+                    if (DROP_NEXT_CREATE.getAndSet(false)) {
+                        exchange.close();
+                        return;
+                    }
                     respond(exchange, "{\"id\":\"" + TASK_ID + "\"}");
                 } else {
                     assertThat(exchange.getRequestURI().getPath())
@@ -205,12 +223,15 @@ class ArkSeedancePostgresIT {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json");
         exchange.sendResponseHeaders(200, bytes.length);
-        try (var output = exchange.getResponseBody()) { output.write(bytes); }
+        try (var output = exchange.getResponseBody()) {
+            output.write(bytes);
+        }
     }
 
     @TestConfiguration
     static class FakeClient {
-        @Bean @Primary
+        @Bean
+        @Primary
         ArkSeedanceClient fakeArkSeedanceClient(ObjectMapper mapper) {
             return new ArkSeedanceClient(mapper,
                     URI.create("http://127.0.0.1:" + SERVER.getAddress().getPort()));
@@ -219,5 +240,6 @@ class ArkSeedancePostgresIT {
 
     /** 直连视频任务的固定输入：视频卡片、作为关键帧的图片产物和已保存的草稿版本。 */
     private record Fixture(Project project, ArtifactService.ArtifactView card,
-            ArtifactService.ArtifactView keyframe, UUID canvasItemId, long draftVersion) {}
+            ArtifactService.ArtifactView keyframe, UUID canvasItemId, long draftVersion) {
+    }
 }

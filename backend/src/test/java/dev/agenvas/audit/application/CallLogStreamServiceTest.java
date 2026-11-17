@@ -23,9 +23,11 @@ import org.springframework.ai.chat.model.Generation;
 class CallLogStreamServiceTest {
     private final CallLogRepository repository = mock(CallLogRepository.class);
     private final AsyncCallLogWriter writer = mock(AsyncCallLogWriter.class);
-    private final CallLogService service = new CallLogService(repository, Clock.fixed(Instant.EPOCH, ZoneOffset.UTC), writer);
+    private final CallLogService service = new CallLogService(repository, Clock.fixed(Instant.EPOCH, ZoneOffset.UTC),
+            writer);
 
-    @Test void durableStartPrecedesStreamAndActualBodyContentIsEnqueued() {
+    @Test
+    void durableStartPrecedesStreamAndActualBodyContentIsEnqueued() {
         when(repository.isDebugEnabled()).thenReturn(true);
         MDC.put("traceId", "parent");
         try {
@@ -43,15 +45,21 @@ class CallLogStreamServiceTest {
             assertThat(DebugHttpCapture.enabled()).isFalse();
             var captured = ArgumentCaptor.forClass(LlmStreamLog.class);
             verify(writer).submit(any(), any(), any(), anyLong(), captured.capture(), anyList(), eq(true));
-            assertThat(captured.getValue().content().response()).contains("<think>private</think>", "sk-synthetic-unusable-secret")
+            assertThat(captured.getValue().content().response())
+                    .contains("<think>private</think>", "sk-synthetic-unusable-secret")
                     .doesNotContain("[REDACTED]");
             verify(repository, never()).finish(any(), any(), any(), anyLong());
-        } finally { MDC.clear(); }
+        } finally {
+            MDC.clear();
+        }
     }
 
-    @Test void disabledBodiesAreDroppedEvenIfAdapterAccidentallySuppliesContent() {
+    @Test
+    void disabledBodiesAreDroppedEvenIfAdapterAccidentallySuppliesContent() {
         service.recordStream(descriptor(), (capture, listener) -> {
-            assertThat(capture).isFalse(); listener.accept(log("synthetic private content")); return "ok";
+            assertThat(capture).isFalse();
+            listener.accept(log("synthetic private content"));
+            return "ok";
         }, ignored -> CallLogService.CallOutcome.succeeded(null));
         var captured = ArgumentCaptor.forClass(LlmStreamLog.class);
         verify(writer).submit(any(), any(), any(), anyLong(), captured.capture(), anyList(), eq(false));
@@ -59,16 +67,20 @@ class CallLogStreamServiceTest {
         assertThat(captured.getValue().metrics().firstTextMs()).isNotNull();
     }
 
-    @Test void persistsOneAssembledHttpResponseInsteadOfDuplicateSdkAndHttpBodies() throws Exception {
+    @Test
+    void persistsOneAssembledHttpResponseInsteadOfDuplicateSdkAndHttpBodies() throws Exception {
         when(repository.isDebugEnabled()).thenReturn(true);
         String events = "data: {\"id\":\"synthetic-response\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"wire answer\","
                 + "\"reasoning_content\":\"wire reasoning\"}}]}\n\ndata: [DONE]\n\n";
         service.recordStream(descriptor(), (capture, listener) -> {
-            int id = DebugHttpCapture.begin("POST", "https://provider.invalid/chat", "{}".getBytes(java.nio.charset.StandardCharsets.UTF_8), "application/json");
+            int id = DebugHttpCapture.begin("POST", "https://provider.invalid/chat",
+                    "{}".getBytes(java.nio.charset.StandardCharsets.UTF_8), "application/json");
             try (var body = DebugHttpCapture.responseStream(id, 200, "text/event-stream",
                     new java.io.ByteArrayInputStream(events.getBytes(java.nio.charset.StandardCharsets.UTF_8)))) {
                 body.readAllBytes();
-            } catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
+            } catch (java.io.IOException failure) {
+                throw new java.io.UncheckedIOException(failure);
+            }
             listener.accept(log("sdk answer"));
             return "result";
         }, ignored -> CallLogService.CallOutcome.succeeded(null));
@@ -84,7 +96,8 @@ class CallLogStreamServiceTest {
         assertThat(exchange.requestBody().content()).isEqualTo("{}");
     }
 
-    @Test void preservesHttpCorrelationIdsWhenStreamBodyMovesIntoSingleSummary() throws Exception {
+    @Test
+    void preservesHttpCorrelationIdsWhenStreamBodyMovesIntoSingleSummary() throws Exception {
         when(repository.isDebugEnabled()).thenReturn(true);
         var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/chat", http -> {
@@ -101,11 +114,15 @@ class CallLogStreamServiceTest {
         try {
             service.recordStream(descriptor(), (capture, listener) -> {
                 var client = new okhttp3.OkHttpClient.Builder().addInterceptor(DebugHttpCapture.interceptor()).build();
-                var request = new okhttp3.Request.Builder().url("http://127.0.0.1:" + server.getAddress().getPort() + "/chat")
+                var request = new okhttp3.Request.Builder()
+                        .url("http://127.0.0.1:" + server.getAddress().getPort() + "/chat")
                         .post(okhttp3.RequestBody.create("{}", okhttp3.MediaType.get("application/json")));
                 DebugHttpCapture.requestHeaders().forEach(request::header);
-                try (var response = client.newCall(request.build()).execute()) { response.body().string(); }
-                catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
+                try (var response = client.newCall(request.build()).execute()) {
+                    response.body().string();
+                } catch (java.io.IOException failure) {
+                    throw new java.io.UncheckedIOException(failure);
+                }
                 listener.accept(log("sdk answer"));
                 return "result";
             }, ignored -> CallLogService.CallOutcome.succeeded("synthetic-response"));
@@ -114,14 +131,19 @@ class CallLogStreamServiceTest {
             assertThat(exchanges.getValue().getFirst().responseBody()).isNull();
             assertThat(exchanges.getValue().getFirst().responseIdentifiers())
                     .containsEntry("x-trace-id", "synthetic-platform-trace");
-        } finally { server.stop(0); }
+        } finally {
+            server.stop(0);
+        }
     }
 
-    @Test void originalFailureAndPartialLogSurviveWithoutModelRetry() {
+    @Test
+    void originalFailureAndPartialLogSurviveWithoutModelRetry() {
         AtomicInteger calls = new AtomicInteger();
         RuntimeException failure = new IllegalStateException("synthetic private failure");
         assertThatThrownBy(() -> service.recordStream(descriptor(), (capture, listener) -> {
-            calls.incrementAndGet(); listener.accept(log("partial")); throw failure;
+            calls.incrementAndGet();
+            listener.accept(log("partial"));
+            throw failure;
         }, ignored -> CallLogService.CallOutcome.succeeded(null))).isSameAs(failure);
         assertThat(calls).hasValue(1);
         var outcome = ArgumentCaptor.forClass(CallLogService.CallOutcome.class);
@@ -131,22 +153,27 @@ class CallLogStreamServiceTest {
         assertThat(MDC.get("traceId")).isNull();
     }
 
-    @Test void oversizedHttpAggregateUsesOneBoundedSdkPrefixWithAPartialMarker() {
+    @Test
+    void oversizedHttpAggregateUsesOneBoundedSdkPrefixWithAPartialMarker() {
         when(repository.isDebugEnabled()).thenReturn(true);
         service.recordStream(descriptor(), (capture, listener) -> {
-            String response = "{\"choices\":[{\"message\":{\"content\":\"" + "x".repeat(LlmStreamLog.MAX_CONTENT_BYTES) + "\"}}]}";
+            String response = "{\"choices\":[{\"message\":{\"content\":\"" + "x".repeat(LlmStreamLog.MAX_CONTENT_BYTES)
+                    + "\"}}]}";
             int id = DebugHttpCapture.begin("POST", "https://provider.invalid/chat", null, null);
             try (var body = DebugHttpCapture.responseStream(id, 200, "application/json",
                     new java.io.ByteArrayInputStream(response.getBytes(java.nio.charset.StandardCharsets.UTF_8)))) {
                 body.readAllBytes();
-            } catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
+            } catch (java.io.IOException failure) {
+                throw new java.io.UncheckedIOException(failure);
+            }
             listener.accept(log("bounded sdk prefix"));
             return "result";
         }, ignored -> CallLogService.CallOutcome.succeeded(null));
         var log = ArgumentCaptor.forClass(LlmStreamLog.class);
         ArgumentCaptor<List<DebugHttpCapture.Exchange>> exchanges = ArgumentCaptor.captor();
         verify(writer).submit(any(), any(), any(), anyLong(), log.capture(), exchanges.capture(), eq(true));
-        assertThat(log.getValue().content().response()).contains("bounded sdk prefix").hasSizeLessThan(LlmStreamLog.MAX_CONTENT_BYTES);
+        assertThat(log.getValue().content().response()).contains("bounded sdk prefix")
+                .hasSizeLessThan(LlmStreamLog.MAX_CONTENT_BYTES);
         assertThat(log.getValue().content().truncated()).isTrue();
         assertThat(exchanges.getValue().getFirst().responseBody()).isNull();
     }

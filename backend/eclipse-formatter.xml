@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<profiles version="23">
+    <profile kind="CodeFormatterProfile" name="Agenvas" version="23">
+        <setting id="org.eclipse.jdt.core.compiler.source" value="21"/>
+        <setting id="org.eclipse.jdt.core.compiler.compliance" value="21"/>
+        <setting id="org.eclipse.jdt.core.compiler.codegen.targetPlatform" value="21"/>
+        <setting id="org.eclipse.jdt.core.formatter.tabulation.char" value="space"/>
+        <setting id="org.eclipse.jdt.core.formatter.tabulation.size" value="4"/>
+        <setting id="org.eclipse.jdt.core.formatter.indentation.size" value="4"/>
+        <setting id="org.eclipse.jdt.core.formatter.continuation_indentation" value="2"/>
+        <setting id="org.eclipse.jdt.core.formatter.lineSplit" value="120"/>
+        <setting id="org.eclipse.jdt.core.formatter.join_wrapped_lines" value="false"/>
+        <setting id="org.eclipse.jdt.core.formatter.indent_switchstatements_compare_to_switch" value="true"/>
+        <!-- Preserve SQL, prompts and fixtures byte-for-byte inside text blocks. -->
+        <setting id="org.eclipse.jdt.core.formatter.text_block_indentation" value="3"/>
+        <setting id="org.eclipse.jdt.core.formatter.comment.format_javadoc_comments" value="false"/>
+        <setting id="org.eclipse.jdt.core.formatter.comment.format_block_comments" value="false"/>
+        <setting id="org.eclipse.jdt.core.formatter.comment.format_line_comments" value="false"/>
+    </profile>
+</profiles>

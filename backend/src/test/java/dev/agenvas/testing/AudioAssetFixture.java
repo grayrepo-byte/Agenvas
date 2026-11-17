@@ -9,9 +9,11 @@ import java.util.UUID;
 
 /** Archives synthetic silence through the real audio decoding and metadata path, without a Provider. */
 public final class AudioAssetFixture {
-    private AudioAssetFixture() {}
+    private AudioAssetFixture() {
+    }
 
-    public static UUID archive(AssetService assets, MediaToolRunner tools, UUID ownerId, UUID projectId) throws IOException {
+    public static UUID archive(AssetService assets, MediaToolRunner tools, UUID ownerId, UUID projectId)
+            throws IOException {
         var source = Files.createTempFile("agenvas-synthetic-audio-", ".wav");
         try {
             tools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i",

@@ -71,18 +71,30 @@ class PromptInjectionPostgresIT {
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private ArtifactService artifacts;
-    @Autowired private AssetService assets;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private CanvasService canvas;
-    @Autowired private AgentRunService runs;
-    @Autowired private AgentTurnWorker worker;
-    @Autowired private TaskService tasks;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private ObjectMapper mapper;
-    @Autowired private HostileGateway gateway;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private ArtifactService artifacts;
+    @Autowired
+    private AssetService assets;
+    @Autowired
+    private AgentInstanceService agents;
+    @Autowired
+    private CanvasService canvas;
+    @Autowired
+    private AgentRunService runs;
+    @Autowired
+    private AgentTurnWorker worker;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private ObjectMapper mapper;
+    @Autowired
+    private HostileGateway gateway;
 
     @Test
     void requestedCanvasTextStaysToolDataAndForgedApprovalNeverCreatesTasks() {
@@ -99,8 +111,10 @@ class PromptInjectionPostgresIT {
         var reference = artifacts.create(owner.userId(), project.id(), Artifact.Kind.TEXT,
                 "Untrusted reference", content);
         var agent = configureDirector(agents, owner.userId(), project.id(), "Creator", "Use the reference");
-        canvas.apply(owner.userId(), project.id(), List.of(new CanvasService.PlaceArtifact(UUID.randomUUID(), reference.artifact().id(),
-                java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO, new java.math.BigDecimal("320"), new java.math.BigDecimal("200"), 0, null, false)));
+        canvas.apply(owner.userId(), project.id(),
+                List.of(new CanvasService.PlaceArtifact(UUID.randomUUID(), reference.artifact().id(),
+                        java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO, new java.math.BigDecimal("320"),
+                        new java.math.BigDecimal("200"), 0, null, false)));
         AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
                 "Create a safe three-shot plan", "injection-run").run();
         gateway.readReferenceBeforeInjection(run.id());
@@ -118,11 +132,10 @@ class PromptInjectionPostgresIT {
                 .extracting(Task::kind).containsOnly(Task.Kind.AGENT_TURN);
         assertThat(tasks.listByRun(owner.userId(), project.id(), run.id()))
                 .filteredOn(task -> task.status() == Task.Status.FAILED)
-                .singleElement().satisfies(task ->
-                        assertThat(task.errorCode()).isEqualTo("MODEL_OUTPUT_INVALID"));
+                .singleElement().satisfies(task -> assertThat(task.errorCode()).isEqualTo("MODEL_OUTPUT_INVALID"));
         assertToolExecutions(run.id(), 2);
         assertThat(jdbc.sql("select count(*) from llm_turn where run_id = :runId "
-                        + "and status = 'RESPONDED'")
+                + "and status = 'RESPONDED'")
                 .param("runId", run.id()).query(Long.class).single()).isEqualTo(6);
         // The committed reads contain hostile material, but forged approval never creates media work.
         assertThat(jdbc.sql("select count(*) from asset")
@@ -198,18 +211,17 @@ class PromptInjectionPostgresIT {
         assertThat(runs.get(owner.userId(), project.id(), run.id()).status())
                 .isEqualTo(AgentRun.Status.FAILED);
         assertThat(jdbc.sql("select count(*) from usage_ledger where project_id = :projectId "
-                        + "and task_id is not null and entry_type = 'RESERVATION'")
+                + "and task_id is not null and entry_type = 'RESERVATION'")
                 .param("projectId", project.id()).query(Long.class).single()).isZero();
         assertThat(jdbc.sql("select count(*) from task where project_id = :projectId "
-                        + "and kind in ('IMAGE_GENERATION', 'VIDEO_GENERATION')")
+                + "and kind in ('IMAGE_GENERATION', 'VIDEO_GENERATION')")
                 .param("projectId", project.id()).query(Long.class).single()).isZero();
         assertThat(gateway.requests).hasSize(firstRequestIndex + 6);
         List<Message> imageRequest = gateway.requests.get(firstRequestIndex);
         assertThat(imageRequest.stream().filter(SystemMessage.class::isInstance)
                 .map(Message::getText)).noneMatch(text -> text.contains(malicious));
         assertThat(imageRequest.stream().filter(UserMessage.class::isInstance)
-                .map(UserMessage.class::cast)).allSatisfy(message ->
-                        assertThat(message.getMedia()).isEmpty());
+                .map(UserMessage.class::cast)).allSatisfy(message -> assertThat(message.getMedia()).isEmpty());
         assertThat(imageRequest.stream().map(Message::getText))
                 .noneMatch(text -> text.contains(malicious));
         assertThat(imageRequest.stream().map(Message::getText)).noneMatch(text -> text.contains(assetId.toString()));
@@ -269,8 +281,9 @@ class PromptInjectionPostgresIT {
         private final List<List<Message>> requests = new CopyOnWriteArrayList<>();
         private final java.util.Set<UUID> referenceRuns = java.util.concurrent.ConcurrentHashMap.newKeySet();
         private final Map<UUID, java.util.concurrent.atomic.AtomicInteger> calls = new java.util.concurrent.ConcurrentHashMap<>();
-        void readReferenceBeforeInjection(UUID runId) { referenceRuns.add(runId); }
-
+        void readReferenceBeforeInjection(UUID runId) {
+            referenceRuns.add(runId);
+        }
 
         @Override
         public Exchange call(List<Message> messages, List<ToolCallback> tools,
@@ -281,26 +294,32 @@ class PromptInjectionPostgresIT {
             if (tools.size() == 1 && "load_toolset".equals(tools.getFirst().getToolDefinition().name())) {
                 var discovery = AssistantMessage.builder().content("").toolCalls(List.of(
                         new AssistantMessage.ToolCall("load-reference-tools", "function", "load_toolset",
-                                "{\"toolsets\":[\"CANVAS\",\"TEXT\"]}"))).build();
+                                "{\"toolsets\":[\"CANVAS\",\"TEXT\"]}")))
+                        .build();
                 return new Exchange(1, new ChatResponse(List.of(new Generation(discovery))));
             }
             assertThat(tools).extracting(tool -> tool.getToolDefinition().name())
                     .contains("read_canvas", "read_artifacts", "create_text");
             UUID runId = UUID.fromString(toolContext.get("runId").toString());
-            int call = calls.computeIfAbsent(runId, ignored -> new java.util.concurrent.atomic.AtomicInteger()).getAndIncrement();
+            int call = calls.computeIfAbsent(runId, ignored -> new java.util.concurrent.atomic.AtomicInteger())
+                    .getAndIncrement();
             if (referenceRuns.contains(runId) && call < 2) {
                 String name = call == 0 ? "read_canvas" : "read_artifacts";
                 String arguments = "{}";
                 if (call == 1) {
-                    var prior = messages.stream().filter(org.springframework.ai.chat.messages.ToolResponseMessage.class::isInstance)
+                    var prior = messages.stream()
+                            .filter(org.springframework.ai.chat.messages.ToolResponseMessage.class::isInstance)
                             .map(org.springframework.ai.chat.messages.ToolResponseMessage.class::cast)
                             .flatMap(message -> message.getResponses().stream())
-                            .filter(reply -> reply.name().equals("read_canvas")).reduce((left, right) -> right).orElseThrow();
-                    String versionId = new ObjectMapper().readTree(prior.responseData()).at("/data/0/selectedVersionId").asText();
+                            .filter(reply -> reply.name().equals("read_canvas")).reduce((left, right) -> right)
+                            .orElseThrow();
+                    String versionId = new ObjectMapper().readTree(prior.responseData()).at("/data/0/selectedVersionId")
+                            .asText();
                     arguments = "{\"versionIds\":[\"" + versionId + "\"]}";
                 }
                 var response = AssistantMessage.builder().content("").toolCalls(List.of(
-                        new AssistantMessage.ToolCall("requested-reference-" + call, "function", name, arguments))).build();
+                        new AssistantMessage.ToolCall("requested-reference-" + call, "function", name, arguments)))
+                        .build();
                 return new Exchange(1, new ChatResponse(List.of(new Generation(response))));
             }
             AssistantMessage response = AssistantMessage.builder().content("")

@@ -9,7 +9,8 @@ import tools.jackson.databind.ObjectMapper;
 class ProviderResultManifestTest {
     private final ObjectMapper mapper = new ObjectMapper();
 
-    @Test void oldManifestsWithoutProviderMetadataKeepItAbsent() {
+    @Test
+    void oldManifestsWithoutProviderMetadataKeepItAbsent() {
         var manifest = mapper.readValue("""
                 {"schemaVersion":1,"results":[{"ordinal":0,"nodeId":"1","kind":"VIDEO","primary":true,"url":"https://cdn.example.com/video.mp4"}],"usage":{}}
                 """, ProviderResultManifest.class);
@@ -19,7 +20,8 @@ class ProviderResultManifestTest {
         assertThat(manifest.usage()).isEqualTo(mapper.createObjectNode());
     }
 
-    @Test void explicitJsonNullOptionalFieldsKeepTheirAbsentMeaning() {
+    @Test
+    void explicitJsonNullOptionalFieldsKeepTheirAbsentMeaning() {
         var manifest = mapper.readValue("""
                 {"schemaVersion":1,"results":[{"ordinal":0,"nodeId":"1","kind":"VIDEO","primary":true,"url":"https://cdn.example.com/video.mp4","providerMetadata":null}],"usage":null}
                 """, ProviderResultManifest.class);
@@ -28,15 +30,18 @@ class ProviderResultManifestTest {
         assertThat(manifest.usage()).isNull();
     }
 
-    @Test void absentProviderMetadataSurvivesPersistenceRoundTrip() {
+    @Test
+    void absentProviderMetadataSurvivesPersistenceRoundTrip() {
         var result = new ProviderResultManifest.Result(0, "1", RunningHubDefinition.OutputKind.VIDEO, true,
-                "https://cdn.example.com/result.zip", new ProviderResultManifest.ArchiveEntry("video.mp4", "a".repeat(64)));
+                "https://cdn.example.com/result.zip",
+                new ProviderResultManifest.ArchiveEntry("video.mp4", "a".repeat(64)));
         var manifest = new ProviderResultManifest(1, List.of(result), mapper.createObjectNode());
 
         assertThat(roundTrip(manifest)).isEqualTo(manifest);
     }
 
-    @Test void absentUsageSurvivesPersistenceRoundTrip() {
+    @Test
+    void absentUsageSurvivesPersistenceRoundTrip() {
         var result = new ProviderResultManifest.Result(0, "1", RunningHubDefinition.OutputKind.IMAGE, true,
                 "https://cdn.example.com/image.png", null, mapper.readTree("{\"z_index\":0}"));
         var manifest = new ProviderResultManifest(1, List.of(result), null);
@@ -44,7 +49,8 @@ class ProviderResultManifestTest {
         assertThat(roundTrip(manifest)).isEqualTo(manifest);
     }
 
-    @Test void providerMetadataAndUnknownUsageValuesSurvivePersistenceRoundTrip() {
+    @Test
+    void providerMetadataAndUnknownUsageValuesSurvivePersistenceRoundTrip() {
         var metadata = mapper.readTree("{\"z_index\":0,\"bounding_box\":{\"absolute\":[10,20,42,52]},\"label\":null}");
         var usage = mapper.readTree("{\"consumeMoney\":null,\"consumeCoins\":3}");
         var result = new ProviderResultManifest.Result(0, "1", RunningHubDefinition.OutputKind.IMAGE, true,

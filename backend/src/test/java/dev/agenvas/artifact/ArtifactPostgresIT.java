@@ -45,13 +45,11 @@ import tools.jackson.databind.ObjectMapper;
 /** PostgreSQL evidence for immutable content, typed references, and concurrent revision CAS. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(
-        classes = AgenvasApplication.class)
+@SpringBootTest(classes = AgenvasApplication.class)
 class ArtifactPostgresIT {
 
     @Container
-    static final PostgreSQLContainer POSTGRES =
-            new PostgreSQLContainer("postgres:17.11-alpine");
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
 
     @DynamicPropertySource
     static void postgresProperties(DynamicPropertyRegistry properties) {
@@ -84,8 +82,8 @@ class ArtifactPostgresIT {
     @Test
     void versionsAreImmutableAndTypedMediaReferencesAreProjectScoped() throws Exception {
         assertThat(jdbcClient.sql("select version from flyway_schema_history order by installed_rank desc limit 1")
-                        .query(String.class)
-                        .single())
+                .query(String.class)
+                .single())
                 .isEqualTo(MigrationVersions.latest());
         AdminPrincipal owner = identityService.setup("artifact-admin", "artifact-password-123");
         Project project = projectService.create(
@@ -128,7 +126,7 @@ class ArtifactPostgresIT {
                 json("{\"format\":\"MARKDOWN\",\"text\":\"Revised\"}"));
         assertThat(revisedText.artifact().version()).isEqualTo(1);
         assertThat(artifactService.listVersions(
-                        owner.userId(), project.id(), text.artifact().id()))
+                owner.userId(), project.id(), text.artifact().id()))
                 .extracting(version -> version.content().get("text").stringValue())
                 .containsExactly("Revised", "Initial");
         assertThatThrownByCode(
@@ -189,7 +187,7 @@ class ArtifactPostgresIT {
         assertThat(repinnedVideo.resourceDefaultVersion().baseVersionId())
                 .isEqualTo(firstVideo.resourceDefaultVersion().id());
         assertThat(artifactService.listVersions(
-                        owner.userId(), project.id(), firstVideo.artifact().id()))
+                owner.userId(), project.id(), firstVideo.artifact().id()))
                 .extracting(version -> version.baseVersionId())
                 .containsExactly(firstVideo.resourceDefaultVersion().id(), null);
 

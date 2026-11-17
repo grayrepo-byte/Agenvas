@@ -36,7 +36,8 @@ class LocalCompositionRetryTest {
     @ParameterizedTest
     @EnumSource(Task.Initiator.class)
     void explicitRetryKeepsExactInputsButBecomesAZeroCostUserDelegation(Task.Initiator initiator) {
-        UUID owner = UUID.randomUUID(), project = UUID.randomUUID(), taskId = UUID.randomUUID(), artifactId = UUID.randomUUID();
+        UUID owner = UUID.randomUUID(), project = UUID.randomUUID(), taskId = UUID.randomUUID(),
+                artifactId = UUID.randomUUID();
         var repository = mock(TaskRepository.class);
         var tasks = mock(TaskService.class);
         var catalog = mock(MediaCapabilityService.class);
@@ -46,15 +47,18 @@ class LocalCompositionRetryTest {
         var service = new ManualUnknownRetryService(tasks, repository, catalog, mock(ProjectService.class), artifacts,
                 usage, events, mapper, Clock.fixed(NOW, ZoneOffset.UTC));
         var input = mapper.createObjectNode().put("durationSeconds", 3).put("sourceDurationMs", 3000);
-        input.putObject("videoComposition").putArray("shots").addObject().put("videoVersionId", UUID.randomUUID().toString());
+        input.putObject("videoComposition").putArray("shots").addObject().put("videoVersionId",
+                UUID.randomUUID().toString());
         input.putObject("compositionOrigin").put("runId", "original-source");
         if (initiator == Task.Initiator.BUILTIN_AGENT) {
             String runId = UUID.randomUUID().toString();
             input.put("compositionRunId", runId);
             input.putObject("agentLocalOrigin").put("runId", runId).put("operationId", UUID.randomUUID().toString());
         }
-        if (initiator == Task.Initiator.EXTERNAL_MCP) input.put("initiator", "EXTERNAL_MCP")
-                .put("mcpTokenId", UUID.randomUUID().toString()).put("mcpOperationId", UUID.randomUUID().toString());
+        if (initiator == Task.Initiator.EXTERNAL_MCP)
+            input.put("initiator", "EXTERNAL_MCP")
+                    .put("mcpTokenId", UUID.randomUUID().toString())
+                    .put("mcpOperationId", UUID.randomUUID().toString());
         var original = new Task(taskId, project, null, "original", Task.Kind.VIDEO_GENERATION, Task.Status.UNKNOWN,
                 false, input, Sha256.hex(input.toString()), null, null, 1, NOW, null, null, 1, 2, null, NOW, NOW, null);
         var binding = new MediaCapabilityBinding(UUID.randomUUID(), 1, UUID.randomUUID(), 1,
@@ -87,7 +91,7 @@ class LocalCompositionRetryTest {
                 replacement.id(), owner, original.version(), "explicit-retry", NOW));
         var published = ArgumentCaptor.forClass(ProjectEventService.EventDraft.class);
         verify(events, times(2)).append(eq(owner), eq(project), published.capture());
-        assertThat(published.getAllValues()).allSatisfy(event ->
-                assertThat(event.payload().path("possibleExternalCost").asBoolean()).isFalse());
+        assertThat(published.getAllValues())
+                .allSatisfy(event -> assertThat(event.payload().path("possibleExternalCost").asBoolean()).isFalse());
     }
 }

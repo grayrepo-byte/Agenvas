@@ -71,7 +71,8 @@ public class AgentConversationService {
     @Transactional(readOnly = true)
     public AgentConversation resolve(UUID ownerId, UUID projectId, UUID agentId, UUID requestedId) {
         agents.get(ownerId, projectId, agentId);
-        return requestedId == null ? conversations.current(ownerId, projectId, agentId).orElse(null)
+        return requestedId == null
+                ? conversations.current(ownerId, projectId, agentId).orElse(null)
                 : get(ownerId, projectId, agentId, requestedId);
     }
 
@@ -85,7 +86,9 @@ public class AgentConversationService {
     @Transactional
     public AgentConversation create(UUID ownerId, UUID projectId, UUID agentId, String requestedKey) {
         String key = requestedKey == null ? "" : requestedKey.trim();
-        if (key.isEmpty() || key.length() > 200) throw validation(ApiMessage.of("api.agent-conversation-service.idempotency-key-must-be-1-to-200-characters"));
+        if (key.isEmpty() || key.length() > 200)
+            throw validation(
+                    ApiMessage.of("api.agent-conversation-service.idempotency-key-must-be-1-to-200-characters"));
         projects.requireActiveProject(ownerId, projectId);
         agents.get(ownerId, projectId, agentId);
         String scope = "agent:" + agentId + ":create-conversation";
@@ -93,8 +96,12 @@ public class AgentConversationService {
         Instant now = clock.instant();
         if (!runs.reserveIdempotency(ownerId, scope, key, hash, now.plus(KEY_RETENTION), now)) {
             var prior = runs.findIdempotency(ownerId, scope, key).orElseThrow(this::notFound);
-            if (!hash.equals(prior.requestHash())) throw validation(ApiMessage.of("api.agent-conversation-service.idempotent-keys-are-not-part-of-this-session-request"));
-            if (prior.resourceId() == null) throw conflict(ApiMessage.of("api.agent-conversation-service.the-same-session-request-is-being-processed-please-try-again"));
+            if (!hash.equals(prior.requestHash()))
+                throw validation(ApiMessage
+                        .of("api.agent-conversation-service.idempotent-keys-are-not-part-of-this-session-request"));
+            if (prior.resourceId() == null)
+                throw conflict(ApiMessage.of(
+                        "api.agent-conversation-service.the-same-session-request-is-being-processed-please-try-again"));
             return get(ownerId, projectId, agentId, prior.resourceId());
         }
         return events.recordChange(ownerId, projectId, () -> {
@@ -112,7 +119,8 @@ public class AgentConversationService {
     public AgentConversation select(UUID ownerId, UUID projectId, UUID agentId, UUID conversationId) {
         return events.recordChange(ownerId, projectId, () -> {
             AgentConversation selected = get(ownerId, projectId, agentId, conversationId);
-            if (!conversations.select(ownerId, projectId, agentId, conversationId)) throw notFound();
+            if (!conversations.select(ownerId, projectId, agentId, conversationId))
+                throw notFound();
             return ProjectEventService.Change.changed(selected, event(ownerId, selected));
         }).value();
     }
@@ -122,12 +130,15 @@ public class AgentConversationService {
     public AgentConversation appendTurn(UUID ownerId, AgentConversation before, String instruction,
             Long expectedVersion, Instant now) {
         if (expectedVersion != null && expectedVersion != before.version()) {
-            throw conflict(ApiMessage.of("api.agent-run-service.there-is-a-new-message-in-the-conversation-please-recheck"));
+            throw conflict(
+                    ApiMessage.of("api.agent-run-service.there-is-a-new-message-in-the-conversation-please-recheck"));
         }
         int end = instruction.offsetByCodePoints(0,
                 Math.min(TITLE_LENGTH, instruction.codePointCount(0, instruction.length())));
         if (!conversations.appendTurn(before.projectId(), before.id(), before.version(),
-                instruction.substring(0, end), now)) throw conflict(ApiMessage.of("api.agent-conversation-service.the-session-version-has-changed-please-read-again"));
+                instruction.substring(0, end), now))
+            throw conflict(
+                    ApiMessage.of("api.agent-conversation-service.the-session-version-has-changed-please-read-again"));
         return get(ownerId, before.projectId(), before.agentInstanceId(), before.id());
     }
 
@@ -142,7 +153,8 @@ public class AgentConversationService {
         AgentConversation created = new AgentConversation(UUID.randomUUID(), projectId, agentId,
                 "新会话", 0, 0, now, now);
         conversations.create(created);
-        if (!conversations.select(ownerId, projectId, agentId, created.id())) throw notFound();
+        if (!conversations.select(ownerId, projectId, agentId, created.id()))
+            throw notFound();
         return created;
     }
 
@@ -151,27 +163,35 @@ public class AgentConversationService {
         payload.put("agentId", conversation.agentInstanceId().toString());
         payload.put("conversationId", conversation.id().toString());
         var current = conversations.current(ownerId, conversation.projectId(), conversation.agentInstanceId());
-        if (current.isPresent()) payload.put("currentConversationId", current.get().id().toString());
-        else payload.putNull("currentConversationId");
+        if (current.isPresent())
+            payload.put("currentConversationId", current.get().id().toString());
+        else
+            payload.putNull("currentConversationId");
         return new ProjectEventService.EventDraft("agent.conversation.changed", 1,
                 conversation.id(), conversation.version(), payload);
     }
 
     private int pageSize(Integer requested) {
         int limit = requested == null ? DEFAULT_PAGE_SIZE : requested;
-        if (limit < 1 || limit > MAX_PAGE_SIZE) throw validation(ApiMessage.of("api.project-service.limit-must-be-between-1-and-100"));
+        if (limit < 1 || limit > MAX_PAGE_SIZE)
+            throw validation(ApiMessage.of("api.project-service.limit-must-be-between-1-and-100"));
         return limit;
     }
 
     private Cursor decodeCursor(String value) {
-        if (value == null) return null;
-        if (value.isBlank() || value.length() > 160) throw validation(ApiMessage.of("api.project-service.the-cursor-is-invalid-or-corrupt"));
+        if (value == null)
+            return null;
+        if (value.isBlank() || value.length() > 160)
+            throw validation(ApiMessage.of("api.project-service.the-cursor-is-invalid-or-corrupt"));
         try {
             String[] parts = new String(Base64.getUrlDecoder().decode(value), StandardCharsets.UTF_8).split(":", 3);
-            if (parts.length != 3) throw new IllegalArgumentException();
+            if (parts.length != 3)
+                throw new IllegalArgumentException();
             return new Cursor(Instant.ofEpochSecond(Long.parseLong(parts[0]), Long.parseLong(parts[1])),
                     UUID.fromString(parts[2]));
-        } catch (RuntimeException invalid) { throw validation(ApiMessage.of("api.project-service.the-cursor-is-invalid-or-corrupt")); }
+        } catch (RuntimeException invalid) {
+            throw validation(ApiMessage.of("api.project-service.the-cursor-is-invalid-or-corrupt"));
+        }
     }
 
     private String encodeCursor(AgentConversation conversation) {
@@ -181,15 +201,21 @@ public class AgentConversationService {
     }
 
     private ApiProblemException notFound() {
-        return new ApiProblemException(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", ApiMessage.of("api.agent-conversation-service.session-does-not-exist"),
-                ApiMessage.of("api.agent-conversation-service.the-session-does-not-exist-or-does-not-belong-to"), false);
+        return new ApiProblemException(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND",
+                ApiMessage.of("api.agent-conversation-service.session-does-not-exist"),
+                ApiMessage.of("api.agent-conversation-service.the-session-does-not-exist-or-does-not-belong-to"),
+                false);
     }
     private ApiProblemException validation(ApiMessage detail) {
-        return new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", ApiMessage.of("api.agent-conversation-service.invalid-session-request"), detail, false);
+        return new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
+                ApiMessage.of("api.agent-conversation-service.invalid-session-request"), detail, false);
     }
     private ApiProblemException conflict(ApiMessage detail) {
-        return new ApiProblemException(HttpStatus.CONFLICT, "CONVERSATION_VERSION_CONFLICT", ApiMessage.of("api.agent-run-service.session-has-changed"), detail, false);
+        return new ApiProblemException(HttpStatus.CONFLICT, "CONVERSATION_VERSION_CONFLICT",
+                ApiMessage.of("api.agent-run-service.session-has-changed"), detail, false);
     }
-    private record Cursor(Instant updatedAt, UUID id) {}
-    public record ConversationPage(List<AgentConversation> items, String nextCursor, UUID currentConversationId) {}
+    private record Cursor(Instant updatedAt, UUID id) {
+    }
+    public record ConversationPage(List<AgentConversation> items, String nextCursor, UUID currentConversationId) {
+    }
 }

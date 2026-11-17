@@ -45,8 +45,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
         "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class MediaCapabilityDeletionPostgresIT {
     @Container
-    static final org.testcontainers.postgresql.PostgreSQLContainer POSTGRES =
-            new org.testcontainers.postgresql.PostgreSQLContainer("postgres:17.11-alpine");
+    static final org.testcontainers.postgresql.PostgreSQLContainer POSTGRES = new org.testcontainers.postgresql.PostgreSQLContainer(
+            "postgres:17.11-alpine");
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
@@ -56,15 +56,22 @@ class MediaCapabilityDeletionPostgresIT {
         registry.add("agenvas.credentials.master-key-base64", () -> Base64.getEncoder().encodeToString(new byte[32]));
     }
 
-    @Autowired MediaCapabilityService catalog;
-    @Autowired MediaFunctionService functions;
-    @Autowired JooqMediaCapabilityRepository repository;
-    @Autowired JdbcClient jdbc;
-    @Autowired WebApplicationContext context;
-    @Autowired PlatformTransactionManager transactions;
+    @Autowired
+    MediaCapabilityService catalog;
+    @Autowired
+    MediaFunctionService functions;
+    @Autowired
+    JooqMediaCapabilityRepository repository;
+    @Autowired
+    JdbcClient jdbc;
+    @Autowired
+    WebApplicationContext context;
+    @Autowired
+    PlatformTransactionManager transactions;
 
     private JooqMediaCapabilityRepository.Capability publish() {
-        var connection = catalog.createConnection(UUID.randomUUID().toString(), "Synthetic connection", "OPENAI", null, "synthetic-key");
+        var connection = catalog.createConnection(UUID.randomUUID().toString(), "Synthetic connection", "OPENAI", null,
+                "synthetic-key");
         return catalog.publishCapability(connection.id(), "Synthetic capability", "OPENAI_GPT_IMAGE_2");
     }
 
@@ -72,40 +79,54 @@ class MediaCapabilityDeletionPostgresIT {
     void deletionClearsSelectionsAndRetainsPinnedHistory() {
         var capability = publish();
         var binding = catalog.resolve(capability.id(), Task.Kind.IMAGE_GENERATION, 0);
-        catalog.setDefault(Task.Kind.IMAGE_GENERATION, catalog.defaultVersion(Task.Kind.IMAGE_GENERATION), capability.id());
+        catalog.setDefault(Task.Kind.IMAGE_GENERATION, catalog.defaultVersion(Task.Kind.IMAGE_GENERATION),
+                capability.id());
         long defaultVersion = catalog.defaultVersion(Task.Kind.IMAGE_GENERATION);
-        var function = functions.list().stream().filter(item -> item.operation() == MediaFunction.IMAGE_SMART_EDIT).findFirst().orElseThrow();
+        var function = functions.list().stream().filter(item -> item.operation() == MediaFunction.IMAGE_SMART_EDIT)
+                .findFirst().orElseThrow();
         functions.update(function.operation(), function.version(), capability.id());
         long functionVersion = function.version() + 1;
         catalog.deleteCapability(capability.connectionId(), capability.id(), capability.version());
 
         assertThat(catalog.capabilities(capability.connectionId())).isEmpty();
-        assertThat(catalog.publishedCandidates()).noneMatch(item -> item.binding().capabilityId().equals(capability.id()));
+        assertThat(catalog.publishedCandidates())
+                .noneMatch(item -> item.binding().capabilityId().equals(capability.id()));
         assertThat(catalog.defaultCapabilityId(Task.Kind.IMAGE_GENERATION)).isNull();
         assertThat(catalog.defaultVersion(Task.Kind.IMAGE_GENERATION)).isEqualTo(defaultVersion + 1);
-        var cleared = functions.list().stream().filter(item -> item.operation() == function.operation()).findFirst().orElseThrow();
+        var cleared = functions.list().stream().filter(item -> item.operation() == function.operation()).findFirst()
+                .orElseThrow();
         assertThat(cleared.capabilityId()).isNull();
         assertThat(cleared.version()).isEqualTo(functionVersion + 1);
-        assertThat(catalog.pinnedSnapshot(binding).specJson()).isEqualTo(catalog.capabilitySnapshot(capability.id()).specJson());
+        assertThat(catalog.pinnedSnapshot(binding).specJson())
+                .isEqualTo(catalog.capabilitySnapshot(capability.id()).specJson());
         assertThat(jdbc.sql("select count(*) from media_capability_version where capability_id=:id")
                 .param("id", capability.id()).query(Integer.class).single()).isEqualTo(1);
         assertThat(catalog.declaredDraftInputs(capability.id())).isEmpty();
-        assertThatThrownBy(() -> catalog.resolve(capability.id(), Task.Kind.IMAGE_GENERATION, 0)).isInstanceOf(ApiProblemException.class);
-        assertThatThrownBy(() -> catalog.updateCapability(capability.connectionId(), capability.id(), capability.version() + 1,
-                "Resurrected", true, "OPENAI_GPT_IMAGE_2")).isInstanceOf(ApiProblemException.class);
-        assertThatThrownBy(() -> catalog.setDefault(Task.Kind.IMAGE_GENERATION, defaultVersion + 1, capability.id())).isInstanceOf(ApiProblemException.class);
-        assertThatThrownBy(() -> functions.update(function.operation(), cleared.version(), capability.id())).isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> catalog.resolve(capability.id(), Task.Kind.IMAGE_GENERATION, 0))
+                .isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(
+                () -> catalog.updateCapability(capability.connectionId(), capability.id(), capability.version() + 1,
+                        "Resurrected", true, "OPENAI_GPT_IMAGE_2"))
+                .isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> catalog.setDefault(Task.Kind.IMAGE_GENERATION, defaultVersion + 1, capability.id()))
+                .isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> functions.update(function.operation(), cleared.version(), capability.id()))
+                .isInstanceOf(ApiProblemException.class);
     }
 
     @Test
     void wrongConnectionStaleVersionAndBuiltinDoNotDeleteAnything() {
         var capability = publish();
-        assertThatThrownBy(() -> catalog.deleteCapability(UUID.randomUUID(), capability.id(), 0)).isInstanceOf(ApiProblemException.class);
-        assertThatThrownBy(() -> catalog.deleteCapability(capability.connectionId(), capability.id(), 1)).isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> catalog.deleteCapability(UUID.randomUUID(), capability.id(), 0))
+                .isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> catalog.deleteCapability(capability.connectionId(), capability.id(), 1))
+                .isInstanceOf(ApiProblemException.class);
         assertThat(catalog.capabilities(capability.connectionId())).hasSize(1);
-        var local = catalog.connections().stream().filter(item -> item.platform().name().equals("LOCAL")).findFirst().orElseThrow();
+        var local = catalog.connections().stream().filter(item -> item.platform().name().equals("LOCAL")).findFirst()
+                .orElseThrow();
         var builtin = catalog.capabilities(local.id()).getFirst();
-        assertThatThrownBy(() -> catalog.deleteCapability(local.id(), builtin.id(), builtin.version())).isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> catalog.deleteCapability(local.id(), builtin.id(), builtin.version()))
+                .isInstanceOf(ApiProblemException.class);
         assertThat(catalog.capabilities(local.id())).contains(builtin);
     }
 
@@ -114,9 +135,11 @@ class MediaCapabilityDeletionPostgresIT {
         var capability = publish();
         UUID defaultId = catalog.defaultCapabilityId(Task.Kind.VIDEO_GENERATION);
         long defaultVersion = catalog.defaultVersion(Task.Kind.VIDEO_GENERATION);
-        catalog.updateCapability(capability.connectionId(), capability.id(), 0, capability.name(), false, "OPENAI_GPT_IMAGE_2");
+        catalog.updateCapability(capability.connectionId(), capability.id(), 0, capability.name(), false,
+                "OPENAI_GPT_IMAGE_2");
         var connection = catalog.getConnection(capability.connectionId());
-        var connectionVersion = catalog.getConnectionVersion(connection.id(), connection.currentVersion()).orElseThrow();
+        var connectionVersion = catalog.getConnectionVersion(connection.id(), connection.currentVersion())
+                .orElseThrow();
         assertThat(connectionVersion.credentialCiphertext()).isNotEmpty();
         var disabled = catalog.updateConnection(connection.id(), connection.version(), connection.name(), false,
                 connectionVersion.origin(), null);
@@ -134,7 +157,8 @@ class MediaCapabilityDeletionPostgresIT {
     @Test
     void failedTransactionRollsBackDeletionAndDefaultClearing() {
         var capability = publish();
-        catalog.setDefault(Task.Kind.IMAGE_GENERATION, catalog.defaultVersion(Task.Kind.IMAGE_GENERATION), capability.id());
+        catalog.setDefault(Task.Kind.IMAGE_GENERATION, catalog.defaultVersion(Task.Kind.IMAGE_GENERATION),
+                capability.id());
         long version = catalog.defaultVersion(Task.Kind.IMAGE_GENERATION);
         new TransactionTemplate(transactions).executeWithoutResult(tx -> {
             catalog.deleteCapability(capability.connectionId(), capability.id(), 0);
@@ -152,7 +176,9 @@ class MediaCapabilityDeletionPostgresIT {
             var attempts = executor.invokeAll(List.of(
                     () -> attemptDelete(capability), () -> attemptDelete(capability)));
             int successes = 0;
-            for (var attempt : attempts) if (Boolean.TRUE.equals(attempt.get(10, TimeUnit.SECONDS))) successes++;
+            for (var attempt : attempts)
+                if (Boolean.TRUE.equals(attempt.get(10, TimeUnit.SECONDS)))
+                    successes++;
             assertThat(successes).isEqualTo(1);
         }
         assertThat(repository.capability(capability.id()).orElseThrow().version()).isEqualTo(1);
@@ -162,7 +188,8 @@ class MediaCapabilityDeletionPostgresIT {
     void configurationSelectionsWaitForDeletionAndCannotRestoreItsBindings() throws Exception {
         var capability = publish();
         long defaultVersion = catalog.defaultVersion(Task.Kind.IMAGE_GENERATION);
-        var function = functions.list().stream().filter(item -> item.operation() == MediaFunction.IMAGE_SMART_EDIT).findFirst().orElseThrow();
+        var function = functions.list().stream().filter(item -> item.operation() == MediaFunction.IMAGE_SMART_EDIT)
+                .findFirst().orElseThrow();
         try (var executor = Executors.newFixedThreadPool(2)) {
             var started = new java.util.concurrent.CountDownLatch(2);
             var pending = new java.util.ArrayList<java.util.concurrent.Future<?>>();
@@ -191,8 +218,9 @@ class MediaCapabilityDeletionPostgresIT {
                     jdbc.sql("select pg_stat_clear_snapshot()").query().listOfRows();
                     blocked = capabilitySelectionWaiters();
                     if (blocked < 2) {
-                        try { Thread.sleep(20); }
-                        catch (InterruptedException interrupted) {
+                        try {
+                            Thread.sleep(20);
+                        } catch (InterruptedException interrupted) {
                             Thread.currentThread().interrupt();
                             throw new IllegalStateException(interrupted);
                         }
@@ -202,7 +230,8 @@ class MediaCapabilityDeletionPostgresIT {
                 assertThat(pending).allMatch(item -> !item.isDone());
             });
             for (var selection : pending) {
-                assertThatThrownBy(() -> selection.get(10, TimeUnit.SECONDS)).hasCauseInstanceOf(ApiProblemException.class);
+                assertThatThrownBy(() -> selection.get(10, TimeUnit.SECONDS))
+                        .hasCauseInstanceOf(ApiProblemException.class);
             }
         }
         assertThat(catalog.defaultCapabilityId(Task.Kind.IMAGE_GENERATION)).isNotEqualTo(capability.id());
@@ -232,15 +261,21 @@ class MediaCapabilityDeletionPostgresIT {
         var capability = publish();
         var mvc = webAppContextSetup(context).apply(springSecurity()).build();
         var principal = new AdminPrincipal(UUID.randomUUID(), "synthetic-admin");
-        var admin = authentication(new UsernamePasswordAuthenticationToken(principal, null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
-        var user = authentication(new UsernamePasswordAuthenticationToken(principal, null, List.of(new SimpleGrantedAuthority("ROLE_USER"))));
-        String path = "/api/v1/settings/media-connections/" + capability.connectionId() + "/capabilities/" + capability.id();
+        var admin = authentication(new UsernamePasswordAuthenticationToken(principal, null,
+                List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+        var user = authentication(new UsernamePasswordAuthenticationToken(principal, null,
+                List.of(new SimpleGrantedAuthority("ROLE_USER"))));
+        String path = "/api/v1/settings/media-connections/" + capability.connectionId() + "/capabilities/"
+                + capability.id();
         mvc.perform(delete(path).with(csrf()).param("expectedVersion", "0")).andExpect(status().isUnauthorized());
-        mvc.perform(delete(path).with(user).with(csrf()).param("expectedVersion", "0")).andExpect(status().isForbidden());
+        mvc.perform(delete(path).with(user).with(csrf()).param("expectedVersion", "0"))
+                .andExpect(status().isForbidden());
         mvc.perform(delete(path).with(admin).param("expectedVersion", "0")).andExpect(status().isForbidden());
         mvc.perform(delete(path).with(admin).with(csrf())).andExpect(status().isBadRequest());
-        mvc.perform(delete(path).with(admin).with(csrf()).param("expectedVersion", "-1")).andExpect(status().isBadRequest());
-        mvc.perform(delete(path).with(admin).with(csrf()).param("expectedVersion", "1")).andExpect(status().isConflict());
+        mvc.perform(delete(path).with(admin).with(csrf()).param("expectedVersion", "-1"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(delete(path).with(admin).with(csrf()).param("expectedVersion", "1"))
+                .andExpect(status().isConflict());
         mvc.perform(delete(path).with(admin).with(csrf()).param("expectedVersion", "0"))
                 .andExpect(status().isOk()).andExpect(result -> {
                     String body = result.getResponse().getContentAsString();
@@ -248,7 +283,9 @@ class MediaCapabilityDeletionPostgresIT {
                     assertThat(result.getResponse().getHeader("Cache-Control")).contains("no-store");
                 });
         mvc.perform(get("/api/v1/settings/media-connections").with(admin))
-                .andExpect(status().isOk()).andExpect(result -> assertThat(result.getResponse().getContentAsString()).doesNotContain(capability.id().toString()));
-        mvc.perform(delete(path).with(admin).with(csrf()).param("expectedVersion", "0")).andExpect(status().isConflict());
+                .andExpect(status().isOk()).andExpect(result -> assertThat(result.getResponse().getContentAsString())
+                        .doesNotContain(capability.id().toString()));
+        mvc.perform(delete(path).with(admin).with(csrf()).param("expectedVersion", "0"))
+                .andExpect(status().isConflict());
     }
 }

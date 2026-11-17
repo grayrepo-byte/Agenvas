@@ -1,26 +1,40 @@
-import { fireEvent,render,screen } from "@testing-library/react";
-import { describe,expect,it,vi } from "vitest";
-import { changeControl,clickControl } from "../../test/controls";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { changeControl, clickControl } from "../../test/controls";
 import { CropPanel } from "./CropPanel";
 
 const STAGE_BOUNDS = {
-  x: 0, y: 0, left: 0, top: 0, right: 900, bottom: 600,
-  width: 900, height: 600, toJSON: () => ({}),
+  x: 0,
+  y: 0,
+  left: 0,
+  top: 0,
+  right: 900,
+  bottom: 600,
+  width: 900,
+  height: 600,
+  toJSON: () => ({}),
 };
 
 function showCrop(onSubmit = vi.fn()) {
-  render(<CropPanel sourceUrl="/source.png" sourceWidth={1200} sourceHeight={800}
-    busy={false} error={null} onClose={vi.fn()} onSubmit={onSubmit} />);
-  vi.spyOn(screen.getByLabelText("裁剪工作区"), "getBoundingClientRect")
-    .mockReturnValue(STAGE_BOUNDS);
+  render(
+    <CropPanel
+      sourceUrl="/source.png"
+      sourceWidth={1200}
+      sourceHeight={800}
+      busy={false}
+      error={null}
+      onClose={vi.fn()}
+      onSubmit={onSubmit}
+    />,
+  );
+  vi.spyOn(screen.getByLabelText("裁剪工作区"), "getBoundingClientRect").mockReturnValue(STAGE_BOUNDS);
   return onSubmit;
 }
 
 describe("CropPanel", () => {
   it("waits for real dimensions before allowing a crop", async () => {
     const onSubmit = vi.fn();
-    render(<CropPanel sourceUrl="/source.png" busy={false} error={null}
-      onClose={vi.fn()} onSubmit={onSubmit} />);
+    render(<CropPanel sourceUrl="/source.png" busy={false} error={null} onClose={vi.fn()} onSubmit={onSubmit} />);
     expect(screen.getByRole("combobox", { name: "裁剪比例" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "移动裁剪框" })).toBeDisabled();
     await clickControl(screen.getByRole("button", { name: "确定" }));

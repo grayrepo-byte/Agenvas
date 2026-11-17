@@ -27,7 +27,7 @@ class RetiredEndpointTest {
 
     @Test
     void missingHandlerAndMissingResourceAreNotFoundWithoutRetry() throws Exception {
-        for (String path : new String[] { "/retired", "/missing-resource" }) {
+        for (String path : new String[]{"/retired", "/missing-resource"}) {
             mvc.perform(get(path).header(HttpHeaders.ACCEPT_LANGUAGE, "en"))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"))
@@ -48,7 +48,9 @@ class RetiredEndpointTest {
     @RestController
     static class Routes {
         @PutMapping("/director")
-        String ensure() { return "director"; }
+        String ensure() {
+            return "director";
+        }
 
         @GetMapping("/missing-resource")
         String missingResource() throws NoResourceFoundException {

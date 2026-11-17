@@ -87,9 +87,12 @@ public class MediaDraftController {
             Integer durationSeconds, UUID capabilityId,
             MediaDraft.VideoInputMode videoInputMode,
             List<MediaDraftService.SaveMediaInput> mediaInputs,
-            List<MediaDraft.PromptMention> mentions, UUID styleId) {}
+            List<MediaDraft.PromptMention> mentions, UUID styleId) {
+    }
 
     public record RestoreVersionInputsRequest(@NotNull UUID versionId,
-            @PositiveOrZero long expectedVersion) {}
-    public record RemoveMediaInputRequest(@PositiveOrZero long expectedVersion) {}
+            @PositiveOrZero long expectedVersion) {
+    }
+    public record RemoveMediaInputRequest(@PositiveOrZero long expectedVersion) {
+    }
 }

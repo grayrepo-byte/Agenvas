@@ -10,12 +10,12 @@ const edges: Edge[] = [
   { id: "unrelated", source: "other-parent", target: "other-child" },
 ];
 const onSelection = { ...DEFAULT_CANVAS_DISPLAY_PREFERENCES, alwaysShowConnections: false };
-const visible = (displayed: Edge[]) => displayed.filter((edge) => !edge.hidden).map((edge) => edge.id);
+const visible = (displayed: Edge[]) => displayed.filter(edge => !edge.hidden).map(edge => edge.id);
 
 describe("canvas relation display", () => {
   it("keeps all relation types and their deletion semantics visible by default", () => {
     const displayed = displayCanvasRelations(edges, [], [], DEFAULT_CANVAS_DISPLAY_PREFERENCES);
-    expect(visible(displayed)).toEqual(edges.map((edge) => edge.id));
+    expect(visible(displayed)).toEqual(edges.map(edge => edge.id));
     expect(displayed[0]?.className).toBe("relation-edge--historical");
     expect(displayed[1]).toMatchObject({ source: "node", target: "child", selectable: false, deletable: false });
   });
@@ -23,8 +23,11 @@ describe("canvas relation display", () => {
   it("shows just the immediate incoming and outgoing lines of selected nodes, then hides them on deselection", () => {
     expect(visible(displayCanvasRelations(edges, [], [], onSelection))).toEqual([]);
     expect(visible(displayCanvasRelations(edges, ["node"], [], onSelection))).toEqual(["upstream", "downstream"]);
-    expect(visible(displayCanvasRelations(edges, ["node", "other-child"], [], onSelection)))
-      .toEqual(["upstream", "downstream", "unrelated"]);
+    expect(visible(displayCanvasRelations(edges, ["node", "other-child"], [], onSelection))).toEqual([
+      "upstream",
+      "downstream",
+      "unrelated",
+    ]);
     expect(visible(displayCanvasRelations(edges, [], [], onSelection))).toEqual([]);
   });
 
@@ -35,11 +38,15 @@ describe("canvas relation display", () => {
   });
 
   it("disables motion independently while preserving direction, static lines and server projection", () => {
-    const displayed = displayCanvasRelations(edges, [], [], { ...DEFAULT_CANVAS_DISPLAY_PREFERENCES, connectionFlowEnabled: false });
+    const displayed = displayCanvasRelations(edges, [], [], {
+      ...DEFAULT_CANVAS_DISPLAY_PREFERENCES,
+      connectionFlowEnabled: false,
+    });
     expect(visible(displayed)).toHaveLength(edges.length);
-    expect(displayed.every((edge) => edge.data?.connectionFlowEnabled === false)).toBe(true);
-    expect(displayed.map(({ source, target }) => ({ source, target })))
-      .toEqual(edges.map(({ source, target }) => ({ source, target })));
-    expect(edges.every((edge) => edge.hidden === undefined && edge.data === undefined)).toBe(true);
+    expect(displayed.every(edge => edge.data?.connectionFlowEnabled === false)).toBe(true);
+    expect(displayed.map(({ source, target }) => ({ source, target }))).toEqual(
+      edges.map(({ source, target }) => ({ source, target })),
+    );
+    expect(edges.every(edge => edge.hidden === undefined && edge.data === undefined)).toBe(true);
   });
 });

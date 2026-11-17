@@ -82,7 +82,8 @@ class ComfyUiVideoPostgresIT {
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("agenvas.storage.root", STORAGE_ROOT::toString);
-        registry.add("agenvas.credentials.master-key-base64", () -> java.util.Base64.getEncoder().encodeToString(new byte[32]));
+        registry.add("agenvas.credentials.master-key-base64",
+                () -> java.util.Base64.getEncoder().encodeToString(new byte[32]));
     }
 
     @AfterAll
@@ -93,19 +94,32 @@ class ComfyUiVideoPostgresIT {
     @Autowired
     private dev.agenvas.audit.application.CallLogService callLogs;
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private ArtifactService artifacts;
-    @Autowired private MediaDraftService drafts;
-    @Autowired private CanvasService canvas;
-    @Autowired private DirectMediaTaskService directMedia;
-    @Autowired private TaskService tasks;
-    @Autowired private AssetService assets;
-    @Autowired private MediaToolRunner mediaTools;
-    @Autowired private MediaCapabilityService catalog;
-    @Autowired private MediaExecutionWorker mediaWorker;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private ObjectMapper mapper;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private ArtifactService artifacts;
+    @Autowired
+    private MediaDraftService drafts;
+    @Autowired
+    private CanvasService canvas;
+    @Autowired
+    private DirectMediaTaskService directMedia;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private AssetService assets;
+    @Autowired
+    private MediaToolRunner mediaTools;
+    @Autowired
+    private MediaCapabilityService catalog;
+    @Autowired
+    private MediaExecutionWorker mediaWorker;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private ObjectMapper mapper;
 
     @Test
     void approvedSelectedKeyframeReachesFixedWanGraphAndOriginalPromptArchivesMp4()
@@ -119,7 +133,8 @@ class ComfyUiVideoPostgresIT {
                 "COMFY_VIDEO_V1", mapper.readTree("{\"diffusionModel\":\"test-wan.safetensors\","
                         + "\"textEncoder\":\"test-text.safetensors\","
                         + "\"vae\":\"test-vae.safetensors\","
-                        + "\"clipVision\":\"test-vision.safetensors\"}")).id();
+                        + "\"clipVision\":\"test-vision.safetensors\"}"))
+                .id();
         catalog.setDefault(Task.Kind.IMAGE_GENERATION,
                 catalog.defaultVersion(Task.Kind.IMAGE_GENERATION), imageCapability);
         catalog.setDefault(Task.Kind.VIDEO_GENERATION,
@@ -166,7 +181,7 @@ class ComfyUiVideoPostgresIT {
                 .isEqualTo(imageVersion.toString());
         assertThat(tasks.mediaBinding(videoTask).orElseThrow().connectionVersion()).isEqualTo(1);
         assertThat(jdbc.sql("select quantity_json ->> 'videoSeconds' from usage_ledger "
-                        + "where task_id = :taskId and entry_type = 'RESERVATION'")
+                + "where task_id = :taskId and entry_type = 'RESERVATION'")
                 .param("taskId", videoTask.id()).query(String.class).single()).isEqualTo("5");
         VIDEO_BYTES.set(realMp4());
         // Both the normalized keyframe and graph dimensions must use the accepted AUTO ratio.
@@ -267,9 +282,11 @@ class ComfyUiVideoPostgresIT {
                 byte[] body = exchange.getRequestBody().readAllBytes();
                 assertThat(body.length).isGreaterThan(1_000);
                 int uploadNumber = UPLOADS.incrementAndGet();
-                if (uploadNumber == 2) KEYFRAME_UPLOAD.set(body);
+                if (uploadNumber == 2)
+                    KEYFRAME_UPLOAD.set(body);
                 String name = uploadNumber == 1
-                        ? "uploaded-image-input.png" : "uploaded-keyframe.png";
+                        ? "uploaded-image-input.png"
+                        : "uploaded-keyframe.png";
                 reply(exchange, 200, ("{\"name\":\"" + name
                         + "\",\"type\":\"input\",\"subfolder\":\"\"}").getBytes(StandardCharsets.UTF_8));
             });

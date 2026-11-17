@@ -24,16 +24,19 @@ final class AudioReferenceLoader {
     private final ArtifactService artifacts;
     private final AssetService assets;
     AudioReferenceLoader(ArtifactService artifacts, AssetService assets) {
-        this.artifacts = artifacts; this.assets = assets;
+        this.artifacts = artifacts;
+        this.assets = assets;
     }
-    record Reference(String contentType, byte[] bytes) {}
+    record Reference(String contentType, byte[] bytes) {
+    }
 
     List<Reference> load(UUID ownerId, Task task, boolean seedAudio) {
         List<Reference> result = new ArrayList<>();
         long totalDuration = 0;
         for (var input : FrozenMediaInputs.audios(task)) {
             var version = artifacts.requireVersion(ownerId, task.projectId(), input.artifactId(), input.versionId());
-            var file = assets.get(ownerId, task.projectId(), UUID.fromString(version.content().path("assetId").asText()));
+            var file = assets.get(ownerId, task.projectId(),
+                    UUID.fromString(version.content().path("assetId").asText()));
             Asset asset = file.asset();
             int maximumBytes = seedAudio ? SEED_MAX_BYTES : ARK_MAX_BYTES;
             int maximumDuration = seedAudio ? SEED_MAX_DURATION_MS : ARK_MAX_DURATION_MS;
@@ -45,9 +48,12 @@ final class AudioReferenceLoader {
             totalDuration += asset.durationMs();
             try (var stream = Files.newInputStream(file.path())) {
                 byte[] bytes = stream.readNBytes(maximumBytes + 1);
-                if (bytes.length == 0 || bytes.length > maximumBytes) throw new IllegalArgumentException("Audio size invalid");
+                if (bytes.length == 0 || bytes.length > maximumBytes)
+                    throw new IllegalArgumentException("Audio size invalid");
                 result.add(new Reference(asset.contentType(), bytes));
-            } catch (IOException failure) { throw new IllegalStateException("Archived audio unavailable", failure); }
+            } catch (IOException failure) {
+                throw new IllegalStateException("Archived audio unavailable", failure);
+            }
         }
         if (result.size() > 3 || !seedAudio && totalDuration > ARK_MAX_DURATION_MS)
             throw new IllegalArgumentException("Audio references exceed fixed protocol bounds");

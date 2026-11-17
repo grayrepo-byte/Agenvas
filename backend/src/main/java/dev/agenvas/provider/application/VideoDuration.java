@@ -11,7 +11,8 @@ final class VideoDuration {
     private static final int MINIMUM_SECONDS = 1;
     private static final int MAXIMUM_SECONDS = 30;
 
-    private VideoDuration() {}
+    private VideoDuration() {
+    }
 
     static Duration fromFrozenTask(JsonNode input) {
         int schemaVersion = input.path("schemaVersion")

@@ -81,7 +81,9 @@ public class MediaDraftService {
         requireMediaCanvas(ownerId, projectId, canvasItemId);
         return artifacts.findMediaDraft(projectId, canvasItemId)
                 .orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND,
-                        "RESOURCE_NOT_FOUND", ApiMessage.of("api.media-draft-service.draft-does-not-exist"), ApiMessage.of("api.media-draft-service.this-media-product-does-not-have-a-working-draft"), false));
+                        "RESOURCE_NOT_FOUND", ApiMessage.of("api.media-draft-service.draft-does-not-exist"),
+                        ApiMessage.of("api.media-draft-service.this-media-product-does-not-have-a-working-draft"),
+                        false));
     }
 
     @Transactional
@@ -95,7 +97,8 @@ public class MediaDraftService {
                     expectedVersion, prompt, parameters, durationSeconds, capabilityId,
                     requestedMode, requestedInputs, requestedMentions, styleId);
             if (!artifacts.updateMediaDraft(update, expectedVersion)) {
-                throw draftConflict(ApiMessage.of("api.media-draft-service.the-draft-has-been-modified-by-other-operations-please-retain"));
+                throw draftConflict(ApiMessage
+                        .of("api.media-draft-service.the-draft-has-been-modified-by-other-operations-please-retain"));
             }
             artifacts.replaceMediaInputs(projectId, canvasItemId, update.mediaInputs(),
                     update.updatedAt());
@@ -123,7 +126,8 @@ public class MediaDraftService {
             throw invalid(ApiMessage.of("api.media-draft-service.the-draft-version-or-prompt-word-is-invalid"));
         }
         JsonNode normalizedParameters = parameters == null
-                ? mapper.createObjectNode() : parameters;
+                ? mapper.createObjectNode()
+                : parameters;
         if (!normalizedParameters.isObject()) {
             throw invalid(ApiMessage.of("api.media-draft-service.media-parameters-must-be-objects"));
         }
@@ -134,35 +138,48 @@ public class MediaDraftService {
         var nativeProfile = binding == null ? null : capabilities.nativeProfile(binding);
         var kling = binding == null ? null : capabilities.klingProfile(binding);
         boolean dynamic = definition != null || comfy != null || kling != null || nativeProfile != null;
-        JsonNode standardParameters = comfy == null ? normalizedParameters : dev.agenvas.provider.domain.ComfyUiWorkflowDefinition.standardParameters(normalizedParameters);
-        if (definition != null) definition.values(mapper, normalizedParameters, prompt, durationSeconds, false);
-        else if (nativeProfile != null) dev.agenvas.provider.domain.NativeMediaProfiles.effectiveValues(nativeProfile,
-                capabilities.parameters(binding, normalizedParameters), prompt, durationSeconds, mapper);
-        else if (kling != null) dev.agenvas.provider.domain.KlingModels.effectiveValues(kling,
-                capabilities.parameters(binding, normalizedParameters), prompt, durationSeconds, mapper);
-        else if (kind == Artifact.Kind.IMAGE) ImageGenerationParameters.parse(standardParameters);
-        else if (kind == Artifact.Kind.VIDEO) VideoGenerationParameters.parse(standardParameters);
-        else dev.agenvas.artifact.domain.AudioGenerationParameters.parse(standardParameters);
+        JsonNode standardParameters = comfy == null
+                ? normalizedParameters
+                : dev.agenvas.provider.domain.ComfyUiWorkflowDefinition.standardParameters(normalizedParameters);
+        if (definition != null)
+            definition.values(mapper, normalizedParameters, prompt, durationSeconds, false);
+        else if (nativeProfile != null)
+            dev.agenvas.provider.domain.NativeMediaProfiles.effectiveValues(nativeProfile,
+                    capabilities.parameters(binding, normalizedParameters), prompt, durationSeconds, mapper);
+        else if (kling != null)
+            dev.agenvas.provider.domain.KlingModels.effectiveValues(kling,
+                    capabilities.parameters(binding, normalizedParameters), prompt, durationSeconds, mapper);
+        else if (kind == Artifact.Kind.IMAGE)
+            ImageGenerationParameters.parse(standardParameters);
+        else if (kind == Artifact.Kind.VIDEO)
+            VideoGenerationParameters.parse(standardParameters);
+        else
+            dev.agenvas.artifact.domain.AudioGenerationParameters.parse(standardParameters);
         List<SaveMediaInput> inputCommands = requestedInputs == null
-                ? List.of() : List.copyOf(requestedInputs);
+                ? List.of()
+                : List.copyOf(requestedInputs);
         List<MediaDraft.PromptMention> mentions = requestedMentions == null
-                ? List.of() : List.copyOf(requestedMentions);
-        if (prompt.chars().filter(character -> character == MENTION_MARKER).count()
-                != mentions.size()) {
-            throw invalid(ApiMessage.of("api.media-draft-service.image-tags-in-prompt-words-are-inconsistent-with-structured-quotes"));
+                ? List.of()
+                : List.copyOf(requestedMentions);
+        if (prompt.chars().filter(character -> character == MENTION_MARKER).count() != mentions.size()) {
+            throw invalid(ApiMessage
+                    .of("api.media-draft-service.image-tags-in-prompt-words-are-inconsistent-with-structured-quotes"));
         }
         MediaDraft persisted = artifacts.findMediaDraft(projectId, canvasItemId)
                 .orElseThrow(() -> new IllegalStateException("Media draft missing"));
         if (persisted.version() != expectedVersion) {
-            throw draftConflict(ApiMessage.of("api.media-draft-service.the-draft-has-been-modified-by-other-operations-please-retain"));
+            throw draftConflict(ApiMessage
+                    .of("api.media-draft-service.the-draft-has-been-modified-by-other-operations-please-retain"));
         }
         styles.validateSelection(styleId, kind);
         if (inputCommands.size() > MAX_MEDIA_INPUTS) {
             throw invalid(ApiMessage.of("api.media-draft-service.a-single-card-can-save-up-to-14-media-inputs"));
         }
-        MediaDraft.VideoInputMode mode = kind != Artifact.Kind.VIDEO ? null
+        MediaDraft.VideoInputMode mode = kind != Artifact.Kind.VIDEO
+                ? null
                 : requestedMode == null
-                        ? inputCommands.isEmpty() ? MediaDraft.VideoInputMode.TEXT
+                        ? inputCommands.isEmpty()
+                                ? MediaDraft.VideoInputMode.TEXT
                                 : MediaDraft.VideoInputMode.GENERAL_REFERENCE
                         : requestedMode;
         if (kind != Artifact.Kind.VIDEO && durationSeconds != null) {
@@ -182,44 +199,58 @@ public class MediaDraftService {
             if (command == null || command.versionId() == null || command.role() == null
                     || command.color() == null || !command.color().matches(COLOR_PATTERN)
                     || !seen.add(command.versionId())) {
-                throw invalid(ApiMessage.of("api.media-draft-service.image-input-must-be-complete-have-valid-colors-and-be"));
+                throw invalid(
+                        ApiMessage.of("api.media-draft-service.image-input-must-be-complete-have-valid-colors-and-be"));
             }
             ArtifactRepository.VersionTarget target = artifacts
                     .findVersionTarget(projectId, command.versionId())
-                    .orElseThrow(() -> invalid(ApiMessage.of("api.media-draft-service.the-input-image-version-does-not-exist-in-this-project")));
+                    .orElseThrow(() -> invalid(ApiMessage
+                            .of("api.media-draft-service.the-input-image-version-does-not-exist-in-this-project")));
             boolean alreadyReferenced = persisted.mediaInputs().stream()
                     .anyMatch(input -> input.versionId().equals(command.versionId()));
             if (target.kind() != (mediaKind(command.role()))
                     || artifactService.get(ownerId, projectId, target.artifactId())
                             .artifact().archivedAt() != null && !alreadyReferenced) {
-                throw invalid(ApiMessage.of("api.media-draft-service.image-input-must-be-an-exact-version-of-the-unarchived"));
+                throw invalid(ApiMessage
+                        .of("api.media-draft-service.image-input-must-be-an-exact-version-of-the-unarchived"));
             }
             if (dynamic) {
-                if (!Set.of(MediaDraft.InputRole.REFERENCE, MediaDraft.InputRole.AUDIO_REFERENCE, MediaDraft.InputRole.VIDEO_REFERENCE).contains(command.role())) throw invalid(ApiMessage.of("api.media-draft-service.dynamic-assets-can-only-use-image-audio-or-video-reference"));
-            } else validateRole(kind, mode, command.role(), order, inputCommands.size());
+                if (!Set.of(MediaDraft.InputRole.REFERENCE, MediaDraft.InputRole.AUDIO_REFERENCE,
+                        MediaDraft.InputRole.VIDEO_REFERENCE).contains(command.role()))
+                    throw invalid(ApiMessage
+                            .of("api.media-draft-service.dynamic-assets-can-only-use-image-audio-or-video-reference"));
+            } else
+                validateRole(kind, mode, command.role(), order, inputCommands.size());
             inputs.add(new MediaDraft.MediaInput(command.versionId(), target.artifactId(),
                     command.role(), order, command.color(), List.of(
                             new MediaDraft.InputSource(UUID.randomUUID(),
                                     MediaDraft.SourceType.MANUAL, null))));
         }
-        if (definition != null) validateSlots(definition, normalizedParameters, inputs, false);
-        if (nativeProfile != null) dev.agenvas.provider.domain.NativeMediaProfiles.validateDraft(nativeProfile,
-                capabilities.parameters(binding, normalizedParameters), prompt, durationSeconds, inputs, false, mapper);
-        if (kling != null) dev.agenvas.provider.domain.KlingModels.validateDraft(kling,
-                capabilities.parameters(binding, normalizedParameters), prompt, durationSeconds, inputs, false);
+        if (definition != null)
+            validateSlots(definition, normalizedParameters, inputs, false);
+        if (nativeProfile != null)
+            dev.agenvas.provider.domain.NativeMediaProfiles.validateDraft(nativeProfile,
+                    capabilities.parameters(binding, normalizedParameters), prompt, durationSeconds, inputs, false,
+                    mapper);
+        if (kling != null)
+            dev.agenvas.provider.domain.KlingModels.validateDraft(kling,
+                    capabilities.parameters(binding, normalizedParameters), prompt, durationSeconds, inputs, false);
         if (comfy != null) {
             ObjectNode values = mapper.createObjectNode();
-            values.set(RunningHubDefinition.VALUES_PROPERTY, comfy.values(mapper, normalizedParameters, prompt, durationSeconds,
-                    inputs.stream().filter(input -> input.role() == MediaDraft.InputRole.REFERENCE)
-                            .map(MediaDraft.MediaInput::versionId).toList(), false));
+            values.set(RunningHubDefinition.VALUES_PROPERTY,
+                    comfy.values(mapper, normalizedParameters, prompt, durationSeconds,
+                            inputs.stream().filter(input -> input.role() == MediaDraft.InputRole.REFERENCE)
+                                    .map(MediaDraft.MediaInput::versionId).toList(),
+                            false));
             validateSlots(comfy.inputs(), values, inputs, false);
         }
         for (MediaDraft.PromptMention mention : mentions) {
             if (mention == null || mention.versionId() == null || mention.role() == null
                     || inputs.stream().noneMatch(input -> input.versionId().equals(
-                                    mention.versionId())
+                            mention.versionId())
                             && input.role() == mention.role())) {
-                throw invalid(ApiMessage.of("api.media-draft-service.image-tags-can-only-reference-the-exact-version-and-role"));
+                throw invalid(ApiMessage
+                        .of("api.media-draft-service.image-tags-can-only-reference-the-exact-version-and-role"));
             }
         }
         return new MediaDraft(projectId, canvasItemId, prompt,
@@ -236,11 +267,13 @@ public class MediaDraftService {
         var version = artifactService.requireVersion(ownerId, projectId, artifact.id(), versionId);
         JsonNode frozen = version.frozenInput();
         if (frozen == null || !frozen.isObject()) {
-            throw invalid(ApiMessage.of("api.media-draft-service.there-is-no-resumable-frozen-build-input-for-this-version"));
+            throw invalid(
+                    ApiMessage.of("api.media-draft-service.there-is-no-resumable-frozen-build-input-for-this-version"));
         }
         List<SaveMediaInput> inputs = new ArrayList<>();
         JsonNode frozenImages = frozen.path("images");
-        if (!frozenImages.isArray()) throw invalid(ApiMessage.of("api.media-draft-service.the-frozen-image-input-is-invalid-for-this-version"));
+        if (!frozenImages.isArray())
+            throw invalid(ApiMessage.of("api.media-draft-service.the-frozen-image-input-is-invalid-for-this-version"));
         int order = 0;
         for (JsonNode image : frozenImages) {
             try {
@@ -248,7 +281,8 @@ public class MediaDraftService {
                         MediaDraft.InputRole.valueOf(image.path("role").asText()),
                         INPUT_COLORS.get(order % INPUT_COLORS.size())));
             } catch (IllegalArgumentException exception) {
-                throw invalid(ApiMessage.of("api.media-draft-service.the-frozen-image-input-is-invalid-for-this-version"));
+                throw invalid(
+                        ApiMessage.of("api.media-draft-service.the-frozen-image-input-is-invalid-for-this-version"));
             }
             order++;
         }
@@ -256,12 +290,17 @@ public class MediaDraftService {
             try {
                 inputs.add(new SaveMediaInput(UUID.fromString(audio.path("versionId").asText()),
                         MediaDraft.InputRole.AUDIO_REFERENCE, INPUT_COLORS.get(order++ % INPUT_COLORS.size())));
-            } catch (IllegalArgumentException exception) { throw invalid(ApiMessage.of("api.media-draft-service.freeze-audio-input-has-no-effect")); }
+            } catch (IllegalArgumentException exception) {
+                throw invalid(ApiMessage.of("api.media-draft-service.freeze-audio-input-has-no-effect"));
+            }
         }
         for (JsonNode video : frozen.path("videos")) {
-            try { inputs.add(new SaveMediaInput(UUID.fromString(video.path("versionId").asText()),
-                    MediaDraft.InputRole.VIDEO_REFERENCE, INPUT_COLORS.get(order++ % INPUT_COLORS.size()))); }
-            catch (IllegalArgumentException exception) { throw invalid(ApiMessage.of("api.media-draft-service.freeze-video-input-is-invalid")); }
+            try {
+                inputs.add(new SaveMediaInput(UUID.fromString(video.path("versionId").asText()),
+                        MediaDraft.InputRole.VIDEO_REFERENCE, INPUT_COLORS.get(order++ % INPUT_COLORS.size())));
+            } catch (IllegalArgumentException exception) {
+                throw invalid(ApiMessage.of("api.media-draft-service.freeze-video-input-is-invalid"));
+            }
         }
         List<MediaDraft.PromptMention> mentions = new ArrayList<>();
         JsonNode frozenMentions = frozen.path("mentions");
@@ -272,21 +311,25 @@ public class MediaDraftService {
                             UUID.fromString(mention.path("versionId").asText()),
                             MediaDraft.InputRole.valueOf(mention.path("role").asText())));
                 } catch (IllegalArgumentException exception) {
-                    throw invalid(ApiMessage.of("api.media-draft-service.this-version-of-the-frozen-image-tag-is-invalid"));
+                    throw invalid(
+                            ApiMessage.of("api.media-draft-service.this-version-of-the-frozen-image-tag-is-invalid"));
                 }
             }
         }
-        MediaDraft.VideoInputMode mode = artifact.kind() != Artifact.Kind.VIDEO ? null
+        MediaDraft.VideoInputMode mode = artifact.kind() != Artifact.Kind.VIDEO
+                ? null
                 : parseMode(frozen.path("mode").asText());
         UUID capabilityId;
         try {
             capabilityId = UUID.fromString(frozen.path("capabilityId").asText());
         } catch (IllegalArgumentException exception) {
-            throw invalid(ApiMessage.of("api.media-draft-service.the-freeze-ability-input-is-invalid-for-this-version"));
+            throw invalid(
+                    ApiMessage.of("api.media-draft-service.the-freeze-ability-input-is-invalid-for-this-version"));
         }
         Integer durationSeconds = artifact.kind() == Artifact.Kind.VIDEO
                 && frozen.path("durationSeconds").canConvertToInt()
-                ? frozen.path("durationSeconds").intValue() : null;
+                        ? frozen.path("durationSeconds").intValue()
+                        : null;
         return save(ownerId, projectId, canvasItemId, expectedDraftVersion,
                 restoredPrompt(frozen), frozen.path("parameters").deepCopy(),
                 durationSeconds, capabilityId, mode, inputs, mentions, frozenStyleId(frozen));
@@ -295,15 +338,20 @@ public class MediaDraftService {
     /** Explicit history reuse turns frozen public text into manual prompt content, without live links. */
     private String restoredPrompt(JsonNode frozen) {
         String local = frozen.path("prompt").asText("");
-        if (frozen.path("promptInputs").isEmpty()) return local;
-        if (local.isBlank() && frozen.hasNonNull("userRenderedPrompt")) return frozen.path("userRenderedPrompt").asText();
+        if (frozen.path("promptInputs").isEmpty())
+            return local;
+        if (local.isBlank() && frozen.hasNonNull("userRenderedPrompt"))
+            return frozen.path("userRenderedPrompt").asText();
         List<String> pieces = new ArrayList<>();
         for (JsonNode source : frozen.path("promptInputs")) {
             String text = source.path("text").asText("").strip();
-            if (!text.isEmpty()) pieces.add(text);
+            if (!text.isEmpty())
+                pieces.add(text);
         }
-        if (pieces.isEmpty()) return local;
-        if (!local.isBlank()) pieces.add(local.strip());
+        if (pieces.isEmpty())
+            return local;
+        if (!local.isBlank())
+            pieces.add(local.strip());
         return String.join("\n\n", pieces);
     }
 
@@ -354,7 +402,8 @@ public class MediaDraftService {
             long expectedSourceDraftVersion, boolean singleOutput) {
         MediaDraft source = get(ownerId, projectId, sourceCanvasItemId);
         if (source.version() != expectedSourceDraftVersion) {
-            throw draftConflict(ApiMessage.of("api.media-draft-service.the-source-draft-has-changed-before-copying-please-save-and"));
+            throw draftConflict(ApiMessage
+                    .of("api.media-draft-service.the-source-draft-has-changed-before-copying-please-save-and"));
         }
         Instant now = clock.instant();
         artifacts.createMediaDraft(projectId, targetCanvasItemId, "",
@@ -366,8 +415,10 @@ public class MediaDraftService {
                                         MediaDraft.SourceType.MANUAL, null))))
                 .toList();
         MediaDraft duplicate = new MediaDraft(projectId, targetCanvasItemId,
-                source.prompt(), singleOutput ? singleOutputParameters(source.parameters(), true)
-                        : source.parameters().deepCopy(), source.durationSeconds(),
+                source.prompt(), singleOutput
+                        ? singleOutputParameters(source.parameters(), true)
+                        : source.parameters().deepCopy(),
+                source.durationSeconds(),
                 source.capabilityId(), source.styleId(), source.videoInputMode(), inputs,
                 List.copyOf(source.mentions()), source.displayMode(), 1, now, now);
         if (!artifacts.updateMediaDraft(duplicate, 0)) {
@@ -396,8 +447,10 @@ public class MediaDraftService {
         if (!snapshot.projectId().equals(projectId) || !snapshot.canvasItemId().equals(targetItemId)
                 || artifacts.findMediaDraft(projectId, targetItemId).isPresent()
                 || snapshot.mediaInputs().stream().flatMap(input -> input.sources().stream())
-                        .anyMatch(source -> source.type() == MediaDraft.SourceType.MANUAL ? source.connectionId() != null
-                                : source.connectionId() == null || !copiedConnectionIds.contains(source.connectionId()))) {
+                        .anyMatch(source -> source.type() == MediaDraft.SourceType.MANUAL
+                                ? source.connectionId() != null
+                                : source.connectionId() == null
+                                        || !copiedConnectionIds.contains(source.connectionId()))) {
             throw new IllegalStateException("Invalid canvas copy draft snapshot");
         }
         Instant now = clock.instant();
@@ -407,8 +460,10 @@ public class MediaDraftService {
                 snapshot.styleId(), snapshot.videoInputMode(), List.copyOf(snapshot.mediaInputs()),
                 List.copyOf(snapshot.mentions()), snapshot.displayMode(), Math.max(snapshot.version(), minimumVersion),
                 snapshot.createdAt(), now);
-        if (!artifacts.updateMediaDraft(restored, 0)) throw new IllegalStateException("Canvas copy draft install failed");
-        if (restored.version() > 1 && !artifacts.advanceMediaDraftCopyVersion(projectId, targetItemId, 1, restored.version()))
+        if (!artifacts.updateMediaDraft(restored, 0))
+            throw new IllegalStateException("Canvas copy draft install failed");
+        if (restored.version() > 1
+                && !artifacts.advanceMediaDraftCopyVersion(projectId, targetItemId, 1, restored.version()))
             throw new IllegalStateException("Canvas copy draft incarnation advance failed");
         artifacts.replaceMediaInputs(projectId, targetItemId, restored.mediaInputs(), now);
         return restored;
@@ -419,26 +474,37 @@ public class MediaDraftService {
         initializeWithinChange(projectId, canvasItemId, false);
         Instant now = clock.instant();
         List<MediaDraft.MediaInput> inputs = new ArrayList<>();
-        for (String group : List.of("images", "audios", "videos")) for (JsonNode input : frozen.path(group)) {
-            int order = inputs.size();
-            inputs.add(new MediaDraft.MediaInput(UUID.fromString(input.path("versionId").asText()),
-                    UUID.fromString(input.path("artifactId").asText()), MediaDraft.InputRole.valueOf(input.path("role").asText()),
-                    order, INPUT_COLORS.get(order % INPUT_COLORS.size()), List.of(new MediaDraft.InputSource(UUID.randomUUID(), MediaDraft.SourceType.MANUAL, null))));
-        }
+        for (String group : List.of("images", "audios", "videos"))
+            for (JsonNode input : frozen.path(group)) {
+                int order = inputs.size();
+                inputs.add(new MediaDraft.MediaInput(UUID.fromString(input.path("versionId").asText()),
+                        UUID.fromString(input.path("artifactId").asText()),
+                        MediaDraft.InputRole.valueOf(input.path("role").asText()),
+                        order, INPUT_COLORS.get(order % INPUT_COLORS.size()),
+                        List.of(new MediaDraft.InputSource(UUID.randomUUID(), MediaDraft.SourceType.MANUAL, null))));
+            }
         List<MediaDraft.PromptMention> mentions = new ArrayList<>();
-        for (JsonNode mention : frozen.path("mentions")) mentions.add(new MediaDraft.PromptMention(UUID.fromString(mention.path("versionId").asText()), MediaDraft.InputRole.valueOf(mention.path("role").asText())));
+        for (JsonNode mention : frozen.path("mentions"))
+            mentions.add(new MediaDraft.PromptMention(UUID.fromString(mention.path("versionId").asText()),
+                    MediaDraft.InputRole.valueOf(mention.path("role").asText())));
         MediaDraft draft = new MediaDraft(projectId, canvasItemId, frozen.path("prompt").asText(""),
-                frozenOutputParameters(kind, frozen), kind == Artifact.Kind.VIDEO && frozen.path("durationSeconds").asInt() > 0 ? frozen.path("durationSeconds").asInt() : null,
-                UUID.fromString(frozen.path("capabilityId").asText()), frozenStyleId(frozen), kind == Artifact.Kind.VIDEO ? parseMode(frozen.path("mode").asText()) : null,
+                frozenOutputParameters(kind, frozen),
+                kind == Artifact.Kind.VIDEO && frozen.path("durationSeconds").asInt() > 0
+                        ? frozen.path("durationSeconds").asInt()
+                        : null,
+                UUID.fromString(frozen.path("capabilityId").asText()), frozenStyleId(frozen),
+                kind == Artifact.Kind.VIDEO ? parseMode(frozen.path("mode").asText()) : null,
                 List.copyOf(inputs), List.copyOf(mentions), MediaDraft.DisplayMode.DRAFT, 1, now, now);
-        if (!artifacts.updateMediaDraft(draft, 0)) throw new IllegalStateException("New batch draft update failed");
+        if (!artifacts.updateMediaDraft(draft, 0))
+            throw new IllegalStateException("New batch draft update failed");
         artifacts.replaceMediaInputs(projectId, canvasItemId, inputs, now);
     }
 
     private JsonNode frozenOutputParameters(Artifact.Kind kind, JsonNode frozen) {
         JsonNode parameters = singleOutputParameters(frozen.path("parameters"), false);
         if (kind != Artifact.Kind.IMAGE
-                || !(parameters.path(NativeMediaProtocol.VALUES_PROPERTY) instanceof ObjectNode values)) return parameters;
+                || !(parameters.path(NativeMediaProtocol.VALUES_PROPERTY) instanceof ObjectNode values))
+            return parameters;
         // Use the accepted protocol identity, so later capability edits cannot change the copy.
         // A workflow field named n is arbitrary input and must never be treated as a native count.
         JsonNode nativeProtocol = frozen.path("providerParameters").path("native");
@@ -485,15 +551,19 @@ public class MediaDraftService {
         Artifact.Kind kind = requireMediaCanvas(ownerId, projectId, canvasItemId).kind();
         ArtifactRepository.VersionTarget target = artifacts
                 .findVersionTarget(projectId, imageVersionId)
-                .orElseThrow(() -> invalid(ApiMessage.of("api.media-draft-service.a-wired-version-of-the-image-does-not-exist-for")));
-        if (target.kind() != Artifact.Kind.IMAGE && target.kind() != Artifact.Kind.AUDIO && target.kind() != Artifact.Kind.VIDEO
+                .orElseThrow(() -> invalid(
+                        ApiMessage.of("api.media-draft-service.a-wired-version-of-the-image-does-not-exist-for")));
+        if (target.kind() != Artifact.Kind.IMAGE && target.kind() != Artifact.Kind.AUDIO
+                && target.kind() != Artifact.Kind.VIDEO
                 || artifactService.get(ownerId, projectId, target.artifactId())
                         .artifact().archivedAt() != null) {
-            throw invalid(ApiMessage.of("api.media-draft-service.linked-sources-must-be-exact-versions-of-unarchived-images"));
+            throw invalid(ApiMessage
+                    .of("api.media-draft-service.linked-sources-must-be-exact-versions-of-unarchived-images"));
         }
         MediaDraft before = get(ownerId, projectId, canvasItemId);
         if (before.version() != expectedVersion) {
-            throw draftConflict(ApiMessage.of("api.media-draft-service.the-target-draft-changed-before-the-connection-was-established"));
+            throw draftConflict(ApiMessage
+                    .of("api.media-draft-service.the-target-draft-changed-before-the-connection-was-established"));
         }
         ObjectNode parameters = connectionParameters(kind, before, target.kind(), imageVersionId, slotKey);
         boolean workflow = parameters != null;
@@ -517,18 +587,23 @@ public class MediaDraftService {
             if (inputs.size() >= MAX_MEDIA_INPUTS) {
                 throw invalid(ApiMessage.of("api.media-draft-service.image-input-has-reached-the-current-card-limit"));
             }
-            if (!workflow && target.kind() == Artifact.Kind.AUDIO && kind != Artifact.Kind.AUDIO && (kind != Artifact.Kind.VIDEO
-                    || before.videoInputMode() == MediaDraft.VideoInputMode.START_END))
-                throw invalid(ApiMessage.of("api.media-draft-service.audio-can-only-be-connected-to-video-omni-reference-mode"));
+            if (!workflow && target.kind() == Artifact.Kind.AUDIO && kind != Artifact.Kind.AUDIO
+                    && (kind != Artifact.Kind.VIDEO
+                            || before.videoInputMode() == MediaDraft.VideoInputMode.START_END))
+                throw invalid(ApiMessage
+                        .of("api.media-draft-service.audio-can-only-be-connected-to-video-omni-reference-mode"));
             if (!workflow && target.kind() == Artifact.Kind.VIDEO && (kind != Artifact.Kind.VIDEO
                     || before.videoInputMode() == MediaDraft.VideoInputMode.START_END))
                 throw invalid(ApiMessage.of("api.media-relay.video-general-mode-required"));
-            MediaDraft.InputRole role = target.kind() == Artifact.Kind.VIDEO ? MediaDraft.InputRole.VIDEO_REFERENCE : target.kind() == Artifact.Kind.AUDIO
-                    ? MediaDraft.InputRole.AUDIO_REFERENCE : workflow
-                            ? MediaDraft.InputRole.REFERENCE : nextConnectionRole(kind, before, inputs);
+            MediaDraft.InputRole role = target.kind() == Artifact.Kind.VIDEO
+                    ? MediaDraft.InputRole.VIDEO_REFERENCE
+                    : target.kind() == Artifact.Kind.AUDIO
+                            ? MediaDraft.InputRole.AUDIO_REFERENCE
+                            : workflow
+                                    ? MediaDraft.InputRole.REFERENCE
+                                    : nextConnectionRole(kind, before, inputs);
             String color = INPUT_COLORS.stream()
-                    .filter(candidate -> inputs.stream().noneMatch(input ->
-                            input.color().equals(candidate)))
+                    .filter(candidate -> inputs.stream().noneMatch(input -> input.color().equals(candidate)))
                     .findFirst().orElse(INPUT_COLORS.get(inputs.size() % INPUT_COLORS.size()));
             inputs.add(new MediaDraft.MediaInput(imageVersionId, target.artifactId(), role,
                     inputs.size(), color, List.of(new MediaDraft.InputSource(UUID.randomUUID(),
@@ -546,7 +621,8 @@ public class MediaDraftService {
         return assignment == null ? null : assignment.parameters();
     }
 
-    public record WorkflowSlotAssignment(ObjectNode parameters, UUID removedVersionId) {}
+    public record WorkflowSlotAssignment(ObjectNode parameters, UUID removedVersionId) {
+    }
 
     /** Library transfer completion supplies its new project-local identity before saving the draft. */
     public WorkflowSlotAssignment assignWorkflowSlotParameters(UUID ownerId, UUID projectId, UUID canvasItemId,
@@ -565,34 +641,46 @@ public class MediaDraftService {
         UUID capabilityId = selectedCapabilityId == null
                 ? capabilities.defaultCapabilityId(Task.Kind.valueOf(kind.name() + "_GENERATION"))
                 : selectedCapabilityId;
-        var binding = capabilityId == null ? null : capabilities.forDraft(capabilityId,
-                Task.Kind.valueOf(kind.name() + "_GENERATION"));
+        var binding = capabilityId == null
+                ? null
+                : capabilities.forDraft(capabilityId,
+                        Task.Kind.valueOf(kind.name() + "_GENERATION"));
         var definition = binding == null ? null : capabilities.runningHubDefinition(binding);
         var comfy = binding == null ? null : capabilities.comfyWorkflowDefinition(binding);
         var nativeProfile = binding == null ? null : capabilities.nativeProfile(binding);
         var kling = binding == null ? null : capabilities.klingProfile(binding);
-        if (nativeProfile != null) return nativeSlotParameters(nativeProfile, draftParameters, sourceKind, versionId, slotKey, replaceSelectedSlot);
-        if (kling != null) return klingSlotParameters(kling, draftParameters, sourceKind, versionId, slotKey, replaceSelectedSlot);
+        if (nativeProfile != null)
+            return nativeSlotParameters(nativeProfile, draftParameters, sourceKind, versionId, slotKey,
+                    replaceSelectedSlot);
+        if (kling != null)
+            return klingSlotParameters(kling, draftParameters, sourceKind, versionId, slotKey, replaceSelectedSlot);
         if (definition == null && comfy == null) {
-            if (slotKey != null) throw invalid(ApiMessage.of("api.media-draft-service.workflow-slot-unavailable"));
+            if (slotKey != null)
+                throw invalid(ApiMessage.of("api.media-draft-service.workflow-slot-unavailable"));
             return null;
         }
         List<RunningHubDefinition.Field> fields = definition == null ? comfy.inputs() : definition.fields();
-        if (!draftParameters.isObject()) throw invalid(ApiMessage.of("api.media-draft-service.media-parameters-must-be-objects"));
+        if (!draftParameters.isObject())
+            throw invalid(ApiMessage.of("api.media-draft-service.media-parameters-must-be-objects"));
         ObjectNode parameters = (ObjectNode) draftParameters.deepCopy();
-        ObjectNode values = comfy == null ? parameters.has(RunningHubDefinition.VALUES_PROPERTY)
-                ? (ObjectNode) parameters.path(RunningHubDefinition.VALUES_PROPERTY).deepCopy() : mapper.createObjectNode()
+        ObjectNode values = comfy == null
+                ? parameters.has(RunningHubDefinition.VALUES_PROPERTY)
+                        ? (ObjectNode) parameters.path(RunningHubDefinition.VALUES_PROPERTY).deepCopy()
+                        : mapper.createObjectNode()
                 : comfy.values(mapper, parameters, prompt, durationSeconds, positionalVersions, false);
         ObjectNode effective = RunningHubDefinition.inputValues(mapper, fields, values,
                 prompt, durationSeconds, false);
         List<RunningHubDefinition.Field> candidates = fields.stream().filter(field -> field.media()
                 && field.type().name().equals(sourceKind.name()) && activeSlot(fields, effective, field)
                 && (slotKey == null || field.key().equals(slotKey))
-                && (replaceSelectedSlot && slotKey != null || !values.hasNonNull(field.key()) || values.path(field.key()).asText().isBlank()
-                        || values.path(field.key()).asText().equals(versionId.toString()))).toList();
-        if (candidates.isEmpty()) throw invalid(ApiMessage.of("api.media-draft-service.workflow-slot-unavailable"));
-        if (slotKey == null && candidates.stream().anyMatch(field ->
-                versionId.toString().equals(values.path(field.key()).asText()))) {
+                && (replaceSelectedSlot && slotKey != null || !values.hasNonNull(field.key())
+                        || values.path(field.key()).asText().isBlank()
+                        || values.path(field.key()).asText().equals(versionId.toString())))
+                .toList();
+        if (candidates.isEmpty())
+            throw invalid(ApiMessage.of("api.media-draft-service.workflow-slot-unavailable"));
+        if (slotKey == null && candidates.stream()
+                .anyMatch(field -> versionId.toString().equals(values.path(field.key()).asText()))) {
             // An already assigned manual/proposal version only gains another source; its slots stay intact.
             parameters.set(RunningHubDefinition.VALUES_PROPERTY, values);
             return new WorkflowSlotAssignment(parameters, null);
@@ -607,21 +695,28 @@ public class MediaDraftService {
         return new WorkflowSlotAssignment(parameters, removedVersion);
     }
 
-    private WorkflowSlotAssignment nativeSlotParameters(dev.agenvas.provider.domain.NativeMediaProfiles.Selection profile,
-            JsonNode draftParameters, Artifact.Kind sourceKind, UUID versionId, String slotKey, boolean replaceSelectedSlot) {
+    private WorkflowSlotAssignment nativeSlotParameters(
+            dev.agenvas.provider.domain.NativeMediaProfiles.Selection profile,
+            JsonNode draftParameters, Artifact.Kind sourceKind, UUID versionId, String slotKey,
+            boolean replaceSelectedSlot) {
         if (!draftParameters.isObject() || draftParameters.has(RunningHubDefinition.VALUES_PROPERTY)
                 && !draftParameters.path(RunningHubDefinition.VALUES_PROPERTY).isObject())
             throw invalid(ApiMessage.of("api.media-draft-service.media-parameters-must-be-objects"));
         ObjectNode parameters = (ObjectNode) draftParameters.deepCopy();
         ObjectNode values = parameters.path(RunningHubDefinition.VALUES_PROPERTY).isObject()
-                ? (ObjectNode) parameters.path(RunningHubDefinition.VALUES_PROPERTY).deepCopy() : mapper.createObjectNode();
+                ? (ObjectNode) parameters.path(RunningHubDefinition.VALUES_PROPERTY).deepCopy()
+                : mapper.createObjectNode();
         var fields = profile.inputs();
         var candidates = fields.stream().filter(field -> field.media() && field.type().name().equals(sourceKind.name())
                 && (slotKey == null || slotKey.equals(field.key()))
                 && (replaceSelectedSlot && slotKey != null || !values.hasNonNull(field.key())
-                    || values.path(field.key()).asText().isBlank() || versionId.toString().equals(values.path(field.key()).asText()))).toList();
-        if (candidates.isEmpty()) throw invalid(ApiMessage.of("api.media-draft-service.workflow-slot-unavailable"));
-        if (slotKey == null && candidates.stream().anyMatch(field -> versionId.toString().equals(values.path(field.key()).asText())))
+                        || values.path(field.key()).asText().isBlank()
+                        || versionId.toString().equals(values.path(field.key()).asText())))
+                .toList();
+        if (candidates.isEmpty())
+            throw invalid(ApiMessage.of("api.media-draft-service.workflow-slot-unavailable"));
+        if (slotKey == null && candidates.stream()
+                .anyMatch(field -> versionId.toString().equals(values.path(field.key()).asText())))
             return new WorkflowSlotAssignment(parameters, null);
         String key = candidates.getFirst().key();
         String previous = values.path(key).asText("");
@@ -638,26 +733,33 @@ public class MediaDraftService {
     }
 
     private WorkflowSlotAssignment klingSlotParameters(dev.agenvas.provider.domain.KlingModels.Profile profile,
-            JsonNode draftParameters, Artifact.Kind sourceKind, UUID versionId, String slotKey, boolean replaceSelectedSlot) {
+            JsonNode draftParameters, Artifact.Kind sourceKind, UUID versionId, String slotKey,
+            boolean replaceSelectedSlot) {
         if (!draftParameters.isObject() || draftParameters.has(RunningHubDefinition.VALUES_PROPERTY)
                 && !draftParameters.path(RunningHubDefinition.VALUES_PROPERTY).isObject())
             throw invalid(ApiMessage.of("api.media-draft-service.media-parameters-must-be-objects"));
         ObjectNode parameters = (ObjectNode) draftParameters.deepCopy();
         ObjectNode values = parameters.path(RunningHubDefinition.VALUES_PROPERTY).isObject()
-                ? (ObjectNode) parameters.path(RunningHubDefinition.VALUES_PROPERTY).deepCopy() : mapper.createObjectNode();
+                ? (ObjectNode) parameters.path(RunningHubDefinition.VALUES_PROPERTY).deepCopy()
+                : mapper.createObjectNode();
         var fields = dev.agenvas.provider.domain.KlingModels.inputs(profile);
         var candidates = fields.stream().filter(field -> field.media() && field.type().name().equals(sourceKind.name())
                 && (slotKey == null || slotKey.equals(field.key()))
                 && (replaceSelectedSlot && slotKey != null || !values.hasNonNull(field.key())
-                    || values.path(field.key()).asText().isBlank() || versionId.toString().equals(values.path(field.key()).asText()))).toList();
-        if (candidates.isEmpty()) throw invalid(ApiMessage.of("api.media-draft-service.workflow-slot-unavailable"));
-        if (slotKey == null && candidates.stream().anyMatch(field -> versionId.toString().equals(values.path(field.key()).asText())))
+                        || values.path(field.key()).asText().isBlank()
+                        || versionId.toString().equals(values.path(field.key()).asText())))
+                .toList();
+        if (candidates.isEmpty())
+            throw invalid(ApiMessage.of("api.media-draft-service.workflow-slot-unavailable"));
+        if (slotKey == null && candidates.stream()
+                .anyMatch(field -> versionId.toString().equals(values.path(field.key()).asText())))
             return new WorkflowSlotAssignment(parameters, null);
         String key = candidates.getFirst().key();
         String previous = values.path(key).asText("");
         // One archived version represents one native contents item; implicit duplicate slot copies would alter aliases.
         if (fields.stream().anyMatch(field -> field.media() && !field.key().equals(key)
-                && versionId.toString().equals(values.path(field.key()).asText()))) throw dev.agenvas.provider.domain.KlingProtocol.invalid();
+                && versionId.toString().equals(values.path(field.key()).asText())))
+            throw dev.agenvas.provider.domain.KlingProtocol.invalid();
         values.put(key, versionId.toString());
         parameters.set(RunningHubDefinition.VALUES_PROPERTY, values);
         return new WorkflowSlotAssignment(parameters, previous.isBlank() ? null : UUID.fromString(previous));
@@ -666,11 +768,13 @@ public class MediaDraftService {
     /** Conditional slots follow the same effective scalar defaults that the editor displays. */
     private boolean activeSlot(List<RunningHubDefinition.Field> fields, JsonNode effective,
             RunningHubDefinition.Field slot) {
-        if (slot.enabledWhen() == null) return true;
+        if (slot.enabledWhen() == null)
+            return true;
         String key = slot.enabledWhen().field();
         JsonNode value = effective.get(key);
-        if (value == null) value = fields.stream().filter(field -> field.key().equals(key))
-                .findFirst().map(RunningHubDefinition.Field::defaultValue).orElse(null);
+        if (value == null)
+            value = fields.stream().filter(field -> field.key().equals(key))
+                    .findFirst().map(RunningHubDefinition.Field::defaultValue).orElse(null);
         return RunningHubDefinition.scalarEquals(value, slot.enabledWhen().value());
     }
 
@@ -688,7 +792,8 @@ public class MediaDraftService {
             List<MediaDraft.InputSource> sources = input.sources().stream()
                     .filter(source -> !connectionId.equals(source.connectionId()))
                     .toList();
-            if (sources.size() != input.sources().size()) found = true;
+            if (sources.size() != input.sources().size())
+                found = true;
             if (sources.isEmpty()) {
                 removedVersions.add(input.versionId());
             } else {
@@ -696,7 +801,9 @@ public class MediaDraftService {
                         input.role(), inputs.size(), input.color(), sources));
             }
         }
-        if (!found) throw invalid(ApiMessage.of("api.media-draft-service.the-connection-does-not-have-a-corresponding-media-input-source"));
+        if (!found)
+            throw invalid(ApiMessage
+                    .of("api.media-draft-service.the-connection-does-not-have-a-corresponding-media-input-source"));
         List<MediaDraft.PromptMention> mentions = before.mentions().stream()
                 .filter(mention -> !removedVersions.contains(mention.versionId()))
                 .toList();
@@ -708,15 +815,17 @@ public class MediaDraftService {
             UUID canvasItemId, long expectedVersion, UUID imageVersionId) {
         MediaDraft before = get(ownerId, projectId, canvasItemId);
         if (before.version() != expectedVersion) {
-            throw draftConflict(ApiMessage.of("api.media-draft-service.the-target-draft-changed-before-the-image-was-removed"));
+            throw draftConflict(
+                    ApiMessage.of("api.media-draft-service.the-target-draft-changed-before-the-image-was-removed"));
         }
-        if (before.mediaInputs().stream().noneMatch(input ->
-                input.versionId().equals(imageVersionId))) {
-            throw invalid(ApiMessage.of("api.canvas-connection-service.the-image-entry-does-not-exist-in-the-media-draft"));
+        if (before.mediaInputs().stream().noneMatch(input -> input.versionId().equals(imageVersionId))) {
+            throw invalid(
+                    ApiMessage.of("api.canvas-connection-service.the-image-entry-does-not-exist-in-the-media-draft"));
         }
         List<MediaDraft.MediaInput> inputs = new ArrayList<>();
         for (MediaDraft.MediaInput input : before.mediaInputs()) {
-            if (input.versionId().equals(imageVersionId)) continue;
+            if (input.versionId().equals(imageVersionId))
+                continue;
             inputs.add(new MediaDraft.MediaInput(input.versionId(), input.artifactId(),
                     input.role(), inputs.size(), input.color(), input.sources()));
         }
@@ -733,21 +842,26 @@ public class MediaDraftService {
             UUID canvasItemId, long expectedVersion, java.util.Map<UUID, List<UUID>> ownedSources) {
         MediaDraft before = get(ownerId, projectId, canvasItemId);
         if (before.version() != expectedVersion) {
-            throw draftConflict(ApiMessage.of("api.media-draft-service.the-draft-has-been-modified-by-other-operations-please-retain"));
+            throw draftConflict(ApiMessage
+                    .of("api.media-draft-service.the-draft-has-been-modified-by-other-operations-please-retain"));
         }
         List<MediaDraft.MediaInput> inputs = new ArrayList<>();
         boolean changed = false;
         for (MediaDraft.MediaInput input : before.mediaInputs()) {
             List<UUID> owned = ownedSources.getOrDefault(input.versionId(), List.of());
-            List<MediaDraft.InputSource> retained = input.sources().stream().filter(source ->
-                    source.type() != MediaDraft.SourceType.MANUAL || !owned.contains(source.id())).toList();
+            List<MediaDraft.InputSource> retained = input.sources().stream()
+                    .filter(source -> source.type() != MediaDraft.SourceType.MANUAL || !owned.contains(source.id()))
+                    .toList();
             changed |= retained.size() != input.sources().size();
-            if (!retained.isEmpty()) inputs.add(new MediaDraft.MediaInput(input.versionId(),
-                    input.artifactId(), input.role(), inputs.size(), input.color(), retained));
+            if (!retained.isEmpty())
+                inputs.add(new MediaDraft.MediaInput(input.versionId(),
+                        input.artifactId(), input.role(), inputs.size(), input.color(), retained));
         }
-        if (!changed) return before;
-        List<MediaDraft.PromptMention> mentions = before.mentions().stream().filter(mention ->
-                inputs.stream().anyMatch(input -> input.versionId().equals(mention.versionId()))).toList();
+        if (!changed)
+            return before;
+        List<MediaDraft.PromptMention> mentions = before.mentions().stream()
+                .filter(mention -> inputs.stream().anyMatch(input -> input.versionId().equals(mention.versionId())))
+                .toList();
         return replaceInputsWithinChange(before, inputs, mentions);
     }
 
@@ -755,14 +869,17 @@ public class MediaDraftService {
             List<MediaDraft.MediaInput> inputs, List<MediaDraft.PromptMention> mentions) {
         ObjectNode parameters = (ObjectNode) before.parameters().deepCopy();
         Set<String> removed = new HashSet<>();
-        before.mediaInputs().stream().filter(old -> inputs.stream().noneMatch(input ->
-                input.versionId().equals(old.versionId()))).forEach(old -> removed.add(old.versionId().toString()));
+        before.mediaInputs().stream()
+                .filter(old -> inputs.stream().noneMatch(input -> input.versionId().equals(old.versionId())))
+                .forEach(old -> removed.add(old.versionId().toString()));
         if (parameters.path(RunningHubDefinition.VALUES_PROPERTY) instanceof ObjectNode values) {
-            Set<String> mediaSlots = before.capabilityId() == null ? Set.of()
+            Set<String> mediaSlots = before.capabilityId() == null
+                    ? Set.of()
                     : capabilities.declaredMediaSlotKeys(before.capabilityId());
-            List<String> keys = values.propertyNames().stream().filter(key ->
-                    mediaSlots.contains(key) && values.path(key).isTextual()
-                            && removed.contains(values.path(key).asText())).toList();
+            List<String> keys = values.propertyNames().stream()
+                    .filter(key -> mediaSlots.contains(key) && values.path(key).isTextual()
+                            && removed.contains(values.path(key).asText()))
+                    .toList();
             keys.forEach(values::remove);
         }
         return replaceInputsWithinChange(before, inputs, mentions, parameters);
@@ -773,7 +890,8 @@ public class MediaDraftService {
         Instant now = clock.instant();
         String prompt = pruneRemovedMentions(before.prompt(), before.mentions(), mentions);
         MediaDraft.VideoInputMode mode = before.videoInputMode();
-        if (mode != null && inputs.isEmpty()) mode = MediaDraft.VideoInputMode.TEXT;
+        if (mode != null && inputs.isEmpty())
+            mode = MediaDraft.VideoInputMode.TEXT;
         else if (mode == MediaDraft.VideoInputMode.TEXT && !inputs.isEmpty()) {
             mode = MediaDraft.VideoInputMode.GENERAL_REFERENCE;
         }
@@ -783,7 +901,8 @@ public class MediaDraftService {
                 List.copyOf(mentions), before.displayMode(), before.version() + 1,
                 before.createdAt(), now);
         if (!artifacts.updateMediaDraft(update, before.version())) {
-            throw draftConflict(ApiMessage.of("api.media-draft-service.the-media-input-has-been-modified-by-another-operation"));
+            throw draftConflict(
+                    ApiMessage.of("api.media-draft-service.the-media-input-has-been-modified-by-another-operation"));
         }
         artifacts.replaceMediaInputs(update.projectId(), update.canvasItemId(), inputs, now);
         return update;
@@ -803,9 +922,11 @@ public class MediaDraftService {
                 continue;
             }
             MediaDraft.PromptMention mention = mentionIndex < beforeMentions.size()
-                    ? beforeMentions.get(mentionIndex) : null;
+                    ? beforeMentions.get(mentionIndex)
+                    : null;
             mentionIndex++;
-            if (mention != null && unmatched.remove(mention)) result.append(MENTION_MARKER);
+            if (mention != null && unmatched.remove(mention))
+                result.append(MENTION_MARKER);
         }
         return result.toString();
     }
@@ -817,20 +938,20 @@ public class MediaDraftService {
             return MediaDraft.InputRole.REFERENCE;
         }
         if (draft.videoInputMode() == MediaDraft.VideoInputMode.START_END) {
-            if (inputs.stream().noneMatch(input -> input.role()
-                    == MediaDraft.InputRole.START_FRAME)) {
+            if (inputs.stream().noneMatch(input -> input.role() == MediaDraft.InputRole.START_FRAME)) {
                 return MediaDraft.InputRole.START_FRAME;
             }
-            if (inputs.stream().noneMatch(input -> input.role()
-                    == MediaDraft.InputRole.END_FRAME)) {
+            if (inputs.stream().noneMatch(input -> input.role() == MediaDraft.InputRole.END_FRAME)) {
                 return MediaDraft.InputRole.END_FRAME;
             }
-            throw invalid(ApiMessage.of("api.media-draft-service.the-first-and-last-frame-mode-already-contains-the-first"));
+            throw invalid(
+                    ApiMessage.of("api.media-draft-service.the-first-and-last-frame-mode-already-contains-the-first"));
         }
         if (draft.videoInputMode() == MediaDraft.VideoInputMode.TEXT && inputs.isEmpty()) {
             return MediaDraft.InputRole.REFERENCE;
         }
-        throw invalid(ApiMessage.of("api.media-draft-service.the-picture-input-connection-cannot-be-established-in-the-current"));
+        throw invalid(ApiMessage
+                .of("api.media-draft-service.the-picture-input-connection-cannot-be-established-in-the-current"));
     }
 
     private Artifact requireMediaCanvas(UUID ownerId, UUID projectId, UUID canvasItemId) {
@@ -844,7 +965,11 @@ public class MediaDraftService {
     }
 
     public static Artifact.Kind mediaKind(MediaDraft.InputRole role) {
-        return switch (role) { case AUDIO_REFERENCE -> Artifact.Kind.AUDIO; case VIDEO_REFERENCE -> Artifact.Kind.VIDEO; default -> Artifact.Kind.IMAGE; };
+        return switch (role) {
+            case AUDIO_REFERENCE -> Artifact.Kind.AUDIO;
+            case VIDEO_REFERENCE -> Artifact.Kind.VIDEO;
+            default -> Artifact.Kind.IMAGE;
+        };
     }
 
     /** Named slots and the deduplicated exact-version rows must agree on identity and media kind. */
@@ -857,41 +982,48 @@ public class MediaDraftService {
             JsonNode parameters, List<MediaDraft.MediaInput> inputs, boolean executing) {
         JsonNode values = parameters.path(RunningHubDefinition.VALUES_PROPERTY);
         Set<UUID> used = new HashSet<>();
-        for (var field : fields) if (field.media() && values.hasNonNull(field.key())) {
-            UUID id = UUID.fromString(values.path(field.key()).asText());
-            if (inputs.stream().noneMatch(input -> input.versionId().equals(id)
-                    && mediaKind(input.role()).name().equals(field.type().name())))
-                throw RunningHubDefinition.invalid(ApiMessage.of("api.media-draft-service.requires-a-matching-exact-asset-reference-in-this-project", field.label()));
-            used.add(id);
-        }
+        for (var field : fields)
+            if (field.media() && values.hasNonNull(field.key())) {
+                UUID id = UUID.fromString(values.path(field.key()).asText());
+                if (inputs.stream().noneMatch(input -> input.versionId().equals(id)
+                        && mediaKind(input.role()).name().equals(field.type().name())))
+                    throw RunningHubDefinition.invalid(ApiMessage.of(
+                            "api.media-draft-service.requires-a-matching-exact-asset-reference-in-this-project",
+                            field.label()));
+                used.add(id);
+            }
         if (executing && inputs.stream().anyMatch(input -> !used.contains(input.versionId())))
-            throw RunningHubDefinition.invalid(ApiMessage.of("api.media-draft-service.there-is-material-that-has-not-yet-been-assigned-to"));
+            throw RunningHubDefinition.invalid(
+                    ApiMessage.of("api.media-draft-service.there-is-material-that-has-not-yet-been-assigned-to"));
     }
 
     private void validateRole(Artifact.Kind kind, MediaDraft.VideoInputMode mode,
             MediaDraft.InputRole role, int order, int inputCount) {
         if (kind == Artifact.Kind.AUDIO) {
             if (role != MediaDraft.InputRole.REFERENCE && role != MediaDraft.InputRole.AUDIO_REFERENCE)
-                throw invalid(ApiMessage.of("api.media-draft-service.audio-generation-only-accepts-image-or-audio-reference-characters"));
+                throw invalid(ApiMessage.of(
+                        "api.media-draft-service.audio-generation-only-accepts-image-or-audio-reference-characters"));
             return;
         }
         if (kind == Artifact.Kind.IMAGE) {
             if (role != MediaDraft.InputRole.REFERENCE) {
-                throw invalid(ApiMessage.of("api.media-draft-service.image-generation-input-can-only-use-the-reference-role"));
+                throw invalid(ApiMessage
+                        .of("api.media-draft-service.image-generation-input-can-only-use-the-reference-role"));
             }
             return;
         }
         if (mode == MediaDraft.VideoInputMode.GENERAL_REFERENCE) {
             if (role != MediaDraft.InputRole.REFERENCE && role != MediaDraft.InputRole.AUDIO_REFERENCE
                     && role != MediaDraft.InputRole.VIDEO_REFERENCE) {
-                throw invalid(ApiMessage.of("api.media-draft-service.universal-reference-mode-can-only-use-picture-or-audio-reference"));
+                throw invalid(ApiMessage.of(
+                        "api.media-draft-service.universal-reference-mode-can-only-use-picture-or-audio-reference"));
             }
             return;
         }
         if (mode == MediaDraft.VideoInputMode.START_END) {
             boolean valid = order == 0 && role == MediaDraft.InputRole.START_FRAME
                     || order == 1 && role == MediaDraft.InputRole.END_FRAME
-                    && inputCount == 2;
+                            && inputCount == 2;
             if (!valid || inputCount > 2) {
                 throw invalid(ApiMessage.of("api.media-draft-service.the-first-and-last-frame-modes-must-be-saved-in"));
             }
@@ -911,14 +1043,16 @@ public class MediaDraftService {
             // Autosave edits the ordered projection, not its source set. In particular,
             // a connection-only input must not become manual and survive disconnection.
             List<MediaDraft.InputSource> sources = existing == null
-                    ? requestedInput.sources() : existing.sources();
+                    ? requestedInput.sources()
+                    : existing.sources();
             result.add(new MediaDraft.MediaInput(requestedInput.versionId(),
                     requestedInput.artifactId(), requestedInput.role(), result.size(),
                     requestedInput.color(), List.copyOf(sources)));
         }
         for (MediaDraft.MediaInput existing : before) {
             if (requested.stream().anyMatch(input -> input.versionId().equals(
-                    existing.versionId()))) continue;
+                    existing.versionId())))
+                continue;
             List<MediaDraft.InputSource> connectionSources = existing.sources().stream()
                     .filter(source -> source.type() == MediaDraft.SourceType.CONNECTION)
                     .toList();
@@ -931,7 +1065,8 @@ public class MediaDraftService {
         return List.copyOf(result);
     }
 
-    public record SaveMediaInput(UUID versionId, MediaDraft.InputRole role, String color) {}
+    public record SaveMediaInput(UUID versionId, MediaDraft.InputRole role, String color) {
+    }
 
     private static ApiProblemException draftConflict(ApiMessage detail) {
         return new ApiProblemException(HttpStatus.CONFLICT, "VERSION_CONFLICT",

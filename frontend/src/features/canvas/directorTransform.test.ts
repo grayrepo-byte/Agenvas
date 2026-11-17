@@ -2,8 +2,15 @@ import { describe, expect, it } from "vitest";
 import { moveDirectorObject, rotateDirectorObject, wrapDirectorRotation } from "./directorTransform";
 import type { DirectorObject } from "./directorScene";
 
-const original: DirectorObject = { id: "box", name: "Box", kind: "BOX", position: { x: 2, y: 3, z: -1 },
-  scale: { x: 0.7, y: 1.2, z: 2 }, rotation: 45, color: "#D9A35F" };
+const original: DirectorObject = {
+  id: "box",
+  name: "Box",
+  kind: "BOX",
+  position: { x: 2, y: 3, z: -1 },
+  scale: { x: 0.7, y: 1.2, z: 2 },
+  rotation: 45,
+  color: "#D9A35F",
+};
 
 describe("director world translation", () => {
   it("moves the body along XZ without changing height, heading or dimensions", () => {
@@ -11,7 +18,7 @@ describe("director world translation", () => {
     expect(moved).toEqual({ ...original, position: { x: 5, y: 3, z: -3 } });
     expect(original.position).toEqual({ x: 2, y: 3, z: -1 });
   });
-  it.each(["x", "y", "z"] as const)("moves only the world %s axis even if the object is rotated", (axis) => {
+  it.each(["x", "y", "z"] as const)("moves only the world %s axis even if the object is rotated", axis => {
     const moved = moveDirectorObject(original, { x: 2, y: 2, z: 2 }, axis);
     expect(moved.position).toEqual({ ...original.position, [axis]: original.position[axis] + 2 });
     expect(moved.rotation).toBe(45);
@@ -27,7 +34,13 @@ describe("director world translation", () => {
 });
 
 describe("director Y rotation", () => {
-  it.each([[180, -180], [-181, 179], [540, -180], [725, 5], [-725, -5]])("wraps %s to %s", (degrees, expected) => {
+  it.each([
+    [180, -180],
+    [-181, 179],
+    [540, -180],
+    [725, 5],
+    [-725, -5],
+  ])("wraps %s to %s", (degrees, expected) => {
     expect(wrapDirectorRotation(degrees)).toBe(expected);
   });
   it("preserves position and dimensions while changing the heading", () => {

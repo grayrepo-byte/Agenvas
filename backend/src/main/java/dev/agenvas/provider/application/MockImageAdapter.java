@@ -13,20 +13,28 @@ import org.springframework.stereotype.Component;
 public class MockImageAdapter implements MediaAdapter {
     private final MockImageRenderer renderer;
 
-    public MockImageAdapter(MockImageRenderer renderer) { this.renderer = renderer; }
+    public MockImageAdapter(MockImageRenderer renderer) {
+        this.renderer = renderer;
+    }
 
-    @Override public String adapterId() { return "MOCK_IMAGE"; }
+    @Override
+    public String adapterId() {
+        return "MOCK_IMAGE";
+    }
 
-    @Override public boolean supports(PortInput input) {
+    @Override
+    public boolean supports(PortInput input) {
         return input.kind() == Task.Kind.IMAGE_GENERATION;
     }
 
-    @Override public Submission submit(AttemptContext context) {
+    @Override
+    public Submission submit(AttemptContext context) {
         return renderer.executeBound(context.lease(),
                 UUID.fromString(context.requestKey()));
     }
 
-    @Override public Submission reconcile(AttemptContext context) {
+    @Override
+    public Submission reconcile(AttemptContext context) {
         return new Submission.Blocked("MOCK_HAS_NO_EXTERNAL_REQUEST");
     }
 }

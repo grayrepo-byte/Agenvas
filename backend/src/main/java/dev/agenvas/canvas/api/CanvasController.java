@@ -55,8 +55,7 @@ public class CanvasController {
             @AuthenticationPrincipal AdminPrincipal principal,
             @PathVariable UUID projectId,
             @Valid @RequestBody CanvasCommandBatchRequest request) {
-        List<CanvasService.CanvasCommand> commands =
-                request.commands().stream().map(this::toCommand).toList();
+        List<CanvasService.CanvasCommand> commands = request.commands().stream().map(this::toCommand).toList();
         return CanvasResponse.from(canvas.apply(principal.userId(), projectId, commands));
     }
 
@@ -79,10 +78,12 @@ public class CanvasController {
             @PositiveOrZero long expectedSourceVersion,
             @PositiveOrZero long expectedSourceDraftVersion,
             @NotNull BigDecimal x, @NotNull BigDecimal y,
-            @NotNull BigDecimal width, @NotNull BigDecimal height, int zIndex) {}
+            @NotNull BigDecimal width, @NotNull BigDecimal height, int zIndex) {
+    }
 
     public record DuplicateCanvasItemResponse(CanvasItemResponse item,
-            dev.agenvas.artifact.domain.MediaDraft draft) {}
+            dev.agenvas.artifact.domain.MediaDraft draft) {
+    }
 
     /** Node-scoped history prevents siblings and image edits from appearing as regeneration versions. */
     @GetMapping("/items/{itemId}/media-versions")
@@ -104,7 +105,8 @@ public class CanvasController {
     }
 
     public record SelectMediaVersionRequest(@NotNull UUID versionId,
-            @PositiveOrZero long expectedVersion) {}
+            @PositiveOrZero long expectedVersion) {
+    }
 
     /** 按命令类型提取必填字段并转换为封闭的应用层命令。 */
     private CanvasService.CanvasCommand toCommand(CanvasCommandRequest request) {
@@ -160,7 +162,8 @@ public class CanvasController {
      * @param commands 有序的布局命令列表，至少一条且最多 100 条
      */
     public record CanvasCommandBatchRequest(
-            @NotEmpty @Size(max = 100) List<@Valid CanvasCommandRequest> commands) {}
+            @NotEmpty @Size(max = 100) List<@Valid CanvasCommandRequest> commands) {
+    }
 
     /**
      * 联合式命令输入；具体必填字段由 type 决定，并在转换前再次检查。
@@ -192,7 +195,8 @@ public class CanvasController {
             Integer zIndex,
             UUID groupId,
             Boolean locked,
-            UUID versionId) {}
+            UUID versionId) {
+    }
 
     /** 首版允许的画布展示操作。 */
     public enum CommandType {
@@ -276,7 +280,8 @@ public class CanvasController {
                     item.locked(),
                     item.version(),
                     entry.artifact() == null ? null : ArtifactResponse.from(entry.artifact()),
-                    entry.selectedVersion() == null ? null
+                    entry.selectedVersion() == null
+                            ? null
                             : ArtifactVersionResponse.from(entry.selectedVersion()),
                     entry.characterNode());
         }

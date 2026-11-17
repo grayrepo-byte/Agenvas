@@ -71,7 +71,8 @@ public class UsageController {
         static UsageResponse from(UsageEntry entry) {
             return new UsageResponse(entry.id(), entry.runId(), entry.taskId(),
                     entry.operationKey(), entry.entryType(), entry.quantity(),
-                    entry.estimatedCost() == null ? null
+                    entry.estimatedCost() == null
+                            ? null
                             : entry.estimatedCost().toPlainString(),
                     entry.actualCost() == null ? null : entry.actualCost().toPlainString(),
                     entry.currency(), entry.costStatus(), entry.costSource(),

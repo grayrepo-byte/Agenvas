@@ -23,11 +23,17 @@ import org.springframework.http.HttpStatus;
 /** Explicit, read-only discovery. It never saves configuration or grants endpoint authority. */
 @org.springframework.stereotype.Service
 public class LocalServiceDiscoveryService implements AutoCloseable {
-    public enum Service { OLLAMA, COMFYUI }
-    public enum Runtime { CONTAINER, NATIVE, UNKNOWN }
-    public enum Status { FOUND, NOT_FOUND, UNRESOLVED, TIMEOUT,
-        UNEXPECTED_RESPONSE, AUTH_REQUIRED, UNSUPPORTED_RUNTIME }
-    public record Result(Service service, Runtime runtime, Status status, String endpoint) {}
+    public enum Service {
+        OLLAMA, COMFYUI
+    }
+    public enum Runtime {
+        CONTAINER, NATIVE, UNKNOWN
+    }
+    public enum Status {
+        FOUND, NOT_FOUND, UNRESOLVED, TIMEOUT, UNEXPECTED_RESPONSE, AUTH_REQUIRED, UNSUPPORTED_RUNTIME
+    }
+    public record Result(Service service, Runtime runtime, Status status, String endpoint) {
+    }
 
     private final LocalServiceDiscoveryProperties properties;
     private final LocalServiceProbe probe;
@@ -47,33 +53,44 @@ public class LocalServiceDiscoveryService implements AutoCloseable {
 
     LocalServiceDiscoveryService(LocalServiceDiscoveryProperties properties, LocalServiceProbe probe,
             Clock clock, Duration deadline) {
-        this.properties = properties; this.probe = probe; this.clock = clock; this.deadline = deadline;
+        this.properties = properties;
+        this.probe = probe;
+        this.clock = clock;
+        this.deadline = deadline;
     }
 
     public Result discover(Service service) {
         Objects.requireNonNull(service);
-        if (!properties.enabled()) throw problem(HttpStatus.SERVICE_UNAVAILABLE,
-                "LOCAL_SERVICE_DISCOVERY_DISABLED", "disabled", false);
+        if (!properties.enabled())
+            throw problem(HttpStatus.SERVICE_UNAVAILABLE,
+                    "LOCAL_SERVICE_DISCOVERY_DISABLED", "disabled", false);
         Runtime runtime = probe.runtime();
         var completed = new CompletableFuture<LocalServiceProbe.Detected>();
         var activeCall = new AtomicReference<Call>();
         var budget = new LocalServiceProbe.Budget(deadline);
         synchronized (acceptanceLock) {
             long now = clock.millis();
-            if (lastAccepted != null && now - lastAccepted < 1000 || !capacity.tryAcquire()) throw busy();
+            if (lastAccepted != null && now - lastAccepted < 1000 || !capacity.tryAcquire())
+                throw busy();
             try {
                 // Cancellation must not release this permit: an OS DNS lookup may ignore interruption.
                 worker.execute(() -> {
                     LocalServiceProbe.Detected detected = null;
                     RuntimeException failure = null;
-                    try { detected = probe.discover(service, runtime, activeCall, budget); }
-                    catch (RuntimeException unavailable) { failure = unavailable; }
-                    finally { capacity.release(); }
+                    try {
+                        detected = probe.discover(service, runtime, activeCall, budget);
+                    } catch (RuntimeException unavailable) {
+                        failure = unavailable;
+                    } finally {
+                        capacity.release();
+                    }
                     // Publish only after the actual probe relinquishes capacity. The bounded
                     // queue bridges executor bookkeeping until this worker takes its next job;
                     // the permit still rejects requests while DNS or HTTP is running.
-                    if (failure == null) completed.complete(detected);
-                    else completed.completeExceptionally(failure);
+                    if (failure == null)
+                        completed.complete(detected);
+                    else
+                        completed.completeExceptionally(failure);
                 });
             } catch (RejectedExecutionException unavailable) {
                 capacity.release();
@@ -85,10 +102,12 @@ public class LocalServiceDiscoveryService implements AutoCloseable {
             LocalServiceProbe.Detected found = completed.get(budget.remainingNanos(), TimeUnit.NANOSECONDS);
             return new Result(service, runtime, found.status(), found.endpoint());
         } catch (TimeoutException timeout) {
-            budget.cancel(); cancel(activeCall, completed);
+            budget.cancel();
+            cancel(activeCall, completed);
             return new Result(service, runtime, Status.TIMEOUT, null);
         } catch (InterruptedException interrupted) {
-            budget.cancel(); cancel(activeCall, completed);
+            budget.cancel();
+            cancel(activeCall, completed);
             Thread.currentThread().interrupt();
             return new Result(service, runtime, Status.TIMEOUT, null);
         } catch (ExecutionException failure) {
@@ -100,7 +119,8 @@ public class LocalServiceDiscoveryService implements AutoCloseable {
     private static void cancel(AtomicReference<Call> call, CompletableFuture<?> completed) {
         completed.cancel(true);
         Call active = call.get();
-        if (active != null) active.cancel();
+        if (active != null)
+            active.cancel();
     }
 
     private static ApiProblemException busy() {
@@ -112,5 +132,9 @@ public class LocalServiceDiscoveryService implements AutoCloseable {
                 ApiMessage.of("api.local-service-discovery." + key), retryable);
     }
 
-    @Override @PreDestroy public void close() { worker.shutdownNow(); }
+    @Override
+    @PreDestroy
+    public void close() {
+        worker.shutdownNow();
+    }
 }

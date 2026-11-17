@@ -71,23 +71,35 @@ class LlmTurnPostgresIT {
     @DynamicPropertySource
     static void postgresProperties(DynamicPropertyRegistry properties) {
         // PER_CLASS creates the Spring-injected test instance before the extension's beforeAll.
-        if (!POSTGRES.isRunning()) POSTGRES.start();
+        if (!POSTGRES.isRunning())
+            POSTGRES.start();
         properties.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         properties.add("spring.datasource.username", POSTGRES::getUsername);
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private AgentRunService runs;
-    @Autowired private LlmRoundService rounds;
-    @Autowired private LlmTurnCheckpointService checkpoints;
-    @Autowired private LlmProtocolCodec codec;
-    @Autowired private AgentTurnCommitService turnCommits;
-    @Autowired private TaskService tasks;
-    @Autowired private FakeGateway gateway;
-    @Autowired private JdbcClient jdbc;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private AgentInstanceService agents;
+    @Autowired
+    private AgentRunService runs;
+    @Autowired
+    private LlmRoundService rounds;
+    @Autowired
+    private LlmTurnCheckpointService checkpoints;
+    @Autowired
+    private LlmProtocolCodec codec;
+    @Autowired
+    private AgentTurnCommitService turnCommits;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private FakeGateway gateway;
+    @Autowired
+    private JdbcClient jdbc;
     private AdminPrincipal owner;
 
     @BeforeAll
@@ -100,7 +112,8 @@ class LlmTurnPostgresIT {
         gateway.configVersion = 1;
         gateway.configSource = "test-fake";
         gateway.calls.set(0);
-        gateway.beforeResponse = () -> {};
+        gateway.beforeResponse = () -> {
+        };
     }
 
     @Test
@@ -140,8 +153,10 @@ class LlmTurnPostgresIT {
                 .isEqualTo("opaque-protocol");
         assertThat(jdbc.sql("select status from llm_turn where run_id = :runId")
                 .param("runId", run.id()).query(String.class).single()).isEqualTo("RESPONDED");
-        assertThat(jdbc.sql("select count(*) from project_event where project_id = :projectId and type like 'llm.turn.%'")
-                .param("projectId", project.id()).query(Long.class).single()).isEqualTo(2);
+        assertThat(
+                jdbc.sql("select count(*) from project_event where project_id = :projectId and type like 'llm.turn.%'")
+                        .param("projectId", project.id()).query(Long.class).single())
+                .isEqualTo(2);
         List<String> usage = jdbc.sql("""
                         select quantity_json::text from usage_ledger
                         where run_id = :runId order by entry_type desc
@@ -160,8 +175,8 @@ class LlmTurnPostgresIT {
         assertThat(jdbc.sql("select count(*) from call_log where run_id=:run and operation='CHAT'")
                 .param("run", run.id()).query(Long.class).single()).isEqualTo(1);
         // Production streaming audit completion is queued independently of the response transaction.
-        org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
-                assertThat(jdbc.sql("select status from call_log where run_id=:run")
+        org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(5))
+                .untilAsserted(() -> assertThat(jdbc.sql("select status from call_log where run_id=:run")
                         .param("run", run.id()).query(String.class).single()).isEqualTo("SUCCEEDED"));
         assertThat(jdbc.sql("select trace_id from call_log where run_id=:run")
                 .param("run", run.id()).query(String.class).single()).matches("[0-9a-f]{32}");
@@ -229,7 +244,8 @@ class LlmTurnPostgresIT {
         assertThatThrownBy(() -> rounds.callLeased(owner.userId(), lease.projectId(), lease.runId(),
                 0, messages, List.of(), Map.of(), lease, WORKER)).isInstanceOf(IllegalStateException.class);
         assertThat(replacement.get().leaseEpoch()).isGreaterThan(lease.leaseEpoch());
-        gateway.beforeResponse = () -> {};
+        gateway.beforeResponse = () -> {
+        };
         assertThatThrownBy(() -> rounds.callLeased(owner.userId(), lease.projectId(), lease.runId(),
                 0, messages, List.of(), Map.of(), lease, WORKER)).isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> checkpoints.saveResponseLeased(owner.userId(), lease.projectId(), lease.runId(),
@@ -300,7 +316,8 @@ class LlmTurnPostgresIT {
         }
 
         private final AtomicInteger calls = new AtomicInteger();
-        private Runnable beforeResponse = () -> {};
+        private Runnable beforeResponse = () -> {
+        };
 
         @Override
         public Exchange call(List<Message> messages, List<ToolCallback> tools,
@@ -316,7 +333,8 @@ class LlmTurnPostgresIT {
             AssistantMessage output = AssistantMessage.builder().content("")
                     .properties(Map.of("providerProtocol", "opaque-protocol"))
                     .toolCalls(List.of(new AssistantMessage.ToolCall("call-checkpoint-1",
-                            "function", "read_project_summary", "{}"))).build();
+                            "function", "read_project_summary", "{}")))
+                    .build();
             return new ChatResponse(List.of(new Generation(output)),
                     ChatResponseMetadata.builder().id("response-checkpoint-1")
                             .model("fake-model").usage(new DefaultUsage(23, 7)).build());

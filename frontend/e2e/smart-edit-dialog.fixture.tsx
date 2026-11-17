@@ -11,31 +11,63 @@ const sourceUrl = `data:image/svg+xml,${encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="640" height="360" fill="teal"/></svg>',
 )}`;
 const capability: MediaCapability = {
-  id: "synthetic-model", name: "Synthetic smart edit image model", enabled: true,
-  version: 0, capabilityVersion: 1, adapterId: "OPENAI_GPT_IMAGE_2", kind: "IMAGE_GENERATION",
-  minimumSeconds: 0, maximumSeconds: 0, maxReferenceAudios: 0, maxReferenceVideos: 0,
-  maxReferenceImages: 1, supportedVideoInputModes: [], defaultVideoInputMode: null,
-  supportsEndFrame: false, supportedImageAspectRatios: ["AUTO"], supportedImageResolutions: ["1K"],
-  supportedImageQualities: ["high"], supportsTransparentBackground: true, supportsImageMask: true, supportsImageMarkup: true,
-  mappingSha256: "a".repeat(64), settings: { pricing: { amount: "0.03", currency: "CNY", unit: "IMAGE" } },
+  id: "synthetic-model",
+  name: "Synthetic smart edit image model",
+  enabled: true,
+  version: 0,
+  capabilityVersion: 1,
+  adapterId: "OPENAI_GPT_IMAGE_2",
+  kind: "IMAGE_GENERATION",
+  minimumSeconds: 0,
+  maximumSeconds: 0,
+  maxReferenceAudios: 0,
+  maxReferenceVideos: 0,
+  maxReferenceImages: 1,
+  supportedVideoInputModes: [],
+  defaultVideoInputMode: null,
+  supportsEndFrame: false,
+  supportedImageAspectRatios: ["AUTO"],
+  supportedImageResolutions: ["1K"],
+  supportedImageQualities: ["high"],
+  supportsTransparentBackground: true,
+  supportsImageMask: true,
+  supportsImageMarkup: true,
+  mappingSha256: "a".repeat(64),
+  settings: { pricing: { amount: "0.03", currency: "CNY", unit: "IMAGE" } },
 };
 
 function Fixture() {
   const [open, setOpen] = useState(false);
   const [submissions, setSubmissions] = useState<unknown[]>([]);
   const exercise = new URLSearchParams(location.search).has("exercise");
-  return <>
-    <button onClick={() => setOpen(true)}>打开智能编辑</button>
-    <output data-testid="submissions">{JSON.stringify(submissions)}</output>
-    {open ? <SmartEditDialog projectId="synthetic-project" sourceVersionId="synthetic-source"
-      sourceTitle="Synthetic image" sourceUrl={sourceUrl} capabilities={[capability]} configuredMethod submitDisabled={!exercise}
-      busy={false} error={null} onClose={() => setOpen(false)} onSubmit={(input) => {
-        if (!exercise) throw new Error("This layout fixture must not submit generation");
-        setSubmissions((current) => [...current, input]);
-      }} /> : null}
-  </>;
+  return (
+    <>
+      <button onClick={() => setOpen(true)}>打开智能编辑</button>
+      <output data-testid="submissions">{JSON.stringify(submissions)}</output>
+      {open ? (
+        <SmartEditDialog
+          projectId="synthetic-project"
+          sourceVersionId="synthetic-source"
+          sourceTitle="Synthetic image"
+          sourceUrl={sourceUrl}
+          capabilities={[capability]}
+          configuredMethod
+          submitDisabled={!exercise}
+          busy={false}
+          error={null}
+          onClose={() => setOpen(false)}
+          onSubmit={input => {
+            if (!exercise) throw new Error("This layout fixture must not submit generation");
+            setSubmissions(current => [...current, input]);
+          }}
+        />
+      ) : null}
+    </>
+  );
 }
 
 createRoot(document.getElementById("root")!).render(
-  <QueryClientProvider client={createQueryClient()}><Fixture /></QueryClientProvider>,
+  <QueryClientProvider client={createQueryClient()}>
+    <Fixture />
+  </QueryClientProvider>,
 );

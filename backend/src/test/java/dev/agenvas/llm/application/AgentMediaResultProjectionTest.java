@@ -44,7 +44,8 @@ class AgentMediaResultProjectionTest {
         assertThat(projected.path("errorCode").asText()).isEqualTo("OPENAI_IMAGE_MODERATION_BLOCKED");
         assertThat(projected.path("status").asText()).isEqualTo("FAILED");
         assertThat(projected.path("possibleExternalCost").asBoolean()).isFalse();
-        assertThat(projected.toString()).doesNotContain("synthetic-private", "https://", "providerReceipt", "reason", "message");
+        assertThat(projected.toString()).doesNotContain("synthetic-private", "https://", "providerReceipt", "reason",
+                "message");
     }
 
     @Test
@@ -110,7 +111,8 @@ class AgentMediaResultProjectionTest {
     }
 
     private Task task(JsonNode output) {
-        return new Task(taskId, UUID.randomUUID(), UUID.randomUUID(), "synthetic-media-step", Task.Kind.IMAGE_GENERATION,
+        return new Task(taskId, UUID.randomUUID(), UUID.randomUUID(), "synthetic-media-step",
+                Task.Kind.IMAGE_GENERATION,
                 Task.Status.FAILED, false, mapper.createObjectNode(), "synthetic-hash", output, null,
                 1, null, null, null, 0, 1, "OPENAI_IMAGE_MODERATION_BLOCKED", NOW, NOW, NOW);
     }

@@ -14,7 +14,8 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import tools.jackson.databind.json.JsonMapper;
 
 class ToolBatchExecutionServiceTest {
-    @Test void separateProjectAndSkillImageCallsCannotBypassSequentialReading() {
+    @Test
+    void separateProjectAndSkillImageCallsCannotBypassSequentialReading() {
         var mapper = new JsonMapper();
         var tools = mock(ToolExecutionService.class);
         var context = new TrustedToolContext(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
@@ -27,7 +28,8 @@ class ToolBatchExecutionServiceTest {
         when(tools.executeLeased(context, 0, "skill", lease, "worker")).thenReturn(skill);
         assertThatThrownBy(() -> new ToolBatchExecutionService(tools).executeLeased(context, 0,
                 List.of(new AssistantMessage.ToolCall("project", "function", "read_artifacts", "{}"),
-                        new AssistantMessage.ToolCall("skill", "function", "read_skill_asset", "{}")), lease, "worker"))
+                        new AssistantMessage.ToolCall("skill", "function", "read_skill_asset", "{}")),
+                lease, "worker"))
                 .isInstanceOf(ApiProblemException.class).extracting(failure -> ((ApiProblemException) failure).code())
                 .isEqualTo("TOOL_ARGUMENT_INVALID");
         verify(tools).executeLeased(context, 0, "skill", lease, "worker");

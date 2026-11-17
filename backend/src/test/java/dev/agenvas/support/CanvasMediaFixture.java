@@ -10,7 +10,8 @@ import tools.jackson.databind.node.JsonNodeFactory;
 
 /** Places one media resource through the production canvas application service for integration tests. */
 public final class CanvasMediaFixture {
-    private CanvasMediaFixture() {}
+    private CanvasMediaFixture() {
+    }
 
     public static UUID place(CanvasService canvas, UUID ownerId, UUID projectId,
             UUID artifactId) {
@@ -26,9 +27,11 @@ public final class CanvasMediaFixture {
             UUID canvasItemId, long expectedVersion, String prompt, UUID imageVersionId,
             Integer durationSeconds, UUID capabilityId) {
         boolean video = durationSeconds != null;
-        List<MediaDraftService.SaveMediaInput> inputs = imageVersionId == null ? List.of()
+        List<MediaDraftService.SaveMediaInput> inputs = imageVersionId == null
+                ? List.of()
                 : List.of(new MediaDraftService.SaveMediaInput(imageVersionId,
-                        video ? MediaDraft.InputRole.START_FRAME
+                        video
+                                ? MediaDraft.InputRole.START_FRAME
                                 : MediaDraft.InputRole.REFERENCE,
                         "#7C3AED"));
         return drafts.save(ownerId, projectId, canvasItemId, expectedVersion, prompt,

@@ -9,7 +9,11 @@ public record CreatorInputField(String key, String label, String description, Ru
         boolean required, JsonNode defaultValue, BigDecimal minimum, BigDecimal maximum,
         Integer maxLength, List<RunningHubDefinition.Option> options, boolean advanced,
         RunningHubDefinition.Source source, RunningHubDefinition.Condition enabledWhen) {
-    public boolean media() { return type == RunningHubDefinition.FieldType.IMAGE
-            || type == RunningHubDefinition.FieldType.VIDEO || type == RunningHubDefinition.FieldType.AUDIO; }
-    public RunningHubDefinition.Source effectiveSource() { return source == null ? RunningHubDefinition.Source.PARAMETER : source; }
+    public boolean media() {
+        return type == RunningHubDefinition.FieldType.IMAGE
+                || type == RunningHubDefinition.FieldType.VIDEO || type == RunningHubDefinition.FieldType.AUDIO;
+    }
+    public RunningHubDefinition.Source effectiveSource() {
+        return source == null ? RunningHubDefinition.Source.PARAMETER : source;
+    }
 }

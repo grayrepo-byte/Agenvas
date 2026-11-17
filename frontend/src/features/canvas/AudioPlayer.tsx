@@ -1,8 +1,8 @@
 import { Range } from "../../shared/ui/Range";
-import { ArrowClockwise,Pause,Play } from "@/shared/ui/icons";
+import { ArrowClockwise, Pause, Play } from "@/shared/ui/icons";
 import { useQuery } from "@tanstack/react-query";
-import { useCallback,useEffect,useRef,useState } from "react";
-import { t,useLocale } from "../../shared/i18n";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { t, useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";
 import "./AudioPlayer.css";
 
@@ -14,27 +14,53 @@ function timeLabel(value: number) {
 }
 
 /** Waveform amplitudes are decoded from the selected immutable audio, never demo bars. */
-export function AudioPlayer({ src, title, description = title, selected = true, demo = false, onElement, onTimeUpdate, onLoadedMetadata, onPlaybackEvent, playbackResetKey }: {
-  src: string; title: string; description?: string; selected?: boolean; demo?: boolean;
+export function AudioPlayer({
+  src,
+  title,
+  description = title,
+  selected = true,
+  demo = false,
+  onElement,
+  onTimeUpdate,
+  onLoadedMetadata,
+  onPlaybackEvent,
+  playbackResetKey,
+}: {
+  src: string;
+  title: string;
+  description?: string;
+  selected?: boolean;
+  demo?: boolean;
   onElement?: (element: HTMLAudioElement | null) => void;
   onTimeUpdate?: (element: HTMLAudioElement) => void;
   onLoadedMetadata?: (element: HTMLAudioElement) => void;
-  onPlaybackEvent?: (event: "playing" | "pause" | "seeking" | "seeked" | "waiting" | "ratechange", element: HTMLAudioElement) => void;
+  onPlaybackEvent?: (
+    event: "playing" | "pause" | "seeking" | "seeked" | "waiting" | "ratechange",
+    element: HTMLAudioElement,
+  ) => void;
   playbackResetKey?: string;
 }) {
   useLocale();
   const audio = useRef<HTMLAudioElement>(null);
   const playbackIntent = useRef(0);
   const playbackWanted = useRef(false);
-  const bindAudio = useCallback((element: HTMLAudioElement | null) => {
-    audio.current = element; onElement?.(element);
-  }, [onElement]);
+  const bindAudio = useCallback(
+    (element: HTMLAudioElement | null) => {
+      audio.current = element;
+      onElement?.(element);
+    },
+    [onElement],
+  );
   const [playing, setPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [position, setPosition] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const waveform = useQuery({ queryKey: ["audio-waveform", src], enabled: selected,
-    staleTime: Infinity, retry: false, queryFn: async ({ signal }) => {
+  const waveform = useQuery({
+    queryKey: ["audio-waveform", src],
+    enabled: selected,
+    staleTime: Infinity,
+    retry: false,
+    queryFn: async ({ signal }) => {
       const response = await fetch(src, { credentials: "same-origin", signal });
       if (!response.ok) throw new Error(t("audio.player.waveformFailed"));
       const bytes = await response.arrayBuffer();
@@ -46,24 +72,37 @@ export function AudioPlayer({ src, title, description = title, selected = true, 
         for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
           const samples = buffer.getChannelData(channel);
           for (let bar = 0; bar < WAVEFORM_BARS; bar++) {
-            const start = Math.floor(bar * samples.length / WAVEFORM_BARS);
-            const end = Math.floor((bar + 1) * samples.length / WAVEFORM_BARS);
+            const start = Math.floor((bar * samples.length) / WAVEFORM_BARS);
+            const end = Math.floor(((bar + 1) * samples.length) / WAVEFORM_BARS);
             let peak = 0;
             for (let index = start; index < end; index++) peak = Math.max(peak, Math.abs(samples[index] ?? 0));
             amplitudes[bar] = Math.max(amplitudes[bar] ?? 0, peak);
           }
         }
         const peak = Math.max(...amplitudes, 0.001);
-        return amplitudes.map((value) => value / peak);
-      } finally { await context.close(); }
-    } });
-  useEffect(() => { const element = audio.current; return () => {
-    playbackIntent.current++; playbackWanted.current = false; element?.pause();
-  }; }, [src, playbackResetKey]);
+        return amplitudes.map(value => value / peak);
+      } finally {
+        await context.close();
+      }
+    },
+  });
+  useEffect(() => {
+    const element = audio.current;
+    return () => {
+      playbackIntent.current++;
+      playbackWanted.current = false;
+      element?.pause();
+    };
+  }, [src, playbackResetKey]);
   async function toggle() {
     const element = audio.current;
     if (!element) return;
-    if (!element.paused) { playbackIntent.current++; playbackWanted.current = false; element.pause(); return; }
+    if (!element.paused) {
+      playbackIntent.current++;
+      playbackWanted.current = false;
+      element.pause();
+      return;
+    }
     const intent = ++playbackIntent.current;
     playbackWanted.current = true;
     setError(null);
@@ -71,50 +110,132 @@ export function AudioPlayer({ src, title, description = title, selected = true, 
       await element.play();
       // An old completion may stop a closed/reset player, but must not stop a newer playback.
       if (intent !== playbackIntent.current && (!playbackWanted.current || audio.current !== element)) element.pause();
+    } catch {
+      if (intent === playbackIntent.current) setError(t("audio.player.playbackFailed"));
     }
-    catch { if (intent === playbackIntent.current) setError(t("audio.player.playbackFailed")); }
   }
   // Only playback controls exclude node gestures; the surrounding surface selects and drags the card.
-  return <div className="audio-player nowheel nopan">
-    <audio ref={bindAudio} src={src} preload="metadata" aria-label={t("audio.player.audioLabel", { "0": title })}
-      onLoadedMetadata={(event) => { setDuration(event.currentTarget.duration); onLoadedMetadata?.(event.currentTarget); }}
-      onTimeUpdate={(event) => { onTimeUpdate?.(event.currentTarget); setPosition(event.currentTarget.currentTime); }}
-      onPlay={(event) => { if (!event.currentTarget.paused) { playbackWanted.current = true; setPlaying(true); } }}
-      onPause={(event) => {
-        // Native events may belong to an earlier pause even though this element is playing again.
-        if (event.currentTarget.paused) { playbackIntent.current++; playbackWanted.current = false; setPlaying(false); }
-        onPlaybackEvent?.("pause", event.currentTarget);
-      }}
-      onEnded={() => { playbackIntent.current++; playbackWanted.current = false; setPlaying(false); }}
-      onPlaying={(event) => onPlaybackEvent?.("playing", event.currentTarget)}
-      onSeeking={(event) => onPlaybackEvent?.("seeking", event.currentTarget)}
-      onSeeked={(event) => onPlaybackEvent?.("seeked", event.currentTarget)}
-      onWaiting={(event) => onPlaybackEvent?.("waiting", event.currentTarget)}
-      onRateChange={(event) => onPlaybackEvent?.("ratechange", event.currentTarget)}
-      onError={() => { setError(t("audio.player.loadFailed")); setPlaying(false); }} />
-    <div className="audio-player-controls">
-      <Button variant="ghost" type="button" className="audio-player-play nodrag" onClick={() => void toggle()}
-        aria-label={playing ? t("audio.player.pause") : t("audio.player.play")}>{playing ? <Pause size={16} weight="fill" /> : <Play size={16} weight="fill" />}</Button>
-      <div className="audio-player-details">
-        <p className="audio-player-title" title={description}>{description}</p>
-        <span className="audio-player-time">{timeLabel(position)} / {timeLabel(duration)}</span>
+  return (
+    <div className="audio-player nowheel nopan">
+      <audio
+        ref={bindAudio}
+        src={src}
+        preload="metadata"
+        aria-label={t("audio.player.audioLabel", { "0": title })}
+        onLoadedMetadata={event => {
+          setDuration(event.currentTarget.duration);
+          onLoadedMetadata?.(event.currentTarget);
+        }}
+        onTimeUpdate={event => {
+          onTimeUpdate?.(event.currentTarget);
+          setPosition(event.currentTarget.currentTime);
+        }}
+        onPlay={event => {
+          if (!event.currentTarget.paused) {
+            playbackWanted.current = true;
+            setPlaying(true);
+          }
+        }}
+        onPause={event => {
+          // Native events may belong to an earlier pause even though this element is playing again.
+          if (event.currentTarget.paused) {
+            playbackIntent.current++;
+            playbackWanted.current = false;
+            setPlaying(false);
+          }
+          onPlaybackEvent?.("pause", event.currentTarget);
+        }}
+        onEnded={() => {
+          playbackIntent.current++;
+          playbackWanted.current = false;
+          setPlaying(false);
+        }}
+        onPlaying={event => onPlaybackEvent?.("playing", event.currentTarget)}
+        onSeeking={event => onPlaybackEvent?.("seeking", event.currentTarget)}
+        onSeeked={event => onPlaybackEvent?.("seeked", event.currentTarget)}
+        onWaiting={event => onPlaybackEvent?.("waiting", event.currentTarget)}
+        onRateChange={event => onPlaybackEvent?.("ratechange", event.currentTarget)}
+        onError={() => {
+          setError(t("audio.player.loadFailed"));
+          setPlaying(false);
+        }}
+      />
+      <div className="audio-player-controls">
+        <Button
+          variant="ghost"
+          type="button"
+          className="audio-player-play nodrag"
+          onClick={() => void toggle()}
+          aria-label={playing ? t("audio.player.pause") : t("audio.player.play")}
+        >
+          {playing ? <Pause size={16} weight="fill" /> : <Play size={16} weight="fill" />}
+        </Button>
+        <div className="audio-player-details">
+          <p className="audio-player-title" title={description}>
+            {description}
+          </p>
+          <span className="audio-player-time">
+            {timeLabel(position)} / {timeLabel(duration)}
+          </span>
+        </div>
       </div>
-    </div>
-    <div className="audio-player-progress nodrag">
-      <div className="audio-player-waveform" aria-hidden="true">
-        {waveform.data ? waveform.data.map((amplitude, index) => <span key={index}
-          className={duration > 0 && index / WAVEFORM_BARS < position / duration ? "is-played" : ""}
-          style={{ height: `${Math.max(3, amplitude * 80)}%` }} />)
-          : <span className="audio-player-waveform-placeholder" />}
+      <div className="audio-player-progress nodrag">
+        <div className="audio-player-waveform" aria-hidden="true">
+          {waveform.data ? (
+            waveform.data.map((amplitude, index) => (
+              <span
+                key={index}
+                className={duration > 0 && index / WAVEFORM_BARS < position / duration ? "is-played" : ""}
+                style={{ height: `${Math.max(3, amplitude * 80)}%` }}
+              />
+            ))
+          ) : (
+            <span className="audio-player-waveform-placeholder" />
+          )}
+        </div>
+        <Range
+          variant="waveform"
+          className="audio-player-seek"
+          aria-label={t("audio.player.progressLabel")}
+          min={0}
+          max={duration || 1}
+          step={0.01}
+          value={Math.min(position, duration || 1)}
+          disabled={duration <= 0}
+          onChange={event => {
+            const value = Number(event.target.value);
+            if (audio.current) audio.current.currentTime = value;
+            setPosition(value);
+          }}
+        />
       </div>
-      <Range variant="waveform" className="audio-player-seek" aria-label={t("audio.player.progressLabel")} min={0}
-        max={duration || 1} step={0.01} value={Math.min(position, duration || 1)} disabled={duration <= 0}
-        onChange={(event) => { const value = Number(event.target.value); if (audio.current) audio.current.currentTime = value; setPosition(value); }} />
+      {waveform.isFetching ? <small role="status">{t("audio.player.waveformLoading")}</small> : null}
+      {waveform.error ? (
+        <small>
+          {t("audio.player.waveformUnavailable")}
+          <Button variant="ghost" type="button" className="nodrag" onClick={() => void waveform.refetch()}>
+            {t("audio.player.retryWaveform")}
+          </Button>
+        </small>
+      ) : null}
+      {error ? (
+        <div className="audio-player-error" role="alert">
+          {error}
+          <Button
+            variant="ghost"
+            type="button"
+            className="nodrag"
+            onClick={() => {
+              setError(null);
+              audio.current?.load();
+            }}
+          >
+            <ArrowClockwise size={14} />
+            {t("media.retryPlayback")}
+          </Button>
+        </div>
+      ) : null}
+      {demo ? <small className="audio-player-demo">{t("audio.player.mockHint")}</small> : null}
     </div>
-    {waveform.isFetching ? <small role="status">{t("audio.player.waveformLoading")}</small> : null}
-    {waveform.error ? <small>{t("audio.player.waveformUnavailable")}<Button variant="ghost" type="button" className="nodrag" onClick={() => void waveform.refetch()}>{t("audio.player.retryWaveform")}</Button></small> : null}
-    {error ? <div className="audio-player-error" role="alert">{error}<Button variant="ghost" type="button" className="nodrag"
-      onClick={() => { setError(null); audio.current?.load(); }}><ArrowClockwise size={14} />{t("media.retryPlayback")}</Button></div> : null}
-    {demo ? <small className="audio-player-demo">{t("audio.player.mockHint")}</small> : null}
-  </div>;
+  );
 }

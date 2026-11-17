@@ -42,5 +42,6 @@ public class CanvasItemController {
     public record UploadVersionRequest(@NotNull UUID targetItemId,
             @PositiveOrZero long expectedVersion,
             @NotNull JsonNode content, MediaUploadPurpose purpose, UUID sourceVersionId,
-            JsonNode directorScene) {}
+            JsonNode directorScene) {
+    }
 }

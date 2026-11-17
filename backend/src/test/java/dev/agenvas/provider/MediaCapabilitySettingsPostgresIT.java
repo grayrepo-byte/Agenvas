@@ -56,11 +56,16 @@ class MediaCapabilitySettingsPostgresIT {
                 () -> Base64.getEncoder().encodeToString(new byte[32]));
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private CredentialCipher cipher;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private WebApplicationContext context;
-    @Autowired private ObjectMapper mapper;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private CredentialCipher cipher;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private WebApplicationContext context;
+    @Autowired
+    private ObjectMapper mapper;
 
     @Test
     void administratorCreatesMaskedVersionedConnectionAndCapabilities() throws Exception {
@@ -82,7 +87,8 @@ class MediaCapabilitySettingsPostgresIT {
                     assertThat(result.getResponse().getHeader("Cache-Control")).contains("no-store");
                     JsonNode profiles = mapper.readTree(result.getResponse().getContentAsString()).path("profiles");
                     assertThat(profiles.toString()).doesNotContain("\"apiKey\":", "\"origin\":", "\"nodeId\":");
-                    for (JsonNode profile : profiles) assertThat(profile.path("inputs").isArray()).isTrue();
+                    for (JsonNode profile : profiles)
+                        assertThat(profile.path("inputs").isArray()).isTrue();
                 });
         mvc.perform(get("/api/v1/settings/kling/profiles")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/v1/settings/kling/profiles").with(userAuth)).andExpect(status().isForbidden());
@@ -93,7 +99,8 @@ class MediaCapabilitySettingsPostgresIT {
                     JsonNode profiles = mapper.readTree(result.getResponse().getContentAsString()).path("profiles");
                     for (JsonNode profile : profiles) {
                         assertThat(profile.path("inputs").isArray()).isTrue();
-                        for (JsonNode field : profile.path("inputs")) assertThat(field.has("nodeId")).isFalse();
+                        for (JsonNode field : profile.path("inputs"))
+                            assertThat(field.has("nodeId")).isFalse();
                         if ("kling-3.0-omni".equals(profile.path("model").asText())) {
                             assertThat(profile.at("/inputLimits/maxReferenceImages").asInt()).isEqualTo(7);
                             assertThat(profile.at("/inputLimits/maxReferenceVideos").asInt()).isEqualTo(1);
@@ -103,9 +110,9 @@ class MediaCapabilitySettingsPostgresIT {
                     }
                 });
         mvc.perform(put("/api/v1/settings/media-defaults/IMAGE_GENERATION")
-                        .with(userAuth).with(csrf()).contentType("application/json")
-                        .content("{\"expectedVersion\":0,\"capabilityId\":\""
-                                + UUID.randomUUID() + "\"}"))
+                .with(userAuth).with(csrf()).contentType("application/json")
+                .content("{\"expectedVersion\":0,\"capabilityId\":\""
+                        + UUID.randomUUID() + "\"}"))
                 .andExpect(status().isForbidden());
 
         int initialConnections = jdbc.sql("select count(*) from media_provider_connection")
@@ -114,8 +121,8 @@ class MediaCapabilitySettingsPostgresIT {
         String cloud = "{\"name\":\"OpenAI main\",\"platform\":\"OPENAI\","
                 + "\"apiKey\":\"" + key + "\"}";
         String created = mvc.perform(post("/api/v1/settings/media-connections")
-                        .with(adminAuth).with(csrf()).header("Idempotency-Key", "cloud-create-1")
-                        .contentType("application/json").content(cloud))
+                .with(adminAuth).with(csrf()).header("Idempotency-Key", "cloud-create-1")
+                .contentType("application/json").content(cloud))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.connections.length()").value(initialConnections + 1))
                 .andExpect(result -> assertThat(connection(result.getResponse().getContentAsString(), "OPENAI")
@@ -125,14 +132,14 @@ class MediaCapabilitySettingsPostgresIT {
                 .andReturn().getResponse().getContentAsString();
         assertThat(created).doesNotContain(key, "ciphertext", "nonce", "apiKey");
         mvc.perform(post("/api/v1/settings/media-connections")
-                        .with(adminAuth).with(csrf()).header("Idempotency-Key", "cloud-create-1")
-                        .contentType("application/json").content(cloud))
+                .with(adminAuth).with(csrf()).header("Idempotency-Key", "cloud-create-1")
+                .contentType("application/json").content(cloud))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.connections.length()").value(initialConnections + 1));
         mvc.perform(post("/api/v1/settings/media-connections")
-                        .with(adminAuth).with(csrf()).header("Idempotency-Key", "cloud-create-1")
-                        .contentType("application/json")
-                        .content(cloud.replace("OpenAI main", "Different")))
+                .with(adminAuth).with(csrf()).header("Idempotency-Key", "cloud-create-1")
+                .contentType("application/json")
+                .content(cloud.replace("OpenAI main", "Different")))
                 .andExpect(status().isConflict());
         UUID cloudId = jdbc.sql("select id from media_provider_connection where platform='OPENAI'")
                 .query(UUID.class).single();
@@ -140,7 +147,8 @@ class MediaCapabilitySettingsPostgresIT {
                 + "credential_key_version from media_provider_connection_version "
                 + "where connection_id=:id and version=1")
                 .param("id", cloudId).query((rs, row) -> new CredentialCipher.Encrypted(
-                        rs.getBytes(1), rs.getBytes(2), rs.getInt(3))).single();
+                        rs.getBytes(1), rs.getBytes(2), rs.getInt(3)))
+                .single();
         assertThat(cipher.decryptMedia(cloudId, 1, encrypted)).isEqualTo(key);
         assertThatThrownBy(() -> cipher.decrypt(cloudId, 1, encrypted))
                 .isInstanceOf(IllegalStateException.class);
@@ -148,22 +156,22 @@ class MediaCapabilitySettingsPostgresIT {
         String comfy = "{\"name\":\"Local Comfy\",\"platform\":\"COMFYUI\","
                 + "\"origin\":\"http://127.0.0.1:8188\"}";
         mvc.perform(post("/api/v1/settings/media-connections")
-                        .with(adminAuth).with(csrf()).header("Idempotency-Key", "comfy-create-1")
-                        .contentType("application/json").content(comfy))
+                .with(adminAuth).with(csrf()).header("Idempotency-Key", "comfy-create-1")
+                .contentType("application/json").content(comfy))
                 .andExpect(status().isOk());
         UUID comfyId = jdbc.sql("select id from media_provider_connection where platform='COMFYUI'")
                 .query(UUID.class).single();
         mvc.perform(post("/api/v1/settings/media-connections/" + comfyId + "/capabilities")
-                        .with(adminAuth).with(csrf()).header("Idempotency-Key", "comfy-image-1")
-                        .contentType("application/json")
-                        .content(mapper.createObjectNode().put("name", "Image").put("adapterId", "COMFY_IMAGE_V1")
-                                .set("settings", ComfyWorkflowFixture.settings(mapper, false, false)).toString()))
+                .with(adminAuth).with(csrf()).header("Idempotency-Key", "comfy-image-1")
+                .contentType("application/json")
+                .content(mapper.createObjectNode().put("name", "Image").put("adapterId", "COMFY_IMAGE_V1")
+                        .set("settings", ComfyWorkflowFixture.settings(mapper, false, false)).toString()))
                 .andExpect(status().isOk());
         mvc.perform(post("/api/v1/settings/media-connections/" + comfyId + "/capabilities")
-                        .with(adminAuth).with(csrf()).header("Idempotency-Key", "comfy-video-1")
-                        .contentType("application/json")
-                        .content(mapper.createObjectNode().put("name", "Video").put("adapterId", "COMFY_VIDEO_V1")
-                                .set("settings", ComfyWorkflowFixture.settings(mapper, true, false)).toString()))
+                .with(adminAuth).with(csrf()).header("Idempotency-Key", "comfy-video-1")
+                .contentType("application/json")
+                .content(mapper.createObjectNode().put("name", "Video").put("adapterId", "COMFY_VIDEO_V1")
+                        .set("settings", ComfyWorkflowFixture.settings(mapper, true, false)).toString()))
                 .andExpect(status().isOk());
         mvc.perform(get("/api/v1/settings/media-connections").with(adminAuth))
                 .andExpect(status().isOk())
@@ -172,44 +180,44 @@ class MediaCapabilitySettingsPostgresIT {
         UUID imageId = jdbc.sql("select id from media_capability where connection_id=:id "
                 + "and name='Image'").param("id", comfyId).query(UUID.class).single();
         mvc.perform(put("/api/v1/settings/media-connections/" + comfyId
-                        + "/capabilities/" + imageId).with(adminAuth).with(csrf())
-                        .contentType("application/json")
-                        .content("{\"expectedVersion\":0,\"name\":\"Hero image\","
-                                + "\"enabled\":true,\"adapterId\":\"COMFY_IMAGE_V1\"}"))
+                + "/capabilities/" + imageId).with(adminAuth).with(csrf())
+                .contentType("application/json")
+                .content("{\"expectedVersion\":0,\"name\":\"Hero image\","
+                        + "\"enabled\":true,\"adapterId\":\"COMFY_IMAGE_V1\"}"))
                 .andExpect(status().isOk())
                 .andExpect(result -> assertThat(connection(result.getResponse().getContentAsString(), "COMFYUI")
                         .at("/capabilities/0/name").asText()).isEqualTo("Hero image"));
         mvc.perform(put("/api/v1/settings/media-connections/" + comfyId
-                        + "/capabilities/" + imageId).with(adminAuth).with(csrf())
-                        .contentType("application/json")
-                        .content("{\"expectedVersion\":0,\"name\":\"Stale\","
-                                + "\"enabled\":true,\"adapterId\":\"COMFY_IMAGE_V1\"}"))
+                + "/capabilities/" + imageId).with(adminAuth).with(csrf())
+                .contentType("application/json")
+                .content("{\"expectedVersion\":0,\"name\":\"Stale\","
+                        + "\"enabled\":true,\"adapterId\":\"COMFY_IMAGE_V1\"}"))
                 .andExpect(status().isConflict());
         mvc.perform(put("/api/v1/settings/media-defaults/IMAGE_GENERATION")
-                        .with(adminAuth).with(csrf()).contentType("application/json")
-                        .content("{\"expectedVersion\":0,\"capabilityId\":\""
-                                + imageId + "\"}"))
+                .with(adminAuth).with(csrf()).contentType("application/json")
+                .content("{\"expectedVersion\":0,\"capabilityId\":\""
+                        + imageId + "\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.defaults[0].capabilityId").value(imageId.toString()));
         mvc.perform(post("/api/v1/settings/media-connections")
-                        .with(adminAuth).with(csrf()).header("Idempotency-Key", "bad-origin-1")
-                        .contentType("application/json")
-                        .content(comfy.replace("127.0.0.1", "169.254.169.254")))
+                .with(adminAuth).with(csrf()).header("Idempotency-Key", "bad-origin-1")
+                .contentType("application/json")
+                .content(comfy.replace("127.0.0.1", "169.254.169.254")))
                 .andExpect(status().isOk());
         mvc.perform(put("/api/v1/settings/media-connections/" + comfyId)
-                        .with(adminAuth).with(csrf()).contentType("application/json")
-                        .content("{\"expectedVersion\":0,\"name\":\"Renamed\","
-                                + "\"enabled\":false,\"origin\":\"http://127.0.0.1:8188\"}"))
+                .with(adminAuth).with(csrf()).contentType("application/json")
+                .content("{\"expectedVersion\":0,\"name\":\"Renamed\","
+                        + "\"enabled\":false,\"origin\":\"http://127.0.0.1:8188\"}"))
                 .andExpect(status().isOk());
         mvc.perform(put("/api/v1/settings/media-connections/" + comfyId)
-                        .with(adminAuth).with(csrf()).contentType("application/json")
-                        .content("{\"expectedVersion\":0,\"name\":\"Stale\","
-                                + "\"enabled\":true,\"origin\":\"http://127.0.0.1:8188\"}"))
+                .with(adminAuth).with(csrf()).contentType("application/json")
+                .content("{\"expectedVersion\":0,\"name\":\"Stale\","
+                        + "\"enabled\":true,\"origin\":\"http://127.0.0.1:8188\"}"))
                 .andExpect(status().isConflict());
 
         mvc.perform(post("/api/v1/settings/media-connections").with(adminAuth).with(csrf())
-                        .header("Idempotency-Key", "google-config-create").contentType("application/json")
-                        .content("""
+                .header("Idempotency-Key", "google-config-create").contentType("application/json")
+                .content("""
                                 {"name":"Nano Banana gateway","platform":"GOOGLE",
                                 "origin":"https://gateway.example.com","apiKey":"fake-google-key"}
                                 """))
@@ -217,8 +225,8 @@ class MediaCapabilitySettingsPostgresIT {
         UUID googleId = jdbc.sql("select id from media_provider_connection where platform='GOOGLE'")
                 .query(UUID.class).single();
         mvc.perform(post("/api/v1/settings/media-connections/" + googleId + "/capabilities")
-                        .with(adminAuth).with(csrf()).header("Idempotency-Key", "google-config-publish")
-                        .contentType("application/json").content("""
+                .with(adminAuth).with(csrf()).header("Idempotency-Key", "google-config-publish")
+                .contentType("application/json").content("""
                                 {"name":"Nano Banana 2","adapterId":"GOOGLE_NANO_BANANA_2",
                                 "settings":{"model":"gateway-image","maxReferenceImages":3,
                                 "defaultParameters":{"aspectRatio":"16:9","resolution":"2K"},
@@ -234,9 +242,9 @@ class MediaCapabilitySettingsPostgresIT {
 
         String klingKey = "synthetic-kling-api-key";
         String klingResponse = mvc.perform(post("/api/v1/settings/media-connections").with(adminAuth).with(csrf())
-                        .header("Idempotency-Key", "kling-config-create").contentType("application/json")
-                        .content(mapper.createObjectNode().put("name", "Kling official").put("platform", "KLING")
-                                .put("apiKey", klingKey).toString()))
+                .header("Idempotency-Key", "kling-config-create").contentType("application/json")
+                .content(mapper.createObjectNode().put("name", "Kling official").put("platform", "KLING")
+                        .put("apiKey", klingKey).toString()))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         JsonNode kling = connection(klingResponse, "KLING");
         assertThat(klingResponse).doesNotContain(klingKey, "ciphertext", "nonce", "apiKey");
@@ -245,17 +253,17 @@ class MediaCapabilitySettingsPostgresIT {
         String klingId = kling.path("id").asText();
         for (String adapter : List.of("KLING_IMAGE_3", "KLING_VIDEO_3")) {
             mvc.perform(post("/api/v1/settings/media-connections/" + klingId + "/capabilities")
-                            .with(adminAuth).with(csrf()).header("Idempotency-Key", "publish-" + adapter)
-                            .contentType("application/json")
-                            .content(mapper.createObjectNode().put("name", adapter).put("adapterId", adapter).toString()))
+                    .with(adminAuth).with(csrf()).header("Idempotency-Key", "publish-" + adapter)
+                    .contentType("application/json")
+                    .content(mapper.createObjectNode().put("name", adapter).put("adapterId", adapter).toString()))
                     .andExpect(status().isOk());
         }
         mvc.perform(get("/api/v1/settings/media-connections").with(adminAuth)).andExpect(status().isOk())
                 .andExpect(result -> assertThat(connection(result.getResponse().getContentAsString(), "KLING")
                         .path("capabilities").size()).isEqualTo(2));
         mvc.perform(post("/api/v1/settings/media-connections").with(adminAuth).with(csrf())
-                        .header("Idempotency-Key", "kling-custom-origin").contentType("application/json")
-                        .content("""
+                .header("Idempotency-Key", "kling-custom-origin").contentType("application/json")
+                .content("""
                                 {"name":"Custom Kling address","platform":"KLING",
                                 "origin":"https://untrusted.example.com","apiKey":"synthetic-key"}
                                 """))
@@ -265,35 +273,42 @@ class MediaCapabilitySettingsPostgresIT {
             String origin = "http://192.168.1.50:8188" + (platform.equals("RUNNINGHUB") ? "" : "/v1");
             var payload = mapper.createObjectNode().put("name", "Private " + platform)
                     .put("platform", platform).put("origin", origin);
-            if (!platform.equals("COMFYUI")) payload.put("apiKey", "synthetic-private-key");
+            if (!platform.equals("COMFYUI"))
+                payload.put("apiKey", "synthetic-private-key");
             String saved = mvc.perform(post("/api/v1/settings/media-connections").with(adminAuth).with(csrf())
-                            .header("Idempotency-Key", "private-" + platform).contentType("application/json")
-                            .content(payload.toString())).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+                    .header("Idempotency-Key", "private-" + platform).contentType("application/json")
+                    .content(payload.toString())).andExpect(status().isOk()).andReturn().getResponse()
+                    .getContentAsString();
             JsonNode createdPrivate = null;
             for (JsonNode entry : mapper.readTree(saved).path("connections"))
-                if (entry.path("name").asText().equals("Private " + platform)) createdPrivate = entry;
+                if (entry.path("name").asText().equals("Private " + platform))
+                    createdPrivate = entry;
             assertThat(createdPrivate).isNotNull();
             assertThat(createdPrivate.path("origin").asText()).isEqualTo(platform.equals("COMFYUI")
-                    ? "http://192.168.1.50:8188/[configured-path]" : origin);
+                    ? "http://192.168.1.50:8188/[configured-path]"
+                    : origin);
             assertThat(saved).doesNotContain("synthetic-private-key");
             payload.put("origin", "http://169.254.169.254:8188");
             mvc.perform(post("/api/v1/settings/media-connections").with(adminAuth).with(csrf())
-                            .header("Idempotency-Key", "metadata-" + platform).contentType("application/json")
-                            .content(payload.toString())).andExpect(status().isOk());
+                    .header("Idempotency-Key", "metadata-" + platform).contentType("application/json")
+                    .content(payload.toString())).andExpect(status().isOk());
         }
         for (String platform : List.of("OPENAI", "GOOGLE", "RUNNINGHUB", "COMFYUI")) {
             var payload = mapper.createObjectNode().put("name", "Public HTTP " + platform)
                     .put("platform", platform).put("origin", "http://8.8.8.8:8188");
-            if (!platform.equals("COMFYUI")) payload.put("apiKey", "synthetic-public-key");
+            if (!platform.equals("COMFYUI"))
+                payload.put("apiKey", "synthetic-public-key");
             String saved = mvc.perform(post("/api/v1/settings/media-connections").with(adminAuth).with(csrf())
                     .header("Idempotency-Key", "public-http-" + platform).contentType("application/json")
-                    .content(payload.toString())).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+                    .content(payload.toString())).andExpect(status().isOk()).andReturn().getResponse()
+                    .getContentAsString();
             assertThat(saved).contains("http://8.8.8.8:8188").doesNotContain("synthetic-public-key");
         }
     }
     private JsonNode connection(String response, String platform) {
         for (JsonNode connection : mapper.readTree(response).path("connections")) {
-            if (platform.equals(connection.path("platform").asText())) return connection;
+            if (platform.equals(connection.path("platform").asText()))
+                return connection;
         }
         throw new AssertionError("Missing connection for " + platform);
     }

@@ -67,7 +67,8 @@ public class McpTransportConfiguration {
         // Depending on the server ensures its handlers exist before the route is published.
         return transport.getRouterFunction().filter((request, next) -> {
             List<String> versions = request.headers().header("MCP-Protocol-Version");
-            if (versions.size() > 1 || (!versions.isEmpty() && !transport.protocolVersions().contains(versions.getFirst()))) {
+            if (versions.size() > 1
+                    || (!versions.isEmpty() && !transport.protocolVersions().contains(versions.getFirst()))) {
                 return ServerResponse.badRequest().contentType(MediaType.APPLICATION_JSON)
                         .header("Cache-Control", "no-store").body(Map.of("error", "Unsupported MCP protocol version"));
             }
@@ -77,7 +78,8 @@ public class McpTransportConfiguration {
                 return ServerResponse.status(response.statusCode()).contentType(MediaType.APPLICATION_JSON)
                         .headers(headers -> {
                             // A stateless server offers POST only; keep 405 useful to Streamable HTTP clients.
-                            if (response.statusCode().value() == 405) headers.set("Allow", "POST");
+                            if (response.statusCode().value() == 405)
+                                headers.set("Allow", "POST");
                         })
                         .header("Cache-Control", "no-store").body(Map.of("error", "Invalid MCP request"));
             }
@@ -91,9 +93,10 @@ public class McpTransportConfiguration {
         McpJsonMapper json = McpJsonDefaults.getMapper();
         var builder = McpServer.sync(new ScopedTransport(transport, policy, tokens))
                 .serverInfo("agenvas", "1.0")
-                .instructions("Use list_projects to select a project. Writes require a stable commandId; replay the same "
-                        + "commandId and arguments after a lost response. Media generation directly accepts tasks with "
-                        + "no additional approval. Poll read_task_status; UNKNOWN must never be automatically resubmitted.")
+                .instructions(
+                        "Use list_projects to select a project. Writes require a stable commandId; replay the same "
+                                + "commandId and arguments after a lost response. Media generation directly accepts tasks with "
+                                + "no additional approval. Poll read_task_status; UNKNOWN must never be automatically resubmitted.")
                 .capabilities(McpSchema.ServerCapabilities.builder().tools(false).build())
                 .jsonMapper(json)
                 // The catalog validator also enforces application limits and never echoes arbitrary input in errors.
@@ -107,7 +110,8 @@ public class McpTransportConfiguration {
                     .outputSchema(json, definition.path("outputSchema").toString())
                     .annotations(McpSchema.ToolAnnotations.builder().readOnlyHint(readOnly)
                             .destructiveHint(false).idempotentHint(true)
-                            .openWorldHint(scope == McpScope.MEDIA_GENERATE).build()).build();
+                            .openWorldHint(scope == McpScope.MEDIA_GENERATE).build())
+                    .build();
             builder.toolCall(tool, (context, request) -> {
                 Locale locale = (Locale) context.get(LOCALE);
                 try {
@@ -123,7 +127,8 @@ public class McpTransportConfiguration {
                             problem.retryable());
                 } catch (RuntimeException unexpected) {
                     // Do not log arguments, credential material, private drafts or exception messages from dependencies.
-                    LOG.error("MCP tool failed: tool={}, exceptionType={}", name, unexpected.getClass().getSimpleName());
+                    LOG.error("MCP tool failed: tool={}, exceptionType={}", name,
+                            unexpected.getClass().getSimpleName());
                     return error("MCP_INTERNAL_ERROR", 500,
                             messages.text(ApiMessage.of("api.mcp.internal-error"), locale), false);
                 }
@@ -133,7 +138,8 @@ public class McpTransportConfiguration {
     }
 
     private static McpPrincipal principal(McpTransportContext context) {
-        if (context.get(PRINCIPAL) instanceof McpPrincipal principal) return principal;
+        if (context.get(PRINCIPAL) instanceof McpPrincipal principal)
+            return principal;
         throw McpTokenService.unauthenticated();
     }
 
@@ -156,9 +162,11 @@ public class McpTransportConfiguration {
                         if (McpSchema.METHOD_TOOLS_LIST.equals(request.method())) {
                             McpPrincipal current = tokens.requireValidForRead(principal(context));
                             return handler.handleRequest(context, request).map(response -> {
-                                if (!(response.result() instanceof McpSchema.ListToolsResult result)) return safe(response);
+                                if (!(response.result() instanceof McpSchema.ListToolsResult result))
+                                    return safe(response);
                                 var visible = result.tools().stream()
-                                        .filter(tool -> current.scopes().contains(policy.requiredScope(tool.name()))).toList();
+                                        .filter(tool -> current.scopes().contains(policy.requiredScope(tool.name())))
+                                        .toList();
                                 return McpSchema.JSONRPCResponse.result(request.id(),
                                         new McpSchema.ListToolsResult(visible, result.nextCursor(), result.meta()));
                             });
@@ -170,22 +178,28 @@ public class McpTransportConfiguration {
                 }
 
                 @Override
-                public Mono<Void> handleNotification(McpTransportContext context, McpSchema.JSONRPCNotification notification) {
+                public Mono<Void> handleNotification(McpTransportContext context,
+                        McpSchema.JSONRPCNotification notification) {
                     return handler.handleNotification(context, notification);
                 }
             });
         }
 
         private static McpSchema.JSONRPCResponse safe(McpSchema.JSONRPCResponse response) {
-            if (response.error() == null) return response;
+            if (response.error() == null)
+                return response;
             return McpSchema.JSONRPCResponse.error(response.id(),
                     new McpSchema.JSONRPCResponse.JSONRPCError(response.error().code(), "Invalid MCP request"));
         }
 
         @Override
-        public List<String> protocolVersions() { return delegate.protocolVersions(); }
+        public List<String> protocolVersions() {
+            return delegate.protocolVersions();
+        }
 
         @Override
-        public Mono<Void> closeGracefully() { return delegate.closeGracefully(); }
+        public Mono<Void> closeGracefully() {
+            return delegate.closeGracefully();
+        }
     }
 }

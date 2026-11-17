@@ -48,9 +48,12 @@ class CreationMessagesTest {
     @Test
     void englishLabelsCoverEveryOperationAndStructuredVariantWithoutChinese() {
         request("en-US,zh;q=0.2");
-        for (var operation : ImageOperation.values()) assertEnglish(messages.text(operation.resultLabel()));
-        for (var operation : VideoOperation.values()) assertEnglish(messages.text(operation.resultLabel()));
-        for (var purpose : MediaUploadPurpose.values()) assertEnglish(messages.text(purpose.resultLabel()));
+        for (var operation : ImageOperation.values())
+            assertEnglish(messages.text(operation.resultLabel()));
+        for (var operation : VideoOperation.values())
+            assertEnglish(messages.text(operation.resultLabel()));
+        for (var purpose : MediaUploadPurpose.values())
+            assertEnglish(messages.text(purpose.resultLabel()));
         for (String type : new String[]{"CHARACTER", "FACE", "PROP", "SCENE_GRID"}) {
             var spec = ImageOperationSpec.parse(mapper, ImageOperation.THREE_VIEW,
                     mapper.createObjectNode().put("threeViewType", type).put("aspectRatio", "16:9"));

@@ -55,34 +55,57 @@ import tools.jackson.databind.node.ObjectNode;
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class AgentVideoCompositionToolsPostgresIT {
-    @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
-    @TempDir static Path storage;
-    @TempDir Path temp;
-    @DynamicPropertySource static void database(DynamicPropertyRegistry properties) {
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    @TempDir
+    static Path storage;
+    @TempDir
+    Path temp;
+    @DynamicPropertySource
+    static void database(DynamicPropertyRegistry properties) {
         properties.add("agenvas.storage.root", () -> storage.toString());
         properties.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         properties.add("spring.datasource.username", POSTGRES::getUsername);
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
-    @Autowired IdentityService identities;
-    @Autowired ProjectService projects;
-    @Autowired ArtifactService artifacts;
-    @Autowired AssetService assets;
-    @Autowired MediaToolRunner mediaTools;
-    @Autowired CanvasService canvas;
-    @Autowired AgentInstanceService agents;
-    @Autowired AgentRunService runs;
-    @Autowired TaskService tasks;
-    @Autowired DirectMediaTaskService directTasks;
-    @Autowired AgentTurnCommitService commits;
-    @Autowired LlmTurnCheckpointService checkpoints;
-    @Autowired LlmProtocolCodec codec;
-    @Autowired ToolRegistry registry;
-    @Autowired ToolExecutionService execution;
-    @Autowired AgentVideoCompositionToolService compositionTool;
-    @Autowired ReadToolService reader;
-    @Autowired ObjectMapper mapper;
-    @Autowired JdbcClient jdbc;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    ProjectService projects;
+    @Autowired
+    ArtifactService artifacts;
+    @Autowired
+    AssetService assets;
+    @Autowired
+    MediaToolRunner mediaTools;
+    @Autowired
+    CanvasService canvas;
+    @Autowired
+    AgentInstanceService agents;
+    @Autowired
+    AgentRunService runs;
+    @Autowired
+    TaskService tasks;
+    @Autowired
+    DirectMediaTaskService directTasks;
+    @Autowired
+    AgentTurnCommitService commits;
+    @Autowired
+    LlmTurnCheckpointService checkpoints;
+    @Autowired
+    LlmProtocolCodec codec;
+    @Autowired
+    ToolRegistry registry;
+    @Autowired
+    ToolExecutionService execution;
+    @Autowired
+    AgentVideoCompositionToolService compositionTool;
+    @Autowired
+    ReadToolService reader;
+    @Autowired
+    ObjectMapper mapper;
+    @Autowired
+    JdbcClient jdbc;
 
     @Test
     void committedCompositionIsScopedQueuedOnceAndReadableWithoutCreatingAnApproval() throws Exception {
@@ -90,17 +113,23 @@ class AgentVideoCompositionToolsPostgresIT {
         var project = projects.create(owner.userId(), "Composition tools", Project.AspectRatio.LANDSCAPE_16_9);
         Path videoFile = temp.resolve("shot.mp4");
         mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i",
-                "testsrc2=s=160x90:r=12", "-t", "2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", videoFile.toString()));
+                "testsrc2=s=160x90:r=12", "-t", "2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-y",
+                videoFile.toString()));
         var videoAsset = assets.archiveTaskVideo(owner.userId(), project.id(), UUID.randomUUID(), () -> {
-            try { return Files.newInputStream(videoFile); }
-            catch (java.io.IOException failed) { throw new IllegalStateException(failed); }
+            try {
+                return Files.newInputStream(videoFile);
+            } catch (java.io.IOException failed) {
+                throw new IllegalStateException(failed);
+            }
         });
         var video = uploaded(owner.userId(), project.id(), Artifact.Kind.VIDEO, videoAsset.id(), "镜头 1");
-        UUID audioAsset = dev.agenvas.testing.AudioAssetFixture.archive(assets, mediaTools, owner.userId(), project.id());
+        UUID audioAsset = dev.agenvas.testing.AudioAssetFixture.archive(assets, mediaTools, owner.userId(),
+                project.id());
         var audio = uploaded(owner.userId(), project.id(), Artifact.Kind.AUDIO, audioAsset, "镜头 1 台词");
         var hiddenAudio = artifacts.create(owner.userId(), project.id(), Artifact.Kind.AUDIO, "未放入画布的音频",
                 mapper.createObjectNode().put("sourceType", "UPLOAD").put("assetId", audioAsset.toString()));
-        var agent = configureDirector(agents, owner.userId(), project.id(), "Director", "Arrange dialogue from evidence");
+        var agent = configureDirector(agents, owner.userId(), project.id(), "Director",
+                "Arrange dialogue from evidence");
         var queued = runs.create(owner.userId(), project.id(), agent.id(), "自动匹配台词并合成", "composition-tool-run").run();
         String worker = "composition-tool-worker";
         Task lease = tasks.claimAgentTurns(worker, 1).getFirst();
@@ -115,7 +144,8 @@ class AgentVideoCompositionToolsPostgresIT {
 
         var read = reader.artifacts(trusted, run, UUID.randomUUID(), mapper.createObjectNode().set("versionIds",
                 mapper.createArrayNode().add(video.resourceDefaultVersion().id().toString())
-                        .add(audio.resourceDefaultVersion().id().toString())).toString());
+                        .add(audio.resourceDefaultVersion().id().toString()))
+                .toString());
         assertThat(read.at("/data/0/mediaMetadata/durationMs").asInt()).isBetween(1900, 2100);
         assertThat(read.at("/data/1/mediaMetadata/durationMs").asInt()).isEqualTo(1000);
         assertThat(read.toString()).doesNotContain("objectKey", "thumbnailKey");
@@ -123,7 +153,8 @@ class AgentVideoCompositionToolsPostgresIT {
         int config = run.policySnapshot().path("modelConfigVersion").asInt();
         checkpoints.reserveLeased(owner.userId(), project.id(), run.id(), 0, config,
                 run.policySnapshot().path("modelConfigSource").asText(),
-                codec.request(List.of(new UserMessage("Compose existing media")), registry.modelDefinitions(run.policySnapshot())),
+                codec.request(List.of(new UserMessage("Compose existing media")),
+                        registry.modelDefinitions(run.policySnapshot())),
                 lease, worker);
         tasks.startAgentStream(lease, worker);
         var assistant = AssistantMessage.builder().content("").toolCalls(List.of(new AssistantMessage.ToolCall(
@@ -149,14 +180,20 @@ class AgentVideoCompositionToolsPostgresIT {
                 .param("run", run.id()).query(Long.class).single()).isZero();
         assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :run")
                 .param("run", run.id()).query(Long.class).single()).isEqualTo(1);
-        String statusRequest = mapper.createObjectNode().set("taskIds", mapper.createArrayNode().add(taskId.toString())).toString();
-        assertThat(reader.taskStatus(trusted, UUID.randomUUID(), statusRequest).at("/data/0/status").asText()).isEqualTo("READY");
-        assertThatThrownBy(() -> reader.taskStatus(new TrustedToolContext(owner.userId(), project.id(), UUID.randomUUID()),
-                UUID.randomUUID(), statusRequest)).isInstanceOf(ApiProblemException.class).extracting("code").isEqualTo("TASK_NOT_FOUND");
-        assertThat(directTasks.cancelQueued(owner.userId(), project.id(), taskId).status()).isEqualTo(Task.Status.CANCELED);
+        String statusRequest = mapper.createObjectNode().set("taskIds", mapper.createArrayNode().add(taskId.toString()))
+                .toString();
+        assertThat(reader.taskStatus(trusted, UUID.randomUUID(), statusRequest).at("/data/0/status").asText())
+                .isEqualTo("READY");
+        assertThatThrownBy(
+                () -> reader.taskStatus(new TrustedToolContext(owner.userId(), project.id(), UUID.randomUUID()),
+                        UUID.randomUUID(), statusRequest))
+                .isInstanceOf(ApiProblemException.class).extracting("code").isEqualTo("TASK_NOT_FOUND");
+        assertThat(directTasks.cancelQueued(owner.userId(), project.id(), taskId).status())
+                .isEqualTo(Task.Status.CANCELED);
     }
 
-    private ArtifactService.ArtifactView uploaded(UUID owner, UUID project, Artifact.Kind kind, UUID asset, String title) {
+    private ArtifactService.ArtifactView uploaded(UUID owner, UUID project, Artifact.Kind kind, UUID asset,
+            String title) {
         var artifact = artifacts.create(owner, project, kind, title,
                 mapper.createObjectNode().put("sourceType", "UPLOAD").put("assetId", asset.toString()));
         dev.agenvas.support.CanvasMediaFixture.place(canvas, owner, project, artifact.artifact().id());

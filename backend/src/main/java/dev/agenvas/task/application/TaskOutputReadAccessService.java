@@ -24,15 +24,18 @@ public class TaskOutputReadAccessService {
     @Transactional(readOnly = true)
     public boolean allows(UUID ownerId, UUID projectId, UUID trustedRunId, UUID taskId,
             UUID artifactId, UUID versionId) {
-        if (trustedRunId == null) return false;
+        if (trustedRunId == null)
+            return false;
         Task task = tasks.find(ownerId, projectId, taskId).orElse(null);
         if (task == null || !projectId.equals(task.projectId()) || !trustedRunId.equals(task.runId())
-                || !task.approvedMedia() || !task.input().path(Task.REQUIRE_EXPLICIT_SELECTION_PROPERTY).asBoolean(false))
+                || !task.approvedMedia()
+                || !task.input().path(Task.REQUIRE_EXPLICIT_SELECTION_PROPERTY).asBoolean(false))
             return false;
         return archivedOutputs(ownerId, projectId, task).stream().anyMatch(output -> matches(ownerId, projectId,
                 output, task.input().path("canvasItemId").asText(), artifactId, versionId)
                 || java.util.stream.StreamSupport.stream(output.path("additionalResults").spliterator(), false)
-                        .anyMatch(extra -> matches(ownerId, projectId, extra, extra.path("canvasItemId").asText(), artifactId, versionId)));
+                        .anyMatch(extra -> matches(ownerId, projectId, extra, extra.path("canvasItemId").asText(),
+                                artifactId, versionId)));
     }
 
     /** Late archives are separate immutable rows; reading them must never rewrite the frozen approval outcome. */
@@ -44,7 +47,8 @@ public class TaskOutputReadAccessService {
 
     private List<JsonNode> archivedOutputs(UUID ownerId, UUID projectId, Task task) {
         List<JsonNode> outputs = new ArrayList<>();
-        if (task.output() != null && task.output().isObject()) outputs.add(task.output());
+        if (task.output() != null && task.output().isObject())
+            outputs.add(task.output());
         outputs.addAll(tasks.lateResults(ownerId, projectId, task.id()));
         return List.copyOf(outputs);
     }

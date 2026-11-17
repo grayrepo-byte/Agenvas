@@ -30,8 +30,9 @@ public class AsyncCallLogWriter {
         List<Exchange> snapshot = List.copyOf(exchanges);
         try {
             executor.execute(() -> {
-                try { repository.finishStream(id, outcome, respondedAt, durationMs, log, snapshot, captured); }
-                catch (RuntimeException failure) {
+                try {
+                    repository.finishStream(id, outcome, respondedAt, durationMs, log, snapshot, captured);
+                } catch (RuntimeException failure) {
                     LOGGER.error("LLM stream log write failed callId={} code=CALL_STREAM_WRITE_FAILED", id);
                 }
             });

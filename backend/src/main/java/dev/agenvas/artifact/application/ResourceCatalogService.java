@@ -32,8 +32,10 @@ public class ResourceCatalogService {
     }
 
     @Transactional(readOnly = true)
-    public ResourcePage list(UUID ownerId, Artifact.Kind kind, String query, String encodedCursor, Integer requestedLimit) {
-        if (kind == Artifact.Kind.TEXT) throw invalidRequest();
+    public ResourcePage list(UUID ownerId, Artifact.Kind kind, String query, String encodedCursor,
+            Integer requestedLimit) {
+        if (kind == Artifact.Kind.TEXT)
+            throw invalidRequest();
         return listResults(ownerId, null, kind, query, encodedCursor, requestedLimit);
     }
 
@@ -48,9 +50,11 @@ public class ResourceCatalogService {
     private ResourcePage listResults(UUID ownerId, UUID projectId, Artifact.Kind kind, String query,
             String encodedCursor, Integer requestedLimit) {
         int limit = requestedLimit == null ? DEFAULT_PAGE_SIZE : requestedLimit;
-        if (limit < 1 || limit > MAX_PAGE_SIZE || query.length() > MAX_QUERY_LENGTH) throw invalidRequest();
+        if (limit < 1 || limit > MAX_PAGE_SIZE || query.length() > MAX_QUERY_LENGTH)
+            throw invalidRequest();
         Cursor cursor = decode(encodedCursor);
-        var rows = artifacts.listResources(ownerId, projectId, kind, query.trim(), cursor == null ? null : cursor.createdAt(),
+        var rows = artifacts.listResources(ownerId, projectId, kind, query.trim(),
+                cursor == null ? null : cursor.createdAt(),
                 cursor == null ? null : cursor.id(), limit + 1);
         boolean hasMore = rows.size() > limit;
         var items = List.copyOf(rows.subList(0, Math.min(limit, rows.size())));
@@ -59,12 +63,15 @@ public class ResourceCatalogService {
     }
 
     private Cursor decode(String encoded) {
-        if (encoded == null || encoded.isBlank()) return null;
-        if (encoded.length() > MAX_CURSOR_LENGTH) throw invalidRequest();
+        if (encoded == null || encoded.isBlank())
+            return null;
+        if (encoded.length() > MAX_CURSOR_LENGTH)
+            throw invalidRequest();
         try {
             String value = new String(Base64.getUrlDecoder().decode(encoded), StandardCharsets.UTF_8);
             String[] parts = value.split("\\|", -1);
-            if (parts.length != CURSOR_PARTS) throw invalidRequest();
+            if (parts.length != CURSOR_PARTS)
+                throw invalidRequest();
             return new Cursor(Instant.parse(parts[0]), UUID.fromString(parts[1]));
         } catch (IllegalArgumentException | DateTimeException invalidCursor) {
             throw invalidRequest();
@@ -82,6 +89,8 @@ public class ResourceCatalogService {
                 ApiMessage.of("api.resource-catalog.check-query"), false);
     }
 
-    private record Cursor(Instant createdAt, UUID id) {}
-    public record ResourcePage(List<ArtifactRepository.ResourceResult> items, String nextCursor) {}
+    private record Cursor(Instant createdAt, UUID id) {
+    }
+    public record ResourcePage(List<ArtifactRepository.ResourceResult> items, String nextCursor) {
+    }
 }

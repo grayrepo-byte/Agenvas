@@ -13,10 +13,13 @@ import org.springframework.stereotype.Repository;
 /** Function routing uses CAS; endpoint credentials remain exclusively in the capability catalog. */
 @Repository
 public class JooqMediaFunctionRepository {
-    public record Setting(MediaFunction operation, UUID capabilityId, long version) {}
+    public record Setting(MediaFunction operation, UUID capabilityId, long version) {
+    }
     private final DSLContext dsl;
 
-    public JooqMediaFunctionRepository(DSLContext dsl) { this.dsl = dsl; }
+    public JooqMediaFunctionRepository(DSLContext dsl) {
+        this.dsl = dsl;
+    }
 
     public List<Setting> list() {
         return dsl.selectFrom(MEDIA_FUNCTION_SETTING).orderBy(MEDIA_FUNCTION_SETTING.OPERATION)

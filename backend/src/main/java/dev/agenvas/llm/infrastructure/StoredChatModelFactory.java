@@ -44,7 +44,8 @@ public class StoredChatModelFactory {
         this.cipher = cipher;
         this.endpoints = endpoints;
         this.imageRelay = imageRelay;
-        this.settings = settings; this.metadata = metadata;
+        this.settings = settings;
+        this.metadata = metadata;
     }
 
     /** 只在构造模型客户端时解密凭据，并对运行和诊断请求应用相同出站限制。 */
@@ -63,10 +64,12 @@ public class StoredChatModelFactory {
     SpringAiChatGateway create(LlmProviderConfig config, Duration modelTimeout, Duration readTimeout) {
         return create(config, modelTimeout, readTimeout, config.modelPolicy() == null ? null : requestBudget(config));
     }
-    private SpringAiChatGateway create(LlmProviderConfig config, Duration modelTimeout, Duration readTimeout, LlmRequestBudget budget) {
+    private SpringAiChatGateway create(LlmProviderConfig config, Duration modelTimeout, Duration readTimeout,
+            LlmRequestBudget budget) {
         var policy = config.modelPolicy() == null ? LlmModelPolicy.genericDefault() : config.modelPolicy();
         if (budget != null && (budget.responseReserveTokens() > policy.maxOutputTokens()
-                || budget.outputParameter() != policy.outputParameter())) throw LlmRequestBudget.unknown();
+                || budget.outputParameter() != policy.outputParameter()))
+            throw LlmRequestBudget.unknown();
         String secret = cipher.decrypt(config.id(), config.version(),
                 new CredentialCipher.Encrypted(config.credentialCiphertext(),
                         config.credentialNonce(), config.keyVersion()));
@@ -76,29 +79,36 @@ public class StoredChatModelFactory {
         if (budget != null) {
             if (budget.outputParameter() == LlmModelPolicy.OutputParameter.MAX_COMPLETION_TOKENS)
                 options.maxCompletionTokens(budget.responseReserveTokens());
-            else options.maxTokens(budget.responseReserveTokens());
+            else
+                options.maxTokens(budget.responseReserveTokens());
         }
         if (config.modelPolicy() != null && config.modelPolicy().source() == LlmModelPolicy.Source.OLLAMA_RUNTIME) {
-            if (metadata == null) throw LlmRequestBudget.runtimeChanged();
+            if (metadata == null)
+                throw LlmRequestBudget.runtimeChanged();
             dev.agenvas.settings.application.ModelCatalog.Model observed;
-            try { observed = metadata.fetch(config.modelPolicy().provider(), config.endpoint(), secret, config.modelId()).models().stream()
-                    .filter(value -> value.id().equals(config.modelId())).findFirst().orElseThrow(LlmRequestBudget::runtimeChanged); }
-            catch (ModelMetadataClient.MetadataFailure unavailable) {
+            try {
+                observed = metadata.fetch(config.modelPolicy().provider(), config.endpoint(), secret, config.modelId())
+                        .models().stream()
+                        .filter(value -> value.id().equals(config.modelId())).findFirst()
+                        .orElseThrow(LlmRequestBudget::runtimeChanged);
+            } catch (ModelMetadataClient.MetadataFailure unavailable) {
                 if (java.util.Set.of("MODEL_METADATA_BUSY", "MODEL_METADATA_TIMEOUT", "MODEL_METADATA_UNAVAILABLE")
                         .contains(unavailable.getMessage()))
                     // No generation was sent. Preserve the existing bounded connection recovery path.
-                    throw new java.io.UncheckedIOException(new java.io.IOException("Model metadata preflight temporarily unavailable"));
+                    throw new java.io.UncheckedIOException(
+                            new java.io.IOException("Model metadata preflight temporarily unavailable"));
                 throw LlmRequestBudget.runtimeChanged();
             }
-            if (observed.runtimeContextTokens() == null || observed.runtimeContextTokens() < config.modelPolicy().contextWindowTokens()
-                    || (config.modelPolicy().modelDigest() != null && !config.modelPolicy().modelDigest().equals(observed.digest())))
+            if (observed.runtimeContextTokens() == null
+                    || observed.runtimeContextTokens() < config.modelPolicy().contextWindowTokens()
+                    || (config.modelPolicy().modelDigest() != null
+                            && !config.modelPolicy().modelDigest().equals(observed.digest())))
                 throw LlmRequestBudget.runtimeChanged();
         }
         SafeLlmTransport transport = new SafeLlmTransport(config.endpoint(), endpoints, Dns.SYSTEM,
                 readTimeout, modelTimeout);
         return SpringAiChatGateway.withDebugCapture(OpenAiChatModel.builder().options(options.build())
-                .httpClientBuilderCustomizer(builder ->
-                        builder.interceptor(transport.interceptor()))
+                .httpClientBuilderCustomizer(builder -> builder.interceptor(transport.interceptor()))
                 .build(), config.version(), imageRelay, budget);
     }
 
@@ -106,7 +116,8 @@ public class StoredChatModelFactory {
         return new SpringAiChatGateway(model, version, imageRelay);
     }
 
-    SpringAiChatGateway environment(org.springframework.ai.chat.model.ChatModel model, int version, LlmRequestBudget budget) {
+    SpringAiChatGateway environment(org.springframework.ai.chat.model.ChatModel model, int version,
+            LlmRequestBudget budget) {
         return new SpringAiChatGateway(model, version, imageRelay, budget);
     }
 

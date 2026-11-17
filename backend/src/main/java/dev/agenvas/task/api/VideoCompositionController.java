@@ -11,10 +11,18 @@ import tools.jackson.databind.JsonNode;
 @RequestMapping("/api/v1/projects/{projectId}/video-compositions")
 public class VideoCompositionController {
     private final VideoCompositionService compositions;
-    public VideoCompositionController(VideoCompositionService compositions) { this.compositions = compositions; }
+    public VideoCompositionController(VideoCompositionService compositions) {
+        this.compositions = compositions;
+    }
+
+    @GetMapping("/capabilities")
+    public JsonNode capabilities(@AuthenticationPrincipal AdminPrincipal principal, @PathVariable UUID projectId) {
+        return compositions.capabilities(principal.userId(), projectId);
+    }
 
     @PostMapping("/preview")
-    public JsonNode preview(@AuthenticationPrincipal AdminPrincipal principal, @PathVariable UUID projectId, @RequestBody JsonNode request) {
+    public JsonNode preview(@AuthenticationPrincipal AdminPrincipal principal, @PathVariable UUID projectId,
+            @RequestBody JsonNode request) {
         return compositions.preview(principal.userId(), projectId, request);
     }
 

@@ -20,11 +20,9 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 /** Database loss must remove readiness without claiming the JVM process is dead. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class,
-        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {
-                "spring.datasource.hikari.connection-timeout=2000"
-        })
+@SpringBootTest(classes = AgenvasApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
+        "spring.datasource.hikari.connection-timeout=2000"
+})
 class ReadinessPostgresIT {
 
     @Container
@@ -56,7 +54,7 @@ class ReadinessPostgresIT {
     /** Calls the public health probe without authentication. */
     private int status(HttpClient client, String probe) throws Exception {
         HttpRequest request = HttpRequest.newBuilder(URI.create(
-                        "http://localhost:" + port + "/actuator/health/" + probe))
+                "http://localhost:" + port + "/actuator/health/" + probe))
                 .timeout(Duration.ofSeconds(10)).GET().build();
         return client.send(request, HttpResponse.BodyHandlers.discarding()).statusCode();
     }

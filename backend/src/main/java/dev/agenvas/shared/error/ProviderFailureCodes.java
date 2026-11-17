@@ -79,5 +79,6 @@ public final class ProviderFailureCodes {
     public static final String RUNNINGHUB_PROTOCOL_INVALID = "RUNNINGHUB_PROTOCOL_INVALID";
     public static final String RUNNINGHUB_UNAVAILABLE = "RUNNINGHUB_UNAVAILABLE";
 
-    private ProviderFailureCodes() {}
+    private ProviderFailureCodes() {
+    }
 }

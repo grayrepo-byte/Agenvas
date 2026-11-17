@@ -46,7 +46,9 @@ public class SkillAssetArchiveService {
     }
 
     /** Cleanup must be called only for an operation eligible under its persistent lease. */
-    public void discardPin(UUID owner, String pinKey) { archive.discardPin(owner, pinKey); }
+    public void discardPin(UUID owner, String pinKey) {
+        archive.discardPin(owner, pinKey);
+    }
 
     public void discardArchive(UUID owner, Media media) {
         requireOwnedImage(owner, media);

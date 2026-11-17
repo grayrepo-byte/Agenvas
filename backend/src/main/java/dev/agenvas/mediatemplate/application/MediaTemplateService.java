@@ -56,8 +56,14 @@ public class MediaTemplateService {
     public MediaTemplateService(MediaTemplateRepository repository, PrivateMediaArchive archive,
             AssetService assets, ArtifactService artifacts, ProjectService projects, ProjectEventService events,
             ObjectMapper mapper, Clock clock, PlatformTransactionManager transactions) {
-        this.repository = repository; this.archive = archive; this.assets = assets; this.artifacts = artifacts;
-        this.projects = projects; this.events = events; this.mapper = mapper; this.clock = clock;
+        this.repository = repository;
+        this.archive = archive;
+        this.assets = assets;
+        this.artifacts = artifacts;
+        this.projects = projects;
+        this.events = events;
+        this.mapper = mapper;
+        this.clock = clock;
         tx = new TransactionTemplate(transactions);
         reads = new TransactionTemplate(transactions);
         reads.setReadOnly(true);
@@ -65,28 +71,39 @@ public class MediaTemplateService {
     }
 
     public record ImageResponse(UUID id, String contentType, long byteSize, int width, int height,
-            String thumbnailUrl, String contentUrl) {}
+            String thumbnailUrl, String contentUrl) {
+    }
     public record TemplateResponse(UUID id, String name, TargetKind targetKind, Scope scope,
-            String prompt, List<ImageResponse> images, long version, Instant createdAt, Instant updatedAt) {}
-    public record Page(List<TemplateResponse> items) {}
+            String prompt, List<ImageResponse> images, long version, Instant createdAt, Instant updatedAt) {
+    }
+    public record Page(List<TemplateResponse> items) {
+    }
     public record ImportedImage(UUID versionId, UUID assetId, String title, String contentType,
-            long byteSize, int width, int height, String thumbnailUrl) {}
+            long byteSize, int width, int height, String thumbnailUrl) {
+    }
     public record ImportResponse(UUID templateId, long templateVersion, TargetKind targetKind,
-            String prompt, List<ImportedImage> images) {}
-    public record MediaFile(Path path, String contentType, long size) {}
+            String prompt, List<ImportedImage> images) {
+    }
+    public record MediaFile(Path path, String contentType, long size) {
+    }
     /** Private fixed transfer input; archive metadata never enters public DTOs. */
-    public record ImportSnapshot(int schemaVersion, MediaTemplate template, List<Media> images) {}
-    record Draft(String name, TargetKind targetKind, String prompt, List<UUID> imageIds) {}
+    public record ImportSnapshot(int schemaVersion, MediaTemplate template, List<Media> images) {
+    }
+    record Draft(String name, TargetKind targetKind, String prompt, List<UUID> imageIds) {
+    }
 
     public Page list(UUID owner, TargetKind kind, Scope scope, String query) {
         String search = query == null ? "" : query.trim();
-        if (search.length() > MAX_NAME_LENGTH) throw invalid();
-        return reads.execute(ignored -> new Page(repository.list(owner, kind, scope, search).stream().map(this::response).toList()));
+        if (search.length() > MAX_NAME_LENGTH)
+            throw invalid();
+        return reads.execute(
+                ignored -> new Page(repository.list(owner, kind, scope, search).stream().map(this::response).toList()));
     }
     public TemplateResponse get(UUID owner, UUID id) {
         return reads.execute(ignored -> response(visible(owner, id, false)));
     }
-    public TemplateResponse create(UUID owner, Scope scope, String name, TargetKind kind, String prompt, List<UUID> images) {
+    public TemplateResponse create(UUID owner, Scope scope, String name, TargetKind kind, String prompt,
+            List<UUID> images) {
         Draft draft = validateDraft(name, kind, prompt, images);
         return tx.execute(ignored -> {
             requireImages(owner, draft.imageIds(), List.of());
@@ -106,23 +123,32 @@ public class MediaTemplateService {
             // A different administrator may preserve an existing system template's images.
             requireImages(owner, draft.imageIds(), scope == Scope.SYSTEM ? current.imageIds() : List.of());
             MediaTemplate changed = new MediaTemplate(id, current.ownerId(), scope, kind,
-                    draft.name(), draft.prompt(), draft.imageIds(), Math.addExact(expected, 1), current.createdAt(), clock.instant());
-            if (!repository.update(changed, expected)) throw conflict();
+                    draft.name(), draft.prompt(), draft.imageIds(), Math.addExact(expected, 1), current.createdAt(),
+                    clock.instant());
+            if (!repository.update(changed, expected))
+                throw conflict();
             return response(changed);
         });
     }
     public void delete(UUID owner, Scope scope, UUID id, long expected) {
         tx.executeWithoutResult(ignored -> {
             checkVersion(editable(owner, scope, id), expected);
-            if (!repository.delete(id, expected)) throw conflict();
+            if (!repository.delete(id, expected))
+                throw conflict();
         });
     }
     public ImageResponse upload(UUID owner, MultipartFile file) {
-        if (file.isEmpty()) throw invalid();
-        if (file.getSize() > MAX_IMAGE_UPLOAD_BYTES) throw problem(HttpStatus.PAYLOAD_TOO_LARGE, "ASSET_TOO_LARGE", ApiMessage.of("api.media-template.imageTooLarge"));
+        if (file.isEmpty())
+            throw invalid();
+        if (file.getSize() > MAX_IMAGE_UPLOAD_BYTES)
+            throw problem(HttpStatus.PAYLOAD_TOO_LARGE, "ASSET_TOO_LARGE",
+                    ApiMessage.of("api.media-template.imageTooLarge"));
         Media media;
-        try (var input = file.getInputStream()) { media = archive.archive(owner, UUID.randomUUID(), Asset.MediaKind.IMAGE, input); }
-        catch (IOException failure) { throw new IllegalStateException("Cannot read template image upload", failure); }
+        try (var input = file.getInputStream()) {
+            media = archive.archive(owner, UUID.randomUUID(), Asset.MediaKind.IMAGE, input);
+        } catch (IOException failure) {
+            throw new IllegalStateException("Cannot read template image upload", failure);
+        }
         return saveImage(media);
     }
     public ImageResponse copyImage(UUID owner, UUID project, UUID version) {
@@ -132,23 +158,34 @@ public class MediaTemplateService {
     }
     private ImageResponse saveImage(Media media) {
         try {
-            return tx.execute(ignored -> { repository.insertImage(media, clock.instant()); return imageResponse(media); });
-        } catch (RuntimeException failure) { archive.discard(media.ownerId(), media); throw failure; }
+            return tx.execute(ignored -> {
+                repository.insertImage(media, clock.instant());
+                return imageResponse(media);
+            });
+        } catch (RuntimeException failure) {
+            archive.discard(media.ownerId(), media);
+            throw failure;
+        }
     }
     public MediaFile file(UUID owner, UUID id, boolean thumbnail) {
         Media media = reads.execute(ignored -> {
             Media image = repository.image(id, false).orElseThrow(this::notFound);
-            if (!owner.equals(image.ownerId()) && !repository.sharedImage(id)) throw notFound();
+            if (!owner.equals(image.ownerId()) && !repository.sharedImage(id))
+                throw notFound();
             return image;
         });
-        return new MediaFile(archive.file(media.ownerId(), media, thumbnail), thumbnail ? "image/png" : media.contentType(),
+        return new MediaFile(archive.file(media.ownerId(), media, thumbnail),
+                thumbnail ? "image/png" : media.contentType(),
                 thumbnail ? media.thumbnailByteSize() : media.byteSize());
     }
     public void deleteImage(UUID owner, UUID id) {
         Media image = tx.execute(ignored -> {
             Media media = repository.image(id, true).orElseThrow(this::notFound);
-            if (!owner.equals(media.ownerId())) throw notFound();
-            if (repository.imageInUse(id)) throw problem(HttpStatus.CONFLICT, "MEDIA_TEMPLATE_IMAGE_IN_USE", ApiMessage.of("api.media-template.imageInUse"));
+            if (!owner.equals(media.ownerId()))
+                throw notFound();
+            if (repository.imageInUse(id))
+                throw problem(HttpStatus.CONFLICT, "MEDIA_TEMPLATE_IMAGE_IN_USE",
+                        ApiMessage.of("api.media-template.imageInUse"));
             repository.deleteImage(id);
             return media;
         });
@@ -161,7 +198,8 @@ public class MediaTemplateService {
      */
     public ImportResponse importTemplate(UUID owner, UUID project, UUID templateId, long expected, String commandKey) {
         String key = commandKey == null ? "" : commandKey.trim();
-        if (expected < 0 || key.isEmpty() || key.length() > MAX_COMMAND_KEY_LENGTH) throw invalid();
+        if (expected < 0 || key.isEmpty() || key.length() > MAX_COMMAND_KEY_LENGTH)
+            throw invalid();
         String hash = Sha256.hex(mapper.writeValueAsString(List.of(templateId, expected)));
         ImportCommand command = tx.execute(ignored -> events.recordChange(owner, project, () -> {
             projects.requireActiveProject(owner, project);
@@ -177,11 +215,13 @@ public class MediaTemplateService {
             var imageById = sourceImages.stream().collect(java.util.stream.Collectors.toMap(Media::id, image -> image));
             ImportSnapshot snapshot = new ImportSnapshot(SCHEMA_VERSION, template,
                     template.imageIds().stream().map(imageById::get).toList());
-            ImportCommand accepted = new ImportCommand(UUID.randomUUID(), owner, project, hash, mapper.valueToTree(snapshot), null);
+            ImportCommand accepted = new ImportCommand(UUID.randomUUID(), owner, project, hash,
+                    mapper.valueToTree(snapshot), null);
             repository.insertCommand(accepted, key, template.imageIds(), clock.instant());
             return ProjectEventService.Change.unchanged(accepted);
         }).value());
-        if (command.result() != null) return mapper.treeToValue(command.result(), ImportResponse.class);
+        if (command.result() != null)
+            return mapper.treeToValue(command.result(), ImportResponse.class);
         ImportSnapshot snapshot = mapper.treeToValue(command.input(), ImportSnapshot.class);
         List<Asset> prepared = new ArrayList<>();
         for (Media source : snapshot.images()) {
@@ -194,7 +234,8 @@ public class MediaTemplateService {
             projects.requireActiveProject(owner, project);
             ImportCommand locked = repository.command(owner, project, key, true).orElseThrow(this::notFound);
             checkHash(locked, hash);
-            if (locked.result() != null) return ProjectEventService.Change.unchanged(mapper.treeToValue(locked.result(), ImportResponse.class));
+            if (locked.result() != null)
+                return ProjectEventService.Change.unchanged(mapper.treeToValue(locked.result(), ImportResponse.class));
             List<ImportedImage> imported = new ArrayList<>();
             for (int i = 0; i < prepared.size(); i++) {
                 Asset media = prepared.get(i);
@@ -206,28 +247,34 @@ public class MediaTemplateService {
                         media.contentType(), media.byteSize(), media.width(), media.height(),
                         "/api/v1/projects/" + project + "/assets/" + media.id() + "/thumbnail"));
             }
-            ImportResponse result = new ImportResponse(templateId, snapshot.template().version(), snapshot.template().targetKind(), snapshot.template().prompt(), List.copyOf(imported));
+            ImportResponse result = new ImportResponse(templateId, snapshot.template().version(),
+                    snapshot.template().targetKind(), snapshot.template().prompt(), List.copyOf(imported));
             repository.complete(command.id(), mapper.valueToTree(result));
             return ProjectEventService.Change.unchanged(result);
         }).value());
     }
     private void checkHash(ImportCommand command, String hash) {
-        if (!command.payloadHash().equals(hash)) throw problem(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT", ApiMessage.of("api.media-template.idempotencyConflict"));
+        if (!command.payloadHash().equals(hash))
+            throw problem(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT",
+                    ApiMessage.of("api.media-template.idempotencyConflict"));
     }
     private MediaTemplate visible(UUID owner, UUID id, boolean lock) {
         MediaTemplate template = repository.find(id, lock).orElseThrow(this::notFound);
-        if (template.scope() != Scope.SYSTEM && !template.ownerId().equals(owner)) throw notFound();
+        if (template.scope() != Scope.SYSTEM && !template.ownerId().equals(owner))
+            throw notFound();
         return template;
     }
     private MediaTemplate editable(UUID owner, Scope scope, UUID id) {
         MediaTemplate template = repository.find(id, true).orElseThrow(this::notFound);
-        if (template.scope() != scope || (scope == Scope.PERSONAL && !template.ownerId().equals(owner))) throw notFound();
+        if (template.scope() != scope || (scope == Scope.PERSONAL && !template.ownerId().equals(owner)))
+            throw notFound();
         return template;
     }
     private void requireImages(UUID owner, List<UUID> images, List<UUID> preserved) {
         images.stream().sorted().forEach(id -> {
             Media media = repository.image(id, true).orElseThrow(this::notFound);
-            if (!owner.equals(media.ownerId()) && !preserved.contains(id)) throw notFound();
+            if (!owner.equals(media.ownerId()) && !preserved.contains(id))
+                throw notFound();
         });
     }
     /** Adds an image label without splitting a supplementary Unicode character at the title limit. */
@@ -235,7 +282,8 @@ public class MediaTemplateService {
         String suffix = " · " + position;
         int end = Math.min(templateName.length(), MAX_NAME_LENGTH - suffix.length());
         if (end < templateName.length() && Character.isHighSurrogate(templateName.charAt(end - 1))
-                && Character.isLowSurrogate(templateName.charAt(end))) end--;
+                && Character.isLowSurrogate(templateName.charAt(end)))
+            end--;
         return templateName.substring(0, end).stripTrailing() + suffix;
     }
 
@@ -244,22 +292,34 @@ public class MediaTemplateService {
         if (title.isBlank() || title.length() > MAX_NAME_LENGTH || kind == null || prompt == null
                 || prompt.isBlank() || prompt.length() > MAX_PROMPT_LENGTH || imageIds == null
                 || imageIds.size() > MAX_IMAGES || imageIds.stream().anyMatch(java.util.Objects::isNull)
-                || new HashSet<>(imageIds).size() != imageIds.size()) throw invalid();
+                || new HashSet<>(imageIds).size() != imageIds.size())
+            throw invalid();
         return new Draft(title, kind, prompt, List.copyOf(imageIds));
     }
-    private void checkVersion(MediaTemplate template, long expected) { if (expected < 0 || template.version() != expected) throw conflict(); }
+    private void checkVersion(MediaTemplate template, long expected) {
+        if (expected < 0 || template.version() != expected)
+            throw conflict();
+    }
     private TemplateResponse response(MediaTemplate value) {
         return new TemplateResponse(value.id(), value.name(), value.targetKind(), value.scope(), value.prompt(),
-                value.imageIds().stream().map(id -> imageResponse(repository.image(id, false).orElseThrow(this::notFound))).toList(),
+                value.imageIds().stream()
+                        .map(id -> imageResponse(repository.image(id, false).orElseThrow(this::notFound))).toList(),
                 value.version(), value.createdAt(), value.updatedAt());
     }
     private ImageResponse imageResponse(Media media) {
         String root = "/api/v1/media-templates/images/" + media.id();
-        return new ImageResponse(media.id(), media.contentType(), media.byteSize(), media.width(), media.height(), root + "/thumbnail", root + "/content");
+        return new ImageResponse(media.id(), media.contentType(), media.byteSize(), media.width(), media.height(),
+                root + "/thumbnail", root + "/content");
     }
-    private ApiProblemException notFound() { return problem(HttpStatus.NOT_FOUND, "MEDIA_TEMPLATE_NOT_FOUND", ApiMessage.of("api.media-template.notFound")); }
-    private static ApiProblemException invalid() { return problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", ApiMessage.of("api.media-template.invalid")); }
-    private static ApiProblemException conflict() { return problem(HttpStatus.CONFLICT, "VERSION_CONFLICT", ApiMessage.of("api.media-template.versionConflict")); }
+    private ApiProblemException notFound() {
+        return problem(HttpStatus.NOT_FOUND, "MEDIA_TEMPLATE_NOT_FOUND", ApiMessage.of("api.media-template.notFound"));
+    }
+    private static ApiProblemException invalid() {
+        return problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", ApiMessage.of("api.media-template.invalid"));
+    }
+    private static ApiProblemException conflict() {
+        return problem(HttpStatus.CONFLICT, "VERSION_CONFLICT", ApiMessage.of("api.media-template.versionConflict"));
+    }
     private static ApiProblemException problem(HttpStatus status, String code, ApiMessage detail) {
         return new ApiProblemException(status, code, ApiMessage.of("api.media-template.problem"), detail, false);
     }

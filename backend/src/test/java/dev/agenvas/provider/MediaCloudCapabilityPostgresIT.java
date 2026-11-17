@@ -42,18 +42,24 @@ class MediaCloudCapabilityPostgresIT {
                 () -> Base64.getEncoder().encodeToString(new byte[32]));
     }
 
-    @Autowired private MediaCapabilityService catalog;
-    @Autowired private CredentialCipher cipher;
-    @Autowired private ObjectMapper mapper;
-    @Autowired private dev.agenvas.identity.application.IdentityService identities;
-    @Autowired private org.springframework.web.context.WebApplicationContext webContext;
+    @Autowired
+    private MediaCapabilityService catalog;
+    @Autowired
+    private CredentialCipher cipher;
+    @Autowired
+    private ObjectMapper mapper;
+    @Autowired
+    private dev.agenvas.identity.application.IdentityService identities;
+    @Autowired
+    private org.springframework.web.context.WebApplicationContext webContext;
 
     @Test
     void minimaxOfficialConnectionsPublishPinnedH3CapabilitiesAndRejectProtocolOverrides() throws Exception {
         assertThatThrownBy(() -> catalog.createConnection("h3-no-key", "MiniMax", "MINIMAX", null, null))
                 .isInstanceOf(ApiProblemException.class);
         var connection = catalog.createConnection("h3-cloud", "MiniMax", "MINIMAX", null, "synthetic-h3-key");
-        assertThat(catalog.getConnectionVersion(connection.id(), connection.currentVersion()).orElseThrow().origin()).isEqualTo("https://api.minimax.cn");
+        assertThat(catalog.getConnectionVersion(connection.id(), connection.currentVersion()).orElseThrow().origin())
+                .isEqualTo("https://api.minimax.cn");
         var capability = catalog.publishCapability(connection.id(), "H3", "MINIMAX_H3", mapper.readTree("""
                 {"defaultParameters":{"aspectRatio":"AUTO","videoResolution":"1440p"},
                  "defaultDurationSeconds":6,"pricingByResolution":{"1440p":{"amount":"0.3","currency":"CNY","unit":"SECOND"}}}
@@ -65,20 +71,28 @@ class MediaCloudCapabilityPostgresIT {
         assertThat(spec.path("maxReferenceImages").asInt()).isEqualTo(9);
         assertThat(spec.path("maxReferenceVideos").asInt()).isEqualTo(3);
         assertThat(spec.path("settings").path("defaultParameters").path("videoResolution").asText()).isEqualTo("1440p");
-        assertThat(catalog.candidates(Task.Kind.VIDEO_GENERATION, 3)).noneMatch(candidate -> candidate.binding().capabilityId().equals(capability.id()));
-        assertThat(catalog.candidates(Task.Kind.VIDEO_GENERATION, 4)).anyMatch(candidate -> candidate.binding().capabilityId().equals(capability.id()));
-        assertThatThrownBy(() -> catalog.publishCapability(connection.id(), "Unsupported", "MINIMAX_H3", mapper.readTree("{\"model\":\"MiniMax-H3-Max\"}")))
+        assertThat(catalog.candidates(Task.Kind.VIDEO_GENERATION, 3))
+                .noneMatch(candidate -> candidate.binding().capabilityId().equals(capability.id()));
+        assertThat(catalog.candidates(Task.Kind.VIDEO_GENERATION, 4))
+                .anyMatch(candidate -> candidate.binding().capabilityId().equals(capability.id()));
+        assertThatThrownBy(() -> catalog.publishCapability(connection.id(), "Unsupported", "MINIMAX_H3",
+                mapper.readTree("{\"model\":\"MiniMax-H3-Max\"}")))
                 .isInstanceOf(ApiProblemException.class);
         var proxy = catalog.createConnection("h3-proxy", "Proxy", "MINIMAX", "http://localhost:8090", "synthetic-key");
         assertThat(catalog.getConnectionVersion(proxy.id(), proxy.currentVersion()).orElseThrow().origin())
                 .isEqualTo("http://localhost:8090");
-        var updated = catalog.updateConnection(connection.id(), connection.version(), "International", true, "https://api.minimax.io", null);
+        var updated = catalog.updateConnection(connection.id(), connection.version(), "International", true,
+                "https://api.minimax.io", null);
         assertThat(updated.currentVersion()).isEqualTo(connection.currentVersion() + 1);
-        assertThat(catalog.getConnectionVersion(connection.id(), connection.currentVersion()).orElseThrow().origin()).isEqualTo("https://api.minimax.cn");
-        assertThat(catalog.getConnectionVersion(connection.id(), updated.currentVersion()).orElseThrow().origin()).isEqualTo("https://api.minimax.io");
+        assertThat(catalog.getConnectionVersion(connection.id(), connection.currentVersion()).orElseThrow().origin())
+                .isEqualTo("https://api.minimax.cn");
+        assertThat(catalog.getConnectionVersion(connection.id(), updated.currentVersion()).orElseThrow().origin())
+                .isEqualTo("https://api.minimax.io");
         assertThat(catalog.capabilitySnapshot(capability.id()).mappingSha256()).isEqualTo(snapshot.mappingSha256());
         var owner = identities.setup("h3-settings-admin", "synthetic-password-123");
-        var auth = authentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(owner, null, java.util.List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN"))));
+        var auth = authentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                owner, null, java.util.List
+                        .of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN"))));
         String body = webAppContextSetup(webContext).apply(springSecurity()).build()
                 .perform(get("/api/v1/settings/media-connections").with(auth)).andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
@@ -182,7 +196,8 @@ class MediaCloudCapabilityPostgresIT {
                 .orElseThrow().origin()).isEqualTo("http://192.168.1.10:8080");
         var specialGoogle = catalog.createConnection("cloud-google-origin", "Special Google",
                 "GOOGLE", "http://[fd20:ce::254]:8080", "secret");
-        assertThat(catalog.getConnectionVersion(specialGoogle.id(), specialGoogle.currentVersion()).orElseThrow().origin())
+        assertThat(
+                catalog.getConnectionVersion(specialGoogle.id(), specialGoogle.currentVersion()).orElseThrow().origin())
                 .isEqualTo("http://[fd20:ce::254]:8080");
     }
 }

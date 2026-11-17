@@ -69,17 +69,28 @@ class AgentRevisionPostgresIT {
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private CanvasService canvas;
-    @Autowired private AgentRunService runs;
-    @Autowired private ArtifactService artifacts;
-    @Autowired private AssetService assets;
-    @Autowired private AgentTurnWorker worker;
-    @Autowired private FakeGateway gateway;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private ObjectMapper mapper;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private AgentInstanceService agents;
+    @Autowired
+    private CanvasService canvas;
+    @Autowired
+    private AgentRunService runs;
+    @Autowired
+    private ArtifactService artifacts;
+    @Autowired
+    private AssetService assets;
+    @Autowired
+    private AgentTurnWorker worker;
+    @Autowired
+    private FakeGateway gateway;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private ObjectMapper mapper;
 
     @Test
     void revisesRunOutputButCannotReviseUnboundProjectArtifactOrBypassCas() {
@@ -172,8 +183,10 @@ class AgentRevisionPostgresIT {
                 boundProject.id(), Artifact.Kind.TEXT, "Bound draft", privateContent);
         AgentInstance boundAgent = configureDirector(agents, owner.userId(), boundProject.id(),
                 "Bound creator", "Revise the bound draft");
-        canvas.apply(owner.userId(), boundProject.id(), List.of(new CanvasService.PlaceArtifact(UUID.randomUUID(), bound.artifact().id(),
-                java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO, new java.math.BigDecimal("320"), new java.math.BigDecimal("200"), 0, null, false)));
+        canvas.apply(owner.userId(), boundProject.id(),
+                List.of(new CanvasService.PlaceArtifact(UUID.randomUUID(), bound.artifact().id(),
+                        java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO, new java.math.BigDecimal("320"),
+                        new java.math.BigDecimal("200"), 0, null, false)));
         AgentRun boundRun = runs.create(owner.userId(), boundProject.id(), boundAgent.id(),
                 "Revise", "bound-revision-run").run();
         ObjectNode changed = privateContent.deepCopy();
@@ -224,18 +237,25 @@ class AgentRevisionPostgresIT {
         }
 
         @Override
-        public String configSource() { return "test-fake"; }
+        public String configSource() {
+            return "test-fake";
+        }
 
         @Override
-        public int configVersion() { return 1; }
+        public int configVersion() {
+            return 1;
+        }
 
         @Override
-        public Capabilities capabilities() { return new Capabilities(true, false, false); }
+        public Capabilities capabilities() {
+            return new Capabilities(true, false, false);
+        }
 
         @Override
         public Exchange call(List<Message> messages, List<ToolCallback> tools,
                 Map<String, Object> toolContext) {
-            if (onlyLoader(tools)) return load("TEXT");
+            if (onlyLoader(tools))
+                return load("TEXT");
             assertThat(tools.stream().map(tool -> tool.getToolDefinition().name()))
                     .contains("revise_artifact");
             int turn = calls.incrementAndGet();
@@ -266,7 +286,8 @@ class AgentRevisionPostgresIT {
             }
             AssistantMessage response = AssistantMessage.builder().content("")
                     .toolCalls(List.of(new AssistantMessage.ToolCall("revision-call-" + turn,
-                            "function", name, arguments))).build();
+                            "function", name, arguments)))
+                    .build();
             return new Exchange(1, new ChatResponse(List.of(new Generation(response))));
         }
     }

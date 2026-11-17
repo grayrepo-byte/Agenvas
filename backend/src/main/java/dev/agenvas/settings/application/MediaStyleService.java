@@ -30,7 +30,8 @@ public class MediaStyleService {
     private static final String PREVIEW_PATH = "/api/v1/media-styles/";
     private static final String PRESET_DIRECTORY = "media-styles/";
     private static final String PRESET_EXTENSION = ".webp";
-    private static final org.jooq.Field<Boolean> HAS_PREVIEW = org.jooq.impl.DSL.field(MEDIA_STYLE.THUMBNAIL_BYTES.isNotNull()).as("hasPreview");
+    private static final org.jooq.Field<Boolean> HAS_PREVIEW = org.jooq.impl.DSL
+            .field(MEDIA_STYLE.THUMBNAIL_BYTES.isNotNull()).as("hasPreview");
     private static final List<org.jooq.SelectField<?>> CATALOG_FIELDS = List.of(MEDIA_STYLE.ID, MEDIA_STYLE.NAME,
             MEDIA_STYLE.CATEGORY, MEDIA_STYLE.ENABLED, MEDIA_STYLE.VERSION, MEDIA_STYLE.BUILTIN_KEY, HAS_PREVIEW);
     private static final List<org.jooq.SelectField<?>> SNAPSHOT_FIELDS = List.of(MEDIA_STYLE.ID, MEDIA_STYLE.NAME,
@@ -46,11 +47,15 @@ public class MediaStyleService {
     }
 
     public record Summary(UUID id, String name, String category, boolean enabled,
-            long version, String thumbnailUrl, boolean builtIn) {}
+            long version, String thumbnailUrl, boolean builtIn) {
+    }
     public record Style(UUID id, String name, String category, boolean enabled,
-            long version, String thumbnailUrl, boolean builtIn, String promptSuffix) {}
-    public record Snapshot(UUID id, long version, String name, String promptSuffix) {}
-    public record Thumbnail(byte[] bytes, String contentType) {}
+            long version, String thumbnailUrl, boolean builtIn, String promptSuffix) {
+    }
+    public record Snapshot(UUID id, long version, String name, String promptSuffix) {
+    }
+    public record Thumbnail(byte[] bytes, String contentType) {
+    }
 
     @Transactional(readOnly = true)
     public List<Summary> catalog() {
@@ -67,7 +72,8 @@ public class MediaStyleService {
     /** Read-only preflight resolves the current preset without acquiring a row lock. */
     @Transactional(readOnly = true)
     public Snapshot forGeneration(UUID id, Artifact.Kind kind) {
-        if (id == null) return null;
+        if (id == null)
+            return null;
         if (kind != Artifact.Kind.IMAGE && kind != Artifact.Kind.VIDEO) {
             throw problem(HttpStatus.BAD_REQUEST, "MEDIA_STYLE_KIND_UNSUPPORTED", Error.KIND);
         }
@@ -75,13 +81,15 @@ public class MediaStyleService {
         if (row == null || !row.get(MEDIA_STYLE.ENABLED)) {
             throw problem(HttpStatus.CONFLICT, "MEDIA_STYLE_UNAVAILABLE", Error.UNAVAILABLE);
         }
-        return new Snapshot(id, row.get(MEDIA_STYLE.VERSION), row.get(MEDIA_STYLE.NAME), row.get(MEDIA_STYLE.PROMPT_SUFFIX));
+        return new Snapshot(id, row.get(MEDIA_STYLE.VERSION), row.get(MEDIA_STYLE.NAME),
+                row.get(MEDIA_STYLE.PROMPT_SUFFIX));
     }
 
     /** Keeps a preset unchanged until the caller commits approval revalidation and Task acceptance. */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public void lockForGeneration(UUID id) {
-        if (id == null) return;
+        if (id == null)
+            return;
         var row = dsl.select(MEDIA_STYLE.ENABLED).from(MEDIA_STYLE).where(MEDIA_STYLE.ID.eq(id)).forShare().fetchOne();
         if (row == null || !row.get(MEDIA_STYLE.ENABLED))
             throw problem(HttpStatus.CONFLICT, "MEDIA_STYLE_UNAVAILABLE", Error.UNAVAILABLE);
@@ -90,7 +98,8 @@ public class MediaStyleService {
     /** A disabled choice remains in a draft and fails explicitly during submission. */
     @Transactional(readOnly = true)
     public void validateSelection(UUID id, Artifact.Kind kind) {
-        if (id == null) return;
+        if (id == null)
+            return;
         if (kind != Artifact.Kind.IMAGE && kind != Artifact.Kind.VIDEO) {
             throw problem(HttpStatus.BAD_REQUEST, "MEDIA_STYLE_KIND_UNSUPPORTED", Error.KIND);
         }
@@ -106,10 +115,13 @@ public class MediaStyleService {
 
     @Transactional(readOnly = true)
     public Snapshot snapshotForExport(UUID id) {
-        if (id == null) return null;
+        if (id == null)
+            return null;
         var row = dsl.select(SNAPSHOT_FIELDS).from(MEDIA_STYLE).where(MEDIA_STYLE.ID.eq(id)).fetchOne();
-        if (row == null) throw new IllegalStateException("Draft style violates its foreign key");
-        return new Snapshot(id, row.get(MEDIA_STYLE.VERSION), row.get(MEDIA_STYLE.NAME), row.get(MEDIA_STYLE.PROMPT_SUFFIX));
+        if (row == null)
+            throw new IllegalStateException("Draft style violates its foreign key");
+        return new Snapshot(id, row.get(MEDIA_STYLE.VERSION), row.get(MEDIA_STYLE.NAME),
+                row.get(MEDIA_STYLE.PROMPT_SUFFIX));
     }
 
     @Transactional
@@ -129,18 +141,22 @@ public class MediaStyleService {
     public Style update(UUID id, long expectedVersion, String name, String category,
             String promptSuffix, boolean enabled) {
         validate(name, category, promptSuffix);
-        if (expectedVersion < 0) throw problem(HttpStatus.BAD_REQUEST, "MEDIA_STYLE_INVALID", Error.INVALID);
+        if (expectedVersion < 0)
+            throw problem(HttpStatus.BAD_REQUEST, "MEDIA_STYLE_INVALID", Error.INVALID);
         var row = dsl.update(MEDIA_STYLE).set(MEDIA_STYLE.NAME, name.strip())
                 .set(MEDIA_STYLE.CATEGORY, category.strip()).set(MEDIA_STYLE.PROMPT_SUFFIX, promptSuffix.strip())
                 .set(MEDIA_STYLE.ENABLED, enabled).set(MEDIA_STYLE.VERSION, MEDIA_STYLE.VERSION.plus(1))
                 .set(MEDIA_STYLE.UPDATED_AT, utc(clock.instant())).where(MEDIA_STYLE.ID.eq(id))
                 .and(MEDIA_STYLE.VERSION.eq(expectedVersion)).returning().fetchOne();
-        if (row == null) throw problem(HttpStatus.CONFLICT, "MEDIA_STYLE_CONFLICT", Error.CONFLICT);
+        if (row == null)
+            throw problem(HttpStatus.CONFLICT, "MEDIA_STYLE_CONFLICT", Error.CONFLICT);
         return style(row);
     }
 
     /** Decoding takes place outside the short database update transaction. */
-    public byte[] prepareThumbnail(InputStream input) { return thumbnails.decode(input); }
+    public byte[] prepareThumbnail(InputStream input) {
+        return thumbnails.decode(input);
+    }
 
     @Transactional
     public Style replaceThumbnail(UUID id, long expectedVersion, byte[] png) {
@@ -151,17 +167,21 @@ public class MediaStyleService {
                 .set(MEDIA_STYLE.VERSION, MEDIA_STYLE.VERSION.plus(1))
                 .set(MEDIA_STYLE.UPDATED_AT, utc(clock.instant())).where(MEDIA_STYLE.ID.eq(id))
                 .and(MEDIA_STYLE.VERSION.eq(expectedVersion)).returning().fetchOne();
-        if (row == null) throw problem(HttpStatus.CONFLICT, "MEDIA_STYLE_CONFLICT", Error.CONFLICT);
+        if (row == null)
+            throw problem(HttpStatus.CONFLICT, "MEDIA_STYLE_CONFLICT", Error.CONFLICT);
         return style(row);
     }
 
     @Transactional(readOnly = true)
     public Thumbnail thumbnail(UUID id) {
         var row = dsl.selectFrom(MEDIA_STYLE).where(MEDIA_STYLE.ID.eq(id)).fetchOne();
-        if (row == null) throw problem(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", Error.NOT_FOUND);
-        if (row.getThumbnailBytes() != null) return new Thumbnail(row.getThumbnailBytes(), row.getThumbnailContentType());
+        if (row == null)
+            throw problem(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", Error.NOT_FOUND);
+        if (row.getThumbnailBytes() != null)
+            return new Thumbnail(row.getThumbnailBytes(), row.getThumbnailContentType());
         if (row.getBuiltinKey() != null) {
-            ClassPathResource resource = new ClassPathResource(PRESET_DIRECTORY + row.getBuiltinKey() + PRESET_EXTENSION);
+            ClassPathResource resource = new ClassPathResource(
+                    PRESET_DIRECTORY + row.getBuiltinKey() + PRESET_EXTENSION);
             try (InputStream input = resource.getInputStream()) {
                 return new Thumbnail(input.readNBytes(MediaStyleThumbnailCodec.MAX_STORED_BYTES + 1), "image/webp");
             } catch (IOException failure) {
@@ -175,10 +195,12 @@ public class MediaStyleService {
         UUID id = row.get(MEDIA_STYLE.ID);
         long version = row.get(MEDIA_STYLE.VERSION);
         boolean builtIn = row.get(MEDIA_STYLE.BUILTIN_KEY) != null;
-        boolean uploadedPreview = row.field(HAS_PREVIEW) != null ? Boolean.TRUE.equals(row.get(HAS_PREVIEW))
+        boolean uploadedPreview = row.field(HAS_PREVIEW) != null
+                ? Boolean.TRUE.equals(row.get(HAS_PREVIEW))
                 : row.get(MEDIA_STYLE.THUMBNAIL_BYTES) != null;
         String url = builtIn || uploadedPreview
-                ? PREVIEW_PATH + id + "/thumbnail?v=" + version : null;
+                ? PREVIEW_PATH + id + "/thumbnail?v=" + version
+                : null;
         return new Summary(id, row.get(MEDIA_STYLE.NAME), row.get(MEDIA_STYLE.CATEGORY),
                 row.get(MEDIA_STYLE.ENABLED), version, url, builtIn);
     }
@@ -196,8 +218,12 @@ public class MediaStyleService {
             throw problem(HttpStatus.BAD_REQUEST, "MEDIA_STYLE_INVALID", Error.INVALID);
     }
 
-    private static OffsetDateTime utc(Instant value) { return value.atOffset(ZoneOffset.UTC); }
-    enum Error { KIND, UNAVAILABLE, INVALID, CONFLICT, THUMBNAIL, NOT_FOUND }
+    private static OffsetDateTime utc(Instant value) {
+        return value.atOffset(ZoneOffset.UTC);
+    }
+    enum Error {
+        KIND, UNAVAILABLE, INVALID, CONFLICT, THUMBNAIL, NOT_FOUND
+    }
     static ApiProblemException problem(HttpStatus status, String code, Error error) {
         ApiMessage detail = switch (error) {
             case KIND -> ApiMessage.of("api.media-style.kind");

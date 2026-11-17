@@ -25,18 +25,21 @@ class ImageOperationValidationTest {
                 """));
         supplied.put("lightingPreset", "NEON_NIGHT");
         relight.parameters().put("lightingPreset", "MOONLIGHT");
-        assertThat(relight.prompt("", null)).contains("warm golden-hour", "brightness adjustment 10", "3200K", "(0.15, 0.75)");
+        assertThat(relight.prompt("", null)).contains("warm golden-hour", "brightness adjustment 10", "3200K",
+                "(0.15, 0.75)");
         assertThat(ImageOperationSpec.parse(mapper, ImageOperation.CROP, null).parameters())
                 .isEqualTo(mapper.readTree("{\"x\":0.0,\"y\":0.0,\"width\":1.0,\"height\":1.0}"));
         assertThat(ImageOperationSpec.parse(mapper, ImageOperation.UPSCALE, null).prompt("", null))
                 .contains("2x", "preserving its composition and subject identity");
-        assertThat(ImageOperationSpec.parse(mapper, ImageOperation.ROTATE, null).parameters().path("quarterTurns").asInt())
+        assertThat(
+                ImageOperationSpec.parse(mapper, ImageOperation.ROTATE, null).parameters().path("quarterTurns").asInt())
                 .isEqualTo(1);
     }
 
     @ParameterizedTest
     @MethodSource("presetPrompts")
-    void presetAndCameraInstructionsRemainSupported(ImageOperation operation, String field, String value, String instruction) {
+    void presetAndCameraInstructionsRemainSupported(ImageOperation operation, String field, String value,
+            String instruction) {
         var spec = ImageOperationSpec.parse(mapper, operation, mapper.createObjectNode().put(field, value));
         assertThat(spec.prompt("keep identity", null)).contains(instruction, "keep identity");
     }
@@ -51,10 +54,12 @@ class ImageOperationValidationTest {
                 Arguments.of(ImageOperation.RELIGHT, "lightingPreset", "NEON_NIGHT", "colorful neon-night"),
                 Arguments.of(ImageOperation.VIEW_ANGLE, "viewAngle", "FRONT", "a straight-on front view"),
                 Arguments.of(ImageOperation.VIEW_ANGLE, "viewAngle", "LEFT_THREE_QUARTER", "a left three-quarter view"),
-                Arguments.of(ImageOperation.VIEW_ANGLE, "viewAngle", "RIGHT_THREE_QUARTER", "a right three-quarter view"),
+                Arguments.of(ImageOperation.VIEW_ANGLE, "viewAngle", "RIGHT_THREE_QUARTER",
+                        "a right three-quarter view"),
                 Arguments.of(ImageOperation.VIEW_ANGLE, "viewAngle", "LEFT_PROFILE", "a left profile view"),
                 Arguments.of(ImageOperation.VIEW_ANGLE, "viewAngle", "RIGHT_PROFILE", "a right profile view"),
-                Arguments.of(ImageOperation.VIEW_ANGLE, "viewAngle", "HIGH_ANGLE", "a high-angle view looking downward"),
+                Arguments.of(ImageOperation.VIEW_ANGLE, "viewAngle", "HIGH_ANGLE",
+                        "a high-angle view looking downward"),
                 Arguments.of(ImageOperation.VIEW_ANGLE, "viewAngle", "LOW_ANGLE", "a low-angle view looking upward"),
                 Arguments.of(ImageOperation.VIEW_ANGLE, "viewAngle", "BACK", "a straight-on back view"));
     }

@@ -9,6 +9,10 @@ import tools.jackson.databind.JsonNode;
 public record LibraryEntry(UUID id, UUID ownerId, String name, Category category, Artifact.Kind kind,
         JsonNode textContent, UUID fileId, UUID sourceVersionId, JsonNode source, boolean favorite,
         Instant trashedAt, long version, Instant createdAt, Instant updatedAt) {
-    public enum Category { CHARACTER, SCENE, PROP, OTHER }
-    public enum Sort { SAVED, NAME, UPDATED }
+    public enum Category {
+        CHARACTER, SCENE, PROP, OTHER
+    }
+    public enum Sort {
+        SAVED, NAME, UPDATED
+    }
 }

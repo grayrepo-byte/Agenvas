@@ -36,7 +36,9 @@ class ArkSeedanceClientTest {
     }
 
     @AfterEach
-    void stop() { server.stop(0); }
+    void stop() {
+        server.stop(0);
+    }
 
     @ParameterizedTest
     @CsvSource({"4,true", "15,true", "4,false", "15,false"})
@@ -58,7 +60,7 @@ class ArkSeedanceClientTest {
     void submitsOneFixedFirstFrameTaskAndQueriesOnlySavedId() {
         AtomicInteger creates = new AtomicInteger();
         AtomicInteger queries = new AtomicInteger();
-        byte[] png = new byte[] {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10};
+        byte[] png = new byte[]{(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10};
         server.createContext("/api/v3/contents/generations/tasks", exchange -> {
             if (exchange.getRequestMethod().equals("POST")) {
                 var body = mapper.readTree(exchange.getRequestBody().readAllBytes());
@@ -101,7 +103,8 @@ class ArkSeedanceClientTest {
             assertThat(body.at("/content/3/audio_url/url").asText()).startsWith("data:audio/wav;base64,");
             respond(exchange, 200, "{\"id\":\"" + TASK_ID + "\"}");
         });
-        var references = java.util.List.of(new ArkSeedanceClient.Reference("image/png", new byte[]{1}, "reference_image"),
+        var references = java.util.List.of(
+                new ArkSeedanceClient.Reference("image/png", new byte[]{1}, "reference_image"),
                 new ArkSeedanceClient.Reference("audio/mpeg", new byte[]{2}, "reference_audio"),
                 new ArkSeedanceClient.Reference("audio/wav", new byte[]{3}, "reference_audio"));
         assertThat(client.create("fake-key", "Animate", references, 4, "16:9")).isEqualTo(TASK_ID);
@@ -111,7 +114,8 @@ class ArkSeedanceClientTest {
     void sendsVideoAsSignedUrlWithoutBase64AndDoesNotExposeItInDiagnostics() {
         String signed = "https://store.example.com/reference.mp4?X-Amz-Signature=synthetic";
         server.createContext("/api/v3/contents/generations/tasks", exchange -> {
-            var body = mapper.readTree(new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+            var body = mapper.readTree(
+                    new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
             assertThat(body.path("content").path(1).path("type").asText()).isEqualTo("video_url");
             assertThat(body.path("content").path(1).path("role").asText()).isEqualTo("reference_video");
             assertThat(body.path("content").path(1).path("video_url").path("url").asText()).isEqualTo(signed);
@@ -126,7 +130,7 @@ class ArkSeedanceClientTest {
 
     @Test
     void badDurationsAndLostCreateResponseNeverCauseAutomaticResubmission() {
-        byte[] png = new byte[] {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10};
+        byte[] png = new byte[]{(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10};
         assertThatThrownBy(() -> client.create("key", "Move", png, 3, "16:9"))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> client.create("key", "Move", png, 16, "16:9"))
@@ -156,6 +160,8 @@ class ArkSeedanceClientTest {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json");
         exchange.sendResponseHeaders(status, bytes.length);
-        try (var output = exchange.getResponseBody()) { output.write(bytes); }
+        try (var output = exchange.getResponseBody()) {
+            output.write(bytes);
+        }
     }
 }

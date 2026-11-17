@@ -61,14 +61,22 @@ class AgentConversationPostgresIT {
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private AgentRunService runs;
-    @Autowired private AgentConversationService conversations;
-    @Autowired private AgentConversationRepository conversationRows;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private WebApplicationContext webContext;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private AgentInstanceService agents;
+    @Autowired
+    private AgentRunService runs;
+    @Autowired
+    private AgentConversationService conversations;
+    @Autowired
+    private AgentConversationRepository conversationRows;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private WebApplicationContext webContext;
 
     @Test
     void sessionsKeepIndependentHistoryWhileMessagesShareOneProjectSlot() throws Exception {
@@ -91,7 +99,8 @@ class AgentConversationPostgresIT {
         assertThat(conversations.get(owner.userId(), project.id(), agent.id(), firstConversation).title())
                 .isEqualTo(first.instruction());
 
-        AgentConversation secondConversation = conversations.create(owner.userId(), project.id(), agent.id(), "new-session");
+        AgentConversation secondConversation = conversations.create(owner.userId(), project.id(), agent.id(),
+                "new-session");
         assertThat(secondConversation.version()).isZero();
         assertThat(conversations.create(owner.userId(), project.id(), agent.id(), "new-session").id())
                 .isEqualTo(secondConversation.id());
@@ -102,26 +111,31 @@ class AgentConversationPostgresIT {
                 .isEqualTo(firstConversation);
         assertThat(activeRun(project.id())).isEqualTo(first.id());
         assertThat(runs.get(owner.userId(), project.id(), first.id()).status()).isEqualTo(AgentRun.Status.QUEUED);
-        assertProblem("ACTIVE_RUN_EXISTS", () -> runs.preflight(owner.userId(), project.id(), agent.id(), firstConversation));
+        assertProblem("ACTIVE_RUN_EXISTS",
+                () -> runs.preflight(owner.userId(), project.id(), agent.id(), firstConversation));
         assertProblem("ACTIVE_RUN_EXISTS", () -> send(owner, project, agent, secondConversation.id(), 0, "busy"));
-        assertThat(conversations.get(owner.userId(), project.id(), agent.id(), secondConversation.id()).turnCount()).isZero();
+        assertThat(conversations.get(owner.userId(), project.id(), agent.id(), secondConversation.id()).turnCount())
+                .isZero();
         runs.cancel(owner.userId(), project.id(), first.id());
 
         var reviewed = runs.preflight(owner.userId(), project.id(), agent.id(), firstConversation);
         assertThat(reviewed.conversationId()).isEqualTo(firstConversation);
         assertThat(reviewed.conversationVersion()).isEqualTo(1);
         assertThat(reviewed.conversationTurnCount()).isEqualTo(1);
-        assertProblem("CONVERSATION_VERSION_CONFLICT", () -> send(owner, project, agent, firstConversation, 0, "stale"));
+        assertProblem("CONVERSATION_VERSION_CONFLICT",
+                () -> send(owner, project, agent, firstConversation, 0, "stale"));
         AgentRun second = send(owner, project, agent, firstConversation, 1, "second");
         var persistedSecondSnapshot = runs.get(owner.userId(), project.id(), second.id()).contextSnapshot();
         assertThat(second.conversationTurn()).isEqualTo(2);
         assertThat(second.contextSnapshot().path("conversationHistoryThroughTurn").asLong()).isEqualTo(1);
         assertThat(second.contextSnapshot().path("conversationMemory").toString()).contains(first.instruction());
         assertThat(send(owner, project, agent, firstConversation, 1, "second").id()).isEqualTo(second.id());
-        assertThat(conversations.get(owner.userId(), project.id(), agent.id(), firstConversation).turnCount()).isEqualTo(2);
+        assertThat(conversations.get(owner.userId(), project.id(), agent.id(), firstConversation).turnCount())
+                .isEqualTo(2);
         assertProblem("IDEMPOTENCY_CONFLICT", () -> send(owner, project, agent, secondConversation.id(), 1, "second"));
         conversations.select(owner.userId(), project.id(), agent.id(), secondConversation.id());
-        assertThat(runs.create(owner.userId(), project.id(), agent.id(), first.instruction(), "default-first").run().id())
+        assertThat(
+                runs.create(owner.userId(), project.id(), agent.id(), first.instruction(), "default-first").run().id())
                 .isEqualTo(first.id());
         assertThat(activeRun(project.id())).isEqualTo(second.id());
         runs.cancel(owner.userId(), project.id(), second.id());
@@ -133,19 +147,25 @@ class AgentConversationPostgresIT {
         try (var pool = Executors.newFixedThreadPool(2)) {
             var futures = List.of("race-a", "race-b").stream().map(key -> pool.submit(() -> {
                 ready.countDown();
-                if (!start.await(10, TimeUnit.SECONDS)) throw new AssertionError("Race start timed out");
-                try { return new Attempt(send(owner, project, agent, firstConversation, 2, key), null); }
-                catch (ApiProblemException failure) { return new Attempt(null, failure.code()); }
+                if (!start.await(10, TimeUnit.SECONDS))
+                    throw new AssertionError("Race start timed out");
+                try {
+                    return new Attempt(send(owner, project, agent, firstConversation, 2, key), null);
+                } catch (ApiProblemException failure) {
+                    return new Attempt(null, failure.code());
+                }
             })).toList();
             assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
             start.countDown();
-            attempts = List.of(futures.getFirst().get(20, TimeUnit.SECONDS), futures.getLast().get(20, TimeUnit.SECONDS));
+            attempts = List.of(futures.getFirst().get(20, TimeUnit.SECONDS),
+                    futures.getLast().get(20, TimeUnit.SECONDS));
         }
         assertThat(attempts).filteredOn(attempt -> attempt.run() != null).singleElement()
                 .satisfies(attempt -> assertThat(attempt.run().conversationTurn()).isEqualTo(3));
         assertThat(attempts).filteredOn(attempt -> attempt.code() != null).singleElement()
                 .satisfies(attempt -> assertThat(attempt.code()).isEqualTo("ACTIVE_RUN_EXISTS"));
-        AgentRun winner = attempts.stream().map(Attempt::run).filter(java.util.Objects::nonNull).findFirst().orElseThrow();
+        AgentRun winner = attempts.stream().map(Attempt::run).filter(java.util.Objects::nonNull).findFirst()
+                .orElseThrow();
         assertThat(activeRun(project.id())).isEqualTo(winner.id());
         runs.cancel(owner.userId(), project.id(), winner.id());
         AgentRun fourth = send(owner, project, agent, firstConversation, 3, "fourth");
@@ -154,7 +174,8 @@ class AgentConversationPostgresIT {
 
         var newest = runs.listConversation(owner.userId(), project.id(), agent.id(), firstConversation, null, 1);
         assertThat(newest.items()).extracting(AgentRun::id).containsExactly(fourth.id());
-        var older = runs.listConversation(owner.userId(), project.id(), agent.id(), firstConversation, newest.nextCursor(), 10);
+        var older = runs.listConversation(owner.userId(), project.id(), agent.id(), firstConversation,
+                newest.nextCursor(), 10);
         assertThat(older.items()).extracting(AgentRun::conversationTurn).containsExactly(3L, 2L, 1L);
         assertThat(older.nextCursor()).isNull();
         var sessionPage = conversations.list(owner.userId(), project.id(), agent.id(), null, 1);
@@ -162,8 +183,10 @@ class AgentConversationPostgresIT {
         assertThat(List.of(sessionPage.items().getFirst().id(), sessionNext.items().getFirst().id()))
                 .containsExactlyInAnyOrder(firstConversation, secondConversation.id());
         assertThat(sessionNext.nextCursor()).isNull();
-        assertProblem("VALIDATION_ERROR", () -> runs.listConversation(owner.userId(), project.id(), agent.id(), firstConversation, "bad", 1));
-        assertProblem("VALIDATION_ERROR", () -> conversations.list(owner.userId(), project.id(), agent.id(), null, 101));
+        assertProblem("VALIDATION_ERROR",
+                () -> runs.listConversation(owner.userId(), project.id(), agent.id(), firstConversation, "bad", 1));
+        assertProblem("VALIDATION_ERROR",
+                () -> conversations.list(owner.userId(), project.id(), agent.id(), null, 101));
 
         AgentRun fresh = send(owner, project, agent, secondConversation.id(), 0, "fresh");
         assertThat(fresh.conversationTurn()).isEqualTo(1);
@@ -193,22 +216,31 @@ class AgentConversationPostgresIT {
         UUID otherOwner = UUID.randomUUID();
         Project otherProject = projects.create(owner.userId(), "Other project", Project.AspectRatio.LANDSCAPE_16_9);
         AgentInstance foreignDirector = agents.ensureDirector(owner.userId(), otherProject.id());
-        assertProblem("RESOURCE_NOT_FOUND", () -> conversations.get(otherOwner, project.id(), agent.id(), firstConversation));
-        assertProblem("RESOURCE_NOT_FOUND", () -> conversations.select(owner.userId(), project.id(), foreignDirector.id(), firstConversation));
-        assertProblem("RESOURCE_NOT_FOUND", () -> runs.preflight(owner.userId(), otherProject.id(), agent.id(), firstConversation));
-        assertProblem("RESOURCE_NOT_FOUND", () -> send(owner, project, foreignDirector, firstConversation, 4, "cross-project"));
-        assertProblem("RESOURCE_NOT_FOUND", () -> runs.listConversation(owner.userId(), project.id(), foreignDirector.id(), firstConversation, null, null));
+        assertProblem("RESOURCE_NOT_FOUND",
+                () -> conversations.get(otherOwner, project.id(), agent.id(), firstConversation));
+        assertProblem("RESOURCE_NOT_FOUND",
+                () -> conversations.select(owner.userId(), project.id(), foreignDirector.id(), firstConversation));
+        assertProblem("RESOURCE_NOT_FOUND",
+                () -> runs.preflight(owner.userId(), otherProject.id(), agent.id(), firstConversation));
+        assertProblem("RESOURCE_NOT_FOUND",
+                () -> send(owner, project, foreignDirector, firstConversation, 4, "cross-project"));
+        assertProblem("RESOURCE_NOT_FOUND", () -> runs.listConversation(owner.userId(), project.id(),
+                foreignDirector.id(), firstConversation, null, null));
         assertThat(conversationRows.find(otherOwner, project.id(), agent.id(), firstConversation)).isEmpty();
         assertThat(conversationRows.current(otherOwner, project.id(), agent.id())).isEmpty();
         assertThat(conversationRows.list(otherOwner, project.id(), agent.id(), null, null, 20)).isEmpty();
-        assertThat(conversationRows.select(owner.userId(), project.id(), foreignDirector.id(), firstConversation)).isFalse();
+        assertThat(conversationRows.select(owner.userId(), project.id(), foreignDirector.id(), firstConversation))
+                .isFalse();
         mvc.perform(get(path).with(authentication(new UsernamePasswordAuthenticationToken(
                 new AdminPrincipal(otherOwner, "other"), null, List.of())))).andExpect(status().isNotFound());
-        mvc.perform(get(path + "/" + firstConversation + "/runs").with(authentication(new UsernamePasswordAuthenticationToken(
-                new AdminPrincipal(otherOwner, "other"), null, List.of())))).andExpect(status().isNotFound());
+        mvc.perform(get(path + "/" + firstConversation + "/runs")
+                .with(authentication(new UsernamePasswordAuthenticationToken(
+                        new AdminPrincipal(otherOwner, "other"), null, List.of()))))
+                .andExpect(status().isNotFound());
         assertThat(jdbc.sql("select count(*) from agent_run where project_id = :projectId")
                 .param("projectId", project.id()).query(Long.class).single()).isEqualTo(5);
-        assertThat(conversations.get(owner.userId(), project.id(), agent.id(), firstConversation).version()).isEqualTo(4);
+        assertThat(conversations.get(owner.userId(), project.id(), agent.id(), firstConversation).version())
+                .isEqualTo(4);
     }
 
     private AgentRun send(AdminPrincipal owner, Project project, AgentInstance agent, UUID conversationId,
@@ -227,5 +259,6 @@ class AgentConversationPostgresIT {
                 problem -> assertThat(problem.code()).isEqualTo(code));
     }
 
-    private record Attempt(AgentRun run, String code) {}
+    private record Attempt(AgentRun run, String code) {
+    }
 }

@@ -15,16 +15,24 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class NativeJsonPromptAdapter implements ThirdPartyPromptAdapter {
     private final ObjectMapper mapper;
-    public NativeJsonPromptAdapter(ObjectMapper mapper) { this.mapper = mapper; }
-    @Override public Format format() { return Format.NATIVE_JSON; }
-    @Override public List<ThirdPartyPrompt> parse(ThirdPartyPromptSource source, String body) {
+    public NativeJsonPromptAdapter(ObjectMapper mapper) {
+        this.mapper = mapper;
+    }
+    @Override
+    public Format format() {
+        return Format.NATIVE_JSON;
+    }
+    @Override
+    public List<ThirdPartyPrompt> parse(ThirdPartyPromptSource source, String body) {
         var root = mapper.readTree(body);
         var items = root.isArray() ? root : root.path("items");
-        if (!items.isArray()) throw ThirdPartyPromptValidation.invalid();
+        if (!items.isArray())
+            throw ThirdPartyPromptValidation.invalid();
         List<ThirdPartyPrompt> result = new ArrayList<>();
-        for (var item : items) result.add(source.targetKind() == TargetKind.IMAGE
-                ? mapper.treeToValue(item, ThirdPartyPrompt.Image.class)
-                : mapper.treeToValue(item, ThirdPartyPrompt.Video.class));
+        for (var item : items)
+            result.add(source.targetKind() == TargetKind.IMAGE
+                    ? mapper.treeToValue(item, ThirdPartyPrompt.Image.class)
+                    : mapper.treeToValue(item, ThirdPartyPrompt.Video.class));
         return result;
     }
 }

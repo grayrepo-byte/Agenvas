@@ -12,7 +12,8 @@ public class TaskCanvasOwnershipReadService {
     private final ProjectService projects;
 
     public TaskCanvasOwnershipReadService(TaskRepository tasks, ProjectService projects) {
-        this.tasks = tasks; this.projects = projects;
+        this.tasks = tasks;
+        this.projects = projects;
     }
 
     @Transactional(readOnly = true)

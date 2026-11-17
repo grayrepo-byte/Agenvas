@@ -11,6 +11,7 @@ export AGENVAS_CREDENTIAL_MASTER_KEY=compose-synthetic-ignored-value
 export AGENVAS_LLM_MODE=mock AGENVAS_PROVIDER_MODE=mock
 export AGENVAS_SECURE_COOKIES=true
 export AGENVAS_SERVER_MEMORY_LIMIT=2g AGENVAS_SERVER_CPUS=3.0
+export AGENVAS_VIDEO_COMPOSITION_LIMITS_MAX_RESOLUTION=720P
 compose_files=(docker-compose.yml docker-compose.local.yml deploy/compose.yaml deploy/compose.dev.yaml)
 
 compose_config() {
@@ -62,6 +63,7 @@ for compose_file in "${compose_files[@]}"; do
     .services.web.depends_on.server.condition == "service_healthy" and
     (.services | all(.[]; .healthcheck.test | length > 0)) and
     .services.server.environment.AGENVAS_STORAGE_ROOT == "/opt/agenvas/data/assets" and
+    (.services.server.environment | has("AGENVAS_VIDEO_COMPOSITION_LIMITS_MAX_RESOLUTION") | not) and
     .services.server.environment.AGENVAS_MCP_ENABLED == "true" and
     .services.server.environment.AGENVAS_LOCAL_SERVICE_RUNTIME == "CONTAINER" and
     .services.server.environment.AGENVAS_LOCAL_SERVICE_DISCOVERY_ENABLED == "true" and

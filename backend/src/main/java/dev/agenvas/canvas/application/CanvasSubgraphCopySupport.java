@@ -38,14 +38,20 @@ public class CanvasSubgraphCopySupport {
 
     public CanvasSubgraphCopySupport(CanvasConnectionRepository connections, CanvasCharacterNodeRepository characters,
             ProjectService projects, ArtifactService artifacts, Clock clock) {
-        this.connections = connections; this.characters = characters; this.projects = projects;
-        this.artifacts = artifacts; this.clock = clock;
+        this.connections = connections;
+        this.characters = characters;
+        this.projects = projects;
+        this.artifacts = artifacts;
+        this.clock = clock;
     }
 
     public record Graph(List<CanvasConnection> connections, List<CharacterConnection> characterConnections) {
-        public static Graph empty() { return new Graph(List.of(), List.of()); }
+        public static Graph empty() {
+            return new Graph(List.of(), List.of());
+        }
     }
-    public record Prepared(Graph source, Map<UUID, UUID> edgeIds) {}
+    public record Prepared(Graph source, Map<UUID, UUID> edgeIds) {
+    }
 
     @Transactional(readOnly = true)
     public Graph current(UUID owner, UUID project) {
@@ -62,19 +68,23 @@ public class CanvasSubgraphCopySupport {
         Graph internal = new Graph(all.connections().stream().filter(e -> sources.contains(e.sourceCanvasItemId())
                 && sources.contains(e.targetCanvasItemId())).toList(),
                 all.characterConnections().stream().filter(e -> sources.contains(e.sourceCanvasItemId())
-                && sources.contains(e.targetCanvasItemId())).toList());
+                        && sources.contains(e.targetCanvasItemId())).toList());
         Map<UUID, ConnectionCopy> bySource = new HashMap<>();
         Set<UUID> used = new HashSet<>();
         all.connections().forEach(e -> used.add(e.id()));
         all.characterConnections().forEach(e -> used.add(e.id()));
         Map<UUID, UUID> ids = new HashMap<>();
         for (ConnectionCopy request : requests) {
-            if (!used.add(request.targetConnectionId()) || bySource.put(request.sourceConnectionId(), request) != null) throw conflict();
+            if (!used.add(request.targetConnectionId()) || bySource.put(request.sourceConnectionId(), request) != null)
+                throw conflict();
             ids.put(request.sourceConnectionId(), request.targetConnectionId());
         }
-        if (requests.size() != internal.connections().size() + internal.characterConnections().size()) throw conflict();
-        for (var edge : internal.connections()) check(bySource.get(edge.id()), ConnectionKind.ARTIFACT, edge.version());
-        for (var edge : internal.characterConnections()) check(bySource.get(edge.id()), ConnectionKind.CHARACTER, edge.version());
+        if (requests.size() != internal.connections().size() + internal.characterConnections().size())
+            throw conflict();
+        for (var edge : internal.connections())
+            check(bySource.get(edge.id()), ConnectionKind.ARTIFACT, edge.version());
+        for (var edge : internal.characterConnections())
+            check(bySource.get(edge.id()), ConnectionKind.CHARACTER, edge.version());
         return new Prepared(internal, Map.copyOf(ids));
     }
 
@@ -87,15 +97,18 @@ public class CanvasSubgraphCopySupport {
         for (var edge : prepared.source().connections()) {
             CanvasItem source = targets.get(edge.sourceCanvasItemId()), target = targets.get(edge.targetCanvasItemId());
             UUID version = edge.relationType() == CanvasConnection.RelationType.PROMPT_INPUT
-                    ? artifacts.get(owner, project, source.subjectId()).resourceDefaultVersion().id() : edge.sourceArtifactVersionId();
+                    ? artifacts.get(owner, project, source.subjectId()).resourceDefaultVersion().id()
+                    : edge.sourceArtifactVersionId();
             artifacts.requireVersion(owner, project, source.subjectId(), version);
             var created = now.plusNanos(1000L * index++);
             edges.add(new CanvasConnection(prepared.edgeIds().get(edge.id()), project, source.id(), target.id(),
                     edge.relationType(), version, 0, created, created));
         }
-        List<CharacterConnection> logical = prepared.source().characterConnections().stream().map(edge ->
-                new CharacterConnection(prepared.edgeIds().get(edge.id()), targets.get(edge.sourceCanvasItemId()).id(),
-                        targets.get(edge.targetCanvasItemId()).id(), 0)).toList();
+        List<CharacterConnection> logical = prepared.source().characterConnections().stream()
+                .map(edge -> new CharacterConnection(prepared.edgeIds().get(edge.id()),
+                        targets.get(edge.sourceCanvasItemId()).id(),
+                        targets.get(edge.targetCanvasItemId()).id(), 0))
+                .toList();
         return new Graph(List.copyOf(edges), logical);
     }
 
@@ -103,16 +116,25 @@ public class CanvasSubgraphCopySupport {
     public void install(UUID owner, UUID project, Graph graph) {
         projects.requireActiveProject(owner, project);
         try {
-            for (var edge : graph.connections()) connections.create(edge);
-            for (var edge : graph.characterConnections()) if (!characters.connect(project, edge)) throw conflict();
-        } catch (DuplicateKeyException collision) { throw conflict(); }
+            for (var edge : graph.connections())
+                connections.create(edge);
+            for (var edge : graph.characterConnections())
+                if (!characters.connect(project, edge))
+                    throw conflict();
+        } catch (DuplicateKeyException collision) {
+            throw conflict();
+        }
     }
 
     /** Call only after every copied node's full guard has matched. Never clean up foreign edges. */
     @Transactional(propagation = Propagation.MANDATORY)
     public void remove(UUID project, Graph graph) {
-        for (var edge : graph.connections()) if (!connections.delete(project, edge.id())) throw conflict();
-        for (var edge : graph.characterConnections()) if (!characters.disconnect(project, edge.id(), edge.version())) throw conflict();
+        for (var edge : graph.connections())
+            if (!connections.delete(project, edge.id()))
+                throw conflict();
+        for (var edge : graph.characterConnections())
+            if (!characters.disconnect(project, edge.id(), edge.version()))
+                throw conflict();
     }
 
     public Graph nextIncarnation(Graph graph) {
@@ -124,10 +146,12 @@ public class CanvasSubgraphCopySupport {
     }
 
     private void check(ConnectionCopy value, ConnectionKind kind, long version) {
-        if (value == null || value.kind() != kind || value.expectedVersion() != version) throw conflict();
+        if (value == null || value.kind() != kind || value.expectedVersion() != version)
+            throw conflict();
     }
     private ApiProblemException conflict() {
         return new ApiProblemException(HttpStatus.CONFLICT, "CANVAS_EDIT_CONFLICT",
-                ApiMessage.of("api.canvas-service.canvas-card-updated"), ApiMessage.of("api.canvas-edit.conflict"), false);
+                ApiMessage.of("api.canvas-service.canvas-card-updated"), ApiMessage.of("api.canvas-edit.conflict"),
+                false);
     }
 }

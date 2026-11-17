@@ -8,36 +8,52 @@ import { LoadingState } from "../shared/ui/LoadingState";
 import "../shared/ui/PageTheme.css";
 
 /** Each route loads only its own screen; React Flow stays out of auth and list bundles. */
-const SetupPage = lazy(() => import("../features/auth/SetupPage")
-  .then((module) => ({ default: module.SetupPage })));
-const LoginPage = lazy(() => import("../features/auth/LoginPage")
-  .then((module) => ({ default: module.LoginPage })));
-const SkillsPage = lazy(() => import("../features/skills/SkillsPage").then((module) => ({ default: module.SkillsPage })));
-const LibraryPage = lazy(() => import("../features/library/LibraryPage").then((module) => ({ default: module.LibraryPage })));
-const ProjectsPage = lazy(() => import("../features/projects/ProjectsPage")
-  .then((module) => ({ default: module.ProjectsPage })));
-const ProjectWorkspacePage = lazy(() => import("../features/canvas/ProjectWorkspacePage")
-  .then((module) => ({ default: module.ProjectWorkspacePage })));
-const LlmSettingsPage = lazy(() => import("../features/settings/LlmSettingsPage")
-  .then((module) => ({ default: module.LlmSettingsPage })));
-const MediaSettingsPage = lazy(() => import("../features/settings/MediaSettingsPage")
-  .then((module) => ({ default: module.MediaSettingsPage })));
-const MediaFunctionSettingsPage = lazy(() => import("../features/settings/MediaFunctionSettingsPage")
-  .then((module) => ({ default: module.MediaFunctionSettingsPage })));
-const StorageSettingsPage = lazy(() => import("../features/settings/StorageSettingsPage")
-  .then((module) => ({ default: module.StorageSettingsPage })));
-const DirectorSettingsPage = lazy(() => import("../features/settings/DirectorSettingsPage")
-  .then((module) => ({ default: module.DirectorSettingsPage })));
-const SystemSettingsPage = lazy(() => import("../features/settings/SystemSettingsPage")
-  .then((module) => ({ default: module.SystemSettingsPage })));
-const CallLogsPage = lazy(() => import("../features/settings/CallLogsPage")
-  .then((module) => ({ default: module.CallLogsPage })));
+const SetupPage = lazy(() => import("../features/auth/SetupPage").then(module => ({ default: module.SetupPage })));
+const LoginPage = lazy(() => import("../features/auth/LoginPage").then(module => ({ default: module.LoginPage })));
+const SkillsPage = lazy(() => import("../features/skills/SkillsPage").then(module => ({ default: module.SkillsPage })));
+const LibraryPage = lazy(() =>
+  import("../features/library/LibraryPage").then(module => ({ default: module.LibraryPage })),
+);
+const ProjectsPage = lazy(() =>
+  import("../features/projects/ProjectsPage").then(module => ({ default: module.ProjectsPage })),
+);
+const ProjectWorkspacePage = lazy(() =>
+  import("../features/canvas/ProjectWorkspacePage").then(module => ({ default: module.ProjectWorkspacePage })),
+);
+const LlmSettingsPage = lazy(() =>
+  import("../features/settings/LlmSettingsPage").then(module => ({ default: module.LlmSettingsPage })),
+);
+const MediaSettingsPage = lazy(() =>
+  import("../features/settings/MediaSettingsPage").then(module => ({ default: module.MediaSettingsPage })),
+);
+const MediaFunctionSettingsPage = lazy(() =>
+  import("../features/settings/MediaFunctionSettingsPage").then(module => ({
+    default: module.MediaFunctionSettingsPage,
+  })),
+);
+const StorageSettingsPage = lazy(() =>
+  import("../features/settings/StorageSettingsPage").then(module => ({ default: module.StorageSettingsPage })),
+);
+const DirectorSettingsPage = lazy(() =>
+  import("../features/settings/DirectorSettingsPage").then(module => ({ default: module.DirectorSettingsPage })),
+);
+const SystemSettingsPage = lazy(() =>
+  import("../features/settings/SystemSettingsPage").then(module => ({ default: module.SystemSettingsPage })),
+);
+const CallLogsPage = lazy(() =>
+  import("../features/settings/CallLogsPage").then(module => ({ default: module.CallLogsPage })),
+);
 
-const SystemLogsPage = lazy(() => import("../features/settings/SystemLogsPage")
-  .then((module) => ({ default: module.SystemLogsPage })));
+const SystemLogsPage = lazy(() =>
+  import("../features/settings/SystemLogsPage").then(module => ({ default: module.SystemLogsPage })),
+);
 
 export function App() {
-  return <BrowserRouter><RouteQueryScope /></BrowserRouter>;
+  return (
+    <BrowserRouter>
+      <RouteQueryScope />
+    </BrowserRouter>
+  );
 }
 
 /** Crossings into or out of authentication pages get a fresh cache. Ordinary
@@ -50,15 +66,26 @@ function RouteQueryScope() {
 
 function QueryScopedRoutes() {
   const [queryClient] = useState(createQueryClient);
-  return <QueryClientProvider client={queryClient}><AppRoutes /></QueryClientProvider>;
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AppRoutes />
+    </QueryClientProvider>
+  );
 }
 
 function AppRoutes() {
   useLocale();
   const location = useLocation();
-  return <PageErrorBoundary resetKey={location.pathname}>
-        <Suspense fallback={<main className="app-page flex items-center justify-center"><LoadingState label={t("app.pageLoading")} /></main>}>
-          <Routes>
+  return (
+    <PageErrorBoundary resetKey={location.pathname}>
+      <Suspense
+        fallback={
+          <main className="app-page flex items-center justify-center">
+            <LoadingState label={t("app.pageLoading")} />
+          </main>
+        }
+      >
+        <Routes>
           <Route path="/setup" element={<SetupPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/projects" element={<ProjectsPage />} />
@@ -76,7 +103,8 @@ function AppRoutes() {
           <Route path="/projects/:projectId" element={<ProjectWorkspacePage />} />
           <Route path="/" element={<Navigate to="/setup" replace />} />
           <Route path="*" element={<Navigate to="/setup" replace />} />
-          </Routes>
-        </Suspense>
-  </PageErrorBoundary>;
+        </Routes>
+      </Suspense>
+    </PageErrorBoundary>
+  );
 }

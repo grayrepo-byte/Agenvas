@@ -41,18 +41,19 @@ public class StorageCapacityMetrics {
     StorageCapacityMetrics(SpaceReader reader, MeterRegistry meters) {
         this.reader = reader;
         Gauge.builder("agenvas.storage.disk.total.bytes", current,
-                        value -> value.get().totalBytes())
+                value -> value.get().totalBytes())
                 .description("Asset-volume filesystem total bytes; -1 when unavailable")
                 .register(meters);
         Gauge.builder("agenvas.storage.disk.usable.bytes", current,
-                        value -> value.get().usableBytes())
+                value -> value.get().usableBytes())
                 .description("Asset-volume filesystem usable bytes; -1 when unavailable")
                 .register(meters);
         Gauge.builder("agenvas.storage.disk.used.ratio", current, value -> {
-                    Space space = value.get();
-                    return space.totalBytes() < 1 ? -1.0
-                            : 1.0 - (double) space.usableBytes() / space.totalBytes();
-                })
+            Space space = value.get();
+            return space.totalBytes() < 1
+                    ? -1.0
+                    : 1.0 - (double) space.usableBytes() / space.totalBytes();
+        })
                 .description("Asset-volume filesystem used ratio; -1 when unavailable")
                 .register(meters);
     }
@@ -96,7 +97,8 @@ public class StorageCapacityMetrics {
      * @param totalBytes 文件系统总字节数
      * @param usableBytes 当前进程可用字节数
      */
-    record Space(long totalBytes, long usableBytes) {}
+    record Space(long totalBytes, long usableBytes) {
+    }
 
     /** 抽象单次容量读取，供生产文件系统实现和隔离测试使用。 */
     @FunctionalInterface

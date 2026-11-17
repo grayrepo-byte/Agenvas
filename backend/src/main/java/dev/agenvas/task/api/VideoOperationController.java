@@ -22,7 +22,9 @@ import tools.jackson.databind.JsonNode;
 @RequestMapping("/api/v1/projects/{projectId}/artifacts/{artifactId}/video-operations")
 public class VideoOperationController {
     private final VideoOperationService operations;
-    public VideoOperationController(VideoOperationService operations) { this.operations = operations; }
+    public VideoOperationController(VideoOperationService operations) {
+        this.operations = operations;
+    }
 
     @PostMapping
     public TaskController.TaskResponse run(@AuthenticationPrincipal AdminPrincipal principal,
@@ -30,10 +32,13 @@ public class VideoOperationController {
             @RequestHeader("Idempotency-Key") String commandKey, @Valid @RequestBody Request request) {
         return TaskController.TaskResponse.from(operations.run(principal.userId(), projectId, artifactId,
                 request.canvasItemId(), request.sourceVersionId(), request.expectedCanvasItemVersion(),
-                request.operation(), request.expectedFunctionVersion(), request.expectedCapabilityVersion(), request.prompt(), request.parameters(), commandKey));
+                request.operation(), request.expectedFunctionVersion(), request.expectedCapabilityVersion(),
+                request.prompt(), request.parameters(), commandKey));
     }
 
     public record Request(@NotNull UUID canvasItemId, @NotNull UUID sourceVersionId,
             @PositiveOrZero long expectedCanvasItemVersion, @NotNull VideoOperation operation,
-            @PositiveOrZero long expectedFunctionVersion, @Positive int expectedCapabilityVersion, @Size(max = 4000) String prompt, @NotNull JsonNode parameters) {}
+            @PositiveOrZero long expectedFunctionVersion, @Positive int expectedCapabilityVersion,
+            @Size(max = 4000) String prompt, @NotNull JsonNode parameters) {
+    }
 }

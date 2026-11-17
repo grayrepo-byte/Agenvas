@@ -48,21 +48,30 @@ class ReadArtifactTextPostgresIT {
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired IdentityService identities;
-    @Autowired ProjectService projects;
-    @Autowired ArtifactService artifacts;
-    @Autowired AgentInstanceService agents;
-    @Autowired AgentRunService runs;
-    @Autowired CanvasService canvas;
-    @Autowired ReadToolService reader;
-    @Autowired ObjectMapper mapper;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    ProjectService projects;
+    @Autowired
+    ArtifactService artifacts;
+    @Autowired
+    AgentInstanceService agents;
+    @Autowired
+    AgentRunService runs;
+    @Autowired
+    CanvasService canvas;
+    @Autowired
+    ReadToolService reader;
+    @Autowired
+    ObjectMapper mapper;
 
     @Test
     void reconstructsTheExactLongTextAndRechecksProjectCanvasAndVersionAccessOnEveryPage() {
         var owner = identities.setup("screenplay-reader-admin", "screenplay-reader-password-123");
         var project = projects.create(owner.userId(), "Synthetic screenplay", Project.AspectRatio.LANDSCAPE_16_9);
         String source = "甲😀\n".repeat(3200) + "SCREENPLAY_END";
-        var screenplay = artifacts.create(owner.userId(), project.id(), Artifact.Kind.TEXT, "Long screenplay", text(source));
+        var screenplay = artifacts.create(owner.userId(), project.id(), Artifact.Kind.TEXT, "Long screenplay",
+                text(source));
         UUID versionId = screenplay.resourceDefaultVersion().id();
         UUID itemId = UUID.randomUUID();
         canvas.apply(owner.userId(), project.id(), List.of(new CanvasService.PlaceArtifact(itemId,
@@ -72,7 +81,8 @@ class ReadArtifactTextPostgresIT {
         AgentRun run = runs.create(owner.userId(), project.id(), director.id(),
                 "拆解完整剧本", "screenplay-page-read").run();
         var context = new TrustedToolContext(owner.userId(), project.id(), run.id());
-        String ordinary = mapper.createObjectNode().set("versionIds", mapper.createArrayNode().add(versionId.toString())).toString();
+        String ordinary = mapper.createObjectNode()
+                .set("versionIds", mapper.createArrayNode().add(versionId.toString())).toString();
         assertThat(reader.artifacts(context, run, UUID.randomUUID(), ordinary)
                 .at("/data/0/contentTruncated").asBoolean()).isTrue();
 
@@ -114,7 +124,8 @@ class ReadArtifactTextPostgresIT {
         // This fixture models an already frozen explicit Skill mapping, which grants only its exact version.
         ObjectNode mappedSnapshot = (ObjectNode) run.contextSnapshot().deepCopy();
         mappedSnapshot.putArray("creativeSkills").addObject().putArray("inputs").addObject()
-                .put("artifactId", screenplay.artifact().id().toString()).put("artifactVersionId", versionId.toString());
+                .put("artifactId", screenplay.artifact().id().toString())
+                .put("artifactVersionId", versionId.toString());
         AgentRun mapped = new AgentRun(run.id(), run.projectId(), run.agentInstanceId(), run.conversationId(),
                 run.conversationTurn(), run.userId(), run.status(), run.instruction(), mappedSnapshot,
                 run.policySnapshot(), run.profileVersion(), run.nextStepIndex(), run.version(), run.createdAt(),

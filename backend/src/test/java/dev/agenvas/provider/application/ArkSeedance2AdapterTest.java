@@ -75,21 +75,25 @@ class ArkSeedance2AdapterTest {
         mediaInput.putObject("providerParameters").put("aspectRatio", "16:9");
         when(task.input()).thenReturn(input);
         var version = new JooqMediaCapabilityRepository.ConnectionVersion(binding.connectionId(), 1,
-                "https://ark.cn-beijing.volces.com", "synthetic-origin-hash", new byte[] {1}, new byte[] {2}, 1, "masked");
+                "https://ark.cn-beijing.volces.com", "synthetic-origin-hash", new byte[]{1}, new byte[]{2}, 1,
+                "masked");
         when(catalog.snapshotAt(binding.capabilityId(), 1, binding.connectionId(), 1))
                 .thenReturn(Optional.of(new JooqMediaCapabilityRepository.Snapshot(null, null, version,
                         binding.adapterId(), binding.mappingSha256(), null)));
         when(cipher.decryptMedia(eq(binding.connectionId()), eq(1), any())).thenReturn(KEY);
     }
 
-    @TempDir Path images;
+    @TempDir
+    Path images;
     private final ProjectService projects = mock(ProjectService.class);
 
     @ParameterizedTest
     @CsvSource({"PORTRAIT_9_16,720,1280", "SQUARE_1_1,1024,1024", "LANDSCAPE_16_9,1280,720"})
-    void normalizesPinnedFramesUsingOneProjectReadPerImage(Project.AspectRatio ratio, int width, int height) throws Exception {
+    void normalizesPinnedFramesUsingOneProjectReadPerImage(Project.AspectRatio ratio, int width, int height)
+            throws Exception {
         var imageAdapter = imageAdapter(ratio);
-        when(client.create(eq(KEY), any(), org.mockito.ArgumentMatchers.<List<ArkSeedanceClient.Reference>>any(), eq(5), eq("16:9")))
+        when(client.create(eq(KEY), any(), org.mockito.ArgumentMatchers.<List<ArkSeedanceClient.Reference>>any(), eq(5),
+                eq("16:9")))
                 .thenReturn(REQUEST_ID);
 
         assertThat(imageAdapter.submit(context)).isEqualTo(new Submission.Accepted(REQUEST_ID));
@@ -114,12 +118,14 @@ class ArkSeedance2AdapterTest {
     }
 
     private ArkSeedance2Adapter imageAdapter(Project.AspectRatio ratio) throws Exception {
-        UUID projectId = UUID.randomUUID(), artifactId = UUID.randomUUID(), versionId = UUID.randomUUID(), assetId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID(), artifactId = UUID.randomUUID(), versionId = UUID.randomUUID(),
+                assetId = UUID.randomUUID();
         when(task.projectId()).thenReturn(projectId);
         var input = (tools.jackson.databind.node.ObjectNode) task.input().path("mediaInput");
         input.put("mode", "START_END");
         ((tools.jackson.databind.node.ArrayNode) input.path("images")).addObject()
-                .put("artifactId", artifactId.toString()).put("versionId", versionId.toString()).put("role", "START_FRAME").put("order", 0);
+                .put("artifactId", artifactId.toString()).put("versionId", versionId.toString())
+                .put("role", "START_FRAME").put("order", 0);
         var project = mock(Project.class);
         when(project.aspectRatio()).thenReturn(ratio);
         when(projects.get(context.ownerId(), projectId)).thenReturn(project);
@@ -153,9 +159,11 @@ class ArkSeedance2AdapterTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
-    void noAudioReferencesPreserveDownloadedBytesWhetherProviderReturnsAudioOrSilence(boolean hasAudio) throws Exception {
+    void noAudioReferencesPreserveDownloadedBytesWhetherProviderReturnsAudioOrSilence(boolean hasAudio)
+            throws Exception {
         byte[] original = "synthetic original provider result".getBytes(StandardCharsets.UTF_8);
-        when(client.query(KEY, REQUEST_ID)).thenReturn(new ArkSeedanceClient.TaskState("succeeded", RESULT_URL.toString()));
+        when(client.query(KEY, REQUEST_ID))
+                .thenReturn(new ArkSeedanceClient.TaskState("succeeded", RESULT_URL.toString()));
         when(mediaTools.ffprobe(any())).thenReturn(probe(hasAudio));
         download(RESULT_URL, original);
 
@@ -173,7 +181,8 @@ class ArkSeedance2AdapterTest {
         when(client.query(KEY, REQUEST_ID)).thenReturn(
                 new ArkSeedanceClient.TaskState("succeeded", RESULT_URL.toString()),
                 new ArkSeedanceClient.TaskState("succeeded", fresh.toString()));
-        when(downloads.download(eq(RESULT_URL), any(), eq(MAX_VIDEO_BYTES))).thenThrow(new ArkMediaDownloadPolicy.Expired());
+        when(downloads.download(eq(RESULT_URL), any(), eq(MAX_VIDEO_BYTES)))
+                .thenThrow(new ArkMediaDownloadPolicy.Expired());
         when(mediaTools.ffprobe(any())).thenReturn(probe(true));
         download(fresh, original);
 
@@ -205,7 +214,8 @@ class ArkSeedance2AdapterTest {
         details.putObject("format").put("format_name", "mov,mp4,m4a,3gp,3g2,mj2").put("duration", "5.0");
         var streams = details.putArray("streams");
         streams.addObject().put("codec_type", "video");
-        if (hasAudio) streams.addObject().put("codec_type", "audio");
+        if (hasAudio)
+            streams.addObject().put("codec_type", "audio");
         return mapper.writeValueAsString(details);
     }
 }

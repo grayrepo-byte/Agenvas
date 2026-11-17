@@ -42,7 +42,8 @@ public class CanvasCharacterNodeController {
         return nodes.update(principal.userId(), projectId, itemId, request);
     }
 
-    public record Connections(List<CharacterConnection> items) {}
+    public record Connections(List<CharacterConnection> items) {
+    }
 
     @GetMapping("/canvas/character-connections")
     public Connections connections(

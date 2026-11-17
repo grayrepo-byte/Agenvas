@@ -62,7 +62,9 @@ class SafeLlmTransportTest {
                 exchange.sendResponseHeaders(200, -1);
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
-            } finally { exchange.close(); }
+            } finally {
+                exchange.close();
+            }
         });
         String base = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1";
         OkHttpClient outer = new OkHttpClient.Builder()
@@ -80,7 +82,10 @@ class SafeLlmTransportTest {
         OkHttpClient outer = new OkHttpClient.Builder()
                 .addInterceptor(transport.interceptor()).build();
         Request request = post(base + "/chat/completions");
-        assertThatThrownBy(() -> { try (var ignored = outer.newCall(request).execute()) { } })
+        assertThatThrownBy(() -> {
+            try (var ignored = outer.newCall(request).execute()) {
+            }
+        })
                 .isInstanceOf(IOException.class).hasMessageContaining("redirect");
         assertThat(completions).hasValue(1);
         assertThat(redirects).hasValue(0);

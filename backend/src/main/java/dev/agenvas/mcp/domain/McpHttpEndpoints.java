@@ -7,5 +7,6 @@ public final class McpHttpEndpoints {
     public static final long MAX_UPLOAD_REQUEST_BYTES = 501L * 1024 * 1024;
     public static final int MAX_UPLOAD_METADATA_BYTES = 16 * 1024;
 
-    private McpHttpEndpoints() {}
+    private McpHttpEndpoints() {
+    }
 }

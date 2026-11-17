@@ -53,17 +53,20 @@ class TaskProviderRecoveryTest {
             new TaskProperties(Duration.ofMinutes(30), 1), events, mock(UsageService.class), mapper,
             Clock.fixed(NOW, ZoneOffset.UTC), new ShutdownGate());
 
-    @BeforeEach void setup() {
+    @BeforeEach
+    void setup() {
         when(repository.ownerId(taskId)).thenReturn(Optional.of(ownerId));
         when(repository.mediaBinding(taskId)).thenReturn(Optional.of(new MediaCapabilityBinding(
                 UUID.randomUUID(), 1, UUID.randomUUID(), 1, MediaAdapterRegistry.RUNNINGHUB_IMAGE, "synthetic-hash")));
         when(events.recordChange(eq(ownerId), eq(projectId), any())).thenAnswer(call -> {
-            ProjectEventService.Change<?> change = ((Supplier<ProjectEventService.Change<?>>) call.getArgument(2)).get();
+            ProjectEventService.Change<?> change = ((Supplier<ProjectEventService.Change<?>>) call.getArgument(2))
+                    .get();
             return new ProjectEventService.RecordedChange<>(change.value(), null);
         });
     }
 
-    @Test void aPublicDiagnosticPreservesExistingProgressAndDoesNotChangeTaskState() {
+    @Test
+    void aPublicDiagnosticPreservesExistingProgressAndDoesNotChangeTaskState() {
         Task current = task(8, mapper.createObjectNode().put("archivedCount", 1));
         when(repository.findById(taskId)).thenReturn(Optional.of(current));
         when(repository.recordProviderFailure(eq(current), eq(WORKER), any(), eq(NOW))).thenReturn(true);
@@ -86,7 +89,8 @@ class TaskProviderRecoveryTest {
         when(repository.mediaBinding(taskId)).thenReturn(Optional.of(new MediaCapabilityBinding(
                 UUID.randomUUID(), 1, UUID.randomUUID(), 1, adapterId, "synthetic-hash")));
         when(repository.findById(taskId)).thenReturn(Optional.of(task(9, null)));
-        ProviderFailure failure = MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(adapterId) ? moderationFailure()
+        ProviderFailure failure = MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(adapterId)
+                ? moderationFailure()
                 : new ProviderFailure(ProviderFailure.Stage.SUBMIT, ProviderFailure.Category.UNAVAILABLE,
                         503, null, null, null);
         assertThat(service.recordProviderFailure(task(8, null), WORKER, failure)).isFalse();
@@ -94,9 +98,11 @@ class TaskProviderRecoveryTest {
         verify(events, never()).append(any(), any(), any());
     }
 
-    @Test void openAiModerationIsPersistedAndPublishedWithoutChangingTaskState() {
+    @Test
+    void openAiModerationIsPersistedAndPublishedWithoutChangingTaskState() {
         when(repository.mediaBinding(taskId)).thenReturn(Optional.of(new MediaCapabilityBinding(
-                UUID.randomUUID(), 1, UUID.randomUUID(), 1, MediaAdapterRegistry.OPENAI_GPT_IMAGE_2, "synthetic-hash")));
+                UUID.randomUUID(), 1, UUID.randomUUID(), 1, MediaAdapterRegistry.OPENAI_GPT_IMAGE_2,
+                "synthetic-hash")));
         Task current = task(8, null);
         when(repository.findById(taskId)).thenReturn(Optional.of(current));
         when(repository.recordProviderFailure(eq(current), eq(WORKER), any(), eq(NOW))).thenReturn(true);
@@ -111,17 +117,20 @@ class TaskProviderRecoveryTest {
         verify(repository, never()).finish(any(), any(), anyLong(), any(), any(), any(), any());
     }
 
-    @Test void anUnsupportedAdapterOrUnrecognizedOpenAiFailureCannotWriteDiagnostics() {
+    @Test
+    void anUnsupportedAdapterOrUnrecognizedOpenAiFailureCannotWriteDiagnostics() {
         ProviderFailure ordinary = new ProviderFailure(ProviderFailure.Stage.SUBMIT,
                 ProviderFailure.Category.PARAMETER, 400, null, null, null);
         ProviderFailure missingDetails = new ProviderFailure(ProviderFailure.Stage.SUBMIT,
                 ProviderFailure.Category.MODERATION, 400, null, null, null);
         when(repository.mediaBinding(taskId)).thenReturn(Optional.of(new MediaCapabilityBinding(
-                UUID.randomUUID(), 1, UUID.randomUUID(), 1, MediaAdapterRegistry.OPENAI_GPT_IMAGE_2, "synthetic-hash")));
+                UUID.randomUUID(), 1, UUID.randomUUID(), 1, MediaAdapterRegistry.OPENAI_GPT_IMAGE_2,
+                "synthetic-hash")));
         assertThat(service.recordProviderFailure(task(8, null), WORKER, ordinary)).isFalse();
         assertThat(service.recordProviderFailure(task(8, null), WORKER, missingDetails)).isFalse();
         when(repository.mediaBinding(taskId)).thenReturn(Optional.of(new MediaCapabilityBinding(
-                UUID.randomUUID(), 1, UUID.randomUUID(), 1, MediaAdapterRegistry.GOOGLE_NANO_BANANA_2, "synthetic-hash")));
+                UUID.randomUUID(), 1, UUID.randomUUID(), 1, MediaAdapterRegistry.GOOGLE_NANO_BANANA_2,
+                "synthetic-hash")));
         assertThat(service.recordProviderFailure(task(8, null), WORKER, moderationFailure())).isFalse();
         verify(repository, never()).recordProviderFailure(any(), any(), any(), any());
         verify(events, never()).append(any(), any(), any());
@@ -132,7 +141,8 @@ class TaskProviderRecoveryTest {
                 400, null, null, null, new ProviderModeration("moderation_blocked", "output", List.of("sexual")));
     }
 
-    @Test void onlyMatchingResultUrlsMayBeRefreshed() {
+    @Test
+    void onlyMatchingResultUrlsMayBeRefreshed() {
         Task lease = task(8, null);
         var frozen = manifest("https://media.example.test/result.png?signature=old");
         var refreshed = manifest("https://media.example.test/result.png?signature=new");
@@ -141,13 +151,17 @@ class TaskProviderRecoveryTest {
         verify(repository).refreshProviderResultUrls(lease, WORKER, frozen, refreshed, NOW);
     }
 
-    @Test void replacingAChangedCheckpointFailsInsteadOfOverwritingNewerRecovery() {
+    @Test
+    void replacingAChangedCheckpointFailsInsteadOfOverwritingNewerRecovery() {
         assertThatThrownBy(() -> service.refreshProviderResultUrls(task(8, null), WORKER,
-                manifest("https://media.example.test/result.png?old"), manifest("https://media.example.test/result.png?new")))
-                .isInstanceOfSatisfying(ApiProblemException.class, failure -> assertThat(failure.code()).isEqualTo("TASK_LEASE_LOST"));
+                manifest("https://media.example.test/result.png?old"),
+                manifest("https://media.example.test/result.png?new")))
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        failure -> assertThat(failure.code()).isEqualTo("TASK_LEASE_LOST"));
     }
 
-    @ParameterizedTest @EnumSource(ChangedIdentity.class)
+    @ParameterizedTest
+    @EnumSource(ChangedIdentity.class)
     void aRefreshCannotChangeFrozenResultIdentityOrAccounting(ChangedIdentity changed) {
         var frozen = manifest("https://media.example.test/result.png?old");
         var old = frozen.results().getFirst();
@@ -155,8 +169,12 @@ class TaskProviderRecoveryTest {
                 changed == ChangedIdentity.NODE ? "88" : old.nodeId(),
                 changed == ChangedIdentity.KIND ? RunningHubDefinition.OutputKind.VIDEO : old.kind(),
                 changed != ChangedIdentity.PRIMARY, "https://media.example.test/result.png?new",
-                changed == ChangedIdentity.ARCHIVE ? new ProviderResultManifest.ArchiveEntry("result.png", "a".repeat(64)) : old.archiveEntry(),
-                changed == ChangedIdentity.METADATA ? mapper.createObjectNode().put("different", true) : old.providerMetadata());
+                changed == ChangedIdentity.ARCHIVE
+                        ? new ProviderResultManifest.ArchiveEntry("result.png", "a".repeat(64))
+                        : old.archiveEntry(),
+                changed == ChangedIdentity.METADATA
+                        ? mapper.createObjectNode().put("different", true)
+                        : old.providerMetadata());
         var refreshed = new ProviderResultManifest(1, List.of(result),
                 changed == ChangedIdentity.USAGE ? mapper.createObjectNode().put("consumeCoins", 99) : frozen.usage());
         assertThatThrownBy(() -> service.refreshProviderResultUrls(task(8, null), WORKER, frozen, refreshed))
@@ -164,7 +182,8 @@ class TaskProviderRecoveryTest {
         verify(repository, never()).refreshProviderResultUrls(any(), any(), any(), any(), any());
     }
 
-    @Test void anOrdinaryFailureRetainsOnlyTheSafeMediaDiagnostic() {
+    @Test
+    void anOrdinaryFailureRetainsOnlyTheSafeMediaDiagnostic() {
         var diagnostic = mapper.valueToTree(new ProviderFailure(ProviderFailure.Stage.POLL,
                 ProviderFailure.Category.GENERATION, null, 500L, "14", "value"));
         var output = mapper.createObjectNode().put("unfinishedInternalPayload", "synthetic-private");
@@ -192,5 +211,7 @@ class TaskProviderRecoveryTest {
                 "synthetic-provider-task", 1, NOW, WORKER, NOW.plusSeconds(1800), epoch, 3, null, NOW, NOW, null);
     }
 
-    private enum ChangedIdentity { ORDINAL, NODE, KIND, PRIMARY, ARCHIVE, METADATA, USAGE }
+    private enum ChangedIdentity {
+        ORDINAL, NODE, KIND, PRIMARY, ARCHIVE, METADATA, USAGE
+    }
 }

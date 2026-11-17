@@ -1,7 +1,7 @@
-import { fireEvent,render,screen,waitFor,within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { afterEach,beforeEach,describe,expect,it,vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MediaPreviewDialog } from "./MediaPreviewDialog";
 
 const IMAGE_URL = "/synthetic-preview.png";
@@ -11,17 +11,44 @@ const IMAGE_HEIGHT = 1600;
 const VIEWPORT_WIDTH = 1024;
 const VIEWPORT_HEIGHT = 640;
 
-function PreviewHarness({ kind = "image",onCanvasEvent = () => {},onClose = () => {} }: {
-  kind?: "image" | "video"; onCanvasEvent?: () => void; onClose?: () => void;
+function PreviewHarness({
+  kind = "image",
+  onCanvasEvent = () => {},
+  onClose = () => {},
+}: {
+  kind?: "image" | "video";
+  onCanvasEvent?: () => void;
+  onClose?: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  return <div onKeyDown={onCanvasEvent} onKeyUp={onCanvasEvent} onPointerDown={onCanvasEvent}
-    onMouseDown={onCanvasEvent} onWheel={onCanvasEvent} onClick={onCanvasEvent} onDoubleClick={onCanvasEvent}>
-    <button onClick={() => setOpen(true)}>打开预览</button>
-    {open ? <MediaPreviewDialog kind={kind} title="合成素材" sourceUrl={kind === "image" ? IMAGE_URL : VIDEO_URL}
-      posterSrc={kind === "video" ? IMAGE_URL : undefined} contentType={kind === "video" ? "video/webm" : undefined}
-      width={IMAGE_WIDTH} height={IMAGE_HEIGHT} onClose={() => { onClose(); setOpen(false); }} /> : null}
-  </div>;
+  return (
+    <div
+      onKeyDown={onCanvasEvent}
+      onKeyUp={onCanvasEvent}
+      onPointerDown={onCanvasEvent}
+      onMouseDown={onCanvasEvent}
+      onWheel={onCanvasEvent}
+      onClick={onCanvasEvent}
+      onDoubleClick={onCanvasEvent}
+    >
+      <button onClick={() => setOpen(true)}>打开预览</button>
+      {open ? (
+        <MediaPreviewDialog
+          kind={kind}
+          title="合成素材"
+          sourceUrl={kind === "image" ? IMAGE_URL : VIDEO_URL}
+          posterSrc={kind === "video" ? IMAGE_URL : undefined}
+          contentType={kind === "video" ? "video/webm" : undefined}
+          width={IMAGE_WIDTH}
+          height={IMAGE_HEIGHT}
+          onClose={() => {
+            onClose();
+            setOpen(false);
+          }}
+        />
+      ) : null}
+    </div>
+  );
 }
 
 const fullscreenDescriptor = Object.getOwnPropertyDescriptor(document, "fullscreenEnabled");
@@ -46,13 +73,13 @@ async function openPreview() {
   const trigger = screen.getByRole("button", { name: "打开预览" });
   await user.click(trigger);
   const dialog = await screen.findByRole("dialog");
-  return { user,trigger,dialog };
+  return { user, trigger, dialog };
 }
 
 describe("MediaPreviewDialog", () => {
   it("renders the real YARL image viewer with zoom and no single-slide navigation", async () => {
     render(<PreviewHarness />);
-    const { user,dialog } = await openPreview();
+    const { user, dialog } = await openPreview();
     expect(dialog).toHaveAttribute("aria-label", "合成素材 的图片预览");
     expect(dialog).toHaveAttribute("aria-modal", "true");
     expect(dialog).toHaveClass("yarl__portal");
@@ -63,14 +90,15 @@ describe("MediaPreviewDialog", () => {
     expect(zoomIn).toBeEnabled();
     expect(within(dialog).getByRole("button", { name: "缩小" })).toBeDisabled();
     await user.click(zoomIn);
-    expect(within(dialog).getByRole("img").closest(".yarl__slide_wrapper"))
-      .toHaveStyle({ transform: "scale(2) translateX(0px) translateY(0px)" });
+    expect(within(dialog).getByRole("img").closest(".yarl__slide_wrapper")).toHaveStyle({
+      transform: "scale(2) translateX(0px) translateY(0px)",
+    });
     expect(within(dialog).getByRole("button", { name: "缩小" })).toBeEnabled();
   });
 
   it("retries a failed image and keeps focus in the existing dialog", async () => {
     render(<PreviewHarness />);
-    const { user,dialog } = await openPreview();
+    const { user, dialog } = await openPreview();
     const image = within(dialog).getByRole("img");
     fireEvent.error(image);
     expect(within(dialog).getByRole("alert")).toHaveTextContent("媒体加载失败，请重试");
@@ -104,13 +132,14 @@ describe("MediaPreviewDialog", () => {
     fireEvent.loadedMetadata(video!);
     expect(within(dialog).getByRole("slider", { name: "审片进度" })).toHaveAttribute("data-slot", "range");
     expect(within(dialog).queryByRole("status")).not.toBeInTheDocument();
-    expect(Number(video?.getAttribute("width")) / Number(video?.getAttribute("height")))
-      .toBeCloseTo(IMAGE_WIDTH / IMAGE_HEIGHT);
+    expect(Number(video?.getAttribute("width")) / Number(video?.getAttribute("height"))).toBeCloseTo(
+      IMAGE_WIDTH / IMAGE_HEIGHT,
+    );
   });
 
   it("retries native video failures with a new player and the same precise source", async () => {
     render(<PreviewHarness kind="video" />);
-    const { user,dialog } = await openPreview();
+    const { user, dialog } = await openPreview();
     const video = dialog.querySelector("video");
     fireEvent.error(video!);
     expect(within(dialog).getByRole("alert")).toHaveTextContent("媒体加载失败，请重试");
@@ -128,7 +157,7 @@ describe("MediaPreviewDialog", () => {
     const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
     const onClose = vi.fn();
     render(<PreviewHarness kind="video" onClose={onClose} />);
-    const { user,dialog } = await openPreview();
+    const { user, dialog } = await openPreview();
     const video = dialog.querySelector("video")!;
     Object.defineProperty(video, "paused", { configurable: true, value: false });
     fireEvent.play(video);
@@ -143,7 +172,7 @@ describe("MediaPreviewDialog", () => {
     const onCanvasEvent = vi.fn();
     const documentKey = vi.fn();
     render(<PreviewHarness onCanvasEvent={onCanvasEvent} />);
-    const { user,trigger,dialog } = await openPreview();
+    const { user, trigger, dialog } = await openPreview();
     onCanvasEvent.mockClear();
     const close = within(dialog).getByRole("button", { name: "关闭预览" });
     await waitFor(() => expect(close).toHaveFocus());
@@ -152,7 +181,7 @@ describe("MediaPreviewDialog", () => {
       for (const key of ["Delete", "Backspace", " ", "v"]) fireEvent.keyDown(close, { key });
       fireEvent.keyUp(close, { key: "Delete" });
       const image = within(dialog).getByRole("img");
-      fireEvent.pointerDown(image, { clientX: 0,clientY: 0 });
+      fireEvent.pointerDown(image, { clientX: 0, clientY: 0 });
       fireEvent.mouseDown(image);
       fireEvent.wheel(image, { deltaY: 1 });
       fireEvent.click(image);
@@ -185,7 +214,7 @@ describe("MediaPreviewDialog", () => {
     Object.defineProperty(HTMLElement.prototype, "requestFullscreen", { configurable: true, value: request });
     Object.defineProperty(document, "exitFullscreen", { configurable: true, value: exit });
     render(<PreviewHarness />);
-    const { user,dialog } = await openPreview();
+    const { user, dialog } = await openPreview();
     expect(request).not.toHaveBeenCalled();
     await user.click(within(dialog).getByRole("button", { name: "进入全屏" }));
     expect(request).toHaveBeenCalledOnce();

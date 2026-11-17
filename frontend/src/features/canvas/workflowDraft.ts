@@ -4,9 +4,16 @@ import type { MediaDraftFields } from "./mediaDraftCapability";
 import { evaluateWorkflowFields, isWorkflowMediaField, type WorkflowValue } from "./workflowFields";
 
 /** Keep published ordering and apply the same effective values used for submission. */
-export function activeWorkflowMediaFields(definition: CreatorInputDefinition, values: Record<string, WorkflowValue>,
-  prompt: string, durationSeconds: number | null | undefined, composePrompt?: (local: string) => string): CreatorInputField[] {
-  return evaluateWorkflowFields(definition, values, prompt, durationSeconds, composePrompt).activeFields.filter(isWorkflowMediaField);
+export function activeWorkflowMediaFields(
+  definition: CreatorInputDefinition,
+  values: Record<string, WorkflowValue>,
+  prompt: string,
+  durationSeconds: number | null | undefined,
+  composePrompt?: (local: string) => string,
+): CreatorInputField[] {
+  return evaluateWorkflowFields(definition, values, prompt, durationSeconds, composePrompt).activeFields.filter(
+    isWorkflowMediaField,
+  );
 }
 
 /** The public Comfy summary contains declared inputs only; the graph stays on the server. */
@@ -20,9 +27,12 @@ export function workflowDefinition(capability?: MediaCapability): CreatorInputDe
 }
 
 /** Existing positional Comfy drafts retain their slot assignments until the first explicit edit. */
-export function workflowDraftValues(capability: MediaCapability | undefined, fields: MediaDraftFields): Record<string, WorkflowValue> {
+export function workflowDraftValues(
+  capability: MediaCapability | undefined,
+  fields: MediaDraftFields,
+): Record<string, WorkflowValue> {
   const values = { ...capability?.settings.defaultParameters?.dynamicValues, ...fields.parameters.dynamicValues };
-  const slots = capability?.settings.comfyInputs?.filter((field) => field.type === "IMAGE") ?? [];
+  const slots = capability?.settings.comfyInputs?.filter(field => field.type === "IMAGE") ?? [];
   if (slots.length && fields.parameters.dynamicValues === undefined) {
     for (const [index, slot] of slots.entries()) {
       const input = fields.mediaInputs[index];

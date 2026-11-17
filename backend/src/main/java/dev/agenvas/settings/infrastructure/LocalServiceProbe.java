@@ -51,19 +51,29 @@ public class LocalServiceProbe {
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
 
     /** Internal result retains the resolved route; never serialized to API. */
-    public record Detected(Status status, String endpoint, InetAddress address) {}
+    public record Detected(Status status, String endpoint, InetAddress address) {
+    }
 
     /** Absolute monotonic budget survives resolvers that swallow thread interruption. */
     public static final class Budget {
         private final long expiresAt;
         private final AtomicBoolean cancelled = new AtomicBoolean();
-        public Budget(Duration duration) { expiresAt = System.nanoTime() + duration.toNanos(); }
-        public long remainingNanos() { return Math.max(0, expiresAt - System.nanoTime()); }
-        public boolean expired() { return cancelled.get() || remainingNanos() == 0; }
-        public void cancel() { cancelled.set(true); }
+        public Budget(Duration duration) {
+            expiresAt = System.nanoTime() + duration.toNanos();
+        }
+        public long remainingNanos() {
+            return Math.max(0, expiresAt - System.nanoTime());
+        }
+        public boolean expired() {
+            return cancelled.get() || remainingNanos() == 0;
+        }
+        public void cancel() {
+            cancelled.set(true);
+        }
     }
 
-    @Autowired public LocalServiceProbe(LocalServiceDiscoveryProperties properties) {
+    @Autowired
+    public LocalServiceProbe(LocalServiceDiscoveryProperties properties) {
         this(properties, Dns.SYSTEM,
                 () -> Files.exists(Path.of("/.dockerenv")) || Files.exists(Path.of("/run/.containerenv")),
                 () -> System.getProperty("os.name", ""),
@@ -74,34 +84,48 @@ public class LocalServiceProbe {
     /** Package seam for deterministic DNS, runtime and local synthetic HTTP tests only. */
     LocalServiceProbe(LocalServiceDiscoveryProperties properties, Dns resolver,
             BooleanSupplier containerMarker, Supplier<String> osName, Function<Dns, Call.Factory> clients) {
-        this.properties = properties; this.resolver = resolver; this.containerMarker = containerMarker;
-        this.osName = osName; this.clients = clients;
+        this.properties = properties;
+        this.resolver = resolver;
+        this.containerMarker = containerMarker;
+        this.osName = osName;
+        this.clients = clients;
     }
 
     public Runtime runtime() {
-        if (properties.runtime() == LocalServiceDiscoveryProperties.Mode.CONTAINER) return Runtime.CONTAINER;
-        if (containerMarker.getAsBoolean()) return Runtime.CONTAINER;
-        if (properties.runtime() == LocalServiceDiscoveryProperties.Mode.NATIVE) return Runtime.NATIVE;
+        if (properties.runtime() == LocalServiceDiscoveryProperties.Mode.CONTAINER)
+            return Runtime.CONTAINER;
+        if (containerMarker.getAsBoolean())
+            return Runtime.CONTAINER;
+        if (properties.runtime() == LocalServiceDiscoveryProperties.Mode.NATIVE)
+            return Runtime.NATIVE;
         String os = osName.get().toLowerCase(Locale.ROOT);
         return os.startsWith("mac") || os.startsWith("windows") ? Runtime.NATIVE : Runtime.UNKNOWN;
     }
 
     public Detected discover(Service service, Runtime runtime, AtomicReference<Call> activeCall, Budget budget) {
-        if (runtime == Runtime.UNKNOWN) return absent(Status.UNSUPPORTED_RUNTIME);
-        if (budget.expired()) return absent(Status.TIMEOUT);
+        if (runtime == Runtime.UNKNOWN)
+            return absent(Status.UNSUPPORTED_RUNTIME);
+        if (budget.expired())
+            return absent(Status.TIMEOUT);
         String host = runtime == Runtime.CONTAINER ? HOST_ALIAS : "127.0.0.1";
         InetAddress address;
         try {
             if (runtime == Runtime.CONTAINER) {
                 List<InetAddress> answers = resolver.lookup(HOST_ALIAS);
-                if (answers.isEmpty()) return absent(Status.UNRESOLVED);
+                if (answers.isEmpty())
+                    return absent(Status.UNRESOLVED);
                 address = answers.getFirst();
-            } else address = InetAddress.getByAddress(new byte[]{127, 0, 0, 1});
-        } catch (UnknownHostException unresolved) { return absent(Status.UNRESOLVED); }
-        if (budget.expired() || Thread.currentThread().isInterrupted()) return absent(Status.TIMEOUT);
+            } else
+                address = InetAddress.getByAddress(new byte[]{127, 0, 0, 1});
+        } catch (UnknownHostException unresolved) {
+            return absent(Status.UNRESOLVED);
+        }
+        if (budget.expired() || Thread.currentThread().isInterrupted())
+            return absent(Status.TIMEOUT);
         InetAddress pinned = address;
         Dns dns = requested -> {
-            if (!host.equals(requested)) throw new UnknownHostException("Discovery target unavailable");
+            if (!host.equals(requested))
+                throw new UnknownHostException("Discovery target unavailable");
             return List.of(pinned);
         };
         int port = service == Service.OLLAMA ? 11434 : 8188;
@@ -110,40 +134,64 @@ public class LocalServiceProbe {
                 .get().header("Accept", "application/json").header("Connection", "close").build();
         Call call = clients.apply(dns).newCall(request);
         activeCall.set(call);
-        if (budget.expired() || Thread.currentThread().isInterrupted()) { call.cancel(); return absent(Status.TIMEOUT); }
+        if (budget.expired() || Thread.currentThread().isInterrupted()) {
+            call.cancel();
+            return absent(Status.TIMEOUT);
+        }
         long remaining = budget.remainingNanos();
-        if (remaining == 0) { call.cancel(); return absent(Status.TIMEOUT); }
+        if (remaining == 0) {
+            call.cancel();
+            return absent(Status.TIMEOUT);
+        }
         call.timeout().timeout(Math.min(TimeUnit.SECONDS.toNanos(2), remaining), TimeUnit.NANOSECONDS);
         try (Response response = call.execute()) {
-            if (response.code() == 401 || response.code() == 403) return absent(Status.AUTH_REQUIRED);
-            if (response.code() == 404) return absent(Status.NOT_FOUND);
-            if (response.code() != 200 || response.body() == null) return absent(Status.UNEXPECTED_RESPONSE);
+            if (response.code() == 401 || response.code() == 403)
+                return absent(Status.AUTH_REQUIRED);
+            if (response.code() == 404)
+                return absent(Status.NOT_FOUND);
+            if (response.code() != 200 || response.body() == null)
+                return absent(Status.UNEXPECTED_RESPONSE);
             // OkHttp transparently decompresses; the budget applies to decoded bytes, including chunked bodies.
             byte[] bytes = response.body().byteStream().readNBytes(MAX_BODY_BYTES + 1);
-            if (bytes.length > MAX_BODY_BYTES) return absent(Status.UNEXPECTED_RESPONSE);
+            if (bytes.length > MAX_BODY_BYTES)
+                return absent(Status.UNEXPECTED_RESPONSE);
             JsonNode body = json.readTree(bytes);
-            if (!matches(service, body)) return absent(Status.UNEXPECTED_RESPONSE);
+            if (!matches(service, body))
+                return absent(Status.UNEXPECTED_RESPONSE);
             String candidateHost = service == Service.COMFYUI ? address.getHostAddress() : host;
-            if (candidateHost.contains(":")) candidateHost = "[" + candidateHost + "]";
-            if (budget.expired()) return absent(Status.TIMEOUT);
+            if (candidateHost.contains(":"))
+                candidateHost = "[" + candidateHost + "]";
+            if (budget.expired())
+                return absent(Status.TIMEOUT);
             return new Detected(Status.FOUND, "http://" + candidateHost + ":" + port
                     + (service == Service.OLLAMA ? "/v1" : ""), address);
-        } catch (InterruptedIOException timeout) { return absent(Status.TIMEOUT); }
-        catch (IOException unavailable) { return absent(Status.NOT_FOUND); }
-        catch (tools.jackson.core.JacksonException malformed) { return absent(Status.UNEXPECTED_RESPONSE); }
-        finally { activeCall.compareAndSet(call, null); }
+        } catch (InterruptedIOException timeout) {
+            return absent(Status.TIMEOUT);
+        } catch (IOException unavailable) {
+            return absent(Status.NOT_FOUND);
+        } catch (tools.jackson.core.JacksonException malformed) {
+            return absent(Status.UNEXPECTED_RESPONSE);
+        } finally {
+            activeCall.compareAndSet(call, null);
+        }
     }
 
     private static boolean matches(Service service, JsonNode body) {
-        if (body == null || !body.isObject()) return false;
-        if (service == Service.OLLAMA) return text(body.path("version"));
+        if (body == null || !body.isObject())
+            return false;
+        if (service == Service.OLLAMA)
+            return text(body.path("version"));
         JsonNode system = body.path("system");
         return system.isObject() && text(system.path("os")) && text(system.path("python_version"))
                 && body.path("devices").isArray();
     }
 
-    private static boolean text(JsonNode value) { return value.isString() && !value.asString().isBlank(); }
+    private static boolean text(JsonNode value) {
+        return value.isString() && !value.asString().isBlank();
+    }
 
-    private static Detected absent(Status status) { return new Detected(status, null, null); }
+    private static Detected absent(Status status) {
+        return new Detected(status, null, null);
+    }
 
 }

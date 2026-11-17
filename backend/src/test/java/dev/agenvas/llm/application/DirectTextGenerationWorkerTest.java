@@ -73,7 +73,8 @@ class DirectTextGenerationWorkerTest {
         worker = new DirectTextGenerationWorker(tasks, gateway, codec, callLogs, mapper, executor,
                 images);
         when(executor.open(any(), eq(WORKER))).thenReturn(execution);
-        when(gateway.modelDetailsFor(pinned)).thenReturn(new ChatGateway.ModelDetails(true, "MOCK", "synthetic-text", false));
+        when(gateway.modelDetailsFor(pinned))
+                .thenReturn(new ChatGateway.ModelDetails(true, "MOCK", "synthetic-text", false));
         when(gateway.call(anyList(), anyList(), anyMap(), eq(pinned))).thenReturn(exchange);
         when(callLogs.record(any(), any(), any())).thenAnswer(call -> {
             Supplier<?> invocation = call.getArgument(1);
@@ -103,7 +104,8 @@ class DirectTextGenerationWorkerTest {
         input.put("schemaVersion", 3).put("purpose", Task.IMAGE_PROMPT_PURPOSE);
         var failure = mock(ImagePromptInputService.Failure.class);
         when(failure.getMessage()).thenReturn(code);
-        when(images.messages(lease)).thenReturn(List.of(new org.springframework.ai.chat.messages.UserMessage("Inspect")));
+        when(images.messages(lease))
+                .thenReturn(List.of(new org.springframework.ai.chat.messages.UserMessage("Inspect")));
         when(images.hydrate(eq(lease), anyList())).thenThrow(failure);
         worker.runOnce(WORKER);
         verify(tasks).fail(lease, WORKER, code);
@@ -116,14 +118,17 @@ class DirectTextGenerationWorkerTest {
     @org.junit.jupiter.params.provider.ValueSource(ints = {400, 413, 415, 422, 401, 500})
     void imageModelRejectionsAreExplicitAndDoNotTriggerAnotherCall(int status) {
         input.put("schemaVersion", 3).put("purpose", Task.IMAGE_PROMPT_PURPOSE);
-        var messages = List.<org.springframework.ai.chat.messages.Message>of(new org.springframework.ai.chat.messages.UserMessage("Inspect"));
-        when(images.messages(lease)).thenReturn(messages); when(images.hydrate(lease, messages)).thenReturn(messages);
+        var messages = List.<org.springframework.ai.chat.messages.Message>of(
+                new org.springframework.ai.chat.messages.UserMessage("Inspect"));
+        when(images.messages(lease)).thenReturn(messages);
+        when(images.hydrate(lease, messages)).thenReturn(messages);
         var rejected = mock(com.openai.errors.OpenAIServiceException.class);
         when(rejected.statusCode()).thenReturn(status);
         when(gateway.call(anyList(), anyList(), anyMap(), eq(pinned))).thenThrow(rejected);
         worker.runOnce(WORKER);
         verify(tasks).fail(lease, WORKER, java.util.Set.of(400, 413, 415, 422).contains(status)
-                ? "IMAGE_PROMPT_MODEL_REJECTED" : "MODEL_CALL_FAILED");
+                ? "IMAGE_PROMPT_MODEL_REJECTED"
+                : "MODEL_CALL_FAILED");
         verify(gateway).call(anyList(), anyList(), anyMap(), eq(pinned));
         verify(tasks, never()).checkpointTextResponse(any(), anyString(), any());
     }
@@ -180,16 +185,19 @@ class DirectTextGenerationWorkerTest {
     void tokenLimitedResponseCannotCreateAFinishedTextArtifact(boolean replay, String reason) {
         var truncated = new ChatResponse(List.of(new Generation(new AssistantMessage("Partial text"),
                 ChatGenerationMetadata.builder().finishReason(reason).build())));
-        if (replay) claimedTask(checkpoint(truncated));
-        else when(gateway.call(anyList(), anyList(), anyMap(), eq(pinned)))
-                .thenReturn(new ChatGateway.Exchange(3, truncated));
+        if (replay)
+            claimedTask(checkpoint(truncated));
+        else
+            when(gateway.call(anyList(), anyList(), anyMap(), eq(pinned)))
+                    .thenReturn(new ChatGateway.Exchange(3, truncated));
 
         worker.runOnce(WORKER);
 
         verify(tasks).fail(lease, WORKER, "LLM_OUTPUT_TRUNCATED");
         verify(tasks, never()).succeedWithTextArtifact(any(), anyString(), any());
         verify(tasks, never()).succeed(any(), anyString(), any());
-        if (replay) verifyNoInteractions(gateway, callLogs);
+        if (replay)
+            verifyNoInteractions(gateway, callLogs);
     }
 
     @Test
@@ -221,7 +229,8 @@ class DirectTextGenerationWorkerTest {
     @ValueSource(ints = {1, 2})
     void callsThePinnedModelWithTheFrozenSchemaSpecificPromptBeforeCheckpointing(int schema) throws Exception {
         input.put("schemaVersion", schema);
-        if (schema == 1) input.remove("systemPrompt");
+        if (schema == 1)
+            input.remove("systemPrompt");
 
         assertThat(worker.runOnce(WORKER)).isEqualTo(1);
         verify(execution).call(any(), eq(Duration.ofMinutes(10)));
@@ -229,9 +238,11 @@ class DirectTextGenerationWorkerTest {
         ArgumentCaptor<List<Message>> messages = ArgumentCaptor.captor();
         verify(gateway).call(messages.capture(), eq(List.of()), eq(java.util.Map.of()), eq(pinned));
         String systemPrompt = messages.getValue().getFirst().getText();
-        assertThat(systemPrompt).isEqualTo(schema == 2 ? "Frozen creative instruction"
+        assertThat(systemPrompt).isEqualTo(schema == 2
+                ? "Frozen creative instruction"
                 : "You write the finished content of one text card. Follow the user instruction using the current card content as context. Return only the finished card text, without commentary, tool calls, XML wrappers, or Markdown code fences. Keep the response under 20000 characters.");
-        assertThat(messages.getValue().get(1).getText()).isEqualTo("Instruction:\nRewrite\n\nCurrent card content:\nOriginal card");
+        assertThat(messages.getValue().get(1).getText())
+                .isEqualTo("Instruction:\nRewrite\n\nCurrent card content:\nOriginal card");
         var order = inOrder(execution, tasks);
         order.verify(execution, times(2)).checkActive();
         order.verify(tasks).checkpointTextResponse(eq(lease), eq(WORKER), any());
@@ -247,7 +258,8 @@ class DirectTextGenerationWorkerTest {
             case EMPTY -> new AssistantMessage(" \n ");
             case TOO_LONG -> new AssistantMessage("x".repeat(20_001));
             case TOOL_CALL -> AssistantMessage.builder().content("Unexpected tool request")
-                    .toolCalls(List.of(new AssistantMessage.ToolCall("call", "function", "read_project", "{}"))).build();
+                    .toolCalls(List.of(new AssistantMessage.ToolCall("call", "function", "read_project", "{}")))
+                    .build();
         };
         claimedTask(checkpoint(new ChatResponse(List.of(new Generation(assistant)))));
 
@@ -260,9 +272,11 @@ class DirectTextGenerationWorkerTest {
 
     @ParameterizedTest
     @EnumSource(CallFailure.class)
-    void preservesModelCallFailureClassificationForFutureTimeoutAndCapacityFailure(CallFailure failure) throws Exception {
+    void preservesModelCallFailureClassificationForFutureTimeoutAndCapacityFailure(CallFailure failure)
+            throws Exception {
         Exception error = switch (failure) {
-            case MODEL_ARGUMENT -> new ExecutionException(new IllegalArgumentException("Synthetic gateway argument failure"));
+            case MODEL_ARGUMENT ->
+                new ExecutionException(new IllegalArgumentException("Synthetic gateway argument failure"));
             case TIMEOUT -> new TimeoutException("Synthetic model timeout");
             case CAPACITY -> new RejectedExecutionException("Synthetic queue full");
         };
@@ -301,8 +315,10 @@ class DirectTextGenerationWorkerTest {
 
         verify(tasks, never()).fail(any(), anyString(), anyString());
         verify(tasks, never()).succeedWithTextArtifact(any(), anyString(), any());
-        if (point != StopPoint.ARTIFACT) verify(tasks, never()).checkpointTextResponse(any(), anyString(), any());
-        else verify(tasks).checkpointTextResponse(eq(lease), eq(WORKER), any());
+        if (point != StopPoint.ARTIFACT)
+            verify(tasks, never()).checkpointTextResponse(any(), anyString(), any());
+        else
+            verify(tasks).checkpointTextResponse(eq(lease), eq(WORKER), any());
     }
 
     @ParameterizedTest
@@ -349,8 +365,10 @@ class DirectTextGenerationWorkerTest {
         worker.runOnce(WORKER);
 
         verify(tasks, never()).fail(any(), anyString(), anyString());
-        if (artifactFailure) verify(tasks).succeedWithTextArtifact(eq(lease), eq(WORKER), any());
-        else verify(tasks, never()).succeedWithTextArtifact(any(), anyString(), any());
+        if (artifactFailure)
+            verify(tasks).succeedWithTextArtifact(eq(lease), eq(WORKER), any());
+        else
+            verify(tasks, never()).succeedWithTextArtifact(any(), anyString(), any());
     }
 
     private ObjectNode checkpoint(ChatResponse response) {
@@ -367,7 +385,13 @@ class DirectTextGenerationWorkerTest {
         when(tasks.claimTextGenerations(WORKER, 1)).thenReturn(List.of(lease));
     }
 
-    enum InvalidOutput { EMPTY, TOO_LONG, TOOL_CALL }
-    enum CallFailure { MODEL_ARGUMENT, TIMEOUT, CAPACITY }
-    enum StopPoint { CALL, CHECKPOINT, ARTIFACT }
+    enum InvalidOutput {
+        EMPTY, TOO_LONG, TOOL_CALL
+    }
+    enum CallFailure {
+        MODEL_ARGUMENT, TIMEOUT, CAPACITY
+    }
+    enum StopPoint {
+        CALL, CHECKPOINT, ARTIFACT
+    }
 }

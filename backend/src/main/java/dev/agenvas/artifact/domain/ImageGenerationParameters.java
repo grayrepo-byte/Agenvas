@@ -38,17 +38,24 @@ public record ImageGenerationParameters(
             throw invalid(ApiMessage.of("api.image-generation-parameters.image-generation-parameters-must-be-objects"));
         }
         for (String field : input.propertyNames()) {
-            if (!FIELDS.contains(field)) throw invalid(ApiMessage.of("api.image-generation-parameters.image-generation-parameters-contain-an-unknown-field", field));
+            if (!FIELDS.contains(field))
+                throw invalid(ApiMessage.of(
+                        "api.image-generation-parameters.image-generation-parameters-contain-an-unknown-field", field));
         }
         String aspectRatio = text(input, "aspectRatio", AUTO_ASPECT_RATIO);
         String resolution = text(input, "resolution", DEFAULT_RESOLUTION);
         String quality = text(input, "quality", DEFAULT_QUALITY);
         boolean transparent = bool(input, "transparentBackground", false);
         int count = integer(input, "generationCount", 1);
-        if (!ASPECT_RATIOS.contains(aspectRatio)) throw invalid(ApiMessage.of("api.image-generation-parameters.unsupported-image-ratio"));
-        if (!RESOLUTIONS.contains(resolution)) throw invalid(ApiMessage.of("api.image-generation-parameters.unsupported-image-resolution"));
-        if (!Set.of("low", "medium", "high", "xhigh", "max").contains(quality)) throw invalid(ApiMessage.of("api.image-generation-parameters.image-quality-must-be-low-medium-or-high"));
-        if (!GENERATION_COUNTS.contains(count)) throw invalid(ApiMessage.of("api.image-generation-parameters.the-number-of-image-generation-can-only-be-1-2"));
+        if (!ASPECT_RATIOS.contains(aspectRatio))
+            throw invalid(ApiMessage.of("api.image-generation-parameters.unsupported-image-ratio"));
+        if (!RESOLUTIONS.contains(resolution))
+            throw invalid(ApiMessage.of("api.image-generation-parameters.unsupported-image-resolution"));
+        if (!Set.of("low", "medium", "high", "xhigh", "max").contains(quality))
+            throw invalid(ApiMessage.of("api.image-generation-parameters.image-quality-must-be-low-medium-or-high"));
+        if (!GENERATION_COUNTS.contains(count))
+            throw invalid(
+                    ApiMessage.of("api.image-generation-parameters.the-number-of-image-generation-can-only-be-1-2"));
         return new ImageGenerationParameters(aspectRatio, resolution, quality, transparent,
                 count);
     }
@@ -66,37 +73,49 @@ public record ImageGenerationParameters(
     public void requireSupported(Set<String> aspectRatios, Set<String> resolutions,
             Set<String> qualities, boolean supportsTransparentBackground) {
         if (!aspectRatios.contains(aspectRatio)) {
-            throw invalid(ApiMessage.of("api.image-generation-parameters.the-selected-image-capability-does-not-support-aspect-ratio", aspectRatio));
+            throw invalid(ApiMessage.of(
+                    "api.image-generation-parameters.the-selected-image-capability-does-not-support-aspect-ratio",
+                    aspectRatio));
         }
         if (!resolutions.contains(resolution)) {
-            throw invalid(ApiMessage.of("api.image-generation-parameters.the-selected-image-capability-does-not-support-resolution", resolution));
+            throw invalid(ApiMessage.of(
+                    "api.image-generation-parameters.the-selected-image-capability-does-not-support-resolution",
+                    resolution));
         }
         if (!qualities.isEmpty() && !qualities.contains(quality)) {
-            throw invalid(ApiMessage.of("api.image-generation-parameters.the-selected-image-capability-does-not-support-quality", quality));
+            throw invalid(ApiMessage.of(
+                    "api.image-generation-parameters.the-selected-image-capability-does-not-support-quality", quality));
         }
         if (transparentBackground && !supportsTransparentBackground) {
-            throw invalid(ApiMessage.of("api.image-generation-parameters.the-selected-image-capability-does-not-support-transparent-backgrounds"));
+            throw invalid(ApiMessage.of(
+                    "api.image-generation-parameters.the-selected-image-capability-does-not-support-transparent-backgrounds"));
         }
     }
 
     private static String text(JsonNode input, String field, String fallback) {
         JsonNode value = input.get(field);
-        if (value == null) return fallback;
-        if (!value.isTextual() || value.asText().isBlank()) throw invalid(ApiMessage.of("api.artifact-content-validator.must-be-a-string", field));
+        if (value == null)
+            return fallback;
+        if (!value.isTextual() || value.asText().isBlank())
+            throw invalid(ApiMessage.of("api.artifact-content-validator.must-be-a-string", field));
         return value.asText();
     }
 
     private static boolean bool(JsonNode input, String field, boolean fallback) {
         JsonNode value = input.get(field);
-        if (value == null) return fallback;
-        if (!value.isBoolean()) throw invalid(ApiMessage.of("api.image-generation-parameters.must-be-a-boolean", field));
+        if (value == null)
+            return fallback;
+        if (!value.isBoolean())
+            throw invalid(ApiMessage.of("api.image-generation-parameters.must-be-a-boolean", field));
         return value.booleanValue();
     }
 
     private static int integer(JsonNode input, String field, int fallback) {
         JsonNode value = input.get(field);
-        if (value == null) return fallback;
-        if (!value.isIntegralNumber() || !value.canConvertToInt()) throw invalid(ApiMessage.of("api.artifact-content-validator.must-be-an-integer", field));
+        if (value == null)
+            return fallback;
+        if (!value.isIntegralNumber() || !value.canConvertToInt())
+            throw invalid(ApiMessage.of("api.artifact-content-validator.must-be-an-integer", field));
         return value.intValue();
     }
 

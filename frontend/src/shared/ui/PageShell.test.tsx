@@ -1,33 +1,70 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent,render,screen,waitFor,within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http,HttpResponse } from "msw";
-import { MemoryRouter,Route,Routes } from "react-router";
-import { beforeEach,describe,expect,it } from "vitest";
+import { http, HttpResponse } from "msw";
+import { MemoryRouter, Route, Routes } from "react-router";
+import { beforeEach, describe, expect, it } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import { changeControl,clickControl } from "../../test/controls";
+import { changeControl, clickControl } from "../../test/controls";
 import { server } from "../../test/server";
-import { getLocale,localeName,SUPPORTED_LOCALES } from "../i18n";
+import { getLocale, localeName, SUPPORTED_LOCALES } from "../i18n";
 import { PageShell } from "./PageShell";
 import { useNavigationStore } from "./navigationStore";
 import { useCanvasStore } from "../../features/canvas/canvasStore";
 
 function showShell(path = "/projects") {
   const client = createQueryClient();
-  render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]}><Routes>
-    <Route path="/projects" element={<PageShell title="项目"><p>项目内容</p><input aria-label="临时草稿" defaultValue="" /></PageShell>} />
-    <Route path="/settings/llm" element={<PageShell title="模型设置"><p>模型内容</p></PageShell>} />
-    <Route path="/settings/media" element={<PageShell title="媒体配置"><p>媒体内容</p></PageShell>} />
-    <Route path="/settings/calls" element={<PageShell title="调用日志"><p>调用记录内容</p></PageShell>} />
-    <Route path="/login" element={<h1>登录页</h1>} />
-  </Routes></MemoryRouter></QueryClientProvider>);
+  render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route
+            path="/projects"
+            element={
+              <PageShell title="项目">
+                <p>项目内容</p>
+                <input aria-label="临时草稿" defaultValue="" />
+              </PageShell>
+            }
+          />
+          <Route
+            path="/settings/llm"
+            element={
+              <PageShell title="模型设置">
+                <p>模型内容</p>
+              </PageShell>
+            }
+          />
+          <Route
+            path="/settings/media"
+            element={
+              <PageShell title="媒体配置">
+                <p>媒体内容</p>
+              </PageShell>
+            }
+          />
+          <Route
+            path="/settings/calls"
+            element={
+              <PageShell title="调用日志">
+                <p>调用记录内容</p>
+              </PageShell>
+            }
+          />
+          <Route path="/login" element={<h1>登录页</h1>} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
   return client;
 }
 
 describe("PageShell", () => {
   beforeEach(() => {
     useNavigationStore.setState({ collapsed: false });
-    server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "创作者", role: "ADMIN" })));
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "创作者", role: "ADMIN" })),
+    );
   });
 
   it("preserves collapsed navigation across pages and identifies the active route", async () => {
@@ -57,7 +94,10 @@ describe("PageShell", () => {
     await user.click(trigger);
     const dialog = within(screen.getByRole("dialog", { name: "界面语言" }));
     for (const locale of SUPPORTED_LOCALES) {
-      expect(dialog.getByRole("button", { name: localeName(locale) })).toHaveAttribute("aria-pressed", String(locale === "zh"));
+      expect(dialog.getByRole("button", { name: localeName(locale) })).toHaveAttribute(
+        "aria-pressed",
+        String(locale === "zh"),
+      );
     }
     await user.click(dialog.getByRole("button", { name: localeName("ru") }));
     expect(getLocale()).toBe("ru");
@@ -75,9 +115,13 @@ describe("PageShell", () => {
 
   it("keeps a failed session read recoverable without pretending the user is logged out", async () => {
     let failed = true;
-    server.use(http.get("/api/v1/auth/me", () => failed
-      ? HttpResponse.json({ title: "Unavailable", status: 503 }, { status: 503 })
-      : HttpResponse.json({ id: "admin", loginName: "创作者", role: "ADMIN" })));
+    server.use(
+      http.get("/api/v1/auth/me", () =>
+        failed
+          ? HttpResponse.json({ title: "Unavailable", status: 503 }, { status: 503 })
+          : HttpResponse.json({ id: "admin", loginName: "创作者", role: "ADMIN" }),
+      ),
+    );
     showShell();
     expect(await screen.findByRole("alert")).toHaveTextContent("暂时无法读取会话");
     expect(screen.queryByText("项目内容")).not.toBeInTheDocument();
@@ -88,7 +132,9 @@ describe("PageShell", () => {
   });
 
   it("redirects an unauthorized session to login", async () => {
-    server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ title: "Unauthorized", status: 401 }, { status: 401 })));
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ title: "Unauthorized", status: 401 }, { status: 401 })),
+    );
     showShell();
     expect(await screen.findByRole("heading", { name: "登录页" })).toBeInTheDocument();
     expect(screen.queryByText("项目内容")).not.toBeInTheDocument();
@@ -96,12 +142,18 @@ describe("PageShell", () => {
 
   it("preserves page drafts when a cached session fails to refresh", async () => {
     const client = showShell();
-    await changeControl(await screen.findByRole("textbox", { name: "临时草稿" }), { target: { value: "尚未保存的输入" } });
-    server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ title: "Unavailable", status: 503 }, { status: 503 })));
+    await changeControl(await screen.findByRole("textbox", { name: "临时草稿" }), {
+      target: { value: "尚未保存的输入" },
+    });
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ title: "Unavailable", status: 503 }, { status: 503 })),
+    );
     await client.invalidateQueries({ queryKey: ["auth", "me"] });
     expect(await screen.findByRole("alert")).toHaveTextContent("会话暂时无法刷新");
     expect(screen.getByRole("textbox", { name: "临时草稿" })).toHaveValue("尚未保存的输入");
-    server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "创作者", role: "ADMIN" })));
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "创作者", role: "ADMIN" })),
+    );
     await clickControl(screen.getByRole("button", { name: "重试连接" }));
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
     expect(screen.getByRole("textbox", { name: "临时草稿" })).toHaveValue("尚未保存的输入");
@@ -111,7 +163,11 @@ describe("PageShell", () => {
     let fail = true;
     server.use(
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
-      http.post("/api/v1/auth/logout", () => fail ? HttpResponse.json({ title: "Unavailable", status: 503 }, { status: 503 }) : new HttpResponse(null, { status: 204 })),
+      http.post("/api/v1/auth/logout", () =>
+        fail
+          ? HttpResponse.json({ title: "Unavailable", status: 503 }, { status: 503 })
+          : new HttpResponse(null, { status: 204 }),
+      ),
     );
     const client = showShell();
     client.setQueryData(["private-project"], { id: "project" });

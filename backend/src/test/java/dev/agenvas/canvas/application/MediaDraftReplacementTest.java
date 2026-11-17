@@ -44,7 +44,9 @@ class MediaDraftReplacementTest {
         when(connections.clearTargetMediaConnectionsWithinChange(owner, project, item, 3))
                 .thenThrow(new ApiProblemException(HttpStatus.CONFLICT, "VERSION_CONFLICT",
                         ApiMessage.of("api.canvas-connection-service.draft-version-conflict"),
-                        ApiMessage.of("api.canvas-connection-service.the-target-draft-has-changed-before-restoring-history-input"), true));
+                        ApiMessage.of(
+                                "api.canvas-connection-service.the-target-draft-has-changed-before-restoring-history-input"),
+                        true));
         assertThatThrownBy(() -> service.replaceInputs(owner, project, item, 3,
                 "Template prompt", JsonNodeFactory.instance.objectNode(), null, null,
                 null, List.of(), List.of(), null)).isInstanceOf(ApiProblemException.class);

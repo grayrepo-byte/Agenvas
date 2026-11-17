@@ -39,7 +39,8 @@ class ImagePromptGalleryAdapterTest {
         assertThat(video.prompt()).isEqualTo("Animate @Image1.");
         assertThat(video.videoModel()).isEqualTo("seedance-2-5");
         assertThat(video.videoMode()).isEqualTo(VideoMode.omni_reference);
-        assertThat(video.references()).containsExactly(new Reference(MediaKind.IMAGE, Role.REFERENCE, "https://example.com/input.png"));
+        assertThat(video.references())
+                .containsExactly(new Reference(MediaKind.IMAGE, Role.REFERENCE, "https://example.com/input.png"));
         assertThat(video.missingReferences()).isEmpty();
         assertThat(video.coverUrl()).isEqualTo("https://example.com/poster.png");
         assertThat(video.previewVideoUrl()).isEqualTo("https://example.com/output.mp4");
@@ -52,7 +53,8 @@ class ImagePromptGalleryAdapterTest {
         var source = source("minimax-h3");
         var video = (Video) ThirdPartyPromptValidation.validate(source,
                 adapter.parse(source, mapper.writeValueAsString(mapper.createArrayNode()
-                        .add(compact("one", source.model(), "Camera pans slowly."))))).getFirst();
+                        .add(compact("one", source.model(), "Camera pans slowly.")))))
+                .getFirst();
         assertThat(video.videoMode()).isEqualTo(VideoMode.text_to_video);
         assertThat(video.references()).isEmpty();
         assertThat(video.previewVideoUrl()).isEqualTo("https://example.com/output.mp4");
@@ -68,7 +70,8 @@ class ImagePromptGalleryAdapterTest {
         when(http.feed(source.url() + "&offset=1")).thenReturn(second);
 
         var videos = ThirdPartyPromptValidation.validate(source, adapter.fetch(source, http));
-        assertThat(videos).extracting(value -> value.id()).containsExactly("fixture-gallery:one", "fixture-gallery:two");
+        assertThat(videos).extracting(value -> value.id()).containsExactly("fixture-gallery:one",
+                "fixture-gallery:two");
         verify(http).feed(source.url());
         verify(http).feed(source.url() + "&offset=1");
         verifyNoMoreInteractions(http);
@@ -101,8 +104,10 @@ class ImagePromptGalleryAdapterTest {
     }
 
     private ThirdPartyPromptSource source(String model) {
-        return new ThirdPartyPromptSource("fixture-gallery", "Synthetic gallery", TargetKind.VIDEO, Format.IMAGE_PROMPT_GALLERY_JSON,
-                "https://imagepromptgallery.com/api/public/prompts?domain=video&model=" + model + "&mediaType=video", model,
+        return new ThirdPartyPromptSource("fixture-gallery", "Synthetic gallery", TargetKind.VIDEO,
+                Format.IMAGE_PROMPT_GALLERY_JSON,
+                "https://imagepromptgallery.com/api/public/prompts?domain=video&model=" + model + "&mediaType=video",
+                model,
                 true, 0, Instant.EPOCH, null, null, 0, false);
     }
 
@@ -111,8 +116,10 @@ class ImagePromptGalleryAdapterTest {
                 .put("model", "seedance-2-0").put("prompt", prompt);
         // A public launch link may offer a fallback model; it does not change the catalogue's model identity.
         var encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(mapper.writeValueAsBytes(prefill));
-        var item = mapper.createObjectNode().put("id", id).put("slug", "synthetic-" + id).put("title", "Synthetic " + id)
-                .put("domain", "video").put("model", model).put("category", "Synthetic category").put("inputMode", "text_to_video")
+        var item = mapper.createObjectNode().put("id", id).put("slug", "synthetic-" + id)
+                .put("title", "Synthetic " + id)
+                .put("domain", "video").put("model", model).put("category", "Synthetic category")
+                .put("inputMode", "text_to_video")
                 .put("caseHref", "/cases/synthetic-" + id)
                 .put("tryHref", "https://dovoo.ai/text-to-video/seedance-2-0?prefill=ipg&s=" + encoded);
         item.putArray("referenceImageUrls");

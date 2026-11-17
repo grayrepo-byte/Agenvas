@@ -16,6 +16,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import dev.agenvas.run.domain.AgentRun;
+import dev.agenvas.shared.error.ApiProblemException;
+import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.task.application.TaskProperties;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
@@ -41,6 +43,7 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.metadata.ChatGenerationMetadata;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
+import org.springframework.http.HttpStatus;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -107,6 +110,42 @@ class AgentTurnWorkerTest {
                 });
     }
 
+    @ParameterizedTest
+    @CsvSource({"BAD_REQUEST,TOOL_ARGUMENT_INVALID", "UNPROCESSABLE_ENTITY,ARTIFACT_ORIGIN_INVALID",
+            "CONFLICT,ARTIFACT_VERSION_CONFLICT", "CONFLICT,CANVAS_VERSION_CONFLICT",
+            "CONFLICT,STORYBOARD_VERSION_CONFLICT", "CONFLICT,VERSION_CONFLICT",
+            "CONFLICT,CHARACTER_VERSION_CONFLICT", "CONFLICT,CHARACTER_NODE_VERSION_CONFLICT",
+            "CONFLICT,CANVAS_EDIT_CONFLICT",
+            "NOT_FOUND,RESOURCE_NOT_FOUND"})
+    void recoverableToolErrorsReturnToTheModelInsteadOfEndingTheRun(HttpStatus status, String code) {
+        var detail = ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid");
+        doThrow(new ApiProblemException(status, code, detail, detail, false)).when(tools)
+                .executeLeased(any(), eq(0), anyList(), eq(lease), eq(WORKER));
+
+        worker.runOnce(WORKER);
+
+        verify(commits).scheduleRepair(eq(lease), eq(WORKER), eq(code), anyString());
+        verify(commits, never()).finishFailure(any(), anyString(), anyString());
+        verify(commits, never()).complete(any(), anyString());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"UNAUTHORIZED,UNAUTHORIZED", "FORBIDDEN,TOOL_ARGUMENT_INVALID",
+            "CONFLICT,IDEMPOTENCY_CONFLICT", "CONFLICT,TOOL_EXECUTION_CONFLICT",
+            "CONFLICT,CANVAS_ITEM_LOCKED",
+            "CONFLICT,LLM_TURN_CONFLICT", "NOT_FOUND,RUN_NOT_FOUND"})
+    void authorityAndExecutionConflictsNeverBecomeNewModelRepairs(HttpStatus status, String code) {
+        var detail = ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid");
+        doThrow(new ApiProblemException(status, code, detail, detail, false)).when(tools)
+                .executeLeased(any(), eq(0), anyList(), eq(lease), eq(WORKER));
+
+        worker.runOnce(WORKER);
+
+        verify(commits).finishFailure(eq(lease), eq(WORKER), anyString());
+        verify(commits, never()).scheduleRepair(any(), anyString(), anyString(), anyString());
+        verify(commits, never()).complete(any(), anyString());
+    }
+
     @AfterEach
     void close() {
         try {
@@ -125,7 +164,8 @@ class AgentTurnWorkerTest {
         verifyAppliedResponse();
     }
 
-    @Test void toolRepairReusesRejectedRequestBudgetInsteadOfLiveDirectorSettings() throws Exception {
+    @Test
+    void toolRepairReusesRejectedRequestBudgetInsteadOfLiveDirectorSettings() throws Exception {
         var budget = LlmRequestBudget.resolve(DirectorSettings.defaults(),
                 dev.agenvas.settings.application.LlmModelPolicy.manual(
                         dev.agenvas.settings.application.ModelCatalog.Provider.COMPATIBLE, 8192, null, 1024,
@@ -148,7 +188,8 @@ class AgentTurnWorkerTest {
 
     @ParameterizedTest
     @CsvSource({"WAITING_TASKS, 0", "RUNNING, 1"})
-    void resumedTurnsReadTheDurableResponseWithoutSubmittingAModelCall(AgentRun.Status status, int nextStep) throws Exception {
+    void resumedTurnsReadTheDurableResponseWithoutSubmittingAModelCall(AgentRun.Status status, int nextStep)
+            throws Exception {
         when(run.status()).thenReturn(status);
         when(run.nextStepIndex()).thenReturn(nextStep);
         when(turns.find(project, runId, 0)).thenReturn(Optional.of(turn(LlmTurn.Status.RESPONDED)));
@@ -164,7 +205,8 @@ class AgentTurnWorkerTest {
     @ParameterizedTest
     @CsvSource({"true,false,length", "false,false,length", "true,true,length", "false,true,length",
             "true,false,LENGTH", "false,false,LENGTH", "true,true,LENGTH", "false,true,LENGTH"})
-    void tokenLimitedResponseCannotExecuteToolsOrCompleteEvenWhenReplayed(boolean hasTools, boolean replay, String reason)
+    void tokenLimitedResponseCannotExecuteToolsOrCompleteEvenWhenReplayed(boolean hasTools, boolean replay,
+            String reason)
             throws Exception {
         JsonNode truncated = codec.response(new ChatResponse(List.of(new Generation(
                 AssistantMessage.builder().content("Task complete")
@@ -186,11 +228,12 @@ class AgentTurnWorkerTest {
         verify(commits, never()).complete(any(), anyString());
         verify(commits, never()).scheduleRepair(any(), anyString(), anyString(), anyString());
         verify(commits, never()).modelFailed(any(), anyString(), anyString());
-        if (replay) verifyNoInteractions(rounds);
+        if (replay)
+            verifyNoInteractions(rounds);
     }
 
     @Test
-    void tokenLimitedCompactionCannotAdvanceOrScheduleAnAutomaticRepair() {
+    void tokenLimitedCompactionSchedulesBoundedRepairWithoutAdvancingOrExecutingTools() {
         JsonNode truncated = codec.response(new ChatResponse(List.of(new Generation(
                 new AssistantMessage("{\"goal\":\"Incomplete handoff\"}"),
                 ChatGenerationMetadata.builder().finishReason("LENGTH").build()))));
@@ -203,9 +246,9 @@ class AgentTurnWorkerTest {
         worker.runOnce(WORKER);
 
         verifyNoInteractions(tools, rounds);
-        verify(commits).finishFailure(lease, WORKER, "LLM_OUTPUT_TRUNCATED");
+        verify(commits).scheduleRepair(eq(lease), eq(WORKER), eq("LLM_OUTPUT_TRUNCATED"), anyString());
+        verify(commits, never()).finishFailure(any(), anyString(), anyString());
         verify(commits, never()).complete(any(), anyString());
-        verify(commits, never()).scheduleRepair(any(), anyString(), anyString(), anyString());
     }
 
     @Test

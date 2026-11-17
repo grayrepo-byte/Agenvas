@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router";
 import { createQueryClient } from "../src/app/queryClient";
 import { SystemSettingsPage } from "../src/features/settings/SystemSettingsPage";
+import { FormattedCallExchange } from "../src/features/settings/FormattedCallExchange";
 import { type CreateMcpTokenRequest, type McpTokenSummary } from "../src/shared/api/client";
 import { setLocale } from "../src/shared/i18n";
 import "../src/styles.css";
@@ -11,13 +12,24 @@ import "../src/styles.css";
 setLocale("zh");
 const now = "2026-10-22T00:00:00Z";
 const secret = "agv_mcp_synthetic_browser_fixture_not_a_real_credential";
-const token: McpTokenSummary = { id: "synthetic-active", name: "Synthetic desktop client", tokenHint: "agv_mcp_synthetic…",
-  scopes: ["READ", "CONTENT_WRITE"], version: 0, createdAt: now, expiresAt: "2099-11-01T00:00:00Z", lastUsedAt: null, revokedAt: null };
-let tokens: McpTokenSummary[] = [token,
+const token: McpTokenSummary = {
+  id: "synthetic-active",
+  name: "Synthetic desktop client",
+  tokenHint: "agv_mcp_synthetic…",
+  scopes: ["READ", "CONTENT_WRITE"],
+  version: 0,
+  createdAt: now,
+  expiresAt: "2099-11-01T00:00:00Z",
+  lastUsedAt: null,
+  revokedAt: null,
+};
+let tokens: McpTokenSummary[] = [
+  token,
   { ...token, id: "synthetic-expired", name: "Expired synthetic client", expiresAt: "2025-01-01T00:00:00Z" },
   { ...token, id: "synthetic-revoked", name: "Revoked synthetic client", revokedAt: now },
 ];
 const client = createQueryClient();
+const httpCompatibility = new URLSearchParams(location.search).has("http-compatibility");
 window.fetch = async (input, init) => {
   const url = new URL(input instanceof Request ? input.url : String(input), location.href);
   const method = init?.method ?? (input instanceof Request ? input.method : "GET");
@@ -29,16 +41,44 @@ window.fetch = async (input, init) => {
   else if (url.pathname.endsWith("/account/mcp-tokens") && method === "POST") {
     const body = JSON.parse(String(init?.body)) as CreateMcpTokenRequest;
     const created: McpTokenSummary = { ...token, id: "synthetic-created", name: body.name, scopes: body.scopes };
-    tokens = [created, ...tokens]; value = { credential: created, token: secret }; status = 201;
+    tokens = [created, ...tokens];
+    value = { credential: created, token: secret };
+    status = 201;
   } else if (url.pathname.endsWith("/revoke") && method === "POST") {
     const id = url.pathname.split("/").at(-2);
-    const found = tokens.find((item) => item.id === id);
+    const found = tokens.find(item => item.id === id);
     if (!found) throw new Error("Unknown fixture token");
     const revoked = { ...found, version: found.version + 1, revokedAt: now };
-    tokens = tokens.map((item) => item.id === id ? revoked : item); value = revoked;
+    tokens = tokens.map(item => (item.id === id ? revoked : item));
+    value = revoked;
   } else throw new Error(`Unexpected synthetic request: ${method} ${url.pathname}`);
-  return new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+  return new Response(JSON.stringify(value), {
+    status,
+    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+  });
 };
-createRoot(document.getElementById("root")!).render(<QueryClientProvider client={client}>
-  <MemoryRouter initialEntries={["/settings/general?tab=security"]}><SystemSettingsPage /></MemoryRouter>
-</QueryClientProvider>);
+createRoot(document.getElementById("root")!).render(
+  <QueryClientProvider client={client}>
+    <MemoryRouter initialEntries={["/settings/general?tab=security"]}>
+      <SystemSettingsPage />
+      {httpCompatibility ? (
+        <FormattedCallExchange
+          exchange={{
+            method: "POST",
+            url: "https://provider.invalid/v1/chat/completions",
+            responseStatus: 200,
+            responseIdentifiers: {},
+            requestBody: {
+              content: JSON.stringify({ messages: [{ role: "user", content: "Synthetic HTTP log\n完整正文" }] }),
+              encoding: "UTF8",
+              truncated: false,
+            },
+            responseBody: null,
+          }}
+          mode="formatted"
+          llm
+        />
+      ) : null}
+    </MemoryRouter>
+  </QueryClientProvider>,
+);

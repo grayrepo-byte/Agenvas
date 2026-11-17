@@ -21,18 +21,26 @@ import org.junit.jupiter.api.Test;
 class ThirdPartyPromptHttpClientTest {
     private static final String URL = "http://example.com/synthetic-feed";
 
-    @Test void defaultTransportDownloadsALocalLiteralSource() throws Exception {
+    @Test
+    void defaultTransportDownloadsALocalLiteralSource() throws Exception {
         var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/feed", exchange -> {
             byte[] bytes = "[]".getBytes(java.nio.charset.StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(200, bytes.length);
-            exchange.getResponseBody().write(bytes); exchange.close();
-        }); server.start();
-        try { assertThat(new ThirdPartyPromptHttpClient().feed("http://127.0.0.1:" + server.getAddress().getPort() + "/feed")).isEqualTo("[]"); }
-        finally { server.stop(0); }
+            exchange.getResponseBody().write(bytes);
+            exchange.close();
+        });
+        server.start();
+        try {
+            assertThat(new ThirdPartyPromptHttpClient()
+                    .feed("http://127.0.0.1:" + server.getAddress().getPort() + "/feed")).isEqualTo("[]");
+        } finally {
+            server.stop(0);
+        }
     }
 
-    @Test void boundedSuccessUsesCredentialFreeGetWithoutVisitingAnyOtherAddress() {
+    @Test
+    void boundedSuccessUsesCredentialFreeGetWithoutVisitingAnyOtherAddress() {
         AtomicInteger requests = new AtomicInteger();
         var client = new ThirdPartyPromptHttpClient(new OkHttpClient.Builder().addInterceptor(chain -> {
             requests.incrementAndGet();
@@ -46,25 +54,40 @@ class ThirdPartyPromptHttpClientTest {
         assertThat(requests).hasValue(1);
     }
 
-    @Test void rejectedHttpResponseUsesCategoryWithoutItsBody() {
+    @Test
+    void rejectedHttpResponseUsesCategoryWithoutItsBody() {
         assertFailure(503, ResponseBody.create("PRIVATE UPSTREAM ERROR", MediaType.get("text/plain")), 20,
                 FailureReason.HTTP_ERROR);
     }
 
-    @Test void declaredAndStreamedLimitsHaveSameSafeCategory() {
+    @Test
+    void declaredAndStreamedLimitsHaveSameSafeCategory() {
         assertFailure(200, ResponseBody.create("12345", MediaType.get("application/json")), 4, FailureReason.TOO_LARGE);
         var streamed = new ResponseBody() {
             private final BufferedSource source = new Buffer().writeUtf8("12345");
-            @Override public MediaType contentType() { return MediaType.get("application/json"); }
-            @Override public long contentLength() { return -1; }
-            @Override public BufferedSource source() { return source; }
+            @Override
+            public MediaType contentType() {
+                return MediaType.get("application/json");
+            }
+            @Override
+            public long contentLength() {
+                return -1;
+            }
+            @Override
+            public BufferedSource source() {
+                return source;
+            }
         };
         assertFailure(200, streamed, 4, FailureReason.TOO_LARGE);
     }
 
-    @Test void dnsTransportOrPolicyFailureDoesNotClaimAnUnprovedRootCause() {
-        for (IOException failure : new IOException[] {new UnknownHostException("PRIVATE DNS DETAILS"), new IOException("PRIVATE TRANSPORT DETAILS")}) {
-            var client = new ThirdPartyPromptHttpClient(new OkHttpClient.Builder().addInterceptor(chain -> { throw failure; }).build());
+    @Test
+    void dnsTransportOrPolicyFailureDoesNotClaimAnUnprovedRootCause() {
+        for (IOException failure : new IOException[]{new UnknownHostException("PRIVATE DNS DETAILS"),
+                new IOException("PRIVATE TRANSPORT DETAILS")}) {
+            var client = new ThirdPartyPromptHttpClient(new OkHttpClient.Builder().addInterceptor(chain -> {
+                throw failure;
+            }).build());
             assertThatThrownBy(() -> client.feed(URL)).isInstanceOfSatisfying(DownloadFailure.class, result -> {
                 assertThat(result.reason()).isEqualTo(FailureReason.DOWNLOAD_FAILED);
                 assertThat(result.getMessage()).isEqualTo("THIRD_PARTY_SOURCE_DOWNLOAD_FAILED");
@@ -74,7 +97,8 @@ class ThirdPartyPromptHttpClientTest {
     }
 
     private void assertFailure(int status, ResponseBody body, int limit, FailureReason reason) {
-        var client = new ThirdPartyPromptHttpClient(new OkHttpClient.Builder().addInterceptor(chain -> response(chain.request(), status, body)).build());
+        var client = new ThirdPartyPromptHttpClient(
+                new OkHttpClient.Builder().addInterceptor(chain -> response(chain.request(), status, body)).build());
         assertThatThrownBy(() -> client.download(URL, limit)).isInstanceOfSatisfying(DownloadFailure.class,
                 result -> assertThat(result.reason()).isEqualTo(reason));
     }

@@ -26,30 +26,41 @@ import tools.jackson.databind.ObjectMapper;
 public class SkillRepository {
     private final DSLContext db;
     private final ObjectMapper mapper;
-    public SkillRepository(DSLContext db, ObjectMapper mapper) { this.db = db; this.mapper = mapper; }
+    public SkillRepository(DSLContext db, ObjectMapper mapper) {
+        this.db = db;
+        this.mapper = mapper;
+    }
     public Optional<SkillContent.Catalogue> skill(UUID owner, UUID id, boolean lock) {
-        var query = db.selectFrom(CREATIVE_SKILL).where(CREATIVE_SKILL.OWNER_ID.eq(owner).and(CREATIVE_SKILL.ID.eq(id)));
+        var query = db.selectFrom(CREATIVE_SKILL)
+                .where(CREATIVE_SKILL.OWNER_ID.eq(owner).and(CREATIVE_SKILL.ID.eq(id)));
         var row = lock ? query.forUpdate().fetchOne() : query.fetchOne();
         return Optional.ofNullable(row).map(value -> new SkillContent.Catalogue(value.getId(), value.getOwnerId(),
-                value.getTitle(), value.getDescription(), value.getBuiltinKey(), value.getCurrentVersionId(), instant(value.getTrashedAt()),
+                value.getTitle(), value.getDescription(), value.getBuiltinKey(), value.getCurrentVersionId(),
+                instant(value.getTrashedAt()),
                 value.getVersion(), instant(value.getCreatedAt()), instant(value.getUpdatedAt())));
     }
     public void create(SkillContent.Catalogue value, SkillContent.DraftContent draft) {
         db.insertInto(CREATIVE_SKILL).set(CREATIVE_SKILL.ID, value.id()).set(CREATIVE_SKILL.OWNER_ID, value.ownerId())
                 .set(CREATIVE_SKILL.TITLE, value.title()).set(CREATIVE_SKILL.DESCRIPTION, value.description())
-                .set(CREATIVE_SKILL.CREATED_AT, time(value.createdAt())).set(CREATIVE_SKILL.UPDATED_AT, time(value.updatedAt())).execute();
+                .set(CREATIVE_SKILL.CREATED_AT, time(value.createdAt()))
+                .set(CREATIVE_SKILL.UPDATED_AT, time(value.updatedAt())).execute();
         db.insertInto(SKILL_DRAFT).set(SKILL_DRAFT.SKILL_ID, value.id()).set(SKILL_DRAFT.OWNER_ID, value.ownerId())
-                .set(SKILL_DRAFT.CONTENT_JSON, json(draft)).set(SKILL_DRAFT.UPDATED_AT, time(value.updatedAt())).execute();
+                .set(SKILL_DRAFT.CONTENT_JSON, json(draft)).set(SKILL_DRAFT.UPDATED_AT, time(value.updatedAt()))
+                .execute();
     }
-    public boolean metadata(UUID owner, UUID id, long expected, String title, String description, Instant trashed, Instant now) {
+    public boolean metadata(UUID owner, UUID id, long expected, String title, String description, Instant trashed,
+            Instant now) {
         return db.update(CREATIVE_SKILL).set(CREATIVE_SKILL.TITLE, title).set(CREATIVE_SKILL.DESCRIPTION, description)
                 .set(CREATIVE_SKILL.TRASHED_AT, time(trashed)).set(CREATIVE_SKILL.VERSION, expected + 1)
                 .set(CREATIVE_SKILL.UPDATED_AT, time(now)).where(CREATIVE_SKILL.OWNER_ID.eq(owner)
-                        .and(CREATIVE_SKILL.ID.eq(id)).and(CREATIVE_SKILL.VERSION.eq(expected))).execute() == 1;
+                        .and(CREATIVE_SKILL.ID.eq(id)).and(CREATIVE_SKILL.VERSION.eq(expected)))
+                .execute() == 1;
     }
-    public record Cursor(Instant updatedAt, UUID id) {}
+    public record Cursor(Instant updatedAt, UUID id) {
+    }
     /** Exact packaged identity; a non-null description also guards a translated-description match. */
-    public record BuiltinSearchMatch(String key, String title, String description) {}
+    public record BuiltinSearchMatch(String key, String title, String description) {
+    }
     private Condition available(List<String> builtinKeys) {
         return CREATIVE_SKILL.BUILTIN_KEY.isNull().or(CREATIVE_SKILL.BUILTIN_KEY.in(builtinKeys));
     }
@@ -59,10 +70,13 @@ public class SkillRepository {
                 .and(includePersonal ? available(builtinKeys) : CREATIVE_SKILL.BUILTIN_KEY.in(builtinKeys))
                 .and(trash ? CREATIVE_SKILL.TRASHED_AT.isNotNull() : CREATIVE_SKILL.TRASHED_AT.isNull());
         if (query != null && !query.isBlank()) {
-            Condition search = CREATIVE_SKILL.TITLE.containsIgnoreCase(query).or(CREATIVE_SKILL.DESCRIPTION.containsIgnoreCase(query));
+            Condition search = CREATIVE_SKILL.TITLE.containsIgnoreCase(query)
+                    .or(CREATIVE_SKILL.DESCRIPTION.containsIgnoreCase(query));
             for (var match : localizedMatches) {
-                Condition builtin = CREATIVE_SKILL.BUILTIN_KEY.eq(match.key()).and(CREATIVE_SKILL.TITLE.eq(match.title()));
-                if (match.description() != null) builtin = builtin.and(CREATIVE_SKILL.DESCRIPTION.eq(match.description()));
+                Condition builtin = CREATIVE_SKILL.BUILTIN_KEY.eq(match.key())
+                        .and(CREATIVE_SKILL.TITLE.eq(match.title()));
+                if (match.description() != null)
+                    builtin = builtin.and(CREATIVE_SKILL.DESCRIPTION.eq(match.description()));
                 search = search.or(builtin);
             }
             condition = condition.and(search);
@@ -71,56 +85,75 @@ public class SkillRepository {
     }
     public int count(UUID owner, String query, boolean trash, List<String> builtinKeys, boolean includePersonal,
             List<BuiltinSearchMatch> localizedMatches) {
-        return db.fetchCount(db.selectFrom(CREATIVE_SKILL).where(scope(owner, query, trash, builtinKeys, includePersonal, localizedMatches)));
+        return db.fetchCount(db.selectFrom(CREATIVE_SKILL)
+                .where(scope(owner, query, trash, builtinKeys, includePersonal, localizedMatches)));
     }
-    public List<SkillContent.Catalogue> list(UUID owner, String query, boolean trash, Cursor cursor, int limit, List<String> builtinKeys,
+    public List<SkillContent.Catalogue> list(UUID owner, String query, boolean trash, Cursor cursor, int limit,
+            List<String> builtinKeys,
             boolean includePersonal, List<BuiltinSearchMatch> localizedMatches) {
         Condition condition = scope(owner, query, trash, builtinKeys, includePersonal, localizedMatches);
-        if (cursor != null) condition = condition.and(CREATIVE_SKILL.UPDATED_AT.lt(time(cursor.updatedAt()))
-                .or(CREATIVE_SKILL.UPDATED_AT.eq(time(cursor.updatedAt())).and(CREATIVE_SKILL.ID.lt(cursor.id()))));
-        return db.selectFrom(CREATIVE_SKILL).where(condition).orderBy(CREATIVE_SKILL.UPDATED_AT.desc(), CREATIVE_SKILL.ID.desc())
-                .limit(limit).fetch().map(row -> new SkillContent.Catalogue(row.getId(), row.getOwnerId(), row.getTitle(),
-                        row.getDescription(), row.getBuiltinKey(), row.getCurrentVersionId(), instant(row.getTrashedAt()), row.getVersion(),
+        if (cursor != null)
+            condition = condition.and(CREATIVE_SKILL.UPDATED_AT.lt(time(cursor.updatedAt()))
+                    .or(CREATIVE_SKILL.UPDATED_AT.eq(time(cursor.updatedAt())).and(CREATIVE_SKILL.ID.lt(cursor.id()))));
+        return db.selectFrom(CREATIVE_SKILL).where(condition)
+                .orderBy(CREATIVE_SKILL.UPDATED_AT.desc(), CREATIVE_SKILL.ID.desc())
+                .limit(limit).fetch()
+                .map(row -> new SkillContent.Catalogue(row.getId(), row.getOwnerId(), row.getTitle(),
+                        row.getDescription(), row.getBuiltinKey(), row.getCurrentVersionId(),
+                        instant(row.getTrashedAt()), row.getVersion(),
                         instant(row.getCreatedAt()), instant(row.getUpdatedAt())));
     }
     public Optional<SkillContent.Draft> draft(UUID owner, UUID id, boolean lock) {
         var query = db.selectFrom(SKILL_DRAFT).where(SKILL_DRAFT.OWNER_ID.eq(owner).and(SKILL_DRAFT.SKILL_ID.eq(id)));
         var row = lock ? query.forUpdate().fetchOne() : query.fetchOne();
-        return Optional.ofNullable(row).map(value -> new SkillContent.Draft(value.getSkillId(), value.getOwnerId(), value.getVersion(),
-                mapper.readValue(value.getContentJson().data(), SkillContent.DraftContent.class), instant(value.getUpdatedAt())));
+        return Optional.ofNullable(row)
+                .map(value -> new SkillContent.Draft(value.getSkillId(), value.getOwnerId(), value.getVersion(),
+                        mapper.readValue(value.getContentJson().data(), SkillContent.DraftContent.class),
+                        instant(value.getUpdatedAt())));
     }
     public boolean saveDraft(UUID owner, UUID id, long expected, SkillContent.DraftContent content, Instant now) {
-        return db.update(SKILL_DRAFT).set(SKILL_DRAFT.CONTENT_JSON, json(content)).set(SKILL_DRAFT.VERSION, expected + 1)
-                .set(SKILL_DRAFT.UPDATED_AT, time(now)).where(SKILL_DRAFT.OWNER_ID.eq(owner).and(SKILL_DRAFT.SKILL_ID.eq(id))
-                        .and(SKILL_DRAFT.VERSION.eq(expected))).execute() == 1;
+        return db.update(SKILL_DRAFT).set(SKILL_DRAFT.CONTENT_JSON, json(content))
+                .set(SKILL_DRAFT.VERSION, expected + 1)
+                .set(SKILL_DRAFT.UPDATED_AT, time(now))
+                .where(SKILL_DRAFT.OWNER_ID.eq(owner).and(SKILL_DRAFT.SKILL_ID.eq(id))
+                        .and(SKILL_DRAFT.VERSION.eq(expected)))
+                .execute() == 1;
     }
     public List<String> builtinKeys(UUID owner) {
         return db.select(CREATIVE_SKILL.BUILTIN_KEY).from(CREATIVE_SKILL)
-                .where(CREATIVE_SKILL.OWNER_ID.eq(owner).and(CREATIVE_SKILL.BUILTIN_KEY.isNotNull())).fetch(CREATIVE_SKILL.BUILTIN_KEY);
+                .where(CREATIVE_SKILL.OWNER_ID.eq(owner).and(CREATIVE_SKILL.BUILTIN_KEY.isNotNull()))
+                .fetch(CREATIVE_SKILL.BUILTIN_KEY);
     }
     public void registerBuiltin(SkillContent.Catalogue value, SkillContent.Version version) {
-        int inserted = db.insertInto(CREATIVE_SKILL).set(CREATIVE_SKILL.ID, value.id()).set(CREATIVE_SKILL.OWNER_ID, value.ownerId())
+        int inserted = db.insertInto(CREATIVE_SKILL).set(CREATIVE_SKILL.ID, value.id())
+                .set(CREATIVE_SKILL.OWNER_ID, value.ownerId())
                 .set(CREATIVE_SKILL.TITLE, value.title()).set(CREATIVE_SKILL.DESCRIPTION, value.description())
                 .set(CREATIVE_SKILL.BUILTIN_KEY, value.builtinKey())
-                .set(CREATIVE_SKILL.CREATED_AT, time(value.createdAt())).set(CREATIVE_SKILL.UPDATED_AT, time(value.updatedAt()))
+                .set(CREATIVE_SKILL.CREATED_AT, time(value.createdAt()))
+                .set(CREATIVE_SKILL.UPDATED_AT, time(value.updatedAt()))
                 .onConflict(CREATIVE_SKILL.OWNER_ID, CREATIVE_SKILL.BUILTIN_KEY).doNothing().execute();
-        if (inserted == 1) publish(version, 0);
+        if (inserted == 1)
+            publish(version, 0);
     }
     public Optional<SkillContent.Version> version(UUID owner, UUID skillId, UUID versionId) {
-        return db.selectFrom(SKILL_VERSION).where(SKILL_VERSION.OWNER_ID.eq(owner).and(SKILL_VERSION.SKILL_ID.eq(skillId))
-                .and(SKILL_VERSION.ID.eq(versionId))).fetchOptional().map(this::version);
+        return db.selectFrom(SKILL_VERSION)
+                .where(SKILL_VERSION.OWNER_ID.eq(owner).and(SKILL_VERSION.SKILL_ID.eq(skillId))
+                        .and(SKILL_VERSION.ID.eq(versionId)))
+                .fetchOptional().map(this::version);
     }
     public Optional<SkillContent.Version> version(UUID owner, UUID versionId) {
         return db.selectFrom(SKILL_VERSION).where(SKILL_VERSION.OWNER_ID.eq(owner)
                 .and(SKILL_VERSION.ID.eq(versionId))).fetchOptional().map(this::version);
     }
     public List<SkillContent.Version> versions(UUID owner, UUID skillId) {
-        return db.selectFrom(SKILL_VERSION).where(SKILL_VERSION.OWNER_ID.eq(owner).and(SKILL_VERSION.SKILL_ID.eq(skillId)))
+        return db.selectFrom(SKILL_VERSION)
+                .where(SKILL_VERSION.OWNER_ID.eq(owner).and(SKILL_VERSION.SKILL_ID.eq(skillId)))
                 .orderBy(SKILL_VERSION.VERSION_NUMBER.desc()).fetch(this::version);
     }
     public long nextVersion(UUID owner, UUID skillId) {
         Long last = db.select(org.jooq.impl.DSL.max(SKILL_VERSION.VERSION_NUMBER)).from(SKILL_VERSION)
-                .where(SKILL_VERSION.OWNER_ID.eq(owner).and(SKILL_VERSION.SKILL_ID.eq(skillId))).fetchOne(0, Long.class);
+                .where(SKILL_VERSION.OWNER_ID.eq(owner).and(SKILL_VERSION.SKILL_ID.eq(skillId)))
+                .fetchOne(0, Long.class);
         return last == null ? 1 : last + 1;
     }
     public void publish(SkillContent.Version value, long expectedCatalogueVersion) {
@@ -129,19 +162,26 @@ public class SkillRepository {
                 .set(SKILL_VERSION.BUNDLE_HASH, value.bundleHash()).set(SKILL_VERSION.BUNDLE_JSON, json(value.bundle()))
                 .set(SKILL_VERSION.CREATED_AT, time(value.createdAt())).execute();
         if (db.update(CREATIVE_SKILL).set(CREATIVE_SKILL.CURRENT_VERSION_ID, value.id())
-                .set(CREATIVE_SKILL.VERSION, expectedCatalogueVersion + 1).set(CREATIVE_SKILL.UPDATED_AT, time(value.createdAt()))
+                .set(CREATIVE_SKILL.VERSION, expectedCatalogueVersion + 1)
+                .set(CREATIVE_SKILL.UPDATED_AT, time(value.createdAt()))
                 .where(CREATIVE_SKILL.OWNER_ID.eq(value.ownerId()).and(CREATIVE_SKILL.ID.eq(value.skillId()))
-                        .and(CREATIVE_SKILL.VERSION.eq(expectedCatalogueVersion))).execute() != 1)
+                        .and(CREATIVE_SKILL.VERSION.eq(expectedCatalogueVersion)))
+                .execute() != 1)
             throw new IllegalStateException("Skill publication lost catalogue lock");
     }
     public boolean reserve(SkillContent.PublishOperation value) {
         return db.insertInto(SKILL_PUBLISH_OPERATION).set(SKILL_PUBLISH_OPERATION.ID, value.id())
-                .set(SKILL_PUBLISH_OPERATION.OWNER_ID, value.ownerId()).set(SKILL_PUBLISH_OPERATION.SKILL_ID, value.skillId())
-                .set(SKILL_PUBLISH_OPERATION.COMMAND_KEY, value.commandKey()).set(SKILL_PUBLISH_OPERATION.PAYLOAD_HASH, value.payloadHash())
-                .set(SKILL_PUBLISH_OPERATION.INPUT_JSON, json(value.input())).set(SKILL_PUBLISH_OPERATION.PROGRESS_JSON, json(value.progress()))
-                .set(SKILL_PUBLISH_OPERATION.STATUS, value.status().name()).set(SKILL_PUBLISH_OPERATION.CREATED_AT, time(value.createdAt()))
+                .set(SKILL_PUBLISH_OPERATION.OWNER_ID, value.ownerId())
+                .set(SKILL_PUBLISH_OPERATION.SKILL_ID, value.skillId())
+                .set(SKILL_PUBLISH_OPERATION.COMMAND_KEY, value.commandKey())
+                .set(SKILL_PUBLISH_OPERATION.PAYLOAD_HASH, value.payloadHash())
+                .set(SKILL_PUBLISH_OPERATION.INPUT_JSON, json(value.input()))
+                .set(SKILL_PUBLISH_OPERATION.PROGRESS_JSON, json(value.progress()))
+                .set(SKILL_PUBLISH_OPERATION.STATUS, value.status().name())
+                .set(SKILL_PUBLISH_OPERATION.CREATED_AT, time(value.createdAt()))
                 .set(SKILL_PUBLISH_OPERATION.UPDATED_AT, time(value.updatedAt()))
-                .onConflict(SKILL_PUBLISH_OPERATION.OWNER_ID, SKILL_PUBLISH_OPERATION.COMMAND_KEY).doNothing().execute() == 1;
+                .onConflict(SKILL_PUBLISH_OPERATION.OWNER_ID, SKILL_PUBLISH_OPERATION.COMMAND_KEY).doNothing()
+                .execute() == 1;
     }
     public Optional<SkillContent.PublishOperation> operation(UUID owner, UUID id) {
         return db.selectFrom(SKILL_PUBLISH_OPERATION).where(SKILL_PUBLISH_OPERATION.OWNER_ID.eq(owner)
@@ -152,43 +192,64 @@ public class SkillRepository {
                 .and(SKILL_PUBLISH_OPERATION.COMMAND_KEY.eq(key))).fetchOptional().map(this::operation);
     }
     public Optional<SkillContent.PublishOperation> claim(Instant now, Instant until) {
-        var row = db.selectFrom(SKILL_PUBLISH_OPERATION).where(SKILL_PUBLISH_OPERATION.STATUS.eq(SkillContent.OperationStatus.ACCEPTED.name())
-                .or(SKILL_PUBLISH_OPERATION.STATUS.eq(SkillContent.OperationStatus.ARCHIVING.name())
-                        .and(SKILL_PUBLISH_OPERATION.LEASE_UNTIL.le(time(now)))))
-                .orderBy(SKILL_PUBLISH_OPERATION.CREATED_AT, SKILL_PUBLISH_OPERATION.ID).limit(1).forUpdate().skipLocked().fetchOne();
-        if (row == null) return Optional.empty();
-        if (db.update(SKILL_PUBLISH_OPERATION).set(SKILL_PUBLISH_OPERATION.STATUS, SkillContent.OperationStatus.ARCHIVING.name())
-                .set(SKILL_PUBLISH_OPERATION.EPOCH, row.getEpoch() + 1).set(SKILL_PUBLISH_OPERATION.LEASE_UNTIL, time(until))
+        var row = db.selectFrom(SKILL_PUBLISH_OPERATION)
+                .where(SKILL_PUBLISH_OPERATION.STATUS.eq(SkillContent.OperationStatus.ACCEPTED.name())
+                        .or(SKILL_PUBLISH_OPERATION.STATUS.eq(SkillContent.OperationStatus.ARCHIVING.name())
+                                .and(SKILL_PUBLISH_OPERATION.LEASE_UNTIL.le(time(now)))))
+                .orderBy(SKILL_PUBLISH_OPERATION.CREATED_AT, SKILL_PUBLISH_OPERATION.ID).limit(1).forUpdate()
+                .skipLocked().fetchOne();
+        if (row == null)
+            return Optional.empty();
+        if (db.update(SKILL_PUBLISH_OPERATION)
+                .set(SKILL_PUBLISH_OPERATION.STATUS, SkillContent.OperationStatus.ARCHIVING.name())
+                .set(SKILL_PUBLISH_OPERATION.EPOCH, row.getEpoch() + 1)
+                .set(SKILL_PUBLISH_OPERATION.LEASE_UNTIL, time(until))
                 .set(SKILL_PUBLISH_OPERATION.UPDATED_AT, time(now)).where(SKILL_PUBLISH_OPERATION.ID.eq(row.getId())
-                        .and(SKILL_PUBLISH_OPERATION.EPOCH.eq(row.getEpoch())).and(SKILL_PUBLISH_OPERATION.STATUS.eq(row.getStatus()))).execute() != 1)
+                        .and(SKILL_PUBLISH_OPERATION.EPOCH.eq(row.getEpoch()))
+                        .and(SKILL_PUBLISH_OPERATION.STATUS.eq(row.getStatus())))
+                .execute() != 1)
             return Optional.empty();
         return operation(row.getOwnerId(), row.getId());
     }
     public boolean progress(SkillContent.PublishOperation value, JsonNode progress, Instant leaseUntil, Instant now) {
         return db.update(SKILL_PUBLISH_OPERATION).set(SKILL_PUBLISH_OPERATION.PROGRESS_JSON, json(progress))
-                .set(SKILL_PUBLISH_OPERATION.LEASE_UNTIL, time(leaseUntil)).set(SKILL_PUBLISH_OPERATION.UPDATED_AT, time(now))
-                .where(SKILL_PUBLISH_OPERATION.ID.eq(value.id()).and(SKILL_PUBLISH_OPERATION.OWNER_ID.eq(value.ownerId()))
+                .set(SKILL_PUBLISH_OPERATION.LEASE_UNTIL, time(leaseUntil))
+                .set(SKILL_PUBLISH_OPERATION.UPDATED_AT, time(now))
+                .where(SKILL_PUBLISH_OPERATION.ID.eq(value.id())
+                        .and(SKILL_PUBLISH_OPERATION.OWNER_ID.eq(value.ownerId()))
                         .and(SKILL_PUBLISH_OPERATION.STATUS.eq(SkillContent.OperationStatus.ARCHIVING.name()))
-                        .and(SKILL_PUBLISH_OPERATION.EPOCH.eq(value.epoch())).and(SKILL_PUBLISH_OPERATION.LEASE_UNTIL.gt(time(now)))).execute() == 1;
+                        .and(SKILL_PUBLISH_OPERATION.EPOCH.eq(value.epoch()))
+                        .and(SKILL_PUBLISH_OPERATION.LEASE_UNTIL.gt(time(now))))
+                .execute() == 1;
     }
     public boolean finish(SkillContent.PublishOperation value, SkillContent.OperationStatus status, UUID versionId,
             String code, String detail, Instant now) {
         return db.update(SKILL_PUBLISH_OPERATION).set(SKILL_PUBLISH_OPERATION.STATUS, status.name())
-                .set(SKILL_PUBLISH_OPERATION.LEASE_UNTIL, (OffsetDateTime) null).set(SKILL_PUBLISH_OPERATION.RESULT_VERSION_ID, versionId)
+                .set(SKILL_PUBLISH_OPERATION.LEASE_UNTIL, (OffsetDateTime) null)
+                .set(SKILL_PUBLISH_OPERATION.RESULT_VERSION_ID, versionId)
                 .set(SKILL_PUBLISH_OPERATION.ERROR_CODE, code).set(SKILL_PUBLISH_OPERATION.ERROR_DETAIL, detail)
                 .set(SKILL_PUBLISH_OPERATION.UPDATED_AT, time(now)).where(SKILL_PUBLISH_OPERATION.ID.eq(value.id())
-                        .and(SKILL_PUBLISH_OPERATION.OWNER_ID.eq(value.ownerId())).and(SKILL_PUBLISH_OPERATION.EPOCH.eq(value.epoch()))
-                        .and(SKILL_PUBLISH_OPERATION.STATUS.eq(SkillContent.OperationStatus.ARCHIVING.name())).and(SKILL_PUBLISH_OPERATION.LEASE_UNTIL.gt(time(now)))).execute() == 1;
+                        .and(SKILL_PUBLISH_OPERATION.OWNER_ID.eq(value.ownerId()))
+                        .and(SKILL_PUBLISH_OPERATION.EPOCH.eq(value.epoch()))
+                        .and(SKILL_PUBLISH_OPERATION.STATUS.eq(SkillContent.OperationStatus.ARCHIVING.name()))
+                        .and(SKILL_PUBLISH_OPERATION.LEASE_UNTIL.gt(time(now))))
+                .execute() == 1;
     }
     public boolean retry(UUID owner, UUID id, Instant now) {
-        return db.update(SKILL_PUBLISH_OPERATION).set(SKILL_PUBLISH_OPERATION.STATUS, SkillContent.OperationStatus.ACCEPTED.name())
-                .set(SKILL_PUBLISH_OPERATION.ERROR_CODE, (String) null).set(SKILL_PUBLISH_OPERATION.ERROR_DETAIL, (String) null)
+        return db.update(SKILL_PUBLISH_OPERATION)
+                .set(SKILL_PUBLISH_OPERATION.STATUS, SkillContent.OperationStatus.ACCEPTED.name())
+                .set(SKILL_PUBLISH_OPERATION.ERROR_CODE, (String) null)
+                .set(SKILL_PUBLISH_OPERATION.ERROR_DETAIL, (String) null)
                 .set(SKILL_PUBLISH_OPERATION.UPDATED_AT, time(now)).where(SKILL_PUBLISH_OPERATION.OWNER_ID.eq(owner)
-                        .and(SKILL_PUBLISH_OPERATION.ID.eq(id)).and(SKILL_PUBLISH_OPERATION.STATUS.eq(SkillContent.OperationStatus.FAILED.name()))).execute() == 1;
+                        .and(SKILL_PUBLISH_OPERATION.ID.eq(id))
+                        .and(SKILL_PUBLISH_OPERATION.STATUS.eq(SkillContent.OperationStatus.FAILED.name())))
+                .execute() == 1;
     }
     public Optional<SkillContent.PublishOperation> cleanup() {
-        return db.selectFrom(SKILL_PUBLISH_OPERATION).where(SKILL_PUBLISH_OPERATION.STATUS.eq(SkillContent.OperationStatus.SUCCEEDED.name())
-                .and(SKILL_PUBLISH_OPERATION.PINS_CLEANED.isFalse())).orderBy(SKILL_PUBLISH_OPERATION.UPDATED_AT, SKILL_PUBLISH_OPERATION.ID)
+        return db.selectFrom(SKILL_PUBLISH_OPERATION)
+                .where(SKILL_PUBLISH_OPERATION.STATUS.eq(SkillContent.OperationStatus.SUCCEEDED.name())
+                        .and(SKILL_PUBLISH_OPERATION.PINS_CLEANED.isFalse()))
+                .orderBy(SKILL_PUBLISH_OPERATION.UPDATED_AT, SKILL_PUBLISH_OPERATION.ID)
                 .limit(1).fetchOptional().map(this::operation);
     }
     public void cleaned(UUID owner, UUID id) {
@@ -201,7 +262,8 @@ public class SkillRepository {
                 .orderBy(AGENT_SKILL_BINDING.POSITION).fetch(this::binding);
     }
     /** Hide retired built-ins for new selections without deleting bindings needed by historical exports. */
-    public List<SkillContent.Binding> availableBindings(UUID owner, UUID project, UUID agent, List<String> builtinKeys) {
+    public List<SkillContent.Binding> availableBindings(UUID owner, UUID project, UUID agent,
+            List<String> builtinKeys) {
         return db.select(AGENT_SKILL_BINDING.fields()).from(AGENT_SKILL_BINDING)
                 .join(CREATIVE_SKILL).on(CREATIVE_SKILL.ID.eq(AGENT_SKILL_BINDING.SKILL_ID)
                         .and(CREATIVE_SKILL.OWNER_ID.eq(AGENT_SKILL_BINDING.OWNER_ID)))
@@ -222,26 +284,39 @@ public class SkillRepository {
             var binding = bindings.get(index);
             int inserted = db.insertInto(AGENT_SKILL_BINDING).set(AGENT_SKILL_BINDING.AGENT_ID, agent)
                     .set(AGENT_SKILL_BINDING.PROJECT_ID, project).set(AGENT_SKILL_BINDING.OWNER_ID, owner)
-                    .set(AGENT_SKILL_BINDING.SKILL_ID, binding.skillId()).set(AGENT_SKILL_BINDING.SKILL_VERSION_ID, binding.skillVersionId())
+                    .set(AGENT_SKILL_BINDING.SKILL_ID, binding.skillId())
+                    .set(AGENT_SKILL_BINDING.SKILL_VERSION_ID, binding.skillVersionId())
                     .set(AGENT_SKILL_BINDING.POSITION, index).set(AGENT_SKILL_BINDING.UPDATED_AT, time(now)).execute();
-            if (inserted != 1) throw new IllegalStateException("Skill binding was not inserted");
+            if (inserted != 1)
+                throw new IllegalStateException("Skill binding was not inserted");
         }
     }
     private SkillContent.Version version(SkillVersionRecord row) {
         return new SkillContent.Version(row.getId(), row.getOwnerId(), row.getSkillId(), row.getVersionNumber(),
-                row.getBundleHash(), mapper.readValue(row.getBundleJson().data(), SkillContent.Bundle.class), instant(row.getCreatedAt()));
+                row.getBundleHash(), mapper.readValue(row.getBundleJson().data(), SkillContent.Bundle.class),
+                instant(row.getCreatedAt()));
     }
     private SkillContent.PublishOperation operation(dev.agenvas.db.tables.records.SkillPublishOperationRecord row) {
-        return new SkillContent.PublishOperation(row.getId(), row.getOwnerId(), row.getSkillId(), row.getCommandKey(), row.getPayloadHash(),
-                mapper.readValue(row.getInputJson().data(), SkillContent.PublishInput.class), mapper.readTree(row.getProgressJson().data()),
-                SkillContent.OperationStatus.valueOf(row.getStatus()), row.getEpoch(), instant(row.getLeaseUntil()), row.getResultVersionId(),
-                row.getErrorCode(), row.getErrorDetail(), row.getPinsCleaned(), instant(row.getCreatedAt()), instant(row.getUpdatedAt()));
+        return new SkillContent.PublishOperation(row.getId(), row.getOwnerId(), row.getSkillId(), row.getCommandKey(),
+                row.getPayloadHash(),
+                mapper.readValue(row.getInputJson().data(), SkillContent.PublishInput.class),
+                mapper.readTree(row.getProgressJson().data()),
+                SkillContent.OperationStatus.valueOf(row.getStatus()), row.getEpoch(), instant(row.getLeaseUntil()),
+                row.getResultVersionId(),
+                row.getErrorCode(), row.getErrorDetail(), row.getPinsCleaned(), instant(row.getCreatedAt()),
+                instant(row.getUpdatedAt()));
     }
     private SkillContent.Binding binding(dev.agenvas.db.tables.records.AgentSkillBindingRecord row) {
         return new SkillContent.Binding(row.getAgentId(), row.getProjectId(), row.getOwnerId(),
                 row.getSkillId(), row.getSkillVersionId(), row.getPosition(), instant(row.getUpdatedAt()));
     }
-    private JSONB json(Object value) { return JSONB.valueOf(mapper.writeValueAsString(value)); }
-    private OffsetDateTime time(Instant value) { return value == null ? null : value.atOffset(ZoneOffset.UTC); }
-    private Instant instant(OffsetDateTime value) { return value == null ? null : value.toInstant(); }
+    private JSONB json(Object value) {
+        return JSONB.valueOf(mapper.writeValueAsString(value));
+    }
+    private OffsetDateTime time(Instant value) {
+        return value == null ? null : value.atOffset(ZoneOffset.UTC);
+    }
+    private Instant instant(OffsetDateTime value) {
+        return value == null ? null : value.toInstant();
+    }
 }

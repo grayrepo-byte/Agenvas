@@ -62,20 +62,34 @@ class ToolAuthorityPostgresIT {
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private ArtifactService artifacts;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private AgentRunService runs;
-    @Autowired private dev.agenvas.canvas.application.CanvasService canvas;
-    @Autowired private LlmTurnCheckpointService checkpoints;
-    @Autowired private AgentTurnCommitService turnCommits;
-    @Autowired private TaskService tasks;
-    @Autowired private LlmProtocolCodec codec;
-    @Autowired private ToolRegistry registry;
-    @Autowired private ToolExecutionService executor;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private ObjectMapper mapper;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private ArtifactService artifacts;
+    @Autowired
+    private AgentInstanceService agents;
+    @Autowired
+    private AgentRunService runs;
+    @Autowired
+    private dev.agenvas.canvas.application.CanvasService canvas;
+    @Autowired
+    private LlmTurnCheckpointService checkpoints;
+    @Autowired
+    private AgentTurnCommitService turnCommits;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private LlmProtocolCodec codec;
+    @Autowired
+    private ToolRegistry registry;
+    @Autowired
+    private ToolExecutionService executor;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private ObjectMapper mapper;
 
     @Test
     void forgedToolFieldsAndApprovalNameCannotCreateWork() {
@@ -83,8 +97,11 @@ class ToolAuthorityPostgresIT {
         Project project = projects.create(owner.userId(), "Tool authority project",
                 Project.AspectRatio.LANDSCAPE_16_9);
         ArtifactService.ArtifactView brief = createBrief(owner.userId(), project.id());
-        canvas.apply(owner.userId(), project.id(), List.of(new dev.agenvas.canvas.application.CanvasService.PlaceArtifact(UUID.randomUUID(), brief.artifact().id(),
-                java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO, new java.math.BigDecimal("320"), new java.math.BigDecimal("200"), 0, null, false)));
+        canvas.apply(owner.userId(), project.id(),
+                List.of(new dev.agenvas.canvas.application.CanvasService.PlaceArtifact(UUID.randomUUID(),
+                        brief.artifact().id(),
+                        java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO, new java.math.BigDecimal("320"),
+                        new java.math.BigDecimal("200"), 0, null, false)));
         AgentInstance agent = configureDirector(agents, owner.userId(), project.id(), "Creator", "Create");
         AgentRun queued = runs.create(owner.userId(), project.id(), agent.id(),
                 "Draft one text", "authority-run").run();
@@ -101,9 +118,12 @@ class ToolAuthorityPostgresIT {
         for (String field : List.of("ownerId", "userId", "projectId", "approved", "budget",
                 "maxModelTurns", "maxToolExecutions")) {
             ObjectNode forged = validDraft.deepCopy();
-            if (field.startsWith("max")) forged.put(field, 999);
-            else if ("approved".equals(field)) forged.put(field, true);
-            else forged.put(field, UUID.randomUUID().toString());
+            if (field.startsWith("max"))
+                forged.put(field, 999);
+            else if ("approved".equals(field))
+                forged.put(field, true);
+            else
+                forged.put(field, UUID.randomUUID().toString());
             calls.add(new AssistantMessage.ToolCall("forged-" + field, "function",
                     "create_text", forged.toString()));
         }
@@ -116,7 +136,8 @@ class ToolAuthorityPostgresIT {
         checkpoints.reserveLeased(owner.userId(), project.id(), running.id(), 0,
                 configVersion, configSource,
                 codec.request(List.of(new UserMessage("Draft one text")),
-                        registry.modelDefinitions(running.policySnapshot())), lease, workerId);
+                        registry.modelDefinitions(running.policySnapshot())),
+                lease, workerId);
         tasks.startAgentStream(lease, workerId);
         AssistantMessage response = AssistantMessage.builder().content("")
                 .toolCalls(calls).build();
@@ -144,8 +165,7 @@ class ToolAuthorityPostgresIT {
 
         UUID createdId = UUID.fromString(executor.execute(trusted, 0, "valid-draft")
                 .at("/createdIds/0").asText());
-        ArtifactService.ArtifactView created =
-                artifacts.get(owner.userId(), project.id(), createdId);
+        ArtifactService.ArtifactView created = artifacts.get(owner.userId(), project.id(), createdId);
         assertThat(created.artifact().kind()).isEqualTo(Artifact.Kind.TEXT);
         assertThat(created.resourceDefaultVersion().createdByKind())
                 .isEqualTo(ArtifactVersion.CreatedByKind.AGENT);
@@ -153,7 +173,7 @@ class ToolAuthorityPostgresIT {
         assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :runId")
                 .param("runId", running.id()).query(Long.class).single()).isEqualTo(1);
         assertThat(jdbc.sql("select count(*) from task where project_id = :projectId "
-                        + "and kind in ('IMAGE_GENERATION', 'VIDEO_GENERATION')")
+                + "and kind in ('IMAGE_GENERATION', 'VIDEO_GENERATION')")
                 .param("projectId", project.id()).query(Long.class).single()).isZero();
     }
 
@@ -166,11 +186,11 @@ class ToolAuthorityPostgresIT {
                 .param("runId", runId).query(Long.class).single())
                 .as("tool_execution").isZero();
         assertThat(jdbc.sql("select count(*) from task where project_id = :projectId "
-                        + "and kind in ('IMAGE_GENERATION', 'VIDEO_GENERATION')")
+                + "and kind in ('IMAGE_GENERATION', 'VIDEO_GENERATION')")
                 .param("projectId", projectId).query(Long.class).single())
                 .as("media_task").isZero();
         assertThat(jdbc.sql("select count(*) from usage_ledger where project_id = :projectId "
-                        + "and task_id is not null and entry_type = 'RESERVATION'")
+                + "and task_id is not null and entry_type = 'RESERVATION'")
                 .param("projectId", projectId).query(Long.class).single())
                 .as("usage_reservation").isZero();
     }

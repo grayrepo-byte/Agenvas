@@ -33,12 +33,20 @@ class CallLogServiceTest {
     private final MutableClock clock = new MutableClock();
     private final CallLogService service = new CallLogService(repository, clock, mock(AsyncCallLogWriter.class));
 
-    @AfterEach void clearThread() { MDC.clear(); TransactionSynchronizationManager.clear(); }
+    @AfterEach
+    void clearThread() {
+        MDC.clear();
+        TransactionSynchronizationManager.clear();
+    }
 
-    @Test void llmDebugPreservesActualBodyContentAndProviderFields() {
+    @Test
+    void llmDebugPreservesActualBodyContentAndProviderFields() {
         when(repository.isDebugEnabled()).thenReturn(true);
         AtomicReference<List<DebugHttpCapture.Exchange>> saved = new AtomicReference<>();
-        doAnswer(invocation -> { saved.set(invocation.getArgument(1)); return null; })
+        doAnswer(invocation -> {
+            saved.set(invocation.getArgument(1));
+            return null;
+        })
                 .when(repository).saveDebug(any(), any());
         String result = service.record(descriptor(CallLog.Operation.CHAT), () -> {
             DebugHttpCapture.registerSecret("synthetic-llm-auth");
@@ -52,7 +60,9 @@ class CallLogServiceTest {
             try (var body = DebugHttpCapture.responseStream(index, 200, "application/json",
                     new java.io.ByteArrayInputStream(response.getBytes(StandardCharsets.UTF_8)))) {
                 return new String(body.readAllBytes(), StandardCharsets.UTF_8);
-            } catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
+            } catch (java.io.IOException failure) {
+                throw new java.io.UncheckedIOException(failure);
+            }
         }, ignored -> CallLogService.CallOutcome.succeeded(null));
         assertThat(result).contains("synthetic model detail", "synthetic-llm-auth");
         assertThat(saved.get().getFirst().requestBody().content())
@@ -63,7 +73,8 @@ class CallLogServiceTest {
                 .doesNotContain("[REDACTED]");
     }
 
-    @Test void restoresParentTraceAndCapturesResponseBeforeAuditPersistence() {
+    @Test
+    void restoresParentTraceAndCapturesResponseBeforeAuditPersistence() {
         MDC.put("traceId", "parent-http-trace");
         AtomicReference<String> trace = new AtomicReference<>();
         doAnswer(invocation -> {
@@ -87,10 +98,13 @@ class CallLogServiceTest {
         assertThat(savedTrace.getValue()).isEqualTo(trace.get());
     }
 
-    @Test void uncertainSubmissionIsRecordedWithoutExceptionMessageAndTraceIsRemoved() {
+    @Test
+    void uncertainSubmissionIsRecordedWithoutExceptionMessageAndTraceIsRemoved() {
         RuntimeException failure = new IllegalStateException("Bearer secret https://provider.invalid/private");
         assertThatThrownBy(() -> service.record(descriptor(CallLog.Operation.SUBMIT),
-                () -> { throw failure; }, ignored -> CallLogService.CallOutcome.succeeded(null)))
+                () -> {
+                    throw failure;
+                }, ignored -> CallLogService.CallOutcome.succeeded(null)))
                 .isSameAs(failure);
         ArgumentCaptor<CallLogService.CallOutcome> outcome = ArgumentCaptor.forClass(CallLogService.CallOutcome.class);
         verify(repository).finish(any(), outcome.capture(), any(), anyLong());
@@ -99,10 +113,13 @@ class CallLogServiceTest {
         assertThat(MDC.get("traceId")).isNull();
     }
 
-    @Test void failedPollIsNotAnUncertainSubmissionAndParentTraceSurvives() {
+    @Test
+    void failedPollIsNotAnUncertainSubmissionAndParentTraceSurvives() {
         MDC.put("traceId", "parent");
         assertThatThrownBy(() -> service.record(descriptor(CallLog.Operation.POLL),
-                () -> { throw new IllegalStateException("secret"); }, ignored -> CallLogService.CallOutcome.succeeded(null)))
+                () -> {
+                    throw new IllegalStateException("secret");
+                }, ignored -> CallLogService.CallOutcome.succeeded(null)))
                 .isInstanceOf(IllegalStateException.class);
         ArgumentCaptor<CallLogService.CallOutcome> outcome = ArgumentCaptor.forClass(CallLogService.CallOutcome.class);
         verify(repository).finish(any(), outcome.capture(), any(), anyLong());
@@ -110,19 +127,22 @@ class CallLogServiceTest {
         assertThat(MDC.get("traceId")).isEqualTo("parent");
     }
 
-    @Test void auditCompletionFailureDoesNotDiscardAProviderResponseOrRetryIt() {
+    @Test
+    void auditCompletionFailureDoesNotDiscardAProviderResponseOrRetryIt() {
         doThrow(new IllegalStateException("database unavailable")).when(repository)
                 .finish(any(), any(), any(), anyLong());
         var calls = new java.util.concurrent.atomic.AtomicInteger();
         assertThat(service.record(descriptor(CallLog.Operation.SUBMIT), () -> {
-            calls.incrementAndGet(); return "already accepted";
+            calls.incrementAndGet();
+            return "already accepted";
         }, ignored -> CallLogService.CallOutcome.succeeded("original-request")))
                 .isEqualTo("already accepted");
         assertThat(calls).hasValue(1);
         assertThat(MDC.get("traceId")).isNull();
     }
 
-    @Test void rejectsTransactionBeforeCallingProviderOrCreatingAuditRow() {
+    @Test
+    void rejectsTransactionBeforeCallingProviderOrCreatingAuditRow() {
         TransactionSynchronizationManager.setActualTransactionActive(true);
         assertThatThrownBy(() -> service.record(descriptor(CallLog.Operation.CHAT),
                 () -> "unexpected", ignored -> CallLogService.CallOutcome.succeeded(null)))
@@ -130,7 +150,8 @@ class CallLogServiceTest {
         verifyNoInteractions(repository);
     }
 
-    @Test void metadataSanitizationRejectsEndpointsBodiesAndInvalidProviderCodes() {
+    @Test
+    void metadataSanitizationRejectsEndpointsBodiesAndInvalidProviderCodes() {
         assertThat(CallLogService.safeIdentifier("https://provider.invalid/v1")).isNull();
         assertThat(CallLogService.safeIdentifier("model-v2.1/image")).isEqualTo("model-v2.1/image");
         assertThat(CallLogService.safeRequestId("Bearer secret")).isNull();
@@ -152,8 +173,17 @@ class CallLogServiceTest {
 
     private static class MutableClock extends Clock {
         Instant now = START;
-        @Override public ZoneId getZone() { return ZoneOffset.UTC; }
-        @Override public Clock withZone(ZoneId zone) { return this; }
-        @Override public Instant instant() { return now; }
+        @Override
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return this;
+        }
+        @Override
+        public Instant instant() {
+            return now;
+        }
     }
 }

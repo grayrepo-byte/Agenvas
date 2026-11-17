@@ -47,10 +47,13 @@ class AdminAuthenticationProviderTest {
     @Test
     void preservesFullLengthVerificationForAnExistingNonBcryptHash() {
         String password = "legacy-full-length-" + "a".repeat(64);
-        var encoder = org.springframework.security.crypto.password.Pbkdf2PasswordEncoder.defaultsForSpringSecurity_v5_8();
+        var encoder = org.springframework.security.crypto.password.Pbkdf2PasswordEncoder
+                .defaultsForSpringSecurity_v5_8();
         var provider = providerHash("{pbkdf2@SpringSecurity_v5_8}" + encoder.encode(password));
-        assertThat(provider.authenticate(UsernamePasswordAuthenticationToken.unauthenticated("admin", password)).isAuthenticated()).isTrue();
-        assertThatThrownBy(() -> provider.authenticate(UsernamePasswordAuthenticationToken.unauthenticated("admin", password + "x")))
+        assertThat(provider.authenticate(UsernamePasswordAuthenticationToken.unauthenticated("admin", password))
+                .isAuthenticated()).isTrue();
+        assertThatThrownBy(() -> provider
+                .authenticate(UsernamePasswordAuthenticationToken.unauthenticated("admin", password + "x")))
                 .isInstanceOf(BadCredentialsException.class);
     }
 

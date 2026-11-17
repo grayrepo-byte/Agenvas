@@ -31,7 +31,8 @@ class ProviderFailureTest {
                 """, ProviderFailure.class);
 
         assertThat(failure.code()).isEqualTo("OPENAI_IMAGE_MODERATION_BLOCKED");
-        assertThat(failure.moderation()).isEqualTo(new ProviderModeration("moderation_blocked", "output", List.of("sexual")));
+        assertThat(failure.moderation())
+                .isEqualTo(new ProviderModeration("moderation_blocked", "output", List.of("sexual")));
         assertThat(mapper.readValue(mapper.writeValueAsString(failure), ProviderFailure.class)).isEqualTo(failure);
     }
 }

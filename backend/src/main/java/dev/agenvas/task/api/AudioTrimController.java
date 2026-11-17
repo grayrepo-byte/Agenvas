@@ -26,22 +26,29 @@ public class AudioTrimController {
             "expectedCanvasItemVersion", "startMs", "endMs", "format");
     private final AudioTrimService trims;
 
-    public AudioTrimController(AudioTrimService trims) { this.trims = trims; }
+    public AudioTrimController(AudioTrimService trims) {
+        this.trims = trims;
+    }
 
     @PostMapping
     public TaskController.TaskResponse run(@AuthenticationPrincipal AdminPrincipal principal,
             @PathVariable UUID projectId, @PathVariable UUID artifactId,
             @RequestHeader("Idempotency-Key") String key, @RequestBody JsonNode request) {
-        if (!request.isObject() || !FIELDS.containsAll(request.propertyNames())) throw invalid();
+        if (!request.isObject() || !FIELDS.containsAll(request.propertyNames()))
+            throw invalid();
         long expected = integer(request, "expectedCanvasItemVersion");
         long start = integer(request, "startMs"), end = integer(request, "endMs");
         if (expected < 0 || start < 0 || start > Integer.MAX_VALUE || end < 0 || end > Integer.MAX_VALUE)
             throw invalid();
         AudioExtractionParameters.Format format = AudioExtractionParameters.Format.WAV;
         if (request.has("format")) {
-            if (!request.path("format").isTextual()) throw invalid();
-            try { format = AudioExtractionParameters.Format.valueOf(request.path("format").asText()); }
-            catch (IllegalArgumentException malformed) { throw invalid(); }
+            if (!request.path("format").isTextual())
+                throw invalid();
+            try {
+                format = AudioExtractionParameters.Format.valueOf(request.path("format").asText());
+            } catch (IllegalArgumentException malformed) {
+                throw invalid();
+            }
         }
         return TaskController.TaskResponse.from(trims.run(principal.userId(), projectId, artifactId,
                 uuid(request, "canvasItemId"), uuid(request, "sourceVersionId"), expected,
@@ -50,18 +57,23 @@ public class AudioTrimController {
 
     private static long integer(JsonNode request, String field) {
         JsonNode value = request.path(field);
-        if (!value.isIntegralNumber() || !value.canConvertToLong()) throw invalid();
+        if (!value.isIntegralNumber() || !value.canConvertToLong())
+            throw invalid();
         return value.longValue();
     }
 
     private static UUID uuid(JsonNode request, String field) {
         JsonNode value = request.path(field);
-        if (!value.isTextual()) throw invalid();
+        if (!value.isTextual())
+            throw invalid();
         try {
             UUID id = UUID.fromString(value.asText());
-            if (!id.toString().equalsIgnoreCase(value.asText())) throw invalid();
+            if (!id.toString().equalsIgnoreCase(value.asText()))
+                throw invalid();
             return id;
-        } catch (IllegalArgumentException malformed) { throw invalid(); }
+        } catch (IllegalArgumentException malformed) {
+            throw invalid();
+        }
     }
 
     private static ApiProblemException invalid() {

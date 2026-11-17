@@ -45,9 +45,11 @@ class SpringAiStreamingHttpTest {
             "true,true,png", "true,false,png", "false,true,png", "false,false,png",
             "true,true,jpeg", "true,false,jpeg", "false,true,jpeg", "false,false,jpeg",
             "true,true,webp", "true,false,webp", "false,true,webp", "false,false,webp"})
-    void relaySwitchControlsActualRegularAndStreamingImageWireContent(boolean enabled, boolean streaming, String format) throws Exception {
-        byte[] original = format.equals("webp") ? Base64.getDecoder().decode(
-                "UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoEAAQAAkA4JaQAA3AA/vucwAA=")
+    void relaySwitchControlsActualRegularAndStreamingImageWireContent(boolean enabled, boolean streaming, String format)
+            throws Exception {
+        byte[] original = format.equals("webp")
+                ? Base64.getDecoder().decode(
+                        "UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoEAAQAAkA4JaQAA3AA/vucwAA=")
                 : dev.agenvas.testing.ImageAssetFixture.encoded(format, 1600, 900);
         String contentType = "image/" + format;
         var relay = org.mockito.Mockito.mock(dev.agenvas.asset.storage.MediaRelayService.class);
@@ -65,24 +67,40 @@ class SpringAiStreamingHttpTest {
                 if (streaming) {
                     chunk(output, "{\"content\":\"Synthetic relay reply\"}", "stop");
                     event(output, "[DONE]");
-                } else output.write("{\"id\":\"synthetic-reply\",\"object\":\"chat.completion\",\"model\":\"synthetic-model\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Synthetic relay reply\"},\"finish_reason\":\"stop\"}]}".getBytes(StandardCharsets.UTF_8));
-            } finally { exchange.close(); }
+                } else
+                    output.write(
+                            "{\"id\":\"synthetic-reply\",\"object\":\"chat.completion\",\"model\":\"synthetic-model\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Synthetic relay reply\"},\"finish_reason\":\"stop\"}]}"
+                                    .getBytes(StandardCharsets.UTF_8));
+            } finally {
+                exchange.close();
+            }
         });
         server.start();
         try {
             OpenAiChatModel model = OpenAiChatModel.builder().options(OpenAiChatOptions.builder()
                     .baseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1")
-                    .apiKey("synthetic-key").model(MODEL_ID).maxRetries(0).timeout(Duration.ofSeconds(TIMEOUT_SECONDS)).build()).build();
-            UserMessage input = UserMessage.builder().text("Inspect").media(new Media(MimeTypeUtils.parseMimeType(contentType), new ByteArrayResource(original))).build();
+                    .apiKey("synthetic-key").model(MODEL_ID).maxRetries(0).timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
+                    .build()).build();
+            UserMessage input = UserMessage.builder().text("Inspect")
+                    .media(new Media(MimeTypeUtils.parseMimeType(contentType), new ByteArrayResource(original)))
+                    .build();
             var gateway = new SpringAiChatGateway(model, CONFIG_VERSION, new LlmImageRelay(relay));
-            if (streaming) gateway.callStreaming(List.of(input), List.of(), Map.of(), gateway.configIdentity(), ignored -> {});
-            else gateway.call(List.of(input), List.of(), Map.of());
+            if (streaming)
+                gateway.callStreaming(List.of(input), List.of(), Map.of(), gateway.configIdentity(), ignored -> {
+                });
+            else
+                gateway.call(List.of(input), List.of(), Map.of());
             String image = received.get().at("/messages/0/content/1/image_url/url").asText();
-            assertThat(image).isEqualTo(enabled ? "https://example.com/media-relay/original." + format + "?X-Amz-Signature=synthetic"
+            assertThat(image).isEqualTo(enabled
+                    ? "https://example.com/media-relay/original." + format + "?X-Amz-Signature=synthetic"
                     : "data:" + contentType + ";base64," + Base64.getEncoder().encodeToString(original));
             assertThat(input.getMedia().getFirst().getDataAsByteArray()).isEqualTo(original);
-            org.mockito.Mockito.verify(relay, org.mockito.Mockito.times(enabled ? 1 : 0)).signedImage(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString());
-        } finally { server.stop(0); }
+            org.mockito.Mockito.verify(relay, org.mockito.Mockito.times(enabled ? 1 : 0)).signedImage(
+                    org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                    org.mockito.ArgumentMatchers.anyString());
+        } finally {
+            server.stop(0);
+        }
     }
 
     @Test
@@ -105,7 +123,9 @@ class SpringAiStreamingHttpTest {
                         + "\"prompt_tokens_details\":{\"cached_tokens\":10,\"cache_write_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":10,\"text_tokens\":12,\"image_tokens\":0,\"video_tokens\":0,\"audio_tokens\":0},"
                         + "\"completion_tokens_details\":{\"reasoning_tokens\":2,\"audio_tokens\":0,\"text_tokens\":3,\"image_tokens\":0,\"video_tokens\":0,\"accepted_prediction_tokens\":0,\"rejected_prediction_tokens\":0}}}");
                 event(output, "[DONE]");
-            } finally { exchange.close(); }
+            } finally {
+                exchange.close();
+            }
         });
         server.start();
         try {
@@ -119,18 +139,22 @@ class SpringAiStreamingHttpTest {
                     .httpClientBuilderCustomizer(builder -> builder.interceptor(transport.interceptor())).build();
             AtomicReference<dev.agenvas.audit.domain.LlmStreamLog> log = new AtomicReference<>();
             ChatGateway.Exchange result;
-            try (var capture = dev.agenvas.shared.http.DebugHttpCapture.openLlm(ignored -> {})) {
+            try (var capture = dev.agenvas.shared.http.DebugHttpCapture.openLlm(ignored -> {
+            })) {
                 result = SpringAiChatGateway.withDebugCapture(model, CONFIG_VERSION).callStreaming(
                         List.of(new UserMessage("Report completion")), List.of(), Map.of(),
                         new ChatGateway.ConfigIdentity("spring-ai", CONFIG_VERSION), deltas::add, true, log::set);
             }
-            assertThat(log.get().metrics().status()).isEqualTo(dev.agenvas.audit.domain.LlmStreamLog.EndStatus.COMPLETED);
+            assertThat(log.get().metrics().status())
+                    .isEqualTo(dev.agenvas.audit.domain.LlmStreamLog.EndStatus.COMPLETED);
             assertThat(String.join("", deltas)).isEqualTo("Test complete");
             var checkpoint = new LlmProtocolCodec(new ObjectMapper()).response(result.response());
             assertThat(checkpoint.toString()).doesNotContain("Synthetic private thought");
             assertThat(checkpoint.path("metadata").path("usage").path("completionTokens").asInt()).isEqualTo(3);
             assertThat(result.response().getResult().getOutput().getText()).isEqualTo("Test complete");
-        } finally { server.stop(0); }
+        } finally {
+            server.stop(0);
+        }
     }
 
     @Test
@@ -147,7 +171,9 @@ class SpringAiStreamingHttpTest {
             try (OutputStream output = exchange.getResponseBody()) {
                 chunk(output, "{\"content\":\"Synthetic image received\"}", "stop");
                 event(output, "[DONE]");
-            } finally { exchange.close(); }
+            } finally {
+                exchange.close();
+            }
         });
         server.start();
         try {
@@ -157,18 +183,21 @@ class SpringAiStreamingHttpTest {
                     .timeout(Duration.ofSeconds(TIMEOUT_SECONDS)).build()).build();
             var policy = mapper.createObjectNode().put("toolPolicyVersion", RunToolPolicy.CURRENT_VERSION)
                     .put("schemaVersion", RunToolPolicy.CURRENT_SCHEMA_VERSION)
-                    .put("systemPromptVersion", dev.agenvas.llm.application.InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
+                    .put("systemPromptVersion",
+                            dev.agenvas.llm.application.InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
             policy.set("allowedTools", mapper.valueToTree(RunToolPolicy.current(false, false)));
             UserMessage user = UserMessage.builder().text("Inspect the synthetic image")
                     .media(new Media(MimeTypeUtils.IMAGE_PNG, new ByteArrayResource(png))).build();
             var readCall = AssistantMessage.builder().content("").toolCalls(List.of(
                     new AssistantMessage.ToolCall("read-image", "function", "read_artifacts", "{}"))).build();
             var readReply = ToolResponseMessage.builder().responses(List.of(
-                    new ToolResponseMessage.ToolResponse("read-image", "read_artifacts", "{\"status\":\"SUCCEEDED\"}"))).build();
+                    new ToolResponseMessage.ToolResponse("read-image", "read_artifacts", "{\"status\":\"SUCCEEDED\"}")))
+                    .build();
             var result = new SpringAiChatGateway(model, CONFIG_VERSION).callStreaming(List.of(
                     new UserMessage("Synthetic image metadata"), readCall, readReply, user),
                     new ToolRegistry().modelDefinitions(policy), Map.of(),
-                    new ChatGateway.ConfigIdentity("spring-ai", CONFIG_VERSION), ignored -> {});
+                    new ChatGateway.ConfigIdentity("spring-ai", CONFIG_VERSION), ignored -> {
+                    });
             assertThat(result.response().getResult().getOutput().getText()).isEqualTo("Synthetic image received");
             assertThat(body.get().path("messages").get(2).path("role").asText()).isEqualTo("tool");
             assertThat(body.get().path("messages").get(2).path("tool_call_id").asText()).isEqualTo("read-image");
@@ -181,7 +210,9 @@ class SpringAiStreamingHttpTest {
             body.get().path("tools").forEach(tool -> names.add(tool.path("function").path("name").asText()));
             assertThat(names).contains("read_project_summary", "read_selection", "read_artifacts")
                     .doesNotContain("read_skill_resource");
-        } finally { server.stop(0); }
+        } finally {
+            server.stop(0);
+        }
     }
 
     @Test
@@ -202,9 +233,11 @@ class SpringAiStreamingHttpTest {
             try (OutputStream output = exchange.getResponseBody()) {
                 chunk(output, "{\"content\":\"Preparing \"}", null);
                 chunk(output, "{\"content\":\"a media proposal.\"}", null);
-                if (!finishAllowed.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)) return;
+                if (!finishAllowed.await(TIMEOUT_SECONDS, TimeUnit.SECONDS))
+                    return;
                 chunk(output, "{\"tool_calls\":[{\"index\":0,\"id\":\"call-media-1\",\"type\":\"function\","
-                        + "\"function\":{\"name\":\"propose_media_generation\",\"arguments\":\"{\\\"kind\\\":\"}}]}", null);
+                        + "\"function\":{\"name\":\"propose_media_generation\",\"arguments\":\"{\\\"kind\\\":\"}}]}",
+                        null);
                 chunk(output, "{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\"IMAGE\\\"}\"}}]}", null);
                 chunk(output, "{}", "tool_calls");
                 event(output, "{\"id\":\"chatcmpl-stream\",\"object\":\"chat.completion.chunk\","
@@ -219,12 +252,14 @@ class SpringAiStreamingHttpTest {
         });
         server.start();
         ToolCallback tool = new ToolCallback() {
-            @Override public ToolDefinition getToolDefinition() {
+            @Override
+            public ToolDefinition getToolDefinition() {
                 return ToolDefinition.builder().name("propose_media_generation")
                         .description("Propose a media generation batch")
                         .inputSchema("{\"type\":\"object\",\"properties\":{\"kind\":{\"type\":\"string\"}}}").build();
             }
-            @Override public String call(String input) {
+            @Override
+            public String call(String input) {
                 executions.incrementAndGet();
                 throw new AssertionError("The persistent runtime owns tool execution");
             }

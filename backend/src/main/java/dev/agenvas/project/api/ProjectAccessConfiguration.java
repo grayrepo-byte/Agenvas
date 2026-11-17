@@ -36,11 +36,16 @@ public class ProjectAccessConfiguration implements WebMvcConfigurer {
                         && authentication.getPrincipal() instanceof AdminPrincipal principal) {
                     // Only the root DELETE bypasses visibility so a lost successful response can be replayed.
                     boolean deleteReplay = request.getMethod().equals("DELETE")
-                            && handler instanceof HandlerMethod mapped && mapped.getBeanType() == ProjectController.class;
+                            && handler instanceof HandlerMethod mapped
+                            && mapped.getBeanType() == ProjectController.class;
                     UUID projectId;
-                    try { projectId = UUID.fromString(id); }
-                    catch (IllegalArgumentException invalidId) { return true; } // Let MVC report path validation.
-                    if (!deleteReplay) projects.get(principal.userId(), projectId);
+                    try {
+                        projectId = UUID.fromString(id);
+                    } catch (IllegalArgumentException invalidId) {
+                        return true;
+                    } // Let MVC report path validation.
+                    if (!deleteReplay)
+                        projects.get(principal.userId(), projectId);
                 }
                 return true;
             }

@@ -68,7 +68,8 @@ public class AgentInstanceService {
         return events.recordChange(ownerId, projectId, () -> {
             projects.requireActiveProject(ownerId, projectId);
             var existing = agents.findProjectDirector(ownerId, projectId);
-            if (existing.isPresent()) return ProjectEventService.Change.unchanged(existing.get());
+            if (existing.isPresent())
+                return ProjectEventService.Change.unchanged(existing.get());
             var directorPrompt = defaults.require(dev.agenvas.settings.application.PromptService.DIRECTOR_KEY,
                     dev.agenvas.settings.application.PromptService.Kind.AGENT);
             Instant now = clock.instant();
@@ -118,15 +119,15 @@ public class AgentInstanceService {
             String requestedName,
             String requestedInstruction) {
         return events.recordChange(ownerId, projectId, () -> {
-                    AgentInstance updated = updateLocked(
-                            ownerId,
-                            projectId,
-                            agentId,
-                            expectedVersion,
-                            requestedName,
-                            requestedInstruction);
-                    return ProjectEventService.Change.changed(updated, agentEvent(updated));
-                })
+            AgentInstance updated = updateLocked(
+                    ownerId,
+                    projectId,
+                    agentId,
+                    expectedVersion,
+                    requestedName,
+                    requestedInstruction);
+            return ProjectEventService.Change.changed(updated, agentEvent(updated));
+        })
                 .value();
     }
 
@@ -162,10 +163,12 @@ public class AgentInstanceService {
     }
 
     /** Advances the shared configuration CAS for independent Agent settings in the caller's project transaction. */
-    public AgentInstance touchConfigurationWithinChange(UUID ownerId, UUID projectId, UUID agentId, long expectedVersion) {
+    public AgentInstance touchConfigurationWithinChange(UUID ownerId, UUID projectId, UUID agentId,
+            long expectedVersion) {
         projects.requireActiveProject(ownerId, projectId);
         AgentInstance current = agents.findForUpdate(ownerId, projectId, agentId).orElseThrow(this::notFound);
-        if (current.version() != expectedVersion || !agents.update(ownerId, current, expectedVersion, clock.instant())) {
+        if (current.version() != expectedVersion
+                || !agents.update(ownerId, current, expectedVersion, clock.instant())) {
             throw versionConflict();
         }
         return require(ownerId, projectId, agentId);
@@ -218,7 +221,8 @@ public class AgentInstanceService {
                 HttpStatus.CONFLICT,
                 "AGENT_VERSION_CONFLICT",
                 ApiMessage.of("api.agent-instance-service.agent-configuration-updated"),
-                ApiMessage.of("api.agent-instance-service.the-agent-configuration-has-been-modified-by-other-requests-please"),
+                ApiMessage.of(
+                        "api.agent-instance-service.the-agent-configuration-has-been-modified-by-other-requests-please"),
                 false);
     }
 

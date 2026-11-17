@@ -19,18 +19,24 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/settings/director")
 public class DirectorSettingsController {
     private final DirectorSettingsService settings;
-    public DirectorSettingsController(DirectorSettingsService settings) { this.settings = settings; }
-    @GetMapping public ResponseEntity<DirectorSettings> get() { return response(settings.get()); }
-    @PutMapping public ResponseEntity<DirectorSettings> update(@Valid @RequestBody Request request) {
+    public DirectorSettingsController(DirectorSettingsService settings) {
+        this.settings = settings;
+    }
+    @GetMapping
+    public ResponseEntity<DirectorSettings> get() {
+        return response(settings.get());
+    }
+    @PutMapping
+    public ResponseEntity<DirectorSettings> update(@Valid @RequestBody Request request) {
         DirectorSettings value;
         try {
             value = new DirectorSettings(request.contextWindowTokens(), request.compactionThresholdPercent(),
-                    request.responseReserveTokens(), request.summaryTokens(), request.recentToolRounds(),
-                    request.recoveryWindowMinutes(), request.maxModelRetries(), request.retryMaxDelaySeconds(),
-                    request.maxRepairAttempts(), request.expectedVersion());
+                    request.responseReserveTokens(), request.recoveryWindowMinutes(), request.maxModelRetries(),
+                    request.retryMaxDelaySeconds(), request.maxRepairAttempts(), request.expectedVersion());
         } catch (IllegalArgumentException invalid) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
-                    ApiMessage.of("api.director-settings.title"), ApiMessage.of("api.director-settings.invalid"), false);
+                    ApiMessage.of("api.director-settings.title"), ApiMessage.of("api.director-settings.invalid"),
+                    false);
         }
         return response(settings.update(value));
     }
@@ -38,7 +44,9 @@ public class DirectorSettingsController {
         return ResponseEntity.ok().header("Cache-Control", "no-store").body(value);
     }
     public record Request(@NotNull Integer contextWindowTokens, @NotNull Integer compactionThresholdPercent,
-            @NotNull Integer responseReserveTokens, @NotNull Integer summaryTokens, @NotNull Integer recentToolRounds,
-            @NotNull Integer recoveryWindowMinutes, @NotNull Integer maxModelRetries, @NotNull Integer retryMaxDelaySeconds,
-            @NotNull Integer maxRepairAttempts, @NotNull Long expectedVersion) {}
+            @NotNull Integer responseReserveTokens,
+            @NotNull Integer recoveryWindowMinutes, @NotNull Integer maxModelRetries,
+            @NotNull Integer retryMaxDelaySeconds,
+            @NotNull Integer maxRepairAttempts, @NotNull Long expectedVersion) {
+    }
 }

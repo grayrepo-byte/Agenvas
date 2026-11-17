@@ -86,7 +86,10 @@ public class ManualUnknownRetryService {
         if (idempotencyKey == null || idempotencyKey.isBlank()
                 || idempotencyKey.length() > 120 || expectedTaskVersion < 0) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
-                    ApiMessage.of("api.manual-unknown-retry-service.invalid-retry-request"), ApiMessage.of("api.manual-unknown-retry-service.please-provide-a-valid-task-version-and-idempotent-key"), false);
+                    ApiMessage.of("api.manual-unknown-retry-service.invalid-retry-request"),
+                    ApiMessage.of(
+                            "api.manual-unknown-retry-service.please-provide-a-valid-task-version-and-idempotent-key"),
+                    false);
         }
         return events.recordChange(ownerId, projectId, () -> {
             Task original = tasks.get(ownerId, projectId, originalTaskId);
@@ -95,16 +98,19 @@ public class ManualUnknownRetryService {
             if (replay != null) {
                 if (!replay.originalTaskId().equals(originalTaskId)
                         || replay.originalTaskVersion() != expectedTaskVersion) {
-                    throw conflict(ApiMessage.of("api.manual-unknown-retry-service.the-same-idempotent-key-has-been-used-in-different-tasks"));
+                    throw conflict(ApiMessage.of(
+                            "api.manual-unknown-retry-service.the-same-idempotent-key-has-been-used-in-different-tasks"));
                 }
                 return ProjectEventService.Change.unchanged(tasks.get(ownerId, projectId,
                         replay.replacementTaskId()));
             }
             if (repository.findManualReplacement(projectId, originalTaskId).isPresent()) {
-                throw conflict(ApiMessage.of("api.manual-unknown-retry-service.there-is-a-new-attempt-for-this-unknown-task-please"));
+                throw conflict(ApiMessage
+                        .of("api.manual-unknown-retry-service.there-is-a-new-attempt-for-this-unknown-task-please"));
             }
             if (original.runId() != null) {
-                throw conflict(ApiMessage.of("api.manual-unknown-retry-service.only-media-tasks-to-which-the-user-is-directly-connected"));
+                throw conflict(ApiMessage.of(
+                        "api.manual-unknown-retry-service.only-media-tasks-to-which-the-user-is-directly-connected"));
             }
             return ProjectEventService.Change.unchanged(retryDirect(ownerId, projectId,
                     original, expectedTaskVersion, idempotencyKey));
@@ -121,23 +127,31 @@ public class ManualUnknownRetryService {
                 || (original.kind() != Task.Kind.IMAGE_GENERATION
                         && original.kind() != Task.Kind.VIDEO_GENERATION
                         && original.kind() != Task.Kind.AUDIO_GENERATION)) {
-            throw conflict(ApiMessage.of("api.manual-unknown-retry-service.the-original-task-status-or-version-has-changed-please-refresh"));
+            throw conflict(ApiMessage.of(
+                    "api.manual-unknown-retry-service.the-original-task-status-or-version-has-changed-please-refresh"));
         }
         projects.requireActiveProject(ownerId, projectId);
         MediaCapabilityBinding binding = repository.mediaBinding(original.id())
-                .orElseThrow(() -> conflict(ApiMessage.of("api.manual-unknown-retry-service.the-original-media-capabilities-are-unavailable-and-new-attempts-cannot")));
+                .orElseThrow(() -> conflict(ApiMessage.of(
+                        "api.manual-unknown-retry-service.the-original-media-capabilities-are-unavailable-and-new-attempts-cannot")));
         int seconds = original.kind() == Task.Kind.VIDEO_GENERATION
-                ? original.input().path("durationSeconds").asInt(0) : 0;
+                ? original.input().path("durationSeconds").asInt(0)
+                : 0;
         if (!mediaCapabilities.isCurrentBinding(binding, original.kind(), seconds)) {
-            throw conflict(ApiMessage.of("api.manual-unknown-retry-service.media-capabilities-have-changed-please-create-a-new-draft-task"));
+            throw conflict(ApiMessage.of(
+                    "api.manual-unknown-retry-service.media-capabilities-have-changed-please-create-a-new-draft-task"));
         }
         TaskRepository.ArtifactTarget target = repository.findArtifactTarget(original.id())
-                .orElseThrow(() -> conflict(ApiMessage.of("api.manual-unknown-retry-service.the-original-task-lacks-a-fixed-output-target")));
+                .orElseThrow(() -> conflict(ApiMessage
+                        .of("api.manual-unknown-retry-service.the-original-task-lacks-a-fixed-output-target")));
         if (target.artifactId() == null) {
-            throw conflict(ApiMessage.of("api.manual-unknown-retry-service.direct-tasks-must-be-bound-to-a-media-card"));
+            throw conflict(
+                    ApiMessage.of("api.manual-unknown-retry-service.direct-tasks-must-be-bound-to-a-media-card"));
         }
         Artifact card = artifacts.get(ownerId, projectId, target.artifactId()).artifact();
-        if (card.archivedAt() != null) throw conflict(ApiMessage.of("api.manual-unknown-retry-service.the-card-has-been-archived-and-cannot-be-tried-again"));
+        if (card.archivedAt() != null)
+            throw conflict(ApiMessage
+                    .of("api.manual-unknown-retry-service.the-card-has-been-archived-and-cannot-be-tried-again"));
         Instant now = clock.instant();
         ObjectNode replacementInput = (ObjectNode) original.input().deepCopy();
         if (original.initiator() == Task.Initiator.EXTERNAL_MCP) {
@@ -164,7 +178,9 @@ public class ManualUnknownRetryService {
                 "retry." + original.id() + "." + (original.attemptNo() + 1),
                 original.kind(), Task.Status.READY, false, replacementInput,
                 !replacementInput.equals(original.input())
-                        ? dev.agenvas.shared.crypto.Sha256.hex(replacementInput.toString()) : original.inputHash(), null, null,
+                        ? dev.agenvas.shared.crypto.Sha256.hex(replacementInput.toString())
+                        : original.inputHash(),
+                null, null,
                 original.attemptNo() + 1, now, null, null, 0, 0, null, now, now, null);
         repository.create(replacement);
         repository.bindMediaTask(replacement.id(), binding);
@@ -173,7 +189,8 @@ public class ManualUnknownRetryService {
                 target.expectedArtifactVersion(), target.canvasItemId()));
         boolean localProcessing = MediaAdapterRegistry.localProcessor(binding.adapterId());
         usage.reserveMediaTask(ownerId, replacement, localProcessing
-                ? "LOCAL_NO_COST" : "PROVIDER_UNPRICED", binding.connectionVersion());
+                ? "LOCAL_NO_COST"
+                : "PROVIDER_UNPRICED", binding.connectionVersion());
         repository.createManualReplacement(new TaskRepository.ManualReplacement(projectId,
                 original.id(), replacement.id(), ownerId, expectedTaskVersion,
                 idempotencyKey, now));
@@ -190,7 +207,8 @@ public class ManualUnknownRetryService {
         payload.put("cancelRequested", task.cancelRequested());
         payload.put("possibleExternalCost", !localProcessing
                 && (task.status() == Task.Status.UNKNOWN || task.providerRequestId() != null));
-        if (replacementId != null) payload.put("replacementTaskId", replacementId.toString());
+        if (replacementId != null)
+            payload.put("replacementTaskId", replacementId.toString());
         return new ProjectEventService.EventDraft("task.status.changed", 1,
                 task.id(), task.version(), payload);
     }

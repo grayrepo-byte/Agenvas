@@ -65,7 +65,8 @@ final class SafeLlmTransport {
                 throw new UnknownHostException("LLM host changed");
             }
             List<InetAddress> addresses = resolver.lookup(host);
-            if (addresses.isEmpty()) throw new UnknownHostException("LLM DNS returned no addresses");
+            if (addresses.isEmpty())
+                throw new UnknownHostException("LLM DNS returned no addresses");
             return addresses;
         }, LlmCallTimeouts.CONNECT, readTimeout, modelTimeout);
     }
@@ -105,7 +106,8 @@ final class SafeLlmTransport {
     /** The bound precedes SDK line parsing and tool-fragment accumulation, including unknown lengths. */
     static Response boundStream(Response response) throws IOException {
         ResponseBody original = response.body();
-        if (original == null) return response;
+        if (original == null)
+            return response;
         if (original.contentLength() > MAX_STREAM_RESPONSE_BYTES) {
             response.close();
             throw new IOException("LLM stream response exceeds the transport size limit");
@@ -118,21 +120,29 @@ final class SafeLlmTransport {
                 && type.type().equalsIgnoreCase("text") && type.subtype().equalsIgnoreCase("event-stream");
         BufferedSource source = Okio.buffer(new ForwardingSource(original.source()) {
             private long consumed;
-            private final LlmSseCompletion completion = response.isSuccessful() ? new LlmSseCompletion(declaredSse) : null;
+            private final LlmSseCompletion completion = response.isSuccessful()
+                    ? new LlmSseCompletion(declaredSse)
+                    : null;
 
             @Override
             public long read(okio.Buffer sink, long byteCount) throws IOException {
                 // Read at most one byte beyond the remaining allowance, so even an oversized
                 // single SSE line is stopped before a parser can allocate its complete content.
                 long read = super.read(sink, Math.min(byteCount, MAX_STREAM_RESPONSE_BYTES - consumed + 1));
-                if (read != -1) consumed += read;
+                if (read != -1)
+                    consumed += read;
                 if (consumed > MAX_STREAM_RESPONSE_BYTES) {
                     IOException exceeded = new IOException("LLM stream response exceeds the transport size limit");
-                    try { super.close(); } catch (IOException closeFailure) { exceeded.addSuppressed(closeFailure); }
+                    try {
+                        super.close();
+                    } catch (IOException closeFailure) {
+                        exceeded.addSuppressed(closeFailure);
+                    }
                     response.close();
                     throw exceeded;
                 }
-                if (completion != null && read == -1) completion.end();
+                if (completion != null && read == -1)
+                    completion.end();
                 else if (completion != null) {
                     var observed = new okio.Buffer();
                     sink.copyTo(observed, sink.size() - read, read);
@@ -142,9 +152,18 @@ final class SafeLlmTransport {
             }
         });
         return response.newBuilder().body(new ResponseBody() {
-            @Override public MediaType contentType() { return original.contentType(); }
-            @Override public long contentLength() { return original.contentLength(); }
-            @Override public BufferedSource source() { return source; }
+            @Override
+            public MediaType contentType() {
+                return original.contentType();
+            }
+            @Override
+            public long contentLength() {
+                return original.contentLength();
+            }
+            @Override
+            public BufferedSource source() {
+                return source;
+            }
         }).build();
     }
 }

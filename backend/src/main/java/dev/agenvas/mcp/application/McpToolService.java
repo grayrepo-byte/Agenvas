@@ -73,12 +73,25 @@ public class McpToolService {
             ProjectService projects, ProjectEventService events, ArtifactService artifacts,
             CanvasService canvas, CanvasItemQueryService canvasItems, MediaDraftService drafts,
             MediaDraftRestoreService draftWrites, DirectMediaTaskService media, TaskService tasks,
-            MediaCapabilityService capabilities, AssetService assets, VideoCompositionService compositions, ObjectMapper mapper, Clock clock,
+            MediaCapabilityService capabilities, AssetService assets, VideoCompositionService compositions,
+            ObjectMapper mapper, Clock clock,
             @Value("${agenvas.recovery-mode:false}") boolean recoveryMode) {
-        this.policy = policy; this.tokens = tokens; this.operations = operations; this.projects = projects;
-        this.events = events; this.artifacts = artifacts; this.canvas = canvas; this.canvasItems = canvasItems;
-        this.drafts = drafts; this.draftWrites = draftWrites; this.media = media; this.tasks = tasks;
-        this.capabilities = capabilities; this.assets = assets; this.mapper = mapper; this.clock = clock;
+        this.policy = policy;
+        this.tokens = tokens;
+        this.operations = operations;
+        this.projects = projects;
+        this.events = events;
+        this.artifacts = artifacts;
+        this.canvas = canvas;
+        this.canvasItems = canvasItems;
+        this.drafts = drafts;
+        this.draftWrites = draftWrites;
+        this.media = media;
+        this.tasks = tasks;
+        this.capabilities = capabilities;
+        this.assets = assets;
+        this.mapper = mapper;
+        this.clock = clock;
         this.compositions = compositions;
         this.recoveryMode = recoveryMode;
     }
@@ -89,7 +102,8 @@ public class McpToolService {
         McpScope required = policy.requiredScope(name);
         requireScope(principal, required);
         policy.validate(name, arguments);
-        if (required == McpScope.READ) return read(principal, name, arguments);
+        if (required == McpScope.READ)
+            return read(principal, name, arguments);
         requireWritable();
         UUID project = uuid(arguments, "projectId");
         if ("prepare_media_upload".equals(name)) {
@@ -103,7 +117,8 @@ public class McpToolService {
     private McpToolResponse writeCommand(McpPrincipal principal, UUID project, String name, JsonNode arguments,
             java.util.function.BiFunction<McpPrincipal, UUID, ObjectNode> action) {
         McpScope required = McpScope.CONTENT_WRITE;
-        if (!"upload_media".equals(name)) required = policy.requiredScope(name);
+        if (!"upload_media".equals(name))
+            required = policy.requiredScope(name);
         McpScope grant = required;
         return events.recordChange(principal.userId(), project, () -> {
             McpPrincipal locked = tokens.requireValidForWrite(principal);
@@ -117,7 +132,9 @@ public class McpToolService {
             if (!operations.reserve(operation)) {
                 McpOperation previous = operations.find(locked.userId(), command).orElseThrow();
                 if (!previous.requestHash().equals(hash) || !previous.projectId().equals(project)
-                        || !previous.toolName().equals(name)) throw problem(HttpStatus.CONFLICT, "MCP_COMMAND_CONFLICT", ApiMessage.of("api.mcp.command-conflict"));
+                        || !previous.toolName().equals(name))
+                    throw problem(HttpStatus.CONFLICT, "MCP_COMMAND_CONFLICT",
+                            ApiMessage.of("api.mcp.command-conflict"));
                 return ProjectEventService.Change.unchanged(new McpToolResponse(previous.result().deepCopy()));
             }
             ObjectNode output = action.apply(locked, operationId);
@@ -140,7 +157,8 @@ public class McpToolService {
         projects.requireActiveProject(principal.userId(), project);
         Asset.MediaKind kind = Asset.MediaKind.valueOf(metadata.path("kind").asText());
         validateUploadSize(metadata, kind);
-        if (byteSize != metadata.path("byteSize").longValue()) throw uploadMismatch();
+        if (byteSize != metadata.path("byteSize").longValue())
+            throw uploadMismatch();
         // Verify the actual file before trusting its digest as part of command identity.
         try (var input = source.get()) {
             var digest = java.security.MessageDigest.getInstance("SHA-256");
@@ -148,11 +166,13 @@ public class McpToolService {
             long count = 0;
             for (int size; (size = input.read(buffer)) != -1;) {
                 count += size;
-                if (count > byteSize) throw uploadMismatch();
+                if (count > byteSize)
+                    throw uploadMismatch();
                 digest.update(buffer, 0, size);
             }
             if (count != byteSize || !java.util.HexFormat.of().formatHex(digest.digest())
-                    .equals(metadata.path("sha256").asText())) throw uploadMismatch();
+                    .equals(metadata.path("sha256").asText()))
+                throw uploadMismatch();
         } catch (IOException failure) {
             throw new java.io.UncheckedIOException("Cannot read uploaded media", failure);
         } catch (java.security.NoSuchAlgorithmException unavailable) {
@@ -171,10 +191,12 @@ public class McpToolService {
                     output.set("artifact", artifact(created, created.resourceDefaultVersion()));
                     output.set("media", mediaMetadata(prepared).put("sha256", prepared.sha256()));
                     if (metadata.has("placement")) {
-                        JsonNode p = metadata.path("placement"); UUID itemId = UUID.randomUUID();
+                        JsonNode p = metadata.path("placement");
+                        UUID itemId = UUID.randomUUID();
                         canvas.apply(locked.userId(), project, List.of(new CanvasService.PlaceArtifact(itemId,
                                 created.artifact().id(), p.path("x").decimalValue(), p.path("y").decimalValue(),
-                                p.path("width").decimalValue(), p.path("height").decimalValue(), p.path("zIndex").asInt(0),
+                                p.path("width").decimalValue(), p.path("height").decimalValue(),
+                                p.path("zIndex").asInt(0),
                                 null, false, created.resourceDefaultVersion().id())));
                         output.set("node", node(locked.userId(), project,
                                 canvasItems.requireArtifactItem(locked.userId(), project, itemId), created, true));
@@ -195,12 +217,15 @@ public class McpToolService {
     }
 
     private void validateUploadSize(JsonNode metadata, Asset.MediaKind kind) {
-        if (metadata.path("byteSize").longValue() > assets.maximumUploadBytes(kind)) throw McpToolPolicy.invalid();
+        if (metadata.path("byteSize").longValue() > assets.maximumUploadBytes(kind))
+            throw McpToolPolicy.invalid();
     }
 
     private void requireWritable() {
-        if (recoveryMode) throw problem(HttpStatus.SERVICE_UNAVAILABLE, "RECOVERY_MODE_READ_ONLY",
-                ApiMessage.of("api.recovery-mode-write-guard.database-and-media-backups-are-being-reconciled-project-and-model"));
+        if (recoveryMode)
+            throw problem(HttpStatus.SERVICE_UNAVAILABLE, "RECOVERY_MODE_READ_ONLY",
+                    ApiMessage.of(
+                            "api.recovery-mode-write-guard.database-and-media-backups-are-being-reconciled-project-and-model"));
     }
 
     private ApiProblemException uploadMismatch() {
@@ -216,9 +241,10 @@ public class McpToolService {
             ObjectNode output = mapper.createObjectNode();
             ArrayNode items = output.putArray("items");
             String search = input.path("name").asText("").toLowerCase(java.util.Locale.ROOT);
-            for (Project project : page.items()) if (project.name().toLowerCase(java.util.Locale.ROOT).contains(search))
-                items.addObject().put("projectId", project.id().toString()).put("name", project.name())
-                        .put("status", project.status().name()).put("aspectRatio", project.aspectRatio().name());
+            for (Project project : page.items())
+                if (project.name().toLowerCase(java.util.Locale.ROOT).contains(search))
+                    items.addObject().put("projectId", project.id().toString()).put("name", project.name())
+                            .put("status", project.status().name()).put("aspectRatio", project.aspectRatio().name());
             output.put("nextCursor", page.nextCursor());
             return new McpToolResponse(output);
         }
@@ -232,8 +258,9 @@ public class McpToolService {
                         .put("aspectRatio", authorized.aspectRatio().name())
                         .put("nodeCount", canvas.list(owner, project).size()).put("artifactCount", content.size());
                 ObjectNode counts = output.putObject("counts");
-                for (Artifact.Kind kind : Artifact.Kind.values()) counts.put(kind.name(), content.stream()
-                        .filter(a -> a.artifact().kind() == kind).count());
+                for (Artifact.Kind kind : Artifact.Kind.values())
+                    counts.put(kind.name(), content.stream()
+                            .filter(a -> a.artifact().kind() == kind).count());
                 yield new McpToolResponse(output);
             }
             case "read_canvas" -> new McpToolResponse(readCanvas(owner, project, input));
@@ -242,7 +269,8 @@ public class McpToolService {
             case "read_task_status" -> {
                 ObjectNode output = mapper.createObjectNode();
                 ArrayNode items = output.putArray("items");
-                for (JsonNode id : input.path("taskIds")) items.add(task(tasks.get(owner, project, UUID.fromString(id.asText()))));
+                for (JsonNode id : input.path("taskIds"))
+                    items.add(task(tasks.get(owner, project, UUID.fromString(id.asText()))));
                 yield new McpToolResponse(output);
             }
             default -> throw McpToolPolicy.invalid();
@@ -262,8 +290,11 @@ public class McpToolService {
                         .put("title", item.title()).put("expectedVersion", item.version()).put("locked", item.locked())
                         .put("x", item.x()).put("y", item.y()).put("width", item.width()).put("height", item.height())
                         .put("zIndex", item.zIndex());
-                items.add(dev.agenvas.canvas.application.CharacterNodeSummary.append(summary, item, entry.characterNode()));
-            } else items.add(node(owner, project, entry.item(), entry.artifact(), input.path("includeDrafts").asBoolean()));
+                items.add(dev.agenvas.canvas.application.CharacterNodeSummary.append(summary, item,
+                        entry.characterNode()));
+            } else
+                items.add(
+                        node(owner, project, entry.item(), entry.artifact(), input.path("includeDrafts").asBoolean()));
         }
         return output;
     }
@@ -278,40 +309,53 @@ public class McpToolService {
         boolean textPageRequested = input.has("textOffset") || input.has("textLimit");
         long imageCount = versions.stream().filter(v -> artifacts.get(owner, project, v.artifactId())
                 .artifact().kind() == Artifact.Kind.IMAGE).count();
-        if (imageCount > 1) throw McpToolPolicy.invalid();
+        if (imageCount > 1)
+            throw McpToolPolicy.invalid();
         int inline = 0;
         for (ArtifactVersion version : versions) {
             ArtifactService.ArtifactView view = artifacts.get(owner, project, version.artifactId());
-            if (textPageRequested && view.artifact().kind() != Artifact.Kind.TEXT) throw McpToolPolicy.invalid();
+            if (textPageRequested && view.artifact().kind() != Artifact.Kind.TEXT)
+                throw McpToolPolicy.invalid();
             ObjectNode item = artifact(view, version);
             if (view.artifact().kind() == Artifact.Kind.TEXT) {
                 if (textPageRequested) {
-                    appendTextPage(item, version.content(), input.path("textOffset").asInt(0), input.path("textLimit").asInt(MAX_TEXT_PAGE));
+                    appendTextPage(item, version.content(), input.path("textOffset").asInt(0),
+                            input.path("textLimit").asInt(MAX_TEXT_PAGE));
                     items.add(item);
                     continue;
                 }
                 String content = version.content().toString();
                 int size = content.getBytes(StandardCharsets.UTF_8).length;
                 if (size <= MAX_INLINE_BYTES && inline + size <= MAX_TOTAL_INLINE_BYTES) {
-                    item.set("content", version.content().deepCopy()); inline += size;
+                    item.set("content", version.content().deepCopy());
+                    inline += size;
                 } else {
-                    item.remove("content"); item.put("contentTruncated", true);
+                    item.remove("content");
+                    item.put("contentTruncated", true);
                     item.put("contentPreview", content.substring(0, content.offsetByCodePoints(0,
                             Math.min(2000, content.codePointCount(0, content.length())))));
                 }
             } else {
-                Asset metadata = assets.metadata(owner, project, UUID.fromString(version.content().path("assetId").asText()));
+                Asset metadata = assets.metadata(owner, project,
+                        UUID.fromString(version.content().path("assetId").asText()));
                 item.set("media", mediaMetadata(metadata));
                 if (metadata.mediaKind() == Asset.MediaKind.IMAGE) {
                     var preview = assets.content(owner, project, metadata.id(), true);
-                    if (preview.size() <= 0 || preview.size() > MAX_IMAGE_BYTES || !preview.contentType().startsWith("image/"))
-                        throw problem(HttpStatus.UNPROCESSABLE_ENTITY, "MCP_IMAGE_PREVIEW_INVALID", ApiMessage.of("api.mcp.image-preview-invalid"));
+                    if (preview.size() <= 0 || preview.size() > MAX_IMAGE_BYTES
+                            || !preview.contentType().startsWith("image/"))
+                        throw problem(HttpStatus.UNPROCESSABLE_ENTITY, "MCP_IMAGE_PREVIEW_INVALID",
+                                ApiMessage.of("api.mcp.image-preview-invalid"));
                     try (var stream = assets.open(preview, 0, preview.size())) {
                         byte[] bytes = stream.readNBytes(Math.toIntExact(preview.size()) + 1);
-                        if (bytes.length != preview.size()) throw new IOException("Incomplete controlled image preview");
+                        if (bytes.length != preview.size())
+                            throw new IOException("Incomplete controlled image preview");
                         item.put("imageIndex", images.size());
-                        images.add(new McpToolResponse.Image(preview.contentType(), Base64.getEncoder().encodeToString(bytes)));
-                    } catch (IOException failure) { throw problem(HttpStatus.UNPROCESSABLE_ENTITY, "MCP_IMAGE_PREVIEW_INVALID", ApiMessage.of("api.mcp.image-preview-invalid")); }
+                        images.add(new McpToolResponse.Image(preview.contentType(),
+                                Base64.getEncoder().encodeToString(bytes)));
+                    } catch (IOException failure) {
+                        throw problem(HttpStatus.UNPROCESSABLE_ENTITY, "MCP_IMAGE_PREVIEW_INVALID",
+                                ApiMessage.of("api.mcp.image-preview-invalid"));
+                    }
                 }
             }
             items.add(item);
@@ -325,31 +369,40 @@ public class McpToolService {
             throw new IllegalStateException("Text artifact content is malformed");
         String text = content.path("text").asText();
         int total = text.codePointCount(0, text.length());
-        if (offset > total) throw McpToolPolicy.invalid();
+        if (offset > total)
+            throw McpToolPolicy.invalid();
         int end = offset + Math.min(limit, total - offset);
         item.putObject("content").put("format", content.path("format").asText())
                 .put("text", text.substring(text.offsetByCodePoints(0, offset), text.offsetByCodePoints(0, end)));
         item.put("contentTruncated", offset > 0 || end < total);
         ObjectNode page = item.putObject("textPage").put("offset", offset).put("endOffset", end).put("total", total);
-        if (end < total) page.put("nextOffset", end); else page.putNull("nextOffset");
+        if (end < total)
+            page.put("nextOffset", end);
+        else
+            page.putNull("nextOffset");
     }
 
     private ObjectNode write(McpPrincipal principal, UUID project, UUID operation, String name, JsonNode input) {
         UUID owner = principal.userId();
         return switch (name) {
             case "create_text", "create_media_node" -> {
-                Artifact.Kind kind = "create_text".equals(name) ? Artifact.Kind.TEXT : Artifact.Kind.valueOf(input.path("kind").asText());
+                Artifact.Kind kind = "create_text".equals(name)
+                        ? Artifact.Kind.TEXT
+                        : Artifact.Kind.valueOf(input.path("kind").asText());
                 var created = artifacts.createFromExternalTool(owner, project, kind, input.path("title").asText(),
                         kind == Artifact.Kind.TEXT ? textContent(input) : null);
                 CanvasItem item;
                 if (input.has("placement")) {
-                    JsonNode p = input.path("placement"); UUID id = UUID.randomUUID();
+                    JsonNode p = input.path("placement");
+                    UUID id = UUID.randomUUID();
                     canvas.apply(owner, project, List.of(new CanvasService.PlaceArtifact(id, created.artifact().id(),
                             p.path("x").decimalValue(), p.path("y").decimalValue(), p.path("width").decimalValue(),
                             p.path("height").decimalValue(), p.path("zIndex").asInt(0), null, false)));
                     item = canvasItems.requireArtifactItem(owner, project, id);
-                } else item = canvas.placeGeneratedArtifactWithinChange(owner, project, created.artifact().id(), null);
-                ObjectNode output = mapper.createObjectNode(); output.set("node", node(owner, project, item, created, true));
+                } else
+                    item = canvas.placeGeneratedArtifactWithinChange(owner, project, created.artifact().id(), null);
+                ObjectNode output = mapper.createObjectNode();
+                output.set("node", node(owner, project, item, created, true));
                 if (created.resourceDefaultVersion() != null) {
                     output.set("artifact", artifact(created, created.resourceDefaultVersion()));
                     operations.linkVersion(operation, created.resourceDefaultVersion().id());
@@ -360,67 +413,97 @@ public class McpToolService {
                 var revised = artifacts.reviseFromExternalTool(owner, project, uuid(input, "artifactId"),
                         input.path("expectedVersion").longValue(), nullableText(input, "title"), textContent(input));
                 operations.linkVersion(operation, revised.resourceDefaultVersion().id());
-                ObjectNode output = mapper.createObjectNode(); output.set("artifact", artifact(revised, revised.resourceDefaultVersion())); yield output;
+                ObjectNode output = mapper.createObjectNode();
+                output.set("artifact", artifact(revised, revised.resourceDefaultVersion()));
+                yield output;
             }
             case "manage_canvas_node" -> {
                 CanvasItem before = canvasItems.requireArtifactItem(owner, project, uuid(input, "canvasItemId"));
                 requireUnlocked(before);
                 long expected = input.path("expectedVersion").longValue();
-                if (before.version() != expected) throw problem(HttpStatus.CONFLICT, "CANVAS_VERSION_CONFLICT", ApiMessage.of("api.canvas-service.the-canvas-card-has-been-modified-by-other-requests-please"));
+                if (before.version() != expected)
+                    throw problem(HttpStatus.CONFLICT, "CANVAS_VERSION_CONFLICT", ApiMessage
+                            .of("api.canvas-service.the-canvas-card-has-been-modified-by-other-requests-please"));
                 CanvasService.CanvasCommand command = switch (input.path("action").asText()) {
                     case "RENAME" -> new CanvasService.UpdateTitle(before.id(), expected, input.path("title").asText());
                     case "MOVE" -> new CanvasService.UpdateLayout(before.id(), expected, input.path("x").decimalValue(),
-                            input.path("y").decimalValue(), before.width(), before.height(), before.zIndex(), before.groupId());
+                            input.path("y").decimalValue(), before.width(), before.height(), before.zIndex(),
+                            before.groupId());
                     case "RESIZE" -> new CanvasService.UpdateLayout(before.id(), expected, before.x(), before.y(),
-                            input.path("width").decimalValue(), input.path("height").decimalValue(), before.zIndex(), before.groupId());
+                            input.path("width").decimalValue(), input.path("height").decimalValue(), before.zIndex(),
+                            before.groupId());
                     default -> throw McpToolPolicy.invalid();
                 };
                 canvas.apply(owner, project, List.of(command));
                 CanvasItem updated = canvasItems.requireArtifactItem(owner, project, before.id());
-                ObjectNode output = mapper.createObjectNode(); output.set("node", node(owner, project, updated,
-                        artifacts.get(owner, project, updated.subjectId()), true)); yield output;
+                ObjectNode output = mapper.createObjectNode();
+                output.set("node", node(owner, project, updated,
+                        artifacts.get(owner, project, updated.subjectId()), true));
+                yield output;
             }
             case "update_media_draft" -> {
                 CanvasItem item = canvasItems.requireArtifactItem(owner, project, uuid(input, "canvasItemId"));
                 requireMediaMutable(owner, project, item);
-                MediaDraft before = drafts.get(owner, project, item.id()); JsonNode patch = input.path("patch");
+                MediaDraft before = drafts.get(owner, project, item.id());
+                JsonNode patch = input.path("patch");
                 List<MediaDraftService.SaveMediaInput> inputs = patch.has("mediaInputs")
                         ? patch.path("mediaInputs").valueStream().map(v -> new MediaDraftService.SaveMediaInput(
-                                uuid(v, "versionId"), MediaDraft.InputRole.valueOf(v.path("role").asText()), v.path("color").asText().toUpperCase(java.util.Locale.ROOT))).toList()
-                        : before.mediaInputs().stream().map(v -> new MediaDraftService.SaveMediaInput(v.versionId(), v.role(), v.color())).toList();
-                List<MediaDraft.PromptMention> mentions = patch.has("mentions") ? patch.path("mentions").valueStream()
-                        .map(v -> new MediaDraft.PromptMention(uuid(v, "versionId"), MediaDraft.InputRole.valueOf(v.path("role").asText()))).toList() : before.mentions();
-                var mode = patch.has("videoInputMode") ? patch.path("videoInputMode").isNull() ? null
-                        : MediaDraft.VideoInputMode.valueOf(patch.path("videoInputMode").asText()) : before.videoInputMode();
+                                uuid(v, "versionId"), MediaDraft.InputRole.valueOf(v.path("role").asText()),
+                                v.path("color").asText().toUpperCase(java.util.Locale.ROOT))).toList()
+                        : before.mediaInputs().stream()
+                                .map(v -> new MediaDraftService.SaveMediaInput(v.versionId(), v.role(), v.color()))
+                                .toList();
+                List<MediaDraft.PromptMention> mentions = patch.has("mentions")
+                        ? patch.path("mentions").valueStream()
+                                .map(v -> new MediaDraft.PromptMention(uuid(v, "versionId"),
+                                        MediaDraft.InputRole.valueOf(v.path("role").asText())))
+                                .toList()
+                        : before.mentions();
+                var mode = patch.has("videoInputMode")
+                        ? patch.path("videoInputMode").isNull()
+                                ? null
+                                : MediaDraft.VideoInputMode.valueOf(patch.path("videoInputMode").asText())
+                        : before.videoInputMode();
                 long expected = input.path("expectedDraftVersion").longValue();
                 MediaDraft updated;
                 String prompt = patch.has("prompt") ? patch.path("prompt").asText() : before.prompt();
                 JsonNode parameters = patch.has("parameters") ? patch.path("parameters") : before.parameters();
-                Integer duration = patch.has("durationSeconds") ? patch.path("durationSeconds").isNull() ? null : patch.path("durationSeconds").intValue() : before.durationSeconds();
-                UUID capability = patch.has("capabilityId") ? nullableUuid(patch, "capabilityId") : before.capabilityId();
+                Integer duration = patch.has("durationSeconds")
+                        ? patch.path("durationSeconds").isNull() ? null : patch.path("durationSeconds").intValue()
+                        : before.durationSeconds();
+                UUID capability = patch.has("capabilityId")
+                        ? nullableUuid(patch, "capabilityId")
+                        : before.capabilityId();
                 UUID style = patch.has("styleId") ? nullableUuid(patch, "styleId") : before.styleId();
-                if (patch.has("mediaInputs")) updated = draftWrites.replaceInputs(owner, project, item.id(), expected,
-                        prompt, parameters, duration, capability, mode, inputs, mentions, style);
-                else updated = draftWrites.save(owner, project, item.id(), expected, prompt, parameters,
-                        duration, capability, mode, inputs, mentions, style);
+                if (patch.has("mediaInputs"))
+                    updated = draftWrites.replaceInputs(owner, project, item.id(), expected,
+                            prompt, parameters, duration, capability, mode, inputs, mentions, style);
+                else
+                    updated = draftWrites.save(owner, project, item.id(), expected, prompt, parameters,
+                            duration, capability, mode, inputs, mentions, style);
                 ObjectNode output = mapper.createObjectNode().put("canvasItemId", item.id().toString());
-                output.set("draft", draft(updated, true)); yield output;
+                output.set("draft", draft(updated, true));
+                yield output;
             }
             case "run_media" -> {
                 CanvasItem item = canvasItems.requireArtifactItem(owner, project, uuid(input, "canvasItemId"));
                 requireUnlocked(item);
                 List<Task> accepted = media.runExternal(owner, project, item.subjectId(), item.id(),
                         input.path("expectedDraftVersion").longValue(), principal.tokenId(), operation);
-                ObjectNode output = mapper.createObjectNode(); ArrayNode acceptedTasks = output.putArray("tasks");
+                ObjectNode output = mapper.createObjectNode();
+                ArrayNode acceptedTasks = output.putArray("tasks");
                 for (int index = 0; index < accepted.size(); index++) {
-                    operations.linkTask(operation, accepted.get(index).id(), index); acceptedTasks.add(task(accepted.get(index)));
+                    operations.linkTask(operation, accepted.get(index).id(), index);
+                    acceptedTasks.add(task(accepted.get(index)));
                 }
                 yield output;
             }
             case "compose_video" -> {
-                Task accepted = compositions.runExternal(owner, project, input.path("composition"), principal.tokenId(), operation);
+                Task accepted = compositions.runExternal(owner, project, input.path("composition"), principal.tokenId(),
+                        operation);
                 operations.linkTask(operation, accepted.id(), 0);
-                ObjectNode output = mapper.createObjectNode(); output.putArray("tasks").add(task(accepted));
+                ObjectNode output = mapper.createObjectNode();
+                output.putArray("tasks").add(task(accepted));
                 yield output;
             }
             default -> throw McpToolPolicy.invalid();
@@ -432,91 +515,120 @@ public class McpToolService {
                 .put("versionId", version.id().toString()).put("kind", view.artifact().kind().name())
                 .put("title", view.artifact().title()).put("versionNo", version.versionNo())
                 .put("createdByKind", version.createdByKind().name()).put("contentTruncated", false);
-        if (version.id().equals(view.artifact().resourceDefaultVersionId())) result.put("expectedVersion", view.artifact().version());
-        if (view.artifact().kind() == Artifact.Kind.TEXT) result.set("content", version.content().deepCopy());
+        if (version.id().equals(view.artifact().resourceDefaultVersionId()))
+            result.put("expectedVersion", view.artifact().version());
+        if (view.artifact().kind() == Artifact.Kind.TEXT)
+            result.set("content", version.content().deepCopy());
         else {
             // Only immutable creative text and our local render plan are exposed, never provider settings/URLs.
             String prompt = version.content().path("prompt").asText("");
             result.put("generationPrompt", prompt.substring(0, Math.min(prompt.length(), 20000)));
-            if (prompt.length() > 20000) result.put("contentTruncated", true);
+            if (prompt.length() > 20000)
+                result.put("contentTruncated", true);
             JsonNode composition = version.content().path("parameters").path("videoComposition");
-            if (composition.isObject()) result.set("composition", composition.deepCopy());
+            if (composition.isObject())
+                result.set("composition", composition.deepCopy());
         }
         return result;
     }
-    private ObjectNode node(UUID owner, UUID project, CanvasItem item, ArtifactService.ArtifactView view, boolean fullDraft) {
+    private ObjectNode node(UUID owner, UUID project, CanvasItem item, ArtifactService.ArtifactView view,
+            boolean fullDraft) {
         ObjectNode output = mapper.createObjectNode().put("canvasItemId", item.id().toString())
                 .put("artifactId", item.subjectId().toString()).put("kind", view.artifact().kind().name())
-                .put("title", item.title()).put("expectedVersion", item.version()).put("artifactVersion", view.artifact().version())
+                .put("title", item.title()).put("expectedVersion", item.version())
+                .put("artifactVersion", view.artifact().version())
                 .put("versionId", view.artifact().kind() == Artifact.Kind.TEXT
-                        ? nullableId(view.artifact().resourceDefaultVersionId()) : nullableId(item.selectedVersionId()))
+                        ? nullableId(view.artifact().resourceDefaultVersionId())
+                        : nullableId(item.selectedVersionId()))
                 .put("locked", item.locked()).put("x", item.x()).put("y", item.y()).put("width", item.width())
                 .put("height", item.height()).put("zIndex", item.zIndex());
-        if (view.artifact().kind() != Artifact.Kind.TEXT) output.set("mediaDraft", draft(drafts.get(owner, project, item.id()), fullDraft));
+        if (view.artifact().kind() != Artifact.Kind.TEXT)
+            output.set("mediaDraft", draft(drafts.get(owner, project, item.id()), fullDraft));
         return output;
     }
     private ObjectNode draft(MediaDraft draft, boolean full) {
         ObjectNode result = mapper.createObjectNode().put("version", draft.version())
                 .put("capabilityId", nullableId(draft.capabilityId())).put("styleId", nullableId(draft.styleId()))
                 .put("videoInputMode", draft.videoInputMode() == null ? null : draft.videoInputMode().name());
-        if (draft.durationSeconds() == null) result.putNull("durationSeconds"); else result.put("durationSeconds", draft.durationSeconds());
+        if (draft.durationSeconds() == null)
+            result.putNull("durationSeconds");
+        else
+            result.put("durationSeconds", draft.durationSeconds());
         if (full) {
-            result.put("prompt", draft.prompt()); result.set("parameters", draft.parameters().deepCopy());
+            result.put("prompt", draft.prompt());
+            result.set("parameters", draft.parameters().deepCopy());
             ArrayNode inputs = result.putArray("mediaInputs");
-            for (var input : draft.mediaInputs()) inputs.addObject().put("versionId", input.versionId().toString())
-                    .put("artifactId", input.artifactId().toString()).put("role", input.role().name())
-                    .put("order", input.order()).put("color", input.color());
+            for (var input : draft.mediaInputs())
+                inputs.addObject().put("versionId", input.versionId().toString())
+                        .put("artifactId", input.artifactId().toString()).put("role", input.role().name())
+                        .put("order", input.order()).put("color", input.color());
             result.set("mentions", mapper.valueToTree(draft.mentions()));
-        } else result.put("promptCharacters", draft.prompt().length()).put("mediaInputCount", draft.mediaInputs().size())
-                .put("mentionCount", draft.mentions().size());
+        } else
+            result.put("promptCharacters", draft.prompt().length()).put("mediaInputCount", draft.mediaInputs().size())
+                    .put("mentionCount", draft.mentions().size());
         return result;
     }
     private ObjectNode task(Task task) {
-        ObjectNode output = mapper.createObjectNode().put("taskId", task.id().toString()).put("kind", task.kind().name())
-                .put("status", task.status().name()).put("cancelRequested", task.cancelRequested()).put("attemptNo", task.attemptNo())
+        ObjectNode output = mapper.createObjectNode().put("taskId", task.id().toString())
+                .put("kind", task.kind().name())
+                .put("status", task.status().name()).put("cancelRequested", task.cancelRequested())
+                .put("attemptNo", task.attemptNo())
                 .put("errorCode", task.errorCode()).put("updatedAt", task.updatedAt().toString())
                 .put("completedAt", task.completedAt() == null ? null : task.completedAt().toString())
                 .put("source", task.initiator().name());
-        for (String field : List.of("canvasItemId", "artifactId")) output.put(field, task.input().path(field).asText(null));
+        for (String field : List.of("canvasItemId", "artifactId"))
+            output.put(field, task.input().path(field).asText(null));
         output.put("operationId", task.input().path("mcpOperationId").asText(null));
         // Text workers retain a private response checkpoint alongside a separate public result.
         // Only a succeeded text Task can disclose that result, never checkpoint fields.
         JsonNode publicResult = task.output();
-        if (task.kind() == Task.Kind.TEXT_GENERATION) publicResult = task.status() == Task.Status.SUCCEEDED
-                && publicResult != null ? publicResult.path("result") : null;
-        output.put("artifactVersionId", publicResult == null ? null : publicResult.path("artifactVersionId").asText(null));
+        if (task.kind() == Task.Kind.TEXT_GENERATION)
+            publicResult = task.status() == Task.Status.SUCCEEDED
+                    && publicResult != null ? publicResult.path("result") : null;
+        output.put("artifactVersionId",
+                publicResult == null ? null : publicResult.path("artifactVersionId").asText(null));
         if (task.input().path("mediaInput").isObject()) {
             JsonNode pinned = task.input().path("mediaInput");
-            ObjectNode summary = output.putObject("inputSummary").put("draftVersion", task.input().path("draftVersion").asLong())
+            ObjectNode summary = output.putObject("inputSummary")
+                    .put("draftVersion", task.input().path("draftVersion").asLong())
                     .put("generationIndex", task.input().path("generationIndex").asInt())
                     .put("generationCount", task.input().path("generationCount").asInt(1));
             for (String field : List.of("capabilityId", "capabilityVersion", "mode", "durationSeconds"))
-                if (pinned.has(field)) summary.set(field, pinned.path(field).deepCopy());
+                if (pinned.has(field))
+                    summary.set(field, pinned.path(field).deepCopy());
             summary.put("promptCharacters", pinned.path("prompt").asText().length());
             ArrayNode references = summary.putArray("inputVersionIds");
             for (String group : List.of("images", "audios", "videos"))
-                for (JsonNode reference : pinned.path(group)) references.add(reference.path("versionId").asText());
+                for (JsonNode reference : pinned.path(group))
+                    references.add(reference.path("versionId").asText());
         }
         ArrayNode extra = output.putArray("additionalResults");
-        if (task.output() != null) for (JsonNode result : task.output().path("additionalResults")) {
-            ObjectNode safe = extra.addObject();
-            for (String field : List.of("artifactId", "artifactVersionId", "canvasItemId", "selected", "ordinal"))
-                if (result.has(field)) safe.set(field, result.path(field).deepCopy());
-        }
+        if (task.output() != null)
+            for (JsonNode result : task.output().path("additionalResults")) {
+                ObjectNode safe = extra.addObject();
+                for (String field : List.of("artifactId", "artifactVersionId", "canvasItemId", "selected", "ordinal"))
+                    if (result.has(field))
+                        safe.set(field, result.path(field).deepCopy());
+            }
         return output;
     }
     private ObjectNode readCapabilities(JsonNode input) {
         String kind = input.path("kind").asText("");
-        var candidates = capabilities.publishedCandidates().stream().filter(c -> kind.isEmpty() || c.kind().name().equals(kind + "_GENERATION"))
+        var candidates = capabilities.publishedCandidates().stream()
+                .filter(c -> kind.isEmpty() || c.kind().name().equals(kind + "_GENERATION"))
                 .sorted(Comparator.comparing(c -> c.binding().capabilityId())).toList();
         int offset = input.path("offset").asInt(0), limit = input.path("limit").asInt(20);
-        ObjectNode output = page(offset, limit, candidates.size()); ArrayNode items = output.putArray("items");
+        ObjectNode output = page(offset, limit, candidates.size());
+        ArrayNode items = output.putArray("items");
         for (int index = offset; index < Math.min(candidates.size(), offset + limit); index++) {
             var candidate = candidates.get(index);
             items.addObject().put("capabilityId", candidate.binding().capabilityId().toString())
-                    .put("name", candidate.capabilityName()).put("kind", candidate.kind().name().replace("_GENERATION", ""))
-                    .put("version", candidate.binding().capabilityVersion()).put("minimumSeconds", candidate.minimumSeconds())
-                    .put("maximumSeconds", candidate.maximumSeconds()).set("settings", safeCapabilitySettings(candidate));
+                    .put("name", candidate.capabilityName())
+                    .put("kind", candidate.kind().name().replace("_GENERATION", ""))
+                    .put("version", candidate.binding().capabilityVersion())
+                    .put("minimumSeconds", candidate.minimumSeconds())
+                    .put("maximumSeconds", candidate.maximumSeconds())
+                    .set("settings", safeCapabilitySettings(candidate));
         }
         return output;
     }
@@ -526,22 +638,34 @@ public class McpToolService {
         JsonNode settings = candidate.settings();
         for (String field : List.of("defaultParameters", "defaultDurationSeconds", "minimumSeconds", "maximumSeconds",
                 "maxReferenceImages", "maxReferenceAudios", "maxReferenceVideos", "pricing", "pricingByResolution",
-                "nativeInputs", "nativeReusableSlots", "klingInputs", "model", "operation", "videoResolution", "videoResolutions"))
-            if (settings.has(field)) result.set(field, settings.path(field).deepCopy());
+                "nativeInputs", "nativeReusableSlots", "klingInputs", "model", "operation", "videoResolution",
+                "videoResolutions"))
+            if (settings.has(field))
+                result.set(field, settings.path(field).deepCopy());
         var policy = capabilities.inputPolicy(candidate.binding());
-        result.set("supportedVideoInputModes", mapper.valueToTree(policy.supportedVideoInputModes().stream().sorted().toList()));
-        result.set("supportedImageAspectRatios", mapper.valueToTree(policy.supportedImageAspectRatios().stream().sorted().toList()));
-        result.set("supportedImageResolutions", mapper.valueToTree(policy.supportedImageResolutions().stream().sorted().toList()));
-        result.set("supportedImageQualities", mapper.valueToTree(policy.supportedImageQualities().stream().sorted().toList()));
-        result.put("maxReferenceImages", policy.maxReferenceImages()).put("maxReferenceAudios", policy.maxReferenceAudios())
-                .put("maxReferenceVideos", policy.maxReferenceVideos()).put("supportsTransparentBackground", policy.supportsTransparentBackground())
-                .put("supportsEndFrame", policy.supportsEndFrame()).put("defaultVideoInputMode", policy.defaultVideoInputMode());
+        result.set("supportedVideoInputModes",
+                mapper.valueToTree(policy.supportedVideoInputModes().stream().sorted().toList()));
+        result.set("supportedImageAspectRatios",
+                mapper.valueToTree(policy.supportedImageAspectRatios().stream().sorted().toList()));
+        result.set("supportedImageResolutions",
+                mapper.valueToTree(policy.supportedImageResolutions().stream().sorted().toList()));
+        result.set("supportedImageQualities",
+                mapper.valueToTree(policy.supportedImageQualities().stream().sorted().toList()));
+        result.put("maxReferenceImages", policy.maxReferenceImages())
+                .put("maxReferenceAudios", policy.maxReferenceAudios())
+                .put("maxReferenceVideos", policy.maxReferenceVideos())
+                .put("supportsTransparentBackground", policy.supportsTransparentBackground())
+                .put("supportsEndFrame", policy.supportsEndFrame())
+                .put("defaultVideoInputMode", policy.defaultVideoInputMode());
         ArrayNode inputs = result.putArray("inputs");
         for (var field : capabilities.declaredDraftInputs(candidate.binding().capabilityId())) {
-            JsonNode raw = mapper.valueToTree(field); ObjectNode safe = inputs.addObject();
-            for (String key : List.of("key", "label", "description", "type", "required", "defaultValue", "minimum", "maximum",
+            JsonNode raw = mapper.valueToTree(field);
+            ObjectNode safe = inputs.addObject();
+            for (String key : List.of("key", "label", "description", "type", "required", "defaultValue", "minimum",
+                    "maximum",
                     "maxLength", "options", "advanced", "source", "enabledWhen"))
-                if (raw.has(key)) safe.set(key, raw.path(key).deepCopy());
+                if (raw.has(key))
+                    safe.set(key, raw.path(key).deepCopy());
         }
         if (!inputs.isEmpty() || result.has("nativeInputs") || result.has("klingInputs"))
             result.put("parameterNamespace", dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY);
@@ -549,34 +673,55 @@ public class McpToolService {
     }
 
     private ObjectNode mediaMetadata(Asset asset) {
-        ObjectNode result = mapper.createObjectNode().put("kind", asset.mediaKind().name()).put("contentType", asset.contentType()).put("byteSize", asset.byteSize());
-        if (asset.width() != null) result.put("width", asset.width());
-        if (asset.height() != null) result.put("height", asset.height());
-        if (asset.durationMs() != null) result.put("durationMs", asset.durationMs());
+        ObjectNode result = mapper.createObjectNode().put("kind", asset.mediaKind().name())
+                .put("contentType", asset.contentType()).put("byteSize", asset.byteSize());
+        if (asset.width() != null)
+            result.put("width", asset.width());
+        if (asset.height() != null)
+            result.put("height", asset.height());
+        if (asset.durationMs() != null)
+            result.put("durationMs", asset.durationMs());
         return result;
     }
     private ObjectNode page(int offset, int limit, int total) {
-        if (offset > total) throw McpToolPolicy.invalid();
+        if (offset > total)
+            throw McpToolPolicy.invalid();
         ObjectNode result = mapper.createObjectNode().put("offset", offset).put("total", total);
-        if ((long) offset + limit < total) result.put("nextOffset", offset + limit); else result.putNull("nextOffset");
+        if ((long) offset + limit < total)
+            result.put("nextOffset", offset + limit);
+        else
+            result.putNull("nextOffset");
         return result;
     }
-    private ObjectNode textContent(JsonNode input) { return mapper.createObjectNode().put("format", input.path("format").asText("MARKDOWN")).put("text", input.path("text").asText()); }
+    private ObjectNode textContent(JsonNode input) {
+        return mapper.createObjectNode().put("format", input.path("format").asText("MARKDOWN")).put("text",
+                input.path("text").asText());
+    }
     private void requireMediaMutable(UUID owner, UUID project, CanvasItem item) {
         requireUnlocked(item);
         media.requireUnoccupied(owner, project, item.subjectId(), item.id());
     }
     private void requireUnlocked(CanvasItem item) {
-        if (item.locked()) throw problem(HttpStatus.CONFLICT, "CANVAS_ITEM_LOCKED", ApiMessage.of("api.creative-artifact-tool-service.locked-cards-cannot-be-arranged-by-the-agent"));
+        if (item.locked())
+            throw problem(HttpStatus.CONFLICT, "CANVAS_ITEM_LOCKED",
+                    ApiMessage.of("api.creative-artifact-tool-service.locked-cards-cannot-be-arranged-by-the-agent"));
     }
     private void requireScope(McpPrincipal principal, McpScope required) {
         if (!principal.scopes().contains(McpScope.READ) || !principal.scopes().contains(required))
             throw problem(HttpStatus.FORBIDDEN, "MCP_SCOPE_DENIED", ApiMessage.of("api.mcp.scope-denied"));
     }
-    private UUID uuid(JsonNode input, String field) { return UUID.fromString(input.path(field).asText()); }
-    private UUID nullableUuid(JsonNode input, String field) { return input.path(field).isNull() ? null : uuid(input, field); }
-    private String nullableId(UUID id) { return id == null ? null : id.toString(); }
-    private String nullableText(JsonNode input, String field) { return input.hasNonNull(field) ? input.path(field).asText() : null; }
+    private UUID uuid(JsonNode input, String field) {
+        return UUID.fromString(input.path(field).asText());
+    }
+    private UUID nullableUuid(JsonNode input, String field) {
+        return input.path(field).isNull() ? null : uuid(input, field);
+    }
+    private String nullableId(UUID id) {
+        return id == null ? null : id.toString();
+    }
+    private String nullableText(JsonNode input, String field) {
+        return input.hasNonNull(field) ? input.path(field).asText() : null;
+    }
     private ApiProblemException problem(HttpStatus status, String code, ApiMessage message) {
         return new ApiProblemException(status, code, message, message, false);
     }
@@ -586,11 +731,18 @@ public class McpToolService {
     }
     private JsonNode canonical(JsonNode input) {
         if (input.isObject()) {
-            ObjectNode object = mapper.createObjectNode(); input.propertyNames().stream().sorted()
-                    .forEach(key -> object.set(key, canonical(input.path(key)))); return object;
+            ObjectNode object = mapper.createObjectNode();
+            input.propertyNames().stream().sorted()
+                    .forEach(key -> object.set(key, canonical(input.path(key))));
+            return object;
         }
-        if (input.isArray()) { ArrayNode array = mapper.createArrayNode(); input.forEach(v -> array.add(canonical(v))); return array; }
-        if (input.isNumber()) return mapper.getNodeFactory().numberNode(input.decimalValue().stripTrailingZeros());
+        if (input.isArray()) {
+            ArrayNode array = mapper.createArrayNode();
+            input.forEach(v -> array.add(canonical(v)));
+            return array;
+        }
+        if (input.isNumber())
+            return mapper.getNodeFactory().numberNode(input.decimalValue().stripTrailingZeros());
         return input.deepCopy();
     }
 }

@@ -8,8 +8,7 @@ import { build, createServer, preview } from "vite";
 
 /** Real CSS/layout regression without a backend, credentials or provider calls. */
 const root = fileURLToPath(new URL("../", import.meta.url));
-const chromePath = process.env.AGENVAS_E2E_CHROME
-  ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const chromePath = process.env.AGENVAS_E2E_CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const route = "/e2e/media-function-parameters.html";
 // Verify the same bundled CSS and real modal isolation as the shipped frontend.
 const production = !process.argv.includes("--dev");
@@ -31,7 +30,7 @@ let chrome;
 let socket;
 let nextId = 0;
 const pending = new Map();
-const pause = () => new Promise((resolve) => setTimeout(resolve, pollMs));
+const pause = () => new Promise(resolve => setTimeout(resolve, pollMs));
 
 function cdp(method, params = {}) {
   const id = ++nextId;
@@ -44,10 +43,11 @@ function cdp(method, params = {}) {
 async function page(fn, ...args) {
   const result = await cdp("Runtime.evaluate", {
     expression: `(${fn.toString()})(...${JSON.stringify(args)})`,
-    awaitPromise: true, returnByValue: true,
+    awaitPromise: true,
+    returnByValue: true,
   });
-  if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description
-    ?? result.exceptionDetails.text);
+  if (result.exceptionDetails)
+    throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text);
   return result.result.value;
 }
 
@@ -57,7 +57,9 @@ async function waitFor(fn, ...args) {
     if (await page(fn, ...args)) return;
     await pause();
   }
-  throw new Error(`Timed out waiting for the media function parameter fixture: ${await page(() => document.body.innerText)}`);
+  throw new Error(
+    `Timed out waiting for the media function parameter fixture: ${await page(() => document.body.innerText)}`,
+  );
 }
 
 async function pointerClick(selector) {
@@ -65,15 +67,17 @@ async function pointerClick(selector) {
     const element = document.querySelector(target);
     if (!element) return false;
     const bounds = element.getBoundingClientRect();
-    const left = Math.max(0, bounds.left), right = Math.min(innerWidth, bounds.right);
-    const top = Math.max(0, bounds.top), bottom = Math.min(innerHeight, bounds.bottom);
+    const left = Math.max(0, bounds.left),
+      right = Math.min(innerWidth, bounds.right);
+    const top = Math.max(0, bounds.top),
+      bottom = Math.min(innerHeight, bounds.bottom);
     if (right <= left || bottom <= top) return false;
     const x = (left + right) / 2;
     // A wrapped option can be taller than the popup's scroll viewport. Click its
     // visible portion, accounting for clipping and the select's scroll buttons.
     const candidates = [(top + bottom) / 2];
     for (let y = top + 4; y < bottom; y += 8) candidates.push(y);
-    const y = candidates.find((candidate) => element.contains(document.elementFromPoint(x, candidate)));
+    const y = candidates.find(candidate => element.contains(document.elementFromPoint(x, candidate)));
     return y === undefined ? false : { x, y };
   }
   await waitFor(visiblePoint, selector);
@@ -85,26 +89,45 @@ async function pointerClick(selector) {
 
 try {
   if (production) {
-    await build({ ...config, logLevel: "warn", build: {
-      outDir, emptyOutDir: true, rollupOptions: { input: join(root, route) },
-    } });
-    server = await preview({ ...config, build: { outDir },
-      preview: { host: "127.0.0.1", port: 0, open: false },
+    await build({
+      ...config,
+      logLevel: "warn",
+      build: {
+        outDir,
+        emptyOutDir: true,
+        rollupOptions: { input: join(root, route) },
+      },
     });
+    server = await preview({ ...config, build: { outDir }, preview: { host: "127.0.0.1", port: 0, open: false } });
   } else {
     server = await createServer({ ...config, server: { host: "127.0.0.1", port: 0, open: false } });
     await server.listen();
   }
-  chrome = spawn(chromePath, ["--headless=new", "--no-first-run",
-    "--no-default-browser-check", "--disable-background-networking",
-    "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"],
-  { stdio: ["ignore", "ignore", "pipe"] });
+  chrome = spawn(
+    chromePath,
+    [
+      "--headless=new",
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--disable-background-networking",
+      "--remote-debugging-port=0",
+      `--user-data-dir=${profile}`,
+      "about:blank",
+    ],
+    { stdio: ["ignore", "ignore", "pipe"] },
+  );
   const endpoint = await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("Chrome did not start")), timeoutMs);
-    chrome.once("error", (error) => { clearTimeout(timer); reject(error); });
-    chrome.stderr.on("data", (data) => {
+    chrome.once("error", error => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    chrome.stderr.on("data", data => {
       const match = data.toString().match(/DevTools listening on (ws:\/\/\S+)/);
-      if (match) { clearTimeout(timer); resolve(new URL(match[1]).origin.replace("ws:", "http:")); }
+      if (match) {
+        clearTimeout(timer);
+        resolve(new URL(match[1]).origin.replace("ws:", "http:"));
+      }
     });
   });
   const target = await (await fetch(`${endpoint}/json/new?about:blank`, { method: "PUT" })).json();
@@ -113,9 +136,10 @@ try {
     socket.addEventListener("open", resolve, { once: true });
     socket.addEventListener("error", reject, { once: true });
   });
-  socket.addEventListener("message", (event) => {
+  socket.addEventListener("message", event => {
     const message = JSON.parse(event.data);
-    if (message.method === "Runtime.exceptionThrown") console.error(message.params.exceptionDetails.exception?.description ?? message.params.exceptionDetails.text);
+    if (message.method === "Runtime.exceptionThrown")
+      console.error(message.params.exceptionDetails.exception?.description ?? message.params.exceptionDetails.text);
     const waiting = pending.get(message.id);
     if (!waiting) return;
     pending.delete(message.id);
@@ -127,7 +151,11 @@ try {
   const baseUrl = server.resolvedUrls.local[0];
   for (const viewport of viewports) {
     await cdp("Emulation.setDeviceMetricsOverride", { ...viewport, deviceScaleFactor: 1, mobile: false });
-    for (const mode of cropOnly ? ["crop"] : localEditOnly ? ["crop", "markup"] : ["image", "video", "preview", "crop", "markup"]) {
+    for (const mode of cropOnly
+      ? ["crop"]
+      : localEditOnly
+        ? ["crop", "markup"]
+        : ["image", "video", "preview", "crop", "markup"]) {
       await cdp("Page.navigate", { url: new URL(`${route}?mode=${mode}`, baseUrl).href });
       if (mode === "crop") {
         await waitFor(() => document.querySelector(".crop-image-shell img")?.naturalWidth === 1600);
@@ -135,30 +163,52 @@ try {
         await pointerClick('[role="option"][data-value="1:1"]');
         const layout = await page(() => {
           const bounds = selector => {
-            const { width, height, left, top, right, bottom } = document.querySelector(selector).getBoundingClientRect();
+            const { width, height, left, top, right, bottom } = document
+              .querySelector(selector)
+              .getBoundingClientRect();
             return { width, height, left, top, right, bottom };
           };
-          return { image: bounds(".crop-image-shell img"), stage: bounds(".crop-image-shell"),
-            selection: bounds(".crop-selection"), submit: bounds(".crop-confirm") };
+          return {
+            image: bounds(".crop-image-shell img"),
+            stage: bounds(".crop-image-shell"),
+            selection: bounds(".crop-selection"),
+            submit: bounds(".crop-confirm"),
+          };
         });
-        assert.ok(Math.abs(layout.stage.width - layout.image.width) < 1
-          && Math.abs(layout.stage.height - layout.image.height) < 1, "The crop stage must contain the complete image");
-        assert.ok(Math.abs(layout.selection.width - layout.selection.height) < 1, "A 1:1 crop must display as a square");
+        assert.ok(
+          Math.abs(layout.stage.width - layout.image.width) < 1 &&
+            Math.abs(layout.stage.height - layout.image.height) < 1,
+          "The crop stage must contain the complete image",
+        );
+        assert.ok(
+          Math.abs(layout.selection.width - layout.selection.height) < 1,
+          "A 1:1 crop must display as a square",
+        );
         for (const bounds of [layout.stage, layout.submit]) {
-          assert.ok(bounds.left >= 0 && bounds.top >= 0 && bounds.right <= viewport.width && bounds.bottom <= viewport.height,
-            "Crop preview and confirmation must remain inside the viewport");
+          assert.ok(
+            bounds.left >= 0 && bounds.top >= 0 && bounds.right <= viewport.width && bounds.bottom <= viewport.height,
+            "Crop preview and confirmation must remain inside the viewport",
+          );
         }
         await pointerClick(".crop-confirm");
-        assert.deepEqual(await page(() => JSON.parse(document.body.dataset.submitted)),
-          { x: 0.29, y: 0.08, width: 0.42, height: 0.84 });
+        assert.deepEqual(await page(() => JSON.parse(document.body.dataset.submitted)), {
+          x: 0.29,
+          y: 0.08,
+          width: 0.42,
+          height: 0.84,
+        });
         console.log(JSON.stringify({ viewport, mode, completeImage: true, squareCrop: true }));
         continue;
       }
       if (mode === "markup") {
-        await waitFor(() => document.querySelector(".markup-image-shell canvas")?.width === 1600
-          && document.querySelector(".markup-image-title small")?.textContent === "1600 × 800");
-        const pixel = () => [...document.querySelector(".markup-image-shell canvas")
-          .getContext("2d").getImageData(800, 400, 1, 1).data];
+        await waitFor(
+          () =>
+            document.querySelector(".markup-image-shell canvas")?.width === 1600 &&
+            document.querySelector(".markup-image-title small")?.textContent === "1600 × 800",
+        );
+        const pixel = () => [
+          ...document.querySelector(".markup-image-shell canvas").getContext("2d").getImageData(800, 400, 1, 1).data,
+        ];
         await pointerClick(".markup-image-shell canvas");
         assert.deepEqual(await page(pixel), [255, 48, 56, 255], "A pen tap must persist after pointer release");
         await pointerClick('button[aria-label="撤销"]');
@@ -171,46 +221,106 @@ try {
         await pointerClick('button[aria-label="画笔"]');
         const points = await page(() => {
           const r = document.querySelector(".markup-image-shell canvas").getBoundingClientRect();
-          return { start: { x: r.left + r.width / 4, y: r.top + r.height / 4 },
-            end: { x: r.left + r.width / 2, y: r.top + r.height / 2 } };
+          return {
+            start: { x: r.left + r.width / 4, y: r.top + r.height / 4 },
+            end: { x: r.left + r.width / 2, y: r.top + r.height / 2 },
+          };
         });
-        await cdp("Input.dispatchMouseEvent", { type: "mousePressed", ...points.start, button: "left", buttons: 1, clickCount: 1 });
+        await cdp("Input.dispatchMouseEvent", {
+          type: "mousePressed",
+          ...points.start,
+          button: "left",
+          buttons: 1,
+          clickCount: 1,
+        });
         await cdp("Input.dispatchMouseEvent", { type: "mouseMoved", ...points.end, button: "left", buttons: 1 });
-        await cdp("Input.dispatchMouseEvent", { type: "mouseReleased", ...points.end, button: "left", buttons: 0, clickCount: 1 });
-        assert.deepEqual(await page(() => [...document.querySelector(".markup-image-shell canvas")
-          .getContext("2d").getImageData(600, 300, 1, 1).data]), [255, 48, 56, 255], "A moving stroke must remain continuous");
+        await cdp("Input.dispatchMouseEvent", {
+          type: "mouseReleased",
+          ...points.end,
+          button: "left",
+          buttons: 0,
+          clickCount: 1,
+        });
+        assert.deepEqual(
+          await page(() => [
+            ...document.querySelector(".markup-image-shell canvas").getContext("2d").getImageData(600, 300, 1, 1).data,
+          ]),
+          [255, 48, 56, 255],
+          "A moving stroke must remain continuous",
+        );
         await pointerClick('button[aria-label="文字"]');
         await pointerClick(".markup-image-shell canvas");
         await cdp("Input.insertText", { text: "合成标注草稿" });
         for (const key of ["Enter", "Escape"]) {
-          await page((key) => document.querySelector('input[aria-label="标注文字"]').dispatchEvent(
-            new KeyboardEvent("keydown", { key, isComposing: true, bubbles: true, cancelable: true })), key);
-          assert.deepEqual(await page(() => {
-            const input = document.querySelector('input[aria-label="标注文字"]');
-            return { value: input?.value, focused: input === document.activeElement };
-          }), { value: "合成标注草稿", focused: true }, "Composing keys must preserve annotation text and focus");
+          await page(
+            key =>
+              document
+                .querySelector('input[aria-label="标注文字"]')
+                .dispatchEvent(
+                  new KeyboardEvent("keydown", { key, isComposing: true, bubbles: true, cancelable: true }),
+                ),
+            key,
+          );
+          assert.deepEqual(
+            await page(() => {
+              const input = document.querySelector('input[aria-label="标注文字"]');
+              return { value: input?.value, focused: input === document.activeElement };
+            }),
+            { value: "合成标注草稿", focused: true },
+            "Composing keys must preserve annotation text and focus",
+          );
         }
-        await cdp("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
+        await cdp("Input.dispatchKeyEvent", {
+          type: "keyDown",
+          key: "Enter",
+          code: "Enter",
+          windowsVirtualKeyCode: 13,
+        });
         await cdp("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
         await waitFor(() => !document.querySelector('input[aria-label="标注文字"]'));
-        console.log(JSON.stringify({ viewport, mode, penTap: true, undoRedo: true, eraserTap: true, drag: true, composition: true }));
+        console.log(
+          JSON.stringify({
+            viewport,
+            mode,
+            penTap: true,
+            undoRedo: true,
+            eraserTap: true,
+            drag: true,
+            composition: true,
+          }),
+        );
         continue;
       }
       await waitFor(() => document.querySelectorAll('.runninghub-form [role="combobox"]').length >= 3);
       const layout = await page(() => {
         const form = document.querySelector(".runninghub-form");
         const panel = form.closest('[role="dialog"]') ?? form.closest("main");
-        return { text: panel.innerText, panelWidth: panel.clientWidth, scrollWidth: panel.scrollWidth,
+        return {
+          text: panel.innerText,
+          panelWidth: panel.clientWidth,
+          scrollWidth: panel.scrollWidth,
           controls: [...form.querySelectorAll('[role="combobox"]')].map(control => {
             const style = getComputedStyle(control);
-            return { width: control.getBoundingClientRect().width, fieldWidth: control.closest('[data-slot="field"]').getBoundingClientRect().width,
-              border: style.borderTopWidth, background: style.backgroundColor, radius: style.borderRadius };
+            return {
+              width: control.getBoundingClientRect().width,
+              fieldWidth: control.closest('[data-slot="field"]').getBoundingClientRect().width,
+              border: style.borderTopWidth,
+              background: style.backgroundColor,
+              radius: style.borderRadius,
+            };
           }),
-          regularSelect: panel.querySelector('label > .ui-select')?.getBoundingClientRect().width,
-          regularLabel: panel.querySelector('label > .ui-select')?.parentElement.getBoundingClientRect().width,
+          regularSelect: panel.querySelector("label > .ui-select")?.getBoundingClientRect().width,
+          regularLabel: panel.querySelector("label > .ui-select")?.parentElement.getBoundingClientRect().width,
           hints: [...form.querySelectorAll('[data-slot="field-label"]')].map(label => label.title),
-          actions: [...document.querySelectorAll('.artifact-card-toolbar > button, .artifact-card-toolbar > .media-version-picker > button, .artifact-card-toolbar > .text-card-version-picker > button')]
-            .map(control => ({ height: control.getBoundingClientRect().height, radius: getComputedStyle(control).borderRadius })) };
+          actions: [
+            ...document.querySelectorAll(
+              ".artifact-card-toolbar > button, .artifact-card-toolbar > .media-version-picker > button, .artifact-card-toolbar > .text-card-version-picker > button",
+            ),
+          ].map(control => ({
+            height: control.getBoundingClientRect().height,
+            radius: getComputedStyle(control).borderRadius,
+          })),
+        };
       });
       assert.equal(layout.panelWidth, layout.scrollWidth, `${mode} panel must not overflow horizontally`);
       assert.ok(!layout.text.includes("PrimitiveBoolean"), "Technical names stay in hover hints");
@@ -222,17 +332,30 @@ try {
         assert.equal(control.radius, "8px");
         assert.notEqual(control.background, "rgba(0, 0, 0, 0)");
       }
-      if (mode === "image") assert.ok(Math.abs(layout.regularSelect - layout.regularLabel) < 1, "Ordinary operation select fills its label");
-      assert.equal(layout.actions.length, mode === "preview" ? 0 : 3, "Exercise direct, media-version and text-version toolbar actions");
+      if (mode === "image")
+        assert.ok(
+          Math.abs(layout.regularSelect - layout.regularLabel) < 1,
+          "Ordinary operation select fills its label",
+        );
+      assert.equal(
+        layout.actions.length,
+        mode === "preview" ? 0 : 3,
+        "Exercise direct, media-version and text-version toolbar actions",
+      );
       // The lightweight canvas uses compact --ui-radius-sm corners; nested fields retain 8px corners.
-      for (const action of layout.actions) { assert.equal(action.height, 32); assert.equal(action.radius, "6px"); }
-      console.log(JSON.stringify({ viewport, mode, controls: layout.controls.length, toolbarActions: layout.actions.length }));
+      for (const action of layout.actions) {
+        assert.equal(action.height, 32);
+        assert.equal(action.radius, "6px");
+      }
+      console.log(
+        JSON.stringify({ viewport, mode, controls: layout.controls.length, toolbarActions: layout.actions.length }),
+      );
     }
   }
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   for (const mode of cropOnly || localEditOnly ? [] : ["image", "video"]) {
-    const submitSelector = mode === "image" ? ".media-operation-panel footer button"
-      : '[role="dialog"] button[type="submit"]';
+    const submitSelector =
+      mode === "image" ? ".media-operation-panel footer button" : '[role="dialog"] button[type="submit"]';
     await cdp("Page.navigate", { url: new URL(`${route}?mode=${mode}`, baseUrl).href });
     await waitFor(() => document.querySelectorAll('.runninghub-form [role="combobox"]').length >= 3);
     await pointerClick('.runninghub-form [role="combobox"]');
@@ -247,21 +370,28 @@ try {
     const disabled = await page(selector => {
       const fields = [...document.querySelectorAll('.runninghub-form [role="combobox"]')];
       const submit = document.querySelector(selector);
-      return { count: fields.length, submitPresent: Boolean(submit), disabled: fields.every(control => control.disabled) && submit?.disabled };
+      return {
+        count: fields.length,
+        submitPresent: Boolean(submit),
+        disabled: fields.every(control => control.disabled) && submit?.disabled,
+      };
     }, submitSelector);
     assert.deepEqual(disabled, { count: 3, submitPresent: true, disabled: true });
   }
-  console.log(cropOnly || localEditOnly ? "Local image editing production regression passed (four viewports; synthetic only)"
-    : "Media function parameter production layout passed (image / video / preview / crop / markup, four viewports, toolbar isolation, exact source/scale submission, busy controls; synthetic only)");
-
+  console.log(
+    cropOnly || localEditOnly
+      ? "Local image editing production regression passed (four viewports; synthetic only)"
+      : "Media function parameter production layout passed (image / video / preview / crop / markup, four viewports, toolbar isolation, exact source/scale submission, busy controls; synthetic only)",
+  );
 } finally {
   socket?.close();
   if (chrome && chrome.exitCode == null) {
-    const exited = new Promise((resolve) => chrome.once("exit", resolve));
+    const exited = new Promise(resolve => chrome.once("exit", resolve));
     chrome.kill();
     await exited;
   }
   if (server?.close) await server.close();
-  else if (server) await new Promise((resolve, reject) => server.httpServer.close((error) => error ? reject(error) : resolve()));
+  else if (server)
+    await new Promise((resolve, reject) => server.httpServer.close(error => (error ? reject(error) : resolve())));
   await rm(profile, { recursive: true, force: true });
 }

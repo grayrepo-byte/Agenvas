@@ -12,31 +12,59 @@ afterEach(() => {
 });
 
 describe("structured prompt editing", () => {
-  it.each(["Enter", "ArrowDown", "ArrowUp", "Escape"])("leaves composing %s to the input method while a mention menu is open", (key) => {
-    const changed = vi.fn();
-    const { container } = render(<PromptMentionEditor id="prompt" label="Prompt" placeholder="Enter prompt" maxLength={100}
-      prompt="@" mentions={[]} references={[REFERENCE]} onChange={changed} />);
-    const editor = screen.getByRole("textbox", { name: "Prompt" });
-    const range = document.createRange();
-    range.setStart(editor.firstChild!, 1);
-    range.collapse(true);
-    window.getSelection()!.addRange(range);
-    fireEvent.input(editor);
-    changed.mockClear();
+  it.each(["Enter", "ArrowDown", "ArrowUp", "Escape"])(
+    "leaves composing %s to the input method while a mention menu is open",
+    key => {
+      const changed = vi.fn();
+      const { container } = render(
+        <PromptMentionEditor
+          id="prompt"
+          label="Prompt"
+          placeholder="Enter prompt"
+          maxLength={100}
+          prompt="@"
+          mentions={[]}
+          references={[REFERENCE]}
+          onChange={changed}
+        />,
+      );
+      const editor = screen.getByRole("textbox", { name: "Prompt" });
+      const range = document.createRange();
+      range.setStart(editor.firstChild!, 1);
+      range.collapse(true);
+      window.getSelection()!.addRange(range);
+      fireEvent.input(editor);
+      changed.mockClear();
 
-    const accepted = fireEvent.keyDown(editor, { key, isComposing: true });
+      const accepted = fireEvent.keyDown(editor, { key, isComposing: true });
 
-    expect(accepted).toBe(true);
-    expect(changed).not.toHaveBeenCalled();
-    expect(editor).toHaveTextContent("@");
-    expect(container.querySelector(".media-draft-mention-menu")).toBeVisible();
-  });
+      expect(accepted).toBe(true);
+      expect(changed).not.toHaveBeenCalled();
+      expect(editor).toHaveTextContent("@");
+      expect(container.querySelector(".media-draft-mention-menu")).toBeVisible();
+    },
+  );
 
   it("keeps the mention choice through IME navigation and accepts ordinary Enter after composition", () => {
     const changed = vi.fn();
-    const audio = { versionId: "synthetic-audio-version", role: "AUDIO_REFERENCE", color: "#F15CAF", label: "Audio 1" } as const;
-    render(<PromptMentionEditor id="prompt" label="Prompt" placeholder="Enter prompt" maxLength={100}
-      prompt="@" mentions={[]} references={[REFERENCE, audio]} onChange={changed} />);
+    const audio = {
+      versionId: "synthetic-audio-version",
+      role: "AUDIO_REFERENCE",
+      color: "#F15CAF",
+      label: "Audio 1",
+    } as const;
+    render(
+      <PromptMentionEditor
+        id="prompt"
+        label="Prompt"
+        placeholder="Enter prompt"
+        maxLength={100}
+        prompt="@"
+        mentions={[]}
+        references={[REFERENCE, audio]}
+        onChange={changed}
+      />,
+    );
     const editor = screen.getByRole("textbox", { name: "Prompt" });
     const range = document.createRange();
     range.setStart(editor.firstChild!, 1);
@@ -46,9 +74,15 @@ describe("structured prompt editing", () => {
     changed.mockClear();
 
     fireEvent.keyDown(editor, { key: "ArrowDown" });
-    expect(screen.getByRole("option", { name: "Audio 1 synthetic-audio-version" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("option", { name: "Audio 1 synthetic-audio-version" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     fireEvent.keyDown(editor, { key: "ArrowUp", isComposing: true });
-    expect(screen.getByRole("option", { name: "Audio 1 synthetic-audio-version" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("option", { name: "Audio 1 synthetic-audio-version" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     fireEvent.compositionEnd(editor);
     expect(fireEvent.keyDown(editor, { key: "Enter" })).toBe(false);
 
@@ -61,19 +95,28 @@ describe("structured prompt editing", () => {
     { context: "standalone editor", workspace: false },
   ])("opens bottom-edge mention menus in the $context without losing their scroll anchor", ({ workspace }) => {
     vi.stubGlobal("innerHeight", 320);
-    const { container } = render(<div className={workspace ? "workspace-media-editor" : undefined}>
-      <div className="media-draft-editor">
-        <PromptMentionEditor id="prompt" label="Prompt" placeholder="Enter prompt" maxLength={100}
-          prompt="@" mentions={[]} references={[REFERENCE]} onChange={vi.fn()} />
-      </div>
-    </div>);
+    const { container } = render(
+      <div className={workspace ? "workspace-media-editor" : undefined}>
+        <div className="media-draft-editor">
+          <PromptMentionEditor
+            id="prompt"
+            label="Prompt"
+            placeholder="Enter prompt"
+            maxLength={100}
+            prompt="@"
+            mentions={[]}
+            references={[REFERENCE]}
+            onChange={vi.fn()}
+          />
+        </div>
+      </div>,
+    );
     const editor = screen.getByRole("textbox", { name: "Prompt" });
     const panel = editor.closest<HTMLElement>(".media-draft-editor")!;
     let editorBounds = new DOMRect(140, 210, 360, 100);
     let caretBounds = new DOMRect(190, 270, 0, 18);
     vi.spyOn(editor, "getBoundingClientRect").mockImplementation(() => editorBounds);
-    vi.spyOn(container.firstElementChild!, "getBoundingClientRect")
-      .mockReturnValue(new DOMRect(100, 100, 600, 200));
+    vi.spyOn(container.firstElementChild!, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 100, 600, 200));
     const range = document.createRange();
     range.setStart(editor.firstChild!, 1);
     range.collapse(true);
@@ -90,8 +133,12 @@ describe("structured prompt editing", () => {
       fireEvent.input(editor);
       const menu = container.querySelector<HTMLElement>(".media-draft-mention-menu")!;
       if (workspace) {
-        expect(menu).toHaveStyle({ left: "90px", top: `${162 - scrollTop}px`,
-          transform: "translateY(-100%)", maxHeight: `${246 - scrollTop}px` });
+        expect(menu).toHaveStyle({
+          left: "90px",
+          top: `${162 - scrollTop}px`,
+          transform: "translateY(-100%)",
+          maxHeight: `${246 - scrollTop}px`,
+        });
         // Even a menu filled to its height limit fits above the caret inside the window.
         expect(100 + parseFloat(menu.style.top) - parseFloat(menu.style.maxHeight)).toBeGreaterThanOrEqual(0);
       } else {
@@ -105,52 +152,80 @@ describe("structured prompt editing", () => {
   });
 
   it.each([
-    { context: "workspace overlay", workspace: true,
-      initial: { left: "90px", top: "216px" }, scrolled: { left: "90px", top: "136px" } },
-    { context: "standalone editor", workspace: false,
-      initial: { left: "50px", top: "56px" }, scrolled: { left: "50px", top: "56px" } },
-  ])("positions mention menus against the $context when opening after parent scrolling", ({ workspace, initial, scrolled }) => {
-    const changed = vi.fn();
-    const { container } = render(<div className={workspace ? "workspace-media-editor" : undefined}>
-      <div className="media-draft-editor">
-        <PromptMentionEditor id="prompt" label="Prompt" placeholder="Enter prompt" maxLength={100}
-          prompt="@" mentions={[]} references={[REFERENCE]} onChange={changed} />
-      </div>
-    </div>);
-    const editor = screen.getByRole("textbox", { name: "Prompt" });
-    const panel = editor.closest<HTMLElement>(".media-draft-editor")!;
-    let editorBounds = new DOMRect(140, 260, 360, 120);
-    let caretBounds = new DOMRect(190, 290, 0, 18);
-    vi.spyOn(editor, "getBoundingClientRect").mockImplementation(() => editorBounds);
-    vi.spyOn(container.firstElementChild!, "getBoundingClientRect")
-      .mockReturnValue(new DOMRect(100, 100, 600, 400));
-    const range = document.createRange();
-    range.setStart(editor.firstChild!, 1);
-    range.collapse(true);
-    Object.defineProperty(range, "getBoundingClientRect", { value: () => caretBounds });
-    const selection = window.getSelection()!;
-    selection.removeAllRanges();
-    selection.addRange(range);
-    fireEvent.input(editor);
-    expect(container.querySelector(".media-draft-mention-menu")).toHaveStyle(initial);
-    expect(screen.getByRole("option", { name: "Image 1 synthetic-image-version" })).toBeVisible();
+    {
+      context: "workspace overlay",
+      workspace: true,
+      initial: { left: "90px", top: "216px" },
+      scrolled: { left: "90px", top: "136px" },
+    },
+    {
+      context: "standalone editor",
+      workspace: false,
+      initial: { left: "50px", top: "56px" },
+      scrolled: { left: "50px", top: "56px" },
+    },
+  ])(
+    "positions mention menus against the $context when opening after parent scrolling",
+    ({ workspace, initial, scrolled }) => {
+      const changed = vi.fn();
+      const { container } = render(
+        <div className={workspace ? "workspace-media-editor" : undefined}>
+          <div className="media-draft-editor">
+            <PromptMentionEditor
+              id="prompt"
+              label="Prompt"
+              placeholder="Enter prompt"
+              maxLength={100}
+              prompt="@"
+              mentions={[]}
+              references={[REFERENCE]}
+              onChange={changed}
+            />
+          </div>
+        </div>,
+      );
+      const editor = screen.getByRole("textbox", { name: "Prompt" });
+      const panel = editor.closest<HTMLElement>(".media-draft-editor")!;
+      let editorBounds = new DOMRect(140, 260, 360, 120);
+      let caretBounds = new DOMRect(190, 290, 0, 18);
+      vi.spyOn(editor, "getBoundingClientRect").mockImplementation(() => editorBounds);
+      vi.spyOn(container.firstElementChild!, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 100, 600, 400));
+      const range = document.createRange();
+      range.setStart(editor.firstChild!, 1);
+      range.collapse(true);
+      Object.defineProperty(range, "getBoundingClientRect", { value: () => caretBounds });
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+      fireEvent.input(editor);
+      expect(container.querySelector(".media-draft-mention-menu")).toHaveStyle(initial);
+      expect(screen.getByRole("option", { name: "Image 1 synthetic-image-version" })).toBeVisible();
 
-    fireEvent.keyDown(editor, { key: "Escape" });
-    expect(container.querySelector(".media-draft-mention-menu")).not.toBeInTheDocument();
-    // Parent scrolling moves the editor and caret together; the screen-sized overlay stays fixed.
-    panel.scrollTop = 80;
-    editorBounds = new DOMRect(140, 180, 360, 120);
-    caretBounds = new DOMRect(190, 210, 0, 18);
-    fireEvent.scroll(panel);
-    fireEvent.input(editor);
-    expect(container.querySelector(".media-draft-mention-menu")).toHaveStyle(scrolled);
-    expect(changed).toHaveBeenLastCalledWith("@", []);
-  });
+      fireEvent.keyDown(editor, { key: "Escape" });
+      expect(container.querySelector(".media-draft-mention-menu")).not.toBeInTheDocument();
+      // Parent scrolling moves the editor and caret together; the screen-sized overlay stays fixed.
+      panel.scrollTop = 80;
+      editorBounds = new DOMRect(140, 180, 360, 120);
+      caretBounds = new DOMRect(190, 210, 0, 18);
+      fireEvent.scroll(panel);
+      fireEvent.input(editor);
+      expect(container.querySelector(".media-draft-mention-menu")).toHaveStyle(scrolled);
+      expect(changed).toHaveBeenLastCalledWith("@", []);
+    },
+  );
 
   it("keeps a locked prompt readable and ignores input events until unlocked", () => {
     const changed = vi.fn();
-    const props = { id: "prompt", label: "Prompt", placeholder: "Enter prompt", maxLength: 100,
-      prompt: "saved", mentions: [], references: [], onChange: changed };
+    const props = {
+      id: "prompt",
+      label: "Prompt",
+      placeholder: "Enter prompt",
+      maxLength: 100,
+      prompt: "saved",
+      mentions: [],
+      references: [],
+      onChange: changed,
+    };
     const { rerender } = render(<PromptMentionEditor {...props} readOnly />);
     const editor = screen.getByRole("textbox", { name: "Prompt" });
     expect(editor).toHaveAttribute("contenteditable", "false");
@@ -165,8 +240,18 @@ describe("structured prompt editing", () => {
   it("round-trips multiline Unicode text and repeated labels through the editable DOM", () => {
     const changed = vi.fn();
     const prompt = "🙂 first\n\uFFFC and \uFFFC\nlast";
-    render(<PromptMentionEditor id="prompt" label="Prompt" placeholder="Enter prompt" maxLength={100}
-      prompt={prompt} mentions={[MENTION, MENTION]} references={[REFERENCE]} onChange={changed} />);
+    render(
+      <PromptMentionEditor
+        id="prompt"
+        label="Prompt"
+        placeholder="Enter prompt"
+        maxLength={100}
+        prompt={prompt}
+        mentions={[MENTION, MENTION]}
+        references={[REFERENCE]}
+        onChange={changed}
+      />,
+    );
     const editor = screen.getByRole("textbox", { name: "Prompt" });
     fireEvent.input(editor);
     expect(changed).toHaveBeenCalledWith(prompt, [MENTION, MENTION]);
@@ -174,8 +259,18 @@ describe("structured prompt editing", () => {
 
   it("restores the persisted prompt when input exceeds the supplied length limit", () => {
     const changed = vi.fn();
-    render(<PromptMentionEditor id="prompt" label="Prompt" placeholder="Enter prompt" maxLength={5}
-      prompt="saved" mentions={[]} references={[]} onChange={changed} />);
+    render(
+      <PromptMentionEditor
+        id="prompt"
+        label="Prompt"
+        placeholder="Enter prompt"
+        maxLength={5}
+        prompt="saved"
+        mentions={[]}
+        references={[]}
+        onChange={changed}
+      />,
+    );
     const editor = screen.getByRole("textbox", { name: "Prompt" });
     editor.textContent = "too long";
     fireEvent.input(editor);

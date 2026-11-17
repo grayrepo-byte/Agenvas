@@ -1,17 +1,28 @@
-import { QueryClient,QueryClientProvider } from "@tanstack/react-query";
-import { act,render,screen,within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { HttpResponse,http } from "msw";
+import { HttpResponse, http } from "msw";
 import { MemoryRouter } from "react-router";
-import { describe,expect,expectTypeOf,it,vi } from "vitest";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import {
-DEFAULT_LOCALE,LOCALE_STORAGE_KEY,SUPPORTED_LOCALES,
-detectLocale,formatDate,formatNumber,getLocale,localeName,resolveLocale,setLocale,t,translate,type MessageKey
+  DEFAULT_LOCALE,
+  LOCALE_STORAGE_KEY,
+  SUPPORTED_LOCALES,
+  detectLocale,
+  formatDate,
+  formatNumber,
+  getLocale,
+  localeName,
+  resolveLocale,
+  setLocale,
+  t,
+  translate,
+  type MessageKey,
 } from ".";
 import { LoginPage } from "../../features/auth/LoginPage";
 import { changeControl } from "../../test/controls";
 import { server } from "../../test/server";
-import { getSetupStatus,uploadImageAsset } from "../api/client";
+import { getSetupStatus, uploadImageAsset } from "../api/client";
 import { LanguageSelect } from "./LanguageSelect";
 import en from "./locales/en.json";
 import ja from "./locales/ja.json";
@@ -35,7 +46,9 @@ describe("shared locale configuration", () => {
     expect(detectLocale()).toBe("ru");
     stored.mockReturnValue("unsupported");
     expect(detectLocale()).toBe("ja");
-    stored.mockImplementation(() => { throw new DOMException("blocked"); });
+    stored.mockImplementation(() => {
+      throw new DOMException("blocked");
+    });
     expect(detectLocale()).toBe("ja");
     languages.mockReturnValue(["fr-FR"]);
     expect(detectLocale()).toBe(DEFAULT_LOCALE);
@@ -49,8 +62,7 @@ describe("shared locale configuration", () => {
       for (const key of keys as MessageKey[]) {
         const value = catalog[key];
         expect(value.trim(), key).not.toBe("");
-        expect(value.match(/\{\w+\}/g)?.sort() ?? [], key)
-          .toEqual(zh[key].match(/\{\w+\}/g)?.sort() ?? []);
+        expect(value.match(/\{\w+\}/g)?.sort() ?? [], key).toEqual(zh[key].match(/\{\w+\}/g)?.sort() ?? []);
       }
     }
   });
@@ -69,8 +81,9 @@ describe("shared locale configuration", () => {
     expectTypeOf<"登录 Agenvas">().not.toExtend<MessageKey>();
     expect(translate("en", "canvas.selection.count", { "0": 3 })).toContain("3");
     expect(translate("zh", "auth.login.title")).toBe("登录 Agenvas");
-    expect(translate("ja", "canvas.selection.count", { "0": "<script>$&{1}</script>" }))
-      .toContain("<script>$&{1}</script>");
+    expect(translate("ja", "canvas.selection.count", { "0": "<script>$&{1}</script>" })).toContain(
+      "<script>$&{1}</script>",
+    );
     expect(translate("zh", "canvas.selection.count")).toBe("{0} 张卡片已选中");
   });
 
@@ -82,13 +95,21 @@ describe("shared locale configuration", () => {
   });
 
   it("switches the actual login page without losing inputs or remounting it", async () => {
-    render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><LoginPage /></MemoryRouter></QueryClientProvider>);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <LoginPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
     const username = screen.getByRole("textbox", { name: t("auth.login.username") });
     await changeControl(username, { target: { value: "my-admin" } });
     const password = screen.getByLabelText(t("auth.login.password"));
     await changeControl(password, { target: { value: "draft-password" } });
     for (const locale of SUPPORTED_LOCALES) {
-      act(() => { setLocale(locale); });
+      act(() => {
+        setLocale(locale);
+      });
       expect(screen.getByRole("heading", { name: translate(locale, "auth.login.title") })).toBeInTheDocument();
       expect(screen.getByRole("textbox", { name: translate(locale, "auth.login.username") })).toBe(username);
       expect(username).toHaveValue("my-admin");
@@ -103,8 +124,11 @@ describe("shared locale configuration", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /界面语言/ }));
     const list = within(screen.getByRole("dialog"));
-    for (const locale of SUPPORTED_LOCALES) expect(list.getByRole("button", { name: localeName(locale) })).toBeInTheDocument();
-    const storage = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new DOMException("blocked"); });
+    for (const locale of SUPPORTED_LOCALES)
+      expect(list.getByRole("button", { name: localeName(locale) })).toBeInTheDocument();
+    const storage = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("blocked");
+    });
     await user.click(list.getByRole("button", { name: localeName("ja") }));
     expect(getLocale()).toBe("ja");
     expect(screen.getByRole("alert")).toHaveTextContent(translate("ja", "locale.storageFailed"));

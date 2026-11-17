@@ -16,12 +16,17 @@ import org.springframework.ai.chat.model.Generation;
 class LlmStreamLogCollectorTest {
     private final AtomicLong nanos = new AtomicLong();
 
-    @Test void distinguishesMetadataOnlyFirstChunkFirstTextAndKeepsActualUsage() {
+    @Test
+    void distinguishesMetadataOnlyFirstChunkFirstTextAndKeepsActualUsage() {
         var log = new LlmStreamLogCollector(true, nanos::get);
-        time(10); log.chunk(chunk("", false));
-        time(35); log.chunk(chunk("first", false));
-        time(90); log.chunk(chunk(" second", true));
-        time(100); log.complete(chunk("first second", true));
+        time(10);
+        log.chunk(chunk("", false));
+        time(35);
+        log.chunk(chunk("first", false));
+        time(90);
+        log.chunk(chunk(" second", true));
+        time(100);
+        log.complete(chunk("first second", true));
         var snapshot = log.snapshot(EndStatus.COMPLETED, null);
         assertThat(snapshot.metrics().firstChunkMs()).isEqualTo(10L);
         assertThat(snapshot.metrics().firstTextMs()).isEqualTo(35L);
@@ -34,11 +39,15 @@ class LlmStreamLogCollectorTest {
         assertThat(snapshot.content().response()).contains("first second", "synthetic-response");
     }
 
-    @Test void failureKeepsAllReceivedTextAndToolPrefixAndMissingUsageIsUnknown() {
+    @Test
+    void failureKeepsAllReceivedTextAndToolPrefixAndMissingUsageIsUnknown() {
         var log = new LlmStreamLogCollector(true, nanos::get);
-        time(10); log.chunk(chunk("published", false));
-        time(15); log.chunk(new ChatResponse(List.of(new Generation(AssistantMessage.builder().content(" tail")
-                .toolCalls(List.of(new AssistantMessage.ToolCall("synthetic-tool", "function", "read", "{}"))).build()))));
+        time(10);
+        log.chunk(chunk("published", false));
+        time(15);
+        log.chunk(new ChatResponse(List.of(new Generation(AssistantMessage.builder().content(" tail")
+                .toolCalls(List.of(new AssistantMessage.ToolCall("synthetic-tool", "function", "read", "{}")))
+                .build()))));
         var failed = log.snapshot(EndStatus.FAILED, "CALL_STREAM_FAILED");
         assertThat(failed.content().response()).contains("published tail", "synthetic-tool");
         assertThat(failed.metrics().totalTokens()).isNull();
@@ -47,16 +56,19 @@ class LlmStreamLogCollectorTest {
         assertThat(failed.content().response()).contains("published tail").doesNotContain("late");
     }
 
-    @Test void metricsWithoutDebugDoNotRetainBodiesAndToolOnlyStreamsHaveNoFirstText() {
+    @Test
+    void metricsWithoutDebugDoNotRetainBodiesAndToolOnlyStreamsHaveNoFirstText() {
         var log = new LlmStreamLogCollector(false, nanos::get);
-        time(5); log.chunk(chunk("", false));
+        time(5);
+        log.chunk(chunk("", false));
         var snapshot = log.snapshot(EndStatus.CANCELED, "CALL_STREAM_CANCELED");
         assertThat(snapshot.content()).isNull();
         assertThat(snapshot.metrics().firstTextMs()).isNull();
         assertThat(snapshot.metrics().totalTokens()).isNull();
     }
 
-    @Test void contentLimitMarksPartialLogWithoutStoppingSubsequentMetrics() {
+    @Test
+    void contentLimitMarksPartialLogWithoutStoppingSubsequentMetrics() {
         var log = new LlmStreamLogCollector(true, nanos::get);
         log.chunk(chunk("prefix", false));
         log.chunk(chunk("x".repeat(1024 * 1024), false));
@@ -66,26 +78,34 @@ class LlmStreamLogCollectorTest {
         assertThat(snapshot.metrics().chunkCount()).isEqualTo(2);
     }
 
-    @Test void debugKeepsActualModelFieldsWhileFirstTextMeasuresOnlyPublicText() {
+    @Test
+    void debugKeepsActualModelFieldsWhileFirstTextMeasuresOnlyPublicText() {
         var log = new LlmStreamLogCollector(true, nanos::get);
-        time(5); log.chunk(new ChatResponse(List.of(new Generation(AssistantMessage.builder()
+        time(5);
+        log.chunk(new ChatResponse(List.of(new Generation(AssistantMessage.builder()
                 .content("<think>synthetic thought</think>")
-                .properties(Map.of("reasoningContent", "synthetic reasoning", "channel", "analysis", "isThought", true)).build()))));
-        time(25); log.chunk(chunk("synthetic answer", true));
+                .properties(Map.of("reasoningContent", "synthetic reasoning", "channel", "analysis", "isThought", true))
+                .build()))));
+        time(25);
+        log.chunk(chunk("synthetic answer", true));
         log.complete(chunk("synthetic answer", true));
         var snapshot = log.snapshot(EndStatus.COMPLETED, null);
         assertThat(snapshot.metrics().firstChunkMs()).isEqualTo(5L);
         assertThat(snapshot.metrics().firstTextMs()).isEqualTo(25L);
-        assertThat(snapshot.content().response()).contains("synthetic thought", "synthetic reasoning", "analysis", "synthetic answer");
+        assertThat(snapshot.content().response()).contains("synthetic thought", "synthetic reasoning", "analysis",
+                "synthetic answer");
     }
 
-    @Test void completionRetainsAssembledToolArgumentsAndRawModelAttributes() {
+    @Test
+    void completionRetainsAssembledToolArgumentsAndRawModelAttributes() {
         var log = new LlmStreamLogCollector(true, nanos::get);
         log.chunk(new ChatResponse(List.of(new Generation(AssistantMessage.builder().content("")
                 .properties(Map.of("reasoningContent", "synthetic tool reasoning"))
-                .toolCalls(List.of(new AssistantMessage.ToolCall("synthetic-tool", "function", "read", "{\"id\":"))).build()))));
+                .toolCalls(List.of(new AssistantMessage.ToolCall("synthetic-tool", "function", "read", "{\"id\":")))
+                .build()))));
         var assembled = AssistantMessage.builder().content("").toolCalls(List.of(
-                new AssistantMessage.ToolCall("synthetic-tool", "function", "read", "{\"id\":\"synthetic-id\"}"))).build();
+                new AssistantMessage.ToolCall("synthetic-tool", "function", "read", "{\"id\":\"synthetic-id\"}")))
+                .build();
         log.complete(new ChatResponse(List.of(new Generation(assembled,
                 ChatGenerationMetadata.builder().finishReason("tool_calls").build()))));
         var snapshot = log.snapshot(EndStatus.COMPLETED, null);
@@ -94,10 +114,13 @@ class LlmStreamLogCollectorTest {
                 .path("generations").path(0).path("assistant").path("toolCalls").size()).isEqualTo(1);
     }
 
-    private void time(long milliseconds) { nanos.set(milliseconds * 1_000_000); }
+    private void time(long milliseconds) {
+        nanos.set(milliseconds * 1_000_000);
+    }
     private ChatResponse chunk(String text, boolean usage) {
         var metadata = ChatResponseMetadata.builder().model("synthetic-model").id("synthetic-response");
-        if (usage) metadata.usage(new DefaultUsage(4, 2, 6));
+        if (usage)
+            metadata.usage(new DefaultUsage(4, 2, 6));
         return new ChatResponse(List.of(new Generation(new AssistantMessage(text),
                 ChatGenerationMetadata.builder().finishReason(usage ? "stop" : "").build())), metadata.build());
     }

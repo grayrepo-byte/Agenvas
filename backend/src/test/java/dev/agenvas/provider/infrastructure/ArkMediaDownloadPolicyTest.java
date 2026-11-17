@@ -24,13 +24,18 @@ class ArkMediaDownloadPolicyTest {
             + SERVER.getAddress().getPort());
     private final ArkMediaDownloadPolicy downloads = new ArkMediaDownloadPolicy();
 
-    @AfterAll static void stop() { SERVER.stop(0); }
+    @AfterAll
+    static void stop() {
+        SERVER.stop(0);
+    }
 
-    @Test void signedResultPathsRetainEncodedCharacters() {
+    @Test
+    void signedResultPathsRetainEncodedCharacters() {
         new ArkMediaDownloadPolicy().validate(URI.create("http://localhost:8090/video%20clip.mp4?signature=synthetic"));
     }
 
-    @Test void rejectsMalformedPathsSchemesAndCredentials() {
+    @Test
+    void rejectsMalformedPathsSchemesAndCredentials() {
         for (String url : List.of("file:///video.mp4",
                 ORIGIN + "/../video.mp4", "http://user@127.0.0.1:"
                         + SERVER.getAddress().getPort() + "/video.mp4")) {
@@ -40,7 +45,8 @@ class ArkMediaDownloadPolicyTest {
         }
     }
 
-    @Test void blocksRedirectsWithoutContactingTheirTarget() {
+    @Test
+    void blocksRedirectsWithoutContactingTheirTarget() {
         assertThatThrownBy(() -> downloads.download(ORIGIN.resolve("/redirect"),
                 new ByteArrayOutputStream(), 1024))
                 .isInstanceOf(ArkMediaDownloadPolicy.Rejected.class)
@@ -48,7 +54,8 @@ class ArkMediaDownloadPolicyTest {
         assertThat(PRIVATE_REDIRECT_HITS).hasValue(0);
     }
 
-    @Test void boundsBytesAndChecksMimeAndMp4Signature() {
+    @Test
+    void boundsBytesAndChecksMimeAndMp4Signature() {
         assertThatThrownBy(() -> downloads.download(ORIGIN.resolve("/oversize"),
                 new ByteArrayOutputStream(), 16))
                 .isInstanceOf(ArkMediaDownloadPolicy.Rejected.class)
@@ -63,7 +70,8 @@ class ArkMediaDownloadPolicyTest {
                 .hasMessage("ARK_MEDIA_INVALID_MP4");
     }
 
-    @Test void acceptsOnlyBoundedMp4BytesFromAllowedSource() {
+    @Test
+    void acceptsOnlyBoundedMp4BytesFromAllowedSource() {
         ByteArrayOutputStream result = new ByteArrayOutputStream();
         long size = downloads.download(ORIGIN.resolve("/good"), result, 1024);
         assertThat(size).isEqualTo(16);
@@ -99,7 +107,7 @@ class ArkMediaDownloadPolicyTest {
     }
 
     private static byte[] validHeader() {
-        return new byte[] {0, 0, 0, 16, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm',
+        return new byte[]{0, 0, 0, 16, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm',
                 0, 0, 0, 0};
     }
 
@@ -107,6 +115,8 @@ class ArkMediaDownloadPolicyTest {
             String type, byte[] bytes) throws IOException {
         exchange.getResponseHeaders().set("Content-Type", type);
         exchange.sendResponseHeaders(status, bytes.length);
-        try (var output = exchange.getResponseBody()) { output.write(bytes); }
+        try (var output = exchange.getResponseBody()) {
+            output.write(bytes);
+        }
     }
 }

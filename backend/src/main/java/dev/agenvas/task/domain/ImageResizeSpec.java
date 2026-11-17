@@ -7,8 +7,11 @@ import tools.jackson.databind.JsonNode;
 
 /** Exact source dimensions, never canvas layout, determine proportional pixel resizing. */
 public record ImageResizeSpec(Mode mode, double value) {
-    public enum Mode { PERCENTAGE, LONGEST_EDGE }
-    public record Dimensions(int width, int height) {}
+    public enum Mode {
+        PERCENTAGE, LONGEST_EDGE
+    }
+    public record Dimensions(int width, int height) {
+    }
     public static final long MAX_OUTPUT_PIXELS = 40_000_000L;
     private static final double MIN_PERCENTAGE = 0.01;
     private static final double MAX_PERCENTAGE = 1000;
@@ -39,7 +42,8 @@ public record ImageResizeSpec(Mode mode, double value) {
 
     /** Round each side to the nearest pixel; very thin images retain at least one pixel. */
     public Dimensions dimensions(int sourceWidth, int sourceHeight) {
-        if (sourceWidth < 1 || sourceHeight < 1) throw invalid();
+        if (sourceWidth < 1 || sourceHeight < 1)
+            throw invalid();
         double factor = mode == Mode.PERCENTAGE ? value / 100 : value / Math.max(sourceWidth, sourceHeight);
         long width = Math.max(1, Math.round(sourceWidth * factor));
         long height = Math.max(1, Math.round(sourceHeight * factor));

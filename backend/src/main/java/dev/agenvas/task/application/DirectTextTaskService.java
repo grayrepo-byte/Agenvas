@@ -58,7 +58,8 @@ public class DirectTextTaskService {
                 || expectedArtifactVersion < 0 || expectedCurrentVersionId == null
                 || commandKey == null || commandKey.isBlank()
                 || commandKey.length() > MAX_COMMAND_KEY_LENGTH) {
-            throw invalid(ApiMessage.of("api.direct-text-task-service.requires-a-valid-prompt-word-current-text-version-product-version"));
+            throw invalid(ApiMessage.of(
+                    "api.direct-text-task-service.requires-a-valid-prompt-word-current-text-version-product-version"));
         }
         return events.recordChange(ownerId, projectId, () -> {
             Task prior = tasks.findDirectByStepKey(ownerId, projectId, commandKey).orElse(null);
@@ -66,29 +67,33 @@ public class DirectTextTaskService {
                 if (prior.kind() != Task.Kind.TEXT_GENERATION
                         || !prior.input().path("artifactId").asText().equals(artifactId.toString())
                         || !prior.input().path("prompt").asText().equals(prompt)
-                        || prior.input().path("expectedArtifactVersion").asLong(-1)
-                                != expectedArtifactVersion
+                        || prior.input().path("expectedArtifactVersion").asLong(-1) != expectedArtifactVersion
                         || !prior.input().path("expectedCurrentVersionId").asText()
                                 .equals(expectedCurrentVersionId.toString())) {
-                    throw conflict(ApiMessage.of("api.direct-text-task-service.the-same-idempotent-key-has-been-used-in-different-text"));
+                    throw conflict(ApiMessage.of(
+                            "api.direct-text-task-service.the-same-idempotent-key-has-been-used-in-different-text"));
                 }
                 return ProjectEventService.Change.unchanged(prior);
             }
             Task occupying = tasks.findOccupyingMediaTask(projectId, artifactId).orElse(null);
-            if (occupying != null) return ProjectEventService.Change.unchanged(occupying);
+            if (occupying != null)
+                return ProjectEventService.Change.unchanged(occupying);
             ArtifactService.ArtifactView target = artifacts.get(ownerId, projectId, artifactId);
             Artifact artifact = target.artifact();
             if (artifact.kind() != Artifact.Kind.TEXT || artifact.archivedAt() != null
                     || artifact.version() != expectedArtifactVersion
                     || !expectedCurrentVersionId.equals(artifact.resourceDefaultVersionId())
                     || target.resourceDefaultVersion() == null) {
-                throw conflict(ApiMessage.of("api.direct-text-task-service.the-text-card-has-changed-please-refresh-and-regenerate"));
+                throw conflict(ApiMessage
+                        .of("api.direct-text-task-service.the-text-card-has-changed-please-refresh-and-regenerate"));
             }
             ChatGateway.ConfigIdentity config = gateway.configIdentity();
             ChatGateway.ModelDetails model = gateway.modelDetailsFor(config);
             if (!model.available()) {
                 throw new ApiProblemException(HttpStatus.CONFLICT, "LLM_CONFIG_UNAVAILABLE",
-                        ApiMessage.of("api.direct-text-task-service.text-model-is-not-available"), ApiMessage.of("api.direct-text-task-service.please-configure-available-text-models-first"), false);
+                        ApiMessage.of("api.direct-text-task-service.text-model-is-not-available"),
+                        ApiMessage.of("api.direct-text-task-service.please-configure-available-text-models-first"),
+                        false);
             }
             JsonNode current = target.resourceDefaultVersion().content();
             ObjectNode input = mapper.createObjectNode();
@@ -104,13 +109,17 @@ public class DirectTextTaskService {
             input.put("prompt", prompt);
             input.put("currentText", current.path("text").asText(""));
             input.put("format", "MARKDOWN".equals(current.path("format").asText())
-                    ? "MARKDOWN" : "PLAIN_TEXT");
+                    ? "MARKDOWN"
+                    : "PLAIN_TEXT");
             input.put("modelConfigSource", config.source());
             input.put("modelConfigVersion", config.version());
             var requestBudget = gateway.requestBudgetFor(config);
-            if (requestBudget != null) input.set("requestBudget", mapper.valueToTree(requestBudget));
-            if (model.providerAdapter() != null) input.put("providerAdapter", model.providerAdapter());
-            if (model.modelId() != null) input.put("modelId", model.modelId());
+            if (requestBudget != null)
+                input.set("requestBudget", mapper.valueToTree(requestBudget));
+            if (model.providerAdapter() != null)
+                input.put("providerAdapter", model.providerAdapter());
+            if (model.modelId() != null)
+                input.put("modelId", model.modelId());
             Instant now = clock.instant();
             Task task = new Task(UUID.randomUUID(), projectId, null, commandKey,
                     Task.Kind.TEXT_GENERATION, Task.Status.READY, false, input,
@@ -134,7 +143,8 @@ public class DirectTextTaskService {
     @Transactional(readOnly = true)
     public List<Task> list(UUID ownerId, UUID projectId, UUID artifactId) {
         ArtifactService.ArtifactView target = artifacts.get(ownerId, projectId, artifactId);
-        if (target.artifact().kind() != Artifact.Kind.TEXT) throw invalid(ApiMessage.of("api.direct-text-task-service.the-goal-is-not-a-word-card"));
+        if (target.artifact().kind() != Artifact.Kind.TEXT)
+            throw invalid(ApiMessage.of("api.direct-text-task-service.the-goal-is-not-a-word-card"));
         return tasks.listDirectForArtifact(ownerId, projectId, artifactId).stream()
                 .filter(task -> task.kind() == Task.Kind.TEXT_GENERATION).toList();
     }

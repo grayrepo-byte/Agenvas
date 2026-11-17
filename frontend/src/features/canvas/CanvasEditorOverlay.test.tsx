@@ -8,11 +8,20 @@ vi.mock("@xyflow/react", () => ({ useStore: (select: (state: typeof viewport) =>
 
 it("keeps the editor anchored while its close action stays visible on resize, zoom and scroll", async () => {
   let resized: ResizeObserverCallback | undefined;
-  vi.stubGlobal("ResizeObserver", class {
-    constructor(callback: ResizeObserverCallback) { resized = callback; }
-    observe() { /* Driven explicitly below. */ }
-    disconnect() { /* No live observer in jsdom. */ }
-  });
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      constructor(callback: ResizeObserverCallback) {
+        resized = callback;
+      }
+      observe() {
+        /* Driven explicitly below. */
+      }
+      disconnect() {
+        /* No live observer in jsdom. */
+      }
+    },
+  );
   vi.stubGlobal("innerWidth", 1280);
   vi.stubGlobal("innerHeight", 720);
   const bounds = { left: 0, top: 44, right: 1280, bottom: 720, width: 1280, height: 676 };
@@ -34,7 +43,12 @@ it("keeps the editor anchored while its close action stays visible on resize, zo
     }
     if (this.classList.contains("workspace-bottom-close")) {
       const [x = 0, y = 0] = this.style.translate.split(" ").map(value => parseFloat(value) || 0);
-      return DOMRect.fromRect({ x: natural.left + natural.width - 36 + x, y: natural.top + 10 + y, width: 24, height: 24 });
+      return DOMRect.fromRect({
+        x: natural.left + natural.width - 36 + x,
+        y: natural.top + 10 + y,
+        width: 24,
+        height: 24,
+      });
     }
     if (this.classList.contains("artifact-actions-toolbar")) {
       const [x = 0, y = 0] = this.style.translate.split(" ").map(value => parseFloat(value) || 0);
@@ -42,14 +56,23 @@ it("keeps the editor anchored while its close action stays visible on resize, zo
     }
     return DOMRect.fromRect();
   });
-  const content = () => <div className="workspace-shell"><div className="react-flow">
-    <div className="react-flow__node" data-id="selected" />
-    <div className="artifact-actions-toolbar" data-id="selected" aria-label="节点操作" />
-    <div data-id="selected"><CanvasEditorOverlay>
-      <button className="workspace-bottom-close" aria-label="关闭编辑区" />
-      <textarea aria-label="工作草稿" />
-    </CanvasEditorOverlay></div>
-  </div><div className="agent-chat-dock" /><div className="workspace-header-actions" /><div className="canvas-viewport-dock" /></div>;
+  const content = () => (
+    <div className="workspace-shell">
+      <div className="react-flow">
+        <div className="react-flow__node" data-id="selected" />
+        <div className="artifact-actions-toolbar" data-id="selected" aria-label="节点操作" />
+        <div data-id="selected">
+          <CanvasEditorOverlay>
+            <button className="workspace-bottom-close" aria-label="关闭编辑区" />
+            <textarea aria-label="工作草稿" />
+          </CanvasEditorOverlay>
+        </div>
+      </div>
+      <div className="agent-chat-dock" />
+      <div className="workspace-header-actions" />
+      <div className="canvas-viewport-dock" />
+    </div>
+  );
   const view = render(content());
   const editor = screen.getByLabelText("所选卡片编辑区");
   expect(editor.style.getPropertyValue("--canvas-editor-available-width")).toBe("1248px");

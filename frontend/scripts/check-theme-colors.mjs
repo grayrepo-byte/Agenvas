@@ -17,16 +17,16 @@ function isBrandColor(color) {
   let rgb;
   if (color.startsWith("#")) {
     const digits = color.slice(1);
-    const expanded = digits.length <= 4 ? [...digits].map((digit) => digit.repeat(2)).join("") : digits;
-    rgb = [0, 2, 4].map((offset) => Number.parseInt(expanded.slice(offset, offset + 2), 16) / 255);
+    const expanded = digits.length <= 4 ? [...digits].map(digit => digit.repeat(2)).join("") : digits;
+    rgb = [0, 2, 4].map(offset => Number.parseInt(expanded.slice(offset, offset + 2), 16) / 255);
   } else {
     const channels = color.match(/[\d.]+%?/g) ?? [];
     if (channels.length < 3) return false;
     if (color.startsWith("hsl")) {
-      const hue = (Number.parseFloat(channels[0]) % 360 + 360) % 360;
+      const hue = ((Number.parseFloat(channels[0]) % 360) + 360) % 360;
       return Number.parseFloat(channels[1]) / 100 >= MIN_SATURATION && hue >= BRAND_HUE_MIN && hue <= BRAND_HUE_MAX;
     }
-    rgb = channels.slice(0, 3).map((channel) => Number.parseFloat(channel) / (channel.endsWith("%") ? 100 : 255));
+    rgb = channels.slice(0, 3).map(channel => Number.parseFloat(channel) / (channel.endsWith("%") ? 100 : 255));
   }
   const [r, g, b] = rgb;
   const max = Math.max(r, g, b);
@@ -44,9 +44,13 @@ async function checkDirectory(directory) {
     if (entry.isDirectory()) {
       await checkDirectory(path);
     } else if (entry.name.endsWith(".css") && path !== tokenFile) {
-      const content = (await readFile(path, "utf8")).replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\n]/g, " "));
+      const content = (await readFile(path, "utf8")).replace(/\/\*[\s\S]*?\*\//g, comment =>
+        comment.replace(/[^\n]/g, " "),
+      );
       content.split("\n").forEach((line, index) => {
-        const colors = [...line.matchAll(/#[\da-f]{3,8}\b|(?:rgb|hsl)a?\([^)]*\)/gi)].map(([color]) => color.toLowerCase());
+        const colors = [...line.matchAll(/#[\da-f]{3,8}\b|(?:rgb|hsl)a?\([^)]*\)/gi)].map(([color]) =>
+          color.toLowerCase(),
+        );
         if (colors.some(isBrandColor) || /--(?:ui-(?:accent|focus)[\w-]*|accent)\s*:\s*(?!var\()[^\s]/.test(line)) {
           failures.push(`${relative(sourceRoot, path)}:${index + 1}: Use shared design tokens for brand colors.`);
         }

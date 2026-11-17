@@ -21,28 +21,44 @@ public class LibraryWorker {
     private static final int SHUTDOWN_SECONDS = 10;
     private final LibraryService library;
     private final ShutdownGate shutdown;
-    private final ExecutorService executor = Executors.newSingleThreadExecutor(Thread.ofPlatform().name("library-copy").factory());
+    private final ExecutorService executor = Executors
+            .newSingleThreadExecutor(Thread.ofPlatform().name("library-copy").factory());
     private final AtomicBoolean busy = new AtomicBoolean();
-    public LibraryWorker(LibraryService library, ShutdownGate shutdown) { this.library = library; this.shutdown = shutdown; }
+    public LibraryWorker(LibraryService library, ShutdownGate shutdown) {
+        this.library = library;
+        this.shutdown = shutdown;
+    }
     @Scheduled(fixedDelayString = "${agenvas.library.poll-interval-ms:500}")
     public void tick() {
-        if (shutdown.isClosing() || !busy.compareAndSet(false, true)) return;
+        if (shutdown.isClosing() || !busy.compareAndSet(false, true))
+            return;
         try {
             executor.execute(() -> {
                 try {
-                    if (!shutdown.isClosing()) { library.cleanupNext(); library.processNext(); }
+                    if (!shutdown.isClosing()) {
+                        library.cleanupNext();
+                        library.processNext();
+                    }
                 } catch (RuntimeException failure) {
                     // A failed DB claim leaves its command recoverable by the next tick.
                     LOGGER.warn("Library worker pass failed: {}", failure.getClass().getSimpleName());
-                } finally { busy.set(false); }
+                } finally {
+                    busy.set(false);
+                }
             });
         } catch (RejectedExecutionException stopped) {
             busy.set(false);
         }
     }
-    @PreDestroy public void close() {
+    @PreDestroy
+    public void close() {
         executor.shutdown();
-        try { if (!executor.awaitTermination(SHUTDOWN_SECONDS, TimeUnit.SECONDS)) executor.shutdownNow(); }
-        catch (InterruptedException interrupted) { executor.shutdownNow(); Thread.currentThread().interrupt(); }
+        try {
+            if (!executor.awaitTermination(SHUTDOWN_SECONDS, TimeUnit.SECONDS))
+                executor.shutdownNow();
+        } catch (InterruptedException interrupted) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
     }
 }

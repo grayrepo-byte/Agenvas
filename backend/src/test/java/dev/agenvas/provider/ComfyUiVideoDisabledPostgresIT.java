@@ -71,7 +71,8 @@ class ComfyUiVideoDisabledPostgresIT {
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("agenvas.storage.root", STORAGE_ROOT::toString);
-        registry.add("agenvas.credentials.master-key-base64", () -> java.util.Base64.getEncoder().encodeToString(new byte[32]));
+        registry.add("agenvas.credentials.master-key-base64",
+                () -> java.util.Base64.getEncoder().encodeToString(new byte[32]));
     }
 
     @AfterAll
@@ -79,19 +80,32 @@ class ComfyUiVideoDisabledPostgresIT {
         SERVER.stop(0);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private TaskService tasks;
-    @Autowired private ArtifactService artifacts;
-    @Autowired private AssetService assets;
-    @Autowired private MediaToolRunner mediaTools;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private ObjectMapper mapper;
-    @Autowired private MediaDraftService drafts;
-    @Autowired private CanvasService canvas;
-    @Autowired private MediaCapabilityService catalog;
-    @Autowired private MediaExecutionWorker worker;
-    @Autowired private DirectMediaTaskService directMedia;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private ArtifactService artifacts;
+    @Autowired
+    private AssetService assets;
+    @Autowired
+    private MediaToolRunner mediaTools;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private ObjectMapper mapper;
+    @Autowired
+    private MediaDraftService drafts;
+    @Autowired
+    private CanvasService canvas;
+    @Autowired
+    private MediaCapabilityService catalog;
+    @Autowired
+    private MediaExecutionWorker worker;
+    @Autowired
+    private DirectMediaTaskService directMedia;
 
     @Test
     void disabledSubmissionStillArchivesOnlyTheSavedVideoId() throws Exception {
@@ -109,7 +123,8 @@ class ComfyUiVideoDisabledPostgresIT {
         UUID capability = catalog.publishCapability(connection, "Fixed video", "COMFY_VIDEO_V1",
                 mapper.readTree("{\"diffusionModel\":\"test-wan.safetensors\","
                         + "\"textEncoder\":\"test-text.safetensors\",\"vae\":\"test-vae.safetensors\","
-                        + "\"clipVision\":\"test-vision.safetensors\"}")).id();
+                        + "\"clipVision\":\"test-vision.safetensors\"}"))
+                .id();
         catalog.setDefault(Task.Kind.VIDEO_GENERATION,
                 catalog.defaultVersion(Task.Kind.VIDEO_GENERATION), capability);
         var videoCard = artifacts.create(owner.userId(), project.id(), Artifact.Kind.VIDEO,
@@ -129,7 +144,8 @@ class ComfyUiVideoDisabledPostgresIT {
         tasks.waitForProvider(lease, "original-submitter", requestId.toString(),
                 Instant.now().plusSeconds(1));
         var publishedConnection = catalog.getConnection(connection);
-        var connectionVersion = catalog.getConnectionVersion(connection, publishedConnection.currentVersion()).orElseThrow();
+        var connectionVersion = catalog.getConnectionVersion(connection, publishedConnection.currentVersion())
+                .orElseThrow();
         catalog.updateConnection(connection, publishedConnection.version(), publishedConnection.name(), false,
                 connectionVersion.origin(), null);
         assertThat(worker.submitOnce("disabled-connection-submitter")).isZero();
@@ -185,10 +201,12 @@ class ComfyUiVideoDisabledPostgresIT {
             HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.createContext(PROXY_PREFIX + "/history", exchange -> {
                 int query = HISTORY_GETS.incrementAndGet();
-                String response = query == 1 ? "{}" : "{\"" + ORIGINAL_ID.get()
-                        + "\":{\"status\":{\"completed\":true,\"status_str\":\"success\"},"
-                        + "\"outputs\":{\"14\":{\"images\":[{\"filename\":\"result.mp4\","
-                        + "\"type\":\"output\",\"subfolder\":\"\"}],\"animated\":[true]}}}}";
+                String response = query == 1
+                        ? "{}"
+                        : "{\"" + ORIGINAL_ID.get()
+                                + "\":{\"status\":{\"completed\":true,\"status_str\":\"success\"},"
+                                + "\"outputs\":{\"14\":{\"images\":[{\"filename\":\"result.mp4\","
+                                + "\"type\":\"output\",\"subfolder\":\"\"}],\"animated\":[true]}}}}";
                 byte[] body = response.getBytes(StandardCharsets.UTF_8);
                 exchange.getResponseHeaders().set("Content-Type", "application/json");
                 exchange.sendResponseHeaders(200, body.length);

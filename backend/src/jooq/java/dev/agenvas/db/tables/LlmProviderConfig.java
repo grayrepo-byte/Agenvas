@@ -7,6 +7,7 @@ package dev.agenvas.db.tables;
 import dev.agenvas.db.Indexes;
 import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
+import dev.agenvas.db.tables.LlmConnection.LlmConnectionPath;
 import dev.agenvas.db.tables.records.LlmProviderConfigRecord;
 
 import java.time.OffsetDateTime;
@@ -18,11 +19,15 @@ import java.util.UUID;
 import org.jooq.Check;
 import org.jooq.Condition;
 import org.jooq.Field;
+import org.jooq.ForeignKey;
 import org.jooq.Index;
+import org.jooq.InverseForeignKey;
 import org.jooq.JSONB;
 import org.jooq.Name;
+import org.jooq.Path;
 import org.jooq.PlainSQL;
 import org.jooq.QueryPart;
+import org.jooq.Record;
 import org.jooq.SQL;
 import org.jooq.Schema;
 import org.jooq.Select;
@@ -153,6 +158,39 @@ public class LlmProviderConfig extends TableImpl<LlmProviderConfigRecord> {
         this(DSL.name("llm_provider_config"), null);
     }
 
+    public <O extends Record> LlmProviderConfig(Table<O> path, ForeignKey<O, LlmProviderConfigRecord> childPath, InverseForeignKey<O, LlmProviderConfigRecord> parentPath) {
+        super(path, childPath, parentPath, LLM_PROVIDER_CONFIG);
+    }
+
+    /**
+     * A subtype implementing {@link Path} for simplified path-based joins.
+     */
+    public static class LlmProviderConfigPath extends LlmProviderConfig implements Path<LlmProviderConfigRecord> {
+
+        private static final long serialVersionUID = 1L;
+        public <O extends Record> LlmProviderConfigPath(Table<O> path, ForeignKey<O, LlmProviderConfigRecord> childPath, InverseForeignKey<O, LlmProviderConfigRecord> parentPath) {
+            super(path, childPath, parentPath);
+        }
+        private LlmProviderConfigPath(Name alias, Table<LlmProviderConfigRecord> aliased) {
+            super(alias, aliased);
+        }
+
+        @Override
+        public LlmProviderConfigPath as(String alias) {
+            return new LlmProviderConfigPath(DSL.name(alias), this);
+        }
+
+        @Override
+        public LlmProviderConfigPath as(Name alias) {
+            return new LlmProviderConfigPath(alias, this);
+        }
+
+        @Override
+        public LlmProviderConfigPath as(Table<?> alias) {
+            return new LlmProviderConfigPath(alias.getQualifiedName(), this);
+        }
+    }
+
     @Override
     public Schema getSchema() {
         return aliased() ? null : Public.PUBLIC;
@@ -171,6 +209,19 @@ public class LlmProviderConfig extends TableImpl<LlmProviderConfigRecord> {
     @Override
     public List<UniqueKey<LlmProviderConfigRecord>> getUniqueKeys() {
         return Arrays.asList(Keys.LLM_PROVIDER_CONFIG_VERSION_KEY);
+    }
+
+    private transient LlmConnectionPath _llmConnection;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.llm_connection</code> table
+     */
+    public LlmConnectionPath llmConnection() {
+        if (_llmConnection == null)
+            _llmConnection = new LlmConnectionPath(this, null, Keys.LLM_CONNECTION__LLM_CONNECTION_CURRENT_CONFIG_VERSION_FKEY.getInverseKey());
+
+        return _llmConnection;
     }
 
     @Override

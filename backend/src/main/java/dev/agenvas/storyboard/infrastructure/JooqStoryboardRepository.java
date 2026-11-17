@@ -23,7 +23,9 @@ public class JooqStoryboardRepository implements StoryboardRepository {
     private final Clock clock;
 
     public JooqStoryboardRepository(DSLContext dsl, ObjectMapper mapper, Clock clock) {
-        this.dsl = dsl; this.mapper = mapper; this.clock = clock;
+        this.dsl = dsl;
+        this.mapper = mapper;
+        this.clock = clock;
     }
 
     @Override
@@ -44,7 +46,8 @@ public class JooqStoryboardRepository implements StoryboardRepository {
                 : dsl.update(STORYBOARD).set(STORYBOARD.CURRENT_VERSION, board.version())
                         .where(STORYBOARD.PROJECT_ID.eq(board.projectId()))
                         .and(STORYBOARD.CURRENT_VERSION.eq(expectedVersion)).execute();
-        if (changed != 1) return false;
+        if (changed != 1)
+            return false;
         var json = mapper.valueToTree(board);
         ((tools.jackson.databind.node.ObjectNode) json).put("schemaVersion", 1);
         dsl.insertInto(STORYBOARD_REVISION).set(STORYBOARD_REVISION.PROJECT_ID, board.projectId())
@@ -64,11 +67,14 @@ public class JooqStoryboardRepository implements StoryboardRepository {
 
     @Override
     public java.util.Map<UUID, Integer> maxShotRevisions(UUID projectId, java.util.Set<UUID> shotIds) {
-        if (shotIds.isEmpty()) return java.util.Map.of();
+        if (shotIds.isEmpty())
+            return java.util.Map.of();
         var id = org.jooq.impl.DSL.field("shot.value ->> 'id'", String.class);
-        var revision = org.jooq.impl.DSL.max(org.jooq.impl.DSL.field("(shot.value ->> 'revision')::integer", Integer.class));
+        var revision = org.jooq.impl.DSL
+                .max(org.jooq.impl.DSL.field("(shot.value ->> 'revision')::integer", Integer.class));
         return dsl.select(id, revision).from(STORYBOARD_REVISION)
-                .crossJoin(org.jooq.impl.DSL.table("jsonb_array_elements({0} -> 'shots') as shot(value)", STORYBOARD_REVISION.CONTENT_JSON))
+                .crossJoin(org.jooq.impl.DSL.table("jsonb_array_elements({0} -> 'shots') as shot(value)",
+                        STORYBOARD_REVISION.CONTENT_JSON))
                 .where(STORYBOARD_REVISION.PROJECT_ID.eq(projectId))
                 .and(id.in(shotIds.stream().map(UUID::toString).toList())).groupBy(id)
                 .fetchMap(row -> UUID.fromString(row.value1()), row -> row.value2());
@@ -76,7 +82,8 @@ public class JooqStoryboardRepository implements StoryboardRepository {
 
     private Storyboard parse(JSONB json) {
         var tree = (tools.jackson.databind.node.ObjectNode) mapper.readTree(json.data());
-        if (tree.path("schemaVersion").asInt() != 1) throw new IllegalStateException("Unsupported storyboard content schema");
+        if (tree.path("schemaVersion").asInt() != 1)
+            throw new IllegalStateException("Unsupported storyboard content schema");
         tree.remove("schemaVersion");
         return mapper.treeToValue(tree, Storyboard.class);
     }

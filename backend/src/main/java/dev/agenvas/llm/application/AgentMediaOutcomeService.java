@@ -51,15 +51,15 @@ public class AgentMediaOutcomeService {
     public void onProjectEvent(ProjectEventRecorded recorded) {
         var event = recorded.event();
         if ("task.status.changed".equals(event.type())) {
-            approvals.findByTaskId(event.projectId(), event.aggregateId()).ifPresent(approval ->
-                    reconcile(recorded.ownerId(), approval.projectId(), approval.runId(), approval.id()));
+            approvals.findByTaskId(event.projectId(), event.aggregateId()).ifPresent(
+                    approval -> reconcile(recorded.ownerId(), approval.projectId(), approval.runId(), approval.id()));
             Task task = tasks.get(recorded.ownerId(), event.projectId(), event.aggregateId());
             if (task.agentLocalRunId() != null)
                 reconcileLocalTasks(recorded.ownerId(), event.projectId(), task.agentLocalRunId());
         } else if ("agent.run.changed".equals(event.type())
                 && ("CANCELED".equals(event.payload().path("status").asText())
-                    || "CANCEL_REQUESTED".equals(event.payload().path("status").asText())
-                    || "FAILED".equals(event.payload().path("status").asText()))) {
+                        || "CANCEL_REQUESTED".equals(event.payload().path("status").asText())
+                        || "FAILED".equals(event.payload().path("status").asText()))) {
             for (var approval : approvals.listByRun(event.projectId(), event.aggregateId())) {
                 if (!approval.status().terminal()) {
                     reconcile(recorded.ownerId(), approval.projectId(), approval.runId(), approval.id());
@@ -76,10 +76,11 @@ public class AgentMediaOutcomeService {
 
     /** A whole tool round waits until every proposal in it has a final reply. */
     public boolean hasOutstanding(UUID projectId, UUID runId, int stepIndex) {
-        return approvals.listByRun(projectId, runId).stream().anyMatch(approval ->
-                approval.stepIndex() == stepIndex && !approval.status().terminal())
-                || toolExecutions.localTaskExecutions(projectId, runId).stream().anyMatch(execution ->
-                        execution.stepIndex() == stepIndex && !AgentLocalTaskOutcome.resolved(execution.result()));
+        return approvals.listByRun(projectId, runId).stream()
+                .anyMatch(approval -> approval.stepIndex() == stepIndex && !approval.status().terminal())
+                || toolExecutions.localTaskExecutions(projectId, runId).stream()
+                        .anyMatch(execution -> execution.stepIndex() == stepIndex
+                                && !AgentLocalTaskOutcome.resolved(execution.result()));
     }
 
     /** Pending approvals can have no Tasks yet; they still prevent ending a blocked Run. */
@@ -96,12 +97,14 @@ public class AgentMediaOutcomeService {
         if (AgentLocalTaskOutcome.awaits(receipt)) {
             ToolExecution execution = toolExecutions.find(projectId, runId, stepIndex, toolCallId)
                     .orElseThrow(() -> new IllegalStateException("Local tool receipt is missing"));
-            if (execution.status() != ToolExecution.Status.COMPLETED || !AgentLocalTaskOutcome.awaits(execution.result()))
+            if (execution.status() != ToolExecution.Status.COMPLETED
+                    || !AgentLocalTaskOutcome.awaits(execution.result()))
                 throw new IllegalStateException("Local tool receipt is not committed");
             return AgentLocalTaskOutcome.forModel(execution.result());
         }
         var approval = approvals.findByToolCall(projectId, runId, stepIndex, toolCallId).orElse(null);
-        if (approval == null) return receipt;
+        if (approval == null)
+            return receipt;
         if (!approval.status().terminal() || approval.result() == null) {
             throw new IllegalStateException("Media result has not been committed; Run must wait");
         }
@@ -131,13 +134,15 @@ public class AgentMediaOutcomeService {
         events.recordChange(ownerId, projectId, () -> {
             AgentRun run = runs.get(ownerId, projectId, runId);
             for (ToolExecution execution : toolExecutions.localTaskExecutions(projectId, runId)) {
-                if (AgentLocalTaskOutcome.resolved(execution.result())) continue;
+                if (AgentLocalTaskOutcome.resolved(execution.result()))
+                    continue;
                 Task task = tasks.get(ownerId, projectId, AgentLocalTaskOutcome.taskId(execution.result()));
                 // Both identities are server-created and must agree; JSON flags alone never grant ownership.
                 if (task.runId() != null || !runId.equals(task.agentLocalRunId())
                         || !execution.id().equals(task.agentLocalOperationId()))
                     throw new IllegalStateException("Local tool receipt does not own its task");
-                if (!RESOLVED.contains(task.status())) continue;
+                if (!RESOLVED.contains(task.status()))
+                    continue;
                 if (!toolExecutions.appendLocalTaskOutcome(execution.id(), AgentLocalTaskOutcome.freeze(task, mapper)))
                     throw new IllegalStateException("Locked local tool outcome changed unexpectedly");
             }
@@ -172,7 +177,8 @@ public class AgentMediaOutcomeService {
                             .map(id -> tasks.get(ownerId, projectId, id)).toList();
                     if (media.stream().allMatch(task -> RESOLVED.contains(task.status()))) {
                         boolean succeeded = media.stream().allMatch(task -> task.status() == Task.Status.SUCCEEDED);
-                        approval = finish(approval, succeeded ? AgentMediaApproval.Status.SUCCEEDED
+                        approval = finish(approval, succeeded
+                                ? AgentMediaApproval.Status.SUCCEEDED
                                 : AgentMediaApproval.Status.FAILED, succeeded ? null : "MEDIA_BATCH_FAILED", media);
                     } else if (!clock.instant().isBefore(approval.executionDeadline())) {
                         approval = finish(approval, AgentMediaApproval.Status.EXPIRED,
@@ -181,7 +187,8 @@ public class AgentMediaOutcomeService {
                     }
                 }
             }
-            if (approval.status().terminal()) resumeIfReady(ownerId, projectId, runId, approval.stepIndex());
+            if (approval.status().terminal())
+                resumeIfReady(ownerId, projectId, runId, approval.stepIndex());
             return ProjectEventService.Change.unchanged(null);
         });
     }
@@ -190,7 +197,8 @@ public class AgentMediaOutcomeService {
             String errorCode, List<Task> media) {
         ObjectNode result = mapper.createObjectNode().put("schemaVersion", RESULT_SCHEMA_VERSION)
                 .put("status", status.name());
-        if (errorCode != null) result.put("errorCode", errorCode);
+        if (errorCode != null)
+            result.put("errorCode", errorCode);
         var taskResults = result.putArray("tasks");
         for (Task task : media) {
             taskResults.add(AgentMediaResultProjection.task(mapper, approval, task));
@@ -228,7 +236,8 @@ public class AgentMediaOutcomeService {
         }
         if (run.status() != AgentRun.Status.WAITING_TASKS
                 || run.nextStepIndex() != priorStepIndex + 1
-                || hasOutstanding(projectId, runId, priorStepIndex)) return;
+                || hasOutstanding(projectId, runId, priorStepIndex))
+            return;
         ObjectNode input = mapper.createObjectNode().put("schemaVersion", RESULT_SCHEMA_VERSION)
                 .put("stepIndex", run.nextStepIndex());
         // READY with no success-only dependency: failed and expired media also need a reply.

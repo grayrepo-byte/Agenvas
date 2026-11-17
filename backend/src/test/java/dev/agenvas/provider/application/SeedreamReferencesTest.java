@@ -36,35 +36,46 @@ import tools.jackson.databind.node.ObjectNode;
 /** Exercises Seedream against the common exact-version loader, with synthetic local media. */
 class SeedreamReferencesTest {
     private final ObjectMapper mapper = new ObjectMapper();
-    @TempDir Path directory;
+    @TempDir
+    Path directory;
 
-    @Test void preservesOriginalPngBytesAndRejectsMutationOrUnboundSlot() throws Exception {
+    @Test
+    void preservesOriginalPngBytesAndRejectsMutationOrUnboundSlot() throws Exception {
         UUID owner = UUID.randomUUID(), project = UUID.randomUUID(), artifact = UUID.randomUUID();
         UUID versionId = UUID.randomUUID(), assetId = UUID.randomUUID();
         var output = new ByteArrayOutputStream();
         ImageIO.write(new BufferedImage(512, 512, BufferedImage.TYPE_INT_ARGB), "png", output);
         byte[] bytes = output.toByteArray();
-        Path file = directory.resolve("synthetic.png"); Files.write(file, bytes);
+        Path file = directory.resolve("synthetic.png");
+        Files.write(file, bytes);
         Asset asset = new Asset(assetId, project, Asset.MediaKind.IMAGE, "synthetic", "image/png", bytes.length,
-                HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)), 512, 512, null, null, null, null, Instant.EPOCH);
+                HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)), 512, 512, null, null,
+                null, null, Instant.EPOCH);
         ArtifactService artifacts = mock(ArtifactService.class);
         AssetService assets = mock(AssetService.class);
         MediaToolRunner tools = mock(MediaToolRunner.class);
         var loader = new NativeMediaReferences(artifacts, assets, mock(MediaRelayService.class), tools, mapper);
         var version = new ArtifactVersion(versionId, project, artifact, 4, 1, null, null,
-                mapper.createObjectNode().put("assetId", assetId.toString()), List.of(), ArtifactVersion.CreatedByKind.USER, null, Instant.EPOCH);
+                mapper.createObjectNode().put("assetId", assetId.toString()), List.of(),
+                ArtifactVersion.CreatedByKind.USER, null, Instant.EPOCH);
         when(artifacts.requireVersion(owner, project, artifact, versionId)).thenReturn(version);
         when(assets.requireReadyMedia(owner, project, assetId, Asset.MediaKind.IMAGE)).thenReturn(asset);
         when(assets.get(owner, project, assetId)).thenReturn(new AssetService.AssetFile(asset, file));
-        when(tools.ffprobe(any())).thenReturn("{\"streams\":[{\"codec_type\":\"video\",\"codec_name\":\"png\",\"pix_fmt\":\"rgba\",\"width\":512,\"height\":512}],\"format\":{\"format_name\":\"png_pipe\"}}");
+        when(tools.ffprobe(any())).thenReturn(
+                "{\"streams\":[{\"codec_type\":\"video\",\"codec_name\":\"png\",\"pix_fmt\":\"rgba\",\"width\":512,\"height\":512}],\"format\":{\"format_name\":\"png_pipe\"}}");
         var selected = NativeMediaProfiles.resolve(SeedreamModels.ADAPTER_ID,
                 mapper.createObjectNode().put("model", SeedreamModels.PRO).put("operation", SeedreamModels.GENERATE));
-        ObjectNode values = mapper.createObjectNode().put("prompt", "Synthetic edit").put("image1", versionId.toString());
+        ObjectNode values = mapper.createObjectNode().put("prompt", "Synthetic edit").put("image1",
+                versionId.toString());
         ObjectNode input = mapper.createObjectNode();
         var media = input.putObject("mediaInput");
-        media.putArray("images").addObject().put("artifactId", artifact.toString()).put("versionId", versionId.toString()).put("role", "REFERENCE").put("order", 0);
-        media.putArray("videos"); media.putArray("audios");
-        Task task = mock(Task.class); when(task.input()).thenReturn(input); when(task.projectId()).thenReturn(project);
+        media.putArray("images").addObject().put("artifactId", artifact.toString())
+                .put("versionId", versionId.toString()).put("role", "REFERENCE").put("order", 0);
+        media.putArray("videos");
+        media.putArray("audios");
+        Task task = mock(Task.class);
+        when(task.input()).thenReturn(input);
+        when(task.projectId()).thenReturn(project);
         var context = new AttemptContext(task, new MediaCapabilityBinding(UUID.randomUUID(), 1, UUID.randomUUID(), 1,
                 SeedreamModels.ADAPTER_ID, "a".repeat(64)), owner, "local-request", null);
         var loaded = loader.load(context, selected, values, false);
@@ -74,7 +85,8 @@ class SeedreamReferencesTest {
         values.put("image1", UUID.randomUUID().toString());
         assertThatThrownBy(() -> loader.load(context, selected, values, true)).isInstanceOf(RuntimeException.class);
         values.put("image1", versionId.toString());
-        bytes[bytes.length - 1] ^= 1; Files.write(file, bytes);
+        bytes[bytes.length - 1] ^= 1;
+        Files.write(file, bytes);
         assertThatThrownBy(() -> loader.load(context, selected, values, true)).isInstanceOf(RuntimeException.class);
     }
 }

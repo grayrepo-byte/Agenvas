@@ -34,7 +34,8 @@ import tools.jackson.databind.ObjectMapper;
 
 /** Real synthetic FFmpeg media exercises long extraction, track selection and immutable archives. */
 class LocalVideoAudioRealMediaTest {
-    @TempDir Path root;
+    @TempDir
+    Path root;
     private final ObjectMapper mapper = new ObjectMapper();
     private final MediaToolRunner tools = new MediaToolRunner(new MediaToolsProperties(null, null, null));
     private final ArtifactService artifacts = mock(ArtifactService.class);
@@ -99,7 +100,8 @@ class LocalVideoAudioRealMediaTest {
     }
 
     private AttemptContext context(Path source, int durationMs, String format, int trackIndex) {
-        UUID owner = UUID.randomUUID(), project = UUID.randomUUID(), versionId = UUID.randomUUID(), assetId = UUID.randomUUID();
+        UUID owner = UUID.randomUUID(), project = UUID.randomUUID(), versionId = UUID.randomUUID(),
+                assetId = UUID.randomUUID();
         Task task = mock(Task.class);
         when(task.id()).thenReturn(UUID.randomUUID());
         when(task.projectId()).thenReturn(project);
@@ -112,17 +114,22 @@ class LocalVideoAudioRealMediaTest {
         when(version.content()).thenReturn(mapper.createObjectNode().put("assetId", assetId.toString()));
         when(artifacts.requireMediaVersionForTask(owner, project, versionId, Artifact.Kind.VIDEO)).thenReturn(version);
         try {
-            var asset = new Asset(assetId, project, Asset.MediaKind.VIDEO, "synthetic.mp4", "video/mp4", Files.size(source),
+            var asset = new Asset(assetId, project, Asset.MediaKind.VIDEO, "synthetic.mp4", "video/mp4",
+                    Files.size(source),
                     "synthetic", 16, 16, durationMs, null, null, null, Instant.now());
             when(assets.get(owner, project, assetId)).thenReturn(new AssetService.AssetFile(asset, source));
-        } catch (java.io.IOException failure) { throw new IllegalStateException(failure); }
+        } catch (java.io.IOException failure) {
+            throw new IllegalStateException(failure);
+        }
         return new AttemptContext(task, null, owner, "synthetic-request", null);
     }
 
     private Path source(int seconds) {
         Path output = root.resolve("synthetic-source-" + seconds + ".mp4");
-        tools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i", "color=c=blue:s=16x16:r=1",
-                "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=48000",
+        tools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i",
+                "color=c=blue:s=16x16:r=1",
+                "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-f", "lavfi", "-i",
+                "sine=frequency=880:sample_rate=48000",
                 "-t", Integer.toString(seconds), "-map", "0:v:0", "-map", "1:a:0", "-map", "2:a:0", "-c:v", "libx264",
                 "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "16k", "-y", output.toString()));
         return output;
@@ -137,7 +144,8 @@ class LocalVideoAudioRealMediaTest {
         float previous = samples.get();
         while (samples.hasRemaining()) {
             float current = samples.get();
-            if (previous < 0 && current >= 0) crossings++;
+            if (previous < 0 && current >= 0)
+                crossings++;
             previous = current;
         }
         return crossings * 48_000d / count;

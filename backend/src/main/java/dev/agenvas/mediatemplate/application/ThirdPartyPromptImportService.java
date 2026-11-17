@@ -43,69 +43,109 @@ public class ThirdPartyPromptImportService {
     public ThirdPartyPromptImportService(ThirdPartyPromptRepository repository, ThirdPartyPromptService prompts,
             ThirdPartyPromptHttpClient http, ProjectService projects, ProjectEventService events, AssetService assets,
             ArtifactService artifacts, ObjectMapper mapper, Clock clock, PlatformTransactionManager transactions) {
-        this.repository = repository; this.prompts = prompts; this.http = http; this.projects = projects; this.events = events;
-        this.assets = assets; this.artifacts = artifacts; this.mapper = mapper; this.clock = clock; tx = new TransactionTemplate(transactions);
+        this.repository = repository;
+        this.prompts = prompts;
+        this.http = http;
+        this.projects = projects;
+        this.events = events;
+        this.assets = assets;
+        this.artifacts = artifacts;
+        this.mapper = mapper;
+        this.clock = clock;
+        tx = new TransactionTemplate(transactions);
     }
-    public record ImportedReference(UUID versionId, UUID assetId, String title, MediaKind kind, Role role, String thumbnailUrl) {}
+    public record ImportedReference(UUID versionId, UUID assetId, String title, MediaKind kind, Role role,
+            String thumbnailUrl) {
+    }
     public record ImportResponse(UUID templateId, long templateVersion, TargetKind targetKind, String prompt,
-            List<MediaTemplateService.ImportedImage> images, List<ImportedReference> references, String videoInputMode) {}
+            List<MediaTemplateService.ImportedImage> images, List<ImportedReference> references,
+            String videoInputMode) {
+    }
     public ImportResponse importPrompt(UUID owner, UUID project, String promptId, long expected, String commandKey) {
-        if (expected < 0 || commandKey == null || commandKey.isBlank() || commandKey.length() > 200) throw ThirdPartyPromptValidation.invalid();
+        if (expected < 0 || commandKey == null || commandKey.isBlank() || commandKey.length() > 200)
+            throw ThirdPartyPromptValidation.invalid();
         String hash = Sha256.hex(mapper.writeValueAsString(List.of(promptId, expected)));
         ImportCommand command = tx.execute(ignored -> events.recordChange(owner, project, () -> {
             projects.requireActiveProject(owner, project);
             var replay = repository.command(owner, project, commandKey, false);
-            if (replay.isPresent()) { checkHash(replay.get(), hash); return ProjectEventService.Change.unchanged(replay.get()); }
+            if (replay.isPresent()) {
+                checkHash(replay.get(), hash);
+                return ProjectEventService.Change.unchanged(replay.get());
+            }
             var entry = prompts.get(promptId);
-            if (entry.version() != expected) throw problem(HttpStatus.CONFLICT, "VERSION_CONFLICT", ApiMessage.of("api.third-party.conflict"));
+            if (entry.version() != expected)
+                throw problem(HttpStatus.CONFLICT, "VERSION_CONFLICT", ApiMessage.of("api.third-party.conflict"));
             if (entry.data().prompt().length() > MediaTemplateService.MAX_PROMPT_LENGTH)
-                throw problem(HttpStatus.CONFLICT, "THIRD_PARTY_PROMPT_TOO_LONG", ApiMessage.of("api.third-party.promptTooLong"));
+                throw problem(HttpStatus.CONFLICT, "THIRD_PARTY_PROMPT_TOO_LONG",
+                        ApiMessage.of("api.third-party.promptTooLong"));
             if (entry.video() != null && !entry.video().missingReferences().isEmpty())
-                throw problem(HttpStatus.CONFLICT, "THIRD_PARTY_REFERENCES_REQUIRED", ApiMessage.of("api.third-party.referencesRequired"));
+                throw problem(HttpStatus.CONFLICT, "THIRD_PARTY_REFERENCES_REQUIRED",
+                        ApiMessage.of("api.third-party.referencesRequired"));
             if (entry.video() != null && entry.video().videoMode() == VideoMode.text_to_image_to_video)
-                throw problem(HttpStatus.CONFLICT, "THIRD_PARTY_IMAGE_STAGE_REQUIRED", ApiMessage.of("api.third-party.imageStage"));
+                throw problem(HttpStatus.CONFLICT, "THIRD_PARTY_IMAGE_STAGE_REQUIRED",
+                        ApiMessage.of("api.third-party.imageStage"));
             var accepted = new ImportCommand(UUID.randomUUID(), owner, hash, entry, null);
             repository.insertCommand(accepted, project, commandKey, clock.instant());
             return ProjectEventService.Change.unchanged(accepted);
         }).value());
-        if (command.result() != null) return mapper.treeToValue(command.result(), ImportResponse.class);
+        if (command.result() != null)
+            return mapper.treeToValue(command.result(), ImportResponse.class);
         var snapshot = command.snapshot();
-        List<Reference> references = snapshot.image() != null ? snapshot.image().referenceImageUrls().stream()
-                .map(url -> new Reference(MediaKind.IMAGE, Role.REFERENCE, url)).toList() : snapshot.video().references();
+        List<Reference> references = snapshot.image() != null
+                ? snapshot.image().referenceImageUrls().stream()
+                        .map(url -> new Reference(MediaKind.IMAGE, Role.REFERENCE, url)).toList()
+                : snapshot.video().references();
         List<Asset> prepared = new ArrayList<>();
         for (int i = 0; i < references.size(); i++) {
             Reference ref = references.get(i);
-            UUID id = UUID.nameUUIDFromBytes(("agenvas:third-party-import:v1:" + command.id() + ":" + i).getBytes(StandardCharsets.UTF_8));
+            UUID id = UUID.nameUUIDFromBytes(
+                    ("agenvas:third-party-import:v1:" + command.id() + ":" + i).getBytes(StandardCharsets.UTF_8));
             prepared.add(assets.prepareLibraryImport(owner, project, id, Asset.MediaKind.valueOf(ref.kind().name()),
                     () -> new ByteArrayInputStream(http.download(ref.url(), ref.kind() == MediaKind.IMAGE
-                            ? (int) MediaTemplateService.MAX_IMAGE_UPLOAD_BYTES : ThirdPartyPromptHttpClient.MAX_MEDIA_BYTES))));
+                            ? (int) MediaTemplateService.MAX_IMAGE_UPLOAD_BYTES
+                            : ThirdPartyPromptHttpClient.MAX_MEDIA_BYTES))));
         }
         return tx.execute(ignored -> events.recordChange(owner, project, () -> {
             projects.requireActiveProject(owner, project);
-            var locked = repository.command(owner, project, commandKey, true).orElseThrow(); checkHash(locked, hash);
-            if (locked.result() != null) return ProjectEventService.Change.unchanged(mapper.treeToValue(locked.result(), ImportResponse.class));
+            var locked = repository.command(owner, project, commandKey, true).orElseThrow();
+            checkHash(locked, hash);
+            if (locked.result() != null)
+                return ProjectEventService.Change.unchanged(mapper.treeToValue(locked.result(), ImportResponse.class));
             List<MediaTemplateService.ImportedImage> images = new ArrayList<>();
             List<ImportedReference> imported = new ArrayList<>();
             for (int i = 0; i < prepared.size(); i++) {
-                Asset asset = prepared.get(i); Reference ref = references.get(i);
+                Asset asset = prepared.get(i);
+                Reference ref = references.get(i);
                 assets.registerLibraryImport(owner, asset);
                 String title = MediaTemplateService.importedImageTitle(snapshot.data().title(), i + 1);
-                var artifact = artifacts.createLibraryImport(owner, project, Artifact.Kind.valueOf(ref.kind().name()), title, null, asset.id());
+                var artifact = artifacts.createLibraryImport(owner, project, Artifact.Kind.valueOf(ref.kind().name()),
+                        title, null, asset.id());
                 UUID version = artifact.resourceDefaultVersion().id();
-                String thumbnail = asset.mediaKind() == Asset.MediaKind.AUDIO ? "" : "/api/v1/projects/" + project + "/assets/" + asset.id() + "/thumbnail";
+                String thumbnail = asset.mediaKind() == Asset.MediaKind.AUDIO
+                        ? ""
+                        : "/api/v1/projects/" + project + "/assets/" + asset.id() + "/thumbnail";
                 imported.add(new ImportedReference(version, asset.id(), title, ref.kind(), ref.role(), thumbnail));
-                if (ref.kind() == MediaKind.IMAGE) images.add(new MediaTemplateService.ImportedImage(version, asset.id(), title,
-                        asset.contentType(), asset.byteSize(), asset.width(), asset.height(), thumbnail));
+                if (ref.kind() == MediaKind.IMAGE)
+                    images.add(new MediaTemplateService.ImportedImage(version, asset.id(), title,
+                            asset.contentType(), asset.byteSize(), asset.width(), asset.height(), thumbnail));
             }
-            String mode = snapshot.video() == null ? null : snapshot.video().videoMode() == VideoMode.text_to_video ? "TEXT"
-                    : references.stream().anyMatch(r -> r.role() == Role.START_FRAME) ? "START_END" : "GENERAL_REFERENCE";
-            var result = new ImportResponse(UUID.nameUUIDFromBytes(snapshot.id().getBytes(StandardCharsets.UTF_8)), snapshot.version(), snapshot.targetKind(),
+            String mode = snapshot.video() == null
+                    ? null
+                    : snapshot.video().videoMode() == VideoMode.text_to_video
+                            ? "TEXT"
+                            : references.stream().anyMatch(r -> r.role() == Role.START_FRAME)
+                                    ? "START_END"
+                                    : "GENERAL_REFERENCE";
+            var result = new ImportResponse(UUID.nameUUIDFromBytes(snapshot.id().getBytes(StandardCharsets.UTF_8)),
+                    snapshot.version(), snapshot.targetKind(),
                     snapshot.data().prompt(), List.copyOf(images), List.copyOf(imported), mode);
             repository.complete(command.id(), mapper.valueToTree(result));
             return ProjectEventService.Change.unchanged(result);
         }).value());
     }
     private void checkHash(ImportCommand command, String hash) {
-        if (!hash.equals(command.payloadHash())) throw problem(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT", ApiMessage.of("api.media-template.idempotencyConflict"));
+        if (!hash.equals(command.payloadHash()))
+            throw problem(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT",
+                    ApiMessage.of("api.media-template.idempotencyConflict"));
     }
 }

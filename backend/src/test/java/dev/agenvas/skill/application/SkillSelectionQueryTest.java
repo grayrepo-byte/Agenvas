@@ -86,12 +86,15 @@ class SkillSelectionQueryTest {
         verify(fixture.agents, never()).touchConfigurationWithinChange(any(), any(), any(), anyLong());
     }
 
-    enum Entry { PREVIEW, FREEZE, SAVE_BINDING }
+    enum Entry {
+        PREVIEW, FREEZE, SAVE_BINDING
+    }
 
     private static final class Fixture {
         private final UUID owner = UUID.randomUUID(), project = UUID.randomUUID(), agentId = UUID.randomUUID();
         private final UUID retainedSkill = UUID.randomUUID(), retainedVersion = UUID.randomUUID();
-        private final UUID changedSkill = UUID.randomUUID(), oldVersion = UUID.randomUUID(), newVersion = UUID.randomUUID();
+        private final UUID changedSkill = UUID.randomUUID(), oldVersion = UUID.randomUUID(),
+                newVersion = UUID.randomUUID();
         private final SkillRepository repository = mock(SkillRepository.class);
         private final AgentInstanceService agents = mock(AgentInstanceService.class);
         private final AgentInstance agent = mock(AgentInstance.class);
@@ -111,7 +114,8 @@ class SkillSelectionQueryTest {
             when(builtins.keys()).thenReturn(List.of("current-edition/synthetic-skill"));
             ObjectProvider<LibraryService> library = libraryProvider();
             SkillAssetArchiveService archive = mock(SkillAssetArchiveService.class);
-            SkillService skills = new SkillService(repository, new SkillFormat(), builtins, mock(BuiltinSkillSearch.class), library, archive,
+            SkillService skills = new SkillService(repository, new SkillFormat(), builtins,
+                    mock(BuiltinSkillSearch.class), library, archive,
                     mapper, clock, transactions);
             JooqSkillInstallRepository operations = mock(JooqSkillInstallRepository.class);
             when(operations.bindingCommand(owner, project, "synthetic-binding")).thenReturn(Optional.empty());
@@ -151,12 +155,15 @@ class SkillSelectionQueryTest {
                     var context = mapper.createObjectNode();
                     runSkills.freezeIntoRun(owner, project, agent, UUID.randomUUID(), selection, context);
                     assertThat(context.path("creativeSkills")).hasSize(2);
-                    assertThat(context.at("/creativeSkills/0/skillVersionId").asText()).isEqualTo(retainedVersion.toString());
-                    assertThat(context.at("/creativeSkills/1/skillVersionId").asText()).isEqualTo(newVersion.toString());
+                    assertThat(context.at("/creativeSkills/0/skillVersionId").asText())
+                            .isEqualTo(retainedVersion.toString());
+                    assertThat(context.at("/creativeSkills/1/skillVersionId").asText())
+                            .isEqualTo(newVersion.toString());
                 }
                 case SAVE_BINDING -> {
-                    var selected = choices.stream().map(choice ->
-                            new SkillRunService.VersionRef(choice.skillId(), choice.skillVersionId())).toList();
+                    var selected = choices.stream()
+                            .map(choice -> new SkillRunService.VersionRef(choice.skillId(), choice.skillVersionId()))
+                            .toList();
                     var saved = runSkills.saveBinding(owner, project, agentId, 1, selected, "synthetic-binding");
                     assertThat(saved.skills()).containsExactlyElementsOf(selected);
                     assertThat(saved.agentVersion()).isEqualTo(2);
@@ -170,7 +177,8 @@ class SkillSelectionQueryTest {
         }
 
         private SkillContent.Version version(UUID skill, UUID version) {
-            var bundle = new SkillContent.Bundle(1, "synthetic-method", "Synthetic description", "Synthetic instructions",
+            var bundle = new SkillContent.Bundle(1, "synthetic-method", "Synthetic description",
+                    "Synthetic instructions",
                     List.of(Artifact.Kind.TEXT), List.of(), List.of(), List.of());
             return new SkillContent.Version(version, owner, skill, 1, "0".repeat(64), bundle, NOW);
         }

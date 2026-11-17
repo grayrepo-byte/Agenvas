@@ -94,9 +94,9 @@ public class MockVideoRenderer {
         }
         String ratio = resolvedRatio(ownerId, task);
         int[] dimensions = switch (ratio) {
-            case VideoGenerationParameters.PORTRAIT_ASPECT_RATIO -> new int[] {360, 640};
-            case VideoGenerationParameters.SQUARE_ASPECT_RATIO -> new int[] {512, 512};
-            default -> new int[] {640, 360};
+            case VideoGenerationParameters.PORTRAIT_ASPECT_RATIO -> new int[]{360, 640};
+            case VideoGenerationParameters.SQUARE_ASPECT_RATIO -> new int[]{512, 512};
+            default -> new int[]{640, 360};
         };
         Duration duration = VideoDuration.fromFrozenTask(task.input());
         Path rendered;
@@ -128,18 +128,23 @@ public class MockVideoRenderer {
                 int inputEnd = withAudio.indexOf("-t");
                 List<String> audioArguments = new java.util.ArrayList<>();
                 for (var audio : audioInputs) {
-                    var version = artifacts.requireVersion(ownerId, task.projectId(), audio.artifactId(), audio.versionId());
-                    var file = assets.get(ownerId, task.projectId(), UUID.fromString(version.content().path("assetId").asText()));
-                    if (file.asset().mediaKind() != Asset.MediaKind.AUDIO) throw new IllegalArgumentException("Audio reference invalid");
+                    var version = artifacts.requireVersion(ownerId, task.projectId(), audio.artifactId(),
+                            audio.versionId());
+                    var file = assets.get(ownerId, task.projectId(),
+                            UUID.fromString(version.content().path("assetId").asText()));
+                    if (file.asset().mediaKind() != Asset.MediaKind.AUDIO)
+                        throw new IllegalArgumentException("Audio reference invalid");
                     audioArguments.addAll(List.of("-stream_loop", "-1", "-i", file.path().toString()));
                 }
                 withAudio.addAll(inputEnd, audioArguments);
                 int silentFlag = withAudio.indexOf("-an");
                 withAudio.remove(silentFlag);
                 StringBuilder mix = new StringBuilder();
-                for (int index = 0; index < audioInputs.size(); index++) mix.append('[').append(index + 1).append(":a:0]");
+                for (int index = 0; index < audioInputs.size(); index++)
+                    mix.append('[').append(index + 1).append(":a:0]");
                 mix.append("amix=inputs=").append(audioInputs.size()).append(":duration=longest[mixed]");
-                withAudio.addAll(silentFlag, List.of("-filter_complex", mix.toString(), "-map", "0:v:0", "-map", "[mixed]", "-c:a", "aac"));
+                withAudio.addAll(silentFlag,
+                        List.of("-filter_complex", mix.toString(), "-map", "0:v:0", "-map", "[mixed]", "-c:a", "aac"));
                 command = withAudio;
             }
             mediaTools.ffmpeg(command);
@@ -170,7 +175,8 @@ public class MockVideoRenderer {
     private String resolvedRatio(UUID ownerId, Task task) {
         String requested = VideoGenerationParameters.parse(
                 task.input().path("mediaInput").path("parameters")).aspectRatio();
-        if (!VideoGenerationParameters.AUTO_ASPECT_RATIO.equals(requested)) return requested;
+        if (!VideoGenerationParameters.AUTO_ASPECT_RATIO.equals(requested))
+            return requested;
         Project.AspectRatio projectRatio = projects.get(ownerId, task.projectId()).aspectRatio();
         return switch (projectRatio) {
             case LANDSCAPE_16_9 -> VideoGenerationParameters.LANDSCAPE_ASPECT_RATIO;

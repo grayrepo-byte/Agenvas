@@ -112,11 +112,13 @@ public class AssetController {
             @PathVariable UUID assetId) throws IOException {
         AssetService.AssetContent preview = assets.content(principal.userId(), projectId, assetId, true);
         long size = preview.size();
-        if (size < 1 || size > MAX_THUMBNAIL_BYTES) throw new IOException("Archived thumbnail has an invalid size");
+        if (size < 1 || size > MAX_THUMBNAIL_BYTES)
+            throw new IOException("Archived thumbnail has an invalid size");
         byte[] bytes;
         try (InputStream input = assets.open(preview, 0, size)) {
             bytes = input.readNBytes((int) size);
-            if (bytes.length != size) throw new IOException("Archived thumbnail ended before its recorded size");
+            if (bytes.length != size)
+                throw new IOException("Archived thumbnail ended before its recorded size");
         }
         return ResponseEntity.ok()
                 .contentType(MediaType.IMAGE_PNG)
@@ -136,9 +138,12 @@ public class AssetController {
         headers.set(HttpHeaders.ACCEPT_RANGES, "bytes");
         headers.set(HttpHeaders.CACHE_CONTROL, "private, no-store");
         headers.setContentLength(selected.length());
-        if (selected.partial()) headers.set(HttpHeaders.CONTENT_RANGE,
-                "bytes " + selected.start() + "-" + selected.end() + "/" + size);
-        InputStreamResource body = head ? null : new InputStreamResource(assets.open(file, selected.start(), selected.length()));
+        if (selected.partial())
+            headers.set(HttpHeaders.CONTENT_RANGE,
+                    "bytes " + selected.start() + "-" + selected.end() + "/" + size);
+        InputStreamResource body = head
+                ? null
+                : new InputStreamResource(assets.open(file, selected.start(), selected.length()));
         return new ResponseEntity<>(body, headers, selected.partial() ? HttpStatus.PARTIAL_CONTENT : HttpStatus.OK);
     }
 
@@ -147,7 +152,8 @@ public class AssetController {
     public ResponseEntity<ProblemDetail> invalidRange(InvalidRange exception,
             HttpServletRequest request) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(
-                HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE, messages.text(ApiMessage.of("api.asset-controller.the-requested-byte-range-is-not-available"), request));
+                HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE, messages.text(
+                        ApiMessage.of("api.asset-controller.the-requested-byte-range-is-not-available"), request));
         problem.setType(URI.create("urn:agenvas:problem:asset-range-invalid"));
         problem.setTitle(messages.text(ApiMessage.of("api.asset-controller.invalid-range"), request));
         problem.setInstance(URI.create(request.getRequestURI()));
@@ -220,7 +226,8 @@ public class AssetController {
                 } else {
                     start = decimal(value.substring(0, dash));
                     end = dash == value.length() - 1
-                            ? size - 1 : Math.min(decimal(value.substring(dash + 1)), size - 1);
+                            ? size - 1
+                            : Math.min(decimal(value.substring(dash + 1)), size - 1);
                 }
                 if (start < 0 || start >= size || end < start || end >= size) {
                     throw new InvalidRange(size);
@@ -233,11 +240,13 @@ public class AssetController {
 
         /** Saturate large decimal values so valid open-ended requests cannot overflow parsing. */
         private static long decimal(String value) {
-            if (value.isEmpty()) throw new NumberFormatException();
+            if (value.isEmpty())
+                throw new NumberFormatException();
             long result = 0;
             for (int index = 0; index < value.length(); index++) {
                 char digit = value.charAt(index);
-                if (digit < '0' || digit > '9') throw new NumberFormatException();
+                if (digit < '0' || digit > '9')
+                    throw new NumberFormatException();
                 int number = digit - '0';
                 result = result > (Long.MAX_VALUE - number) / 10 ? Long.MAX_VALUE : result * 10 + number;
             }

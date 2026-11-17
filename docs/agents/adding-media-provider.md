@@ -49,6 +49,8 @@ LLM Provider 走独立入口：规格 §13.3、`settings/application/LlmProvider
 
 适配器返回执行结果，由应用服务写业务状态。网络请求在数据库事务外执行；远程受理不确定时保留 UNKNOWN。查询、下载和归档恢复只操作原请求，重新生成由用户显式创建新尝试。详细边界见规格 §11–12 及 [ADR 0006](../adr/0006-direct-media-task-boundary.md)。
 
+新增网络协议须接入能力版本的 `settings.httpTimeouts`：在 `MediaHttpTimeouts` 登记供发布表单读取的默认值，从任务固定的 settings 解析显式配置，使用 `HttpTimeouts` 构造单次调用的不可变客户端副本。API、输入上传、原 ID 查询、结果下载及重定向传输都必须生效，不能在请求封装中再覆盖为固定上限；没有配置的历史版本保留原 API/下载默认。发布与编辑的所有参数白名单须接受此完整对象，本地和 Mock 拒绝。验证实际慢传输、总期限、版本隔离和禁止重发，不能只检查字段回显。默认值、范围、续租和升级规则见 [ADR 0088](../adr/0088-media-capability-http-timeouts.md)。
+
 视频生成结果必须保留 Provider 返回的音轨，单结果、多结果、归档重试和取消晚到结果一致；不能根据是否有音频参考自动去音。Seedance 所有输入模式均不发送 `generate_audio`，由供应商按原生行为处理音频。新增适配器和归档改动须用合成带音轨视频验证保留行为；用户去音使用既有“音频分离”，深度提取与用户选定的视频合成音频模式按各自功能处理。见 [ADR 0066](../adr/0066-preserve-provider-video-audio.md)。
 
 ## 3. 检查前端配置与画布

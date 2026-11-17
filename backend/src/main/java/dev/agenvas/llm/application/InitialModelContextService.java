@@ -246,12 +246,13 @@ public class InitialModelContextService {
                     .append(" description=").append(required(selected, "description")).append('\n');
         }
         messages.add(new UserMessage(catalog.toString()));
-        if (!AgentToolset.onDemand(run.policySnapshot())) messages.add(new UserMessage("Published media capabilities for this project (at most 40):\n"
-                + capabilities.planningSummary() + "\nPrefer the configured isDefault capability and its "
-                + "defaultParameters/defaultDurationSeconds unless the user requests otherwise or the inputs "
-                + "require another capability. Use published fields and resolution options only. If the default "
-                + "cannot satisfy the task, explain the choice of an alternative. The user may revise the pending "
-                + "proposal's capability and generation parameters before approving; final tool outcomes reflect that choice."));
+        if (!AgentToolset.onDemand(run.policySnapshot()))
+            messages.add(new UserMessage("Published media capabilities for this project (at most 40):\n"
+                    + capabilities.planningSummary() + "\nPrefer the configured isDefault capability and its "
+                    + "defaultParameters/defaultDurationSeconds unless the user requests otherwise or the inputs "
+                    + "require another capability. Use published fields and resolution options only. If the default "
+                    + "cannot satisfy the task, explain the choice of an alternative. The user may revise the pending "
+                    + "proposal's capability and generation parameters before approving; final tool outcomes reflect that choice."));
         messages.add(new UserMessage("Current project canvas: call read_canvas(offset, limit) for live node metadata, "
                 + "selected versions and CAS values. No canvas content or image pixels are included initially."));
         JsonNode selection = snapshot.path("selection");
@@ -270,7 +271,8 @@ public class InitialModelContextService {
      */
     private void appendConversationMemory(List<Message> messages, JsonNode snapshot) {
         JsonNode memory = snapshot.path("conversationMemory");
-        if (memory.isMissingNode()) return;
+        if (memory.isMissingNode())
+            return;
         JsonNode entries = memory.path("entries");
         if (!memory.isObject() || !entries.isArray()
                 || entries.size() > ConversationMemoryReader.MAX_HISTORY_MESSAGES
@@ -279,7 +281,8 @@ public class InitialModelContextService {
                 || memory.path("priorRunCount").asLong() < entries.size() / MEMORY_MESSAGES_PER_RUN) {
             throw new IllegalStateException("Run conversation memory snapshot is malformed");
         }
-        if (entries.isEmpty()) return;
+        if (entries.isEmpty())
+            return;
         List<Message> history = new ArrayList<>();
         int codePoints = 0;
         for (JsonNode entry : entries) {
@@ -293,8 +296,9 @@ public class InitialModelContextService {
             if (codePoints > ConversationMemoryReader.MAX_HISTORY_CODE_POINTS) {
                 throw new IllegalStateException("Run conversation memory exceeds its context limit");
             }
-            history.add(user ? UserMessage.builder().text(content)
-                    .metadata(java.util.Map.of(AgentContextService.HISTORY, 1)).build()
+            history.add(user
+                    ? UserMessage.builder().text(content)
+                            .metadata(java.util.Map.of(AgentContextService.HISTORY, 1)).build()
                     : AssistantMessage.builder().content(content)
                             .properties(java.util.Map.of(AgentContextService.HISTORY, 1)).build());
         }
@@ -315,7 +319,8 @@ public class InitialModelContextService {
         if (!version.isIntegralNumber() || !version.canConvertToInt()
                 || version.intValue() != CURRENT_SYSTEM_PROMPT_VERSION)
             throw new IllegalStateException("Run system prompt version is unsupported");
-        if (AgentToolset.onDemand(policySnapshot)) return CORE_RULES;
+        if (AgentToolset.onDemand(policySnapshot))
+            return CORE_RULES;
         var allowed = policySnapshot.path("allowedTools");
         return SYSTEM_RULES + professionalRules(java.util.stream.StreamSupport.stream(allowed.spliterator(), false)
                 .map(JsonNode::asText).toList());
@@ -324,8 +329,10 @@ public class InitialModelContextService {
     private static String professionalRules(List<String> allowed) {
         String rules = allowed.contains("write_storyboard_shots") ? STORYBOARD_RULES : "";
         for (String tool : allowed) {
-            if ("compose_video".equals(tool)) rules += COMPOSITION_RULES;
-            if ("extract_audio".equals(tool)) rules += """
+            if ("compose_video".equals(tool))
+                rules += COMPOSITION_RULES;
+            if ("extract_audio".equals(tool))
+                rules += """
 
                     To reuse a voice from existing video, discover an authorized unlocked selected VIDEO
                     with read_canvas, use extract_audio, then wait for the server's final localTaskOutcome.
@@ -340,7 +347,8 @@ public class InitialModelContextService {
                     cannot identify speech or speakers. Use actual sampled audio if the model supports it,
                     otherwise use explicit known dialogue/timing evidence and state any remaining uncertainty.
                     """;
-            if ("read_media_sample".equals(tool)) rules += """
+            if ("read_media_sample".equals(tool))
+                rules += """
 
                     This Run additionally supports read_media_sample. Use it to inspect one authorized exact
                     VIDEO/AUDIO version: up to four requested timestamped frames as a contact sheet and/or
@@ -359,13 +367,17 @@ public class InitialModelContextService {
     static List<Message> forTools(JsonNode policy, List<Message> messages,
             List<org.springframework.ai.tool.ToolCallback> previous,
             List<org.springframework.ai.tool.ToolCallback> definitions) {
-        if (!AgentToolset.onDemand(policy) || messages.isEmpty() || !(messages.getFirst() instanceof SystemMessage)) return messages;
+        if (!AgentToolset.onDemand(policy) || messages.isEmpty() || !(messages.getFirst() instanceof SystemMessage))
+            return messages;
         var before = previous.stream().map(tool -> tool.getToolDefinition().name()).toList();
         var names = definitions.stream().map(tool -> tool.getToolDefinition().name()).toList();
         String rules = messages.getFirst().getText();
-        if (!needsCanvasRules(before) && needsCanvasRules(names)) rules += CANVAS_RULES;
-        if (!before.contains("read_skill") && names.contains("read_skill")) rules += SKILL_RULES;
-        if (!before.contains("propose_media_generation") && names.contains("propose_media_generation")) rules += MEDIA_RULES;
+        if (!needsCanvasRules(before) && needsCanvasRules(names))
+            rules += CANVAS_RULES;
+        if (!before.contains("read_skill") && names.contains("read_skill"))
+            rules += SKILL_RULES;
+        if (!before.contains("propose_media_generation") && names.contains("propose_media_generation"))
+            rules += MEDIA_RULES;
         rules += professionalRules(names.stream().filter(name -> !before.contains(name)).toList());
         var result = new ArrayList<>(messages);
         result.set(0, new SystemMessage(rules));

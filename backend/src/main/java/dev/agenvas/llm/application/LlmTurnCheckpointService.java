@@ -86,18 +86,21 @@ public class LlmTurnCheckpointService {
         return events.recordChange(ownerId, projectId, () -> {
             leaseGuard.requireActive(lease, workerId);
             AgentRun run = requireRunning(ownerId, projectId, runId);
-            if (run.nextStepIndex() != stepIndex) throw conflict(ApiMessage.of("api.llm-turn-checkpoint-service.run-is-not-accepting-a-model-round"));
+            if (run.nextStepIndex() != stepIndex)
+                throw conflict(ApiMessage.of("api.llm-turn-checkpoint-service.run-is-not-accepting-a-model-round"));
             int pinnedVersion = run.policySnapshot().path("modelConfigVersion")
                     .asInt(-1);
             String pinnedSource = run.policySnapshot().path("modelConfigSource").asText("");
             if (pinnedVersion != configVersion || !pinnedSource.equals(configSource)) {
-                throw conflict(ApiMessage.of("api.llm-turn-checkpoint-service.run-model-configuration-changed-explicit-recovery-is-required"));
+                throw conflict(ApiMessage.of(
+                        "api.llm-turn-checkpoint-service.run-model-configuration-changed-explicit-recovery-is-required"));
             }
             boolean inserted = turns.insertRequested(projectId, runId, stepIndex,
                     configVersion, request, clock.instant());
             LlmTurn turn = turns.find(projectId, runId, stepIndex).orElseThrow();
             if (turn.modelConfigVersion() != configVersion || !turn.request().equals(request)) {
-                throw conflict(ApiMessage.of("api.llm-turn-checkpoint-service.model-step-already-exists-with-a-different-request-or-config"));
+                throw conflict(ApiMessage.of(
+                        "api.llm-turn-checkpoint-service.model-step-already-exists-with-a-different-request-or-config"));
             }
             if (inserted) {
                 usage.reserveModelTurn(ownerId, turn);
@@ -136,13 +139,16 @@ public class LlmTurnCheckpointService {
                 throw conflict(ApiMessage.of("api.llm-turn-checkpoint-service.run-is-not-accepting-a-model-round"));
             }
             LlmTurn existing = turns.find(projectId, runId, stepIndex)
-                    .orElseThrow(() -> conflict(ApiMessage.of("api.llm-turn-checkpoint-service.model-request-checkpoint-is-missing")));
+                    .orElseThrow(() -> conflict(
+                            ApiMessage.of("api.llm-turn-checkpoint-service.model-request-checkpoint-is-missing")));
             if (existing.modelConfigVersion() != configVersion) {
-                throw conflict(ApiMessage.of("api.llm-turn-checkpoint-service.model-config-version-changed-during-this-round"));
+                throw conflict(ApiMessage
+                        .of("api.llm-turn-checkpoint-service.model-config-version-changed-during-this-round"));
             }
             if (existing.status() == LlmTurn.Status.RESPONDED) {
                 if (!existing.response().equals(response)) {
-                    throw conflict(ApiMessage.of("api.llm-turn-checkpoint-service.model-response-was-already-recorded-differently"));
+                    throw conflict(ApiMessage
+                            .of("api.llm-turn-checkpoint-service.model-response-was-already-recorded-differently"));
                 }
                 return ProjectEventService.Change.unchanged(existing);
             }
@@ -151,7 +157,8 @@ public class LlmTurnCheckpointService {
                 tasks.completeAgentStream(lease, workerId, text == null ? "" : text);
             }
             if (!turns.saveResponse(projectId, runId, stepIndex, response, clock.instant())) {
-                throw conflict(ApiMessage.of("api.llm-turn-checkpoint-service.model-response-checkpoint-was-updated-concurrently"));
+                throw conflict(ApiMessage
+                        .of("api.llm-turn-checkpoint-service.model-response-checkpoint-was-updated-concurrently"));
             }
             LlmTurn saved = turns.find(projectId, runId, stepIndex).orElseThrow();
             usage.settleModelTurn(ownerId, saved);

@@ -41,10 +41,13 @@ class StoryboardServiceTest {
     Shot second;
     Composition composition;
 
-    @BeforeEach void setup() {
-        first = shot("SHOT-001", "first"); second = shot("SHOT-002", "second");
+    @BeforeEach
+    void setup() {
+        first = shot("SHOT-001", "first");
+        second = shot("SHOT-002", "second");
         composition = new Composition(UUID.randomUUID(), UUID.randomUUID(), false);
-        when(repository.current(project)).thenReturn(Optional.of(new Storyboard(project, 1, List.of(first, second), composition)));
+        when(repository.current(project))
+                .thenReturn(Optional.of(new Storyboard(project, 1, List.of(first, second), composition)));
         when(repository.append(any(), anyLong())).thenReturn(true);
         when(events.recordChange(any(), any(), any())).thenAnswer(invocation -> {
             Supplier<ProjectEventService.Change<Storyboard>> change = invocation.getArgument(2);
@@ -52,11 +55,14 @@ class StoryboardServiceTest {
         });
     }
 
-    @Test void creativeChangeOnlyMarksItsOwnPinnedResultsAndCompositionForReview() {
+    @Test
+    void creativeChangeOnlyMarksItsOwnPinnedResultsAndCompositionForReview() {
         var changed = input(first, "new dialogue", false);
-        var next = service.save(owner, project, new Save(1, List.of(changed, input(second, second.dialogue(), false)), film(false)));
+        var next = service.save(owner, project,
+                new Save(1, List.of(changed, input(second, second.dialogue(), false)), film(false)));
         assertThat(next.shots().getFirst().revision()).isEqualTo(2);
-        assertThat(next.shots().getFirst().productions().getFirst().selectedVersionId()).isEqualTo(first.productions().getFirst().selectedVersionId());
+        assertThat(next.shots().getFirst().productions().getFirst().selectedVersionId())
+                .isEqualTo(first.productions().getFirst().selectedVersionId());
         assertThat(next.shots().getFirst().productions().getFirst().reviewedRevision()).isEqualTo(1);
         assertThat(next.shots().getFirst().productions().getFirst().needsReview()).isTrue();
         assertThat(next.shots().get(1)).isEqualTo(second);
@@ -64,7 +70,8 @@ class StoryboardServiceTest {
         verifyNoInteractions(artifacts, items, canvas);
     }
 
-    @Test void explicitConfirmationReviewsTheCurrentRevisionWithoutChangingSelectedResults() {
+    @Test
+    void explicitConfirmationReviewsTheCurrentRevisionWithoutChangingSelectedResults() {
         var next = service.save(owner, project, new Save(1,
                 List.of(input(first, "new dialogue", true), input(second, second.dialogue(), false)), film(true)));
         var result = next.shots().getFirst().productions().getFirst();
@@ -74,16 +81,19 @@ class StoryboardServiceTest {
         verify(repository).append(next, 1);
     }
 
-    @Test void reorderingOnlyMarksCompositionWhileMetadataKeepsShotRevision() {
+    @Test
+    void reorderingOnlyMarksCompositionWhileMetadataKeepsShotRevision() {
         var renamed = new ShotInput(first.id(), "SHOT-003", "SC-02", "Renamed", first.description(), first.dialogue(),
                 first.durationSeconds(), null, List.of(), input(first, first.dialogue(), false).productions());
-        var next = service.save(owner, project, new Save(1, List.of(input(second, second.dialogue(), false), renamed), film(false)));
+        var next = service.save(owner, project,
+                new Save(1, List.of(input(second, second.dialogue(), false), renamed), film(false)));
         assertThat(next.shots().get(1).revision()).isEqualTo(1);
         assertThat(next.shots().get(1).productions().getFirst().needsReview()).isFalse();
         assertThat(next.composition().needsReview()).isTrue();
     }
 
-    @Test void confirmingSlotsInADifferentSerializationOrderDoesNotInvalidateComposition() {
+    @Test
+    void confirmingSlotsInADifferentSerializationOrderDoesNotInvalidateComposition() {
         var audio = first.productions().getFirst();
         var keyframe = new Production(Role.KEYFRAME, UUID.randomUUID(), UUID.randomUUID(), 1, false);
         var multiRole = new Shot(first.id(), first.code(), first.scene(), first.title(), first.description(),
@@ -92,7 +102,8 @@ class StoryboardServiceTest {
                 List.of(multiRole, second), composition)));
         var reordered = new ShotInput(first.id(), first.code(), first.scene(), first.title(), first.description(),
                 first.dialogue(), first.durationSeconds(), null, List.of(),
-                List.of(new ProductionInput(keyframe.role(), keyframe.canvasItemId(), keyframe.selectedVersionId(), true),
+                List.of(new ProductionInput(keyframe.role(), keyframe.canvasItemId(), keyframe.selectedVersionId(),
+                        true),
                         new ProductionInput(audio.role(), audio.canvasItemId(), audio.selectedVersionId(), false)));
         var next = service.save(owner, project, new Save(1,
                 List.of(reordered, input(second, second.dialogue(), false)), film(false)));
@@ -102,7 +113,8 @@ class StoryboardServiceTest {
 
     private Shot shot(String code, String dialogue) {
         return new Shot(UUID.randomUUID(), code, "SC-01", "title", "description", dialogue, BigDecimal.ONE,
-                null, List.of(), 1, List.of(new Production(Role.AUDIO, UUID.randomUUID(), UUID.randomUUID(), 1, false)));
+                null, List.of(), 1,
+                List.of(new Production(Role.AUDIO, UUID.randomUUID(), UUID.randomUUID(), 1, false)));
     }
     private ShotInput input(Shot shot, String dialogue, boolean confirm) {
         var p = shot.productions().getFirst();

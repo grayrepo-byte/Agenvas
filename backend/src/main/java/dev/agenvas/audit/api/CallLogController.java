@@ -26,7 +26,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class CallLogController {
     private final CallLogService logs;
-    public CallLogController(CallLogService logs) { this.logs = logs; }
+    public CallLogController(CallLogService logs) {
+        this.logs = logs;
+    }
 
     @GetMapping("/api/v1/call-logs")
     public PageResponse list(@AuthenticationPrincipal AdminPrincipal principal,
@@ -43,14 +45,17 @@ public class CallLogController {
     }
 
     @GetMapping("/api/v1/settings/debug")
-    public DebugSettings settings() { return logs.settings(); }
+    public DebugSettings settings() {
+        return logs.settings();
+    }
 
     @PutMapping("/api/v1/settings/debug")
     public DebugSettings updateSettings(@Valid @RequestBody DebugSettingsRequest request) {
         return logs.updateSettings(request.debugMode(), request.expectedVersion());
     }
 
-    public record DebugSettingsRequest(@NotNull Boolean debugMode, @NotNull @Min(1) Integer expectedVersion) {}
+    public record DebugSettingsRequest(@NotNull Boolean debugMode, @NotNull @Min(1) Integer expectedVersion) {
+    }
 
     @GetMapping("/api/v1/call-logs/{id}/debug")
     public ResponseEntity<CallDebug> debug(@AuthenticationPrincipal AdminPrincipal principal, @PathVariable UUID id) {

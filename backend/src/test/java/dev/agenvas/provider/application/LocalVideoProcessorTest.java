@@ -35,7 +35,8 @@ class LocalVideoProcessorTest {
     private final ObjectMapper mapper = new ObjectMapper();
     private final LocalVideoProcessor processor = new LocalVideoProcessor(artifacts, assets, tools,
             mock(LocalImageProcessorAdapter.class), tasks, mapper);
-    @TempDir Path temp;
+    @TempDir
+    Path temp;
 
     private AttemptContext context() {
         var owner = java.util.UUID.randomUUID();
@@ -51,12 +52,15 @@ class LocalVideoProcessorTest {
         when(tasks.get(owner, project, task.id())).thenReturn(task);
         var version = mock(ArtifactVersion.class);
         when(version.content()).thenReturn(mapper.createObjectNode().put("assetId", assetId.toString()));
-        when(artifacts.requireMediaVersionForTask(owner, project, sourceVersion, Artifact.Kind.VIDEO)).thenReturn(version);
-        when(assets.get(owner, project, assetId)).thenReturn(new AssetService.AssetFile(mock(Asset.class), temp.resolve("source.mp4")));
+        when(artifacts.requireMediaVersionForTask(owner, project, sourceVersion, Artifact.Kind.VIDEO))
+                .thenReturn(version);
+        when(assets.get(owner, project, assetId))
+                .thenReturn(new AssetService.AssetFile(mock(Asset.class), temp.resolve("source.mp4")));
         return new AttemptContext(task, null, owner, "synthetic-request", null);
     }
 
-    @Test void silentArchiveIdentityIsStableAndDifferentFromAudioWithinTheSameTask() throws Exception {
+    @Test
+    void silentArchiveIdentityIsStableAndDifferentFromAudioWithinTheSameTask() throws Exception {
         var context = context();
         var output = mock(Asset.class);
         var outputId = java.util.UUID.randomUUID();
@@ -65,9 +69,15 @@ class LocalVideoProcessorTest {
         var ownerId = context.ownerId();
         var projectId = context.lease().projectId();
         when(assets.archiveTaskVideo(eq(ownerId), eq(projectId), any(), any()))
-                .thenAnswer(call -> { archiveIds.add(call.getArgument(2)); return output; });
+                .thenAnswer(call -> {
+                    archiveIds.add(call.getArgument(2));
+                    return output;
+                });
         var scratchDirectories = new java.util.ArrayList<Path>();
-        doAnswer(call -> { scratchDirectories.add(call.getArgument(1)); return null; })
+        doAnswer(call -> {
+            scratchDirectories.add(call.getArgument(1));
+            return null;
+        })
                 .when(tools).ffmpegExport(any(), any(), any(), any(), any());
         var first = processor.silentVideoResult(context);
         var replay = processor.silentVideoResult(context);
@@ -78,18 +88,21 @@ class LocalVideoProcessorTest {
         assertThat(scratchDirectories).allSatisfy(directory -> assertThat(Files.exists(directory)).isFalse());
     }
 
-    @Test void canceledProcessingCannotArchiveASilentResult() {
+    @Test
+    void canceledProcessingCannotArchiveASilentResult() {
         var context = context();
         doThrow(new CancellationException()).when(tools).ffmpegExport(any(), any(), any(), any(), any());
         assertThatThrownBy(() -> processor.silentVideoResult(context)).isInstanceOf(CancellationException.class);
         verify(assets, never()).archiveTaskVideo(any(), any(), any(), any());
     }
 
-    @Test void failedRemuxCannotArchiveASilentResult() {
+    @Test
+    void failedRemuxCannotArchiveASilentResult() {
         var context = context();
         doThrow(new MediaToolRunner.MediaToolException("Synthetic tool failure", true, null))
                 .when(tools).ffmpegExport(any(), any(), any(), any(), any());
-        assertThatThrownBy(() -> processor.silentVideoResult(context)).isInstanceOf(MediaToolRunner.MediaToolException.class);
+        assertThatThrownBy(() -> processor.silentVideoResult(context))
+                .isInstanceOf(MediaToolRunner.MediaToolException.class);
         verify(assets, never()).archiveTaskVideo(any(), any(), any(), any());
     }
 }

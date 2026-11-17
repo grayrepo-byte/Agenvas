@@ -72,7 +72,10 @@ class AgentMediaApprovalServiceTest {
             1, UUID.randomUUID(), 1, "mock-image", "synthetic-mapping");
     private final AgentMediaApprovalService service = new AgentMediaApprovalService(approvals,
             runs, artifacts, canvas, drafts, capabilities, mediaTasks, events, publisher,
-            mapper, Clock.fixed(NOW, ZoneOffset.UTC), mock(ToolExecutionRepository.class), connections, mock(dev.agenvas.storyboard.application.StoryboardMediaLinkService.class), mock(dev.agenvas.task.application.TaskService.class), mock(dev.agenvas.task.application.TaskOutputReadAccessService.class));
+            mapper, Clock.fixed(NOW, ZoneOffset.UTC), mock(ToolExecutionRepository.class), connections,
+            mock(dev.agenvas.storyboard.application.StoryboardMediaLinkService.class),
+            mock(dev.agenvas.task.application.TaskService.class),
+            mock(dev.agenvas.task.application.TaskOutputReadAccessService.class));
 
     @BeforeEach
     void lockedProjectMutationExecutes() {
@@ -89,7 +92,8 @@ class AgentMediaApprovalServiceTest {
     void videoRevisionPreservesExactReferencesAndStyleWithoutCreatingTasks() {
         var approval = pending(NOW.plusSeconds(60), 1);
         ((ObjectNode) approval.request().path("outputs").get(0)).put("kind", "VIDEO");
-        UUID sourceId = UUID.randomUUID(); UUID styleId = UUID.randomUUID();
+        UUID sourceId = UUID.randomUUID();
+        UUID styleId = UUID.randomUUID();
         var input = new dev.agenvas.artifact.domain.MediaDraft.MediaInput(sourceId, UUID.randomUUID(),
                 dev.agenvas.artifact.domain.MediaDraft.InputRole.REFERENCE, 0, "#c084fc", List.of());
         var before = new dev.agenvas.artifact.domain.MediaDraft(projectId, canvasItemId, "Original prompt",
@@ -98,20 +102,24 @@ class AgentMediaApprovalServiceTest {
                 dev.agenvas.artifact.domain.MediaDraft.DisplayMode.DRAFT, 1, NOW, NOW);
         var parameters = mapper.createObjectNode().put("videoResolution", "1440p");
         var saved = new dev.agenvas.artifact.domain.MediaDraft(projectId, canvasItemId, before.prompt(), parameters, 5,
-                binding.capabilityId(), styleId, before.videoInputMode(), List.of(input), List.of(), before.displayMode(), 2, NOW, NOW);
+                binding.capabilityId(), styleId, before.videoInputMode(), List.of(input), List.of(),
+                before.displayMode(), 2, NOW, NOW);
         var item = mock(dev.agenvas.canvas.domain.CanvasItem.class);
-        when(item.id()).thenReturn(canvasItemId); when(item.subjectId()).thenReturn(artifactId);
+        when(item.id()).thenReturn(canvasItemId);
+        when(item.subjectId()).thenReturn(artifactId);
         when(item.subjectType()).thenReturn(dev.agenvas.canvas.domain.CanvasItem.SubjectType.ARTIFACT);
         when(canvas.list(ownerId, projectId)).thenReturn(List.of(new CanvasService.CanvasEntry(item, null, null)));
         when(approvals.findForUpdate(projectId, runId, approvalId)).thenReturn(Optional.of(approval));
         when(drafts.get(ownerId, projectId, canvasItemId)).thenReturn(before);
         when(capabilities.forDraft(binding.capabilityId(), Task.Kind.VIDEO_GENERATION)).thenReturn(binding);
         when(drafts.save(eq(ownerId), eq(projectId), eq(canvasItemId), eq(1L), eq(before.prompt()), eq(parameters),
-                eq(5), eq(binding.capabilityId()), eq(before.videoInputMode()), any(), eq(List.of()), eq(styleId))).thenReturn(saved);
+                eq(5), eq(binding.capabilityId()), eq(before.videoInputMode()), any(), eq(List.of()), eq(styleId)))
+                .thenReturn(saved);
         var preview = mapper.createObjectNode().put("capabilityId", binding.capabilityId().toString());
         preview.set("parameters", parameters);
         when(mediaTasks.preflight(ownerId, projectId, artifactId, canvasItemId, 2))
-                .thenReturn(new DirectMediaTaskService.MediaPreflight(Task.Kind.VIDEO_GENERATION, binding, "revised-hash", 1, preview));
+                .thenReturn(new DirectMediaTaskService.MediaPreflight(Task.Kind.VIDEO_GENERATION, binding,
+                        "revised-hash", 1, preview));
 
         var revised = service.revise(ownerId, projectId, runId, approvalId, 0, 0, binding.capabilityId(),
                 parameters, 5, before.videoInputMode());
@@ -122,18 +130,22 @@ class AgentMediaApprovalServiceTest {
         assertThat(revised.version()).isEqualTo(1);
         assertThat(revised.taskIds()).isEmpty();
         assertThat(captured.getValue().targets().at("/outputs/0/frozenInputHash").asText()).isEqualTo("revised-hash");
-        assertThat(captured.getValue().request().at("/outputs/0/mediaInputs/0/versionId").asText()).isEqualTo(sourceId.toString());
+        assertThat(captured.getValue().request().at("/outputs/0/mediaInputs/0/versionId").asText())
+                .isEqualTo(sourceId.toString());
         verify(mediaTasks, never()).runApproved(any(), any(), any(), any(), any(), any(), anyLong(), any());
     }
 
     @Test
     void expiredOrAlreadyApprovedVideoCannotBeRevised() {
         for (var approval : List.of(pending(NOW, 1), pending(NOW.plusSeconds(60), 1).transition(
-                AgentMediaApproval.Status.APPROVED, List.of(UUID.randomUUID()), null, NOW.plusSeconds(60), "decision", "hash"))) {
+                AgentMediaApproval.Status.APPROVED, List.of(UUID.randomUUID()), null, NOW.plusSeconds(60), "decision",
+                "hash"))) {
             when(approvals.findForUpdate(projectId, runId, approvalId)).thenReturn(Optional.of(approval));
             assertThatThrownBy(() -> service.revise(ownerId, projectId, runId, approvalId, approval.version(), 0,
-                    binding.capabilityId(), mapper.createObjectNode(), 5, dev.agenvas.artifact.domain.MediaDraft.VideoInputMode.TEXT))
-                    .isInstanceOfSatisfying(ApiProblemException.class, error -> assertThat(error.code()).isEqualTo("AGENT_MEDIA_APPROVAL_CONFLICT"));
+                    binding.capabilityId(), mapper.createObjectNode(), 5,
+                    dev.agenvas.artifact.domain.MediaDraft.VideoInputMode.TEXT))
+                    .isInstanceOfSatisfying(ApiProblemException.class,
+                            error -> assertThat(error.code()).isEqualTo("AGENT_MEDIA_APPROVAL_CONFLICT"));
         }
         verifyNoInteractions(drafts, mediaTasks, capabilities);
     }
@@ -141,7 +153,8 @@ class AgentMediaApprovalServiceTest {
     @Test
     void sixOutputsReturnSkillReferencesWhileApprovalDetailsKeepTheFullSnapshot() {
         var approval = pending(NOW.plusSeconds(60), 6);
-        for (var output : approval.request().path("outputs")) ((ObjectNode) output).put("prompt", "Draw");
+        for (var output : approval.request().path("outputs"))
+            ((ObjectNode) output).put("prompt", "Draw");
         var input = mapper.createObjectNode();
         input.set("outputs", approval.request().path("outputs").deepCopy());
         String arguments = input.toString();
@@ -151,7 +164,8 @@ class AgentMediaApprovalServiceTest {
                 .put("bundleHash", "synthetic-bundle-hash").put("skillMd", "x".repeat(32 * 1024));
         skill.putArray("resources").addObject().put("path", "guide.md").put("content", "PRIVATE_RESOURCE_BODY");
         for (var target : approval.targets().path("outputs")) {
-            var source = mapper.createObjectNode().put("schemaVersion", 2); source.putArray("skills").add(skill.deepCopy());
+            var source = mapper.createObjectNode().put("schemaVersion", 2);
+            source.putArray("skills").add(skill.deepCopy());
             ((ObjectNode) target.path("preview")).set("creativeSkill", source);
         }
         when(approvals.findByToolCall(projectId, runId, 1, "call-media")).thenReturn(Optional.of(approval));
@@ -285,21 +299,27 @@ class AgentMediaApprovalServiceTest {
         UUID startCardId = UUID.randomUUID();
         UUID endCardId = UUID.randomUUID();
         when(saved.mediaInputs()).thenReturn(List.of(
-                new MediaDraft.MediaInput(startFrame, startArtifact, MediaDraft.InputRole.START_FRAME, 0, "#7C3AED", List.of()),
-                new MediaDraft.MediaInput(endFrame, endArtifact, MediaDraft.InputRole.END_FRAME, 1, "#7C3AED", List.of())));
+                new MediaDraft.MediaInput(startFrame, startArtifact, MediaDraft.InputRole.START_FRAME, 0, "#7C3AED",
+                        List.of()),
+                new MediaDraft.MediaInput(endFrame, endArtifact, MediaDraft.InputRole.END_FRAME, 1, "#7C3AED",
+                        List.of())));
         CanvasItem startCard = mock(CanvasItem.class);
         CanvasItem endCard = mock(CanvasItem.class);
         when(startCard.id()).thenReturn(startCardId);
         when(endCard.id()).thenReturn(endCardId);
-        when(canvas.ensureMediaReferenceWithinChange(ownerId, projectId, startArtifact, startFrame, null, canvasItemId)).thenReturn(startCard);
-        when(canvas.ensureMediaReferenceWithinChange(ownerId, projectId, endArtifact, endFrame, null, canvasItemId)).thenReturn(endCard);
+        when(canvas.ensureMediaReferenceWithinChange(ownerId, projectId, startArtifact, startFrame, null, canvasItemId))
+                .thenReturn(startCard);
+        when(canvas.ensureMediaReferenceWithinChange(ownerId, projectId, endArtifact, endFrame, null, canvasItemId))
+                .thenReturn(endCard);
         MediaDraft firstConnected = mock(MediaDraft.class);
         MediaDraft finalConnected = mock(MediaDraft.class);
         when(firstConnected.version()).thenReturn(2L);
         when(finalConnected.version()).thenReturn(3L);
-        when(connections.connectPreparedMediaInputWithinChange(ownerId, projectId, startCardId, canvasItemId, startFrame, 1))
+        when(connections.connectPreparedMediaInputWithinChange(ownerId, projectId, startCardId, canvasItemId,
+                startFrame, 1))
                 .thenReturn(new CanvasConnectionService.ConnectionResult(null, firstConnected));
-        when(connections.connectPreparedMediaInputWithinChange(ownerId, projectId, endCardId, canvasItemId, endFrame, 2))
+        when(connections.connectPreparedMediaInputWithinChange(ownerId, projectId, endCardId, canvasItemId, endFrame,
+                2))
                 .thenReturn(new CanvasConnectionService.ConnectionResult(null, finalConnected));
         String arguments = "{\"outputs\":[{\"kind\":\"VIDEO\",\"title\":\"Video\",\"prompt\":\"Animate\","
                 + "\"durationSeconds\":5,\"videoInputMode\":\"START_END\",\"mediaInputs\":["
@@ -312,15 +332,18 @@ class AgentMediaApprovalServiceTest {
         verify(drafts).save(ownerId, projectId, canvasItemId, 0L, "Animate",
                 mapper.createObjectNode(), 5, binding.capabilityId(), MediaDraft.VideoInputMode.START_END,
                 List.of(new MediaDraftService.SaveMediaInput(startFrame, MediaDraft.InputRole.START_FRAME,
-                                "#7C3AED"),
+                        "#7C3AED"),
                         new MediaDraftService.SaveMediaInput(endFrame, MediaDraft.InputRole.END_FRAME,
-                                "#7C3AED")), List.of(), null);
+                                "#7C3AED")),
+                List.of(), null);
         ArgumentCaptor<AgentMediaApproval> captured = ArgumentCaptor.forClass(AgentMediaApproval.class);
         verify(approvals).insert(captured.capture());
         assertThat(captured.getValue().targets().at("/outputs/0/draftVersion").asLong()).isEqualTo(3);
         var ordered = inOrder(connections, mediaTasks);
-        ordered.verify(connections).connectPreparedMediaInputWithinChange(ownerId, projectId, startCardId, canvasItemId, startFrame, 1);
-        ordered.verify(connections).connectPreparedMediaInputWithinChange(ownerId, projectId, endCardId, canvasItemId, endFrame, 2);
+        ordered.verify(connections).connectPreparedMediaInputWithinChange(ownerId, projectId, startCardId, canvasItemId,
+                startFrame, 1);
+        ordered.verify(connections).connectPreparedMediaInputWithinChange(ownerId, projectId, endCardId, canvasItemId,
+                endFrame, 2);
         ordered.verify(mediaTasks).preflight(ownerId, projectId, artifactId, canvasItemId, 3);
         assertThat(captured.getValue().request().path("outputs").get(0)
                 .path("videoInputMode").asText()).isEqualTo("START_END");
@@ -576,7 +599,8 @@ class AgentMediaApprovalServiceTest {
         when(runs.get(ownerId, projectId, runId)).thenReturn(run);
         when(approvals.findByToolCall(projectId, runId, 1, "call-media"))
                 .thenReturn(Optional.empty());
-        when(artifacts.requireAgentReadableVersion(ownerId, projectId, run.contextSnapshot(), runId, referenceId)).thenThrow(new ApiProblemException(HttpStatus.FORBIDDEN,
+        when(artifacts.requireAgentReadableVersion(ownerId, projectId, run.contextSnapshot(), runId, referenceId))
+                .thenThrow(new ApiProblemException(HttpStatus.FORBIDDEN,
                         "INPUT_SCOPE_DENIED", ApiMessage.of("api.agent-media-approval.invalid-title"),
                         ApiMessage.of("api.agent-media-approval.invalid-detail", "reference"), false));
 
@@ -601,7 +625,8 @@ class AgentMediaApprovalServiceTest {
         assertThatThrownBy(() -> service.get(ownerId, projectId, runId, approvalId))
                 .isInstanceOf(ApiProblemException.class);
         assertThatThrownBy(() -> service.revise(ownerId, projectId, runId, approvalId, 0, 0, binding.capabilityId(),
-                mapper.createObjectNode(), 5, dev.agenvas.artifact.domain.MediaDraft.VideoInputMode.TEXT)).isInstanceOf(ApiProblemException.class);
+                mapper.createObjectNode(), 5, dev.agenvas.artifact.domain.MediaDraft.VideoInputMode.TEXT))
+                .isInstanceOf(ApiProblemException.class);
         verifyNoInteractions(approvals);
     }
 
@@ -642,5 +667,6 @@ class AgentMediaApprovalServiceTest {
                 UUID.fromString(target.path("canvasItemId").asText()));
     }
 
-    private record JsonNodeIds(UUID artifactId, UUID itemId) {}
+    private record JsonNodeIds(UUID artifactId, UUID itemId) {
+    }
 }

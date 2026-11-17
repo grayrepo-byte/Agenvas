@@ -104,8 +104,7 @@ public class JooqProjectEventRepository implements ProjectEventRepository {
                 .where(PROJECT.ID.eq(projectId))
                 .and(PROJECT.OWNER_ID.eq(ownerId))
                 .and(PROJECT.STATUS.ne(Project.Status.DELETED.name()))
-                .fetchOptional(record ->
-                        new CursorBounds(record.get(PROJECT.EVENT_SEQ), record.get(oldestRetainedSeq)))
+                .fetchOptional(record -> new CursorBounds(record.get(PROJECT.EVENT_SEQ), record.get(oldestRetainedSeq)))
                 .orElse(null);
     }
 

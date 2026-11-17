@@ -13,12 +13,15 @@ public final class LlmCallTimeouts {
     public static final Duration TRANSPORT_READ = Duration.ofSeconds(180);
     public static final String ERROR_CODE = "LLM_CALL_TIMEOUT";
 
-    private LlmCallTimeouts() {}
+    private LlmCallTimeouts() {
+    }
 
     public static boolean isTimeout(Throwable failure) {
-        if (OutboundTimeouts.isTimeout(failure)) return true;
+        if (OutboundTimeouts.isTimeout(failure))
+            return true;
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
-            if (cause instanceof TimeoutException) return true;
+            if (cause instanceof TimeoutException)
+                return true;
         }
         return false;
     }

@@ -12,7 +12,10 @@ export function encodeOptimizationPrompt(prompt: string, mentions: Mentions): st
   return index === mentions.length ? encoded : null;
 }
 
-export function decodeOptimizationPrompt(prompt: string, mentions: Mentions): { prompt: string; mentions: Mentions } | null {
+export function decodeOptimizationPrompt(
+  prompt: string,
+  mentions: Mentions,
+): { prompt: string; mentions: Mentions } | null {
   const ordered: Mentions = [];
   const seen = new Set<number>();
   let invalid = prompt.includes(MENTION_MARKER);
@@ -20,7 +23,10 @@ export function decodeOptimizationPrompt(prompt: string, mentions: Mentions): { 
     const index = Number(number) - 1;
     const mention = mentions[index];
     if (!mention || seen.has(index)) invalid = true;
-    else { seen.add(index); ordered.push(mention); }
+    else {
+      seen.add(index);
+      ordered.push(mention);
+    }
     return MENTION_MARKER;
   });
   return invalid || seen.size !== mentions.length ? null : { prompt: decoded, mentions: ordered };

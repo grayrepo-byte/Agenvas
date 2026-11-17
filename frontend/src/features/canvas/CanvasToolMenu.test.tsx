@@ -1,15 +1,17 @@
-import { fireEvent,render,screen,within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe,expect,it,vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { CanvasToolMenu } from "./CanvasToolMenu";
 
 describe("CanvasToolMenu", () => {
   it("offers both tools directly and preserves add and settings actions", () => {
     const onToolChange = vi.fn();
     const onAdd = vi.fn();
-    render(<CanvasToolMenu tool="select" spaceHeld={false} onToolChange={onToolChange} onAdd={onAdd}>
-      <button type="button">画布设置</button>
-    </CanvasToolMenu>);
+    render(
+      <CanvasToolMenu tool="select" spaceHeld={false} onToolChange={onToolChange} onAdd={onAdd}>
+        <button type="button">画布设置</button>
+      </CanvasToolMenu>,
+    );
     const tools = screen.getByRole("radiogroup", { name: "画布工具模式" });
     expect(within(tools).getByRole("radio", { name: "选择工具" })).toBeChecked();
     expect(within(tools).getByRole("radio", { name: "手形工具" })).not.toBeChecked();

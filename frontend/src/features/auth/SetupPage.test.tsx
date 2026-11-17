@@ -10,7 +10,16 @@ import { server } from "../../test/server";
 import { SetupPage } from "./SetupPage";
 
 function showPage() {
-  render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/setup"]}><Routes><Route path="/setup" element={<SetupPage />} /><Route path="/login" element={<p>登录页</p>} /></Routes></MemoryRouter></QueryClientProvider>);
+  render(
+    <QueryClientProvider client={createQueryClient()}>
+      <MemoryRouter initialEntries={["/setup"]}>
+        <Routes>
+          <Route path="/setup" element={<SetupPage />} />
+          <Route path="/login" element={<p>登录页</p>} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
 }
 
 describe("SetupPage", () => {
@@ -22,7 +31,9 @@ describe("SetupPage", () => {
     expect(screen.queryByLabelText(/初始化密钥/)).not.toBeInTheDocument();
     expect(screen.getByLabelText(/管理员密码/)).toBeInTheDocument();
     expect(screen.getByText("在受控网络完成初始化")).toBeInTheDocument();
-    expect(screen.getByText("首个完成此页面的人将成为管理员。请先在受控网络完成初始化，再开放公网访问。")).toBeInTheDocument();
+    expect(
+      screen.getByText("首个完成此页面的人将成为管理员。请先在受控网络完成初始化，再开放公网访问。"),
+    ).toBeInTheDocument();
     expect(document.querySelectorAll("form input")).toHaveLength(2);
   });
 
@@ -31,7 +42,11 @@ describe("SetupPage", () => {
     showPage();
     expect(await screen.findByRole("button", { name: "Create administrator" })).toBeInTheDocument();
     expect(screen.getByText("Complete setup on a controlled network")).toBeInTheDocument();
-    expect(screen.getByText("The first person to complete this page becomes the administrator. Complete setup on a controlled network before allowing public internet access.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The first person to complete this page becomes the administrator. Complete setup on a controlled network before allowing public internet access.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText("Administrator username")).toBeInTheDocument();
     expect(screen.getByLabelText(/Administrator password/)).toBeInTheDocument();
     expect(document.querySelectorAll("form input")).toHaveLength(2);
@@ -39,11 +54,15 @@ describe("SetupPage", () => {
 
   it("waits for confirmed setup status before showing the first-administrator warning", async () => {
     let finish: (() => void) | undefined;
-    const pending = new Promise<void>((resolve) => { finish = resolve; });
-    server.use(http.get("/api/v1/auth/setup-status", async () => {
-      await pending;
-      return HttpResponse.json({ setupRequired: false });
-    }));
+    const pending = new Promise<void>(resolve => {
+      finish = resolve;
+    });
+    server.use(
+      http.get("/api/v1/auth/setup-status", async () => {
+        await pending;
+        return HttpResponse.json({ setupRequired: false });
+      }),
+    );
     showPage();
     expect(screen.getByText("正在读取初始化状态…")).toBeInTheDocument();
     expect(screen.queryByText("在受控网络完成初始化")).not.toBeInTheDocument();
@@ -55,8 +74,14 @@ describe("SetupPage", () => {
 
   it("retries unavailable setup status and presents login when already initialized", async () => {
     let calls = 0;
-    server.use(http.get("/api/v1/auth/setup-status", () => { calls += 1; return calls === 1 ? new HttpResponse(null, { status: 503 }) : HttpResponse.json({ setupRequired: false }); }));
-    showPage(); const user = userEvent.setup();
+    server.use(
+      http.get("/api/v1/auth/setup-status", () => {
+        calls += 1;
+        return calls === 1 ? new HttpResponse(null, { status: 503 }) : HttpResponse.json({ setupRequired: false });
+      }),
+    );
+    showPage();
+    const user = userEvent.setup();
     expect(await screen.findByRole("alert")).toHaveTextContent("服务端暂不可用");
     expect(screen.queryByText("在受控网络完成初始化")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "重新连接" }));
@@ -66,25 +91,36 @@ describe("SetupPage", () => {
   });
 
   it("keeps account fields on rejection and disables duplicate submissions", async () => {
-    const submitted: unknown[] = []; let finish: (() => void) | undefined;
-    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    const submitted: unknown[] = [];
+    let finish: (() => void) | undefined;
+    const pending = new Promise<void>(resolve => {
+      finish = resolve;
+    });
     server.use(
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic-csrf" })),
       http.post("/api/v1/auth/setup", async ({ request }) => {
-        submitted.push(await request.json()); expect(request.headers.get("X-Agenvas-Bootstrap-Secret")).toBeNull();
+        submitted.push(await request.json());
+        expect(request.headers.get("X-Agenvas-Bootstrap-Secret")).toBeNull();
         await pending;
-        return HttpResponse.json({ code: "VALIDATION_ERROR", title: "初始化失败", detail: "账号信息无效", retryable: false }, { status: 400, headers: { "Content-Type": "application/problem+json" } });
+        return HttpResponse.json(
+          { code: "VALIDATION_ERROR", title: "初始化失败", detail: "账号信息无效", retryable: false },
+          { status: 400, headers: { "Content-Type": "application/problem+json" } },
+        );
       }),
     );
-    showPage(); const user = userEvent.setup();
+    showPage();
+    const user = userEvent.setup();
     await screen.findByRole("button", { name: "创建管理员" });
-    const username = screen.getByLabelText(/管理员登录名/); const password = screen.getByLabelText(/管理员密码/);
+    const username = screen.getByLabelText(/管理员登录名/);
+    const password = screen.getByLabelText(/管理员密码/);
     await user.type(password, "synthetic-password-123");
     await user.click(screen.getByRole("button", { name: "创建管理员" }));
-    expect(screen.getByRole("button", { name: "正在创建…" })).toBeDisabled(); expect(username).toBeDisabled();
+    expect(screen.getByRole("button", { name: "正在创建…" })).toBeDisabled();
+    expect(username).toBeDisabled();
     finish?.();
     expect(await screen.findByRole("alert")).toHaveTextContent("账号信息无效");
-    expect(username).toHaveValue("admin"); expect(password).toHaveValue("synthetic-password-123");
+    expect(username).toHaveValue("admin");
+    expect(password).toHaveValue("synthetic-password-123");
     expect(submitted).toEqual([{ loginName: "admin", password: "synthetic-password-123" }]);
   });
 
@@ -95,10 +131,14 @@ describe("SetupPage", () => {
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic-csrf" })),
       http.post("/api/v1/auth/setup", () => {
         initialized = true;
-        return HttpResponse.json({ code: "SETUP_ALREADY_COMPLETED", title: "系统已初始化", detail: "初始化已完成", retryable: false }, { status: 409, headers: { "Content-Type": "application/problem+json" } });
+        return HttpResponse.json(
+          { code: "SETUP_ALREADY_COMPLETED", title: "系统已初始化", detail: "初始化已完成", retryable: false },
+          { status: 409, headers: { "Content-Type": "application/problem+json" } },
+        );
       }),
     );
-    showPage(); const user = userEvent.setup();
+    showPage();
+    const user = userEvent.setup();
     await screen.findByRole("button", { name: "创建管理员" });
     await user.type(screen.getByLabelText(/管理员密码/), "synthetic-password-123");
     await user.click(screen.getByRole("button", { name: "创建管理员" }));
@@ -109,9 +149,12 @@ describe("SetupPage", () => {
   it("navigates to login after successful account-only initialization", async () => {
     server.use(
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic-csrf" })),
-      http.post("/api/v1/auth/setup", () => HttpResponse.json({ id: "synthetic-admin", loginName: "admin", role: "ADMIN" }, { status: 201 })),
+      http.post("/api/v1/auth/setup", () =>
+        HttpResponse.json({ id: "synthetic-admin", loginName: "admin", role: "ADMIN" }, { status: 201 }),
+      ),
     );
-    showPage(); const user = userEvent.setup();
+    showPage();
+    const user = userEvent.setup();
     await screen.findByRole("button", { name: "创建管理员" });
     await user.type(screen.getByLabelText(/管理员密码/), "synthetic-password-123");
     await user.click(screen.getByRole("button", { name: "创建管理员" }));

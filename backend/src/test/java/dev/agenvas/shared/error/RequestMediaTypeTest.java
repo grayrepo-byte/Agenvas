@@ -29,24 +29,27 @@ class RequestMediaTypeTest {
 
     @ParameterizedTest
     @CsvSource({"en, The request content type", "zh, 请求的内容类型", "ru, Тип содержимого запроса", "ja, リクエストのコンテンツ形式"})
-    void unsupportedRequestContentTypeIsAClientErrorWithoutRetry(String language, String detailPrefix) throws Exception {
+    void unsupportedRequestContentTypeIsAClientErrorWithoutRetry(String language, String detailPrefix)
+            throws Exception {
         mvc.perform(post("/json").contentType(MediaType.TEXT_PLAIN).content("synthetic input")
-                        .header(HttpHeaders.ACCEPT_LANGUAGE, language))
+                .header(HttpHeaders.ACCEPT_LANGUAGE, language))
                 .andExpect(status().isUnsupportedMediaType())
                 .andExpect(header().string(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE))
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"))
                 .andExpect(jsonPath("$.traceId").isString())
                 .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.startsWith(detailPrefix)))
-                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("synthetic input"))))
+                .andExpect(jsonPath("$.detail")
+                        .value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("synthetic input"))))
                 .andExpect(jsonPath("$.retryable").value(false));
     }
 
     @ParameterizedTest
-    @CsvSource({"en, The requested response format", "zh, 无法提供请求的响应格式", "ru, Запрошенный формат ответа", "ja, 指定されたレスポンス形式"})
+    @CsvSource({"en, The requested response format", "zh, 无法提供请求的响应格式", "ru, Запрошенный формат ответа",
+            "ja, 指定されたレスポンス形式"})
     void unavailableResponseFormatIsAClientErrorWithoutRetry(String language, String detailPrefix) throws Exception {
         mvc.perform(post("/json").contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"synthetic\"}")
-                        .accept(MediaType.APPLICATION_XML).header(HttpHeaders.ACCEPT_LANGUAGE, language))
+                .accept(MediaType.APPLICATION_XML).header(HttpHeaders.ACCEPT_LANGUAGE, language))
                 .andExpect(status().isNotAcceptable())
                 .andExpect(header().string(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE))
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
@@ -59,7 +62,7 @@ class RequestMediaTypeTest {
     @Test
     void invalidAcceptDoesNotRemoveTheUnsupportedContentTypeProblemBody() throws Exception {
         mvc.perform(post("/json").contentType(MediaType.TEXT_PLAIN).content("synthetic input")
-                        .header(HttpHeaders.ACCEPT, "invalid").header(HttpHeaders.ACCEPT_LANGUAGE, "en"))
+                .header(HttpHeaders.ACCEPT, "invalid").header(HttpHeaders.ACCEPT_LANGUAGE, "en"))
                 .andExpect(status().isUnsupportedMediaType())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"))
@@ -68,10 +71,12 @@ class RequestMediaTypeTest {
 
     @RestController
     static class JsonRoute {
-        @PostMapping(path = "/json", consumes = MediaType.APPLICATION_JSON_VALUE,
-                produces = MediaType.APPLICATION_JSON_VALUE)
-        Input json(@RequestBody Input input) { return input; }
+        @PostMapping(path = "/json", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+        Input json(@RequestBody Input input) {
+            return input;
+        }
     }
 
-    record Input(String name) {}
+    record Input(String name) {
+    }
 }

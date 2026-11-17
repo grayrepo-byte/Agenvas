@@ -87,8 +87,7 @@ public class ProjectExportManifestService {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public Manifest build(UUID ownerId, UUID projectId) {
         Project project = projects.get(ownerId, projectId);
-        ArtifactService.ProjectExportVersions catalog =
-                artifacts.listProjectExport(ownerId, projectId);
+        ArtifactService.ProjectExportVersions catalog = artifacts.listProjectExport(ownerId, projectId);
         Map<UUID, Artifact.Kind> kinds = catalog.artifacts().stream()
                 .collect(Collectors.toMap(Artifact::id, Artifact::kind));
         Map<UUID, List<VersionEntry>> versions = catalog.versions().stream()
@@ -106,7 +105,8 @@ public class ProjectExportManifestService {
                 catalog.artifacts().stream().map(artifact -> artifactEntry(
                         artifact, versions.getOrDefault(artifact.id(), List.of()))).toList(),
                 assets.listProjectAssets(ownerId, projectId).stream()
-                        .map(this::assetEntry).toList(), canvasItems, connectionEntries,
+                        .map(this::assetEntry).toList(),
+                canvasItems, connectionEntries,
                 skills.exportProject(ownerId, projectId), characters.exportData(ownerId, projectId),
                 storyboards.get(ownerId, projectId), storyboards.listRevisions(ownerId, projectId),
                 groups.groups(ownerId, projectId));
@@ -124,7 +124,8 @@ public class ProjectExportManifestService {
         String[] fields = allowedFields(kind);
         for (String field : fields) {
             JsonNode value = version.content().get(field);
-            if (value != null) safe.set(field, value.deepCopy());
+            if (value != null)
+                safe.set(field, value.deepCopy());
         }
         return new VersionEntry(version.id(), version.versionNo(), version.schemaVersion(),
                 version.baseVersionId(), copy(version.frozenInput()), version.createdAt(), safe);
@@ -154,7 +155,8 @@ public class ProjectExportManifestService {
 
     private MediaDraftEntry mediaDraftEntry(MediaDraft draft) {
         return new MediaDraftEntry(draft.prompt(), copy(draft.parameters()),
-                draft.durationSeconds(), draft.capabilityId(), draft.styleId(), styles.snapshotForExport(draft.styleId()), draft.videoInputMode(),
+                draft.durationSeconds(), draft.capabilityId(), draft.styleId(),
+                styles.snapshotForExport(draft.styleId()), draft.videoInputMode(),
                 draft.mediaInputs(), draft.mentions(), draft.displayMode(), draft.version());
     }
 
@@ -168,10 +170,10 @@ public class ProjectExportManifestService {
     private String[] allowedFields(Artifact.Kind kind) {
         // The artifact kind is obtained from the validated catalog, not provider JSON.
         return switch (kind) {
-            case TEXT -> new String[] {"format", "text"};
-            case IMAGE -> new String[] {"assetId", "prompt", "negativePrompt",
+            case TEXT -> new String[]{"format", "text"};
+            case IMAGE -> new String[]{"assetId", "prompt", "negativePrompt",
                     "workflowVersion"};
-            case VIDEO, AUDIO -> new String[] {"assetId", "prompt", "negativePrompt",
+            case VIDEO, AUDIO -> new String[]{"assetId", "prompt", "negativePrompt",
                     "workflowVersion"};
         };
     }
@@ -196,7 +198,8 @@ public class ProjectExportManifestService {
             List<CanvasItemEntry> canvasItems, List<ConnectionEntry> connections,
             List<JsonNode> creativeSkills, CharacterIndex characters,
             Storyboard storyboard, List<Storyboard> storyboardRevisions,
-            List<CanvasEditModels.Group> canvasGroups) {}
+            List<CanvasEditModels.Group> canvasGroups) {
+    }
 
     /** 不含所有者或凭证的项目身份摘要。
      * @param id 项目 ID
@@ -206,7 +209,8 @@ public class ProjectExportManifestService {
      * @param createdAt 项目创建时间
      */
     public record ProjectEntry(UUID id, String name, Project.AspectRatio aspectRatio,
-            Project.Status status, Instant createdAt) {}
+            Project.Status status, Instant createdAt) {
+    }
 
     /** 一个稳定产物身份及其全部不可变版本历史。
      * @param id 产物 ID
@@ -217,7 +221,8 @@ public class ProjectExportManifestService {
      * @param versions 已保存的历史版本
      */
     public record ArtifactEntry(UUID id, Artifact.Kind kind, String title,
-            UUID resourceDefaultVersionId, Instant archivedAt, List<VersionEntry> versions) {}
+            UUID resourceDefaultVersionId, Instant archivedAt, List<VersionEntry> versions) {
+    }
 
     /** 只包含按产物类型白名单筛选的内容。
      * @param id 不可变内容版本 ID
@@ -227,7 +232,8 @@ public class ProjectExportManifestService {
      * @param content 经过类型字段白名单筛选的 JSON 正文
      */
     public record VersionEntry(UUID id, int versionNo, int schemaVersion,
-            UUID baseVersionId, JsonNode frozenInput, Instant createdAt, JsonNode content) {}
+            UUID baseVersionId, JsonNode frozenInput, Instant createdAt, JsonNode content) {
+    }
 
     /** Persisted spatial state plus the independent media branch owned by that card. */
     public record CanvasItemEntry(UUID id, CanvasItem.SubjectType subjectType, UUID subjectId,
@@ -235,18 +241,21 @@ public class ProjectExportManifestService {
             java.math.BigDecimal y, java.math.BigDecimal width, java.math.BigDecimal height,
             int zIndex, UUID groupId, boolean locked, long version,
             List<UUID> mediaVersionIds, MediaDraftEntry mediaDraft,
-            dev.agenvas.canvas.application.CanvasCharacterNodeModels.CharacterNode characterNode) {}
+            dev.agenvas.canvas.application.CanvasCharacterNodeModels.CharacterNode characterNode) {
+    }
 
     /** Complete safe generation state for one image or video card. */
     public record MediaDraftEntry(String prompt, JsonNode parameters, Integer durationSeconds,
             UUID capabilityId, UUID styleId, MediaStyleService.Snapshot style, MediaDraft.VideoInputMode videoInputMode,
             List<MediaDraft.MediaInput> mediaInputs, List<MediaDraft.PromptMention> mentions,
-            MediaDraft.DisplayMode displayMode, long version) {}
+            MediaDraft.DisplayMode displayMode, long version) {
+    }
 
     /** One persisted editable topology edge with its frozen source image version. */
     public record ConnectionEntry(UUID id, UUID sourceCanvasItemId, UUID targetCanvasItemId,
             CanvasConnection.RelationType relationType, UUID sourceArtifactVersionId,
-            long version) {}
+            long version) {
+    }
 
     /** 媒体资产元数据，不包含私有对象键或可复用下载地址。
      * @param id 资产 ID
@@ -262,5 +271,6 @@ public class ProjectExportManifestService {
      */
     public record AssetEntry(UUID id, Asset.MediaKind mediaKind, String contentType,
             long byteSize, String sha256, Integer width, Integer height,
-            Integer durationMs, String thumbnailSha256, Instant createdAt) {}
+            Integer durationMs, String thumbnailSha256, Instant createdAt) {
+    }
 }

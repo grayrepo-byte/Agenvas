@@ -22,9 +22,12 @@ public class JooqSkillInstallRepository {
             JsonNode input, JsonNode result, JsonNode cleanup, String status,
             long epoch, Instant leaseUntil, String errorCode, String errorDetail) {
         /** Committed project mappings stay usable while unrelated temporary files are cleaned. */
-        public boolean registered() { return result != null && result.path("assets").isArray(); }
+        public boolean registered() {
+            return result != null && result.path("assets").isArray();
+        }
     }
-    public record BindingCommand(String payloadHash, JsonNode response) {}
+    public record BindingCommand(String payloadHash, JsonNode response) {
+    }
     private static final String ACCEPTED_STATUS = "ACCEPTED";
     private static final String PREPARING_STATUS = "PREPARING";
     private static final String SUCCEEDED_STATUS = "SUCCEEDED";
@@ -32,78 +35,110 @@ public class JooqSkillInstallRepository {
     private static final String CLEANING_STATUS = "CLEANING";
     private final DSLContext dsl;
     private final ObjectMapper mapper;
-    public JooqSkillInstallRepository(DSLContext dsl, ObjectMapper mapper) { this.dsl = dsl; this.mapper = mapper; }
+    public JooqSkillInstallRepository(DSLContext dsl, ObjectMapper mapper) {
+        this.dsl = dsl;
+        this.mapper = mapper;
+    }
     public Optional<BindingCommand> bindingCommand(UUID owner, UUID project, String key) {
         var t = SKILL_BINDING_COMMAND;
         return dsl.selectFrom(t).where(t.OWNER_ID.eq(owner)).and(t.PROJECT_ID.eq(project)).and(t.COMMAND_KEY.eq(key))
                 .fetchOptional(r -> new BindingCommand(r.get(t.PAYLOAD_HASH).trim(), read(r.get(t.RESPONSE_JSON))));
     }
-    public void saveBindingCommand(UUID owner, UUID project, UUID agent, String key, String hash, JsonNode response, Instant now) {
+    public void saveBindingCommand(UUID owner, UUID project, UUID agent, String key, String hash, JsonNode response,
+            Instant now) {
         var t = SKILL_BINDING_COMMAND;
-        dsl.insertInto(t).set(t.OWNER_ID,owner).set(t.PROJECT_ID,project).set(t.AGENT_ID,agent)
-                .set(t.COMMAND_KEY,key).set(t.PAYLOAD_HASH,hash).set(t.RESPONSE_JSON,json(response)).set(t.CREATED_AT,time(now)).execute();
+        dsl.insertInto(t).set(t.OWNER_ID, owner).set(t.PROJECT_ID, project).set(t.AGENT_ID, agent)
+                .set(t.COMMAND_KEY, key).set(t.PAYLOAD_HASH, hash).set(t.RESPONSE_JSON, json(response))
+                .set(t.CREATED_AT, time(now)).execute();
     }
     public Optional<Operation> find(UUID owner, UUID project, UUID id) {
         var t = SKILL_INSTALL_OPERATION;
-        return dsl.selectFrom(t).where(t.OWNER_ID.eq(owner)).and(t.PROJECT_ID.eq(project)).and(t.ID.eq(id)).fetchOptional(this::map);
+        return dsl.selectFrom(t).where(t.OWNER_ID.eq(owner)).and(t.PROJECT_ID.eq(project)).and(t.ID.eq(id))
+                .fetchOptional(this::map);
     }
     public Optional<Operation> version(UUID owner, UUID project, UUID version) {
         var t = SKILL_INSTALL_OPERATION;
-        return dsl.selectFrom(t).where(t.OWNER_ID.eq(owner)).and(t.PROJECT_ID.eq(project)).and(t.SKILL_VERSION_ID.eq(version)).fetchOptional(this::map);
+        return dsl.selectFrom(t).where(t.OWNER_ID.eq(owner)).and(t.PROJECT_ID.eq(project))
+                .and(t.SKILL_VERSION_ID.eq(version)).fetchOptional(this::map);
     }
     public Optional<Operation> claim(Instant now, Instant until) {
-        var t=SKILL_INSTALL_OPERATION;
-        Optional<Operation> op = dsl.selectFrom(t).where(t.STATUS.eq(ACCEPTED_STATUS).or(t.STATUS.eq(PREPARING_STATUS).and(t.LEASE_UNTIL.le(time(now)))))
-                .orderBy(t.CREATED_AT,t.ID).limit(1).forUpdate().skipLocked().fetchOptional(this::map);
-        if(op.isEmpty()) return op;
-        Operation found=op.get();
-        if(dsl.update(t).set(t.STATUS,PREPARING_STATUS).set(t.EPOCH,found.epoch()+1).set(t.LEASE_UNTIL,time(until))
-                .set(t.UPDATED_AT,time(now)).where(t.ID.eq(found.id())).and(t.EPOCH.eq(found.epoch())).execute()!=1) return Optional.empty();
-        return find(found.ownerId(),found.projectId(),found.id());
+        var t = SKILL_INSTALL_OPERATION;
+        Optional<Operation> op = dsl.selectFrom(t)
+                .where(t.STATUS.eq(ACCEPTED_STATUS).or(t.STATUS.eq(PREPARING_STATUS).and(t.LEASE_UNTIL.le(time(now)))))
+                .orderBy(t.CREATED_AT, t.ID).limit(1).forUpdate().skipLocked().fetchOptional(this::map);
+        if (op.isEmpty())
+            return op;
+        Operation found = op.get();
+        if (dsl.update(t).set(t.STATUS, PREPARING_STATUS).set(t.EPOCH, found.epoch() + 1)
+                .set(t.LEASE_UNTIL, time(until))
+                .set(t.UPDATED_AT, time(now)).where(t.ID.eq(found.id())).and(t.EPOCH.eq(found.epoch())).execute() != 1)
+            return Optional.empty();
+        return find(found.ownerId(), found.projectId(), found.id());
     }
     public Optional<Operation> claimCleanup(Instant now, Instant until) {
-        var t=SKILL_INSTALL_OPERATION;
-        var found=dsl.selectFrom(t).where(t.STATUS.in(FAILED_STATUS,SUCCEEDED_STATUS).and(t.CLEANUP_JSON.ne(JSONB.valueOf("[]")))
-                .or(t.STATUS.eq(CLEANING_STATUS).and(t.LEASE_UNTIL.le(time(now)))))
-                .orderBy(t.UPDATED_AT,t.ID).limit(1).forUpdate().skipLocked().fetchOptional(this::map);
-        if(found.isEmpty()) return found;
-        Operation op=found.get();
-        if(dsl.update(t).set(t.STATUS,CLEANING_STATUS).set(t.EPOCH,op.epoch()+1).set(t.LEASE_UNTIL,time(until)).set(t.UPDATED_AT,time(now))
-                .where(t.ID.eq(op.id())).and(t.EPOCH.eq(op.epoch())).execute()!=1)return Optional.empty();
-        return find(op.ownerId(),op.projectId(),op.id());
+        var t = SKILL_INSTALL_OPERATION;
+        var found = dsl.selectFrom(t)
+                .where(t.STATUS.in(FAILED_STATUS, SUCCEEDED_STATUS).and(t.CLEANUP_JSON.ne(JSONB.valueOf("[]")))
+                        .or(t.STATUS.eq(CLEANING_STATUS).and(t.LEASE_UNTIL.le(time(now)))))
+                .orderBy(t.UPDATED_AT, t.ID).limit(1).forUpdate().skipLocked().fetchOptional(this::map);
+        if (found.isEmpty())
+            return found;
+        Operation op = found.get();
+        if (dsl.update(t).set(t.STATUS, CLEANING_STATUS).set(t.EPOCH, op.epoch() + 1).set(t.LEASE_UNTIL, time(until))
+                .set(t.UPDATED_AT, time(now))
+                .where(t.ID.eq(op.id())).and(t.EPOCH.eq(op.epoch())).execute() != 1)
+            return Optional.empty();
+        return find(op.ownerId(), op.projectId(), op.id());
     }
     public boolean finishCleanup(Operation op, Instant now) {
-        var t=SKILL_INSTALL_OPERATION;
-        var row=dsl.selectFrom(t).where(t.ID.eq(op.id())).and(t.STATUS.eq(CLEANING_STATUS)).and(t.EPOCH.eq(op.epoch()))
+        var t = SKILL_INSTALL_OPERATION;
+        var row = dsl.selectFrom(t).where(t.ID.eq(op.id())).and(t.STATUS.eq(CLEANING_STATUS))
+                .and(t.EPOCH.eq(op.epoch()))
                 .and(t.LEASE_UNTIL.gt(time(now))).forUpdate().fetchOptional();
-        if(row.isEmpty())return false;
-        java.util.Set<String> cleaned=new java.util.HashSet<>();
+        if (row.isEmpty())
+            return false;
+        java.util.Set<String> cleaned = new java.util.HashSet<>();
         op.cleanup().forEach(asset -> cleaned.add(asset.path("id").asText()));
-        var remaining=mapper.createArrayNode();
-        read(row.get().get(t.CLEANUP_JSON)).forEach(asset -> {if(!cleaned.contains(asset.path("id").asText()))remaining.add(asset);});
-        String status=op.registered()?SUCCEEDED_STATUS:FAILED_STATUS;
-        return dsl.update(t).set(t.STATUS,status).set(t.CLEANUP_JSON,json(remaining)).setNull(t.LEASE_UNTIL).set(t.UPDATED_AT,time(now))
-                .where(t.ID.eq(op.id())).and(t.STATUS.eq(CLEANING_STATUS)).and(t.EPOCH.eq(op.epoch())).execute()==1;
+        var remaining = mapper.createArrayNode();
+        read(row.get().get(t.CLEANUP_JSON)).forEach(asset -> {
+            if (!cleaned.contains(asset.path("id").asText()))
+                remaining.add(asset);
+        });
+        String status = op.registered() ? SUCCEEDED_STATUS : FAILED_STATUS;
+        return dsl.update(t).set(t.STATUS, status).set(t.CLEANUP_JSON, json(remaining)).setNull(t.LEASE_UNTIL)
+                .set(t.UPDATED_AT, time(now))
+                .where(t.ID.eq(op.id())).and(t.STATUS.eq(CLEANING_STATUS)).and(t.EPOCH.eq(op.epoch())).execute() == 1;
     }
     public boolean finish(Operation op, String status, JsonNode result, String code, String detail, Instant now) {
-        var t=SKILL_INSTALL_OPERATION;
-        return dsl.update(t).set(t.STATUS,status).set(t.RESULT_JSON,result==null?null:json(result)).setNull(t.LEASE_UNTIL)
-                .set(t.ERROR_CODE,code).set(t.ERROR_DETAIL,detail).set(t.UPDATED_AT,time(now))
-                .where(t.ID.eq(op.id())).and(t.STATUS.eq(PREPARING_STATUS)).and(t.EPOCH.eq(op.epoch())).and(t.LEASE_UNTIL.gt(time(now))).execute()==1;
+        var t = SKILL_INSTALL_OPERATION;
+        return dsl.update(t).set(t.STATUS, status).set(t.RESULT_JSON, result == null ? null : json(result))
+                .setNull(t.LEASE_UNTIL)
+                .set(t.ERROR_CODE, code).set(t.ERROR_DETAIL, detail).set(t.UPDATED_AT, time(now))
+                .where(t.ID.eq(op.id())).and(t.STATUS.eq(PREPARING_STATUS)).and(t.EPOCH.eq(op.epoch()))
+                .and(t.LEASE_UNTIL.gt(time(now))).execute() == 1;
     }
     public List<Operation> successful(UUID owner, UUID project) {
-        var t=SKILL_INSTALL_OPERATION;
-        return dsl.selectFrom(t).where(t.OWNER_ID.eq(owner)).and(t.PROJECT_ID.eq(project)).and(t.STATUS.in(SUCCEEDED_STATUS,CLEANING_STATUS))
+        var t = SKILL_INSTALL_OPERATION;
+        return dsl.selectFrom(t).where(t.OWNER_ID.eq(owner)).and(t.PROJECT_ID.eq(project))
+                .and(t.STATUS.in(SUCCEEDED_STATUS, CLEANING_STATUS))
                 .fetch(this::map).stream().filter(Operation::registered).toList();
     }
     private Operation map(Record r) {
-        var t=SKILL_INSTALL_OPERATION;
-        OffsetDateTime lease=r.get(t.LEASE_UNTIL);
-        return new Operation(r.get(t.ID),r.get(t.OWNER_ID),r.get(t.PROJECT_ID),r.get(t.SKILL_ID),r.get(t.SKILL_VERSION_ID),
-                read(r.get(t.INPUT_JSON)),read(r.get(t.RESULT_JSON)),read(r.get(t.CLEANUP_JSON)),r.get(t.STATUS),r.get(t.EPOCH),
-                lease==null?null:lease.toInstant(),r.get(t.ERROR_CODE),r.get(t.ERROR_DETAIL));
+        var t = SKILL_INSTALL_OPERATION;
+        OffsetDateTime lease = r.get(t.LEASE_UNTIL);
+        return new Operation(r.get(t.ID), r.get(t.OWNER_ID), r.get(t.PROJECT_ID), r.get(t.SKILL_ID),
+                r.get(t.SKILL_VERSION_ID),
+                read(r.get(t.INPUT_JSON)), read(r.get(t.RESULT_JSON)), read(r.get(t.CLEANUP_JSON)), r.get(t.STATUS),
+                r.get(t.EPOCH),
+                lease == null ? null : lease.toInstant(), r.get(t.ERROR_CODE), r.get(t.ERROR_DETAIL));
     }
-    private OffsetDateTime time(Instant value){ return value.atOffset(ZoneOffset.UTC); }
-    private JSONB json(JsonNode value){ return JSONB.valueOf(value.toString()); }
-    private JsonNode read(JSONB value){ return value==null?null:mapper.readTree(value.data()); }
+    private OffsetDateTime time(Instant value) {
+        return value.atOffset(ZoneOffset.UTC);
+    }
+    private JSONB json(JsonNode value) {
+        return JSONB.valueOf(value.toString());
+    }
+    private JsonNode read(JSONB value) {
+        return value == null ? null : mapper.readTree(value.data());
+    }
 }

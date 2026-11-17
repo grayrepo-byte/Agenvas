@@ -73,19 +73,30 @@ class ComfyUiAcceptedCrashPostgresIT {
         SERVER.stop(0);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private TaskService tasks;
-    @Autowired private ArtifactService artifacts;
-    @Autowired private MediaDraftService drafts;
-    @Autowired private CanvasService canvas;
-    @Autowired private MediaCapabilityService catalog;
-    @Autowired private DirectMediaTaskService directMedia;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private ObjectMapper mapper;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private ArtifactService artifacts;
+    @Autowired
+    private MediaDraftService drafts;
+    @Autowired
+    private CanvasService canvas;
+    @Autowired
+    private MediaCapabilityService catalog;
+    @Autowired
+    private DirectMediaTaskService directMedia;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private ObjectMapper mapper;
 
     /** Parent test context must not race the restarted child for expired-lease recovery. */
-    @MockitoBean private TaskRecoveryScheduler disabledParentRecovery;
+    @MockitoBean
+    private TaskRecoveryScheduler disabledParentRecovery;
 
     @Test
     void acceptedPromptSurvivesSubmitterProcessKillWithoutSecondSubmission() throws Exception {
@@ -120,7 +131,7 @@ class ComfyUiAcceptedCrashPostgresIT {
             assertThat(tasks.get(owner.userId(), project.id(), submitted.id()).status())
                     .isEqualTo(Task.Status.SUBMITTING);
             assertThat(jdbc.sql("select request_key from provider_attempt "
-                            + "where task_id = :id")
+                    + "where task_id = :id")
                     .param("id", submitted.id()).query(UUID.class).single())
                     .isEqualTo(acceptedId);
             assertThat(jdbc.sql("select provider_request_id from task where id = :id")
@@ -138,8 +149,7 @@ class ComfyUiAcceptedCrashPostgresIT {
             second = startChild(childLog);
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
             while (System.nanoTime() < deadline
-                    && tasks.get(owner.userId(), project.id(), submitted.id()).status()
-                    != Task.Status.UNKNOWN) {
+                    && tasks.get(owner.userId(), project.id(), submitted.id()).status() != Task.Status.UNKNOWN) {
                 Thread.sleep(200);
             }
             assertThat(second.isAlive()).isTrue();

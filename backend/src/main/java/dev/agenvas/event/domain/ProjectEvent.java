@@ -26,4 +26,5 @@ public record ProjectEvent(
         UUID aggregateId,
         long aggregateVersion,
         JsonNode payload,
-        Instant occurredAt) {}
+        Instant occurredAt) {
+}

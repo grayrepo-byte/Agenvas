@@ -14,12 +14,18 @@ const webRuntimeDockerfile = fileURLToPath(new URL("./web-runtime.Dockerfile", i
 const localArtifacts = process.argv.includes("--local-artifacts");
 
 function command(binary, args, env, options = {}) {
-  const result = spawnSync(binary, args, { cwd: root, env, encoding: "utf8",
+  const result = spawnSync(binary, args, {
+    cwd: root,
+    env,
+    encoding: "utf8",
     stdio: options.capture ? ["ignore", "pipe", "pipe"] : "inherit",
-    timeout: options.timeout ?? 600_000 });
+    timeout: options.timeout ?? 600_000,
+  });
   if (result.error || result.status !== 0) {
-    throw new Error(`${binary} ${args[0]} failed: ${result.error?.message ?? result.stderr ?? result.status}`
-      + (result.stdout ? `\n${result.stdout.slice(-3000)}` : ""));
+    throw new Error(
+      `${binary} ${args[0]} failed: ${result.error?.message ?? result.stderr ?? result.status}` +
+        (result.stdout ? `\n${result.stdout.slice(-3000)}` : ""),
+    );
   }
   return result.stdout ?? "";
 }
@@ -32,14 +38,22 @@ async function freePort() {
   });
   const address = server.address();
   const port = address.port;
-  await new Promise((resolve) => server.close(resolve));
+  await new Promise(resolve => server.close(resolve));
   return port;
 }
 
-const existingContainers = command("docker", ["ps", "-aq", "--filter",
-  `label=com.docker.compose.project=${project}`], process.env, { capture: true }).trim();
-const existingVolumes = command("docker", ["volume", "ls", "-q", "--filter",
-  `label=com.docker.compose.project=${project}`], process.env, { capture: true }).trim();
+const existingContainers = command(
+  "docker",
+  ["ps", "-aq", "--filter", `label=com.docker.compose.project=${project}`],
+  process.env,
+  { capture: true },
+).trim();
+const existingVolumes = command(
+  "docker",
+  ["volume", "ls", "-q", "--filter", `label=com.docker.compose.project=${project}`],
+  process.env,
+  { capture: true },
+).trim();
 if (existingContainers || existingVolumes) {
   throw new Error(`Refusing to reuse existing Compose project ${project}`);
 }
@@ -49,8 +63,11 @@ if (localArtifacts) {
     const existing = spawnSync("docker", ["image", "inspect", tag], { stdio: "ignore" });
     if (existing.status === 0) throw new Error(`Refusing to replace existing image ${tag}`);
   }
-  if (!(await readdir(fileURLToPath(new URL("../../backend/target/", import.meta.url))))
-    .some((name) => /^agenvas-server-.*\.jar$/.test(name))) {
+  if (
+    !(await readdir(fileURLToPath(new URL("../../backend/target/", import.meta.url)))).some(name =>
+      /^agenvas-server-.*\.jar$/.test(name),
+    )
+  ) {
     throw new Error("Build the current backend jar before --local-artifacts");
   }
 }
@@ -59,19 +76,45 @@ const apiPort = await freePort();
 let webPort = await freePort();
 while (webPort === apiPort) webPort = await freePort();
 const bootstrapSecret = randomBytes(32).toString("hex");
-const env = { ...process.env,
+const env = {
+  ...process.env,
   AGENVAS_DB_PASSWORD: randomBytes(32).toString("hex"),
   AGENVAS_BOOTSTRAP_SECRET: bootstrapSecret,
-  AGENVAS_API_PORT: String(apiPort), AGENVAS_WEB_PORT: String(webPort),
-  AGENVAS_LLM_MODE: "mock", AGENVAS_PROVIDER_MODE: "mock" };
+  AGENVAS_API_PORT: String(apiPort),
+  AGENVAS_WEB_PORT: String(webPort),
+  AGENVAS_LLM_MODE: "mock",
+  AGENVAS_PROVIDER_MODE: "mock",
+};
 const compose = ["compose", "-p", project, "-f", composeFile];
 console.log(`Starting isolated ${project} on loopback ports ${apiPort}/${webPort}`);
 try {
   if (localArtifacts) {
-    command("docker", ["build", "-t", localImageTags[0], "-f", serverRuntimeDockerfile,
-      fileURLToPath(new URL("../../backend/target/", import.meta.url))], env, { capture: true });
-    command("docker", ["build", "-t", localImageTags[1], "-f", webRuntimeDockerfile,
-      fileURLToPath(new URL("../dist/", import.meta.url))], env, { capture: true });
+    command(
+      "docker",
+      [
+        "build",
+        "-t",
+        localImageTags[0],
+        "-f",
+        serverRuntimeDockerfile,
+        fileURLToPath(new URL("../../backend/target/", import.meta.url)),
+      ],
+      env,
+      { capture: true },
+    );
+    command(
+      "docker",
+      [
+        "build",
+        "-t",
+        localImageTags[1],
+        "-f",
+        webRuntimeDockerfile,
+        fileURLToPath(new URL("../dist/", import.meta.url)),
+      ],
+      env,
+      { capture: true },
+    );
     command("docker", [...compose, "up", "--no-build", "-d"], env, { capture: true });
   } else {
     command("docker", [...compose, "up", "--build", "-d"], env, { capture: true });
@@ -86,13 +129,20 @@ try {
       // A not-yet-ready isolated container is expected during startup.
     }
     if (ready) break;
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await new Promise(resolve => setTimeout(resolve, 2000));
   }
   if (!ready) throw new Error("Isolated server did not become ready");
-  const result = command("node", [browserScript], { ...env,
-    AGENVAS_E2E_URL: `http://127.0.0.1:${webPort}`,
-    AGENVAS_E2E_BOOTSTRAP_SECRET: bootstrapSecret,
-    AGENVAS_E2E_API_PERF: "1" }, { timeout: 600_000, capture: true });
+  const result = command(
+    "node",
+    [browserScript],
+    {
+      ...env,
+      AGENVAS_E2E_URL: `http://127.0.0.1:${webPort}`,
+      AGENVAS_E2E_BOOTSTRAP_SECRET: bootstrapSecret,
+      AGENVAS_E2E_API_PERF: "1",
+    },
+    { timeout: 600_000, capture: true },
+  );
   console.log(result.trim());
 } finally {
   try {

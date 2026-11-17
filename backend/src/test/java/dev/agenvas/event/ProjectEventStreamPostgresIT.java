@@ -45,18 +45,14 @@ import tools.jackson.databind.ObjectMapper;
 /** End-to-end HTTP evidence for authenticated SSE replay, native cursor precedence, and expiry. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(
-        classes = AgenvasApplication.class,
-        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {
-            // 生产心跳为 15 秒；这里缩短，否则每轮等待失效连接回收要花几十秒。
-            "agenvas.sse.heartbeat-interval=200ms"
-        })
+@SpringBootTest(classes = AgenvasApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
+        // 生产心跳为 15 秒；这里缩短，否则每轮等待失效连接回收要花几十秒。
+        "agenvas.sse.heartbeat-interval=200ms"
+})
 class ProjectEventStreamPostgresIT {
 
     @Container
-    static final PostgreSQLContainer POSTGRES =
-            new PostgreSQLContainer("postgres:17.11-alpine");
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
 
     @DynamicPropertySource
     static void postgresProperties(DynamicPropertyRegistry properties) {
@@ -98,11 +94,11 @@ class ProjectEventStreamPostgresIT {
 
         HttpClient anonymous = HttpClient.newHttpClient();
         assertThat(anonymous.send(eventRequest(project.id(), 0, null),
-                        HttpResponse.BodyHandlers.discarding()).statusCode())
+                HttpResponse.BodyHandlers.discarding()).statusCode())
                 .isEqualTo(401);
         String activeMetricPath = "/actuator/metrics/agenvas.sse.connections.active";
         assertThat(anonymous.send(HttpRequest.newBuilder(uri(activeMetricPath)).GET().build(),
-                        HttpResponse.BodyHandlers.discarding()).statusCode())
+                HttpResponse.BodyHandlers.discarding()).statusCode())
                 .isEqualTo(401);
 
         CookieManager cookies = new CookieManager(null, CookiePolicy.ACCEPT_ALL);
@@ -117,8 +113,8 @@ class ProjectEventStreamPostgresIT {
         assertThat(objectMapper.readTree(activeMetric.body()).get("availableTags").isEmpty())
                 .isTrue();
         try (InputStream firstBody = client.send(
-                        eventRequest(project.id(), 0, null),
-                        HttpResponse.BodyHandlers.ofInputStream())
+                eventRequest(project.id(), 0, null),
+                HttpResponse.BodyHandlers.ofInputStream())
                 .body()) {
             EventFrame first = readFrame(firstBody);
             assertThat(first.id()).isEqualTo("1");
@@ -127,7 +123,7 @@ class ProjectEventStreamPostgresIT {
                     .isEqualTo(project.id().toString());
         }
         HttpResponse<String> deliveryLag = client.send(HttpRequest.newBuilder(
-                        uri("/actuator/metrics/agenvas.sse.event.delivery.lag")).GET().build(),
+                uri("/actuator/metrics/agenvas.sse.event.delivery.lag")).GET().build(),
                 HttpResponse.BodyHandlers.ofString());
         assertThat(deliveryLag.statusCode()).isEqualTo(200);
         double deliveredCount = 0;
@@ -164,7 +160,7 @@ class ProjectEventStreamPostgresIT {
         }
 
         assertThat(client.send(eventRequest(UUID.randomUUID(), 0, null),
-                        HttpResponse.BodyHandlers.discarding()).statusCode())
+                HttpResponse.BodyHandlers.discarding()).statusCode())
                 .isEqualTo(404);
         jdbcClient.sql("""
                         update project_event
@@ -184,17 +180,17 @@ class ProjectEventStreamPostgresIT {
 
     private void login(HttpClient client) throws IOException, InterruptedException {
         HttpResponse<String> csrf = client.send(HttpRequest.newBuilder()
-                        .uri(uri("/api/v1/auth/csrf"))
-                        .GET()
-                        .build(), HttpResponse.BodyHandlers.ofString());
+                .uri(uri("/api/v1/auth/csrf"))
+                .GET()
+                .build(), HttpResponse.BodyHandlers.ofString());
         String token = objectMapper.readTree(csrf.body()).get("token").stringValue();
         HttpResponse<String> login = client.send(HttpRequest.newBuilder()
-                        .uri(uri("/api/v1/auth/login"))
-                        .header("Content-Type", "application/json")
-                        .header("X-XSRF-TOKEN", token)
-                        .POST(HttpRequest.BodyPublishers.ofString(
-                                "{\"loginName\":\"stream-admin\",\"password\":\"stream-password-123\"}"))
-                        .build(), HttpResponse.BodyHandlers.ofString());
+                .uri(uri("/api/v1/auth/login"))
+                .header("Content-Type", "application/json")
+                .header("X-XSRF-TOKEN", token)
+                .POST(HttpRequest.BodyPublishers.ofString(
+                        "{\"loginName\":\"stream-admin\",\"password\":\"stream-password-123\"}"))
+                .build(), HttpResponse.BodyHandlers.ofString());
         assertThat(login.statusCode()).isEqualTo(200);
     }
 
@@ -204,13 +200,14 @@ class ProjectEventStreamPostgresIT {
         double lastActive = -1;
         while (Instant.now().isBefore(deadline)) {
             HttpResponse<String> metric = client.send(HttpRequest.newBuilder(uri(metricPath))
-                            .timeout(Duration.ofSeconds(5)).GET().build(),
+                    .timeout(Duration.ofSeconds(5)).GET().build(),
                     HttpResponse.BodyHandlers.ofString());
             assertThat(metric.statusCode()).isEqualTo(200);
             double active = objectMapper.readTree(metric.body())
                     .path("measurements").path(0).path("value").asDouble(-1);
             lastActive = active;
-            if (active == 0) return;
+            if (active == 0)
+                return;
             Thread.sleep(250);
         }
         throw new AssertionError("Closed SSE clients remained active beyond the heartbeat window: "
@@ -243,9 +240,12 @@ class ProjectEventStreamPostgresIT {
                 String data = null;
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    if (line.startsWith("id:")) id = line.substring(3).trim();
-                    if (line.startsWith("event:")) type = line.substring(6).trim();
-                    if (line.startsWith("data:")) data = line.substring(5).trim();
+                    if (line.startsWith("id:"))
+                        id = line.substring(3).trim();
+                    if (line.startsWith("event:"))
+                        type = line.substring(6).trim();
+                    if (line.startsWith("data:"))
+                        data = line.substring(5).trim();
                     if (line.isEmpty() && id != null && type != null && data != null) {
                         return new EventFrame(id, type, data);
                     }
@@ -256,5 +256,6 @@ class ProjectEventStreamPostgresIT {
         }
     }
 
-    private record EventFrame(String id, String type, String data) {}
+    private record EventFrame(String id, String type, String data) {
+    }
 }

@@ -49,9 +49,8 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 /** Confirms the scheduled worker advances a Run without any client connection or polling. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = {AgenvasApplication.class, AgentTurnSchedulerPostgresIT.FakeConfig.class},
-        properties = {
-                "agenvas.llm.scheduler-enabled=true"})
+@SpringBootTest(classes = {AgenvasApplication.class, AgentTurnSchedulerPostgresIT.FakeConfig.class}, properties = {
+        "agenvas.llm.scheduler-enabled=true"})
 class AgentTurnSchedulerPostgresIT {
 
     @Container
@@ -64,14 +63,22 @@ class AgentTurnSchedulerPostgresIT {
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private AgentRunService runs;
-    @Autowired private TaskService tasks;
-    @Autowired private FakeGateway gateway;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private AgentTurnWorker worker;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private AgentInstanceService agents;
+    @Autowired
+    private AgentRunService runs;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private FakeGateway gateway;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private AgentTurnWorker worker;
 
     @Test
     void savedRunFinishesFromDatabaseQueueWithNoOpenHttpRequest() throws Exception {
@@ -92,8 +99,7 @@ class AgentTurnSchedulerPostgresIT {
         }
         assertThat(current.status()).isEqualTo(AgentRun.Status.SUCCEEDED);
         assertThat(tasks.listByRun(owner.userId(), project.id(), queued.id()))
-                .singleElement().satisfies(task ->
-                        assertThat(task.status()).isEqualTo(Task.Status.SUCCEEDED));
+                .singleElement().satisfies(task -> assertThat(task.status()).isEqualTo(Task.Status.SUCCEEDED));
         assertThat(gateway.calls.get() - callsBefore).isEqualTo(1);
     }
 
@@ -120,14 +126,16 @@ class AgentTurnSchedulerPostgresIT {
             }
             assertThat(gateway.calls.get() - callsBefore).isGreaterThanOrEqualTo(13);
             assertThat(gateway.preparations.get() - preparationsBefore).isEqualTo(1);
-            assertThat(runs.cancel(owner.userId(), project.id(), queued.id()).status()).isEqualTo(AgentRun.Status.CANCELED);
+            assertThat(runs.cancel(owner.userId(), project.id(), queued.id()).status())
+                    .isEqualTo(AgentRun.Status.CANCELED);
             // Allow an already in-flight fake response to observe cancellation before
             // checking that no subsequent model request is dispatched.
             Thread.sleep(300);
             int stoppedCalls = gateway.calls.get();
             Thread.sleep(500);
             assertThat(gateway.calls.get()).isEqualTo(stoppedCalls);
-            assertThat(runs.get(owner.userId(), project.id(), queued.id()).status()).isEqualTo(AgentRun.Status.CANCELED);
+            assertThat(runs.get(owner.userId(), project.id(), queued.id()).status())
+                    .isEqualTo(AgentRun.Status.CANCELED);
         } finally {
             gateway.keepRequestingTools.set(false);
         }
@@ -137,7 +145,8 @@ class AgentTurnSchedulerPostgresIT {
     void unboundedRunPassesNinetyToolTurnsWithoutPrematurelyTruncatingContext() throws Exception {
         AdminPrincipal owner = owner();
         Project project = projects.create(owner.userId(), "Long synthetic run", Project.AspectRatio.LANDSCAPE_16_9);
-        AgentInstance agent = configureDirector(agents, owner.userId(), project.id(), "Reader", "Keep concise public observations");
+        AgentInstance agent = configureDirector(agents, owner.userId(), project.id(), "Reader",
+                "Keep concise public observations");
         // This stress case verifies retained history, so explicitly choose a window that
         // fits all ninety rounds. Default-window compaction has its own protocol tests.
         int previousWindow = jdbc.sql("select context_window_tokens from director_settings where id=1")
@@ -147,12 +156,15 @@ class AgentTurnSchedulerPostgresIT {
         int preparationsBefore = gateway.preparations.get();
         gateway.stopAfter.set(before + 90);
         try {
-            AgentRun queued = runs.create(owner.userId(), project.id(), agent.id(), "Synthetic long reading sequence", "long-run").run();
+            AgentRun queued = runs
+                    .create(owner.userId(), project.id(), agent.id(), "Synthetic long reading sequence", "long-run")
+                    .run();
             assertThat(queued.policySnapshot().path("maxModelTurns").isNull()).isTrue();
             assertThat(queued.policySnapshot().path("maxToolExecutions").isNull()).isTrue();
             AgentRun current = queued;
             Instant deadline = Instant.now().plusSeconds(60);
-            while (!current.status().terminal() && current.status() != AgentRun.Status.BLOCKED && Instant.now().isBefore(deadline)) {
+            while (!current.status().terminal() && current.status() != AgentRun.Status.BLOCKED
+                    && Instant.now().isBefore(deadline)) {
                 worker.runOnce("long-run-worker");
                 current = runs.get(owner.userId(), project.id(), queued.id());
             }
@@ -161,9 +173,13 @@ class AgentTurnSchedulerPostgresIT {
             assertThat(gateway.preparations.get() - preparationsBefore).isEqualTo(1);
             assertThat(jdbc.sql("select count(*) from tool_execution where run_id=:run and tool_name='load_toolset'")
                     .param("run", queued.id()).query(Long.class).single()).isEqualTo(1);
-            assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :id and tool_name <> 'load_toolset'").param("id", queued.id())
-                    .query(Long.class).single()).isEqualTo(90);
-            assertThat(jdbc.sql("select max(jsonb_array_length(request_json->'messages')) from llm_turn where run_id = :id")
+            assertThat(
+                    jdbc.sql("select count(*) from tool_execution where run_id = :id and tool_name <> 'load_toolset'")
+                            .param("id", queued.id())
+                            .query(Long.class).single())
+                    .isEqualTo(90);
+            assertThat(jdbc
+                    .sql("select max(jsonb_array_length(request_json->'messages')) from llm_turn where run_id = :id")
                     .param("id", queued.id()).query(Integer.class).single())
                     .isBetween(180, LlmProtocolCodec.MAX_MESSAGES);
             // This short transcript fits the configured window: retain its first and latest
@@ -228,7 +244,8 @@ class AgentTurnSchedulerPostgresIT {
             AssistantMessage response = (keepRequestingTools.get() || call <= stopAfter.get())
                     ? AssistantMessage.builder().content("Public observation for call " + call).toolCalls(List.of(
                             new AssistantMessage.ToolCall("read-" + call, "function",
-                                    "read_project_summary", "{}"))).build()
+                                    "read_project_summary", "{}")))
+                            .build()
                     : new AssistantMessage("Done.");
             return new Exchange(1, new ChatResponse(List.of(new Generation(response))));
         }

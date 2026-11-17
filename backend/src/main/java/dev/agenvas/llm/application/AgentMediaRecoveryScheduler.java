@@ -18,7 +18,9 @@ public class AgentMediaRecoveryScheduler {
     private UUID cursor;
     private UUID localCursor;
 
-    public AgentMediaRecoveryScheduler(AgentMediaOutcomeService outcomes) { this.outcomes = outcomes; }
+    public AgentMediaRecoveryScheduler(AgentMediaOutcomeService outcomes) {
+        this.outcomes = outcomes;
+    }
 
     @Scheduled(initialDelay = 1_000, fixedDelay = 5_000)
     public synchronized void tick() {
@@ -31,7 +33,8 @@ public class AgentMediaRecoveryScheduler {
             }
             cursor = approval.id();
         }
-        if (candidates.size() < BATCH_SIZE) cursor = null;
+        if (candidates.size() < BATCH_SIZE)
+            cursor = null;
         var localCandidates = outcomes.localRecoveryCandidates(localCursor, BATCH_SIZE);
         for (var candidate : localCandidates) {
             try {
@@ -41,6 +44,7 @@ public class AgentMediaRecoveryScheduler {
             }
             localCursor = candidate.runId();
         }
-        if (localCandidates.size() < BATCH_SIZE) localCursor = null;
+        if (localCandidates.size() < BATCH_SIZE)
+            localCursor = null;
     }
 }

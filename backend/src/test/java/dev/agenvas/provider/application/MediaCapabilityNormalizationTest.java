@@ -73,11 +73,14 @@ class MediaCapabilityNormalizationTest {
                  "pricing":{"amount":"2","currency":"CNY","unit":"SECOND"},
                  "origin":"PRIVATE_ORIGIN","apiKey":"PRIVATE_KEY","workflowGraph":"PRIVATE_GRAPH"}
                 """);
-        org.mockito.Mockito.doReturn(List.of(new MediaCapabilityService.Candidate(binding, "My video connection", "My video model",
-                Task.Kind.VIDEO_GENERATION, 4, 15, false, settings))).when(catalog).publishedCandidates();
+        org.mockito.Mockito
+                .doReturn(List.of(new MediaCapabilityService.Candidate(binding, "My video connection", "My video model",
+                        Task.Kind.VIDEO_GENERATION, 4, 15, false, settings)))
+                .when(catalog).publishedCandidates();
         org.mockito.Mockito.doReturn(null).when(catalog).defaultCapabilityId(any());
         org.mockito.Mockito.doReturn(CAPABILITY_ID).when(catalog).defaultCapabilityId(Task.Kind.VIDEO_GENERATION);
-        org.mockito.Mockito.doReturn(new MediaAdapterRegistry(List.of()).declaration("MINIMAX_H3")).when(catalog).inputPolicy(binding);
+        org.mockito.Mockito.doReturn(new MediaAdapterRegistry(List.of()).declaration("MINIMAX_H3")).when(catalog)
+                .inputPolicy(binding);
         org.mockito.Mockito.doReturn(null).when(catalog).runningHubDefinition(binding);
         JsonNode result = catalog.planningCatalog();
         assertThat(result.size()).isEqualTo(1);
@@ -88,10 +91,12 @@ class MediaCapabilityNormalizationTest {
         assertThat(result.toString()).doesNotContain("PRIVATE_ORIGIN", "PRIVATE_KEY", "PRIVATE_GRAPH");
     }
 
-    @Test void completePlanningCatalogKeepsEveryCapabilityWithStableDefaultFirstOrdering() {
+    @Test
+    void completePlanningCatalogKeepsEveryCapabilityWithStableDefaultFirstOrdering() {
         var catalog = org.mockito.Mockito.spy(service);
         var candidates = java.util.stream.IntStream.rangeClosed(1, 41).mapToObj(index -> {
-            var binding = new MediaCapabilityBinding(CONNECTION_ID, 1, new UUID(0, index), 1, "MOCK_IMAGE", "synthetic-hash");
+            var binding = new MediaCapabilityBinding(CONNECTION_ID, 1, new UUID(0, index), 1, "MOCK_IMAGE",
+                    "synthetic-hash");
             return new MediaCapabilityService.Candidate(binding, "Synthetic connection", "Capability " + index,
                     Task.Kind.IMAGE_GENERATION, 0, 0, false, mapper.createObjectNode());
         }).toList();
@@ -140,21 +145,27 @@ class MediaCapabilityNormalizationTest {
     @Test
     void publishedModerationIsPartOfTheImmutableCapabilitySpec() {
         stubConnection(MediaPlatform.OPENAI, true, null);
-        when(repository.capability(any())).thenAnswer(invocation -> Optional.of(capability(invocation.getArgument(0), 0, 1)));
-        service.publishCapability(CONNECTION_ID, "Moderated images", ADAPTER, openAiSettings().put("moderation", "low"));
+        when(repository.capability(any()))
+                .thenAnswer(invocation -> Optional.of(capability(invocation.getArgument(0), 0, 1)));
+        service.publishCapability(CONNECTION_ID, "Moderated images", ADAPTER,
+                openAiSettings().put("moderation", "low"));
         var spec = ArgumentCaptor.forClass(String.class);
-        verify(repository).insertCapability(any(), eq(CONNECTION_ID), eq("Moderated images"), eq(ADAPTER), anyString(), spec.capture(), eq(NOW));
+        verify(repository).insertCapability(any(), eq(CONNECTION_ID), eq("Moderated images"), eq(ADAPTER), anyString(),
+                spec.capture(), eq(NOW));
         assertThat(mapper.readTree(spec.getValue()).at("/settings/moderation").asText()).isEqualTo("low");
     }
 
     @Test
     void nonOpenAiAdapterRejectsTheModerationSetting() {
         stubConnection(MediaPlatform.GOOGLE, true, null);
-        assertThatThrownBy(() -> service.publishCapability(CONNECTION_ID, "Google images", MediaAdapterRegistry.GOOGLE_NANO_BANANA_2,
+        assertThatThrownBy(() -> service.publishCapability(CONNECTION_ID, "Google images",
+                MediaAdapterRegistry.GOOGLE_NANO_BANANA_2,
                 mapper.createObjectNode().put("moderation", "low")))
                 .isInstanceOfSatisfying(ApiProblemException.class, error -> assertThat(error.detail().key())
-                        .isEqualTo("api.media-capability-service.capability-template-contains-parameters-that-are-not-allowed"));
-        verify(repository, never()).insertCapability(any(), any(), anyString(), anyString(), anyString(), anyString(), any());
+                        .isEqualTo(
+                                "api.media-capability-service.capability-template-contains-parameters-that-are-not-allowed"));
+        verify(repository, never()).insertCapability(any(), any(), anyString(), anyString(), anyString(), anyString(),
+                any());
     }
 
     @Test
@@ -189,8 +200,8 @@ class MediaCapabilityNormalizationTest {
                 "Synthetic capability", ADAPTER, openAiSettings())).isSameAs(published);
         assertThatThrownBy(() -> service.publishCapability("synthetic-replay", CONNECTION_ID,
                 "Different capability", ADAPTER, openAiSettings()))
-                .isInstanceOfSatisfying(ApiProblemException.class, error ->
-                        assertThat(error.code()).isEqualTo("MEDIA_CAPABILITY_CONFLICT"));
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        error -> assertThat(error.code()).isEqualTo("MEDIA_CAPABILITY_CONFLICT"));
         verify(repository, never()).connection(any());
         verify(repository, never()).insertCapability(any(), any(), anyString(), anyString(),
                 anyString(), anyString(), any());
@@ -203,12 +214,12 @@ class MediaCapabilityNormalizationTest {
         malformed.putObject("comfyWorkflow");
 
         assertThatThrownBy(() -> service.publishCapability(CONNECTION_ID, "", "COMFY_IMAGE_V1", malformed))
-                .isInstanceOfSatisfying(ApiProblemException.class, error ->
-                        assertThat(error.detail().key()).isEqualTo("api.media-capability-service.connection-disabled"));
+                .isInstanceOfSatisfying(ApiProblemException.class, error -> assertThat(error.detail().key())
+                        .isEqualTo("api.media-capability-service.connection-disabled"));
         assertThatThrownBy(() -> service.publishCapability("synthetic-order", CONNECTION_ID,
                 "", "COMFY_IMAGE_V1", malformed))
-                .isInstanceOfSatisfying(ApiProblemException.class, error ->
-                        assertThat(error.detail().key()).isEqualTo("api.media-capability-service.name-must-be-1-160-characters-long"));
+                .isInstanceOfSatisfying(ApiProblemException.class, error -> assertThat(error.detail().key())
+                        .isEqualTo("api.media-capability-service.name-must-be-1-160-characters-long"));
         assertThatThrownBy(() -> service.publishCapability("synthetic-order", CONNECTION_ID,
                 "Synthetic capability", "COMFY_IMAGE_V1", malformed))
                 .isInstanceOfSatisfying(ApiProblemException.class, error -> {
@@ -238,8 +249,8 @@ class MediaCapabilityNormalizationTest {
         settings.putObject("pricing").put("amount", "invalid").put("currency", "USD").put("unit", "IMAGE");
         assertThatThrownBy(() -> service.publishCapability(CONNECTION_ID, "Synthetic capability",
                 "COMFY_IMAGE_V1", settings))
-                .isInstanceOfSatisfying(ApiProblemException.class, error ->
-                        assertThat(error.detail().key()).isEqualTo("api.media-capability-configuration.price-should-be-a-non-negative-decimal-amount-up-to"));
+                .isInstanceOfSatisfying(ApiProblemException.class, error -> assertThat(error.detail().key()).isEqualTo(
+                        "api.media-capability-configuration.price-should-be-a-non-negative-decimal-amount-up-to"));
         settings.withObject("pricing").put("amount", "0.1200");
         assertThatThrownBy(() -> service.publishCapability(CONNECTION_ID, "Synthetic capability",
                 "COMFY_IMAGE_V1", settings))
@@ -274,7 +285,8 @@ class MediaCapabilityNormalizationTest {
         order.verify(repository).lockCapability(CAPABILITY_ID);
         order.verify(repository).snapshot(CAPABILITY_ID);
         order.verify(repository).updateCapability(CAPABILITY_ID, 7, "Renamed capability", false, 3, NOW);
-        verify(repository, never()).insertCapabilityVersion(any(), anyInt(), anyString(), anyString(), anyString(), any());
+        verify(repository, never()).insertCapabilityVersion(any(), anyInt(), anyString(), anyString(), anyString(),
+                any());
     }
 
     private ObjectNode openAiSettings() {

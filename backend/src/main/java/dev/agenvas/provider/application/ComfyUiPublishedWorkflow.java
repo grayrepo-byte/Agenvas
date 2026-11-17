@@ -49,14 +49,18 @@ public class ComfyUiPublishedWorkflow {
 
     public String preflightFailure(AttemptContext context) {
         try {
-            for (var reference : references(context)) verifiedFile(context, reference);
+            for (var reference : references(context))
+                verifiedFile(context, reference);
             return null;
-        } catch (RuntimeException invalid) { return "PROVIDER_UNSUPPORTED_INPUT"; }
+        } catch (RuntimeException invalid) {
+            return "PROVIDER_UNSUPPORTED_INPUT";
+        }
     }
 
     public Submission submit(AttemptContext context, ComfyUiClient client, JsonNode settings) {
         var task = context.lease();
-        var definition = ComfyUiWorkflowDefinition.parse(mapper, settings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY), task.kind());
+        var definition = ComfyUiWorkflowDefinition.parse(mapper, settings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY),
+                task.kind());
         JsonNode frozen = task.input().path("mediaInput").path("providerParameters");
         if (!frozen.path("width").isIntegralNumber() || !frozen.path("height").isIntegralNumber())
             throw new IllegalStateException("Pinned ComfyUI dimensions are missing");
@@ -67,24 +71,34 @@ public class ComfyUiPublishedWorkflow {
             Map<String, String> uploaded = new HashMap<>();
             for (var reference : references(context)) {
                 var file = verifiedFile(context, reference);
-                UUID uploadId = UUID.nameUUIDFromBytes((context.requestKey() + ":" + reference.input().versionId()).getBytes(StandardCharsets.UTF_8));
+                UUID uploadId = UUID.nameUUIDFromBytes(
+                        (context.requestKey() + ":" + reference.input().versionId()).getBytes(StandardCharsets.UTF_8));
                 String name;
                 if (reference.kind() == Asset.MediaKind.IMAGE) {
                     var image = ImageIO.read(file.path().toFile());
-                    if (image == null) throw new IllegalStateException("Pinned ComfyUI image cannot be decoded");
+                    if (image == null)
+                        throw new IllegalStateException("Pinned ComfyUI image cannot be decoded");
                     var buffer = new ByteArrayOutputStream();
-                    if (!ImageIO.write(image, "png", buffer)) throw new IllegalStateException("PNG encoder unavailable");
+                    if (!ImageIO.write(image, "png", buffer))
+                        throw new IllegalStateException("PNG encoder unavailable");
                     name = client.uploadImage(uploadId, buffer.toByteArray(), "png");
-                } else name = client.uploadMedia(uploadId, file.path(), file.asset().contentType());
+                } else
+                    name = client.uploadMedia(uploadId, file.path(), file.asset().contentType());
                 uploaded.put(reference.input().versionId().toString(), name);
             }
-            graph = definition.render(mapper, task.input().path("prompt").asText(), task.input().path("negativePrompt").asText(""),
+            graph = definition.render(mapper, task.input().path("prompt").asText(),
+                    task.input().path("negativePrompt").asText(""),
                     requestKey.getMostSignificantBits() & Long.MAX_VALUE,
-                    new ComfyUiWorkflowDefinition.Dimensions(frozen.path("width").intValue(), frozen.path("height").intValue()),
+                    new ComfyUiWorkflowDefinition.Dimensions(frozen.path("width").intValue(),
+                            frozen.path("height").intValue()),
                     task.input().path("durationSeconds").asInt(0),
-                    uploadedSlots(definition, values, uploaded, context, ComfyUiWorkflowDefinition.Source.REFERENCE_IMAGE),
-                    uploadedSlots(definition, values, uploaded, context, ComfyUiWorkflowDefinition.Source.REFERENCE_VIDEO),
-                    uploadedSlots(definition, values, uploaded, context, ComfyUiWorkflowDefinition.Source.REFERENCE_AUDIO), values);
+                    uploadedSlots(definition, values, uploaded, context,
+                            ComfyUiWorkflowDefinition.Source.REFERENCE_IMAGE),
+                    uploadedSlots(definition, values, uploaded, context,
+                            ComfyUiWorkflowDefinition.Source.REFERENCE_VIDEO),
+                    uploadedSlots(definition, values, uploaded, context,
+                            ComfyUiWorkflowDefinition.Source.REFERENCE_AUDIO),
+                    values);
         } catch (IOException | RuntimeException preparationFailure) {
             // Uploading reference bytes cannot create a generation request or generation UNKNOWN.
             return new Submission.Rejected("MEDIA_REFERENCE_PREPARATION_FAILED");
@@ -92,56 +106,74 @@ public class ComfyUiPublishedWorkflow {
         return new Submission.Accepted(client.submit(graph, requestKey));
     }
 
-    private List<String> uploadedSlots(ComfyUiWorkflowDefinition definition, JsonNode values, Map<String, String> uploaded,
+    private List<String> uploadedSlots(ComfyUiWorkflowDefinition definition, JsonNode values,
+            Map<String, String> uploaded,
             AttemptContext context, ComfyUiWorkflowDefinition.Source source) {
         String prefix = ComfyUiWorkflowDefinition.referenceKeyPrefix(source);
         // Historical image-only tasks used an ordered image array before named slots were introduced.
         if (source == ComfyUiWorkflowDefinition.Source.REFERENCE_IMAGE
                 && values.propertyNames().stream().noneMatch(key -> key.startsWith(prefix)))
-            return FrozenMediaInputs.images(context.lease()).stream().map(input -> uploaded.get(input.versionId().toString())).toList();
+            return FrozenMediaInputs.images(context.lease()).stream()
+                    .map(input -> uploaded.get(input.versionId().toString())).toList();
         var result = new ArrayList<String>();
         for (int index = 0; index < definition.referenceCount(source); index++) {
             String name = uploaded.get(values.path(prefix + index).asText());
-            if (name == null) throw new IllegalStateException("Pinned ComfyUI slot has no authorized input");
+            if (name == null)
+                throw new IllegalStateException("Pinned ComfyUI slot has no authorized input");
             result.add(name);
         }
         return result;
     }
 
-    private record Reference(FrozenMediaInputs.Image input, Asset.MediaKind kind) {}
+    private record Reference(FrozenMediaInputs.Image input, Asset.MediaKind kind) {
+    }
 
     private List<Reference> references(AttemptContext context) {
         var result = new ArrayList<Reference>();
-        FrozenMediaInputs.images(context.lease()).forEach(input -> result.add(new Reference(input, Asset.MediaKind.IMAGE)));
-        FrozenMediaInputs.videos(context.lease()).forEach(input -> result.add(new Reference(input, Asset.MediaKind.VIDEO)));
-        FrozenMediaInputs.audios(context.lease()).forEach(input -> result.add(new Reference(input, Asset.MediaKind.AUDIO)));
+        FrozenMediaInputs.images(context.lease())
+                .forEach(input -> result.add(new Reference(input, Asset.MediaKind.IMAGE)));
+        FrozenMediaInputs.videos(context.lease())
+                .forEach(input -> result.add(new Reference(input, Asset.MediaKind.VIDEO)));
+        FrozenMediaInputs.audios(context.lease())
+                .forEach(input -> result.add(new Reference(input, Asset.MediaKind.AUDIO)));
         return result;
     }
 
     /** Validate original archived bytes before any upload; names and paths never come from creator input. */
     private AssetService.AssetFile verifiedFile(AttemptContext context, Reference reference) {
         var version = artifacts.requireMediaVersionForTask(context.ownerId(), context.lease().projectId(),
-                reference.input().versionId(), dev.agenvas.artifact.domain.Artifact.Kind.valueOf(reference.kind().name()));
-        if (!version.artifactId().equals(reference.input().artifactId())) throw new IllegalStateException("Pinned ComfyUI reference identity differs");
-        var file = assets.get(context.ownerId(), context.lease().projectId(), UUID.fromString(version.content().path("assetId").asText()));
+                reference.input().versionId(),
+                dev.agenvas.artifact.domain.Artifact.Kind.valueOf(reference.kind().name()));
+        if (!version.artifactId().equals(reference.input().artifactId()))
+            throw new IllegalStateException("Pinned ComfyUI reference identity differs");
+        var file = assets.get(context.ownerId(), context.lease().projectId(),
+                UUID.fromString(version.content().path("assetId").asText()));
         var asset = file.asset();
         ComfyUiWorkflowDefinition.validateMediaAsset(asset);
-        if (asset.mediaKind() != reference.kind()) throw new IllegalStateException("Pinned ComfyUI reference type differs");
+        if (asset.mediaKind() != reference.kind())
+            throw new IllegalStateException("Pinned ComfyUI reference type differs");
         try {
-            if (Files.size(file.path()) != asset.byteSize()) throw new IllegalStateException("Pinned ComfyUI reference size differs");
+            if (Files.size(file.path()) != asset.byteSize())
+                throw new IllegalStateException("Pinned ComfyUI reference size differs");
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             try (var source = Files.newInputStream(file.path())) {
-                byte[] buffer = new byte[8192]; int count;
-                while ((count = source.read(buffer)) != -1) digest.update(buffer, 0, count);
+                byte[] buffer = new byte[8192];
+                int count;
+                while ((count = source.read(buffer)) != -1)
+                    digest.update(buffer, 0, count);
             }
-            if (!asset.sha256().equals(HexFormat.of().formatHex(digest.digest()))) throw new IllegalStateException("Pinned ComfyUI reference digest differs");
+            if (!asset.sha256().equals(HexFormat.of().formatHex(digest.digest())))
+                throw new IllegalStateException("Pinned ComfyUI reference digest differs");
             if (reference.kind() == Asset.MediaKind.IMAGE) {
                 var image = ImageIO.read(file.path().toFile());
                 if (image == null || image.getWidth() != asset.width() || image.getHeight() != asset.height())
                     throw new IllegalStateException("Pinned ComfyUI image dimensions differ");
-            } else validateProbe(file);
+            } else
+                validateProbe(file);
             return file;
-        } catch (IOException | NoSuchAlgorithmException failure) { throw new IllegalStateException("Cannot verify pinned ComfyUI reference", failure); }
+        } catch (IOException | NoSuchAlgorithmException failure) {
+            throw new IllegalStateException("Cannot verify pinned ComfyUI reference", failure);
+        }
     }
 
     private void validateProbe(AssetService.AssetFile file) {
@@ -153,7 +185,8 @@ public class ComfyUiPublishedWorkflow {
             throw new IllegalStateException("Pinned ComfyUI media duration differs");
         int videos = 0, audios = 0;
         for (var stream : probe.path("streams")) {
-            if ("audio".equals(stream.path("codec_type").asText())) audios++;
+            if ("audio".equals(stream.path("codec_type").asText()))
+                audios++;
             if ("video".equals(stream.path("codec_type").asText())) {
                 videos++;
                 if (stream.path("width").asInt() != asset.width() || stream.path("height").asInt() != asset.height())
@@ -161,21 +194,27 @@ public class ComfyUiPublishedWorkflow {
             }
         }
         String format = probe.path("format").path("format_name").asText();
-        if (asset.mediaKind() == Asset.MediaKind.VIDEO ? videos != 1 || !format.contains("mp4")
+        if (asset.mediaKind() == Asset.MediaKind.VIDEO
+                ? videos != 1 || !format.contains("mp4")
                 : videos != 0 || audios < 1 || !(format.contains("wav") || format.contains("mp3")))
             throw new IllegalStateException("Pinned ComfyUI media format differs");
     }
 
     public Submission reconcile(AttemptContext context, ComfyUiClient client, JsonNode settings) {
-        var definition = ComfyUiWorkflowDefinition.parse(mapper, settings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY), context.lease().kind());
+        var definition = ComfyUiWorkflowDefinition.parse(mapper, settings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY),
+                context.lease().kind());
         String promptId = context.originalRequestId();
         try {
-            return switch (ComfyUiHistory.published(client.history(promptId), promptId, definition.output(), context.lease().kind())) {
-                case ComfyUiHistory.PublishedPending ignored -> new Submission.Pending(clock.instant().plusSeconds(POLL_SECONDS));
+            return switch (ComfyUiHistory.published(client.history(promptId), promptId, definition.output(),
+                    context.lease().kind())) {
+                case ComfyUiHistory.PublishedPending ignored ->
+                    new Submission.Pending(clock.instant().plusSeconds(POLL_SECONDS));
                 case ComfyUiHistory.PublishedFailed ignored -> new Submission.Rejected("PROVIDER_EXECUTION_FAILED");
                 case ComfyUiHistory.PublishedReady ready -> new Submission.Completed(new MediaPayload(
                         client.output(ready.filename(), ready.subfolder()), ready.contentType()));
             };
-        } catch (ComfyUiClient.ProtocolFailure invalid) { return new Submission.Blocked("PROVIDER_PROTOCOL_INVALID"); }
+        } catch (ComfyUiClient.ProtocolFailure invalid) {
+            return new Submission.Blocked("PROVIDER_PROTOCOL_INVALID");
+        }
     }
 }

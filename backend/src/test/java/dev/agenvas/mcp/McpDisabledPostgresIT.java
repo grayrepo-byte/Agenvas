@@ -39,12 +39,14 @@ import tools.jackson.databind.ObjectMapper;
 /** Turning off the protocol leaves browser authentication and the existing Task services operational. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {"agenvas.mcp.enabled=false", "server.servlet.session.cookie.secure=false",
-                "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
+@SpringBootTest(classes = AgenvasApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
+        "agenvas.mcp.enabled=false", "server.servlet.session.cookie.secure=false",
+        "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class McpDisabledPostgresIT {
-    @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
-    @TempDir static Path assets;
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    @TempDir
+    static Path assets;
 
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry properties) {
@@ -54,11 +56,16 @@ class McpDisabledPostgresIT {
         properties.add("agenvas.storage.root", () -> assets.toString());
     }
 
-    @LocalServerPort int port;
-    @Autowired ApplicationContext context;
-    @Autowired IdentityService identities;
-    @Autowired McpTokenService tokens;
-    @Autowired ObjectMapper mapper;
+    @LocalServerPort
+    int port;
+    @Autowired
+    ApplicationContext context;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    McpTokenService tokens;
+    @Autowired
+    ObjectMapper mapper;
 
     @Test
     void disabledEndpointHasNoProtocolRouteOrSessionBypassWhileAuthAndTaskBeansRemainAvailable() throws Exception {
@@ -83,11 +90,13 @@ class McpDisabledPostgresIT {
             assertThat(missing.headers().firstValue("Cache-Control")).hasValue("no-store");
             assertThat(missing.headers().allValues("Set-Cookie")).isEmpty();
             assertThat(missing.body()).doesNotContain("protocolVersion", "serverInfo", credential.token());
-            assertThat(anonymous.send(mcp(null).build(), HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(401);
+            assertThat(anonymous.send(mcp(null).build(), HttpResponse.BodyHandlers.ofString()).statusCode())
+                    .isEqualTo(401);
             var disabledUpload = anonymous.send(HttpRequest.newBuilder(uri("/mcp/uploads"))
                     .header("Authorization", "Bearer " + credential.token())
                     .header("Content-Type", "multipart/form-data; boundary=synthetic")
-                    .POST(HttpRequest.BodyPublishers.ofString("--synthetic--\r\n")).build(), HttpResponse.BodyHandlers.ofString());
+                    .POST(HttpRequest.BodyPublishers.ofString("--synthetic--\r\n")).build(),
+                    HttpResponse.BodyHandlers.ofString());
             assertThat(disabledUpload.statusCode()).isEqualTo(404);
             assertThat(mapper.readTree(disabledUpload.body()).path("code").asText()).isEqualTo("RESOURCE_NOT_FOUND");
 
@@ -99,14 +108,16 @@ class McpDisabledPostgresIT {
                             "loginName", "mcp-disabled-admin", "password", "synthetic-disabled-password"))))
                     .build(), HttpResponse.BodyHandlers.ofString());
             assertThat(login.statusCode()).isEqualTo(200);
-            assertThat(browser.send(get("/api/v1/auth/me"), HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(200);
+            assertThat(browser.send(get("/api/v1/auth/me"), HttpResponse.BodyHandlers.ofString()).statusCode())
+                    .isEqualTo(200);
             JsonNode currentCsrf = csrf(browser); // Login rotates the CSRF cookie; use an actually valid new value.
             var cookieOnly = browser.send(mcp(null)
                     .header(currentCsrf.path("headerName").asText(), currentCsrf.path("token").asText()).build(),
                     HttpResponse.BodyHandlers.ofString());
             assertThat(cookieOnly.statusCode()).isEqualTo(401);
             assertThat(mapper.readTree(cookieOnly.body()).path("code").asText()).isEqualTo("MCP_UNAUTHENTICATED");
-            assertThat(browser.send(get("/api/v1/auth/me"), HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(200);
+            assertThat(browser.send(get("/api/v1/auth/me"), HttpResponse.BodyHandlers.ofString()).statusCode())
+                    .isEqualTo(200);
         }
     }
 
@@ -127,7 +138,8 @@ class McpDisabledPostgresIT {
         var request = HttpRequest.newBuilder(uri("/mcp")).timeout(Duration.ofSeconds(20))
                 .header("Content-Type", "application/json").header("Accept", "application/json, text/event-stream")
                 .header("MCP-Protocol-Version", "2025-11-25").POST(HttpRequest.BodyPublishers.ofString(body));
-        if (token != null) request.header("Authorization", "Bearer " + token);
+        if (token != null)
+            request.header("Authorization", "Bearer " + token);
         return request;
     }
 

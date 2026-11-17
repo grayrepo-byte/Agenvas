@@ -27,11 +27,14 @@ class AutoDlWorkflowDiscoveryTest {
                 """);
     }
     static java.util.stream.Stream<JsonNode> officialMetadata() throws java.io.IOException {
-        try (var stream = AutoDlWorkflowDiscoveryTest.class.getResourceAsStream("/providers/autodl-public-input-rules.json")) {
-            return java.util.stream.StreamSupport.stream(new ObjectMapper().readTree(stream).spliterator(), false).toList().stream();
+        try (var stream = AutoDlWorkflowDiscoveryTest.class
+                .getResourceAsStream("/providers/autodl-public-input-rules.json")) {
+            return java.util.stream.StreamSupport.stream(new ObjectMapper().readTree(stream).spliterator(), false)
+                    .toList().stream();
         }
     }
-    @org.junit.jupiter.params.ParameterizedTest @org.junit.jupiter.params.provider.MethodSource("officialMetadata")
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.MethodSource("officialMetadata")
     void importsReviewedOfficialRulesIncludingTheirFullResolutionLists(JsonNode metadata) {
         String id = metadata.path("uuid").asText();
         var definition = discovery.preview(id, metadata);
@@ -42,7 +45,8 @@ class AutoDlWorkflowDiscoveryTest {
         assertThat(parsed.audioFields()).containsExactlyElementsOf(AutoDlWorkflows.require(id).audioFields());
         assertThat(parsed.minimumAudios()).isEqualTo(AutoDlWorkflows.require(id).minimumAudios());
     }
-    @Test void importsANewTargetAndExactResolutionWithoutExecutingNodeMappings() {
+    @Test
+    void importsANewTargetAndExactResolutionWithoutExecutingNodeMappings() {
         when(client.workflowMetadata("future_video_v1")).thenReturn(metadata());
         var definition = discovery.preview("future_video_v1", null);
         var settings = mapper.createObjectNode().put("workflowId", "future_video_v1");
@@ -54,14 +58,16 @@ class AutoDlWorkflowDiscoveryTest {
         verify(client).workflowMetadata("future_video_v1");
         verifyNoMoreInteractions(client);
     }
-    @Test void localMetadataFallbackDoesNotUseTheNetworkAndRejectsMismatchedIdentity() {
+    @Test
+    void localMetadataFallbackDoesNotUseTheNetworkAndRejectsMismatchedIdentity() {
         var parsed = AutoDlWorkflowDefinition.parse(discovery.preview("future_video_v1", metadata()));
         assertThat(parsed.id()).isEqualTo("future_video_v1");
         assertThat(parsed.label()).isEqualTo("Future video");
         assertThatThrownBy(() -> discovery.preview("different_id", metadata())).hasMessageContaining("工作流定义");
         verifyNoInteractions(client);
     }
-    @Test void rejectsOtherProtocolsUnknownInputsAndAmbiguousEnumMappings() {
+    @Test
+    void rejectsOtherProtocolsUnknownInputsAndAmbiguousEnumMappings() {
         for (String field : java.util.List.of("audio_duration", "ref_video_0", "script")) {
             var metadata = metadata();
             ((ObjectNode) metadata.path("input_rules")).putObject(field).put("type", "string");
@@ -75,13 +81,17 @@ class AutoDlWorkflowDiscoveryTest {
         ((ObjectNode) missing.path("input_rules")).remove("duration");
         assertThatThrownBy(() -> discovery.preview("future_video_v1", missing)).hasMessageContaining("工作流定义");
     }
-    @Test void listsCandidateMetadataOnlyAndReportsCatalogFailure() {
-        when(client.workflowCatalog(1)).thenReturn(mapper.readTree("{\"max_page\":1,\"list\":[{\"uuid\":\"wan2.2animate-v4-motion_retargeting\",\"name\":\"Video reference\"}]}"));
-        assertThat(discovery.list()).singleElement().satisfies(entry -> assertThat(entry.id()).isEqualTo("wan2.2animate-v4-motion_retargeting"));
+    @Test
+    void listsCandidateMetadataOnlyAndReportsCatalogFailure() {
+        when(client.workflowCatalog(1)).thenReturn(mapper.readTree(
+                "{\"max_page\":1,\"list\":[{\"uuid\":\"wan2.2animate-v4-motion_retargeting\",\"name\":\"Video reference\"}]}"));
+        assertThat(discovery.list()).singleElement()
+                .satisfies(entry -> assertThat(entry.id()).isEqualTo("wan2.2animate-v4-motion_retargeting"));
         when(client.workflowCatalog(1)).thenThrow(new AutoDlClient.TechnicalFailure());
         assertThatThrownBy(() -> discovery.list()).hasMessageContaining("目录");
     }
-    @Test void administratorDefinitionsRejectGraphsEndpointsAndInvalidSlotSequences() {
+    @Test
+    void administratorDefinitionsRejectGraphsEndpointsAndInvalidSlotSequences() {
         var definition = discovery.preview("future_video_v1", metadata());
         for (String field : java.util.List.of("endpoint", "graph", "script")) {
             var copy = definition.deepCopy().put(field, "arbitrary");

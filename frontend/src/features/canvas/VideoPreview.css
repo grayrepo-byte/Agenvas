@@ -13,7 +13,10 @@
   pointer-events: none;
 }
 .video-card-preview.is-hovered .video-preview-controls,
-.video-preview-controls:focus-within { opacity: 1; pointer-events: auto; }
+.video-preview-controls:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
 .video-preview-controls .video-preview-mute {
   flex: none;
   width: 24px;
@@ -22,6 +25,17 @@
   background: transparent;
   color: inherit;
 }
-.video-preview-seek { flex: 1; min-width: 0; }
-.video-preview-time { flex: none; font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.video-card-preview .media-demo-badge { top: 8px; bottom: auto; }
+.video-preview-seek {
+  flex: 1;
+  min-width: 0;
+}
+.video-preview-time {
+  flex: none;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.video-card-preview .media-demo-badge {
+  top: 8px;
+  bottom: auto;
+}

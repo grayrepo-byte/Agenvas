@@ -44,7 +44,8 @@ class AgentTurnFailureCodeTest {
         var failure = mock(OpenAIServiceException.class);
         when(failure.statusCode()).thenReturn(422);
         when(failure.getSuppressed()).thenReturn(new Throwable[0]);
-        when(failure.getMessage()).thenReturn("unknown variant `input_audio`, expected one of `text`, `image_url`, `file`");
+        when(failure.getMessage())
+                .thenReturn("unknown variant `input_audio`, expected one of `text`, `image_url`, `file`");
         var wrapped = new ExecutionException(new ModelCallFailure(failure));
         assertThat(AgentTurnWorker.failureCode(wrapped)).isEqualTo("LLM_MEDIA_INPUT_UNSUPPORTED");
         assertThat(AgentModelRetryPolicy.retryableCode(wrapped)).isNull();
@@ -74,7 +75,8 @@ class AgentTurnFailureCodeTest {
         var failure = mock(OpenAIServiceException.class);
         when(failure.statusCode()).thenReturn(400);
         when(failure.getSuppressed()).thenReturn(new Throwable[0]);
-        when(failure.getMessage()).thenReturn("400: You have insufficient credits to make this request. private-account-detail");
+        when(failure.getMessage())
+                .thenReturn("400: You have insufficient credits to make this request. private-account-detail");
         var wrapped = new ExecutionException(new ModelCallFailure(failure));
         assertThat(AgentTurnWorker.failureCode(wrapped)).isEqualTo("LLM_INSUFFICIENT_CREDITS");
         assertThat(AgentModelRetryPolicy.retryableCode(wrapped)).isNull();
@@ -89,6 +91,9 @@ class AgentTurnFailureCodeTest {
         assertThat(AgentTurnWorker.failureCode(new ExecutionException(new ApiProblemException(
                 HttpStatus.CONFLICT, "STORYBOARD_VERSION_CONFLICT", safeMessage, safeMessage, false))))
                 .isEqualTo("STORYBOARD_VERSION_CONFLICT");
+        assertThat(AgentTurnWorker.failureCode(new ExecutionException(new ApiProblemException(
+                HttpStatus.CONFLICT, "LLM_TURN_CONFLICT", safeMessage, safeMessage, false))))
+                .isEqualTo("LLM_TURN_CONFLICT");
         assertThat(AgentTurnWorker.failureCode(new ApiProblemException(
                 HttpStatus.INTERNAL_SERVER_ERROR, "SYNTHETIC_INTERNAL_CODE", safeMessage, safeMessage, false)))
                 .isEqualTo("AGENT_TURN_FAILED");
@@ -105,7 +110,8 @@ class AgentTurnFailureCodeTest {
     @Test
     void keepsExpectedAuthenticationBlockCodeThroughAsyncWrapper() {
         ApiProblemException missing = new ApiProblemException(HttpStatus.SERVICE_UNAVAILABLE,
-                "CREDENTIAL_KEY_VERSION_MISSING", dev.agenvas.shared.i18n.ApiMessage.of("problem.fallback"), dev.agenvas.shared.i18n.ApiMessage.of("problem.fallback"), false);
+                "CREDENTIAL_KEY_VERSION_MISSING", dev.agenvas.shared.i18n.ApiMessage.of("problem.fallback"),
+                dev.agenvas.shared.i18n.ApiMessage.of("problem.fallback"), false);
         assertThat(AgentTurnWorker.failureCode(new ExecutionException(missing)))
                 .isEqualTo("CREDENTIAL_KEY_VERSION_MISSING");
         assertThat(AgentTurnWorker.failureCode(new IllegalStateException("arbitrary")))

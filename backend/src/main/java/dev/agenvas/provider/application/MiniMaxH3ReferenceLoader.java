@@ -29,14 +29,19 @@ public class MiniMaxH3ReferenceLoader {
 
     public MiniMaxH3ReferenceLoader(ArtifactService artifacts, AssetService assets, MediaRelayService relay,
             MediaToolRunner mediaTools, ObjectMapper mapper) {
-        this.artifacts = artifacts; this.assets = assets; this.relay = relay; this.mediaTools = mediaTools; this.mapper = mapper;
+        this.artifacts = artifacts;
+        this.assets = assets;
+        this.relay = relay;
+        this.mediaTools = mediaTools;
+        this.mapper = mapper;
     }
 
     public List<Reference> load(AttemptContext context, boolean submitting) {
         var images = FrozenMediaInputs.images(context.lease());
         var videos = FrozenMediaInputs.videos(context.lease());
         var audios = FrozenMediaInputs.audios(context.lease());
-        if (images.size() > 9 || videos.size() > 3 || audios.size() > 3) throw MiniMaxH3Protocol.invalid();
+        if (images.size() > 9 || videos.size() > 3 || audios.size() > 3)
+            throw MiniMaxH3Protocol.invalid();
         String mode = context.lease().input().path("mediaInput").path("mode").asText();
         if (!Set.of("TEXT", "START_END", "GENERAL_REFERENCE").contains(mode)
                 || "TEXT".equals(mode) && !(images.isEmpty() && videos.isEmpty() && audios.isEmpty())
@@ -52,19 +57,22 @@ public class MiniMaxH3ReferenceLoader {
                 case "REFERENCE" -> "reference_image";
                 default -> throw MiniMaxH3Protocol.invalid();
             };
-            if ("GENERAL_REFERENCE".equals(mode) != "reference_image".equals(role)) throw MiniMaxH3Protocol.invalid();
+            if ("GENERAL_REFERENCE".equals(mode) != "reference_image".equals(role))
+                throw MiniMaxH3Protocol.invalid();
             result.add(inline(context, image, Asset.MediaKind.IMAGE, "image_url", role));
         }
         long totalAudio = 0;
         for (var audio : audios) {
-            if (!"AUDIO_REFERENCE".equals(audio.role())) throw MiniMaxH3Protocol.invalid();
+            if (!"AUDIO_REFERENCE".equals(audio.role()))
+                throw MiniMaxH3Protocol.invalid();
             Asset asset = asset(context, audio, Asset.MediaKind.AUDIO);
             totalAudio += asset.durationMs();
             result.add(inline(context, audio, Asset.MediaKind.AUDIO, "audio_url", "reference_audio"));
         }
         long totalVideo = 0;
         for (var video : videos) {
-            if (!"VIDEO_REFERENCE".equals(video.role())) throw MiniMaxH3Protocol.invalid();
+            if (!"VIDEO_REFERENCE".equals(video.role()))
+                throw MiniMaxH3Protocol.invalid();
             Asset asset = asset(context, video, Asset.MediaKind.VIDEO);
             totalVideo += asset.durationMs();
             UUID profile = profile(context, video.order());
@@ -74,23 +82,31 @@ public class MiniMaxH3ReferenceLoader {
                     ? relay.signedVideo(context.ownerId(), context.lease().projectId(), asset.id(), profile)
                     : "https://reference.example.invalid/" + "x".repeat(8192)));
         }
-        if (totalAudio > MiniMaxH3Protocol.MAX_REFERENCE_DURATION_MS || totalVideo > MiniMaxH3Protocol.MAX_REFERENCE_DURATION_MS)
+        if (totalAudio > MiniMaxH3Protocol.MAX_REFERENCE_DURATION_MS
+                || totalVideo > MiniMaxH3Protocol.MAX_REFERENCE_DURATION_MS)
             throw MiniMaxH3Protocol.invalid();
         return List.copyOf(result);
     }
 
-    private Reference inline(AttemptContext context, FrozenMediaInputs.Image input, Asset.MediaKind kind, String type, String role) {
+    private Reference inline(AttemptContext context, FrozenMediaInputs.Image input, Asset.MediaKind kind, String type,
+            String role) {
         Asset asset = asset(context, input, kind);
         var file = assets.get(context.ownerId(), context.lease().projectId(), asset.id());
         try (var stream = Files.newInputStream(file.path())) {
             byte[] bytes = stream.readNBytes(Math.toIntExact(asset.byteSize()) + 1);
-            if (bytes.length != asset.byteSize()) throw MiniMaxH3Protocol.invalid();
-            return new Reference(type, role, "data:" + ("audio/mpeg".equals(asset.contentType()) ? "audio/mp3" : asset.contentType()) + ";base64," + Base64.getEncoder().encodeToString(bytes));
-        } catch (IOException failure) { throw MiniMaxH3Protocol.invalid(); }
+            if (bytes.length != asset.byteSize())
+                throw MiniMaxH3Protocol.invalid();
+            return new Reference(type, role,
+                    "data:" + ("audio/mpeg".equals(asset.contentType()) ? "audio/mp3" : asset.contentType())
+                            + ";base64," + Base64.getEncoder().encodeToString(bytes));
+        } catch (IOException failure) {
+            throw MiniMaxH3Protocol.invalid();
+        }
     }
 
     private Asset asset(AttemptContext context, FrozenMediaInputs.Image input, Asset.MediaKind kind) {
-        var version = artifacts.requireVersion(context.ownerId(), context.lease().projectId(), input.artifactId(), input.versionId());
+        var version = artifacts.requireVersion(context.ownerId(), context.lease().projectId(), input.artifactId(),
+                input.versionId());
         Asset asset = assets.requireReadyMedia(context.ownerId(), context.lease().projectId(),
                 UUID.fromString(version.content().path("assetId").asText()), kind);
         MiniMaxH3Protocol.validateMetadata(asset);
@@ -108,13 +124,18 @@ public class MiniMaxH3ReferenceLoader {
                 found = true;
                 String[] rate = stream.path("avg_frame_rate").asText().split("/");
                 double fps;
-                try { fps = Double.parseDouble(rate[0]) / (rate.length == 2 ? Double.parseDouble(rate[1]) : 1); }
-                catch (NumberFormatException invalid) { throw MiniMaxH3Protocol.invalid(); }
+                try {
+                    fps = Double.parseDouble(rate[0]) / (rate.length == 2 ? Double.parseDouble(rate[1]) : 1);
+                } catch (NumberFormatException invalid) {
+                    throw MiniMaxH3Protocol.invalid();
+                }
                 if (!Set.of("h264", "hevc").contains(codec) || !Double.isFinite(fps) || fps < 23.976 || fps > 60)
                     throw MiniMaxH3Protocol.invalid();
-            } else if ("audio".equals(type) && !Set.of("aac", "mp3").contains(codec)) throw MiniMaxH3Protocol.invalid();
+            } else if ("audio".equals(type) && !Set.of("aac", "mp3").contains(codec))
+                throw MiniMaxH3Protocol.invalid();
         }
-        if (!found) throw MiniMaxH3Protocol.invalid();
+        if (!found)
+            throw MiniMaxH3Protocol.invalid();
     }
 
     private static UUID profile(AttemptContext context, int order) {

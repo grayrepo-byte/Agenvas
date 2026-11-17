@@ -22,7 +22,8 @@ import tools.jackson.databind.node.ObjectNode;
 class RunningHubUsageReceiptTest {
     private final ObjectMapper mapper = new ObjectMapper();
 
-    @Test void selectedTargetReceiptCanContainOneCompletedAttempt() {
+    @Test
+    void selectedTargetReceiptCanContainOneCompletedAttempt() {
         var receipt = RunningHubUsageReceipt.parse(receipt());
         assertThat(receipt.targetType()).isEqualTo(RunningHubDefinition.TargetType.AI_APP);
         assertThat(receipt.targetId()).isEqualTo("12345");
@@ -30,11 +31,13 @@ class RunningHubUsageReceiptTest {
                 "synthetic-selected-target", "synthetic-original-task"));
     }
 
-    @Test void workflowReceiptCanContainMoreThanTwoOriginalAttempts() {
+    @Test
+    void workflowReceiptCanContainMoreThanTwoOriginalAttempts() {
         var saved = receipt().put("targetType", "WORKFLOW").put("targetId", "67890");
         var attempts = saved.withArray("attempts");
-        for (int i = 2; i <= 3; i++) attempts.addObject().put("name", "synthetic-attempt-" + i)
-                .put("status", "SUCCEEDED").put("providerRequestId", "synthetic-original-" + i);
+        for (int i = 2; i <= 3; i++)
+            attempts.addObject().put("name", "synthetic-attempt-" + i)
+                    .put("status", "SUCCEEDED").put("providerRequestId", "synthetic-original-" + i);
         var receipt = RunningHubUsageReceipt.parse(saved);
         assertThat(receipt.targetType()).isEqualTo(RunningHubDefinition.TargetType.WORKFLOW);
         assertThat(receipt.targetId()).isEqualTo("67890");
@@ -82,7 +85,8 @@ class RunningHubUsageReceiptTest {
         assertThatThrownBy(() -> RunningHubUsageReceipt.parse(receipt)).isInstanceOf(IllegalArgumentException.class);
     }
 
-    @Test void companionZipBeforeVideoDoesNotDownloadAndRealUsageStillNormalizes() {
+    @Test
+    void companionZipBeforeVideoDoesNotDownloadAndRealUsageStillNormalizes() {
         var client = mock(RunningHubClient.class);
         var adapter = adapter(client);
         var receipt = RunningHubUsageReceipt.parse(receipt());
@@ -94,7 +98,8 @@ class RunningHubUsageReceiptTest {
         verifyNoInteractions(client);
     }
 
-    @Test void zipOnlyResponseFailsUsageCheckWithoutDownloading() {
+    @Test
+    void zipOnlyResponseFailsUsageCheckWithoutDownloading() {
         var client = mock(RunningHubClient.class);
         var response = response();
         response.withArray("results").remove(1);
@@ -104,7 +109,8 @@ class RunningHubUsageReceiptTest {
         verifyNoInteractions(client);
     }
 
-    @Test void originalQueryMustStillReportSuccess() {
+    @Test
+    void originalQueryMustStillReportSuccess() {
         var client = mock(RunningHubClient.class);
         var receipt = RunningHubUsageReceipt.parse(receipt());
         assertThatThrownBy(() -> receipt.normalizedUsage(mapper, adapter(client), response().put("status", "RUNNING")))

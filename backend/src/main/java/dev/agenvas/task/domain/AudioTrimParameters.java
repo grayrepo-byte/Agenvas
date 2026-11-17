@@ -19,29 +19,39 @@ public record AudioTrimParameters(int startMs, int endMs, AudioExtractionParamet
 
     public AudioTrimParameters {
         if (startMs < 0 || endMs > MAX_SOURCE_DURATION_MS || endMs - (long) startMs < MIN_DURATION_MS
-                || format == null) throw invalid();
+                || format == null)
+            throw invalid();
     }
 
-    public int durationMs() { return endMs - startMs; }
+    public int durationMs() {
+        return endMs - startMs;
+    }
 
     public ObjectNode toJson(ObjectMapper mapper) {
         return mapper.createObjectNode().put("startMs", startMs).put("endMs", endMs).put("format", format.name());
     }
 
     public static AudioTrimParameters parse(JsonNode parameters) {
-        if (parameters == null || !parameters.isObject() || !FIELDS.equals(parameters.propertyNames())) throw invalid();
+        if (parameters == null || !parameters.isObject() || !FIELDS.equals(parameters.propertyNames()))
+            throw invalid();
         JsonNode start = parameters.path("startMs"), end = parameters.path("endMs"), format = parameters.path("format");
         if (!start.isIntegralNumber() || !start.canConvertToInt() || !end.isIntegralNumber()
-                || !end.canConvertToInt() || !format.isString()) throw invalid();
-        try { return new AudioTrimParameters(start.intValue(), end.intValue(), AudioExtractionParameters.Format.valueOf(format.asText())); }
-        catch (IllegalArgumentException failure) { throw invalid(); }
+                || !end.canConvertToInt() || !format.isString())
+            throw invalid();
+        try {
+            return new AudioTrimParameters(start.intValue(), end.intValue(),
+                    AudioExtractionParameters.Format.valueOf(format.asText()));
+        } catch (IllegalArgumentException failure) {
+            throw invalid();
+        }
     }
 
     /** Reject source/range and predicted output bounds before a derived node or Task is created. */
     public void requireSource(Asset asset) {
         if (asset.mediaKind() != Asset.MediaKind.AUDIO || asset.durationMs() == null
                 || asset.durationMs() < MIN_DURATION_MS || asset.durationMs() > MAX_SOURCE_DURATION_MS
-                || asset.byteSize() < 1 || asset.byteSize() > MAX_SOURCE_BYTES || endMs > asset.durationMs()) throw invalid();
+                || asset.byteSize() < 1 || asset.byteSize() > MAX_SOURCE_BYTES || endMs > asset.durationMs())
+            throw invalid();
         if (new AudioExtractionParameters(format, 0).maximumOutputBytes(durationMs()) > MAX_OUTPUT_BYTES)
             throw outputTooLarge();
     }

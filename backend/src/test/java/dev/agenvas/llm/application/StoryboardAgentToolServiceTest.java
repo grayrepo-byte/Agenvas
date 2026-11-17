@@ -49,17 +49,21 @@ class StoryboardAgentToolServiceTest {
     final Composition composition = new Composition(UUID.randomUUID(), UUID.randomUUID(), true);
     Storyboard prior;
 
-    @BeforeEach void setup() {
+    @BeforeEach
+    void setup() {
         when(run.contextSnapshot()).thenReturn(snapshot);
         prior = new Storyboard(project, 5, List.of(first, second), composition);
         when(boards.get(owner, project)).thenReturn(prior);
-        when(boards.save(eq(owner), eq(project), any())).thenReturn(new Storyboard(project, 6, prior.shots(), composition));
+        when(boards.save(eq(owner), eq(project), any()))
+                .thenReturn(new Storyboard(project, 6, prior.shots(), composition));
     }
 
-    @Test void directoryReturnsBoundedUnicodePreviewsAndProductionReferencesWithoutLoadingArtifacts() {
+    @Test
+    void directoryReturnsBoundedUnicodePreviewsAndProductionReferencesWithoutLoadingArtifacts() {
         String description = "🎬".repeat(300);
         var longShot = new Shot(first.id(), first.code(), first.scene(), first.title(), description, "台词",
-                first.durationSeconds(), first.sourceVersionId(), first.referenceVersionIds(), first.revision(), first.productions());
+                first.durationSeconds(), first.sourceVersionId(), first.referenceVersionIds(), first.revision(),
+                first.productions());
         when(boards.get(owner, project)).thenReturn(new Storyboard(project, 5, List.of(longShot, second), composition));
 
         JsonNode result = read("{\"limit\":1}");
@@ -82,7 +86,8 @@ class StoryboardAgentToolServiceTest {
         verify(boards, never()).save(any(), any(), any());
     }
 
-    @Test void defaultDirectoryIsPagedAndExplicitShotReadReturnsOnlyThatFullCreativeRecord() {
+    @Test
+    void defaultDirectoryIsPagedAndExplicitShotReadReturnsOnlyThatFullCreativeRecord() {
         List<Shot> manyShots = IntStream.range(0, 41).mapToObj(index -> shot("SHOT-" + index)).toList();
         when(boards.get(owner, project)).thenReturn(new Storyboard(project, 5, manyShots, composition));
         JsonNode directory = read("{}").path("data");
@@ -103,14 +108,16 @@ class StoryboardAgentToolServiceTest {
         verifyNoInteractions(artifacts);
     }
 
-    @Test void appendUsesServerIdentityAndDoesNotRequireOrExposeMediaAuthorization() {
+    @Test
+    void appendUsesServerIdentityAndDoesNotRequireOrExposeMediaAuthorization() {
         ObjectNode append = mapper.createObjectNode().put("code", "SHOT-003").put("description", "远景")
                 .put("dialogue", "").put("durationSeconds", new BigDecimal("1.125"));
         when(boards.save(eq(owner), eq(project), any())).thenAnswer(invocation -> {
             StoryboardService.Save save = invocation.getArgument(2);
             var created = save.shots().getLast();
             return new Storyboard(project, 6, List.of(first, second, new Shot(created.id(), created.code(),
-                    created.scene(), created.title(), created.description(), created.dialogue(), created.durationSeconds(),
+                    created.scene(), created.title(), created.description(), created.dialogue(),
+                    created.durationSeconds(),
                     created.sourceVersionId(), created.referenceVersionIds(), 1, List.of())), composition);
         });
 
@@ -131,7 +138,8 @@ class StoryboardAgentToolServiceTest {
         verifyNoInteractions(artifacts);
     }
 
-    @Test void targetedDialoguePatchRetainsEveryOtherFieldAndNeverConfirmsPinnedResults() {
+    @Test
+    void targetedDialoguePatchRetainsEveryOtherFieldAndNeverConfirmsPinnedResults() {
         JsonNode result = write(patch(first).put("dialogue", "只修改第一镜台词"));
         var save = savedRequest();
         var changed = save.shots().getFirst();
@@ -146,7 +154,8 @@ class StoryboardAgentToolServiceTest {
             assertThat(shot.productions()).hasSize(1);
             assertThat(shot.productions().getFirst().confirmReviewed()).isFalse();
         }
-        assertThat(changed.productions().getFirst().selectedVersionId()).isEqualTo(first.productions().getFirst().selectedVersionId());
+        assertThat(changed.productions().getFirst().selectedVersionId())
+                .isEqualTo(first.productions().getFirst().selectedVersionId());
         assertThat(save.composition().canvasItemId()).isEqualTo(composition.canvasItemId());
         assertThat(save.composition().selectedVersionId()).isEqualTo(composition.selectedVersionId());
         assertThat(save.composition().confirmReviewed()).isFalse();
@@ -154,36 +163,44 @@ class StoryboardAgentToolServiceTest {
         verifyNoInteractions(artifacts);
     }
 
-    @Test void onlyIntroducedReferencesRequireTheFrozenRunReadableScope() {
+    @Test
+    void onlyIntroducedReferencesRequireTheFrozenRunReadableScope() {
         UUID source = UUID.randomUUID();
         UUID reference = UUID.randomUUID();
         ObjectNode patch = patch(first).put("sourceVersionId", source.toString());
-        patch.putArray("referenceVersionIds").add(first.referenceVersionIds().getFirst().toString()).add(reference.toString());
+        patch.putArray("referenceVersionIds").add(first.referenceVersionIds().getFirst().toString())
+                .add(reference.toString());
 
         write(patch);
 
         verify(artifacts).requireAgentReadableVersion(owner, project, snapshot, context.runId(), source);
         verify(artifacts).requireAgentReadableVersion(owner, project, snapshot, context.runId(), reference);
-        verify(artifacts, never()).requireAgentReadableVersion(owner, project, snapshot, context.runId(), first.referenceVersionIds().getFirst());
-        assertThat(savedRequest().shots().getFirst().referenceVersionIds()).containsExactly(first.referenceVersionIds().getFirst(), reference);
+        verify(artifacts, never()).requireAgentReadableVersion(owner, project, snapshot, context.runId(),
+                first.referenceVersionIds().getFirst());
+        assertThat(savedRequest().shots().getFirst().referenceVersionIds())
+                .containsExactly(first.referenceVersionIds().getFirst(), reference);
     }
 
-    @Test void clearingSourceIsAnEditWithoutAdditionalReadPermission() {
+    @Test
+    void clearingSourceIsAnEditWithoutAdditionalReadPermission() {
         write(patch(first).putNull("sourceVersionId"));
         assertThat(savedRequest().shots().getFirst().sourceVersionId()).isNull();
         verifyNoInteractions(artifacts);
     }
 
-    @Test void unreadableReferenceRejectsBeforeAnyBoardWrite() {
+    @Test
+    void unreadableReferenceRejectsBeforeAnyBoardWrite() {
         UUID denied = UUID.randomUUID();
         var problem = new ApiProblemException(HttpStatus.FORBIDDEN, "INPUT_SCOPE_DENIED",
                 ApiMessage.of("api.storyboard.invalid-title"), ApiMessage.of("api.storyboard.invalid-title"), false);
-        when(artifacts.requireAgentReadableVersion(owner, project, snapshot, context.runId(), denied)).thenThrow(problem);
+        when(artifacts.requireAgentReadableVersion(owner, project, snapshot, context.runId(), denied))
+                .thenThrow(problem);
         assertThatThrownBy(() -> write(patch(first).put("sourceVersionId", denied.toString()))).isSameAs(problem);
         verify(boards, never()).save(any(), any(), any());
     }
 
-    @Test void readRejectsUnknownScopeFieldsMixedModesMalformedPagesAndMultipleFullBodies() {
+    @Test
+    void readRejectsUnknownScopeFieldsMixedModesMalformedPagesAndMultipleFullBodies() {
         for (String arguments : List.of("null", "[]", "{} {}", "{\"offset\":0,\"offset\":1}",
                 "{\"projectId\":\"" + project + "\"}", "{\"limit\":0}", "{\"limit\":41}",
                 "{\"offset\":-1}", "{\"offset\":1.5}", "{\"offset\":2147483648}",
@@ -199,12 +216,14 @@ class StoryboardAgentToolServiceTest {
         verifyNoInteractions(artifacts);
     }
 
-    @Test void rejectsForbiddenWriteFieldsAndInvalidCreativeValuesAsToolArguments() {
+    @Test
+    void rejectsForbiddenWriteFieldsAndInvalidCreativeValuesAsToolArguments() {
         for (String field : List.of("productions", "composition", "selectedVersionId", "revision", "confirmReviewed",
                 "needsReview", "projectId", "runId", "userId", "approved", "delete", "position")) {
             assertInvalid(() -> write(patch(first).put("dialogue", "unchanged").put(field, true)));
         }
-        for (ObjectNode value : List.of(patch(first), patch(first).put("code", " "), patch(first).put("code", " SHOT-001"),
+        for (ObjectNode value : List.of(patch(first), patch(first).put("code", " "),
+                patch(first).put("code", " SHOT-001"),
                 patch(first).put("code", "x".repeat(81)), patch(first).put("title", "x".repeat(201)),
                 patch(first).put("description", "x".repeat(20_001)), patch(first).putNull("dialogue"),
                 patch(first).put("durationSeconds", new BigDecimal("0.099")),
@@ -221,32 +240,40 @@ class StoryboardAgentToolServiceTest {
         var references = excessiveReferences.putArray("referenceVersionIds");
         IntStream.range(0, 31).forEach(index -> references.add(UUID.randomUUID().toString()));
         assertInvalid(() -> write(excessiveReferences));
-        assertInvalid(() -> tools.writeShots(context, run, operation, "{\"expectedVersion\":5,\"shots\":[],\"approved\":true}"));
+        assertInvalid(() -> tools.writeShots(context, run, operation,
+                "{\"expectedVersion\":5,\"shots\":[],\"approved\":true}"));
         verify(boards, never()).save(any(), any(), any());
         verifyNoInteractions(artifacts);
     }
 
-    @Test void rejectsUnknownOrDuplicateShotIdsCodeCollisionsAndExcessiveBatches() {
+    @Test
+    void rejectsUnknownOrDuplicateShotIdsCodeCollisionsAndExcessiveBatches() {
         assertInvalid(() -> write(patch(first).put("shotId", UUID.randomUUID().toString()).put("dialogue", "new")));
         assertInvalid(() -> write(patch(first).put("dialogue", "one"), patch(first).put("dialogue", "two")));
         assertInvalid(() -> write(patch(first).put("code", second.code())));
-        assertInvalid(() -> write(IntStream.range(0, 7).mapToObj(index -> mapper.createObjectNode().put("code", "NEW-" + index)
-                .put("description", "").put("dialogue", "").put("durationSeconds", 1)).toArray(ObjectNode[]::new)));
+        assertInvalid(() -> write(IntStream.range(0, 7)
+                .mapToObj(index -> mapper.createObjectNode().put("code", "NEW-" + index)
+                        .put("description", "").put("dialogue", "").put("durationSeconds", 1))
+                .toArray(ObjectNode[]::new)));
         assertInvalid(() -> write());
         assertInvalid(() -> tools.writeShots(context, run, operation, "{\"expectedVersion\":5.5,\"shots\":[{}]}"));
         verify(boards, never()).save(any(), any(), any());
         verifyNoInteractions(artifacts);
     }
 
-    @Test void rejectsAppendPastBoardCapacity() {
-        var fullBoard = new Storyboard(project, 5, IntStream.range(0, 200).mapToObj(index -> shot("FULL-" + index)).toList(), null);
+    @Test
+    void rejectsAppendPastBoardCapacity() {
+        var fullBoard = new Storyboard(project, 5,
+                IntStream.range(0, 200).mapToObj(index -> shot("FULL-" + index)).toList(), null);
         when(boards.get(owner, project)).thenReturn(fullBoard);
-        assertInvalid(() -> write(mapper.createObjectNode().put("code", "NEW").put("description", "").put("dialogue", "")
-                .put("durationSeconds", 1)));
+        assertInvalid(
+                () -> write(mapper.createObjectNode().put("code", "NEW").put("description", "").put("dialogue", "")
+                        .put("durationSeconds", 1)));
         verify(boards, never()).save(any(), any(), any());
     }
 
-    @Test void preservesBothStaleReadAndConcurrentSaveConflictCodes() {
+    @Test
+    void preservesBothStaleReadAndConcurrentSaveConflictCodes() {
         ObjectNode request = request(patch(first).put("dialogue", "new")).put("expectedVersion", 4);
         assertThatThrownBy(() -> tools.writeShots(context, run, operation, request.toString()))
                 .isInstanceOfSatisfying(ApiProblemException.class, problem -> {
@@ -260,15 +287,22 @@ class StoryboardAgentToolServiceTest {
         assertThatThrownBy(() -> write(patch(first).put("dialogue", "new"))).isSameAs(conflict);
     }
 
-    private JsonNode read(String arguments) { return tools.readStoryboard(context, run, operation, arguments); }
-    private JsonNode write(ObjectNode... patches) { return tools.writeShots(context, run, operation, request(patches).toString()); }
+    private JsonNode read(String arguments) {
+        return tools.readStoryboard(context, run, operation, arguments);
+    }
+    private JsonNode write(ObjectNode... patches) {
+        return tools.writeShots(context, run, operation, request(patches).toString());
+    }
     private ObjectNode request(ObjectNode... patches) {
         ObjectNode request = mapper.createObjectNode().put("expectedVersion", 5);
         var shots = request.putArray("shots");
-        for (ObjectNode patch : patches) shots.add(patch);
+        for (ObjectNode patch : patches)
+            shots.add(patch);
         return request;
     }
-    private ObjectNode patch(Shot shot) { return mapper.createObjectNode().put("shotId", shot.id().toString()); }
+    private ObjectNode patch(Shot shot) {
+        return mapper.createObjectNode().put("shotId", shot.id().toString());
+    }
     private StoryboardService.Save savedRequest() {
         var argument = ArgumentCaptor.forClass(StoryboardService.Save.class);
         verify(boards).save(eq(owner), eq(project), argument.capture());

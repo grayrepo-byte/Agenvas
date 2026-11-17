@@ -19,7 +19,8 @@ class KlingModelsTest {
     private static final String IMAGE = "00000000-0000-0000-0000-000000000001";
     private static final String VIDEO = "00000000-0000-0000-0000-000000000002";
 
-    @Test void catalogContainsResolvableUniqueProfilesAndPartitionsThemByMediaKind() {
+    @Test
+    void catalogContainsResolvableUniqueProfilesAndPartitionsThemByMediaKind() {
         var profiles = KlingModels.profiles();
         assertThat(profiles).isNotEmpty().doesNotHaveDuplicates();
         for (var kind : List.of(Task.Kind.IMAGE_GENERATION, Task.Kind.VIDEO_GENERATION)) {
@@ -28,39 +29,53 @@ class KlingModelsTest {
         }
         // Keep supported identities covered while allowing the catalog to grow or be reordered.
         for (String model : List.of("kling-v3", "kling-v3-omni", "kling-image-o1", "kling-v2-1")) {
-            assertThat(profiles).contains(new KlingModels.Profile(model, KlingModels.Operation.GENERATE, Task.Kind.IMAGE_GENERATION));
+            assertThat(profiles).contains(
+                    new KlingModels.Profile(model, KlingModels.Operation.GENERATE, Task.Kind.IMAGE_GENERATION));
         }
-        for (String model : List.of("kling-3.0-turbo", "kling-3.0", "kling-3.0-omni", "kling-o1", "kling-2.6", "kling-2.5-turbo")) {
-            assertThat(profiles).contains(new KlingModels.Profile(model, KlingModels.Operation.GENERATE, Task.Kind.VIDEO_GENERATION));
+        for (String model : List.of("kling-3.0-turbo", "kling-3.0", "kling-3.0-omni", "kling-o1", "kling-2.6",
+                "kling-2.5-turbo")) {
+            assertThat(profiles).contains(
+                    new KlingModels.Profile(model, KlingModels.Operation.GENERATE, Task.Kind.VIDEO_GENERATION));
         }
         assertThat(profiles).contains(
                 new KlingModels.Profile("kling-v2-1", KlingModels.Operation.MULTI_IMAGE, Task.Kind.IMAGE_GENERATION),
                 new KlingModels.Profile("", KlingModels.Operation.EXPAND, Task.Kind.IMAGE_GENERATION),
                 new KlingModels.Profile("", KlingModels.Operation.SUBJECT_COMPLETION, Task.Kind.IMAGE_GENERATION));
         for (String model : List.of("kling-3.0", "kling-2.6")) {
-            assertThat(profiles).contains(new KlingModels.Profile(model, KlingModels.Operation.MOTION_CONTROL, Task.Kind.VIDEO_GENERATION));
+            assertThat(profiles).contains(
+                    new KlingModels.Profile(model, KlingModels.Operation.MOTION_CONTROL, Task.Kind.VIDEO_GENERATION));
         }
         for (var profile : profiles) {
-            assertThat(KlingModels.resolve(profile.model(), profile.operation().name(), profile.kind())).isEqualTo(profile);
-            assertThat(KlingModels.inputs(profile)).isNotEmpty().extracting(KlingModels.Field::key).doesNotHaveDuplicates();
+            assertThat(KlingModels.resolve(profile.model(), profile.operation().name(), profile.kind()))
+                    .isEqualTo(profile);
+            assertThat(KlingModels.inputs(profile)).isNotEmpty().extracting(KlingModels.Field::key)
+                    .doesNotHaveDuplicates();
         }
         assertThat(KlingModels.adapter("KLING_IMAGE")).isTrue();
         assertThat(KlingModels.adapter("KLING_IMAGE_3")).isFalse();
-        for (var settings : List.of(mapper.createObjectNode(), mapper.createObjectNode().put("model", ""), mapper.createObjectNode().putNull("model"))) {
+        for (var settings : List.of(mapper.createObjectNode(), mapper.createObjectNode().put("model", ""),
+                mapper.createObjectNode().putNull("model"))) {
             assertThat(KlingModels.resolve(settings, Task.Kind.IMAGE_GENERATION).model()).isEqualTo("kling-v3");
             assertThat(KlingModels.resolve(settings, Task.Kind.VIDEO_GENERATION).model()).isEqualTo("kling-3.0");
         }
-        assertThat(KlingModels.resolve(mapper.createObjectNode().put("model", " kling-v3 "), Task.Kind.IMAGE_GENERATION).model()).isEqualTo("kling-v3");
-        assertThatThrownBy(() -> KlingModels.resolve(mapper.createObjectNode().put("model", "KLING-V3"), Task.Kind.IMAGE_GENERATION)).isInstanceOf(ApiProblemException.class);
-        assertThatThrownBy(() -> KlingModels.resolve(mapper.createObjectNode().put("model", "unknown"), Task.Kind.IMAGE_GENERATION)).isInstanceOf(ApiProblemException.class);
-        assertThat(KlingModels.resolve(mapper.createObjectNode().put("operation", "EXPAND"), Task.Kind.IMAGE_GENERATION).model()).isEmpty();
+        assertThat(KlingModels.resolve(mapper.createObjectNode().put("model", " kling-v3 "), Task.Kind.IMAGE_GENERATION)
+                .model()).isEqualTo("kling-v3");
+        assertThatThrownBy(() -> KlingModels.resolve(mapper.createObjectNode().put("model", "KLING-V3"),
+                Task.Kind.IMAGE_GENERATION)).isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> KlingModels.resolve(mapper.createObjectNode().put("model", "unknown"),
+                Task.Kind.IMAGE_GENERATION)).isInstanceOf(ApiProblemException.class);
+        assertThat(KlingModels.resolve(mapper.createObjectNode().put("operation", "EXPAND"), Task.Kind.IMAGE_GENERATION)
+                .model()).isEmpty();
         for (String model : List.of("kling-v1", "kling-v2", "kling-v3-omni")) {
-            assertThatThrownBy(() -> KlingModels.resolve(model, "MOTION_CONTROL", Task.Kind.IMAGE_GENERATION)).isInstanceOf(ApiProblemException.class);
+            assertThatThrownBy(() -> KlingModels.resolve(model, "MOTION_CONTROL", Task.Kind.IMAGE_GENERATION))
+                    .isInstanceOf(ApiProblemException.class);
         }
-        assertThatThrownBy(() -> KlingModels.resolve("kling-3.0-turbo", "MOTION_CONTROL", Task.Kind.VIDEO_GENERATION)).isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> KlingModels.resolve("kling-3.0-turbo", "MOTION_CONTROL", Task.Kind.VIDEO_GENERATION))
+                .isInstanceOf(ApiProblemException.class);
     }
 
-    @Test void administratorDefaultsAreScalarOnlyAndCannotForwardArbitraryFields() {
+    @Test
+    void administratorDefaultsAreScalarOnlyAndCannotForwardArbitraryFields() {
         var settings = mapper.createObjectNode().put("model", "kling-v3-omni");
         settings.putObject("defaultParameters").putObject("dynamicValues").put("resolution", "4k").put("n", 9);
         var normalized = KlingModels.normalizeSettings(settings, Task.Kind.IMAGE_GENERATION, mapper);
@@ -71,89 +86,129 @@ class KlingModelsTest {
         for (String key : List.of("image_1", "prompt", "duration", "callback_url", "apiKey")) {
             var invalid = settings.deepCopy();
             ((ObjectNode) invalid.path("defaultParameters").path("dynamicValues")).put(key, IMAGE);
-            assertThatThrownBy(() -> KlingModels.normalizeSettings(invalid, Task.Kind.IMAGE_GENERATION, mapper)).isInstanceOf(ApiProblemException.class);
+            assertThatThrownBy(() -> KlingModels.normalizeSettings(invalid, Task.Kind.IMAGE_GENERATION, mapper))
+                    .isInstanceOf(ApiProblemException.class);
         }
         settings.put("endpoint", "https://untrusted.example");
-        assertThatThrownBy(() -> KlingModels.normalizeSettings(settings, Task.Kind.IMAGE_GENERATION, mapper)).isInstanceOf(ApiProblemException.class);
-        assertThatThrownBy(() -> KlingModels.normalizeSettings(mapper.createObjectNode().put("model", "kling-2.6").put("defaultDurationSeconds", 6),
+        assertThatThrownBy(() -> KlingModels.normalizeSettings(settings, Task.Kind.IMAGE_GENERATION, mapper))
+                .isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> KlingModels.normalizeSettings(
+                mapper.createObjectNode().put("model", "kling-2.6").put("defaultDurationSeconds", 6),
                 Task.Kind.VIDEO_GENERATION, mapper)).isInstanceOf(ApiProblemException.class);
-        assertThatThrownBy(() -> KlingModels.normalizeSettings(mapper.createObjectNode().put("model", "kling-3.0").put("operation", "MOTION_CONTROL").put("defaultDurationSeconds", 5),
+        assertThatThrownBy(() -> KlingModels.normalizeSettings(
+                mapper.createObjectNode().put("model", "kling-3.0").put("operation", "MOTION_CONTROL")
+                        .put("defaultDurationSeconds", 5),
                 Task.Kind.VIDEO_GENERATION, mapper)).isInstanceOf(ApiProblemException.class);
-        assertThatThrownBy(() -> KlingModels.normalizeSettings(mapper.createObjectNode().put("model", "kling-3.0").put("operation", "MOTION_CONTROL").put("minimumSeconds", 8),
+        assertThatThrownBy(() -> KlingModels.normalizeSettings(
+                mapper.createObjectNode().put("model", "kling-3.0").put("operation", "MOTION_CONTROL")
+                        .put("minimumSeconds", 8),
                 Task.Kind.VIDEO_GENERATION, mapper)).isInstanceOf(ApiProblemException.class);
     }
 
-    @Test void imageModelsHaveDifferentResolutionSeriesAndReferenceFields() {
-        assertThat(keys(image("kling-v3"))).contains("negative_prompt", "elementId1").doesNotContain("image_fidelity", "result_type", "image_2");
-        assertThat(keys(image("kling-v2-1"))).contains("image_reference", "image_fidelity", "human_fidelity").doesNotContain("elementId1");
+    @Test
+    void imageModelsHaveDifferentResolutionSeriesAndReferenceFields() {
+        assertThat(keys(image("kling-v3"))).contains("negative_prompt", "elementId1").doesNotContain("image_fidelity",
+                "result_type", "image_2");
+        assertThat(keys(image("kling-v2-1"))).contains("image_reference", "image_fidelity", "human_fidelity")
+                .doesNotContain("elementId1");
         assertThat(keys(image("kling-image-o1"))).contains("image_10", "elementId10").doesNotContain("result_type");
         var omni = image("kling-v3-omni");
-        var values = values(omni, mapper.createObjectNode().put("result_type", "series").put("series_amount", "auto"), 5);
+        var values = values(omni, mapper.createObjectNode().put("result_type", "series").put("series_amount", "auto"),
+                5);
         assertThat(KlingModels.resultCount(omni, values)).isNull();
         var n = KlingModels.inputs(omni).stream().filter(f -> "n".equals(f.key())).findFirst().orElseThrow();
         assertThat(n.enabledWhen().field()).isEqualTo("result_type");
         assertThat(n.enabledWhen().value().asText()).isEqualTo("single");
-        assertThatThrownBy(() -> KlingModels.validateValues(image("kling-image-o1"), values, true)).isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> KlingModels.validateValues(image("kling-image-o1"), values, true))
+                .isInstanceOf(ApiProblemException.class);
     }
 
-    @Test void imageNegativePromptRefsBoundsAndPositionTagsAreValidated() {
+    @Test
+    void imageNegativePromptRefsBoundsAndPositionTagsAreValidated() {
         var normal = image("kling-v3");
-        var negative = values(normal, mapper.createObjectNode(), 5).put("image_1", IMAGE).put("negative_prompt", "blur");
-        assertThatThrownBy(() -> KlingModels.validateValues(normal, negative, true)).isInstanceOf(ApiProblemException.class);
+        var negative = values(normal, mapper.createObjectNode(), 5).put("image_1", IMAGE).put("negative_prompt",
+                "blur");
+        assertThatThrownBy(() -> KlingModels.validateValues(normal, negative, true))
+                .isInstanceOf(ApiProblemException.class);
         var omni = image("kling-v3-omni");
         var gap = values(omni, mapper.createObjectNode().put("image_5", IMAGE), 5);
         KlingModels.validateValues(omni, gap, false);
         KlingModels.validateValues(omni, gap, true);
         var over = mapper.createObjectNode();
-        for (int i = 1; i <= 10; i++) over.put("elementId" + i, Integer.toString(i));
+        for (int i = 1; i <= 10; i++)
+            over.put("elementId" + i, Integer.toString(i));
         over.put("image_1", IMAGE);
         assertThatThrownBy(() -> values(omni, over, 5)).isInstanceOf(ApiProblemException.class);
-        assertThatThrownBy(() -> values(normal, mapper.createObjectNode().put("n", 10), 5)).isInstanceOf(ApiProblemException.class);
-        assertThatThrownBy(() -> values(normal, mapper.createObjectNode().put("elementId1", "9223372036854775808"), 5)).isInstanceOf(ApiProblemException.class);
-        assertThatThrownBy(() -> values(normal, mapper.createObjectNode().put("elementId1", "subject-generated-id"), 5)).isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> values(normal, mapper.createObjectNode().put("n", 10), 5))
+                .isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> values(normal, mapper.createObjectNode().put("elementId1", "9223372036854775808"), 5))
+                .isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> values(normal, mapper.createObjectNode().put("elementId1", "subject-generated-id"), 5))
+                .isInstanceOf(ApiProblemException.class);
     }
 
-    @Test void explicitSlotsMustPointAtMatchingExactVersionsAndConsumeAllRuntimeMedia() {
+    @Test
+    void explicitSlotsMustPointAtMatchingExactVersionsAndConsumeAllRuntimeMedia() {
         var p = image("kling-v3-omni");
         var parameters = mapper.createObjectNode();
         parameters.putObject("dynamicValues").put("image_1", IMAGE);
         var exact = media(IMAGE, MediaDraft.InputRole.REFERENCE);
         KlingModels.validateDraft(p, parameters, "Prompt", null, List.of(exact), true);
         assertThatThrownBy(() -> KlingModels.validateDraft(p, parameters, "Prompt", null,
-                List.of(media(IMAGE, MediaDraft.InputRole.VIDEO_REFERENCE)), true)).isInstanceOf(ApiProblemException.class);
-        assertThatThrownBy(() -> KlingModels.validateDraft(p, mapper.createObjectNode(), "Prompt", null, List.of(exact), true)).isInstanceOf(ApiProblemException.class);
+                List.of(media(IMAGE, MediaDraft.InputRole.VIDEO_REFERENCE)), true))
+                .isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(
+                () -> KlingModels.validateDraft(p, mapper.createObjectNode(), "Prompt", null, List.of(exact), true))
+                .isInstanceOf(ApiProblemException.class);
         ((ObjectNode) parameters.path("dynamicValues")).put("image_2", IMAGE);
-        assertThatThrownBy(() -> KlingModels.validateDraft(p, parameters, "Prompt", null, List.of(exact), true)).isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> KlingModels.validateDraft(p, parameters, "Prompt", null, List.of(exact), true))
+                .isInstanceOf(ApiProblemException.class);
     }
 
-    @Test void videoProfilesDoNotInheritUnsupportedAudioTailFourKOrDuration() {
+    @Test
+    void videoProfilesDoNotInheritUnsupportedAudioTailFourKOrDuration() {
         var turbo = video("kling-3.0-turbo");
-        assertThat(KlingModels.inputs(turbo).stream().filter(field -> "aspect_ratio".equals(field.key())).findFirst().orElseThrow().description())
+        assertThat(KlingModels.inputs(turbo).stream().filter(field -> "aspect_ratio".equals(field.key())).findFirst()
+                .orElseThrow().description())
                 .contains("text-to-video only", "first frame");
         assertThat(keys(turbo)).doesNotContain("audio", "multi_shot", "last_frame");
-        assertThatThrownBy(() -> values(turbo, mapper.createObjectNode().put("resolution", "4k"), 5)).isInstanceOf(ApiProblemException.class);
-        assertThatThrownBy(() -> KlingModels.validateValues(video("kling-2.6"), values(video("kling-2.6"), mapper.createObjectNode(), 6), true)).isInstanceOf(ApiProblemException.class);
-        assertThatThrownBy(() -> KlingModels.validateValues(video("kling-o1"), values(video("kling-o1"), mapper.createObjectNode(), 3), true)).isInstanceOf(ApiProblemException.class);
-        var tail = mapper.createObjectNode().put("first_frame", IMAGE).put("last_frame", VIDEO).put("resolution", "1080p").put("audio", "native");
+        assertThatThrownBy(() -> values(turbo, mapper.createObjectNode().put("resolution", "4k"), 5))
+                .isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> KlingModels.validateValues(video("kling-2.6"),
+                values(video("kling-2.6"), mapper.createObjectNode(), 6), true))
+                .isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> KlingModels.validateValues(video("kling-o1"),
+                values(video("kling-o1"), mapper.createObjectNode(), 3), true)).isInstanceOf(ApiProblemException.class);
+        var tail = mapper.createObjectNode().put("first_frame", IMAGE).put("last_frame", VIDEO)
+                .put("resolution", "1080p").put("audio", "native");
         assertThatThrownBy(() -> values(video("kling-2.6"), tail, 5)).isInstanceOf(ApiProblemException.class);
         assertThat(keys(video("kling-2.5-turbo"))).doesNotContain("audio", "voiceId1");
-        var longPrompt = mapper.createObjectNode(); longPrompt.putObject("dynamicValues");
-        assertThatThrownBy(() -> KlingModels.validateValues(video("kling-o1"), KlingModels.effectiveValues(video("kling-o1"), longPrompt, "字".repeat(2501), 5, mapper), true)).isInstanceOf(ApiProblemException.class);
+        var longPrompt = mapper.createObjectNode();
+        longPrompt.putObject("dynamicValues");
+        assertThatThrownBy(() -> KlingModels.validateValues(video("kling-o1"),
+                KlingModels.effectiveValues(video("kling-o1"), longPrompt, "字".repeat(2501), 5, mapper), true))
+                .isInstanceOf(ApiProblemException.class);
         KlingModels.effectiveValues(video("kling-3.0"), mapper.createObjectNode(), "字".repeat(3072), 5, mapper);
-        var imageTurbo = mapper.createObjectNode(); imageTurbo.putObject("dynamicValues").put("first_frame", IMAGE);
-        assertThatThrownBy(() -> KlingModels.validateValues(turbo, KlingModels.effectiveValues(turbo, imageTurbo, "字".repeat(2501), 5, mapper), true)).isInstanceOf(ApiProblemException.class);
+        var imageTurbo = mapper.createObjectNode();
+        imageTurbo.putObject("dynamicValues").put("first_frame", IMAGE);
+        assertThatThrownBy(() -> KlingModels.validateValues(turbo,
+                KlingModels.effectiveValues(turbo, imageTurbo, "字".repeat(2501), 5, mapper), true))
+                .isInstanceOf(ApiProblemException.class);
     }
 
-    @Test void sourceDraftValuesSurviveCapabilityChangesUntilCompleteValidation() {
+    @Test
+    void sourceDraftValuesSurviveCapabilityChangesUntilCompleteValidation() {
         for (var p : List.of(video("kling-2.6"), video("kling-o1"), video("kling-3.0"))) {
             var draft = KlingModels.effectiveValues(p, mapper.createObjectNode(), "字".repeat(4000), 60, mapper);
             assertThat(draft.path("duration").asInt()).isEqualTo(60);
             assertThat(draft.path("prompt").asText()).hasSize(4000);
-            assertThatThrownBy(() -> KlingModels.validateValues(p, draft, true)).isInstanceOf(ApiProblemException.class);
+            assertThatThrownBy(() -> KlingModels.validateValues(p, draft, true))
+                    .isInstanceOf(ApiProblemException.class);
         }
     }
 
-    @Test void omniCombinationsAndAliasesAreCheckedBeforeNetworkPreparation() {
+    @Test
+    void omniCombinationsAndAliasesAreCheckedBeforeNetworkPreparation() {
         var p = video("kling-3.0-omni");
         KlingModels.validateValues(p, values(p, mapper.createObjectNode().put("elementId1", "subject-generated-id")
                 .put("elementRefId1", "主角"), 5), true);
@@ -163,62 +218,83 @@ class KlingModelsTest {
         KlingModels.validateValues(p, values(p, base, 5), true);
         var feature = mapper.createObjectNode().put("feature_video", VIDEO).put("audio", "native");
         assertThatThrownBy(() -> values(p, feature, 5)).isInstanceOf(ApiProblemException.class);
-        var alias = mapper.createObjectNode().put("first_frame", IMAGE).put("elementId1", "123").put("elementRefId1", "first_frame");
+        var alias = mapper.createObjectNode().put("first_frame", IMAGE).put("elementId1", "123").put("elementRefId1",
+                "first_frame");
         assertThatThrownBy(() -> values(p, alias, 5)).isInstanceOf(ApiProblemException.class);
-        var mixed = mapper.createObjectNode().put("feature_video", VIDEO).put("elementId1", "123").put("elementType1", "VIDEO").put("elementId2", "124");
+        var mixed = mapper.createObjectNode().put("feature_video", VIDEO).put("elementId1", "123")
+                .put("elementType1", "VIDEO").put("elementId2", "124");
         assertThatThrownBy(() -> values(p, mixed, 5)).isInstanceOf(ApiProblemException.class);
-        var o1 = mapper.createObjectNode().put("first_frame", IMAGE).put("last_frame", VIDEO).put("image_1", UUID.randomUUID().toString());
+        var o1 = mapper.createObjectNode().put("first_frame", IMAGE).put("last_frame", VIDEO).put("image_1",
+                UUID.randomUUID().toString());
         assertThatThrownBy(() -> values(video("kling-o1"), o1, 5)).isInstanceOf(ApiProblemException.class);
     }
 
-    @Test void expandAndMotionUseTheirActualInputsAndBounds() {
+    @Test
+    void expandAndMotionUseTheirActualInputsAndBounds() {
         var expand = KlingModels.resolve("", "EXPAND", Task.Kind.IMAGE_GENERATION);
         var values = values(expand, mapper.createObjectNode().put("image_1", IMAGE).put("left_expansion_ratio", 2), 5);
         KlingModels.validateValues(expand, values, true);
         values.put("right_expansion_ratio", 0.01);
-        assertThatThrownBy(() -> KlingModels.validateValues(expand, values, true)).isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> KlingModels.validateValues(expand, values, true))
+                .isInstanceOf(ApiProblemException.class);
         var motion = KlingModels.resolve("kling-3.0", "MOTION_CONTROL", Task.Kind.VIDEO_GENERATION);
         assertThat(keys(motion)).doesNotContain("duration", "aspect_ratio", "multi_shot", "first_frame");
-        var input = mapper.createObjectNode().put("image_1", IMAGE).put("motion_video", VIDEO).put("character_orientation", "image");
+        var input = mapper.createObjectNode().put("image_1", IMAGE).put("motion_video", VIDEO)
+                .put("character_orientation", "image");
         var v = values(motion, input, 5);
         KlingModels.validateMetadata(motion, "motion_video", asset(Asset.MediaKind.VIDEO, 340, 3850, 10_000), v);
-        assertThatThrownBy(() -> KlingModels.validateMetadata(motion, "motion_video", asset(Asset.MediaKind.VIDEO, 340, 3850, 10_001), v)).isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> KlingModels.validateMetadata(motion, "motion_video",
+                asset(Asset.MediaKind.VIDEO, 340, 3850, 10_001), v)).isInstanceOf(ApiProblemException.class);
         input.put("elementId1", "123");
         assertThatThrownBy(() -> values(motion, input, 5)).isInstanceOf(ApiProblemException.class);
     }
 
-    @Test void omniCombinedImageSubjectCapsIncludeFirstAndLastFrames() {
+    @Test
+    void omniCombinedImageSubjectCapsIncludeFirstAndLastFrames() {
         for (var p : List.of(video("kling-o1"), video("kling-3.0-omni"))) {
             assertThat(KlingModels.declaration(p).maxReferenceImages()).isEqualTo(7);
             assertThat(KlingModels.declaration(p).maxReferenceVideos()).isEqualTo(1);
             var supplied = mapper.createObjectNode().put("first_frame", IMAGE).put("elementId1", "123");
-            for (int i = 1; i <= 5; i++) supplied.put("image_" + i, UUID.randomUUID().toString());
+            for (int i = 1; i <= 5; i++)
+                supplied.put("image_" + i, UUID.randomUUID().toString());
             var noVideo = values(p, supplied, 5);
             KlingModels.validateValues(p, noVideo, true); // Six images including the first frame, plus one subject.
             noVideo.put("image_6", UUID.randomUUID().toString());
-            assertThatThrownBy(() -> KlingModels.validateValues(p, noVideo, true)).isInstanceOf(ApiProblemException.class);
+            assertThatThrownBy(() -> KlingModels.validateValues(p, noVideo, true))
+                    .isInstanceOf(ApiProblemException.class);
 
-            supplied = mapper.createObjectNode().put("first_frame", IMAGE).put("feature_video", VIDEO).put("elementId1", "123");
-            for (int i = 1; i <= 2; i++) supplied.put("image_" + i, UUID.randomUUID().toString());
+            supplied = mapper.createObjectNode().put("first_frame", IMAGE).put("feature_video", VIDEO).put("elementId1",
+                    "123");
+            for (int i = 1; i <= 2; i++)
+                supplied.put("image_" + i, UUID.randomUUID().toString());
             var withVideo = values(p, supplied, 5);
             KlingModels.validateValues(p, withVideo, true); // Three images including the first frame, plus one subject.
             withVideo.put("image_3", UUID.randomUUID().toString());
-            assertThatThrownBy(() -> KlingModels.validateValues(p, withVideo, true)).isInstanceOf(ApiProblemException.class);
+            assertThatThrownBy(() -> KlingModels.validateValues(p, withVideo, true))
+                    .isInstanceOf(ApiProblemException.class);
         }
         var p = video("kling-3.0-omni");
         var supplied = mapper.createObjectNode().put("first_frame", IMAGE).put("last_frame", VIDEO);
-        for (int i = 1; i <= 5; i++) supplied.put("image_" + i, UUID.randomUUID().toString());
+        for (int i = 1; i <= 5; i++)
+            supplied.put("image_" + i, UUID.randomUUID().toString());
         var withTail = values(p, supplied, 5);
         KlingModels.validateValues(p, withTail, true); // Two frames and five other images exhaust the seven-image cap.
         withTail.put("image_6", UUID.randomUUID().toString());
         assertThatThrownBy(() -> KlingModels.validateValues(p, withTail, true)).isInstanceOf(ApiProblemException.class);
     }
 
-    private KlingModels.Profile image(String model) { return KlingModels.resolve(model, "GENERATE", Task.Kind.IMAGE_GENERATION); }
-    private KlingModels.Profile video(String model) { return KlingModels.resolve(model, "GENERATE", Task.Kind.VIDEO_GENERATION); }
-    private List<String> keys(KlingModels.Profile p) { return KlingModels.inputs(p).stream().map(KlingModels.Field::key).toList(); }
+    private KlingModels.Profile image(String model) {
+        return KlingModels.resolve(model, "GENERATE", Task.Kind.IMAGE_GENERATION);
+    }
+    private KlingModels.Profile video(String model) {
+        return KlingModels.resolve(model, "GENERATE", Task.Kind.VIDEO_GENERATION);
+    }
+    private List<String> keys(KlingModels.Profile p) {
+        return KlingModels.inputs(p).stream().map(KlingModels.Field::key).toList();
+    }
     private ObjectNode values(KlingModels.Profile p, ObjectNode supplied, int seconds) {
-        var parameters = mapper.createObjectNode(); parameters.set("dynamicValues", supplied);
+        var parameters = mapper.createObjectNode();
+        parameters.set("dynamicValues", supplied);
         return KlingModels.effectiveValues(p, parameters, "Prompt", seconds, mapper);
     }
     private MediaDraft.MediaInput media(String id, MediaDraft.InputRole role) {

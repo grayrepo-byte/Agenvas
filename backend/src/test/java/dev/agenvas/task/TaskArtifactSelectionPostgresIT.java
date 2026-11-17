@@ -54,20 +54,30 @@ class TaskArtifactSelectionPostgresIT {
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private dev.agenvas.task.application.TaskRepository taskRepository;
+    @Autowired
+    private dev.agenvas.task.application.TaskRepository taskRepository;
 
     @Autowired
     private dev.agenvas.audit.application.CallLogService callLogs;
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private AgentRunService runs;
-    @Autowired private TaskService tasks;
-    @Autowired private ArtifactService artifacts;
-    @Autowired private AssetService assets;
-    @Autowired private ObjectMapper mapper;
-    @Autowired private JdbcClient jdbc;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private AgentInstanceService agents;
+    @Autowired
+    private AgentRunService runs;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private ArtifactService artifacts;
+    @Autowired
+    private AssetService assets;
+    @Autowired
+    private ObjectMapper mapper;
+    @Autowired
+    private JdbcClient jdbc;
     private UUID mediaOwnerId;
     private UUID mediaProjectId;
 
@@ -153,7 +163,8 @@ class TaskArtifactSelectionPostgresIT {
 
     private Task createMedia(UUID ownerId, UUID projectId, UUID runId, UUID artifactId,
             String stepKey) {
-        return dev.agenvas.task.application.TaskMediaFixture.create(tasks, taskRepository, artifacts, ownerId, projectId, runId, stepKey, Task.Kind.IMAGE_GENERATION, mapper.createObjectNode(), artifactId);
+        return dev.agenvas.task.application.TaskMediaFixture.create(tasks, taskRepository, artifacts, ownerId,
+                projectId, runId, stepKey, Task.Kind.IMAGE_GENERATION, mapper.createObjectNode(), artifactId);
     }
 
     private ObjectNode media(UUID taskId, String prompt) {

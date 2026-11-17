@@ -7,8 +7,12 @@ public record LlmModelPolicy(ModelCatalog.Provider provider, Source source,
         Integer contextWindowTokens, Integer inputLimitTokens, int maxOutputTokens,
         OutputParameter outputParameter, Integer theoreticalContextTokens,
         Integer reportedOutputTokens, Integer runtimeContextTokens, String modelDigest, Instant checkedAt) {
-    public enum Source { MANUAL, PROVIDER_REPORTED, OLLAMA_RUNTIME }
-    public enum OutputParameter { MAX_TOKENS, MAX_COMPLETION_TOKENS }
+    public enum Source {
+        MANUAL, PROVIDER_REPORTED, OLLAMA_RUNTIME
+    }
+    public enum OutputParameter {
+        MAX_TOKENS, MAX_COMPLETION_TOKENS
+    }
     private static final int DEFAULT_CONTEXT_WINDOW_TOKENS = 1_000_000;
     private static final int DEFAULT_MAX_OUTPUT_TOKENS = 4096;
     public LlmModelPolicy {
@@ -23,10 +27,15 @@ public record LlmModelPolicy(ModelCatalog.Provider provider, Source source,
     }
     public static LlmModelPolicy automatic(ModelCatalog.Provider provider, ModelCatalog.Model model,
             int output, OutputParameter parameter) {
-        Integer context = provider == ModelCatalog.Provider.OLLAMA ? model.runtimeContextTokens()
-                : model.deploymentContextTokens() != null ? model.deploymentContextTokens() : model.contextWindowTokens();
-        if (context != null && model.contextWindowTokens() != null) context = Math.min(context, model.contextWindowTokens());
-        return new LlmModelPolicy(provider, provider == ModelCatalog.Provider.OLLAMA ? Source.OLLAMA_RUNTIME : Source.PROVIDER_REPORTED,
+        Integer context = provider == ModelCatalog.Provider.OLLAMA
+                ? model.runtimeContextTokens()
+                : model.deploymentContextTokens() != null
+                        ? model.deploymentContextTokens()
+                        : model.contextWindowTokens();
+        if (context != null && model.contextWindowTokens() != null)
+            context = Math.min(context, model.contextWindowTokens());
+        return new LlmModelPolicy(provider,
+                provider == ModelCatalog.Provider.OLLAMA ? Source.OLLAMA_RUNTIME : Source.PROVIDER_REPORTED,
                 context, model.inputLimitTokens(), output, parameter, model.contextWindowTokens(),
                 model.outputLimitTokens(), model.runtimeContextTokens(), model.digest(), Instant.now());
     }

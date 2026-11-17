@@ -37,7 +37,8 @@ public final class ImageOperationSpec {
             "SOFT_STUDIO", "soft studio", "NEON_NIGHT", "colorful neon-night");
     private static final Map<String, String> LAYER_RESULT_LABELS = Map.of(
             DEFAULT_LAYER_TARGET, "creation.image.foreground-layer", "BACKGROUND", "creation.image.background-layer");
-    private record ThreeViewDefinition(String resultLabelKey, String promptKey) {}
+    private record ThreeViewDefinition(String resultLabelKey, String promptKey) {
+    }
     private static final Map<String, ThreeViewDefinition> THREE_VIEW_DEFINITIONS = Map.of(
             "CHARACTER", new ThreeViewDefinition("creation.image.character-three-view", "image.three-view.character"),
             "FACE", new ThreeViewDefinition("creation.image.face-three-view", "image.three-view.face"),
@@ -66,13 +67,17 @@ public final class ImageOperationSpec {
 
     public static ImageOperationSpec parse(ObjectMapper mapper, ImageOperation operation, JsonNode supplied) {
         JsonNode source = supplied == null || supplied.isNull()
-                ? mapper.createObjectNode() : supplied;
-        if (!source.isObject()) throw invalid(ApiMessage.of("api.direct-media-task-service.image-processing-parameters-must-be-objects"));
+                ? mapper.createObjectNode()
+                : supplied;
+        if (!source.isObject())
+            throw invalid(ApiMessage.of("api.direct-media-task-service.image-processing-parameters-must-be-objects"));
         ObjectNode result = mapper.createObjectNode();
         switch (operation) {
             case COSTUME_EXTRACT -> result.put("aspectRatio", "2:3");
             case DEPTH_MAP, SMART_EDIT, EXPRESSION_EDIT,
-                    REMOVE_BACKGROUND, OBJECT_REMOVE, FLIP_HORIZONTAL, FLIP_VERTICAL -> { }
+                    REMOVE_BACKGROUND, OBJECT_REMOVE, FLIP_HORIZONTAL, FLIP_VERTICAL ->
+                {
+                }
             case RELIGHT -> {
                 String preset = source.path("lightingPreset").asText(DEFAULT_LIGHTING_PRESET);
                 int brightness = source.path("brightness").asInt(DEFAULT_RELIGHT_BRIGHTNESS);
@@ -84,15 +89,18 @@ public final class ImageOperationSpec {
                 }
                 if (brightness < MIN_RELIGHT_BRIGHTNESS
                         || brightness > MAX_RELIGHT_BRIGHTNESS) {
-                    throw invalid(ApiMessage.of("api.direct-media-task-service.the-lighting-brightness-must-be-between-100-and-100"));
+                    throw invalid(ApiMessage
+                            .of("api.direct-media-task-service.the-lighting-brightness-must-be-between-100-and-100"));
                 }
                 if (colorTemperature < MIN_RELIGHT_COLOR_TEMPERATURE
                         || colorTemperature > MAX_RELIGHT_COLOR_TEMPERATURE) {
-                    throw invalid(ApiMessage.of("api.direct-media-task-service.color-temperature-must-be-between-2000k-and-10000k"));
+                    throw invalid(ApiMessage
+                            .of("api.direct-media-task-service.color-temperature-must-be-between-2000k-and-10000k"));
                 }
                 if (lightX < MIN_NORMALIZED_POSITION || lightX > MAX_NORMALIZED_POSITION
                         || lightY < MIN_NORMALIZED_POSITION || lightY > MAX_NORMALIZED_POSITION) {
-                    throw invalid(ApiMessage.of("api.direct-media-task-service.the-light-source-position-must-be-within-the-image-range"));
+                    throw invalid(ApiMessage.of(
+                            "api.direct-media-task-service.the-light-source-position-must-be-within-the-image-range"));
                 }
                 result.put("lightingPreset", preset);
                 result.put("brightness", brightness);
@@ -103,12 +111,15 @@ public final class ImageOperationSpec {
             case RESIZE -> {
                 var resize = ImageResizeSpec.parse(source);
                 result.put("resizeMode", resize.mode().name());
-                if (resize.mode() == ImageResizeSpec.Mode.PERCENTAGE) result.put("percentage", resize.value());
-                else result.put("longestEdge", (int) resize.value());
+                if (resize.mode() == ImageResizeSpec.Mode.PERCENTAGE)
+                    result.put("percentage", resize.value());
+                else
+                    result.put("longestEdge", (int) resize.value());
             }
             case UPSCALE -> {
                 int scale = source.path("scale").asInt(MIN_UPSCALE_FACTOR);
-                if (scale != MIN_UPSCALE_FACTOR && scale != MAX_UPSCALE_FACTOR) throw invalid(ApiMessage.of("api.direct-media-task-service.magnification-can-only-be-2-or-4"));
+                if (scale != MIN_UPSCALE_FACTOR && scale != MAX_UPSCALE_FACTOR)
+                    throw invalid(ApiMessage.of("api.direct-media-task-service.magnification-can-only-be-2-or-4"));
                 result.put("scale", scale);
             }
             case CROP -> {
@@ -119,14 +130,19 @@ public final class ImageOperationSpec {
                 if (x < MIN_NORMALIZED_POSITION || y < MIN_NORMALIZED_POSITION
                         || width <= MIN_NORMALIZED_POSITION || height <= MIN_NORMALIZED_POSITION
                         || x + width > MAX_CROP_EDGE || y + height > MAX_CROP_EDGE) {
-                    throw invalid(ApiMessage.of("api.direct-media-task-service.the-cropped-area-must-be-within-the-image"));
+                    throw invalid(
+                            ApiMessage.of("api.direct-media-task-service.the-cropped-area-must-be-within-the-image"));
                 }
-                result.put("x", x); result.put("y", y);
-                result.put("width", width); result.put("height", height);
+                result.put("x", x);
+                result.put("y", y);
+                result.put("width", width);
+                result.put("height", height);
             }
             case ROTATE -> {
                 int turns = source.path("quarterTurns").asInt(MIN_QUARTER_TURNS);
-                if (turns < MIN_QUARTER_TURNS || turns > MAX_QUARTER_TURNS) throw invalid(ApiMessage.of("api.direct-media-task-service.rotation-only-supports-90-180-or-270-degrees"));
+                if (turns < MIN_QUARTER_TURNS || turns > MAX_QUARTER_TURNS)
+                    throw invalid(ApiMessage
+                            .of("api.direct-media-task-service.rotation-only-supports-90-180-or-270-degrees"));
                 result.put("quarterTurns", turns);
             }
             case OUTPAINT, THREE_VIEW -> {
@@ -134,26 +150,31 @@ public final class ImageOperationSpec {
                 if (!ImageGenerationParameters.ASPECT_RATIOS.contains(ratio)
                         || ImageGenerationParameters.AUTO_ASPECT_RATIO.equals(ratio)) {
                     throw invalid(operation == ImageOperation.OUTPAINT
-                            ? ApiMessage.of("api.direct-media-task-service.expanding-images-requires-choosing-a-clear-target-frame")
-                            : ApiMessage.of("api.direct-media-task-service.three-views-require-a-clear-output-frame-to-be-selected"));
+                            ? ApiMessage.of(
+                                    "api.direct-media-task-service.expanding-images-requires-choosing-a-clear-target-frame")
+                            : ApiMessage.of(
+                                    "api.direct-media-task-service.three-views-require-a-clear-output-frame-to-be-selected"));
                 }
                 result.put("aspectRatio", ratio);
                 if (operation == ImageOperation.THREE_VIEW) {
                     String type = source.path("threeViewType").asText("");
                     if (!THREE_VIEW_DEFINITIONS.containsKey(type)) {
-                        throw invalid(ApiMessage.of("api.direct-media-task-service.three-view-types-are-not-supported"));
+                        throw invalid(
+                                ApiMessage.of("api.direct-media-task-service.three-view-types-are-not-supported"));
                     }
                     result.put("threeViewType", type);
                 }
             }
             case LAYER_SPLIT -> {
                 String target = source.path("layerTarget").asText(DEFAULT_LAYER_TARGET);
-                if (!LAYER_RESULT_LABELS.containsKey(target)) throw invalid(ApiMessage.of("api.direct-media-task-service.layer-output-type-is-not-supported"));
+                if (!LAYER_RESULT_LABELS.containsKey(target))
+                    throw invalid(ApiMessage.of("api.direct-media-task-service.layer-output-type-is-not-supported"));
                 result.put("layerTarget", target);
             }
             case VIEW_ANGLE -> {
                 String angle = source.path("viewAngle").asText(DEFAULT_VIEW_ANGLE);
-                if (!VIEW_ANGLES.containsKey(angle)) throw invalid(ApiMessage.of("api.direct-media-task-service.target-perspective-is-not-supported"));
+                if (!VIEW_ANGLES.containsKey(angle))
+                    throw invalid(ApiMessage.of("api.direct-media-task-service.target-perspective-is-not-supported"));
                 result.put("viewAngle", angle);
             }
         }
@@ -163,7 +184,8 @@ public final class ImageOperationSpec {
     /** Parameters have already been normalized and validated before naming the result node. */
     public ApiMessage resultLabel() {
         return switch (operation) {
-            case THREE_VIEW -> ApiMessage.of(THREE_VIEW_DEFINITIONS.get(parameters.path("threeViewType").asText()).resultLabelKey());
+            case THREE_VIEW ->
+                ApiMessage.of(THREE_VIEW_DEFINITIONS.get(parameters.path("threeViewType").asText()).resultLabelKey());
             case LAYER_SPLIT -> ApiMessage.of(LAYER_RESULT_LABELS.get(parameters.path("layerTarget").asText()));
             default -> operation.resultLabel();
         };
@@ -171,7 +193,8 @@ public final class ImageOperationSpec {
 
     /** A registered function key is selected by the validated operation, never by user input. */
     public String promptKey() {
-        if (operation == ImageOperation.COSTUME_EXTRACT) return "image.costume-extract";
+        if (operation == ImageOperation.COSTUME_EXTRACT)
+            return "image.costume-extract";
         return operation == ImageOperation.THREE_VIEW
                 ? THREE_VIEW_DEFINITIONS.get(parameters.path("threeViewType").asText()).promptKey()
                 : null;
@@ -180,8 +203,9 @@ public final class ImageOperationSpec {
     /** Managed content is required for three views; other operations retain their fixed instructions. */
     public String prompt(String instruction, String managedContent) {
         return switch (operation) {
-            case COSTUME_EXTRACT -> Objects.requireNonNull(managedContent, "Costume extraction requires a managed prompt")
-                    + (instruction.isBlank() ? "" : " Extraction guidance: " + instruction);
+            case COSTUME_EXTRACT ->
+                Objects.requireNonNull(managedContent, "Costume extraction requires a managed prompt")
+                        + (instruction.isBlank() ? "" : " Extraction guidance: " + instruction);
             case SMART_EDIT -> "Edit the provided image according to this instruction. Preserve all "
                     + "unmentioned subjects, identity, composition, and visual style. Instruction: "
                     + instruction;

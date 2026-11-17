@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { SUPPORTED_LOCALES, translate } from "../../shared/i18n";
-import { appendVideoPrompt, filterVideoPromptPresets, VIDEO_PROMPT_CATEGORIES, VIDEO_PROMPT_PRESETS, VIDEO_PROMPT_SCENARIOS, type VideoPromptScenario } from "./videoPromptPresets";
+import {
+  appendVideoPrompt,
+  filterVideoPromptPresets,
+  VIDEO_PROMPT_CATEGORIES,
+  VIDEO_PROMPT_PRESETS,
+  VIDEO_PROMPT_SCENARIOS,
+  type VideoPromptScenario,
+} from "./videoPromptPresets";
 import { VIDEO_PROMPT_SCENARIOS_BY_PRESET } from "./videoPromptPresetScenarios";
 import firstPresets from "./video-prompt-presets-a.json";
 import secondPresets from "./video-prompt-presets-b.json";
@@ -13,7 +20,8 @@ function matchingPresets(query: string, category: string, scenario: VideoPromptS
     if (category !== "all") expect(preset.category, preset.id).toBe(category);
     if (scenario !== "all") expect(preset.scenarios, preset.id).toContain(scenario);
     const searchable = JSON.stringify({ englishName: preset.englishName, prompt: preset.prompt, copy: preset.copy })
-      .normalize("NFKC").toLocaleLowerCase();
+      .normalize("NFKC")
+      .toLocaleLowerCase();
     for (const term of query.normalize("NFKC").trim().toLocaleLowerCase().split(/\s+/).filter(Boolean)) {
       expect(searchable, preset.id).toContain(term);
     }
@@ -26,18 +34,41 @@ describe("bundled video camera presets", () => {
     const authoredPresets = [...firstPresets, ...secondPresets, ...supplementalPresets];
     // The JSON files are the catalogue: expansions must not require updating another count snapshot.
     expect(authoredPresets.length).toBeGreaterThan(0);
-    expect(VIDEO_PROMPT_PRESETS.map(({ id, category, englishName, prompt, copy }) =>
-      ({ id, category, englishName, prompt, copy }))).toEqual(authoredPresets);
-    expect(new Set(VIDEO_PROMPT_PRESETS.map((preset) => preset.id)).size).toBe(authoredPresets.length);
-    expect(new Set(VIDEO_PROMPT_PRESETS.map((preset) => preset.prompt)).size).toBe(authoredPresets.length);
+    expect(
+      VIDEO_PROMPT_PRESETS.map(({ id, category, englishName, prompt, copy }) => ({
+        id,
+        category,
+        englishName,
+        prompt,
+        copy,
+      })),
+    ).toEqual(authoredPresets);
+    expect(new Set(VIDEO_PROMPT_PRESETS.map(preset => preset.id)).size).toBe(authoredPresets.length);
+    expect(new Set(VIDEO_PROMPT_PRESETS.map(preset => preset.prompt)).size).toBe(authoredPresets.length);
     const categories = VIDEO_PROMPT_CATEGORIES.map(({ id }) => id);
-    expect(categories).toEqual(expect.arrayContaining(["framing", "rotation", "dolly", "tracking", "orbit", "vertical",
-      "lens", "handheld", "aerial", "reveal", "sequence"]));
+    expect(categories).toEqual(
+      expect.arrayContaining([
+        "framing",
+        "rotation",
+        "dolly",
+        "tracking",
+        "orbit",
+        "vertical",
+        "lens",
+        "handheld",
+        "aerial",
+        "reveal",
+        "sequence",
+      ]),
+    );
     expect(new Set(categories).size).toBe(categories.length);
     for (const category of VIDEO_PROMPT_CATEGORIES) {
       expect(category.id).toMatch(/^[a-z][a-z0-9-]+$/);
       for (const locale of SUPPORTED_LOCALES) expect(translate(locale, category.label).trim()).not.toBe("");
-      expect(VIDEO_PROMPT_PRESETS.some((preset) => preset.category === category.id), category.id).toBe(true);
+      expect(
+        VIDEO_PROMPT_PRESETS.some(preset => preset.category === category.id),
+        category.id,
+      ).toBe(true);
     }
     for (const preset of VIDEO_PROMPT_PRESETS) {
       expect(preset.id).toMatch(/^[a-z][a-z0-9-]+$/);
@@ -51,30 +82,44 @@ describe("bundled video camera presets", () => {
         }
       }
     }
-    expect(VIDEO_PROMPT_PRESETS.some((preset) => /over.the.shoulder/i.test(preset.englishName))).toBe(true);
-    expect(VIDEO_PROMPT_PRESETS.some((preset) => /steadicam/i.test(preset.englishName))).toBe(true);
+    expect(VIDEO_PROMPT_PRESETS.some(preset => /over.the.shoulder/i.test(preset.englishName))).toBe(true);
+    expect(VIDEO_PROMPT_PRESETS.some(preset => /steadicam/i.test(preset.englishName))).toBe(true);
   });
 
   it("finds Chinese and English terminology, descriptions and intersecting category filters", () => {
-    expect(filterVideoPromptPresets("过肩", "all").some((preset) => /over.the.shoulder/i.test(preset.englishName))).toBe(true);
+    expect(filterVideoPromptPresets("过肩", "all").some(preset => /over.the.shoulder/i.test(preset.englishName))).toBe(
+      true,
+    );
     expect(matchingPresets("  STEADICAM  ", "tracking").map(({ id }) => id)).toContain("steadicam-follow");
     expect(matchingPresets("STEADICAM", "lens").map(({ id }) => id)).not.toContain("steadicam-follow");
     expect(filterVideoPromptPresets("360", "rotation").map(({ id }) => id)).toContain("axial-barrel-roll");
     expect(filterVideoPromptPresets("Snorricam", "handheld").map(({ id }) => id)).toContain("snorricam-body-mount");
-    expect(filterVideoPromptPresets("FPV", "aerial").map(({ id }) => id)).toEqual(expect.arrayContaining(["fpv-vertical-dive", "fpv-gap-slalom"]));
+    expect(filterVideoPromptPresets("FPV", "aerial").map(({ id }) => id)).toEqual(
+      expect.arrayContaining(["fpv-vertical-dive", "fpv-gap-slalom"]),
+    );
     expect(filterVideoPromptPresets("nonexistent-camera-presets-xyz", "all")).toHaveLength(0);
     const preset = VIDEO_PROMPT_PRESETS[0]!;
     expect(filterVideoPromptPresets(preset.copy.ja.name, "all")).toContain(preset);
     expect(filterVideoPromptPresets(preset.copy.ru.name, "all")).toContain(preset);
   });
 
-  it.each(SUPPORTED_LOCALES)("searches every guide field in %s and ANDs normalized terms across languages", (locale) => {
+  it.each(SUPPORTED_LOCALES)("searches every guide field in %s and ANDs normalized terms across languages", locale => {
     const preset = VIDEO_PROMPT_PRESETS.find(({ id }) => id === "steadicam-follow")!;
     for (const field of ["name", "conditions", "effect", "caution"] as const) {
       expect(filterVideoPromptPresets(preset.copy[locale][field], "tracking"), field).toContain(preset);
     }
-    expect(filterVideoPromptPresets(`\u3000ＳＴＥＡＤＩＣＡＭ\u3000ＦＯＬＬＯＷ\u3000${preset.copy[locale].name}`, "tracking")).toContain(preset);
-    expect(filterVideoPromptPresets(`ＳＴＥＡＤＩＣＡＭ ${preset.copy[locale].name} nonexistent-camera-presets-xyz`, "tracking")).toHaveLength(0);
+    expect(
+      filterVideoPromptPresets(
+        `\u3000ＳＴＥＡＤＩＣＡＭ\u3000ＦＯＬＬＯＷ\u3000${preset.copy[locale].name}`,
+        "tracking",
+      ),
+    ).toContain(preset);
+    expect(
+      filterVideoPromptPresets(
+        `ＳＴＥＡＤＩＣＡＭ ${preset.copy[locale].name} nonexistent-camera-presets-xyz`,
+        "tracking",
+      ),
+    ).toHaveLength(0);
   });
 
   it("skips search documents for empty queries and reuses them for repeated searches", async () => {
@@ -100,7 +145,9 @@ describe("bundled video camera presets", () => {
   });
 
   it("curates valid, nonempty use cases for every preset without orphaned mappings", () => {
-    expect(Object.keys(VIDEO_PROMPT_SCENARIOS_BY_PRESET).sort()).toEqual(VIDEO_PROMPT_PRESETS.map(({ id }) => id).sort());
+    expect(Object.keys(VIDEO_PROMPT_SCENARIOS_BY_PRESET).sort()).toEqual(
+      VIDEO_PROMPT_PRESETS.map(({ id }) => id).sort(),
+    );
     const scenarios = VIDEO_PROMPT_SCENARIOS.map(({ id }) => id);
     expect(scenarios).toEqual(expect.arrayContaining(["dialogue", "product", "entrance", "chase", "landscape"]));
     expect(new Set(scenarios).size).toBe(scenarios.length);

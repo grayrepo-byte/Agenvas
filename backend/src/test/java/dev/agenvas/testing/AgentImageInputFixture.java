@@ -16,7 +16,8 @@ public final class AgentImageInputFixture {
     private static final BigDecimal CARD_WIDTH = new BigDecimal("320");
     private static final BigDecimal CARD_HEIGHT = new BigDecimal("240");
 
-    private AgentImageInputFixture() {}
+    private AgentImageInputFixture() {
+    }
 
     public static AgentInstance withCanvasImage(
             AgentInstanceService agents,

@@ -50,11 +50,16 @@ class ComfyUiRemoteConnectionPostgresIT {
                 () -> Base64.getEncoder().encodeToString(new byte[32]));
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private CredentialCipher cipher;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private WebApplicationContext context;
-    @Autowired private ObjectMapper mapper;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private CredentialCipher cipher;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private WebApplicationContext context;
+    @Autowired
+    private ObjectMapper mapper;
 
     @Test
     void savesFullEndpointEncryptedAndPreservesRedactedEditsAndHistoricalVersions() throws Exception {
@@ -80,7 +85,8 @@ class ComfyUiRemoteConnectionPostgresIT {
                 .header("Idempotency-Key", "remote-comfy").contentType("application/json").content(request.toString()))
                 .andExpect(status().isOk());
         var edit = mapper.createObjectNode().put("name", "Renamed").put("enabled", false)
-                .put("expectedVersion", connection.path("version").asLong()).put("origin", connection.path("origin").asText());
+                .put("expectedVersion", connection.path("version").asLong())
+                .put("origin", connection.path("origin").asText());
         mvc.perform(put("/api/v1/settings/media-connections/" + id).with(auth).with(csrf())
                 .contentType("application/json").content(edit.toString())).andExpect(status().isOk());
         assertThat(decrypt(id, 1)).isEqualTo(endpoint);
@@ -96,7 +102,8 @@ class ComfyUiRemoteConnectionPostgresIT {
         assertThat(decrypt(id, 1)).isEqualTo(endpoint);
         request.put("origin", "https://169.254.169.254/proxy/synthetic-path-key");
         mvc.perform(post("/api/v1/settings/media-connections").with(auth).with(csrf())
-                .header("Idempotency-Key", "special-address-comfy").contentType("application/json").content(request.toString()))
+                .header("Idempotency-Key", "special-address-comfy").contentType("application/json")
+                .content(request.toString()))
                 .andExpect(status().isOk());
     }
 
@@ -104,7 +111,8 @@ class ComfyUiRemoteConnectionPostgresIT {
         var encrypted = jdbc.sql("select credential_ciphertext, credential_nonce, credential_key_version "
                 + "from media_provider_connection_version where connection_id=:id and version=:version")
                 .param("id", id).param("version", version).query((rs, row) -> new CredentialCipher.Encrypted(
-                        rs.getBytes(1), rs.getBytes(2), rs.getInt(3))).single();
+                        rs.getBytes(1), rs.getBytes(2), rs.getInt(3)))
+                .single();
         return cipher.decryptMedia(id, version, encrypted);
     }
 }

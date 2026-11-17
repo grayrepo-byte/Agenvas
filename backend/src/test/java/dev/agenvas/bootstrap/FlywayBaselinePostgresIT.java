@@ -64,8 +64,10 @@ class FlywayBaselinePostgresIT {
         Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").target("25").load().migrate();
         UUID owner = UUID.randomUUID(), project = UUID.randomUUID(), agent = UUID.randomUUID();
-        UUID conversation = UUID.randomUUID(), run = UUID.randomUUID(), task = UUID.randomUUID(), emptyProject = UUID.randomUUID();
-        UUID source = UUID.randomUUID(), target = UUID.randomUUID(), sourceVersion = UUID.randomUUID(), targetVersion = UUID.randomUUID();
+        UUID conversation = UUID.randomUUID(), run = UUID.randomUUID(), task = UUID.randomUUID(),
+                emptyProject = UUID.randomUUID();
+        UUID source = UUID.randomUUID(), target = UUID.randomUUID(), sourceVersion = UUID.randomUUID(),
+                targetVersion = UUID.randomUUID();
         UUID sourceCard = UUID.randomUUID(), targetCard = UUID.randomUUID(), agentCard = UUID.randomUUID();
         UUID skill = UUID.randomUUID(), skillVersion = UUID.randomUUID(), outputGroup = UUID.randomUUID();
         String customContent = "Synthetic customized prompt keeps AGENT_OUTPUT as user content";
@@ -81,7 +83,9 @@ class FlywayBaselinePostgresIT {
                     values (?,1,?,'synthetic.old.event',1,?,0,'{"before":"preserve"}',now())
                     """, project, UUID.randomUUID(), project);
             insertAgent(connection, project, agent);
-            execute(connection, "update agent_instance set output_group_id=?,instruction='Synthetic saved AGENT_OUTPUT instruction' where id=?", outputGroup, agent);
+            execute(connection,
+                    "update agent_instance set output_group_id=?,instruction='Synthetic saved AGENT_OUTPUT instruction' where id=?",
+                    outputGroup, agent);
             insertConversation(connection, project, agent, conversation);
             execute(connection, "update agent_instance set current_conversation_id=? where id=?", conversation, agent);
             insertArtifact(connection, project, source, "IMAGE");
@@ -89,8 +93,10 @@ class FlywayBaselinePostgresIT {
             insertVersion(connection, project, source, sourceVersion);
             var mapper = new ObjectMapper();
             var context = mapper.createObjectNode().put("outputGroupId", outputGroup.toString());
-            context.putArray("bindings").addObject().put("artifactId", source.toString()).put("selectedVersionId", sourceVersion.toString());
-            context.putArray("selection").addObject().put("itemId", agentCard.toString()).put("subjectType", "AGENT").put("subjectId", agent.toString());
+            context.putArray("bindings").addObject().put("artifactId", source.toString()).put("selectedVersionId",
+                    sourceVersion.toString());
+            context.putArray("selection").addObject().put("itemId", agentCard.toString()).put("subjectType", "AGENT")
+                    .put("subjectId", agent.toString());
             execute(connection, """
                     insert into agent_run(id,project_id,agent_instance_id,user_id,status,instruction,
                       context_snapshot_json,policy_snapshot_json,profile_version,created_at,updated_at,conversation_id,conversation_turn)
@@ -119,10 +125,14 @@ class FlywayBaselinePostgresIT {
                         insert into canvas_connection(id,project_id,source_canvas_item_id,target_canvas_item_id,
                           relation_type,source_artifact_version_id,created_at,updated_at)
                         values (?,?,?,?,?,?,now(),now())
-                        """, UUID.randomUUID(), project, sourceCard, type.equals("AGENT_IMAGE_INPUT") ? agentCard : targetCard, type, sourceVersion);
-            execute(connection, "insert into canvas_item_media_version(project_id,canvas_item_id,artifact_version_id,created_at) values (?,?,?,now())",
+                        """, UUID.randomUUID(), project, sourceCard,
+                        type.equals("AGENT_IMAGE_INPUT") ? agentCard : targetCard, type, sourceVersion);
+            execute(connection,
+                    "insert into canvas_item_media_version(project_id,canvas_item_id,artifact_version_id,created_at) values (?,?,?,now())",
                     project, targetCard, targetVersion);
-            execute(connection, "insert into media_draft(project_id,canvas_item_id,prompt,created_at,updated_at) values (?,?,'Synthetic preserved draft',now(),now())", project, targetCard);
+            execute(connection,
+                    "insert into media_draft(project_id,canvas_item_id,prompt,created_at,updated_at) values (?,?,'Synthetic preserved draft',now(),now())",
+                    project, targetCard);
             execute(connection, """
                     insert into task(id,project_id,run_id,step_key,kind,status,input_json,input_hash,attempt_no,next_action_at,created_at,updated_at)
                     values (?,?,?,'synthetic-preserved-task','VIDEO_GENERATION','UNKNOWN',?::jsonb,repeat('0',64),1,now(),now(),now())
@@ -141,12 +151,15 @@ class FlywayBaselinePostgresIT {
                     values (?,?,?,?,0,'synthetic-approval-call',?,'{"schemaVersion":1,"outputs":[{"kind":"VIDEO"}]}',
                       '{"schemaVersion":1,"outputs":[{"canvasItemId":"%s"}]}','PENDING',now(),now()+interval '1 day')
                     """.formatted(targetCard), UUID.randomUUID(), owner, project, run, UUID.randomUUID());
-            execute(connection, "insert into creative_skill(id,owner_id,title,created_at,updated_at) values (?,?,'Synthetic preserved Skill',now(),now())", skill, owner);
+            execute(connection,
+                    "insert into creative_skill(id,owner_id,title,created_at,updated_at) values (?,?,'Synthetic preserved Skill',now(),now())",
+                    skill, owner);
             execute(connection, """
                     insert into skill_version(id,owner_id,skill_id,version_number,bundle_hash,bundle_json,created_at)
                     values (?,?,?,1,repeat('a',64),'{"schemaVersion":1,"skillMd":"Synthetic immutable Skill body"}',now())
                     """, skillVersion, owner, skill);
-            execute(connection, "insert into agent_skill_binding(agent_id,project_id,owner_id,skill_id,skill_version_id,updated_at) values (?,?,?,?,?,now())",
+            execute(connection,
+                    "insert into agent_skill_binding(agent_id,project_id,owner_id,skill_id,skill_version_id,updated_at) values (?,?,?,?,?,now())",
                     agent, project, owner, skill, skillVersion);
             var receipt = mapper.createObjectNode().put("id", agent.toString()).put("name", "Pinned creation response")
                     .put("version", 0).put("outputGroupId", outputGroup.toString());
@@ -155,14 +168,20 @@ class FlywayBaselinePostgresIT {
                     insert into idempotency_record(principal_id,scope,idempotency_key,request_hash,state,resource_id,response_json,expires_at,created_at,updated_at)
                     values (?,?,'synthetic-create-receipt',repeat('b',64),'COMPLETED',?,?::jsonb,now()+interval '1 day',now(),now())
                     """, owner, "project:" + project + ":create-agent", agent, receipt.toString());
-            if (customPrompt) execute(connection, "update prompt_definition set content=?,version=2 where key='agent.director'", customContent);
-            for (String table : List.of("agent_conversation", "agent_run", "artifact", "artifact_version", "canvas_item_media_version", "media_draft",
-                    "task", "llm_turn", "tool_execution", "agent_media_approval", "creative_skill", "skill_version", "agent_skill_binding"))
+            if (customPrompt)
+                execute(connection, "update prompt_definition set content=?,version=2 where key='agent.director'",
+                        customContent);
+            for (String table : List.of("agent_conversation", "agent_run", "artifact", "artifact_version",
+                    "canvas_item_media_version", "media_draft",
+                    "task", "llm_turn", "tool_execution", "agent_media_approval", "creative_skill", "skill_version",
+                    "agent_skill_binding"))
                 history.put(table, rowSnapshot(connection, table, "to_jsonb(t)", "true"));
             oldEventBefore = rowSnapshot(connection, "project_event", "to_jsonb(t)", "seq=1");
             assistantBefore = rowSnapshot(connection, "agent_instance", "to_jsonb(t)-'output_group_id'", "true");
-            canvasBefore = rowSnapshot(connection, "canvas_item", "to_jsonb(t)-'agent_instance_id'", "subject_type='ARTIFACT'");
-            history.put("canvas_connection", rowSnapshot(connection, "canvas_connection", "to_jsonb(t)", "relation_type<>'AGENT_IMAGE_INPUT'"));
+            canvasBefore = rowSnapshot(connection, "canvas_item", "to_jsonb(t)-'agent_instance_id'",
+                    "subject_type='ARTIFACT'");
+            history.put("canvas_connection",
+                    rowSnapshot(connection, "canvas_connection", "to_jsonb(t)", "relation_type<>'AGENT_IMAGE_INPUT'"));
         }
         // This fixture deliberately contains live/UNKNOWN execution checkpoints:
         // it verifies V26 topology retirement, not a later authorized history reset.
@@ -171,66 +190,89 @@ class FlywayBaselinePostgresIT {
                 .locations("classpath:db/migration").target("26").load();
         assertThat(topologyUpgrade.migrate().migrationsExecuted).isEqualTo(1);
         try (Connection connection = connection()) {
-            for (var entry : history.entrySet()) assertThat(rowSnapshot(connection, entry.getKey(), "to_jsonb(t)", "true"))
-                    .as("preserved %s", entry.getKey()).isEqualTo(entry.getValue());
+            for (var entry : history.entrySet())
+                assertThat(rowSnapshot(connection, entry.getKey(), "to_jsonb(t)", "true"))
+                        .as("preserved %s", entry.getKey()).isEqualTo(entry.getValue());
             assertThat(rowSnapshot(connection, "project_event", "to_jsonb(t)", "seq=1")).isEqualTo(oldEventBefore);
             assertThat(strings(connection, "select seq::text||':'||type from project_event order by seq"))
                     .containsExactly("1:synthetic.old.event", "2:agent.instance.changed", "3:canvas.items.changed");
             assertThat(count(connection, "select event_seq from project where id=?", project)).isEqualTo(3);
             assertThat(count(connection, "select event_seq from project where id=?", emptyProject)).isZero();
-            assertThat(count(connection, "select count(*) from project_event where project_id=?", emptyProject)).isZero();
-            assertThat(rowSnapshot(connection, "agent_instance", "to_jsonb(t)-'output_group_id'", "true")).isEqualTo(assistantBefore);
-            assertThat(rowSnapshot(connection, "canvas_item", "to_jsonb(t)-'agent_instance_id'", "true")).isEqualTo(canvasBefore);
-            assertThat(count(connection, "select count(*) from information_schema.tables where table_schema='public' and table_name='agent_binding'")).isZero();
-            assertThat(count(connection, "select count(*) from information_schema.columns where table_schema='public' and ((table_name='agent_instance' and column_name='output_group_id') or (table_name='canvas_item' and column_name='agent_instance_id'))")).isZero();
-            assertThat(text(connection, "select response_json::text from idempotency_record where idempotency_key='synthetic-create-receipt'"))
+            assertThat(count(connection, "select count(*) from project_event where project_id=?", emptyProject))
+                    .isZero();
+            assertThat(rowSnapshot(connection, "agent_instance", "to_jsonb(t)-'output_group_id'", "true"))
+                    .isEqualTo(assistantBefore);
+            assertThat(rowSnapshot(connection, "canvas_item", "to_jsonb(t)-'agent_instance_id'", "true"))
+                    .isEqualTo(canvasBefore);
+            assertThat(count(connection,
+                    "select count(*) from information_schema.tables where table_schema='public' and table_name='agent_binding'"))
+                    .isZero();
+            assertThat(count(connection,
+                    "select count(*) from information_schema.columns where table_schema='public' and ((table_name='agent_instance' and column_name='output_group_id') or (table_name='canvas_item' and column_name='agent_instance_id'))"))
+                    .isZero();
+            assertThat(text(connection,
+                    "select response_json::text from idempotency_record where idempotency_key='synthetic-create-receipt'"))
                     .contains("Pinned creation response").doesNotContain("bindings", "outputGroupId");
-            assertRejected(connection, CHECK_VIOLATION, "update canvas_item set subject_type='AGENT' where id=?", targetCard);
-            assertRejected(connection, CHECK_VIOLATION, "update canvas_connection set relation_type='AGENT_IMAGE_INPUT' where relation_type='MEDIA_INPUT'");
+            assertRejected(connection, CHECK_VIOLATION, "update canvas_item set subject_type='AGENT' where id=?",
+                    targetCard);
+            assertRejected(connection, CHECK_VIOLATION,
+                    "update canvas_connection set relation_type='AGENT_IMAGE_INPUT' where relation_type='MEDIA_INPUT'");
             String director = text(connection, "select content from prompt_definition where key='agent.director'");
-            assertThat(count(connection, "select version from prompt_definition where key='agent.director'")).isEqualTo(2);
-            if (customPrompt) assertThat(director).isEqualTo(customContent);
-            else assertThat(director).contains("读取当前画布", "versionIds").doesNotContain("AGENT_OUTPUT", "读取明确绑定的输入");
+            assertThat(count(connection, "select version from prompt_definition where key='agent.director'"))
+                    .isEqualTo(2);
+            if (customPrompt)
+                assertThat(director).isEqualTo(customContent);
+            else
+                assertThat(director).contains("读取当前画布", "versionIds").doesNotContain("AGENT_OUTPUT", "读取明确绑定的输入");
         }
     }
 
-    private String rowSnapshot(Connection connection, String table, String projection, String filter) throws SQLException {
+    private String rowSnapshot(Connection connection, String table, String projection, String filter)
+            throws SQLException {
         // Table/projection/filter are fixed test constants, never request data.
-        return text(connection, "select coalesce(jsonb_agg(row_json order by row_json::text),'[]'::jsonb)::text from (select "
-                + projection + " as row_json from " + table + " t where " + filter + ") frozen_rows");
+        return text(connection,
+                "select coalesce(jsonb_agg(row_json order by row_json::text),'[]'::jsonb)::text from (select "
+                        + projection + " as row_json from " + table + " t where " + filter + ") frozen_rows");
     }
 
     @Test
     void remoteFileStorageUpgradePreservesExistingDestinationsAndAllowsNewProtocols() throws Exception {
-        Flyway.configure().dataSource(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword())
+        Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").target("24").load().migrate();
         UUID profile = UUID.randomUUID();
         try (Connection connection = connection()) {
-            execute(connection,"""
+            execute(connection, """
                 insert into storage_profile(id,name,provider,endpoint,region,bucket,key_prefix,path_style,
                     credential_version,credential_ciphertext,credential_nonce,credential_key_version,access_key_mask,created_at)
                 values (?,'Synthetic old archive','S3','https://s3.example.com','us-east-1','test-bucket','agenvas',true,
                     1,decode('001122','hex'),decode(repeat('00',12),'hex'),1,'masked',now())
-                """,profile);
-            execute(connection,"update storage_settings set active_profile_id=?,relay_profile_id=?,version=9",profile,profile);
-            assertRejected(connection,CHECK_VIOLATION,"update storage_profile set provider='SMB' where id=?",profile);
+                """, profile);
+            execute(connection, "update storage_settings set active_profile_id=?,relay_profile_id=?,version=9", profile,
+                    profile);
+            assertRejected(connection, CHECK_VIOLATION, "update storage_profile set provider='SMB' where id=?",
+                    profile);
         }
         assertThat(flyway.migrate().migrationsExecuted).isEqualTo(MigrationVersions.sorted().size() - 24);
         try (Connection connection = connection()) {
-            assertThat(text(connection,"select provider from storage_profile where id=?",profile)).isEqualTo("S3");
-            assertThat(text(connection,"select active_profile_id::text from storage_settings")).isEqualTo(profile.toString());
-            assertThat(text(connection,"select relay_profile_id::text from storage_settings")).isEqualTo(profile.toString());
-            assertThat(text(connection,"select credential_ciphertext::text from storage_profile where id=?",profile)).isEqualTo("\\x001122");
-            for (String protocol : List.of("SMB","WEBDAV")) {
-                execute(connection,"""
+            assertThat(text(connection, "select provider from storage_profile where id=?", profile)).isEqualTo("S3");
+            assertThat(text(connection, "select active_profile_id::text from storage_settings"))
+                    .isEqualTo(profile.toString());
+            assertThat(text(connection, "select relay_profile_id::text from storage_settings"))
+                    .isEqualTo(profile.toString());
+            assertThat(text(connection, "select credential_ciphertext::text from storage_profile where id=?", profile))
+                    .isEqualTo("\\x001122");
+            for (String protocol : List.of("SMB", "WEBDAV")) {
+                execute(connection, """
                     insert into storage_profile(id,name,provider,endpoint,region,bucket,key_prefix,path_style,
                         credential_version,credential_ciphertext,credential_nonce,credential_key_version,access_key_mask,created_at)
                     values (?,'Synthetic remote',?,'synthetic-endpoint','','','agenvas',false,
                         1,decode('001122','hex'),decode(repeat('00',12),'hex'),1,'masked',now())
-                    """,UUID.randomUUID(),protocol);
+                    """, UUID.randomUUID(), protocol);
             }
-            assertRejected(connection,CHECK_VIOLATION,"update storage_profile set provider='UNKNOWN' where id=?",profile);
-            assertThat(text(connection,"select obj_description(oid,'pg_constraint') from pg_constraint where conname='storage_profile_provider_check'"))
+            assertRejected(connection, CHECK_VIOLATION, "update storage_profile set provider='UNKNOWN' where id=?",
+                    profile);
+            assertThat(text(connection,
+                    "select obj_description(oid,'pg_constraint') from pg_constraint where conname='storage_profile_provider_check'"))
                     .isNotBlank();
         }
     }
@@ -239,7 +281,8 @@ class FlywayBaselinePostgresIT {
     void draftDurationUpgradePreservesExistingDraftAndAllowsLongWorkflowSwitches() throws Exception {
         Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").target("19").load().migrate();
-        UUID owner = UUID.randomUUID(), project = UUID.randomUUID(), artifact = UUID.randomUUID(), card = UUID.randomUUID();
+        UUID owner = UUID.randomUUID(), project = UUID.randomUUID(), artifact = UUID.randomUUID(),
+                card = UUID.randomUUID();
         try (Connection connection = connection()) {
             insertOwner(connection, owner);
             insertProject(connection, project, owner);
@@ -250,17 +293,21 @@ class FlywayBaselinePostgresIT {
                     values (?,?,'Synthetic retained draft',30,7,now(),now())
                     """, project, card);
         }
-        Flyway durationUpgrade = Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+        Flyway durationUpgrade = Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").target("20").load();
         assertThat(durationUpgrade.migrate().migrationsExecuted).isEqualTo(1);
         try (Connection connection = connection()) {
-            assertThat(count(connection, "select duration_seconds from media_draft where canvas_item_id=?", card)).isEqualTo(30);
+            assertThat(count(connection, "select duration_seconds from media_draft where canvas_item_id=?", card))
+                    .isEqualTo(30);
             assertThat(count(connection, "select version from media_draft where canvas_item_id=?", card)).isEqualTo(7);
-            assertThat(text(connection, "select prompt from media_draft where canvas_item_id=?", card)).isEqualTo("Synthetic retained draft");
+            assertThat(text(connection, "select prompt from media_draft where canvas_item_id=?", card))
+                    .isEqualTo("Synthetic retained draft");
             execute(connection, "update media_draft set duration_seconds=60 where canvas_item_id=?", card);
             assertRejected(connection, CHECK_VIOLATION,
                     "update media_draft set duration_seconds=61 where canvas_item_id=?", card);
-            assertThat(count(connection, "select duration_seconds from media_draft where canvas_item_id=?", card)).isEqualTo(60);
+            assertThat(count(connection, "select duration_seconds from media_draft where canvas_item_id=?", card))
+                    .isEqualTo(60);
         }
     }
 
@@ -270,7 +317,8 @@ class FlywayBaselinePostgresIT {
                 .locations("classpath:db/migration").target(BEFORE_NATIVE_CHECKPOINT_VERSION).load().migrate();
         UUID owner = UUID.randomUUID(), project = UUID.randomUUID(), nativeTask = UUID.randomUUID();
         try (Connection connection = connection()) {
-            insertOwner(connection, owner); insertProject(connection, project, owner);
+            insertOwner(connection, owner);
+            insertProject(connection, project, owner);
             execute(connection, """
                     insert into task(id,project_id,step_key,kind,status,input_json,input_hash,provider_request_id,
                       attempt_no,next_action_at,created_at,updated_at,provider_result_manifest)
@@ -285,11 +333,20 @@ class FlywayBaselinePostgresIT {
                 .locations("classpath:db/migration").target(NATIVE_CHECKPOINT_VERSION).load();
         assertThat(nativeCheckpointUpgrade.migrate().migrationsExecuted).isEqualTo(2);
         try (Connection connection = connection()) {
-            assertThat(text(connection, "select provider_request_id from task where id=?", nativeTask)).isEqualTo("synthetic-retained-id");
-            assertThat(count(connection, "select jsonb_array_length(provider_result_manifest->'results') from task where id=?", nativeTask)).isEqualTo(16);
-            assertThat(count(connection, "select count(*) from information_schema.columns where table_schema='public' and table_name in ('task','provider_attempt','call_log') and column_name='provider_request_id' and character_maximum_length=512")).isEqualTo(3);
-            execute(connection, "update task set provider_request_id=repeat('x',512),provider_result_manifest=jsonb_build_object('schemaVersion',1,'results',(select jsonb_agg('{}'::jsonb) from generate_series(1,17))) where id=?", nativeTask);
-            assertRejected(connection, CHECK_VIOLATION, "update task set provider_result_manifest=jsonb_build_object('schemaVersion',1,'results',(select jsonb_agg('{}'::jsonb) from generate_series(1,18))) where id=?", nativeTask);
+            assertThat(text(connection, "select provider_request_id from task where id=?", nativeTask))
+                    .isEqualTo("synthetic-retained-id");
+            assertThat(count(connection,
+                    "select jsonb_array_length(provider_result_manifest->'results') from task where id=?", nativeTask))
+                    .isEqualTo(16);
+            assertThat(count(connection,
+                    "select count(*) from information_schema.columns where table_schema='public' and table_name in ('task','provider_attempt','call_log') and column_name='provider_request_id' and character_maximum_length=512"))
+                    .isEqualTo(3);
+            execute(connection,
+                    "update task set provider_request_id=repeat('x',512),provider_result_manifest=jsonb_build_object('schemaVersion',1,'results',(select jsonb_agg('{}'::jsonb) from generate_series(1,17))) where id=?",
+                    nativeTask);
+            assertRejected(connection, CHECK_VIOLATION,
+                    "update task set provider_result_manifest=jsonb_build_object('schemaVersion',1,'results',(select jsonb_agg('{}'::jsonb) from generate_series(1,18))) where id=?",
+                    nativeTask);
             assertRejected(connection, CHECK_VIOLATION, """
                     insert into task(id,project_id,step_key,kind,status,input_json,input_hash,attempt_no,next_action_at,created_at,updated_at,provider_result_manifest)
                     values (?,?,'ordinary-synthetic','IMAGE_GENERATION','READY','{}',repeat('0',64),1,now(),now(),now(),
@@ -304,16 +361,27 @@ class FlywayBaselinePostgresIT {
                 .locations("classpath:db/migration").target("20").load().migrate();
         UUID existing = UUID.randomUUID();
         try (Connection connection = connection()) {
-            execute(connection, "insert into media_provider_connection(id,name,enabled,version,current_version,created_at,updated_at,platform) values (?,'Synthetic Kling',false,3,2,now(),now(),'KLING')", existing);
-            for (int version : List.of(1, 2)) execute(connection, "insert into media_provider_connection_version(connection_id,version,origin,origin_sha256,credential_ciphertext,credential_nonce,credential_key_version,key_mask,created_at) values (?,?,'https://api-singapore.klingai.com',repeat('0',64),decode('0001','hex'),decode(repeat('00',12),'hex'),1,'synthetic',now())", existing, version);
+            execute(connection,
+                    "insert into media_provider_connection(id,name,enabled,version,current_version,created_at,updated_at,platform) values (?,'Synthetic Kling',false,3,2,now(),now(),'KLING')",
+                    existing);
+            for (int version : List.of(1, 2))
+                execute(connection,
+                        "insert into media_provider_connection_version(connection_id,version,origin,origin_sha256,credential_ciphertext,credential_nonce,credential_key_version,key_mask,created_at) values (?,?,'https://api-singapore.klingai.com',repeat('0',64),decode('0001','hex'),decode(repeat('00',12),'hex'),1,'synthetic',now())",
+                        existing, version);
         }
         assertThat(Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").target("21").load().migrate().migrationsExecuted).isEqualTo(1);
         try (Connection connection = connection()) {
-            assertThat(count(connection, "select current_version from media_provider_connection where id=?", existing)).isEqualTo(2);
-            assertThat(count(connection, "select count(*) from media_provider_connection_version where connection_id=? and encode(credential_ciphertext,'hex')='0001'", existing)).isEqualTo(2);
-            execute(connection, "insert into media_provider_connection(id,name,enabled,version,current_version,created_at,updated_at,platform) values (?,'Synthetic Wan',true,0,1,now(),now(),'WAN')", UUID.randomUUID());
-            assertRejected(connection, CHECK_VIOLATION, "update media_provider_connection set platform='UNRECOGNIZED' where id=?", existing);
+            assertThat(count(connection, "select current_version from media_provider_connection where id=?", existing))
+                    .isEqualTo(2);
+            assertThat(count(connection,
+                    "select count(*) from media_provider_connection_version where connection_id=? and encode(credential_ciphertext,'hex')='0001'",
+                    existing)).isEqualTo(2);
+            execute(connection,
+                    "insert into media_provider_connection(id,name,enabled,version,current_version,created_at,updated_at,platform) values (?,'Synthetic Wan',true,0,1,now(),now(),'WAN')",
+                    UUID.randomUUID());
+            assertRejected(connection, CHECK_VIOLATION,
+                    "update media_provider_connection set platform='UNRECOGNIZED' where id=?", existing);
         }
     }
 
@@ -327,22 +395,30 @@ class FlywayBaselinePostgresIT {
                     insert into media_provider_connection(id,name,enabled,version,current_version,created_at,updated_at,platform)
                     values (?,'Synthetic retained MiniMax',false,3,2,now(),now(),'MINIMAX')
                     """, existing);
-            for (int version : List.of(1, 2)) execute(connection, """
+            for (int version : List.of(1, 2))
+                execute(connection, """
                     insert into media_provider_connection_version(connection_id,version,origin,origin_sha256,
                       credential_ciphertext,credential_nonce,credential_key_version,key_mask,created_at)
                     values (?,?,'https://api.minimax.cn',repeat('0',64),decode('0001','hex'),
                       decode('0002','hex'),1,'synthetic-mask',now())
                     """, existing, version);
         }
-        Flyway klingUpgrade = Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+        Flyway klingUpgrade = Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").target("19").load();
         assertThat(klingUpgrade.migrate().migrationsExecuted).isEqualTo(1);
         try (Connection connection = connection()) {
-            assertThat(text(connection, "select platform from media_provider_connection where id=?", existing)).isEqualTo("MINIMAX");
-            assertThat(text(connection, "select enabled::text from media_provider_connection where id=?", existing)).isEqualTo("false");
-            assertThat(count(connection, "select version from media_provider_connection where id=?", existing)).isEqualTo(3);
-            assertThat(count(connection, "select current_version from media_provider_connection where id=?", existing)).isEqualTo(2);
-            assertThat(count(connection, "select count(*) from media_provider_connection_version where connection_id=? and encode(credential_ciphertext,'hex')='0001'", existing)).isEqualTo(2);
+            assertThat(text(connection, "select platform from media_provider_connection where id=?", existing))
+                    .isEqualTo("MINIMAX");
+            assertThat(text(connection, "select enabled::text from media_provider_connection where id=?", existing))
+                    .isEqualTo("false");
+            assertThat(count(connection, "select version from media_provider_connection where id=?", existing))
+                    .isEqualTo(3);
+            assertThat(count(connection, "select current_version from media_provider_connection where id=?", existing))
+                    .isEqualTo(2);
+            assertThat(count(connection,
+                    "select count(*) from media_provider_connection_version where connection_id=? and encode(credential_ciphertext,'hex')='0001'",
+                    existing)).isEqualTo(2);
             execute(connection, """
                     insert into media_provider_connection(id,name,enabled,version,current_version,created_at,updated_at,platform)
                     values (?,'Synthetic Kling',true,0,1,now(),now(),'KLING')
@@ -357,32 +433,56 @@ class FlywayBaselinePostgresIT {
         Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").target("12").load().migrate();
         UUID owner = UUID.randomUUID(), project = UUID.randomUUID(), agent = UUID.randomUUID();
-        UUID first = UUID.randomUUID(), second = UUID.randomUUID(), firstVersion = UUID.randomUUID(), secondVersion = UUID.randomUUID();
+        UUID first = UUID.randomUUID(), second = UUID.randomUUID(), firstVersion = UUID.randomUUID(),
+                secondVersion = UUID.randomUUID();
         try (Connection connection = connection()) {
-            insertOwner(connection, owner);insertProject(connection, project, owner);insertAgent(connection, project, agent);
-            for (UUID skill : List.of(first, second)) execute(connection,
-                    "insert into creative_skill(id,owner_id,title,created_at,updated_at) values (?,?,'Synthetic Skill',now(),now())", skill, owner);
-            execute(connection, "insert into skill_version(id,owner_id,skill_id,version_number,bundle_hash,bundle_json,created_at) values (?,?,?,1,repeat('0',64),'{\"schemaVersion\":1}',now())", firstVersion, owner, first);
-            execute(connection, "insert into skill_version(id,owner_id,skill_id,version_number,bundle_hash,bundle_json,created_at) values (?,?,?,1,repeat('1',64),'{\"schemaVersion\":1}',now())", secondVersion, owner, second);
-            execute(connection, "insert into agent_skill_binding(agent_id,project_id,owner_id,skill_id,skill_version_id,updated_at) values (?,?,?,?,?,now())", agent, project, owner, first, firstVersion);
+            insertOwner(connection, owner);
+            insertProject(connection, project, owner);
+            insertAgent(connection, project, agent);
+            for (UUID skill : List.of(first, second))
+                execute(connection,
+                        "insert into creative_skill(id,owner_id,title,created_at,updated_at) values (?,?,'Synthetic Skill',now(),now())",
+                        skill, owner);
+            execute(connection,
+                    "insert into skill_version(id,owner_id,skill_id,version_number,bundle_hash,bundle_json,created_at) values (?,?,?,1,repeat('0',64),'{\"schemaVersion\":1}',now())",
+                    firstVersion, owner, first);
+            execute(connection,
+                    "insert into skill_version(id,owner_id,skill_id,version_number,bundle_hash,bundle_json,created_at) values (?,?,?,1,repeat('1',64),'{\"schemaVersion\":1}',now())",
+                    secondVersion, owner, second);
+            execute(connection,
+                    "insert into agent_skill_binding(agent_id,project_id,owner_id,skill_id,skill_version_id,updated_at) values (?,?,?,?,?,now())",
+                    agent, project, owner, first, firstVersion);
         }
-        Flyway multipleUpgrade = Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+        Flyway multipleUpgrade = Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").target("13").load();
         assertThat(multipleUpgrade.migrate().migrationsExecuted).isEqualTo(1);
         try (Connection connection = connection()) {
-            assertThat(text(connection, "select skill_version_id::text from agent_skill_binding where agent_id=? and position=0", agent)).isEqualTo(firstVersion.toString());
-            execute(connection, "insert into agent_skill_binding(agent_id,project_id,owner_id,skill_id,skill_version_id,position,updated_at) values (?,?,?,?,?,1,now())", agent, project, owner, second, secondVersion);
-            assertThat(count(connection, "select count(*) from agent_skill_binding where agent_id=?", agent)).isEqualTo(2);
-            assertThatThrownBy(() -> execute(connection, "update agent_skill_binding set position=8 where agent_id=? and skill_id=?", agent, second)).isInstanceOf(SQLException.class);
-            assertThatThrownBy(() -> execute(connection, "update agent_skill_binding set position=0 where agent_id=? and skill_id=?", agent, second)).isInstanceOf(SQLException.class);
+            assertThat(text(connection,
+                    "select skill_version_id::text from agent_skill_binding where agent_id=? and position=0", agent))
+                    .isEqualTo(firstVersion.toString());
+            execute(connection,
+                    "insert into agent_skill_binding(agent_id,project_id,owner_id,skill_id,skill_version_id,position,updated_at) values (?,?,?,?,?,1,now())",
+                    agent, project, owner, second, secondVersion);
+            assertThat(count(connection, "select count(*) from agent_skill_binding where agent_id=?", agent))
+                    .isEqualTo(2);
+            assertThatThrownBy(() -> execute(connection,
+                    "update agent_skill_binding set position=8 where agent_id=? and skill_id=?", agent, second))
+                    .isInstanceOf(SQLException.class);
+            assertThatThrownBy(() -> execute(connection,
+                    "update agent_skill_binding set position=0 where agent_id=? and skill_id=?", agent, second))
+                    .isInstanceOf(SQLException.class);
         }
     }
-    @Test void videoPromptSourceUpgradePreservesExistingSourcesAndCachedVideoJson() throws Exception {
+    @Test
+    void videoPromptSourceUpgradePreservesExistingSourcesAndCachedVideoJson() throws Exception {
         Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").target("15").load().migrate();
         try (Connection connection = connection()) {
-            execute(connection, "update third_party_prompt_source set enabled=false,version=3 where id='zerolu-gpt-image'");
-            execute(connection, "insert into third_party_prompt_source(id,name,target_kind,format,url) values ('fixture-upgrade','Synthetic','VIDEO','NATIVE_JSON','https://example.com/feed')");
+            execute(connection,
+                    "update third_party_prompt_source set enabled=false,version=3 where id='zerolu-gpt-image'");
+            execute(connection,
+                    "insert into third_party_prompt_source(id,name,target_kind,format,url) values ('fixture-upgrade','Synthetic','VIDEO','NATIVE_JSON','https://example.com/feed')");
             execute(connection, """
                     insert into third_party_prompt(id,source_id,target_kind,title,prompt,data_json,version)
                     values ('fixture-upgrade:old','fixture-upgrade','VIDEO','Synthetic','Camera pans',
@@ -393,39 +493,62 @@ class FlywayBaselinePostgresIT {
         }
         assertThat(flyway.migrate().migrationsExecuted).isEqualTo(MigrationVersions.sorted().size() - 15);
         try (Connection connection = connection()) {
-            assertThat(text(connection, "select enabled::text from third_party_prompt_source where id='zerolu-gpt-image'")).isEqualTo("false");
-            assertThat(count(connection, "select version from third_party_prompt_source where id='zerolu-gpt-image'")).isEqualTo(3);
-            assertThat(count(connection, "select count(*) from third_party_prompt_source where target_kind='IMAGE'")).isEqualTo(5);
-            assertThat(count(connection, "select count(*) from third_party_prompt_source where target_kind='VIDEO'")).isEqualTo(6);
-            assertThat(count(connection, "select version from third_party_prompt where id='fixture-upgrade:old'")).isEqualTo(7);
-            var repository = new dev.agenvas.mediatemplate.infrastructure.ThirdPartyPromptRepository(DSL.using(connection, SQLDialect.POSTGRES), new ObjectMapper());
+            assertThat(
+                    text(connection, "select enabled::text from third_party_prompt_source where id='zerolu-gpt-image'"))
+                    .isEqualTo("false");
+            assertThat(count(connection, "select version from third_party_prompt_source where id='zerolu-gpt-image'"))
+                    .isEqualTo(3);
+            assertThat(count(connection, "select count(*) from third_party_prompt_source where target_kind='IMAGE'"))
+                    .isEqualTo(5);
+            assertThat(count(connection, "select count(*) from third_party_prompt_source where target_kind='VIDEO'"))
+                    .isEqualTo(6);
+            assertThat(count(connection, "select version from third_party_prompt where id='fixture-upgrade:old'"))
+                    .isEqualTo(7);
+            var repository = new dev.agenvas.mediatemplate.infrastructure.ThirdPartyPromptRepository(
+                    DSL.using(connection, SQLDialect.POSTGRES), new ObjectMapper());
             var old = repository.entry("fixture-upgrade:old").orElseThrow().video();
-            assertThat(old.previewVideoUrl()).isEmpty(); assertThat(old.missingReferences()).isEmpty();
+            assertThat(old.previewVideoUrl()).isEmpty();
+            assertThat(old.missingReferences()).isEmpty();
         }
     }
 
-    @Test void hundredSkillUpgradePreservesExistingBindingsAndAddsUniqueBuiltinIdentity() throws Exception {
+    @Test
+    void hundredSkillUpgradePreservesExistingBindingsAndAddsUniqueBuiltinIdentity() throws Exception {
         Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").target("13").load().migrate();
         UUID owner = UUID.randomUUID(), project = UUID.randomUUID(), agent = UUID.randomUUID();
         UUID skill = UUID.randomUUID(), version = UUID.randomUUID();
         try (Connection connection = connection()) {
-            insertOwner(connection, owner);insertProject(connection, project, owner);insertAgent(connection, project, agent);
-            execute(connection, "insert into creative_skill(id,owner_id,title,created_at,updated_at) values (?,?,'Synthetic Skill',now(),now())", skill, owner);
-            execute(connection, "insert into skill_version(id,owner_id,skill_id,version_number,bundle_hash,bundle_json,created_at) values (?,?,?,1,repeat('0',64),'{\"schemaVersion\":1}',now())", version, owner, skill);
-            execute(connection, "insert into agent_skill_binding(agent_id,project_id,owner_id,skill_id,skill_version_id,position,updated_at) values (?,?,?,?,?,7,now())", agent, project, owner, skill, version);
+            insertOwner(connection, owner);
+            insertProject(connection, project, owner);
+            insertAgent(connection, project, agent);
+            execute(connection,
+                    "insert into creative_skill(id,owner_id,title,created_at,updated_at) values (?,?,'Synthetic Skill',now(),now())",
+                    skill, owner);
+            execute(connection,
+                    "insert into skill_version(id,owner_id,skill_id,version_number,bundle_hash,bundle_json,created_at) values (?,?,?,1,repeat('0',64),'{\"schemaVersion\":1}',now())",
+                    version, owner, skill);
+            execute(connection,
+                    "insert into agent_skill_binding(agent_id,project_id,owner_id,skill_id,skill_version_id,position,updated_at) values (?,?,?,?,?,7,now())",
+                    agent, project, owner, skill, version);
         }
         Flyway skillCatalogueUpgrade = Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").target("14").load();
         assertThat(skillCatalogueUpgrade.migrate().migrationsExecuted).isEqualTo(1);
         try (Connection connection = connection()) {
-            assertThat(text(connection, "select skill_version_id::text from agent_skill_binding where agent_id=? and position=7", agent)).isEqualTo(version.toString());
+            assertThat(text(connection,
+                    "select skill_version_id::text from agent_skill_binding where agent_id=? and position=7", agent))
+                    .isEqualTo(version.toString());
             assertThat(text(connection, "select builtin_key from creative_skill where id=?", skill)).isNull();
             execute(connection, "update agent_skill_binding set position=99 where agent_id=?", agent);
-            assertThatThrownBy(() -> execute(connection, "update agent_skill_binding set position=100 where agent_id=?", agent)).isInstanceOf(SQLException.class);
+            assertThatThrownBy(
+                    () -> execute(connection, "update agent_skill_binding set position=100 where agent_id=?", agent))
+                    .isInstanceOf(SQLException.class);
             execute(connection, "update creative_skill set builtin_key='drama-skills/synthetic' where id=?", skill);
-            assertThatThrownBy(() -> execute(connection, "insert into creative_skill(id,owner_id,title,builtin_key,created_at,updated_at) values (?,?,'Duplicate','drama-skills/synthetic',now(),now())", UUID.randomUUID(), owner)).isInstanceOf(SQLException.class);
+            assertThatThrownBy(() -> execute(connection,
+                    "insert into creative_skill(id,owner_id,title,builtin_key,created_at,updated_at) values (?,?,'Duplicate','drama-skills/synthetic',now(),now())",
+                    UUID.randomUUID(), owner)).isInstanceOf(SQLException.class);
         }
     }
 
@@ -457,7 +580,8 @@ class FlywayBaselinePostgresIT {
                     .isEqualTo(version.toString());
             assertThat(text(connection, "select name from project where id=?", project))
                     .isEqualTo("Synthetic baseline project");
-            assertThat(count(connection, "select count(*) from flyway_schema_history where success and version is not null"))
+            assertThat(count(connection,
+                    "select count(*) from flyway_schema_history where success and version is not null"))
                     .isEqualTo(MigrationVersions.sorted().size());
         }
     }
@@ -481,9 +605,11 @@ class FlywayBaselinePostgresIT {
                 .locations("classpath:db/migration").target(CAPABILITY_DELETION_VERSION).load();
         assertThat(deletionUpgrade.migrate().migrationsExecuted).isEqualTo(1);
         try (Connection connection = connection()) {
-            assertThat(count(connection, "select count(*) from media_capability where deleted_at is null")).isEqualTo(capabilities);
+            assertThat(count(connection, "select count(*) from media_capability where deleted_at is null"))
+                    .isEqualTo(capabilities);
             assertThat(count(connection, "select count(*) from media_capability_version")).isEqualTo(versions);
-            assertThat(count(connection, "select count(*) from media_default where capability_id is not null")).isEqualTo(defaults);
+            assertThat(count(connection, "select count(*) from media_default where capability_id is not null"))
+                    .isEqualTo(defaults);
         }
     }
 
@@ -507,7 +633,8 @@ class FlywayBaselinePostgresIT {
         assertThat(flyway.migrate().migrationsExecuted).isZero();
     }
 
-    @Test void imageRelayUpgradePreservesSelectionsAndStartsFunctionsEnabled() throws Exception {
+    @Test
+    void imageRelayUpgradePreservesSelectionsAndStartsFunctionsEnabled() throws Exception {
         Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").target(BEFORE_IMAGE_RELAY_VERSION).load().migrate();
         UUID profile = UUID.randomUUID();
@@ -518,7 +645,9 @@ class FlywayBaselinePostgresIT {
                     values (?,'Synthetic relay','S3','https://s3.example.com','us-east-1','synthetic-relay','archive',true,
                         1,decode('00','hex'),decode(repeat('00',12),'hex'),1,'masked',now())
                     """, profile);
-            execute(connection, "update storage_settings set active_profile_id=?,relay_profile_id=?,version=9 where singleton", profile, profile);
+            execute(connection,
+                    "update storage_settings set active_profile_id=?,relay_profile_id=?,version=9 where singleton",
+                    profile, profile);
         }
         // Isolate V17 so subsequent migrations cannot change this upgrade's execution count.
         Flyway imageRelayUpgrade = Flyway.configure()
@@ -527,8 +656,10 @@ class FlywayBaselinePostgresIT {
         assertThat(imageRelayUpgrade.migrate().migrationsExecuted).isEqualTo(1);
         assertThat(imageRelayUpgrade.info().current().getVersion().getVersion()).isEqualTo(IMAGE_RELAY_VERSION);
         try (Connection connection = connection()) {
-            assertThat(text(connection, "select active_profile_id::text from storage_settings")).isEqualTo(profile.toString());
-            assertThat(text(connection, "select relay_profile_id::text from storage_settings")).isEqualTo(profile.toString());
+            assertThat(text(connection, "select active_profile_id::text from storage_settings"))
+                    .isEqualTo(profile.toString());
+            assertThat(text(connection, "select relay_profile_id::text from storage_settings"))
+                    .isEqualTo(profile.toString());
             assertThat(text(connection, "select llm_relay_enabled::text from storage_settings")).isEqualTo("true");
             assertThat(text(connection, "select image_relay_enabled::text from storage_settings")).isEqualTo("true");
             assertThat(count(connection, "select version from storage_settings")).isEqualTo(9);
@@ -551,11 +682,15 @@ class FlywayBaselinePostgresIT {
         }
         assertThat(flyway.migrate().migrationsExecuted).isEqualTo(MigrationVersions.sorted().size() - 3);
         try (Connection connection = connection()) {
-            assertThat(text(connection, "select active_profile_id::text from storage_settings where singleton")).isEqualTo(profile.toString());
-            assertThat(text(connection, "select (relay_profile_id is null)::text from storage_settings where singleton")).isEqualTo("true");
+            assertThat(text(connection, "select active_profile_id::text from storage_settings where singleton"))
+                    .isEqualTo(profile.toString());
+            assertThat(
+                    text(connection, "select (relay_profile_id is null)::text from storage_settings where singleton"))
+                    .isEqualTo("true");
             assertThat(count(connection, "select version from storage_settings where singleton")).isEqualTo(7);
             assertThat(count(connection, "select count(*) from media_relay_object")).isZero();
-            assertThat(text(connection, "select name from storage_profile where id=?", profile)).isEqualTo("Synthetic archive");
+            assertThat(text(connection, "select name from storage_profile where id=?", profile))
+                    .isEqualTo("Synthetic archive");
         }
     }
 
@@ -579,15 +714,24 @@ class FlywayBaselinePostgresIT {
         }
         assertThat(flyway.migrate().migrationsExecuted).isEqualTo(MigrationVersions.sorted().size() - 2);
         try (Connection connection = connection()) {
-            assertThat(count(connection, "select (llm_stream_metrics_json->>'schemaVersion')::int from call_log where id=?", call)).isEqualTo(2);
-            assertThat(count(connection, "select (llm_stream_metrics_json->>'firstTextMs')::int from call_log where id=?", call)).isEqualTo(35);
-            assertThat(count(connection, "select (llm_stream_metrics_json->>'totalTokens')::int from call_log where id=?", call)).isEqualTo(6);
+            assertThat(count(connection,
+                    "select (llm_stream_metrics_json->>'schemaVersion')::int from call_log where id=?", call))
+                    .isEqualTo(2);
+            assertThat(count(connection,
+                    "select (llm_stream_metrics_json->>'firstTextMs')::int from call_log where id=?", call))
+                    .isEqualTo(35);
+            assertThat(count(connection,
+                    "select (llm_stream_metrics_json->>'totalTokens')::int from call_log where id=?", call))
+                    .isEqualTo(6);
             assertThat(count(connection, """
                     select count(*) from call_log where id=? and jsonb_exists_any(llm_stream_metrics_json, array['firstOutputMs','outputBatchCount','outputChars'])
                     """, call)).isZero();
-            assertThat(text(connection, "select llm_stream_content_json->>'response' from call_log_debug where call_id=?", call))
+            assertThat(text(connection,
+                    "select llm_stream_content_json->>'response' from call_log_debug where call_id=?", call))
                     .isEqualTo("{\"text\":\"synthetic model reply\"}");
-            assertThat(count(connection, "select count(*) from call_log_debug where call_id=? and jsonb_exists(llm_stream_content_json, 'output')", call)).isZero();
+            assertThat(count(connection,
+                    "select count(*) from call_log_debug where call_id=? and jsonb_exists(llm_stream_content_json, 'output')",
+                    call)).isZero();
         }
     }
 
@@ -605,9 +749,11 @@ class FlywayBaselinePostgresIT {
                     .isZero();
             assertThat(text(connection, "select debug_mode::text from audit_debug_settings where id=1"))
                     .isEqualTo("false");
-            assertThat(text(connection, "select (active_profile_id is null)::text from storage_settings where singleton"))
+            assertThat(
+                    text(connection, "select (active_profile_id is null)::text from storage_settings where singleton"))
                     .isEqualTo("true");
-            assertThat(text(connection, "select (retention_days is null)::text from audit_log_retention_settings where id=1"))
+            assertThat(text(connection,
+                    "select (retention_days is null)::text from audit_log_retention_settings where id=1"))
                     .isEqualTo("true");
             assertThat(strings(connection, """
                     select d.kind || ':' || v.adapter_id from media_default d
@@ -617,7 +763,7 @@ class FlywayBaselinePostgresIT {
                     where p.platform='MOCK' and p.enabled and c.enabled
                     order by d.kind
                     """)).containsExactly("AUDIO_GENERATION:MOCK_AUDIO", "IMAGE_GENERATION:MOCK_IMAGE",
-                            "VIDEO_GENERATION:MOCK_VIDEO");
+                    "VIDEO_GENERATION:MOCK_VIDEO");
             assertThat(count(connection, """
                     select count(*) from media_provider_connection p
                     join media_provider_connection_version pv on pv.connection_id=p.id and pv.version=p.current_version
@@ -730,7 +876,8 @@ class FlywayBaselinePostgresIT {
                     """, version, project, foreignVersion);
             assertRejected(connection, CHECK_VIOLATION, "update canvas_item set title='   ' where id=?", card);
             for (String removedKind : List.of("CHARACTER", "SCENE", "SHOT")) {
-                assertRejected(connection, CHECK_VIOLATION, "update artifact set kind=? where id=?", removedKind, artifact);
+                assertRejected(connection, CHECK_VIOLATION, "update artifact set kind=? where id=?", removedKind,
+                        artifact);
             }
             assertRejected(connection, CHECK_VIOLATION, "update task set kind='MEDIA_EXPORT' where id=?", task);
             assertRejected(connection, CHECK_VIOLATION, "update task set kind='AGENT_TURN' where id=?", task);
@@ -869,9 +1016,11 @@ class FlywayBaselinePostgresIT {
             insertVersion(connection, project, otherArtifact, otherVersion);
             var repository = new JooqArtifactRepository(DSL.using(connection, SQLDialect.POSTGRES), new ObjectMapper());
             for (UUID invalidVersion : List.of(otherVersion, UUID.randomUUID())) {
-                assertThatThrownBy(() -> repository.setInitialResourceDefaultVersion(artifact, invalidVersion, Instant.now()))
+                assertThatThrownBy(
+                        () -> repository.setInitialResourceDefaultVersion(artifact, invalidVersion, Instant.now()))
                         .isInstanceOf(IllegalStateException.class);
-                assertThat(text(connection, "select resource_default_version_id::text from artifact where id=?", artifact))
+                assertThat(
+                        text(connection, "select resource_default_version_id::text from artifact where id=?", artifact))
                         .isNull();
             }
             repository.setInitialResourceDefaultVersion(artifact, version, Instant.now());
@@ -935,7 +1084,8 @@ class FlywayBaselinePostgresIT {
                 """, version, project, artifact);
     }
 
-    private void insertCard(Connection connection, UUID project, UUID artifact, UUID card, UUID version) throws SQLException {
+    private void insertCard(Connection connection, UUID project, UUID artifact, UUID card, UUID version)
+            throws SQLException {
         execute(connection, """
                 insert into canvas_item(id,project_id,subject_type,subject_id,artifact_id,title,
                   selected_version_id,x,y,width,height,z_index,created_at,updated_at)
@@ -944,19 +1094,23 @@ class FlywayBaselinePostgresIT {
     }
 
     private void insertAgent(Connection connection, UUID project, UUID agent) throws SQLException {
-        boolean legacy = count(connection, "select count(*) from information_schema.columns where table_schema='public' and table_name='agent_instance' and column_name='output_group_id'") == 1;
-        if (legacy) execute(connection, """
+        boolean legacy = count(connection,
+                "select count(*) from information_schema.columns where table_schema='public' and table_name='agent_instance' and column_name='output_group_id'") == 1;
+        if (legacy)
+            execute(connection, """
                 insert into agent_instance(id,project_id,profile_key,profile_version,name,instruction,
                   output_group_id,created_at,updated_at)
                 values (?,?,'creator',1,'Synthetic agent','Create',?,now(),now())
                 """, agent, project, UUID.randomUUID());
-        else execute(connection, """
+        else
+            execute(connection, """
                 insert into agent_instance(id,project_id,profile_key,profile_version,name,instruction,created_at,updated_at)
                 values (?,?,'creator',1,'Synthetic agent','Create',now(),now())
                 """, agent, project);
     }
 
-    private void insertConversation(Connection connection, UUID project, UUID agent, UUID conversation) throws SQLException {
+    private void insertConversation(Connection connection, UUID project, UUID agent, UUID conversation)
+            throws SQLException {
         execute(connection, """
                 insert into agent_conversation(id,project_id,agent_instance_id,title,created_at,updated_at)
                 values (?,?,?,'Synthetic conversation',now(),now())
@@ -991,14 +1145,16 @@ class FlywayBaselinePostgresIT {
     private List<String> strings(Connection connection, String sql) throws SQLException {
         try (PreparedStatement statement = prepare(connection, sql); var rows = statement.executeQuery()) {
             List<String> values = new ArrayList<>();
-            while (rows.next()) values.add(rows.getString(1));
+            while (rows.next())
+                values.add(rows.getString(1));
             return values;
         }
     }
 
     private PreparedStatement prepare(Connection connection, String sql, Object... parameters) throws SQLException {
         PreparedStatement statement = connection.prepareStatement(sql);
-        for (int index = 0; index < parameters.length; index++) statement.setObject(index + 1, parameters[index]);
+        for (int index = 0; index < parameters.length; index++)
+            statement.setObject(index + 1, parameters[index]);
         return statement;
     }
 }

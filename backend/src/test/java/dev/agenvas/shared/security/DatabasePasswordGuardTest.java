@@ -11,7 +11,7 @@ class DatabasePasswordGuardTest {
 
     @Test
     void rejectsPublishedDatabasePasswordsWithoutEchoingThem() {
-        for (String example : new String[] {"local-development-only",
+        for (String example : new String[]{"local-development-only",
                 "replace-with-a-random-local-password"}) {
             DataSourceProperties source = new DataSourceProperties();
             source.setPassword(example);

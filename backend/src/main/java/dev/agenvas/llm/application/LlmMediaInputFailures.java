@@ -7,16 +7,21 @@ import java.util.Locale;
 final class LlmMediaInputFailures {
     static final String ERROR_CODE = "LLM_MEDIA_INPUT_UNSUPPORTED";
 
-    private LlmMediaInputFailures() {}
+    private LlmMediaInputFailures() {
+    }
 
     static boolean matches(Throwable failure) {
         boolean modelBoundary = false;
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
-            if (cause instanceof ModelCallFailure) modelBoundary = true;
-            if (!modelBoundary || !(cause instanceof OpenAIServiceException service)) continue;
-            if (service.statusCode() != 400 && service.statusCode() != 422) return false;
+            if (cause instanceof ModelCallFailure)
+                modelBoundary = true;
+            if (!modelBoundary || !(cause instanceof OpenAIServiceException service))
+                continue;
+            if (service.statusCode() != 400 && service.statusCode() != 422)
+                return false;
             String message = service.getMessage();
-            if (message == null) return false;
+            if (message == null)
+                return false;
             String normalized = message.toLowerCase(Locale.ROOT);
             return normalized.contains("unknown variant `input_audio`")
                     || (normalized.contains("input_audio")

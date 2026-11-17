@@ -10,18 +10,21 @@ public final class ComfyUiEndpoint {
     /** Returned display value, never an executable endpoint. */
     public static final String HIDDEN_PATH = "/[configured-path]";
 
-    private ComfyUiEndpoint() {}
+    private ComfyUiEndpoint() {
+    }
 
     public static URI checked(String endpoint) {
         try {
-            if (endpoint == null || endpoint.isBlank() || endpoint.length() > MAX_ENDPOINT_LENGTH) throw invalid();
+            if (endpoint == null || endpoint.isBlank() || endpoint.length() > MAX_ENDPOINT_LENGTH)
+                throw invalid();
             URI uri = URI.create(URI.create(endpoint.trim()).toASCIIString());
             String host = uri.getHost();
             String path = uri.getRawPath();
             if (host == null || uri.getRawUserInfo() != null || uri.getRawQuery() != null
                     || uri.getRawFragment() != null || uri.getPort() == 0 || uri.getPort() > MAX_PORT
                     || path == null || path.contains("..") || path.contains("%")
-                    || path.contains("\\") || path.contains("//") || path.equals(HIDDEN_PATH)) throw invalid();
+                    || path.contains("\\") || path.contains("//") || path.equals(HIDDEN_PATH))
+                throw invalid();
             ServiceEndpointPolicy.validate(uri);
             return URI.create(uri.toASCIIString().replaceAll("/+$", ""));
         } catch (IllegalArgumentException failure) {

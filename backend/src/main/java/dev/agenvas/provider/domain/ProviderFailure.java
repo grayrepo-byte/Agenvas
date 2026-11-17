@@ -5,9 +5,12 @@ import dev.agenvas.shared.error.ProviderFailureCodes;
 /** Public, bounded provider diagnostics. Remote prose, bodies, URLs and credentials are never retained. */
 public record ProviderFailure(Stage stage, Category category, Integer httpStatus, Long upstreamCode,
         String nodeId, String fieldName, ProviderModeration moderation) {
-    public enum Stage { DISCOVERY, UPLOAD, SUBMIT, POLL, DOWNLOAD }
-    public enum Category { AUTHENTICATION, BALANCE, PARAMETER, RATE_LIMIT, UPLOAD, GENERATION,
-        DOWNLOAD_EXPIRED, UNAVAILABLE, PROTOCOL, MODERATION }
+    public enum Stage {
+        DISCOVERY, UPLOAD, SUBMIT, POLL, DOWNLOAD
+    }
+    public enum Category {
+        AUTHENTICATION, BALANCE, PARAMETER, RATE_LIMIT, UPLOAD, GENERATION, DOWNLOAD_EXPIRED, UNAVAILABLE, PROTOCOL, MODERATION
+    }
 
     /** Existing provider diagnostics have no moderation detail, including persisted older records. */
     public ProviderFailure(Stage stage, Category category, Integer httpStatus, Long upstreamCode,
@@ -21,7 +24,7 @@ public record ProviderFailure(Stage stage, Category category, Integer httpStatus
                 || upstreamCode != null && (upstreamCode < 0 || upstreamCode > 999_999_999L)
                 || nodeId != null && !nodeId.matches("[0-9]{1,32}")
                 || fieldName != null && (!fieldName.matches("[A-Za-z_][A-Za-z0-9_.]{0,79}")
-                    || fieldName.matches("(?i).*(apikey|api_key|authorization|token|secret|password).*")))
+                        || fieldName.matches("(?i).*(apikey|api_key|authorization|token|secret|password).*")))
             throw new IllegalArgumentException("Invalid public provider diagnostic");
     }
 

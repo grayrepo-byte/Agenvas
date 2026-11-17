@@ -17,6 +17,7 @@ import dev.agenvas.db.tables.LibraryImport.LibraryImportPath;
 import dev.agenvas.db.tables.McpOperation.McpOperationPath;
 import dev.agenvas.db.tables.McpOperationVersion.McpOperationVersionPath;
 import dev.agenvas.db.tables.MediaTemplateImportImage.MediaTemplateImportImagePath;
+import dev.agenvas.db.tables.SubtitleDraft.SubtitleDraftPath;
 import dev.agenvas.db.tables.TaskArtifactTarget.TaskArtifactTargetPath;
 import dev.agenvas.db.tables.records.ArtifactVersionRecord;
 
@@ -331,6 +332,19 @@ public class ArtifactVersion extends TableImpl<ArtifactVersionRecord> {
             _mcpOperationVersion = new McpOperationVersionPath(this, null, Keys.MCP_OPERATION_VERSION__FK_MCP_OPERATION_VERSION_VERSION.getInverseKey());
 
         return _mcpOperationVersion;
+    }
+
+    private transient SubtitleDraftPath _subtitleDraft;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.subtitle_draft</code> table
+     */
+    public SubtitleDraftPath subtitleDraft() {
+        if (_subtitleDraft == null)
+            _subtitleDraft = new SubtitleDraftPath(this, null, Keys.SUBTITLE_DRAFT__FK_SUBTITLE_DRAFT_SOURCE.getInverseKey());
+
+        return _subtitleDraft;
     }
 
     private transient TaskArtifactTargetPath _taskArtifactTarget;

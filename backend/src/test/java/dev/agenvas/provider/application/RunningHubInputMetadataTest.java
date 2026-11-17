@@ -16,7 +16,8 @@ import tools.jackson.databind.node.ObjectNode;
 class RunningHubInputMetadataTest {
     private final ObjectMapper mapper = new ObjectMapper();
 
-    @Test void typeEvidenceDistinguishesExplicitMetadataFromValuesAndUncertainFallbacks() {
+    @Test
+    void typeEvidenceDistinguishesExplicitMetadataFromValuesAndUncertainFallbacks() {
         assertThat(parse("{\"fieldType\":\"FLOAT\",\"fieldValue\":1}").reasons())
                 .containsExactly(RunningHubImportService.InsightReason.TYPE_DECLARATION);
         assertThat(parse("{\"fieldType\":\"STRING\",\"fieldData\":[\"FLOAT\",{}]}").reasons())
@@ -47,15 +48,18 @@ class RunningHubInputMetadataTest {
         assertValid(parsed);
     }
 
-    @Test void genericStringsAndListsRecognizeOnlyUnambiguousUploadWidgets() {
-        for (String declared : List.of("STRING", "LIST")) for (String media : List.of("image", "audio", "video")) {
-            var input = mapper.createObjectNode().put("fieldType", declared).put("fieldValue", "synthetic.file");
-            input.set("fieldData", mapper.readTree("[[\"synthetic.file\",\"synthetic.file\"],{\"" + media + "_upload\":true}]"));
-            var parsed = parse(input);
-            assertThat(parsed.type()).isEqualTo(FieldType.valueOf(media.toUpperCase(java.util.Locale.ROOT)));
-            assertThat(parsed.options()).isEmpty();
-            assertThat(parsed.defaultValue()).isNull();
-        }
+    @Test
+    void genericStringsAndListsRecognizeOnlyUnambiguousUploadWidgets() {
+        for (String declared : List.of("STRING", "LIST"))
+            for (String media : List.of("image", "audio", "video")) {
+                var input = mapper.createObjectNode().put("fieldType", declared).put("fieldValue", "synthetic.file");
+                input.set("fieldData",
+                        mapper.readTree("[[\"synthetic.file\",\"synthetic.file\"],{\"" + media + "_upload\":true}]"));
+                var parsed = parse(input);
+                assertThat(parsed.type()).isEqualTo(FieldType.valueOf(media.toUpperCase(java.util.Locale.ROOT)));
+                assertThat(parsed.options()).isEmpty();
+                assertThat(parsed.defaultValue()).isNull();
+            }
         var vhs = parse("""
                 {"fieldType":"STRING","fieldValue":"synthetic.mp4",
                  "fieldData":["STRING",{"vhs_path_extensions":["mp4","webm"]}]}
@@ -70,7 +74,8 @@ class RunningHubInputMetadataTest {
         assertThat(ambiguous.options()).isEmpty();
     }
 
-    @Test void uploadFlagsDoNotOverrideExplicitScalarTypesOrTreatFalseTextAsEnabled() {
+    @Test
+    void uploadFlagsDoNotOverrideExplicitScalarTypesOrTreatFalseTextAsEnabled() {
         var scalar = parse("""
                 {"fieldType":"FLOAT","fieldValue":"12","fieldData":["INT",{"image_upload":true}]}
                 """);
@@ -84,24 +89,27 @@ class RunningHubInputMetadataTest {
         assertThat(text.defaultValue().asText()).isEqualTo("plain text");
     }
 
-    @Test void typedWidgetsInferGenericTypesInArrayObjectAndJsonStringRepresentations() {
+    @Test
+    void typedWidgetsInferGenericTypesInArrayObjectAndJsonStringRepresentations() {
         List<JsonNode> forms = List.of(
                 mapper.readTree("[\"INT\",{\"min\":1,\"max\":100,\"default\":20}]"),
                 mapper.readTree("{\"type\":\"INT\",\"min\":1,\"max\":100,\"default\":20}"));
-        for (JsonNode form : forms) for (boolean encoded : List.of(false, true)) {
-            var input = mapper.createObjectNode().put("fieldType", "STRING").put("fieldValue", "12.0");
-            input.set("fieldData", encoded ? mapper.valueToTree(form.toString()) : form);
-            var parsed = parse(input);
-            assertThat(parsed.type()).isEqualTo(FieldType.INTEGER);
-            assertThat(parsed.defaultValue().isIntegralNumber()).isTrue();
-            assertThat(parsed.defaultValue().asLong()).isEqualTo(12);
-            assertThat(parsed.minimum()).isEqualByComparingTo("1");
-            assertThat(parsed.maximum()).isEqualByComparingTo("100");
-            assertValid(parsed);
-        }
+        for (JsonNode form : forms)
+            for (boolean encoded : List.of(false, true)) {
+                var input = mapper.createObjectNode().put("fieldType", "STRING").put("fieldValue", "12.0");
+                input.set("fieldData", encoded ? mapper.valueToTree(form.toString()) : form);
+                var parsed = parse(input);
+                assertThat(parsed.type()).isEqualTo(FieldType.INTEGER);
+                assertThat(parsed.defaultValue().isIntegralNumber()).isTrue();
+                assertThat(parsed.defaultValue().asLong()).isEqualTo(12);
+                assertThat(parsed.minimum()).isEqualByComparingTo("1");
+                assertThat(parsed.maximum()).isEqualByComparingTo("100");
+                assertValid(parsed);
+            }
     }
 
-    @Test void missingTypesUseNativeScalarsButDoNotGuessNumericOrBooleanStrings() {
+    @Test
+    void missingTypesUseNativeScalarsButDoNotGuessNumericOrBooleanStrings() {
         assertThat(parse("{\"fieldValue\":12}").type()).isEqualTo(FieldType.INTEGER);
         assertThat(parse("{\"fieldType\":\"unknown\",\"fieldValue\":1.25}").type()).isEqualTo(FieldType.NUMBER);
         assertThat(parse("{\"fieldValue\":false}").type()).isEqualTo(FieldType.BOOLEAN);
@@ -112,7 +120,8 @@ class RunningHubInputMetadataTest {
         assertThat(explicit.defaultValue().asText()).isEqualTo("12");
     }
 
-    @Test void unknownTypedWrappersDoNotBecomeEnumsOrHideUploadMarkers() {
+    @Test
+    void unknownTypedWrappersDoNotBecomeEnumsOrHideUploadMarkers() {
         var unknown = parse("""
                 {"fieldType":"STRING","fieldData":["UNKNOWN",{"options":["first","second"]}]}
                 """);
@@ -132,36 +141,45 @@ class RunningHubInputMetadataTest {
                 {"fieldType":"LIST","fieldData":["first",{"label":"Second","value":"second"}]}
                 """);
         assertThat(mixedOptions.type()).isEqualTo(FieldType.SELECT);
-        assertThat(mixedOptions.options()).extracting(option -> option.value().asText()).containsExactly("first", "second");
+        assertThat(mixedOptions.options()).extracting(option -> option.value().asText()).containsExactly("first",
+                "second");
     }
 
-    @Test void meaningfulZeroFalseAndEmptyDefaultsWinOverWidgetDefaults() {
+    @Test
+    void meaningfulZeroFalseAndEmptyDefaultsWinOverWidgetDefaults() {
         var integer = parse("{\"fieldType\":\" int \",\"fieldValue\":0,\"fieldData\":[\"INT\",{\"default\":20}]}");
         assertThat(integer.type()).isEqualTo(FieldType.INTEGER);
         assertThat(integer.defaultValue().asLong()).isZero();
-        assertThat(parse("{\"fieldType\":\"BOOLEAN\",\"fieldValue\":false,\"fieldData\":[\"BOOLEAN\",{\"default\":true}]}")
-                .defaultValue().asBoolean()).isFalse();
-        assertThat(parse("{\"fieldType\":\"STRING\",\"fieldValue\":\"\",\"fieldData\":[\"STRING\",{\"default\":\"fallback\"}]}")
+        assertThat(
+                parse("{\"fieldType\":\"BOOLEAN\",\"fieldValue\":false,\"fieldData\":[\"BOOLEAN\",{\"default\":true}]}")
+                        .defaultValue().asBoolean())
+                .isFalse();
+        assertThat(parse(
+                "{\"fieldType\":\"STRING\",\"fieldValue\":\"\",\"fieldData\":[\"STRING\",{\"default\":\"fallback\"}]}")
                 .defaultValue().asText()).isEmpty();
     }
 
-    @Test void invalidCurrentValuesFallBackToValidatedWidgetDefaults() {
+    @Test
+    void invalidCurrentValuesFallBackToValidatedWidgetDefaults() {
         var integer = parse("""
                 {"fieldType":"INT","fieldValue":"1.5","fieldData":["INT",{"default":"20.0","min":2,"max":30}]}
                 """);
         assertThat(integer.defaultValue().asLong()).isEqualTo(20);
-        assertThat(parse("{\"fieldType\":\"BOOLEAN\",\"fieldValue\":\"invalid\",\"fieldData\":[\"BOOLEAN\",{\"default\":\"False\"}]}")
+        assertThat(parse(
+                "{\"fieldType\":\"BOOLEAN\",\"fieldValue\":\"invalid\",\"fieldData\":[\"BOOLEAN\",{\"default\":\"False\"}]}")
                 .defaultValue().asBoolean()).isFalse();
         assertThat(parse("{\"fieldType\":\"FLOAT\",\"fieldValue\":null,\"fieldData\":[\"FLOAT\",{\"default\":1.5}]}")
                 .defaultValue().decimalValue()).isEqualByComparingTo("1.5");
-        var outOfBounds = parse("{\"fieldType\":\"FLOAT\",\"fieldValue\":12,\"fieldData\":[\"FLOAT\",{\"min\":0,\"max\":10,\"default\":5}]}");
+        var outOfBounds = parse(
+                "{\"fieldType\":\"FLOAT\",\"fieldValue\":12,\"fieldData\":[\"FLOAT\",{\"min\":0,\"max\":10,\"default\":5}]}");
         assertThat(outOfBounds.defaultValue().decimalValue()).isEqualByComparingTo("5");
         assertValid(integer);
         assertValid(outOfBounds);
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"9223372036854775808", "-9223372036854775809", "1.1", "1 trailing", "NaN", "Infinity", "1e9999"})
+    @ValueSource(strings = {"9223372036854775808", "-9223372036854775809", "1.1", "1 trailing", "NaN", "Infinity",
+            "1e9999"})
     void integersRejectOverflowFractionsAndInvalidNumbersWithoutRejectingTheField(String value) {
         var input = mapper.createObjectNode().put("fieldType", "INTEGER").put("fieldValue", value);
         var parsed = parse(input);
@@ -169,7 +187,8 @@ class RunningHubInputMetadataTest {
         assertValid(parsed);
     }
 
-    @Test void defaultsRejectContainersAndBooleanNumbersWhileSupportingBooleanCase() {
+    @Test
+    void defaultsRejectContainersAndBooleanNumbersWhileSupportingBooleanCase() {
         for (String value : List.of("{}", "[]", "1", "0", "\"1\"")) {
             assertThat(parse("{\"fieldType\":\"BOOLEAN\",\"fieldValue\":" + value + "}").defaultValue()).isNull();
         }
@@ -179,7 +198,8 @@ class RunningHubInputMetadataTest {
         assertThat(parse("{\"fieldType\":\"STRING\",\"fieldValue\":[]}").defaultValue()).isNull();
     }
 
-    @Test void dropdownRepresentationsKeepTypedOptionsAndCurrentDefaults() {
+    @Test
+    void dropdownRepresentationsKeepTypedOptionsAndCurrentDefaults() {
         for (String data : List.of("[\"COMBO\",{\"options\":[1,\"1\",false],\"default\":false}]",
                 "[[1,\"1\",false],{\"default\":false}]", "{\"options\":[1,\"1\",false],\"default\":false}")) {
             var input = mapper.createObjectNode().put("fieldType", "LIST").put("fieldValue", "1");
@@ -194,16 +214,23 @@ class RunningHubInputMetadataTest {
         }
     }
 
-    @Test void dropdownNumericTextFallsBackOnlyAfterAnExactTypedMatch() {
-        assertThat(parse("{\"fieldType\":\"LIST\",\"fieldValue\":\"1.0\",\"fieldData\":[1,\"1.0\"]}").defaultValue().isTextual()).isTrue();
-        assertThat(parse("{\"fieldType\":\"LIST\",\"fieldValue\":\"1.0\",\"fieldData\":[1,2]}").defaultValue().asInt()).isEqualTo(1);
-        assertThat(parse("{\"fieldType\":\"LIST\",\"fieldValue\":1,\"fieldData\":[\"1\",\"2\"]}").defaultValue()).isNull();
-        assertThat(parse("{\"fieldType\":\"LIST\",\"fieldValue\":\"false\",\"fieldData\":[true,false]}").defaultValue()).isNull();
-        assertThat(parse("{\"fieldType\":\"LIST\",\"fieldValue\":\"missing\",\"fieldData\":[\"COMBO\",{\"options\":[\"first\",\"second\"],\"default\":\"second\"}]}")
+    @Test
+    void dropdownNumericTextFallsBackOnlyAfterAnExactTypedMatch() {
+        assertThat(parse("{\"fieldType\":\"LIST\",\"fieldValue\":\"1.0\",\"fieldData\":[1,\"1.0\"]}").defaultValue()
+                .isTextual()).isTrue();
+        assertThat(parse("{\"fieldType\":\"LIST\",\"fieldValue\":\"1.0\",\"fieldData\":[1,2]}").defaultValue().asInt())
+                .isEqualTo(1);
+        assertThat(parse("{\"fieldType\":\"LIST\",\"fieldValue\":1,\"fieldData\":[\"1\",\"2\"]}").defaultValue())
+                .isNull();
+        assertThat(parse("{\"fieldType\":\"LIST\",\"fieldValue\":\"false\",\"fieldData\":[true,false]}").defaultValue())
+                .isNull();
+        assertThat(parse(
+                "{\"fieldType\":\"LIST\",\"fieldValue\":\"missing\",\"fieldData\":[\"COMBO\",{\"options\":[\"first\",\"second\"],\"default\":\"second\"}]}")
                 .defaultValue().asText()).isEqualTo("second");
     }
 
-    @Test void realDropdownDuplicatesRemainForPublicationValidationAndDoNotCollapseLabels() {
+    @Test
+    void realDropdownDuplicatesRemainForPublicationValidationAndDoNotCollapseLabels() {
         var parsed = parse("""
                 {"fieldType":"LIST","fieldValue":1,"fieldData":{"options":[
                   {"label":"same label","value":1},{"label":"same label","value":"1"},
@@ -215,10 +242,12 @@ class RunningHubInputMetadataTest {
         assertThatThrownBy(() -> assertValid(parsed)).hasMessageContaining("重复");
     }
 
-    @Test void dropdownOptionCountUsesRawEntriesAndMalformedListsKeepTheFallbackSignal() {
+    @Test
+    void dropdownOptionCountUsesRawEntriesAndMalformedListsKeepTheFallbackSignal() {
         var input = mapper.createObjectNode().put("fieldType", "LIST").put("fieldValue", "same");
         var choices = input.putArray("fieldData");
-        for (int index = 0; index < RunningHubDefinition.MAX_OPTIONS; index++) choices.add("same");
+        for (int index = 0; index < RunningHubDefinition.MAX_OPTIONS; index++)
+            choices.add("same");
         assertThat(parse(input).options()).hasSize(RunningHubDefinition.MAX_OPTIONS);
         choices.add("same");
         assertThat(parse(input).options()).isEmpty();
@@ -231,19 +260,23 @@ class RunningHubInputMetadataTest {
         }
     }
 
-    @Test void invalidOrContradictoryConstraintsDoNotRejectDiscovery() {
-        var reversed = parse("{\"fieldType\":\"FLOAT\",\"fieldValue\":12,\"fieldData\":[\"FLOAT\",{\"min\":20,\"max\":1}]}");
+    @Test
+    void invalidOrContradictoryConstraintsDoNotRejectDiscovery() {
+        var reversed = parse(
+                "{\"fieldType\":\"FLOAT\",\"fieldValue\":12,\"fieldData\":[\"FLOAT\",{\"min\":20,\"max\":1}]}");
         assertThat(reversed.minimum()).isNull();
         assertThat(reversed.maximum()).isNull();
         assertThat(reversed.defaultValue().decimalValue()).isEqualByComparingTo("12");
-        var invalid = parse("{\"fieldType\":\"FLOAT\",\"fieldValue\":1.5,\"fieldData\":[\"FLOAT\",{\"min\":\"NaN\",\"max\":\"1e9999\"}]}");
+        var invalid = parse(
+                "{\"fieldType\":\"FLOAT\",\"fieldValue\":1.5,\"fieldData\":[\"FLOAT\",{\"min\":\"NaN\",\"max\":\"1e9999\"}]}");
         assertThat(invalid.minimum()).isNull();
         assertThat(invalid.maximum()).isNull();
         assertValid(reversed);
         assertValid(invalid);
     }
 
-    @Test void stringLimitsAndRequiredUseOnlyValidExplicitMetadata() {
+    @Test
+    void stringLimitsAndRequiredUseOnlyValidExplicitMetadata() {
         var limited = parse("""
                 {"fieldType":"STRING","fieldValue":"too long","required":false,
                  "fieldData":["STRING",{"maxLength":4,"required":true,"default":"okay"}]}
@@ -251,14 +284,16 @@ class RunningHubInputMetadataTest {
         assertThat(limited.maxLength()).isEqualTo(4);
         assertThat(limited.defaultValue().asText()).isEqualTo("okay");
         assertThat(limited.required()).isFalse();
-        var required = parse("{\"fieldType\":\"STRING\",\"required\":\"true\",\"fieldData\":[\"STRING\",{\"required\":true,\"maxLength\":20001}]}");
+        var required = parse(
+                "{\"fieldType\":\"STRING\",\"required\":\"true\",\"fieldData\":[\"STRING\",{\"required\":true,\"maxLength\":20001}]}");
         assertThat(required.required()).isTrue();
         assertThat(required.maxLength()).isNull();
         assertThat(parse("{\"fieldType\":\"STRING\",\"required\":\"true\"}").required()).isFalse();
         assertValid(limited);
     }
 
-    @Test void parsingLeavesTheCompleteSourceUnchangedAndUsesNoDescriptionDefaults() {
+    @Test
+    void parsingLeavesTheCompleteSourceUnchangedAndUsesNoDescriptionDefaults() {
         ObjectNode source = (ObjectNode) mapper.readTree("""
                 {"nodeName":"PrimitiveFloat","description":"时长默认 6 秒","fieldType":"FLOAT",
                  "fieldValue":"12"}
@@ -272,13 +307,19 @@ class RunningHubInputMetadataTest {
         assertValid(parsed);
     }
 
-    private RunningHubInputMetadata.Parsed parse(String json) { return parse(mapper.readTree(json)); }
-    private RunningHubInputMetadata.Parsed parse(JsonNode input) { return RunningHubInputMetadata.parse(mapper, input); }
+    private RunningHubInputMetadata.Parsed parse(String json) {
+        return parse(mapper.readTree(json));
+    }
+    private RunningHubInputMetadata.Parsed parse(JsonNode input) {
+        return RunningHubInputMetadata.parse(mapper, input);
+    }
 
     private void assertValid(RunningHubInputMetadata.Parsed parsed) {
-        RunningHubDefinition.validateFields(List.of(new RunningHubDefinition.Field("input1", "Synthetic parameter", null,
-                parsed.type(), parsed.required(), parsed.defaultValue(), parsed.minimum(), parsed.maximum(), parsed.maxLength(),
-                parsed.options(), false, "1", "value", RunningHubDefinition.Source.PARAMETER,
-                RunningHubDefinition.Encoding.NATIVE, null, null)));
+        RunningHubDefinition
+                .validateFields(List.of(new RunningHubDefinition.Field("input1", "Synthetic parameter", null,
+                        parsed.type(), parsed.required(), parsed.defaultValue(), parsed.minimum(), parsed.maximum(),
+                        parsed.maxLength(),
+                        parsed.options(), false, "1", "value", RunningHubDefinition.Source.PARAMETER,
+                        RunningHubDefinition.Encoding.NATIVE, null, null)));
     }
 }

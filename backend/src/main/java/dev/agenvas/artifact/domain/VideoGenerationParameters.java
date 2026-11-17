@@ -20,18 +20,24 @@ public record VideoGenerationParameters(String aspectRatio, String videoResoluti
     public static final String RESOLUTION_PATTERN = "[1-9][0-9]{2,3}p";
     private static final Set<String> FIELDS = Set.of("aspectRatio", "videoResolution");
 
-    public VideoGenerationParameters(String aspectRatio) { this(aspectRatio, null); }
+    public VideoGenerationParameters(String aspectRatio) {
+        this(aspectRatio, null);
+    }
 
     public static VideoGenerationParameters parse(JsonNode input) {
         if (input == null || input.isMissingNode() || input.isNull()) {
             return new VideoGenerationParameters(AUTO_ASPECT_RATIO);
         }
-        if (!input.isObject()) throw invalid(ApiMessage.of("api.video-generation-parameters.video-generation-parameters-must-be-objects"));
+        if (!input.isObject())
+            throw invalid(ApiMessage.of("api.video-generation-parameters.video-generation-parameters-must-be-objects"));
         for (String field : input.propertyNames()) {
-            if (!FIELDS.contains(field)) throw invalid(ApiMessage.of("api.video-generation-parameters.video-generation-parameters-contain-an-unknown-field", field));
+            if (!FIELDS.contains(field))
+                throw invalid(ApiMessage.of(
+                        "api.video-generation-parameters.video-generation-parameters-contain-an-unknown-field", field));
         }
         JsonNode value = input.get("aspectRatio");
-        String aspectRatio = value == null ? AUTO_ASPECT_RATIO
+        String aspectRatio = value == null
+                ? AUTO_ASPECT_RATIO
                 : value.isTextual() ? value.asText() : null;
         if (aspectRatio == null || !ASPECT_RATIOS.contains(aspectRatio)) {
             throw invalid(ApiMessage.of("api.video-generation-parameters.video-ratio-must-be-auto-16-9-9-16-or"));
@@ -45,7 +51,8 @@ public record VideoGenerationParameters(String aspectRatio, String videoResoluti
     public ObjectNode toJson(ObjectMapper mapper) {
         ObjectNode result = mapper.createObjectNode();
         result.put("aspectRatio", aspectRatio);
-        if (videoResolution != null) result.put("videoResolution", videoResolution);
+        if (videoResolution != null)
+            result.put("videoResolution", videoResolution);
         return result;
     }
 

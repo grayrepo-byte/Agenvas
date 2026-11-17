@@ -10,5 +10,7 @@ import org.springframework.context.annotation.Configuration;
 public class SystemLogConfiguration {
     @Bean
     @ConditionalOnMissingBean(SystemLogBuffer.class)
-    SystemLogBuffer systemLogBuffer(Clock clock) { return new SystemLogBuffer(clock); }
+    SystemLogBuffer systemLogBuffer(Clock clock) {
+        return new SystemLogBuffer(clock);
+    }
 }

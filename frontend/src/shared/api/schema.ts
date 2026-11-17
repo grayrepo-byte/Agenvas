@@ -646,7 +646,7 @@ export interface paths {
         put?: never;
         /**
          * 使用 MCP 令牌上传项目媒体并创建精确内容版本
-         * @description 原生客户端调用 prepare_media_upload 后，以同一 Bearer 令牌 POST metadata JSON part 和 file 二进制 part。要求 READ + CONTENT_WRITE；不接受 Session、Origin 或本地文件路径。实际大小与 SHA-256 必须匹配；同 commandId 同参数重放返回原结果，异参返回409。默认只创建项目资源，提供 placement 时同时放置节点。图片20 MiB、音频50 MiB、MP4视频500 MiB，请求总限501 MiB，实际解码与像素/时长限制沿用普通上传。恢复模式与关闭MCP时拒绝，不触发生成。
+         * @description 原生客户端调用 prepare_media_upload 后，以同一 Bearer 令牌 POST metadata JSON part 和 file 二进制 part。要求 READ + CONTENT_WRITE；不接受 Session、Origin 或本地文件路径。实际大小与 SHA-256 必须匹配；同 commandId 同参数重放返回原结果，异参返回409。默认只创建项目资源，提供 placement 时同时放置节点。图片20 MiB、音频50 MiB、MP4视频500 MiB，请求总限501 MiB；无声WebM沿用普通上传的48MiB/960px/7200帧/121秒边界，转为真实MP4归档。实际解码与像素/时长限制沿用普通上传。恢复模式与关闭MCP时拒绝，不触发生成。
          */
         post: operations["uploadMcpMedia"];
         delete?: never;
@@ -1764,11 +1764,127 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** 读取管理员模型配置的脱敏状态 */
+        /**
+         * 读取管理员当前活动模型配置的脱敏状态
+         * @description 仅接受管理员网页登录 Session；返回 Cache-Control no-store，不包含凭证明文或密文。
+         */
         get: operations["getLlmSettings"];
-        /** 用完整新凭证替换活动模型配置版本 */
+        /**
+         * 保存当前活动模型连接并追加配置版本
+         * @description 仅接受管理员网页登录 Session 与 CSRF 校验。已有连接的 apiKey 缺省、null、空字符串或纯空白时保留服务端旧密钥；首次配置必须提供有效密钥。非空密钥由服务端校验 8–4096 个可打印 ASCII 字符。密钥只单次提交到服务端，不返回浏览器或记录到日志。
+         */
         put: operations["replaceLlmSettings"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/llm/connections": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 读取管理员已保存模型连接及当前活动连接
+         * @description 仅接受管理员网页登录 Session；只返回连接最新版本的脱敏元数据，不返回凭证明文或密文。空目录的 activeConnectionId 为 null，activeVersion 为 0。
+         */
+        get: operations["listLlmConnections"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/llm/connections/{id}": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 独立创建或 CAS 保存一个命名模型连接
+         * @description 仅接受管理员网页登录 Session 与 CSRF 校验。expectedVersion 为 0 时以客户端生成的固定 id 新建连接，大于 0 时须匹配该连接最新版本；保存不切换当前活动连接。已有连接的 apiKey 缺省、null、空字符串或纯空白时保留服务端旧密钥，新建必须提供有效密钥；非空密钥由服务端校验 8–4096 个可打印 ASCII 字符。凭证只单次提交到服务端，不返回浏览器或记录到日志。
+         */
+        put: operations["saveLlmConnection"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/llm/connections/{id}/activate": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 显式切换当前活动模型连接
+         * @description 仅接受管理员网页登录 Session 与 CSRF 校验。须同时匹配目标连接最新版本与全局 activeVersion；切换追加全局不可变配置版本并更新目标连接最新版本，保留其已有工具协议验证结果。目标已是当前活动连接时可原样返回，不调用模型。既有任务继续使用已固定的历史配置。
+         */
+        post: operations["activateLlmConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/llm/connections/{id}/diagnose": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 独立验证指定已保存模型连接的工具协议
+         * @description 仅接受管理员网页登录 Session 与 CSRF 校验。显式确认可能计费后，对 expectedVersion 对应的连接版本执行最多两次工具协议诊断；连接无需处于活动状态，诊断不切换活动连接。成功仅在连接最新版本仍匹配时记入验证结果；并发修改返回冲突，不把旧诊断标记到新配置。不自动重试，已验证且未变更的配置不重复调用。调用日志沿用现有 DIAGNOSTIC 权限与 debug 正文规则，不记录凭证。
+         */
+        post: operations["diagnoseLlmConnection"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1807,7 +1923,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 管理员读取模型列表和容量元数据，不运行推理或保存配置 */
+        /**
+         * 管理员读取模型列表和容量元数据，不运行推理或保存配置
+         * @description 仅接受管理员网页登录 Session 与 CSRF 校验。SAVED 使用 connectionId 指定连接的最新版本和服务端凭证，并校验 expectedVersion；DRAFT 可使用修改后的 endpoint，apiKey 缺省、null、空字符串或纯空白时从该连接保留服务端密钥。缺省 connectionId 沿用当前活动配置语义。密钥不返回浏览器或记录到日志。
+         */
         post: operations["previewLlmModels"];
         delete?: never;
         options?: never;
@@ -1831,8 +1950,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 管理员显式发起最多两次可能计费的工具协议诊断
-         * @description 每次实际调用记录为无项目的 DIAGNOSTIC 日志，默认仅记录安全元数据；开启系统 debug 后按现有权限采集正文。第一轮必须返回唯一且 nonce 精确匹配的探针调用，第二轮必须仅返回工具结果的 proof（允许首尾空白）。失败详情说明具体阶段，显式 Token 截断不验证工具能力。不自动重试，已验证且未变更的配置不重复调用。
+         * 管理员对当前活动配置显式发起最多两次可能计费的工具协议诊断
+         * @description 仅接受管理员网页登录 Session 与 CSRF 校验。每次实际调用记录为无项目的 DIAGNOSTIC 日志，默认仅记录安全元数据；开启系统 debug 后按现有权限采集正文，不记录凭证。第一轮必须返回唯一且 nonce 精确匹配的探针调用，第二轮必须仅返回工具结果的 proof（允许首尾空白）。失败详情说明具体阶段，显式 Token 截断不验证工具能力。不自动重试，已验证且未变更的配置不重复调用。
          */
         post: operations["diagnoseLlmSettings"];
         delete?: never;
@@ -2418,7 +2537,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 上传并校验私有 MP4 视频素材（最大 500 MiB） */
+        /**
+         * 上传并校验私有视频素材（MP4 或受控无声 WebM）
+         * @description MP4 最大500MiB、10分钟、40MP；无声VP8/VP9 WebM 最大48MiB、每边960px、7200帧、容器121秒（含编码尾容差），完整校验后转换为真实MP4归档。
+         */
         post: operations["uploadVideoAsset"];
         delete?: never;
         options?: never;
@@ -2898,6 +3020,244 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/local-asr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getLocalAsrSettings"];
+        put: operations["updateLocalAsrSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/local-asr/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["downloadLocalAsrModel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/local-asr/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["cancelLocalAsrDownload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/local-asr/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["checkLocalAsrModel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/subtitles": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        /** @description Complete drafts only. Aggregate limit 10000 cues and 8 MiB of UTF-8 JSON including metadata allowance. Exceeding either limit returns 413, never a partial list. */
+        get: operations["listSubtitleDrafts"];
+        put?: never;
+        post: operations["createSubtitleDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/subtitles/capabilities": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        get: operations["getSubtitleCapabilities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/subtitles/{id}": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getSubtitleDraft"];
+        put: operations["saveSubtitleDraft"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/subtitles/{id}/import": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["importSubtitleFile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/subtitles/{id}/recognition": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["recognizeSubtitles"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/subtitles/{id}/recognition/cancel": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["cancelSubtitleRecognition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/subtitles/{id}/export": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["exportSubtitleFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{projectId}/video-compositions": {
         parameters: {
             query?: never;
@@ -2917,9 +3277,34 @@ export interface paths {
         put?: never;
         /**
          * 按分镜和台词对应关系智能排布配音并本地合成
-         * @description 固定有序视频片段与配音精确版本，后台分析原片和配音的声音能量/静音区间并自动适配。声音活动不等于语音识别；无可靠窗口时回退时长排布并记录警告。最多12镜、30句、总时长60秒，素材总大小1GiB，单个音视频最多10分钟。最多1.15倍保音高加速，无法完整容纳时失败，不截断配音。输出720p/1080p、16:9/9:16/1:1、30fps的新视频节点，逐镜向下对齐整帧（少于34ms）并记录实际时间表；支持零配音、取源裁切、0.5–2倍视频速度、首尾淡黑、定时字幕与背景音乐；默认去除原声，KEEP保留完整原声，BACKGROUND保留15%原声（包括原对白）。本地处理无Provider费用，复用Task查询/取消/显式重试；同键异参冲突。
+         * @description 固定有序视频片段与配音精确版本，后台分析原片和配音的声音能量/静音区间并自动适配。声音活动不等于语音识别；无可靠窗口时回退时长排布并记录警告。预算由 capabilities 端点提供，默认60镜、300句、2000条字幕、10分钟和2GiB源素材；绝对上界为120镜、600句、5000条字幕、10分钟和8GiB源素材。单个音视频最多10分钟，输出最多500MiB。最多1.15倍保音高加速，无法完整容纳时失败，不截断配音。输出720p/1080p/2160p（每次导出在程序内选择）、16:9/9:16/1:1、30fps的新视频节点，逐镜向下对齐整帧（少于34ms）并记录实际时间表；支持零配音、取源裁切、0.5–2倍视频速度、首尾淡黑、定时字幕与背景音乐；默认去除原声，KEEP保留完整原声，BACKGROUND保留15%原声（包括原对白）。本地处理无Provider费用，复用Task查询/取消/显式重试；同键异参冲突。
          */
         post: operations["composeVideo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/video-compositions/capabilities": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        /** 读取当前服务端本地成片预算与可用输出规格 */
+        get: operations["getVideoCompositionCapabilities"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -5918,10 +6303,6 @@ export interface components {
             compactionThresholdPercent: number;
             /** @default 4096 */
             responseReserveTokens: number;
-            /** @default 1024 */
-            summaryTokens: number;
-            /** @default 4 */
-            recentToolRounds: number;
             /** @default 1440 */
             recoveryWindowMinutes: number;
             /** @default 288 */
@@ -5940,10 +6321,6 @@ export interface components {
             compactionThresholdPercent: number;
             /** @default 4096 */
             responseReserveTokens: number;
-            /** @default 1024 */
-            summaryTokens: number;
-            /** @default 4 */
-            recentToolRounds: number;
             /** @default 1440 */
             recoveryWindowMinutes: number;
             /** @default 288 */
@@ -6079,6 +6456,10 @@ export interface components {
             mock: boolean;
         };
         MediaSettings: {
+            /** @description Server-owned publication defaults keyed by network adapter ID. LOCAL and MOCK have no entry. Omitted only by older servers; never invent protocol defaults in the browser. */
+            httpTimeoutDefaults?: {
+                [key: string]: components["schemas"]["MediaHttpTimeouts"];
+            };
             connections: components["schemas"]["MediaConnection"][];
             defaults: components["schemas"]["MediaDefault"][];
         };
@@ -6131,6 +6512,8 @@ export interface components {
         };
         /** @description Versioned settings within a compiled adapter protocol. New ComfyUI publication requires comfyWorkflow; legacy model-only capabilities retain their snapshot for recovery and metadata changes. OPENAI and GOOGLE image adapters accept a compatible model name and a connection API base URL; native video uses its fixed official protocol. Defaults fill missing draft fields; limits narrow the published declaration. Pricing is an administrator estimate, never an actual provider charge. */
         FixedMediaAdapterSettings: {
+            /** @description Optional complete policy frozen in this capability version for Provider API calls, input uploads and result downloads. Only network adapters accept it. Absence preserves legacy API and dedicated download defaults. Each phase limit must be at most callSeconds; the whole-call deadline never resets between phases. Editing settings does not retry an UNKNOWN request. */
+            httpTimeouts?: components["schemas"]["MediaHttpTimeouts"];
             comfyWorkflow?: components["schemas"]["ComfyUiWorkflowDefinition"];
             /** @description Derived creator input metadata for a published ComfyUI graph. Includes declared scalar parameters and synthesized PROMPT, reference_0 through reference_13 IMAGE slots, and video DURATION_SECONDS. Does not expose the graph or fixed private literals. Ignored on administrator writes and recomputed by the server. */
             readonly comfyInputs?: components["schemas"]["RunningHubField"][];
@@ -6200,6 +6583,16 @@ export interface components {
             pricingByResolution?: {
                 [key: string]: components["schemas"]["MediaCapabilityPricing"];
             };
+        };
+        MediaHttpTimeouts: {
+            /** @description Connection establishment timeout in seconds; no greater than callSeconds. */
+            connectSeconds: number;
+            /** @description Timeout for a blocked request-body write in seconds; no greater than callSeconds. */
+            writeSeconds: number;
+            /** @description Timeout for a blocked response read including first-byte wait in seconds; no greater than callSeconds. */
+            readSeconds: number;
+            /** @description Whole HTTP call deadline in seconds including connection */
+            callSeconds: number;
         };
         /** @description OpenAI Images API only. Administrator rates in currency per million tokens, mutually exclusive with pricing/pricingByResolution. Frozen on task acceptance. Missing usage keeps cost unknown. Missing cache counts stay unknown; the estimate uses undiscounted input rates. Positive cache usage needs both modality counts and applicable rates. Never an actual provider invoice. */
         ImageTokenPricing: {
@@ -6676,8 +7069,43 @@ export interface components {
             /** Format: uri */
             endpoint: string;
             modelId: string;
-            apiKey: string;
+            /** @description 缺省、null、空字符串或纯空白时保留已有服务端密钥；首次配置必须提供有效密钥。非空密钥由服务端校验 8–4096 个可打印 ASCII 字符，不返回浏览器或写入日志。 */
+            apiKey?: string | null;
             modelSelection?: components["schemas"]["LlmModelSelection"];
+        };
+        LlmConnections: {
+            items: components["schemas"]["LlmConnection"][];
+            /** Format: uuid */
+            activeConnectionId: string | null;
+            activeVersion: number;
+        };
+        LlmConnection: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            version: number;
+            endpoint: string;
+            modelId: string;
+            keyMask: string;
+            toolCallingVerified: boolean;
+            /** Format: date-time */
+            updatedAt: string;
+            modelPolicy: components["schemas"]["LlmModelPolicy"] | null;
+        };
+        SaveLlmConnectionRequest: {
+            name: string;
+            /** @description 0 使用路径固定 id 新建；大于 0 必须匹配该连接最新版本。 */
+            expectedVersion: number;
+            /** Format: uri */
+            endpoint: string;
+            modelId: string;
+            /** @description 缺省、null、空字符串或纯空白时保留该连接已有服务端密钥；新建连接必须提供有效密钥。非空密钥由服务端校验 8–4096 个可打印 ASCII 字符，不返回浏览器或写入日志。 */
+            apiKey?: string | null;
+            modelSelection?: components["schemas"]["LlmModelSelection"];
+        };
+        ActivateLlmConnectionRequest: {
+            expectedVersion: number;
+            expectedActiveVersion: number;
         };
         /** @enum {string} */
         LlmModelProvider: "COMPATIBLE" | "OPENAI" | "OPENROUTER" | "GEMINI" | "ANTHROPIC" | "OLLAMA";
@@ -6723,7 +7151,13 @@ export interface components {
             /** @enum {string} */
             credentialMode: "DRAFT" | "SAVED";
             expectedVersion: number;
+            /**
+             * Format: uuid
+             * @description 指定已保存连接的最新版本与服务端密钥；缺省或 null 时使用当前活动配置语义，不切换活动连接。
+             */
+            connectionId?: string | null;
             endpoint?: string | null;
+            /** @description DRAFT 中缺省、null、空字符串或纯空白时保留指定连接的服务端密钥；非空密钥由服务端校验 8–4096 个可打印 ASCII 字符。不返回浏览器或写入日志。 */
             apiKey?: string | null;
             modelId?: string | null;
         };
@@ -7192,6 +7626,24 @@ export interface components {
             /** Format: int64 */
             version: number;
         };
+        VideoCompositionCapabilities: {
+            maxDurationMs: number;
+            maxFrames: number;
+            maxShots: number;
+            maxLines: number;
+            maxSubtitles: number;
+            /** @constant */
+            maxSourceDurationMs: 600000;
+            /** Format: int64 */
+            maxSourceBytes: number;
+            /** Format: int64 */
+            maxOutputBytes: number;
+            /** @constant */
+            frameRate: 30;
+            timeoutSeconds: number;
+            /** @description 程序支持的全部输出分辨率，由每次导出选择，不受部署配置筛选 */
+            resolutions: ("720P" | "1080P" | "2160P")[];
+        };
         VideoCompositionPreview: {
             durationMs: number;
             frames: number;
@@ -7212,6 +7664,110 @@ export interface components {
                 }[];
             }[];
         };
+        LocalAsrVersionRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+        };
+        LocalAsrSettingsRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+            enabled: boolean;
+        };
+        LocalAsrCancelRequest: {
+            /** Format: uuid */
+            operationId: string;
+        };
+        LocalAsrSettings: {
+            enabled: boolean;
+            /** Format: int64 */
+            version: number;
+            /** @enum {string} */
+            state: "MISSING" | "QUEUED" | "DOWNLOADING" | "VERIFYING" | "READY" | "FAILED" | "CANCELED";
+            /** Format: uuid */
+            operationId: string | null;
+            /** Format: int64 */
+            downloadedBytes: number;
+            /**
+             * Format: int64
+             * @description Zero in operator-provided manual mode
+             */
+            totalBytes: number;
+            errorCode: string | null;
+            /** @enum {string} */
+            readiness: "DISABLED" | "ENGINE_UNAVAILABLE" | "MODEL_MISSING" | "RESOURCE_LIMITED" | "AVAILABLE";
+            modelId: string;
+            engineVersion: string;
+            /** Format: uri */
+            source: string;
+            sha256: string | null;
+            /** @enum {string} */
+            license: "MIT" | "OPERATOR_PROVIDED";
+            /** @enum {string} */
+            mode: "MANAGED" | "MANUAL";
+            memory: {
+                admitted: boolean;
+                /** Format: int64 */
+                limitBytes: number | null;
+                /** Format: int64 */
+                usedBytes: number | null;
+            };
+        };
+        SubtitleCue: {
+            text: string;
+            startMs: number;
+            endMs: number;
+        };
+        /** @description Correctable draft bound to an immutable source version; times are source milliseconds, not composition positions */
+        SubtitleDraft: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            projectId: string;
+            /** Format: uuid */
+            sourceVersionId: string;
+            sourceDurationMs: number;
+            language: string;
+            cues: components["schemas"]["SubtitleCue"][];
+            /** Format: int64 */
+            version: number;
+            /** Format: uuid */
+            taskId: string | null;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CreateSubtitleDraftRequest: {
+            /** Format: uuid */
+            sourceVersionId: string;
+        };
+        SaveSubtitleDraftRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+            cues: components["schemas"]["SubtitleCue"][];
+        };
+        ImportSubtitleFileRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+            /** @enum {string} */
+            format: "SRT" | "VTT";
+            /** @description UTF-8 subtitle file */
+            contents: string;
+        };
+        RecognizeSubtitlesRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+            language: string;
+        };
+        CancelSubtitleRecognitionRequest: {
+            /** Format: uuid */
+            taskId: string;
+        };
+        SubtitleCapabilities: {
+            /** @enum {string} */
+            availability: "AVAILABLE" | "DISABLED" | "ENGINE_UNAVAILABLE" | "MODEL_MISSING" | "RESOURCE_LIMITED" | "NOT_CONFIGURED" | "EXECUTABLE_UNAVAILABLE" | "MODEL_UNAVAILABLE";
+            maxSourceDurationMs: number;
+            maxCues: number;
+            maxFileBytes: number;
+        };
         VideoCompositionRequest: {
             title: string;
             /** @description 面向用户的简短编排依据，不保存模型私有推理 */
@@ -7226,7 +7782,7 @@ export interface components {
                  * @default 720P
                  * @enum {string}
                  */
-                resolution: "720P" | "1080P";
+                resolution: "720P" | "1080P" | "2160P";
                 /**
                  * @default 16:9
                  * @enum {string}
@@ -7251,7 +7807,7 @@ export interface components {
                 videoVersionId: string;
                 /** @default 0 */
                 sourceStartMs: number;
-                /** @description 取源时长；省略时取素材剩余长度；成片时长按速度换算并受60秒总限约束 */
+                /** @description 取源时长；省略时取素材剩余长度；成片时长按速度换算并受当前服务端成片预算约束 */
                 durationMs?: number;
                 /** @default 1 */
                 speed: number;
@@ -7572,8 +8128,8 @@ export interface components {
             directorScene?: components["schemas"]["DirectorScene"];
             content: components["schemas"]["WritableArtifactContent"];
         };
-        /** @description 新场景使用 v2 三轴缩放；v1 统一缩放场景保留原样提交与重放，不改写既有版本。 */
-        DirectorScene: components["schemas"]["DirectorSceneV1"] | components["schemas"]["DirectorSceneV2"];
+        /** @description 新场景使用 v3 三轴缩放与有界相机运镜；v1/v2 保留原样提交与重放，不改写既有版本。 */
+        DirectorScene: components["schemas"]["DirectorSceneV1"] | components["schemas"]["DirectorSceneV2"] | components["schemas"]["DirectorSceneV3"];
         DirectorSceneV1: {
             /** @enum {integer} */
             schemaVersion: 1;
@@ -7589,6 +8145,31 @@ export interface components {
             aspectRatio: "16:9" | "9:16" | "1:1" | "4:3";
             camera: components["schemas"]["DirectorCamera"];
             objects: components["schemas"]["DirectorObjectV2"][];
+        };
+        DirectorSceneV3: {
+            /** @enum {integer} */
+            schemaVersion: 3;
+            /** @enum {string} */
+            aspectRatio: "16:9" | "9:16" | "1:1" | "4:3";
+            camera: components["schemas"]["DirectorCamera"];
+            objects: components["schemas"]["DirectorObjectV2"][];
+            motion: components["schemas"]["DirectorCameraMotion"];
+        };
+        /** @description 本地真实 3D 摄影机预演。关键帧 ID 唯一，时间严格递增且不超过 durationSeconds；首尾之外保持端点机位。不是 Provider 视频轨迹输入。 */
+        DirectorCameraMotion: {
+            durationSeconds: number;
+            keyframes: components["schemas"]["DirectorCameraKeyframe"][];
+        };
+        DirectorCameraKeyframe: {
+            id: string;
+            name: string;
+            timeSeconds: number;
+            /**
+             * @description 到达此机位的过渡。SMOOTH 为 smoothstep；CUT 在目标时刻切换；方位角走最短弧，长弧通过中间关键帧表达。
+             * @enum {string}
+             */
+            transition: "LINEAR" | "SMOOTH" | "CUT";
+            camera: components["schemas"]["DirectorCamera"];
         };
         DirectorCamera: {
             azimuth: number;
@@ -8133,7 +8714,7 @@ export interface components {
             settings: components["schemas"]["FixedMediaAdapterSettings"];
         };
         /** @enum {string} */
-        TaskKind: "AGENT_TURN" | "TEXT_GENERATION" | "IMAGE_GENERATION" | "VIDEO_GENERATION" | "AUDIO_GENERATION";
+        TaskKind: "AGENT_TURN" | "TEXT_GENERATION" | "IMAGE_GENERATION" | "VIDEO_GENERATION" | "AUDIO_GENERATION" | "SUBTITLE_TRANSCRIPTION";
         /** @enum {string} */
         TaskStatus: "READY" | "RUNNING" | "SUBMITTING" | "WAITING_PROVIDER" | "UNKNOWN" | "BLOCKED" | "SUCCEEDED" | "FAILED" | "CANCELED";
         ManualUnknownAttemptRequest: {
@@ -8180,8 +8761,21 @@ export interface components {
              *     内部上下文压缩完成时 contextCompacted=true；不包含 assistantText、assistantStream 或交接摘要正文。
              *     媒体故障或恢复中可包含有界 providerFailure 诊断；成功后使用实际归档结果，不保留旧故障正文。
              *     TEXT_GENERATION 的 IMAGE_REVERSE_PROMPT 用途成功时返回 prompt、sourceVersionId、mock；schema 5 另有 artifactId、artifactVersionId 及 canvasItemId（已删除项目省略节点 ID），schema 3 保持结果文本而不补卡；VIDEO_PROMPT_OPTIMIZATION 仅返回 prompt、mock，其他状态 output=null；不返回请求、模型完整响应或私有推理。
+             *     SUBTITLE_TRANSCRIPTION 成功时返回固定 subtitleId/sourceVersionId、sourceDurationMs、language、可校正 cues、draft=true 和 applied；applied=false 表示识别期间人工校正或任务身份已改变，原识别结果保留而不覆盖草稿。
              */
             output?: ({
+                /** Format: uuid */
+                subtitleId?: string;
+                sourceDurationMs?: number;
+                language?: string;
+                cues?: components["schemas"]["SubtitleCue"][];
+                /** @description Only true when the unchanged pinned subtitle draft received the recognition result */
+                applied?: boolean;
+                /**
+                 * @description Recognition output requires human review
+                 * @constant
+                 */
+                draft?: true;
                 /** @description 反推或优化的原始提示词；文字卡片的后续编辑从产物版本读取。 */
                 prompt?: string;
                 /**
@@ -13168,7 +13762,7 @@ export interface operations {
             /** @description 配置状态，不包含凭证明文或密文 */
             200: {
                 headers: {
-                    "Cache-Control"?: string;
+                    "Cache-Control"?: "no-store";
                     [name: string]: unknown;
                 };
                 content: {
@@ -13176,6 +13770,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
         };
     };
     replaceLlmSettings: {
@@ -13200,7 +13795,7 @@ export interface operations {
             /** @description 新版本的脱敏状态 */
             200: {
                 headers: {
-                    "Cache-Control"?: string;
+                    "Cache-Control"?: "no-store";
                     [name: string]: unknown;
                 };
                 content: {
@@ -13211,6 +13806,170 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    listLlmConnections: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已保存连接目录与活动配置版本；Cache-Control no-store */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmConnections"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    saveLlmConnection: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveLlmConnectionRequest"];
+            };
+        };
+        responses: {
+            /** @description 已保存连接的脱敏最新版本；Cache-Control no-store */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmConnection"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    activateLlmConnection: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivateLlmConnectionRequest"];
+            };
+        };
+        responses: {
+            /** @description 连接目录与当前活动配置版本；Cache-Control no-store */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmConnections"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    diagnoseLlmConnection: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiagnoseLlmRequest"];
+            };
+        };
+        responses: {
+            /** @description 完成诊断后的脱敏连接状态；Cache-Control no-store */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmConnection"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description 模型未完成完整工具协议 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description 模型连接或调用失败 */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             503: components["responses"]["Unavailable"];
         };
     };
@@ -13258,6 +14017,7 @@ export interface operations {
             /** @description 有界模型列表；未知容量为 null，预览十分钟有效且绑定原连接和凭据 */
             200: {
                 headers: {
+                    "Cache-Control"?: "no-store";
                     [name: string]: unknown;
                 };
                 content: {
@@ -13267,6 +14027,8 @@ export interface operations {
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             /** @description 元数据读取正在进行 */
             429: {
                 headers: {
@@ -13285,6 +14047,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            503: components["responses"]["Unavailable"];
             /** @description 元数据读取超时，保留草稿 */
             504: {
                 headers: {
@@ -13318,7 +14081,7 @@ export interface operations {
             /** @description 完成诊断后的脱敏配置状态 */
             200: {
                 headers: {
-                    "Cache-Control"?: string;
+                    "Cache-Control"?: "no-store";
                     [name: string]: unknown;
                 };
                 content: {
@@ -13347,6 +14110,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            503: components["responses"]["Unavailable"];
         };
     };
     listAutoDlWorkflows: {
@@ -15342,6 +16106,480 @@ export interface operations {
             422: components["responses"]["ValidationError"];
         };
     };
+    getLocalAsrSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Administrator-only local ASR state; no network work on GET or enable */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalAsrSettings"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    updateLocalAsrSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalAsrSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Administrator-only local ASR state; no network work on GET or enable */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalAsrSettings"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    downloadLocalAsrModel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalAsrVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description Administrator-only local ASR state; no network work on GET or enable */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalAsrSettings"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    cancelLocalAsrDownload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalAsrCancelRequest"];
+            };
+        };
+        responses: {
+            /** @description Administrator-only local ASR state; no network work on GET or enable */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalAsrSettings"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    checkLocalAsrModel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalAsrVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description Administrator-only local ASR state; no network work on GET or enable */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalAsrSettings"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listSubtitleDrafts: {
+        parameters: {
+            query: {
+                sourceVersionId: string[];
+            };
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Fixed-source editable subtitle draft or accepted local recognition task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubtitleDraft"][];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description SUBTITLE_BATCH_TOO_LARGE; reduce the requested sources. No partial drafts are returned. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createSubtitleDraft: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSubtitleDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Fixed-source editable subtitle draft or accepted local recognition task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubtitleDraft"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getSubtitleCapabilities: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Fixed-source editable subtitle draft or accepted local recognition task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubtitleCapabilities"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getSubtitleDraft: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Fixed-source editable subtitle draft or accepted local recognition task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubtitleDraft"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    saveSubtitleDraft: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveSubtitleDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Fixed-source editable subtitle draft or accepted local recognition task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubtitleDraft"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    importSubtitleFile: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportSubtitleFileRequest"];
+            };
+        };
+        responses: {
+            /** @description Fixed-source editable subtitle draft or accepted local recognition task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubtitleDraft"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    recognizeSubtitles: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+                "Idempotency-Key": string;
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecognizeSubtitlesRequest"];
+            };
+        };
+        responses: {
+            /** @description Fixed-source editable subtitle draft or accepted local recognition task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Local ASR is not configured or unavailable; no model is downloaded and no media is uploaded */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    cancelSubtitleRecognition: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelSubtitleRecognitionRequest"];
+            };
+        };
+        responses: {
+            /** @description Fixed-source editable subtitle draft or accepted local recognition task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    exportSubtitleFile: {
+        parameters: {
+            query: {
+                format: "SRT" | "VTT";
+            };
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Source-time subtitles, UTF-8 plain text; timing edits are preserved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/x-subrip": string;
+                    "text/vtt": string;
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     composeVideo: {
         parameters: {
             query?: never;
@@ -15378,6 +16616,36 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    getVideoCompositionCapabilities: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 有效资源预算与程序支持的输出分辨率，不包含本机路径；分辨率由每次导出选择，部署配置不筛选选项 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoCompositionCapabilities"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
         };
     };
     previewVideoComposition: {
@@ -17450,7 +18718,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Accepted local transfer. PNG/JPEG/WebP:20 MiB/40 MP; MP3/WAV/OGG Opus:50 MiB/10min; decoded MP4:50 MiB/40 MP/60sec. */
+            /** @description Accepted local transfer. PNG/JPEG/WebP:20 MiB/40 MP; MP3/WAV/OGG Opus:50 MiB/10min; decoded MP4:500 MiB/40 MP/10min. Silent VP8/VP9 WebM imports:48 MiB/960px per edge/7200 frames/121sec including encoding tail; validated and converted to MP4. */
             202: {
                 headers: {
                     [name: string]: unknown;

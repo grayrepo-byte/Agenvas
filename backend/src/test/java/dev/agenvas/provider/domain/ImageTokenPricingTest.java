@@ -17,7 +17,9 @@ class ImageTokenPricingTest {
                 "\"cachedInputTokens\":1,\"cachedTextInputTokens\":1,\"cachedImageInputTokens\":0",
                 "\"cachedTextInputTokens\":0", "\"cachedTextInputTokens\":-1,\"cachedImageInputTokens\":0",
                 "\"cachedInputTokens\":101", "\"totalTokens\":999", "\"imageOutputTokens\":1")) {
-            var usage = mapper.readTree("{\"valid\":true,\"inputTokens\":100,\"textInputTokens\":100,\"imageInputTokens\":0,\"outputTokens\":2," + fields + "}");
+            var usage = mapper.readTree(
+                    "{\"valid\":true,\"inputTokens\":100,\"textInputTokens\":100,\"imageInputTokens\":0,\"outputTokens\":2,"
+                            + fields + "}");
             assertThat(ImageTokenPricing.estimate(rates, usage)).as(fields).isNull();
         }
         var oversized = mapper.readTree("""

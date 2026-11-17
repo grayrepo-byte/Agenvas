@@ -92,5 +92,7 @@ class TaskWorkerOwnerTest {
         return task;
     }
 
-    private enum ChangedScope { PROJECT, RUN, ABSENT_RUN }
+    private enum ChangedScope {
+        PROJECT, RUN, ABSENT_RUN
+    }
 }

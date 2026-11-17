@@ -29,14 +29,18 @@ class SeedAudioClientTest {
             var body = mapper.readTree(exchange.getRequestBody().readAllBytes());
             assertThat(body.path("model").asText()).isEqualTo("seed-audio-1.0");
             assertThat(body.path("text_prompt").asText()).isEqualTo("参考 @音频1 说你好");
-            assertThat(body.at("/references/0/audio_data").asText()).isEqualTo(Base64.getEncoder().encodeToString(firstAudio));
+            assertThat(body.at("/references/0/audio_data").asText())
+                    .isEqualTo(Base64.getEncoder().encodeToString(firstAudio));
             assertThat(body.at("/references/1/speaker").asText()).isEqualTo("zh_female_vv_uranus_bigtts");
             assertThat(body.at("/audio_config/speech_rate").asInt()).isEqualTo(-20);
             assertThat(body.at("/audio_config/loudness_rate").asInt()).isEqualTo(15);
             assertThat(body.at("/audio_config/pitch_rate").asInt()).isEqualTo(3);
-            byte[] response = ("{\"audio\":\"" + Base64.getEncoder().encodeToString(resultAudio) + "\",\"original_duration\":3}").getBytes();
+            byte[] response = ("{\"audio\":\"" + Base64.getEncoder().encodeToString(resultAudio)
+                    + "\",\"original_duration\":3}").getBytes();
             exchange.sendResponseHeaders(200, response.length);
-            try (var output = exchange.getResponseBody()) { output.write(response); }
+            try (var output = exchange.getResponseBody()) {
+                output.write(response);
+            }
         });
         server.start();
         try {
@@ -44,20 +48,27 @@ class SeedAudioClientTest {
             assertThat(client.synthesize("fake-key", "request-1", "参考 @音频1 说你好",
                     new AudioGenerationParameters("zh_female_vv_uranus_bigtts", -20, 15, 3),
                     List.of(new SeedAudioClient.Reference("audio_data", firstAudio)))).isEqualTo(resultAudio);
-        } finally { server.stop(0); }
+        } finally {
+            server.stop(0);
+        }
     }
     @Test
     void lostResponseIsUnknownAndPostNeverRetries() throws Exception {
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         var requests = new AtomicInteger();
-        server.createContext("/api/v3/tts/create", exchange -> { requests.incrementAndGet(); exchange.close(); });
+        server.createContext("/api/v3/tts/create", exchange -> {
+            requests.incrementAndGet();
+            exchange.close();
+        });
         server.start();
         try {
             var client = new SeedAudioClient(mapper, URI.create("http://127.0.0.1:" + server.getAddress().getPort()));
             assertThatThrownBy(() -> client.synthesize("fake-key", "request-1", "Hello",
                     AudioGenerationParameters.parse(null), List.of())).isInstanceOf(SeedAudioClient.Uncertain.class);
             assertThat(requests).hasValue(1);
-        } finally { server.stop(0); }
+        } finally {
+            server.stop(0);
+        }
     }
     @Test
     void malformedSuccessAndRedirectNeverRetryOrFollowLocation() throws Exception {
@@ -71,26 +82,36 @@ class SeedAudioClientTest {
                 exchange.getResponseHeaders().set("Location", "/redirected");
                 byte[] response = "invalid-json".getBytes(java.nio.charset.StandardCharsets.UTF_8);
                 exchange.sendResponseHeaders(status, response.length);
-                try (var output = exchange.getResponseBody()) { output.write(response); }
+                try (var output = exchange.getResponseBody()) {
+                    output.write(response);
+                }
             });
-            server.createContext("/redirected", exchange -> { redirectedRequests.incrementAndGet(); exchange.close(); });
+            server.createContext("/redirected", exchange -> {
+                redirectedRequests.incrementAndGet();
+                exchange.close();
+            });
             server.start();
             try {
-                var client = new SeedAudioClient(mapper, URI.create("http://127.0.0.1:" + server.getAddress().getPort()));
+                var client = new SeedAudioClient(mapper,
+                        URI.create("http://127.0.0.1:" + server.getAddress().getPort()));
                 assertThatThrownBy(() -> client.synthesize("fake-key", "request-1", "Hello",
-                        AudioGenerationParameters.parse(null), List.of())).isInstanceOf(SeedAudioClient.Uncertain.class);
+                        AudioGenerationParameters.parse(null), List.of()))
+                        .isInstanceOf(SeedAudioClient.Uncertain.class);
                 assertThat(requests).hasValue(1);
                 assertThat(redirectedRequests).hasValue(0);
-            } finally { server.stop(0); }
+            } finally {
+                server.stop(0);
+            }
         }
     }
     @Test
     void acceptsCustomOriginsAndRejectsInvalidAudioControls() {
         assertThatCode(() -> new SeedAudioClient(mapper, URI.create("http://localhost:8090")))
                 .doesNotThrowAnyException();
-        for (String json : List.of("{\"speechRate\":101}", "{\"pitchRate\":13}", "{\"loudnessRate\":-51}", "{\"speaker\":\"bad\\nspeaker\"}"))
+        for (String json : List.of("{\"speechRate\":101}", "{\"pitchRate\":13}", "{\"loudnessRate\":-51}",
+                "{\"speaker\":\"bad\\nspeaker\"}"))
             assertThatThrownBy(() -> AudioGenerationParameters.parse(mapper.readTree(json)))
                     .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
-        assertThat(AudioGenerationParameters.parse(mapper.readTree("{}" )).speaker()).isEmpty();
+        assertThat(AudioGenerationParameters.parse(mapper.readTree("{}")).speaker()).isEmpty();
     }
 }

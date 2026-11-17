@@ -48,9 +48,10 @@ class CanvasOutputPlacementTest {
     private final CanvasService canvas = new CanvasService(projects, artifacts,
             drafts, items, mock(CanvasConnectionService.class),
             events, mapper, Clock.fixed(NOW, java.time.ZoneOffset.UTC),
-                    new org.springframework.beans.factory.support.StaticListableBeanFactory(java.util.Map.of("characters",
-                            mock(dev.agenvas.character.application.CharacterService.class)))
-                            .getBeanProvider(dev.agenvas.character.application.CharacterService.class), dev.agenvas.testing.CreationMessagesTestSupport.messages());
+            new org.springframework.beans.factory.support.StaticListableBeanFactory(java.util.Map.of("characters",
+                    mock(dev.agenvas.character.application.CharacterService.class)))
+                    .getBeanProvider(dev.agenvas.character.application.CharacterService.class),
+            dev.agenvas.testing.CreationMessagesTestSupport.messages());
 
     @BeforeEach
     void setup() {
@@ -63,11 +64,13 @@ class CanvasOutputPlacementTest {
     @Test
     void directGroupPlacementRejectsOverflowBeforeCreatingAnyNode() {
         when(items.groupExists(owner, project, groupId)).thenReturn(true);
-        List<CanvasItem> full = java.util.stream.IntStream.range(0, 100).mapToObj(index -> groupedCard(UUID.randomUUID())).toList();
+        List<CanvasItem> full = java.util.stream.IntStream.range(0, 100)
+                .mapToObj(index -> groupedCard(UUID.randomUUID())).toList();
         when(items.list(owner, project)).thenReturn(full);
         executeProjectMutation();
         assertThatThrownBy(() -> canvas.apply(owner, project, List.of(groupPlacement(UUID.randomUUID()))))
-                .isInstanceOfSatisfying(ApiProblemException.class, problem -> assertThat(problem.code()).isEqualTo("CANVAS_EDIT_LIMIT"));
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        problem -> assertThat(problem.code()).isEqualTo("CANVAS_EDIT_LIMIT"));
         verify(items, never()).create(any());
     }
 
@@ -89,7 +92,8 @@ class CanvasOutputPlacementTest {
 
     private void executeProjectMutation() {
         when(events.recordChange(any(), any(), any())).thenAnswer(call -> {
-            @SuppressWarnings("unchecked") Supplier<ProjectEventService.Change<Object>> mutation = call.getArgument(2);
+            @SuppressWarnings("unchecked")
+            Supplier<ProjectEventService.Change<Object>> mutation = call.getArgument(2);
             return new ProjectEventService.RecordedChange<>(mutation.get().value(), null);
         });
     }
@@ -99,7 +103,8 @@ class CanvasOutputPlacementTest {
     }
     private CanvasItem groupedCard(UUID id) {
         return new CanvasItem(id, project, CanvasItem.SubjectType.ARTIFACT, artifactId, null, "Result",
-                BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("300"), new BigDecimal("200"), 0, groupId, false, 0, NOW, NOW);
+                BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("300"), new BigDecimal("200"), 0, groupId, false, 0,
+                NOW, NOW);
     }
 
     @Test
@@ -238,7 +243,8 @@ class CanvasOutputPlacementTest {
         assertThatThrownBy(() -> canvas.placeTaskMediaOutputWithinChange(owner, project, sourceId,
                 artifactId, 1, mapper.createObjectNode()))
                 .isInstanceOfSatisfying(ApiProblemException.class, error -> assertThat(error.detail().key())
-                        .isEqualTo("api.canvas-service.canvas-coordinates-dimensions-or-levels-are-outside-the-allowed-range"));
+                        .isEqualTo(
+                                "api.canvas-service.canvas-coordinates-dimensions-or-levels-are-outside-the-allowed-range"));
         verify(items, never()).create(any());
     }
 
@@ -257,7 +263,8 @@ class CanvasOutputPlacementTest {
         assertThat(output.height()).isEqualByComparingTo("200");
         assertThatThrownBy(() -> canvas.placeTaskMediaOutputWithinChange(owner, project, sourceId,
                 artifactId, 17, mapper.createObjectNode()))
-                .isInstanceOfSatisfying(ApiProblemException.class, error -> assertThat(error.code()).isEqualTo("VALIDATION_ERROR"));
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        error -> assertThat(error.code()).isEqualTo("VALIDATION_ERROR"));
         verify(items, times(1)).create(any());
     }
 

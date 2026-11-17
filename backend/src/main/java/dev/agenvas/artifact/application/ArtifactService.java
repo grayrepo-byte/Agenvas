@@ -103,11 +103,11 @@ public class ArtifactService {
             String requestedTitle,
             JsonNode content) {
         return events.recordChange(ownerId, projectId, () -> {
-                    ArtifactView created = createLocked(ownerId, projectId, kind, requestedTitle,
-                            content, ArtifactVersion.CreatedByKind.USER, null, false);
-                    return ProjectEventService.Change.changed(
-                            created, artifactEvent("artifact.created", created));
-                })
+            ArtifactView created = createLocked(ownerId, projectId, kind, requestedTitle,
+                    content, ArtifactVersion.CreatedByKind.USER, null, false);
+            return ProjectEventService.Change.changed(
+                    created, artifactEvent("artifact.created", created));
+        })
                 .value();
     }
 
@@ -140,18 +140,22 @@ public class ArtifactService {
         projects.requireActiveProject(ownerId, projectId);
         Artifact current = artifacts.findForUpdate(ownerId, projectId, artifactId).orElseThrow(this::notFound);
         if (current.kind() != Artifact.Kind.TEXT || current.version() != expectedVersion
-                || !java.util.Objects.equals(current.resourceDefaultVersionId(), expectedContentVersion)) throw versionConflict();
+                || !java.util.Objects.equals(current.resourceDefaultVersionId(), expectedContentVersion))
+            throw versionConflict();
         requireEditable(current);
         if (!artifacts.setResourceDefaultVersion(ownerId, projectId, artifactId, expectedVersion,
-                current.resourceDefaultVersionId(), current.title(), clock.instant())) throw versionConflict();
+                current.resourceDefaultVersionId(), current.title(), clock.instant()))
+            throw versionConflict();
     }
 
     /** Trusted library boundary. Ordinary artifact writes cannot assert this provenance. */
     @Transactional
     public ArtifactView createLibraryImport(UUID ownerId, UUID projectId, Artifact.Kind kind,
             String title, JsonNode textContent, UUID assetId) {
-        JsonNode content = kind == Artifact.Kind.TEXT ? textContent
-                : objectMapper.createObjectNode().put("sourceType", ArtifactVersion.MediaSourceType.LIBRARY_IMPORT.name())
+        JsonNode content = kind == Artifact.Kind.TEXT
+                ? textContent
+                : objectMapper.createObjectNode()
+                        .put("sourceType", ArtifactVersion.MediaSourceType.LIBRARY_IMPORT.name())
                         .put("assetId", assetId.toString());
         return events.recordChange(ownerId, projectId, () -> {
             ArtifactView created = createLocked(ownerId, projectId, kind, title, content,
@@ -170,7 +174,8 @@ public class ArtifactService {
     /** Trusted Skill installation only; ordinary writes cannot forge this origin. */
     @Transactional
     public ArtifactView createSkillImport(UUID ownerId, UUID projectId, String title, UUID assetId) {
-        JsonNode content = objectMapper.createObjectNode().put("sourceType", ArtifactVersion.MediaSourceType.SKILL_IMPORT.name())
+        JsonNode content = objectMapper.createObjectNode()
+                .put("sourceType", ArtifactVersion.MediaSourceType.SKILL_IMPORT.name())
                 .put("assetId", assetId.toString());
         return events.recordChange(ownerId, projectId, () -> {
             ArtifactView created = createLocked(ownerId, projectId, Artifact.Kind.IMAGE, title, content,
@@ -199,12 +204,14 @@ public class ArtifactService {
         String key = requestedKey == null ? "" : requestedKey.trim();
         if (key.isEmpty() || key.length() > 200) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
-                    ApiMessage.of("api.artifact-service.idempotent-key-is-invalid"), ApiMessage.of("api.artifact-service.idempotency-key-must-be-1-to-200-characters"), false);
+                    ApiMessage.of("api.artifact-service.idempotent-key-is-invalid"),
+                    ApiMessage.of("api.artifact-service.idempotency-key-must-be-1-to-200-characters"), false);
         }
         String title = validateTitle(requestedTitle);
         if (kind == null || (normalizedContent == null && !isMediaKind(kind))) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
-                    ApiMessage.of("api.artifact-content-validator.product-content-is-invalid"), ApiMessage.of("api.artifact-service.product-type-and-complete-content-must-be-provided"), false);
+                    ApiMessage.of("api.artifact-content-validator.product-content-is-invalid"),
+                    ApiMessage.of("api.artifact-service.product-type-and-complete-content-must-be-provided"), false);
         }
         String scope = "project:" + projectId + ":create-artifact";
         String requestHash = Sha256.hex(kind.name() + "\n" + title + "\n" + normalizedContent);
@@ -215,7 +222,10 @@ public class ArtifactService {
                     .orElseThrow(this::createInProgress);
             if (!existing.requestHash().equals(requestHash)) {
                 throw new ApiProblemException(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT",
-                        ApiMessage.of("api.artifact-service.idempotent-keys-have-been-used-for-different-requests"), ApiMessage.of("api.artifact-service.please-use-new-idempotency-key-for-different-product-content"), false);
+                        ApiMessage.of("api.artifact-service.idempotent-keys-have-been-used-for-different-requests"),
+                        ApiMessage.of(
+                                "api.artifact-service.please-use-new-idempotency-key-for-different-product-content"),
+                        false);
             }
             if (existing.state() != IdempotencyState.COMPLETED || existing.artifactId() == null
                     || existing.responseJson() == null) {
@@ -249,7 +259,8 @@ public class ArtifactService {
     /** 同一创建键已预留但尚未完成时返回可重试冲突。 */
     private ApiProblemException createInProgress() {
         return new ApiProblemException(HttpStatus.CONFLICT, "IDEMPOTENCY_IN_PROGRESS",
-                ApiMessage.of("api.artifact-service.the-same-request-is-being-processed"), ApiMessage.of("api.artifact-service.please-try-again-later-with-the-same-idempotency-key"), true);
+                ApiMessage.of("api.artifact-service.the-same-request-is-being-processed"),
+                ApiMessage.of("api.artifact-service.please-try-again-later-with-the-same-idempotency-key"), true);
     }
 
     /** Agent 通过已鉴权 Run 创建新产物；复用用户创建路径的正文、引用和媒体校验。 */
@@ -284,7 +295,8 @@ public class ArtifactService {
     @Transactional
     public ArtifactView createUploadedMediaFromExternalTool(UUID ownerId, UUID projectId,
             Artifact.Kind kind, String title, UUID assetId) {
-        if (!isMediaKind(kind)) throw new IllegalArgumentException("Media kind required");
+        if (!isMediaKind(kind))
+            throw new IllegalArgumentException("Media kind required");
         // Only this trusted upload boundary constructs UPLOAD content for an external author.
         // Generic external create/revise commands still cannot assert an archived media origin.
         JsonNode content = objectMapper.createObjectNode()
@@ -311,15 +323,21 @@ public class ArtifactService {
     private ArtifactView createLocked(UUID ownerId, UUID projectId, Artifact.Kind kind,
             String requestedTitle, JsonNode content, ArtifactVersion.CreatedByKind createdByKind,
             UUID runId, boolean trustedImport) {
-        if (content != null && content.isNull()) content = null;
-        if (createdByKind == ArtifactVersion.CreatedByKind.TASK) projects.getRetainedProject(ownerId, projectId);
-        else projects.requireActiveProject(ownerId, projectId);
+        if (content != null && content.isNull())
+            content = null;
+        if (createdByKind == ArtifactVersion.CreatedByKind.TASK)
+            projects.getRetainedProject(ownerId, projectId);
+        else
+            projects.requireActiveProject(ownerId, projectId);
         String title = validateTitle(requestedTitle);
         if (content == null && isMediaKind(kind)) {
             if (createdByKind != ArtifactVersion.CreatedByKind.USER
                     && createdByKind != ArtifactVersion.CreatedByKind.EXTERNAL_TOOL) {
                 throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
-                        ApiMessage.of("api.artifact-service.media-text-is-invalid"), ApiMessage.of("api.artifact-service.media-artifacts-created-by-tasks-and-agents-must-contain-archived"), false);
+                        ApiMessage.of("api.artifact-service.media-text-is-invalid"),
+                        ApiMessage.of(
+                                "api.artifact-service.media-artifacts-created-by-tasks-and-agents-must-contain-archived"),
+                        false);
             }
             Instant now = clock.instant();
             Artifact empty = new Artifact(UUID.randomUUID(), projectId, kind, title,
@@ -328,7 +346,8 @@ public class ArtifactService {
             return new ArtifactView(empty, null);
         }
         contentValidator.validate(kind, content);
-        if (!trustedImport) requireUploadAuthorship(kind, content, createdByKind);
+        if (!trustedImport)
+            requireUploadAuthorship(kind, content, createdByKind);
         validateMediaAsset(ownerId, projectId, kind, content);
         Instant now = clock.instant();
         UUID artifactId = UUID.randomUUID();
@@ -372,7 +391,7 @@ public class ArtifactService {
             return new ArtifactView(artifact, null);
         }
         ArtifactVersion current = artifacts.findVersion(
-                        projectId, artifactId, artifact.resourceDefaultVersionId())
+                projectId, artifactId, artifact.resourceDefaultVersionId())
                 .orElseThrow(() -> new IllegalStateException("Artifact resource default is missing"));
         return new ArtifactView(artifact, current);
     }
@@ -407,16 +426,16 @@ public class ArtifactService {
             String requestedTitle,
             JsonNode content) {
         return events.recordChange(ownerId, projectId, () -> {
-                    ArtifactView revised = reviseLocked(
-                            ownerId,
-                            projectId,
-                            artifactId,
-                            expectedArtifactVersion,
-                            requestedTitle,
-                            content, ArtifactVersion.CreatedByKind.USER, null);
-                    return ProjectEventService.Change.changed(
-                            revised, artifactEvent("artifact.version.created", revised));
-                })
+            ArtifactView revised = reviseLocked(
+                    ownerId,
+                    projectId,
+                    artifactId,
+                    expectedArtifactVersion,
+                    requestedTitle,
+                    content, ArtifactVersion.CreatedByKind.USER, null);
+            return ProjectEventService.Change.changed(
+                    revised, artifactEvent("artifact.version.created", revised));
+        })
                 .value();
     }
 
@@ -457,7 +476,9 @@ public class ArtifactService {
             if (canvasItems.artifactItems(ownerId, projectId, artifactId).stream().anyMatch(item -> item.locked())) {
                 throw new ApiProblemException(HttpStatus.CONFLICT, "CANVAS_ITEM_LOCKED",
                         ApiMessage.of("api.creative-artifact-tool-service.card-locked"),
-                        ApiMessage.of("api.creative-artifact-tool-service.locked-cards-cannot-be-arranged-by-the-agent"), false);
+                        ApiMessage
+                                .of("api.creative-artifact-tool-service.locked-cards-cannot-be-arranged-by-the-agent"),
+                        false);
             }
         }
         requireEditable(current);
@@ -522,7 +543,8 @@ public class ArtifactService {
      * @param versions 对应的不可变版本正文及输入引用
      */
     public record ProjectExportVersions(List<Artifact> artifacts,
-            List<ArtifactVersion> versions) {}
+            List<ArtifactVersion> versions) {
+    }
 
     /** 解析所有者可访问的精确历史版本，供显式输入和任务快照使用。 */
     @Transactional(readOnly = true)
@@ -536,10 +558,12 @@ public class ArtifactService {
 
     /** Resolves an exact media version within the authenticated project, never a mutable default. */
     @Transactional(readOnly = true)
-    public ArtifactVersion requireMediaVersionForTask(UUID ownerId, UUID projectId, UUID versionId, Artifact.Kind kind) {
+    public ArtifactVersion requireMediaVersionForTask(UUID ownerId, UUID projectId, UUID versionId,
+            Artifact.Kind kind) {
         projects.get(ownerId, projectId);
         var target = artifacts.findVersionTarget(projectId, versionId).orElseThrow(this::notFound);
-        if (target.kind() != kind || kind == Artifact.Kind.TEXT) throw notFound();
+        if (target.kind() != kind || kind == Artifact.Kind.TEXT)
+            throw notFound();
         return artifacts.findVersion(projectId, target.artifactId(), versionId).orElseThrow(this::notFound);
     }
 
@@ -562,7 +586,8 @@ public class ArtifactService {
     @Transactional(readOnly = true)
     public ArtifactVersion requireCanvasVersion(UUID ownerId, UUID projectId, UUID versionId) {
         ArtifactVersion version = requireVersionById(ownerId, projectId, versionId);
-        if (!currentCanvasVersion(ownerId, projectId, version)) throw inputScopeDenied();
+        if (!currentCanvasVersion(ownerId, projectId, version))
+            throw inputScopeDenied();
         return version;
     }
 
@@ -571,7 +596,8 @@ public class ArtifactService {
     public ArtifactVersion requireAgentReadableVersion(UUID ownerId, UUID projectId,
             JsonNode runSnapshot, UUID versionId) {
         ArtifactVersion version = requireVersionById(ownerId, projectId, versionId);
-        if (ordinaryAgentReadable(ownerId, projectId, runSnapshot, version)) return version;
+        if (ordinaryAgentReadable(ownerId, projectId, runSnapshot, version))
+            return version;
         throw inputScopeDenied();
     }
 
@@ -581,22 +607,29 @@ public class ArtifactService {
     public ArtifactVersion requireAgentReadableVersion(UUID ownerId, UUID projectId,
             JsonNode runSnapshot, UUID trustedRunId, UUID versionId) {
         ArtifactVersion version = requireVersionById(ownerId, projectId, versionId);
-        if (ordinaryAgentReadable(ownerId, projectId, runSnapshot, version)) return version;
-        if (requireArtifact(ownerId, projectId, version.artifactId()).kind() == Artifact.Kind.TEXT) throw inputScopeDenied();
-        if (storyboardReads.allows(ownerId, projectId, version.artifactId(), versionId)) return version;
+        if (ordinaryAgentReadable(ownerId, projectId, runSnapshot, version))
+            return version;
+        if (requireArtifact(ownerId, projectId, version.artifactId()).kind() == Artifact.Kind.TEXT)
+            throw inputScopeDenied();
+        if (storyboardReads.allows(ownerId, projectId, version.artifactId(), versionId))
+            return version;
         if (trustedRunId != null && version.createdByKind() == ArtifactVersion.CreatedByKind.TASK
                 && trustedRunId.equals(version.runId()) && version.content().path("sourceTaskId").isTextual()) {
             UUID sourceTask = null;
-            try { sourceTask = UUID.fromString(version.content().path("sourceTaskId").asText()); }
-            catch (IllegalArgumentException malformed) { /* An untrusted hint cannot identify a task. */ }
+            try {
+                sourceTask = UUID.fromString(version.content().path("sourceTaskId").asText());
+            } catch (IllegalArgumentException malformed) {
+                /* An untrusted hint cannot identify a task. */ }
             if (sourceTask != null && taskOutputReads.allows(ownerId, projectId, trustedRunId, sourceTask,
-                    version.artifactId(), versionId)) return version;
+                    version.artifactId(), versionId))
+                return version;
         }
         throw inputScopeDenied();
     }
 
     private boolean ordinaryAgentReadable(UUID ownerId, UUID projectId, JsonNode runSnapshot, ArtifactVersion version) {
-        if (currentCanvasVersion(ownerId, projectId, version)) return true;
+        if (currentCanvasVersion(ownerId, projectId, version))
+            return true;
         for (JsonNode skill : runSnapshot.path("creativeSkills")) {
             for (JsonNode input : skill.path("inputs")) {
                 if (version.artifactId().toString().equals(input.path("artifactId").asText())
@@ -639,26 +672,29 @@ public class ArtifactService {
             UUID versionId,
             long expectedArtifactVersion) {
         return events.recordChange(ownerId, projectId, () -> {
-                    ArtifactView before = get(ownerId, projectId, artifactId);
-                    ArtifactView selected = setResourceDefaultVersionLocked(
-                            ownerId, projectId, artifactId, versionId, expectedArtifactVersion);
-                    if (before.artifact().version() == selected.artifact().version()) {
-                        return ProjectEventService.Change.unchanged(selected);
-                    }
-                    return ProjectEventService.Change.changed(
-                            selected,
-                            artifactEvent("artifact.resource_default_version.changed", selected));
-                })
+            ArtifactView before = get(ownerId, projectId, artifactId);
+            ArtifactView selected = setResourceDefaultVersionLocked(
+                    ownerId, projectId, artifactId, versionId, expectedArtifactVersion);
+            if (before.artifact().version() == selected.artifact().version()) {
+                return ProjectEventService.Change.unchanged(selected);
+            }
+            return ProjectEventService.Change.changed(
+                    selected,
+                    artifactEvent("artifact.resource_default_version.changed", selected));
+        })
                 .value();
     }
 
     /** Identity for a mixed-kind result of an already accepted task, including late archived-project results. */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
-    public Artifact createTaskMediaIdentityWithinChange(UUID ownerId, UUID projectId, Artifact.Kind kind, String title) {
+    public Artifact createTaskMediaIdentityWithinChange(UUID ownerId, UUID projectId, Artifact.Kind kind,
+            String title) {
         projects.getRetainedProject(ownerId, projectId);
-        if (kind == Artifact.Kind.TEXT) throw new IllegalArgumentException("Media identity required");
+        if (kind == Artifact.Kind.TEXT)
+            throw new IllegalArgumentException("Media identity required");
         Instant now = clock.instant();
-        Artifact artifact = new Artifact(UUID.randomUUID(), projectId, kind, validateTitle(title), null, null, 0, now, now);
+        Artifact artifact = new Artifact(UUID.randomUUID(), projectId, kind, validateTitle(title), null, null, 0, now,
+                now);
         artifacts.createArtifact(artifact);
         events.append(ownerId, projectId, artifactEvent("artifact.created", new ArtifactView(artifact, null)));
         return artifact;
@@ -691,15 +727,17 @@ public class ArtifactService {
                         image.path("role").asText(), index++, Artifact.Kind.IMAGE));
             }
         }
-        if (frozenInput != null) for (JsonNode audio : frozenInput.path("audios")) {
-            references.add(new ArtifactVersion.InputReference(
-                    UUID.fromString(audio.path("versionId").asText()), "AUDIO_REFERENCE",
-                    references.size(), Artifact.Kind.AUDIO));
-        }
-        if (frozenInput != null) for (JsonNode video : frozenInput.path("videos")) {
-            references.add(new ArtifactVersion.InputReference(UUID.fromString(video.path("versionId").asText()),
-                    "VIDEO_REFERENCE", references.size(), Artifact.Kind.VIDEO));
-        }
+        if (frozenInput != null)
+            for (JsonNode audio : frozenInput.path("audios")) {
+                references.add(new ArtifactVersion.InputReference(
+                        UUID.fromString(audio.path("versionId").asText()), "AUDIO_REFERENCE",
+                        references.size(), Artifact.Kind.AUDIO));
+            }
+        if (frozenInput != null)
+            for (JsonNode video : frozenInput.path("videos")) {
+                references.add(new ArtifactVersion.InputReference(UUID.fromString(video.path("versionId").asText()),
+                        "VIDEO_REFERENCE", references.size(), Artifact.Kind.VIDEO));
+            }
         requireUploadAuthorship(current.kind(), content, ArtifactVersion.CreatedByKind.TASK);
         validateReferences(projectId, references);
         if (current.kind() != Artifact.Kind.TEXT) {
@@ -734,12 +772,15 @@ public class ArtifactService {
         requireEditable(current);
         if (current.kind() == Artifact.Kind.TEXT) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
-                    ApiMessage.of("api.identity-service.invalid-request"), ApiMessage.of("api.canvas-service.only-image-and-video-cards-can-be-uploaded-with-additional"), false);
+                    ApiMessage.of("api.identity-service.invalid-request"),
+                    ApiMessage.of("api.canvas-service.only-image-and-video-cards-can-be-uploaded-with-additional"),
+                    false);
         }
         contentValidator.validate(current.kind(), content);
         requireUploadAuthorship(current.kind(), content, ArtifactVersion.CreatedByKind.USER);
         validateMediaAsset(ownerId, projectId, current.kind(), content);
-        if (baseVersionId != null) requireVersion(ownerId, projectId, artifactId, baseVersionId);
+        if (baseVersionId != null)
+            requireVersion(ownerId, projectId, artifactId, baseVersionId);
         Instant now = clock.instant();
         ArtifactVersion revision = new ArtifactVersion(UUID.randomUUID(), projectId,
                 artifactId, artifacts.nextVersionNo(projectId, artifactId),
@@ -756,7 +797,8 @@ public class ArtifactService {
      * @param versionId 新追加的不可变版本 ID
      * @param selected 是否已将该版本设为产物当前选用版本
      */
-    public record TaskVersionResult(UUID versionId, boolean selected) {}
+    public record TaskVersionResult(UUID versionId, boolean selected) {
+    }
 
     /** 调用方持有项目事件锁时执行的版本选择；接受同一版本的安全幂等重放。 */
     private ArtifactView setResourceDefaultVersionLocked(
@@ -813,8 +855,7 @@ public class ArtifactService {
             UUID projectId, List<ArtifactVersion.InputReference> references) {
         Set<UUID> ids = new LinkedHashSet<>();
         references.forEach(reference -> ids.add(reference.versionId()));
-        Map<UUID, ArtifactRepository.VersionTarget> targets =
-                artifacts.findVersionTargets(projectId, ids);
+        Map<UUID, ArtifactRepository.VersionTarget> targets = artifacts.findVersionTargets(projectId, ids);
         for (ArtifactVersion.InputReference reference : references) {
             ArtifactRepository.VersionTarget target = targets.get(reference.versionId());
             if (target == null || target.kind() != reference.expectedKind()) {
@@ -822,7 +863,8 @@ public class ArtifactService {
                         HttpStatus.BAD_REQUEST,
                         "ARTIFACT_REFERENCE_INVALID",
                         ApiMessage.of("api.artifact-service.product-reference-is-invalid"),
-                        ApiMessage.of("api.artifact-service.the-referenced-version-does-not-exist-belongs-to-another-project"),
+                        ApiMessage.of(
+                                "api.artifact-service.the-referenced-version-does-not-exist-belongs-to-another-project"),
                         false);
             }
         }
@@ -844,14 +886,16 @@ public class ArtifactService {
         if (Set.of(ArtifactVersion.MediaSourceType.LIBRARY_IMPORT.name(),
                 ArtifactVersion.MediaSourceType.SKILL_IMPORT.name()).contains(content.path("sourceType").asText())) {
             throw new ApiProblemException(HttpStatus.UNPROCESSABLE_ENTITY, "ARTIFACT_ORIGIN_INVALID",
-                    ApiMessage.of("api.artifact-service.invalid-source"), ApiMessage.of("api.skill-asset-archive.server-only-origin"), false);
+                    ApiMessage.of("api.artifact-service.invalid-source"),
+                    ApiMessage.of("api.skill-asset-archive.server-only-origin"), false);
         }
         if (kind != Artifact.Kind.TEXT
                 && ArtifactVersion.MediaSourceType.UPLOAD.name().equals(content.path("sourceType").asText())
                 && author != ArtifactVersion.CreatedByKind.USER) {
             throw new ApiProblemException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "ARTIFACT_ORIGIN_INVALID", ApiMessage.of("api.artifact-service.invalid-image-source"),
-                    ApiMessage.of("api.artifact-service.images-uploaded-by-users-can-only-create-versions-by-user"), false);
+                    ApiMessage.of("api.artifact-service.images-uploaded-by-users-can-only-create-versions-by-user"),
+                    false);
         }
     }
 
@@ -912,7 +956,8 @@ public class ArtifactService {
      * @param artifact 产物身份、资源默认版本指针和项目状态
      * @param resourceDefaultVersion 资源默认指针对应的完整不可变正文
      */
-    public record ArtifactView(Artifact artifact, ArtifactVersion resourceDefaultVersion) {}
+    public record ArtifactView(Artifact artifact, ArtifactVersion resourceDefaultVersion) {
+    }
 
     private static boolean isMediaKind(Artifact.Kind kind) {
         return kind != Artifact.Kind.TEXT;
@@ -924,5 +969,6 @@ public class ArtifactService {
      * @param view 首次创建时固定的产物响应
      * @param replayed 是否从已完成的幂等记录读取
      */
-    public record CreateResult(ArtifactView view, boolean replayed) {}
+    public record CreateResult(ArtifactView view, boolean replayed) {
+    }
 }

@@ -72,20 +72,34 @@ class GoogleNanoBananaPostgresIT {
     }
 
     @AfterAll
-    static void stopServer() { SERVER.stop(0); }
+    static void stopServer() {
+        SERVER.stop(0);
+    }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private ArtifactService artifacts;
-    @Autowired private AssetService assets;
-    @Autowired private MediaDraftService drafts;
-    @Autowired private CanvasService canvas;
-    @Autowired private DirectMediaTaskService directMedia;
-    @Autowired private MediaCapabilityService catalog;
-    @Autowired private MediaExecutionWorker worker;
-    @Autowired private TaskService tasks;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private ObjectMapper mapper;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private ArtifactService artifacts;
+    @Autowired
+    private AssetService assets;
+    @Autowired
+    private MediaDraftService drafts;
+    @Autowired
+    private CanvasService canvas;
+    @Autowired
+    private DirectMediaTaskService directMedia;
+    @Autowired
+    private MediaCapabilityService catalog;
+    @Autowired
+    private MediaExecutionWorker worker;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private ObjectMapper mapper;
 
     @Test
     void configuredBetaReferenceUsesEditsAndLostGenerationResponseRemainsUnknown() {
@@ -147,9 +161,9 @@ class GoogleNanoBananaPostgresIT {
         Task foreignTask = approve(owner.userId(), foreign);
         // 跨项目参考图：另一个项目里那张参考图的精确版本。
         jdbc.sql("update task set input_json=jsonb_set(input_json, '{mediaInput,images}', "
-                        + "jsonb_build_array(jsonb_build_object('artifactId', :artifactId, "
-                        + "'versionId', :versionId, 'role', 'REFERENCE', 'order', 0))) "
-                        + "where id=:id")
+                + "jsonb_build_array(jsonb_build_object('artifactId', :artifactId, "
+                + "'versionId', :versionId, 'role', 'REFERENCE', 'order', 0))) "
+                + "where id=:id")
                 .param("artifactId", edited.referenceImages().get(0).artifact().id().toString())
                 .param("versionId", edited.referenceImages().get(0).resourceDefaultVersion()
                         .id().toString())
@@ -206,7 +220,10 @@ class GoogleNanoBananaPostgresIT {
                 JsonNode request = new ObjectMapper().readTree(exchange.getRequestBody().readAllBytes());
                 LAST_REQUEST.set(request);
                 boolean edit = request.path("contents").path(0).path("parts").size() > 1;
-                if (edit) EDITS.incrementAndGet(); else GENERATIONS.incrementAndGet();
+                if (edit)
+                    EDITS.incrementAndGet();
+                else
+                    GENERATIONS.incrementAndGet();
                 if (!edit && DROP_NEXT_GENERATION.getAndSet(false)) {
                     exchange.close();
                     return;
@@ -234,9 +251,12 @@ class GoogleNanoBananaPostgresIT {
                 + "\"}}]}}]}").getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json");
         exchange.sendResponseHeaders(200, response.length);
-        try (var output = exchange.getResponseBody()) { output.write(response); }
+        try (var output = exchange.getResponseBody()) {
+            output.write(response);
+        }
     }
 
     private record Fixture(Project project, ArtifactService.ArtifactView card,
-            List<ArtifactService.ArtifactView> referenceImages, Task task) {}
+            List<ArtifactService.ArtifactView> referenceImages, Task task) {
+    }
 }

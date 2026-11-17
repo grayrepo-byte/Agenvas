@@ -29,9 +29,12 @@ class GoogleVideoPreparedMediaTest {
     private final NativeMediaReferences references = mock(NativeMediaReferences.class);
     private final GoogleVideoPreparedMedia media = new GoogleVideoPreparedMedia(references);
     private final UUID connection = UUID.randomUUID();
-    private final MediaCapabilityBinding binding = new MediaCapabilityBinding(connection, 7, UUID.randomUUID(), 3, GoogleVideoModels.VEO, "a".repeat(64));
-    private final AttemptContext context = new AttemptContext(mock(Task.class), binding, UUID.randomUUID(), "synthetic-key", "operations/synthetic");
-    @Test void forwardsExactOriginalBytesAndNeverNeedsMediaRelay() {
+    private final MediaCapabilityBinding binding = new MediaCapabilityBinding(connection, 7, UUID.randomUUID(), 3,
+            GoogleVideoModels.VEO, "a".repeat(64));
+    private final AttemptContext context = new AttemptContext(mock(Task.class), binding, UUID.randomUUID(),
+            "synthetic-key", "operations/synthetic");
+    @Test
+    void forwardsExactOriginalBytesAndNeverNeedsMediaRelay() {
         var selected = selected(GoogleVideoModels.OMNI, GoogleVideoModels.OMNI_MODEL, "GENERATE");
         byte[] exact = {1, 2, 3};
         var asset = image();
@@ -43,7 +46,8 @@ class GoogleVideoPreparedMediaTest {
         assertThat(result.get("image_5").fileName()).isNull();
         verify(references).load(eq(context), eq(selected), any(), eq(false));
     }
-    @Test void extensionUsesOnlyServerProvenanceMatchingFrozenConnectionAndVersion() {
+    @Test
+    void extensionUsesOnlyServerProvenanceMatchingFrozenConnectionAndVersion() {
         var selected = selected(GoogleVideoModels.VEO, VEO_MODEL, "EXTEND");
         ObjectNode source = source();
         when(references.load(eq(context), eq(selected), any(), eq(true))).thenReturn(Map.of("base_video",
@@ -52,21 +56,29 @@ class GoogleVideoPreparedMediaTest {
         assertThat(result.fileName()).isEqualTo("files/synthetic-video");
         assertThat(result.bytes()).isNull();
         for (String field : java.util.List.of("connectionId", "model", "adapterId", "fileName")) {
-            ObjectNode invalid = source(); ((ObjectNode) invalid.at("/parameters/nativeProviderResult")).put(field, "untrusted");
-            assertThatThrownBy(() -> GoogleVideoPreparedMedia.extensionFile(context, invalid)).isInstanceOf(NativeMediaFailure.class);
+            ObjectNode invalid = source();
+            ((ObjectNode) invalid.at("/parameters/nativeProviderResult")).put(field, "untrusted");
+            assertThatThrownBy(() -> GoogleVideoPreparedMedia.extensionFile(context, invalid))
+                    .isInstanceOf(NativeMediaFailure.class);
         }
         ((ObjectNode) source.at("/parameters/nativeProviderResult")).put("connectionVersion", 8);
-        assertThatThrownBy(() -> GoogleVideoPreparedMedia.extensionFile(context, source)).isInstanceOf(NativeMediaFailure.class);
+        assertThatThrownBy(() -> GoogleVideoPreparedMedia.extensionFile(context, source))
+                .isInstanceOf(NativeMediaFailure.class);
     }
-    @Test void anUploadedVideoOrMetadataWithSignedUrlIsNotEligibleForVeoExtension() {
-        assertThatThrownBy(() -> GoogleVideoPreparedMedia.extensionFile(context, mapper.createObjectNode().put("sourceType", "UPLOAD")))
+    @Test
+    void anUploadedVideoOrMetadataWithSignedUrlIsNotEligibleForVeoExtension() {
+        assertThatThrownBy(() -> GoogleVideoPreparedMedia.extensionFile(context,
+                mapper.createObjectNode().put("sourceType", "UPLOAD")))
                 .isInstanceOf(NativeMediaFailure.class);
         var source = source();
-        ((ObjectNode) source.at("/parameters/nativeProviderResult")).put("uri", "https://example.invalid/result?key=synthetic");
-        assertThatThrownBy(() -> GoogleVideoPreparedMedia.extensionFile(context, source)).isInstanceOf(NativeMediaFailure.class);
+        ((ObjectNode) source.at("/parameters/nativeProviderResult")).put("uri",
+                "https://example.invalid/result?key=synthetic");
+        assertThatThrownBy(() -> GoogleVideoPreparedMedia.extensionFile(context, source))
+                .isInstanceOf(NativeMediaFailure.class);
     }
     private NativeMediaProfiles.Selection selected(String adapter, String model, String operation) {
-        return new NativeMediaProfiles.Selection(new GoogleVideoModels(), new NativeMediaProtocol.Profile(adapter, model, operation, Task.Kind.VIDEO_GENERATION));
+        return new NativeMediaProfiles.Selection(new GoogleVideoModels(),
+                new NativeMediaProtocol.Profile(adapter, model, operation, Task.Kind.VIDEO_GENERATION));
     }
     private ObjectNode source() {
         var content = mapper.createObjectNode();
@@ -75,8 +87,12 @@ class GoogleVideoPreparedMediaTest {
                 .put("fileName", "files/synthetic-video");
         return content;
     }
-    private Asset image() { return new Asset(UUID.randomUUID(), UUID.randomUUID(), Asset.MediaKind.IMAGE, "synthetic.png", "image/png", 3,
-            "a".repeat(64), 400, 600, null, null, null, null, Instant.now()); }
-    private Asset video() { return new Asset(UUID.randomUUID(), UUID.randomUUID(), Asset.MediaKind.VIDEO, "synthetic.mp4", "video/mp4", 3,
-            "a".repeat(64), 1280, 720, 8000, null, null, null, Instant.now()); }
+    private Asset image() {
+        return new Asset(UUID.randomUUID(), UUID.randomUUID(), Asset.MediaKind.IMAGE, "synthetic.png", "image/png", 3,
+                "a".repeat(64), 400, 600, null, null, null, null, Instant.now());
+    }
+    private Asset video() {
+        return new Asset(UUID.randomUUID(), UUID.randomUUID(), Asset.MediaKind.VIDEO, "synthetic.mp4", "video/mp4", 3,
+                "a".repeat(64), 1280, 720, 8000, null, null, null, Instant.now());
+    }
 }

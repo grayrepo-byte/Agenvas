@@ -22,7 +22,8 @@ export interface DirectorViewportProps {
 }
 
 function frameSize(stage: HTMLDivElement, scene: DirectorScene, viewMode: DirectorViewMode) {
-  return viewMode === "director" ? { width: stage.clientWidth, height: stage.clientHeight }
+  return viewMode === "director"
+    ? { width: stage.clientWidth, height: stage.clientHeight }
     : directorFrameSize(stage.clientWidth, stage.clientHeight, scene.aspectRatio);
 }
 
@@ -81,35 +82,39 @@ export function DirectorViewport(props: DirectorViewportProps) {
     const observer = new ResizeObserver(resize);
     observer.observe(stage);
     window.addEventListener("resize", resize);
-    void import("./directorRenderer").then(({ createDirectorRenderer }) => {
-      if (!active) return;
-      renderer = createDirectorRenderer(canvas, latest.current.scene, {
-        onCameraChange: (camera) => latest.current.onCameraChange(camera),
-        onSelectObject: (id) => latest.current.onSelectObject?.(id),
-        onSelectCamera: () => latest.current.onSelectCamera?.(),
-        onObjectChange: latest.current.onObjectChange ? (id, object) => latest.current.onObjectChange?.(id, object) : undefined,
-        onUnavailable: unavailable,
-      });
-      rendererRef.current = renderer;
-      renderer.update(latest.current.scene, latest.current.selectedObjectId);
-      renderer.setViewMode(latest.current.viewMode ?? "camera");
-      renderer.setObjectTool(latest.current.objectTool ?? "move");
-      renderer.setDisabled(latest.current.disabled ?? false);
-      resize();
-      setStatus("ready");
-      latest.current.onCaptureReady(async () => {
-        if (!active || !renderer) throw new Error(t("director.viewportUnavailable"));
-        try {
-          const file = await renderer.capture();
-          latest.current.onError(null);
-          return file;
-        } catch {
-          const message = t("director.captureFailed");
-          if (active) latest.current.onError(message);
-          throw new Error(message);
-        }
-      });
-    }).catch(unavailable);
+    void import("./directorRenderer")
+      .then(({ createDirectorRenderer }) => {
+        if (!active) return;
+        renderer = createDirectorRenderer(canvas, latest.current.scene, {
+          onCameraChange: camera => latest.current.onCameraChange(camera),
+          onSelectObject: id => latest.current.onSelectObject?.(id),
+          onSelectCamera: () => latest.current.onSelectCamera?.(),
+          onObjectChange: latest.current.onObjectChange
+            ? (id, object) => latest.current.onObjectChange?.(id, object)
+            : undefined,
+          onUnavailable: unavailable,
+        });
+        rendererRef.current = renderer;
+        renderer.update(latest.current.scene, latest.current.selectedObjectId);
+        renderer.setViewMode(latest.current.viewMode ?? "camera");
+        renderer.setObjectTool(latest.current.objectTool ?? "move");
+        renderer.setDisabled(latest.current.disabled ?? false);
+        resize();
+        setStatus("ready");
+        latest.current.onCaptureReady(async () => {
+          if (!active || !renderer) throw new Error(t("director.viewportUnavailable"));
+          try {
+            const file = await renderer.capture();
+            latest.current.onError(null);
+            return file;
+          } catch {
+            const message = t("director.captureFailed");
+            if (active) latest.current.onError(message);
+            throw new Error(message);
+          }
+        });
+      })
+      .catch(unavailable);
     return () => {
       active = false;
       observer.disconnect();
@@ -120,25 +125,60 @@ export function DirectorViewport(props: DirectorViewportProps) {
     };
   }, [attempt]);
 
-  return <div className="director-viewport" data-view-mode={viewMode}>
-    <div ref={stageRef} className="director-viewport__stage" aria-busy={status === "loading"}>
-      <div ref={frameRef} className="director-viewport__frame" data-view-mode={viewMode} aria-hidden={status !== "ready"}>
-        <canvas key={attempt} ref={canvasRef} tabIndex={status === "ready" && !props.disabled ? 0 : -1}
-          aria-label={t("director.viewportLabel")} aria-describedby={hintId}
-          aria-disabled={props.disabled} className="director-viewport__canvas ui-focusable" />
-        {status === "ready" && viewMode === "camera" && props.showGuides !== false && <div className="director-viewport__thirds" aria-hidden="true" />}
+  return (
+    <div className="director-viewport" data-view-mode={viewMode}>
+      <div ref={stageRef} className="director-viewport__stage" aria-busy={status === "loading"}>
+        <div
+          ref={frameRef}
+          className="director-viewport__frame"
+          data-view-mode={viewMode}
+          aria-hidden={status !== "ready"}
+        >
+          <canvas
+            key={attempt}
+            ref={canvasRef}
+            tabIndex={status === "ready" && !props.disabled ? 0 : -1}
+            aria-label={t("director.viewportLabel")}
+            aria-describedby={hintId}
+            aria-disabled={props.disabled}
+            className="director-viewport__canvas ui-focusable"
+          />
+          {status === "ready" && viewMode === "camera" && props.showGuides !== false && (
+            <div className="director-viewport__thirds" aria-hidden="true" />
+          )}
+        </div>
+        {status === "loading" && (
+          <p className="director-viewport__loading" role="status">
+            {t("common.loading")}
+          </p>
+        )}
+        {status === "unavailable" && (
+          <div className="director-viewport__failure">
+            <Alert variant="destructive">
+              <AlertDescription>{t("director.viewportUnavailable")}</AlertDescription>
+            </Alert>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={props.disabled}
+              onClick={() => setAttempt(current => current + 1)}
+            >
+              {t("director.retryViewport")}
+            </Button>
+          </div>
+        )}
+        <p id={hintId} className="director-viewport__hint" hidden={status !== "ready"}>
+          {t(
+            objectTool === "move"
+              ? "director.moveHint"
+              : objectTool === "rotate"
+                ? "director.rotateHint"
+                : "director.resizeHint",
+          )}
+        </p>
       </div>
-      {status === "loading" && <p className="director-viewport__loading" role="status">{t("common.loading")}</p>}
-      {status === "unavailable" && <div className="director-viewport__failure">
-        <Alert variant="destructive"><AlertDescription>{t("director.viewportUnavailable")}</AlertDescription></Alert>
-        <Button type="button" variant="outline" disabled={props.disabled}
-          onClick={() => setAttempt((current) => current + 1)}>{t("director.retryViewport")}</Button>
-      </div>}
-      <p id={hintId} className="director-viewport__hint" hidden={status !== "ready"}>
-        {t(objectTool === "move" ? "director.moveHint" : objectTool === "rotate" ? "director.rotateHint" : "director.resizeHint")}
-      </p>
     </div>
-  </div>;
+  );
 }
 
 export default DirectorViewport;

@@ -22,14 +22,17 @@ public class ThirdPartyPromptSyncSettingsService {
     public ThirdPartyPromptSyncSettingsService(DSLContext db,
             @Value("${agenvas.media-templates.sync-enabled:true}") boolean deploymentEnabled,
             @Value("${agenvas.recovery-mode:false}") boolean recovery) {
-        this.db = db; this.deploymentEnabled = deploymentEnabled; this.recovery = recovery;
+        this.db = db;
+        this.deploymentEnabled = deploymentEnabled;
+        this.recovery = recovery;
     }
 
     @Transactional(readOnly = true)
     public ThirdPartyPromptSyncSettings get() {
         return db.selectFrom(THIRD_PARTY_PROMPT_SYNC_SETTINGS)
                 .where(THIRD_PARTY_PROMPT_SYNC_SETTINGS.ID.eq(SINGLETON_ID))
-                .fetchSingle(row -> new ThirdPartyPromptSyncSettings(row.getEnabled(), deploymentEnabled, row.getVersion()));
+                .fetchSingle(
+                        row -> new ThirdPartyPromptSyncSettings(row.getEnabled(), deploymentEnabled, row.getVersion()));
     }
 
     /**
@@ -46,16 +49,19 @@ public class ThirdPartyPromptSyncSettingsService {
 
     @Transactional
     public ThirdPartyPromptSyncSettings update(boolean enabled, long expectedVersion) {
-        if (recovery) throw new ApiProblemException(HttpStatus.SERVICE_UNAVAILABLE, "RECOVERY_MODE_READ_ONLY",
-                ApiMessage.of("api.third-party.readOnly"), ApiMessage.of("api.third-party.readOnly"), false);
+        if (recovery)
+            throw new ApiProblemException(HttpStatus.SERVICE_UNAVAILABLE, "RECOVERY_MODE_READ_ONLY",
+                    ApiMessage.of("api.third-party.readOnly"), ApiMessage.of("api.third-party.readOnly"), false);
         var row = db.update(THIRD_PARTY_PROMPT_SYNC_SETTINGS)
                 .set(THIRD_PARTY_PROMPT_SYNC_SETTINGS.ENABLED, enabled)
                 .set(THIRD_PARTY_PROMPT_SYNC_SETTINGS.VERSION, THIRD_PARTY_PROMPT_SYNC_SETTINGS.VERSION.plus(1))
                 .where(THIRD_PARTY_PROMPT_SYNC_SETTINGS.ID.eq(SINGLETON_ID))
                 .and(THIRD_PARTY_PROMPT_SYNC_SETTINGS.VERSION.eq(expectedVersion))
                 .returning().fetchOne();
-        if (row == null) throw new ApiProblemException(HttpStatus.CONFLICT, "VERSION_CONFLICT",
-                ApiMessage.of("api.third-party.conflict"), ApiMessage.of("api.third-party.sync-settings-conflict"), false);
+        if (row == null)
+            throw new ApiProblemException(HttpStatus.CONFLICT, "VERSION_CONFLICT",
+                    ApiMessage.of("api.third-party.conflict"), ApiMessage.of("api.third-party.sync-settings-conflict"),
+                    false);
         return new ThirdPartyPromptSyncSettings(row.getEnabled(), deploymentEnabled, row.getVersion());
     }
 }

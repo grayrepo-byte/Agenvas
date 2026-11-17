@@ -40,7 +40,8 @@ public class DirectMediaTaskController {
     }
 
     public record RunRequest(@jakarta.validation.constraints.NotNull UUID canvasItemId,
-            @PositiveOrZero long expectedDraftVersion) {}
+            @PositiveOrZero long expectedDraftVersion) {
+    }
 
     @PostMapping("/artifacts/{artifactId}/image-operations")
     public TaskController.TaskResponse runImageOperation(
@@ -51,7 +52,8 @@ public class DirectMediaTaskController {
         return TaskController.TaskResponse.from(direct.runImageOperation(principal.userId(),
                 projectId, artifactId, request.canvasItemId(), request.sourceVersionId(),
                 request.expectedCanvasItemVersion(), request.operation(), request.instruction(),
-                request.expectedFunctionVersion(), request.expectedCapabilityVersion(), request.referenceVersionIds(), request.maskAssetId(), request.markupAssetId(),
+                request.expectedFunctionVersion(), request.expectedCapabilityVersion(), request.referenceVersionIds(),
+                request.maskAssetId(), request.markupAssetId(),
                 request.parameters(), commandKey));
     }
 

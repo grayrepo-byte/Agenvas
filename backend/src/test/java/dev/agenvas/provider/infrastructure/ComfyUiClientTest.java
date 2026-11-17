@@ -87,7 +87,8 @@ class ComfyUiClientTest {
         AtomicInteger histories = new AtomicInteger();
         client = new ComfyUiClient(new ComfyUiProperties(
                 "http://127.0.0.1:" + server.getAddress().getPort()
-                        + SYNTHETIC_PROXY_PREFIX), mapper);
+                        + SYNTHETIC_PROXY_PREFIX),
+                mapper);
         server.createContext(SYNTHETIC_PROXY_PREFIX + "/prompt", exchange -> {
             assertThat(exchange.getRequestMethod()).isEqualTo("POST");
             JsonNode body = mapper.readTree(exchange.getRequestBody().readAllBytes());
@@ -242,7 +243,7 @@ class ComfyUiClientTest {
                     .isEqualTo("filename=rendered_01.png&type=output&subfolder=");
             respond(exchange, 200, "PNG-BYTES");
         });
-        assertThat(client.uploadImage(requestId, new byte[] {1, 2, 3}, "png"))
+        assertThat(client.uploadImage(requestId, new byte[]{1, 2, 3}, "png"))
                 .isEqualTo("agenvas-" + requestId + ".png");
         try (var output = client.output("rendered_01.png")) {
             assertThat(output.readAllBytes()).isEqualTo("PNG-BYTES".getBytes(StandardCharsets.UTF_8));
@@ -251,16 +252,18 @@ class ComfyUiClientTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
-    @Test void streamsVideoAndAudioThroughTheGenericUploadRouteUsingOriginalBytes() throws IOException {
+    @Test
+    void streamsVideoAndAudioThroughTheGenericUploadRouteUsingOriginalBytes() throws IOException {
         var file = java.nio.file.Files.createTempFile("agenvas-comfy-upload-", ".media");
-        byte[] original = new byte[] {1, 5, 7, 0, 12};
+        byte[] original = new byte[]{1, 5, 7, 0, 12};
         java.nio.file.Files.write(file, original);
         var bodies = new java.util.ArrayList<String>();
         server.createContext("/upload/image", exchange -> {
             String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.ISO_8859_1);
             bodies.add(body);
             assertThat(body).contains("name=\"image\"", new String(original, StandardCharsets.ISO_8859_1));
-            respond(exchange, 200, "{\"name\":\"input." + (body.contains("video/mp4") ? "mp4" : "wav") + "\",\"type\":\"input\",\"subfolder\":\"\"}");
+            respond(exchange, 200, "{\"name\":\"input." + (body.contains("video/mp4") ? "mp4" : "wav")
+                    + "\",\"type\":\"input\",\"subfolder\":\"\"}");
         });
         try {
             assertThat(client.uploadMedia(UUID.randomUUID(), file, "video/mp4")).isEqualTo("input.mp4");
@@ -270,7 +273,9 @@ class ComfyUiClientTest {
             assertThat(bodies.get(1)).contains("Content-Type: audio/wav");
             assertThatThrownBy(() -> client.uploadMedia(UUID.randomUUID(), file, "application/octet-stream"))
                     .isInstanceOf(IllegalArgumentException.class);
-        } finally { java.nio.file.Files.deleteIfExists(file); }
+        } finally {
+            java.nio.file.Files.deleteIfExists(file);
+        }
     }
 
     @Test
@@ -347,7 +352,8 @@ class ComfyUiClientTest {
     @ValueSource(strings = {"", " ", "not a URI", "/unsafe#fragment", "/encoded%2fpath", "/a/../private"})
     void refusesOutputRedirectsWithoutSafeLocation(String location) {
         server.createContext("/view", exchange -> {
-            if (location != null) exchange.getResponseHeaders().set("Location", location);
+            if (location != null)
+                exchange.getResponseHeaders().set("Location", location);
             respond(exchange, 302, "redirect");
         });
         assertThatThrownBy(() -> client.output("rendered_01.png"))
@@ -368,7 +374,8 @@ class ComfyUiClientTest {
             if (hop < MAX_OUTPUT_REDIRECTS) {
                 exchange.getResponseHeaders().set("Location", "/hop/" + (hop + 1));
                 respond(exchange, 302, "redirect");
-            } else respond(exchange, 200, "PNG-BYTES");
+            } else
+                respond(exchange, 200, "PNG-BYTES");
         });
         try (var output = client.output("rendered_01.png")) {
             assertThat(output.readAllBytes()).isEqualTo("PNG-BYTES".getBytes(StandardCharsets.UTF_8));
@@ -507,7 +514,7 @@ class ComfyUiClientTest {
             acknowledgements.incrementAndGet();
             respond(exchange, 200, "{\"name\":\"input.png\",\"type\":\"input\",\"subfolder\":\"\"}");
         });
-        assertThat(client.uploadImage(UUID.randomUUID(), new byte[] {1, 2, 3}, "png")).isEqualTo("input.png");
+        assertThat(client.uploadImage(UUID.randomUUID(), new byte[]{1, 2, 3}, "png")).isEqualTo("input.png");
         assertThat(uploads).hasValue(1);
         assertThat(acknowledgements).hasValue(1);
     }
@@ -554,13 +561,15 @@ class ComfyUiClientTest {
     void validatesMixedSameOriginThenForeignHttpsRedirectChain() {
         URI origin = URI.create("https://comfy.example.com" + SYNTHETIC_PROXY_PREFIX);
         URI current = URI.create(origin + "/view?filename=render.png");
-        URI first = ComfyUiClient.checkedRedirect(origin, current, "/archived/render.png?stage=synthetic-first", Dns.SYSTEM);
+        URI first = ComfyUiClient.checkedRedirect(origin, current, "/archived/render.png?stage=synthetic-first",
+                Dns.SYSTEM);
         URI second = ComfyUiClient.checkedRedirect(origin, first,
                 "https://cdn.example.com/render.png?signature=synthetic%2Bvalue", Dns.SYSTEM);
         assertThat(first).isEqualTo(URI.create("https://comfy.example.com/archived/render.png?stage=synthetic-first"));
         assertThat(second).isEqualTo(URI.create("https://cdn.example.com/render.png?signature=synthetic%2Bvalue"));
         assertThat(ComfyUiClient.checkedRedirect(origin, second,
-                "http://cdn.example.com/render.png", Dns.SYSTEM)).isEqualTo(URI.create("http://cdn.example.com/render.png"));
+                "http://cdn.example.com/render.png", Dns.SYSTEM))
+                .isEqualTo(URI.create("http://cdn.example.com/render.png"));
     }
 
     @Test
@@ -624,7 +633,8 @@ class ComfyUiClientTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"https://user:synthetic-pass@cdn.example.com/render.png", "https://cdn.example.com/render.png#fragment", "file:///render.png"})
+    @ValueSource(strings = {"https://user:synthetic-pass@cdn.example.com/render.png",
+            "https://cdn.example.com/render.png#fragment", "file:///render.png"})
     void rejectsMalformedForeignOutputRedirectBeforeOpeningRequest(String target) {
         URI origin = URI.create("https://comfy.example.com" + SYNTHETIC_PROXY_PREFIX);
         URI current = URI.create(origin + "/view?filename=render.png");
@@ -633,7 +643,8 @@ class ComfyUiClientTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"http://localhost:8090/render.png", "http://10.0.0.1/render.png", "https://cdn.invalid:444/render.png", "http://169.254.169.254/render.png"})
+    @ValueSource(strings = {"http://localhost:8090/render.png", "http://10.0.0.1/render.png",
+            "https://cdn.invalid:444/render.png", "http://169.254.169.254/render.png"})
     void acceptsHttpResultRedirectsWithoutAnAddressOrPortAllowlist(String target) {
         URI origin = URI.create("https://comfy.example.com");
         assertThat(ComfyUiClient.checkedRedirect(origin, URI.create(origin + "/view"), target, Dns.SYSTEM))
@@ -662,7 +673,8 @@ class ComfyUiClientTest {
         });
         redirectTarget.start();
         try {
-            String target = "http://synthetic-user:synthetic-password@127.0.0.1:" + redirectTarget.getAddress().getPort()
+            String target = "http://synthetic-user:synthetic-password@127.0.0.1:"
+                    + redirectTarget.getAddress().getPort()
                     + "/private";
             server.createContext("/prompt", exchange -> {
                 exchange.getResponseHeaders().add("Location", target);
@@ -686,7 +698,7 @@ class ComfyUiClientTest {
                     .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
             assertThatThrownBy(() -> client.history(SYNTHETIC_PROXY_PROMPT_ID))
                     .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
-            assertThatThrownBy(() -> client.uploadImage(UUID.randomUUID(), new byte[] {1}, "png"))
+            assertThatThrownBy(() -> client.uploadImage(UUID.randomUUID(), new byte[]{1}, "png"))
                     .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
             assertThat(followed).hasValue(0);
 
@@ -707,7 +719,7 @@ class ComfyUiClientTest {
 
     @Test
     void rejectsMalformedSchemesAndPathsAtConstruction() {
-        for (String endpoint : new String[] {"http://127.0.0.1:8188/../path",
+        for (String endpoint : new String[]{"http://127.0.0.1:8188/../path",
                 "http://user@127.0.0.1:8188", "http://127.0.0.1:8188?x=1",
                 "file:///etc/passwd",
                 "https://comfy.example.com/proxy/%2e%2e", "https://comfy.example.com//proxy",
@@ -729,19 +741,25 @@ class ComfyUiClientTest {
             routes.add(path);
             exchange.getResponseHeaders().set("Content-Type", "application/json");
             exchange.getRequestBody().readAllBytes();
-            if (path.endsWith("/upload/image")) respond(exchange, 200,
-                    "{\"name\":\"input.png\",\"type\":\"input\"}");
-            else if (path.endsWith("/prompt")) respond(exchange, 200,
-                    "{\"prompt_id\":\"" + id + "\",\"echo\":\"synthetic-path-key\"}");
-            else if (path.endsWith("/view")) respond(exchange, 200, "output");
-            else respond(exchange, 200, "{}");
+            if (path.endsWith("/upload/image"))
+                respond(exchange, 200,
+                        "{\"name\":\"input.png\",\"type\":\"input\"}");
+            else if (path.endsWith("/prompt"))
+                respond(exchange, 200,
+                        "{\"prompt_id\":\"" + id + "\",\"echo\":\"synthetic-path-key\"}");
+            else if (path.endsWith("/view"))
+                respond(exchange, 200, "output");
+            else
+                respond(exchange, 200, "{}");
         });
         var captured = new java.util.concurrent.atomic.AtomicReference<java.util.List<dev.agenvas.shared.http.DebugHttpCapture.Exchange>>();
         try (var scope = dev.agenvas.shared.http.DebugHttpCapture.open(captured::set)) {
-            assertThat(client.uploadImage(id, new byte[] {1}, "png")).isEqualTo("input.png");
+            assertThat(client.uploadImage(id, new byte[]{1}, "png")).isEqualTo("input.png");
             assertThat(client.submit(mapper.createObjectNode(), id)).isEqualTo(id.toString());
             client.history(id.toString());
-            try (var output = client.output("output.png")) { assertThat(output.readAllBytes()).isNotEmpty(); }
+            try (var output = client.output("output.png")) {
+                assertThat(output.readAllBytes()).isNotEmpty();
+            }
         }
         assertThat(routes).containsExactly(prefix + "/upload/image", prefix + "/prompt",
                 prefix + "/history/" + id, prefix + "/view");

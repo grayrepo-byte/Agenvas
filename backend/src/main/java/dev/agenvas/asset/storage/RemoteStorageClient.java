@@ -9,7 +9,8 @@ public interface RemoteStorageClient {
     boolean matches(StorageProfile profile, String key, long size, String hash);
     /** Metadata-only availability check for GET/HEAD; recovery uses the stronger matches check. */
     default void verify(StorageProfile profile, String key, long size, String hash) {
-        if (!matches(profile, key, size, hash)) throw new IllegalStateException("READY remote object missing");
+        if (!matches(profile, key, size, hash))
+            throw new IllegalStateException("READY remote object missing");
     }
     InputStream open(StorageProfile profile, String key, long start, long length, long total);
     void delete(StorageProfile profile, String key);

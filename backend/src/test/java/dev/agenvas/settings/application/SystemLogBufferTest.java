@@ -12,7 +12,8 @@ import org.junit.jupiter.api.Test;
 class SystemLogBufferTest {
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-09-30T00:00:00Z"), ZoneOffset.UTC);
 
-    @Test void retainsNewestMatchesInOrderAndReportsEvictions() {
+    @Test
+    void retainsNewestMatchesInOrderAndReportsEvictions() {
         var logs = new SystemLogBuffer(CLOCK, 3);
         logs.append(SystemLogBuffer.Stream.STDOUT, "old", false);
         logs.append(SystemLogBuffer.Stream.STDERR, "Error one", false);
@@ -34,7 +35,8 @@ class SystemLogBufferTest {
         assertThat(result.processId()).isNotEqualTo(new SystemLogBuffer(CLOCK).snapshot(null, null, 1).processId());
     }
 
-    @Test void masksCredentialsBeforeStorageAndSearch() {
+    @Test
+    void masksCredentialsBeforeStorageAndSearch() {
         var logs = new SystemLogBuffer(CLOCK);
         for (String line : new String[]{
                 "Authorization: Bearer private-value",
@@ -58,17 +60,21 @@ class SystemLogBufferTest {
         });
     }
 
-    @Test void validatesBoundsAndUsesLiteralSearch() {
+    @Test
+    void validatesBoundsAndUsesLiteralSearch() {
         var logs = new SystemLogBuffer(CLOCK);
         assertThatThrownBy(() -> logs.snapshot(null, null, 0)).isInstanceOf(ApiProblemException.class);
-        assertThatThrownBy(() -> logs.snapshot(null, null, SystemLogBuffer.MAX_LIMIT + 1)).isInstanceOf(ApiProblemException.class);
-        assertThatThrownBy(() -> logs.snapshot(null, "x".repeat(SystemLogBuffer.MAX_SEARCH_LENGTH + 1), 1)).isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> logs.snapshot(null, null, SystemLogBuffer.MAX_LIMIT + 1))
+                .isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> logs.snapshot(null, "x".repeat(SystemLogBuffer.MAX_SEARCH_LENGTH + 1), 1))
+                .isInstanceOf(ApiProblemException.class);
         logs.append(SystemLogBuffer.Stream.STDOUT, "[literal]", false);
         assertThat(logs.snapshot(null, "[literal]", 1).entries()).hasSize(1);
         assertThat(logs.snapshot(null, ".*", 1).entries()).isEmpty();
     }
 
-    @Test void longCredentialPrefixesAndSensitiveSuffixesRemainMasked() {
+    @Test
+    void longCredentialPrefixesAndSensitiveSuffixesRemainMasked() {
         var logs = new SystemLogBuffer(CLOCK);
         String prefix = "a-".repeat(4000);
         for (String field : new String[]{"api_key", "api-key", "clientSecret", "client-secret",
@@ -76,23 +82,30 @@ class SystemLogBufferTest {
             logs.append(SystemLogBuffer.Stream.STDOUT, prefix + field + "=synthetic-sensitive-value", false);
         }
         assertThat(logs.snapshot(null, "synthetic-sensitive-value", 20).entries()).isEmpty();
-        assertThat(logs.snapshot(null, null, 20).entries()).hasSize(10).allSatisfy(entry ->
-                assertThat(entry.message()).startsWith(prefix).endsWith("=[REDACTED]"));
+        assertThat(logs.snapshot(null, null, 20).entries()).hasSize(10)
+                .allSatisfy(entry -> assertThat(entry.message()).startsWith(prefix).endsWith("=[REDACTED]"));
         logs.append(SystemLogBuffer.Stream.STDOUT, "tokenizer=ordinary passwordless=ordinary", false);
         assertThat(logs.snapshot(null, "ordinary", 1).entries()).singleElement()
                 .extracting(SystemLogBuffer.Entry::message).isEqualTo("tokenizer=ordinary passwordless=ordinary");
     }
 
-    @Test void concurrentWritersAndSnapshotsKeepConsistentWatermarks() throws Exception {
+    @Test
+    void concurrentWritersAndSnapshotsKeepConsistentWatermarks() throws Exception {
         var logs = new SystemLogBuffer(CLOCK, 10);
         try (var executor = Executors.newFixedThreadPool(2)) {
-            var first = executor.submit(() -> { for (int i = 0; i < 100; i++) logs.append(SystemLogBuffer.Stream.STDOUT, "out", false); });
-            var second = executor.submit(() -> { for (int i = 0; i < 100; i++) {
-                logs.append(SystemLogBuffer.Stream.STDERR, "err", false);
-                var view = logs.snapshot(null, null, 10);
-                assertThat(view.retainedCount()).isEqualTo(view.entries().size());
-            } });
-            first.get(); second.get();
+            var first = executor.submit(() -> {
+                for (int i = 0; i < 100; i++)
+                    logs.append(SystemLogBuffer.Stream.STDOUT, "out", false);
+            });
+            var second = executor.submit(() -> {
+                for (int i = 0; i < 100; i++) {
+                    logs.append(SystemLogBuffer.Stream.STDERR, "err", false);
+                    var view = logs.snapshot(null, null, 10);
+                    assertThat(view.retainedCount()).isEqualTo(view.entries().size());
+                }
+            });
+            first.get();
+            second.get();
         }
         var result = logs.snapshot(null, null, 10);
         assertThat(result.droppedCount()).isEqualTo(190);

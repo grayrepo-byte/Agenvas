@@ -20,7 +20,8 @@ public final class MigrationVersions {
     /** {@code V1__initial_schema.sql} captures {@code 1}. */
     private static final Pattern FILENAME = Pattern.compile("V(\\d+(?:\\.\\d+)*)__.*\\.sql");
 
-    private MigrationVersions() {}
+    private MigrationVersions() {
+    }
 
     /** The highest migration version on the classpath; fails loudly when none is visible. */
     public static String latest() {
@@ -38,7 +39,8 @@ public final class MigrationVersions {
             for (Resource resource : new PathMatchingResourcePatternResolver()
                     .getResources("classpath:db/migration/V*__*.sql")) {
                 String filename = resource.getFilename();
-                if (filename == null) continue;
+                if (filename == null)
+                    continue;
                 Matcher matcher = FILENAME.matcher(filename);
                 if (matcher.matches()) {
                     versions.add(matcher.group(1));

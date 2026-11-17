@@ -59,107 +59,305 @@ export const PROVIDER_FAILURE_CODES = {
 } as const;
 
 const TASK_ERROR_MESSAGES: Readonly<Record<string, string>> = {
-  get ARTIFACT_VERSION_CONFLICT() { return t("agent.blocked.artifactVersionConflictDetail"); },
-  get STORYBOARD_VERSION_CONFLICT() { return t("agent.failure.storyboardVersionConflict"); },
-  get LLM_OUTPUT_TRUNCATED() { return t("agent.failure.outputTruncated"); },
-  get LLM_STREAM_INCOMPLETE() { return t("agent.failure.streamIncomplete"); },
-  get MODEL_CAPACITY_UNKNOWN() { return t("agent.failure.capacityUnknown"); },
-  get MODEL_RUNTIME_CONTEXT_CHANGED() { return t("agent.failure.runtimeContextChanged"); },
-  get MODEL_POLICY_INVALID() { return t("modelConnection.capacityInvalid"); },
-  get LLM_RETRY_EXHAUSTED() { return t("agent.retry.exhausted"); },
-  get AGENT_CONTEXT_BUDGET_EXCEEDED() { return t("agent.blocked.contextBudget"); },
-  get LLM_CONNECTION_FAILED() { return t("agent.retry.connection"); },
-  get LLM_RATE_LIMITED() { return t("agent.retry.rateLimited"); },
-  get LLM_SERVICE_UNAVAILABLE() { return t("agent.retry.unavailable"); },
-  get LLM_CALL_TIMEOUT() { return t("agent.retry.timeout"); },
-  get LLM_INSUFFICIENT_CREDITS() { return t("agent.failure.insufficientCredits"); },
-  get LLM_MEDIA_INPUT_UNSUPPORTED() { return t("agent.failure.mediaInputUnsupported"); },
-  get IMAGE_PROMPT_INPUT_TOO_LARGE() { return t("image.reversePrompt.inputTooLarge"); },
-  get IMAGE_PROMPT_INPUT_UNSUPPORTED() { return t("image.reversePrompt.inputUnsupported"); },
-  get IMAGE_PROMPT_INPUT_UNAVAILABLE() { return t("image.reversePrompt.inputUnavailable"); },
-  get IMAGE_PROMPT_MODEL_REJECTED() { return t("image.reversePrompt.modelRejected"); },
-  get EXECUTION_HISTORY_CLEANED() { return t("tasks.errors.executionExpired"); },
-  get PROVIDER_POLL_RETRY_EXHAUSTED() { return t("tasks.errors.pollRetryExhausted"); },
+  get ARTIFACT_VERSION_CONFLICT() {
+    return t("agent.blocked.artifactVersionConflictDetail");
+  },
+  get STORYBOARD_VERSION_CONFLICT() {
+    return t("agent.failure.storyboardVersionConflict");
+  },
+  get LLM_OUTPUT_TRUNCATED() {
+    return t("agent.failure.outputTruncated");
+  },
+  get LLM_STREAM_INCOMPLETE() {
+    return t("agent.failure.streamIncomplete");
+  },
+  get MODEL_CAPACITY_UNKNOWN() {
+    return t("agent.failure.capacityUnknown");
+  },
+  get MODEL_RUNTIME_CONTEXT_CHANGED() {
+    return t("agent.failure.runtimeContextChanged");
+  },
+  get MODEL_POLICY_INVALID() {
+    return t("modelConnection.capacityInvalid");
+  },
+  get LLM_RETRY_EXHAUSTED() {
+    return t("agent.retry.exhausted");
+  },
+  get AGENT_CONTEXT_BUDGET_EXCEEDED() {
+    return t("agent.blocked.contextBudget");
+  },
+  get LLM_CONNECTION_FAILED() {
+    return t("agent.retry.connection");
+  },
+  get LLM_RATE_LIMITED() {
+    return t("agent.retry.rateLimited");
+  },
+  get LLM_SERVICE_UNAVAILABLE() {
+    return t("agent.retry.unavailable");
+  },
+  get LLM_CALL_TIMEOUT() {
+    return t("agent.retry.timeout");
+  },
+  get LLM_INSUFFICIENT_CREDITS() {
+    return t("agent.failure.insufficientCredits");
+  },
+  get LLM_MEDIA_INPUT_UNSUPPORTED() {
+    return t("agent.failure.mediaInputUnsupported");
+  },
+  get IMAGE_PROMPT_INPUT_TOO_LARGE() {
+    return t("image.reversePrompt.inputTooLarge");
+  },
+  get IMAGE_PROMPT_INPUT_UNSUPPORTED() {
+    return t("image.reversePrompt.inputUnsupported");
+  },
+  get IMAGE_PROMPT_INPUT_UNAVAILABLE() {
+    return t("image.reversePrompt.inputUnavailable");
+  },
+  get IMAGE_PROMPT_MODEL_REJECTED() {
+    return t("image.reversePrompt.modelRejected");
+  },
+  get EXECUTION_HISTORY_CLEANED() {
+    return t("tasks.errors.executionExpired");
+  },
+  get PROVIDER_POLL_RETRY_EXHAUSTED() {
+    return t("tasks.errors.pollRetryExhausted");
+  },
   // 措辞保持中性：连接超时也走这个码，那时请求可能根本没发出去，
   // 所以不能说成「已提交但没拿到结果」。
-  get [PROVIDER_FAILURE_CODES.CALL_TIMEOUT]() { return t("tasks.errors.callTimeout"); },
-  get [PROVIDER_FAILURE_CODES.DOWNLOAD_FAILED]() { return t("tasks.errors.resultDownloadFailed"); },
-  get [PROVIDER_FAILURE_CODES.RESPONSE_LOST]() { return t("tasks.errors.responseLost"); },
-  get [PROVIDER_FAILURE_CODES.PROTOCOL_INVALID]() { return t("tasks.errors.protocolInvalid"); },
-  get [PROVIDER_FAILURE_CODES.RESULT_URL_INVALID]() { return t("tasks.errors.resultUrlRejected"); },
-  get [PROVIDER_FAILURE_CODES.RESPONSE_TOO_LARGE]() { return t("tasks.errors.responseTooLarge"); },
-  get [PROVIDER_FAILURE_CODES.RESULT_TOO_LARGE]() { return t("tasks.errors.resultTooLarge"); },
-  get [PROVIDER_FAILURE_CODES.SUBMISSION_UNKNOWN]() { return t("tasks.errors.submissionVerificationRequired"); },
-  get RUNNINGHUB_AUTHENTICATION_FAILED() { return t("tasks.errors.runningHubAuthentication"); },
-  get RUNNINGHUB_BALANCE_INSUFFICIENT() { return t("tasks.errors.runningHubBalance"); },
-  get RUNNINGHUB_PARAMETER_INVALID() { return t("tasks.errors.runningHubParameter"); },
-  get RUNNINGHUB_RATE_LIMITED() { return t("tasks.errors.runningHubRateLimit"); },
-  get RUNNINGHUB_UPLOAD_FAILED() { return t("tasks.errors.runningHubUpload"); },
-  get RUNNINGHUB_GENERATION_FAILED() { return t("tasks.errors.runningHubGeneration"); },
-  get RUNNINGHUB_RESULT_EXPIRED() { return t("tasks.errors.runningHubResultExpired"); },
-  get RUNNINGHUB_RESULT_IDENTITY_CHANGED() { return t("tasks.errors.runningHubResultIdentity"); },
-  get RUNNINGHUB_PROTOCOL_INVALID() { return t("tasks.errors.runningHubProtocol"); },
-  get RUNNINGHUB_UNAVAILABLE() { return t("tasks.errors.runningHubUnavailable"); },
-  get SEED_AUDIO_RESULT_UNKNOWN() { return t("tasks.errors.audioResultUnknown"); },
-  get SEED_AUDIO_REJECTED() { return t("tasks.errors.audioRequestRejected"); },
-  get AUTODL_CREATE_UNCERTAIN() { return t("tasks.errors.autoDlSubmissionUnknown"); },
-  get AUTODL_CREDENTIAL_REJECTED() { return t("tasks.errors.autoDlCredentialsRejected"); },
-  get AUTODL_CREATE_REJECTED() { return t("tasks.errors.autoDlRequestRejected"); },
-  get AUTODL_INPUT_UNAVAILABLE() { return t("tasks.errors.autoDlInputUnavailable"); },
-  get AUTODL_TASK_FAILED() { return t("tasks.errors.autoDlFailed"); },
-  get AUTODL_RESULT_REJECTED() { return t("tasks.errors.autoDlResultRejected"); },
-  get AUTODL_RESULT_EXPIRED() { return t("tasks.errors.autoDlResultExpired"); },
-  get AUTODL_RESULT_MISSING_VIDEO() { return t("tasks.errors.autoDlVideoMissing"); },
-  get MEDIA_RELAY_PREPARATION_FAILED() { return t("tasks.errors.imageRelayFailed"); },
-  get MEDIA_REFERENCE_PREPARATION_FAILED() { return t("tasks.errors.videoPreparationFailed"); },
-  get MEDIA_RELAY_REQUIRED() { return t("media.editor.videoRelayHint"); },
-  get MEDIA_RELAY_PUBLIC_ENDPOINT_REQUIRED() { return t("tasks.errors.videoPublicEndpointRequired"); },
-  get SEEDANCE_VIDEO_REFERENCE_INVALID() { return t("tasks.errors.videoReferenceInvalid"); },
-  get MINIMAX_CREATE_UNCERTAIN() { return t("tasks.errors.submissionUnknown"); },
-  get MINIMAX_CREATE_REJECTED() { return t("tasks.errors.minimaxRejected"); },
-  get MINIMAX_TASK_FAILED() { return t("tasks.errors.minimaxFailed"); },
-  get MINIMAX_TASK_EXPIRED() { return t("tasks.errors.minimaxExpired"); },
-  get MINIMAX_RESULT_EXPIRED() { return t("tasks.errors.minimaxExpired"); },
-  get KLING_CREATE_UNCERTAIN() { return t("tasks.errors.submissionUnknown"); },
-  get KLING_CREATE_REJECTED() { return t("tasks.errors.klingRejected"); },
-  get KLING_TASK_FAILED() { return t("tasks.errors.klingFailed"); },
-  get KLING_TASK_EXPIRED() { return t("tasks.errors.klingExpired"); },
-  get KLING_RESULT_EXPIRED() { return t("tasks.errors.klingExpired"); },
-  get ARK_CREATE_UNCERTAIN() { return t("tasks.errors.submissionUnknown"); },
-  get OPENAI_IMAGE_REJECTED() { return t("tasks.errors.imageRequestRejected"); },
-  get OPENAI_IMAGE_MODERATION_BLOCKED() { return t("tasks.errors.moderationBlocked"); },
-  get GOOGLE_IMAGE_REJECTED() { return t("tasks.errors.imageRequestRejected"); },
-  get WAN_CREATE_REJECTED() { return t("tasks.errors.nativeRejected"); },
-  get WAN_CREATE_UNCERTAIN() { return t("tasks.errors.submissionUnknown"); },
-  get WAN_TASK_FAILED() { return t("tasks.errors.nativeFailed"); },
-  get WAN_TASK_EXPIRED() { return t("tasks.errors.nativeExpired"); },
-  get WAN_RESULT_EXPIRED() { return t("tasks.errors.nativeExpired"); },
-  get SEEDREAM_CREATE_REJECTED() { return t("tasks.errors.nativeRejected"); },
-  get SEEDREAM_CREATE_UNCERTAIN() { return t("tasks.errors.submissionUnknown"); },
-  get SEEDREAM_GENERATION_FAILED() { return t("tasks.errors.nativeFailed"); },
-  get GOOGLE_VIDEO_CREATE_REJECTED() { return t("tasks.errors.nativeRejected"); },
-  get GOOGLE_VIDEO_TASK_FAILED() { return t("tasks.errors.nativeFailed"); },
-  get GOOGLE_VIDEO_TASK_EXPIRED() { return t("tasks.errors.nativeExpired"); },
-  get GOOGLE_VIDEO_RESULT_EXPIRED() { return t("tasks.errors.nativeExpired"); },
-  get SEEDREAM_HAS_NO_STATUS_ENDPOINT() { return t("tasks.errors.nativeSyncMissing"); },
-  get LOCAL_DEPTH_MODEL_UNAVAILABLE() { return t("tasks.errors.depthModelUnavailable"); },
-  get VIDEO_AUDIO_TRACK_MISSING() { return t("tasks.errors.videoAudioMissing"); },
-  get LOCAL_VIDEO_PROCESSING_FAILED() { return t("tasks.errors.localVideoFailed"); },
-  get LOCAL_VIDEO_PROCESSING_TIMEOUT() { return t("tasks.errors.localVideoTimeout"); },
-  get LOCAL_VIDEO_LIMIT_EXCEEDED() { return t("tasks.errors.localVideoLimits"); },
-  get LOCAL_VIDEO_PROCESSING_CANCELED() { return t("tasks.errors.localVideoCanceled"); },
-  get VIDEO_COMPOSITION_INVALID() { return t("tasks.errors.compositionInvalid"); },
-  get VIDEO_COMPOSITION_AUDIO_OVERFLOW() { return t("tasks.errors.compositionAudioOverflow"); },
-  get LOCAL_VIDEO_COMPOSITION_FAILED() { return t("tasks.errors.compositionFailed"); },
-  get LOCAL_VIDEO_COMPOSITION_TIMEOUT() { return t("tasks.errors.compositionTimeout"); },
-  get LOCAL_VIDEO_COMPOSITION_CANCELED() { return t("tasks.errors.compositionCanceled"); },
-  get AUDIO_TRIM_INVALID() { return t("audio.trim.invalid"); },
-  get AUDIO_TRIM_OUTPUT_TOO_LARGE() { return t("audio.trim.outputTooLarge"); },
-  get LOCAL_AUDIO_TRIM_FAILED() { return t("audio.trim.processingFailed"); },
-  get LOCAL_AUDIO_TRIM_TIMEOUT() { return t("audio.trim.timeout"); },
-  get LOCAL_AUDIO_TRIM_CANCELED() { return t("audio.trim.canceled"); },
-  get LOCAL_IMAGE_PROCESSING_FAILED() { return t("tasks.errors.localProcessingFailed"); },
-  get LOCAL_IMAGE_ENCODING_FAILED() { return t("tasks.errors.localEncodingFailed"); },
+  get [PROVIDER_FAILURE_CODES.CALL_TIMEOUT]() {
+    return t("tasks.errors.callTimeout");
+  },
+  get [PROVIDER_FAILURE_CODES.DOWNLOAD_FAILED]() {
+    return t("tasks.errors.resultDownloadFailed");
+  },
+  get [PROVIDER_FAILURE_CODES.RESPONSE_LOST]() {
+    return t("tasks.errors.responseLost");
+  },
+  get [PROVIDER_FAILURE_CODES.PROTOCOL_INVALID]() {
+    return t("tasks.errors.protocolInvalid");
+  },
+  get [PROVIDER_FAILURE_CODES.RESULT_URL_INVALID]() {
+    return t("tasks.errors.resultUrlRejected");
+  },
+  get [PROVIDER_FAILURE_CODES.RESPONSE_TOO_LARGE]() {
+    return t("tasks.errors.responseTooLarge");
+  },
+  get [PROVIDER_FAILURE_CODES.RESULT_TOO_LARGE]() {
+    return t("tasks.errors.resultTooLarge");
+  },
+  get [PROVIDER_FAILURE_CODES.SUBMISSION_UNKNOWN]() {
+    return t("tasks.errors.submissionVerificationRequired");
+  },
+  get RUNNINGHUB_AUTHENTICATION_FAILED() {
+    return t("tasks.errors.runningHubAuthentication");
+  },
+  get RUNNINGHUB_BALANCE_INSUFFICIENT() {
+    return t("tasks.errors.runningHubBalance");
+  },
+  get RUNNINGHUB_PARAMETER_INVALID() {
+    return t("tasks.errors.runningHubParameter");
+  },
+  get RUNNINGHUB_RATE_LIMITED() {
+    return t("tasks.errors.runningHubRateLimit");
+  },
+  get RUNNINGHUB_UPLOAD_FAILED() {
+    return t("tasks.errors.runningHubUpload");
+  },
+  get RUNNINGHUB_GENERATION_FAILED() {
+    return t("tasks.errors.runningHubGeneration");
+  },
+  get RUNNINGHUB_RESULT_EXPIRED() {
+    return t("tasks.errors.runningHubResultExpired");
+  },
+  get RUNNINGHUB_RESULT_IDENTITY_CHANGED() {
+    return t("tasks.errors.runningHubResultIdentity");
+  },
+  get RUNNINGHUB_PROTOCOL_INVALID() {
+    return t("tasks.errors.runningHubProtocol");
+  },
+  get RUNNINGHUB_UNAVAILABLE() {
+    return t("tasks.errors.runningHubUnavailable");
+  },
+  get SEED_AUDIO_RESULT_UNKNOWN() {
+    return t("tasks.errors.audioResultUnknown");
+  },
+  get SEED_AUDIO_REJECTED() {
+    return t("tasks.errors.audioRequestRejected");
+  },
+  get AUTODL_CREATE_UNCERTAIN() {
+    return t("tasks.errors.autoDlSubmissionUnknown");
+  },
+  get AUTODL_CREDENTIAL_REJECTED() {
+    return t("tasks.errors.autoDlCredentialsRejected");
+  },
+  get AUTODL_CREATE_REJECTED() {
+    return t("tasks.errors.autoDlRequestRejected");
+  },
+  get AUTODL_INPUT_UNAVAILABLE() {
+    return t("tasks.errors.autoDlInputUnavailable");
+  },
+  get AUTODL_TASK_FAILED() {
+    return t("tasks.errors.autoDlFailed");
+  },
+  get AUTODL_RESULT_REJECTED() {
+    return t("tasks.errors.autoDlResultRejected");
+  },
+  get AUTODL_RESULT_EXPIRED() {
+    return t("tasks.errors.autoDlResultExpired");
+  },
+  get AUTODL_RESULT_MISSING_VIDEO() {
+    return t("tasks.errors.autoDlVideoMissing");
+  },
+  get MEDIA_RELAY_PREPARATION_FAILED() {
+    return t("tasks.errors.imageRelayFailed");
+  },
+  get MEDIA_REFERENCE_PREPARATION_FAILED() {
+    return t("tasks.errors.videoPreparationFailed");
+  },
+  get MEDIA_RELAY_REQUIRED() {
+    return t("media.editor.videoRelayHint");
+  },
+  get MEDIA_RELAY_PUBLIC_ENDPOINT_REQUIRED() {
+    return t("tasks.errors.videoPublicEndpointRequired");
+  },
+  get SEEDANCE_VIDEO_REFERENCE_INVALID() {
+    return t("tasks.errors.videoReferenceInvalid");
+  },
+  get MINIMAX_CREATE_UNCERTAIN() {
+    return t("tasks.errors.submissionUnknown");
+  },
+  get MINIMAX_CREATE_REJECTED() {
+    return t("tasks.errors.minimaxRejected");
+  },
+  get MINIMAX_TASK_FAILED() {
+    return t("tasks.errors.minimaxFailed");
+  },
+  get MINIMAX_TASK_EXPIRED() {
+    return t("tasks.errors.minimaxExpired");
+  },
+  get MINIMAX_RESULT_EXPIRED() {
+    return t("tasks.errors.minimaxExpired");
+  },
+  get KLING_CREATE_UNCERTAIN() {
+    return t("tasks.errors.submissionUnknown");
+  },
+  get KLING_CREATE_REJECTED() {
+    return t("tasks.errors.klingRejected");
+  },
+  get KLING_TASK_FAILED() {
+    return t("tasks.errors.klingFailed");
+  },
+  get KLING_TASK_EXPIRED() {
+    return t("tasks.errors.klingExpired");
+  },
+  get KLING_RESULT_EXPIRED() {
+    return t("tasks.errors.klingExpired");
+  },
+  get ARK_CREATE_UNCERTAIN() {
+    return t("tasks.errors.submissionUnknown");
+  },
+  get OPENAI_IMAGE_REJECTED() {
+    return t("tasks.errors.imageRequestRejected");
+  },
+  get OPENAI_IMAGE_MODERATION_BLOCKED() {
+    return t("tasks.errors.moderationBlocked");
+  },
+  get GOOGLE_IMAGE_REJECTED() {
+    return t("tasks.errors.imageRequestRejected");
+  },
+  get WAN_CREATE_REJECTED() {
+    return t("tasks.errors.nativeRejected");
+  },
+  get WAN_CREATE_UNCERTAIN() {
+    return t("tasks.errors.submissionUnknown");
+  },
+  get WAN_TASK_FAILED() {
+    return t("tasks.errors.nativeFailed");
+  },
+  get WAN_TASK_EXPIRED() {
+    return t("tasks.errors.nativeExpired");
+  },
+  get WAN_RESULT_EXPIRED() {
+    return t("tasks.errors.nativeExpired");
+  },
+  get SEEDREAM_CREATE_REJECTED() {
+    return t("tasks.errors.nativeRejected");
+  },
+  get SEEDREAM_CREATE_UNCERTAIN() {
+    return t("tasks.errors.submissionUnknown");
+  },
+  get SEEDREAM_GENERATION_FAILED() {
+    return t("tasks.errors.nativeFailed");
+  },
+  get GOOGLE_VIDEO_CREATE_REJECTED() {
+    return t("tasks.errors.nativeRejected");
+  },
+  get GOOGLE_VIDEO_TASK_FAILED() {
+    return t("tasks.errors.nativeFailed");
+  },
+  get GOOGLE_VIDEO_TASK_EXPIRED() {
+    return t("tasks.errors.nativeExpired");
+  },
+  get GOOGLE_VIDEO_RESULT_EXPIRED() {
+    return t("tasks.errors.nativeExpired");
+  },
+  get SEEDREAM_HAS_NO_STATUS_ENDPOINT() {
+    return t("tasks.errors.nativeSyncMissing");
+  },
+  get LOCAL_DEPTH_MODEL_UNAVAILABLE() {
+    return t("tasks.errors.depthModelUnavailable");
+  },
+  get VIDEO_AUDIO_TRACK_MISSING() {
+    return t("tasks.errors.videoAudioMissing");
+  },
+  get LOCAL_VIDEO_PROCESSING_FAILED() {
+    return t("tasks.errors.localVideoFailed");
+  },
+  get LOCAL_VIDEO_PROCESSING_TIMEOUT() {
+    return t("tasks.errors.localVideoTimeout");
+  },
+  get LOCAL_VIDEO_LIMIT_EXCEEDED() {
+    return t("tasks.errors.localVideoLimits");
+  },
+  get LOCAL_VIDEO_PROCESSING_CANCELED() {
+    return t("tasks.errors.localVideoCanceled");
+  },
+  get VIDEO_COMPOSITION_INVALID() {
+    return t("tasks.errors.compositionInvalid");
+  },
+  get VIDEO_COMPOSITION_AUDIO_OVERFLOW() {
+    return t("tasks.errors.compositionAudioOverflow");
+  },
+  get LOCAL_VIDEO_COMPOSITION_FAILED() {
+    return t("tasks.errors.compositionFailed");
+  },
+  get LOCAL_VIDEO_COMPOSITION_TIMEOUT() {
+    return t("tasks.errors.compositionTimeout");
+  },
+  get LOCAL_VIDEO_COMPOSITION_CANCELED() {
+    return t("tasks.errors.compositionCanceled");
+  },
+  get AUDIO_TRIM_INVALID() {
+    return t("audio.trim.invalid");
+  },
+  get AUDIO_TRIM_OUTPUT_TOO_LARGE() {
+    return t("audio.trim.outputTooLarge");
+  },
+  get LOCAL_AUDIO_TRIM_FAILED() {
+    return t("audio.trim.processingFailed");
+  },
+  get LOCAL_AUDIO_TRIM_TIMEOUT() {
+    return t("audio.trim.timeout");
+  },
+  get LOCAL_AUDIO_TRIM_CANCELED() {
+    return t("audio.trim.canceled");
+  },
+  get LOCAL_IMAGE_PROCESSING_FAILED() {
+    return t("tasks.errors.localProcessingFailed");
+  },
+  get LOCAL_IMAGE_ENCODING_FAILED() {
+    return t("tasks.errors.localEncodingFailed");
+  },
 };
 
 /** @returns 可读原因；没有登记时返回 null，由调用方回退展示原始错误码。 */
@@ -175,26 +373,43 @@ export function taskErrorMessage(errorCode: Task["errorCode"]): string | null {
  */
 export function taskErrorDetail(errorCode: Task["errorCode"], diagnostic?: ProviderFailureDiagnostic | null): string {
   if (!errorCode && !diagnostic) return "";
-  const reason = errorCode ? taskErrorMessage(errorCode) ?? errorCode : "";
+  const reason = errorCode ? (taskErrorMessage(errorCode) ?? errorCode) : "";
   const includeAdvice = !diagnostic || reason !== t(RUNNINGHUB_CATEGORY_KEYS[diagnostic.category]);
   return ` · ${[reason, providerFailureMessage(diagnostic, includeAdvice)].filter(Boolean).join(" · ")}`;
 }
 
 const RUNNINGHUB_CATEGORY_KEYS = {
-  AUTHENTICATION: "tasks.errors.runningHubAuthentication", BALANCE: "tasks.errors.runningHubBalance",
-  PARAMETER: "tasks.errors.runningHubParameter", RATE_LIMIT: "tasks.errors.runningHubRateLimit",
-  UPLOAD: "tasks.errors.runningHubUpload", GENERATION: "tasks.errors.runningHubGeneration",
-  DOWNLOAD_EXPIRED: "tasks.errors.runningHubResultExpired", UNAVAILABLE: "tasks.errors.runningHubUnavailable",
-  PROTOCOL: "tasks.errors.runningHubProtocol", MODERATION: "tasks.errors.moderationBlocked",
+  AUTHENTICATION: "tasks.errors.runningHubAuthentication",
+  BALANCE: "tasks.errors.runningHubBalance",
+  PARAMETER: "tasks.errors.runningHubParameter",
+  RATE_LIMIT: "tasks.errors.runningHubRateLimit",
+  UPLOAD: "tasks.errors.runningHubUpload",
+  GENERATION: "tasks.errors.runningHubGeneration",
+  DOWNLOAD_EXPIRED: "tasks.errors.runningHubResultExpired",
+  UNAVAILABLE: "tasks.errors.runningHubUnavailable",
+  PROTOCOL: "tasks.errors.runningHubProtocol",
+  MODERATION: "tasks.errors.moderationBlocked",
 } as const satisfies Record<ProviderFailureDiagnostic["category"], Parameters<typeof t>[0]>;
-const PROVIDER_STAGE_KEYS = { DISCOVERY: "tasks.providerStage.discovery", UPLOAD: "tasks.providerStage.upload",
-  SUBMIT: "tasks.providerStage.submit", POLL: "tasks.providerStage.poll", DOWNLOAD: "tasks.providerStage.download" } as const;
+const PROVIDER_STAGE_KEYS = {
+  DISCOVERY: "tasks.providerStage.discovery",
+  UPLOAD: "tasks.providerStage.upload",
+  SUBMIT: "tasks.providerStage.submit",
+  POLL: "tasks.providerStage.poll",
+  DOWNLOAD: "tasks.providerStage.download",
+} as const;
 const MODERATION_CODES: ReadonlySet<string> = new Set(["moderation_blocked", "content_policy_violation"]);
-const MODERATION_STAGE_KEYS = { input: "tasks.providerModeration.stage.input", output: "tasks.providerModeration.stage.output",
-  unknown: "tasks.providerModeration.stage.unknown" } as const satisfies Record<ProviderModerationDiagnostic["stage"], Parameters<typeof t>[0]>;
-const MODERATION_CATEGORY_KEYS = { harassment: "tasks.providerModeration.category.harassment", "self-harm": "tasks.providerModeration.category.selfHarm",
-  sexual: "tasks.providerModeration.category.sexual", violence: "tasks.providerModeration.category.violence",
-  other: "tasks.providerModeration.category.other" } as const satisfies Record<ProviderModerationDiagnostic["categories"][number], Parameters<typeof t>[0]>;
+const MODERATION_STAGE_KEYS = {
+  input: "tasks.providerModeration.stage.input",
+  output: "tasks.providerModeration.stage.output",
+  unknown: "tasks.providerModeration.stage.unknown",
+} as const satisfies Record<ProviderModerationDiagnostic["stage"], Parameters<typeof t>[0]>;
+const MODERATION_CATEGORY_KEYS = {
+  harassment: "tasks.providerModeration.category.harassment",
+  "self-harm": "tasks.providerModeration.category.selfHarm",
+  sexual: "tasks.providerModeration.category.sexual",
+  violence: "tasks.providerModeration.category.violence",
+  other: "tasks.providerModeration.category.other",
+} as const satisfies Record<ProviderModerationDiagnostic["categories"][number], Parameters<typeof t>[0]>;
 
 /** Uses only the server's bounded diagnostic; upstream messages, bodies and URLs never enter this text. */
 export function providerFailureMessage(diagnostic?: ProviderFailureDiagnostic | null, includeAdvice = true): string {
@@ -205,10 +420,14 @@ export function providerFailureMessage(diagnostic?: ProviderFailureDiagnostic | 
   if (moderation) {
     // Keep the public diagnostic bounded even if an older or incompatible server sends extra text.
     if (MODERATION_CODES.has(moderation.code)) parts.push(t("tasks.providerModeration.code", { "0": moderation.code }));
-    const stageKey = Object.hasOwn(MODERATION_STAGE_KEYS, moderation.stage) ? MODERATION_STAGE_KEYS[moderation.stage] : MODERATION_STAGE_KEYS.unknown;
+    const stageKey = Object.hasOwn(MODERATION_STAGE_KEYS, moderation.stage)
+      ? MODERATION_STAGE_KEYS[moderation.stage]
+      : MODERATION_STAGE_KEYS.unknown;
     parts.push(t(stageKey));
-    const categories = moderation.categories.filter((category) => Object.hasOwn(MODERATION_CATEGORY_KEYS, category))
-      .slice(0, 5).map((category) => t(MODERATION_CATEGORY_KEYS[category]));
+    const categories = moderation.categories
+      .filter(category => Object.hasOwn(MODERATION_CATEGORY_KEYS, category))
+      .slice(0, 5)
+      .map(category => t(MODERATION_CATEGORY_KEYS[category]));
     if (categories.length) parts.push(t("tasks.providerModeration.categories", { "0": categories.join(", ") }));
   }
   if (diagnostic.nodeId) parts.push(t("tasks.providerLocation.node", { "0": diagnostic.nodeId }));

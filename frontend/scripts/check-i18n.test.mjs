@@ -28,13 +28,16 @@ test("rejects Chinese leaking into English and Russian catalogs without rejectin
 
 test("rejects raw text IDs, including English source sentences", () => {
   for (const key of ["已选 {count} 个节点", "Selected nodes", "Save"]) {
-    const invalid = Object.fromEntries(Object.keys(catalogs()).map((locale) => [locale, { [key]: "Copy" }]));
+    const invalid = Object.fromEntries(Object.keys(catalogs()).map(locale => [locale, { [key]: "Copy" }]));
     assert.match(checkCatalogs(invalid).join("\n"), /invalid semantic message key/);
   }
 });
 
 test("rejects duplicate catalog entries before JSON parsing can hide a translation", () => {
-  assert.throws(() => parseCatalog("en.json", '{"common.save":"Save","common.save":"Overwrite"}'), /duplicate message key common.save/);
+  assert.throws(
+    () => parseCatalog("en.json", '{"common.save":"Save","common.save":"Overwrite"}'),
+    /duplicate message key common.save/,
+  );
   assert.deepEqual(parseCatalog("en.json", '{"common.save":"Save"}'), { "common.save": "Save" });
 });
 
@@ -55,16 +58,28 @@ test("checks both translators, aliases, and template literals for unknown keys",
   const source = `import { t as label, translate as localize } from "../i18n";
     t("auth.missing"); translate("en", "auth.other");
     label(\`auth.template\`); localize("ja", "auth.alias");`;
-  assert.equal(checkSource("example.ts", source, catalogs().zh).filter((failure) => failure.includes("unknown message key")).length, 4);
+  assert.equal(
+    checkSource("example.ts", source, catalogs().zh).filter(failure => failure.includes("unknown message key")).length,
+    4,
+  );
   assert.deepEqual(checkSource("example.ts", 't("canvas.selection.count", {count: 3});', catalogs().zh), []);
 });
 
 test("checks built-in text and prompt defaults while preserving type-only identifiers", () => {
-  assert.match(checkSource("view.tsx", '<button>保存</button>', catalogs().zh).join("\n"), /untranslated UI copy/);
-  assert.match(checkSource("view.ts", 'const READ_ERROR = "读取失败";', catalogs().zh).join("\n"), /untranslated UI copy/);
+  assert.match(checkSource("view.tsx", "<button>保存</button>", catalogs().zh).join("\n"), /untranslated UI copy/);
+  assert.match(
+    checkSource("view.ts", 'const READ_ERROR = "读取失败";', catalogs().zh).join("\n"),
+    /untranslated UI copy/,
+  );
   assert.deepEqual(checkSource("data.ts", 'type LanguageName = "中文";', catalogs().zh), []);
   for (const property of ["prompt", "instruction", "text", "value"]) {
-    assert.match(checkSource("defaults.ts", `const defaultValue = { ${property}: "产品内置默认值" };`, catalogs().zh).join("\n"), /untranslated UI copy/);
+    assert.match(
+      checkSource("defaults.ts", `const defaultValue = { ${property}: "产品内置默认值" };`, catalogs().zh).join("\n"),
+      /untranslated UI copy/,
+    );
   }
-  assert.match(checkSource("defaults.ts", 'const prompt = `翻译成${language}，只返回文字`;', catalogs().zh).join("\n"), /untranslated UI copy/);
+  assert.match(
+    checkSource("defaults.ts", "const prompt = `翻译成${language}，只返回文字`;", catalogs().zh).join("\n"),
+    /untranslated UI copy/,
+  );
 });

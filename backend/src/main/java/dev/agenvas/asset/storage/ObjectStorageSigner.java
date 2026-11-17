@@ -20,7 +20,8 @@ final class ObjectStorageSigner {
     static final String EMPTY_HASH = hash(new byte[0]);
     private static final DateTimeFormatter TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
             .withZone(ZoneOffset.UTC);
-    private ObjectStorageSigner() {}
+    private ObjectStorageSigner() {
+    }
 
     static Request sign(Request request, StorageProfile profile, String id, String secret,
             String objectKey, String payloadHash, Instant instant) {
@@ -42,11 +43,16 @@ final class ObjectStorageSigner {
                 signed.put(lower, unsigned.header(name).trim());
         }
         var additional = new java.util.TreeSet<String>();
-        for (String name : new String[] { "range", "content-length", "content-disposition" }) {
+        for (String name : new String[]{"range", "content-length", "content-disposition"}) {
             String value = unsigned.header(name);
-            if (value != null) { signed.put(name, value.trim()); if (oss) additional.add(name); }
+            if (value != null) {
+                signed.put(name, value.trim());
+                if (oss)
+                    additional.add(name);
+            }
         }
-        if (!oss) signed.put("host", host(request.url()));
+        if (!oss)
+            signed.put("host", host(request.url()));
         StringBuilder canonicalHeaders = new StringBuilder();
         signed.forEach((name, value) -> canonicalHeaders.append(name).append(':').append(value).append('\n'));
         String signedNames = oss ? String.join(";", additional) : String.join(";", signed.keySet());
@@ -55,12 +61,18 @@ final class ObjectStorageSigner {
         String canonical = request.method() + "\n" + path + "\n\n" + canonicalHeaders + "\n"
                 + signedNames + "\n" + hash;
         String scope = date + "/" + profile.region() + "/" + service + "/" + terminal;
-        String toSign = algorithm + "\n" + timestamp + "\n" + scope + "\n" + hash(canonical.getBytes(StandardCharsets.UTF_8));
+        String toSign = algorithm + "\n" + timestamp + "\n" + scope + "\n"
+                + hash(canonical.getBytes(StandardCharsets.UTF_8));
         byte[] key = hmac(((oss ? "aliyun_v4" : "AWS4") + secret).getBytes(StandardCharsets.UTF_8), date);
-        key = hmac(key, profile.region()); key = hmac(key, service); key = hmac(key, terminal);
+        key = hmac(key, profile.region());
+        key = hmac(key, service);
+        key = hmac(key, terminal);
         String signature = HexFormat.of().formatHex(hmac(key, toSign));
         String authorization = algorithm + " Credential=" + id + "/" + scope
-                + (oss ? (additional.isEmpty() ? "" : ",AdditionalHeaders=" + signedNames) + ",Signature=" : ", SignedHeaders=" + signedNames + ", Signature=") + signature;
+                + (oss
+                        ? (additional.isEmpty() ? "" : ",AdditionalHeaders=" + signedNames) + ",Signature="
+                        : ", SignedHeaders=" + signedNames + ", Signature=")
+                + signature;
         return builder.header("Authorization", authorization).build();
     }
     /** A GET bearer URL signs only Host, so provider GET/Range requests need no extra headers. */
@@ -90,7 +102,9 @@ final class ObjectStorageSigner {
         String toSign = algorithm + "\n" + timestamp + "\n" + scope + "\n"
                 + hash(canonical.getBytes(StandardCharsets.UTF_8));
         byte[] key = hmac(((oss ? "aliyun_v4" : "AWS4") + secret).getBytes(StandardCharsets.UTF_8), date);
-        key = hmac(key, profile.region()); key = hmac(key, service); key = hmac(key, terminal);
+        key = hmac(key, profile.region());
+        key = hmac(key, service);
+        key = hmac(key, terminal);
         return builder.addQueryParameter(oss ? "x-oss-signature" : "X-Amz-Signature",
                 HexFormat.of().formatHex(hmac(key, toSign))).build();
     }
@@ -105,14 +119,19 @@ final class ObjectStorageSigner {
         return hostname + (url.port() == HttpUrl.defaultPort(url.scheme()) ? "" : ":" + url.port());
     }
     static String hash(byte[] bytes) {
-        try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)); }
-        catch (GeneralSecurityException failure) { throw new IllegalStateException("SHA-256 unavailable", failure); }
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+        } catch (GeneralSecurityException failure) {
+            throw new IllegalStateException("SHA-256 unavailable", failure);
+        }
     }
     private static byte[] hmac(byte[] key, String value) {
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
             mac.init(new SecretKeySpec(key, "HmacSHA256"));
             return mac.doFinal(value.getBytes(StandardCharsets.UTF_8));
-        } catch (GeneralSecurityException failure) { throw new IllegalStateException("HMAC unavailable", failure); }
+        } catch (GeneralSecurityException failure) {
+            throw new IllegalStateException("HMAC unavailable", failure);
+        }
     }
 }

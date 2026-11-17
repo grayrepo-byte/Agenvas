@@ -14,23 +14,31 @@ import org.springframework.stereotype.Component;
 @Component
 public class LlmImageRelay {
     private final MediaRelayService relay;
-    public LlmImageRelay(MediaRelayService relay) { this.relay = relay; }
+    public LlmImageRelay(MediaRelayService relay) {
+        this.relay = relay;
+    }
 
     public List<Message> prepare(List<Message> messages) {
         boolean hasImages = messages.stream().anyMatch(message -> message instanceof UserMessage user
                 && user.getMedia().stream().anyMatch(LlmImageRelay::inlineImage));
-        if (!hasImages) return messages;
+        if (!hasImages)
+            return messages;
         UUID profile = relay.llmProfile();
-        if (profile == null) return messages;
+        if (profile == null)
+            return messages;
         var prepared = new IdentityHashMap<Media, Media>();
         return messages.stream().map(message -> {
-            if (!(message instanceof UserMessage user) || user.getMedia().stream().noneMatch(LlmImageRelay::inlineImage)) return message;
+            if (!(message instanceof UserMessage user)
+                    || user.getMedia().stream().noneMatch(LlmImageRelay::inlineImage))
+                return message;
             List<Media> media = user.getMedia().stream().map(input -> {
-                if (!inlineImage(input)) return input;
+                if (!inlineImage(input))
+                    return input;
                 return prepared.computeIfAbsent(input, image -> new Media(image.getMimeType(), URI.create(
                         relay.signedImage(profile, image.getDataAsByteArray(), image.getMimeType().toString()))));
             }).toList();
-            return (Message) UserMessage.builder().text(user.getText()).metadata(user.getMetadata()).media(media).build();
+            return (Message) UserMessage.builder().text(user.getText()).metadata(user.getMetadata()).media(media)
+                    .build();
         }).toList();
     }
 

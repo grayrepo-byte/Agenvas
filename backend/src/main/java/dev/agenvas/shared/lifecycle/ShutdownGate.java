@@ -46,7 +46,8 @@ public class ShutdownGate {
         if (closing) {
             throw new ApiProblemException(HttpStatus.SERVICE_UNAVAILABLE,
                     "APPLICATION_STOPPING", ApiMessage.of("api.shutdown-gate.service-is-shutting-down"),
-                    ApiMessage.of("api.shutdown-gate.the-current-instance-is-no-longer-receiving-new-agent-runs"), true);
+                    ApiMessage.of("api.shutdown-gate.the-current-instance-is-no-longer-receiving-new-agent-runs"),
+                    true);
         }
     }
 

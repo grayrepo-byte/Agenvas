@@ -67,13 +67,17 @@ public class AgentImageInputService {
         List<AgentMediaSampleService.Sample> addedSamples = new ArrayList<>();
         for (var call : assistant.getToolCalls()) {
             JsonNode result = results.get(call.id());
-            if (result == null || !ToolResultStatus.SUCCEEDED.name().equals(result.path("status").asText())) continue;
-            if ("read_artifacts".equals(call.name())) for (JsonNode item : result.path("data")) {
-                if (!"IMAGE".equals(item.path("kind").asText())
-                        || !item.path(PREVIEW_REQUEST_KEY).asBoolean()) continue;
-                Input input = projectInput(item);
-                if (existing.add(input)) added.add(input);
-            }
+            if (result == null || !ToolResultStatus.SUCCEEDED.name().equals(result.path("status").asText()))
+                continue;
+            if ("read_artifacts".equals(call.name()))
+                for (JsonNode item : result.path("data")) {
+                    if (!"IMAGE".equals(item.path("kind").asText())
+                            || !item.path(PREVIEW_REQUEST_KEY).asBoolean())
+                        continue;
+                    Input input = projectInput(item);
+                    if (existing.add(input))
+                        added.add(input);
+                }
             if ("read_media_sample".equals(call.name()) && result.path("data").path("sampleRequested").asBoolean()) {
                 ObjectNode sample = ((ObjectNode) result.path("data")).deepCopy();
                 sample.remove(List.of("kind", "sampleRequested", "notice"));
@@ -82,9 +86,11 @@ public class AgentImageInputService {
             if ("read_skill_asset".equals(call.name())) {
                 JsonNode item = result.path("data");
                 if (!"IMAGE".equals(item.path("kind").asText())
-                        || !item.path(PREVIEW_REQUEST_KEY).asBoolean()) continue;
+                        || !item.path(PREVIEW_REQUEST_KEY).asBoolean())
+                    continue;
                 SkillInput input = skillInput(item);
-                if (existingSkills.add(input)) addedSkills.add(input);
+                if (existingSkills.add(input))
+                    addedSkills.add(input);
             }
         }
         if (addedSamples.size() > 1 || !addedSamples.isEmpty() && (!added.isEmpty() || !addedSkills.isEmpty()))
@@ -96,17 +102,22 @@ public class AgentImageInputService {
                             || message.getMetadata().containsKey(SKILL_METADATA_KEY)
                             || message.getMetadata().containsKey(AgentMediaSampleService.METADATA_KEY)));
         }
-        if (!addedSamples.isEmpty()) history.add(UserMessage.builder()
-                .text("Requested exact media sample: " + addedSamples + ". Inspect only these timestamps/audio intervals. Earlier pixels/audio are no longer attached. Record public observations with exact timestamps. Audio requires input_audio support; do not invent dialogue from metadata.")
-                .metadata(Map.of(AgentMediaSampleService.METADATA_KEY, List.copyOf(addedSamples))).build());
-        if (!added.isEmpty()) history.add(UserMessage.builder()
-                .text("Image previews requested by read_artifacts (exact immutable versions): " + added
-                        + sequentialContextNote())
-                .metadata(Map.of(METADATA_KEY, List.copyOf(added))).build());
-        if (!addedSkills.isEmpty()) history.add(UserMessage.builder()
-                .text("Skill reference image previews requested by read_skill_asset (LLM context only): " + addedSkills
-                        + sequentialContextNote())
-                .metadata(Map.of(SKILL_METADATA_KEY, List.copyOf(addedSkills))).build());
+        if (!addedSamples.isEmpty())
+            history.add(UserMessage.builder()
+                    .text("Requested exact media sample: " + addedSamples
+                            + ". Inspect only these timestamps/audio intervals. Earlier pixels/audio are no longer attached. Record public observations with exact timestamps. Audio requires input_audio support; do not invent dialogue from metadata.")
+                    .metadata(Map.of(AgentMediaSampleService.METADATA_KEY, List.copyOf(addedSamples))).build());
+        if (!added.isEmpty())
+            history.add(UserMessage.builder()
+                    .text("Image previews requested by read_artifacts (exact immutable versions): " + added
+                            + sequentialContextNote())
+                    .metadata(Map.of(METADATA_KEY, List.copyOf(added))).build());
+        if (!addedSkills.isEmpty())
+            history.add(UserMessage.builder()
+                    .text("Skill reference image previews requested by read_skill_asset (LLM context only): "
+                            + addedSkills
+                            + sequentialContextNote())
+                    .metadata(Map.of(SKILL_METADATA_KEY, List.copyOf(addedSkills))).build());
     }
 
     private static String sequentialContextNote() {
@@ -117,14 +128,17 @@ public class AgentImageInputService {
 
     /** Validate requested previews before opening any storage stream; never read unrequested assets. */
     public void validateInputs(UUID owner, UUID project, UUID run, JsonNode snapshot, List<Input> inputs) {
-        if (inputs.size() > MAX_IMAGES) throw invalid();
+        if (inputs.size() > MAX_IMAGES)
+            throw invalid();
         long total = 0;
         for (Input input : inputs) {
             Asset asset = image(owner, project, run, snapshot, input);
             Long size = asset.thumbnailByteSize();
-            if (size == null || size <= 0 || size > MAX_IMAGE_BYTES) throw invalid();
+            if (size == null || size <= 0 || size > MAX_IMAGE_BYTES)
+                throw invalid();
             total += size;
-            if (total > MAX_TOTAL_BYTES) throw invalid();
+            if (total > MAX_TOTAL_BYTES)
+                throw invalid();
         }
     }
 
@@ -136,24 +150,29 @@ public class AgentImageInputService {
         List<Input> requested = new ArrayList<>();
         List<SkillInput> requestedSkills = new ArrayList<>();
         for (Message message : messages) {
-            if (!(message instanceof UserMessage)) continue;
+            if (!(message instanceof UserMessage))
+                continue;
             if (message.getMetadata().containsKey(METADATA_KEY)) {
                 for (JsonNode entry : manifest(message, METADATA_KEY)) {
                     Input input = projectInput(entry);
-                    if (requested.contains(input)) throw invalid();
+                    if (requested.contains(input))
+                        throw invalid();
                     requested.add(input);
                 }
             }
             if (message.getMetadata().containsKey(SKILL_METADATA_KEY)) {
                 for (JsonNode entry : manifest(message, SKILL_METADATA_KEY)) {
                     SkillInput input = skillInput(entry);
-                    if (requestedSkills.contains(input)) throw invalid();
+                    if (requestedSkills.contains(input))
+                        throw invalid();
                     requestedSkills.add(input);
                 }
             }
         }
-        if (requested.isEmpty() && requestedSkills.isEmpty()) return messages;
-        if (requested.size() + requestedSkills.size() > MAX_IMAGES) throw invalid();
+        if (requested.isEmpty() && requestedSkills.isEmpty())
+            return messages;
+        if (requested.size() + requestedSkills.size() > MAX_IMAGES)
+            throw invalid();
         long total = 0;
         Map<Input, Asset> projectAssets = new LinkedHashMap<>();
         for (Input input : requested) {
@@ -164,11 +183,13 @@ public class AgentImageInputService {
                 // A user's selection/removal can invalidate a saved preview between model calls.
                 // Do not load its bytes or fail the whole Run; other errors still fail closed.
                 if (inaccessible.status() == HttpStatus.FORBIDDEN
-                        && "INPUT_SCOPE_DENIED".equals(inaccessible.code())) continue;
+                        && "INPUT_SCOPE_DENIED".equals(inaccessible.code()))
+                    continue;
                 throw inaccessible;
             }
             Long size = asset.thumbnailByteSize();
-            if (size == null || size <= 0 || size > MAX_IMAGE_BYTES) throw invalid();
+            if (size == null || size <= 0 || size > MAX_IMAGE_BYTES)
+                throw invalid();
             total += size;
             projectAssets.put(input, asset);
         }
@@ -176,27 +197,34 @@ public class AgentImageInputService {
         Map<SkillInput, LibraryService.MediaFile> skillFiles = new LinkedHashMap<>();
         for (SkillInput input : requestedSkills) {
             LibraryService.MediaFile file = skillImage(owner, snapshot, input, skillReads);
-            if (file.size() <= 0 || file.size() > MAX_IMAGE_BYTES) throw invalid();
+            if (file.size() <= 0 || file.size() > MAX_IMAGE_BYTES)
+                throw invalid();
             total += file.size();
             skillFiles.put(input, file);
         }
-        if (total > MAX_TOTAL_BYTES) throw invalid();
+        if (total > MAX_TOTAL_BYTES)
+            throw invalid();
         Map<Input, Media> media = new LinkedHashMap<>();
         for (var entry : projectAssets.entrySet()) {
             Asset asset = entry.getValue();
             AssetService.AssetContent content = assets.content(owner, project, asset.id(), true);
             if (content.size() <= 0 || content.size() > MAX_IMAGE_BYTES
-                    || content.size() != asset.thumbnailByteSize()) throw invalid();
+                    || content.size() != asset.thumbnailByteSize())
+                throw invalid();
             try (InputStream stream = assets.open(content, 0, content.size())) {
                 media.put(entry.getKey(), readMedia(stream, content.size(), content.contentType()));
-            } catch (IOException failed) { throw unreadable(failed); }
+            } catch (IOException failed) {
+                throw unreadable(failed);
+            }
         }
         Map<SkillInput, Media> skillMedia = new LinkedHashMap<>();
         for (var entry : skillFiles.entrySet()) {
             LibraryService.MediaFile file = entry.getValue();
             try (InputStream stream = Files.newInputStream(file.path(), LinkOption.NOFOLLOW_LINKS)) {
                 skillMedia.put(entry.getKey(), readMedia(stream, file.size(), file.contentType()));
-            } catch (IOException failed) { throw unreadable(failed); }
+            } catch (IOException failed) {
+                throw unreadable(failed);
+            }
         }
         List<Message> hydrated = new ArrayList<>(messages.size());
         for (Message message : messages) {
@@ -209,30 +237,38 @@ public class AgentImageInputService {
             if (message.getMetadata().containsKey(METADATA_KEY))
                 for (JsonNode entry : manifest(message, METADATA_KEY)) {
                     Media preview = media.get(projectInput(entry));
-                    if (preview != null) attachments.add(preview);
+                    if (preview != null)
+                        attachments.add(preview);
                 }
             if (message.getMetadata().containsKey(SKILL_METADATA_KEY))
-                for (JsonNode entry : manifest(message, SKILL_METADATA_KEY)) attachments.add(skillMedia.get(skillInput(entry)));
+                for (JsonNode entry : manifest(message, SKILL_METADATA_KEY))
+                    attachments.add(skillMedia.get(skillInput(entry)));
             Map<String, Object> metadata = new LinkedHashMap<>(user.getMetadata());
             metadata.remove(METADATA_KEY);
             metadata.remove(SKILL_METADATA_KEY);
-            String text = attachments.isEmpty() ? user.getText()
-                    + "\nThe saved image is no longer selected on the current canvas; no pixels are attached. "
-                    + "Read the current canvas and request its selected version when needed." : user.getText();
+            String text = attachments.isEmpty()
+                    ? user.getText()
+                            + "\nThe saved image is no longer selected on the current canvas; no pixels are attached. "
+                            + "Read the current canvas and request its selected version when needed."
+                    : user.getText();
             hydrated.add(UserMessage.builder().text(text).metadata(metadata).media(attachments).build());
         }
         return List.copyOf(hydrated);
     }
 
-    private List<Message> hydrateSamples(UUID owner, UUID project, UUID run, JsonNode snapshot, List<Message> messages) {
+    private List<Message> hydrateSamples(UUID owner, UUID project, UUID run, JsonNode snapshot,
+            List<Message> messages) {
         List<Message> result = new ArrayList<>();
         int count = 0;
         for (Message message : messages) {
-            if (!(message instanceof UserMessage user) || !message.getMetadata().containsKey(AgentMediaSampleService.METADATA_KEY)) {
-                result.add(message); continue;
+            if (!(message instanceof UserMessage user)
+                    || !message.getMetadata().containsKey(AgentMediaSampleService.METADATA_KEY)) {
+                result.add(message);
+                continue;
             }
             JsonNode manifest = mapper.valueToTree(message.getMetadata().get(AgentMediaSampleService.METADATA_KEY));
-            if (!manifest.isArray() || manifest.size() != 1 || ++count > 1) throw invalid();
+            if (!manifest.isArray() || manifest.size() != 1 || ++count > 1)
+                throw invalid();
             var sample = AgentMediaSampleService.parse(manifest.get(0));
             Map<String, Object> metadata = new LinkedHashMap<>(user.getMetadata());
             metadata.remove(AgentMediaSampleService.METADATA_KEY);
@@ -247,51 +283,68 @@ public class AgentImageInputService {
         JsonNode selected = null;
         for (JsonNode skill : snapshot.path("creativeSkills"))
             if (input.skillId().toString().equals(skill.path("skillId").asText())
-                    && input.skillVersionId().toString().equals(skill.path("skillVersionId").asText())) selected = skill;
-        if (selected == null || !SkillContent.AssetDelivery.LLM_CONTEXT.name().equals(selected.path("assetDelivery").asText()))
+                    && input.skillVersionId().toString().equals(skill.path("skillVersionId").asText()))
+                selected = skill;
+        if (selected == null
+                || !SkillContent.AssetDelivery.LLM_CONTEXT.name().equals(selected.path("assetDelivery").asText()))
             throw invalid();
-        boolean activated = reads.stream().anyMatch(read -> input.skillVersionId().toString().equals(read.path("skillVersionId").asText())
-                && "SKILL.md".equals(read.path("path").asText()));
+        boolean activated = reads.stream()
+                .anyMatch(read -> input.skillVersionId().toString().equals(read.path("skillVersionId").asText())
+                        && "SKILL.md".equals(read.path("path").asText()));
         boolean read = reads.stream().anyMatch(item -> input.skillId().toString().equals(item.path("skillId").asText())
                 && input.skillVersionId().toString().equals(item.path("skillVersionId").asText())
-                && input.alias().equals(item.path("alias").asText()) && input.contentHash().equals(item.path("contentHash").asText())
+                && input.alias().equals(item.path("alias").asText())
+                && input.contentHash().equals(item.path("contentHash").asText())
                 && "IMAGE".equals(item.path("kind").asText()) && item.path(PREVIEW_REQUEST_KEY).asBoolean());
-        if (!activated || !read) throw invalid();
+        if (!activated || !read)
+            throw invalid();
         boolean frozen = false;
         for (JsonNode asset : selected.path("assets"))
-            if (input.alias().equals(asset.path("alias").asText()) && input.contentHash().equals(asset.path("contentHash").asText())
-                    && "IMAGE".equals(asset.path("kind").asText())) frozen = true;
-        if (!frozen) throw invalid();
+            if (input.alias().equals(asset.path("alias").asText())
+                    && input.contentHash().equals(asset.path("contentHash").asText())
+                    && "IMAGE".equals(asset.path("kind").asText()))
+                frozen = true;
+        if (!frozen)
+            throw invalid();
         SkillContent.Version version = skills.getBundle(owner, input.skillId(), input.skillVersionId());
-        if (!owner.equals(version.ownerId()) || !input.skillId().equals(version.skillId()) || !input.skillVersionId().equals(version.id()))
+        if (!owner.equals(version.ownerId()) || !input.skillId().equals(version.skillId())
+                || !input.skillVersionId().equals(version.id()))
             throw invalid();
         SkillContent.PublishedAsset asset = version.bundle().assets().stream()
-                .filter(item -> input.alias().equals(item.alias())).findFirst().orElseThrow(AgentImageInputService::invalid);
-        if (asset.kind() != dev.agenvas.artifact.domain.Artifact.Kind.IMAGE || !input.contentHash().equals(asset.contentHash())
+                .filter(item -> input.alias().equals(item.alias())).findFirst()
+                .orElseThrow(AgentImageInputService::invalid);
+        if (asset.kind() != dev.agenvas.artifact.domain.Artifact.Kind.IMAGE
+                || !input.contentHash().equals(asset.contentHash())
                 || asset.media().kind() != Asset.MediaKind.IMAGE || !owner.equals(asset.media().ownerId())
-                || !input.contentHash().equals(asset.media().sha256())) throw invalid();
+                || !input.contentHash().equals(asset.media().sha256()))
+            throw invalid();
         return skills.file(owner, input.skillId(), input.skillVersionId(), input.alias(), true);
     }
 
     private JsonNode manifest(Message message, String key) {
         JsonNode manifest = mapper.valueToTree(message.getMetadata().get(key));
-        if (!manifest.isArray() || manifest.isEmpty()) throw invalid();
+        if (!manifest.isArray() || manifest.isEmpty())
+            throw invalid();
         return manifest;
     }
     private static Input projectInput(JsonNode entry) {
         return new Input(uuid(entry, "artifactId"), uuid(entry, "versionId"));
     }
     private static SkillInput skillInput(JsonNode entry) {
-        return new SkillInput(uuid(entry, "skillId"), uuid(entry, "skillVersionId"), text(entry, "alias"), text(entry, "contentHash"));
+        return new SkillInput(uuid(entry, "skillId"), uuid(entry, "skillVersionId"), text(entry, "alias"),
+                text(entry, "contentHash"));
     }
     private static String text(JsonNode entry, String field) {
-        if (!entry.path(field).isTextual() || entry.path(field).asText().isBlank()) throw invalid();
+        if (!entry.path(field).isTextual() || entry.path(field).asText().isBlank())
+            throw invalid();
         return entry.path(field).asText();
     }
     private static Media readMedia(InputStream stream, long size, String contentType) throws IOException {
-        if (!contentType.startsWith("image/")) throw invalid();
+        if (!contentType.startsWith("image/"))
+            throw invalid();
         byte[] bytes = stream.readNBytes(Math.toIntExact(size) + 1);
-        if (bytes.length != size) throw invalid();
+        if (bytes.length != size)
+            throw invalid();
         return new Media(MimeTypeUtils.parseMimeType(contentType), new ByteArrayResource(bytes));
     }
     private static IllegalStateException unreadable(IOException failed) {
@@ -300,16 +353,22 @@ public class AgentImageInputService {
 
     private Asset image(UUID owner, UUID project, UUID run, JsonNode snapshot, Input input) {
         var version = artifacts.requireAgentReadableVersion(owner, project, snapshot, run, input.versionId());
-        if (!input.artifactId().equals(version.artifactId())) throw invalid();
+        if (!input.artifactId().equals(version.artifactId()))
+            throw invalid();
         Asset asset = assets.metadata(owner, project, uuid(version.content(), "assetId"));
-        if (asset.mediaKind() != Asset.MediaKind.IMAGE || !project.equals(asset.projectId())) throw invalid();
+        if (asset.mediaKind() != Asset.MediaKind.IMAGE || !project.equals(asset.projectId()))
+            throw invalid();
         return asset;
     }
 
     private static UUID uuid(JsonNode value, String field) {
-        if (!value.path(field).isTextual()) throw invalid();
-        try { return UUID.fromString(value.path(field).asText()); }
-        catch (IllegalArgumentException malformed) { throw invalid(); }
+        if (!value.path(field).isTextual())
+            throw invalid();
+        try {
+            return UUID.fromString(value.path(field).asText());
+        } catch (IllegalArgumentException malformed) {
+            throw invalid();
+        }
     }
 
     private static ApiProblemException invalid() {
@@ -318,6 +377,8 @@ public class AgentImageInputService {
                 "AGENT_IMAGE_INPUT_INVALID", message, message, false);
     }
 
-    public record Input(UUID artifactId, UUID versionId) {}
-    public record SkillInput(UUID skillId, UUID skillVersionId, String alias, String contentHash) {}
+    public record Input(UUID artifactId, UUID versionId) {
+    }
+    public record SkillInput(UUID skillId, UUID skillVersionId, String alias, String contentHash) {
+    }
 }

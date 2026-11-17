@@ -17,23 +17,34 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class BeatApiPromptAdapter implements ThirdPartyPromptAdapter {
     private final ObjectMapper mapper;
-    public BeatApiPromptAdapter(ObjectMapper mapper) { this.mapper = mapper; }
-    @Override public Format format() { return Format.BEATAPI_JSON; }
-    @Override public List<ThirdPartyPrompt> parse(ThirdPartyPromptSource source, String body) {
-        if (source.targetKind() != TargetKind.VIDEO) throw ThirdPartyPromptValidation.invalid();
+    public BeatApiPromptAdapter(ObjectMapper mapper) {
+        this.mapper = mapper;
+    }
+    @Override
+    public Format format() {
+        return Format.BEATAPI_JSON;
+    }
+    @Override
+    public List<ThirdPartyPrompt> parse(ThirdPartyPromptSource source, String body) {
+        if (source.targetKind() != TargetKind.VIDEO)
+            throw ThirdPartyPromptValidation.invalid();
         var result = new LinkedHashMap<String, ThirdPartyPrompt>();
         for (var item : items(mapper.readTree(body))) {
             String slug = text(item, "slug"), prompt = text(item, "prompt");
-            if (slug.isBlank() || prompt.isBlank()) throw ThirdPartyPromptValidation.invalid();
+            if (slug.isBlank() || prompt.isBlank())
+                throw ThirdPartyPromptValidation.invalid();
             var references = references(mapper, item);
-            var inputs = VideoPromptInputs.resolve(prompt, VideoPromptInputs.mode(text(item, "mode")), references, strings(item, "ingredients"), false);
+            var inputs = VideoPromptInputs.resolve(prompt, VideoPromptInputs.mode(text(item, "mode")), references,
+                    strings(item, "ingredients"), false);
             String id = source.id() + ":" + slug;
             var value = new Video(id, source.id(), localized(item, "title"), prompt, localized(item, "description"),
-                    text(item, "thumbnail"), text(item, "category").isBlank() ? List.of() : List.of(text(item, "category")),
+                    text(item, "thumbnail"),
+                    text(item, "category").isBlank() ? List.of() : List.of(text(item, "category")),
                     text(item.path("source"), "name"), text(item.path("source"), "url"), text(item, "createdAt"),
                     inputs.mode(), source.model(), references, null, text(item, "video"), inputs.missing());
             var previous = result.putIfAbsent(id, value);
-            if (previous != null && !previous.equals(value)) throw ThirdPartyPromptValidation.invalid();
+            if (previous != null && !previous.equals(value))
+                throw ThirdPartyPromptValidation.invalid();
         }
         return List.copyOf(result.values());
     }

@@ -27,7 +27,8 @@ public final class OutboundTimeouts {
     /** OkHttp 整次调用超时时使用的固定消息。 */
     private static final String OKHTTP_CALL_TIMEOUT_MESSAGE = "timeout";
 
-    private OutboundTimeouts() {}
+    private OutboundTimeouts() {
+    }
 
     /**
      * @param failure 出站调用抛出的异常

@@ -17,7 +17,8 @@ class GoogleVideoModelsTest {
     private static final String VEO_MODEL = "veo-3.1-generate-preview";
     private final ObjectMapper mapper = new ObjectMapper();
     private final GoogleVideoModels models = new GoogleVideoModels();
-    @Test void publishesUniqueSupportedProfilesAndCompilesOperationSpecificCapabilities() {
+    @Test
+    void publishesUniqueSupportedProfilesAndCompilesOperationSpecificCapabilities() {
         assertThat(models.profiles()).isNotEmpty().doesNotHaveDuplicates();
         for (String model : List.of(VEO_MODEL, "veo-3.1-fast-generate-preview", "veo-3.1-lite-generate-preview")) {
             assertThat(models.profiles()).contains(new NativeMediaProtocol.Profile(
@@ -31,63 +32,82 @@ class GoogleVideoModelsTest {
             assertThat(models.profiles()).contains(new NativeMediaProtocol.Profile(
                     GoogleVideoModels.OMNI, "gemini-omni-1.1-flash", operation, Task.Kind.VIDEO_GENERATION));
         }
-        var lite = new NativeMediaProtocol.Profile(GoogleVideoModels.VEO, "veo-3.1-lite-generate-preview", "GENERATE", Task.Kind.VIDEO_GENERATION);
+        var lite = new NativeMediaProtocol.Profile(GoogleVideoModels.VEO, "veo-3.1-lite-generate-preview", "GENERATE",
+                Task.Kind.VIDEO_GENERATION);
         assertThat(models.inputs(lite)).noneMatch(f -> f.key().equals("base_video") || f.key().equals("image_1"));
         assertThat(models.profiles()).doesNotContain(new NativeMediaProtocol.Profile(
                 GoogleVideoModels.VEO, lite.model(), "EXTEND", Task.Kind.VIDEO_GENERATION));
         assertThat(models.profiles()).allMatch(p -> models.resultCount(p, mapper.createObjectNode()) == 1);
-        assertThat(models.profiles()).allMatch(p -> models.inputs(p).stream().noneMatch(f -> models.usesMediaUrl(p, f)));
+        assertThat(models.profiles())
+                .allMatch(p -> models.inputs(p).stream().noneMatch(f -> models.usesMediaUrl(p, f)));
         assertThat(models.profiles()).allMatch(p -> !models.declaration(p).originRequired());
     }
-    @Test void keepsIncompleteDurationButChecksVeoNativeCombinationsAtAcceptance() {
+    @Test
+    void keepsIncompleteDurationButChecksVeoNativeCombinationsAtAcceptance() {
         var selected = selected(GoogleVideoModels.VEO, VEO_MODEL, "GENERATE");
         ObjectNode values = values(selected, mapper.createObjectNode());
         values.put("durationSeconds", 60);
         NativeMediaProfiles.validateValues(selected, values, false);
-        assertThatThrownBy(() -> NativeMediaProfiles.validateValues(selected, values, true)).isInstanceOf(RuntimeException.class);
+        assertThatThrownBy(() -> NativeMediaProfiles.validateValues(selected, values, true))
+                .isInstanceOf(RuntimeException.class);
         values.put("durationSeconds", 4).put("resolution", "1080p");
-        assertThatThrownBy(() -> NativeMediaProfiles.validateValues(selected, values, true)).isInstanceOf(NativeMediaFailure.class);
+        assertThatThrownBy(() -> NativeMediaProfiles.validateValues(selected, values, true))
+                .isInstanceOf(NativeMediaFailure.class);
         values.put("durationSeconds", 8).put("image_3", UUID.randomUUID().toString());
         NativeMediaProfiles.validateValues(selected, values, true);
         values.put("durationSeconds", 6);
-        assertThatThrownBy(() -> NativeMediaProfiles.validateValues(selected, values, true)).isInstanceOf(NativeMediaFailure.class);
+        assertThatThrownBy(() -> NativeMediaProfiles.validateValues(selected, values, true))
+                .isInstanceOf(NativeMediaFailure.class);
     }
-    @Test void rejectsTailWithoutStartAndStrictTaskContradictionsButAllowsTaggedMixedReferencesInAuto() {
+    @Test
+    void rejectsTailWithoutStartAndStrictTaskContradictionsButAllowsTaggedMixedReferencesInAuto() {
         var selected = selected(GoogleVideoModels.OMNI, GoogleVideoModels.OMNI_MODEL, "GENERATE");
         ObjectNode values = values(selected, mapper.createObjectNode().put("last_frame", UUID.randomUUID().toString()));
-        assertThatThrownBy(() -> NativeMediaProfiles.validateValues(selected, values, true)).isInstanceOf(NativeMediaFailure.class);
+        assertThatThrownBy(() -> NativeMediaProfiles.validateValues(selected, values, true))
+                .isInstanceOf(NativeMediaFailure.class);
         values.put("first_frame", UUID.randomUUID().toString()).put("image_5", UUID.randomUUID().toString());
         NativeMediaProfiles.validateValues(selected, values, true);
         values.put("task", "text_to_video");
-        assertThatThrownBy(() -> NativeMediaProfiles.validateValues(selected, values, true)).isInstanceOf(NativeMediaFailure.class);
+        assertThatThrownBy(() -> NativeMediaProfiles.validateValues(selected, values, true))
+                .isInstanceOf(NativeMediaFailure.class);
         values.put("task", "image_to_video");
-        assertThatThrownBy(() -> NativeMediaProfiles.validateValues(selected, values, true)).isInstanceOf(NativeMediaFailure.class);
+        assertThatThrownBy(() -> NativeMediaProfiles.validateValues(selected, values, true))
+                .isInstanceOf(NativeMediaFailure.class);
         values.remove("image_5");
         NativeMediaProfiles.validateValues(selected, values, true);
     }
-    @Test void editsAndExtensionsRequireOneFrozenBaseAndExposeNativeStringDuration() {
+    @Test
+    void editsAndExtensionsRequireOneFrozenBaseAndExposeNativeStringDuration() {
         for (String operation : List.of("EDIT", "EXTEND")) {
             var selected = selected(GoogleVideoModels.OMNI, GoogleVideoModels.OMNI_MODEL, operation);
             ObjectNode values = values(selected, mapper.createObjectNode());
-            assertThatThrownBy(() -> NativeMediaProfiles.validateValues(selected, values, true)).isInstanceOf(RuntimeException.class);
+            assertThatThrownBy(() -> NativeMediaProfiles.validateValues(selected, values, true))
+                    .isInstanceOf(RuntimeException.class);
             values.put("base_video", UUID.randomUUID().toString()).put("duration", "10s");
             NativeMediaProfiles.validateValues(selected, values, true);
-            assertThat(selected.inputs()).noneMatch(f -> f.effectiveSource() == RunningHubDefinition.Source.DURATION_SECONDS);
+            assertThat(selected.inputs())
+                    .noneMatch(f -> f.effectiveSource() == RunningHubDefinition.Source.DURATION_SECONDS);
             assertThat(selected.inputs()).anyMatch(f -> f.key().equals("video_3"));
             values.put("duration", 10);
-            assertThatThrownBy(() -> NativeMediaProfiles.validateValues(selected, values, true)).isInstanceOf(RuntimeException.class);
+            assertThatThrownBy(() -> NativeMediaProfiles.validateValues(selected, values, true))
+                    .isInstanceOf(RuntimeException.class);
         }
     }
-    @Test void referenceAndEditingClipLimitsAreDistinctAndIncludeActualProbe() {
+    @Test
+    void referenceAndEditingClipLimitsAreDistinctAndIncludeActualProbe() {
         var p = selected(GoogleVideoModels.OMNI, GoogleVideoModels.OMNI_MODEL, "GENERATE").profile();
         models.validateMetadata(p, "video_1", video(3000), mapper.createObjectNode());
-        assertThatThrownBy(() -> models.validateMetadata(p, "video_1", video(3001), mapper.createObjectNode())).isInstanceOf(NativeMediaFailure.class);
+        assertThatThrownBy(() -> models.validateMetadata(p, "video_1", video(3001), mapper.createObjectNode()))
+                .isInstanceOf(NativeMediaFailure.class);
         models.validateMetadata(p, "base_video", video(10000), mapper.createObjectNode());
-        assertThatThrownBy(() -> models.validateMetadata(p, "base_video", video(10001), mapper.createObjectNode())).isInstanceOf(NativeMediaFailure.class);
-        assertThatThrownBy(() -> models.validateProbe(p, "video_1", mapper.createObjectNode(), mapper.readTree("{\"format\":{\"duration\":\"3.01\"}}")))
+        assertThatThrownBy(() -> models.validateMetadata(p, "base_video", video(10001), mapper.createObjectNode()))
+                .isInstanceOf(NativeMediaFailure.class);
+        assertThatThrownBy(() -> models.validateProbe(p, "video_1", mapper.createObjectNode(),
+                mapper.readTree("{\"format\":{\"duration\":\"3.01\"}}")))
                 .isInstanceOf(NativeMediaFailure.class);
     }
-    @Test void aliasesUseActualFilledPositionAndIntegerNativeControlsStayIntegers() {
+    @Test
+    void aliasesUseActualFilledPositionAndIntegerNativeControlsStayIntegers() {
         var selected = selected(GoogleVideoModels.OMNI, GoogleVideoModels.OMNI_MODEL, "GENERATE");
         ObjectNode values = values(selected, mapper.createObjectNode().put("image_5", UUID.randomUUID().toString())
                 .put("video_3", UUID.randomUUID().toString()));
@@ -97,29 +117,36 @@ class GoogleVideoModelsTest {
         var veoValues = values(veo, mapper.createObjectNode().put("image_3", UUID.randomUUID().toString()));
         assertThat(models.renderMention(veo.profile(), veoValues, "image_3")).isEqualTo("reference image 1");
         values.put("seed", 1.5);
-        assertThatThrownBy(() -> NativeMediaProfiles.validateValues(selected, values, true)).isInstanceOf(RuntimeException.class);
+        assertThatThrownBy(() -> NativeMediaProfiles.validateValues(selected, values, true))
+                .isInstanceOf(RuntimeException.class);
     }
-    @Test void veoExtensionRequiresImmutableTaskProvenanceAndCannotTrustUserMetadata() {
+    @Test
+    void veoExtensionRequiresImmutableTaskProvenanceAndCannotTrustUserMetadata() {
         var veo = selected(GoogleVideoModels.VEO, VEO_MODEL, "EXTEND").profile();
         models.validateSource(veo, "base_video", version(ArtifactVersion.CreatedByKind.TASK));
         for (var origin : List.of(ArtifactVersion.CreatedByKind.USER, ArtifactVersion.CreatedByKind.AGENT))
-            assertThatThrownBy(() -> models.validateSource(veo, "base_video", version(origin))).isInstanceOf(NativeMediaFailure.class);
+            assertThatThrownBy(() -> models.validateSource(veo, "base_video", version(origin)))
+                    .isInstanceOf(NativeMediaFailure.class);
         assertThatThrownBy(() -> models.validateSource(veo, "base_video", null)).isInstanceOf(NativeMediaFailure.class);
         models.validateSource(selected(GoogleVideoModels.OMNI, GoogleVideoModels.OMNI_MODEL, "EXTEND").profile(),
                 "base_video", version(ArtifactVersion.CreatedByKind.USER));
     }
-    @Test void onlyGenerationProfilesPermitReusingTheExactFirstAndLastFrameVersion() {
+    @Test
+    void onlyGenerationProfilesPermitReusingTheExactFirstAndLastFrameVersion() {
         for (var profile : models.profiles()) {
             if (GoogleVideoModels.GENERATE.equals(profile.operation()))
                 assertThat(models.reusableSlots(profile)).containsExactlyInAnyOrder("first_frame", "last_frame");
-            else assertThat(models.reusableSlots(profile)).isEmpty();
+            else
+                assertThat(models.reusableSlots(profile)).isEmpty();
         }
     }
     private NativeMediaProfiles.Selection selected(String adapter, String model, String operation) {
-        return new NativeMediaProfiles.Selection(models, new NativeMediaProtocol.Profile(adapter, model, operation, Task.Kind.VIDEO_GENERATION));
+        return new NativeMediaProfiles.Selection(models,
+                new NativeMediaProtocol.Profile(adapter, model, operation, Task.Kind.VIDEO_GENERATION));
     }
     private ObjectNode values(NativeMediaProfiles.Selection selected, ObjectNode overrides) {
-        return NativeMediaProfiles.effectiveValues(selected, mapper.createObjectNode().set("dynamicValues", overrides), "Synthetic landscape", null, mapper);
+        return NativeMediaProfiles.effectiveValues(selected, mapper.createObjectNode().set("dynamicValues", overrides),
+                "Synthetic landscape", null, mapper);
     }
     private Asset video(int millis) {
         return new Asset(UUID.randomUUID(), UUID.randomUUID(), Asset.MediaKind.VIDEO, "synthetic.mp4", "video/mp4", 100,

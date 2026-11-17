@@ -58,7 +58,8 @@ class ComfyUiClientFactoryTest {
         assertThatThrownBy(() -> new ComfyUiClientFactory(cipher(), mapper).create(version))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage(invalid == InvalidOrigin.MISMATCHED_FINGERPRINT
-                        ? "Pinned ComfyUI origin fingerprint differs" : "Pinned ComfyUI origin is missing");
+                        ? "Pinned ComfyUI origin fingerprint differs"
+                        : "Pinned ComfyUI origin is missing");
     }
 
     @ParameterizedTest
@@ -67,7 +68,8 @@ class ComfyUiClientFactoryTest {
         CredentialCipher cipher = cipher();
         ConnectionVersion original = encryptedVersion(cipher);
         var moved = new ConnectionVersion(substitution == SubstitutedIdentity.CONNECTION
-                        ? UUID.randomUUID() : original.connectionId(),
+                ? UUID.randomUUID()
+                : original.connectionId(),
                 original.version() + (substitution == SubstitutedIdentity.VERSION ? 1 : 0),
                 original.origin(), original.originSha256(), original.credentialCiphertext(),
                 original.credentialNonce(), original.credentialKeyVersion(), null);
@@ -102,6 +104,10 @@ class ComfyUiClientFactoryTest {
         return new ComfyUiClient(new ComfyUiProperties(origin), mapper).originSha256();
     }
 
-    enum InvalidOrigin { MISSING_ORIGIN, MISSING_FINGERPRINT, MISMATCHED_FINGERPRINT }
-    enum SubstitutedIdentity { CONNECTION, VERSION }
+    enum InvalidOrigin {
+        MISSING_ORIGIN, MISSING_FINGERPRINT, MISMATCHED_FINGERPRINT
+    }
+    enum SubstitutedIdentity {
+        CONNECTION, VERSION
+    }
 }

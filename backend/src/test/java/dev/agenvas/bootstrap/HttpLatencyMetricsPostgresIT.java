@@ -25,10 +25,8 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 /** Real HTTP requests must populate a bounded URI-tagged p95 server latency timer. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class,
-        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {
-                "agenvas.llm.scheduler-enabled=false"})
+@SpringBootTest(classes = AgenvasApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
+        "agenvas.llm.scheduler-enabled=false"})
 class HttpLatencyMetricsPostgresIT {
 
     @Container
@@ -41,9 +39,12 @@ class HttpLatencyMetricsPostgresIT {
         registry.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @LocalServerPort private int port;
-    @Autowired private MeterRegistry meters;
-    @Autowired private ObjectMapper mapper;
+    @LocalServerPort
+    private int port;
+    @Autowired
+    private MeterRegistry meters;
+    @Autowired
+    private ObjectMapper mapper;
 
     @Test
     void realHttpRequestsExposeP95WithoutRequestSpecificLabels() throws Exception {
@@ -66,15 +67,15 @@ class HttpLatencyMetricsPostgresIT {
         assertThat(timer.count()).isGreaterThanOrEqualTo(12);
         assertThat(Arrays.stream(timer.takeSnapshot().percentileValues())
                 .map(ValueAtPercentile::percentile)).contains(0.95);
-        assertThat(timer.getId().getTags()).allSatisfy(tag ->
-                assertThat(tag.getKey()).isNotIn("projectId", "runId", "taskId",
+        assertThat(timer.getId().getTags())
+                .allSatisfy(tag -> assertThat(tag.getKey()).isNotIn("projectId", "runId", "taskId",
                         "userId", "requestId"));
 
         HttpResponse<String> rejected = client.send(HttpRequest.newBuilder(
-                        URI.create("http://127.0.0.1:" + port + "/api/v1/projects"))
-                        .timeout(Duration.ofSeconds(10))
-                        .header("X-Request-Id", "attacker-request-id")
-                        .GET().build(), HttpResponse.BodyHandlers.ofString());
+                URI.create("http://127.0.0.1:" + port + "/api/v1/projects"))
+                .timeout(Duration.ofSeconds(10))
+                .header("X-Request-Id", "attacker-request-id")
+                .GET().build(), HttpResponse.BodyHandlers.ofString());
         assertThat(rejected.statusCode()).isEqualTo(401);
         String serverId = rejected.headers().firstValue("X-Request-Id").orElseThrow();
         assertThat(serverId).matches("[0-9a-f]{32}");

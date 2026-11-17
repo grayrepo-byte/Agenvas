@@ -10,19 +10,25 @@ final class LlmBillingFailures {
     private static final Set<String> CODES = Set.of("insufficient_quota", "insufficient_balance",
             "insufficient_credits", "credit_balance_too_low");
 
-    private LlmBillingFailures() {}
+    private LlmBillingFailures() {
+    }
 
     static boolean matches(Throwable failure) {
         boolean modelBoundary = false;
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
-            if (cause instanceof ModelCallFailure) modelBoundary = true;
-            if (!modelBoundary || !(cause instanceof OpenAIServiceException service)) continue;
+            if (cause instanceof ModelCallFailure)
+                modelBoundary = true;
+            if (!modelBoundary || !(cause instanceof OpenAIServiceException service))
+                continue;
             int status = service.statusCode();
-            if (status < 400 || status >= 500) return false;
+            if (status < 400 || status >= 500)
+                return false;
             if (status == 402 || service.code().filter(CODES::contains).isPresent()
-                    || service.type().filter(CODES::contains).isPresent()) return true;
+                    || service.type().filter(CODES::contains).isPresent())
+                return true;
             String message = service.getMessage();
-            if (message == null) return false;
+            if (message == null)
+                return false;
             String normalized = message.toLowerCase(Locale.ROOT);
             return normalized.contains("insufficient credits") || normalized.contains("insufficient balance")
                     || normalized.contains("credit balance is too low") || normalized.contains("余额不足");

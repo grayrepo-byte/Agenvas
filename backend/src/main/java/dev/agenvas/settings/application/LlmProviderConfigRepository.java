@@ -1,6 +1,9 @@
 package dev.agenvas.settings.application;
 
 import java.util.Optional;
+import java.util.List;
+import java.util.UUID;
+import java.time.Instant;
 
 /** 全局管理员配置由 PostgreSQL 计数行统一分配版本。 */
 public interface LlmProviderConfigRepository {
@@ -19,4 +22,14 @@ public interface LlmProviderConfigRepository {
 
     /** 仅将仍为活动状态且完成往返验证的版本标记为支持工具调用。 */
     boolean markToolCallingVerified(int version);
+
+    List<LlmConnection> connections();
+    Optional<LlmConnection> findConnection(UUID id);
+    Optional<LlmConnection> connectionForVersion(int version);
+    void insertConnection(LlmConnection connection);
+    boolean updateConnection(UUID id, int expectedVersion, String name, int nextVersion, Instant updatedAt);
+    /** Caller holds the global allocator lock. Inactive edits must not change the active service. */
+    void insertSnapshot(int expectedCounter, LlmProviderConfig config, boolean activate);
+    /** Atomically verifies only the exact snapshot still selected as this connection's head. */
+    boolean markConnectionToolCallingVerified(UUID id, int expectedVersion);
 }

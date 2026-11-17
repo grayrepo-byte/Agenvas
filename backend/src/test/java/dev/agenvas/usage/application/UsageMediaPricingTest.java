@@ -92,8 +92,10 @@ class UsageMediaPricingTest {
     private Task withUsage(Task task, String usage) {
         var output = mapper.createObjectNode().set("providerUsage", mapper.readTree(usage));
         return new Task(task.id(), task.projectId(), task.runId(), task.stepKey(), task.kind(), task.status(),
-                task.cancelRequested(), task.input(), task.inputHash(), output, task.providerRequestId(), task.attemptNo(),
-                task.nextActionAt(), task.leaseOwner(), task.leaseUntil(), task.leaseEpoch(), task.version(), task.errorCode(),
+                task.cancelRequested(), task.input(), task.inputHash(), output, task.providerRequestId(),
+                task.attemptNo(),
+                task.nextActionAt(), task.leaseOwner(), task.leaseUntil(), task.leaseEpoch(), task.version(),
+                task.errorCode(),
                 task.createdAt(), task.updatedAt(), task.completedAt());
     }
 
@@ -169,7 +171,8 @@ class UsageMediaPricingTest {
         Task original = task(Task.Kind.AUDIO_GENERATION, null);
         service.reserveMediaTask(owner, original, "LOCAL_NO_COST", 1);
         Task failed = new Task(original.id(), original.projectId(), null, original.stepKey(), original.kind(), status,
-                false, original.input(), original.inputHash(), null, null, 1, NOW, null, null, 1, 1, code, NOW, NOW, NOW);
+                false, original.input(), original.inputHash(), null, null, 1, NOW, null, null, 1, 1, code, NOW, NOW,
+                NOW);
         service.releaseUnsubmittedMediaTask(owner, failed);
         assertThat(entries).extracting(UsageEntry::entryType)
                 .containsExactly(UsageEntry.EntryType.RESERVATION, UsageEntry.EntryType.RELEASE);
@@ -231,7 +234,8 @@ class UsageMediaPricingTest {
     void klingAutoSeriesAndMotionKeepUnknownReservationsUntilArchive() {
         UsageService service = service();
         Task image = task(Task.Kind.IMAGE_GENERATION, "{\"amount\":\"0.2\",\"currency\":\"CNY\",\"unit\":\"IMAGE\"}");
-        ((tools.jackson.databind.node.ObjectNode) image.input()).put("providerProtocol", "KLING").putNull("expectedImageCount");
+        ((tools.jackson.databind.node.ObjectNode) image.input()).put("providerProtocol", "KLING")
+                .putNull("expectedImageCount");
         service.reserveMediaTask(UUID.randomUUID(), image, "PROVIDER_UNPRICED", 7);
         assertThat(entries.getLast().estimatedCost()).isNull();
         assertThat(entries.getLast().quantity().path("imageCount").isNull()).isTrue();
@@ -239,23 +243,27 @@ class UsageMediaPricingTest {
         assertThat(entries.getLast().estimatedCost()).isEqualByComparingTo("1.4");
         Task video = task(Task.Kind.VIDEO_GENERATION, "{\"amount\":\"0.1\",\"currency\":\"CNY\",\"unit\":\"SECOND\"}");
         var input = (tools.jackson.databind.node.ObjectNode) video.input();
-        input.put("providerProtocol", "KLING"); input.remove("durationSeconds");
+        input.put("providerProtocol", "KLING");
+        input.remove("durationSeconds");
         service.reserveMediaTask(UUID.randomUUID(), video, "PROVIDER_UNPRICED", 7);
         assertThat(entries.getLast().estimatedCost()).isNull();
         assertThat(entries.getLast().quantity().path("videoSeconds").isNull()).isTrue();
         service.settleMediaTask(UUID.randomUUID(), video, 0, new java.math.BigDecimal("4.321"));
         assertThat(entries.getLast().estimatedCost()).isEqualByComparingTo("0.4321");
-        Task precise = task(Task.Kind.VIDEO_GENERATION, "{\"amount\":\"0.000001\",\"currency\":\"CNY\",\"unit\":\"SECOND\"}");
+        Task precise = task(Task.Kind.VIDEO_GENERATION,
+                "{\"amount\":\"0.000001\",\"currency\":\"CNY\",\"unit\":\"SECOND\"}");
         ((tools.jackson.databind.node.ObjectNode) precise.input()).put("providerProtocol", "KLING");
         service.reserveMediaTask(UUID.randomUUID(), precise, "PROVIDER_UNPRICED", 7);
         service.settleMediaTask(UUID.randomUUID(), precise, 0, new java.math.BigDecimal("5.033"));
         assertThat(entries.getLast().estimatedCost()).isEqualByComparingTo("0.000005");
     }
 
-    @Test void nativeReferenceVideoReservationIncludesPinnedInputSecondsAndSettlementUsesActualTotal() {
+    @Test
+    void nativeReferenceVideoReservationIncludesPinnedInputSecondsAndSettlementUsesActualTotal() {
         UsageService service = service();
         Task video = task(Task.Kind.VIDEO_GENERATION, "{\"amount\":\"0.1\",\"currency\":\"CNY\",\"unit\":\"SECOND\"}");
-        ((tools.jackson.databind.node.ObjectNode) video.input()).put("providerProtocol", "NATIVE_MEDIA").put("nativeBillableInputSeconds", new java.math.BigDecimal("3.250"));
+        ((tools.jackson.databind.node.ObjectNode) video.input()).put("providerProtocol", "NATIVE_MEDIA")
+                .put("nativeBillableInputSeconds", new java.math.BigDecimal("3.250"));
         service.reserveMediaTask(UUID.randomUUID(), video, "PROVIDER_UNPRICED", 7);
         assertThat(entries.getFirst().quantity().path("videoSeconds").asText()).isEqualTo("11.250");
         assertThat(entries.getFirst().estimatedCost()).isEqualByComparingTo("1.125");
@@ -315,13 +323,16 @@ class UsageMediaPricingTest {
             "TEXT_GENERATION,CANCELED,,", "AGENT_TURN,FAILED,,",
             "IMAGE_GENERATION,BLOCKED,TASK_INPUT_STALE,accepted-request",
             "VIDEO_GENERATION,CANCELED,,accepted-request", "AUDIO_GENERATION,FAILED,,accepted-request"})
-    void rejectsUncertainSubmittedOrIneligibleReleases(Task.Kind kind, Task.Status status, String code, String requestId) {
+    void rejectsUncertainSubmittedOrIneligibleReleases(Task.Kind kind, Task.Status status, String code,
+            String requestId) {
         UsageService service = service();
         UUID owner = UUID.randomUUID();
         Task original = task(Task.Kind.IMAGE_GENERATION, null);
         service.reserveMediaTask(owner, original, "PROVIDER_UNPRICED", 7);
-        assertThatThrownBy(() -> service.releaseUnsubmittedMediaTask(owner, outcome(original, kind, status, code, requestId)))
-                .isInstanceOf(IllegalArgumentException.class).hasMessage("Media release requires unsubmitted terminal work");
+        assertThatThrownBy(
+                () -> service.releaseUnsubmittedMediaTask(owner, outcome(original, kind, status, code, requestId)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Media release requires unsubmitted terminal work");
         assertThat(entries).extracting(UsageEntry::entryType).containsExactly(UsageEntry.EntryType.RESERVATION);
     }
 
@@ -335,7 +346,8 @@ class UsageMediaPricingTest {
         service.settleMediaTask(owner, original);
         assertThatThrownBy(() -> service.releaseUnsubmittedMediaTask(owner,
                 outcome(original, kind, Task.Status.CANCELED, null, null)))
-                .isInstanceOf(IllegalStateException.class).hasMessage("A settled media Task cannot release its reservation");
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("A settled media Task cannot release its reservation");
         assertThat(entries).extracting(UsageEntry::entryType)
                 .containsExactly(UsageEntry.EntryType.RESERVATION, UsageEntry.EntryType.SETTLEMENT);
     }
@@ -349,10 +361,11 @@ class UsageMediaPricingTest {
 
     private UsageService service() {
         when(ledger.insertOnce(any())).thenAnswer(invocation -> {
-            entries.add(invocation.getArgument(0)); return true;
+            entries.add(invocation.getArgument(0));
+            return true;
         });
-        when(ledger.findByOperationKey(anyString())).thenAnswer(invocation ->
-                entries.stream().filter(entry -> entry.operationKey().equals(invocation.getArgument(0))).findFirst());
+        when(ledger.findByOperationKey(anyString())).thenAnswer(invocation -> entries.stream()
+                .filter(entry -> entry.operationKey().equals(invocation.getArgument(0))).findFirst());
         return new UsageService(ledger, mock(ProjectService.class), mock(ProjectEventService.class),
                 mapper, Clock.fixed(NOW, ZoneOffset.UTC), mock(LlmModeProperties.class));
     }
@@ -360,7 +373,8 @@ class UsageMediaPricingTest {
     private Task task(Task.Kind kind, String price) {
         var input = mapper.createObjectNode().put("schemaVersion", 3)
                 .put("workflowVersion", "TEST:version-1").put("durationSeconds", 8);
-        if (price != null) input.set("mediaPricing", mapper.readTree(price));
+        if (price != null)
+            input.set("mediaPricing", mapper.readTree(price));
         return new Task(UUID.randomUUID(), UUID.randomUUID(), null, "test", kind, Task.Status.READY,
                 false, input, "hash", null, null, 1, NOW, null, null, 0, 0, null, NOW, NOW, null);
     }

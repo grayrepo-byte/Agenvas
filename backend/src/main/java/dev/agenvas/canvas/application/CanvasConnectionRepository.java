@@ -14,5 +14,6 @@ public interface CanvasConnectionRepository {
     TopologyGuard copyGuard(UUID ownerId, UUID projectId, UUID canvasItemId);
     boolean delete(UUID projectId, UUID connectionId);
 
-    record TopologyGuard(long epoch, List<CanvasConnection> connections) {}
+    record TopologyGuard(long epoch, List<CanvasConnection> connections) {
+    }
 }

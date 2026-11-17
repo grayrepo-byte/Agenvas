@@ -11,6 +11,8 @@ public record StorageProfile(UUID id, String name, Provider provider, String end
     public enum Provider {
         ALIYUN_OSS, TENCENT_COS, S3, SMB, WEBDAV;
         /** Only object stores can issue provider-readable, expiring GET links. */
-        public boolean supportsRelay() { return this != SMB && this != WEBDAV; }
+        public boolean supportsRelay() {
+            return this != SMB && this != WEBDAV;
+        }
     }
 }

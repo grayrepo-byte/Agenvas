@@ -38,16 +38,21 @@ public class ObjectStorageClient implements RemoteStorageClient {
                 .readTimeout(IO_TIMEOUT).writeTimeout(IO_TIMEOUT).callTimeout(CALL_TIMEOUT).build());
     }
     ObjectStorageClient(StorageSettingsService settings, Clock clock, OkHttpClient client) {
-        this.settings = settings; this.clock = clock; this.client = client;
+        this.settings = settings;
+        this.clock = clock;
+        this.client = client;
     }
     static HttpUrl url(StorageProfile p, String key) {
-        if (!p.provider().supportsRelay()) throw new IllegalArgumentException("File protocols cannot use object-store signing");
+        if (!p.provider().supportsRelay())
+            throw new IllegalArgumentException("File protocols cannot use object-store signing");
         if (!key.matches("[A-Za-z0-9_./-]+") || key.contains("..") || key.startsWith("/"))
             throw new IllegalArgumentException("Invalid object key");
         HttpUrl endpoint = HttpUrl.get(p.endpoint());
         var url = endpoint.newBuilder();
-        if (p.pathStyle()) url.addPathSegment(p.bucket());
-        else url.host(p.bucket() + "." + endpoint.host());
+        if (p.pathStyle())
+            url.addPathSegment(p.bucket());
+        else
+            url.host(p.bucket() + "." + endpoint.host());
         return url.addPathSegments(key).build();
     }
     public String signedGet(StorageProfile profile, String key, Duration lifetime) {
@@ -58,74 +63,119 @@ public class ObjectStorageClient implements RemoteStorageClient {
 
     public void put(StorageProfile p, String key, Path file, String mime, long size, String hash) {
         // Retry an uncertain archive by verifying the identical object; never overwrite differing bytes.
-        if (matches(p, key, size, hash)) return;
+        if (matches(p, key, size, hash))
+            return;
         RequestBody body = RequestBody.create(file.toFile(), MediaType.get(mime));
         String md5;
         try {
             var digest = java.security.MessageDigest.getInstance("MD5");
             try (var input = new java.security.DigestInputStream(java.nio.file.Files.newInputStream(file), digest)) {
-                byte[] buffer = new byte[CHECKSUM_BUFFER_BYTES]; while (input.read(buffer) != -1) { /* streaming integrity checksum */ }
+                byte[] buffer = new byte[CHECKSUM_BUFFER_BYTES];
+                while (input.read(buffer) != -1) {
+                    /* streaming integrity checksum */ }
             }
             md5 = java.util.Base64.getEncoder().encodeToString(digest.digest());
-        } catch (IOException | java.security.NoSuchAlgorithmException failure) { throw unavailable(); }
-        var request = new Request.Builder().url(url(p, key)).put(body).header("Content-Type", mime).header("Content-MD5", md5)
-                .header(p.provider() == StorageProfile.Provider.ALIYUN_OSS ? "x-oss-meta-sha256" : "x-amz-meta-sha256", hash);
+        } catch (IOException | java.security.NoSuchAlgorithmException failure) {
+            throw unavailable();
+        }
+        var request = new Request.Builder().url(url(p, key)).put(body).header("Content-Type", mime)
+                .header("Content-MD5", md5)
+                .header(p.provider() == StorageProfile.Provider.ALIYUN_OSS ? "x-oss-meta-sha256" : "x-amz-meta-sha256",
+                        hash);
         if (p.provider() == StorageProfile.Provider.ALIYUN_OSS)
             request.header("x-oss-forbid-overwrite", "true").header("x-oss-object-acl", "private");
-        else request.header("If-None-Match", "*");
+        else
+            request.header("If-None-Match", "*");
         try (Response response = execute(p, key, request.build(), hash)) {
-            if (!response.isSuccessful()) throw unavailable();
-        } catch (IOException failure) { throw unavailable(); }
-        if (!matches(p, key, size, hash)) throw unavailable();
+            if (!response.isSuccessful())
+                throw unavailable();
+        } catch (IOException failure) {
+            throw unavailable();
+        }
+        if (!matches(p, key, size, hash))
+            throw unavailable();
     }
     public boolean matches(StorageProfile p, String key, long size, String hash) {
         Request request = new Request.Builder().url(url(p, key)).head().build();
         try (Response response = execute(p, key, request, ObjectStorageSigner.EMPTY_HASH)) {
-            if (response.code() == 404) return false;
-            if (!response.isSuccessful()) throw unavailable();
+            if (response.code() == 404)
+                return false;
+            if (!response.isSuccessful())
+                throw unavailable();
             String meta = response.header(p.provider() == StorageProfile.Provider.ALIYUN_OSS
-                    ? "x-oss-meta-sha256" : "x-amz-meta-sha256");
+                    ? "x-oss-meta-sha256"
+                    : "x-amz-meta-sha256");
             if (!Long.toString(size).equals(response.header("Content-Length")) || !hash.equals(meta))
-                throw new ApiProblemException(HttpStatus.CONFLICT, "STORAGE_OBJECT_CONFLICT", ApiMessage.of("api.object-storage-client.archive-object-conflict"),
-                        ApiMessage.of("api.object-storage-client.the-object-content-is-different-from-the-archive-record-and"), false);
+                throw new ApiProblemException(HttpStatus.CONFLICT, "STORAGE_OBJECT_CONFLICT",
+                        ApiMessage.of("api.object-storage-client.archive-object-conflict"),
+                        ApiMessage.of(
+                                "api.object-storage-client.the-object-content-is-different-from-the-archive-record-and"),
+                        false);
             return true;
-        } catch (IOException failure) { throw unavailable(); }
+        } catch (IOException failure) {
+            throw unavailable();
+        }
     }
     public InputStream open(StorageProfile p, String key, long start, long length, long total) {
         var request = new Request.Builder().url(url(p, key)).get()
                 .header("Accept-Encoding", "identity").header("Range", "bytes=" + start + "-" + (start + length - 1));
         Response response;
-        try { response = execute(p, key, request.build(), ObjectStorageSigner.EMPTY_HASH); }
-        catch (IOException failure) { throw unavailable(); }
+        try {
+            response = execute(p, key, request.build(), ObjectStorageSigner.EMPTY_HASH);
+        } catch (IOException failure) {
+            throw unavailable();
+        }
         if (response.code() != 206 || response.body() == null
                 || !Long.toString(length).equals(response.header("Content-Length"))
-                || !("bytes " + start + "-" + (start + length - 1) + "/" + total).equals(response.header("Content-Range"))) {
-            response.close(); throw unavailable();
+                || !("bytes " + start + "-" + (start + length - 1) + "/" + total)
+                        .equals(response.header("Content-Range"))) {
+            response.close();
+            throw unavailable();
         }
         return new FilterInputStream(response.body().byteStream()) {
             private long remaining = length;
-            @Override public int read() throws IOException {
-                byte[] single = new byte[1]; int count = read(single, 0, 1); return count == -1 ? -1 : single[0] & 0xff;
+            @Override
+            public int read() throws IOException {
+                byte[] single = new byte[1];
+                int count = read(single, 0, 1);
+                return count == -1 ? -1 : single[0] & 0xff;
             }
-            @Override public int read(byte[] bytes, int offset, int count) throws IOException {
-                if (count == 0) return 0;
-                if (remaining == 0) return -1;
+            @Override
+            public int read(byte[] bytes, int offset, int count) throws IOException {
+                if (count == 0)
+                    return 0;
+                if (remaining == 0)
+                    return -1;
                 int read = in.read(bytes, offset, (int) Math.min(count, remaining));
-                if (read < 0) throw new IOException("Object stream ended before recorded size");
-                remaining -= read; return read;
+                if (read < 0)
+                    throw new IOException("Object stream ended before recorded size");
+                remaining -= read;
+                return read;
             }
-            @Override public long skip(long count) throws IOException {
-                long skipped = in.skip(Math.min(Math.max(0, count), remaining)); remaining -= skipped; return skipped;
+            @Override
+            public long skip(long count) throws IOException {
+                long skipped = in.skip(Math.min(Math.max(0, count), remaining));
+                remaining -= skipped;
+                return skipped;
             }
-            @Override public int available() throws IOException { return (int) Math.min(in.available(), Math.min(remaining, Integer.MAX_VALUE)); }
-            @Override public void close() { response.close(); }
+            @Override
+            public int available() throws IOException {
+                return (int) Math.min(in.available(), Math.min(remaining, Integer.MAX_VALUE));
+            }
+            @Override
+            public void close() {
+                response.close();
+            }
         };
     }
     public void delete(StorageProfile p, String key) {
         try (Response response = execute(p, key, new Request.Builder().url(url(p, key)).delete().build(),
                 ObjectStorageSigner.EMPTY_HASH)) {
-            if (!response.isSuccessful() && response.code() != 404) throw unavailable();
-        } catch (IOException failure) { throw unavailable(); }
+            if (!response.isSuccessful() && response.code() != 404)
+                throw unavailable();
+        } catch (IOException failure) {
+            throw unavailable();
+        }
     }
     private Response execute(StorageProfile p, String key, Request request, String hash) throws IOException {
         OkHttpClient selected = client.newBuilder().dns(dev.agenvas.shared.security.ServiceEndpointPolicy.dns(
@@ -136,7 +186,10 @@ public class ObjectStorageClient implements RemoteStorageClient {
     }
     private static ApiProblemException unavailable() {
         // Vendor errors and request URLs can include credentials/signatures; never relay them.
-        return new ApiProblemException(HttpStatus.SERVICE_UNAVAILABLE, "OBJECT_STORAGE_UNAVAILABLE", ApiMessage.of("api.object-storage-client.object-storage-is-not-available"),
-                ApiMessage.of("api.object-storage-client.please-check-the-storage-connection-permissions-and-network-and-try"), true);
+        return new ApiProblemException(HttpStatus.SERVICE_UNAVAILABLE, "OBJECT_STORAGE_UNAVAILABLE",
+                ApiMessage.of("api.object-storage-client.object-storage-is-not-available"),
+                ApiMessage.of(
+                        "api.object-storage-client.please-check-the-storage-connection-permissions-and-network-and-try"),
+                true);
     }
 }

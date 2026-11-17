@@ -90,7 +90,8 @@ public class JooqMcpTokenRepository implements McpTokenRepository {
     private StoredToken map(McpAccessTokenRecord row) {
         McpScope[] scopes = mapper.readValue(row.getScopes().data(), McpScope[].class);
         return new StoredToken(row.getId(), row.getUserId(), row.getName(), row.getSecretHash(),
-                row.getTokenHint(), scopes.length == 0 ? EnumSet.noneOf(McpScope.class)
+                row.getTokenHint(), scopes.length == 0
+                        ? EnumSet.noneOf(McpScope.class)
                         : EnumSet.copyOf(Arrays.asList(scopes)),
                 row.getVersion(), row.getCreatedAt().toInstant(), row.getExpiresAt().toInstant(),
                 instant(row.getRevokedAt()), instant(row.getLastUsedAt()));

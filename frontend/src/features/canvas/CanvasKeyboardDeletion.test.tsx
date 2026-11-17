@@ -12,42 +12,111 @@ import { ProjectWorkspacePage } from "./ProjectWorkspacePage";
 const now = "2026-09-27T00:00:00Z";
 const imageVersionId = "11111111-1111-4111-8111-111111111111";
 
-function artifact(id: string, kind: Artifact["kind"], title: string, resourceDefaultVersionId: string | null,
-  resourceDefaultVersion: Artifact["resourceDefaultVersion"]): Artifact {
-  return { id, projectId: "project-1", kind, title, resourceDefaultVersionId, resourceDefaultVersion,
-    version: 2, createdAt: now, updatedAt: now };
+function artifact(
+  id: string,
+  kind: Artifact["kind"],
+  title: string,
+  resourceDefaultVersionId: string | null,
+  resourceDefaultVersion: Artifact["resourceDefaultVersion"],
+): Artifact {
+  return {
+    id,
+    projectId: "project-1",
+    kind,
+    title,
+    resourceDefaultVersionId,
+    resourceDefaultVersion,
+    version: 2,
+    createdAt: now,
+    updatedAt: now,
+  };
 }
 
 /** One image card, one Agent card bound to it, and one video holding an exact-version input. */
 function items(linked: boolean): CanvasItem[] {
   const image = artifact("image-id", "IMAGE", "参考图", imageVersionId, {
-    id: imageVersionId, versionNo: 1, schemaVersion: 1,
-    content: { sourceType: "UPLOAD", assetId: "asset-id" }, inputReferences: [],
-    createdByKind: "USER", runId: null, createdAt: now });
+    id: imageVersionId,
+    versionNo: 1,
+    schemaVersion: 1,
+    content: { sourceType: "UPLOAD", assetId: "asset-id" },
+    inputReferences: [],
+    createdByKind: "USER",
+    runId: null,
+    createdAt: now,
+  });
   const videoVersionId = "22222222-2222-4222-8222-222222222222";
   return [
-    { id: "image-card", subjectType: "ARTIFACT", subjectId: "image-id", x: 0, y: 0,
+    {
+      id: "image-card",
+      subjectType: "ARTIFACT",
+      subjectId: "image-id",
+      x: 0,
+      y: 0,
       title: "图片",
-      width: 280, height: 180, zIndex: 0, groupId: null, locked: false, selectedVersionId: null, selectedVersion: null, version: 3,
-      artifact: image },
-    { id: "video-card", subjectType: "ARTIFACT", subjectId: "video-id", x: 800, y: 0,
+      width: 280,
+      height: 180,
+      zIndex: 0,
+      groupId: null,
+      locked: false,
+      selectedVersionId: null,
+      selectedVersion: null,
+      version: 3,
+      artifact: image,
+    },
+    {
+      id: "video-card",
+      subjectType: "ARTIFACT",
+      subjectId: "video-id",
+      x: 800,
+      y: 0,
       title: "视频",
-      width: 280, height: 180, zIndex: 2, groupId: null, locked: false, selectedVersionId: null, selectedVersion: null, version: 5,
+      width: 280,
+      height: 180,
+      zIndex: 2,
+      groupId: null,
+      locked: false,
+      selectedVersionId: null,
+      selectedVersion: null,
+      version: 5,
       artifact: artifact("video-id", "VIDEO", "视频", videoVersionId, {
-        id: videoVersionId, versionNo: 1, schemaVersion: 1,
-        content: { assetId: "asset-id", prompt: "缓慢推近",
-          workflowVersion: "mock-video-v1", parameters: {}, sourceTaskId: "task-id" },
-        inputReferences: linked ? [{ versionId: imageVersionId, role: "sourceImage",
-          order: 0, kind: "IMAGE" }] : [],
-        createdByKind: "USER", runId: null, createdAt: now }) },
+        id: videoVersionId,
+        versionNo: 1,
+        schemaVersion: 1,
+        content: {
+          assetId: "asset-id",
+          prompt: "缓慢推近",
+          workflowVersion: "mock-video-v1",
+          parameters: {},
+          sourceTaskId: "task-id",
+        },
+        inputReferences: linked ? [{ versionId: imageVersionId, role: "sourceImage", order: 0, kind: "IMAGE" }] : [],
+        createdByKind: "USER",
+        runId: null,
+        createdAt: now,
+      }),
+    },
   ];
 }
 
 function snapshot(getItems: () => CanvasItem[]): ProjectSnapshot {
-  return { project: { id: "project-1", name: "删除项目", status: "ACTIVE",
-    aspectRatio: "LANDSCAPE_16_9", version: 1, createdAt: now, updatedAt: now },
-    canvas: { items: getItems() }, connections: [], director: null, activeRun: null, activeTasks: [],
-    unknownTasks: [], snapshotSeq: 0 };
+  return {
+    project: {
+      id: "project-1",
+      name: "删除项目",
+      status: "ACTIVE",
+      aspectRatio: "LANDSCAPE_16_9",
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+    },
+    canvas: { items: getItems() },
+    connections: [],
+    director: null,
+    activeRun: null,
+    activeTasks: [],
+    unknownTasks: [],
+    snapshotSeq: 0,
+  };
 }
 
 const canvasCommands: Array<Record<string, unknown>> = [];
@@ -56,52 +125,63 @@ const revisions: Array<{ artifactId: string; body: Record<string, unknown> }> = 
 
 function stubProject(getItems: () => CanvasItem[]) {
   server.use(
-    http.get("/api/v1/auth/me", () => HttpResponse.json({
-      id: "owner-id", loginName: "admin", role: "ADMIN" })),
-    http.get("/api/v1/auth/csrf", () => HttpResponse.json({
-      headerName: "X-XSRF-TOKEN", token: "test-token" })),
+    http.get("/api/v1/auth/me", () =>
+      HttpResponse.json({
+        id: "owner-id",
+        loginName: "admin",
+        role: "ADMIN",
+      }),
+    ),
+    http.get("/api/v1/auth/csrf", () =>
+      HttpResponse.json({
+        headerName: "X-XSRF-TOKEN",
+        token: "test-token",
+      }),
+    ),
     http.get("/api/v1/projects/:projectId", () => HttpResponse.json(snapshot(getItems).project)),
     http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json(snapshot(getItems))),
-    http.get("/api/v1/projects/:projectId/canvas/items", () =>
-      HttpResponse.json({ items: getItems() })),
+    http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: getItems() })),
     http.get("/api/v1/projects/:projectId/exports", () => HttpResponse.json([])),
     http.get("/api/v1/projects/:projectId/export-proposals", () => HttpResponse.json([])),
     http.get("/api/v1/projects/:projectId/usage", () => HttpResponse.json([])),
     http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
-      const body = await request.json() as { commands: Array<Record<string, unknown>> };
+      const body = (await request.json()) as { commands: Array<Record<string, unknown>> };
       canvasCommands.push(...body.commands);
-      return HttpResponse.json({ items: items(false).filter((item) =>
-        !body.commands.some((command) => command.itemId === item.id)) });
+      return HttpResponse.json({
+        items: items(false).filter(item => !body.commands.some(command => command.itemId === item.id)),
+      });
     }),
     http.patch("/api/v1/projects/:projectId/agents/:agentId", async ({ request }) => {
-      const body = await request.json() as Record<string, unknown>;
+      const body = (await request.json()) as Record<string, unknown>;
       agentPatches.push(body);
       return HttpResponse.json({});
     }),
-    http.post("/api/v1/projects/:projectId/artifacts/:artifactId/revisions",
-      async ({ request, params }) => {
-        const body = await request.json() as Record<string, unknown>;
-        revisions.push({ artifactId: String(params.artifactId), body });
-        return HttpResponse.json(items(false)[1]!.artifact, { status: 201 });
-      }),
+    http.post("/api/v1/projects/:projectId/artifacts/:artifactId/revisions", async ({ request, params }) => {
+      const body = (await request.json()) as Record<string, unknown>;
+      revisions.push({ artifactId: String(params.artifactId), body });
+      return HttpResponse.json(items(false)[1]!.artifact, { status: 201 });
+    }),
   );
 }
 
 function renderWorkspace() {
   const client = createQueryClient();
   client.setDefaultOptions({ queries: { retry: false } });
-  return render(<QueryClientProvider client={client}>
-    <MemoryRouter initialEntries={["/projects/project-1"]}>
-      <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
-    </MemoryRouter>
-  </QueryClientProvider>);
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={["/projects/project-1"]}>
+        <Routes>
+          <Route path="/projects/:projectId" element={<ProjectWorkspacePage />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
 }
 
 async function selectNode(id: string) {
   await waitFor(() => expect(document.querySelector(`.react-flow__node[data-id='${id}']`)).not.toBeNull());
   useCanvasStore.setState({ selectedIds: [id] });
-  await waitFor(() => expect(document.querySelector(`.react-flow__node[data-id='${id}']`))
-    .toHaveClass("selected"));
+  await waitFor(() => expect(document.querySelector(`.react-flow__node[data-id='${id}']`)).toHaveClass("selected"));
 }
 
 function press(key: string, options: KeyboardEventInit = {}, target: Document | HTMLElement = document) {
@@ -162,13 +242,17 @@ describe("canvas keyboard deletion", () => {
   it("waits for the server and ignores fresh delete gestures while removal is pending", async () => {
     stubProject(() => items(true));
     let finish: () => void = () => {};
-    const pending = new Promise<void>((resolve) => { finish = resolve; });
-    server.use(http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
-      const body = await request.json() as { commands: Array<Record<string, unknown>> };
-      canvasCommands.push(...body.commands);
-      await pending;
-      return HttpResponse.json({ items: items(false).filter((item) => item.id !== "image-card") });
-    }));
+    const pending = new Promise<void>(resolve => {
+      finish = resolve;
+    });
+    server.use(
+      http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
+        const body = (await request.json()) as { commands: Array<Record<string, unknown>> };
+        canvasCommands.push(...body.commands);
+        await pending;
+        return HttpResponse.json({ items: items(false).filter(item => item.id !== "image-card") });
+      }),
+    );
     renderWorkspace();
     await selectNode("image-card");
     press("Backspace");
@@ -179,16 +263,23 @@ describe("canvas keyboard deletion", () => {
     await act(async () => {});
     expect(canvasCommands).toHaveLength(1);
     finish();
-    await waitFor(() => expect(document.querySelector(".react-flow__node[data-id='image-card']")).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(document.querySelector(".react-flow__node[data-id='image-card']")).not.toBeInTheDocument(),
+    );
   });
 
   it("retains the selected node after failed deletion and never retries on held keys", async () => {
     stubProject(() => items(true));
-    server.use(http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
-      const body = await request.json() as { commands: Array<Record<string, unknown>> };
-      canvasCommands.push(...body.commands);
-      return HttpResponse.json({ code: "SYNTHETIC_FAILURE", title: "Synthetic deletion unavailable" }, { status: 503 });
-    }));
+    server.use(
+      http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
+        const body = (await request.json()) as { commands: Array<Record<string, unknown>> };
+        canvasCommands.push(...body.commands);
+        return HttpResponse.json(
+          { code: "SYNTHETIC_FAILURE", title: "Synthetic deletion unavailable" },
+          { status: 503 },
+        );
+      }),
+    );
     renderWorkspace();
     await selectNode("image-card");
     expect(press("Delete").defaultPrevented).toBe(true);
@@ -199,7 +290,7 @@ describe("canvas keyboard deletion", () => {
     expect(canvasCommands).toHaveLength(1);
   });
 
-  it.each(["textarea", "contenteditable"])("preserves native text shortcuts in %s with a node selected", async (kind) => {
+  it.each(["textarea", "contenteditable"])("preserves native text shortcuts in %s with a node selected", async kind => {
     stubProject(() => items(true));
     renderWorkspace();
     await selectNode("image-card");
@@ -215,6 +306,8 @@ describe("canvas keyboard deletion", () => {
       await act(async () => {});
       expect(canvasCommands).toHaveLength(0);
       expect(useCanvasStore.getState().selectedIds).toEqual(["image-card"]);
-    } finally { input.remove(); }
+    } finally {
+      input.remove();
+    }
   });
 });

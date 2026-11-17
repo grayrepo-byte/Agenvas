@@ -8,8 +8,16 @@ function priced(amount: string, unit: "IMAGE" | "VIDEO" | "SECOND"): MediaCapabi
 
 describe("estimatedMediaCost", () => {
   it("shows token settlement timing without guessing tokens from image count", () => {
-    const capability = { settings: { tokenPricing: { currency: "USD", textInputPerMillion: "5",
-      imageInputPerMillion: "8", imageOutputPerMillion: "30" } } } as MediaCapability;
+    const capability = {
+      settings: {
+        tokenPricing: {
+          currency: "USD",
+          textInputPerMillion: "5",
+          imageInputPerMillion: "8",
+          imageOutputPerMillion: "30",
+        },
+      },
+    } as MediaCapability;
     expect(estimatedMediaCost(capability, 4, null)).toBe("按实际 Token 用量估算，生成后结算");
   });
   it("calculates exact decimal batch and second estimates", () => {

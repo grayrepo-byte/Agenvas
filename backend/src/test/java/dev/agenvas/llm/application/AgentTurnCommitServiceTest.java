@@ -36,7 +36,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.json.JsonMapper;
 
 class AgentTurnCommitServiceTest {
-    @Test void compactionPreservesTheInterruptedRepairBudgetWithoutReplayingTheRepairSource() {
+    @Test
+    void compactionPreservesTheInterruptedRepairBudgetWithoutReplayingTheRepairSource() {
         var mapper = new JsonMapper();
         var codec = new LlmProtocolCodec(mapper);
         var owner = UUID.randomUUID();
@@ -77,7 +78,8 @@ class AgentTurnCommitServiceTest {
         assertThat(service.complete(lease, "worker")).isEqualTo(AgentTurnCommitService.Decision.CONTINUE);
 
         var next = ArgumentCaptor.forClass(JsonNode.class);
-        verify(tasks).create(eq(owner), eq(project), eq(runId), eq("agent-turn-5"), eq(Task.Kind.AGENT_TURN), next.capture(), eq(1));
+        verify(tasks).create(eq(owner), eq(project), eq(runId), eq("agent-turn-5"), eq(Task.Kind.AGENT_TURN),
+                next.capture(), eq(1));
         assertThat(next.getValue().path("repairAttempt").asInt()).isEqualTo(2);
         assertThat(next.getValue().path("maxRepairAttempts").asInt()).isEqualTo(4);
         assertThat(next.getValue().has("repairFromStep")).isFalse();
@@ -135,7 +137,8 @@ class AgentTurnCommitServiceTest {
         }
     }
 
-    @Test void fatalModelFailureEndsTheRunInsteadOfLeavingTheProjectOccupied() {
+    @Test
+    void fatalModelFailureEndsTheRunInsteadOfLeavingTheProjectOccupied() {
         var mapper = new JsonMapper();
         var owner = UUID.randomUUID();
         var project = UUID.randomUUID();
@@ -163,7 +166,8 @@ class AgentTurnCommitServiceTest {
         }).when(events).recordChange(any(), any(), any());
         var service = new AgentTurnCommitService(repository, tasks, runs, mock(AgentTurnLeaseGuard.class),
                 events, mapper, mock(LlmTurnRepository.class), mock(ToolExecutionRepository.class),
-                new LlmProtocolCodec(mapper), mock(AgentMediaOutcomeService.class), Clock.systemUTC(), source(DirectorSettings.defaults()));
+                new LlmProtocolCodec(mapper), mock(AgentMediaOutcomeService.class), Clock.systemUTC(),
+                source(DirectorSettings.defaults()));
 
         service.finishFailure(lease, "worker", "AGENT_TURN_FAILED");
 

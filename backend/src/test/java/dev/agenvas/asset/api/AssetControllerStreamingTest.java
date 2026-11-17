@@ -30,7 +30,8 @@ import org.springframework.http.converter.ResourceHttpMessageConverter;
 /** Large private responses stay stream-backed and obey the exact authorized byte interval. */
 class AssetControllerStreamingTest {
 
-    @TempDir Path directory;
+    @TempDir
+    Path directory;
 
     @ParameterizedTest
     @CsvSource(delimiter = ';', value = {
@@ -38,7 +39,8 @@ class AssetControllerStreamingTest {
             "bytes=2-999999999999999999999999999999;23456789;bytes 2-9/10",
             "bytes=-999999999999999999999999999999;0123456789;bytes 0-9/10"
     })
-    void satisfiableRangesEndAtTheActualFileBoundary(String range, String expectedBody, String expectedRange) throws Exception {
+    void satisfiableRangesEndAtTheActualFileBoundary(String range, String expectedBody, String expectedRange)
+            throws Exception {
         byte[] bytes = "0123456789".getBytes(StandardCharsets.US_ASCII);
         UUID projectId = UUID.randomUUID(), assetId = UUID.randomUUID();
         AdminPrincipal principal = new AdminPrincipal(UUID.randomUUID(), "range-test");
@@ -48,8 +50,10 @@ class AssetControllerStreamingTest {
         AssetService service = mock(AssetService.class);
         when(service.content(principal.userId(), projectId, assetId, false)).thenReturn(descriptor);
         when(service.open(org.mockito.ArgumentMatchers.eq(descriptor), org.mockito.ArgumentMatchers.anyLong(),
-                org.mockito.ArgumentMatchers.anyLong())).thenAnswer(call -> new ByteArrayInputStream(bytes,
-                        Math.toIntExact(call.getArgument(1, Long.class)), Math.toIntExact(call.getArgument(2, Long.class))));
+                org.mockito.ArgumentMatchers.anyLong())).thenAnswer(
+                        call -> new ByteArrayInputStream(bytes,
+                                Math.toIntExact(call.getArgument(1, Long.class)),
+                                Math.toIntExact(call.getArgument(2, Long.class))));
         AssetController controller = new AssetController(service,
                 new dev.agenvas.shared.i18n.ApiMessages(new dev.agenvas.shared.i18n.I18nConfiguration().messageSource(),
                         new tools.jackson.databind.ObjectMapper()));
@@ -87,8 +91,9 @@ class AssetControllerStreamingTest {
         var storage = new dev.agenvas.asset.infrastructure.LocalAssetStorage(
                 new dev.agenvas.asset.application.AssetProperties(directory), null, null);
         when(service.open(org.mockito.ArgumentMatchers.eq(descriptor), org.mockito.ArgumentMatchers.anyLong(),
-                org.mockito.ArgumentMatchers.anyLong())).thenAnswer(invocation ->
-                        storage.open("large-video.mp4", invocation.getArgument(1), invocation.getArgument(2), size));
+                org.mockito.ArgumentMatchers.anyLong()))
+                .thenAnswer(invocation -> storage.open("large-video.mp4", invocation.getArgument(1),
+                        invocation.getArgument(2), size));
         AssetController controller = new AssetController(service,
                 new dev.agenvas.shared.i18n.ApiMessages(new dev.agenvas.shared.i18n.I18nConfiguration().messageSource(),
                         new tools.jackson.databind.ObjectMapper()));
@@ -166,7 +171,8 @@ class AssetControllerStreamingTest {
 
         @Override
         public void write(int value) throws IOException {
-            if (first < 0) first = value & 0xff;
+            if (first < 0)
+                first = value & 0xff;
             last = value & 0xff;
             count++;
             largestWrite = Math.max(largestWrite, 1);
@@ -174,8 +180,10 @@ class AssetControllerStreamingTest {
 
         @Override
         public void write(byte[] bytes, int offset, int length) throws IOException {
-            if (length == 0) return;
-            if (first < 0) first = bytes[offset] & 0xff;
+            if (length == 0)
+                return;
+            if (first < 0)
+                first = bytes[offset] & 0xff;
             last = bytes[offset + length - 1] & 0xff;
             count += length;
             largestWrite = Math.max(largestWrite, length);

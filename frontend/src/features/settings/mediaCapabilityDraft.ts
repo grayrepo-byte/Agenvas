@@ -1,11 +1,24 @@
 import type { MediaCapability } from "../../shared/api/client";
-import { AUTODL_ADAPTER, AUTODL_DEFAULT_WORKFLOW, autoDlResolutionTiers, resolveAutoDlWorkflow, type AutoDlWorkflow } from "../../shared/autodlWorkflows";
+import {
+  AUTODL_ADAPTER,
+  AUTODL_DEFAULT_WORKFLOW,
+  autoDlResolutionTiers,
+  resolveAutoDlWorkflow,
+  type AutoDlWorkflow,
+} from "../../shared/autodlWorkflows";
 import { t } from "../../shared/i18n";
 import { KLING_NATIVE_VIDEO_ADAPTER, KLING_VIDEO_ADAPTER, isKlingNativeAdapter } from "../../shared/kling";
 import { isNativeMediaAdapter } from "../../shared/nativeMedia";
 import { MINIMAX_H3_ADAPTER } from "../../shared/minimaxH3";
 import { isComfyAdapter } from "./comfyWorkflow";
 import { selectRunningHubNodes } from "./runningHubSelection";
+import {
+  mediaHttpTimeoutDraft,
+  mediaHttpTimeoutErrors,
+  mediaHttpTimeoutPolicy,
+  supportsMediaHttpTimeouts,
+  type MediaHttpTimeoutDraft,
+} from "./mediaHttpTimeouts";
 
 type Settings = MediaCapability["settings"];
 type AutoDlDefinition = NonNullable<Settings["workflowDefinition"]>;
@@ -15,10 +28,21 @@ export type MediaCapabilityDraft = Settings & {
   /** Local provenance only: manual changes clear it; never published to the API. */
   openAiPricePresetModel?: string;
   openAiPricePresetOrigin?: string | null;
+  /** Raw local input preserves empty/invalid values and records an explicit timeout edit. Never sent to the API. */
+  httpTimeoutDraft?: MediaHttpTimeoutDraft;
   runningHubSourceDraft?: string;
   runningHubSelectedNodeIds?: string[];
   runningHubSelectedFieldKeys?: string[];
 };
+/** Freeze the server's proposed policy with a new publishing draft, including across failed saves. */
+export function newMediaCapabilityDraft(
+  adapterId: string,
+  defaults?: Record<string, NonNullable<Settings["httpTimeouts"]>>,
+): MediaCapabilityDraft {
+  const policy = supportsMediaHttpTimeouts(adapterId) ? defaults?.[adapterId] : undefined;
+  return policy ? { httpTimeouts: { ...policy } } : {};
+}
+
 export class CapabilityDraftError extends Error {}
 
 /** A blank administrator price means unknown; preserve explicit zero and the original decimal string. */
@@ -52,52 +76,97 @@ function autoDlSettings(draft: Settings): Settings {
 
 function providerSettings(adapterId: string, draft: Settings): Settings {
   if (isComfyAdapter(adapterId)) return { comfyWorkflow: draft.comfyWorkflow };
-  if (isKlingNativeAdapter(adapterId) || isNativeMediaAdapter(adapterId)) return {
-    model: draft.model ?? "", operation: draft.operation ?? "GENERATE",
-    ...((isNativeMediaAdapter(adapterId) || adapterId === KLING_NATIVE_VIDEO_ADAPTER) && draft.pricingByResolution
-      ? { pricingByResolution: configuredTierPrices(draft.pricingByResolution) } : {}),
-  };
+  if (isKlingNativeAdapter(adapterId) || isNativeMediaAdapter(adapterId))
+    return {
+      model: draft.model ?? "",
+      operation: draft.operation ?? "GENERATE",
+      ...((isNativeMediaAdapter(adapterId) || adapterId === KLING_NATIVE_VIDEO_ADAPTER) && draft.pricingByResolution
+        ? { pricingByResolution: configuredTierPrices(draft.pricingByResolution) }
+        : {}),
+    };
   switch (adapterId) {
-    case AUTODL_ADAPTER: return autoDlSettings(draft);
-    case "OPENAI_GPT_IMAGE_2": return { model: draft.model?.toString().trim() ?? "", quality: draft.quality ?? "medium",
-      ...(draft.moderation !== undefined ? { moderation: draft.moderation } : {}),
-      ...(draft.outputFormat ? { outputFormat: draft.outputFormat } : {}),
-      ...(draft.complexity ? { complexity: draft.complexity } : {}),
-      ...(draft.outputFormat === "gif" ? { frameCount: draft.frameCount ?? 9, frameDurationMs: draft.frameDurationMs ?? 200 } : {}) };
-    case "GOOGLE_NANO_BANANA_2": return { model: draft.model?.toString().trim() ?? "" };
+    case AUTODL_ADAPTER:
+      return autoDlSettings(draft);
+    case "OPENAI_GPT_IMAGE_2":
+      return {
+        model: draft.model?.toString().trim() ?? "",
+        quality: draft.quality ?? "medium",
+        ...(draft.moderation !== undefined ? { moderation: draft.moderation } : {}),
+        ...(draft.outputFormat ? { outputFormat: draft.outputFormat } : {}),
+        ...(draft.complexity ? { complexity: draft.complexity } : {}),
+        ...(draft.outputFormat === "gif"
+          ? { frameCount: draft.frameCount ?? 9, frameDurationMs: draft.frameDurationMs ?? 200 }
+          : {}),
+      };
+    case "GOOGLE_NANO_BANANA_2":
+      return { model: draft.model?.toString().trim() ?? "" };
     case KLING_VIDEO_ADAPTER:
-    case MINIMAX_H3_ADAPTER: return draft.pricingByResolution
-      ? { pricingByResolution: configuredTierPrices(draft.pricingByResolution) } : {};
-    default: return {};
+    case MINIMAX_H3_ADAPTER:
+      return draft.pricingByResolution ? { pricingByResolution: configuredTierPrices(draft.pricingByResolution) } : {};
+    default:
+      return {};
   }
 }
 
 /** Build the provider's existing settings whitelist without changing or normalizing the editor draft. */
-export function buildMediaCapabilitySettings(adapterId: string, draft: MediaCapabilityDraft): Settings {
+export function buildMediaCapabilitySettings(
+  adapterId: string,
+  draft: MediaCapabilityDraft,
+  publication?: { publishing: boolean; httpTimeoutDefaults?: Record<string, NonNullable<Settings["httpTimeouts"]>> },
+): Settings {
+  const httpTimeouts = configuredHttpTimeouts(adapterId, draft, publication);
+  const timeoutSettings = httpTimeouts ? { httpTimeouts } : {};
   if (adapterId.startsWith("RUNNINGHUB_")) {
     const runningHub = draft.runningHub
-      ? selectRunningHubNodes(draft.runningHub, draft.runningHubSelectedNodeIds, draft.runningHubSelectedFieldKeys) : undefined;
-    const orphaned = runningHub?.fields.find((field) => field.enabledWhen
-      && !runningHub.fields.some((parent) => parent.key === field.enabledWhen?.field));
+      ? selectRunningHubNodes(draft.runningHub, draft.runningHubSelectedNodeIds, draft.runningHubSelectedFieldKeys)
+      : undefined;
+    const orphaned = runningHub?.fields.find(
+      field => field.enabledWhen && !runningHub.fields.some(parent => parent.key === field.enabledWhen?.field),
+    );
     if (orphaned) throw new CapabilityDraftError(t("settings.runningHub.unselectedCondition", { "0": orphaned.label }));
     // RunningHub has its own contract and does not publish ordinary-model defaults or limits.
-    return { runningHub, ...(draft.pricing?.amount.trim() ? { pricing: draft.pricing } : {}) };
+    return { runningHub, ...timeoutSettings, ...(draft.pricing?.amount.trim() ? { pricing: draft.pricing } : {}) };
   }
-  const settings = { ...providerSettings(adapterId, draft), ...commonSettings(draft) };
+  const settings = { ...providerSettings(adapterId, draft), ...commonSettings(draft), ...timeoutSettings };
   if (adapterId === "OPENAI_GPT_IMAGE_2" && draft.tokenPricing) {
     const { cachedTextInputPerMillion, cachedImageInputPerMillion, ...required } = draft.tokenPricing;
-    settings.tokenPricing = { ...required,
+    settings.tokenPricing = {
+      ...required,
       ...(cachedTextInputPerMillion?.trim() ? { cachedTextInputPerMillion } : {}),
-      ...(cachedImageInputPerMillion?.trim() ? { cachedImageInputPerMillion } : {}) };
+      ...(cachedImageInputPerMillion?.trim() ? { cachedImageInputPerMillion } : {}),
+    };
     delete settings.pricing;
   }
   return settings;
 }
 
+/** A legacy metadata edit must keep the absent policy; only a new publication or explicit edit adds one. */
+function configuredHttpTimeouts(
+  adapterId: string,
+  draft: MediaCapabilityDraft,
+  publication?: { publishing: boolean; httpTimeoutDefaults?: Record<string, NonNullable<Settings["httpTimeouts"]>> },
+): Settings["httpTimeouts"] {
+  if (!supportsMediaHttpTimeouts(adapterId)) return undefined;
+  const policy =
+    draft.httpTimeouts ?? (publication?.publishing ? publication.httpTimeoutDefaults?.[adapterId] : undefined);
+  const raw = draft.httpTimeoutDraft ?? (policy ? mediaHttpTimeoutDraft(policy) : undefined);
+  if (!raw) {
+    if (publication?.publishing) throw new CapabilityDraftError(t("settings.httpTimeouts.defaultsUnavailable"));
+    return undefined;
+  }
+  const error = Object.values(mediaHttpTimeoutErrors(raw))[0];
+  if (error) throw new CapabilityDraftError(error);
+  return mediaHttpTimeoutPolicy(raw);
+}
+
 /** Administrator drafts offer all supported tiers when unset; published legacy capabilities remain single-tier. */
 export function selectedAutoDlDraftTiers(draft: Settings, supportedTiers?: readonly string[]): string[] {
-  return draft.videoResolutions ?? (draft.videoResolution ? [draft.videoResolution]
-    : [...(supportedTiers ?? autoDlResolutionTiers(resolveAutoDlWorkflow(draft)!))]);
+  return (
+    draft.videoResolutions ??
+    (draft.videoResolution
+      ? [draft.videoResolution]
+      : [...(supportedTiers ?? autoDlResolutionTiers(resolveAutoDlWorkflow(draft)!))])
+  );
 }
 
 function retainTierPrices(draft: Settings, tiers: readonly string[]) {
@@ -105,22 +174,36 @@ function retainTierPrices(draft: Settings, tiers: readonly string[]) {
 }
 
 const AUTODL_TARGET_RESET = {
-  pricingByResolution: undefined, seed: undefined,
-  minimumSeconds: undefined, maximumSeconds: undefined, maxReferenceImages: undefined,
-  maxReferenceAudios: undefined, defaultDurationSeconds: undefined,
+  pricingByResolution: undefined,
+  seed: undefined,
+  minimumSeconds: undefined,
+  maximumSeconds: undefined,
+  maxReferenceImages: undefined,
+  maxReferenceAudios: undefined,
+  defaultDurationSeconds: undefined,
 };
 
 /** Previewing another target resets its options; manual definition edits deliberately keep the current options. */
-export function applyAutoDlDraftDefinition(draft: Settings, definition: AutoDlDefinition, resetTarget = false): Settings {
+export function applyAutoDlDraftDefinition(
+  draft: Settings,
+  definition: AutoDlDefinition,
+  resetTarget = false,
+): Settings {
   const tiers = autoDlResolutionTiers(definition);
-  const retained = resetTarget ? tiers : selectedAutoDlDraftTiers(draft, tiers).filter((tier) => tiers.includes(tier));
+  const retained = resetTarget ? tiers : selectedAutoDlDraftTiers(draft, tiers).filter(tier => tiers.includes(tier));
   const videoResolutions = retained.length ? retained : tiers;
-  const videoResolution = !resetTarget && videoResolutions.includes(draft.videoResolution ?? "") ? draft.videoResolution
-    : videoResolutions.includes(definition.defaultResolution) ? definition.defaultResolution : videoResolutions[0];
+  const videoResolution =
+    !resetTarget && videoResolutions.includes(draft.videoResolution ?? "")
+      ? draft.videoResolution
+      : videoResolutions.includes(definition.defaultResolution)
+        ? definition.defaultResolution
+        : videoResolutions[0];
   const next = {
-    ...draft, workflowId: definition.id,
+    ...draft,
+    workflowId: definition.id,
     workflowDefinition: { ...definition, defaultResolution: videoResolution ?? definition.defaultResolution },
-    videoResolution, videoResolutions,
+    videoResolution,
+    videoResolutions,
     ...(draft.pricingByResolution ? { pricingByResolution: retainTierPrices(draft, videoResolutions) } : {}),
     ...(!definition.supportsSeed ? { seed: undefined } : {}),
   };
@@ -130,21 +213,32 @@ export function applyAutoDlDraftDefinition(draft: Settings, definition: AutoDlDe
 /** Choosing an offline preset resets target options and removes any imported definition. */
 export function selectAutoDlDraftPreset(draft: Settings, preset: AutoDlWorkflow): Settings {
   return {
-    ...draft, workflowDefinition: undefined, workflowId: preset.id,
-    videoResolution: preset.defaultResolution, videoResolutions: autoDlResolutionTiers(preset),
+    ...draft,
+    workflowDefinition: undefined,
+    workflowId: preset.id,
+    videoResolution: preset.defaultResolution,
+    videoResolutions: autoDlResolutionTiers(preset),
     ...AUTODL_TARGET_RESET,
   };
 }
 
 /** Tier choices follow provider order; removing a tier also removes its price and repairs the default. */
-export function selectAutoDlDraftTiers(draft: Settings, choices: readonly string[], supportedTiers: readonly string[]): Settings | null {
-  const videoResolutions = supportedTiers.filter((tier) => choices.includes(tier));
+export function selectAutoDlDraftTiers(
+  draft: Settings,
+  choices: readonly string[],
+  supportedTiers: readonly string[],
+): Settings | null {
+  const videoResolutions = supportedTiers.filter(tier => choices.includes(tier));
   if (videoResolutions.length === 0) return null;
   const current = draft.videoResolution ?? resolveAutoDlWorkflow(draft)?.defaultResolution;
-  const videoResolution = videoResolutions.find((tier) => tier === current) ?? videoResolutions[0];
+  const videoResolution = videoResolutions.find(tier => tier === current) ?? videoResolutions[0];
   return {
-    ...draft, videoResolutions, videoResolution, pricingByResolution: retainTierPrices(draft, videoResolutions),
+    ...draft,
+    videoResolutions,
+    videoResolution,
+    pricingByResolution: retainTierPrices(draft, videoResolutions),
     ...(draft.workflowDefinition && videoResolution
-      ? { workflowDefinition: { ...draft.workflowDefinition, defaultResolution: videoResolution } } : {}),
+      ? { workflowDefinition: { ...draft.workflowDefinition, defaultResolution: videoResolution } }
+      : {}),
   };
 }

@@ -24,8 +24,7 @@ public class ProjectEventService {
     /** 项目事件的持久化保留期；过期游标需重新获取快照。 */
     private static final Duration RETENTION = Duration.ofDays(30);
     /** 事件类型限定为小写点分段，避免任意文本进入协议字段。 */
-    private static final Pattern EVENT_TYPE =
-            Pattern.compile("[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)+");
+    private static final Pattern EVENT_TYPE = Pattern.compile("[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)+");
 
     /** 以项目计数行锁生成序号并保存不可变事件。 */
     private final ProjectEventRepository events;
@@ -95,7 +94,8 @@ public class ProjectEventService {
     public List<ProjectEvent> listAfter(
             UUID ownerId, UUID projectId, long afterSequence, int requestedLimit) {
         if (afterSequence < 0 || requestedLimit < 1 || requestedLimit > MAX_REPLAY_PAGE) {
-            throw validation(ApiMessage.of("api.project-event-service.the-event-cursor-must-be-non-negative-and-limit-must"));
+            throw validation(
+                    ApiMessage.of("api.project-event-service.the-event-cursor-must-be-non-negative-and-limit-must"));
         }
         return events.listAfter(ownerId, projectId, afterSequence, requestedLimit);
     }
@@ -108,7 +108,8 @@ public class ProjectEventService {
         }
         ReplayWindow window = replayWindow(ownerId, projectId);
         if (afterSequence > window.latestSequence()) {
-            throw validation(ApiMessage.of("api.project-event-service.the-event-cursor-exceeds-the-current-water-level-of-the"));
+            throw validation(
+                    ApiMessage.of("api.project-event-service.the-event-cursor-exceeds-the-current-water-level-of-the"));
         }
         if (window.expired(afterSequence)) {
             throw cursorExpired();
@@ -129,7 +130,8 @@ public class ProjectEventService {
     @Transactional
     public int pruneExpired(int limit) {
         if (limit < 1 || limit > MAX_REPLAY_PAGE) {
-            throw validation(ApiMessage.of("api.project-event-service.the-cleanup-batch-size-must-be-between-1-and-1000"));
+            throw validation(
+                    ApiMessage.of("api.project-event-service.the-cleanup-batch-size-must-be-between-1-and-1000"));
         }
         return events.pruneOlderThan(clock.instant().minus(RETENTION), limit);
     }
@@ -145,7 +147,8 @@ public class ProjectEventService {
                 || draft.aggregateVersion() < 0
                 || draft.payload() == null
                 || !draft.payload().isObject()) {
-            throw validation(ApiMessage.of("api.project-event-service.the-project-event-type-version-aggregate-id-or-object-payload"));
+            throw validation(ApiMessage
+                    .of("api.project-event-service.the-project-event-type-version-aggregate-id-or-object-payload"));
         }
         return draft;
     }
@@ -176,7 +179,8 @@ public class ProjectEventService {
                 HttpStatus.CONFLICT,
                 "EVENT_CURSOR_EXPIRED",
                 ApiMessage.of("api.project-event-service.event-cursor-has-expired"),
-                ApiMessage.of("api.project-event-service.please-retake-the-project-snapshot-and-subscribe-from-the-new"),
+                ApiMessage
+                        .of("api.project-event-service.please-retake-the-project-snapshot-and-subscribe-from-the-new"),
                 false);
     }
 
@@ -192,7 +196,8 @@ public class ProjectEventService {
             int schemaVersion,
             UUID aggregateId,
             long aggregateVersion,
-            JsonNode payload) {}
+            JsonNode payload) {
+    }
 
     /** 业务变更回调结果；有事件表示变化，空事件表示精确幂等重放。
      * @param value 调用方业务返回值
@@ -215,7 +220,8 @@ public class ProjectEventService {
      * @param value 已提交业务操作的返回值
      * @param event 本事务新增的持久化事件；幂等不变时为空
      */
-    public record RecordedChange<T>(T value, ProjectEvent event) {}
+    public record RecordedChange<T>(T value, ProjectEvent event) {
+    }
 
     /** 项目最新水位与当前仍可补发的最早事件序号。
      * @param latestSequence 项目已提交的最高事件序号
@@ -229,7 +235,7 @@ public class ProjectEventService {
          */
         public boolean expired(long afterSequence) {
             return (oldestRetainedSequence != null
-                            && afterSequence < oldestRetainedSequence - 1)
+                    && afterSequence < oldestRetainedSequence - 1)
                     || (oldestRetainedSequence == null && afterSequence < latestSequence);
         }
     }

@@ -11,8 +11,10 @@ import org.springframework.boot.servlet.autoconfigure.MultipartProperties;
 import org.springframework.util.unit.DataSize;
 
 class MultipartWorkspaceConfigurationTest {
-    @TempDir Path root;
-    @Test void multipartSpoolsOnPrivateWorkingVolumeAndPreservesConfiguredLimits() throws Exception {
+    @TempDir
+    Path root;
+    @Test
+    void multipartSpoolsOnPrivateWorkingVolumeAndPreservesConfiguredLimits() throws Exception {
         var properties = new MultipartProperties();
         properties.setMaxFileSize(DataSize.ofMegabytes(500));
         properties.setMaxRequestSize(DataSize.ofMegabytes(501));
@@ -23,11 +25,13 @@ class MultipartWorkspaceConfigurationTest {
         assertThat(config.getMaxRequestSize()).isEqualTo(DataSize.ofMegabytes(501).toBytes());
         assertThat(Files.isDirectory(root.resolve(".multipart"))).isTrue();
     }
-    @Test void multipartNeverFollowsAnExistingWorkDirectorySymlink() throws Exception {
+    @Test
+    void multipartNeverFollowsAnExistingWorkDirectorySymlink() throws Exception {
         Path outside = Files.createDirectory(root.resolve("outside"));
         Files.createSymbolicLink(root.resolve(".multipart"), outside);
         var local = new LocalAssetStorage(new AssetProperties(root), null, null);
-        assertThatThrownBy(() -> new MultipartWorkspaceConfiguration().multipartConfigElement(local, new MultipartProperties()))
+        assertThatThrownBy(
+                () -> new MultipartWorkspaceConfiguration().multipartConfigElement(local, new MultipartProperties()))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("symbolic link");
     }
 }

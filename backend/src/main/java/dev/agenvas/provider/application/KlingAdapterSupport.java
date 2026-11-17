@@ -1,6 +1,7 @@
 package dev.agenvas.provider.application;
 
 import dev.agenvas.provider.domain.AttemptContext;
+import dev.agenvas.provider.domain.MediaHttpTimeouts;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaPayload;
 import dev.agenvas.provider.domain.Submission;
@@ -9,6 +10,7 @@ import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapsho
 import dev.agenvas.provider.infrastructure.KlingClient;
 import dev.agenvas.provider.infrastructure.KlingMediaDownloadPolicy;
 import dev.agenvas.settings.application.CredentialCipher;
+import dev.agenvas.shared.http.HttpTimeouts;
 import dev.agenvas.shared.error.ProviderFailureCodes;
 import java.io.FilterInputStream;
 import java.io.IOException;
@@ -32,36 +34,58 @@ abstract class KlingAdapterSupport implements MediaAdapter {
     KlingAdapterSupport(JooqMediaCapabilityRepository catalog, CredentialCipher cipher,
             KlingClient client, KlingMediaDownloadPolicy downloads, ObjectMapper mapper,
             KlingReferenceLoader references) {
-        this.catalog = catalog; this.cipher = cipher; this.client = client;
-        this.downloads = downloads; this.mapper = mapper; this.references = references;
+        this.catalog = catalog;
+        this.cipher = cipher;
+        this.client = client;
+        this.downloads = downloads;
+        this.mapper = mapper;
+        this.references = references;
     }
 
     protected abstract boolean video();
     protected abstract ObjectNode prepare(AttemptContext context, boolean submitting);
-    protected void validateResult(AttemptContext context, Path file) {}
-
-    @Override public String preflightFailure(AttemptContext context) {
-        try { credential(snapshot(context)); }
-        catch (RuntimeException unavailable) { return "MEDIA_CREDENTIAL_UNAVAILABLE"; }
-        try { prepare(context, false); return null; }
-        catch (RuntimeException invalid) { return "PROVIDER_UNSUPPORTED_INPUT"; }
+    protected void validateResult(AttemptContext context, Path file) {
     }
 
-    @Override public Submission submit(AttemptContext context) {
+    @Override
+    public String preflightFailure(AttemptContext context) {
+        try {
+            credential(snapshot(context));
+        } catch (RuntimeException unavailable) {
+            return "MEDIA_CREDENTIAL_UNAVAILABLE";
+        }
+        try {
+            prepare(context, false);
+            return null;
+        } catch (RuntimeException invalid) {
+            return "PROVIDER_UNSUPPORTED_INPUT";
+        }
+    }
+
+    @Override
+    public Submission submit(AttemptContext context) {
         Snapshot snapshot = snapshot(context);
         String key = credential(snapshot);
         ObjectNode body;
-        try { body = prepare(context, true); }
-        catch (RuntimeException preparationFailed) { return new Submission.Rejected("MEDIA_REFERENCE_PREPARATION_FAILED"); }
         try {
-            String id = video() ? client.createVideo(snapshot.connectionVersion().origin(), key, body)
-                    : client.createImage(snapshot.connectionVersion().origin(), key, body);
+            body = prepare(context, true);
+        } catch (RuntimeException preparationFailed) {
+            return new Submission.Rejected("MEDIA_REFERENCE_PREPARATION_FAILED");
+        }
+        try {
+            String id = video()
+                    ? api(snapshot).createVideo(snapshot.connectionVersion().origin(), key, body)
+                    : api(snapshot).createImage(snapshot.connectionVersion().origin(), key, body);
             return new Submission.Accepted(id);
-        } catch (KlingClient.Rejected rejected) { return new Submission.Rejected(ProviderFailureCodes.KLING_CREATE_REJECTED); }
-        catch (KlingClient.Uncertain uncertain) { return new Submission.Unknown(ProviderFailureCodes.KLING_CREATE_UNCERTAIN); }
+        } catch (KlingClient.Rejected rejected) {
+            return new Submission.Rejected(ProviderFailureCodes.KLING_CREATE_REJECTED);
+        } catch (KlingClient.Uncertain uncertain) {
+            return new Submission.Unknown(ProviderFailureCodes.KLING_CREATE_UNCERTAIN);
+        }
     }
 
-    @Override public Submission reconcile(AttemptContext context) {
+    @Override
+    public Submission reconcile(AttemptContext context) {
         Snapshot snapshot = snapshot(context);
         try {
             var state = query(context, snapshot);
@@ -71,78 +95,121 @@ abstract class KlingAdapterSupport implements MediaAdapter {
                 case "succeed", "succeeded" -> completed(context, snapshot, state);
                 default -> new Submission.Blocked(ProviderFailureCodes.PROTOCOL_INVALID);
             };
-        } catch (KlingClient.TaskExpired expired) { return new Submission.Blocked(ProviderFailureCodes.KLING_TASK_EXPIRED); }
-        catch (KlingClient.CredentialUnavailable unavailable) { return new Submission.Blocked("MEDIA_CREDENTIAL_UNAVAILABLE"); }
-        catch (KlingClient.ProtocolFailure invalid) { return new Submission.Blocked(ProviderFailureCodes.PROTOCOL_INVALID); }
-        catch (KlingMediaDownloadPolicy.Rejected rejected) { return new Submission.Blocked(rejected.getMessage()); }
+        } catch (KlingClient.TaskExpired expired) {
+            return new Submission.Blocked(ProviderFailureCodes.KLING_TASK_EXPIRED);
+        } catch (KlingClient.CredentialUnavailable unavailable) {
+            return new Submission.Blocked("MEDIA_CREDENTIAL_UNAVAILABLE");
+        } catch (KlingClient.ProtocolFailure invalid) {
+            return new Submission.Blocked(ProviderFailureCodes.PROTOCOL_INVALID);
+        } catch (KlingMediaDownloadPolicy.Rejected rejected) {
+            return new Submission.Blocked(rejected.getMessage());
+        }
     }
 
     private KlingClient.TaskState query(AttemptContext context, Snapshot snapshot) {
         String origin = snapshot.connectionVersion().origin(), key = credential(snapshot);
-        return video() ? client.queryVideo(origin, key, context.originalRequestId())
-                : client.queryImage(origin, key, context.originalRequestId());
+        return video()
+                ? api(snapshot).queryVideo(origin, key, context.originalRequestId())
+                : api(snapshot).queryImage(origin, key, context.originalRequestId());
     }
 
     private Submission completed(AttemptContext context, Snapshot snapshot, KlingClient.TaskState state) {
-        try { return new Submission.Completed(download(context, URI.create(state.url()))); }
-        catch (IllegalArgumentException invalid) { return new Submission.Blocked(ProviderFailureCodes.RESULT_URL_INVALID); }
-        catch (KlingMediaDownloadPolicy.Expired expired) {
+        try {
+            return new Submission.Completed(download(context, snapshot, URI.create(state.url())));
+        } catch (IllegalArgumentException invalid) {
+            return new Submission.Blocked(ProviderFailureCodes.RESULT_URL_INVALID);
+        } catch (KlingMediaDownloadPolicy.Expired expired) {
             // Refresh only this acknowledged task; expired URLs cannot authorize another generation.
             var refreshed = query(context, snapshot);
             if (!(video() ? "succeeded" : "succeed").equals(refreshed.status())
                     || refreshed.url() == null || refreshed.url().equals(state.url()))
                 return new Submission.Blocked(ProviderFailureCodes.KLING_RESULT_EXPIRED);
-            try { return new Submission.Completed(download(context, URI.create(refreshed.url()))); }
-            catch (IllegalArgumentException | KlingMediaDownloadPolicy.Expired invalid) {
+            try {
+                return new Submission.Completed(download(context, snapshot, URI.create(refreshed.url())));
+            } catch (IllegalArgumentException | KlingMediaDownloadPolicy.Expired invalid) {
                 return new Submission.Blocked(ProviderFailureCodes.KLING_RESULT_EXPIRED);
             }
         }
     }
 
-    private MediaPayload download(AttemptContext context, URI url) {
+    private MediaPayload download(AttemptContext context, Snapshot snapshot, URI url) {
         downloads.validate(url);
         Path directory;
-        try { directory = Files.createTempDirectory("agenvas-kling-result-"); }
-        catch (IOException unavailable) { throw new KlingMediaDownloadPolicy.TechnicalFailure(); }
+        try {
+            directory = Files.createTempDirectory("agenvas-kling-result-");
+        } catch (IOException unavailable) {
+            throw new KlingMediaDownloadPolicy.TechnicalFailure();
+        }
         Path file = directory.resolve("result");
         try {
             String mime;
             try (OutputStream output = Files.newOutputStream(file)) {
-                mime = downloads.download(url, output, video(), video() ? 500L * 1024 * 1024 : 50L * 1024 * 1024);
+                mime = downloads(snapshot).download(url, output, video(),
+                        video() ? 500L * 1024 * 1024 : 50L * 1024 * 1024);
             }
             validateResult(context, file);
             return new MediaPayload(new FilterInputStream(Files.newInputStream(file)) {
-                @Override public void close() throws IOException {
-                    try { super.close(); } finally { cleanup(file, directory); }
+                @Override
+                public void close() throws IOException {
+                    try {
+                        super.close();
+                    } finally {
+                        cleanup(file, directory);
+                    }
                 }
             }, mime);
         } catch (IOException unavailable) {
             cleanup(file, directory);
             throw new KlingMediaDownloadPolicy.TechnicalFailure();
-        } catch (RuntimeException failure) { cleanup(file, directory); throw failure; }
+        } catch (RuntimeException failure) {
+            cleanup(file, directory);
+            throw failure;
+        }
     }
 
     private static void cleanup(Path file, Path directory) {
-        try { Files.deleteIfExists(file); Files.deleteIfExists(directory); }
-        catch (IOException ignored) { /* Private temporary data is removed on a best-effort basis. */ }
+        try {
+            Files.deleteIfExists(file);
+            Files.deleteIfExists(directory);
+        } catch (IOException ignored) {
+            /* Private temporary data is removed on a best-effort basis. */ }
     }
 
     private Snapshot snapshot(AttemptContext context) {
         var binding = context.binding();
         Snapshot snapshot = catalog.snapshotAt(binding.capabilityId(), binding.capabilityVersion(),
-                binding.connectionId(), binding.connectionVersion()).orElseThrow(() ->
-                new IllegalStateException("Pinned Kling capability version is missing"));
+                binding.connectionId(), binding.connectionVersion())
+                .orElseThrow(() -> new IllegalStateException("Pinned Kling capability version is missing"));
         if (!adapterId().equals(snapshot.adapterId()) || !binding.mappingSha256().equals(snapshot.mappingSha256()))
             throw new IllegalStateException("Pinned Kling mapping differs");
         return snapshot;
     }
 
+    /** Read only the immutable capability version selected when this task was accepted. */
+    private HttpTimeouts httpTimeouts(Snapshot snapshot) {
+        return snapshot.specJson() == null
+                ? null
+                : MediaHttpTimeouts.configured(mapper.readTree(snapshot.specJson()).path("settings"));
+    }
+
+    private KlingClient api(Snapshot snapshot) {
+        var timeouts = httpTimeouts(snapshot);
+        return timeouts == null ? client : client.withTimeouts(timeouts);
+    }
+
+    private KlingMediaDownloadPolicy downloads(Snapshot snapshot) {
+        var timeouts = httpTimeouts(snapshot);
+        return timeouts == null ? downloads : downloads.withTimeouts(timeouts);
+    }
+
     private String credential(Snapshot snapshot) {
         var version = snapshot.connectionVersion();
-        if (version.credentialCiphertext() == null || version.credentialNonce() == null || version.credentialKeyVersion() == null)
+        if (version.credentialCiphertext() == null || version.credentialNonce() == null
+                || version.credentialKeyVersion() == null)
             throw new IllegalStateException("Pinned Kling credential is missing");
         String key = cipher.decryptMedia(version.connectionId(), version.version(),
-                new CredentialCipher.Encrypted(version.credentialCiphertext(), version.credentialNonce(), version.credentialKeyVersion()));
+                new CredentialCipher.Encrypted(version.credentialCiphertext(), version.credentialNonce(),
+                        version.credentialKeyVersion()));
         if (key.isBlank() || key.indexOf('\r') >= 0 || key.indexOf('\n') >= 0)
             throw new IllegalStateException("Pinned Kling credential is invalid");
         return key;

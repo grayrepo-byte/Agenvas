@@ -58,40 +58,61 @@ import tools.jackson.databind.node.ObjectNode;
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class AgentStoryboardMediaReadAccessPostgresIT {
-    @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     private static final Path STORAGE = privateStorage();
-    @DynamicPropertySource static void properties(DynamicPropertyRegistry registry) {
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("agenvas.storage.root", () -> STORAGE.toString());
     }
-    @Autowired IdentityService identities;
-    @Autowired ProjectService projects;
-    @Autowired AgentInstanceService agents;
-    @Autowired AgentRunService runs;
-    @Autowired ArtifactService artifacts;
-    @Autowired AssetService assets;
-    @Autowired CanvasService canvas;
-    @Autowired CanvasItemQueryService items;
-    @Autowired StoryboardService boards;
-    @Autowired ProjectEventService events;
-    @Autowired ReadToolService reader;
-    @Autowired AgentImageInputService images;
-    @Autowired TaskOutputReadAccessService taskOutputs;
-    @Autowired JdbcClient jdbc;
-    @Autowired ObjectMapper mapper;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    ProjectService projects;
+    @Autowired
+    AgentInstanceService agents;
+    @Autowired
+    AgentRunService runs;
+    @Autowired
+    ArtifactService artifacts;
+    @Autowired
+    AssetService assets;
+    @Autowired
+    CanvasService canvas;
+    @Autowired
+    CanvasItemQueryService items;
+    @Autowired
+    StoryboardService boards;
+    @Autowired
+    ProjectEventService events;
+    @Autowired
+    ReadToolService reader;
+    @Autowired
+    AgentImageInputService images;
+    @Autowired
+    TaskOutputReadAccessService taskOutputs;
+    @Autowired
+    JdbcClient jdbc;
+    @Autowired
+    ObjectMapper mapper;
     private AdminPrincipal owner;
     private Project project;
 
-    @BeforeEach void setup() {
-        owner = jdbc.sql("select id from app_user where login_name='synthetic-shot-read-admin'").query(UUID.class).optional()
+    @BeforeEach
+    void setup() {
+        owner = jdbc.sql("select id from app_user where login_name='synthetic-shot-read-admin'").query(UUID.class)
+                .optional()
                 .map(id -> new AdminPrincipal(id, "synthetic-shot-read-admin"))
                 .orElseGet(() -> identities.setup("synthetic-shot-read-admin", "synthetic-shot-read-password-123"));
-        project = projects.create(owner.userId(), "Synthetic storyboard read project", Project.AspectRatio.LANDSCAPE_16_9);
+        project = projects.create(owner.userId(), "Synthetic storyboard read project",
+                Project.AspectRatio.LANDSCAPE_16_9);
     }
 
-    @Test void sameRunCanReadAndHydrateExactPrimaryAndAdditionalArchivesWithoutSelectingTheCanvas() {
+    @Test
+    void sameRunCanReadAndHydrateExactPrimaryAndAdditionalArchivesWithoutSelectingTheCanvas() {
         UUID run = run(project);
         Media primary = media(project, run, UUID.randomUUID());
         seedTask(primary, true, output(primary));
@@ -102,12 +123,14 @@ class AgentStoryboardMediaReadAccessPostgresIT {
 
         assertThat(read(run, primary.version()).id()).isEqualTo(primary.version());
         assertThat(read(run, extra.version()).id()).isEqualTo(extra.version());
-        denied(() -> artifacts.requireAgentReadableVersion(owner.userId(), project.id(), snapshot(), primary.version()));
+        denied(() -> artifacts.requireAgentReadableVersion(owner.userId(), project.id(), snapshot(),
+                primary.version()));
         UUID otherRun = run(project);
         denied(() -> read(otherRun, primary.version()));
         var domainRun = runs.get(owner.userId(), project.id(), run);
         JsonNode receipt = reader.artifacts(new TrustedToolContext(owner.userId(), project.id(), run), domainRun,
-                UUID.randomUUID(), mapper.createObjectNode().set("versionIds", mapper.createArrayNode().add(primary.version().toString())).toString());
+                UUID.randomUUID(), mapper.createObjectNode()
+                        .set("versionIds", mapper.createArrayNode().add(primary.version().toString())).toString());
         assertThat(receipt.at("/data/0/imagePreviewRequested").asBoolean()).isTrue();
         assertThat(receipt.at("/data/0").has("expectedVersion")).isFalse();
         var input = new AgentImageInputService.Input(primary.artifact(), primary.version());
@@ -116,11 +139,13 @@ class AgentStoryboardMediaReadAccessPostgresIT {
                 .metadata(Map.of(AgentImageInputService.METADATA_KEY, List.of(input))).build();
         var hydrated = images.hydrate(owner.userId(), project.id(), run, snapshot(), List.of(message));
         assertThat(((UserMessage) hydrated.getFirst()).getMedia()).hasSize(1);
-        assertThat(items.requireArtifactItem(owner.userId(), project.id(), primary.node()).selectedVersionId()).isNull();
+        assertThat(items.requireArtifactItem(owner.userId(), project.id(), primary.node()).selectedVersionId())
+                .isNull();
         assertThat(items.requireArtifactItem(owner.userId(), project.id(), extra.node()).selectedVersionId()).isNull();
     }
 
-    @Test void onlySavedUserMediaChoicesGrantOtherRunsAccessAndDetachedNodesRevokeIt() {
+    @Test
+    void onlySavedUserMediaChoicesGrantOtherRunsAccessAndDetachedNodesRevokeIt() {
         UUID run = run(project), otherRun = run(project), shotId = UUID.randomUUID();
         Media media = media(project, run, UUID.randomUUID());
         seedTask(media, true, output(media));
@@ -138,16 +163,20 @@ class AgentStoryboardMediaReadAccessPostgresIT {
         denied(() -> read(run, media.version()));
     }
 
-    @Test void fabricatedHintsWrongScopeUnapprovedAndUnarchivedVersionsCannotGrantAccess() {
+    @Test
+    void fabricatedHintsWrongScopeUnapprovedAndUnarchivedVersionsCannotGrantAccess() {
         UUID run = run(project), otherRun = run(project);
         Media allowed = media(project, run, UUID.randomUUID());
         seedTask(allowed, true, output(allowed));
         var fabricated = snapshot().put("runId", run.toString()).put("sourceTaskId", allowed.task().toString())
                 .put("approved", true).put("artifactVersionId", allowed.version().toString());
-        denied(() -> artifacts.requireAgentReadableVersion(owner.userId(), project.id(), fabricated, otherRun, allowed.version()));
+        denied(() -> artifacts.requireAgentReadableVersion(owner.userId(), project.id(), fabricated, otherRun,
+                allowed.version()));
         Project foreign = projects.create(owner.userId(), "Synthetic other project", Project.AspectRatio.SQUARE_1_1);
-        denied(() -> artifacts.requireAgentReadableVersion(owner.userId(), foreign.id(), snapshot(), run, allowed.version()));
-        denied(() -> artifacts.requireAgentReadableVersion(UUID.randomUUID(), project.id(), snapshot(), run, allowed.version()));
+        denied(() -> artifacts.requireAgentReadableVersion(owner.userId(), foreign.id(), snapshot(), run,
+                allowed.version()));
+        denied(() -> artifacts.requireAgentReadableVersion(UUID.randomUUID(), project.id(), snapshot(), run,
+                allowed.version()));
 
         Media noArchive = media(project, run, UUID.randomUUID());
         seedTask(noArchive, true, null);
@@ -155,7 +184,8 @@ class AgentStoryboardMediaReadAccessPostgresIT {
         Media unlinked = media(project, run, UUID.randomUUID());
         seedTask(unlinked, false, output(unlinked));
         denied(() -> read(run, unlinked.version()));
-        jdbc.sql("update task set input_json=input_json-'agentApprovalId' where id=:id").param("id", allowed.task()).update();
+        jdbc.sql("update task set input_json=input_json-'agentApprovalId' where id=:id").param("id", allowed.task())
+                .update();
         denied(() -> read(run, allowed.version()));
 
         // A TASK body naming another task cannot borrow an unrelated output ledger entry.
@@ -170,16 +200,19 @@ class AgentStoryboardMediaReadAccessPostgresIT {
                 mapper.createObjectNode().put("sourceType", "UPLOAD").put("assetId", asset.toString()));
         UUID userNode = CanvasMediaFixture.place(canvas, owner.userId(), project.id(), user.artifact().id());
         jdbc.sql("update canvas_item set selected_version_id=null where id=:id").param("id", userNode).update();
-        Media userVersion = new Media(project.id(), run, UUID.randomUUID(), user.artifact().id(), userNode, user.resourceDefaultVersion().id());
+        Media userVersion = new Media(project.id(), run, UUID.randomUUID(), user.artifact().id(), userNode,
+                user.resourceDefaultVersion().id());
         seedTask(userVersion, true, output(userVersion));
         denied(() -> read(run, userVersion.version()));
     }
 
-    @Test void exactCanceledLateArchivesUseOwnedTaskHistoryWithoutGrantingOtherRunsReadAccess() {
+    @Test
+    void exactCanceledLateArchivesUseOwnedTaskHistoryWithoutGrantingOtherRunsReadAccess() {
         UUID run = run(project), otherRun = run(project);
         Media late = media(project, run, UUID.randomUUID());
         seedTask(late, true, null);
-        jdbc.sql("update task set status='CANCELED',cancel_requested=true where id=:id").param("id", late.task()).update();
+        jdbc.sql("update task set status='CANCELED',cancel_requested=true where id=:id").param("id", late.task())
+                .update();
         jdbc.sql("""
                 insert into task_late_result(id,project_id,task_id,lease_epoch,output_json,created_at)
                 values (:id,:project,:task,0,cast(:output as jsonb),now())
@@ -189,7 +222,8 @@ class AgentStoryboardMediaReadAccessPostgresIT {
         denied(() -> read(otherRun, late.version()));
         assertThat(taskOutputs.archivedOutputs(owner.userId(), project.id(), late.task())).hasSize(1);
         assertThat(taskOutputs.archivedOutputs(UUID.randomUUID(), project.id(), late.task())).isEmpty();
-        Project foreign = projects.create(owner.userId(), "Synthetic foreign late project", Project.AspectRatio.SQUARE_1_1);
+        Project foreign = projects.create(owner.userId(), "Synthetic foreign late project",
+                Project.AspectRatio.SQUARE_1_1);
         assertThat(taskOutputs.archivedOutputs(owner.userId(), foreign.id(), late.task())).isEmpty();
         assertThat(jdbc.sql("select output_json is null from task where id=:id").param("id", late.task())
                 .query(Boolean.class).single()).isTrue();
@@ -214,7 +248,9 @@ class AgentStoryboardMediaReadAccessPostgresIT {
 
     private Media media(Project target, UUID run, UUID task) {
         UUID asset = ImageAssetFixture.archive(assets, owner.userId(), target.id());
-        var artifact = artifacts.create(owner.userId(), target.id(), Artifact.Kind.IMAGE, "Synthetic unselected archive", null).artifact();
+        var artifact = artifacts
+                .create(owner.userId(), target.id(), Artifact.Kind.IMAGE, "Synthetic unselected archive", null)
+                .artifact();
         UUID node = CanvasMediaFixture.place(canvas, owner.userId(), target.id(), artifact.id());
         var content = mapper.createObjectNode().put("assetId", asset.toString()).put("prompt", "Synthetic pixels")
                 .put("workflowVersion", "synthetic-read-v1").put("sourceTaskId", task.toString());
@@ -222,7 +258,8 @@ class AgentStoryboardMediaReadAccessPostgresIT {
         var result = events.recordChange(owner.userId(), target.id(), () -> {
             var appended = artifacts.appendTaskVersionWithinChange(owner.userId(), target.id(), artifact.id(), run,
                     null, artifact.version(), content, null, false);
-            canvas.recordTaskMediaVersionWithinChange(owner.userId(), target.id(), node, artifact.id(), appended.versionId());
+            canvas.recordTaskMediaVersionWithinChange(owner.userId(), target.id(), node, artifact.id(),
+                    appended.versionId());
             return ProjectEventService.Change.unchanged(appended);
         }).value();
         return new Media(target.id(), run, task, artifact.id(), node, result.versionId());
@@ -231,7 +268,8 @@ class AgentStoryboardMediaReadAccessPostgresIT {
     private void seedTask(Media media, boolean linked, JsonNode output) {
         var input = mapper.createObjectNode().put("canvasItemId", media.node().toString())
                 .put(Task.APPROVAL_INPUT_PROPERTY, UUID.randomUUID().toString());
-        if (linked) input.put(Task.REQUIRE_EXPLICIT_SELECTION_PROPERTY, true);
+        if (linked)
+            input.put(Task.REQUIRE_EXPLICIT_SELECTION_PROPERTY, true);
         jdbc.sql("""
                 insert into task(id,project_id,run_id,step_key,kind,status,input_json,output_json,input_hash,attempt_no,
                     next_action_at,created_at,updated_at,completed_at)
@@ -249,11 +287,15 @@ class AgentStoryboardMediaReadAccessPostgresIT {
         return mapper.createObjectNode().put("artifactId", media.artifact().toString())
                 .put("artifactVersionId", media.version().toString()).put("selected", false);
     }
-    private StoryboardService.ShotInput shot(UUID id, List<UUID> references, List<StoryboardService.ProductionInput> productions) {
-        return new StoryboardService.ShotInput(id, "SHOT-001", "", "Synthetic shot", "Synthetic design", "", BigDecimal.ONE,
+    private StoryboardService.ShotInput shot(UUID id, List<UUID> references,
+            List<StoryboardService.ProductionInput> productions) {
+        return new StoryboardService.ShotInput(id, "SHOT-001", "", "Synthetic shot", "Synthetic design", "",
+                BigDecimal.ONE,
                 null, references, productions);
     }
-    private ObjectNode snapshot() { return mapper.createObjectNode().set("creativeSkills", mapper.createArrayNode()); }
+    private ObjectNode snapshot() {
+        return mapper.createObjectNode().set("creativeSkills", mapper.createArrayNode());
+    }
     private dev.agenvas.artifact.domain.ArtifactVersion read(UUID run, UUID version) {
         return artifacts.requireAgentReadableVersion(owner.userId(), project.id(), snapshot(), run, version);
     }
@@ -262,13 +304,20 @@ class AgentStoryboardMediaReadAccessPostgresIT {
                 failure -> assertThat(failure.status().value()).isIn(403, 404));
     }
     private static Path privateStorage() {
-        try { return Files.createTempDirectory("agenvas-shot-read-it-", PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------"))); }
-        catch (IOException failure) { throw new ExceptionInInitializerError(failure); }
-    }
-    @AfterAll static void removeOnlySyntheticStorage() throws IOException {
-        try (var files = Files.walk(STORAGE)) {
-            for (Path file : files.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(file);
+        try {
+            return Files.createTempDirectory("agenvas-shot-read-it-",
+                    PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
+        } catch (IOException failure) {
+            throw new ExceptionInInitializerError(failure);
         }
     }
-    private record Media(UUID project, UUID run, UUID task, UUID artifact, UUID node, UUID version) {}
+    @AfterAll
+    static void removeOnlySyntheticStorage() throws IOException {
+        try (var files = Files.walk(STORAGE)) {
+            for (Path file : files.sorted(Comparator.reverseOrder()).toList())
+                Files.deleteIfExists(file);
+        }
+    }
+    private record Media(UUID project, UUID run, UUID task, UUID artifact, UUID node, UUID version) {
+    }
 }

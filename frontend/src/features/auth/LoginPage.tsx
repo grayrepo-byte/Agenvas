@@ -1,11 +1,11 @@
-import { useMutation,useQueryClient } from "@tanstack/react-query";
-import { type FormEvent,useState } from "react";
-import { Link,useNavigate } from "react-router";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { type FormEvent, useState } from "react";
+import { Link, useNavigate } from "react-router";
 import { login } from "../../shared/api/client";
-import { t,useLocale } from "../../shared/i18n";
+import { t, useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";
 import { Input } from "../../shared/ui/primitives/input";
-import { AuthField,AuthLayout,FormError } from "./AuthLayout";
+import { AuthField, AuthLayout, FormError } from "./AuthLayout";
 import { useCanvasStore } from "../canvas/canvasStore";
 
 /** Administrator login backed by the server-side JDBC session. */
@@ -17,7 +17,7 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const loginRequest = useMutation({
     mutationFn: login,
-    onSuccess: (user) => {
+    onSuccess: user => {
       useCanvasStore.getState().clearTextGenerationDrafts();
       queryClient.setQueryData(["auth", "me"], user);
       navigate("/projects", { replace: true });
@@ -33,12 +33,34 @@ export function LoginPage() {
   return (
     <AuthLayout title={t("auth.login.title")}>
       <form className="ui-form" onSubmit={submit} aria-busy={loginRequest.isPending}>
-        <AuthField label={t("auth.login.username")}><Input autoComplete="username" disabled={loginRequest.isPending} required value={loginName} onChange={(event) => setLoginName(event.target.value)} /></AuthField>
-        <AuthField label={t("auth.login.password")}><Input autoComplete="current-password" disabled={loginRequest.isPending} required type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></AuthField>
+        <AuthField label={t("auth.login.username")}>
+          <Input
+            autoComplete="username"
+            disabled={loginRequest.isPending}
+            required
+            value={loginName}
+            onChange={event => setLoginName(event.target.value)}
+          />
+        </AuthField>
+        <AuthField label={t("auth.login.password")}>
+          <Input
+            autoComplete="current-password"
+            disabled={loginRequest.isPending}
+            required
+            type="password"
+            value={password}
+            onChange={event => setPassword(event.target.value)}
+          />
+        </AuthField>
         {loginRequest.error ? <FormError error={loginRequest.error} /> : null}
-        <Button variant="default"  disabled={loginRequest.isPending} type="submit">{loginRequest.isPending ? t("auth.login.submitting") : t("auth.login.submit")}</Button>
+        <Button variant="default" disabled={loginRequest.isPending} type="submit">
+          {loginRequest.isPending ? t("auth.login.submitting") : t("auth.login.submit")}
+        </Button>
       </form>
-      <p className="auth-footer">{t("auth.login.setupPrompt")}<Link to="/setup">{t("auth.login.setupLink")}</Link></p>
+      <p className="auth-footer">
+        {t("auth.login.setupPrompt")}
+        <Link to="/setup">{t("auth.login.setupLink")}</Link>
+      </p>
     </AuthLayout>
   );
 }

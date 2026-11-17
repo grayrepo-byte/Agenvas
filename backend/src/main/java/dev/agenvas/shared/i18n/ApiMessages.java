@@ -22,7 +22,8 @@ public class ApiMessages {
     }
 
     public String text(ApiMessage message, Locale locale) {
-        if (message == null) return null;
+        if (message == null)
+            return null;
         return message.render(messages.getMessage(message.key(), null, locale));
     }
 
@@ -32,7 +33,8 @@ public class ApiMessages {
 
     /** Library transfers store a descriptor in their existing error-detail column, with no schema change. */
     public String persisted(String value, HttpServletRequest request) {
-        if (value == null) return null;
+        if (value == null)
+            return null;
         ApiMessage message = ApiMessage.fromLegacySource(value);
         if (message == null && value.startsWith("{")) {
             try {

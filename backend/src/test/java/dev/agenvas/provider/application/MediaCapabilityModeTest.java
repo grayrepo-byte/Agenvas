@@ -66,8 +66,8 @@ class MediaCapabilityModeTest {
             Task.Kind kind = registry.declaration(adapter).kind();
             when(repository.defaultCapabilityId(kind.name())).thenReturn(snapshot.capability().id());
             assertThatThrownBy(() -> configured.resolve(snapshot.capability().id(), kind, 5))
-                    .isInstanceOfSatisfying(ApiProblemException.class, error ->
-                            assertThat(error.code()).isEqualTo("PROVIDER_UNSUPPORTED_CAPABILITY"));
+                    .isInstanceOfSatisfying(ApiProblemException.class,
+                            error -> assertThat(error.code()).isEqualTo("PROVIDER_UNSUPPORTED_CAPABILITY"));
             assertThatThrownBy(() -> configured.forDraft(null, kind)).isInstanceOf(ApiProblemException.class);
             assertThatThrownBy(() -> configured.setDefault(kind, 0, snapshot.capability().id()))
                     .isInstanceOf(ApiProblemException.class);
@@ -139,7 +139,8 @@ class MediaCapabilityModeTest {
         Snapshot snapshot = snapshot(MediaPlatform.OPENAI, MediaAdapterRegistry.OPENAI_GPT_IMAGE_2);
         stub(snapshot);
         assertThatThrownBy(() -> configured.deleteCapability(snapshot.connection().id(), snapshot.capability().id(), 1))
-                .isInstanceOfSatisfying(ApiProblemException.class, error -> assertThat(error.code()).isEqualTo("MEDIA_CAPABILITY_CONFLICT"));
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        error -> assertThat(error.code()).isEqualTo("MEDIA_CAPABILITY_CONFLICT"));
         verify(repository, never()).clearSelectionsForCapability(any(), any());
     }
 
@@ -152,7 +153,8 @@ class MediaCapabilityModeTest {
                 live.connectionVersion(), live.adapterId(), live.mappingSha256(), live.specJson());
         stub(deleted);
         when(repository.snapshotAt(capability.id(), 1, live.connection().id(), 1)).thenReturn(Optional.of(deleted));
-        assertThatThrownBy(() -> configured.forDraft(capability.id(), Task.Kind.IMAGE_GENERATION)).isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> configured.forDraft(capability.id(), Task.Kind.IMAGE_GENERATION))
+                .isInstanceOf(ApiProblemException.class);
         assertThat(configured.pinnedSnapshot(binding(live)).specJson()).isEqualTo(live.specJson());
     }
 
@@ -170,7 +172,8 @@ class MediaCapabilityModeTest {
 
     private void stub(Snapshot snapshot) {
         when(repository.connection(snapshot.connection().id())).thenReturn(Optional.of(snapshot.connection()));
-        when(repository.connectionVersion(snapshot.connection().id(), 1)).thenReturn(Optional.of(snapshot.connectionVersion()));
+        when(repository.connectionVersion(snapshot.connection().id(), 1))
+                .thenReturn(Optional.of(snapshot.connectionVersion()));
         when(repository.capabilities(snapshot.connection().id())).thenReturn(List.of(snapshot.capability()));
         when(repository.snapshot(snapshot.capability().id())).thenReturn(Optional.of(snapshot));
     }

@@ -129,18 +129,21 @@ class ApprovedMediaCancellationTest {
     @Test
     void unrelatedTaskCannotUseApprovedCancellationEndpoint() {
         Task direct = task(Task.Status.READY, false, null);
-        Task unrelated = new Task(direct.id(), direct.projectId(), null, direct.stepKey(), direct.kind(), direct.status(),
+        Task unrelated = new Task(direct.id(), direct.projectId(), null, direct.stepKey(), direct.kind(),
+                direct.status(),
                 false, mapper.createObjectNode(), direct.inputHash(), null, null, 1, NOW,
                 null, null, 0, 0, null, NOW, NOW, null);
         when(repository.find(OWNER, PROJECT, TASK)).thenReturn(Optional.of(unrelated));
-        assertThatThrownBy(() -> service.cancelApprovedMedia(OWNER, PROJECT, TASK)).isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> service.cancelApprovedMedia(OWNER, PROJECT, TASK))
+                .isInstanceOf(ApiProblemException.class);
         verify(repository, never()).cancelApprovedMedia(any(), any());
         verifyNoInteractions(usage);
     }
 
     private Task task(Task.Status status, boolean cancelRequested, String requestId) {
         return new Task(TASK, PROJECT, RUN, "approved-media", Task.Kind.AUDIO_GENERATION, status,
-                cancelRequested, mapper.createObjectNode().put(Task.APPROVAL_INPUT_PROPERTY, UUID.randomUUID().toString()),
+                cancelRequested,
+                mapper.createObjectNode().put(Task.APPROVAL_INPUT_PROPERTY, UUID.randomUUID().toString()),
                 "input-hash", null, requestId, 1, NOW, "worker", NOW.plusSeconds(30),
                 1, 0, null, NOW, NOW, status == Task.Status.CANCELED || status == Task.Status.FAILED ? NOW : null);
     }

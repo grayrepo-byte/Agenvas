@@ -14,7 +14,8 @@ class SeedreamModelsTest {
     private final SeedreamModels models = new SeedreamModels();
     private final ObjectMapper mapper = new ObjectMapper();
 
-    @Test void exposesUniqueResolvableProfilesIncludingTheSupportedMainlineOperations() {
+    @Test
+    void exposesUniqueResolvableProfilesIncludingTheSupportedMainlineOperations() {
         assertThat(models.profiles()).isNotEmpty().doesNotHaveDuplicates();
         // Existing model/operation pairs must remain discoverable; additional profiles are allowed.
         for (String model : List.of(SeedreamModels.PRO, SeedreamModels.FLASH, SeedreamModels.LITE)) {
@@ -27,35 +28,44 @@ class SeedreamModelsTest {
                         SeedreamModels.ADAPTER_ID, model, operation, Task.Kind.IMAGE_GENERATION));
             }
         }
-        assertThatThrownBy(() -> models.resolve(SeedreamModels.LITE, SeedreamModels.LAYERS)).isInstanceOf(RuntimeException.class);
+        assertThatThrownBy(() -> models.resolve(SeedreamModels.LITE, SeedreamModels.LAYERS))
+                .isInstanceOf(RuntimeException.class);
         for (var p : models.profiles()) {
             assertThat(models.resolve(p.model(), p.operation())).isEqualTo(p);
-            assertThat(models.declaration(p).maxReferenceImages()).isEqualTo(SeedreamModels.layers(p) ? 1 : SeedreamModels.proFamily(p) ? 10 : 14);
-            assertThat(models.inputs(p)).noneMatch(f -> List.of("stream", "response_format", "layers", "bbox", "coordinate").contains(f.key()));
+            assertThat(models.declaration(p).maxReferenceImages())
+                    .isEqualTo(SeedreamModels.layers(p) ? 1 : SeedreamModels.proFamily(p) ? 10 : 14);
+            assertThat(models.inputs(p)).noneMatch(
+                    f -> List.of("stream", "response_format", "layers", "bbox", "coordinate").contains(f.key()));
         }
     }
 
-    @Test void preservesNativeDefaultsAndTheGroupCountIsAnUpperBound() {
+    @Test
+    void preservesNativeDefaultsAndTheGroupCountIsAnUpperBound() {
         var pro = models.resolve(SeedreamModels.PRO, SeedreamModels.GENERATE);
         var settings = NativeMediaProfiles.normalizeSettings(SeedreamModels.ADAPTER_ID,
                 mapper.createObjectNode().put("model", pro.model()), mapper);
         assertThat(settings.at("/defaultParameters/dynamicValues/size").asText()).isEqualTo("2K");
         assertThat(settings.at("/defaultParameters/dynamicValues/watermark").asBoolean()).isTrue();
         var lite = models.resolve(SeedreamModels.LITE, SeedreamModels.GENERATE);
-        ObjectNode group = mapper.createObjectNode().put("prompt", "A synthetic sequence").put("sequential_image_generation", "auto")
+        ObjectNode group = mapper.createObjectNode().put("prompt", "A synthetic sequence")
+                .put("sequential_image_generation", "auto")
                 .put("max_images", 15).put("image1", UUID.randomUUID().toString());
         models.validate(lite, group, true);
         assertThat(models.resultCount(lite, group)).isNull();
         assertThat(SeedreamModels.maximumResults(lite, group)).isEqualTo(14);
         assertThat(models.resultCount(pro, mapper.createObjectNode())).isEqualTo(1);
-        assertThat(models.resultCount(models.resolve(SeedreamModels.PRO, SeedreamModels.LAYERS), mapper.createObjectNode())).isNull();
+        assertThat(models.resultCount(models.resolve(SeedreamModels.PRO, SeedreamModels.LAYERS),
+                mapper.createObjectNode())).isNull();
     }
 
-    @Test void validatesExactSizeRangesPerMainModelWithoutDiscardingAspectRatio() {
+    @Test
+    void validatesExactSizeRangesPerMainModelWithoutDiscardingAspectRatio() {
         var pro = models.resolve(SeedreamModels.PRO, SeedreamModels.GENERATE);
         var lite = models.resolve(SeedreamModels.LITE, SeedreamModels.GENERATE);
-        for (String size : List.of("1K", "1.5K", "2K", "2048x2048", "3840x240")) SeedreamModels.validateSize(pro, size);
-        for (String size : List.of("2K", "3K", "4K", "4096x4096")) SeedreamModels.validateSize(lite, size);
+        for (String size : List.of("1K", "1.5K", "2K", "2048x2048", "3840x240"))
+            SeedreamModels.validateSize(pro, size);
+        for (String size : List.of("2K", "3K", "4K", "4096x4096"))
+            SeedreamModels.validateSize(lite, size);
         for (String size : List.of("4K", "4096x4096", "100x100", "+2048x2048", "2048X2048")) {
             assertThatThrownBy(() -> SeedreamModels.validateSize(pro, size)).isInstanceOf(RuntimeException.class);
         }
@@ -66,7 +76,8 @@ class SeedreamModelsTest {
         assertThatThrownBy(() -> SeedreamModels.validateSize(layer, "2048x2048")).isInstanceOf(RuntimeException.class);
     }
 
-    @Test void transparentOutputRequiresOneAlphaReferenceAndPng() {
+    @Test
+    void transparentOutputRequiresOneAlphaReferenceAndPng() {
         var pro = models.resolve(SeedreamModels.PRO, SeedreamModels.GENERATE);
         ObjectNode values = mapper.createObjectNode().put("prompt", "An object").put("background", "transparent")
                 .put("output_format", "png").put("image1", UUID.randomUUID().toString());
@@ -74,18 +85,24 @@ class SeedreamModelsTest {
         values.put("output_format", "jpeg");
         assertThatThrownBy(() -> models.validate(pro, values, true)).isInstanceOf(RuntimeException.class);
         values.put("output_format", "png");
-        models.validateProbe(pro, "image1", values, mapper.readTree("{\"streams\":[{\"codec_type\":\"video\",\"pix_fmt\":\"rgba\"}]}"));
+        models.validateProbe(pro, "image1", values,
+                mapper.readTree("{\"streams\":[{\"codec_type\":\"video\",\"pix_fmt\":\"rgba\"}]}"));
         assertThatThrownBy(() -> models.validateProbe(pro, "image1", values,
-                mapper.readTree("{\"streams\":[{\"codec_type\":\"video\",\"pix_fmt\":\"rgb24\"}]}"))).isInstanceOf(RuntimeException.class);
+                mapper.readTree("{\"streams\":[{\"codec_type\":\"video\",\"pix_fmt\":\"rgb24\"}]}")))
+                .isInstanceOf(RuntimeException.class);
     }
 
-    @Test void strictEditRegionsProduceOnlyOfficialPromptMarkup() {
+    @Test
+    void strictEditRegionsProduceOnlyOfficialPromptMarkup() {
         var edit = models.resolve(SeedreamModels.PRO, SeedreamModels.EDIT);
-        ObjectNode values = mapper.createObjectNode().put("prompt", "Edit the object").put("image1", UUID.randomUUID().toString())
-                .put("edit_regions", "[{\"image\":1,\"type\":\"bbox\",\"coordinates\":[0,20,999,999],\"instruction\":\"Keep the background\"}]");
+        ObjectNode values = mapper.createObjectNode().put("prompt", "Edit the object")
+                .put("image1", UUID.randomUUID().toString())
+                .put("edit_regions",
+                        "[{\"image\":1,\"type\":\"bbox\",\"coordinates\":[0,20,999,999],\"instruction\":\"Keep the background\"}]");
         models.validate(edit, values, true);
         assertThat(SeedreamModels.prompt(edit, values)).contains("图 1 <bbox>0 20 999 999</bbox> Keep the background");
-        for (String malformed : List.of("{}", "[]", "[{\"image\":1,\"type\":\"arrow\",\"coordinates\":[0,20],\"instruction\":\"x\"}]",
+        for (String malformed : List.of("{}", "[]",
+                "[{\"image\":1,\"type\":\"arrow\",\"coordinates\":[0,20],\"instruction\":\"x\"}]",
                 "[{\"image\":1,\"type\":\"point\",\"coordinates\":[0,1000],\"instruction\":\"x\"}]",
                 "[{\"image\":1,\"image\":2,\"type\":\"point\",\"coordinates\":[0,20],\"instruction\":\"x\"}]",
                 "[{\"image\":2,\"type\":\"point\",\"coordinates\":[0,20],\"instruction\":\"x\"}]",
@@ -95,7 +112,8 @@ class SeedreamModelsTest {
         }
     }
 
-    @Test void partialDraftCanAssignLaterSlotsButRunningRequiresUnambiguousNumbering() {
+    @Test
+    void partialDraftCanAssignLaterSlotsButRunningRequiresUnambiguousNumbering() {
         var pro = models.resolve(SeedreamModels.PRO, SeedreamModels.GENERATE);
         var values = mapper.createObjectNode().put("prompt", "Create").put("image2", UUID.randomUUID().toString());
         models.validate(pro, values, false);

@@ -48,7 +48,8 @@ import tools.jackson.databind.ObjectMapper;
 class AudioTrimServiceTest {
     private static final Instant NOW = Instant.parse("2026-10-22T00:00:00Z");
     private final UUID owner = UUID.randomUUID(), project = UUID.randomUUID(), artifactId = UUID.randomUUID(),
-            itemId = UUID.randomUUID(), sourceId = UUID.randomUUID(), outputId = UUID.randomUUID(), assetId = UUID.randomUUID();
+            itemId = UUID.randomUUID(), sourceId = UUID.randomUUID(), outputId = UUID.randomUUID(),
+            assetId = UUID.randomUUID();
     private final TaskRepository repository = mock(TaskRepository.class);
     private final ArtifactService artifacts = mock(ArtifactService.class);
     private final AssetService assets = mock(AssetService.class);
@@ -62,9 +63,11 @@ class AudioTrimServiceTest {
     private final ObjectMapper mapper = new ObjectMapper();
     private final AudioTrimParameters parameters = new AudioTrimParameters(100, 1100, Format.WAV);
     private final AudioTrimService service = new AudioTrimService(repository, artifacts, assets, items, canvas, drafts,
-            projects, catalog, events, usage, mapper, Clock.fixed(NOW, ZoneOffset.UTC), dev.agenvas.testing.CreationMessagesTestSupport.messages());
+            projects, catalog, events, usage, mapper, Clock.fixed(NOW, ZoneOffset.UTC),
+            dev.agenvas.testing.CreationMessagesTestSupport.messages());
 
-    @BeforeEach void setup() {
+    @BeforeEach
+    void setup() {
         when(events.recordChange(eq(owner), eq(project), any())).thenAnswer(call -> {
             Supplier<?> mutation = call.getArgument(2);
             var change = (ProjectEventService.Change<?>) mutation.get();
@@ -98,7 +101,8 @@ class AudioTrimServiceTest {
                         MediaAdapterRegistry.LOCAL_AUDIO_TRIMMER, "a".repeat(64)));
     }
 
-    @Test void pinsTheSourceAndCreatesAZeroCostSeparateNode() {
+    @Test
+    void pinsTheSourceAndCreatesAZeroCostSeparateNode() {
         var task = service.run(owner, project, artifactId, itemId, sourceId, 2, parameters, "trim");
         assertThat(task.isAudioTrim()).isTrue();
         assertThat(task.isCancelableLocalProcessing()).isTrue();
@@ -108,7 +112,8 @@ class AudioTrimServiceTest {
         assertThat(task.input().at("/mediaInput/audios/0/versionId").asText()).isEqualTo(sourceId.toString());
         assertThat(task.input().at("/audioTrim/parameters")).isEqualTo(parameters.toJson(mapper));
         assertThat(task.input().path("prompt").asText()).isEqualTo("Audio trim");
-        verify(repository).createArtifactTarget(new TaskRepository.ArtifactTarget(task.id(), project, artifactId, sourceId, 4, outputId));
+        verify(repository).createArtifactTarget(
+                new TaskRepository.ArtifactTarget(task.id(), project, artifactId, sourceId, 4, outputId));
         verify(usage).reserveMediaTask(owner, task, "LOCAL_NO_COST", 1);
     }
 
@@ -123,35 +128,43 @@ class AudioTrimServiceTest {
             assertThat(task.input().path("prompt").asText()).isEqualTo(expected);
             assertThat(task.input().at("/mediaInput/prompt").asText()).isEqualTo(expected);
             assertThat(task.input().at("/mediaInput/renderedPrompt").asText()).isEqualTo(expected);
-            verify(canvas).forkMediaDerivationWithinChange(eq(owner), eq(project), eq(itemId), any(), eq(3L), eq(0), eq(expected));
+            verify(canvas).forkMediaDerivationWithinChange(eq(owner), eq(project), eq(itemId), any(), eq(3L), eq(0),
+                    eq(expected));
         } finally {
             RequestContextHolder.resetRequestAttributes();
         }
     }
 
-    @Test void exactReplayChecksActiveProjectAndDoesNotRepeatWrites() {
+    @Test
+    void exactReplayChecksActiveProjectAndDoesNotRepeatWrites() {
         var task = service.run(owner, project, artifactId, itemId, sourceId, 2, parameters, "trim");
         var persisted = mock(Task.class);
         // The real repository reloads JSONB numbers, including small long CAS versions, as IntNode.
         when(persisted.input()).thenReturn(mapper.readTree(task.input().toString()));
         when(repository.findDirectByStepKey(owner, project, "trim")).thenReturn(Optional.of(persisted));
         var order = inOrder(projects, repository);
-        assertThat(service.run(owner, project, artifactId, itemId, sourceId, 2, parameters, "trim")).isEqualTo(persisted);
+        assertThat(service.run(owner, project, artifactId, itemId, sourceId, 2, parameters, "trim"))
+                .isEqualTo(persisted);
         order.verify(projects).requireActiveProject(owner, project);
         order.verify(repository).findDirectByStepKey(owner, project, "trim");
         verify(repository).create(task);
         assertThatThrownBy(() -> service.run(owner, project, artifactId, itemId, sourceId, 2,
                 new AudioTrimParameters(200, 1200, Format.WAV), "trim"))
-                .isInstanceOfSatisfying(ApiProblemException.class, error -> assertThat(error.code()).isEqualTo("IDEMPOTENCY_CONFLICT"));
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        error -> assertThat(error.code()).isEqualTo("IDEMPOTENCY_CONFLICT"));
     }
 
-    @Test void changedSelectionAndOverrunDoNotCreateOutputNodes() {
+    @Test
+    void changedSelectionAndOverrunDoNotCreateOutputNodes() {
         assertThatThrownBy(() -> service.run(owner, project, artifactId, itemId, sourceId, 1, parameters, "trim"))
-                .isInstanceOfSatisfying(ApiProblemException.class, error -> assertThat(error.code()).isEqualTo("DIRECT_MEDIA_CONFLICT"));
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        error -> assertThat(error.code()).isEqualTo("DIRECT_MEDIA_CONFLICT"));
         assertThatThrownBy(() -> service.run(owner, project, artifactId, itemId, sourceId, 2,
                 new AudioTrimParameters(1900, 2100, Format.WAV), "trim"))
-                .isInstanceOfSatisfying(ApiProblemException.class, error -> assertThat(error.code()).isEqualTo("AUDIO_TRIM_INVALID"));
-        verify(canvas, never()).forkMediaDerivationWithinChange(any(), any(), any(), any(), org.mockito.ArgumentMatchers.anyLong(),
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        error -> assertThat(error.code()).isEqualTo("AUDIO_TRIM_INVALID"));
+        verify(canvas, never()).forkMediaDerivationWithinChange(any(), any(), any(), any(),
+                org.mockito.ArgumentMatchers.anyLong(),
                 org.mockito.ArgumentMatchers.anyInt(), any());
         verify(repository, never()).create(any());
     }

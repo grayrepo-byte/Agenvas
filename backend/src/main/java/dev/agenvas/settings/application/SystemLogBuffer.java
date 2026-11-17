@@ -24,10 +24,13 @@ public final class SystemLogBuffer {
     private final ArrayDeque<Entry> entries = new ArrayDeque<>();
     private long sequence;
 
-    public SystemLogBuffer(Clock clock) { this(clock, CAPACITY); }
+    public SystemLogBuffer(Clock clock) {
+        this(clock, CAPACITY);
+    }
 
     SystemLogBuffer(Clock clock, int capacity) {
-        if (capacity < 1) throw new IllegalArgumentException("Log capacity must be positive");
+        if (capacity < 1)
+            throw new IllegalArgumentException("Log capacity must be positive");
         this.clock = clock;
         this.capacity = capacity;
         this.startedAt = clock.instant();
@@ -37,14 +40,16 @@ public final class SystemLogBuffer {
     synchronized void append(Stream stream, String line, boolean truncated) {
         String message = SystemLogRedactor.redact(line);
         entries.addLast(new Entry(++sequence, clock.instant(), stream, message, truncated));
-        if (entries.size() > capacity) entries.removeFirst();
+        if (entries.size() > capacity)
+            entries.removeFirst();
     }
 
     /** Returns the newest matching lines in chronological order, within one consistent snapshot. */
     public synchronized Snapshot snapshot(Stream stream, String search, int limit) {
         if (limit < 1 || limit > MAX_LIMIT || (search != null && search.length() > MAX_SEARCH_LENGTH)) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
-                    ApiMessage.of("api.system-log-buffer.log-filtering-is-invalid"), ApiMessage.of("api.system-log-buffer.the-number-of-logs-or-the-length-of-keywords-exceeds"), false);
+                    ApiMessage.of("api.system-log-buffer.log-filtering-is-invalid"),
+                    ApiMessage.of("api.system-log-buffer.the-number-of-logs-or-the-length-of-keywords-exceeds"), false);
         }
         String keyword = search == null ? "" : search.strip().toLowerCase(Locale.ROOT);
         List<Entry> matches = entries.stream()
@@ -56,9 +61,13 @@ public final class SystemLogBuffer {
                 List.copyOf(matches.subList(Math.max(0, matches.size() - limit), matches.size())));
     }
 
-    public enum Stream { STDOUT, STDERR }
+    public enum Stream {
+        STDOUT, STDERR
+    }
     public record Entry(long sequence, Instant recordedAt, Stream stream, String message,
-                        boolean truncated) {}
+            boolean truncated) {
+    }
     public record Snapshot(String processId, Instant startedAt, Instant checkedAt, int capacity,
-                           int retainedCount, long droppedCount, int matchedCount, List<Entry> entries) {}
+            int retainedCount, long droppedCount, int matchedCount, List<Entry> entries) {
+    }
 }

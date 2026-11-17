@@ -53,28 +53,44 @@ class AutoDlRealProviderPostgresIT {
     private static final int REFERENCE_PIXELS = 512;
     private static final Duration POLL_INTERVAL = Duration.ofSeconds(5);
     private static final Duration DEADLINE = Duration.ofMinutes(3);
-    @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
-    @DynamicPropertySource static void properties(DynamicPropertyRegistry registry) {
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("agenvas.credentials.master-key-base64", () -> Base64.getEncoder().encodeToString(new byte[32]));
     }
-    @Autowired IdentityService identities;
-    @Autowired ProjectService projects;
-    @Autowired ArtifactService artifacts;
-    @Autowired AssetService assets;
-    @Autowired MediaDraftService drafts;
-    @Autowired CanvasService canvas;
-    @Autowired DirectMediaTaskService direct;
-    @Autowired MediaCapabilityService catalog;
-    @Autowired MediaExecutionWorker worker;
-    @Autowired TaskService tasks;
-    @Autowired MediaToolRunner mediaTools;
-    @Autowired JdbcClient jdbc;
-    @Autowired ObjectMapper mapper;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    ProjectService projects;
+    @Autowired
+    ArtifactService artifacts;
+    @Autowired
+    AssetService assets;
+    @Autowired
+    MediaDraftService drafts;
+    @Autowired
+    CanvasService canvas;
+    @Autowired
+    DirectMediaTaskService direct;
+    @Autowired
+    MediaCapabilityService catalog;
+    @Autowired
+    MediaExecutionWorker worker;
+    @Autowired
+    TaskService tasks;
+    @Autowired
+    MediaToolRunner mediaTools;
+    @Autowired
+    JdbcClient jdbc;
+    @Autowired
+    ObjectMapper mapper;
 
-    @Test void actualWorkerSubmitsBase64PollsOriginalTaskAndArchivesVideoWithAudio() throws Exception {
+    @Test
+    void actualWorkerSubmitsBase64PollsOriginalTaskAndArchivesVideoWithAudio() throws Exception {
         Path credential = Path.of(System.getProperty("agenvas.autodl.credential-file"));
         UUID owner = identities.setup("autodl-real-admin", "autodl-real-password-123").userId();
         var connection = catalog.createConnection("autodl-real-create", "AutoDL real temporary", "AUTODL", null,
@@ -84,9 +100,14 @@ class AutoDlRealProviderPostgresIT {
         UUID project = projects.create(owner, "AutoDL real test", Project.AspectRatio.LANDSCAPE_16_9).id();
         BufferedImage picture = new BufferedImage(REFERENCE_PIXELS, REFERENCE_PIXELS, BufferedImage.TYPE_INT_RGB);
         var graphics = picture.createGraphics();
-        try { graphics.setColor(new Color(60, 120, 190)); graphics.fillRect(0, 0, REFERENCE_PIXELS, REFERENCE_PIXELS); }
-        finally { graphics.dispose(); }
-        var png = new ByteArrayOutputStream(); ImageIO.write(picture, "png", png);
+        try {
+            graphics.setColor(new Color(60, 120, 190));
+            graphics.fillRect(0, 0, REFERENCE_PIXELS, REFERENCE_PIXELS);
+        } finally {
+            graphics.dispose();
+        }
+        var png = new ByteArrayOutputStream();
+        ImageIO.write(picture, "png", png);
         var imageAsset = assets.archiveImage(owner, project, new ByteArrayInputStream(png.toByteArray()));
         var image = artifacts.create(owner, project, Artifact.Kind.IMAGE, "Blue reference", mapper.createObjectNode()
                 .put("sourceType", "UPLOAD").put("assetId", imageAsset.id().toString()));
@@ -96,16 +117,22 @@ class AutoDlRealProviderPostgresIT {
             mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i",
                     "sine=frequency=220:sample_rate=16000", "-t", "1", "-y", wav.toString()));
             audioBytes = Files.readAllBytes(wav);
-        } finally { Files.deleteIfExists(wav); }
+        } finally {
+            Files.deleteIfExists(wav);
+        }
         var audioAsset = assets.archiveAudio(owner, project, new ByteArrayInputStream(audioBytes));
         var audio = artifacts.create(owner, project, Artifact.Kind.AUDIO, "Tone reference", mapper.createObjectNode()
                 .put("sourceType", "UPLOAD").put("assetId", audioAsset.id().toString()));
         var target = artifacts.create(owner, project, Artifact.Kind.VIDEO, "AutoDL result", null).artifact();
         UUID card = CanvasMediaFixture.place(canvas, owner, project, target.id());
-        var draft = drafts.save(owner, project, card, 0, "A calm blue abstract scene moving gently, with a soft musical tone.",
+        var draft = drafts.save(owner, project, card, 0,
+                "A calm blue abstract scene moving gently, with a soft musical tone.",
                 mapper.createObjectNode(), 1, capability.id(), MediaDraft.VideoInputMode.GENERAL_REFERENCE,
-                List.of(new MediaDraftService.SaveMediaInput(image.resourceDefaultVersion().id(), MediaDraft.InputRole.REFERENCE, "#F15CAF"),
-                        new MediaDraftService.SaveMediaInput(audio.resourceDefaultVersion().id(), MediaDraft.InputRole.AUDIO_REFERENCE, "#67C7F3")), List.of(), null);
+                List.of(new MediaDraftService.SaveMediaInput(image.resourceDefaultVersion().id(),
+                        MediaDraft.InputRole.REFERENCE, "#F15CAF"),
+                        new MediaDraftService.SaveMediaInput(audio.resourceDefaultVersion().id(),
+                                MediaDraft.InputRole.AUDIO_REFERENCE, "#67C7F3")),
+                List.of(), null);
         Task task = direct.run(owner, project, target.id(), card, draft.version(), "autodl-real-once");
         assertThat(worker.submitOnce("autodl-real-submit")).isEqualTo(1);
         Task accepted = tasks.get(owner, project, task.id());
@@ -113,27 +140,33 @@ class AutoDlRealProviderPostgresIT {
         assertThat(accepted.providerRequestId()).isNotBlank();
         Instant deadline = Instant.now().plus(DEADLINE);
         while (Instant.now().isBefore(deadline)) {
-            jdbc.sql("update task set next_action_at=now() - interval '1 second' where id=:id").param("id", task.id()).update();
+            jdbc.sql("update task set next_action_at=now() - interval '1 second' where id=:id").param("id", task.id())
+                    .update();
             worker.pollOnce("autodl-real-poll");
             Task latest = tasks.get(owner, project, task.id());
-            if (latest.status() != Task.Status.WAITING_PROVIDER) break;
+            if (latest.status() != Task.Status.WAITING_PROVIDER)
+                break;
             Thread.sleep(POLL_INTERVAL.toMillis());
         }
         Task done = tasks.get(owner, project, task.id());
-        assertThat(done.status()).as("Real AutoDL task status; code=%s", done.errorCode()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(done.status()).as("Real AutoDL task status; code=%s", done.errorCode())
+                .isEqualTo(Task.Status.SUCCEEDED);
         assertThat(done.providerRequestId()).isEqualTo(accepted.providerRequestId());
         UUID versionId = UUID.fromString(done.output().path("artifactVersionId").asText());
         var version = artifacts.requireVersion(owner, project, target.id(), versionId);
         var archived = assets.get(owner, project, UUID.fromString(version.content().path("assetId").asText()));
         assertThat(archived.asset().width()).isEqualTo(864);
         assertThat(archived.asset().height()).isEqualTo(480);
-        assertThat(mediaTools.ffprobe(List.of("-v", "error", "-show_entries", "stream=codec_type", "-of", "json", archived.path().toString())))
+        assertThat(mediaTools.ffprobe(List.of("-v", "error", "-show_entries", "stream=codec_type", "-of", "json",
+                archived.path().toString())))
                 .contains("audio");
         assertThat(canvas.listMediaVersions(owner, project, card)).hasSize(1);
         assertThat(canvas.list(owner, project).stream().filter(entry -> entry.item().id().equals(card))
                 .findFirst().orElseThrow().item().selectedVersionId()).isEqualTo(versionId);
-        Files.copy(archived.path(), Path.of(System.getProperty("agenvas.autodl.result-file")), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        Files.copy(archived.path(), Path.of(System.getProperty("agenvas.autodl.result-file")),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         System.out.printf("Real AutoDL backend success: taskId=%s bytes=%d durationMs=%d sha256=%s%n",
-                done.providerRequestId(), archived.asset().byteSize(), archived.asset().durationMs(), archived.asset().sha256());
+                done.providerRequestId(), archived.asset().byteSize(), archived.asset().durationMs(),
+                archived.asset().sha256());
     }
 }

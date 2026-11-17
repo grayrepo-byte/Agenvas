@@ -10,7 +10,8 @@ import java.util.UUID;
 
 /** Fixed project-character selections and logical relationships; never provider subject IDs. */
 public final class CanvasCharacterNodeModels {
-    private CanvasCharacterNodeModels() {}
+    private CanvasCharacterNodeModels() {
+    }
 
     public record Selection(
             UUID characterId,
@@ -24,7 +25,7 @@ public final class CanvasCharacterNodeModels {
         public void rejectUnknownField(String field, tools.jackson.databind.JsonNode value) {
             throw new IllegalArgumentException(
                     "Unsupported character reference field; native provider subjects are not"
-                        + " supported");
+                            + " supported");
         }
     }
 
@@ -36,10 +37,12 @@ public final class CanvasCharacterNodeModels {
             BigDecimal height,
             int zIndex,
             UUID groupId,
-            boolean locked) {}
+            boolean locked) {
+    }
 
     public record UpdateSelection(
-            long expectedItemVersion, long expectedSelectionVersion, Selection selection) {}
+            long expectedItemVersion, long expectedSelectionVersion, Selection selection) {
+    }
 
     public record CharacterNode(
             UUID canvasItemId,
@@ -47,10 +50,12 @@ public final class CanvasCharacterNodeModels {
             CharacterSnapshot snapshot,
             long version,
             boolean newerVersionAvailable,
-            List<CharacterConnection> connections) {}
+            List<CharacterConnection> connections) {
+    }
 
     public record CharacterConnection(
-            UUID id, UUID sourceCanvasItemId, UUID targetCanvasItemId, long version) {}
+            UUID id, UUID sourceCanvasItemId, UUID targetCanvasItemId, long version) {
+    }
 
     public record Connect(
             UUID connectionId,
@@ -58,12 +63,15 @@ public final class CanvasCharacterNodeModels {
             UUID targetCanvasItemId,
             long expectedSourceItemVersion,
             long expectedSourceSelectionVersion,
-            long expectedTargetItemVersion) {}
+            long expectedTargetItemVersion) {
+    }
 
-    public record Disconnect(long expectedVersion) {}
+    public record Disconnect(long expectedVersion) {
+    }
 
     public record Preview(
-            long expectedBindingVersion, long expectedDraftVersion, ClearMode clearMode) {}
+            long expectedBindingVersion, long expectedDraftVersion, ClearMode clearMode) {
+    }
 
     public record Apply(
             UUID commandId,
@@ -79,5 +87,6 @@ public final class CanvasCharacterNodeModels {
     public record NodeBindingPreview(
             String previewHash,
             CharacterBindingPreview characterPreview,
-            List<CharacterConnection> connections) {}
+            List<CharacterConnection> connections) {
+    }
 }

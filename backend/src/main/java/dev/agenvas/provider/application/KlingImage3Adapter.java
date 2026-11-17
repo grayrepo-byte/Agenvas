@@ -17,17 +17,29 @@ import tools.jackson.databind.node.ObjectNode;
 @Component
 public class KlingImage3Adapter extends KlingAdapterSupport {
     public KlingImage3Adapter(JooqMediaCapabilityRepository catalog, CredentialCipher cipher,
-            KlingClient client, KlingMediaDownloadPolicy downloads, ObjectMapper mapper, KlingReferenceLoader references) {
+            KlingClient client, KlingMediaDownloadPolicy downloads, ObjectMapper mapper,
+            KlingReferenceLoader references) {
         super(catalog, cipher, client, downloads, mapper, references);
     }
-    @Override public String adapterId() { return KlingProtocol.IMAGE_ADAPTER_ID; }
-    @Override protected boolean video() { return false; }
-    @Override public boolean supports(PortInput input) { return input.kind() == Task.Kind.IMAGE_GENERATION; }
+    @Override
+    public String adapterId() {
+        return KlingProtocol.IMAGE_ADAPTER_ID;
+    }
+    @Override
+    protected boolean video() {
+        return false;
+    }
+    @Override
+    public boolean supports(PortInput input) {
+        return input.kind() == Task.Kind.IMAGE_GENERATION;
+    }
 
-    @Override protected ObjectNode prepare(AttemptContext context, boolean submitting) {
+    @Override
+    protected ObjectNode prepare(AttemptContext context, boolean submitting) {
         var mediaInput = context.lease().input().path("mediaInput");
         var parameters = ImageGenerationParameters.parse(mediaInput.path("parameters"));
-        if (parameters.transparentBackground()) throw KlingProtocol.invalid();
+        if (parameters.transparentBackground())
+            throw KlingProtocol.invalid();
         String ratio = mediaInput.path("providerParameters").path("aspectRatio").asText();
         return client.prepareImage(prompt(context), ratio, parameters.resolution(), references.load(context, false));
     }

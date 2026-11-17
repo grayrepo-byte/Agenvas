@@ -1,5 +1,6 @@
 package dev.agenvas.provider.infrastructure;
 
+import dev.agenvas.shared.http.HttpTimeouts;
 import dev.agenvas.shared.http.PinnedHttpClients;
 import java.io.IOException;
 import java.io.InputStream;
@@ -18,6 +19,15 @@ import org.springframework.stereotype.Component;
 public class ArkMediaDownloadPolicy {
     private final OkHttpClient http;
 
+    private ArkMediaDownloadPolicy(ArkMediaDownloadPolicy source, HttpTimeouts timeouts) {
+        this.http = timeouts.configure(source.http);
+    }
+
+    /** Each capability uses a private transport copy; injected defaults remain unchanged. */
+    public ArkMediaDownloadPolicy withTimeouts(HttpTimeouts timeouts) {
+        return new ArkMediaDownloadPolicy(this, timeouts);
+    }
+
     @Autowired
     public ArkMediaDownloadPolicy() {
         this.http = PinnedHttpClients.pinned(Dns.SYSTEM,
@@ -25,10 +35,14 @@ public class ArkMediaDownloadPolicy {
     }
 
     public void validate(URI url) {
-        try { dev.agenvas.shared.security.ServiceEndpointPolicy.downloadDns(url, Dns.SYSTEM); }
-        catch (IllegalArgumentException | NullPointerException | java.net.UnknownHostException invalid) { throw new Rejected("ARK_MEDIA_URL_REJECTED"); }
+        try {
+            dev.agenvas.shared.security.ServiceEndpointPolicy.downloadDns(url, Dns.SYSTEM);
+        } catch (IllegalArgumentException | NullPointerException | java.net.UnknownHostException invalid) {
+            throw new Rejected("ARK_MEDIA_URL_REJECTED");
+        }
         String path = url.getRawPath();
-        if (path == null || path.isEmpty() || path.contains("..")) throw new Rejected("ARK_MEDIA_URL_REJECTED");
+        if (path == null || path.isEmpty() || path.contains(".."))
+            throw new Rejected("ARK_MEDIA_URL_REJECTED");
     }
 
     /** Caller owns sink; bytes are bounded before any media parser sees the result. */
@@ -42,7 +56,8 @@ public class ArkMediaDownloadPolicy {
             if (response.code() == 403 || response.code() == 404) {
                 throw new Expired();
             }
-            if (response.isRedirect()) throw new Rejected("ARK_MEDIA_REDIRECT_REJECTED");
+            if (response.isRedirect())
+                throw new Rejected("ARK_MEDIA_REDIRECT_REJECTED");
             if (response.code() != 200 || response.body() == null) {
                 throw new TechnicalFailure("Ark media response unavailable");
             }
@@ -52,7 +67,8 @@ public class ArkMediaDownloadPolicy {
                 throw new Rejected("ARK_MEDIA_MIME_REJECTED");
             }
             long declared = response.body().contentLength();
-            if (declared > maxBytes) throw new Rejected("ARK_MEDIA_TOO_LARGE");
+            if (declared > maxBytes)
+                throw new Rejected("ARK_MEDIA_TOO_LARGE");
             InputStream input = response.body().byteStream();
             byte[] first = input.readNBytes(12);
             if (first.length < 12 || first[4] != 'f' || first[5] != 't'
@@ -65,7 +81,8 @@ public class ArkMediaDownloadPolicy {
             int count;
             while ((count = input.read(buffer)) != -1) {
                 total += count;
-                if (total > maxBytes) throw new Rejected("ARK_MEDIA_TOO_LARGE");
+                if (total > maxBytes)
+                    throw new Rejected("ARK_MEDIA_TOO_LARGE");
                 sink.write(buffer, 0, count);
             }
             return total;
@@ -75,12 +92,18 @@ public class ArkMediaDownloadPolicy {
     }
 
     public static final class Rejected extends RuntimeException {
-        public Rejected(String code) { super(code); }
+        public Rejected(String code) {
+            super(code);
+        }
     }
     public static final class Expired extends RuntimeException {
-        public Expired() { super("ARK_MEDIA_URL_EXPIRED"); }
+        public Expired() {
+            super("ARK_MEDIA_URL_EXPIRED");
+        }
     }
     public static final class TechnicalFailure extends RuntimeException {
-        public TechnicalFailure(String message) { super(message); }
+        public TechnicalFailure(String message) {
+            super(message);
+        }
     }
 }

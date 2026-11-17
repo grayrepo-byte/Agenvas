@@ -5,7 +5,9 @@ public interface MediaAdapter {
     String adapterId();
     boolean supports(PortInput input);
     /** Validate pinned credentials and media before creating a billable submission checkpoint. */
-    default String preflightFailure(AttemptContext context) { return null; }
+    default String preflightFailure(AttemptContext context) {
+        return null;
+    }
     Submission submit(AttemptContext context);
     Submission reconcile(AttemptContext context);
     default MediaPayload downloadResult(AttemptContext context, ProviderResultManifest.Result result) {
@@ -21,6 +23,8 @@ public interface MediaAdapter {
     }
     interface ResultDownloads extends AutoCloseable {
         MediaPayload download(ProviderResultManifest.Result result);
-        @Override default void close() {}
+        @Override
+        default void close() {
+        }
     }
 }

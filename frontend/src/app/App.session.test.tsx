@@ -9,13 +9,34 @@ import { server } from "../test/server";
 import { App } from "./App";
 
 const ROUTE_TIMEOUT = { timeout: 5_000 };
-const oldStorage: StorageSettings = { llmRelayEnabled: true, imageRelayEnabled: true, version: 0,
-  activeProfileId: null, relayProfileId: null, profiles: [{ id: "cloud-one", name: "Old archive", provider: "S3",
-    endpoint: "https://storage.example.invalid", region: "synthetic", bucket: "synthetic", keyPrefix: "synthetic",
-    pathStyle: true, accessKeyMask: "configured", createdAt: "2026-11-05T00:00:00Z", inUse: false }] };
+const oldStorage: StorageSettings = {
+  llmRelayEnabled: true,
+  imageRelayEnabled: true,
+  version: 0,
+  activeProfileId: null,
+  relayProfileId: null,
+  profiles: [
+    {
+      id: "cloud-one",
+      name: "Old archive",
+      provider: "S3",
+      endpoint: "https://storage.example.invalid",
+      region: "synthetic",
+      bucket: "synthetic",
+      keyPrefix: "synthetic",
+      pathStyle: true,
+      accessKeyMask: "configured",
+      createdAt: "2026-11-05T00:00:00Z",
+      inUse: false,
+    },
+  ],
+};
 const acceptedStorage: StorageSettings = { ...oldStorage, version: 1, activeProfileId: "cloud-one" };
-const currentStorage: StorageSettings = { ...acceptedStorage, version: 2,
-  profiles: [{ ...oldStorage.profiles[0]!, name: "Current archive" }] };
+const currentStorage: StorageSettings = {
+  ...acceptedStorage,
+  version: 2,
+  profiles: [{ ...oldStorage.profiles[0]!, name: "Current archive" }],
+};
 const activate = api.activateStorageProfile;
 
 afterEach(() => window.history.replaceState({}, "", "/"));
@@ -29,14 +50,21 @@ function stubSession({ initiallyLoggedIn = true, postLoginMeStatus = 200 } = {})
   let activationStarted = false;
   let latest = oldStorage;
   let release!: () => void;
-  const pending = new Promise<void>((resolve) => { release = resolve; });
+  const pending = new Promise<void>(resolve => {
+    release = resolve;
+  });
   let acknowledge!: () => void;
-  const activationFinished = new Promise<void>((resolve) => { acknowledge = resolve; });
+  const activationFinished = new Promise<void>(resolve => {
+    acknowledge = resolve;
+  });
   // Observe the real HTTP adapter's settlement after its caller resumes. This only
   // synchronizes the delayed response; requests, routing and cache behavior stay real.
-  vi.spyOn(api, "activateStorageProfile").mockImplementation((input) => {
+  vi.spyOn(api, "activateStorageProfile").mockImplementation(input => {
     const response = activate(input);
-    const settled = () => queueMicrotask(() => { setTimeout(acknowledge, 0); });
+    const settled = () =>
+      queueMicrotask(() => {
+        setTimeout(acknowledge, 0);
+      });
     void response.then(settled, settled);
     return response;
   });
@@ -44,16 +72,27 @@ function stubSession({ initiallyLoggedIn = true, postLoginMeStatus = 200 } = {})
     http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
     http.get("/api/v1/auth/me", () => {
       const status = !loggedIn ? 401 : loggedInAgain ? sessionReadStatus : 200;
-      return status === 200 ? HttpResponse.json({ id: "same-admin", loginName: "admin", role: "ADMIN" })
-        : HttpResponse.json({ title: "Synthetic session read failure", status,
-          code: status === 401 ? "UNAUTHENTICATED" : "SYNTHETIC_FAILURE" },
-        { status, headers: { "Content-Type": "application/problem+json" } });
+      return status === 200
+        ? HttpResponse.json({ id: "same-admin", loginName: "admin", role: "ADMIN" })
+        : HttpResponse.json(
+            {
+              title: "Synthetic session read failure",
+              status,
+              code: status === 401 ? "UNAUTHENTICATED" : "SYNTHETIC_FAILURE",
+            },
+            { status, headers: { "Content-Type": "application/problem+json" } },
+          );
     }),
     http.get("/api/v1/projects", () => HttpResponse.json({ items: [], nextCursor: null })),
-    http.get("/api/v1/settings/storage", () => { storageReads++; return HttpResponse.json(latest); }),
+    http.get("/api/v1/settings/storage", () => {
+      storageReads++;
+      return HttpResponse.json(latest);
+    }),
     http.put("/api/v1/settings/storage/active", async ({ request }) => {
       expect(await request.json()).toEqual({ expectedVersion: 0, profileId: "cloud-one" });
-      activationStarted = true; await pending; return HttpResponse.json(acceptedStorage);
+      activationStarted = true;
+      await pending;
+      return HttpResponse.json(acceptedStorage);
     }),
     http.post("/api/v1/auth/logout", () => {
       loggedIn = false;
@@ -62,13 +101,26 @@ function stubSession({ initiallyLoggedIn = true, postLoginMeStatus = 200 } = {})
       return new HttpResponse(null, { status: 204 });
     }),
     http.post("/api/v1/auth/login", () => {
-      loggedIn = true; loggedInAgain = true; loginWrites++;
+      loggedIn = true;
+      loggedInAgain = true;
+      loginWrites++;
       return HttpResponse.json({ id: "same-admin", loginName: "admin", role: "ADMIN" });
     }),
   );
-  return { release, activationFinished, activationStarted: () => activationStarted, storageReads: () => storageReads,
-    loginWrites: () => loginWrites, restoreSessionRead: () => { sessionReadStatus = 200; },
-    expire: () => { loggedIn = false; latest = currentStorage; } };
+  return {
+    release,
+    activationFinished,
+    activationStarted: () => activationStarted,
+    storageReads: () => storageReads,
+    loginWrites: () => loginWrites,
+    restoreSessionRead: () => {
+      sessionReadStatus = 200;
+    },
+    expire: () => {
+      loggedIn = false;
+      latest = currentStorage;
+    },
+  };
 }
 
 async function signIn(user: ReturnType<typeof userEvent.setup>) {
@@ -82,7 +134,7 @@ async function loginAgain(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("link", { name: "资源存储" }));
 }
 
-it.each(["before login", "after login"] as const)("isolates an old accepted save which returns %s", async (timing) => {
+it.each(["before login", "after login"] as const)("isolates an old accepted save which returns %s", async timing => {
   const session = stubSession();
   window.history.replaceState({}, "", "/settings/storage");
   render(<App />);
@@ -96,17 +148,25 @@ it.each(["before login", "after login"] as const)("isolates an old accepted save
   await screen.findByRole("button", { name: "登录" }, ROUTE_TIMEOUT);
   try {
     if (timing === "before login") {
-      await act(async () => { session.release(); await session.activationFinished; });
+      await act(async () => {
+        session.release();
+        await session.activationFinished;
+      });
     }
     await loginAgain(user);
     if (timing === "after login") {
       await screen.findByRole("button", { name: "编辑：Current archive" }, ROUTE_TIMEOUT);
-      await act(async () => { session.release(); await session.activationFinished; });
+      await act(async () => {
+        session.release();
+        await session.activationFinished;
+      });
     }
     expect(await screen.findByRole("button", { name: "编辑：Current archive" }, ROUTE_TIMEOUT)).toBeVisible();
     expect(screen.queryByRole("button", { name: "编辑：Old archive" })).not.toBeInTheDocument();
     expect(session.storageReads()).toBe(2);
-  } finally { session.release(); }
+  } finally {
+    session.release();
+  }
 });
 
 it("keeps workspace caches across ordinary private navigation", async () => {
@@ -122,7 +182,7 @@ it("keeps workspace caches across ordinary private navigation", async () => {
   expect(session.storageReads()).toBe(1);
 });
 
-it.each(["/LOGIN/", "/l%6Fgin/"])("uses the router's authentication match for %s", async (path) => {
+it.each(["/LOGIN/", "/l%6Fgin/"])("uses the router's authentication match for %s", async path => {
   const session = stubSession();
   window.history.replaceState({}, "", "/settings/storage");
   render(<App />);
@@ -137,11 +197,16 @@ it.each(["/LOGIN/", "/l%6Fgin/"])("uses the router's authentication match for %s
   });
   await screen.findByRole("button", { name: "登录" }, ROUTE_TIMEOUT);
   try {
-    await act(async () => { session.release(); await session.activationFinished; });
+    await act(async () => {
+      session.release();
+      await session.activationFinished;
+    });
     await loginAgain(user);
     expect(await screen.findByRole("button", { name: "编辑：Current archive" }, ROUTE_TIMEOUT)).toBeVisible();
     expect(session.storageReads()).toBe(2);
-  } finally { session.release(); }
+  } finally {
+    session.release();
+  }
 });
 
 it("recovers a failed new-session check without repeating the successful login", async () => {

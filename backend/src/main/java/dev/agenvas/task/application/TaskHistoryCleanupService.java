@@ -20,7 +20,9 @@ public class TaskHistoryCleanupService {
     private final ObjectMapper mapper;
 
     public TaskHistoryCleanupService(TaskRepository tasks, ProjectEventService events, ObjectMapper mapper) {
-        this.tasks = tasks; this.events = events; this.mapper = mapper;
+        this.tasks = tasks;
+        this.events = events;
+        this.mapper = mapper;
     }
 
     /** Called only for complete units with project/task locks held by the cleanup coordinator. */

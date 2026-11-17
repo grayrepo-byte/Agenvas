@@ -45,15 +45,13 @@ import tools.jackson.databind.ObjectMapper;
 /** PostgreSQL evidence for SKIP LOCKED claims, lease fencing, and transaction-free work. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(
-        classes = AgenvasApplication.class)
+@SpringBootTest(classes = AgenvasApplication.class)
 class TaskLeasePostgresIT {
 
     private static final Duration TEST_LEASE_DURATION = Duration.ofMinutes(1);
 
     @Container
-    static final PostgreSQLContainer POSTGRES =
-            new PostgreSQLContainer("postgres:17.11-alpine");
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
 
     @DynamicPropertySource
     static void postgresProperties(DynamicPropertyRegistry properties) {
@@ -97,7 +95,7 @@ class TaskLeasePostgresIT {
         AgentInstance agent = configureDirector(agentService,
                 owner.userId(), project.id(), "Creator", "Create");
         AgentRun run = runService.create(
-                        owner.userId(), project.id(), agent.id(), "Create three shots", "task-run")
+                owner.userId(), project.id(), agent.id(), "Create three shots", "task-run")
                 .run();
         runService.transition(owner.userId(), project.id(), run.id(), run.version(),
                 AgentRun.Status.RUNNING);
@@ -152,8 +150,8 @@ class TaskLeasePostgresIT {
                 "RESOURCE_NOT_FOUND",
                 () -> taskService.get(UUID.randomUUID(), project.id(), task.id()));
         assertThat(jdbcClient.sql("select version from flyway_schema_history order by installed_rank desc limit 1")
-                        .query(String.class)
-                        .single())
+                .query(String.class)
+                .single())
                 .isEqualTo(MigrationVersions.latest());
     }
 

@@ -74,7 +74,7 @@ public class JooqArtifactRepository implements ArtifactRepository {
     @Override
     public Optional<CreateKey> findCreateKey(UUID ownerId, String scope, String key) {
         return dsl.select(IDEMPOTENCY_RECORD.REQUEST_HASH, IDEMPOTENCY_RECORD.STATE,
-                        IDEMPOTENCY_RECORD.RESOURCE_ID, IDEMPOTENCY_RECORD.RESPONSE_JSON)
+                IDEMPOTENCY_RECORD.RESOURCE_ID, IDEMPOTENCY_RECORD.RESPONSE_JSON)
                 .from(IDEMPOTENCY_RECORD)
                 .where(IDEMPOTENCY_RECORD.PRINCIPAL_ID.eq(ownerId))
                 .and(IDEMPOTENCY_RECORD.SCOPE.eq(scope))
@@ -150,7 +150,8 @@ public class JooqArtifactRepository implements ArtifactRepository {
                 .set(MEDIA_DRAFT.CAPABILITY_ID, draft.capabilityId())
                 .set(MEDIA_DRAFT.STYLE_ID, draft.styleId())
                 .set(MEDIA_DRAFT.VIDEO_INPUT_MODE, draft.videoInputMode() == null
-                        ? null : draft.videoInputMode().name())
+                        ? null
+                        : draft.videoInputMode().name())
                 .set(MEDIA_DRAFT.MENTIONS_JSON,
                         JSONB.valueOf(objectMapper.writeValueAsString(draft.mentions())))
                 .set(MEDIA_DRAFT.VERSION, MEDIA_DRAFT.VERSION.plus(1))
@@ -162,8 +163,10 @@ public class JooqArtifactRepository implements ArtifactRepository {
     }
 
     @Override
-    public boolean advanceMediaDraftCopyVersion(UUID projectId, UUID canvasItemId, long expectedVersion, long targetVersion) {
-        if (targetVersion <= expectedVersion) return targetVersion == expectedVersion;
+    public boolean advanceMediaDraftCopyVersion(UUID projectId, UUID canvasItemId, long expectedVersion,
+            long targetVersion) {
+        if (targetVersion <= expectedVersion)
+            return targetVersion == expectedVersion;
         return dsl.update(MEDIA_DRAFT).set(MEDIA_DRAFT.VERSION, targetVersion)
                 .where(MEDIA_DRAFT.PROJECT_ID.eq(projectId)).and(MEDIA_DRAFT.CANVAS_ITEM_ID.eq(canvasItemId))
                 .and(MEDIA_DRAFT.VERSION.eq(expectedVersion)).execute() == 1;
@@ -212,7 +215,8 @@ public class JooqArtifactRepository implements ArtifactRepository {
                 .where(MEDIA_DRAFT.PROJECT_ID.eq(projectId))
                 .and(MEDIA_DRAFT.CANVAS_ITEM_ID.eq(canvasItemId))
                 .execute();
-        if (changed != 1) throw new IllegalStateException("Media draft missing");
+        if (changed != 1)
+            throw new IllegalStateException("Media draft missing");
     }
 
     /** 锁定指定所有者项目中的产物行，供追加版本与选择 CAS 使用。 */
@@ -233,8 +237,8 @@ public class JooqArtifactRepository implements ArtifactRepository {
         var artifact = ARTIFACT.as("a");
         var owner = PROJECT.as("p");
         var query = dsl.select(artifact.ID, artifact.PROJECT_ID, artifact.KIND, artifact.TITLE,
-                        artifact.RESOURCE_DEFAULT_VERSION_ID, artifact.ARCHIVED_AT, artifact.VERSION,
-                        artifact.CREATED_AT, artifact.UPDATED_AT)
+                artifact.RESOURCE_DEFAULT_VERSION_ID, artifact.ARCHIVED_AT, artifact.VERSION,
+                artifact.CREATED_AT, artifact.UPDATED_AT)
                 .from(artifact)
                 .join(owner).on(owner.ID.eq(artifact.PROJECT_ID))
                 .where(artifact.ID.eq(artifactId))
@@ -267,7 +271,8 @@ public class JooqArtifactRepository implements ArtifactRepository {
                 .set(ARTIFACT_VERSION.SCHEMA_VERSION, version.schemaVersion())
                 .set(ARTIFACT_VERSION.BASE_VERSION_ID, version.baseVersionId())
                 .set(ARTIFACT_VERSION.FROZEN_INPUT_JSON, version.frozenInput() == null
-                        ? null : JSONB.valueOf(version.frozenInput().toString()))
+                        ? null
+                        : JSONB.valueOf(version.frozenInput().toString()))
                 .set(ARTIFACT_VERSION.CONTENT_JSON, JSONB.valueOf(version.content().toString()))
                 .set(ARTIFACT_VERSION.INPUT_REFS_JSON,
                         JSONB.valueOf(objectMapper.writeValueAsString(version.inputReferences())))
@@ -413,7 +418,8 @@ public class JooqArtifactRepository implements ArtifactRepository {
     public List<ResourceResult> listResources(UUID ownerId, UUID projectId, Artifact.Kind kind, String query,
             Instant beforeCreatedAt, UUID beforeId, int limit) {
         var sourceType = DSL.jsonbGetAttributeAsText(ARTIFACT_VERSION.CONTENT_JSON, "sourceType");
-        var media = ARTIFACT.KIND.in(Artifact.Kind.IMAGE.name(), Artifact.Kind.VIDEO.name(), Artifact.Kind.AUDIO.name());
+        var media = ARTIFACT.KIND.in(Artifact.Kind.IMAGE.name(), Artifact.Kind.VIDEO.name(),
+                Artifact.Kind.AUDIO.name());
         var text = ARTIFACT.KIND.eq(Artifact.Kind.TEXT.name())
                 .and(DSL.jsonbGetAttributeAsText(ARTIFACT_VERSION.CONTENT_JSON, "text").likeRegex("[^[:space:]]"));
         var condition = PROJECT.OWNER_ID.eq(ownerId)
@@ -422,16 +428,20 @@ public class JooqArtifactRepository implements ArtifactRepository {
                 .and(ARTIFACT.ARCHIVED_AT.isNull())
                 // Skill installation material is internal context, rather than a creation result.
                 .and(sourceType.isNull().or(sourceType.ne(ArtifactVersion.MediaSourceType.SKILL_IMPORT.name())));
-        if (projectId != null) condition = condition.and(PROJECT.ID.eq(projectId));
-        if (kind != null) condition = condition.and(ARTIFACT.KIND.eq(kind.name()));
-        if (!query.isBlank()) condition = condition.and(ARTIFACT.TITLE.containsIgnoreCase(query)
-                .or(PROJECT.NAME.containsIgnoreCase(query)));
-        if (beforeCreatedAt != null) condition = condition.and(ARTIFACT_VERSION.CREATED_AT.lt(utc(beforeCreatedAt))
-                .or(ARTIFACT_VERSION.CREATED_AT.eq(utc(beforeCreatedAt)).and(ARTIFACT_VERSION.ID.lt(beforeId))));
+        if (projectId != null)
+            condition = condition.and(PROJECT.ID.eq(projectId));
+        if (kind != null)
+            condition = condition.and(ARTIFACT.KIND.eq(kind.name()));
+        if (!query.isBlank())
+            condition = condition.and(ARTIFACT.TITLE.containsIgnoreCase(query)
+                    .or(PROJECT.NAME.containsIgnoreCase(query)));
+        if (beforeCreatedAt != null)
+            condition = condition.and(ARTIFACT_VERSION.CREATED_AT.lt(utc(beforeCreatedAt))
+                    .or(ARTIFACT_VERSION.CREATED_AT.eq(utc(beforeCreatedAt)).and(ARTIFACT_VERSION.ID.lt(beforeId))));
         // Read versions directly: an unselected result and a result whose card was removed remain visible.
         return dsl.select(ARTIFACT_VERSION.ID, ARTIFACT.ID, PROJECT.ID, PROJECT.NAME,
-                        ARTIFACT.TITLE, ARTIFACT.KIND, ARTIFACT_VERSION.VERSION_NO,
-                        ARTIFACT_VERSION.CONTENT_JSON, ARTIFACT_VERSION.CREATED_AT)
+                ARTIFACT.TITLE, ARTIFACT.KIND, ARTIFACT_VERSION.VERSION_NO,
+                ARTIFACT_VERSION.CONTENT_JSON, ARTIFACT_VERSION.CREATED_AT)
                 .from(ARTIFACT_VERSION)
                 .join(ARTIFACT).on(ARTIFACT.ID.eq(ARTIFACT_VERSION.ARTIFACT_ID)
                         .and(ARTIFACT.PROJECT_ID.eq(ARTIFACT_VERSION.PROJECT_ID)))
@@ -474,7 +484,8 @@ public class JooqArtifactRepository implements ArtifactRepository {
                 row.getVersionNo(),
                 row.getSchemaVersion(),
                 row.getBaseVersionId(),
-                row.getFrozenInputJson() == null ? null
+                row.getFrozenInputJson() == null
+                        ? null
                         : objectMapper.readTree(row.getFrozenInputJson().data()),
                 content,
                 List.of(),
@@ -492,7 +503,7 @@ public class JooqArtifactRepository implements ArtifactRepository {
                         ARTIFACT.KIND)
                 .from(ARTIFACT_VERSION_REFERENCE)
                 .join(ARTIFACT_VERSION).on(ARTIFACT_VERSION.ID.eq(
-                                ARTIFACT_VERSION_REFERENCE.TARGET_VERSION_ID)
+                        ARTIFACT_VERSION_REFERENCE.TARGET_VERSION_ID)
                         .and(ARTIFACT_VERSION.PROJECT_ID.eq(
                                 ARTIFACT_VERSION_REFERENCE.PROJECT_ID)))
                 .join(ARTIFACT).on(ARTIFACT.ID.eq(ARTIFACT_VERSION.ARTIFACT_ID)
@@ -543,16 +554,15 @@ public class JooqArtifactRepository implements ArtifactRepository {
         }
         Map<UUID, List<MediaDraft.InputSource>> sources = new LinkedHashMap<>();
         dsl.select(CANVAS_ITEM_MEDIA_INPUT_SOURCE.ARTIFACT_VERSION_ID,
-                        CANVAS_ITEM_MEDIA_INPUT_SOURCE.ID,
-                        CANVAS_ITEM_MEDIA_INPUT_SOURCE.SOURCE_TYPE,
-                        CANVAS_ITEM_MEDIA_INPUT_SOURCE.CONNECTION_ID)
+                CANVAS_ITEM_MEDIA_INPUT_SOURCE.ID,
+                CANVAS_ITEM_MEDIA_INPUT_SOURCE.SOURCE_TYPE,
+                CANVAS_ITEM_MEDIA_INPUT_SOURCE.CONNECTION_ID)
                 .from(CANVAS_ITEM_MEDIA_INPUT_SOURCE)
                 .where(CANVAS_ITEM_MEDIA_INPUT_SOURCE.PROJECT_ID.eq(row.getProjectId()))
                 .and(CANVAS_ITEM_MEDIA_INPUT_SOURCE.CANVAS_ITEM_ID.eq(row.getCanvasItemId()))
                 .orderBy(CANVAS_ITEM_MEDIA_INPUT_SOURCE.CREATED_AT,
                         CANVAS_ITEM_MEDIA_INPUT_SOURCE.ID)
-                .forEach(source -> sources.computeIfAbsent(source.value1(), ignored ->
-                                new java.util.ArrayList<>())
+                .forEach(source -> sources.computeIfAbsent(source.value1(), ignored -> new java.util.ArrayList<>())
                         .add(new MediaDraft.InputSource(source.value2(),
                                 MediaDraft.SourceType.valueOf(source.value3()),
                                 source.value4())));
@@ -564,7 +574,7 @@ public class JooqArtifactRepository implements ArtifactRepository {
                         CANVAS_ITEM_MEDIA_INPUT.COLOR)
                 .from(CANVAS_ITEM_MEDIA_INPUT)
                 .join(ARTIFACT_VERSION).on(ARTIFACT_VERSION.PROJECT_ID.eq(
-                                CANVAS_ITEM_MEDIA_INPUT.PROJECT_ID)
+                        CANVAS_ITEM_MEDIA_INPUT.PROJECT_ID)
                         .and(ARTIFACT_VERSION.ID.eq(
                                 CANVAS_ITEM_MEDIA_INPUT.ARTIFACT_VERSION_ID)))
                 .where(CANVAS_ITEM_MEDIA_INPUT.PROJECT_ID.eq(row.getProjectId()))
@@ -582,7 +592,8 @@ public class JooqArtifactRepository implements ArtifactRepository {
                 row.getDurationSeconds(),
                 row.getCapabilityId(),
                 row.getStyleId(),
-                row.getVideoInputMode() == null ? null
+                row.getVideoInputMode() == null
+                        ? null
                         : MediaDraft.VideoInputMode.valueOf(row.getVideoInputMode()),
                 inputs,
                 List.copyOf(mentions),

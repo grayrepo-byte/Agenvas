@@ -32,20 +32,22 @@ public class KlingReferenceLoader {
         var inputs = FrozenMediaInputs.images(task);
         String mode = task.input().path("mediaInput").path("mode").asText();
         if (!FrozenMediaInputs.videos(task).isEmpty() || !FrozenMediaInputs.audios(task).isEmpty()
-                || inputs.size() > (videoGeneration ? 2 : 1)) throw KlingProtocol.invalid();
+                || inputs.size() > (videoGeneration ? 2 : 1))
+            throw KlingProtocol.invalid();
         if (videoGeneration) {
             if (!Set.of("TEXT", "START_END").contains(mode)
                     || "TEXT".equals(mode) && !inputs.isEmpty()
                     || "START_END".equals(mode) && (inputs.isEmpty()
-                        || inputs.stream().filter(image -> "START_FRAME".equals(image.role())).count() != 1
-                        || inputs.stream().filter(image -> "END_FRAME".equals(image.role())).count() > 1))
+                            || inputs.stream().filter(image -> "START_FRAME".equals(image.role())).count() != 1
+                            || inputs.stream().filter(image -> "END_FRAME".equals(image.role())).count() > 1))
                 throw KlingProtocol.invalid();
         }
         List<Reference> references = new ArrayList<>();
         for (var input : inputs) {
             if (!(videoGeneration ? Set.of("START_FRAME", "END_FRAME") : Set.of("REFERENCE")).contains(input.role()))
                 throw KlingProtocol.invalid();
-            var version = artifacts.requireVersion(context.ownerId(), task.projectId(), input.artifactId(), input.versionId());
+            var version = artifacts.requireVersion(context.ownerId(), task.projectId(), input.artifactId(),
+                    input.versionId());
             UUID assetId = UUID.fromString(version.content().path("assetId").asText());
             var file = assets.get(context.ownerId(), task.projectId(), assetId);
             KlingProtocol.validateMetadata(file.asset(), videoGeneration);
@@ -55,9 +57,11 @@ public class KlingReferenceLoader {
                 if (bytes.length != file.asset().byteSize() || bytes.length > maximum)
                     throw KlingProtocol.invalid();
                 try (var imageInput = ImageIO.createImageInputStream(new ByteArrayInputStream(bytes))) {
-                    if (imageInput == null) throw KlingProtocol.invalid();
+                    if (imageInput == null)
+                        throw KlingProtocol.invalid();
                     var readers = ImageIO.getImageReaders(imageInput);
-                    if (!readers.hasNext()) throw KlingProtocol.invalid();
+                    if (!readers.hasNext())
+                        throw KlingProtocol.invalid();
                     var reader = readers.next();
                     try {
                         String format = reader.getFormatName().toLowerCase(java.util.Locale.ROOT);
@@ -68,11 +72,16 @@ public class KlingReferenceLoader {
                         int width = reader.getWidth(0), height = reader.getHeight(0);
                         KlingProtocol.requireDimensions(width, height);
                         if (width != file.asset().width() || height != file.asset().height()
-                                || reader.read(0) == null) throw KlingProtocol.invalid();
-                    } finally { reader.dispose(); }
+                                || reader.read(0) == null)
+                            throw KlingProtocol.invalid();
+                    } finally {
+                        reader.dispose();
+                    }
                 }
                 references.add(new Reference(input.role(), Base64.getEncoder().encodeToString(bytes)));
-            } catch (IOException unreadable) { throw KlingProtocol.invalid(); }
+            } catch (IOException unreadable) {
+                throw KlingProtocol.invalid();
+            }
         }
         return List.copyOf(references);
     }

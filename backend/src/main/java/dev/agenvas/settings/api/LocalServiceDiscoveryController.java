@@ -16,19 +16,26 @@ import tools.jackson.databind.JsonNode;
 @RestController
 public class LocalServiceDiscoveryController {
     private final LocalServiceDiscoveryService discovery;
-    public LocalServiceDiscoveryController(LocalServiceDiscoveryService discovery) { this.discovery = discovery; }
+    public LocalServiceDiscoveryController(LocalServiceDiscoveryService discovery) {
+        this.discovery = discovery;
+    }
 
     @PostMapping("/api/v1/settings/local-services/discover")
     public ResponseEntity<LocalServiceDiscoveryService.Result> discover(@RequestBody JsonNode request) {
-        if (request == null || !request.isObject() || request.size() != 1 || !request.path("service").isString()) throw invalid();
+        if (request == null || !request.isObject() || request.size() != 1 || !request.path("service").isString())
+            throw invalid();
         Service service;
-        try { service = Service.valueOf(request.path("service").asString()); }
-        catch (IllegalArgumentException invalid) { throw invalid(); }
+        try {
+            service = Service.valueOf(request.path("service").asString());
+        } catch (IllegalArgumentException invalid) {
+            throw invalid();
+        }
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(discovery.discover(service));
     }
 
     private static ApiProblemException invalid() {
         return new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
-                ApiMessage.of("api.local-service-discovery.title"), ApiMessage.of("api.local-service-discovery.invalid"), false);
+                ApiMessage.of("api.local-service-discovery.title"),
+                ApiMessage.of("api.local-service-discovery.invalid"), false);
     }
 }

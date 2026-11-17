@@ -30,16 +30,22 @@ public final class RunningHubImportController {
         this.imports = imports;
         this.messages = messages;
     }
-    public record PreviewResponse(RunningHubDefinition definition, java.util.List<String> warnings, java.util.List<String> recommendedFieldKeys,
-            String targetName, java.util.List<RunningHubImportService.FieldInsight> fieldInsights) {}
+    public record PreviewResponse(RunningHubDefinition definition, java.util.List<String> warnings,
+            java.util.List<String> recommendedFieldKeys,
+            String targetName, java.util.List<RunningHubImportService.FieldInsight> fieldInsights) {
+    }
     public record ImportRequest(@NotNull RunningHubDefinition.TargetType targetType,
-            @NotNull @Pattern(regexp = "[0-9]{1,32}") String targetId, @NotNull Task.Kind kind, JsonNode source) {}
+            @NotNull @Pattern(regexp = "[0-9]{1,32}") String targetId, @NotNull Task.Kind kind, JsonNode source) {
+    }
     @PostMapping("/preview")
     public ResponseEntity<PreviewResponse> preview(@AuthenticationPrincipal AdminPrincipal administrator,
-            @PathVariable UUID connectionId, @Valid @RequestBody ImportRequest request, HttpServletRequest httpRequest) {
+            @PathVariable UUID connectionId, @Valid @RequestBody ImportRequest request,
+            HttpServletRequest httpRequest) {
         Objects.requireNonNull(administrator, "Administrator required");
-        var preview = imports.preview(connectionId, request.targetType(), request.targetId(), request.kind(), request.source());
+        var preview = imports.preview(connectionId, request.targetType(), request.targetId(), request.kind(),
+                request.source());
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new PreviewResponse(preview.definition(),
-                preview.warnings().stream().map(warning -> messages.text(warning, httpRequest)).toList(), preview.recommendedFieldKeys(), preview.targetName(), preview.fieldInsights()));
+                preview.warnings().stream().map(warning -> messages.text(warning, httpRequest)).toList(),
+                preview.recommendedFieldKeys(), preview.targetName(), preview.fieldInsights()));
     }
 }

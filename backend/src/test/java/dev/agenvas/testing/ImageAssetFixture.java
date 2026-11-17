@@ -11,7 +11,8 @@ import javax.imageio.ImageIO;
 /** Creates real, decoder-validated private bytes for integration tests of media references. */
 public final class ImageAssetFixture {
 
-    private ImageAssetFixture() {}
+    private ImageAssetFixture() {
+    }
 
     /** Archives a tiny PNG through the production validation and metadata path. */
     public static UUID archive(AssetService assets, UUID ownerId, UUID projectId) {
@@ -21,9 +22,12 @@ public final class ImageAssetFixture {
     /** Synthetic JPEG with an EXIF orientation tag, without personal metadata. */
     public static byte[] orientedJpeg(int width, int height, int orientation) {
         byte[] jpg = encoded("jpg", width, height);
-        byte[] exif = {(byte)0xff,(byte)0xe1,0,34,'E','x','i','f',0,0,'I','I',42,0,8,0,0,0,1,0,18,1,3,0,1,0,0,0,(byte)orientation,0,0,0,0,0,0,0};
+        byte[] exif = {(byte) 0xff, (byte) 0xe1, 0, 34, 'E', 'x', 'i', 'f', 0, 0, 'I', 'I', 42, 0, 8, 0, 0, 0, 1, 0, 18,
+                1, 3, 0, 1, 0, 0, 0, (byte) orientation, 0, 0, 0, 0, 0, 0, 0};
         var bytes = new ByteArrayOutputStream();
-        bytes.write(jpg,0,2); bytes.writeBytes(exif); bytes.write(jpg,2,jpg.length-2);
+        bytes.write(jpg, 0, 2);
+        bytes.writeBytes(exif);
+        bytes.write(jpg, 2, jpg.length - 2);
         return bytes.toByteArray();
     }
 

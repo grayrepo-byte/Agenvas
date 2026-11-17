@@ -9,7 +9,12 @@ describe("costume extraction function", () => {
   it("offers only OpenAI with capacity for source and style and a 2:3 output", () => {
     const capability = imageFunctionsFixture().connections[1]!.capabilities[0]!;
     expect(IMAGE_OPERATIONS).toContain("COSTUME_EXTRACT");
-    const openAi: MediaCapability = { ...capability, adapterId: "OPENAI_GPT_IMAGE_2", maxReferenceImages: 2, supportedImageAspectRatios: ["2:3"] };
+    const openAi: MediaCapability = {
+      ...capability,
+      adapterId: "OPENAI_GPT_IMAGE_2",
+      maxReferenceImages: 2,
+      supportedImageAspectRatios: ["2:3"],
+    };
     expect(compatibleImageFunction("COSTUME_EXTRACT", openAi)).toBe(true);
     expect(compatibleImageFunction("COSTUME_EXTRACT", { ...openAi, maxReferenceImages: 1 })).toBe(false);
     expect(compatibleImageFunction("COSTUME_EXTRACT", { ...openAi, adapterId: "GOOGLE_NANO_BANANA_2" })).toBe(false);
@@ -41,10 +46,13 @@ describe("video function choices", () => {
     const choices = videoFunctionChoices(settings, operation);
     expect(choices.map(({ capability }) => capability.id)).toEqual(ids);
     for (const choice of choices) {
-      const connection = settings.connections.find((entry) => entry.capabilities.includes(choice.capability))!;
-      expect(choice.capability).toBe(connection.capabilities.find((entry) => entry.id === choice.capability.id));
-      expect(choice.label).toBe(connection.platform === "LOCAL"
-        ? `本地媒体处理 · ${choice.capability.name}` : `RUNNINGHUB · 合成工作流 · ${choice.capability.name}`);
+      const connection = settings.connections.find(entry => entry.capabilities.includes(choice.capability))!;
+      expect(choice.capability).toBe(connection.capabilities.find(entry => entry.id === choice.capability.id));
+      expect(choice.label).toBe(
+        connection.platform === "LOCAL"
+          ? `本地媒体处理 · ${choice.capability.name}`
+          : `RUNNINGHUB · 合成工作流 · ${choice.capability.name}`,
+      );
     }
   });
 
@@ -52,8 +60,12 @@ describe("video function choices", () => {
     const settings = videoFunctionsFixture();
     const local = settings.connections[0]!;
     const cloud = settings.connections[1]!;
-    settings.connections.push({ ...local, id: "disabled-connection", enabled: false,
-      capabilities: [{ ...local.capabilities[0]!, id: "disabled-connection-capability" }] });
+    settings.connections.push({
+      ...local,
+      id: "disabled-connection",
+      enabled: false,
+      capabilities: [{ ...local.capabilities[0]!, id: "disabled-connection-capability" }],
+    });
     local.capabilities.push({ ...local.capabilities[0]!, id: "disabled-capability", enabled: false });
     cloud.capabilities[0]!.settings.runningHub!.fields[0]!.enabledWhen = { field: "scale", value: 2 };
     expect(videoFunctionChoices(settings, "DEPTH_MAP").map(({ capability }) => capability.id)).toEqual(["depth-cap"]);

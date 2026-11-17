@@ -22,16 +22,24 @@ import tools.jackson.databind.JsonNode;
 @RequestMapping("/api/v1/settings/autodl-workflows")
 public class AutoDlWorkflowController {
     private final AutoDlWorkflowDiscoveryService discovery;
-    public AutoDlWorkflowController(AutoDlWorkflowDiscoveryService discovery) { this.discovery = discovery; }
-    public record Catalog(List<AutoDlWorkflowDiscoveryService.Entry> items) {}
-    public record Preview(@NotNull @Pattern(regexp = AutoDlWorkflowDefinition.ID_PATTERN) String workflowId, JsonNode source) {}
-    @GetMapping public ResponseEntity<Catalog> list(@AuthenticationPrincipal AdminPrincipal administrator) {
+    public AutoDlWorkflowController(AutoDlWorkflowDiscoveryService discovery) {
+        this.discovery = discovery;
+    }
+    public record Catalog(List<AutoDlWorkflowDiscoveryService.Entry> items) {
+    }
+    public record Preview(@NotNull @Pattern(regexp = AutoDlWorkflowDefinition.ID_PATTERN) String workflowId,
+            JsonNode source) {
+    }
+    @GetMapping
+    public ResponseEntity<Catalog> list(@AuthenticationPrincipal AdminPrincipal administrator) {
         Objects.requireNonNull(administrator, "Administrator required");
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new Catalog(discovery.list()));
     }
-    @PostMapping("/preview") public ResponseEntity<JsonNode> preview(@AuthenticationPrincipal AdminPrincipal administrator,
+    @PostMapping("/preview")
+    public ResponseEntity<JsonNode> preview(@AuthenticationPrincipal AdminPrincipal administrator,
             @Valid @RequestBody Preview request) {
         Objects.requireNonNull(administrator, "Administrator required");
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(discovery.preview(request.workflowId(), request.source()));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(discovery.preview(request.workflowId(), request.source()));
     }
 }

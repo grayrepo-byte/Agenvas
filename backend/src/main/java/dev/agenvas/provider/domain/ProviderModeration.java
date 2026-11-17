@@ -14,14 +14,17 @@ public record ProviderModeration(String code, String stage, List<String> categor
     private static final int MAX_CATEGORIES = 5;
 
     public ProviderModeration {
-        if (!supportsCode(code)) throw new IllegalArgumentException("Invalid public moderation code");
+        if (!supportsCode(code))
+            throw new IllegalArgumentException("Invalid public moderation code");
         stage = stage != null && STAGES.contains(stage) ? stage : UNKNOWN_STAGE;
         List<String> safeCategories = new ArrayList<>();
         if (categories != null) {
             for (String category : categories) {
                 String safe = category != null && CATEGORIES.contains(category) ? category : OTHER_CATEGORY;
-                if (!safeCategories.contains(safe)) safeCategories.add(safe);
-                if (safeCategories.size() == MAX_CATEGORIES) break;
+                if (!safeCategories.contains(safe))
+                    safeCategories.add(safe);
+                if (safeCategories.size() == MAX_CATEGORIES)
+                    break;
             }
         }
         categories = List.copyOf(safeCategories);

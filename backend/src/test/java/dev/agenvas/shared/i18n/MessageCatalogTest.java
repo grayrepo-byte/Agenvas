@@ -41,7 +41,8 @@ class MessageCatalogTest {
             for (String key : new TreeSet<>(source.stringPropertyNames())) {
                 String value = translated.getProperty(key);
                 check.assertThat(value).as(language + ": " + key).isNotBlank();
-                if (value == null) continue;
+                if (value == null)
+                    continue;
                 check.assertThat(parameters(value)).as(language + ": " + key + " placeholders")
                         .isEqualTo(parameters(source.getProperty(key)));
                 if (!language.equals("zh") && !language.equals("ja"))
@@ -86,9 +87,11 @@ class MessageCatalogTest {
 
     private Properties load(String language) throws Exception {
         // The base bundle is the sole Chinese catalog; other languages must exist as exact resources.
-        String path = "/i18n/messages" + (language.isEmpty() || language.equals("zh") ? "" : "_" + language) + ".properties";
+        String path = "/i18n/messages" + (language.isEmpty() || language.equals("zh") ? "" : "_" + language)
+                + ".properties";
         var properties = new Properties() {
-            @Override public synchronized Object put(Object key, Object value) {
+            @Override
+            public synchronized Object put(Object key, Object value) {
                 assertThat(containsKey(key)).as(path + ": duplicate key " + key).isFalse();
                 return super.put(key, value);
             }

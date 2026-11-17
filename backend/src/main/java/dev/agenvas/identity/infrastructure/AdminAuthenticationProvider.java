@@ -18,8 +18,8 @@ import org.springframework.stereotype.Component;
 public class AdminAuthenticationProvider implements AuthenticationProvider {
 
     /** 首版唯一管理员角色；不会从用户请求或数据库自由文本推导权限。 */
-    private static final List<SimpleGrantedAuthority> ADMIN_AUTHORITIES =
-            List.of(new SimpleGrantedAuthority("ROLE_ADMIN"));
+    private static final List<SimpleGrantedAuthority> ADMIN_AUTHORITIES = List
+            .of(new SimpleGrantedAuthority("ROLE_ADMIN"));
 
     /** 查询按规范化登录名定位的活动管理员账户。 */
     private final AdminAccountRepository accounts;

@@ -88,8 +88,10 @@ public class ComfyUiVideoWorkflow {
     /** 深拷贝固定工作流，并将已上传的固定输入图片写入图生视频的两个图像输入。 */
     public ObjectNode render(String prompt, String negativePrompt, long seed,
             String uploadedImageName, Project.AspectRatio ratio, int durationMs) {
-        if (prompt == null || prompt.isBlank() || prompt.length() > dev.agenvas.provider.domain.MediaAdapterRegistry.COMFY_MAX_PROMPT_LENGTH
-                || negativePrompt != null && negativePrompt.length() > dev.agenvas.provider.domain.MediaAdapterRegistry.COMFY_MAX_PROMPT_LENGTH
+        if (prompt == null || prompt.isBlank()
+                || prompt.length() > dev.agenvas.provider.domain.MediaAdapterRegistry.COMFY_MAX_PROMPT_LENGTH
+                || negativePrompt != null && negativePrompt
+                        .length() > dev.agenvas.provider.domain.MediaAdapterRegistry.COMFY_MAX_PROMPT_LENGTH
                 || seed < 0 || ratio == null || !supportsDuration(durationMs)
                 || uploadedImageName == null
                 || !uploadedImageName.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,159}")
@@ -125,7 +127,8 @@ public class ComfyUiVideoWorkflow {
      * @param width 输出宽度，单位为像素
      * @param height 输出高度，单位为像素
      */
-    public record Dimensions(int width, int height) {}
+    public record Dimensions(int width, int height) {
+    }
 
     /** 启动时校验节点、连线和编码参数，确保模板仍是预期的固定图。 */
     private void verifyFixedGraph() {
@@ -198,7 +201,7 @@ public class ComfyUiVideoWorkflow {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             digest.update(bytes);
-            for (String name : new String[] {names.diffusionModel(), names.textEncoder(),
+            for (String name : new String[]{names.diffusionModel(), names.textEncoder(),
                     names.vae(), names.clipVision()}) {
                 digest.update((byte) '\n');
                 digest.update(name.getBytes(StandardCharsets.UTF_8));

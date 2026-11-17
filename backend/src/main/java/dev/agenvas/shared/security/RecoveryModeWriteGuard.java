@@ -48,7 +48,9 @@ public class RecoveryModeWriteGuard implements WebMvcConfigurer {
             }
             throw new ApiProblemException(HttpStatus.SERVICE_UNAVAILABLE,
                     "RECOVERY_MODE_READ_ONLY", ApiMessage.of("api.recovery-mode-write-guard.restore-verification-mode"),
-                    ApiMessage.of("api.recovery-mode-write-guard.database-and-media-backups-are-being-reconciled-project-and-model"), false);
+                    ApiMessage.of(
+                            "api.recovery-mode-write-guard.database-and-media-backups-are-being-reconciled-project-and-model"),
+                    false);
         }
     }
 }

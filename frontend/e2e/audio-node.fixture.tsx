@@ -14,32 +14,65 @@ import "../src/styles.css";
 setLocale("zh");
 function AudioNode({ selected }: NodeProps) {
   const [trimming, setTrimming] = useState(false);
-  return <>
-    <ArtifactCardFrame title="合成音频" kindLabel="音频" selected={selected} locked={false}
-      className="audio-canvas-card" toolbar={<button type="button" className="nodrag"
-        data-testid="audio-trim-open" onClick={() => setTrimming(true)}>音频操作</button>}>
-      <AudioPlayer src="/e2e/audio-node.wav" title="合成音频" selected={selected} />
-    </ArtifactCardFrame>
-    {trimming ? <AudioTrimDialog projectId="00000000-0000-4000-8000-000000000301"
-      artifactId="00000000-0000-4000-8000-000000000302"
-      source={{ canvasItemId: "00000000-0000-4000-8000-000000000303",
-        sourceVersionId: "00000000-0000-4000-8000-000000000304", expectedCanvasItemVersion: 7 }}
-      src="/e2e/audio-node.wav" title="合成音频" durationMs={10_000} onClose={() => setTrimming(false)} /> : null}
-  </>;
+  return (
+    <>
+      <ArtifactCardFrame
+        title="合成音频"
+        kindLabel="音频"
+        selected={selected}
+        locked={false}
+        className="audio-canvas-card"
+        toolbar={
+          <button type="button" className="nodrag" data-testid="audio-trim-open" onClick={() => setTrimming(true)}>
+            音频操作
+          </button>
+        }
+      >
+        <AudioPlayer src="/e2e/audio-node.wav" title="合成音频" selected={selected} />
+      </ArtifactCardFrame>
+      {trimming ? (
+        <AudioTrimDialog
+          projectId="00000000-0000-4000-8000-000000000301"
+          artifactId="00000000-0000-4000-8000-000000000302"
+          source={{
+            canvasItemId: "00000000-0000-4000-8000-000000000303",
+            sourceVersionId: "00000000-0000-4000-8000-000000000304",
+            expectedCanvasItemVersion: 7,
+          }}
+          src="/e2e/audio-node.wav"
+          title="合成音频"
+          durationMs={10_000}
+          onClose={() => setTrimming(false)}
+        />
+      ) : null}
+    </>
+  );
 }
 const nodeTypes = { audio: AudioNode };
 function Fixture() {
   const [nodes, setNodes, onNodesChange] = useNodesState([
-    { id: "audio", type: "audio", data: {}, position: { x: 120, y: 120 },
-      width: 420, height: 160, selected: false },
+    { id: "audio", type: "audio", data: {}, position: { x: 120, y: 120 }, width: 420, height: 160, selected: false },
   ]);
-  return <main style={{ width: "100vw", height: "100vh" }}>
-    <ReactFlow nodes={nodes} onNodesChange={onNodesChange} nodeTypes={nodeTypes}
-      colorMode="dark" panOnDrag={false} selectNodesOnDrag={false}
-      nodeClickDistance={CANVAS_POINTER_THRESHOLD} nodeDragThreshold={CANVAS_POINTER_THRESHOLD}
-      onNodeClick={(_, node) => setNodes((current) => current.map((item) => ({ ...item, selected: item.id === node.id })))} />
-  </main>;
+  return (
+    <main style={{ width: "100vw", height: "100vh" }}>
+      <ReactFlow
+        nodes={nodes}
+        onNodesChange={onNodesChange}
+        nodeTypes={nodeTypes}
+        colorMode="dark"
+        panOnDrag={false}
+        selectNodesOnDrag={false}
+        nodeClickDistance={CANVAS_POINTER_THRESHOLD}
+        nodeDragThreshold={CANVAS_POINTER_THRESHOLD}
+        onNodeClick={(_, node) =>
+          setNodes(current => current.map(item => ({ ...item, selected: item.id === node.id })))
+        }
+      />
+    </main>
+  );
 }
 createRoot(document.getElementById("root")!).render(
-  <QueryClientProvider client={createQueryClient()}><Fixture /></QueryClientProvider>,
+  <QueryClientProvider client={createQueryClient()}>
+    <Fixture />
+  </QueryClientProvider>,
 );

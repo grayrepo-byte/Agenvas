@@ -13,11 +13,18 @@ describe("CanvasSelectionCheckbox", () => {
     const toggle = vi.fn();
     function Node() {
       const [selected, setSelected] = useState(false);
-      return <div onPointerDown={pointerDown} onClick={click} onDoubleClick={doubleClick}>
-        <CanvasSelectionCheckbox title="镜头一" selected={selected} onToggle={() => {
-          toggle(); setSelected((current) => !current);
-        }} />
-      </div>;
+      return (
+        <div onPointerDown={pointerDown} onClick={click} onDoubleClick={doubleClick}>
+          <CanvasSelectionCheckbox
+            title="镜头一"
+            selected={selected}
+            onToggle={() => {
+              toggle();
+              setSelected(current => !current);
+            }}
+          />
+        </div>
+      );
     }
     render(<Node />);
     const checkbox = screen.getByRole("checkbox", { name: "选择卡片：镜头一" });

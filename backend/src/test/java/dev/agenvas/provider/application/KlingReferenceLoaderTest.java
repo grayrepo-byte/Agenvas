@@ -26,7 +26,8 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 class KlingReferenceLoaderTest {
-    @TempDir Path directory;
+    @TempDir
+    Path directory;
     private final ObjectMapper mapper = new ObjectMapper();
     private final UUID owner = UUID.randomUUID(), project = UUID.randomUUID();
     private final ArtifactService artifacts = mock(ArtifactService.class);
@@ -34,7 +35,8 @@ class KlingReferenceLoaderTest {
     private final KlingReferenceLoader loader = new KlingReferenceLoader(artifacts, assets);
     private final ObjectNode input = mapper.createObjectNode();
 
-    @Test void sendsExactOriginalPngAsRawBase64ForAuthorizedVersion() throws Exception {
+    @Test
+    void sendsExactOriginalPngAsRawBase64ForAuthorizedVersion() throws Exception {
         var context = context("START_END");
         byte[] png = png();
         reference("START_FRAME", "image/png", png, 300, 300);
@@ -45,7 +47,8 @@ class KlingReferenceLoaderTest {
         });
     }
 
-    @Test void rejectsOnlyTailUnsupportedRolesAndNonImageReferences() throws Exception {
+    @Test
+    void rejectsOnlyTailUnsupportedRolesAndNonImageReferences() throws Exception {
         var context = context("START_END");
         reference("END_FRAME", "image/png", png(), 300, 300);
         assertThatThrownBy(() -> loader.load(context, true)).isInstanceOf(ApiProblemException.class);
@@ -57,7 +60,8 @@ class KlingReferenceLoaderTest {
         assertThatThrownBy(() -> loader.load(context, true)).isInstanceOf(ApiProblemException.class);
     }
 
-    @Test void validatesActualEncodingAndDecodedDimensionsBeforeSubmitting() throws Exception {
+    @Test
+    void validatesActualEncodingAndDecodedDimensionsBeforeSubmitting() throws Exception {
         var context = context("GENERAL_REFERENCE");
         reference("REFERENCE", "image/jpeg", png(), 300, 300);
         assertThatThrownBy(() -> loader.load(context, false)).isInstanceOf(ApiProblemException.class);
@@ -71,9 +75,12 @@ class KlingReferenceLoaderTest {
 
     private AttemptContext context(String mode) {
         var media = input.putObject("mediaInput").put("mode", mode);
-        media.putArray("images"); media.putArray("videos"); media.putArray("audios");
+        media.putArray("images");
+        media.putArray("videos");
+        media.putArray("audios");
         Task task = mock(Task.class);
-        when(task.projectId()).thenReturn(project); when(task.input()).thenReturn(input);
+        when(task.projectId()).thenReturn(project);
+        when(task.input()).thenReturn(input);
         return new AttemptContext(task, null, owner, "synthetic", null);
     }
 
@@ -87,7 +94,8 @@ class KlingReferenceLoaderTest {
         when(artifacts.requireVersion(owner, project, artifact, version)).thenReturn(artifactVersion);
         Asset asset = new Asset(assetId, project, Asset.MediaKind.IMAGE, "synthetic", mime, bytes.length,
                 "a".repeat(64), width, height, null, null, null, null, Instant.now());
-        Path file = directory.resolve(assetId.toString()); Files.write(file, bytes);
+        Path file = directory.resolve(assetId.toString());
+        Files.write(file, bytes);
         when(assets.get(owner, project, assetId)).thenReturn(new AssetService.AssetFile(asset, file));
     }
 

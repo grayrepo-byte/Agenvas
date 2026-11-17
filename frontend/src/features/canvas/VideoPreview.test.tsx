@@ -1,5 +1,5 @@
-import { act,fireEvent,render,screen,waitFor,within } from "@testing-library/react";
-import { afterEach,beforeEach,describe,expect,it,vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { VideoPreview } from "./VideoPreview";
 
 beforeEach(() => {
@@ -16,9 +16,11 @@ function showPreview() {
   const onPointerDown = vi.fn();
   const onKeyDown = vi.fn();
   const props = { src: "/synthetic-video.mp4", posterSrc: "/synthetic-poster.png", title: "预览", demo: false };
-  const view = render(<div onClick={onClick} onMouseDown={onMouseDown} onPointerDown={onPointerDown} onKeyDown={onKeyDown}>
-    <VideoPreview {...props} />
-  </div>);
+  const view = render(
+    <div onClick={onClick} onMouseDown={onMouseDown} onPointerDown={onPointerDown} onKeyDown={onKeyDown}>
+      <VideoPreview {...props} />
+    </div>,
+  );
   const preview = screen.getByRole("img").parentElement!;
   return { ...view, preview, onClick, onMouseDown, onPointerDown, onKeyDown };
 }
@@ -175,7 +177,12 @@ describe("VideoPreview", () => {
 
   it("ignores a stale play rejection after the pointer leaves", async () => {
     let rejectPlay: (reason: unknown) => void = () => {};
-    vi.mocked(HTMLMediaElement.prototype.play).mockImplementationOnce(() => new Promise((_, reject) => { rejectPlay = reject; }));
+    vi.mocked(HTMLMediaElement.prototype.play).mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectPlay = reject;
+        }),
+    );
     const { preview } = showPreview();
     hover(preview);
     fireEvent.mouseLeave(preview);
@@ -193,7 +200,9 @@ describe("VideoPreview", () => {
     fireEvent.pointerDown(expand);
     fireEvent.mouseDown(expand);
     fireEvent.click(expand);
-    await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 1100)); });
+    await act(async () => {
+      await new Promise(resolve => window.setTimeout(resolve, 1100));
+    });
     const dialog = await screen.findByRole("dialog", { name: "预览 的视频预览" });
     const player = dialog.querySelector("video")!;
     expect(player).not.toHaveAttribute("controls");
@@ -219,7 +228,7 @@ describe("VideoPreview", () => {
     vi.useRealTimers();
     const { preview } = showPreview();
     fireEvent.mouseEnter(preview);
-    const cardVideo = await screen.findByLabelText("预览 的视频", {}, { timeout: 2000 }) as HTMLVideoElement;
+    const cardVideo = (await screen.findByLabelText("预览 的视频", {}, { timeout: 2000 })) as HTMLVideoElement;
     cardVideo.currentTime = 4;
     vi.mocked(HTMLMediaElement.prototype.pause).mockClear();
     fireEvent.click(screen.getByRole("button", { name: "放大视频" }));

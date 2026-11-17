@@ -46,7 +46,7 @@ public class GoogleNanoBananaClient {
      * 单次读取上限；工厂要求显式传入，不能漏成 0（0 表示不限）。
      * 与 OpenAI 图片一样是同步生成，首字节要数十秒到数分钟才到，读超时必须覆盖整次生成，
      * 否则客户端会先超时并把已生成的结果判成 UNKNOWN。与 {@code OpenAiImage2Client} 取
-     * 同一个上限，并由 {@code agenvas.task.lease-duration}（默认 30 分钟）保证租约长于它。
+     * 同一个缺省上限；能力版本可显式覆盖，媒体 Worker 在独立心跳线程中续租。
      */
     private static final Duration READ_TIMEOUT = Duration.ofMinutes(5);
     private static final Duration CALL_TIMEOUT = Duration.ofMinutes(5);
@@ -76,6 +76,16 @@ public class GoogleNanoBananaClient {
     private OkHttpClient serviceClient(Request request) throws IOException {
         return http.newBuilder().dns(ServiceEndpointPolicy.dns(
                 request.url().uri(), Dns.SYSTEM)).build();
+    }
+
+    /** Keep the shared transport immutable when capabilities on the same connection use different limits. */
+    public GoogleNanoBananaClient withTimeouts(dev.agenvas.shared.http.HttpTimeouts timeouts) {
+        return timeouts == null ? this : new GoogleNanoBananaClient(this, timeouts);
+    }
+
+    private GoogleNanoBananaClient(GoogleNanoBananaClient source, dev.agenvas.shared.http.HttpTimeouts timeouts) {
+        this.mapper = source.mapper;
+        this.http = timeouts.configure(source.http);
     }
 
     public MediaPayload generate(String key, String model, String origin, String prompt,
@@ -110,7 +120,8 @@ public class GoogleNanoBananaClient {
                 .header("x-goog-api-key", key)
                 .header("Accept", "application/json")
                 .post(RequestBody.create(body.toString().getBytes(StandardCharsets.UTF_8),
-                        MediaType.parse("application/json"))).build();
+                        MediaType.parse("application/json")))
+                .build();
         try (Response response = serviceClient(request).newCall(request).execute()) {
             if (response.body() == null) {
                 throw new Uncertain(ProviderFailureCodes.PROTOCOL_INVALID,
@@ -141,7 +152,8 @@ public class GoogleNanoBananaClient {
             throw new Uncertain(ProviderFailureCodes.RESPONSE_LOST,
                     "Google image response was lost");
         } catch (RuntimeException failure) {
-            if (failure instanceof Rejected || failure instanceof Uncertain) throw failure;
+            if (failure instanceof Rejected || failure instanceof Uncertain)
+                throw failure;
             throw new Uncertain(ProviderFailureCodes.PROTOCOL_INVALID,
                     "Google image response could not be decoded");
         }
@@ -149,7 +161,8 @@ public class GoogleNanoBananaClient {
 
     MediaPayload generate(String key, String model, String origin, String prompt,
             String aspectRatio, List<InputImage> references) {
-        return generate(key, model, origin, prompt, aspectRatio, ImageGenerationParameters.DEFAULT_RESOLUTION, references);
+        return generate(key, model, origin, prompt, aspectRatio, ImageGenerationParameters.DEFAULT_RESOLUTION,
+                references);
     }
 
     /**
@@ -187,7 +200,8 @@ public class GoogleNanoBananaClient {
         }
     }
 
-    public record InputImage(byte[] bytes, String mimeType) {}
+    public record InputImage(byte[] bytes, String mimeType) {
+    }
 
     private static MediaPayload image(JsonNode response) {
         JsonNode candidates = response.path("candidates");
@@ -202,9 +216,11 @@ public class GoogleNanoBananaClient {
         }
         MediaPayload result = null;
         for (JsonNode part : parts) {
-            if (part.path("thought").asBoolean(false)) continue;
+            if (part.path("thought").asBoolean(false))
+                continue;
             JsonNode inline = part.path("inlineData");
-            if (inline.isMissingNode()) continue;
+            if (inline.isMissingNode())
+                continue;
             if (result != null || !inline.path("mimeType").isTextual()
                     || !inline.path("data").isTextual()) {
                 throw new Uncertain(ProviderFailureCodes.PROTOCOL_INVALID,
@@ -246,7 +262,9 @@ public class GoogleNanoBananaClient {
     }
 
     public static final class Rejected extends RuntimeException {
-        public Rejected(int status) { super("Google image request rejected: HTTP " + status); }
+        public Rejected(int status) {
+            super("Google image request rejected: HTTP " + status);
+        }
     }
 
     /**
@@ -261,6 +279,8 @@ public class GoogleNanoBananaClient {
             this.reasonCode = reasonCode;
         }
 
-        public String reasonCode() { return reasonCode; }
+        public String reasonCode() {
+            return reasonCode;
+        }
     }
 }

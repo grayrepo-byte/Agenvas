@@ -32,22 +32,29 @@ public class McpUploadController {
         this.mapper = mapper;
     }
 
-    @PostMapping(path = McpHttpEndpoints.UPLOAD, consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
-            produces = MediaType.APPLICATION_JSON_VALUE)
+    @PostMapping(path = McpHttpEndpoints.UPLOAD, consumes = MediaType.MULTIPART_FORM_DATA_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
     public JsonNode upload(@AuthenticationPrincipal McpPrincipal principal,
             @RequestPart("metadata") Part metadata, @RequestPart("file") MultipartFile file) throws IOException {
         JsonNode arguments;
-        if (metadata.getSize() > McpHttpEndpoints.MAX_UPLOAD_METADATA_BYTES) throw invalid();
+        if (metadata.getSize() > McpHttpEndpoints.MAX_UPLOAD_METADATA_BYTES)
+            throw invalid();
         try (var input = metadata.getInputStream()) {
             byte[] bytes = input.readNBytes(McpHttpEndpoints.MAX_UPLOAD_METADATA_BYTES + 1);
-            if (bytes.length > McpHttpEndpoints.MAX_UPLOAD_METADATA_BYTES) throw invalid();
-            try { arguments = mapper.readTree(bytes); }
-            catch (tools.jackson.core.JacksonException rejected) { throw invalid(); }
+            if (bytes.length > McpHttpEndpoints.MAX_UPLOAD_METADATA_BYTES)
+                throw invalid();
+            try {
+                arguments = mapper.readTree(bytes);
+            } catch (tools.jackson.core.JacksonException rejected) {
+                throw invalid();
+            }
         }
         return tools.uploadMedia(principal, arguments, file.getSize(), () -> {
-            try { return file.getInputStream(); }
-            catch (IOException failure) { throw new UncheckedIOException("Cannot open uploaded media", failure); }
+            try {
+                return file.getInputStream();
+            } catch (IOException failure) {
+                throw new UncheckedIOException("Cannot open uploaded media", failure);
+            }
         }).data();
     }
 

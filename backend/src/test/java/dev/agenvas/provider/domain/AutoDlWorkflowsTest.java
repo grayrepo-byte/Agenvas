@@ -9,17 +9,22 @@ import tools.jackson.databind.ObjectMapper;
 
 class AutoDlWorkflowsTest {
     private final ObjectMapper mapper = new ObjectMapper();
-    static Stream<AutoDlWorkflows.Workflow> workflows() { return AutoDlWorkflows.ALL.stream(); }
-    @ParameterizedTest @MethodSource("workflows")
+    static Stream<AutoDlWorkflows.Workflow> workflows() {
+        return AutoDlWorkflows.ALL.stream();
+    }
+    @ParameterizedTest
+    @MethodSource("workflows")
     void everyWorkflowHasAnExactResolutionAndCorrectRequiredBounds(AutoDlWorkflows.Workflow workflow) {
         assertThat(workflow.resolution(workflow.defaultResolution(), "16:9")).isIn(workflow.resolutions());
         assertThat(workflow.declaration().maxReferenceImages()).isEqualTo(workflow.imageFields().size());
         assertThat(workflow.declaration().maxReferenceAudios()).isEqualTo(workflow.audioFields().size());
-        workflow.validate("test", workflow.minimumSeconds(), workflow.mode(), workflow.minimumImages(), workflow.minimumAudios());
+        workflow.validate("test", workflow.minimumSeconds(), workflow.mode(), workflow.minimumImages(),
+                workflow.minimumAudios());
         assertThatThrownBy(() -> workflow.validate("test", workflow.maximumSeconds() + 1, workflow.mode(),
                 workflow.minimumImages(), workflow.minimumAudios())).hasMessageContaining("工作流输入不匹配");
     }
-    @Test void mapsExactEnumsAndRejectsUnsupportedModesSeedsAndIdentifiers() {
+    @Test
+    void mapsExactEnumsAndRejectsUnsupportedModesSeedsAndIdentifiers() {
         var workflow = AutoDlWorkflows.require("minimax_h3_z0903");
         assertThat(workflow.resolution("768p", "16:9")).isEqualTo("768p横(1376*768)");
         assertThatThrownBy(() -> workflow.resolution("768p", "1:1")).hasMessageContaining("不支持");
@@ -37,7 +42,8 @@ class AutoDlWorkflowsTest {
         source.put("seed", AutoDlWorkflows.MAX_SEED + 1);
         assertThatThrownBy(() -> AutoDlWorkflows.normalize(source, target)).hasMessageContaining("随机种子");
     }
-    @Test void publishesMultipleTiersAndPreservesHistoricalSingleTier() {
+    @Test
+    void publishesMultipleTiersAndPreservesHistoricalSingleTier() {
         var source = mapper.readTree("""
                 {"workflowId":"minimax_h3_z0901","videoResolution":"480p","videoResolutions":["480p","768p"]}
                 """);
@@ -50,10 +56,14 @@ class AutoDlWorkflowsTest {
         assertThat(target.path("videoResolutions").size()).isEqualTo(1);
         assertThatThrownBy(() -> AutoDlWorkflows.selectedResolution(target, "768p")).hasMessageContaining("分辨率");
     }
-    @Test void rejectsEmptyDuplicateUnsupportedTiersAndDefaultOutsidePublishedList() {
+    @Test
+    void rejectsEmptyDuplicateUnsupportedTiersAndDefaultOutsidePublishedList() {
         for (String tiers : java.util.List.of("[]", "[\"480p\",\"480p\"]", "[\"1440p\"]", "[\"768p\"]", "[480]")) {
-            var source = mapper.readTree("{\"workflowId\":\"minimax_h3_z0901\",\"videoResolution\":\"480p\",\"videoResolutions\":" + tiers + "}");
-            assertThatThrownBy(() -> AutoDlWorkflows.normalize(source, mapper.createObjectNode())).hasMessageContaining("分辨率");
+            var source = mapper
+                    .readTree("{\"workflowId\":\"minimax_h3_z0901\",\"videoResolution\":\"480p\",\"videoResolutions\":"
+                            + tiers + "}");
+            assertThatThrownBy(() -> AutoDlWorkflows.normalize(source, mapper.createObjectNode()))
+                    .hasMessageContaining("分辨率");
         }
     }
 }

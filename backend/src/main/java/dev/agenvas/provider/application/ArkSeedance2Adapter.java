@@ -9,6 +9,7 @@ import dev.agenvas.asset.infrastructure.MediaToolRunner;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.domain.AttemptContext;
+import dev.agenvas.provider.domain.MediaHttpTimeouts;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaPayload;
 import dev.agenvas.provider.domain.PortInput;
@@ -18,6 +19,7 @@ import dev.agenvas.provider.infrastructure.ArkMediaDownloadPolicy;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapshot;
 import dev.agenvas.settings.application.CredentialCipher;
+import dev.agenvas.shared.http.HttpTimeouts;
 import dev.agenvas.task.domain.Task;
 import java.awt.Color;
 import java.awt.Graphics2D;
@@ -57,7 +59,8 @@ public class ArkSeedance2Adapter implements MediaAdapter {
     public ArkSeedance2Adapter(JooqMediaCapabilityRepository catalog, CredentialCipher cipher,
             ArtifactService artifacts, AssetService assets, ProjectService projects,
             ArkSeedanceClient client, ArkMediaDownloadPolicy downloads,
-            MediaToolRunner mediaTools, ObjectMapper mapper, AudioReferenceLoader audioReferences, SeedanceVideoReferenceLoader videoReferences) {
+            MediaToolRunner mediaTools, ObjectMapper mapper, AudioReferenceLoader audioReferences,
+            SeedanceVideoReferenceLoader videoReferences) {
         this.catalog = catalog;
         this.cipher = cipher;
         this.artifacts = artifacts;
@@ -71,14 +74,19 @@ public class ArkSeedance2Adapter implements MediaAdapter {
         this.videoReferences = videoReferences;
     }
 
-    @Override public String adapterId() { return "ARK_SEEDANCE_2_I2V"; }
+    @Override
+    public String adapterId() {
+        return "ARK_SEEDANCE_2_I2V";
+    }
 
-    @Override public boolean supports(PortInput input) {
+    @Override
+    public boolean supports(PortInput input) {
         return input.kind() == Task.Kind.VIDEO_GENERATION
                 && input.durationSeconds() >= 4 && input.durationSeconds() <= 15;
     }
 
-    @Override public String preflightFailure(AttemptContext context) {
+    @Override
+    public String preflightFailure(AttemptContext context) {
         try {
             credential(snapshot(context));
         } catch (RuntimeException unavailable) {
@@ -86,33 +94,39 @@ public class ArkSeedance2Adapter implements MediaAdapter {
         }
         try {
             int seconds = context.lease().input().path("durationSeconds").asInt(-1);
-            if (seconds < 4 || seconds > 15) return "PROVIDER_UNSUPPORTED_INPUT";
+            if (seconds < 4 || seconds > 15)
+                return "PROVIDER_UNSUPPORTED_INPUT";
             references(context, false);
             videoReferences.preflight(context);
             return null;
         } catch (dev.agenvas.shared.error.ApiProblemException invalid) {
             return java.util.Set.of("SEEDANCE_VIDEO_REFERENCE_INVALID", "MEDIA_RELAY_REQUIRED",
                     "MEDIA_RELAY_PUBLIC_ENDPOINT_REQUIRED").contains(invalid.code())
-                    ? invalid.code() : "PROVIDER_UNSUPPORTED_INPUT";
+                            ? invalid.code()
+                            : "PROVIDER_UNSUPPORTED_INPUT";
         } catch (RuntimeException invalid) {
             return "PROVIDER_UNSUPPORTED_INPUT";
         }
     }
 
-    @Override public Submission submit(AttemptContext context) {
-        String key = credential(snapshot(context));
+    @Override
+    public Submission submit(AttemptContext context) {
+        Snapshot snapshot = snapshot(context);
+        String key = credential(snapshot);
         Task task = context.lease();
         String prompt = task.input().path("prompt").asText();
         String negative = task.input().path("negativePrompt").asText("");
-        if (!negative.isBlank()) prompt += "\nAvoid: " + negative;
+        if (!negative.isBlank())
+            prompt += "\nAvoid: " + negative;
         try {
             List<ArkSeedanceClient.Reference> references;
-            try { references = references(context, true); }
-            catch (RuntimeException unavailable) {
+            try {
+                references = references(context, true);
+            } catch (RuntimeException unavailable) {
                 // No Ark create call occurred. A relay PUT failure cannot be a generation UNKNOWN.
                 return new Submission.Rejected("MEDIA_REFERENCE_PREPARATION_FAILED");
             }
-            String id = client.create(key, prompt, references,
+            String id = api(snapshot).create(key, prompt, references,
                     task.input().path("durationSeconds").asInt(-1), ratio(context));
             return new Submission.Accepted(id);
         } catch (ArkSeedanceClient.Rejected rejected) {
@@ -122,15 +136,17 @@ public class ArkSeedance2Adapter implements MediaAdapter {
         }
     }
 
-    @Override public Submission reconcile(AttemptContext context) {
+    @Override
+    public Submission reconcile(AttemptContext context) {
         try {
-            ArkSeedanceClient.TaskState state = client.query(
-                    credential(snapshot(context)), context.originalRequestId());
+            Snapshot snapshot = snapshot(context);
+            ArkSeedanceClient.TaskState state = api(snapshot).query(
+                    credential(snapshot), context.originalRequestId());
             return switch (state.status()) {
                 case "queued", "running" -> new Submission.Pending(Instant.now().plusSeconds(5));
                 case "failed", "cancelled" -> new Submission.Rejected("ARK_TASK_FAILED");
                 case "expired" -> new Submission.Blocked("ARK_TASK_EXPIRED");
-                case "succeeded" -> completed(context, state);
+                case "succeeded" -> completed(context, snapshot, state);
                 default -> new Submission.Blocked("PROVIDER_PROTOCOL_INVALID");
             };
         } catch (ArkSeedanceClient.ProtocolFailure invalid) {
@@ -143,7 +159,7 @@ public class ArkSeedance2Adapter implements MediaAdapter {
     }
 
     /** An expired TOS URL can only be refreshed by querying the same persisted task ID. */
-    private Submission completed(AttemptContext context, ArkSeedanceClient.TaskState state) {
+    private Submission completed(AttemptContext context, Snapshot snapshot, ArkSeedanceClient.TaskState state) {
         if (state.videoUrl() == null || state.videoUrl().isBlank()) {
             return new Submission.Blocked("ARK_RESULT_MISSING_URL");
         }
@@ -154,17 +170,17 @@ public class ArkSeedance2Adapter implements MediaAdapter {
             return new Submission.Blocked("ARK_MEDIA_URL_REJECTED");
         }
         try {
-            return new Submission.Completed(downloadVideo(url,
+            return new Submission.Completed(downloadVideo(snapshot, url,
                     context.lease().input().path("durationSeconds").asInt(-1)));
         } catch (ArkMediaDownloadPolicy.Expired expired) {
-            ArkSeedanceClient.TaskState refreshed = client.query(
-                    credential(snapshot(context)), context.originalRequestId());
+            ArkSeedanceClient.TaskState refreshed = api(snapshot).query(
+                    credential(snapshot), context.originalRequestId());
             if (!"succeeded".equals(refreshed.status()) || refreshed.videoUrl() == null
                     || refreshed.videoUrl().equals(state.videoUrl())) {
                 return new Submission.Blocked("ARK_MEDIA_URL_EXPIRED");
             }
             try {
-                return new Submission.Completed(downloadVideo(URI.create(refreshed.videoUrl()),
+                return new Submission.Completed(downloadVideo(snapshot, URI.create(refreshed.videoUrl()),
                         context.lease().input().path("durationSeconds").asInt(-1)));
             } catch (IllegalArgumentException | ArkMediaDownloadPolicy.Expired invalid) {
                 return new Submission.Blocked("ARK_MEDIA_URL_EXPIRED");
@@ -173,7 +189,7 @@ public class ArkSeedance2Adapter implements MediaAdapter {
     }
 
     /** Archive the provider's original bytes, including every audio track, regardless of input references. */
-    private MediaPayload downloadVideo(URI url, int expectedSeconds) {
+    private MediaPayload downloadVideo(Snapshot snapshot, URI url, int expectedSeconds) {
         downloads.validate(url);
         Path directory;
         try {
@@ -184,13 +200,18 @@ public class ArkSeedance2Adapter implements MediaAdapter {
         Path raw = directory.resolve("result.mp4");
         try {
             try (OutputStream sink = Files.newOutputStream(raw)) {
-                downloads.download(url, sink, 500L * 1024 * 1024);
+                downloads(snapshot).download(url, sink, 500L * 1024 * 1024);
             }
             probe(raw, expectedSeconds);
             InputStream file = Files.newInputStream(raw);
             return new MediaPayload(new FilterInputStream(file) {
-                @Override public void close() throws IOException {
-                    try { super.close(); } finally { cleanup(raw, directory); }
+                @Override
+                public void close() throws IOException {
+                    try {
+                        super.close();
+                    } finally {
+                        cleanup(raw, directory);
+                    }
                 }
             }, "video/mp4");
         } catch (IOException failure) {
@@ -198,7 +219,8 @@ public class ArkSeedance2Adapter implements MediaAdapter {
             throw new ArkMediaDownloadPolicy.TechnicalFailure("Ark scratch write failed");
         } catch (MediaToolRunner.MediaToolException failure) {
             cleanup(raw, directory);
-            if (failure.invalidInput()) throw new InvalidMedia();
+            if (failure.invalidInput())
+                throw new InvalidMedia();
             throw failure;
         } catch (RuntimeException failure) {
             cleanup(raw, directory);
@@ -232,19 +254,37 @@ public class ArkSeedance2Adapter implements MediaAdapter {
         }
     }
 
-    private static final class InvalidMedia extends RuntimeException {}
+    private static final class InvalidMedia extends RuntimeException {
+    }
 
     private Snapshot snapshot(AttemptContext context) {
         var binding = context.binding();
         Snapshot snapshot = catalog.snapshotAt(binding.capabilityId(),
                 binding.capabilityVersion(), binding.connectionId(),
-                binding.connectionVersion()).orElseThrow(() ->
-                new IllegalStateException("Pinned media capability version is missing"));
+                binding.connectionVersion())
+                .orElseThrow(() -> new IllegalStateException("Pinned media capability version is missing"));
         if (!adapterId().equals(snapshot.adapterId())
                 || !binding.mappingSha256().equals(snapshot.mappingSha256())) {
             throw new IllegalStateException("Pinned Seedance mapping differs");
         }
         return snapshot;
+    }
+
+    /** Read only the immutable capability version selected when this task was accepted. */
+    private HttpTimeouts httpTimeouts(Snapshot snapshot) {
+        return snapshot.specJson() == null
+                ? null
+                : MediaHttpTimeouts.configured(mapper.readTree(snapshot.specJson()).path("settings"));
+    }
+
+    private ArkSeedanceClient api(Snapshot snapshot) {
+        var timeouts = httpTimeouts(snapshot);
+        return timeouts == null ? client : client.withTimeouts(timeouts);
+    }
+
+    private ArkMediaDownloadPolicy downloads(Snapshot snapshot) {
+        var timeouts = httpTimeouts(snapshot);
+        return timeouts == null ? downloads : downloads.withTimeouts(timeouts);
     }
 
     private String credential(Snapshot snapshot) {
@@ -272,7 +312,8 @@ public class ArkSeedance2Adapter implements MediaAdapter {
         }
         String requested = VideoGenerationParameters.parse(context.lease().input()
                 .path("mediaInput").path("parameters")).aspectRatio();
-        if (!VideoGenerationParameters.AUTO_ASPECT_RATIO.equals(requested)) return requested;
+        if (!VideoGenerationParameters.AUTO_ASPECT_RATIO.equals(requested))
+            return requested;
         return switch (aspect(context)) {
             case LANDSCAPE_16_9 -> VideoGenerationParameters.LANDSCAPE_ASPECT_RATIO;
             case PORTRAIT_9_16 -> VideoGenerationParameters.PORTRAIT_ASPECT_RATIO;
@@ -286,7 +327,8 @@ public class ArkSeedance2Adapter implements MediaAdapter {
         var videos = FrozenMediaInputs.videos(task);
         var audios = audioReferences.load(context.ownerId(), task, false);
         String mode = task.input().path("mediaInput").path("mode").asText();
-        if (images.size() > 9 || !audios.isEmpty() && (images.isEmpty() && videos.isEmpty() || !"GENERAL_REFERENCE".equals(mode)))
+        if (images.size() > 9
+                || !audios.isEmpty() && (images.isEmpty() && videos.isEmpty() || !"GENERAL_REFERENCE".equals(mode)))
             throw new IllegalArgumentException("Seedance audio requires a visual reference in general mode");
         var result = new java.util.ArrayList<ArkSeedanceClient.Reference>();
         for (var image : images) {
@@ -298,10 +340,12 @@ public class ArkSeedance2Adapter implements MediaAdapter {
             };
             result.add(new ArkSeedanceClient.Reference("image/png", pinnedFrame(context, image), role));
         }
-        for (var audio : audios) result.add(new ArkSeedanceClient.Reference(audio.contentType(), audio.bytes(), "reference_audio"));
+        for (var audio : audios)
+            result.add(new ArkSeedanceClient.Reference(audio.contentType(), audio.bytes(), "reference_audio"));
         if (!videos.isEmpty() && !"GENERAL_REFERENCE".equals(mode))
             throw new IllegalArgumentException("Seedance video references require general mode");
-        if (submitting) result.addAll(videoReferences.load(context));
+        if (submitting)
+            result.addAll(videoReferences.load(context));
         return List.copyOf(result);
     }
 
@@ -319,12 +363,15 @@ public class ArkSeedance2Adapter implements MediaAdapter {
         }
         try {
             BufferedImage source = ImageIO.read(file.path().toFile());
-            if (source == null) throw new IllegalArgumentException(
-                    "Pinned video input cannot be decoded");
+            if (source == null)
+                throw new IllegalArgumentException(
+                        "Pinned video input cannot be decoded");
             Project.AspectRatio projectAspect = aspect(context);
-            int width = projectAspect == Project.AspectRatio.PORTRAIT_9_16 ? 720
+            int width = projectAspect == Project.AspectRatio.PORTRAIT_9_16
+                    ? 720
                     : projectAspect == Project.AspectRatio.SQUARE_1_1 ? 1024 : 1280;
-            int height = projectAspect == Project.AspectRatio.PORTRAIT_9_16 ? 1280
+            int height = projectAspect == Project.AspectRatio.PORTRAIT_9_16
+                    ? 1280
                     : projectAspect == Project.AspectRatio.SQUARE_1_1 ? 1024 : 720;
             BufferedImage output = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
             Graphics2D graphics = output.createGraphics();

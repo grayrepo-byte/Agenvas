@@ -83,43 +83,11 @@ public class DirectorSettingsRecord extends UpdatableRecordImpl<DirectorSettings
     }
 
     /**
-     * Setter for <code>public.director_settings.summary_tokens</code>. 交接摘要的
-     * Token 上限
-     */
-    public void setSummaryTokens(Integer value) {
-        set(4, value);
-    }
-
-    /**
-     * Getter for <code>public.director_settings.summary_tokens</code>. 交接摘要的
-     * Token 上限
-     */
-    public Integer getSummaryTokens() {
-        return (Integer) get(4);
-    }
-
-    /**
-     * Setter for <code>public.director_settings.recent_tool_rounds</code>.
-     * 压缩时最多保留的完整近期工具回合
-     */
-    public void setRecentToolRounds(Integer value) {
-        set(5, value);
-    }
-
-    /**
-     * Getter for <code>public.director_settings.recent_tool_rounds</code>.
-     * 压缩时最多保留的完整近期工具回合
-     */
-    public Integer getRecentToolRounds() {
-        return (Integer) get(5);
-    }
-
-    /**
      * Setter for <code>public.director_settings.recovery_window_minutes</code>.
      * 从首次临时模型失败开始的恢复期限分钟数
      */
     public void setRecoveryWindowMinutes(Integer value) {
-        set(6, value);
+        set(4, value);
     }
 
     /**
@@ -127,7 +95,7 @@ public class DirectorSettingsRecord extends UpdatableRecordImpl<DirectorSettings
      * 从首次临时模型失败开始的恢复期限分钟数
      */
     public Integer getRecoveryWindowMinutes() {
-        return (Integer) get(6);
+        return (Integer) get(4);
     }
 
     /**
@@ -135,7 +103,7 @@ public class DirectorSettingsRecord extends UpdatableRecordImpl<DirectorSettings
      * 同一模型请求首次调用以外的最多重试次数
      */
     public void setMaxModelRetries(Integer value) {
-        set(7, value);
+        set(5, value);
     }
 
     /**
@@ -143,7 +111,7 @@ public class DirectorSettingsRecord extends UpdatableRecordImpl<DirectorSettings
      * 同一模型请求首次调用以外的最多重试次数
      */
     public Integer getMaxModelRetries() {
-        return (Integer) get(7);
+        return (Integer) get(5);
     }
 
     /**
@@ -151,7 +119,7 @@ public class DirectorSettingsRecord extends UpdatableRecordImpl<DirectorSettings
      * 模型失败指数退避的最大秒数
      */
     public void setRetryMaxDelaySeconds(Integer value) {
-        set(8, value);
+        set(6, value);
     }
 
     /**
@@ -159,7 +127,7 @@ public class DirectorSettingsRecord extends UpdatableRecordImpl<DirectorSettings
      * 模型失败指数退避的最大秒数
      */
     public Integer getRetryMaxDelaySeconds() {
-        return (Integer) get(8);
+        return (Integer) get(6);
     }
 
     /**
@@ -167,7 +135,7 @@ public class DirectorSettingsRecord extends UpdatableRecordImpl<DirectorSettings
      * 同一工具参数或摘要错误链的最多修复次数
      */
     public void setMaxRepairAttempts(Integer value) {
-        set(9, value);
+        set(7, value);
     }
 
     /**
@@ -175,21 +143,21 @@ public class DirectorSettingsRecord extends UpdatableRecordImpl<DirectorSettings
      * 同一工具参数或摘要错误链的最多修复次数
      */
     public Integer getMaxRepairAttempts() {
-        return (Integer) get(9);
+        return (Integer) get(7);
     }
 
     /**
      * Setter for <code>public.director_settings.version</code>. 管理员保存设置时的乐观锁版本
      */
     public void setVersion(Long value) {
-        set(10, value);
+        set(8, value);
     }
 
     /**
      * Getter for <code>public.director_settings.version</code>. 管理员保存设置时的乐观锁版本
      */
     public Long getVersion() {
-        return (Long) get(10);
+        return (Long) get(8);
     }
 
     // -------------------------------------------------------------------------
@@ -215,15 +183,13 @@ public class DirectorSettingsRecord extends UpdatableRecordImpl<DirectorSettings
     /**
      * Create a detached, initialised DirectorSettingsRecord
      */
-    public DirectorSettingsRecord(Integer id, Integer contextWindowTokens, Integer compactionThresholdPercent, Integer responseReserveTokens, Integer summaryTokens, Integer recentToolRounds, Integer recoveryWindowMinutes, Integer maxModelRetries, Integer retryMaxDelaySeconds, Integer maxRepairAttempts, Long version) {
+    public DirectorSettingsRecord(Integer id, Integer contextWindowTokens, Integer compactionThresholdPercent, Integer responseReserveTokens, Integer recoveryWindowMinutes, Integer maxModelRetries, Integer retryMaxDelaySeconds, Integer maxRepairAttempts, Long version) {
         super(DirectorSettings.DIRECTOR_SETTINGS);
 
         setId(id);
         setContextWindowTokens(contextWindowTokens);
         setCompactionThresholdPercent(compactionThresholdPercent);
         setResponseReserveTokens(responseReserveTokens);
-        setSummaryTokens(summaryTokens);
-        setRecentToolRounds(recentToolRounds);
         setRecoveryWindowMinutes(recoveryWindowMinutes);
         setMaxModelRetries(maxModelRetries);
         setRetryMaxDelaySeconds(retryMaxDelaySeconds);

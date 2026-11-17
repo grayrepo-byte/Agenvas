@@ -10,13 +10,24 @@ afterEach(() => document.body.replaceChildren());
 
 describe("canvas editing shortcuts", () => {
   it.each([
-    ["a", {}, "selectAll"], ["A", { ctrlKey: false, metaKey: true }, "selectAll"],
+    ["a", {}, "selectAll"],
+    ["A", { ctrlKey: false, metaKey: true }, "selectAll"],
     ["a", { repeat: true }, "selectAll"],
-    ["d", { repeat: true }, "duplicate"], ["v", { repeat: true }, "paste"], ["z", { repeat: true }, "undo"],
-    ["Backspace", { ctrlKey: false }, "delete"], ["Delete", { ctrlKey: false }, "delete"],
-    ["d", {}, "duplicate"], ["c", {}, "copy"], ["v", {}, "paste"], ["z", {}, "undo"],
-    ["Z", { shiftKey: true }, "redo"], ["y", {}, "redo"], ["g", {}, "group"], ["G", { shiftKey: true }, "ungroup"],
-    ["d", { ctrlKey: false, metaKey: true }, "duplicate"], ["z", { ctrlKey: false, metaKey: true }, "undo"],
+    ["d", { repeat: true }, "duplicate"],
+    ["v", { repeat: true }, "paste"],
+    ["z", { repeat: true }, "undo"],
+    ["Backspace", { ctrlKey: false }, "delete"],
+    ["Delete", { ctrlKey: false }, "delete"],
+    ["d", {}, "duplicate"],
+    ["c", {}, "copy"],
+    ["v", {}, "paste"],
+    ["z", {}, "undo"],
+    ["Z", { shiftKey: true }, "redo"],
+    ["y", {}, "redo"],
+    ["g", {}, "group"],
+    ["G", { shiftKey: true }, "ungroup"],
+    ["d", { ctrlKey: false, metaKey: true }, "duplicate"],
+    ["z", { ctrlKey: false, metaKey: true }, "undo"],
     ["Z", { ctrlKey: false, metaKey: true, shiftKey: true }, "redo"],
   ] as const)("recognises %s with %j", (key, options, expected) => {
     const keyEvent = event(key, options);
@@ -25,45 +36,67 @@ describe("canvas editing shortcuts", () => {
   });
 
   it.each([
-    ["d", { ctrlKey: false }], ["d", { altKey: true }],
-    ["d", { isComposing: true }], ["c", { shiftKey: true }], ["v", { shiftKey: true }],
-    ["d", { shiftKey: true }], ["y", { metaKey: true, ctrlKey: false }], ["y", { shiftKey: true }], ["x", {}],
-    ["a", { ctrlKey: false }], ["a", { altKey: true }], ["a", { shiftKey: true }], ["a", { isComposing: true }],
-    ["Delete", {}], ["Backspace", { ctrlKey: false, metaKey: true }], ["Delete", { ctrlKey: false, shiftKey: true }],
+    ["d", { ctrlKey: false }],
+    ["d", { altKey: true }],
+    ["d", { isComposing: true }],
+    ["c", { shiftKey: true }],
+    ["v", { shiftKey: true }],
+    ["d", { shiftKey: true }],
+    ["y", { metaKey: true, ctrlKey: false }],
+    ["y", { shiftKey: true }],
+    ["x", {}],
+    ["a", { ctrlKey: false }],
+    ["a", { altKey: true }],
+    ["a", { shiftKey: true }],
+    ["a", { isComposing: true }],
+    ["Delete", {}],
+    ["Backspace", { ctrlKey: false, metaKey: true }],
+    ["Delete", { ctrlKey: false, shiftKey: true }],
   ] as const)("ignores unsupported modifier state for %s %j", (key, options) => {
     expect(resolveCanvasEditingShortcut(event(key, options))).toBeNull();
   });
 
   it("ignores handled events and the IME compatibility keycode", () => {
-    const handled = event("z"); handled.preventDefault();
+    const handled = event("z");
+    handled.preventDefault();
     expect(resolveCanvasEditingShortcut(handled)).toBeNull();
-    const ime = event("z"); Object.defineProperty(ime, "keyCode", { value: 229 });
+    const ime = event("z");
+    Object.defineProperty(ime, "keyCode", { value: 229 });
     expect(resolveCanvasEditingShortcut(ime)).toBeNull();
   });
 
-  it.each(["input", "textarea", "select", "[contenteditable]", "[role='textbox']"])("leaves %s and descendants to their own editor", (selector) => {
-    const element = selector.startsWith("[") ? document.createElement("div") : document.createElement(selector);
-    if (selector === "[contenteditable]") element.setAttribute("contenteditable", "true");
-    if (selector === "[role='textbox']") element.setAttribute("role", "textbox");
-    document.body.append(element);
-    expect(resolveCanvasEditingShortcut(event("z", {}, element))).toBeNull();
-    expect(resolveCanvasEditingShortcut(event("a", {}, element))).toBeNull();
-    for (const key of ["c", "v", "z", "y", "Backspace", "Delete"]) {
-      expect(resolveCanvasEditingShortcut(event(key, { ctrlKey: key.length === 1 }, element))).toBeNull();
-    }
-    const child = document.createElement("span"); element.append(child);
-    expect(resolveCanvasEditingShortcut(event("g", {}, child))).toBeNull();
-    expect(resolveCanvasEditingShortcut(event("a", {}, child))).toBeNull();
-  });
+  it.each(["input", "textarea", "select", "[contenteditable]", "[role='textbox']"])(
+    "leaves %s and descendants to their own editor",
+    selector => {
+      const element = selector.startsWith("[") ? document.createElement("div") : document.createElement(selector);
+      if (selector === "[contenteditable]") element.setAttribute("contenteditable", "true");
+      if (selector === "[role='textbox']") element.setAttribute("role", "textbox");
+      document.body.append(element);
+      expect(resolveCanvasEditingShortcut(event("z", {}, element))).toBeNull();
+      expect(resolveCanvasEditingShortcut(event("a", {}, element))).toBeNull();
+      for (const key of ["c", "v", "z", "y", "Backspace", "Delete"]) {
+        expect(resolveCanvasEditingShortcut(event(key, { ctrlKey: key.length === 1 }, element))).toBeNull();
+      }
+      const child = document.createElement("span");
+      element.append(child);
+      expect(resolveCanvasEditingShortcut(event("g", {}, child))).toBeNull();
+      expect(resolveCanvasEditingShortcut(event("a", {}, child))).toBeNull();
+    },
+  );
 
   it("also recognises editable ancestors of a text node", () => {
-    const editable = document.createElement("div"); editable.setAttribute("contenteditable", "true");
-    const text = document.createTextNode("draft"); editable.append(text); document.body.append(editable);
+    const editable = document.createElement("div");
+    editable.setAttribute("contenteditable", "true");
+    const text = document.createTextNode("draft");
+    editable.append(text);
+    document.body.append(editable);
     expect(resolveCanvasEditingShortcut(event("c", {}, text))).toBeNull();
   });
 
-  it.each(["dialog", "alertdialog", "menu", "listbox"])("ignores shortcuts while a %s is open elsewhere", (role) => {
-    const overlay = document.createElement("div"); overlay.setAttribute("role", role); document.body.append(overlay);
+  it.each(["dialog", "alertdialog", "menu", "listbox"])("ignores shortcuts while a %s is open elsewhere", role => {
+    const overlay = document.createElement("div");
+    overlay.setAttribute("role", role);
+    document.body.append(overlay);
     expect(hasOpenCanvasEditingOverlay(document)).toBe(true);
     expect(resolveCanvasEditingShortcut(event("z"))).toBeNull();
     expect(resolveCanvasEditingShortcut(event("a"))).toBeNull();

@@ -21,16 +21,26 @@ export function templateSeedPrompt(fields: MediaDraftFields): string {
     counts.set(input.role, count);
     let label: string;
     switch (input.role) {
-      case "START_FRAME": label = "Start Frame"; break;
-      case "END_FRAME": label = "End Frame"; break;
-      case "AUDIO_REFERENCE": label = `Audio ${count}`; break;
-      case "VIDEO_REFERENCE": label = `Video ${count}`; break;
-      case "REFERENCE": label = `Image ${count}`; break;
+      case "START_FRAME":
+        label = "Start Frame";
+        break;
+      case "END_FRAME":
+        label = "End Frame";
+        break;
+      case "AUDIO_REFERENCE":
+        label = `Audio ${count}`;
+        break;
+      case "VIDEO_REFERENCE":
+        label = `Video ${count}`;
+        break;
+      case "REFERENCE":
+        label = `Image ${count}`;
+        break;
     }
     labels.set(input.versionId, label);
   }
   let mentionIndex = 0;
-  return Array.from(fields.prompt, (character) => {
+  return Array.from(fields.prompt, character => {
     if (character !== MENTION_MARKER) return character;
     const mention = fields.mentions[mentionIndex++];
     return mention ? `@${labels.get(mention.versionId) ?? "Reference"}` : "";
@@ -42,67 +52,97 @@ export function templateImageSlots(capability: MediaCapability | undefined, fiel
   const definition = workflowDefinition(capability);
   if (!definition) return [];
   const values = workflowDraftValues(capability, fields);
-  return evaluateWorkflowFields(definition, values, fields.prompt, fields.durationSeconds).activeFields
-    .filter((field) => field.type === "IMAGE" && (field.source == null || field.source === "PARAMETER"));
+  return evaluateWorkflowFields(definition, values, fields.prompt, fields.durationSeconds).activeFields.filter(
+    field => field.type === "IMAGE" && (field.source == null || field.source === "PARAMETER"),
+  );
 }
 
 /** Templates cannot write a prompt when the published workflow exposes no active prompt input. */
 export function templatePromptEnabled(capability: MediaCapability | undefined, fields: MediaDraftFields) {
   const definition = workflowDefinition(capability);
   if (!definition) return true;
-  const prompt = definition.fields.find((field) => field.source === "PROMPT");
+  const prompt = definition.fields.find(field => field.source === "PROMPT");
   if (!prompt) return false;
-  return evaluateWorkflowFields(definition, workflowDraftValues(capability, fields), fields.prompt,
-    fields.durationSeconds).activeFields.includes(prompt);
+  return evaluateWorkflowFields(
+    definition,
+    workflowDraftValues(capability, fields),
+    fields.prompt,
+    fields.durationSeconds,
+  ).activeFields.includes(prompt);
 }
 
 /** Validate the whole replacement before importing bytes; no reference is silently truncated. */
-export function templateApplicationError(kind: MediaTemplateKind, fields: MediaDraftFields,
-  capability: MediaCapability | undefined, imageCount: number, options: TemplateApplyOptions,
-  prompt: string): string | null {
+export function templateApplicationError(
+  kind: MediaTemplateKind,
+  fields: MediaDraftFields,
+  capability: MediaCapability | undefined,
+  imageCount: number,
+  options: TemplateApplyOptions,
+  prompt: string,
+): string | null {
   const promptEnabled = templatePromptEnabled(capability, fields);
-  const promptField = workflowDefinition(capability)?.fields.find((field) => field.source === "PROMPT");
-  if (promptEnabled && prompt.length > Math.min(MAX_TEMPLATE_PROMPT, promptField?.maxLength ?? MAX_TEMPLATE_PROMPT)) return t("templates.promptTooLong");
+  const promptField = workflowDefinition(capability)?.fields.find(field => field.source === "PROMPT");
+  if (promptEnabled && prompt.length > Math.min(MAX_TEMPLATE_PROMPT, promptField?.maxLength ?? MAX_TEMPLATE_PROMPT))
+    return t("templates.promptTooLong");
   if (!promptEnabled && imageCount === 0) return t("media.workflow.noPrompt");
   if (imageCount === 0) return null;
   if (!capability) return t("templates.chooseCapability");
   if (workflowDefinition(capability)) {
     const slots = templateImageSlots(capability, { ...fields, prompt: promptEnabled ? prompt : fields.prompt });
     if (imageCount > slots.length) return t("templates.imageLimit", { "0": slots.length });
-    if (options.imageSlots.length !== imageCount || options.imageSlots.some((key) => !slots.some((slot) => slot.key === key))
-      || new Set(options.imageSlots).size !== imageCount) return t("templates.assignSlots");
+    if (
+      options.imageSlots.length !== imageCount ||
+      options.imageSlots.some(key => !slots.some(slot => slot.key === key)) ||
+      new Set(options.imageSlots).size !== imageCount
+    )
+      return t("templates.assignSlots");
     return null;
   }
   let limit = capability.maxReferenceImages;
   if (kind === "VIDEO") {
     const mode = options.videoInputMode;
-    if (!mode || mode === "TEXT" || !capability.supportedVideoInputModes.includes(mode)) return t("templates.chooseImageMode");
+    if (!mode || mode === "TEXT" || !capability.supportedVideoInputModes.includes(mode))
+      return t("templates.chooseImageMode");
     if (mode === "START_END") limit = capability.supportsEndFrame ? START_END_LIMIT : 1;
   }
   return imageCount > limit ? t("templates.imageLimit", { "0": limit }) : null;
 }
 
 /** A template changes prompt/references only; model, duration and other parameters remain owned by the draft. */
-export function templateDraftChanges(kind: MediaTemplateKind, fields: MediaDraftFields,
-  capability: MediaCapability | undefined, imported: MediaTemplateImport,
-  options: TemplateApplyOptions, colors: readonly string[]): Partial<MediaDraftFields> {
+export function templateDraftChanges(
+  kind: MediaTemplateKind,
+  fields: MediaDraftFields,
+  capability: MediaCapability | undefined,
+  imported: MediaTemplateImport,
+  options: TemplateApplyOptions,
+  colors: readonly string[],
+): Partial<MediaDraftFields> {
   const invalid = templateApplicationError(kind, fields, capability, imported.images.length, options, imported.prompt);
   if (invalid) throw new Error(invalid);
   const promptEnabled = templatePromptEnabled(capability, fields);
   const changes: Partial<MediaDraftFields> = promptEnabled ? { prompt: imported.prompt, mentions: [] } : {};
   if (imported.videoInputMode) changes.videoInputMode = imported.videoInputMode;
   if (imported.references?.length && !workflowDefinition(capability)) {
-    changes.mediaInputs = imported.references.map((reference, index) => ({ versionId: reference.versionId,
-      role: reference.role, color: colors[index % colors.length]! }));
+    changes.mediaInputs = imported.references.map((reference, index) => ({
+      versionId: reference.versionId,
+      role: reference.role,
+      color: colors[index % colors.length]!,
+    }));
     if (!promptEnabled) Object.assign(changes, promptForMediaInputs(fields, changes.mediaInputs));
     return changes;
   }
   if (imported.images.length === 0) return changes;
   const definition = workflowDefinition(capability);
-  changes.mediaInputs = imported.images.map((image, index) => ({ versionId: image.versionId,
-    role: !definition && kind === "VIDEO" && options.videoInputMode === "START_END"
-      ? index === 0 ? "START_FRAME" : "END_FRAME" : "REFERENCE",
-    color: colors[index % colors.length]! }));
+  changes.mediaInputs = imported.images.map((image, index) => ({
+    versionId: image.versionId,
+    role:
+      !definition && kind === "VIDEO" && options.videoInputMode === "START_END"
+        ? index === 0
+          ? "START_FRAME"
+          : "END_FRAME"
+        : "REFERENCE",
+    color: colors[index % colors.length]!,
+  }));
   if (!promptEnabled) Object.assign(changes, promptForMediaInputs(fields, changes.mediaInputs));
   if (kind === "VIDEO") changes.videoInputMode = definition ? "GENERAL_REFERENCE" : options.videoInputMode;
   if (definition) {
@@ -111,7 +151,9 @@ export function templateDraftChanges(kind: MediaTemplateKind, fields: MediaDraft
     for (const field of definition.fields) {
       if (isWorkflowMediaField(field)) delete dynamicValues[field.key];
     }
-    imported.images.forEach((image, index) => { dynamicValues[options.imageSlots[index]!] = image.versionId; });
+    imported.images.forEach((image, index) => {
+      dynamicValues[options.imageSlots[index]!] = image.versionId;
+    });
     changes.parameters = { ...fields.parameters, dynamicValues };
   }
   return changes;

@@ -105,7 +105,8 @@ public class DirectMediaTaskService {
             CanvasService canvas,
             MediaCapabilityService capabilities,
             ProjectEventService events, UsageService usage,
-            ObjectMapper mapper, Clock clock, ProjectService projects, AgentRunService runs, MediaStyleService styles, dev.agenvas.asset.storage.MediaRelayService relay,
+            ObjectMapper mapper, Clock clock, ProjectService projects, AgentRunService runs, MediaStyleService styles,
+            dev.agenvas.asset.storage.MediaRelayService relay,
             PromptService prompts, dev.agenvas.provider.application.MediaFunctionService functions,
             ObjectProvider<CharacterService> characters, CreationMessages creationMessages,
             CanvasPromptInputService promptInputs) {
@@ -143,9 +144,11 @@ public class DirectMediaTaskService {
     public Task runApproved(UUID ownerId, UUID projectId, UUID runId, UUID approvalId,
             UUID artifactId, UUID canvasItemId, long expectedDraftVersion, String commandKey) {
         if (runId == null || approvalId == null) {
-            throw invalid(ApiMessage.of("api.direct-media-task-service.requires-a-valid-idempotency-key-and-draft-version"));
+            throw invalid(
+                    ApiMessage.of("api.direct-media-task-service.requires-a-valid-idempotency-key-and-draft-version"));
         }
-        return runApproved(ownerId, projectId, runId, approvalId, artifactId, canvasItemId, expectedDraftVersion, commandKey, null);
+        return runApproved(ownerId, projectId, runId, approvalId, artifactId, canvasItemId, expectedDraftVersion,
+                commandKey, null);
     }
 
     @Transactional
@@ -160,7 +163,9 @@ public class DirectMediaTaskService {
     public Task runApproved(UUID ownerId, UUID projectId, UUID runId, UUID approvalId,
             UUID artifactId, UUID canvasItemId, long expectedDraftVersion, String commandKey,
             JsonNode creativeSkill, boolean requireExplicitSelection) {
-        if (runId == null || approvalId == null) throw invalid(ApiMessage.of("api.direct-media-task-service.requires-a-valid-idempotency-key-and-draft-version"));
+        if (runId == null || approvalId == null)
+            throw invalid(
+                    ApiMessage.of("api.direct-media-task-service.requires-a-valid-idempotency-key-and-draft-version"));
         return runInternal(ownerId, projectId, runId, approvalId, artifactId, canvasItemId,
                 expectedDraftVersion, commandKey, creativeSkill, null, requireExplicitSelection).getFirst();
     }
@@ -170,18 +175,23 @@ public class DirectMediaTaskService {
     @Transactional
     public List<Task> runExternal(UUID ownerId, UUID projectId, UUID artifactId, UUID canvasItemId,
             long expectedDraftVersion, UUID tokenId, UUID operationId) {
-        if (tokenId == null || operationId == null) throw new IllegalArgumentException("External task source is required");
+        if (tokenId == null || operationId == null)
+            throw new IllegalArgumentException("External task source is required");
         return runInternal(ownerId, projectId, null, null, artifactId, canvasItemId,
-                expectedDraftVersion, "mcp:" + operationId + ":0", null, new ExternalSource(tokenId, operationId), false);
+                expectedDraftVersion, "mcp:" + operationId + ":0", null, new ExternalSource(tokenId, operationId),
+                false);
     }
 
-    private record ExternalSource(UUID tokenId, UUID operationId) {}
+    private record ExternalSource(UUID tokenId, UUID operationId) {
+    }
 
     private List<Task> runInternal(UUID ownerId, UUID projectId, UUID runId, UUID approvalId,
-            UUID artifactId, UUID canvasItemId, long expectedDraftVersion, String commandKey, JsonNode creativeSkill, ExternalSource external, boolean requireExplicitSelection) {
+            UUID artifactId, UUID canvasItemId, long expectedDraftVersion, String commandKey, JsonNode creativeSkill,
+            ExternalSource external, boolean requireExplicitSelection) {
         if (canvasItemId == null || commandKey == null || commandKey.isBlank()
                 || commandKey.length() > MAX_COMMAND_KEY_LENGTH || expectedDraftVersion < 0) {
-            throw invalid(ApiMessage.of("api.direct-media-task-service.requires-a-valid-idempotency-key-and-draft-version"));
+            throw invalid(
+                    ApiMessage.of("api.direct-media-task-service.requires-a-valid-idempotency-key-and-draft-version"));
         }
         return events.recordChange(ownerId, projectId, () -> {
             // The project event row lock serializes acceptance with all other card commands.
@@ -189,7 +199,8 @@ public class DirectMediaTaskService {
             if (run != null && (run.status().terminal() || run.status() == AgentRun.Status.CANCEL_REQUESTED)) {
                 throw conflict(ApiMessage.of("api.task-service.a-canceled-or-ended-run-cannot-create-new-tasks"));
             }
-            Task prior = (runId == null ? tasks.findDirectByStepKey(ownerId, projectId, commandKey)
+            Task prior = (runId == null
+                    ? tasks.findDirectByStepKey(ownerId, projectId, commandKey)
                     : tasks.findAgentByStepKey(ownerId, projectId, runId, commandKey)).orElse(null);
             if (prior != null) {
                 String priorSourceCanvasItemId = prior.input().path("sourceCanvasItemId")
@@ -197,12 +208,15 @@ public class DirectMediaTaskService {
                 if (!prior.input().path("artifactId").asText().equals(artifactId.toString())
                         || !priorSourceCanvasItemId.equals(canvasItemId.toString())
                         || prior.input().path("draftVersion").asLong(-1) != expectedDraftVersion
-                        || prior.input().path(Task.REQUIRE_EXPLICIT_SELECTION_PROPERTY).asBoolean(false) != requireExplicitSelection
+                        || prior.input().path(Task.REQUIRE_EXPLICIT_SELECTION_PROPERTY)
+                                .asBoolean(false) != requireExplicitSelection
                         || !prior.input().path(Task.APPROVAL_INPUT_PROPERTY).asText("")
                                 .equals(approvalId == null ? "" : approvalId.toString())) {
-                    throw conflict(ApiMessage.of("api.direct-media-task-service.the-same-idempotent-key-has-been-used-in-different-card"));
+                    throw conflict(ApiMessage.of(
+                            "api.direct-media-task-service.the-same-idempotent-key-has-been-used-in-different-card"));
                 }
-                if (external != null) throw new IllegalStateException("External command must replay through its operation ledger");
+                if (external != null)
+                    throw new IllegalStateException("External command must replay through its operation ledger");
                 return ProjectEventService.Change.unchanged(List.of(prior));
             }
             // Occupancy lookup is internal: authorize the target before returning another command's task.
@@ -216,15 +230,21 @@ public class DirectMediaTaskService {
             boolean replaceUnresolved = runId == null && external == null && occupying != null
                     && occupying.runId() == null && !occupying.cancelRequested()
                     && (occupying.status() == Task.Status.UNKNOWN && occupying.providerRequestId() == null
-                        || occupying.status() == Task.Status.BLOCKED && occupying.providerRequestId() != null);
+                            || occupying.status() == Task.Status.BLOCKED && occupying.providerRequestId() != null);
             if (occupying != null && !replaceUnresolved) {
-                if (external != null) throw new ApiProblemException(HttpStatus.CONFLICT, "CANVAS_ITEM_BUSY",
-                        ApiMessage.of("api.creative-artifact-tool-service.card-locked"),
-                        ApiMessage.of("api.task-service.this-media-card-already-has-tasks-queued-executed-or-pending"), false);
-                if (runId != null) throw conflict(ApiMessage.of("api.task-service.this-media-card-already-has-tasks-queued-executed-or-pending"));
+                if (external != null)
+                    throw new ApiProblemException(HttpStatus.CONFLICT, "CANVAS_ITEM_BUSY",
+                            ApiMessage.of("api.creative-artifact-tool-service.card-locked"),
+                            ApiMessage.of(
+                                    "api.task-service.this-media-card-already-has-tasks-queued-executed-or-pending"),
+                            false);
+                if (runId != null)
+                    throw conflict(ApiMessage
+                            .of("api.task-service.this-media-card-already-has-tasks-queued-executed-or-pending"));
                 return ProjectEventService.Change.unchanged(List.of(occupying));
             }
-            PreparedMedia prepared = prepare(ownerId, projectId, authorizedTarget, authorizedCard, expectedDraftVersion, true);
+            PreparedMedia prepared = prepare(ownerId, projectId, authorizedTarget, authorizedCard, expectedDraftVersion,
+                    true);
             Artifact target = prepared.target();
             CanvasItem canvasItem = prepared.canvasItem();
             MediaDraft draft = prepared.draft();
@@ -255,21 +275,32 @@ public class DirectMediaTaskService {
                                 UUID.randomUUID(), draft.version(), outputIndex);
                 ObjectNode input = mapper.createObjectNode();
                 input.put("schemaVersion", MEDIA_TASK_INPUT_SCHEMA_VERSION);
-                input.put("initiator", (external != null ? Task.Initiator.EXTERNAL_MCP : runId == null ? Task.Initiator.USER_DIRECT : Task.Initiator.BUILTIN_AGENT).name());
+                input.put("initiator",
+                        (external != null
+                                ? Task.Initiator.EXTERNAL_MCP
+                                : runId == null ? Task.Initiator.USER_DIRECT : Task.Initiator.BUILTIN_AGENT).name());
                 if (external != null) {
                     input.put("mcpTokenId", external.tokenId().toString());
                     input.put("mcpOperationId", external.operationId().toString());
                 }
-                if (approvalId != null) input.put(Task.APPROVAL_INPUT_PROPERTY, approvalId.toString());
-                if (requireExplicitSelection) input.put(Task.REQUIRE_EXPLICIT_SELECTION_PROPERTY, true);
-                if (dynamic) input.put("providerProtocol", "RUNNINGHUB_V2");
-                if (kling != null) input.put("providerProtocol", KlingModels.PROTOCOL_ID);
+                if (approvalId != null)
+                    input.put(Task.APPROVAL_INPUT_PROPERTY, approvalId.toString());
+                if (requireExplicitSelection)
+                    input.put(Task.REQUIRE_EXPLICIT_SELECTION_PROPERTY, true);
+                if (dynamic)
+                    input.put("providerProtocol", "RUNNINGHUB_V2");
+                if (kling != null)
+                    input.put("providerProtocol", KlingModels.PROTOCOL_ID);
                 if (nativeProfile != null) {
                     input.put("providerProtocol", NativeMediaProtocol.PROTOCOL_ID);
                     input.put("nativeBillableInputSeconds", nativeBillableInputSeconds(ownerId, projectId, prepared));
                     if (kind == Task.Kind.IMAGE_GENERATION) {
-                        Integer count = nativeProfile.resultCount(dynamicParameters.path(NativeMediaProtocol.VALUES_PROPERTY));
-                        if (count == null) input.putNull("expectedImageCount"); else input.put("expectedImageCount", count);
+                        Integer count = nativeProfile
+                                .resultCount(dynamicParameters.path(NativeMediaProtocol.VALUES_PROPERTY));
+                        if (count == null)
+                            input.putNull("expectedImageCount");
+                        else
+                            input.put("expectedImageCount", count);
                     }
                 }
                 input.put("artifactId", artifactId.toString());
@@ -278,33 +309,48 @@ public class DirectMediaTaskService {
                 input.put("resultSelectionEpoch", canvas.mediaSelectionEpoch(ownerId,
                         projectId, outputCard.id()));
                 input.put("resultDraftVersion", drafts.get(ownerId, projectId, outputCard.id()).version());
-                if (outputCard.selectedVersionId() == null) input.putNull("parentVersionId");
-                else input.put("parentVersionId", outputCard.selectedVersionId().toString());
+                if (outputCard.selectedVersionId() == null)
+                    input.putNull("parentVersionId");
+                else
+                    input.put("parentVersionId", outputCard.selectedVersionId().toString());
                 input.put("draftVersion", draft.version());
                 input.put("generationIndex", outputIndex);
                 input.put("generationCount", outputCount);
                 if (kling != null && kind == Task.Kind.IMAGE_GENERATION) {
                     Integer count = KlingModels.resultCount(kling, dynamicParameters.path(KlingModels.VALUES_PROPERTY));
-                    if (count == null) input.putNull("expectedImageCount"); else input.put("expectedImageCount", count);
+                    if (count == null)
+                        input.putNull("expectedImageCount");
+                    else
+                        input.put("expectedImageCount", count);
                 }
                 input.put("prompt", renderedPrompt);
-                JsonNode selectedPrice = dev.agenvas.provider.domain.MediaCapabilityConfiguration.price(configuredSettings, resolutionTier);
-                if (selectedPrice != null) input.set("mediaPricing", selectedPrice);
-                if (configuredSettings.has("tokenPricing")) input.set("mediaTokenPricing", configuredSettings.get("tokenPricing").deepCopy());
+                JsonNode selectedPrice = dev.agenvas.provider.domain.MediaCapabilityConfiguration
+                        .price(configuredSettings, resolutionTier);
+                if (selectedPrice != null)
+                    input.set("mediaPricing", selectedPrice);
+                if (configuredSettings.has("tokenPricing"))
+                    input.set("mediaTokenPricing", configuredSettings.get("tokenPricing").deepCopy());
                 input.put("workflowVersion", binding.adapterId() + ":" + binding.mappingSha256());
-                if (kind == Task.Kind.VIDEO_GENERATION && duration != null) input.put("durationSeconds", seconds);
+                if (kind == Task.Kind.VIDEO_GENERATION && duration != null)
+                    input.put("durationSeconds", seconds);
                 ObjectNode frozen = input.putObject("mediaInput");
                 var comfyDimensions = comfyDimensions(ownerId, projectId, prepared);
-                if (comfyDimensions != null) frozen.set("providerParameters", comfyProviderParameters(prepared, comfyDimensions));
+                if (comfyDimensions != null)
+                    frozen.set("providerParameters", comfyProviderParameters(prepared, comfyDimensions));
                 var fixedVideoParameters = fixedVideoProviderParameters(ownerId, projectId, prepared);
-                if (fixedVideoParameters != null) frozen.set("providerParameters", fixedVideoParameters);
-                if (kling != null) frozen.set("providerParameters", klingProviderParameters(prepared));
-                if (nativeProfile != null) frozen.set("providerParameters", nativeProviderParameters(prepared));
+                if (fixedVideoParameters != null)
+                    frozen.set("providerParameters", fixedVideoParameters);
+                if (kling != null)
+                    frozen.set("providerParameters", klingProviderParameters(prepared));
+                if (nativeProfile != null)
+                    frozen.set("providerParameters", nativeProviderParameters(prepared));
                 if (MiniMaxH3Protocol.ADAPTER_ID.equals(binding.adapterId())) {
                     String ratio = prepared.videoParameters().aspectRatio();
-                    if (draft.videoInputMode() == MediaDraft.VideoInputMode.START_END) ratio = "adaptive";
+                    if (draft.videoInputMode() == MediaDraft.VideoInputMode.START_END)
+                        ratio = "adaptive";
                     else if (VideoGenerationParameters.AUTO_ASPECT_RATIO.equals(ratio)) {
-                        ratio = draft.videoInputMode() == MediaDraft.VideoInputMode.GENERAL_REFERENCE ? "adaptive"
+                        ratio = draft.videoInputMode() == MediaDraft.VideoInputMode.GENERAL_REFERENCE
+                                ? "adaptive"
                                 : projectAspectRatio(projects.get(ownerId, projectId).aspectRatio());
                     }
                     frozen.putObject("providerParameters").put("ratio", ratio);
@@ -312,40 +358,51 @@ public class DirectMediaTaskService {
                 if (KlingProtocol.IMAGE_ADAPTER_ID.equals(binding.adapterId())
                         || KlingProtocol.VIDEO_ADAPTER_ID.equals(binding.adapterId())) {
                     String ratio = kind == Task.Kind.IMAGE_GENERATION
-                            ? imageParameters.aspectRatio() : videoParameters.aspectRatio();
+                            ? imageParameters.aspectRatio()
+                            : videoParameters.aspectRatio();
                     // Resolve AUTO during acceptance, before a later project edit can change it.
-                    if ("AUTO".equals(ratio)) ratio = projectAspectRatio(projects.get(ownerId, projectId).aspectRatio());
+                    if ("AUTO".equals(ratio))
+                        ratio = projectAspectRatio(projects.get(ownerId, projectId).aspectRatio());
                     frozen.putObject("providerParameters").put("aspectRatio", ratio);
                 }
                 if (autodlResolution != null) {
                     ObjectNode providerParameters = frozen.putObject("providerParameters");
                     providerParameters.put("workflowId", configuredSettings.path("workflowId").asText());
                     providerParameters.put("resolution", autodlResolution);
-                    if (configuredSettings.has("seed")) providerParameters.set("seed", configuredSettings.get("seed"));
+                    if (configuredSettings.has("seed"))
+                        providerParameters.set("seed", configuredSettings.get("seed"));
                 }
-                if (outputCard.selectedVersionId() == null) frozen.putNull("parentVersionId");
-                else frozen.put("parentVersionId", outputCard.selectedVersionId().toString());
+                if (outputCard.selectedVersionId() == null)
+                    frozen.putNull("parentVersionId");
+                else
+                    frozen.put("parentVersionId", outputCard.selectedVersionId().toString());
                 frozen.put("mode", kind == Task.Kind.IMAGE_GENERATION
                         ? MediaDraft.VideoInputMode.GENERAL_REFERENCE.name()
                         : kind == Task.Kind.AUDIO_GENERATION ? "TEXT" : draft.videoInputMode().name());
-                if (dynamic) frozen.set("runningHubContract", mapper.valueToTree(definition.executionContract()));
+                if (dynamic)
+                    frozen.set("runningHubContract", mapper.valueToTree(definition.executionContract()));
                 frozen.put("prompt", draft.prompt());
                 frozen.put("userRenderedPrompt", prepared.userRenderedPrompt());
                 frozen.set("promptInputs", mapper.valueToTree(prepared.promptInputs()));
                 frozen.put("renderedPrompt", renderedPrompt);
-                if (prepared.style() == null) frozen.putNull("style");
-                else frozen.set("style", mapper.valueToTree(prepared.style()));
+                if (prepared.style() == null)
+                    frozen.putNull("style");
+                else
+                    frozen.set("style", mapper.valueToTree(prepared.style()));
                 frozen.set("parameters", effectiveParameters(prepared));
                 frozen.put("capabilityId", binding.capabilityId().toString());
                 frozen.put("capabilityVersion", binding.capabilityVersion());
-                if (kind == Task.Kind.VIDEO_GENERATION && duration != null) frozen.put("durationSeconds", seconds);
+                if (kind == Task.Kind.VIDEO_GENERATION && duration != null)
+                    frozen.put("durationSeconds", seconds);
                 frozen.putArray("images");
                 frozen.putArray("audios");
                 frozen.putArray("videos");
                 for (MediaDraft.MediaInput imageInput : draft.mediaInputs()) {
                     ArtifactVersion image = artifacts.requireMediaVersionForTask(ownerId, projectId,
-                            imageInput.versionId(), dev.agenvas.artifact.application.MediaDraftService.mediaKind(imageInput.role()));
-                    String mediaArray = imageInput.role() == MediaDraft.InputRole.AUDIO_REFERENCE ? "audios"
+                            imageInput.versionId(),
+                            dev.agenvas.artifact.application.MediaDraftService.mediaKind(imageInput.role()));
+                    String mediaArray = imageInput.role() == MediaDraft.InputRole.AUDIO_REFERENCE
+                            ? "audios"
                             : imageInput.role() == MediaDraft.InputRole.VIDEO_REFERENCE ? "videos" : "images";
                     ArrayNode group = (ArrayNode) frozen.get(mediaArray);
                     ObjectNode imageNode = group.addObject();
@@ -355,11 +412,19 @@ public class DirectMediaTaskService {
                     imageNode.put("order", group.size() - 1);
                     if (nativeProfile != null) {
                         var field = nativeProfile.inputs().stream().filter(f -> f.media()
-                                && imageInput.versionId().toString().equals(dynamicParameters.path(NativeMediaProtocol.VALUES_PROPERTY).path(f.key()).asText())).findFirst().orElseThrow(NativeMediaProfiles::invalid);
+                                && imageInput.versionId().toString()
+                                        .equals(dynamicParameters.path(NativeMediaProtocol.VALUES_PROPERTY)
+                                                .path(f.key()).asText()))
+                                .findFirst().orElseThrow(NativeMediaProfiles::invalid);
                         if (nativeProfile.protocol().usesMediaUrl(nativeProfile.profile(), field)) {
-                            Asset asset = assets.requireReadyMedia(ownerId, projectId, UUID.fromString(image.content().path("assetId").asText()), Asset.MediaKind.valueOf(field.type().name()));
+                            Asset asset = assets.requireReadyMedia(ownerId, projectId,
+                                    UUID.fromString(image.content().path("assetId").asText()),
+                                    Asset.MediaKind.valueOf(field.type().name()));
                             UUID relayProfile = relay.pinProfile(asset);
-                            if (relayProfile == null) imageNode.putNull("relayProfileId"); else imageNode.put("relayProfileId", relayProfile.toString());
+                            if (relayProfile == null)
+                                imageNode.putNull("relayProfileId");
+                            else
+                                imageNode.put("relayProfileId", relayProfile.toString());
                         }
                     }
                     if ((MediaAdapterRegistry.SEEDANCE_2.equals(binding.adapterId())
@@ -369,8 +434,10 @@ public class DirectMediaTaskService {
                         Asset asset = assets.requireReadyMedia(ownerId, projectId,
                                 UUID.fromString(image.content().path("assetId").asText()), Asset.MediaKind.VIDEO);
                         UUID relayProfile = relay.pinProfile(asset);
-                        if (relayProfile == null) imageNode.putNull("relayProfileId");
-                        else imageNode.put("relayProfileId", relayProfile.toString());
+                        if (relayProfile == null)
+                            imageNode.putNull("relayProfileId");
+                        else
+                            imageNode.put("relayProfileId", relayProfile.toString());
                     }
                 }
                 pinImageRelay(input, binding);
@@ -379,12 +446,17 @@ public class DirectMediaTaskService {
                 // consume its frozen prompt and exact references, never a live character profile.
                 frozen.set("characterBindings", prepared.characterBindings().deepCopy());
                 frozen.set("characterContribution", prepared.characterContribution().deepCopy());
-                if (creativeSkill != null) frozen.set("creativeSkill", creativeSkill.deepCopy());
-                if (outputIndex > 0) characters.getObject().copyFrozenBindingsWithinChange(ownerId,
-                        projectId, outputCard.id(), frozen);
-                String stepKey = external != null ? "mcp:" + external.operationId() + ":" + outputIndex
-                        : outputIndex == 0 ? commandKey
-                        : "image-batch:" + Sha256.hex(commandKey).substring(0, BATCH_KEY_DIGEST_LENGTH) + ":" + outputIndex;
+                if (creativeSkill != null)
+                    frozen.set("creativeSkill", creativeSkill.deepCopy());
+                if (outputIndex > 0)
+                    characters.getObject().copyFrozenBindingsWithinChange(ownerId,
+                            projectId, outputCard.id(), frozen);
+                String stepKey = external != null
+                        ? "mcp:" + external.operationId() + ":" + outputIndex
+                        : outputIndex == 0
+                                ? commandKey
+                                : "image-batch:" + Sha256.hex(commandKey).substring(0, BATCH_KEY_DIGEST_LENGTH) + ":"
+                                        + outputIndex;
                 Task task = new Task(UUID.randomUUID(), projectId, runId, stepKey, kind,
                         Task.Status.READY, false, input, Sha256.hex(input.toString()), null, null,
                         1, now, null, null, 0, 0, null, now, now, null);
@@ -425,7 +497,6 @@ public class DirectMediaTaskService {
         }).value();
     }
 
-
     private void requireTargetCard(Artifact target, CanvasItem canvasItem) {
         if (!canvasItem.subjectId().equals(target.id())) {
             throw invalid(ApiMessage.of("api.direct-media-task-service.the-run-target-must-be-the-canvas-card-of-the"));
@@ -442,16 +513,21 @@ public class DirectMediaTaskService {
     private PreparedMedia prepare(UUID ownerId, UUID projectId, Artifact target,
             CanvasItem canvasItem, long expectedDraftVersion, boolean lockStyle) {
         requireTargetCard(target, canvasItem);
-        if (target.archivedAt() != null) throw conflict(ApiMessage.of("api.direct-media-task-service.archived-cards-cannot-be-run"));
+        if (target.archivedAt() != null)
+            throw conflict(ApiMessage.of("api.direct-media-task-service.archived-cards-cannot-be-run"));
         Task.Kind kind = switch (target.kind()) {
             case IMAGE -> Task.Kind.IMAGE_GENERATION;
             case VIDEO -> Task.Kind.VIDEO_GENERATION;
             case AUDIO -> Task.Kind.AUDIO_GENERATION;
-            default -> throw invalid(ApiMessage.of("api.direct-media-task-service.only-picture-or-video-cards-can-be-run-directly"));
+            default -> throw invalid(
+                    ApiMessage.of("api.direct-media-task-service.only-picture-or-video-cards-can-be-run-directly"));
         };
         MediaDraft draft = drafts.get(ownerId, projectId, canvasItem.id());
-        if (draft.version() != expectedDraftVersion) throw conflict(ApiMessage.of("api.direct-media-task-service.the-draft-has-changed-please-check-the-save-status-and"));
-        if (lockStyle) styles.lockForGeneration(draft.styleId());
+        if (draft.version() != expectedDraftVersion)
+            throw conflict(ApiMessage
+                    .of("api.direct-media-task-service.the-draft-has-changed-please-check-the-save-status-and"));
+        if (lockStyle)
+            styles.lockForGeneration(draft.styleId());
         MediaStyleService.Snapshot style = styles.forGeneration(draft.styleId(), target.kind());
         var linkedPrompts = promptInputs.resolve(ownerId, projectId, canvasItem.id());
         String userRenderedPrompt = CanvasPromptInputService.compose(linkedPrompts, renderPrompt(draft));
@@ -462,51 +538,66 @@ public class DirectMediaTaskService {
         var kling = capabilities.klingProfile(selected);
         if (kling != null) {
             String local = renderKlingPrompt(draft, kling);
-            if (!linkedPrompts.isEmpty() && local.isBlank()) local = KlingModels.inputs(kling).stream()
-                    .filter(field -> field.effectiveSource() == RunningHubDefinition.Source.PROMPT)
-                    .map(field -> field.defaultValue()).filter(java.util.Objects::nonNull).map(JsonNode::asText).findFirst().orElse("");
+            if (!linkedPrompts.isEmpty() && local.isBlank())
+                local = KlingModels.inputs(kling).stream()
+                        .filter(field -> field.effectiveSource() == RunningHubDefinition.Source.PROMPT)
+                        .map(field -> field.defaultValue()).filter(java.util.Objects::nonNull).map(JsonNode::asText)
+                        .findFirst().orElse("");
             userRenderedPrompt = CanvasPromptInputService.compose(linkedPrompts, local);
             renderedPrompt = MediaStyleService.compose(userRenderedPrompt, style);
         }
         if (nativeProfile != null) {
             String local = renderNativePrompt(draft, nativeProfile);
-            if (!linkedPrompts.isEmpty() && local.isBlank()) local = nativeProfile.inputs().stream()
-                    .filter(field -> field.effectiveSource() == RunningHubDefinition.Source.PROMPT)
-                    .map(field -> field.defaultValue()).filter(java.util.Objects::nonNull).map(JsonNode::asText).findFirst().orElse("");
+            if (!linkedPrompts.isEmpty() && local.isBlank())
+                local = nativeProfile.inputs().stream()
+                        .filter(field -> field.effectiveSource() == RunningHubDefinition.Source.PROMPT)
+                        .map(field -> field.defaultValue()).filter(java.util.Objects::nonNull).map(JsonNode::asText)
+                        .findFirst().orElse("");
             userRenderedPrompt = CanvasPromptInputService.compose(linkedPrompts, local);
             renderedPrompt = MediaStyleService.compose(userRenderedPrompt, style);
         }
         JsonNode configuredSettings = capabilities.settings(selected);
         var comfy = ComfyUiWorkflowDefinition.configured(configuredSettings)
-                ? ComfyUiWorkflowDefinition.parse(mapper, configuredSettings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY), kind) : null;
+                ? ComfyUiWorkflowDefinition.parse(mapper,
+                        configuredSettings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY), kind)
+                : null;
         boolean dynamic = definition != null;
         boolean fullyDeclared = dynamic || kling != null || nativeProfile != null;
-        if (style != null && (dynamic && definition.fields().stream().noneMatch(field ->
-                field.effectiveSource() == dev.agenvas.provider.domain.RunningHubDefinition.Source.PROMPT)
+        if (style != null && (dynamic
+                && definition.fields().stream()
+                        .noneMatch(field -> field
+                                .effectiveSource() == dev.agenvas.provider.domain.RunningHubDefinition.Source.PROMPT)
                 || comfy != null && !comfy.maps(ComfyUiWorkflowDefinition.Source.PROMPT)
-                || kling != null && KlingModels.inputs(kling).stream().noneMatch(field -> field.effectiveSource() == RunningHubDefinition.Source.PROMPT))) {
+                || kling != null && KlingModels.inputs(kling).stream()
+                        .noneMatch(field -> field.effectiveSource() == RunningHubDefinition.Source.PROMPT))) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "MEDIA_STYLE_PROMPT_UNSUPPORTED",
                     ApiMessage.of("api.media-style.title"), ApiMessage.of("api.media-style.prompt-unsupported"), false);
         }
         if (!linkedPrompts.isEmpty() && (comfy != null && !comfy.maps(ComfyUiWorkflowDefinition.Source.PROMPT)
-                || nativeProfile != null && nativeProfile.inputs().stream().noneMatch(field -> field.effectiveSource() == RunningHubDefinition.Source.PROMPT)
-                || kling != null && KlingModels.inputs(kling).stream().noneMatch(field -> field.effectiveSource() == RunningHubDefinition.Source.PROMPT))) {
+                || nativeProfile != null && nativeProfile.inputs().stream()
+                        .noneMatch(field -> field.effectiveSource() == RunningHubDefinition.Source.PROMPT)
+                || kling != null && KlingModels.inputs(kling).stream()
+                        .noneMatch(field -> field.effectiveSource() == RunningHubDefinition.Source.PROMPT))) {
             throw invalid(ApiMessage.of("api.canvas-prompt.unsupported"));
         }
-        if (comfy != null && !comfy.maps(ComfyUiWorkflowDefinition.Source.PROMPT)) renderedPrompt = "";
+        if (comfy != null && !comfy.maps(ComfyUiWorkflowDefinition.Source.PROMPT))
+            renderedPrompt = "";
         if (!fullyDeclared && (comfy == null || comfy.maps(ComfyUiWorkflowDefinition.Source.PROMPT))
-                && CanvasPromptInputService.compose(linkedPrompts, draft.prompt()).isBlank()) throw invalid(ApiMessage.of("api.direct-media-task-service.prompt-words-need-to-be-filled-in-before-running"));
+                && CanvasPromptInputService.compose(linkedPrompts, draft.prompt()).isBlank())
+            throw invalid(
+                    ApiMessage.of("api.direct-media-task-service.prompt-words-need-to-be-filled-in-before-running"));
         if (!fullyDeclared && kind == Task.Kind.VIDEO_GENERATION
                 && draft.videoInputMode() == MediaDraft.VideoInputMode.START_END
                 && (draft.mediaInputs().isEmpty()
-                        || draft.mediaInputs().getFirst().role()
-                                != MediaDraft.InputRole.START_FRAME)) {
-            throw invalid(ApiMessage.of("api.direct-media-task-service.before-running-the-first-and-last-frame-video-you-need"));
+                        || draft.mediaInputs().getFirst().role() != MediaDraft.InputRole.START_FRAME)) {
+            throw invalid(ApiMessage
+                    .of("api.direct-media-task-service.before-running-the-first-and-last-frame-video-you-need"));
         }
         if (!fullyDeclared && kind == Task.Kind.VIDEO_GENERATION
                 && draft.videoInputMode() == MediaDraft.VideoInputMode.GENERAL_REFERENCE
                 && draft.mediaInputs().isEmpty()) {
-            throw invalid(ApiMessage.of("api.direct-media-task-service.the-all-in-one-reference-video-requires-at-least-one"));
+            throw invalid(ApiMessage
+                    .of("api.direct-media-task-service.the-all-in-one-reference-video-requires-at-least-one"));
         }
         Integer duration = draft.durationSeconds();
         if (kind == Task.Kind.VIDEO_GENERATION && duration == null
@@ -514,58 +605,84 @@ public class DirectMediaTaskService {
             duration = configuredSettings.path("defaultDurationSeconds").intValue();
         }
         if (dynamic && duration == null) {
-            var durationField = definition.fields().stream().filter(field -> field.effectiveSource() == dev.agenvas.provider.domain.RunningHubDefinition.Source.DURATION_SECONDS).findFirst().orElse(null);
-            if (durationField != null && durationField.defaultValue() != null && !durationField.defaultValue().isNull()) duration = durationField.defaultValue().asInt();
+            var durationField = definition.fields().stream().filter(field -> field
+                    .effectiveSource() == dev.agenvas.provider.domain.RunningHubDefinition.Source.DURATION_SECONDS)
+                    .findFirst().orElse(null);
+            if (durationField != null && durationField.defaultValue() != null && !durationField.defaultValue().isNull())
+                duration = durationField.defaultValue().asInt();
         }
         if (kling != null && kind == Task.Kind.VIDEO_GENERATION) {
-            if (KlingModels.motion(kling)) duration = null;
-            else if (duration == null) duration = KlingModels.inputs(kling).stream()
-                    .filter(field -> field.effectiveSource() == RunningHubDefinition.Source.DURATION_SECONDS)
-                    .map(field -> field.defaultValue().intValue()).findFirst().orElse(null);
+            if (KlingModels.motion(kling))
+                duration = null;
+            else if (duration == null)
+                duration = KlingModels.inputs(kling).stream()
+                        .filter(field -> field.effectiveSource() == RunningHubDefinition.Source.DURATION_SECONDS)
+                        .map(field -> field.defaultValue().intValue()).findFirst().orElse(null);
         }
         if (nativeProfile != null && kind == Task.Kind.VIDEO_GENERATION) {
-            var field = nativeProfile.inputs().stream().filter(f -> f.effectiveSource() == RunningHubDefinition.Source.DURATION_SECONDS).findFirst().orElse(null);
-            if (field == null) duration = null;
-            else if (duration == null && field.defaultValue() != null) duration = field.defaultValue().asInt();
+            var field = nativeProfile.inputs().stream()
+                    .filter(f -> f.effectiveSource() == RunningHubDefinition.Source.DURATION_SECONDS).findFirst()
+                    .orElse(null);
+            if (field == null)
+                duration = null;
+            else if (duration == null && field.defaultValue() != null)
+                duration = field.defaultValue().asInt();
         }
         if (!fullyDeclared && kind == Task.Kind.VIDEO_GENERATION && duration == null) {
-            throw invalid(ApiMessage.of("api.direct-media-task-service.you-need-to-select-the-duration-before-running-the-video"));
+            throw invalid(ApiMessage
+                    .of("api.direct-media-task-service.you-need-to-select-the-duration-before-running-the-video"));
         }
         int seconds = kind == Task.Kind.VIDEO_GENERATION && duration != null ? duration : 0;
         MediaCapabilityBinding binding = capabilities.resolve(selected.capabilityId(), kind, seconds);
-        if (!selected.equals(binding)) throw conflict(ApiMessage.of("api.direct-media-task-service.the-media-configuration-has-changed-please-refresh-and-try-again"));
+        if (!selected.equals(binding))
+            throw conflict(ApiMessage.of(
+                    "api.direct-media-task-service.the-media-configuration-has-changed-please-refresh-and-try-again"));
         if (MediaAdapterRegistry.localProcessor(binding.adapterId())) {
-            throw invalid(ApiMessage.of("api.direct-media-task-service.local-image-processing-capabilities-can-only-be-used-from-the"));
+            throw invalid(ApiMessage
+                    .of("api.direct-media-task-service.local-image-processing-capabilities-can-only-be-used-from-the"));
         }
         ObjectNode dynamicParameters = null;
         if (dynamic) {
             dynamicParameters = mapper.createObjectNode();
-            ObjectNode dynamicValues = definition.values(mapper, draft.parameters(), renderPrompt(draft), duration, true,
+            ObjectNode dynamicValues = definition.values(mapper, draft.parameters(), renderPrompt(draft), duration,
+                    true,
                     prompt -> CanvasPromptInputService.compose(linkedPrompts, prompt));
             ObjectNode baseDynamicValues = dynamicValues;
-            var promptField = definition.fields().stream().filter(field -> field.effectiveSource()
-                    == dev.agenvas.provider.domain.RunningHubDefinition.Source.PROMPT && baseDynamicValues.hasNonNull(field.key())).findFirst();
-            if (promptField.isPresent()) userRenderedPrompt = dynamicValues.path(promptField.get().key()).asText();
-            if (style != null) dynamicValues = definition.transformPromptValues(mapper, dynamicValues,
-                    prompt -> MediaStyleService.compose(prompt, style));
-            if (promptField.isPresent()) renderedPrompt = dynamicValues.path(promptField.get().key()).asText();
-            else if (!linkedPrompts.isEmpty()) throw invalid(ApiMessage.of("api.canvas-prompt.unsupported"));
+            var promptField = definition.fields().stream().filter(
+                    field -> field.effectiveSource() == dev.agenvas.provider.domain.RunningHubDefinition.Source.PROMPT
+                            && baseDynamicValues.hasNonNull(field.key()))
+                    .findFirst();
+            if (promptField.isPresent())
+                userRenderedPrompt = dynamicValues.path(promptField.get().key()).asText();
+            if (style != null)
+                dynamicValues = definition.transformPromptValues(mapper, dynamicValues,
+                        prompt -> MediaStyleService.compose(prompt, style));
+            if (promptField.isPresent())
+                renderedPrompt = dynamicValues.path(promptField.get().key()).asText();
+            else if (!linkedPrompts.isEmpty())
+                throw invalid(ApiMessage.of("api.canvas-prompt.unsupported"));
             dynamicParameters.set(dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY, dynamicValues);
-            dev.agenvas.artifact.application.MediaDraftService.validateSlots(definition, dynamicParameters, draft.mediaInputs(), true);
+            dev.agenvas.artifact.application.MediaDraftService.validateSlots(definition, dynamicParameters,
+                    draft.mediaInputs(), true);
         } else if (nativeProfile != null) {
             JsonNode merged = capabilities.parameters(binding, draft.parameters());
-            NativeMediaProfiles.validateDraft(nativeProfile, merged, renderedPrompt, duration, draft.mediaInputs(), true, mapper);
+            NativeMediaProfiles.validateDraft(nativeProfile, merged, renderedPrompt, duration, draft.mediaInputs(),
+                    true, mapper);
             dynamicParameters = mapper.createObjectNode();
-            dynamicParameters.set(NativeMediaProtocol.VALUES_PROPERTY, NativeMediaProfiles.effectiveValues(nativeProfile, merged, renderedPrompt, duration, mapper));
-            if (dynamicParameters.path(NativeMediaProtocol.VALUES_PROPERTY).path("smart_duration").asBoolean(false)) duration = null;
+            dynamicParameters.set(NativeMediaProtocol.VALUES_PROPERTY,
+                    NativeMediaProfiles.effectiveValues(nativeProfile, merged, renderedPrompt, duration, mapper));
+            if (dynamicParameters.path(NativeMediaProtocol.VALUES_PROPERTY).path("smart_duration").asBoolean(false))
+                duration = null;
             validateNativeLimits(draft, capabilities.inputPolicy(binding));
             var limits = capabilities.inputPolicy(binding);
-            if (duration != null && (duration < limits.minimumSeconds() || duration > limits.maximumSeconds())) throw NativeMediaProfiles.invalid();
+            if (duration != null && (duration < limits.minimumSeconds() || duration > limits.maximumSeconds()))
+                throw NativeMediaProfiles.invalid();
         } else if (kling != null) {
             JsonNode merged = capabilities.parameters(binding, draft.parameters());
             KlingModels.validateDraft(kling, merged, renderedPrompt, duration, draft.mediaInputs(), true);
             dynamicParameters = mapper.createObjectNode();
-            dynamicParameters.set(KlingModels.VALUES_PROPERTY, KlingModels.effectiveValues(kling, merged, renderedPrompt, duration, mapper));
+            dynamicParameters.set(KlingModels.VALUES_PROPERTY,
+                    KlingModels.effectiveValues(kling, merged, renderedPrompt, duration, mapper));
             validateKlingLimits(draft, capabilities.inputPolicy(binding));
             var limits = capabilities.inputPolicy(binding);
             if (kind == Task.Kind.VIDEO_GENERATION && !KlingModels.motion(kling)
@@ -576,43 +693,53 @@ public class DirectMediaTaskService {
                     capabilities.parameters(binding, draft.parameters()));
         }
         ObjectNode effectiveDynamicParameters = dynamicParameters;
-        if (!linkedPrompts.isEmpty() && (nativeProfile != null && nativeProfile.inputs().stream().noneMatch(field ->
-                    field.effectiveSource() == RunningHubDefinition.Source.PROMPT
-                            && preparedPromptPresent(effectiveDynamicParameters, NativeMediaProtocol.VALUES_PROPERTY, field.key()))
-                || kling != null && KlingModels.inputs(kling).stream().noneMatch(field ->
-                    field.effectiveSource() == RunningHubDefinition.Source.PROMPT
-                            && preparedPromptPresent(effectiveDynamicParameters, KlingModels.VALUES_PROPERTY, field.key())))) {
+        if (!linkedPrompts.isEmpty() && (nativeProfile != null
+                && nativeProfile.inputs().stream()
+                        .noneMatch(field -> field.effectiveSource() == RunningHubDefinition.Source.PROMPT
+                                && preparedPromptPresent(effectiveDynamicParameters,
+                                        NativeMediaProtocol.VALUES_PROPERTY, field.key()))
+                || kling != null && KlingModels.inputs(kling).stream()
+                        .noneMatch(field -> field.effectiveSource() == RunningHubDefinition.Source.PROMPT
+                                && preparedPromptPresent(effectiveDynamicParameters, KlingModels.VALUES_PROPERTY,
+                                        field.key())))) {
             throw invalid(ApiMessage.of("api.canvas-prompt.unsupported"));
         }
         if (!linkedPrompts.isEmpty() && renderedPrompt.length() > MediaDraftService.MAX_PROMPT_LENGTH) {
             throw invalid(ApiMessage.of("api.canvas-prompt.too-long", MediaDraftService.MAX_PROMPT_LENGTH));
         }
         if (!linkedPrompts.isEmpty() && !fullyDeclared && kind == Task.Kind.AUDIO_GENERATION
-                && renderedPrompt.codePointCount(0, renderedPrompt.length()) > AudioGenerationParameters.MAX_PROMPT_LENGTH) {
-            throw invalid(ApiMessage.of("api.direct-media-task-service.seed-audio-prompt-words-can-be-up-to-3000-characters"));
+                && renderedPrompt.codePointCount(0,
+                        renderedPrompt.length()) > AudioGenerationParameters.MAX_PROMPT_LENGTH) {
+            throw invalid(ApiMessage
+                    .of("api.direct-media-task-service.seed-audio-prompt-words-can-be-up-to-3000-characters"));
         }
         if (capabilities.inputPolicy(binding).platform() == dev.agenvas.provider.domain.MediaPlatform.COMFYUI
                 && renderedPrompt.length() > MediaAdapterRegistry.COMFY_MAX_PROMPT_LENGTH) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "MEDIA_STYLE_PROMPT_TOO_LONG",
                     ApiMessage.of("api.media-style.title"), ApiMessage.of("api.media-style.prompt-too-long",
-                            MediaAdapterRegistry.COMFY_MAX_PROMPT_LENGTH), false);
+                            MediaAdapterRegistry.COMFY_MAX_PROMPT_LENGTH),
+                    false);
         }
         ObjectNode comfyValues = null;
         if (comfy != null) {
             comfyValues = comfy.values(mapper, draft.parameters(), renderedPrompt, duration,
                     draft.mediaInputs().stream().filter(input -> input.role() == MediaDraft.InputRole.REFERENCE)
-                            .map(MediaDraft.MediaInput::versionId).toList(), true);
+                            .map(MediaDraft.MediaInput::versionId).toList(),
+                    true);
             ObjectNode slotParameters = mapper.createObjectNode();
             slotParameters.set(dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY, comfyValues);
             MediaDraftService.validateSlots(comfy.inputs(), slotParameters, draft.mediaInputs(), true);
         }
         validateReferenceAssets(ownerId, projectId, draft, binding);
-        JsonNode parametersForControls = capabilities.parameters(binding, comfy == null ? draft.parameters()
+        JsonNode parametersForControls = capabilities.parameters(binding, comfy == null
+                ? draft.parameters()
                 : ComfyUiWorkflowDefinition.standardParameters(draft.parameters()));
         ImageGenerationParameters imageParameters = !fullyDeclared && kind == Task.Kind.IMAGE_GENERATION
-                ? ImageGenerationParameters.parse(parametersForControls) : null;
+                ? ImageGenerationParameters.parse(parametersForControls)
+                : null;
         VideoGenerationParameters videoParameters = !fullyDeclared && kind == Task.Kind.VIDEO_GENERATION
-                ? VideoGenerationParameters.parse(parametersForControls) : null;
+                ? VideoGenerationParameters.parse(parametersForControls)
+                : null;
         if (imageParameters != null) {
             var policy = capabilities.inputPolicy(binding);
             imageParameters.requireSupported(policy.supportedImageAspectRatios(),
@@ -625,7 +752,9 @@ public class DirectMediaTaskService {
         }
         String autodlResolution = null;
         String resolutionTier = null;
-        if (nativeProfile != null) resolutionTier = nativeProfile.protocol().resolutionTier(nativeProfile.profile(), dynamicParameters.path(NativeMediaProtocol.VALUES_PROPERTY));
+        if (nativeProfile != null)
+            resolutionTier = nativeProfile.protocol().resolutionTier(nativeProfile.profile(),
+                    dynamicParameters.path(NativeMediaProtocol.VALUES_PROPERTY));
         if (kling != null && kind == Task.Kind.VIDEO_GENERATION) {
             String nativeTier = dynamicParameters.path(KlingModels.VALUES_PROPERTY).path("resolution").asText();
             resolutionTier = "4k".equals(nativeTier) ? "2160p" : nativeTier;
@@ -645,12 +774,14 @@ public class DirectMediaTaskService {
         }
         if (AutoDlWorkflows.ADAPTER_ID.equals(binding.adapterId())) {
             var workflow = AutoDlWorkflows.require(configuredSettings);
-            int audios = (int) draft.mediaInputs().stream().filter(reference ->
-                    reference.role() == MediaDraft.InputRole.AUDIO_REFERENCE).count();
+            int audios = (int) draft.mediaInputs().stream()
+                    .filter(reference -> reference.role() == MediaDraft.InputRole.AUDIO_REFERENCE).count();
             workflow.validate(renderedPrompt, seconds, draft.videoInputMode().name(),
                     draft.mediaInputs().size() - audios, audios);
-            if ("START_END".equals(workflow.mode()) && draft.mediaInputs().stream().noneMatch(reference ->
-                    reference.role() == MediaDraft.InputRole.END_FRAME)) throw invalid(ApiMessage.of("api.direct-media-task-service.this-autodl-workflow-requires-first-and-last-frames"));
+            if ("START_END".equals(workflow.mode()) && draft.mediaInputs().stream()
+                    .noneMatch(reference -> reference.role() == MediaDraft.InputRole.END_FRAME))
+                throw invalid(ApiMessage
+                        .of("api.direct-media-task-service.this-autodl-workflow-requires-first-and-last-frames"));
             String ratio = videoParameters.aspectRatio();
             if (VideoGenerationParameters.AUTO_ASPECT_RATIO.equals(ratio)) {
                 ratio = projectAspectRatio(projects.get(ownerId, projectId).aspectRatio());
@@ -660,9 +791,11 @@ public class DirectMediaTaskService {
         }
         return new PreparedMedia(target, canvasItem, draft, kind, binding, definition,
                 dynamicParameters, imageParameters, videoParameters, duration, configuredSettings,
-                renderedPrompt, userRenderedPrompt, autodlResolution, resolutionTier, style, comfyValues, kling, nativeProfile,
+                renderedPrompt, userRenderedPrompt, autodlResolution, resolutionTier, style, comfyValues, kling,
+                nativeProfile,
                 characters.getObject().frozenBindings(ownerId, projectId, canvasItem.id()).deepCopy(),
-                mapper.valueToTree(characters.getObject().frozenContribution(ownerId, projectId, canvasItem.id())), linkedPrompts);
+                mapper.valueToTree(characters.getObject().frozenContribution(ownerId, projectId, canvasItem.id())),
+                linkedPrompts);
     }
 
     private static boolean preparedPromptPresent(ObjectNode parameters, String property, String key) {
@@ -670,10 +803,15 @@ public class DirectMediaTaskService {
     }
 
     private ComfyUiWorkflowDefinition.Dimensions comfyDimensions(UUID ownerId, UUID projectId, PreparedMedia prepared) {
-        if (!ComfyUiWorkflowDefinition.configured(prepared.configuredSettings())) return null;
-        var workflow = ComfyUiWorkflowDefinition.parse(mapper, prepared.configuredSettings().get(ComfyUiWorkflowDefinition.SETTINGS_KEY), prepared.kind());
-        String ratio = prepared.imageParameters() != null ? prepared.imageParameters().aspectRatio() : prepared.videoParameters().aspectRatio();
-        if ("AUTO".equals(ratio) && workflow.maps(ComfyUiWorkflowDefinition.Source.WIDTH)) ratio = projectAspectRatio(projects.get(ownerId, projectId).aspectRatio());
+        if (!ComfyUiWorkflowDefinition.configured(prepared.configuredSettings()))
+            return null;
+        var workflow = ComfyUiWorkflowDefinition.parse(mapper,
+                prepared.configuredSettings().get(ComfyUiWorkflowDefinition.SETTINGS_KEY), prepared.kind());
+        String ratio = prepared.imageParameters() != null
+                ? prepared.imageParameters().aspectRatio()
+                : prepared.videoParameters().aspectRatio();
+        if ("AUTO".equals(ratio) && workflow.maps(ComfyUiWorkflowDefinition.Source.WIDTH))
+            ratio = projectAspectRatio(projects.get(ownerId, projectId).aspectRatio());
         if (!workflow.maps(ComfyUiWorkflowDefinition.Source.WIDTH) && !"AUTO".equals(ratio))
             throw invalid(ApiMessage.of("api.comfy-workflow.invalid", "dimensions"));
         return workflow.dimensions(ratio);
@@ -687,7 +825,8 @@ public class DirectMediaTaskService {
             String renderedPrompt, String userRenderedPrompt, String autodlResolution, String resolutionTier,
             MediaStyleService.Snapshot style, ObjectNode comfyValues, KlingModels.Profile kling,
             NativeMediaProfiles.Selection nativeProfile, JsonNode characterBindings,
-            JsonNode characterContribution, List<PromptInput> promptInputs) {}
+            JsonNode characterContribution, List<PromptInput> promptInputs) {
+    }
 
     private ObjectNode nativeProviderParameters(PreparedMedia prepared) {
         ObjectNode result = mapper.createObjectNode();
@@ -699,21 +838,30 @@ public class DirectMediaTaskService {
     }
 
     private void validateNativeLimits(MediaDraft draft, MediaAdapterRegistry.Declaration policy) {
-        long videos = draft.mediaInputs().stream().filter(i -> i.role() == MediaDraft.InputRole.VIDEO_REFERENCE).count();
-        long audios = draft.mediaInputs().stream().filter(i -> i.role() == MediaDraft.InputRole.AUDIO_REFERENCE).count();
+        long videos = draft.mediaInputs().stream().filter(i -> i.role() == MediaDraft.InputRole.VIDEO_REFERENCE)
+                .count();
+        long audios = draft.mediaInputs().stream().filter(i -> i.role() == MediaDraft.InputRole.AUDIO_REFERENCE)
+                .count();
         if (videos > policy.maxReferenceVideos() || audios > policy.maxReferenceAudios()
-                || draft.mediaInputs().size() - videos - audios > policy.maxReferenceImages()) throw NativeMediaProfiles.invalid();
+                || draft.mediaInputs().size() - videos - audios > policy.maxReferenceImages())
+            throw NativeMediaProfiles.invalid();
     }
 
     private java.math.BigDecimal nativeBillableInputSeconds(UUID owner, UUID project, PreparedMedia prepared) {
         var selection = prepared.nativeProfile();
-        if (selection == null) return java.math.BigDecimal.ZERO;
+        if (selection == null)
+            return java.math.BigDecimal.ZERO;
         var values = prepared.dynamicParameters().path(NativeMediaProtocol.VALUES_PROPERTY);
         java.util.Map<String, Asset> inputs = new java.util.HashMap<>();
-        for (var field : selection.inputs()) if (field.media() && NativeMediaProfiles.present(values, field.key())) {
-            var version = artifacts.requireMediaVersionForTask(owner, project, UUID.fromString(values.path(field.key()).asText()), Artifact.Kind.valueOf(field.type().name()));
-            inputs.put(field.key(), assets.requireReadyMedia(owner, project, UUID.fromString(version.content().path("assetId").asText()), Asset.MediaKind.valueOf(field.type().name())));
-        }
+        for (var field : selection.inputs())
+            if (field.media() && NativeMediaProfiles.present(values, field.key())) {
+                var version = artifacts.requireMediaVersionForTask(owner, project,
+                        UUID.fromString(values.path(field.key()).asText()), Artifact.Kind.valueOf(field.type().name()));
+                inputs.put(field.key(),
+                        assets.requireReadyMedia(owner, project,
+                                UUID.fromString(version.content().path("assetId").asText()),
+                                Asset.MediaKind.valueOf(field.type().name())));
+            }
         return selection.protocol().billableInputSeconds(selection.profile(), values, inputs);
     }
 
@@ -727,18 +875,26 @@ public class DirectMediaTaskService {
     }
 
     private void validateKlingLimits(MediaDraft draft, MediaAdapterRegistry.Declaration policy) {
-        long images = draft.mediaInputs().stream().filter(input -> input.role() == MediaDraft.InputRole.REFERENCE).count();
-        long videos = draft.mediaInputs().stream().filter(input -> input.role() == MediaDraft.InputRole.VIDEO_REFERENCE).count();
+        long images = draft.mediaInputs().stream().filter(input -> input.role() == MediaDraft.InputRole.REFERENCE)
+                .count();
+        long videos = draft.mediaInputs().stream().filter(input -> input.role() == MediaDraft.InputRole.VIDEO_REFERENCE)
+                .count();
         if (images > policy.maxReferenceImages() || videos > policy.maxReferenceVideos()
                 || draft.mediaInputs().stream().anyMatch(input -> input.role() != MediaDraft.InputRole.REFERENCE
-                        && input.role() != MediaDraft.InputRole.VIDEO_REFERENCE)) throw KlingProtocol.invalid();
+                        && input.role() != MediaDraft.InputRole.VIDEO_REFERENCE))
+            throw KlingProtocol.invalid();
     }
 
     private ObjectNode effectiveParameters(PreparedMedia prepared) {
-        ObjectNode effective = prepared.dynamicParameters() != null ? prepared.dynamicParameters().deepCopy()
-                : prepared.imageParameters() != null ? prepared.imageParameters().toJson(mapper)
-                : prepared.videoParameters() != null ? prepared.videoParameters().toJson(mapper)
-                : AudioGenerationParameters.parse(capabilities.parameters(prepared.binding(), prepared.draft().parameters())).toJson(mapper);
+        ObjectNode effective = prepared.dynamicParameters() != null
+                ? prepared.dynamicParameters().deepCopy()
+                : prepared.imageParameters() != null
+                        ? prepared.imageParameters().toJson(mapper)
+                        : prepared.videoParameters() != null
+                                ? prepared.videoParameters().toJson(mapper)
+                                : AudioGenerationParameters.parse(
+                                        capabilities.parameters(prepared.binding(), prepared.draft().parameters()))
+                                        .toJson(mapper);
         if (prepared.comfyValues() != null)
             effective.set(dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY, prepared.comfyValues());
         return effective;
@@ -757,13 +913,16 @@ public class DirectMediaTaskService {
         String adapter = prepared.binding().adapterId();
         if (!MediaAdapterRegistry.SEEDANCE_2.equals(adapter)
                 && !("COMFY_VIDEO_V1".equals(adapter)
-                    && !ComfyUiWorkflowDefinition.configured(prepared.configuredSettings()))) return null;
+                        && !ComfyUiWorkflowDefinition.configured(prepared.configuredSettings())))
+            return null;
         String ratio = prepared.videoParameters().aspectRatio();
-        if (VideoGenerationParameters.AUTO_ASPECT_RATIO.equals(ratio)) ratio = projectAspectRatio(projects.get(ownerId, projectId).aspectRatio());
+        if (VideoGenerationParameters.AUTO_ASPECT_RATIO.equals(ratio))
+            ratio = projectAspectRatio(projects.get(ownerId, projectId).aspectRatio());
         return mapper.createObjectNode().put("aspectRatio", ratio);
     }
 
-    private ObjectNode comfyProviderParameters(PreparedMedia prepared, ComfyUiWorkflowDefinition.Dimensions dimensions) {
+    private ObjectNode comfyProviderParameters(PreparedMedia prepared,
+            ComfyUiWorkflowDefinition.Dimensions dimensions) {
         ObjectNode frozen = (ObjectNode) mapper.valueToTree(dimensions);
         frozen.set(dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY, prepared.comfyValues());
         return frozen;
@@ -773,11 +932,13 @@ public class DirectMediaTaskService {
     public MediaPreflight preflightApproved(UUID ownerId, UUID projectId, UUID artifactId,
             UUID canvasItemId, long expectedDraftVersion, JsonNode creativeSkill) {
         MediaPreflight result = preflight(ownerId, projectId, artifactId, canvasItemId, expectedDraftVersion);
-        if (creativeSkill == null || creativeSkill.isNull()) return result;
+        if (creativeSkill == null || creativeSkill.isNull())
+            return result;
         ObjectNode summary = (ObjectNode) result.safeSummary().deepCopy();
         summary.set("creativeSkill", creativeSkill.deepCopy());
         return new MediaPreflight(result.kind(), result.binding(),
-                Sha256.hex(result.frozenInputHash() + "\n" + canonicalSkillSource(creativeSkill)), result.outputCount(), summary);
+                Sha256.hex(result.frozenInputHash() + "\n" + canonicalSkillSource(creativeSkill)), result.outputCount(),
+                summary);
     }
 
     /** JSONB can reorder object fields between proposal and approval; array order remains semantic. */
@@ -801,17 +962,27 @@ public class DirectMediaTaskService {
     public MediaPreflight preflight(UUID ownerId, UUID projectId, UUID artifactId,
             UUID canvasItemId, long expectedDraftVersion) {
         if (canvasItemId == null || expectedDraftVersion < 0) {
-            throw invalid(ApiMessage.of("api.direct-media-task-service.requires-a-valid-idempotency-key-and-draft-version"));
+            throw invalid(
+                    ApiMessage.of("api.direct-media-task-service.requires-a-valid-idempotency-key-and-draft-version"));
         }
         PreparedMedia prepared = prepare(ownerId, projectId, artifactId, canvasItemId, expectedDraftVersion);
         if (tasks.findOccupyingDirectMediaTask(projectId, canvasItemId).isPresent()) {
-            throw conflict(ApiMessage.of("api.task-service.this-media-card-already-has-tasks-queued-executed-or-pending"));
+            throw conflict(
+                    ApiMessage.of("api.task-service.this-media-card-already-has-tasks-queued-executed-or-pending"));
         }
-        Integer klingCount = prepared.kling() == null ? null : KlingModels.resultCount(prepared.kling(), prepared.dynamicParameters().path(KlingModels.VALUES_PROPERTY));
-        Integer nativeCount = prepared.nativeProfile() == null ? null : prepared.nativeProfile().resultCount(prepared.dynamicParameters().path(NativeMediaProtocol.VALUES_PROPERTY));
-        int outputCount = prepared.nativeProfile() != null ? nativeCount == null ? 1 : nativeCount
-                : prepared.kling() != null ? klingCount == null ? 1 : klingCount
-                : prepared.imageParameters() == null ? 1 : prepared.imageParameters().generationCount();
+        Integer klingCount = prepared.kling() == null
+                ? null
+                : KlingModels.resultCount(prepared.kling(),
+                        prepared.dynamicParameters().path(KlingModels.VALUES_PROPERTY));
+        Integer nativeCount = prepared.nativeProfile() == null
+                ? null
+                : prepared.nativeProfile()
+                        .resultCount(prepared.dynamicParameters().path(NativeMediaProtocol.VALUES_PROPERTY));
+        int outputCount = prepared.nativeProfile() != null
+                ? nativeCount == null ? 1 : nativeCount
+                : prepared.kling() != null
+                        ? klingCount == null ? 1 : klingCount
+                        : prepared.imageParameters() == null ? 1 : prepared.imageParameters().generationCount();
         JsonNode effectiveParameters = effectiveParameters(prepared);
         JsonNode pricing = dev.agenvas.provider.domain.MediaCapabilityConfiguration.price(
                 prepared.configuredSettings(), prepared.resolutionTier());
@@ -820,8 +991,10 @@ public class DirectMediaTaskService {
         snapshot.put("artifactId", artifactId.toString());
         snapshot.put("artifactVersion", prepared.target().version());
         snapshot.put("canvasItemId", canvasItemId.toString());
-        if (prepared.canvasItem().selectedVersionId() == null) snapshot.putNull("parentVersionId");
-        else snapshot.put("parentVersionId", prepared.canvasItem().selectedVersionId().toString());
+        if (prepared.canvasItem().selectedVersionId() == null)
+            snapshot.putNull("parentVersionId");
+        else
+            snapshot.put("parentVersionId", prepared.canvasItem().selectedVersionId().toString());
         snapshot.put("resultSelectionEpoch", canvas.mediaSelectionEpoch(ownerId, projectId, canvasItemId));
         snapshot.put("draftVersion", expectedDraftVersion);
         snapshot.put("prompt", prepared.renderedPrompt());
@@ -830,10 +1003,13 @@ public class DirectMediaTaskService {
         snapshot.set("style", mapper.valueToTree(prepared.style()));
         snapshot.set("parameters", effectiveParameters);
         var comfyDimensions = comfyDimensions(ownerId, projectId, prepared);
-        if (comfyDimensions != null) snapshot.set("providerParameters", comfyProviderParameters(prepared, comfyDimensions));
+        if (comfyDimensions != null)
+            snapshot.set("providerParameters", comfyProviderParameters(prepared, comfyDimensions));
         var fixedVideoParameters = fixedVideoProviderParameters(ownerId, projectId, prepared);
-        if (fixedVideoParameters != null) snapshot.set("providerParameters", fixedVideoParameters);
-        if (prepared.kling() != null) snapshot.set("providerParameters", klingProviderParameters(prepared));
+        if (fixedVideoParameters != null)
+            snapshot.set("providerParameters", fixedVideoParameters);
+        if (prepared.kling() != null)
+            snapshot.set("providerParameters", klingProviderParameters(prepared));
         if (prepared.nativeProfile() != null) {
             snapshot.set("providerParameters", nativeProviderParameters(prepared));
             snapshot.put("nativeBillableInputSeconds", nativeBillableInputSeconds(ownerId, projectId, prepared));
@@ -845,12 +1021,17 @@ public class DirectMediaTaskService {
         snapshot.set("characterContribution", canonicalSkillSource(prepared.characterContribution()));
         snapshot.set("binding", mapper.valueToTree(prepared.binding()));
         snapshot.put("kind", prepared.kind().name());
-        snapshot.put("mode", prepared.kind() == Task.Kind.IMAGE_GENERATION ? "GENERAL_REFERENCE"
+        snapshot.put("mode", prepared.kind() == Task.Kind.IMAGE_GENERATION
+                ? "GENERAL_REFERENCE"
                 : prepared.kind() == Task.Kind.AUDIO_GENERATION ? "TEXT" : prepared.draft().videoInputMode().name());
-        if (prepared.duration() != null) snapshot.put("durationSeconds", prepared.duration());
-        if (prepared.autodlResolution() != null) snapshot.put("providerResolution", prepared.autodlResolution());
-        if (pricing != null) snapshot.set("mediaPricing", pricing);
-        if (prepared.configuredSettings().has("tokenPricing")) snapshot.set("mediaTokenPricing", prepared.configuredSettings().get("tokenPricing").deepCopy());
+        if (prepared.duration() != null)
+            snapshot.put("durationSeconds", prepared.duration());
+        if (prepared.autodlResolution() != null)
+            snapshot.put("providerResolution", prepared.autodlResolution());
+        if (pricing != null)
+            snapshot.set("mediaPricing", pricing);
+        if (prepared.configuredSettings().has("tokenPricing"))
+            snapshot.set("mediaTokenPricing", prepared.configuredSettings().get("tokenPricing").deepCopy());
         ObjectNode summary = mapper.createObjectNode();
         summary.put("kind", prepared.kind().name());
         summary.put("prompt", prepared.userRenderedPrompt());
@@ -871,20 +1052,27 @@ public class DirectMediaTaskService {
         if (prepared.kind() == Task.Kind.VIDEO_GENERATION) {
             summary.put("videoInputMode", prepared.draft().videoInputMode().name());
         }
-        if (prepared.duration() != null) summary.put("durationSeconds", prepared.duration());
+        if (prepared.duration() != null)
+            summary.put("durationSeconds", prepared.duration());
         summary.put("priceUnknown", pricing == null || prepared.kling() != null
                 && (prepared.kind() == Task.Kind.IMAGE_GENERATION && klingCount == null
-                    || prepared.duration() == null && "SECOND".equals(pricing.path("unit").asText())));
-        if (prepared.kling() != null && klingCount == null || prepared.nativeProfile() != null && nativeCount == null) summary.put("outputCountUnknown", true);
-        if (prepared.nativeProfile() != null && (nativeCount == null || prepared.duration() == null && pricing != null && "SECOND".equals(pricing.path("unit").asText()))) summary.put("priceUnknown", true);
-        if (pricing != null) summary.set("mediaPricing", pricing.deepCopy());
-        if (prepared.configuredSettings().has("tokenPricing")) summary.set("mediaTokenPricing", prepared.configuredSettings().get("tokenPricing").deepCopy());
+                        || prepared.duration() == null && "SECOND".equals(pricing.path("unit").asText())));
+        if (prepared.kling() != null && klingCount == null || prepared.nativeProfile() != null && nativeCount == null)
+            summary.put("outputCountUnknown", true);
+        if (prepared.nativeProfile() != null && (nativeCount == null
+                || prepared.duration() == null && pricing != null && "SECOND".equals(pricing.path("unit").asText())))
+            summary.put("priceUnknown", true);
+        if (pricing != null)
+            summary.set("mediaPricing", pricing.deepCopy());
+        if (prepared.configuredSettings().has("tokenPricing"))
+            summary.set("mediaTokenPricing", prepared.configuredSettings().get("tokenPricing").deepCopy());
         return new MediaPreflight(prepared.kind(), prepared.binding(), Sha256.hex(snapshot.toString()),
                 outputCount, summary);
     }
 
     public record MediaPreflight(Task.Kind kind, MediaCapabilityBinding binding,
-            String frozenInputHash, int outputCount, JsonNode safeSummary) {}
+            String frozenInputHash, int outputCount, JsonNode safeSummary) {
+    }
 
     /** Holds catalog rows throughout approval validation and task creation, closing configuration races. */
     @Transactional(propagation = Propagation.MANDATORY)
@@ -917,27 +1105,34 @@ public class DirectMediaTaskService {
         if (canvasItemId == null || sourceVersionId == null || operation == null
                 || expectedCanvasItemVersion < 0 || commandKey == null || commandKey.isBlank()
                 || commandKey.length() > MAX_COMMAND_KEY_LENGTH) {
-            throw invalid(ApiMessage.of("api.direct-media-task-service.requires-a-valid-image-action-card-version-and-idempotency-key"));
+            throw invalid(ApiMessage.of(
+                    "api.direct-media-task-service.requires-a-valid-image-action-card-version-and-idempotency-key"));
         }
         if (markupAssetId != null && (maskAssetId != null || operation != ImageOperation.SMART_EDIT))
             throw invalid(ApiMessage.of("api.image-markup.invalid-mode"));
         ImageOperationSpec operationSpec = ImageOperationSpec.parse(mapper, operation, requestedParameters);
         ObjectNode operationParameters = operationSpec.parameters();
         List<UUID> normalizedReferenceIds = referenceVersionIds == null
-                ? List.of() : List.copyOf(referenceVersionIds);
+                ? List.of()
+                : List.copyOf(referenceVersionIds);
         if (new HashSet<>(normalizedReferenceIds).size() != normalizedReferenceIds.size()) {
-            throw invalid(ApiMessage.of("api.direct-media-task-service.intelligent-editing-reference-pictures-cannot-be-repeated"));
+            throw invalid(ApiMessage
+                    .of("api.direct-media-task-service.intelligent-editing-reference-pictures-cannot-be-repeated"));
         }
         if (operation != ImageOperation.SMART_EDIT
                 && (!normalizedReferenceIds.isEmpty() || maskAssetId != null)) {
-            throw invalid(ApiMessage.of("api.direct-media-task-service.only-smart-editing-supports-additional-reference-images-and-masks"));
+            throw invalid(ApiMessage.of(
+                    "api.direct-media-task-service.only-smart-editing-supports-additional-reference-images-and-masks"));
         }
         ArrayNode requestedReferenceIds = mapper.createArrayNode();
         normalizedReferenceIds.forEach(id -> requestedReferenceIds.add(id.toString()));
         String normalizedInstruction = instruction == null ? "" : instruction.trim();
-        if (normalizedInstruction.length() > MAX_IMAGE_OPERATION_INSTRUCTION_LENGTH) throw invalid(ApiMessage.of("api.direct-media-task-service.edit-description-cannot-exceed-4000-characters"));
+        if (normalizedInstruction.length() > MAX_IMAGE_OPERATION_INSTRUCTION_LENGTH)
+            throw invalid(
+                    ApiMessage.of("api.direct-media-task-service.edit-description-cannot-exceed-4000-characters"));
         if (operation.instructionRequired() && normalizedInstruction.isBlank()) {
-            throw invalid(ApiMessage.of("api.direct-media-task-service.this-ai-image-processing-requires-filling-in-processing-instructions"));
+            throw invalid(ApiMessage.of(
+                    "api.direct-media-task-service.this-ai-image-processing-requires-filling-in-processing-instructions"));
         }
         if (expectedFunctionVersion < 0 || expectedCapabilityVersion < 1) {
             throw invalid(ApiMessage.of("api.media-function.invalid-request"));
@@ -948,10 +1143,13 @@ public class DirectMediaTaskService {
                 .put("instruction", normalizedInstruction).put("expectedFunctionVersion", expectedFunctionVersion)
                 .put("expectedCapabilityVersion", expectedCapabilityVersion);
         request.set("referenceVersionIds", requestedReferenceIds);
-        if (maskAssetId == null) request.putNull("maskAssetId");
-        else request.put("maskAssetId", maskAssetId.toString());
+        if (maskAssetId == null)
+            request.putNull("maskAssetId");
+        else
+            request.put("maskAssetId", maskAssetId.toString());
         // Omit absent markup to preserve fingerprints of historical mask and unmarked commands.
-        if (markupAssetId != null) request.put("markupAssetId", markupAssetId.toString());
+        if (markupAssetId != null)
+            request.put("markupAssetId", markupAssetId.toString());
         request.set("parameters", requestedParameters);
         // Compare parsed numbers with the JSONB replay representation (for example 2 and 2.0).
         JsonNode normalizedRequest = mapper.readTree(request.toString());
@@ -960,36 +1158,44 @@ public class DirectMediaTaskService {
         if (maskAssetId != null && tasks.findDirectByStepKey(ownerId, projectId, commandKey).isEmpty()) {
             validateImageMask(ownerId, projectId, maskAssetId);
         }
-        final int[] markupDimensions = markupAssetId != null && tasks.findDirectByStepKey(ownerId, projectId, commandKey).isEmpty()
-                ? validateImageMarkup(ownerId, projectId, sourceVersionId, markupAssetId) : null;
+        final int[] markupDimensions = markupAssetId != null
+                && tasks.findDirectByStepKey(ownerId, projectId, commandKey).isEmpty()
+                        ? validateImageMarkup(ownerId, projectId, sourceVersionId, markupAssetId)
+                        : null;
         // Application media is materialized before the short acceptance transaction, just like masks.
         final ObjectNode costumeStyle = operation == ImageOperation.COSTUME_EXTRACT
                 && tasks.findDirectByStepKey(ownerId, projectId, commandKey).isEmpty()
-                ? dev.agenvas.provider.application.CostumeExtractionReference.snapshot(mapper) : null;
+                        ? dev.agenvas.provider.application.CostumeExtractionReference.snapshot(mapper)
+                        : null;
         return events.recordChange(ownerId, projectId, () -> {
             Task prior = tasks.findDirectByStepKey(ownerId, projectId, commandKey).orElse(null);
             if (prior != null) {
                 if (!prior.input().path("imageOperationRequest").equals(normalizedRequest)) {
-                    throw conflict(ApiMessage.of("api.direct-media-task-service.the-same-idempotent-keys-have-been-used-for-different-image"));
+                    throw conflict(ApiMessage.of(
+                            "api.direct-media-task-service.the-same-idempotent-keys-have-been-used-for-different-image"));
                 }
                 return ProjectEventService.Change.unchanged(prior);
             }
             Artifact target = artifacts.get(ownerId, projectId, artifactId).artifact();
             if (target.kind() != Artifact.Kind.IMAGE || target.archivedAt() != null) {
-                throw invalid(ApiMessage.of("api.direct-media-task-service.image-processing-can-only-be-used-on-unarchived-image-cards"));
+                throw invalid(ApiMessage.of(
+                        "api.direct-media-task-service.image-processing-can-only-be-used-on-unarchived-image-cards"));
             }
             CanvasItem card = canvasItems.requireArtifactItem(ownerId, projectId, canvasItemId);
             if (!card.subjectId().equals(artifactId)
                     || !sourceVersionId.equals(card.selectedVersionId())) {
-                throw conflict(ApiMessage.of("api.direct-media-task-service.the-current-image-of-the-card-has-changed-please-reprocess"));
+                throw conflict(ApiMessage.of(
+                        "api.direct-media-task-service.the-current-image-of-the-card-has-changed-please-reprocess"));
             }
             if (card.version() != expectedCanvasItemVersion) {
-                throw conflict(ApiMessage.of("api.direct-media-task-service.the-card-has-changed-please-refresh-and-try-again"));
+                throw conflict(ApiMessage
+                        .of("api.direct-media-task-service.the-card-has-changed-please-refresh-and-try-again"));
             }
             ArtifactVersion source = artifacts.requireImageVersionForTask(ownerId, projectId,
                     sourceVersionId);
             if (!source.artifactId().equals(artifactId)) {
-                throw invalid(ApiMessage.of("api.direct-media-task-service.the-processing-source-must-be-the-version-of-the-image"));
+                throw invalid(ApiMessage
+                        .of("api.direct-media-task-service.the-processing-source-must-be-the-version-of-the-image"));
             }
             requireStaticImage(ownerId, projectId, source);
             if (operation == ImageOperation.RESIZE) {
@@ -1007,16 +1213,19 @@ public class DirectMediaTaskService {
             UUID requestedCapabilityId = binding.capabilityId();
             var definition = capabilities.runningHubDefinition(binding);
             // Workflow fields own their scale; do not record an unseen local interpolation default.
-            if (definition != null && operation == ImageOperation.UPSCALE) operationParameters.remove("scale");
+            if (definition != null && operation == ImageOperation.UPSCALE)
+                operationParameters.remove("scale");
             var inputPolicy = capabilities.inputPolicy(binding);
             if (1 + normalizedReferenceIds.size() + (costumeStyle == null ? 0 : 1) > inputPolicy.maxReferenceImages()) {
-                throw invalid(ApiMessage.of("api.direct-media-task-service.the-selected-ai-image-capability-cannot-accept-this-many-reference"));
+                throw invalid(ApiMessage.of(
+                        "api.direct-media-task-service.the-selected-ai-image-capability-cannot-accept-this-many-reference"));
             }
             List<ArtifactVersion> referenceVersions = new ArrayList<>(
                     normalizedReferenceIds.size());
             for (UUID referenceVersionId : normalizedReferenceIds) {
                 if (referenceVersionId.equals(sourceVersionId)) {
-                    throw invalid(ApiMessage.of("api.direct-media-task-service.the-source-image-is-already-the-first-input-for-smart"));
+                    throw invalid(ApiMessage
+                            .of("api.direct-media-task-service.the-source-image-is-already-the-first-input-for-smart"));
                 }
                 var reference = artifacts.requireImageVersionForTask(ownerId, projectId, referenceVersionId);
                 requireStaticImage(ownerId, projectId, reference);
@@ -1024,37 +1233,48 @@ public class DirectMediaTaskService {
             }
             if (maskAssetId != null) {
                 if (!inputPolicy.supportsImageMask()) {
-                    throw invalid(ApiMessage.of("api.direct-media-task-service.the-selected-ai-picture-capability-does-not-support-explicit-mask"));
+                    throw invalid(ApiMessage.of(
+                            "api.direct-media-task-service.the-selected-ai-picture-capability-does-not-support-explicit-mask"));
                 }
                 assets.requireReadyMedia(ownerId, projectId, maskAssetId, Asset.MediaKind.IMAGE);
             }
             if (markupAssetId != null) {
                 if (!MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(binding.adapterId())
-                        || !dev.agenvas.provider.domain.OpenAiImageOptions.supportsMarkup(capabilities.settings(binding)))
+                        || !dev.agenvas.provider.domain.OpenAiImageOptions
+                                .supportsMarkup(capabilities.settings(binding)))
                     throw invalid(ApiMessage.of("api.image-markup.unsupported-model"));
                 assets.requireReadyMedia(ownerId, projectId, markupAssetId, Asset.MediaKind.IMAGE);
             }
             boolean transparentOutput = operationSpec.requiresTransparentOutput();
             if (transparentOutput && !inputPolicy.supportsTransparentBackground()) {
-                throw invalid(ApiMessage.of("api.direct-media-task-service.the-selected-ai-picture-capability-does-not-support-transparent-background"));
+                throw invalid(ApiMessage.of(
+                        "api.direct-media-task-service.the-selected-ai-picture-capability-does-not-support-transparent-background"));
             }
             // Read only on first acceptance: replay and Workers keep the original frozen content.
             String promptKey = operationSpec.promptKey();
-            PromptService.Prompt functionPrompt = promptKey == null ? null
+            PromptService.Prompt functionPrompt = promptKey == null
+                    ? null
                     : prompts.require(promptKey, PromptService.Kind.FUNCTION);
             String prompt = imageOperationPrompt(operation, operationSpec, normalizedInstruction,
                     functionPrompt, definition, referenceVersions.size(), maskAssetId != null);
-            if (markupAssetId != null) prompt += " Use the separate annotation layer on image 1 to guide the requested edit. "
-                    + "Remove the annotations from the finished image and preserve unmentioned details.";
+            if (markupAssetId != null)
+                prompt += " Use the separate annotation layer on image 1 to guide the requested edit. "
+                        + "Remove the annotations from the finished image and preserve unmentioned details.";
             ObjectNode workflowParameters = imageWorkflowParameters(ownerId, projectId, source,
                     sourceVersionId, definition, requestedParameters, prompt);
-            String outputRatio = operation == ImageOperation.OUTPAINT || operation == ImageOperation.THREE_VIEW || operation == ImageOperation.COSTUME_EXTRACT
-                    ? operationParameters.path("aspectRatio").asText()
-                    : markupDimensions != null ? sourceAspectRatio(markupDimensions[0], markupDimensions[1], inputPolicy.supportedImageAspectRatios())
-                    : sourceAspectRatio(ownerId, projectId, source, inputPolicy.supportedImageAspectRatios());
+            String outputRatio = operation == ImageOperation.OUTPAINT || operation == ImageOperation.THREE_VIEW
+                    || operation == ImageOperation.COSTUME_EXTRACT
+                            ? operationParameters.path("aspectRatio").asText()
+                            : markupDimensions != null
+                                    ? sourceAspectRatio(markupDimensions[0], markupDimensions[1],
+                                            inputPolicy.supportedImageAspectRatios())
+                                    : sourceAspectRatio(ownerId, projectId, source,
+                                            inputPolicy.supportedImageAspectRatios());
             if (definition == null && !MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(binding.adapterId())
                     && !inputPolicy.supportedImageAspectRatios().contains(outputRatio)) {
-                throw invalid(ApiMessage.of("api.image-generation-parameters.the-selected-image-capability-does-not-support-aspect-ratio", outputRatio));
+                throw invalid(ApiMessage.of(
+                        "api.image-generation-parameters.the-selected-image-capability-does-not-support-aspect-ratio",
+                        outputRatio));
             }
             MediaDraft sourceDraft = drafts.get(ownerId, projectId, canvasItemId);
             CanvasItem outputCard = canvas.forkMediaDerivationWithinChange(ownerId, projectId,
@@ -1091,11 +1311,15 @@ public class DirectMediaTaskService {
             frozenOperation.put("capabilityId", requestedCapabilityId.toString());
             frozenOperation.put("instruction", normalizedInstruction);
             frozenOperation.set("referenceVersionIds", requestedReferenceIds.deepCopy());
-            if (maskAssetId == null) frozenOperation.putNull("maskAssetId");
-            else frozenOperation.put("maskAssetId", maskAssetId.toString());
-            if (markupAssetId != null) frozenOperation.put("markupAssetId", markupAssetId.toString());
+            if (maskAssetId == null)
+                frozenOperation.putNull("maskAssetId");
+            else
+                frozenOperation.put("maskAssetId", maskAssetId.toString());
+            if (markupAssetId != null)
+                frozenOperation.put("markupAssetId", markupAssetId.toString());
             frozenOperation.set("parameters", operationParameters.deepCopy());
-            if (costumeStyle != null) frozenOperation.set("styleReference", costumeStyle.deepCopy());
+            if (costumeStyle != null)
+                frozenOperation.set("styleReference", costumeStyle.deepCopy());
             freezeImageOperationMediaInput(input, artifactId, sourceVersionId, operationSettings,
                     new PreparedImageOperation(binding, definition, prompt, outputRatio,
                             transparentOutput, referenceVersions, workflowParameters));
@@ -1109,7 +1333,9 @@ public class DirectMediaTaskService {
                     artifactId, sourceVersionId, target.version(), outputCard.id()));
             usage.reserveMediaTask(ownerId, task,
                     MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(binding.adapterId())
-                            ? LOCAL_COST_SOURCE : COST_SOURCE, binding.connectionVersion());
+                            ? LOCAL_COST_SOURCE
+                            : COST_SOURCE,
+                    binding.connectionVersion());
             ObjectNode payload = mapper.createObjectNode();
             payload.put("taskId", task.id().toString());
             payload.put("artifactId", artifactId.toString());
@@ -1155,7 +1381,8 @@ public class DirectMediaTaskService {
         Asset sourceAsset = assets.requireReadyMedia(ownerId, projectId,
                 UUID.fromString(source.content().path("assetId").asText()), Asset.MediaKind.IMAGE);
         if (sourceAsset.byteSize() > dev.agenvas.provider.infrastructure.RunningHubClient.MAX_UPLOAD_BYTES) {
-            throw invalid(ApiMessage.of("api.direct-media-task-service.a-single-piece-of-runninghub-material-cannot-exceed-30-mb"));
+            throw invalid(ApiMessage
+                    .of("api.direct-media-task-service.a-single-piece-of-runninghub-material-cannot-exceed-30-mb"));
         }
         JsonNode dynamic = requestedParameters.path(RunningHubDefinition.VALUES_PROPERTY);
         if (!dynamic.isMissingNode() && !dynamic.isObject()) {
@@ -1176,7 +1403,8 @@ public class DirectMediaTaskService {
             JsonNode settings, PreparedImageOperation prepared) {
         ObjectNode frozen = input.putObject("mediaInput");
         if (ComfyUiWorkflowDefinition.configured(settings)) {
-            var workflow = ComfyUiWorkflowDefinition.parse(mapper, settings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY), Task.Kind.IMAGE_GENERATION);
+            var workflow = ComfyUiWorkflowDefinition.parse(mapper, settings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY),
+                    Task.Kind.IMAGE_GENERATION);
             workflow.requireReferences(1 + prepared.references().size());
             frozen.set("providerParameters", mapper.valueToTree(workflow.dimensions(prepared.outputRatio())));
         }
@@ -1218,15 +1446,19 @@ public class DirectMediaTaskService {
 
     private record PreparedImageOperation(MediaCapabilityBinding binding, RunningHubDefinition definition,
             String prompt, String outputRatio, boolean transparentOutput, List<ArtifactVersion> references,
-            ObjectNode workflowParameters) {}
+            ObjectNode workflowParameters) {
+    }
 
     /** Only the fixed OpenAI Images protocol currently declares URL reference support. */
     private void pinImageRelay(ObjectNode input, MediaCapabilityBinding binding) {
         if (!MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(binding.adapterId())
-                || input.path("mediaInput").path("images").isEmpty()) return;
+                || input.path("mediaInput").path("images").isEmpty())
+            return;
         UUID profile = relay.pinImageProfile();
-        if (profile == null) input.putNull("imageRelayProfileId");
-        else input.put("imageRelayProfileId", profile.toString());
+        if (profile == null)
+            input.putNull("imageRelayProfileId");
+        else
+            input.put("imageRelayProfileId", profile.toString());
     }
 
     /** Storage reads happen before project locks; acceptance rechecks immutable asset identity. */
@@ -1235,10 +1467,12 @@ public class DirectMediaTaskService {
         var source = assets.get(ownerId, projectId, UUID.fromString(version.content().path("assetId").asText()));
         var markup = assets.get(ownerId, projectId, markupAssetId);
         try {
-            if (!"image/png".equals(markup.asset().contentType())) throw new IllegalArgumentException();
-            var pair = dev.agenvas.provider.domain.OpenAiMarkupInput.prepare(java.nio.file.Files.readAllBytes(source.path()),
+            if (!"image/png".equals(markup.asset().contentType()))
+                throw new IllegalArgumentException();
+            var pair = dev.agenvas.provider.domain.OpenAiMarkupInput.prepare(
+                    java.nio.file.Files.readAllBytes(source.path()),
                     java.nio.file.Files.readAllBytes(markup.path()));
-            return new int[] { pair.width(), pair.height() };
+            return new int[]{pair.width(), pair.height()};
         } catch (IOException | IllegalArgumentException invalidPair) {
             throw invalid(ApiMessage.of("api.image-markup.invalid-pair"));
         }
@@ -1251,12 +1485,14 @@ public class DirectMediaTaskService {
         if (mask.mediaKind() != Asset.MediaKind.IMAGE
                 || !"image/png".equals(mask.contentType())
                 || mask.byteSize() < 1 || mask.byteSize() > OpenAiImage2Client.MAX_MASK_BYTES) {
-            throw invalid(ApiMessage.of("api.direct-media-task-service.smart-editing-masks-must-be-png-images-smaller-than-4"));
+            throw invalid(ApiMessage
+                    .of("api.direct-media-task-service.smart-editing-masks-must-be-png-images-smaller-than-4"));
         }
         try {
             BufferedImage decoded = ImageIO.read(file.path().toFile());
             if (decoded == null || !decoded.getColorModel().hasAlpha()) {
-                throw invalid(ApiMessage.of("api.direct-media-task-service.smart-editing-masks-must-contain-a-transparency-channel"));
+                throw invalid(ApiMessage
+                        .of("api.direct-media-task-service.smart-editing-masks-must-contain-a-transparency-channel"));
             }
         } catch (IOException unreadable) {
             throw invalid(ApiMessage.of("api.direct-media-task-service.smart-editing-masks-cannot-be-read"));
@@ -1289,14 +1525,21 @@ public class DirectMediaTaskService {
         int mentionIndex = 0;
         for (int i = 0; i < draft.prompt().length(); i++) {
             char c = draft.prompt().charAt(i);
-            if (c != '\uFFFC') { result.append(c); continue; }
-            if (mentionIndex >= draft.mentions().size()) throw NativeMediaProfiles.invalid();
+            if (c != '\uFFFC') {
+                result.append(c);
+                continue;
+            }
+            if (mentionIndex >= draft.mentions().size())
+                throw NativeMediaProfiles.invalid();
             var mention = draft.mentions().get(mentionIndex++);
-            String slot = selected.inputs().stream().filter(f -> f.media() && mention.versionId().toString().equals(values.path(f.key()).asText()))
-                    .map(dev.agenvas.provider.domain.CreatorInputField::key).findFirst().orElseThrow(NativeMediaProfiles::invalid);
+            String slot = selected.inputs().stream()
+                    .filter(f -> f.media() && mention.versionId().toString().equals(values.path(f.key()).asText()))
+                    .map(dev.agenvas.provider.domain.CreatorInputField::key).findFirst()
+                    .orElseThrow(NativeMediaProfiles::invalid);
             result.append(selected.protocol().renderMention(selected.profile(), values, slot));
         }
-        if (mentionIndex != draft.mentions().size()) throw NativeMediaProfiles.invalid();
+        if (mentionIndex != draft.mentions().size())
+            throw NativeMediaProfiles.invalid();
         return result.toString();
     }
 
@@ -1306,23 +1549,30 @@ public class DirectMediaTaskService {
         int mentionIndex = 0;
         for (int index = 0; index < draft.prompt().length(); index++) {
             char character = draft.prompt().charAt(index);
-            if (character != MENTION_MARKER) { rendered.append(character); continue; }
-            if (mentionIndex >= draft.mentions().size()) throw KlingProtocol.invalid();
+            if (character != MENTION_MARKER) {
+                rendered.append(character);
+                continue;
+            }
+            if (mentionIndex >= draft.mentions().size())
+                throw KlingProtocol.invalid();
             var mention = draft.mentions().get(mentionIndex++);
             String key = KlingModels.inputs(profile).stream().filter(field -> field.media()
                     && mention.versionId().toString().equals(values.path(field.key()).asText()))
                     .map(KlingModels.Field::key).findFirst().orElseThrow(KlingProtocol::invalid);
             if (profile.kind() == Task.Kind.IMAGE_GENERATION && KlingModels.omni(profile)) {
                 int ordinal = 0;
-                for (int slot = 1; slot <= 10; slot++) if (KlingModels.present(values, "image_" + slot)) {
-                    ordinal++;
-                    if (key.equals("image_" + slot)) break;
-                }
+                for (int slot = 1; slot <= 10; slot++)
+                    if (KlingModels.present(values, "image_" + slot)) {
+                        ordinal++;
+                        if (key.equals("image_" + slot))
+                            break;
+                    }
                 rendered.append("<<<image_").append(ordinal).append(">>>");
-            }
-            else rendered.append('@').append(key);
+            } else
+                rendered.append('@').append(key);
         }
-        if (mentionIndex != draft.mentions().size()) throw KlingProtocol.invalid();
+        if (mentionIndex != draft.mentions().size())
+            throw KlingProtocol.invalid();
         return rendered.toString();
     }
 
@@ -1336,7 +1586,8 @@ public class DirectMediaTaskService {
                 continue;
             }
             if (mentionIndex >= draft.mentions().size()) {
-                throw invalid(ApiMessage.of("api.direct-media-task-service.the-word-picture-label-is-damaged-please-save-the-draft"));
+                throw invalid(ApiMessage
+                        .of("api.direct-media-task-service.the-word-picture-label-is-damaged-please-save-the-draft"));
             }
             MediaDraft.PromptMention mention = draft.mentions().get(mentionIndex++);
             rendered.append('@').append(switch (mention.role()) {
@@ -1344,11 +1595,13 @@ public class DirectMediaTaskService {
                 case END_FRAME -> "End Frame";
                 case REFERENCE -> "Image " + referenceNumber(draft, mention);
                 case VIDEO_REFERENCE -> "Video " + referenceNumber(draft, mention);
-                case AUDIO_REFERENCE -> (draft.videoInputMode() == null ? "音频" : "Audio ") + referenceNumber(draft, mention);
+                case AUDIO_REFERENCE ->
+                    (draft.videoInputMode() == null ? "音频" : "Audio ") + referenceNumber(draft, mention);
             });
         }
         if (mentionIndex != draft.mentions().size()) {
-            throw invalid(ApiMessage.of("api.direct-media-task-service.the-word-picture-label-is-damaged-please-save-the-draft"));
+            throw invalid(ApiMessage
+                    .of("api.direct-media-task-service.the-word-picture-label-is-damaged-please-save-the-draft"));
         }
         return rendered.toString();
     }
@@ -1356,12 +1609,14 @@ public class DirectMediaTaskService {
     private int referenceNumber(MediaDraft draft, MediaDraft.PromptMention mention) {
         int number = 0;
         for (MediaDraft.MediaInput input : draft.mediaInputs()) {
-            if (input.role() == mention.role()) number++;
+            if (input.role() == mention.role())
+                number++;
             if (input.versionId().equals(mention.versionId()) && input.role() == mention.role()) {
                 return number;
             }
         }
-        throw invalid(ApiMessage.of("api.direct-media-task-service.there-is-no-corresponding-image-input-for-the-prompt-word"));
+        throw invalid(ApiMessage
+                .of("api.direct-media-task-service.there-is-no-corresponding-image-input-for-the-prompt-word"));
     }
 
     /** External generation stops only while queued; fixed local editing can additionally signal its current process. */
@@ -1370,9 +1625,11 @@ public class DirectMediaTaskService {
         return events.recordChange(ownerId, projectId, () -> {
             Task current = tasks.find(ownerId, projectId, taskId)
                     .orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND,
-                            "RESOURCE_NOT_FOUND", ApiMessage.of("api.read-tool-service.task-does-not-exist"), ApiMessage.of("api.direct-media-task-service.the-task-cannot-be-found"), false));
+                            "RESOURCE_NOT_FOUND", ApiMessage.of("api.read-tool-service.task-does-not-exist"),
+                            ApiMessage.of("api.direct-media-task-service.the-task-cannot-be-found"), false));
             if (current.runId() != null) {
-                throw invalid(ApiMessage.of("api.direct-media-task-service.direct-media-tasks-can-only-be-canceled-via-this-portal"));
+                throw invalid(ApiMessage
+                        .of("api.direct-media-task-service.direct-media-tasks-can-only-be-canceled-via-this-portal"));
             }
             if (current.status() == Task.Status.CANCELED) {
                 return ProjectEventService.Change.unchanged(current);
@@ -1384,10 +1641,12 @@ public class DirectMediaTaskService {
                     ? tasks.cancelLocalProcessing(current, clock.instant())
                     : tasks.cancelQueuedDirect(projectId, taskId, clock.instant());
             if (!changed) {
-                throw conflict(ApiMessage.of("api.direct-media-task-service.the-task-submission-has-started-please-check-the-cancellation-option"));
+                throw conflict(ApiMessage.of(
+                        "api.direct-media-task-service.the-task-submission-has-started-please-check-the-cancellation-option"));
             }
             Task canceled = tasks.find(ownerId, projectId, taskId).orElseThrow();
-            if (canceled.status() == Task.Status.CANCELED) usage.releaseUnsubmittedMediaTask(ownerId, canceled);
+            if (canceled.status() == Task.Status.CANCELED)
+                usage.releaseUnsubmittedMediaTask(ownerId, canceled);
             ObjectNode payload = mapper.createObjectNode();
             payload.put("taskId", taskId.toString());
             payload.put("status", canceled.status().name());
@@ -1407,7 +1666,8 @@ public class DirectMediaTaskService {
         if (tasks.findOccupyingDirectMediaTask(projectId, canvasItemId).isPresent())
             throw new ApiProblemException(HttpStatus.CONFLICT, "CANVAS_ITEM_BUSY",
                     ApiMessage.of("api.creative-artifact-tool-service.card-locked"),
-                    ApiMessage.of("api.task-service.this-media-card-already-has-tasks-queued-executed-or-pending"), false);
+                    ApiMessage.of("api.task-service.this-media-card-already-has-tasks-queued-executed-or-pending"),
+                    false);
     }
 
     @Transactional(readOnly = true)
@@ -1415,7 +1675,8 @@ public class DirectMediaTaskService {
         artifacts.get(ownerId, projectId, artifactId);
         CanvasItem canvasItem = canvasItems.requireArtifactItem(ownerId, projectId, canvasItemId);
         if (!canvasItem.subjectId().equals(artifactId)) {
-            throw invalid(ApiMessage.of("api.direct-media-task-service.the-task-list-must-belong-to-the-canvas-card-of"));
+            throw invalid(
+                    ApiMessage.of("api.direct-media-task-service.the-task-list-must-belong-to-the-canvas-card-of"));
         }
         return tasks.listMediaForCanvasItem(ownerId, projectId, canvasItemId);
     }
@@ -1424,7 +1685,8 @@ public class DirectMediaTaskService {
     public TaskRepository.QueueStatus queueStatus(UUID ownerId, UUID projectId, UUID taskId) {
         Task task = tasks.find(ownerId, projectId, taskId)
                 .orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND,
-                        "RESOURCE_NOT_FOUND", ApiMessage.of("api.read-tool-service.task-does-not-exist"), ApiMessage.of("api.direct-media-task-service.the-task-cannot-be-found"), false));
+                        "RESOURCE_NOT_FOUND", ApiMessage.of("api.read-tool-service.task-does-not-exist"),
+                        ApiMessage.of("api.direct-media-task-service.the-task-cannot-be-found"), false));
         if (task.runId() != null) {
             throw invalid(ApiMessage.of("api.direct-media-task-service.this-task-is-not-a-direct-media-task"));
         }
@@ -1437,7 +1699,8 @@ public class DirectMediaTaskService {
             case IMAGE -> Task.Kind.IMAGE_GENERATION;
             case VIDEO -> Task.Kind.VIDEO_GENERATION;
             case AUDIO -> Task.Kind.AUDIO_GENERATION;
-            default -> throw invalid(ApiMessage.of("api.direct-media-task-service.media-references-cannot-be-added-to-text-nodes"));
+            default -> throw invalid(
+                    ApiMessage.of("api.direct-media-task-service.media-references-cannot-be-added-to-text-nodes"));
         };
         MediaCapabilityBinding binding = capabilities.forDraft(draft.capabilityId(), kind);
         var definition = capabilities.runningHubDefinition(binding);
@@ -1450,8 +1713,10 @@ public class DirectMediaTaskService {
         } else if (comfy != null) {
             ObjectNode values = mapper.createObjectNode();
             values.set(RunningHubDefinition.VALUES_PROPERTY, comfy.values(mapper, draft.parameters(),
-                    draft.prompt(), draft.durationSeconds(), draft.mediaInputs().stream().filter(input -> input.role() == MediaDraft.InputRole.REFERENCE)
-                            .map(MediaDraft.MediaInput::versionId).toList(), false));
+                    draft.prompt(), draft.durationSeconds(),
+                    draft.mediaInputs().stream().filter(input -> input.role() == MediaDraft.InputRole.REFERENCE)
+                            .map(MediaDraft.MediaInput::versionId).toList(),
+                    false));
             MediaDraftService.validateSlots(comfy.inputs(), values, draft.mediaInputs(), false);
         } else if (nativeProfile != null) {
             NativeMediaProfiles.validateDraft(nativeProfile, capabilities.parameters(binding, draft.parameters()),
@@ -1461,47 +1726,61 @@ public class DirectMediaTaskService {
             KlingModels.validateDraft(kling, capabilities.parameters(binding, draft.parameters()),
                     draft.prompt(), draft.durationSeconds(), draft.mediaInputs(), false);
             validateKlingLimits(draft, capabilities.inputPolicy(binding));
-        } else validateCapabilityInputs(kind, draft, capabilities.inputPolicy(binding), capabilities.parameters(binding, draft.parameters()));
+        } else
+            validateCapabilityInputs(kind, draft, capabilities.inputPolicy(binding),
+                    capabilities.parameters(binding, draft.parameters()));
         validateReferenceAssets(owner, project, draft, binding);
     }
 
     private void validateCapabilityInputs(Task.Kind kind, MediaDraft draft,
             dev.agenvas.provider.domain.MediaAdapterRegistry.Declaration policy, JsonNode parametersJson) {
-        long audioCount = draft.mediaInputs().stream().filter(input ->
-                input.role() == MediaDraft.InputRole.AUDIO_REFERENCE).count();
-        long videoCount = draft.mediaInputs().stream().filter(input ->
-                input.role() == MediaDraft.InputRole.VIDEO_REFERENCE).count();
+        long audioCount = draft.mediaInputs().stream()
+                .filter(input -> input.role() == MediaDraft.InputRole.AUDIO_REFERENCE).count();
+        long videoCount = draft.mediaInputs().stream()
+                .filter(input -> input.role() == MediaDraft.InputRole.VIDEO_REFERENCE).count();
         if (videoCount > policy.maxReferenceVideos() || videoCount > 0 && (kind != Task.Kind.VIDEO_GENERATION
                 || draft.videoInputMode() != MediaDraft.VideoInputMode.GENERAL_REFERENCE))
             throw invalid(ApiMessage.of("api.media-relay.video-input-limit", policy.maxReferenceVideos()));
-        if (audioCount > policy.maxReferenceAudios()) throw invalid(ApiMessage.of("api.direct-media-task-service.the-selected-capability-does-not-support-this-number-of-audio"));
+        if (audioCount > policy.maxReferenceAudios())
+            throw invalid(ApiMessage
+                    .of("api.direct-media-task-service.the-selected-capability-does-not-support-this-number-of-audio"));
         if (kind == Task.Kind.AUDIO_GENERATION) {
             if (draft.prompt().codePointCount(0, draft.prompt().length()) > AudioGenerationParameters.MAX_PROMPT_LENGTH)
-                throw invalid(ApiMessage.of("api.direct-media-task-service.seed-audio-prompt-words-can-be-up-to-3000-characters"));
+                throw invalid(ApiMessage
+                        .of("api.direct-media-task-service.seed-audio-prompt-words-can-be-up-to-3000-characters"));
             long images = draft.mediaInputs().size() - audioCount;
             var parameters = dev.agenvas.artifact.domain.AudioGenerationParameters.parse(parametersJson);
-            if (images > policy.maxReferenceImages() || images > 0 && (audioCount > 0 || !parameters.speaker().isEmpty()))
-                throw invalid(ApiMessage.of("api.direct-media-task-service.audio-generation-can-refer-to-at-most-one-picture-and"));
+            if (images > policy.maxReferenceImages()
+                    || images > 0 && (audioCount > 0 || !parameters.speaker().isEmpty()))
+                throw invalid(ApiMessage
+                        .of("api.direct-media-task-service.audio-generation-can-refer-to-at-most-one-picture-and"));
             if (audioCount + (parameters.speaker().isEmpty() ? 0 : 1) > policy.maxReferenceAudios())
-                throw invalid(ApiMessage.of("api.direct-media-task-service.the-total-number-of-timbres-and-audio-references-can-be"));
+                throw invalid(ApiMessage
+                        .of("api.direct-media-task-service.the-total-number-of-timbres-and-audio-references-can-be"));
             return;
         }
         if (kind == Task.Kind.IMAGE_GENERATION) {
             if (draft.mediaInputs().size() > policy.maxReferenceImages()) {
-                throw invalid(ApiMessage.of("api.direct-media-task-service.the-selected-image-capability-accepts-at-most-reference-images", policy.maxReferenceImages()));
+                throw invalid(ApiMessage.of(
+                        "api.direct-media-task-service.the-selected-image-capability-accepts-at-most-reference-images",
+                        policy.maxReferenceImages()));
             }
             return;
         }
         String mode = draft.videoInputMode().name();
         if (!policy.supportedVideoInputModes().contains(mode)) {
-            throw invalid(ApiMessage.of("api.direct-media-task-service.the-selected-video-capability-does-not-support-the-current-picture"));
+            throw invalid(ApiMessage.of(
+                    "api.direct-media-task-service.the-selected-video-capability-does-not-support-the-current-picture"));
         }
-        if (!policy.supportsEndFrame() && draft.mediaInputs().stream().anyMatch(input ->
-                input.role() == MediaDraft.InputRole.END_FRAME)) {
-            throw invalid(ApiMessage.of("api.direct-media-task-service.the-selected-video-capability-does-not-support-end-frames"));
+        if (!policy.supportsEndFrame()
+                && draft.mediaInputs().stream().anyMatch(input -> input.role() == MediaDraft.InputRole.END_FRAME)) {
+            throw invalid(ApiMessage
+                    .of("api.direct-media-task-service.the-selected-video-capability-does-not-support-end-frames"));
         }
         if (draft.mediaInputs().size() - audioCount - videoCount > policy.maxReferenceImages()) {
-            throw invalid(ApiMessage.of("api.direct-media-task-service.the-selected-video-capability-accepts-at-most-image-inputs", policy.maxReferenceImages()));
+            throw invalid(ApiMessage.of(
+                    "api.direct-media-task-service.the-selected-video-capability-accepts-at-most-image-inputs",
+                    policy.maxReferenceImages()));
         }
     }
 
@@ -1509,7 +1788,8 @@ public class DirectMediaTaskService {
     private void requireStaticImage(UUID ownerId, UUID projectId, ArtifactVersion version) {
         var asset = assets.requireReadyMedia(ownerId, projectId,
                 UUID.fromString(version.content().path("assetId").asText()), Asset.MediaKind.IMAGE);
-        if ("image/gif".equals(asset.contentType())) throw invalid(ApiMessage.of("api.asset.gif-static-operation"));
+        if ("image/gif".equals(asset.contentType()))
+            throw invalid(ApiMessage.of("api.asset.gif-static-operation"));
     }
 
     /** Reject known protocol limits before creating a task or reserving usage. */
@@ -1517,7 +1797,8 @@ public class DirectMediaTaskService {
             MediaCapabilityBinding binding) {
         for (var input : draft.mediaInputs()) {
             if (MediaDraftService.mediaKind(input.role()) == Artifact.Kind.IMAGE)
-                requireStaticImage(ownerId, projectId, artifacts.requireImageVersionForTask(ownerId, projectId, input.versionId()));
+                requireStaticImage(ownerId, projectId,
+                        artifacts.requireImageVersionForTask(ownerId, projectId, input.versionId()));
         }
         boolean seed = MediaAdapterRegistry.SEED_AUDIO_1.equals(binding.adapterId());
         boolean ark = MediaAdapterRegistry.SEEDANCE_2.equals(binding.adapterId());
@@ -1526,50 +1807,67 @@ public class DirectMediaTaskService {
                 var kind = MediaDraftService.mediaKind(input.role());
                 var version = artifacts.requireMediaVersionForTask(ownerId, projectId, input.versionId(), kind);
                 var asset = assets.requireReadyMedia(ownerId, projectId,
-                        UUID.fromString(version.content().path("assetId").asText()), Asset.MediaKind.valueOf(kind.name()));
+                        UUID.fromString(version.content().path("assetId").asText()),
+                        Asset.MediaKind.valueOf(kind.name()));
                 ComfyUiWorkflowDefinition.validateMediaAsset(asset);
             }
             return;
         }
         if (MediaAdapterRegistry.RUNNINGHUB_ADAPTERS.contains(binding.adapterId())) {
             for (var input : draft.mediaInputs()) {
-                var version = artifacts.requireMediaVersionForTask(ownerId, projectId, input.versionId(), dev.agenvas.artifact.application.MediaDraftService.mediaKind(input.role()));
-                Asset asset = assets.requireReadyMedia(ownerId, projectId, UUID.fromString(version.content().path("assetId").asText()),
-                        Asset.MediaKind.valueOf(dev.agenvas.artifact.application.MediaDraftService.mediaKind(input.role()).name()));
-                if (asset.byteSize() > dev.agenvas.provider.infrastructure.RunningHubClient.MAX_UPLOAD_BYTES) throw invalid(ApiMessage.of("api.direct-media-task-service.a-single-piece-of-runninghub-material-cannot-exceed-30-mb"));
+                var version = artifacts.requireMediaVersionForTask(ownerId, projectId, input.versionId(),
+                        dev.agenvas.artifact.application.MediaDraftService.mediaKind(input.role()));
+                Asset asset = assets.requireReadyMedia(ownerId, projectId,
+                        UUID.fromString(version.content().path("assetId").asText()),
+                        Asset.MediaKind.valueOf(
+                                dev.agenvas.artifact.application.MediaDraftService.mediaKind(input.role()).name()));
+                if (asset.byteSize() > dev.agenvas.provider.infrastructure.RunningHubClient.MAX_UPLOAD_BYTES)
+                    throw invalid(ApiMessage.of(
+                            "api.direct-media-task-service.a-single-piece-of-runninghub-material-cannot-exceed-30-mb"));
             }
             return;
         }
         var nativeProfile = capabilities.nativeProfile(binding);
         if (nativeProfile != null) {
-            JsonNode values = NativeMediaProfiles.effectiveValues(nativeProfile, capabilities.parameters(binding, draft.parameters()), draft.prompt(), draft.durationSeconds(), mapper);
-            for (var field : nativeProfile.inputs()) if (field.media() && NativeMediaProfiles.present(values, field.key())) {
-                var version = artifacts.requireMediaVersionForTask(ownerId, projectId, UUID.fromString(values.path(field.key()).asText()), Artifact.Kind.valueOf(field.type().name()));
-                nativeProfile.protocol().validateSource(nativeProfile.profile(), field.key(), version);
-                var asset = assets.requireReadyMedia(ownerId, projectId, UUID.fromString(version.content().path("assetId").asText()), Asset.MediaKind.valueOf(field.type().name()));
-                nativeProfile.protocol().validateMetadata(nativeProfile.profile(), field.key(), asset, values);
-            }
+            JsonNode values = NativeMediaProfiles.effectiveValues(nativeProfile,
+                    capabilities.parameters(binding, draft.parameters()), draft.prompt(), draft.durationSeconds(),
+                    mapper);
+            for (var field : nativeProfile.inputs())
+                if (field.media() && NativeMediaProfiles.present(values, field.key())) {
+                    var version = artifacts.requireMediaVersionForTask(ownerId, projectId,
+                            UUID.fromString(values.path(field.key()).asText()),
+                            Artifact.Kind.valueOf(field.type().name()));
+                    nativeProfile.protocol().validateSource(nativeProfile.profile(), field.key(), version);
+                    var asset = assets.requireReadyMedia(ownerId, projectId,
+                            UUID.fromString(version.content().path("assetId").asText()),
+                            Asset.MediaKind.valueOf(field.type().name()));
+                    nativeProfile.protocol().validateMetadata(nativeProfile.profile(), field.key(), asset, values);
+                }
             return;
         }
         var klingProfile = capabilities.klingProfile(binding);
         if (klingProfile != null) {
-            JsonNode values = KlingModels.effectiveValues(klingProfile, capabilities.parameters(binding, draft.parameters()),
+            JsonNode values = KlingModels.effectiveValues(klingProfile,
+                    capabilities.parameters(binding, draft.parameters()),
                     draft.prompt(), draft.durationSeconds(), mapper);
-            for (var field : KlingModels.inputs(klingProfile)) if (field.media() && KlingModels.present(values, field.key())) {
-                UUID versionId = UUID.fromString(values.path(field.key()).asText());
-                var version = artifacts.requireMediaVersionForTask(ownerId, projectId, versionId,
-                        Artifact.Kind.valueOf(field.type().name()));
-                var asset = assets.requireReadyMedia(ownerId, projectId,
-                        UUID.fromString(version.content().path("assetId").asText()), Asset.MediaKind.valueOf(field.type().name()));
-                KlingModels.validateMetadata(klingProfile, field.key(), asset, values);
-            }
+            for (var field : KlingModels.inputs(klingProfile))
+                if (field.media() && KlingModels.present(values, field.key())) {
+                    UUID versionId = UUID.fromString(values.path(field.key()).asText());
+                    var version = artifacts.requireMediaVersionForTask(ownerId, projectId, versionId,
+                            Artifact.Kind.valueOf(field.type().name()));
+                    var asset = assets.requireReadyMedia(ownerId, projectId,
+                            UUID.fromString(version.content().path("assetId").asText()),
+                            Asset.MediaKind.valueOf(field.type().name()));
+                    KlingModels.validateMetadata(klingProfile, field.key(), asset, values);
+                }
             return;
         }
         boolean autodl = AutoDlWorkflows.ADAPTER_ID.equals(binding.adapterId());
         boolean minimax = MiniMaxH3Protocol.ADAPTER_ID.equals(binding.adapterId());
         boolean kling = KlingProtocol.IMAGE_ADAPTER_ID.equals(binding.adapterId())
                 || KlingProtocol.VIDEO_ADAPTER_ID.equals(binding.adapterId());
-        if (!seed && !ark && !autodl && !minimax && !kling) return;
+        if (!seed && !ark && !autodl && !minimax && !kling)
+            return;
         // Reserve JSON/prompt/negative-prompt and three signed-video URL overheads before loading bytes.
         long minimaxInlineBytes = 6L * (draft.prompt().length() + 8_000) + 32_768;
         long autodlTotalBytes = 0;
@@ -1586,10 +1884,12 @@ public class DirectMediaTaskService {
             Asset asset = assets.requireReadyMedia(ownerId, projectId,
                     UUID.fromString(version.content().path("assetId").asText()),
                     video ? Asset.MediaKind.VIDEO : audio ? Asset.MediaKind.AUDIO : Asset.MediaKind.IMAGE);
-            if (kling) KlingProtocol.validateMetadata(asset, KlingProtocol.VIDEO_ADAPTER_ID.equals(binding.adapterId()));
+            if (kling)
+                KlingProtocol.validateMetadata(asset, KlingProtocol.VIDEO_ADAPTER_ID.equals(binding.adapterId()));
             if (minimax) {
                 MiniMaxH3Protocol.validateMetadata(asset);
-                if (!video) minimaxInlineBytes += 4 * ((asset.byteSize() + 2) / 3);
+                if (!video)
+                    minimaxInlineBytes += 4 * ((asset.byteSize() + 2) / 3);
                 if (minimaxInlineBytes > MiniMaxH3Protocol.MAX_REQUEST_BYTES)
                     throw MiniMaxH3Protocol.invalid();
             }
@@ -1598,30 +1898,35 @@ public class DirectMediaTaskService {
                 if (asset.byteSize() > AutoDlWorkflows.MAX_REFERENCE_BYTES
                         || autodlTotalBytes > AutoDlWorkflows.MAX_TOTAL_REFERENCE_BYTES
                         || audio && !Set.of("audio/mpeg", "audio/wav", "audio/flac").contains(asset.contentType()))
-                    throw invalid(ApiMessage.of("api.direct-media-task-service.autodl-reference-assets-are-limited-to-15-mib-each-and"));
+                    throw invalid(ApiMessage.of(
+                            "api.direct-media-task-service.autodl-reference-assets-are-limited-to-15-mib-each-and"));
             }
             if (video) {
                 videoCount++;
                 videoDuration += asset.durationMs();
-                if (ark) dev.agenvas.provider.domain.SeedanceVideoReferences.validateMetadata(asset);
+                if (ark)
+                    dev.agenvas.provider.domain.SeedanceVideoReferences.validateMetadata(asset);
                 continue;
             }
             if (!audio) {
                 imageCount++;
                 if (seed && asset.byteSize() > AudioGenerationParameters.MAX_REFERENCE_BYTES)
-                    throw invalid(ApiMessage.of("api.direct-media-task-service.seed-audio-reference-image-size-is-10-mib-maximum"));
+                    throw invalid(ApiMessage
+                            .of("api.direct-media-task-service.seed-audio-reference-image-size-is-10-mib-maximum"));
                 continue;
             }
             audioCount++;
             audioDuration += asset.durationMs();
             if (seed && (asset.byteSize() > AudioGenerationParameters.MAX_REFERENCE_BYTES
                     || asset.durationMs() > AudioGenerationParameters.MAX_REFERENCE_DURATION_MS))
-                throw invalid(ApiMessage.of("api.direct-media-task-service.seed-audio-the-maximum-size-of-a-single-reference-audio"));
+                throw invalid(ApiMessage
+                        .of("api.direct-media-task-service.seed-audio-the-maximum-size-of-a-single-reference-audio"));
             if (ark && (asset.byteSize() > MediaAdapterRegistry.SEEDANCE_MAX_AUDIO_BYTES
                     || asset.durationMs() < MediaAdapterRegistry.SEEDANCE_MIN_AUDIO_DURATION_MS
                     || asset.durationMs() > MediaAdapterRegistry.SEEDANCE_MAX_AUDIO_DURATION_MS
                     || !Set.of("audio/mpeg", "audio/wav").contains(asset.contentType())))
-                throw invalid(ApiMessage.of("api.direct-media-task-service.seedance-audio-reference-supports-mp3-wav-only-2-15-seconds"));
+                throw invalid(ApiMessage.of(
+                        "api.direct-media-task-service.seedance-audio-reference-supports-mp3-wav-only-2-15-seconds"));
         }
         if (minimax && (videoDuration > MiniMaxH3Protocol.MAX_REFERENCE_DURATION_MS
                 || audioDuration > MiniMaxH3Protocol.MAX_REFERENCE_DURATION_MS))
@@ -1631,7 +1936,8 @@ public class DirectMediaTaskService {
         if (ark && audioCount > 0 && (imageCount + videoCount == 0
                 || draft.videoInputMode() != MediaDraft.VideoInputMode.GENERAL_REFERENCE
                 || audioDuration > MediaAdapterRegistry.SEEDANCE_MAX_AUDIO_DURATION_MS))
-            throw invalid(ApiMessage.of("api.direct-media-task-service.seedance-audio-reference-must-be-in-full-reference-mode-with"));
+            throw invalid(ApiMessage
+                    .of("api.direct-media-task-service.seedance-audio-reference-must-be-in-full-reference-mode-with"));
     }
 
     private static ApiProblemException invalid(ApiMessage detail) {

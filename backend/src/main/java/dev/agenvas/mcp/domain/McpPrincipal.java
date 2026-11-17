@@ -13,7 +13,8 @@ public record McpPrincipal(UUID userId, UUID tokenId, Set<McpScope> scopes) impl
         Objects.requireNonNull(userId);
         Objects.requireNonNull(tokenId);
         scopes = Collections.unmodifiableSet(scopes.isEmpty()
-                ? EnumSet.noneOf(McpScope.class) : EnumSet.copyOf(scopes));
+                ? EnumSet.noneOf(McpScope.class)
+                : EnumSet.copyOf(scopes));
     }
 
     @Override

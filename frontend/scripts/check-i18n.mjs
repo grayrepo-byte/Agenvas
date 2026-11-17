@@ -6,7 +6,7 @@ import ts from "typescript";
 
 const MESSAGE_KEY_PATTERN = /^[a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)+$/;
 const LOCALES = ["zh", "en", "ru", "ja"];
-const tokens = (text) => JSON.stringify((text.match(/\{\w+\}/g) ?? []).sort());
+const tokens = text => JSON.stringify((text.match(/\{\w+\}/g) ?? []).sort());
 
 /** Keys identify UI intent; interpolation belongs to the translated values, never to an ID. */
 export function checkCatalogs(catalogs) {
@@ -18,11 +18,13 @@ export function checkCatalogs(catalogs) {
   }
   for (const locale of LOCALES) {
     const catalog = catalogs[locale];
-    if (JSON.stringify(Object.keys(catalog).sort()) !== JSON.stringify(keys)) failures.push(`${locale}: catalog keys differ from zh`);
+    if (JSON.stringify(Object.keys(catalog).sort()) !== JSON.stringify(keys))
+      failures.push(`${locale}: catalog keys differ from zh`);
     for (const key of keys) {
       const value = catalog[key];
       if (typeof value !== "string" || !value.trim()) failures.push(`${locale}: missing ${key}`);
-      else if (typeof source[key] === "string" && tokens(source[key]) !== tokens(value)) failures.push(`${locale}: interpolation tokens differ for ${key}`);
+      else if (typeof source[key] === "string" && tokens(source[key]) !== tokens(value))
+        failures.push(`${locale}: interpolation tokens differ for ${key}`);
       if (["en", "ru"].includes(locale) && typeof value === "string" && /\p{Script=Han}/u.test(value)) {
         failures.push(`${locale}: untranslated Chinese for ${key}`);
       }
@@ -42,7 +44,10 @@ function permittedLiteral(node) {
 export function checkSource(file, sourceText, catalog) {
   const failures = [];
   const ast = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true);
-  const translators = new Map([["t", 0], ["translate", 1]]);
+  const translators = new Map([
+    ["t", 0],
+    ["translate", 1],
+  ]);
   // Keep checks effective if a component renames one of the shared translation imports.
   function collectImports(node) {
     if (ts.isImportSpecifier(node)) {
@@ -58,11 +63,15 @@ export function checkSource(file, sourceText, catalog) {
       const argument = position === undefined ? undefined : node.arguments[position];
       if (argument && (ts.isStringLiteral(argument) || ts.isNoSubstitutionTemplateLiteral(argument))) {
         if (!Object.hasOwn(catalog, argument.text)) failures.push(`${file}: unknown message key ${argument.text}`);
-        else if (!MESSAGE_KEY_PATTERN.test(argument.text)) failures.push(`${file}: invalid semantic message key ${argument.text}`);
+        else if (!MESSAGE_KEY_PATTERN.test(argument.text))
+          failures.push(`${file}: invalid semantic message key ${argument.text}`);
       }
     }
-    if ((ts.isStringLiteral(node) || ts.isTemplateLiteralToken(node) || ts.isJsxText(node))
-        && /\p{Script=Han}/u.test(node.text) && !permittedLiteral(node)) {
+    if (
+      (ts.isStringLiteral(node) || ts.isTemplateLiteralToken(node) || ts.isJsxText(node)) &&
+      /\p{Script=Han}/u.test(node.text) &&
+      !permittedLiteral(node)
+    ) {
       failures.push(`${file}:${ast.getLineAndCharacterOfPosition(node.getStart()).line + 1}: untranslated UI copy`);
     }
     ts.forEachChild(node, visit);
@@ -91,10 +100,12 @@ export function parseCatalog(file, contents) {
 function run() {
   const root = path.resolve(import.meta.dirname, "../src");
   const directory = path.join(root, "shared/i18n/locales");
-  const catalogs = Object.fromEntries(LOCALES.map((locale) => {
-    const file = path.join(directory, `${locale}.json`);
-    return [locale, parseCatalog(file, fs.readFileSync(file, "utf8"))];
-  }));
+  const catalogs = Object.fromEntries(
+    LOCALES.map(locale => {
+      const file = path.join(directory, `${locale}.json`);
+      return [locale, parseCatalog(file, fs.readFileSync(file, "utf8"))];
+    }),
+  );
   const failures = checkCatalogs(catalogs);
   function inspect(directory) {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
@@ -113,7 +124,10 @@ function run() {
   if (failures.length) {
     process.stderr.write(`${failures.join("\n")}\n`);
     process.exitCode = 1;
-  } else process.stdout.write(`i18n check passed: ${Object.keys(catalogs.zh).length} semantic messages in four catalogs; UI copy uses shared resources.\n`);
+  } else
+    process.stdout.write(
+      `i18n check passed: ${Object.keys(catalogs.zh).length} semantic messages in four catalogs; UI copy uses shared resources.\n`,
+    );
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) run();

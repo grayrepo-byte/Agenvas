@@ -15,13 +15,22 @@ import tools.jackson.databind.ObjectMapper;
 
 @Configuration(proxyBeanMethods = false)
 public class RunningHubAdapters {
-    @Bean MediaAdapter runningHubImage(JooqMediaCapabilityRepository catalog, CredentialCipher cipher, ArtifactService artifacts, AssetService assets, RunningHubClient client, ObjectMapper mapper, Clock clock) {
-        return new RunningHubAdapter(MediaAdapterRegistry.RUNNINGHUB_IMAGE, Task.Kind.IMAGE_GENERATION, catalog, cipher, artifacts, assets, client, mapper, clock);
+    @Bean
+    MediaAdapter runningHubImage(JooqMediaCapabilityRepository catalog, CredentialCipher cipher,
+            ArtifactService artifacts, AssetService assets, RunningHubClient client, ObjectMapper mapper, Clock clock) {
+        return new RunningHubAdapter(MediaAdapterRegistry.RUNNINGHUB_IMAGE, Task.Kind.IMAGE_GENERATION, catalog, cipher,
+                artifacts, assets, client, mapper, clock);
     }
-    @Bean MediaAdapter runningHubVideo(JooqMediaCapabilityRepository catalog, CredentialCipher cipher, ArtifactService artifacts, AssetService assets, RunningHubClient client, ObjectMapper mapper, Clock clock) {
-        return new RunningHubAdapter(MediaAdapterRegistry.RUNNINGHUB_VIDEO, Task.Kind.VIDEO_GENERATION, catalog, cipher, artifacts, assets, client, mapper, clock);
+    @Bean
+    MediaAdapter runningHubVideo(JooqMediaCapabilityRepository catalog, CredentialCipher cipher,
+            ArtifactService artifacts, AssetService assets, RunningHubClient client, ObjectMapper mapper, Clock clock) {
+        return new RunningHubAdapter(MediaAdapterRegistry.RUNNINGHUB_VIDEO, Task.Kind.VIDEO_GENERATION, catalog, cipher,
+                artifacts, assets, client, mapper, clock);
     }
-    @Bean MediaAdapter runningHubAudio(JooqMediaCapabilityRepository catalog, CredentialCipher cipher, ArtifactService artifacts, AssetService assets, RunningHubClient client, ObjectMapper mapper, Clock clock) {
-        return new RunningHubAdapter(MediaAdapterRegistry.RUNNINGHUB_AUDIO, Task.Kind.AUDIO_GENERATION, catalog, cipher, artifacts, assets, client, mapper, clock);
+    @Bean
+    MediaAdapter runningHubAudio(JooqMediaCapabilityRepository catalog, CredentialCipher cipher,
+            ArtifactService artifacts, AssetService assets, RunningHubClient client, ObjectMapper mapper, Clock clock) {
+        return new RunningHubAdapter(MediaAdapterRegistry.RUNNINGHUB_AUDIO, Task.Kind.AUDIO_GENERATION, catalog, cipher,
+                artifacts, assets, client, mapper, clock);
     }
 }

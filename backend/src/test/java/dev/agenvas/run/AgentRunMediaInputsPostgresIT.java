@@ -36,40 +36,56 @@ import tools.jackson.databind.ObjectMapper;
 /** Real PostgreSQL and synthetic PNGs: node results remain independent of library defaults. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class, properties = { "agenvas.llm.mode=mock",
+@SpringBootTest(classes = AgenvasApplication.class, properties = {"agenvas.llm.mode=mock",
         "agenvas.llm.scheduler-enabled=false"})
 class AgentRunMediaInputsPostgresIT {
-    @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
-    @DynamicPropertySource static void database(DynamicPropertyRegistry properties) {
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    @DynamicPropertySource
+    static void database(DynamicPropertyRegistry properties) {
         properties.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         properties.add("spring.datasource.username", POSTGRES::getUsername);
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
-    @Autowired IdentityService identities;
-    @Autowired ProjectService projects;
-    @Autowired ArtifactService artifacts;
-    @Autowired AssetService assets;
-    @Autowired CanvasService canvas;
-    @Autowired CanvasConnectionService connections;
-    @Autowired AgentInstanceService agents;
-    @Autowired AgentRunService runs;
-    @Autowired TaskService tasks;
-    @Autowired ObjectMapper mapper;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    ProjectService projects;
+    @Autowired
+    ArtifactService artifacts;
+    @Autowired
+    AssetService assets;
+    @Autowired
+    CanvasService canvas;
+    @Autowired
+    CanvasConnectionService connections;
+    @Autowired
+    AgentInstanceService agents;
+    @Autowired
+    AgentRunService runs;
+    @Autowired
+    TaskService tasks;
+    @Autowired
+    ObjectMapper mapper;
 
-    @Test void taskFocusPreservesNodeResultsAndEmptyMediaWithoutBindingCollectionsOrLibraryDefaults() {
+    @Test
+    void taskFocusPreservesNodeResultsAndEmptyMediaWithoutBindingCollectionsOrLibraryDefaults() {
         var owner = identities.setup("media-input-admin", "synthetic-password-123");
         var project = projects.create(owner.userId(), "Media input regression", Project.AspectRatio.SQUARE_1_1);
         var media = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE, "Node image", null);
         UUID imageNode = UUID.randomUUID();
         UUID emptyNode = UUID.randomUUID();
         var empty = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE, "Empty draft", null);
-        canvas.apply(owner.userId(), project.id(), List.of(place(imageNode, media.artifact().id()), place(emptyNode, empty.artifact().id())));
+        canvas.apply(owner.userId(), project.id(),
+                List.of(place(imageNode, media.artifact().id()), place(emptyNode, empty.artifact().id())));
         UUID assetId = ImageAssetFixture.archive(assets, owner.userId(), project.id());
         var uploaded = canvas.uploadVersion(owner.userId(), project.id(), imageNode, imageNode, 0,
                 mapper.createObjectNode().put("sourceType", "UPLOAD").put("assetId", assetId.toString()), null, null);
         UUID nodeVersion = uploaded.selectedVersion().id();
-        assertThat(artifacts.get(owner.userId(), project.id(), media.artifact().id()).resourceDefaultVersion()).isNull();
-        var agent = configureDirector(agents, owner.userId(), project.id(), "Creator", "Use the current canvas reference");
+        assertThat(artifacts.get(owner.userId(), project.id(), media.artifact().id()).resourceDefaultVersion())
+                .isNull();
+        var agent = configureDirector(agents, owner.userId(), project.id(), "Creator",
+                "Use the current canvas reference");
         var preflight = runs.preflight(owner.userId(), project.id(), agent.id());
         assertThat(preflight.conversationTurnCount()).isZero();
         var bound = runs.create(owner.userId(), project.id(), agent.id(), "Use the image", "bound-media").run();
@@ -83,7 +99,8 @@ class AgentRunMediaInputsPostgresIT {
         assertThat(selected.contextSnapshot().at("/selection/0/versionId").asText()).isEqualTo(nodeVersion.toString());
         assertThat(selected.contextSnapshot().at("/selection/1/kind").asText()).isEqualTo("IMAGE");
         assertThat(selected.contextSnapshot().at("/selection/1").has("versionId")).isFalse();
-        assertThat(artifacts.get(owner.userId(), project.id(), media.artifact().id()).resourceDefaultVersion()).isNull();
+        assertThat(artifacts.get(owner.userId(), project.id(), media.artifact().id()).resourceDefaultVersion())
+                .isNull();
     }
 
     private static CanvasService.PlaceArtifact place(UUID nodeId, UUID artifactId) {

@@ -20,7 +20,10 @@ public class RunHistoryCleanupService {
 
     public RunHistoryCleanupService(AgentRunRepository runs, ProjectService projects,
             ProjectEventService events, ObjectMapper mapper) {
-        this.runs = runs; this.projects = projects; this.events = events; this.mapper = mapper;
+        this.runs = runs;
+        this.projects = projects;
+        this.events = events;
+        this.mapper = mapper;
     }
 
     /** Project locks must precede run/task locks, matching ordinary state-change transactions. */

@@ -52,40 +52,65 @@ import tools.jackson.databind.ObjectMapper;
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class VideoOperationPostgresIT {
-    @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
-    @TempDir static Path storage;
-    @DynamicPropertySource static void properties(DynamicPropertyRegistry registry) {
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    @TempDir
+    static Path storage;
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry registry) {
         registry.add("agenvas.storage.root", () -> storage.toString());
-        registry.add("agenvas.credentials.master-key-base64", () -> java.util.Base64.getEncoder().encodeToString(new byte[32]));
+        registry.add("agenvas.credentials.master-key-base64",
+                () -> java.util.Base64.getEncoder().encodeToString(new byte[32]));
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
-        registry.add("agenvas.provider.local-image.depth-model", () -> System.getProperty("agenvas.test.depth-model", ""));
+        registry.add("agenvas.provider.local-image.depth-model",
+                () -> System.getProperty("agenvas.test.depth-model", ""));
     }
-    @Autowired IdentityService identities;
-    @Autowired ProjectService projects;
-    @Autowired ArtifactService artifacts;
-    @Autowired AssetService assets;
-    @Autowired CanvasService canvas;
-    @Autowired CanvasConnectionService connections;
-    @Autowired MediaDraftService drafts;
-    @Autowired VideoOperationService operations;
-    @Autowired MediaFunctionService functions;
-    @Autowired MediaCapabilityService capabilities;
-    @Autowired MediaExecutionWorker worker;
-    @Autowired TaskService tasks;
-    @Autowired DirectMediaTaskService direct;
-    @Autowired WebApplicationContext webContext;
-    @Autowired MediaToolRunner tools;
-    @Autowired ObjectMapper mapper;
-    @TempDir Path temp;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    ProjectService projects;
+    @Autowired
+    ArtifactService artifacts;
+    @Autowired
+    AssetService assets;
+    @Autowired
+    CanvasService canvas;
+    @Autowired
+    CanvasConnectionService connections;
+    @Autowired
+    MediaDraftService drafts;
+    @Autowired
+    VideoOperationService operations;
+    @Autowired
+    MediaFunctionService functions;
+    @Autowired
+    MediaCapabilityService capabilities;
+    @Autowired
+    MediaExecutionWorker worker;
+    @Autowired
+    TaskService tasks;
+    @Autowired
+    DirectMediaTaskService direct;
+    @Autowired
+    WebApplicationContext webContext;
+    @Autowired
+    MediaToolRunner tools;
+    @Autowired
+    ObjectMapper mapper;
+    @TempDir
+    Path temp;
     private static AdminPrincipal owner;
 
-    @BeforeEach void setup() {
-        if (owner == null) owner = identities.setup("video-tools-test", "synthetic-video-password-123");
+    @BeforeEach
+    void setup() {
+        if (owner == null)
+            owner = identities.setup("video-tools-test", "synthetic-video-password-123");
     }
 
-    @Test void extractsAudioAndSilentVideoToIndependentNodesAndKeepsSourceUnchanged() throws Exception {
+    @Test
+    void extractsAudioAndSilentVideoToIndependentNodesAndKeepsSourceUnchanged() throws Exception {
         var source = source(true);
         var task = run(source, VideoOperation.EXTRACT_AUDIO, "audio-extraction");
         var replay = run(source, VideoOperation.EXTRACT_AUDIO, "audio-extraction");
@@ -115,7 +140,8 @@ class VideoOperationPostgresIT {
         assertThat(completed.output().path("selected").asBoolean()).isTrue();
         var result = artifacts.requireVersion(owner.userId(), source.projectId(), resultArtifactId,
                 UUID.fromString(completed.output().path("artifactVersionId").asText()));
-        var audio = assets.get(owner.userId(), source.projectId(), UUID.fromString(result.content().path("assetId").asText()));
+        var audio = assets.get(owner.userId(), source.projectId(),
+                UUID.fromString(result.content().path("assetId").asText()));
         assertThat(audio.asset().durationMs()).isBetween(900, 1100);
         assertThat(audio.asset().contentType()).isEqualTo("audio/wav");
         var silentOutput = completed.output().path("additionalResults");
@@ -125,51 +151,65 @@ class VideoOperationPostgresIT {
         assertThat(silent.path("artifactId").asText()).isEqualTo(source.artifactId().toString());
         var silentVersion = artifacts.requireMediaVersionForTask(owner.userId(), source.projectId(),
                 UUID.fromString(silent.path("artifactVersionId").asText()), Artifact.Kind.VIDEO);
-        var silentFile = assets.get(owner.userId(), source.projectId(), UUID.fromString(silentVersion.content().path("assetId").asText()));
+        var silentFile = assets.get(owner.userId(), source.projectId(),
+                UUID.fromString(silentVersion.content().path("assetId").asText()));
         assertThat(silentFile.asset().id()).isNotEqualTo(audio.asset().id());
         assertThat(silentFile.asset().durationMs()).isBetween(900, 1100);
         assertThat(silentFile.asset().width()).isEqualTo(160);
         assertThat(silentFile.asset().height()).isEqualTo(90);
         assertThat(mapper.readTree(tools.ffprobe(List.of("-v", "error", "-select_streams", "a",
-                "-show_entries", "stream=index", "-of", "json", silentFile.path().toString()))).path("streams")).isEmpty();
-        var sourceVersion = artifacts.requireMediaVersionForTask(owner.userId(), source.projectId(), source.versionId(), Artifact.Kind.VIDEO);
-        var sourceFile = assets.get(owner.userId(), source.projectId(), UUID.fromString(sourceVersion.content().path("assetId").asText()));
+                "-show_entries", "stream=index", "-of", "json", silentFile.path().toString()))).path("streams"))
+                .isEmpty();
+        var sourceVersion = artifacts.requireMediaVersionForTask(owner.userId(), source.projectId(), source.versionId(),
+                Artifact.Kind.VIDEO);
+        var sourceFile = assets.get(owner.userId(), source.projectId(),
+                UUID.fromString(sourceVersion.content().path("assetId").asText()));
         assertThat(videoPacketHashes(silentFile.path())).isEqualTo(videoPacketHashes(sourceFile.path()));
-        assertThat(drafts.get(owner.userId(), source.projectId(), UUID.fromString(silent.path("canvasItemId").asText())).mediaInputs()).isEmpty();
-        assertThat(artifacts.get(owner.userId(), source.projectId(), source.artifactId()).resourceDefaultVersion().id()).isEqualTo(source.versionId());
-        assertThat(canvas.list(owner.userId(), source.projectId()).stream().filter(entry -> entry.item().id().equals(source.itemId()))
+        assertThat(drafts.get(owner.userId(), source.projectId(), UUID.fromString(silent.path("canvasItemId").asText()))
+                .mediaInputs()).isEmpty();
+        assertThat(artifacts.get(owner.userId(), source.projectId(), source.artifactId()).resourceDefaultVersion().id())
+                .isEqualTo(source.versionId());
+        assertThat(canvas.list(owner.userId(), source.projectId()).stream()
+                .filter(entry -> entry.item().id().equals(source.itemId()))
                 .findFirst().orElseThrow().item().selectedVersionId()).isEqualTo(source.versionId());
         var line = connections.list(owner.userId(), source.projectId()).getFirst();
         connections.disconnect(owner.userId(), source.projectId(), line.id(), line.version(), null);
         assertThat(canvas.list(owner.userId(), source.projectId())).hasSize(3);
     }
 
-    @Test void archivesLongMp3AndSilentVideoThroughThePersistentTaskWithoutChangingTheSource() throws Exception {
+    @Test
+    void archivesLongMp3AndSilentVideoThroughThePersistentTaskWithoutChangingTheSource() throws Exception {
         var source = source(true, 61);
-        long version = functions.list().stream().filter(setting -> setting.operation() == MediaFunction.VIDEO_EXTRACT_AUDIO)
+        long version = functions.list().stream()
+                .filter(setting -> setting.operation() == MediaFunction.VIDEO_EXTRACT_AUDIO)
                 .findFirst().orElseThrow().version();
         var parameters = mapper.createObjectNode().put("format", "MP3").put("trackIndex", 0);
-        var accepted = operations.run(owner.userId(), source.projectId(), source.artifactId(), source.itemId(), source.versionId(),
+        var accepted = operations.run(owner.userId(), source.projectId(), source.artifactId(), source.itemId(),
+                source.versionId(),
                 0, VideoOperation.EXTRACT_AUDIO, version, 1, "", parameters, "long-mp3-extraction");
         worker.submitOnce("long-mp3-extraction-test");
         var completed = tasks.get(owner.userId(), source.projectId(), accepted.id());
         assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
         var audioVersion = artifacts.requireMediaVersionForTask(owner.userId(), source.projectId(),
                 UUID.fromString(completed.output().path("artifactVersionId").asText()), Artifact.Kind.AUDIO);
-        var audio = assets.metadata(owner.userId(), source.projectId(), UUID.fromString(audioVersion.content().path("assetId").asText()));
+        var audio = assets.metadata(owner.userId(), source.projectId(),
+                UUID.fromString(audioVersion.content().path("assetId").asText()));
         assertThat(audio.contentType()).isEqualTo("audio/mpeg");
         assertThat(audio.durationMs()).isBetween(61_000, 61_100);
         assertThat(audioVersion.content().at("/parameters/format").asText()).isEqualTo("MP3");
         var silent = completed.output().path("additionalResults").get(0);
         var silentVersion = artifacts.requireMediaVersionForTask(owner.userId(), source.projectId(),
                 UUID.fromString(silent.path("artifactVersionId").asText()), Artifact.Kind.VIDEO);
-        var silentAsset = assets.metadata(owner.userId(), source.projectId(), UUID.fromString(silentVersion.content().path("assetId").asText()));
+        var silentAsset = assets.metadata(owner.userId(), source.projectId(),
+                UUID.fromString(silentVersion.content().path("assetId").asText()));
         assertThat(silentAsset.durationMs()).isEqualTo(61_000);
-        assertThat(canvas.list(owner.userId(), source.projectId()).stream().filter(entry -> entry.item().id().equals(source.itemId()))
+        assertThat(canvas.list(owner.userId(), source.projectId()).stream()
+                .filter(entry -> entry.item().id().equals(source.itemId()))
                 .findFirst().orElseThrow().item().selectedVersionId()).isEqualTo(source.versionId());
     }
 
-    @Test void removingSilentVideoTargetDoesNotRecreateItOrPreventAudioSelection() throws Exception {
+    @Test
+    void removingSilentVideoTargetDoesNotRecreateItOrPreventAudioSelection() throws Exception {
         var source = source(true);
         var task = run(source, VideoOperation.EXTRACT_AUDIO, "removed-silent-target");
         UUID silentItemId = UUID.fromString(task.input().path("silentVideoTarget").path("canvasItemId").asText());
@@ -184,7 +224,8 @@ class VideoOperationPostgresIT {
         assertThat(connections.list(owner.userId(), source.projectId())).hasSize(1);
     }
 
-    @Test void changedSilentVideoDraftDoesNotOverrideItOrPreventAudioSelection() throws Exception {
+    @Test
+    void changedSilentVideoDraftDoesNotOverrideItOrPreventAudioSelection() throws Exception {
         var source = source(true);
         var task = run(source, VideoOperation.EXTRACT_AUDIO, "edited-silent-target");
         UUID silentItemId = UUID.fromString(task.input().path("silentVideoTarget").path("canvasItemId").asText());
@@ -196,11 +237,13 @@ class VideoOperationPostgresIT {
         assertThat(completed.output().path("selected").asBoolean()).isTrue();
         assertThat(completed.output().path("additionalResults").get(0).path("selected").asBoolean()).isFalse();
         assertThat(drafts.get(owner.userId(), source.projectId(), silentItemId).prompt()).isEqualTo("下一次创作");
-        assertThat(canvas.list(owner.userId(), source.projectId()).stream().filter(entry -> entry.item().id().equals(silentItemId))
+        assertThat(canvas.list(owner.userId(), source.projectId()).stream()
+                .filter(entry -> entry.item().id().equals(silentItemId))
                 .findFirst().orElseThrow().item().selectedVersionId()).isEqualTo(source.versionId());
     }
 
-    @Test void removingAudioTargetStillSelectsTheSilentVideoWithoutRecreatingAudio() throws Exception {
+    @Test
+    void removingAudioTargetStillSelectsTheSilentVideoWithoutRecreatingAudio() throws Exception {
         var source = source(true);
         var task = run(source, VideoOperation.EXTRACT_AUDIO, "removed-audio-target");
         UUID audioItemId = UUID.fromString(task.input().path("canvasItemId").asText());
@@ -213,7 +256,8 @@ class VideoOperationPostgresIT {
         assertThat(canvas.list(owner.userId(), source.projectId())).hasSize(2);
     }
 
-    @Test void silentVideoBlocksWithExplicitReason() throws Exception {
+    @Test
+    void silentVideoBlocksWithExplicitReason() throws Exception {
         var source = source(false);
         var accepted = run(source, VideoOperation.EXTRACT_AUDIO, "silent-source");
         worker.submitOnce("silent-video-test");
@@ -222,20 +266,24 @@ class VideoOperationPostgresIT {
         assertThat(blocked.errorCode()).isEqualTo("VIDEO_AUDIO_TRACK_MISSING");
     }
 
-    @Test void unconfiguredUpscaleCreatesNoPartialNodeAndSettingsUseCas() throws Exception {
+    @Test
+    void unconfiguredUpscaleCreatesNoPartialNodeAndSettingsUseCas() throws Exception {
         var source = source(true);
         assertThatThrownBy(() -> run(source, VideoOperation.UPSCALE, "unconfigured-upscale"))
                 .isInstanceOf(ApiProblemException.class).extracting("code").isEqualTo("MEDIA_FUNCTION_UNCONFIGURED");
         assertThat(canvas.list(owner.userId(), source.projectId())).hasSize(1);
-        long settingVersion = functions.list().stream().filter(setting -> setting.operation() == MediaFunction.VIDEO_UPSCALE).findFirst().orElseThrow().version();
+        long settingVersion = functions.list().stream()
+                .filter(setting -> setting.operation() == MediaFunction.VIDEO_UPSCALE).findFirst().orElseThrow()
+                .version();
         functions.update(MediaFunction.VIDEO_UPSCALE, settingVersion, null);
         assertThatThrownBy(() -> functions.update(MediaFunction.VIDEO_UPSCALE, settingVersion, null))
                 .isInstanceOf(ApiProblemException.class).extracting("code").isEqualTo("MEDIA_FUNCTION_CONFLICT");
-        assertThat(capabilities.publishedCandidates()).noneMatch(candidate ->
-                candidate.binding().capabilityId().equals(MediaFunctionService.LOCAL_AUDIO_CAPABILITY));
+        assertThat(capabilities.publishedCandidates()).noneMatch(
+                candidate -> candidate.binding().capabilityId().equals(MediaFunctionService.LOCAL_AUDIO_CAPABILITY));
     }
 
-    @Test void depthUsesRealModelOrExplicitlyBlocks() throws Exception {
+    @Test
+    void depthUsesRealModelOrExplicitlyBlocks() throws Exception {
         var source = source(false);
         var accepted = run(source, VideoOperation.DEPTH_MAP, "depth-video");
         worker.submitOnce("depth-video-test");
@@ -248,7 +296,8 @@ class VideoOperationPostgresIT {
             assertThat(result.output().path("selected").asBoolean()).isTrue();
             var version = artifacts.requireMediaVersionForTask(owner.userId(), source.projectId(),
                     UUID.fromString(result.output().path("artifactVersionId").asText()), Artifact.Kind.VIDEO);
-            var depthAsset = assets.metadata(owner.userId(), source.projectId(), UUID.fromString(version.content().path("assetId").asText()));
+            var depthAsset = assets.metadata(owner.userId(), source.projectId(),
+                    UUID.fromString(version.content().path("assetId").asText()));
             assertThat(depthAsset.contentType()).isEqualTo("video/mp4");
             assertThat(depthAsset.durationMs()).isBetween(900, 1100);
             assertThat(depthAsset.width()).isLessThanOrEqualTo(518);
@@ -256,19 +305,25 @@ class VideoOperationPostgresIT {
         }
     }
 
-    @Test void rejectsChangedNodeOrPublishedCapabilityWithoutCreatingOutput() throws Exception {
+    @Test
+    void rejectsChangedNodeOrPublishedCapabilityWithoutCreatingOutput() throws Exception {
         var source = source(true);
         for (boolean changedNode : List.of(true, false)) {
-            assertThatThrownBy(() -> operations.run(owner.userId(), source.projectId(), source.artifactId(), source.itemId(), source.versionId(),
-                    changedNode ? 1 : 0, VideoOperation.EXTRACT_AUDIO, 0, changedNode ? 1 : 2, "", mapper.createObjectNode(), UUID.randomUUID().toString()))
-                    .isInstanceOf(ApiProblemException.class).extracting("code").isEqualTo(changedNode ? "DIRECT_MEDIA_CONFLICT" : "MEDIA_CAPABILITY_CHANGED");
+            assertThatThrownBy(() -> operations.run(owner.userId(), source.projectId(), source.artifactId(),
+                    source.itemId(), source.versionId(),
+                    changedNode ? 1 : 0, VideoOperation.EXTRACT_AUDIO, 0, changedNode ? 1 : 2, "",
+                    mapper.createObjectNode(), UUID.randomUUID().toString()))
+                    .isInstanceOf(ApiProblemException.class).extracting("code")
+                    .isEqualTo(changedNode ? "DIRECT_MEDIA_CONFLICT" : "MEDIA_CAPABILITY_CHANGED");
         }
         assertThat(canvas.list(owner.userId(), source.projectId())).hasSize(1);
     }
 
-    @Test void freezesPublishedRunningHubTransformAndTrustedSourceWithoutCallingProvider() throws Exception {
+    @Test
+    void freezesPublishedRunningHubTransformAndTrustedSourceWithoutCallingProvider() throws Exception {
         var source = source(false);
-        var connection = capabilities.createConnection(UUID.randomUUID().toString(), "Synthetic transform", "RUNNINGHUB", null, "synthetic-key-not-real");
+        var connection = capabilities.createConnection(UUID.randomUUID().toString(), "Synthetic transform",
+                "RUNNINGHUB", null, "synthetic-key-not-real");
         var settings = mapper.readTree("""
                 {"runningHub":{"schemaVersion":1,"protocolVersion":"V2","targetType":"WORKFLOW","targetId":"123",
                   "fields":[{"key":"clip","label":"Video","type":"VIDEO","required":true,"nodeId":"1","fieldName":"video"},
@@ -277,44 +332,60 @@ class VideoOperationPostgresIT {
                   "outputs":[{"kind":"VIDEO","primary":true,"maxCount":1}]},
                  "pricing":{"amount":"0.5","currency":"CNY","unit":"SECOND"}}
                 """);
-        var capability = capabilities.publishCapability(connection.id(), "Synthetic AI upscale", "RUNNINGHUB_VIDEO", settings);
-        var initial = functions.list().stream().filter(setting -> setting.operation() == MediaFunction.VIDEO_UPSCALE).findFirst().orElseThrow();
+        var capability = capabilities.publishCapability(connection.id(), "Synthetic AI upscale", "RUNNINGHUB_VIDEO",
+                settings);
+        var initial = functions.list().stream().filter(setting -> setting.operation() == MediaFunction.VIDEO_UPSCALE)
+                .findFirst().orElseThrow();
         functions.update(MediaFunction.VIDEO_UPSCALE, initial.version(), capability.id());
         try {
-            var params = mapper.createObjectNode(); params.putObject("dynamicValues").put("clip", UUID.randomUUID().toString()).put("scale", 4);
-            var task = operations.run(owner.userId(), source.projectId(), source.artifactId(), source.itemId(), source.versionId(),
+            var params = mapper.createObjectNode();
+            params.putObject("dynamicValues").put("clip", UUID.randomUUID().toString()).put("scale", 4);
+            var task = operations.run(owner.userId(), source.projectId(), source.artifactId(), source.itemId(),
+                    source.versionId(),
                     0, VideoOperation.UPSCALE, initial.version() + 1, 1, "", params, "synthetic-upscale");
-            assertThat(task.input().path("mediaInput").path("parameters").path("dynamicValues").path("clip").asText()).isEqualTo(source.versionId().toString());
-            assertThat(task.input().path("mediaInput").path("parameters").path("dynamicValues").path("scale").asInt()).isEqualTo(4);
-            assertThat(task.input().path("mediaInput").path("runningHubContract").path("targetId").asText()).isEqualTo("123");
+            assertThat(task.input().path("mediaInput").path("parameters").path("dynamicValues").path("clip").asText())
+                    .isEqualTo(source.versionId().toString());
+            assertThat(task.input().path("mediaInput").path("parameters").path("dynamicValues").path("scale").asInt())
+                    .isEqualTo(4);
+            assertThat(task.input().path("mediaInput").path("runningHubContract").path("targetId").asText())
+                    .isEqualTo("123");
             assertThat(task.input().toString()).doesNotContain("private-import-placeholder");
             assertThat(task.input().has("durationSeconds")).isFalse();
-            assertThat(drafts.get(owner.userId(), source.projectId(), UUID.fromString(task.input().path("canvasItemId").asText())).mediaInputs()).isEmpty();
+            assertThat(drafts.get(owner.userId(), source.projectId(),
+                    UUID.fromString(task.input().path("canvasItemId").asText())).mediaInputs()).isEmpty();
             direct.cancelQueued(owner.userId(), source.projectId(), task.id());
         } finally {
             functions.update(MediaFunction.VIDEO_UPSCALE, initial.version() + 1, initial.capabilityId());
         }
     }
 
-    @Test void settingsApiRequiresAuthenticationAndCsrfAndReturnsContract() throws Exception {
+    @Test
+    void settingsApiRequiresAuthenticationAndCsrfAndReturnsContract() throws Exception {
         var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup(webContext)
-                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
-        var auth = org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(
-                new UsernamePasswordAuthenticationToken(owner, null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build();
+        var auth = org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                .authentication(
+                        new UsernamePasswordAuthenticationToken(owner, null,
+                                List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
         String url = "/api/v1/settings/media-functions";
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(url))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isUnauthorized());
-        var response = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(url).with(auth))
-                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk()).andReturn().getResponse().getContentAsString();
+        var response = mvc
+                .perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(url).with(auth))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                .andReturn().getResponse().getContentAsString();
         assertThat(mapper.readTree(response)).extracting(setting -> setting.path("operation").asText())
                 .containsExactlyInAnyOrder(java.util.Arrays.stream(MediaFunction.values())
                         .map(MediaFunction::name).toArray(String[]::new));
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(url + "/VIDEO_EXTRACT_AUDIO")
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .put(url + "/VIDEO_EXTRACT_AUDIO")
                 .with(auth).contentType("application/json").content("{\"expectedVersion\":0,\"capabilityId\":null}"))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
     }
 
-    private record Source(UUID projectId, UUID artifactId, UUID itemId, UUID versionId) {}
+    private record Source(UUID projectId, UUID artifactId, UUID itemId, UUID versionId) {
+    }
     private tools.jackson.databind.JsonNode videoPacketHashes(Path file) {
         return mapper.readTree(tools.ffprobe(List.of("-v", "error", "-select_streams", "v:0",
                 "-show_packets", "-show_entries", "packet=data_hash", "-show_data_hash", "sha256",
@@ -330,23 +401,33 @@ class VideoOperationPostgresIT {
         Path video = temp.resolve(UUID.randomUUID() + ".mp4");
         var command = new java.util.ArrayList<>(List.of("-hide_banner", "-loglevel", "error", "-nostdin",
                 "-f", "lavfi", "-i", "testsrc2=s=160x90:r=12"));
-        if (audio) command.addAll(List.of("-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000"));
+        if (audio)
+            command.addAll(List.of("-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000"));
         command.addAll(List.of("-t", Integer.toString(durationSeconds), "-c:v", "libx264", "-pix_fmt", "yuv420p"));
-        if (audio) command.addAll(List.of("-c:a", "aac"));
+        if (audio)
+            command.addAll(List.of("-c:a", "aac"));
         command.addAll(List.of("-y", video.toString()));
         tools.ffmpeg(command);
         var asset = assets.archiveTaskVideo(owner.userId(), project.id(), UUID.randomUUID(), () -> {
-            try { return Files.newInputStream(video); } catch (java.io.IOException failure) { throw new IllegalStateException(failure); }
+            try {
+                return Files.newInputStream(video);
+            } catch (java.io.IOException failure) {
+                throw new IllegalStateException(failure);
+            }
         });
         var artifact = artifacts.create(owner.userId(), project.id(), Artifact.Kind.VIDEO, "合成视频",
                 mapper.createObjectNode().put("sourceType", "UPLOAD").put("assetId", asset.id().toString()));
-        UUID item = dev.agenvas.support.CanvasMediaFixture.place(canvas, owner.userId(), project.id(), artifact.artifact().id());
+        UUID item = dev.agenvas.support.CanvasMediaFixture.place(canvas, owner.userId(), project.id(),
+                artifact.artifact().id());
         return new Source(project.id(), artifact.artifact().id(), item, artifact.resourceDefaultVersion().id());
     }
 
     private Task run(Source source, VideoOperation operation, String key) {
-        long version = functions.list().stream().filter(setting -> setting.operation() == MediaFunction.forVideo(operation)).findFirst().orElseThrow().version();
-        return operations.run(owner.userId(), source.projectId(), source.artifactId(), source.itemId(), source.versionId(),
+        long version = functions.list().stream()
+                .filter(setting -> setting.operation() == MediaFunction.forVideo(operation)).findFirst().orElseThrow()
+                .version();
+        return operations.run(owner.userId(), source.projectId(), source.artifactId(), source.itemId(),
+                source.versionId(),
                 0, operation, version, 1, "", mapper.createObjectNode(), key);
     }
 }

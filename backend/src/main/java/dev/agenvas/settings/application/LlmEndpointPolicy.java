@@ -17,7 +17,8 @@ public class LlmEndpointPolicy {
      * @return 去除末尾斜线并规范化大小写的 HTTP(S) 基础地址
      */
     public String normalize(String requested) {
-        if (requested == null || requested.length() > 500) throw invalid();
+        if (requested == null || requested.length() > 500)
+            throw invalid();
         URI uri;
         try {
             uri = new URI(requested.trim());
@@ -51,13 +52,19 @@ public class LlmEndpointPolicy {
             String suppliedHost = host.replaceAll("^\\[|\\]$", "");
             String path = uri.getRawPath() == null || uri.getRawPath().isEmpty() ? "/" : uri.getRawPath();
             if ((!host.contains(":") && !url.host().equalsIgnoreCase(suppliedHost)) || !url.encodedPath().equals(path)
-                    || host.contains("%") || uri.getRawAuthority().endsWith(":")) throw invalid();
-        } catch (IllegalArgumentException malformed) { throw invalid(); }
+                    || host.contains("%") || uri.getRawAuthority().endsWith(":"))
+                throw invalid();
+        } catch (IllegalArgumentException malformed) {
+            throw invalid();
+        }
     }
 
     /** 构造不允许的 Provider 地址统一使用的 400 响应。 */
     private ApiProblemException invalid() {
         return new ApiProblemException(HttpStatus.BAD_REQUEST, "PROVIDER_ENDPOINT_INVALID",
-                ApiMessage.of("api.llm-endpoint-policy.the-model-service-address-is-invalid"), ApiMessage.of("api.llm-endpoint-policy.only-explicit-https-public-network-endpoints-are-accepted-native-http"), false);
+                ApiMessage.of("api.llm-endpoint-policy.the-model-service-address-is-invalid"),
+                ApiMessage.of(
+                        "api.llm-endpoint-policy.only-explicit-https-public-network-endpoints-are-accepted-native-http"),
+                false);
     }
 }

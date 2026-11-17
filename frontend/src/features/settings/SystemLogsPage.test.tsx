@@ -1,28 +1,51 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { act,fireEvent,render,screen,waitFor } from "@testing-library/react";
-import { http,HttpResponse } from "msw";
-import { MemoryRouter,Route,Routes } from "react-router";
-import { beforeEach,describe,expect,it,vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import { MemoryRouter, Route, Routes } from "react-router";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { SystemLogSnapshot } from "../../shared/api/client";
-import { changeControl,clickControl } from "../../test/controls";
+import { changeControl, clickControl } from "../../test/controls";
 import { server } from "../../test/server";
 import { SystemLogsPage } from "./SystemLogsPage";
 
 const snapshot: SystemLogSnapshot = {
-  processId: "9d69523f-c971-483f-9573-552e9d26c62c", startedAt: "2026-09-30T00:00:00Z",
-  checkedAt: "2026-09-30T00:01:00Z", capacity: 2000, retainedCount: 2, droppedCount: 0, matchedCount: 2,
+  processId: "9d69523f-c971-483f-9573-552e9d26c62c",
+  startedAt: "2026-09-30T00:00:00Z",
+  checkedAt: "2026-09-30T00:01:00Z",
+  capacity: 2000,
+  retainedCount: 2,
+  droppedCount: 0,
+  matchedCount: 2,
   entries: [
-    { sequence: 1, recordedAt: "2026-09-30T00:00:00Z", stream: "STDOUT", message: "Started AgenvasApplication", truncated: false },
-    { sequence: 2, recordedAt: "2026-09-30T00:00:01Z", stream: "STDERR", message: "<script>unsafe()</script> apiKey=[REDACTED]", truncated: true },
+    {
+      sequence: 1,
+      recordedAt: "2026-09-30T00:00:00Z",
+      stream: "STDOUT",
+      message: "Started AgenvasApplication",
+      truncated: false,
+    },
+    {
+      sequence: 2,
+      recordedAt: "2026-09-30T00:00:01Z",
+      stream: "STDERR",
+      message: "<script>unsafe()</script> apiKey=[REDACTED]",
+      truncated: true,
+    },
   ],
 };
 function showPage() {
   const client = createQueryClient();
-  render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/settings/logs"]}><Routes>
-    <Route path="/settings/logs" element={<SystemLogsPage />} />
-    <Route path="/login" element={<h1>登录页</h1>} />
-  </Routes></MemoryRouter></QueryClientProvider>);
+  render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={["/settings/logs"]}>
+        <Routes>
+          <Route path="/settings/logs" element={<SystemLogsPage />} />
+          <Route path="/login" element={<h1>登录页</h1>} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
   return client;
 }
 
@@ -35,7 +58,11 @@ describe("SystemLogsPage", () => {
   });
 
   it("renders both channels as safe text with truncation and retention notices", async () => {
-    server.use(http.get("/api/v1/settings/system-logs", () => HttpResponse.json({ ...snapshot, droppedCount: 35, matchedCount: 20 })));
+    server.use(
+      http.get("/api/v1/settings/system-logs", () =>
+        HttpResponse.json({ ...snapshot, droppedCount: 35, matchedCount: 20 }),
+      ),
+    );
     showPage();
     expect(await screen.findByText("Started AgenvasApplication")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "系统日志" })).toHaveAttribute("aria-current", "page");
@@ -51,10 +78,12 @@ describe("SystemLogsPage", () => {
 
   it("applies server-side stream, search and limit filters without issuing writes", async () => {
     const requests: URL[] = [];
-    server.use(http.get("/api/v1/settings/system-logs", ({ request }) => {
-      requests.push(new URL(request.url));
-      return HttpResponse.json(snapshot);
-    }));
+    server.use(
+      http.get("/api/v1/settings/system-logs", ({ request }) => {
+        requests.push(new URL(request.url));
+        return HttpResponse.json(snapshot);
+      }),
+    );
     showPage();
     await screen.findByText("Started AgenvasApplication");
     await changeControl(screen.getByLabelText("输出通道"), { target: { value: "STDERR" } });
@@ -71,10 +100,15 @@ describe("SystemLogsPage", () => {
 
   it("distinguishes pending search from applied search and clears it explicitly", async () => {
     const searches: (string | null)[] = [];
-    server.use(http.get("/api/v1/settings/system-logs", ({ request }) => {
-      const search = new URL(request.url).searchParams.get("search"); searches.push(search);
-      return HttpResponse.json(search ? { ...snapshot, entries: [{ ...snapshot.entries[0], message: "Matched pending search" }] } : snapshot);
-    }));
+    server.use(
+      http.get("/api/v1/settings/system-logs", ({ request }) => {
+        const search = new URL(request.url).searchParams.get("search");
+        searches.push(search);
+        return HttpResponse.json(
+          search ? { ...snapshot, entries: [{ ...snapshot.entries[0], message: "Matched pending search" }] } : snapshot,
+        );
+      }),
+    );
     showPage();
     await screen.findByText("Started AgenvasApplication");
     await changeControl(screen.getByLabelText("关键词"), { target: { value: "pending" } });
@@ -94,7 +128,10 @@ describe("SystemLogsPage", () => {
     showPage();
     await screen.findByText("Started AgenvasApplication");
     const output = screen.getByRole("region", { name: "系统日志输出" });
-    Object.defineProperties(output, { scrollHeight: { value: 1000, configurable: true }, clientHeight: { value: 300, configurable: true } });
+    Object.defineProperties(output, {
+      scrollHeight: { value: 1000, configurable: true },
+      clientHeight: { value: 300, configurable: true },
+    });
     output.scrollTop = 100;
     fireEvent.scroll(output);
     expect(screen.getByLabelText("跟随最新输出")).not.toBeChecked();
@@ -105,8 +142,11 @@ describe("SystemLogsPage", () => {
 
   it("retains the previous snapshot after a failed refresh and recovers on manual retry", async () => {
     let fail = false;
-    server.use(http.get("/api/v1/settings/system-logs", () => fail
-      ? HttpResponse.json({ title: "Unavailable", status: 503 }, { status: 503 }) : HttpResponse.json(snapshot)));
+    server.use(
+      http.get("/api/v1/settings/system-logs", () =>
+        fail ? HttpResponse.json({ title: "Unavailable", status: 503 }, { status: 503 }) : HttpResponse.json(snapshot),
+      ),
+    );
     showPage();
     await screen.findByText("Started AgenvasApplication");
     fail = true;
@@ -121,11 +161,15 @@ describe("SystemLogsPage", () => {
 
   it("shows loading and an empty filtered result", async () => {
     let finish: (() => void) | undefined;
-    const pending = new Promise<void>((resolve) => { finish = resolve; });
-    server.use(http.get("/api/v1/settings/system-logs", async () => {
-      await pending;
-      return HttpResponse.json({ ...snapshot, retainedCount: 0, matchedCount: 0, entries: [] });
-    }));
+    const pending = new Promise<void>(resolve => {
+      finish = resolve;
+    });
+    server.use(
+      http.get("/api/v1/settings/system-logs", async () => {
+        await pending;
+        return HttpResponse.json({ ...snapshot, retainedCount: 0, matchedCount: 0, entries: [] });
+      }),
+    );
     showPage();
     await screen.findByLabelText("正在读取系统日志…");
     finish?.();
@@ -147,24 +191,41 @@ describe("SystemLogsPage", () => {
   it("polls, pauses, and replaces output after a process restart", async () => {
     const requests = vi.fn();
     let restarted = false;
-    server.use(http.get("/api/v1/settings/system-logs", () => {
-      requests();
-      return HttpResponse.json(restarted ? { ...snapshot, processId: "new-process", retainedCount: 1, matchedCount: 1,
-        entries: [{ ...snapshot.entries[0], sequence: 1, message: "New process started" }] } : snapshot);
-    }));
+    server.use(
+      http.get("/api/v1/settings/system-logs", () => {
+        requests();
+        return HttpResponse.json(
+          restarted
+            ? {
+                ...snapshot,
+                processId: "new-process",
+                retainedCount: 1,
+                matchedCount: 1,
+                entries: [{ ...snapshot.entries[0], sequence: 1, message: "New process started" }],
+              }
+            : snapshot,
+        );
+      }),
+    );
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     try {
       showPage();
       await screen.findByText("Started AgenvasApplication");
       restarted = true;
-      await act(async () => { await vi.advanceTimersByTimeAsync(3100); });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3100);
+      });
       expect(await screen.findByText("New process started")).toBeInTheDocument();
       expect(requests).toHaveBeenCalledTimes(2);
       expect(screen.queryByText("Started AgenvasApplication")).not.toBeInTheDocument();
       await clickControl(screen.getByLabelText("自动刷新（每 3 秒）"));
-      await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(6000);
+      });
       expect(requests).toHaveBeenCalledTimes(2);
       expect(screen.getByText("已暂停自动刷新")).toBeInTheDocument();
-    } finally { vi.useRealTimers(); }
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

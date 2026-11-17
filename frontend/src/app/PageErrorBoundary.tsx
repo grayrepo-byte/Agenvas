@@ -27,16 +27,24 @@ function PageRecovery() {
   useLocale();
   const headingId = useId();
   const heading = useRef<HTMLHeadingElement>(null);
-  useEffect(() => { heading.current?.focus(); }, []);
+  useEffect(() => {
+    heading.current?.focus();
+  }, []);
 
-  return <main className="app-page flex items-center justify-center p-4" data-page-recovery>
-    <section className="w-full max-w-lg" aria-labelledby={headingId}>
-      <Notice tone="danger">
-        <h1 className="text-base font-semibold" id={headingId} ref={heading} tabIndex={-1}>{t("app.pageFailed.title")}</h1>
-        <p>{t("app.pageFailed.description")}</p>
-        <p>{t("app.pageFailed.unsavedHint")}</p>
-        <Button type="button" onClick={() => window.location.reload()}>{t("app.pageFailed.reload")}</Button>
-      </Notice>
-    </section>
-  </main>;
+  return (
+    <main className="app-page flex items-center justify-center p-4" data-page-recovery>
+      <section className="w-full max-w-lg" aria-labelledby={headingId}>
+        <Notice tone="danger">
+          <h1 className="text-base font-semibold" id={headingId} ref={heading} tabIndex={-1}>
+            {t("app.pageFailed.title")}
+          </h1>
+          <p>{t("app.pageFailed.description")}</p>
+          <p>{t("app.pageFailed.unsavedHint")}</p>
+          <Button type="button" onClick={() => window.location.reload()}>
+            {t("app.pageFailed.reload")}
+          </Button>
+        </Notice>
+      </section>
+    </main>
+  );
 }

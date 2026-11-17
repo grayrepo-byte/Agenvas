@@ -86,6 +86,19 @@ MCP 上传扩展复用现有 Spring MVC multipart、JDK SHA-256、Asset 解码/�
 
 普通 Dockerfile 构建默认保留 `dependency:go-offline` 层，供 CI 的 GHA layer cache 继续跨 runner 复用；cache mount 的数据不随该缓存自动导出。所有构建的生产打包改用 `-Dmaven.test.skip=true`，测试源码在其后复制，只有显式 `VERIFY_DEPTH_MODEL=true` 执行原深度模型 smoke test。本地更新脚本默认不强制拉取基础镜像，`--pull` 显式拉取，`server` / `web` 可缩小构建范围。验证范围为脚本故障/命令回归、四种 Compose 配置、实际镜像构建、跨 POM 层失效的离线 Maven 包复用和定向模型 smoke test；实际运行结果与未验证范围见开发清单。
 
+## 代码格式化工具
+
+格式化只增加开发工具，不升级现有 Java、Node、pnpm、ESLint、编译器或运行依赖：
+
+| 工具 | 固定版本 | 职责 |
+|---|---:|---|
+| [Prettier](https://prettier.io/blog/2026/06/27/3.9.0) | 3.9.0 | 前端源码、测试、脚本及配置格式化；不处理生成 API 类型与锁文件 |
+| [eslint-config-prettier](https://github.com/prettier/eslint-config-prettier/releases/tag/v10.1.8) | 10.1.8 | 关闭与 Prettier 输出冲突的格式规则，保留项目 lint 规则 |
+| [Spotless Maven Plugin](https://github.com/diffplug/spotless/blob/main/plugin-maven/CHANGES.md) | 3.0.0 | 仅处理手写 Java；要求 Java 17+，兼容项目 Java 21 |
+| [Eclipse JDT formatter](https://github.com/eclipse-jdt/eclipse.jdt.core/tree/R4_35) | 4.35 | 由 Spotless 调用，使用 `backend/eclipse-formatter.xml` 的四空格配置 |
+
+采用稳定正式版并显式固定，不跟随格式化引擎的默认版本漂移。前端保留原 ESLint；不引入另一套 lint 或通过 ESLint 执行格式化。后端不绑定 Maven 默认构建生命周期，不增加数据库、jOOQ 生成或生产打包的前置条件。具体写入、只检查命令及排除范围见 [CONTRIBUTING.md](../CONTRIBUTING.md#code-formatting)。
+
 ## 初始基线验证（历史记录）
 
 以下命令结果记录的是建立 M0 基线时的执行快照，不代表当前版本的全量测试计数或最新部署验收；后续行为与回归结果以 开发记录（不随源码公开） 和开发清单为准。
@@ -166,3 +179,14 @@ CI 的 jOOQ 漂移检查不再占用固定 55432 端口；Docker 自动预留仅
 SMB 新增固定正式版 [`com.hierynomus:smbj:0.15.0`](https://github.com/hierynomus/smbj/releases/tag/v0.15.0)，使用 SMB2/3、强制签名、关闭 DFS 和带超时的会话。Maven 在 Spring Boot BOM 管理下解析传递依赖；WebDAV 复用 OkHttp 4.12.0，不引入 WebDAV SDK。协议根据 [RFC 4918](https://www.rfc-editor.org/rfc/rfc4918.html) 实现 MKCOL/PUT/MOVE/HEAD/GET/DELETE，发布禁止覆盖并核对 SHA-256。验证涵盖协议单元测试、真实 PostgreSQL 加模拟 WebDAV HTTP、现有对象存储与媒体中继回归，以及前端设置、四语言、类型、lint 和构建。真实 NAS/WebDAV 产品与大文件吞吐未验证；具体执行结果见开发清单。
 
 导演上下文预算复用 Spring AI 2.0.1 已解析的 `JTokkitTokenCountEstimator`（`spring-ai-commons` 及其既有传递依赖），不新增依赖或 Provider 专属压缩 API。估算包含文本、工具定义、参数、回复与媒体预留；25% 余量用于不同模型 tokenizer 的差异，不能当作真实计费用量。语义交接使用原 ChatGateway 与持久回合。编译、定向单元与真实 PostgreSQL 的长任务/恢复验证见开发清单；真实模型摘要质量和墙钟十几小时运行另行验收。
+
+
+## 可选托管 ASR 构建清单与验证范围
+
+服务器 Dockerfile 现声明 whisper.cpp v1.9.5、Git提交 `d1be6fde11ac6e0407606b4e42fe72d34add8037` 的 Linux CPU 源码构建，沿用现有固定 Maven/Temurin Ubuntu 镜像。构建关闭本机指令、GPU、OpenMP、隐式下载及server；不新增Maven/前端运行依赖。Tiny Q5_1多语言模型单独按管理员明确请求下载，固定修订、字节数、SHA-256和MIT许可见[ADR 0086](adr/0086-managed-local-asr-model-download.md)。初稿1.8.3并无真实验收依据，最终核验官方1.9.5仍支持现有CLI参数后保持已讨论的1.9.5。
+
+初次实现只运行Java/TypeScript定向检查、真实PostgreSQL、受控下载流及C启动器的本机语法检查；当时没有执行Git源码获取、apt工具链安装、Linux引擎构建或真实模型下载/加载。编译工具链使用固定基础镜像中的Ubuntu包源，尚未做到二进制逐字节可复现。
+
+2026-11-15 源码构建补验：`whisper-build` 显式安装 `make`，避免 `--no-install-recommends` 排除 CMake 默认 Unix Makefiles 生成器所需的构建工具。实际 Linux ARM64 固定源码获取、CMake 配置、whisper-cli 编译及 C 启动器编译通过；源码 Compose 的 server/web 镜像成功构建，最终 server 镜像内受限启动器的 `--help` 检查通过。amd64 构建、真实模型加载/识别及1536MB应用并行峰值不在本次验证范围；脚本回归与后续分辨率决策验证见开发清单。
+
+导演压缩主流程按固定提交的 Codex 本地历史替换策略移植到现有 Java/Spring AI Runtime；未引入 Codex/OpenCode 运行依赖或专属远程 API。V64 移除摘要长度和近期回合配置，并用原 jOOQ codegen profile 对隔离 PostgreSQL 17.11 重生字段；OpenAPI TypeScript 使用既有生成命令同步。核验来源见[研究记录](research/agent-compaction-summary-budgets.md)，实际测试与真实模型验证范围见开发清单。

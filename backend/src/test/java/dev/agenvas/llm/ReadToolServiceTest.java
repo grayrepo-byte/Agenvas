@@ -33,9 +33,11 @@ class ReadToolServiceTest {
     private final ArtifactService artifacts = mock(ArtifactService.class);
     private final AssetService assets = mock(AssetService.class);
     private final ObjectMapper mapper = new ObjectMapper();
-    private final dev.agenvas.llm.application.ToolExecutionRepository ledger = mock(dev.agenvas.llm.application.ToolExecutionRepository.class);
+    private final dev.agenvas.llm.application.ToolExecutionRepository ledger = mock(
+            dev.agenvas.llm.application.ToolExecutionRepository.class);
     private final ReadToolService reader = new ReadToolService(
-            mock(ProjectService.class), artifacts, assets, tasks, mapper, ledger, mock(dev.agenvas.llm.application.AgentMediaSampleService.class));
+            mock(ProjectService.class), artifacts, assets, tasks, mapper, ledger,
+            mock(dev.agenvas.llm.application.AgentMediaSampleService.class));
     private final TrustedToolContext context = new TrustedToolContext(
             UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
 
@@ -62,13 +64,15 @@ class ReadToolServiceTest {
                 kind == Artifact.Kind.AUDIO ? "audio/wav" : "video/mp4", 1234, "PRIVATE_HASH",
                 kind == Artifact.Kind.VIDEO ? 1920 : null, kind == Artifact.Kind.VIDEO ? 1080 : null,
                 kind == Artifact.Kind.IMAGE ? null : 9876, null, null, null, java.time.Instant.EPOCH));
-        when(artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, context.runId(), versionId)).thenReturn(version);
+        when(artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, context.runId(),
+                versionId)).thenReturn(version);
         when(artifacts.get(context.ownerId(), context.projectId(), artifactId))
                 .thenReturn(new ArtifactService.ArtifactView(artifact, null));
 
         JsonNode item = reader.artifacts(context, run, UUID.randomUUID(),
                 mapper.createObjectNode().set("versionIds",
-                        mapper.createArrayNode().add(versionId.toString())).toString()).path("data").get(0);
+                        mapper.createArrayNode().add(versionId.toString())).toString())
+                .path("data").get(0);
 
         assertThat(item.path("versionId").asText()).isEqualTo(versionId.toString());
         assertThat(item.path("kind").asText()).isEqualTo(kind.name());
@@ -90,7 +94,8 @@ class ReadToolServiceTest {
         AgentRun run = mock(AgentRun.class);
         when(run.contextSnapshot()).thenReturn(mapper.createObjectNode());
         when(run.policySnapshot()).thenReturn(mapper.createObjectNode().put("toolPolicyVersion", 5));
-        assertThatThrownBy(() -> reader.skillResource(run, UUID.randomUUID(), "{\"skillVersionId\":\"" + UUID.randomUUID() + "\",\"path\":\"guide.md\"}"))
+        assertThatThrownBy(() -> reader.skillResource(run, UUID.randomUUID(),
+                "{\"skillVersionId\":\"" + UUID.randomUUID() + "\",\"path\":\"guide.md\"}"))
                 .isInstanceOf(ApiProblemException.class)
                 .hasMessageContaining("资源")
                 .hasMessageNotContaining("允许列表");
@@ -159,7 +164,8 @@ class ReadToolServiceTest {
         JsonNode snapshot = mapper.createObjectNode();
         when(run.contextSnapshot()).thenReturn(snapshot);
         UUID versionId = UUID.randomUUID();
-        when(artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, context.runId(), versionId))
+        when(artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, context.runId(),
+                versionId))
                 .thenThrow(new IllegalStateException("denied"));
         assertThatThrownBy(() -> reader.artifacts(context, run, UUID.randomUUID(),
                 "{\"versionIds\":[\"" + versionId + "\"]}")).hasMessage("denied");
@@ -250,7 +256,8 @@ class ReadToolServiceTest {
         var fixture = textFixture("第一页😀第二页");
         assertThat(textPage(fixture, ",\"textLimit\":3").at("/content/text").asText()).isEqualTo("第一页");
         when(artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(),
-                fixture.run().contextSnapshot(), context.runId(), fixture.versionId())).thenThrow(new IllegalStateException("revoked"));
+                fixture.run().contextSnapshot(), context.runId(), fixture.versionId()))
+                .thenThrow(new IllegalStateException("revoked"));
         assertThatThrownBy(() -> textPage(fixture, ",\"textOffset\":3")).hasMessage("revoked");
     }
 
@@ -266,7 +273,8 @@ class ReadToolServiceTest {
         when(version.id()).thenReturn(versionId);
         when(version.artifactId()).thenReturn(artifactId);
         when(version.content()).thenReturn(mapper.createObjectNode().put("format", "MARKDOWN").put("text", text));
-        when(artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, context.runId(), versionId)).thenReturn(version);
+        when(artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, context.runId(),
+                versionId)).thenReturn(version);
         when(artifacts.get(context.ownerId(), context.projectId(), artifactId))
                 .thenReturn(new ArtifactService.ArtifactView(artifact, version));
         return new TextFixture(run, artifact, versionId);
@@ -282,5 +290,6 @@ class ReadToolServiceTest {
                 .extracting("code").isEqualTo("TOOL_ARGUMENT_INVALID");
     }
 
-    private record TextFixture(AgentRun run, Artifact artifact, UUID versionId) {}
+    private record TextFixture(AgentRun run, Artifact artifact, UUID versionId) {
+    }
 }

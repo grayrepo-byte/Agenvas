@@ -1,19 +1,27 @@
 import { Question } from "@/shared/ui/icons";
-import { useId,useState } from "react";
+import { useId, useState } from "react";
 import type { MediaConnection } from "../../shared/api/client";
-import { t,useLocale } from "../../shared/i18n";
+import { t, useLocale } from "../../shared/i18n";
 import { cn } from "../../shared/lib/utils";
 import { Button } from "../../shared/ui/primitives/button";
-import { Field,FieldDescription,FieldLabel } from "../../shared/ui/primitives/field";
+import { Field, FieldDescription, FieldLabel } from "../../shared/ui/primitives/field";
 import { Input } from "../../shared/ui/primitives/input";
-import { Tooltip,TooltipContent,TooltipProvider,TooltipTrigger } from "../../shared/ui/primitives/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../shared/ui/primitives/tooltip";
 import { mediaConnectionAddresses } from "./mediaConnectionConfiguration";
 
 const ORIGIN_LIMIT = 500;
 
 /** Address guidance follows the existing adapter paths; it never rewrites user input. */
-export function MediaConnectionAddressField({ platform, origin, onChange, describedBy }: {
-  platform: MediaConnection["platform"]; origin: string; onChange: (value: string) => void; describedBy?: string;
+export function MediaConnectionAddressField({
+  platform,
+  origin,
+  onChange,
+  describedBy,
+}: {
+  platform: MediaConnection["platform"];
+  origin: string;
+  onChange: (value: string) => void;
+  describedBy?: string;
 }) {
   useLocale();
   const id = useId();
@@ -22,21 +30,57 @@ export function MediaConnectionAddressField({ platform, origin, onChange, descri
   if (!config) return null;
   const hint = t(config.hint);
   const hintId = `${id}-hint`;
-  const descriptionIds = platform === "COMFYUI" ? [describedBy, hintId].filter(Boolean).join(" ") : describedBy ?? hintId;
-  return <Field className={cn("gap-2", platform === "COMFYUI" && "col-span-full")}>
-    <div className="flex items-center gap-1">
-      <FieldLabel className="ui-field" htmlFor={id}>{t(config.label)}</FieldLabel>
-      <TooltipProvider><Tooltip key={platform} open={open} onOpenChange={setOpen}>
-        <TooltipTrigger asChild onClick={(event) => { event.preventDefault(); setOpen(true); }}>
-          <Button type="button" variant="ghost" size="icon-xs" className="size-4" aria-label={t("settings.mediaSettings.addressHelp")}><Question /></Button>
-        </TooltipTrigger>
-        <TooltipContent className="media-connection-address-tooltip" side="top"><p>{hint}</p></TooltipContent>
-      </Tooltip></TooltipProvider>
-    </div>
-    <Input id={id} type="url" value={config.fixed ?? origin} readOnly={Boolean(config.fixed)} required={config.required}
-      maxLength={ORIGIN_LIMIT} placeholder={platform === "COMFYUI" ? t("settings.mediaSettings.comfyAddressPlaceholder") : config.placeholder} aria-describedby={descriptionIds}
-      onChange={(event) => onChange(event.target.value)} />
-    {platform === "COMFYUI" ? <FieldDescription id={hintId}>{t("settings.mediaSettings.comfyHostHint")}</FieldDescription>
-      : !describedBy ? <span id={hintId} className="sr-only">{hint}</span> : null}
-  </Field>;
+  const descriptionIds =
+    platform === "COMFYUI" ? [describedBy, hintId].filter(Boolean).join(" ") : (describedBy ?? hintId);
+  return (
+    <Field className={cn("gap-2", platform === "COMFYUI" && "col-span-full")}>
+      <div className="flex items-center gap-1">
+        <FieldLabel className="ui-field" htmlFor={id}>
+          {t(config.label)}
+        </FieldLabel>
+        <TooltipProvider>
+          <Tooltip key={platform} open={open} onOpenChange={setOpen}>
+            <TooltipTrigger
+              asChild
+              onClick={event => {
+                event.preventDefault();
+                setOpen(true);
+              }}
+            >
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                className="size-4"
+                aria-label={t("settings.mediaSettings.addressHelp")}
+              >
+                <Question />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent className="media-connection-address-tooltip" side="top">
+              <p>{hint}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+      <Input
+        id={id}
+        type="url"
+        value={config.fixed ?? origin}
+        readOnly={Boolean(config.fixed)}
+        required={config.required}
+        maxLength={ORIGIN_LIMIT}
+        placeholder={platform === "COMFYUI" ? t("settings.mediaSettings.comfyAddressPlaceholder") : config.placeholder}
+        aria-describedby={descriptionIds}
+        onChange={event => onChange(event.target.value)}
+      />
+      {platform === "COMFYUI" ? (
+        <FieldDescription id={hintId}>{t("settings.mediaSettings.comfyHostHint")}</FieldDescription>
+      ) : !describedBy ? (
+        <span id={hintId} className="sr-only">
+          {hint}
+        </span>
+      ) : null}
+    </Field>
+  );
 }

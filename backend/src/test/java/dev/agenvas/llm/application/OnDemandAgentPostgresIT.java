@@ -59,46 +59,76 @@ import tools.jackson.databind.ObjectMapper;
 class OnDemandAgentPostgresIT {
     private static final String WORKER = "synthetic-on-demand-worker";
     private static final String CUSTOM = "Keep every user instruction. Preserve dialogue verbatim.";
-    @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
-    @DynamicPropertySource static void properties(DynamicPropertyRegistry registry) {
-        if (!POSTGRES.isRunning()) POSTGRES.start();
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry registry) {
+        if (!POSTGRES.isRunning())
+            POSTGRES.start();
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
     }
-    @Autowired IdentityService identities;
-    @Autowired AgentInstanceService agents;
-    @Autowired ProjectService projects;
-    @Autowired AgentRunService runs;
-    @Autowired AgentTurnWorker worker;
-    @Autowired AgentTurnCommitService commits;
-    @Autowired InitialModelContextService initial;
-    @Autowired LlmConversationService conversation;
-    @Autowired LlmTurnCheckpointService checkpoints;
-    @Autowired LlmTurnRepository turns;
-    @Autowired ToolRegistry registry;
-    @Autowired LlmProtocolCodec codec;
-    @Autowired TaskService tasks;
-    @Autowired StoryboardService storyboards;
-    @Autowired JdbcClient jdbc;
-    @Autowired ObjectMapper mapper;
-    @Autowired ScriptedGateway gateway;
-    @Autowired MediaCapabilityService capabilities;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    AgentInstanceService agents;
+    @Autowired
+    ProjectService projects;
+    @Autowired
+    AgentRunService runs;
+    @Autowired
+    AgentTurnWorker worker;
+    @Autowired
+    AgentTurnCommitService commits;
+    @Autowired
+    InitialModelContextService initial;
+    @Autowired
+    LlmConversationService conversation;
+    @Autowired
+    LlmTurnCheckpointService checkpoints;
+    @Autowired
+    LlmTurnRepository turns;
+    @Autowired
+    ToolRegistry registry;
+    @Autowired
+    LlmProtocolCodec codec;
+    @Autowired
+    TaskService tasks;
+    @Autowired
+    StoryboardService storyboards;
+    @Autowired
+    JdbcClient jdbc;
+    @Autowired
+    ObjectMapper mapper;
+    @Autowired
+    ScriptedGateway gateway;
+    @Autowired
+    MediaCapabilityService capabilities;
     private AdminPrincipal owner;
     private Project project;
     private AgentRun run;
 
-    @BeforeAll void setupOwner() { owner = identities.setup("discovery-admin", "synthetic-discovery-password"); }
-    @BeforeEach void setupRun() {
+    @BeforeAll
+    void setupOwner() {
+        owner = identities.setup("discovery-admin", "synthetic-discovery-password");
+    }
+    @BeforeEach
+    void setupRun() {
         gateway.script.clear();
         gateway.requests.clear();
         project = projects.create(owner.userId(), "Synthetic on-demand project", Project.AspectRatio.LANDSCAPE_16_9);
         var director = configureDirector(agents, owner.userId(), project.id(), "Synthetic director", CUSTOM);
-        run = runs.create(owner.userId(), project.id(), director.id(), "Complete the current requested task", UUID.randomUUID().toString()).run();
+        run = runs.create(owner.userId(), project.id(), director.id(), "Complete the current requested task",
+                UUID.randomUUID().toString()).run();
     }
-    @AfterEach void stopRun() { runs.cancel(owner.userId(), project.id(), run.id()); }
+    @AfterEach
+    void stopRun() {
+        runs.cancel(owner.userId(), project.id(), run.id());
+    }
 
-    @Test void ordinaryConversationCompletesWithoutAnyLoadOrBusinessEffect() {
+    @Test
+    void ordinaryConversationCompletesWithoutAnyLoadOrBusinessEffect() {
         gateway.script.add(input -> {
             assertThat(input.names()).containsExactly("load_toolset");
             assertThat(input.messages()).anyMatch(message -> CUSTOM.equals(message.getText()));
@@ -110,10 +140,13 @@ class OnDemandAgentPostgresIT {
         assertThat(artifactCount()).isZero();
     }
 
-    @Test void mediaDiscoveryPagesThroughEveryPublishedCapabilityBeyondForty() {
+    @Test
+    void mediaDiscoveryPagesThroughEveryPublishedCapabilityBeyondForty() {
         var connection = capabilities.createConnection("Synthetic paged catalog", null);
-        for (int index = 0; index < 41; index++) capabilities.publishCapability(connection.id(), "Synthetic image " + index, "MOCK_IMAGE");
-        var expected = capabilities.publishedCandidates().stream().map(candidate -> candidate.binding().capabilityId().toString())
+        for (int index = 0; index < 41; index++)
+            capabilities.publishCapability(connection.id(), "Synthetic image " + index, "MOCK_IMAGE");
+        var expected = capabilities.publishedCandidates().stream()
+                .map(candidate -> candidate.binding().capabilityId().toString())
                 .collect(java.util.stream.Collectors.toSet());
         var observed = new ArrayList<String>();
         java.util.function.Consumer<JsonNode> collect = result -> {
@@ -145,7 +178,8 @@ class OnDemandAgentPostgresIT {
             assertThat(input.lastResult().path("nextOffset").isNull()).isTrue();
             return new AssistantMessage("Read the complete published catalog; no media generated.");
         });
-        for (int index = 0; index < 6; index++) step();
+        for (int index = 0; index < 6; index++)
+            step();
         assertThat(observed).doesNotHaveDuplicates().containsExactlyInAnyOrderElementsOf(expected);
         assertThat(current().status()).isEqualTo(AgentRun.Status.SUCCEEDED);
         assertThat(artifactCount()).isZero();
@@ -161,40 +195,51 @@ class OnDemandAgentPostgresIT {
             assertThat(input.messages().toString()).contains("TOOL_ARGUMENT_INVALID", "REJECTED");
             return new AssistantMessage("Invalid catalog page was rejected.");
         });
-        for (int index = 0; index < 3; index++) step();
+        for (int index = 0; index < 3; index++)
+            step();
         assertThat(current().status()).isEqualTo(AgentRun.Status.SUCCEEDED);
         assertThat(artifactCount()).isZero();
     }
 
-    @Test void changingWorkflowLoadsMoreGroupsThenSavesFormalShotsAndSupportingText() {
+    @Test
+    void changingWorkflowLoadsMoreGroupsThenSavesFormalShotsAndSupportingText() {
         gateway.script.add(input -> call("load", "load_toolset", "{\"toolsets\":[\"CANVAS\",\"TEXT\"]}"));
         gateway.script.add(input -> {
             assertThat(input.names()).contains("read_canvas", "create_text").doesNotContain("write_storyboard_shots");
-            return call("load-more", "load_toolset", "{\"toolsets\":[\"STORYBOARD\",\"MEDIA\",\"COMPOSITION\",\"INSPECTION\",\"LAYOUT\"]}");
+            return call("load-more", "load_toolset",
+                    "{\"toolsets\":[\"STORYBOARD\",\"MEDIA\",\"COMPOSITION\",\"INSPECTION\",\"LAYOUT\"]}");
         });
         gateway.script.add(input -> {
-            assertThat(input.names()).contains("write_storyboard_shots", "propose_media_generation", "compose_video", "read_media_sample", "create_text");
-            assertThat(input.messages().getFirst().getText()).contains("Append at most six shots", "bounded speech speedup");
+            assertThat(input.names()).contains("write_storyboard_shots", "propose_media_generation", "compose_video",
+                    "read_media_sample", "create_text");
+            assertThat(input.messages().getFirst().getText()).contains("Append at most six shots",
+                    "bounded speech speedup");
             return call("board", "read_storyboard", "{}");
         });
         gateway.script.add(input -> call("shot", "write_storyboard_shots", "{\"expectedVersion\":"
                 + input.lastResult().path("data").path("version").asLong() + ",\"shots\":[{\"code\":\"SHOT-001\","
                 + "\"description\":\"A synthetic wide shot, camera static.\",\"dialogue\":\"Hello.\",\"durationSeconds\":3}]}"));
-        gateway.script.add(input -> call("text", "create_text", "{\"title\":\"Review\",\"text\":\"SHOT-001 saved; media still pending.\",\"format\":\"PLAIN_TEXT\"}"));
+        gateway.script.add(input -> call("text", "create_text",
+                "{\"title\":\"Review\",\"text\":\"SHOT-001 saved; media still pending.\",\"format\":\"PLAIN_TEXT\"}"));
         gateway.script.add(input -> call("capabilities", "list_media_capabilities", "{}"));
         gateway.script.add(input -> new AssistantMessage("Saved the shot and review; no media generated."));
-        for (int i = 0; i < 7; i++) step();
+        for (int i = 0; i < 7; i++)
+            step();
         assertThat(current().status()).isEqualTo(AgentRun.Status.SUCCEEDED);
         assertThat(storyboards.get(owner.userId(), project.id()).shots()).hasSize(1);
         assertThat(storyboards.get(owner.userId(), project.id()).shots().getFirst().dialogue()).isEqualTo("Hello.");
         assertThat(artifactCount()).isEqualTo(1);
-        assertThat(jdbc.sql("select count(*) from agent_media_approval where run_id=:run").param("run", run.id()).query(Long.class).single()).isZero();
+        assertThat(jdbc.sql("select count(*) from agent_media_approval where run_id=:run").param("run", run.id())
+                .query(Long.class).single()).isZero();
     }
 
-    @Test void loadAndHiddenWriteInOneBatchRollBackTogetherAndRepairDoesNotActivateAnything() {
+    @Test
+    void loadAndHiddenWriteInOneBatchRollBackTogetherAndRepairDoesNotActivateAnything() {
         gateway.script.add(input -> AssistantMessage.builder().content("").toolCalls(List.of(
                 new AssistantMessage.ToolCall("load", "function", "load_toolset", "{\"toolsets\":[\"TEXT\"]}"),
-                new AssistantMessage.ToolCall("hidden", "function", "create_text", "{\"title\":\"Hidden\",\"text\":\"must not save\",\"format\":\"PLAIN_TEXT\"}"))).build());
+                new AssistantMessage.ToolCall("hidden", "function", "create_text",
+                        "{\"title\":\"Hidden\",\"text\":\"must not save\",\"format\":\"PLAIN_TEXT\"}")))
+                .build());
         step();
         assertThat(toolCount()).isZero();
         assertThat(artifactCount()).isZero();
@@ -206,7 +251,8 @@ class OnDemandAgentPostgresIT {
         step();
         gateway.script.add(input -> {
             assertThat(input.names()).contains("create_text");
-            return call("valid-write", "create_text", "{\"title\":\"Allowed\",\"text\":\"saved after load\",\"format\":\"PLAIN_TEXT\"}");
+            return call("valid-write", "create_text",
+                    "{\"title\":\"Allowed\",\"text\":\"saved after load\",\"format\":\"PLAIN_TEXT\"}");
         });
         step();
         gateway.script.add(input -> new AssistantMessage("Done"));
@@ -216,8 +262,10 @@ class OnDemandAgentPostgresIT {
         assertThat(artifactCount()).isEqualTo(1);
     }
 
-    @Test void loadingCannotWidenRunPermissionsOrAuthorizeUnapprovedGeneration() {
-        jdbc.sql("update agent_run set policy_snapshot_json=jsonb_set(policy_snapshot_json,'{allowedTools}', '[\"load_toolset\",\"list_media_capabilities\"]'::jsonb) where id=:run")
+    @Test
+    void loadingCannotWidenRunPermissionsOrAuthorizeUnapprovedGeneration() {
+        jdbc.sql(
+                "update agent_run set policy_snapshot_json=jsonb_set(policy_snapshot_json,'{allowedTools}', '[\"load_toolset\",\"list_media_capabilities\"]'::jsonb) where id=:run")
                 .param("run", run.id()).update();
         gateway.script.add(input -> call("load", "load_toolset", "{\"toolsets\":[\"MEDIA\"]}"));
         step();
@@ -236,14 +284,18 @@ class OnDemandAgentPostgresIT {
         assertThat(current().status()).isEqualTo(AgentRun.Status.SUCCEEDED);
     }
 
-    @Test void transientFailureReplaysTheExactLoadedRequestWithoutLosingSchemas() {
+    @Test
+    void transientFailureReplaysTheExactLoadedRequestWithoutLosingSchemas() {
         gateway.script.add(input -> call("load", "load_toolset", "{\"toolsets\":[\"CANVAS\",\"TEXT\"]}"));
         step();
-        gateway.script.add(input -> { throw new UncheckedIOException(new SocketTimeoutException("synthetic timeout")); });
+        gateway.script.add(input -> {
+            throw new UncheckedIOException(new SocketTimeoutException("synthetic timeout"));
+        });
         step();
         var saved = turns.find(project.id(), run.id(), 1).orElseThrow().request();
         assertThat(saved.path("tools").toString()).contains("create_text", "read_canvas");
-        jdbc.sql("update task set next_action_at=now()-interval '1 second' where run_id=:run and status='READY'").param("run", run.id()).update();
+        jdbc.sql("update task set next_action_at=now()-interval '1 second' where run_id=:run and status='READY'")
+                .param("run", run.id()).update();
         gateway.script.add(input -> new AssistantMessage("Recovered"));
         step();
         assertThat(current().status()).isEqualTo(AgentRun.Status.SUCCEEDED);
@@ -252,7 +304,8 @@ class OnDemandAgentPostgresIT {
         assertThat(toolCount()).isEqualTo(1);
     }
 
-    @Test void reclaimedLeaseUsesReservedDefinitionsAndCommittedReplyReplayDoesNotReloadTools() {
+    @Test
+    void reclaimedLeaseUsesReservedDefinitionsAndCommittedReplyReplayDoesNotReloadTools() {
         gateway.script.add(input -> call("load", "load_toolset", "{\"toolsets\":[\"CANVAS\",\"TEXT\"]}"));
         step();
         var lease = tasks.claimAgentTurns("lost-worker", 1).getFirst();
@@ -260,13 +313,18 @@ class OnDemandAgentPostgresIT {
         var history = conversation.afterToolRound(owner.userId(), project.id(), run.id(), 0);
         var prior = turns.find(project.id(), run.id(), 0).orElseThrow();
         var loaded = registry.continuationDefinitions(running.policySnapshot(), prior.request(), history, codec);
-        var reserved = codec.request(InitialModelContextService.forTools(running.policySnapshot(), history, registry.initialDefinitions(running.policySnapshot()), loaded), loaded);
-        ((tools.jackson.databind.node.ObjectNode) reserved.path("tools").get(0)).put("description", "Frozen deployment loader description");
-        checkpoints.reserveLeased(owner.userId(), project.id(), run.id(), 1, 1, gateway.configSource(), reserved, lease, "lost-worker");
-        jdbc.sql("update task set lease_until=now()-interval '1 second' where id=:task").param("task", lease.id()).update();
+        var reserved = codec.request(InitialModelContextService.forTools(running.policySnapshot(), history,
+                registry.initialDefinitions(running.policySnapshot()), loaded), loaded);
+        ((tools.jackson.databind.node.ObjectNode) reserved.path("tools").get(0)).put("description",
+                "Frozen deployment loader description");
+        checkpoints.reserveLeased(owner.userId(), project.id(), run.id(), 1, 1, gateway.configSource(), reserved, lease,
+                "lost-worker");
+        jdbc.sql("update task set lease_until=now()-interval '1 second' where id=:task").param("task", lease.id())
+                .update();
         gateway.script.add(input -> {
             assertThat(input.names()).contains("create_text", "read_artifacts");
-            assertThat(input.tools().getFirst().getToolDefinition().description()).isEqualTo("Frozen deployment loader description");
+            assertThat(input.tools().getFirst().getToolDefinition().description())
+                    .isEqualTo("Frozen deployment loader description");
             return new AssistantMessage("Recovered reserved turn");
         });
         step();
@@ -277,36 +335,68 @@ class OnDemandAgentPostgresIT {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
-    private void step() { assertThat(worker.runOnce(WORKER)).isEqualTo(1); }
-    private AgentRun current() { return runs.get(owner.userId(), project.id(), run.id()); }
-    private long toolCount() { return jdbc.sql("select count(*) from tool_execution where run_id=:run").param("run", run.id()).query(Long.class).single(); }
-    private long artifactCount() { return jdbc.sql("select count(*) from artifact where project_id=:project").param("project", project.id()).query(Long.class).single(); }
+    private void step() {
+        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+    }
+    private AgentRun current() {
+        return runs.get(owner.userId(), project.id(), run.id());
+    }
+    private long toolCount() {
+        return jdbc.sql("select count(*) from tool_execution where run_id=:run").param("run", run.id())
+                .query(Long.class).single();
+    }
+    private long artifactCount() {
+        return jdbc.sql("select count(*) from artifact where project_id=:project").param("project", project.id())
+                .query(Long.class).single();
+    }
     private static AssistantMessage call(String id, String name, String arguments) {
-        return AssistantMessage.builder().content("").toolCalls(List.of(new AssistantMessage.ToolCall(id, "function", name, arguments))).build();
+        return AssistantMessage.builder().content("")
+                .toolCalls(List.of(new AssistantMessage.ToolCall(id, "function", name, arguments))).build();
     }
     record Input(List<Message> messages, List<ToolCallback> tools, ObjectMapper mapper) {
-        List<String> names() { return tools.stream().map(tool -> tool.getToolDefinition().name()).toList(); }
+        List<String> names() {
+            return tools.stream().map(tool -> tool.getToolDefinition().name()).toList();
+        }
         JsonNode lastResult() {
-            for (int i = messages.size() - 1; i >= 0; i--) if (messages.get(i) instanceof ToolResponseMessage reply)
-                return mapper.readTree(reply.getResponses().getLast().responseData());
+            for (int i = messages.size() - 1; i >= 0; i--)
+                if (messages.get(i) instanceof ToolResponseMessage reply)
+                    return mapper.readTree(reply.getResponses().getLast().responseData());
             throw new AssertionError("No committed tool reply");
         }
     }
-    @TestConfiguration static class FakeConfig {
-        @Bean @Primary ScriptedGateway discoveryGateway(ObjectMapper mapper) { return new ScriptedGateway(mapper); }
+    @TestConfiguration
+    static class FakeConfig {
+        @Bean
+        @Primary
+        ScriptedGateway discoveryGateway(ObjectMapper mapper) {
+            return new ScriptedGateway(mapper);
+        }
     }
     static class ScriptedGateway implements ChatGateway {
         final ArrayDeque<Function<Input, AssistantMessage>> script = new ArrayDeque<>();
         final List<JsonNode> requests = new ArrayList<>();
         final ObjectMapper mapper;
-        ScriptedGateway(ObjectMapper mapper) { this.mapper = mapper; }
-        @Override public String configSource() { return "synthetic-on-demand"; }
-        @Override public int configVersion() { return 1; }
-        @Override public Capabilities capabilities() { return new Capabilities(true, false, false); }
-        @Override public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context) {
+        ScriptedGateway(ObjectMapper mapper) {
+            this.mapper = mapper;
+        }
+        @Override
+        public String configSource() {
+            return "synthetic-on-demand";
+        }
+        @Override
+        public int configVersion() {
+            return 1;
+        }
+        @Override
+        public Capabilities capabilities() {
+            return new Capabilities(true, false, false);
+        }
+        @Override
+        public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context) {
             requests.add(new LlmProtocolCodec(mapper).request(messages, tools));
             assertThat(script).as("Expected another synthetic response").isNotEmpty();
-            return new Exchange(1, new ChatResponse(List.of(new Generation(script.removeFirst().apply(new Input(messages, tools, mapper))))));
+            return new Exchange(1, new ChatResponse(
+                    List.of(new Generation(script.removeFirst().apply(new Input(messages, tools, mapper))))));
         }
     }
 }

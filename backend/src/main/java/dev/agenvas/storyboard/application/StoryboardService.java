@@ -43,9 +43,14 @@ public class StoryboardService {
     public StoryboardService(StoryboardRepository boards, ProjectService projects,
             ProjectEventService events, ArtifactService artifacts, CanvasItemQueryService items,
             CanvasService canvas, AgentMediaApprovalService approvals, ObjectMapper mapper) {
-        this.boards = boards; this.projects = projects; this.events = events;
-        this.artifacts = artifacts; this.items = items; this.canvas = canvas;
-        this.approvals = approvals; this.mapper = mapper;
+        this.boards = boards;
+        this.projects = projects;
+        this.events = events;
+        this.artifacts = artifacts;
+        this.items = items;
+        this.canvas = canvas;
+        this.approvals = approvals;
+        this.mapper = mapper;
     }
 
     @Transactional(readOnly = true)
@@ -57,7 +62,8 @@ public class StoryboardService {
     @Transactional(readOnly = true)
     public List<Storyboard> revisions(UUID ownerId, UUID projectId, long afterVersion, int limit) {
         projects.get(ownerId, projectId);
-        if (afterVersion < 0 || limit < 1 || limit > HISTORY_PAGE) throw invalid("history");
+        if (afterVersion < 0 || limit < 1 || limit > HISTORY_PAGE)
+            throw invalid("history");
         return boards.revisions(projectId, afterVersion, limit);
     }
 
@@ -70,7 +76,8 @@ public class StoryboardService {
         while (true) {
             var page = boards.revisions(projectId, after, HISTORY_PAGE);
             result.addAll(page);
-            if (page.size() < HISTORY_PAGE) return List.copyOf(result);
+            if (page.size() < HISTORY_PAGE)
+                return List.copyOf(result);
             after = page.getLast().version();
         }
     }
@@ -80,8 +87,10 @@ public class StoryboardService {
         Storyboard board = get(ownerId, projectId);
         Set<UUID> targets = new HashSet<>();
         board.shots().forEach(shot -> shot.productions().forEach(production -> targets.add(production.canvasItemId())));
-        if (board.composition() != null) targets.add(board.composition().canvasItemId());
-        return approvals.listForStoryboard(ownerId, projectId, targets, board.shots().stream().map(Shot::id).collect(java.util.stream.Collectors.toSet()));
+        if (board.composition() != null)
+            targets.add(board.composition().canvasItemId());
+        return approvals.listForStoryboard(ownerId, projectId, targets,
+                board.shots().stream().map(Shot::id).collect(java.util.stream.Collectors.toSet()));
     }
 
     @Transactional
@@ -89,22 +98,29 @@ public class StoryboardService {
         return events.recordChange(ownerId, projectId, () -> {
             projects.requireActiveProject(ownerId, projectId);
             Storyboard prior = boards.current(projectId).orElseGet(() -> Storyboard.empty(projectId));
-            if (request == null || request.expectedVersion() < 0) throw invalid("expectedVersion");
-            if (prior.version() != request.expectedVersion()) throw conflict();
+            if (request == null || request.expectedVersion() < 0)
+                throw invalid("expectedVersion");
+            if (prior.version() != request.expectedVersion())
+                throw conflict();
             Storyboard next = revise(ownerId, projectId, prior, request);
-            if (!boards.append(next, prior.version())) throw conflict();
-            var payload = mapper.createObjectNode().put("projectId", projectId.toString()).put("version", next.version());
+            if (!boards.append(next, prior.version()))
+                throw conflict();
+            var payload = mapper.createObjectNode().put("projectId", projectId.toString()).put("version",
+                    next.version());
             return ProjectEventService.Change.changed(next, new ProjectEventService.EventDraft(
                     "storyboard.changed", 1, projectId, next.version(), payload));
         }).value();
     }
 
     private Storyboard revise(UUID ownerId, UUID projectId, Storyboard prior, Save request) {
-        if (request.shots() == null || request.shots().size() > MAX_SHOTS || request.shots().stream().anyMatch(Objects::isNull)) throw invalid("shots");
+        if (request.shots() == null || request.shots().size() > MAX_SHOTS
+                || request.shots().stream().anyMatch(Objects::isNull))
+            throw invalid("shots");
         Map<UUID, Shot> oldShots = new HashMap<>();
         prior.shots().forEach(shot -> oldShots.put(shot.id(), shot));
         Set<UUID> reintroduced = request.shots().stream().map(ShotInput::id)
-                .filter(Objects::nonNull).filter(id -> !oldShots.containsKey(id)).collect(java.util.stream.Collectors.toSet());
+                .filter(Objects::nonNull).filter(id -> !oldShots.containsKey(id))
+                .collect(java.util.stream.Collectors.toSet());
         Map<UUID, Integer> historicalRevisions = boards.maxShotRevisions(projectId, reintroduced);
         Set<UUID> ids = new HashSet<>();
         Set<String> codes = new HashSet<>();
@@ -112,45 +128,65 @@ public class StoryboardService {
         boolean compositionChanged = !prior.shots().stream().map(Shot::id).toList()
                 .equals(request.shots().stream().map(ShotInput::id).toList());
         for (ShotInput input : request.shots()) {
-            if (input.id() == null || !ids.add(input.id())) throw invalid("shot.id");
+            if (input.id() == null || !ids.add(input.id()))
+                throw invalid("shot.id");
             validateInput(ownerId, projectId, input);
-            if (input.code().isBlank() || !input.code().equals(input.code().trim()) || !codes.add(input.code())) throw invalid("code");
+            if (input.code().isBlank() || !input.code().equals(input.code().trim()) || !codes.add(input.code()))
+                throw invalid("code");
             Shot old = oldShots.get(input.id());
             boolean creativeChanged = old == null || creativeChanged(old, input);
-            int revision = old == null ? Math.addExact(historicalRevisions.getOrDefault(input.id(), 0), 1) : creativeChanged ? Math.addExact(old.revision(), 1) : old.revision();
+            int revision = old == null
+                    ? Math.addExact(historicalRevisions.getOrDefault(input.id(), 0), 1)
+                    : creativeChanged ? Math.addExact(old.revision(), 1) : old.revision();
             List<Production> productions = new ArrayList<>();
             Set<Role> roles = new HashSet<>();
             for (ProductionInput target : input.productions()) {
                 if (target == null || target.role() == null || target.canvasItemId() == null
-                        || !roles.add(target.role())) throw invalid("production");
-                Production oldTarget = old == null ? null : old.productions().stream()
-                        .filter(value -> value.role() == target.role()).findFirst().orElse(null);
+                        || !roles.add(target.role()))
+                    throw invalid("production");
+                Production oldTarget = old == null
+                        ? null
+                        : old.productions().stream()
+                                .filter(value -> value.role() == target.role()).findFirst().orElse(null);
                 boolean sameTarget = oldTarget != null && oldTarget.canvasItemId().equals(target.canvasItemId())
                         && Objects.equals(oldTarget.selectedVersionId(), target.selectedVersionId());
                 // Detached historical cards stay readable and can be removed or retained while another shot is edited.
-                if (!sameTarget) validateTarget(ownerId, projectId, target.canvasItemId(), target.selectedVersionId(), kind(target.role()));
-                int reviewed = sameTarget ? oldTarget.reviewedRevision()
-                        : approvals.storyboardResultRevision(ownerId, projectId, input.id(), target.canvasItemId(), target.selectedVersionId())
+                if (!sameTarget)
+                    validateTarget(ownerId, projectId, target.canvasItemId(), target.selectedVersionId(),
+                            kind(target.role()));
+                int reviewed = sameTarget
+                        ? oldTarget.reviewedRevision()
+                        : approvals
+                                .storyboardResultRevision(ownerId, projectId, input.id(), target.canvasItemId(),
+                                        target.selectedVersionId())
                                 .map(generatedRevision -> Math.min(generatedRevision, revision)).orElse(revision);
-                if (target.confirmReviewed()) reviewed = revision;
+                if (target.confirmReviewed())
+                    reviewed = revision;
                 productions.add(new Production(target.role(), target.canvasItemId(), target.selectedVersionId(),
                         reviewed, target.selectedVersionId() != null && reviewed < revision));
             }
             shots.add(new Shot(input.id(), input.code(), input.scene(), input.title(), input.description(),
-                    input.dialogue(), input.durationSeconds(), input.sourceVersionId(), List.copyOf(input.referenceVersionIds()),
+                    input.dialogue(), input.durationSeconds(), input.sourceVersionId(),
+                    List.copyOf(input.referenceVersionIds()),
                     revision, List.copyOf(productions)));
-            if (creativeChanged || !productionChoices(old.productions()).equals(productionChoices(productions))) compositionChanged = true;
+            if (creativeChanged || !productionChoices(old.productions()).equals(productionChoices(productions)))
+                compositionChanged = true;
         }
         Composition composition = null;
         if (request.composition() != null) {
             CompositionInput input = request.composition();
-            if (input.canvasItemId() == null) throw invalid("composition");
+            if (input.canvasItemId() == null)
+                throw invalid("composition");
             Composition old = prior.composition();
             boolean same = old != null && old.canvasItemId().equals(input.canvasItemId())
                     && Objects.equals(old.selectedVersionId(), input.selectedVersionId());
-            if (!same) validateTarget(ownerId, projectId, input.canvasItemId(), input.selectedVersionId(), Artifact.Kind.VIDEO);
-            boolean needsReview = same && input.selectedVersionId() != null && (old.needsReview() || compositionChanged);
-            if (input.confirmReviewed()) needsReview = false;
+            if (!same)
+                validateTarget(ownerId, projectId, input.canvasItemId(), input.selectedVersionId(),
+                        Artifact.Kind.VIDEO);
+            boolean needsReview = same && input.selectedVersionId() != null
+                    && (old.needsReview() || compositionChanged);
+            if (input.confirmReviewed())
+                needsReview = false;
             composition = new Composition(input.canvasItemId(), input.selectedVersionId(), needsReview);
         }
         return new Storyboard(projectId, Math.addExact(prior.version(), 1), List.copyOf(shots), composition);
@@ -163,24 +199,32 @@ public class StoryboardService {
     }
 
     private boolean creativeChanged(Shot old, ShotInput input) {
-        return !Objects.equals(old.description(), input.description()) || !Objects.equals(old.dialogue(), input.dialogue())
+        return !Objects.equals(old.description(), input.description())
+                || !Objects.equals(old.dialogue(), input.dialogue())
                 || old.durationSeconds().compareTo(input.durationSeconds()) != 0
                 || !Objects.equals(old.sourceVersionId(), input.sourceVersionId())
                 || !old.referenceVersionIds().equals(input.referenceVersionIds());
     }
 
     private void validateInput(UUID ownerId, UUID projectId, ShotInput input) {
-        text(input.code(), 80, "code"); text(input.scene(), 200, "scene"); text(input.title(), 200, "title");
-        text(input.description(), 20_000, "description"); text(input.dialogue(), 20_000, "dialogue");
+        text(input.code(), 80, "code");
+        text(input.scene(), 200, "scene");
+        text(input.title(), 200, "title");
+        text(input.description(), 20_000, "description");
+        text(input.dialogue(), 20_000, "dialogue");
         if (input.durationSeconds() == null || input.durationSeconds().compareTo(new BigDecimal("0.1")) < 0
                 || input.durationSeconds().stripTrailingZeros().scale() > 3
                 || input.durationSeconds().compareTo(BigDecimal.valueOf(3600)) > 0
                 || input.referenceVersionIds() == null || input.referenceVersionIds().size() > MAX_REFERENCES
-                || input.productions() == null || input.productions().size() > Role.values().length) throw invalid("shot");
-        if (input.sourceVersionId() != null && versionKind(ownerId, projectId, input.sourceVersionId()) != Artifact.Kind.TEXT) throw invalid("sourceVersionId");
+                || input.productions() == null || input.productions().size() > Role.values().length)
+            throw invalid("shot");
+        if (input.sourceVersionId() != null
+                && versionKind(ownerId, projectId, input.sourceVersionId()) != Artifact.Kind.TEXT)
+            throw invalid("sourceVersionId");
         Set<UUID> references = new HashSet<>();
         for (UUID id : input.referenceVersionIds()) {
-            if (id == null || !references.add(id) || versionKind(ownerId, projectId, id) == Artifact.Kind.TEXT) throw invalid("referenceVersionIds");
+            if (id == null || !references.add(id) || versionKind(ownerId, projectId, id) == Artifact.Kind.TEXT)
+                throw invalid("referenceVersionIds");
         }
     }
 
@@ -191,29 +235,41 @@ public class StoryboardService {
 
     private void validateTarget(UUID ownerId, UUID projectId, UUID itemId, UUID versionId, Artifact.Kind kind) {
         var item = items.requireArtifactItem(ownerId, projectId, itemId);
-        if (artifacts.get(ownerId, projectId, item.subjectId()).artifact().kind() != kind) throw invalid("target.kind");
+        if (artifacts.get(ownerId, projectId, item.subjectId()).artifact().kind() != kind)
+            throw invalid("target.kind");
         if (versionId != null && canvas.listMediaVersions(ownerId, projectId, itemId).stream()
-                .noneMatch(value -> value.id().equals(versionId))) throw invalid("selectedVersionId");
+                .noneMatch(value -> value.id().equals(versionId)))
+            throw invalid("selectedVersionId");
     }
 
     private Artifact.Kind kind(Role role) {
-        return switch (role) { case KEYFRAME -> Artifact.Kind.IMAGE; case VIDEO -> Artifact.Kind.VIDEO; case AUDIO -> Artifact.Kind.AUDIO; };
+        return switch (role) {
+            case KEYFRAME -> Artifact.Kind.IMAGE;
+            case VIDEO -> Artifact.Kind.VIDEO;
+            case AUDIO -> Artifact.Kind.AUDIO;
+        };
     }
     private void text(String value, int max, String field) {
-        if (value == null || value.length() > max) throw invalid(field);
+        if (value == null || value.length() > max)
+            throw invalid(field);
     }
     private ApiProblemException invalid(String field) {
         return new ApiProblemException(HttpStatus.BAD_REQUEST, "STORYBOARD_INVALID",
-                ApiMessage.of("api.storyboard.invalid-title"), ApiMessage.of("api.storyboard.invalid-detail", field), false);
+                ApiMessage.of("api.storyboard.invalid-title"), ApiMessage.of("api.storyboard.invalid-detail", field),
+                false);
     }
     private ApiProblemException conflict() {
         return new ApiProblemException(HttpStatus.CONFLICT, "STORYBOARD_VERSION_CONFLICT",
                 ApiMessage.of("api.storyboard.conflict-title"), ApiMessage.of("api.storyboard.conflict-detail"), false);
     }
-    public record Save(long expectedVersion, List<ShotInput> shots, CompositionInput composition) {}
+    public record Save(long expectedVersion, List<ShotInput> shots, CompositionInput composition) {
+    }
     public record ShotInput(UUID id, String code, String scene, String title, String description,
             String dialogue, BigDecimal durationSeconds, UUID sourceVersionId, List<UUID> referenceVersionIds,
-            List<ProductionInput> productions) {}
-    public record ProductionInput(Role role, UUID canvasItemId, UUID selectedVersionId, boolean confirmReviewed) {}
-    public record CompositionInput(UUID canvasItemId, UUID selectedVersionId, boolean confirmReviewed) {}
+            List<ProductionInput> productions) {
+    }
+    public record ProductionInput(Role role, UUID canvasItemId, UUID selectedVersionId, boolean confirmReviewed) {
+    }
+    public record CompositionInput(UUID canvasItemId, UUID selectedVersionId, boolean confirmReviewed) {
+    }
 }

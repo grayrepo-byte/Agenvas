@@ -31,7 +31,8 @@ class BuiltinSkillSearchTest {
         request.addHeader("Accept-Language", locale.toLanguageTag());
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
         try {
-            var entry = catalogue.entries().stream().filter(value -> value.bundle().name().equals("short-drama-assets")).findFirst().orElseThrow();
+            var entry = catalogue.entries().stream().filter(value -> value.bundle().name().equals("short-drama-assets"))
+                    .findFirst().orElseThrow();
             String title = messages.text(ApiMessage.of("skills.builtin.visualAssets.title"), locale);
             var titleMatch = search.matching(title.toUpperCase(locale));
             assertThat(titleMatch).hasSize(1);
@@ -66,7 +67,8 @@ class BuiltinSkillSearchTest {
         }
     }
 
-    @Test void backgroundSearchUsesEnglishWithoutAnUnrelatedThreadOrJvmLocale() {
+    @Test
+    void backgroundSearchUsesEnglishWithoutAnUnrelatedThreadOrJvmLocale() {
         var previousAttributes = RequestContextHolder.getRequestAttributes();
         var previousLocale = LocaleContextHolder.getLocaleContext();
         Locale previousDefault = Locale.getDefault();
@@ -77,7 +79,8 @@ class BuiltinSkillSearchTest {
             assertThat(search.matching("visual asset design")).hasSize(1);
             assertThat(search.matching("ビジュアル素材設計")).isEmpty();
             assertThat(search.matching("Визуальные материалы")).isEmpty();
-            for (String blank : List.of("", "  ")) assertThat(search.matching(blank)).isEmpty();
+            for (String blank : List.of("", "  "))
+                assertThat(search.matching(blank)).isEmpty();
             assertThat(search.matching(null)).isEmpty();
         } finally {
             Locale.setDefault(previousDefault);

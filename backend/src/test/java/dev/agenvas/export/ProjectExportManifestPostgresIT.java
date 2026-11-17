@@ -84,25 +84,44 @@ class ProjectExportManifestPostgresIT {
                 () -> Base64.getEncoder().encodeToString(new byte[32]));
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private AssetService assets;
-    @Autowired private ArtifactService artifacts;
-    @Autowired private CanvasService canvas;
-    @Autowired private CanvasEditService canvasEdits;
-    @Autowired private MediaDraftService mediaDrafts;
-    @Autowired private CanvasConnectionService connections;
-    @Autowired private LlmProviderConfigService llmConfigs;
-    @Autowired private MediaStyleService styles;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private SkillService skills;
-    @Autowired private SkillRunService skillRuns;
-    @Autowired private LibraryService library;
-    @Autowired private DirectMediaTaskService directMedia;
-    @Autowired private StoryboardService storyboards;
-    @Autowired private CharacterService characters;
-    @Autowired private ObjectMapper mapper;
-    @Autowired private WebApplicationContext context;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private AssetService assets;
+    @Autowired
+    private ArtifactService artifacts;
+    @Autowired
+    private CanvasService canvas;
+    @Autowired
+    private CanvasEditService canvasEdits;
+    @Autowired
+    private MediaDraftService mediaDrafts;
+    @Autowired
+    private CanvasConnectionService connections;
+    @Autowired
+    private LlmProviderConfigService llmConfigs;
+    @Autowired
+    private MediaStyleService styles;
+    @Autowired
+    private AgentInstanceService agents;
+    @Autowired
+    private SkillService skills;
+    @Autowired
+    private SkillRunService skillRuns;
+    @Autowired
+    private LibraryService library;
+    @Autowired
+    private DirectMediaTaskService directMedia;
+    @Autowired
+    private StoryboardService storyboards;
+    @Autowired
+    private CharacterService characters;
+    @Autowired
+    private ObjectMapper mapper;
+    @Autowired
+    private WebApplicationContext context;
 
     @Test
     void ownerDownloadsAllVersionsAndMediaMetadataWithoutConfigurationOrSignedLinks()
@@ -137,14 +156,16 @@ class ProjectExportManifestPostgresIT {
                 MediaDraft.VideoInputMode.GENERAL_REFERENCE,
                 List.of(new MediaDraftService.SaveMediaInput(
                         revisedImage.resourceDefaultVersion().id(),
-                        MediaDraft.InputRole.REFERENCE, "#7C3AED")), List.of(), style.id());
+                        MediaDraft.InputRole.REFERENCE, "#7C3AED")),
+                List.of(), style.id());
         connections.connect(owner.userId(), project.id(), sourceItemId, targetItemId,
                 revisedImage.resourceDefaultVersion().id(),
                 CanvasConnection.RelationType.MEDIA_INPUT, 1L);
 
         var librarySource = library.source(owner.userId(), project.id(), sourceItemId);
         var libraryCommand = library.save(owner.userId(), project.id(), sourceItemId,
-                librarySource.versionId(), librarySource.expectedSelectionEpoch(), librarySource.expectedArtifactVersion(),
+                librarySource.versionId(), librarySource.expectedSelectionEpoch(),
+                librarySource.expectedArtifactVersion(),
                 "Synthetic watercolor reference", LibraryEntry.Category.OTHER, "manifest-library-save");
         assertThat(library.processNext()).isTrue();
         UUID libraryEntryId = UUID.fromString(library.command(owner.userId(), libraryCommand.id())
@@ -154,7 +175,8 @@ class ProjectExportManifestPostgresIT {
         var firstDraft = skills.saveDraft(owner.userId(), skill.id(), emptyDraft.version(),
                 new SkillContent.DraftContent(SkillContent.SCHEMA_VERSION, emptyDraft.skillMd(),
                         emptyDraft.outputKinds(), emptyDraft.inputSlots(),
-                        List.of(new SkillContent.Resource("references/style-guide.md", "Use the warm watercolor palette.")),
+                        List.of(new SkillContent.Resource("references/style-guide.md",
+                                "Use the warm watercolor palette.")),
                         List.of(new SkillContent.DraftAsset("style-reference", libraryEntryId, 0L, null, null, null,
                                 SkillContent.Usage.PROVIDER_REFERENCE, true, "Synthetic palette reference"))));
         var publication = skills.publish(owner.userId(), skill.id(), firstDraft.version(), "manifest-skill-publish");
@@ -162,22 +184,29 @@ class ProjectExportManifestPostgresIT {
         UUID skillVersionId = skills.getOperation(owner.userId(), publication.id()).resultVersionId();
         var builtin = skills.list(owner.userId(), "short-drama-write", false, null).items().getFirst();
         var builtinVersion = skills.getVersion(owner.userId(), builtin.id(), builtin.currentVersionId());
-        var agent = configureDirector(agents, owner.userId(), project.id(), "Export Creator", "Use the selected method");
+        var agent = configureDirector(agents, owner.userId(), project.id(), "Export Creator",
+                "Use the selected method");
         skillRuns.saveBinding(owner.userId(), project.id(), agent.id(), agent.version(), List.of(
                 new SkillRunService.VersionRef(skill.id(), skillVersionId),
                 new SkillRunService.VersionRef(builtin.id(), builtin.currentVersionId())), "manifest-agent-binding");
         var secondDraft = skills.saveDraft(owner.userId(), skill.id(), firstDraft.version(),
-                new SkillContent.DraftContent(SkillContent.SCHEMA_VERSION, firstDraft.skillMd() + "\nUse the cold palette.\n",
+                new SkillContent.DraftContent(SkillContent.SCHEMA_VERSION,
+                        firstDraft.skillMd() + "\nUse the cold palette.\n",
                         firstDraft.outputKinds(), firstDraft.inputSlots(),
-                        List.of(new SkillContent.Resource("references/style-guide.md", "Use the cold watercolor palette.")),
+                        List.of(new SkillContent.Resource("references/style-guide.md",
+                                "Use the cold watercolor palette.")),
                         firstDraft.assets()));
-        var secondPublication = skills.publish(owner.userId(), skill.id(), secondDraft.version(), "manifest-skill-publish-next");
+        var secondPublication = skills.publish(owner.userId(), skill.id(), secondDraft.version(),
+                "manifest-skill-publish-next");
         assertThat(skills.processNext()).isTrue();
         UUID secondVersionId = skills.getOperation(owner.userId(), secondPublication.id()).resultVersionId();
-        assertThat(skillRuns.preview(owner.userId(), project.id(), agent.id(), null).getFirst().skillVersionId()).isEqualTo(skillVersionId);
+        assertThat(skillRuns.preview(owner.userId(), project.id(), agent.id(), null).getFirst().skillVersionId())
+                .isEqualTo(skillVersionId);
         var otherProject = projects.create(owner.userId(), "Other project", Project.AspectRatio.LANDSCAPE_16_9);
-        var otherAgent = configureDirector(agents, owner.userId(), otherProject.id(), "Other Creator", "Keep this binding private to the other project");
-        skillRuns.saveBinding(owner.userId(), otherProject.id(), otherAgent.id(), otherAgent.version(), List.of(new SkillRunService.VersionRef(skill.id(), secondVersionId)), "other-project-agent-binding");
+        var otherAgent = configureDirector(agents, owner.userId(), otherProject.id(), "Other Creator",
+                "Keep this binding private to the other project");
+        skillRuns.saveBinding(owner.userId(), otherProject.id(), otherAgent.id(), otherAgent.version(),
+                List.of(new SkillRunService.VersionRef(skill.id(), secondVersionId)), "other-project-agent-binding");
         ObjectNode skillSource = mapper.createObjectNode().put("schemaVersion", 1)
                 .put("skillId", skill.id().toString()).put("skillVersionId", skillVersionId.toString())
                 .put("bundleHash", skills.getVersion(owner.userId(), skill.id(), skillVersionId).bundleHash());
@@ -185,7 +214,9 @@ class ProjectExportManifestPostgresIT {
         UUID characterId = UUID.randomUUID(), lookId = UUID.randomUUID();
         characters.save(owner.userId(), project.id(), characterId,
                 new SaveCharacter(UUID.randomUUID(), 0, new CharacterContent("Traveler", "Returning home",
-                        List.of(new CharacterLook(lookId, "Station outfit", "Blue coat", "Calm", "Synthetic look", List.of())), null)));
+                        List.of(new CharacterLook(lookId, "Station outfit", "Blue coat", "Calm", "Synthetic look",
+                                List.of())),
+                        null)));
         var selections = List.of(new CharacterBindingSelection(characterId, 1, lookId, true, false));
         long beforeCharacterDraftVersion = mediaDrafts.get(owner.userId(), project.id(), targetItemId).version();
         var characterPreview = characters.preview(owner.userId(), project.id(), targetItemId,
@@ -206,21 +237,26 @@ class ProjectExportManifestPostgresIT {
         storyboards.save(owner.userId(), project.id(), new StoryboardService.Save(0,
                 List.of(new StoryboardService.ShotInput(shotId, "SHOT-001", "SC-01", "Arrival",
                         "A traveler arrives.", "Hello.", new BigDecimal("6"), null,
-                        List.of(frameVersionId), List.of(frameBinding))), null));
+                        List.of(frameVersionId), List.of(frameBinding))),
+                null));
         storyboards.save(owner.userId(), project.id(), new StoryboardService.Save(1,
                 List.of(new StoryboardService.ShotInput(shotId, "SHOT-001", "SC-01", "Arrival",
                         "A traveler arrives.", "Welcome back.", new BigDecimal("8"), null,
-                        List.of(frameVersionId), List.of(frameBinding))), null));
+                        List.of(frameVersionId), List.of(frameBinding))),
+                null));
 
         UUID groupId = UUID.randomUUID();
         var grouped = canvas.list(owner.userId(), project.id()).stream()
-                .map(CanvasService.CanvasEntry::item).filter(item -> item.id().equals(sourceItemId)).findFirst().orElseThrow();
+                .map(CanvasService.CanvasEntry::item).filter(item -> item.id().equals(sourceItemId)).findFirst()
+                .orElseThrow();
         canvasEdits.edit(owner.userId(), project.id(), new CanvasEditModels.Edit(UUID.randomUUID(),
                 CanvasEditModels.Operation.GROUP,
                 List.of(new CanvasEditModels.ItemChange(grouped.id(), grouped.version(), grouped.title(),
-                        grouped.x(), grouped.y(), grouped.width(), grouped.height(), grouped.zIndex(), groupId, grouped.locked())),
+                        grouped.x(), grouped.y(), grouped.width(), grouped.height(), grouped.zIndex(), groupId,
+                        grouped.locked())),
                 List.of(new CanvasEditModels.GroupChange(CanvasEditModels.GroupChangeType.UPSERT,
-                        groupId, 0, "Arrival references", true)), List.of()));
+                        groupId, 0, "Arrival references", true)),
+                List.of()));
 
         MockMvc mvc = webAppContextSetup(context).apply(springSecurity()).build();
         String path = "/api/v1/projects/" + project.id() + "/export-manifest";
@@ -228,7 +264,7 @@ class ProjectExportManifestPostgresIT {
                 "manifest-private-session-id-789");
         session.setAttribute("privateSessionMarker", "manifest-session-secret-456");
         String json = mvc.perform(get(path).session(session)
-                        .with(authentication(asUser(owner))))
+                .with(authentication(asUser(owner))))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Disposition",
                         "attachment; filename=\"agenvas-project-" + project.id() + ".json\""))
@@ -296,10 +332,12 @@ class ProjectExportManifestPostgresIT {
         assertDirectorSkillBinding(firstSkill, skill.id(), skillVersionId);
         assertThat(firstSkill.path("mapping").path("schemaVersion").asInt()).isEqualTo(SkillContent.SCHEMA_VERSION);
         assertThat(firstSkill.path("mapping").path("assets")).isEmpty();
-        assertThat(manifest.path("creativeSkills")).allSatisfy(exported ->
-                assertThat(exported.path("version").path("id").asText()).isNotEqualTo(secondVersionId.toString()));
+        assertThat(manifest.path("creativeSkills"))
+                .allSatisfy(exported -> assertThat(exported.path("version").path("id").asText())
+                        .isNotEqualTo(secondVersionId.toString()));
         for (JsonNode exportedSkill : manifest.path("creativeSkills")) {
-            if (exportedSkill == exportedBuiltin) continue;
+            if (exportedSkill == exportedBuiltin)
+                continue;
             assertThat(exportedSkill.path("version").path("assets").size()).isEqualTo(1);
             assertThat(exportedSkill.path("version").path("assets").get(0).has("contentUrl")).isFalse();
             assertThat(exportedSkill.path("version").path("assets").get(0).has("thumbnailUrl")).isFalse();
@@ -323,10 +361,10 @@ class ProjectExportManifestPostgresIT {
                 otherProject.id().toString(), otherAgent.id().toString());
         mvc.perform(get(path)).andExpect(status().isUnauthorized());
         mvc.perform(get(path).with(authentication(asUser(new AdminPrincipal(
-                        UUID.randomUUID(), "foreign")))))
+                UUID.randomUUID(), "foreign")))))
                 .andExpect(status().isNotFound());
         mvc.perform(get("/api/v1/projects/" + UUID.randomUUID() + "/export-manifest")
-                        .with(authentication(asUser(owner))))
+                .with(authentication(asUser(owner))))
                 .andExpect(status().isNotFound());
         styles.update(style.id(), style.version(), style.name(), style.category(), "Charcoal texture", true);
         var changedStyle = directMedia.preflightApproved(owner.userId(), project.id(), video.artifact().id(),
@@ -335,18 +373,21 @@ class ProjectExportManifestPostgresIT {
         assertThat(changedStyle.safeSummary().path("creativeSkill")).isEqualTo(skillSource);
         ObjectNode changedSource = skillSource.deepCopy().put("bundleHash", "synthetic-other-bundle");
         assertThat(directMedia.preflightApproved(owner.userId(), project.id(), video.artifact().id(),
-                targetItemId, draftVersion, changedSource).frozenInputHash()).isNotEqualTo(changedStyle.frozenInputHash());
+                targetItemId, draftVersion, changedSource).frozenInputHash())
+                .isNotEqualTo(changedStyle.frozenInputHash());
     }
 
     /** OpenAPI owns the public version; feature tests exercise the exported content below. */
     private int declaredManifestSchemaVersion() {
         for (Path directory = Path.of("").toAbsolutePath(); directory != null; directory = directory.getParent()) {
             Path contract = directory.resolve("contracts/openapi.yaml");
-            if (!Files.isRegularFile(contract)) continue;
+            if (!Files.isRegularFile(contract))
+                continue;
             YamlMapFactoryBean yaml = new YamlMapFactoryBean();
             yaml.setResources(new FileSystemResource(contract));
             JsonNode specification = mapper.valueToTree(yaml.getObject());
-            JsonNode version = specification.at("/components/schemas/ProjectExportManifest/properties/schemaVersion/const");
+            JsonNode version = specification
+                    .at("/components/schemas/ProjectExportManifest/properties/schemaVersion/const");
             assertThat(version.isIntegralNumber()).as("OpenAPI manifest schemaVersion const").isTrue();
             return version.intValue();
         }
@@ -368,14 +409,16 @@ class ProjectExportManifestPostgresIT {
 
     private JsonNode findById(JsonNode values, UUID id) {
         for (JsonNode value : values) {
-            if (id.toString().equals(value.path("id").asText())) return value;
+            if (id.toString().equals(value.path("id").asText()))
+                return value;
         }
         throw new AssertionError("Missing manifest entry " + id);
     }
 
     private JsonNode findSkillVersion(JsonNode values, UUID id) {
         for (JsonNode value : values) {
-            if (id.toString().equals(value.path("version").path("id").asText())) return value;
+            if (id.toString().equals(value.path("version").path("id").asText()))
+                return value;
         }
         throw new AssertionError("Missing Skill version " + id);
     }

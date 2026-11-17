@@ -58,9 +58,8 @@ import tools.jackson.databind.node.ObjectNode;
 /** 测试假模型（非真实模型）的工具调用真正提交到 PostgreSQL 后，HTTP 仅公开有界、授权且可核实的动作摘要。 */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = {AgenvasApplication.class, RunActionsPostgresIT.FakeConfig.class},
-        properties = {
-                "agenvas.llm.scheduler-enabled=false"})
+@SpringBootTest(classes = {AgenvasApplication.class, RunActionsPostgresIT.FakeConfig.class}, properties = {
+        "agenvas.llm.scheduler-enabled=false"})
 class RunActionsPostgresIT {
 
     @Container
@@ -73,17 +72,28 @@ class RunActionsPostgresIT {
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private AgentRunService runs;
-    @Autowired private AgentTurnWorker worker;
-    @Autowired private ToolExecutionService executor;
-    @Autowired private ToolExecutionRepository ledger;
-    @Autowired private FakeGateway gateway;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private ObjectMapper mapper;
-    @Autowired private WebApplicationContext webContext;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private AgentInstanceService agents;
+    @Autowired
+    private AgentRunService runs;
+    @Autowired
+    private AgentTurnWorker worker;
+    @Autowired
+    private ToolExecutionService executor;
+    @Autowired
+    private ToolExecutionRepository ledger;
+    @Autowired
+    private FakeGateway gateway;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private ObjectMapper mapper;
+    @Autowired
+    private WebApplicationContext webContext;
 
     @Test
     void onlyCommittedPublicBusinessResultsAreListedWithinTheOwnedRun() throws Exception {
@@ -113,7 +123,7 @@ class RunActionsPostgresIT {
         assertThat(runs.get(owner.userId(), project.id(), run.id()).status())
                 .isEqualTo(AgentRun.Status.SUCCEEDED);
         assertThat(jdbc.sql("select count(*) from task where run_id = :runId "
-                        + "and status <> 'SUCCEEDED'")
+                + "and status <> 'SUCCEEDED'")
                 .param("runId", run.id()).query(Long.class).single()).isZero();
         JsonNode initial = readActions(mvc, owner, path);
         assertThat(initial).hasSize(5);
@@ -178,10 +188,10 @@ class RunActionsPostgresIT {
         Project otherProject = projects.create(owner.userId(), "Other project",
                 Project.AspectRatio.LANDSCAPE_16_9);
         mvc.perform(get(actionsPath(otherProject.id(), run.id()))
-                        .with(authentication(auth(owner))))
+                .with(authentication(auth(owner))))
                 .andExpect(status().isNotFound());
         mvc.perform(get(actionsPath(project.id(), UUID.randomUUID()))
-                        .with(authentication(auth(owner))))
+                .with(authentication(auth(owner))))
                 .andExpect(status().isNotFound());
 
         // 同一步的登记时间相同时使用 id 稳定排序；步骤优先于墙钟时间。
@@ -246,13 +256,19 @@ class RunActionsPostgresIT {
         }
 
         @Override
-        public String configSource() { return "test-fake"; }
+        public String configSource() {
+            return "test-fake";
+        }
 
         @Override
-        public int configVersion() { return 1; }
+        public int configVersion() {
+            return 1;
+        }
 
         @Override
-        public Capabilities capabilities() { return new Capabilities(true, false, false); }
+        public Capabilities capabilities() {
+            return new Capabilities(true, false, false);
+        }
 
         @Override
         public Exchange call(List<Message> messages, List<ToolCallback> tools,
@@ -261,7 +277,8 @@ class RunActionsPostgresIT {
                 discoveryCalls.incrementAndGet();
                 AssistantMessage discovery = AssistantMessage.builder().content("").toolCalls(List.of(
                         new AssistantMessage.ToolCall("load-action-tools", "function", "load_toolset",
-                                "{\"toolsets\":[\"CANVAS\",\"TEXT\"]}"))).build();
+                                "{\"toolsets\":[\"CANVAS\",\"TEXT\"]}")))
+                        .build();
                 return new Exchange(1, new ChatResponse(List.of(new Generation(discovery))));
             }
             assertThat(tools.stream().map(tool -> tool.getToolDefinition().name()))

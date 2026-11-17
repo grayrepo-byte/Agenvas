@@ -30,17 +30,15 @@ import java.util.List;
 import java.util.UUID;
 
 @Testcontainers
-@org.springframework.test.annotation.DirtiesContext(
-        classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(
-        classes = AgenvasApplication.class,
-        properties = {
-            "agenvas.llm.scheduler-enabled=false",
-            "agenvas.provider.media.scheduler-enabled=false",
-            "agenvas.skill.scheduler-enabled=false"
-        })
+@org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_CLASS)
+@SpringBootTest(classes = AgenvasApplication.class, properties = {
+        "agenvas.llm.scheduler-enabled=false",
+        "agenvas.provider.media.scheduler-enabled=false",
+        "agenvas.skill.scheduler-enabled=false"
+})
 class CanvasCharacterNodePostgresIT {
-    @TempDir static Path storage;
+    @TempDir
+    static Path storage;
 
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
@@ -53,36 +51,38 @@ class CanvasCharacterNodePostgresIT {
         r.add("agenvas.storage.root", () -> storage.toString());
     }
 
-    @Autowired IdentityService identities;
-    @Autowired ProjectService projects;
-    @Autowired CharacterService characters;
-    @Autowired CanvasCharacterNodeService nodes;
-    @Autowired CanvasService canvas;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    ProjectService projects;
+    @Autowired
+    CharacterService characters;
+    @Autowired
+    CanvasCharacterNodeService nodes;
+    @Autowired
+    CanvasService canvas;
 
     @Test
     void fixedProjectRevisionHasIndependentCasAndDoesNotCreateAnArtifact() {
         UUID owner = owner();
-        UUID project =
-                projects.create(owner, "Character nodes", Project.AspectRatio.SQUARE_1_1).id();
+        UUID project = projects.create(owner, "Character nodes", Project.AspectRatio.SQUARE_1_1).id();
         UUID character = UUID.randomUUID(), look = UUID.randomUUID(), item = UUID.randomUUID();
-        CharacterContent first =
-                new CharacterContent(
-                        "Aster",
-                        "Original identity",
-                        List.of(new CharacterLook(look, "Coat", "Blue coat", "", "", List.of())),
-                        null);
+        CharacterContent first = new CharacterContent(
+                "Aster",
+                "Original identity",
+                List.of(new CharacterLook(look, "Coat", "Blue coat", "", "", List.of())),
+                null);
         characters.save(owner, project, character, new SaveCharacter(UUID.randomUUID(), 0, first));
         Selection selection = new Selection(character, 1, look, List.of(), true, false);
-        CreateNode request =
-                new CreateNode(
-                        selection,
-                        BigDecimal.ZERO,
-                        BigDecimal.ZERO,
-                        new BigDecimal("300"),
-                        new BigDecimal("300"),
-                        0,
-                        null,
-                        false);
+        CreateNode request = new CreateNode(
+                selection,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                new BigDecimal("300"),
+                new BigDecimal("300"),
+                0,
+                null,
+                false);
         var created = nodes.create(owner, project, item, request);
         assertThat(created.item().subjectType()).isEqualTo(CanvasItem.SubjectType.CHARACTER);
         assertThat(created.artifact()).isNull();
@@ -94,11 +94,10 @@ class CanvasCharacterNodePostgresIT {
                         UUID.randomUUID(),
                         1,
                         new CharacterContent("Aster", "New identity", first.looks(), null)));
-        var persisted =
-                canvas.list(owner, project).stream()
-                        .filter(e -> e.item().id().equals(item))
-                        .findFirst()
-                        .orElseThrow();
+        var persisted = canvas.list(owner, project).stream()
+                .filter(e -> e.item().id().equals(item))
+                .findFirst()
+                .orElseThrow();
         assertThat(persisted.characterNode().newerVersionAvailable()).isTrue();
         assertThat(persisted.characterNode().snapshot().description())
                 .isEqualTo("Original identity");
@@ -110,31 +109,36 @@ class CanvasCharacterNodePostgresIT {
                 new UpdateSelection(
                         0, 0, new Selection(character, 2, look, List.of(), true, false)));
         assertThatThrownBy(
-                        () ->
-                                nodes.update(
-                                        owner, project, item, new UpdateSelection(0, 0, selection)))
+                () -> nodes.update(
+                        owner, project, item, new UpdateSelection(0, 0, selection)))
                 .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
     }
 
-    @Autowired org.springframework.jdbc.core.simple.JdbcClient jdbc;
-    @Autowired dev.agenvas.artifact.application.ArtifactService artifacts;
-    @Autowired dev.agenvas.asset.application.AssetService assets;
-    @Autowired dev.agenvas.artifact.application.MediaDraftService drafts;
-    @Autowired dev.agenvas.canvas.application.CanvasItemQueryService itemQueries;
-    @Autowired dev.agenvas.export.application.ProjectExportManifestService exports;
-    @Autowired tools.jackson.databind.ObjectMapper mapper;
+    @Autowired
+    org.springframework.jdbc.core.simple.JdbcClient jdbc;
+    @Autowired
+    dev.agenvas.artifact.application.ArtifactService artifacts;
+    @Autowired
+    dev.agenvas.asset.application.AssetService assets;
+    @Autowired
+    dev.agenvas.artifact.application.MediaDraftService drafts;
+    @Autowired
+    dev.agenvas.canvas.application.CanvasItemQueryService itemQueries;
+    @Autowired
+    dev.agenvas.export.application.ProjectExportManifestService exports;
+    @Autowired
+    tools.jackson.databind.ObjectMapper mapper;
 
     private UUID owner() {
         return jdbc.sql("select id from app_user where login_name='character-node-admin'")
                 .query(UUID.class)
                 .optional()
                 .orElseGet(
-                        () ->
-                                identities
-                                        .setup(
-                                                "character-node-admin",
-                                                "character-node-password-123")
-                                        .userId());
+                        () -> identities
+                                .setup(
+                                        "character-node-admin",
+                                        "character-node-password-123")
+                                .userId());
     }
 
     private UUID image(UUID owner, UUID project, String title) {
@@ -167,38 +171,34 @@ class CanvasCharacterNodePostgresIT {
     @Test
     void explicitNodeApplicationPreservesManualCharactersAndInputsUntilConfirmedRemoval() {
         UUID owner = owner(),
-                project =
-                        projects.create(
-                                        owner,
-                                        "Explicit character inputs",
-                                        Project.AspectRatio.SQUARE_1_1)
-                                .id();
+                project = projects.create(
+                        owner,
+                        "Explicit character inputs",
+                        Project.AspectRatio.SQUARE_1_1)
+                        .id();
         UUID refArtifact = image(owner, project, "Identity reference"),
                 manualArtifact = image(owner, project, "Manual reference");
         UUID reference = artifacts.get(owner, project, refArtifact).resourceDefaultVersion().id();
         UUID manual = artifacts.get(owner, project, manualArtifact).resourceDefaultVersion().id();
-        UUID target =
-                dev.agenvas.support.CanvasMediaFixture.place(
-                        canvas, owner, project, image(owner, project, "Shot"));
-        var initial =
-                drafts.save(
-                        owner,
-                        project,
-                        target,
-                        0,
-                        "Keep user text",
-                        mapper.createObjectNode(),
-                        null,
-                        null,
-                        null,
-                        List.of(
-                                new dev.agenvas.artifact.application.MediaDraftService
-                                        .SaveMediaInput(
-                                        manual,
-                                        dev.agenvas.artifact.domain.MediaDraft.InputRole.REFERENCE,
-                                        "#112233")),
-                        List.of(),
-                        null);
+        UUID target = dev.agenvas.support.CanvasMediaFixture.place(
+                canvas, owner, project, image(owner, project, "Shot"));
+        var initial = drafts.save(
+                owner,
+                project,
+                target,
+                0,
+                "Keep user text",
+                mapper.createObjectNode(),
+                null,
+                null,
+                null,
+                List.of(
+                        new dev.agenvas.artifact.application.MediaDraftService.SaveMediaInput(
+                                manual,
+                                dev.agenvas.artifact.domain.MediaDraft.InputRole.REFERENCE,
+                                "#112233")),
+                List.of(),
+                null);
         UUID independent = UUID.randomUUID(), independentLook = UUID.randomUUID();
         characters.save(
                 owner,
@@ -214,29 +214,26 @@ class CanvasCharacterNodePostgresIT {
                                         new CharacterLook(
                                                 independentLook, "Plain", "", "", "", List.of())),
                                 null)));
-        var manualSelections =
-                List.of(
-                        new CharacterBindingSelection(
-                                independent, 1, independentLook, true, false));
-        var manualPreview =
-                characters.preview(
-                        owner,
-                        project,
-                        target,
-                        new PreviewCharacterBindings(
-                                0, initial.version(), manualSelections, ClearMode.REMOVE_OWNED));
-        var before =
-                characters.apply(
-                        owner,
-                        project,
-                        target,
-                        new ApplyCharacterBindings(
-                                UUID.randomUUID(),
-                                0,
-                                initial.version(),
-                                manualSelections,
-                                ClearMode.REMOVE_OWNED,
-                                manualPreview.previewHash()));
+        var manualSelections = List.of(
+                new CharacterBindingSelection(
+                        independent, 1, independentLook, true, false));
+        var manualPreview = characters.preview(
+                owner,
+                project,
+                target,
+                new PreviewCharacterBindings(
+                        0, initial.version(), manualSelections, ClearMode.REMOVE_OWNED));
+        var before = characters.apply(
+                owner,
+                project,
+                target,
+                new ApplyCharacterBindings(
+                        UUID.randomUUID(),
+                        0,
+                        initial.version(),
+                        manualSelections,
+                        ClearMode.REMOVE_OWNED,
+                        manualPreview.previewHash()));
         UUID character = UUID.randomUUID(),
                 look = UUID.randomUUID(),
                 source = UUID.randomUUID(),
@@ -269,25 +266,23 @@ class CanvasCharacterNodePostgresIT {
         nodes.connect(owner, project, new Connect(edgeId, source, target, 0, 0, 0));
         assertThat(drafts.get(owner, project, target).version())
                 .isEqualTo(before.draft().version());
-        var preview =
-                nodes.preview(
-                        owner,
-                        project,
-                        target,
-                        new Preview(
-                                before.binding().version(),
-                                before.draft().version(),
-                                ClearMode.REMOVE_OWNED));
+        var preview = nodes.preview(
+                owner,
+                project,
+                target,
+                new Preview(
+                        before.binding().version(),
+                        before.draft().version(),
+                        ClearMode.REMOVE_OWNED));
         assertThat(preview.characterPreview().snapshots())
                 .extracting(CharacterSnapshot::characterId)
                 .containsExactly(independent, character);
-        var apply =
-                new Apply(
-                        UUID.randomUUID(),
-                        before.binding().version(),
-                        before.draft().version(),
-                        ClearMode.REMOVE_OWNED,
-                        preview.previewHash());
+        var apply = new Apply(
+                UUID.randomUUID(),
+                before.binding().version(),
+                before.draft().version(),
+                ClearMode.REMOVE_OWNED,
+                preview.previewHash());
         var applied = nodes.apply(owner, project, target, apply);
         assertThat(applied.draft().prompt())
                 .contains("Keep user text", "Manual character", "Node character");
@@ -299,29 +294,27 @@ class CanvasCharacterNodePostgresIT {
                 .isEqualTo(applied.draft().version());
         assertThat(nodes.apply(owner, project, target, apply).draft().version())
                 .isEqualTo(applied.draft().version());
-        var remove =
-                nodes.preview(
-                        owner,
-                        project,
-                        target,
-                        new Preview(
-                                applied.binding().version(),
-                                applied.draft().version(),
-                                ClearMode.REMOVE_OWNED));
+        var remove = nodes.preview(
+                owner,
+                project,
+                target,
+                new Preview(
+                        applied.binding().version(),
+                        applied.draft().version(),
+                        ClearMode.REMOVE_OWNED));
         assertThat(remove.characterPreview().snapshots())
                 .extracting(CharacterSnapshot::characterId)
                 .containsExactly(independent);
-        var cleared =
-                nodes.apply(
-                        owner,
-                        project,
-                        target,
-                        new Apply(
-                                UUID.randomUUID(),
-                                applied.binding().version(),
-                                applied.draft().version(),
-                                ClearMode.REMOVE_OWNED,
-                                remove.previewHash()));
+        var cleared = nodes.apply(
+                owner,
+                project,
+                target,
+                new Apply(
+                        UUID.randomUUID(),
+                        applied.binding().version(),
+                        applied.draft().version(),
+                        ClearMode.REMOVE_OWNED,
+                        remove.previewHash()));
         assertThat(cleared.draft().prompt())
                 .contains("Manual character", "Keep user text")
                 .doesNotContain("Node character");
@@ -329,19 +322,18 @@ class CanvasCharacterNodePostgresIT {
                 .extracting(dev.agenvas.artifact.domain.MediaDraft.MediaInput::versionId)
                 .containsExactly(manual);
         UUID copy = UUID.randomUUID();
-        var duplicate =
-                canvas.duplicate(
-                        owner,
-                        project,
-                        source,
-                        copy,
-                        0,
-                        0,
-                        new BigDecimal("400"),
-                        BigDecimal.ZERO,
-                        new BigDecimal("300"),
-                        new BigDecimal("300"),
-                        1);
+        var duplicate = canvas.duplicate(
+                owner,
+                project,
+                source,
+                copy,
+                0,
+                0,
+                new BigDecimal("400"),
+                BigDecimal.ZERO,
+                new BigDecimal("300"),
+                new BigDecimal("300"),
+                1);
         assertThat(duplicate.draft()).isNull();
         assertThat(duplicate.item().characterNode().selection()).isEqualTo(selected);
         assertThat(duplicate.item().characterNode().connections()).isEmpty();
@@ -355,43 +347,41 @@ class CanvasCharacterNodePostgresIT {
                         });
         canvas.apply(owner, project, List.of(new CanvasService.SetLocked(source, 0, true)));
         assertThatThrownBy(
-                        () ->
-                                nodes.update(
-                                        owner,
-                                        project,
-                                        source,
-                                        new UpdateSelection(1, 0, selected)))
+                () -> nodes.update(
+                        owner,
+                        project,
+                        source,
+                        new UpdateSelection(1, 0, selected)))
                 .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
         assertThatThrownBy(
-                        () ->
-                                canvas.apply(
-                                        owner,
-                                        project,
-                                        List.of(new CanvasService.Remove(source, 1))))
+                () -> canvas.apply(
+                        owner,
+                        project,
+                        List.of(new CanvasService.Remove(source, 1))))
                 .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
         canvas.apply(owner, project, List.of(new CanvasService.SetLocked(source, 1, false)));
         canvas.apply(owner, project, List.of(new CanvasService.Remove(source, 2)));
         assertThat(characters.getRevision(owner, project, character, 1).content().name())
                 .isEqualTo("Node character");
         assertThat(
-                        jdbc.sql("select count(*) from task where project_id=:project")
-                                .param("project", project)
-                                .query(Long.class)
-                                .single())
+                jdbc.sql("select count(*) from task where project_id=:project")
+                        .param("project", project)
+                        .query(Long.class)
+                        .single())
                 .isZero();
     }
 
-    @Autowired dev.agenvas.canvas.application.CanvasEditService editor;
+    @Autowired
+    dev.agenvas.canvas.application.CanvasEditService editor;
 
     @Test
     void staleTopologyAndSelectionPreviewsAreRejectedAndCopiesCanBeUndoneAndRedone() {
         UUID owner = owner(),
-                project =
-                        projects.create(
-                                        owner,
-                                        "Stale character preview",
-                                        Project.AspectRatio.SQUARE_1_1)
-                                .id();
+                project = projects.create(
+                        owner,
+                        "Stale character preview",
+                        Project.AspectRatio.SQUARE_1_1)
+                        .id();
         UUID character = UUID.randomUUID(), look = UUID.randomUUID(), source = UUID.randomUUID();
         characters.save(
                 owner,
@@ -407,67 +397,62 @@ class CanvasCharacterNodePostgresIT {
                                 null)));
         Selection selected = new Selection(character, 1, look, List.of(), true, false);
         nodes.create(owner, project, source, create(selected));
-        UUID target =
-                dev.agenvas.support.CanvasMediaFixture.place(
-                        canvas, owner, project, image(owner, project, "Target"));
+        UUID target = dev.agenvas.support.CanvasMediaFixture.place(
+                canvas, owner, project, image(owner, project, "Target"));
         var initial = drafts.get(owner, project, target);
         UUID edge = UUID.randomUUID();
         nodes.connect(owner, project, new Connect(edge, source, target, 0, 0, 0));
-        var preview =
-                nodes.preview(
-                        owner,
-                        project,
-                        target,
-                        new Preview(0, initial.version(), ClearMode.REMOVE_OWNED));
+        var preview = nodes.preview(
+                owner,
+                project,
+                target,
+                new Preview(0, initial.version(), ClearMode.REMOVE_OWNED));
         nodes.disconnect(owner, project, edge, new Disconnect(0));
         nodes.connect(owner, project, new Connect(edge, source, target, 0, 0, 0));
         assertThatThrownBy(
-                        () ->
-                                nodes.apply(
-                                        owner,
-                                        project,
-                                        target,
-                                        new Apply(
-                                                UUID.randomUUID(),
-                                                0,
-                                                initial.version(),
-                                                ClearMode.REMOVE_OWNED,
-                                                preview.previewHash())))
+                () -> nodes.apply(
+                        owner,
+                        project,
+                        target,
+                        new Apply(
+                                UUID.randomUUID(),
+                                0,
+                                initial.version(),
+                                ClearMode.REMOVE_OWNED,
+                                preview.previewHash())))
                 .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
         assertThat(drafts.get(owner, project, target).version()).isEqualTo(initial.version());
         nodes.disconnect(owner, project, edge, new Disconnect(0));
         UUID duplicate = UUID.randomUUID();
-        var edit =
-                editor.edit(
-                        owner,
-                        project,
-                        new dev.agenvas.canvas.application.CanvasEditModels.Edit(
-                                UUID.randomUUID(),
-                                dev.agenvas.canvas.application.CanvasEditModels.Operation.DUPLICATE,
-                                List.of(),
-                                List.of(),
-                                List.of(
-                                        new dev.agenvas.canvas.application.CanvasEditModels.Copy(
-                                                source,
-                                                duplicate,
-                                                0,
-                                                0L,
-                                                null,
-                                                new BigDecimal("400"),
-                                                BigDecimal.ZERO,
-                                                new BigDecimal("300"),
-                                                new BigDecimal("300"),
-                                                0,
-                                                null))));
-        var undone =
-                editor.replay(
-                        owner,
-                        project,
-                        edit.receipt().id(),
-                        new dev.agenvas.canvas.application.CanvasEditModels.Replay(
-                                UUID.randomUUID(),
-                                0,
-                                dev.agenvas.canvas.application.CanvasEditModels.Direction.UNDO));
+        var edit = editor.edit(
+                owner,
+                project,
+                new dev.agenvas.canvas.application.CanvasEditModels.Edit(
+                        UUID.randomUUID(),
+                        dev.agenvas.canvas.application.CanvasEditModels.Operation.DUPLICATE,
+                        List.of(),
+                        List.of(),
+                        List.of(
+                                new dev.agenvas.canvas.application.CanvasEditModels.Copy(
+                                        source,
+                                        duplicate,
+                                        0,
+                                        0L,
+                                        null,
+                                        new BigDecimal("400"),
+                                        BigDecimal.ZERO,
+                                        new BigDecimal("300"),
+                                        new BigDecimal("300"),
+                                        0,
+                                        null))));
+        var undone = editor.replay(
+                owner,
+                project,
+                edit.receipt().id(),
+                new dev.agenvas.canvas.application.CanvasEditModels.Replay(
+                        UUID.randomUUID(),
+                        0,
+                        dev.agenvas.canvas.application.CanvasEditModels.Direction.UNDO));
         assertThat(canvas.list(owner, project))
                 .extracting(e -> e.item().id())
                 .doesNotContain(duplicate);
@@ -479,11 +464,10 @@ class CanvasCharacterNodePostgresIT {
                         UUID.randomUUID(),
                         undone.receipt().revision(),
                         dev.agenvas.canvas.application.CanvasEditModels.Direction.REDO));
-        var copied =
-                canvas.list(owner, project).stream()
-                        .filter(e -> e.item().id().equals(duplicate))
-                        .findFirst()
-                        .orElseThrow();
+        var copied = canvas.list(owner, project).stream()
+                .filter(e -> e.item().id().equals(duplicate))
+                .findFirst()
+                .orElseThrow();
         assertThat(copied.characterNode().selection()).isEqualTo(selected);
         assertThat(copied.characterNode().version()).isGreaterThan(0);
         nodes.connect(
@@ -497,16 +481,14 @@ class CanvasCharacterNodePostgresIT {
                         copied.characterNode().version(),
                         0));
         assertThatThrownBy(
-                        () ->
-                                editor.replay(
-                                        owner,
-                                        project,
-                                        edit.receipt().id(),
-                                        new dev.agenvas.canvas.application.CanvasEditModels.Replay(
-                                                UUID.randomUUID(),
-                                                2,
-                                                dev.agenvas.canvas.application.CanvasEditModels
-                                                        .Direction.UNDO)))
+                () -> editor.replay(
+                        owner,
+                        project,
+                        edit.receipt().id(),
+                        new dev.agenvas.canvas.application.CanvasEditModels.Replay(
+                                UUID.randomUUID(),
+                                2,
+                                dev.agenvas.canvas.application.CanvasEditModels.Direction.UNDO)))
                 .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
     }
 
@@ -514,12 +496,10 @@ class CanvasCharacterNodePostgresIT {
     void concurrentSelectionCasAllowsOnlyOneWriterAndForeignProjectsCannotConnect()
             throws Exception {
         UUID owner = owner(),
-                project =
-                        projects.create(owner, "Character CAS", Project.AspectRatio.SQUARE_1_1)
-                                .id();
-        UUID other =
-                projects.create(owner, "Other character scope", Project.AspectRatio.SQUARE_1_1)
+                project = projects.create(owner, "Character CAS", Project.AspectRatio.SQUARE_1_1)
                         .id();
+        UUID other = projects.create(owner, "Other character scope", Project.AspectRatio.SQUARE_1_1)
+                .id();
         UUID character = UUID.randomUUID(),
                 firstLook = UUID.randomUUID(),
                 secondLook = UUID.randomUUID(),
@@ -550,94 +530,83 @@ class CanvasCharacterNodePostgresIT {
                 create(new Selection(character, 1, firstLook, List.of(), true, false)));
         java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
         try (var executor = java.util.concurrent.Executors.newFixedThreadPool(2)) {
-            var attempts =
-                    List.of(secondLook, thirdLook).stream()
-                            .map(
-                                    look ->
-                                            executor.submit(
-                                                    () -> {
-                                                        start.await();
-                                                        try {
-                                                            nodes.update(
-                                                                    owner,
-                                                                    project,
-                                                                    source,
-                                                                    new UpdateSelection(
-                                                                            0,
-                                                                            0,
-                                                                            new Selection(
-                                                                                    character, 1,
-                                                                                    look, List.of(),
-                                                                                    true, false)));
-                                                            return "SAVED";
-                                                        } catch (
-                                                                dev.agenvas.shared.error
-                                                                                .ApiProblemException
-                                                                        conflict) {
-                                                            return conflict.code();
-                                                        }
-                                                    }))
-                            .toList();
+            var attempts = List.of(secondLook, thirdLook).stream()
+                    .map(
+                            look -> executor.submit(
+                                    () -> {
+                                        start.await();
+                                        try {
+                                            nodes.update(
+                                                    owner,
+                                                    project,
+                                                    source,
+                                                    new UpdateSelection(
+                                                            0,
+                                                            0,
+                                                            new Selection(
+                                                                    character, 1,
+                                                                    look, List.of(),
+                                                                    true, false)));
+                                            return "SAVED";
+                                        } catch (dev.agenvas.shared.error.ApiProblemException conflict) {
+                                            return conflict.code();
+                                        }
+                                    }))
+                    .toList();
             start.countDown();
             assertThat(List.of(attempts.get(0).get(), attempts.get(1).get()))
                     .containsExactlyInAnyOrder("SAVED", "CHARACTER_NODE_VERSION_CONFLICT");
         }
-        var node =
-                canvas.list(owner, project).stream()
-                        .filter(e -> e.item().id().equals(source))
-                        .findFirst()
-                        .orElseThrow()
-                        .characterNode();
+        var node = canvas.list(owner, project).stream()
+                .filter(e -> e.item().id().equals(source))
+                .findFirst()
+                .orElseThrow()
+                .characterNode();
         assertThat(node.version()).isEqualTo(1);
-        UUID foreignTarget =
-                dev.agenvas.support.CanvasMediaFixture.place(
-                        canvas, owner, other, image(owner, other, "Foreign"));
+        UUID foreignTarget = dev.agenvas.support.CanvasMediaFixture.place(
+                canvas, owner, other, image(owner, other, "Foreign"));
         assertThatThrownBy(
-                        () ->
-                                nodes.connect(
-                                        owner,
-                                        project,
-                                        new Connect(
-                                                UUID.randomUUID(), source, foreignTarget, 0, 1, 0)))
+                () -> nodes.connect(
+                        owner,
+                        project,
+                        new Connect(
+                                UUID.randomUUID(), source, foreignTarget, 0, 1, 0)))
                 .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
         assertThat(nodes.connections(owner, project)).isEmpty();
     }
 
-    @Autowired org.springframework.web.context.WebApplicationContext webContext;
+    @Autowired
+    org.springframework.web.context.WebApplicationContext webContext;
 
     @Test
     void revisionHttpReadKeepsOldUnselectedViewsAndRejectsForeignOwnersAndNativeSubjects()
             throws Exception {
         UUID owner = owner(),
-                project =
-                        projects.create(owner, "Revision HTTP", Project.AspectRatio.SQUARE_1_1)
-                                .id();
+                project = projects.create(owner, "Revision HTTP", Project.AspectRatio.SQUARE_1_1)
+                        .id();
         UUID character = UUID.randomUUID(), look = UUID.randomUUID();
-        UUID portrait =
-                artifacts
-                        .get(owner, project, image(owner, project, "Portrait"))
-                        .resourceDefaultVersion()
-                        .id();
-        UUID side =
-                artifacts
-                        .get(owner, project, image(owner, project, "Side"))
-                        .resourceDefaultVersion()
-                        .id();
-        var original =
-                new CharacterContent(
-                        "Old name",
-                        "Fixed identity",
-                        List.of(
-                                new CharacterLook(
-                                        look,
-                                        "First",
-                                        "Coat",
-                                        "",
-                                        "",
-                                        List.of(
-                                                new CharacterView(portrait, "Identity", ""),
-                                                new CharacterView(side, "Side", "")))),
-                        null);
+        UUID portrait = artifacts
+                .get(owner, project, image(owner, project, "Portrait"))
+                .resourceDefaultVersion()
+                .id();
+        UUID side = artifacts
+                .get(owner, project, image(owner, project, "Side"))
+                .resourceDefaultVersion()
+                .id();
+        var original = new CharacterContent(
+                "Old name",
+                "Fixed identity",
+                List.of(
+                        new CharacterLook(
+                                look,
+                                "First",
+                                "Coat",
+                                "",
+                                "",
+                                List.of(
+                                        new CharacterView(portrait, "Identity", ""),
+                                        new CharacterView(side, "Side", "")))),
+                null);
         characters.save(
                 owner, project, character, new SaveCharacter(UUID.randomUUID(), 0, original));
         characters.save(
@@ -648,70 +617,61 @@ class CanvasCharacterNodePostgresIT {
                         UUID.randomUUID(),
                         1,
                         new CharacterContent("New name", "Changed", original.looks(), null)));
-        var mvc =
-                org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup(
-                                webContext)
-                        .apply(
-                                org.springframework.security.test.web.servlet.setup
-                                        .SecurityMockMvcConfigurers.springSecurity())
-                        .build();
-        var principal =
-                new dev.agenvas.identity.application.AdminPrincipal(owner, "character-node-admin");
-        var auth =
-                org.springframework.security.test.web.servlet.request
-                        .SecurityMockMvcRequestPostProcessors.authentication(
-                        new org.springframework.security.authentication
-                                .UsernamePasswordAuthenticationToken(principal, null, List.of()));
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup(
+                webContext)
+                .apply(
+                        org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build();
+        var principal = new dev.agenvas.identity.application.AdminPrincipal(owner, "character-node-admin");
+        var auth = org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                .authentication(
+                        new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(principal,
+                                null, List.of()));
         String path = "/api/v1/projects/" + project + "/characters/" + character + "/revisions/1";
         mvc.perform(
-                        org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
-                                        path)
-                                .with(auth))
+                org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                        path)
+                        .with(auth))
                 .andExpect(
                         org.springframework.test.web.servlet.result.MockMvcResultMatchers.status()
                                 .isOk())
                 .andExpect(
                         org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath(
-                                        "$.content.name")
+                                "$.content.name")
                                 .value("Old name"))
                 .andExpect(
                         org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath(
-                                        "$.content.looks[0].views.length()")
+                                "$.content.looks[0].views.length()")
                                 .value(2));
-        var foreign =
-                new dev.agenvas.identity.application.AdminPrincipal(
-                        UUID.randomUUID(), "foreign-owner");
+        var foreign = new dev.agenvas.identity.application.AdminPrincipal(
+                UUID.randomUUID(), "foreign-owner");
         mvc.perform(
-                        org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
-                                        path)
-                                .with(
-                                        org.springframework.security.test.web.servlet.request
-                                                .SecurityMockMvcRequestPostProcessors
-                                                .authentication(
-                                                        new org.springframework.security
-                                                                .authentication
-                                                                .UsernamePasswordAuthenticationToken(
-                                                                foreign, null, List.of()))))
+                org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                        path)
+                        .with(
+                                org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                                        .authentication(
+                                                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                                                        foreign, null, List.of()))))
                 .andExpect(
                         org.springframework.test.web.servlet.result.MockMvcResultMatchers.status()
                                 .isNotFound());
-        var request =
-                mapper.valueToTree(
-                        create(new Selection(character, 1, look, List.of(portrait), true, false)));
+        var request = mapper.valueToTree(
+                create(new Selection(character, 1, look, List.of(portrait), true, false)));
         ((tools.jackson.databind.node.ObjectNode) request.path("selection"))
                 .put("nativeSubjectId", "unregistered-subject");
         mvc.perform(
-                        org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(
-                                        "/api/v1/projects/"
-                                                + project
-                                                + "/canvas/character-nodes/"
-                                                + UUID.randomUUID())
-                                .with(auth)
-                                .with(
-                                        org.springframework.security.test.web.servlet.request
-                                                .SecurityMockMvcRequestPostProcessors.csrf())
-                                .contentType("application/json")
-                                .content(mapper.writeValueAsString(request)))
+                org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(
+                        "/api/v1/projects/"
+                                + project
+                                + "/canvas/character-nodes/"
+                                + UUID.randomUUID())
+                        .with(auth)
+                        .with(
+                                org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                                        .csrf())
+                        .contentType("application/json")
+                        .content(mapper.writeValueAsString(request)))
                 .andExpect(
                         org.springframework.test.web.servlet.result.MockMvcResultMatchers.status()
                                 .isBadRequest());
@@ -720,12 +680,11 @@ class CanvasCharacterNodePostgresIT {
     @Test
     void textOnlyRolesApplyAndTopologyReplaysNeverResurrectOrDeleteNewConnections() {
         UUID owner = owner(),
-                project =
-                        projects.create(
-                                        owner,
-                                        "Text character topology",
-                                        Project.AspectRatio.SQUARE_1_1)
-                                .id();
+                project = projects.create(
+                        owner,
+                        "Text character topology",
+                        Project.AspectRatio.SQUARE_1_1)
+                        .id();
         UUID character = UUID.randomUUID(), source = UUID.randomUUID();
         characters.save(
                 owner,
@@ -740,30 +699,27 @@ class CanvasCharacterNodePostgresIT {
                 project,
                 source,
                 create(new Selection(character, 1, null, List.of(), true, false)));
-        UUID target =
-                dev.agenvas.support.CanvasMediaFixture.place(
-                        canvas, owner, project, image(owner, project, "Target"));
+        UUID target = dev.agenvas.support.CanvasMediaFixture.place(
+                canvas, owner, project, image(owner, project, "Target"));
         UUID edgeId = UUID.randomUUID();
         var connect = new Connect(edgeId, source, target, 0, 0, 0);
         nodes.connect(owner, project, connect);
         var before = drafts.get(owner, project, target);
-        var preview =
-                nodes.preview(
-                        owner,
-                        project,
-                        target,
-                        new Preview(0, before.version(), ClearMode.REMOVE_OWNED));
-        var applied =
-                nodes.apply(
-                        owner,
-                        project,
-                        target,
-                        new Apply(
-                                UUID.randomUUID(),
-                                0,
-                                before.version(),
-                                ClearMode.REMOVE_OWNED,
-                                preview.previewHash()));
+        var preview = nodes.preview(
+                owner,
+                project,
+                target,
+                new Preview(0, before.version(), ClearMode.REMOVE_OWNED));
+        var applied = nodes.apply(
+                owner,
+                project,
+                target,
+                new Apply(
+                        UUID.randomUUID(),
+                        0,
+                        before.version(),
+                        ClearMode.REMOVE_OWNED,
+                        preview.previewHash()));
         assertThat(applied.draft().prompt()).contains("A text-only identity");
         canvas.apply(
                 owner,
@@ -782,23 +738,23 @@ class CanvasCharacterNodePostgresIT {
         UUID unknown = UUID.randomUUID();
         nodes.disconnect(owner, project, unknown, new Disconnect(0));
         assertThatThrownBy(
-                        () ->
-                                nodes.connect(
-                                        owner,
-                                        project,
-                                        new Connect(unknown, source, target, 1, 0, 0)))
+                () -> nodes.connect(
+                        owner,
+                        project,
+                        new Connect(unknown, source, target, 1, 0, 0)))
                 .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
     }
 
-    @Autowired dev.agenvas.task.application.DirectMediaTaskService media;
-    @Autowired dev.agenvas.task.application.TaskService tasks;
+    @Autowired
+    dev.agenvas.task.application.DirectMediaTaskService media;
+    @Autowired
+    dev.agenvas.task.application.TaskService tasks;
 
     @Test
     void acceptedMockTaskKeepsAppliedCharacterWhenNodeSelectionChanges() {
         UUID owner = owner(),
-                project =
-                        projects.create(owner, "Frozen node task", Project.AspectRatio.SQUARE_1_1)
-                                .id();
+                project = projects.create(owner, "Frozen node task", Project.AspectRatio.SQUARE_1_1)
+                        .id();
         UUID character = UUID.randomUUID(), source = UUID.randomUUID();
         characters.save(
                 owner,
@@ -814,37 +770,32 @@ class CanvasCharacterNodePostgresIT {
                 source,
                 create(new Selection(character, 1, null, List.of(), true, false)));
         UUID artifact = image(owner, project, "Target");
-        UUID target =
-                dev.agenvas.support.CanvasMediaFixture.place(canvas, owner, project, artifact);
+        UUID target = dev.agenvas.support.CanvasMediaFixture.place(canvas, owner, project, artifact);
         nodes.connect(owner, project, new Connect(UUID.randomUUID(), source, target, 0, 0, 0));
         var before = drafts.get(owner, project, target);
-        var preview =
-                nodes.preview(
-                        owner,
-                        project,
-                        target,
-                        new Preview(0, before.version(), ClearMode.REMOVE_OWNED));
-        var applied =
-                nodes.apply(
-                        owner,
-                        project,
-                        target,
-                        new Apply(
-                                UUID.randomUUID(),
-                                0,
-                                before.version(),
-                                ClearMode.REMOVE_OWNED,
-                                preview.previewHash()));
-        var accepted =
-                media.run(
-                        owner,
-                        project,
-                        artifact,
-                        target,
-                        applied.draft().version(),
-                        "node-frozen-mock-task");
-        var frozen =
-                mapper.readTree(mapper.writeValueAsString(accepted.input().path("mediaInput")));
+        var preview = nodes.preview(
+                owner,
+                project,
+                target,
+                new Preview(0, before.version(), ClearMode.REMOVE_OWNED));
+        var applied = nodes.apply(
+                owner,
+                project,
+                target,
+                new Apply(
+                        UUID.randomUUID(),
+                        0,
+                        before.version(),
+                        ClearMode.REMOVE_OWNED,
+                        preview.previewHash()));
+        var accepted = media.run(
+                owner,
+                project,
+                artifact,
+                target,
+                applied.draft().version(),
+                "node-frozen-mock-task");
+        var frozen = mapper.readTree(mapper.writeValueAsString(accepted.input().path("mediaInput")));
         assertThat(frozen.at("/characterBindings/0/characterVersion").asLong()).isEqualTo(1);
         characters.save(
                 owner,
@@ -866,11 +817,11 @@ class CanvasCharacterNodePostgresIT {
                 .contains("First identity")
                 .doesNotContain("Second identity");
         assertThat(
-                        mapper.readTree(
-                                mapper.writeValueAsString(
-                                        tasks.get(owner, project, accepted.id())
-                                                .input()
-                                                .path("mediaInput"))))
+                mapper.readTree(
+                        mapper.writeValueAsString(
+                                tasks.get(owner, project, accepted.id())
+                                        .input()
+                                        .path("mediaInput"))))
                 .isEqualTo(frozen);
     }
 
@@ -878,12 +829,11 @@ class CanvasCharacterNodePostgresIT {
     void readOnlyReceiptsSurviveLocksTargetDeletionAndArchiveWithoutLeakingAcrossScopes()
             throws Exception {
         UUID owner = owner(),
-                project =
-                        projects.create(
-                                        owner,
-                                        "Archived receipt recovery",
-                                        Project.AspectRatio.SQUARE_1_1)
-                                .id();
+                project = projects.create(
+                        owner,
+                        "Archived receipt recovery",
+                        Project.AspectRatio.SQUARE_1_1)
+                        .id();
         UUID character = UUID.randomUUID(), source = UUID.randomUUID();
         characters.save(
                 owner,
@@ -899,18 +849,16 @@ class CanvasCharacterNodePostgresIT {
                 project,
                 source,
                 create(new Selection(character, 1, null, List.of(), true, false)));
-        UUID target =
-                dev.agenvas.support.CanvasMediaFixture.place(
-                        canvas, owner, project, image(owner, project, "Receipt target"));
+        UUID target = dev.agenvas.support.CanvasMediaFixture.place(
+                canvas, owner, project, image(owner, project, "Receipt target"));
         UUID connection = UUID.randomUUID();
         nodes.connect(owner, project, new Connect(connection, source, target, 0, 0, 0));
         var before = drafts.get(owner, project, target);
-        var preview =
-                nodes.preview(
-                        owner,
-                        project,
-                        target,
-                        new Preview(0, before.version(), ClearMode.REMOVE_OWNED));
+        var preview = nodes.preview(
+                owner,
+                project,
+                target,
+                new Preview(0, before.version(), ClearMode.REMOVE_OWNED));
         UUID command = UUID.randomUUID();
         nodes.apply(
                 owner,
@@ -925,95 +873,87 @@ class CanvasCharacterNodePostgresIT {
         canvas.apply(owner, project, List.of(new CanvasService.SetLocked(source, 0, true)));
         assertThat(nodes.connectionReceipt(owner, project, connection).id()).isEqualTo(connection);
         assertThat(
-                        nodes.applicationReceipt(owner, project, target, command)
-                                .binding()
-                                .canvasItemId())
+                nodes.applicationReceipt(owner, project, target, command)
+                        .binding()
+                        .canvasItemId())
                 .isEqualTo(target);
         canvas.apply(owner, project, List.of(new CanvasService.Remove(target, 0)));
         projects.archive(owner, project, projects.get(owner, project).version());
-        var mvc =
-                org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup(
-                                webContext)
-                        .apply(
-                                org.springframework.security.test.web.servlet.setup
-                                        .SecurityMockMvcConfigurers.springSecurity())
-                        .build();
-        var principal =
-                new dev.agenvas.identity.application.AdminPrincipal(owner, "character-node-admin");
-        var auth =
-                org.springframework.security.test.web.servlet.request
-                        .SecurityMockMvcRequestPostProcessors.authentication(
-                        new org.springframework.security.authentication
-                                .UsernamePasswordAuthenticationToken(principal, null, List.of()));
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup(
+                webContext)
+                .apply(
+                        org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build();
+        var principal = new dev.agenvas.identity.application.AdminPrincipal(owner, "character-node-admin");
+        var auth = org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                .authentication(
+                        new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(principal,
+                                null, List.of()));
         String base = "/api/v1/projects/" + project;
         String connectionPath = base + "/canvas/character-connections/" + connection + "/receipt";
-        String applyPath =
-                base + "/canvas-items/" + target + "/character-node-bindings/receipts/" + command;
+        String applyPath = base + "/canvas-items/" + target + "/character-node-bindings/receipts/" + command;
         mvc.perform(
-                        org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
-                                        connectionPath)
-                                .with(auth))
+                org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                        connectionPath)
+                        .with(auth))
                 .andExpect(
                         org.springframework.test.web.servlet.result.MockMvcResultMatchers.status()
                                 .isOk())
                 .andExpect(
                         org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath(
-                                        "$.id")
+                                "$.id")
                                 .value(connection.toString()))
                 .andExpect(
                         org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath(
-                                        "$.requestHash")
+                                "$.requestHash")
                                 .doesNotExist());
         mvc.perform(
-                        org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
-                                        applyPath)
-                                .with(auth))
+                org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                        applyPath)
+                        .with(auth))
                 .andExpect(
                         org.springframework.test.web.servlet.result.MockMvcResultMatchers.status()
                                 .isOk())
                 .andExpect(
                         org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath(
-                                        "$.binding.canvasItemId")
+                                "$.binding.canvasItemId")
                                 .value(target.toString()))
                 .andExpect(
                         org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath(
-                                        "$.requestHash")
+                                "$.requestHash")
                                 .doesNotExist());
-        var foreign =
-                new dev.agenvas.identity.application.AdminPrincipal(
-                        UUID.randomUUID(), "foreign-owner");
-        var foreignAuth =
-                org.springframework.security.test.web.servlet.request
-                        .SecurityMockMvcRequestPostProcessors.authentication(
-                        new org.springframework.security.authentication
-                                .UsernamePasswordAuthenticationToken(foreign, null, List.of()));
+        var foreign = new dev.agenvas.identity.application.AdminPrincipal(
+                UUID.randomUUID(), "foreign-owner");
+        var foreignAuth = org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                .authentication(
+                        new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(foreign,
+                                null, List.of()));
         for (String path : List.of(connectionPath, applyPath)) {
             mvc.perform(
-                            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
-                                            path)
-                                    .with(foreignAuth))
+                    org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                            path)
+                            .with(foreignAuth))
                     .andExpect(
                             org.springframework.test.web.servlet.result.MockMvcResultMatchers
                                     .status()
                                     .isNotFound());
         }
-        for (String path :
-                List.of(
-                        base + "/canvas/character-connections/" + UUID.randomUUID() + "/receipt",
-                        base
-                                + "/canvas-items/"
-                                + UUID.randomUUID()
-                                + "/character-node-bindings/receipts/"
-                                + command,
-                        base
-                                + "/canvas-items/"
-                                + target
-                                + "/character-node-bindings/receipts/"
-                                + UUID.randomUUID())) {
+        for (String path : List.of(
+                base + "/canvas/character-connections/" + UUID.randomUUID() + "/receipt",
+                base
+                        + "/canvas-items/"
+                        + UUID.randomUUID()
+                        + "/character-node-bindings/receipts/"
+                        + command,
+                base
+                        + "/canvas-items/"
+                        + target
+                        + "/character-node-bindings/receipts/"
+                        + UUID.randomUUID())) {
             mvc.perform(
-                            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
-                                            path)
-                                    .with(auth))
+                    org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                            path)
+                            .with(auth))
                     .andExpect(
                             org.springframework.test.web.servlet.result.MockMvcResultMatchers
                                     .status()

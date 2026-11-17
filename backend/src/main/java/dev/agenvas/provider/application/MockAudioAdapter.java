@@ -21,16 +21,29 @@ public final class MockAudioAdapter implements MediaAdapter {
     private static final double FREQUENCY_HZ = 440;
     private final AssetService assets;
     private final ObjectMapper mapper;
-    public MockAudioAdapter(AssetService assets, ObjectMapper mapper) { this.assets = assets; this.mapper = mapper; }
-    @Override public String adapterId() { return "MOCK_AUDIO"; }
-    @Override public boolean supports(PortInput input) { return input.kind() == Task.Kind.AUDIO_GENERATION; }
-    @Override public Submission submit(AttemptContext context) {
+    public MockAudioAdapter(AssetService assets, ObjectMapper mapper) {
+        this.assets = assets;
+        this.mapper = mapper;
+    }
+    @Override
+    public String adapterId() {
+        return "MOCK_AUDIO";
+    }
+    @Override
+    public boolean supports(PortInput input) {
+        return input.kind() == Task.Kind.AUDIO_GENERATION;
+    }
+    @Override
+    public Submission submit(AttemptContext context) {
         var task = context.lease();
         var asset = assets.archiveTaskAudio(context.ownerId(), task.projectId(), task.id(),
                 () -> new ByteArrayInputStream(tone()));
         return new Submission.CompletedArtifact(AudioResult.content(mapper, task, asset.id().toString(), true));
     }
-    @Override public Submission reconcile(AttemptContext context) { return submit(context); }
+    @Override
+    public Submission reconcile(AttemptContext context) {
+        return submit(context);
+    }
     static byte[] tone() {
         int samples = SAMPLE_RATE * DURATION_SECONDS;
         ByteBuffer buffer = ByteBuffer.allocate(HEADER_BYTES + samples * Short.BYTES).order(ByteOrder.LITTLE_ENDIAN);

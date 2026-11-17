@@ -79,7 +79,8 @@ class TaskMediaCompletionTest {
             case OUT_OF_ORDER -> List.of(new TaskService.ArchivedProviderResult(1, Artifact.Kind.IMAGE, true, content));
             case TEXT_OUTPUT -> List.of(primary,
                     new TaskService.ArchivedProviderResult(1, Artifact.Kind.TEXT, false, content));
-            case WRONG_PRIMARY_KIND -> List.of(new TaskService.ArchivedProviderResult(0, Artifact.Kind.AUDIO, true, content));
+            case WRONG_PRIMARY_KIND ->
+                List.of(new TaskService.ArchivedProviderResult(0, Artifact.Kind.AUDIO, true, content));
         };
 
         assertThatThrownBy(() -> service.succeedWithArtifacts(task(Task.Status.SUBMITTING), WORKER, results, null))
@@ -98,7 +99,8 @@ class TaskMediaCompletionTest {
         when(repository.findById(TASK)).thenReturn(Optional.of(current));
 
         assertThatThrownBy(() -> service.succeedWithArtifacts(lease, WORKER, List.of(
-                        new TaskService.ArchivedProviderResult(0, Artifact.Kind.IMAGE, true, content(UUID.randomUUID()))), null))
+                new TaskService.ArchivedProviderResult(0, Artifact.Kind.IMAGE, true, content(UUID.randomUUID()))),
+                null))
                 .isInstanceOfSatisfying(ApiProblemException.class,
                         problem -> assertThat(problem.code()).isEqualTo("TASK_LEASE_LOST"));
         verifyNoInteractions(artifacts, canvas, usage);
@@ -116,14 +118,18 @@ class TaskMediaCompletionTest {
         when(artifacts.appendTaskVersionWithinChange(OWNER, PROJECT, ARTIFACT, null, null, 0,
                 content, null, false)).thenReturn(result);
         when(repository.finishSubmitting(eq(lease), eq(WORKER), any(), eq(NOW))).thenReturn(true);
-        Optional<MediaCapabilityBinding> binding = source == CostSource.UNBOUND ? Optional.empty()
+        Optional<MediaCapabilityBinding> binding = source == CostSource.UNBOUND
+                ? Optional.empty()
                 : Optional.of(new MediaCapabilityBinding(UUID.randomUUID(), 1, UUID.randomUUID(), 1,
-                        source == CostSource.LOCAL ? MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR
-                                : MediaAdapterRegistry.RUNNINGHUB_IMAGE, "synthetic-mapping"));
+                        source == CostSource.LOCAL
+                                ? MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR
+                                : MediaAdapterRegistry.RUNNINGHUB_IMAGE,
+                        "synthetic-mapping"));
         when(repository.mediaBinding(TASK)).thenReturn(binding);
 
         assertThat(service.succeedWithArtifacts(lease, WORKER, List.of(
-                new TaskService.ArchivedProviderResult(0, Artifact.Kind.IMAGE, true, content)), null)).isEqualTo(result);
+                new TaskService.ArchivedProviderResult(0, Artifact.Kind.IMAGE, true, content)), null))
+                .isEqualTo(result);
 
         var outcome = ArgumentCaptor.forClass(ProjectEventService.EventDraft.class);
         var order = inOrder(repository, usage, events);
@@ -135,7 +141,8 @@ class TaskMediaCompletionTest {
         assertThat(outcome.getValue().aggregateVersion()).isEqualTo(completed.version());
         assertThat(outcome.getValue().payload().path("possibleExternalCost").asBoolean())
                 .isEqualTo(source != CostSource.LOCAL);
-        assertThat(outcome.getValue().payload().path("artifactVersionId").asText()).isEqualTo(result.versionId().toString());
+        assertThat(outcome.getValue().payload().path("artifactVersionId").asText())
+                .isEqualTo(result.versionId().toString());
         verify(repository).mediaBinding(TASK);
     }
 
@@ -145,8 +152,9 @@ class TaskMediaCompletionTest {
         Task lease = task(Task.Status.SUBMITTING);
         ((ObjectNode) lease.input()).put("providerProtocol", protocol);
         int count = NativeMediaProtocol.PROTOCOL_ID.equals(protocol) ? 18 : 17;
-        var results = IntStream.range(0, count).mapToObj(index ->
-                new TaskService.ArchivedProviderResult(index, Artifact.Kind.IMAGE, index == 0, content(TASK))).toList();
+        var results = IntStream.range(0, count).mapToObj(
+                index -> new TaskService.ArchivedProviderResult(index, Artifact.Kind.IMAGE, index == 0, content(TASK)))
+                .toList();
 
         assertThatThrownBy(() -> service.succeedWithArtifacts(lease, WORKER, results, null))
                 .isInstanceOfSatisfying(ApiProblemException.class,
@@ -159,8 +167,9 @@ class TaskMediaCompletionTest {
         Task lease = task(Task.Status.SUBMITTING);
         ((ObjectNode) lease.input()).put("providerProtocol", NativeMediaProtocol.PROTOCOL_ID);
         prepareSuccessfulArchive(lease);
-        var results = IntStream.range(0, 17).mapToObj(index ->
-                new TaskService.ArchivedProviderResult(index, Artifact.Kind.IMAGE, index == 8, content(TASK))).toList();
+        var results = IntStream.range(0, 17).mapToObj(
+                index -> new TaskService.ArchivedProviderResult(index, Artifact.Kind.IMAGE, index == 8, content(TASK)))
+                .toList();
 
         service.succeedWithArtifacts(lease, WORKER, results, null);
 
@@ -178,7 +187,8 @@ class TaskMediaCompletionTest {
     @ValueSource(strings = {NativeMediaProtocol.PROTOCOL_ID, KlingModels.PROTOCOL_ID})
     void actualVideoSecondsSurviveCompletionRefactoringAndIncludeFrozenWanInput(String protocol) {
         ObjectNode input = mapper.createObjectNode().put("providerProtocol", protocol);
-        if (NativeMediaProtocol.PROTOCOL_ID.equals(protocol)) input.put("nativeBillableInputSeconds", new BigDecimal("3.250"));
+        if (NativeMediaProtocol.PROTOCOL_ID.equals(protocol))
+            input.put("nativeBillableInputSeconds", new BigDecimal("3.250"));
         Task lease = task(Task.Status.SUBMITTING, Task.Kind.VIDEO_GENERATION, input);
         prepareSuccessfulArchive(lease);
         ObjectNode video = content(TASK);
@@ -237,6 +247,10 @@ class TaskMediaCompletionTest {
         return mapper.createObjectNode().put("sourceTaskId", taskId.toString());
     }
 
-    private enum InvalidResults { EMPTY, MULTIPLE_PRIMARY, OUT_OF_ORDER, TEXT_OUTPUT, WRONG_PRIMARY_KIND }
-    private enum CostSource { LOCAL, EXTERNAL, UNBOUND }
+    private enum InvalidResults {
+        EMPTY, MULTIPLE_PRIMARY, OUT_OF_ORDER, TEXT_OUTPUT, WRONG_PRIMARY_KIND
+    }
+    private enum CostSource {
+        LOCAL, EXTERNAL, UNBOUND
+    }
 }

@@ -5,6 +5,7 @@ const INVALID_API_KEY_CHARACTER = /[^!-~]/;
 
 /** Match the server credential contract without trimming or replacing the supplied key. */
 export function validLlmApiKey(key: string): boolean {
-  return key.length >= LLM_API_KEY_MIN_LENGTH && key.length <= LLM_API_KEY_MAX_LENGTH
-    && !INVALID_API_KEY_CHARACTER.test(key);
+  return (
+    key.length >= LLM_API_KEY_MIN_LENGTH && key.length <= LLM_API_KEY_MAX_LENGTH && !INVALID_API_KEY_CHARACTER.test(key)
+  );
 }

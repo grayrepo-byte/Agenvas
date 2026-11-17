@@ -35,7 +35,8 @@ import tools.jackson.databind.ObjectMapper;
 class AgentRunServiceTest {
     private static final Instant NOW = Instant.parse("2026-10-03T00:00:00Z");
 
-    @Test void transitionChecksVersionBeforeSameStateReplayOrTerminalStateRules() {
+    @Test
+    void transitionChecksVersionBeforeSameStateReplayOrTerminalStateRules() {
         UUID owner = UUID.randomUUID(), projectId = UUID.randomUUID(), runId = UUID.randomUUID();
         var projects = mock(ProjectService.class);
         var rows = mock(AgentRunRepository.class);
@@ -74,7 +75,8 @@ class AgentRunServiceTest {
         verifyNoInteractions(cancellation);
     }
 
-    @Test void freezesOnlyTaskFocusAndConfigurationWithoutArtifactCollectionsOrCanvasAllowLists() {
+    @Test
+    void freezesOnlyTaskFocusAndConfigurationWithoutArtifactCollectionsOrCanvasAllowLists() {
         UUID owner = UUID.randomUUID(), projectId = UUID.randomUUID(), agentId = UUID.randomUUID();
         UUID artifactId = UUID.randomUUID(), versionId = UUID.randomUUID();
         UUID imageNodeId = UUID.randomUUID(), emptyNodeId = UUID.randomUUID();
@@ -99,12 +101,15 @@ class AgentRunServiceTest {
         when(projects.requireActiveProject(owner, projectId)).thenReturn(project);
         when(agents.get(owner, projectId, agentId)).thenReturn(agent);
         when(gateway.configIdentity()).thenReturn(new ChatGateway.ConfigIdentity("mock", 1));
-        when(rows.reserveIdempotency(eq(owner), anyString(), anyString(), anyString(), any(), eq(NOW))).thenReturn(true);
-        when(rows.completeIdempotency(eq(owner), anyString(), anyString(), anyString(), any(), anyString(), eq(NOW))).thenReturn(true);
+        when(rows.reserveIdempotency(eq(owner), anyString(), anyString(), anyString(), any(), eq(NOW)))
+                .thenReturn(true);
+        when(rows.completeIdempotency(eq(owner), anyString(), anyString(), anyString(), any(), anyString(), eq(NOW)))
+                .thenReturn(true);
         when(conversations.resolveOrCreate(owner, projectId, agentId, null)).thenReturn(conversation);
         when(conversations.appendTurn(eq(owner), eq(conversation), anyString(), isNull(), eq(NOW)))
                 .thenReturn(new AgentConversation(conversation.id(), projectId, agentId, "", 1, 1, NOW, NOW));
-        when(memory.read(eq(projectId), anyList())).thenReturn(new ConversationMemoryReader.ConversationMemory(List.of(), false, 0));
+        when(memory.read(eq(projectId), anyList()))
+                .thenReturn(new ConversationMemoryReader.ConversationMemory(List.of(), false, 0));
         when(events.recordChange(eq(owner), eq(projectId), any())).thenAnswer(call -> {
             Supplier<ProjectEventService.Change<Object>> mutation = call.getArgument(2);
             return new ProjectEventService.RecordedChange<>(mutation.get().value(), null);
@@ -141,12 +146,14 @@ class AgentRunServiceTest {
         when(characterNode.subjectId()).thenReturn(characterId);
         when(characterNode.subjectType()).thenReturn(CanvasItem.SubjectType.CHARACTER);
         var look = new dev.agenvas.character.application.CharacterModels.CharacterLook(lookId, "Winter", "", "", "",
-                List.of(new dev.agenvas.character.application.CharacterModels.CharacterView(privateImage, "front", "")));
+                List.of(new dev.agenvas.character.application.CharacterModels.CharacterView(privateImage, "front",
+                        "")));
         var snapshot = new dev.agenvas.character.application.CharacterModels.CharacterSnapshot(characterId, 3, "Aster",
                 "Private persona", look, null, true, false);
         var selection = new dev.agenvas.canvas.application.CanvasCharacterNodeModels.Selection(characterId, 3, lookId,
                 List.of(privateImage), true, false);
-        var role = new dev.agenvas.canvas.application.CanvasCharacterNodeModels.CharacterNode(characterNodeId, selection,
+        var role = new dev.agenvas.canvas.application.CanvasCharacterNodeModels.CharacterNode(characterNodeId,
+                selection,
                 snapshot, 2, true, List.of());
         when(canvas.list(owner, projectId)).thenReturn(List.of(new CanvasService.CanvasEntry(imageNode, view, result),
                 new CanvasService.CanvasEntry(emptyNode, view, null),

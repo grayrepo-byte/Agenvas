@@ -58,7 +58,8 @@ public class MediaCharacterDraftGateway implements CharacterDraftGateway {
         var kind = artifacts.get(owner, project, target.subjectId()).artifact().kind();
         tasks.requireUnoccupied(owner, project, target.subjectId(), item);
         MediaDraft before = drafts.get(owner, project, item);
-        if (before.version() != expectedDraftVersion) throw conflict();
+        if (before.version() != expectedDraftVersion)
+            throw conflict();
         DraftState state = beforeState == null ? DraftState.empty() : beforeState;
         if (after.isEmpty() && clearMode == ClearMode.KEEP_INPUTS) {
             MediaDraft candidate = drafts.previewSave(owner, project, item, expectedDraftVersion,
@@ -72,13 +73,15 @@ public class MediaCharacterDraftGateway implements CharacterDraftGateway {
         Map<UUID, Artifact.Kind> desired = desiredReferences(after, owner, project, kind, warnings);
         if (kind == Artifact.Kind.VIDEO && !desired.isEmpty()) {
             var binding = capabilities.forDraft(before.capabilityId(), Task.Kind.VIDEO_GENERATION);
-            if (!capabilities.inputPolicy(binding).supportedVideoInputModes().contains("GENERAL_REFERENCE")) throw invalid();
+            if (!capabilities.inputPolicy(binding).supportedVideoInputModes().contains("GENERAL_REFERENCE"))
+                throw invalid();
             // A first/tail frame describes a shot boundary, never an identity reference.
             // Users must explicitly convert existing frames before applying character references.
             if (before.mediaInputs().stream().anyMatch(input -> input.role() == MediaDraft.InputRole.START_FRAME
                     || input.role() == MediaDraft.InputRole.END_FRAME)) {
                 throw new ApiProblemException(HttpStatus.BAD_REQUEST, "CHARACTER_REFERENCE_MODE_REQUIRED",
-                        ApiMessage.of("api.character.invalid"), ApiMessage.of("api.character.reference-mode-required"), false);
+                        ApiMessage.of("api.character.invalid"), ApiMessage.of("api.character.reference-mode-required"),
+                        false);
             }
         }
         Map<UUID, List<UUID>> owned = new LinkedHashMap<>();
@@ -87,19 +90,21 @@ public class MediaCharacterDraftGateway implements CharacterDraftGateway {
         List<MediaDraftService.SaveMediaInput> inputs = new ArrayList<>();
         for (var input : before.mediaInputs()) {
             List<UUID> sourceIds = state.ownedReferenceSources().get(input.versionId());
-            boolean ownsManualSource = sourceIds != null && input.sources().stream().anyMatch(source ->
-                    source.type() == MediaDraft.SourceType.MANUAL && sourceIds.contains(source.id()));
-            boolean connected = input.sources().stream().anyMatch(source ->
-                    source.type() == MediaDraft.SourceType.CONNECTION);
-            boolean hasIndependentManual = input.sources().stream().anyMatch(source ->
-                    source.type() == MediaDraft.SourceType.MANUAL && (sourceIds == null || !sourceIds.contains(source.id())));
+            boolean ownsManualSource = sourceIds != null && input.sources().stream().anyMatch(
+                    source -> source.type() == MediaDraft.SourceType.MANUAL && sourceIds.contains(source.id()));
+            boolean connected = input.sources().stream()
+                    .anyMatch(source -> source.type() == MediaDraft.SourceType.CONNECTION);
+            boolean hasIndependentManual = input.sources().stream()
+                    .anyMatch(source -> source.type() == MediaDraft.SourceType.MANUAL
+                            && (sourceIds == null || !sourceIds.contains(source.id())));
             if (ownsManualSource && !desired.containsKey(input.versionId()))
                 release.put(input.versionId(), sourceIds);
             if (ownsManualSource && !desired.containsKey(input.versionId()) && !connected && !hasIndependentManual) {
                 removed.add(input.versionId());
                 continue;
             }
-            if (ownsManualSource && desired.containsKey(input.versionId())) owned.put(input.versionId(), sourceIds);
+            if (ownsManualSource && desired.containsKey(input.versionId()))
+                owned.put(input.versionId(), sourceIds);
             if (ownsManualSource && !desired.containsKey(input.versionId()) && connected)
                 warnings.add("CONNECTED_REFERENCES_RETAINED");
             if (ownsManualSource && !desired.containsKey(input.versionId()) && hasIndependentManual)
@@ -108,12 +113,14 @@ public class MediaCharacterDraftGateway implements CharacterDraftGateway {
         }
         ObjectNode parameters = (ObjectNode) before.parameters().deepCopy();
         UUID effectiveCapability = before.capabilityId() == null
-                ? capabilities.defaultCapabilityId(Task.Kind.valueOf(kind.name() + "_GENERATION")) : before.capabilityId();
+                ? capabilities.defaultCapabilityId(Task.Kind.valueOf(kind.name() + "_GENERATION"))
+                : before.capabilityId();
         pruneSlots(parameters, removed, effectiveCapability);
         String prompt = before.prompt();
         if (state.promptBlock() != null && !state.promptBlock().isEmpty()) {
             int start = prompt.indexOf(state.promptBlock());
-            if (start >= 0) prompt = prompt.substring(0, start) + prompt.substring(start + state.promptBlock().length());
+            if (start >= 0)
+                prompt = prompt.substring(0, start) + prompt.substring(start + state.promptBlock().length());
             else if (prompt.contains(BLOCK_START)) {
                 // An edited character block is user text. Require an explicit manual resolution,
                 // rather than overwriting it or appending contradictory old and new definitions.
@@ -125,31 +132,42 @@ public class MediaCharacterDraftGateway implements CharacterDraftGateway {
                 .filter(mention -> !removed.contains(mention.versionId())).toList();
         prompt = drafts.pruneRemovedMentions(prompt, before.mentions(), mentions);
         String promptBlock = describeSnapshots(after);
-        if (!promptBlock.isEmpty()) prompt += promptBlock;
-        if (!prompt.equals(before.prompt())) changes.add("PROMPT_UPDATED");
-        if (!removed.isEmpty()) changes.add("REFERENCES_REMOVED");
+        if (!promptBlock.isEmpty())
+            prompt += promptBlock;
+        if (!prompt.equals(before.prompt()))
+            changes.add("PROMPT_UPDATED");
+        if (!removed.isEmpty())
+            changes.add("REFERENCES_REMOVED");
 
         for (var reference : desired.entrySet()) {
-            if (inputs.stream().anyMatch(input -> input.versionId().equals(reference.getKey()))) continue;
+            if (inputs.stream().anyMatch(input -> input.versionId().equals(reference.getKey())))
+                continue;
             var assignment = drafts.assignWorkflowSlotParameters(owner, project, item, parameters,
                     prompt, before.durationSeconds(), before.capabilityId(), inputs,
                     reference.getValue(), reference.getKey(), null);
-            if (assignment != null) parameters = assignment.parameters();
+            if (assignment != null)
+                parameters = assignment.parameters();
             inputs.add(new MediaDraftService.SaveMediaInput(reference.getKey(),
-                    reference.getValue() == Artifact.Kind.AUDIO ? MediaDraft.InputRole.AUDIO_REFERENCE
-                            : MediaDraft.InputRole.REFERENCE, REFERENCE_COLOR));
+                    reference.getValue() == Artifact.Kind.AUDIO
+                            ? MediaDraft.InputRole.AUDIO_REFERENCE
+                            : MediaDraft.InputRole.REFERENCE,
+                    REFERENCE_COLOR));
             owned.put(reference.getKey(), List.of());
         }
         if (inputs.stream().anyMatch(input -> before.mediaInputs().stream()
-                .noneMatch(old -> old.versionId().equals(input.versionId())))) changes.add("REFERENCES_ADDED");
+                .noneMatch(old -> old.versionId().equals(input.versionId()))))
+            changes.add("REFERENCES_ADDED");
         String speaker = desiredSpeaker(after, kind);
         String previousSpeaker = before.parameters().path("speaker").asText();
         boolean ownsCurrentSpeaker = state.speakerId() != null && state.speakerId().equals(previousSpeaker);
         if (ownsCurrentSpeaker)
             parameters.remove("speaker");
-        if (speaker != null) parameters.put("speaker", speaker);
+        if (speaker != null)
+            parameters.put("speaker", speaker);
         // Selecting the same existing voice does not transfer ownership of a user's setting.
-        String ownedSpeaker = speaker != null && (ownsCurrentSpeaker || !speaker.equals(previousSpeaker)) ? speaker : null;
+        String ownedSpeaker = speaker != null && (ownsCurrentSpeaker || !speaker.equals(previousSpeaker))
+                ? speaker
+                : null;
         if (!parameters.path("speaker").asText().equals(before.parameters().path("speaker").asText()))
             changes.add("SPEAKER_CHANGED");
         MediaDraft.VideoInputMode mode = mode(kind, before, inputs);
@@ -173,41 +191,50 @@ public class MediaCharacterDraftGateway implements CharacterDraftGateway {
         tasks.requireUnoccupied(owner, project, target.subjectId(), item);
         MediaDraft candidate = plan.candidateDraft();
         long version = expectedDraftVersion;
-        if (!plan.sourceIdsToRelease().isEmpty()) version = drafts.releaseInputSourcesWithinChange(
-                owner, project, item, expectedDraftVersion, plan.sourceIdsToRelease()).version();
+        if (!plan.sourceIdsToRelease().isEmpty())
+            version = drafts.releaseInputSourcesWithinChange(
+                    owner, project, item, expectedDraftVersion, plan.sourceIdsToRelease()).version();
         MediaDraft saved = drafts.save(owner, project, item, version,
                 candidate.prompt(), candidate.parameters(), candidate.durationSeconds(), candidate.capabilityId(),
-                candidate.videoInputMode(), commands(candidate.mediaInputs()), candidate.mentions(), candidate.styleId());
+                candidate.videoInputMode(), commands(candidate.mediaInputs()), candidate.mentions(),
+                candidate.styleId());
         Map<UUID, List<UUID>> owned = new LinkedHashMap<>();
-        for (var input : saved.mediaInputs()) if (plan.state().ownedReferenceSources().containsKey(input.versionId())) {
-            List<UUID> previousOwnership = plan.state().ownedReferenceSources().get(input.versionId());
-            List<UUID> sourceIds = input.sources().stream()
-                    .filter(source -> source.type() == MediaDraft.SourceType.MANUAL
-                            && (previousOwnership.isEmpty() || previousOwnership.contains(source.id())))
-                    .map(MediaDraft.InputSource::id).toList();
-            if (!sourceIds.isEmpty()) owned.put(input.versionId(), sourceIds);
-        }
-        return new Applied(saved, new DraftState(Map.copyOf(owned), plan.state().promptBlock(), plan.state().speakerId()));
+        for (var input : saved.mediaInputs())
+            if (plan.state().ownedReferenceSources().containsKey(input.versionId())) {
+                List<UUID> previousOwnership = plan.state().ownedReferenceSources().get(input.versionId());
+                List<UUID> sourceIds = input.sources().stream()
+                        .filter(source -> source.type() == MediaDraft.SourceType.MANUAL
+                                && (previousOwnership.isEmpty() || previousOwnership.contains(source.id())))
+                        .map(MediaDraft.InputSource::id).toList();
+                if (!sourceIds.isEmpty())
+                    owned.put(input.versionId(), sourceIds);
+            }
+        return new Applied(saved,
+                new DraftState(Map.copyOf(owned), plan.state().promptBlock(), plan.state().speakerId()));
     }
 
     private Map<UUID, Artifact.Kind> desiredReferences(List<CharacterSnapshot> snapshots,
             UUID owner, UUID project, Artifact.Kind targetKind, List<String> warnings) {
         Map<UUID, Artifact.Kind> references = new LinkedHashMap<>();
         for (var snapshot : snapshots) {
-            if (snapshot.useAppearance() && snapshot.look() != null) for (var view : snapshot.look().views()) {
-                artifacts.requireMediaVersionForTask(owner, project, view.versionId(), Artifact.Kind.IMAGE);
-                references.put(view.versionId(), Artifact.Kind.IMAGE);
-            }
-            if (!snapshot.useVoice()) continue;
+            if (snapshot.useAppearance() && snapshot.look() != null)
+                for (var view : snapshot.look().views()) {
+                    artifacts.requireMediaVersionForTask(owner, project, view.versionId(), Artifact.Kind.IMAGE);
+                    references.put(view.versionId(), Artifact.Kind.IMAGE);
+                }
+            if (!snapshot.useVoice())
+                continue;
             var voice = snapshot.voice();
-            if (voice == null || voice.versionId() == null && (voice.speakerId() == null || voice.speakerId().isBlank()))
+            if (voice == null
+                    || voice.versionId() == null && (voice.speakerId() == null || voice.speakerId().isBlank()))
                 throw invalid();
             if (voice.versionId() != null) {
                 artifacts.requireMediaVersionForTask(owner, project, voice.versionId(), Artifact.Kind.AUDIO);
                 references.put(voice.versionId(), Artifact.Kind.AUDIO);
             }
             if (targetKind != Artifact.Kind.AUDIO && voice.speakerId() != null && !voice.speakerId().isBlank()) {
-                if (voice.versionId() == null) throw invalid();
+                if (voice.versionId() == null)
+                    throw invalid();
                 warnings.add("SPEAKER_NOT_APPLIED");
             }
         }
@@ -215,37 +242,45 @@ public class MediaCharacterDraftGateway implements CharacterDraftGateway {
     }
 
     private String desiredSpeaker(List<CharacterSnapshot> snapshots, Artifact.Kind kind) {
-        if (kind != Artifact.Kind.AUDIO) return null;
+        if (kind != Artifact.Kind.AUDIO)
+            return null;
         List<String> speakers = snapshots.stream().filter(CharacterSnapshot::useVoice)
                 .map(CharacterSnapshot::voice).filter(java.util.Objects::nonNull)
                 .map(CharacterVoice::speakerId).filter(value -> value != null && !value.isBlank()).distinct().toList();
-        if (speakers.size() > 1) throw invalid();
+        if (speakers.size() > 1)
+            throw invalid();
         return speakers.isEmpty() ? null : speakers.getFirst();
     }
 
     private MediaDraft.VideoInputMode mode(Artifact.Kind kind, MediaDraft before,
             List<MediaDraftService.SaveMediaInput> inputs) {
-        if (kind != Artifact.Kind.VIDEO || inputs.isEmpty()) return before.videoInputMode();
+        if (kind != Artifact.Kind.VIDEO || inputs.isEmpty())
+            return before.videoInputMode();
         boolean requiresGeneral = before.videoInputMode() != MediaDraft.VideoInputMode.START_END
                 || inputs.stream().anyMatch(input -> input.role() != MediaDraft.InputRole.START_FRAME
                         && input.role() != MediaDraft.InputRole.END_FRAME);
-        if (!requiresGeneral) return before.videoInputMode();
+        if (!requiresGeneral)
+            return before.videoInputMode();
         var binding = capabilities.forDraft(before.capabilityId(), Task.Kind.VIDEO_GENERATION);
-        if (!capabilities.inputPolicy(binding).supportedVideoInputModes().contains("GENERAL_REFERENCE")) throw invalid();
+        if (!capabilities.inputPolicy(binding).supportedVideoInputModes().contains("GENERAL_REFERENCE"))
+            throw invalid();
         return MediaDraft.VideoInputMode.GENERAL_REFERENCE;
     }
 
     private void pruneSlots(ObjectNode parameters, Set<UUID> removed, UUID capabilityId) {
-        if (removed.isEmpty() || !(parameters.path(RunningHubDefinition.VALUES_PROPERTY) instanceof ObjectNode values)) return;
+        if (removed.isEmpty() || !(parameters.path(RunningHubDefinition.VALUES_PROPERTY) instanceof ObjectNode values))
+            return;
         // Only declared media slots may be changed. A user scalar that resembles a UUID is not a reference.
         Set<String> slots = capabilityId == null ? Set.of() : capabilities.declaredMediaSlotKeys(capabilityId);
-        for (String slot : slots) if (removed.stream().anyMatch(id -> id.toString().equals(values.path(slot).asText())))
-            values.remove(slot);
+        for (String slot : slots)
+            if (removed.stream().anyMatch(id -> id.toString().equals(values.path(slot).asText())))
+                values.remove(slot);
     }
 
     @Override
     public String describeSnapshots(List<CharacterSnapshot> snapshots) {
-        if (snapshots.isEmpty()) return "";
+        if (snapshots.isEmpty())
+            return "";
         StringBuilder text = new StringBuilder("\n\n").append(BLOCK_START);
         for (var snapshot : snapshots) {
             text.append("\nCharacter: ").append(snapshot.name());
@@ -255,19 +290,24 @@ public class MediaCharacterDraftGateway implements CharacterDraftGateway {
                 line(text, "Clothing", snapshot.look().clothing());
                 line(text, "Expression", snapshot.look().expression());
                 line(text, "Appearance", snapshot.look().description());
-                for (var view : snapshot.look().views()) line(text, view.purpose(), view.description());
+                for (var view : snapshot.look().views())
+                    line(text, view.purpose(), view.description());
             }
-            if (snapshot.useVoice() && snapshot.voice() != null) line(text, "Voice", snapshot.voice().description());
+            if (snapshot.useVoice() && snapshot.voice() != null)
+                line(text, "Voice", snapshot.voice().description());
         }
         return text.append('\n').append(BLOCK_END).toString();
     }
 
     private void line(StringBuilder text, String label, String value) {
-        if (value != null && !value.isBlank()) text.append('\n').append(label).append(": ").append(value);
+        if (value != null && !value.isBlank())
+            text.append('\n').append(label).append(": ").append(value);
     }
 
     private List<MediaDraftService.SaveMediaInput> commands(List<MediaDraft.MediaInput> inputs) {
-        return inputs.stream().map(input -> new MediaDraftService.SaveMediaInput(input.versionId(), input.role(), input.color())).toList();
+        return inputs.stream()
+                .map(input -> new MediaDraftService.SaveMediaInput(input.versionId(), input.role(), input.color()))
+                .toList();
     }
     private ApiProblemException invalid() {
         return new ApiProblemException(HttpStatus.BAD_REQUEST, "CHARACTER_INPUT_INCOMPATIBLE",

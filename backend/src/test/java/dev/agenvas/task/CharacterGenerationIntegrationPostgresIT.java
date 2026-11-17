@@ -52,31 +52,51 @@ import tools.jackson.databind.ObjectMapper;
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class CharacterGenerationIntegrationPostgresIT {
-    @TempDir static Path storage;
-    @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
-    @DynamicPropertySource static void database(DynamicPropertyRegistry properties) {
+    @TempDir
+    static Path storage;
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    @DynamicPropertySource
+    static void database(DynamicPropertyRegistry properties) {
         properties.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         properties.add("spring.datasource.username", POSTGRES::getUsername);
         properties.add("spring.datasource.password", POSTGRES::getPassword);
         properties.add("agenvas.storage.root", () -> storage.toString());
     }
-    @Autowired IdentityService identities;
-    @Autowired ProjectService projects;
-    @Autowired AssetService assets;
-    @Autowired ArtifactService artifacts;
-    @Autowired CanvasService canvas;
-    @Autowired MediaDraftService drafts;
-    @Autowired CharacterService characters;
-    @Autowired DirectMediaTaskService media;
-    @Autowired TaskService tasks;
-    @Autowired MediaExecutionWorker worker;
-    @Autowired AgentInstanceService agents;
-    @Autowired AgentRunService runs;
-    @Autowired CanvasAgentToolService agentCanvas;
-    @Autowired ReadToolService reader;
-    @Autowired ProjectExportManifestService exports;
-    @Autowired PlatformTransactionManager transactions;
-    @Autowired ObjectMapper mapper;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    ProjectService projects;
+    @Autowired
+    AssetService assets;
+    @Autowired
+    ArtifactService artifacts;
+    @Autowired
+    CanvasService canvas;
+    @Autowired
+    MediaDraftService drafts;
+    @Autowired
+    CharacterService characters;
+    @Autowired
+    DirectMediaTaskService media;
+    @Autowired
+    TaskService tasks;
+    @Autowired
+    MediaExecutionWorker worker;
+    @Autowired
+    AgentInstanceService agents;
+    @Autowired
+    AgentRunService runs;
+    @Autowired
+    CanvasAgentToolService agentCanvas;
+    @Autowired
+    ReadToolService reader;
+    @Autowired
+    ProjectExportManifestService exports;
+    @Autowired
+    PlatformTransactionManager transactions;
+    @Autowired
+    ObjectMapper mapper;
 
     @Test
     void fixedCharacterFlowsThroughDraftApprovalTaskResultAndSafeProjectExport() {
@@ -129,7 +149,8 @@ class CharacterGenerationIntegrationPostgresIT {
             assertThat(binding.snapshots().getFirst().characterVersion()).isEqualTo(character.version());
             assertThat(binding.needsReview()).isTrue();
         });
-        assertThat(drafts.get(owner.userId(), project.id(), itemId).prompt()).contains("Blue coat").doesNotContain("Red coat");
+        assertThat(drafts.get(owner.userId(), project.id(), itemId).prompt()).contains("Blue coat")
+                .doesNotContain("Red coat");
         assertThat(characters.listForAgent(owner.userId(), project.id()).bindings().getFirst().needsReview()).isTrue();
         assertJsonSemantics(tasks.get(owner.userId(), project.id(), accepted.id()).input().path("mediaInput"), frozen);
         assertThat(worker.submitOnce("character-integration-worker")).isEqualTo(1);
@@ -138,17 +159,20 @@ class CharacterGenerationIntegrationPostgresIT {
         assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
         var resultVersion = canvas.listMediaVersions(owner.userId(), project.id(), itemId).getFirst();
         assertJsonSemantics(resultVersion.frozenInput(), frozen);
-        assertThat(resultVersion.frozenInput().at("/characterBindings/0/characterVersion").asLong()).isEqualTo(character.version());
+        assertThat(resultVersion.frozenInput().at("/characterBindings/0/characterVersion").asLong())
+                .isEqualTo(character.version());
         assertThat(resultVersion.frozenInput().at("/images/0/versionId").asText()).isEqualTo(oldImage.toString());
 
         // The directory exposes planning metadata; an off-canvas profile image remains unreadable.
         var agent = configureDirector(agents, owner.userId(), project.id(), "Director", "Read continuity settings");
-        var run = runs.create(owner.userId(), project.id(), agent.id(), "Review characters", "character-agent-run").run();
+        var run = runs.create(owner.userId(), project.id(), agent.id(), "Review characters", "character-agent-run")
+                .run();
         var context = new TrustedToolContext(owner.userId(), project.id(), run.id());
         var directory = agentCanvas.readCanvas(context, run, UUID.randomUUID(), "{\"limit\":1}");
         assertThat(directory.at("/characters/0/name").asText()).isEqualTo("Aster");
         assertThat(directory.at("/characters/0/textDetailsOmitted").asBoolean()).isTrue();
-        assertThat(directory.at("/data/0/characterBindings/0/snapshots/0/characterVersion").asLong()).isEqualTo(character.version());
+        assertThat(directory.at("/data/0/characterBindings/0/snapshots/0/characterVersion").asLong())
+                .isEqualTo(character.version());
         assertThat(directory.at("/data/0/characterBindings/0/needsReview").asBoolean()).isTrue();
         assertThat(directory.toString()).doesNotContain(newImage.toString());
         var detailRequest = mapper.createObjectNode().put("limit", 1).put("characterId", characterId.toString())
@@ -160,14 +184,15 @@ class CharacterGenerationIntegrationPostgresIT {
         var read = mapper.createObjectNode();
         read.putArray("versionIds").add(newImage.toString());
         assertThatThrownBy(() -> reader.artifacts(context, run, UUID.randomUUID(), read.toString()))
-                .isInstanceOfSatisfying(ApiProblemException.class, problem ->
-                        assertThat(problem.code()).isEqualTo("INPUT_SCOPE_DENIED"));
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        problem -> assertThat(problem.code()).isEqualTo("INPUT_SCOPE_DENIED"));
 
         JsonNode manifest = mapper.valueToTree(exports.build(owner.userId(), project.id()));
         assertThat(manifest.at("/characters/characters/0/content/looks/0/clothing").asText()).isEqualTo("Red coat");
         assertThat(manifest.at("/characters/bindings/0/snapshots/0/look/clothing").asText()).isEqualTo("Blue coat");
         assertThat(manifest.at("/characters/bindings/0/contribution/promptBlock").asText()).contains("Blue coat");
-        assertThat(manifest.toString()).doesNotContain("objectKey", "contentUrl", "thumbnailUrl", "ownerId", "relayProfileId");
+        assertThat(manifest.toString()).doesNotContain("objectKey", "contentUrl", "thumbnailUrl", "ownerId",
+                "relayProfileId");
 
         // An Agent replacement removes the applied description: the binding becomes unusable.
         var replace = mapper.createObjectNode().put("itemId", itemId.toString())
@@ -185,7 +210,8 @@ class CharacterGenerationIntegrationPostgresIT {
         var currentDraft = drafts.get(owner.userId(), project.id(), itemId);
         var nextSelection = new CharacterBindingSelection(characterId, revised.version(), lookId, true, false);
         var nextPreview = characters.preview(owner.userId(), project.id(), itemId,
-                new PreviewCharacterBindings(currentBinding.version(), currentDraft.version(), List.of(nextSelection), ClearMode.REMOVE_OWNED));
+                new PreviewCharacterBindings(currentBinding.version(), currentDraft.version(), List.of(nextSelection),
+                        ClearMode.REMOVE_OWNED));
         characters.apply(owner.userId(), project.id(), itemId,
                 new ApplyCharacterBindings(UUID.randomUUID(), currentBinding.version(), currentDraft.version(),
                         List.of(nextSelection), ClearMode.REMOVE_OWNED, nextPreview.previewHash()));
@@ -202,7 +228,8 @@ class CharacterGenerationIntegrationPostgresIT {
         assertThat(lateBinding.needsReview()).isTrue();
         assertThat(drafts.get(owner.userId(), project.id(), lateCard.id()).mediaInputs())
                 .extracting(input -> input.versionId()).containsExactly(oldImage);
-        assertJsonSemantics(characters.frozenBindings(owner.userId(), project.id(), lateCard.id()), frozen.path("characterBindings"));
+        assertJsonSemantics(characters.frozenBindings(owner.userId(), project.id(), lateCard.id()),
+                frozen.path("characterBindings"));
         assertJsonSemantics(resultVersion.frozenInput(), frozen);
     }
 

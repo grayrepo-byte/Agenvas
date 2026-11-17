@@ -23,7 +23,8 @@ class KlingVideoAdapterTest {
             mock(CredentialCipher.class), mock(KlingClient.class), mock(KlingMediaDownloadPolicy.class), mapper,
             mock(KlingPreparedMedia.class), tools);
 
-    @Test void validatesOrdinaryDurationAndPreservesNativeAudioStreams() {
+    @Test
+    void validatesOrdinaryDurationAndPreservesNativeAudioStreams() {
         var profile = KlingModels.resolve("kling-3.0", "GENERATE", Task.Kind.VIDEO_GENERATION);
         var values = mapper.createObjectNode().put("duration", 5).put("audio", "native");
         probe(5.2, true, true);
@@ -36,14 +37,15 @@ class KlingVideoAdapterTest {
                 .isInstanceOf(KlingMediaDownloadPolicy.Rejected.class);
     }
 
-    @Test void acceptsShorterValidMotionSegmentsAndRejectsInvalidOrOverlongResults() {
+    @Test
+    void acceptsShorterValidMotionSegmentsAndRejectsInvalidOrOverlongResults() {
         var profile = KlingModels.resolve("kling-3.0", "MOTION_CONTROL", Task.Kind.VIDEO_GENERATION);
         var values = mapper.createObjectNode().put("character_orientation", "video").put("audio", "original");
         probe(3, true, true);
         adapter.validateResult(null, profile, values, Path.of("synthetic-result"));
         probe(12, true, true);
         adapter.validateResult(null, profile, values, Path.of("synthetic-result"));
-        for (double invalid : new double[] {1, 31, Double.NaN}) {
+        for (double invalid : new double[]{1, 31, Double.NaN}) {
             probe(invalid, true, true);
             assertThatThrownBy(() -> adapter.validateResult(null, profile, values, Path.of("synthetic-result")))
                     .isInstanceOf(KlingMediaDownloadPolicy.Rejected.class);
@@ -56,9 +58,11 @@ class KlingVideoAdapterTest {
                 .isInstanceOf(KlingMediaDownloadPolicy.Rejected.class);
     }
 
-    @Test void baseVideoEditCanKeepItsSourceDurationInsteadOfTheDefaultRequestedDuration() {
+    @Test
+    void baseVideoEditCanKeepItsSourceDurationInsteadOfTheDefaultRequestedDuration() {
         var profile = KlingModels.resolve("kling-3.0-omni", "GENERATE", Task.Kind.VIDEO_GENERATION);
-        var values = mapper.createObjectNode().put("duration", 5).put("base_video", java.util.UUID.randomUUID().toString());
+        var values = mapper.createObjectNode().put("duration", 5).put("base_video",
+                java.util.UUID.randomUUID().toString());
         probe(10, true, true);
         adapter.validateResult(null, profile, values, Path.of("synthetic-result"));
     }
@@ -67,8 +71,10 @@ class KlingVideoAdapterTest {
         var probe = mapper.createObjectNode();
         probe.putObject("format").put("format_name", "mov,mp4").put("duration", Double.toString(duration));
         var streams = probe.putArray("streams");
-        if (video) streams.addObject().put("codec_type", "video");
-        if (audio) streams.addObject().put("codec_type", "audio");
+        if (video)
+            streams.addObject().put("codec_type", "video");
+        if (audio)
+            streams.addObject().put("codec_type", "audio");
         when(tools.ffprobe(anyList())).thenReturn(mapper.writeValueAsString(probe));
     }
 }

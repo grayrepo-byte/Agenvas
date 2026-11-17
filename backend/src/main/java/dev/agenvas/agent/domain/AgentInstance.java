@@ -13,4 +13,5 @@ public record AgentInstance(
         String instruction,
         long version,
         Instant createdAt,
-        Instant updatedAt) {}
+        Instant updatedAt) {
+}

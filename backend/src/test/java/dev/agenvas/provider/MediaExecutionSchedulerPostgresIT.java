@@ -53,17 +53,28 @@ class MediaExecutionSchedulerPostgresIT {
         registry.add("agenvas.storage.root", STORAGE_ROOT::toString);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private TaskService tasks;
-    @Autowired private ArtifactService artifacts;
-    @Autowired private AssetService assets;
-    @Autowired private ObjectMapper mapper;
-    @Autowired private MediaExecutionScheduler scheduler;
-    @Autowired private MediaDraftService drafts;
-    @Autowired private CanvasService canvas;
-    @Autowired private DirectMediaTaskService directMedia;
-    @Autowired private JdbcClient jdbc;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private ArtifactService artifacts;
+    @Autowired
+    private AssetService assets;
+    @Autowired
+    private ObjectMapper mapper;
+    @Autowired
+    private MediaExecutionScheduler scheduler;
+    @Autowired
+    private MediaDraftService drafts;
+    @Autowired
+    private CanvasService canvas;
+    @Autowired
+    private DirectMediaTaskService directMedia;
+    @Autowired
+    private JdbcClient jdbc;
 
     @Test
     void backgroundTickCreatesReadableImageThroughTheBoundMediaPipeline() throws Exception {

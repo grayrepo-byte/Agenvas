@@ -25,10 +25,23 @@ class LlmProtocolCodecTest {
     private final LlmProtocolCodec codec = new LlmProtocolCodec(mapper);
 
     @Test
+    void budgetedRequestRemainsEqualAfterJsonStorageRoundTrip() {
+        for (long version : List.of(1L, (long) Integer.MAX_VALUE + 1)) {
+            var budget = new LlmRequestBudget(1, 32768, 4096, 28672, 16384,
+                    dev.agenvas.settings.application.LlmModelPolicy.OutputParameter.MAX_TOKENS, version);
+            var request = codec.withBudget(codec.request(List.of(new UserMessage("hello")), List.of()), budget);
+            var stored = mapper.readTree(request.toString());
+            assertThat(stored).isEqualTo(request);
+            assertThat(codec.requestBudget(stored)).isEqualTo(budget);
+        }
+    }
+
+    @Test
     void restoresMediaContinuationLargerThanTheOldRequestLimit() {
         AssistantMessage assistant = AssistantMessage.builder().content("")
                 .toolCalls(List.of(new AssistantMessage.ToolCall(
-                        "media-call", "function", "propose_media_generation", "{}"))).build();
+                        "media-call", "function", "propose_media_generation", "{}")))
+                .build();
         ObjectNode result = mapper.createObjectNode().put("status", "SUCCEEDED");
         // Synthetic repeated Skill previews reproduce a completed media batch's large receipt.
         result.put("creativeSkill", "创作规范".repeat(50_000));
@@ -121,7 +134,8 @@ class LlmProtocolCodecTest {
 
         AssistantMessage assistant = AssistantMessage.builder().content("")
                 .toolCalls(List.of(new AssistantMessage.ToolCall(
-                        "call-1", "function", "create_text", "{}"))).build();
+                        "call-1", "function", "create_text", "{}")))
+                .build();
         assertThatThrownBy(() -> codec.toolResults(assistant, Map.of()))
                 .isInstanceOf(IllegalArgumentException.class);
         ObjectNode response = codec.response(new ChatResponse(List.of(new Generation(assistant))));

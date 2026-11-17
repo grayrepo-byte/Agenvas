@@ -19,11 +19,13 @@ public final class PublicAssistantResponse {
             "reasoning", "reasoningText", "reasoning_text", "reasoningDetails", "reasoning_details",
             "analysis", "thoughts", "thought", "thinking", THOUGHT_FLAG, PUBLIC_OUTPUT);
 
-    private PublicAssistantResponse() {}
+    private PublicAssistantResponse() {
+    }
 
     /** Tools, opaque protocol data, usage and finish reasons remain available for caller-driven execution. */
     public static ChatResponse sanitize(ChatResponse response) {
-        if (response == null) throw new IllegalStateException("Model returned no response");
+        if (response == null)
+            throw new IllegalStateException("Model returned no response");
         List<Generation> generations = new ArrayList<>();
         for (Generation generation : response.getResults()) {
             AssistantMessage safe = sanitize(generation.getOutput());
@@ -51,15 +53,18 @@ public final class PublicAssistantResponse {
     public static AssistantMessage sanitize(AssistantMessage original) {
         String text = original.getText();
         Object publicOutput = original.getMetadata().get(PUBLIC_OUTPUT);
-        if (publicOutput instanceof String value) text = value;
-        else if (Boolean.parseBoolean(String.valueOf(original.getMetadata().get(THOUGHT_FLAG)))) text = "";
+        if (publicOutput instanceof String value)
+            text = value;
+        else if (Boolean.parseBoolean(String.valueOf(original.getMetadata().get(THOUGHT_FLAG))))
+            text = "";
         return AssistantMessage.builder().content(text).properties(safeMetadata(original.getMetadata()))
                 .toolCalls(original.getToolCalls()).media(original.getMedia()).build();
     }
 
     /** Only the selected assistant's public content enters SSE; tools and metadata never do. */
     public static String text(ChatResponse response) {
-        if (response.getResult() == null) return "";
+        if (response.getResult() == null)
+            return "";
         String value = response.getResult().getOutput().getText();
         return value == null ? "" : value;
     }
@@ -73,7 +78,8 @@ public final class PublicAssistantResponse {
     private static Map<String, Object> safeMetadata(Map<String, ?> original) {
         Map<String, Object> safe = new LinkedHashMap<>();
         original.forEach((key, value) -> {
-            if (!PRIVATE_FIELDS.contains(key)) safe.put(key, safeValue(value));
+            if (!PRIVATE_FIELDS.contains(key))
+                safe.put(key, safeValue(value));
         });
         return safe;
     }
@@ -88,7 +94,8 @@ public final class PublicAssistantResponse {
             });
             return safe;
         }
-        if (value instanceof List<?> list) return list.stream().map(PublicAssistantResponse::safeValue).toList();
+        if (value instanceof List<?> list)
+            return list.stream().map(PublicAssistantResponse::safeValue).toList();
         return value;
     }
 }

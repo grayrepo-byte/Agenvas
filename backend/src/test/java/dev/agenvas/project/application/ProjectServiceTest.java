@@ -27,14 +27,16 @@ class ProjectServiceTest {
         when(rows.lockRunSlot(owner, id)).thenReturn(Optional.of(new ProjectRepository.RunSlot(status, runId)));
     }
 
-    @Test void deletesAnArchivedProjectWithItsExpectedVersion() {
+    @Test
+    void deletesAnArchivedProjectWithItsExpectedVersion() {
         stored(Project.Status.ARCHIVED, 2, null);
         when(rows.delete(owner, id, 2, now)).thenReturn(true);
         service.delete(owner, id, 2);
         verify(rows).delete(owner, id, 2, now);
     }
 
-    @Test void rejectsActiveProjectsAndRunsWithoutWriting() {
+    @Test
+    void rejectsActiveProjectsAndRunsWithoutWriting() {
         stored(Project.Status.ACTIVE, 2, null);
         assertCode(() -> service.delete(owner, id, 2), "PROJECT_NOT_ARCHIVED");
         stored(Project.Status.ARCHIVED, 2, UUID.randomUUID());
@@ -42,13 +44,15 @@ class ProjectServiceTest {
         verify(rows, never()).delete(any(), any(), anyLong(), any());
     }
 
-    @Test void conflictsOnStaleVersionsAndFailedCas() {
+    @Test
+    void conflictsOnStaleVersionsAndFailedCas() {
         stored(Project.Status.ARCHIVED, 2, null);
         assertCode(() -> service.delete(owner, id, 1), "VERSION_CONFLICT");
         assertCode(() -> service.delete(owner, id, 2), "VERSION_CONFLICT");
     }
 
-    @Test void replaysOnlyTheVersionThatDeletedTheProject() {
+    @Test
+    void replaysOnlyTheVersionThatDeletedTheProject() {
         stored(Project.Status.DELETED, 3, null);
         service.delete(owner, id, 2);
         assertCode(() -> service.delete(owner, id, 1), "VERSION_CONFLICT");
@@ -56,20 +60,23 @@ class ProjectServiceTest {
         verify(rows, never()).delete(any(), any(), anyLong(), any());
     }
 
-    @Test void hidesDeletedProjectsWhilePreservingExecutionAuditReads() {
+    @Test
+    void hidesDeletedProjectsWhilePreservingExecutionAuditReads() {
         stored(Project.Status.DELETED, 3, null);
         assertCode(() -> service.get(owner, id), "RESOURCE_NOT_FOUND");
         assertThat(service.getRetainedProject(owner, id).status()).isEqualTo(Project.Status.DELETED);
         assertCode(() -> service.requireAvailableRunSlot(owner, id), "RESOURCE_NOT_FOUND");
     }
 
-    @Test void hidesNonexistentAndForeignProjects() {
+    @Test
+    void hidesNonexistentAndForeignProjects() {
         when(rows.lockRunSlot(owner, id)).thenReturn(Optional.empty());
         assertCode(() -> service.delete(owner, id, 0), "RESOURCE_NOT_FOUND");
         verify(rows, never()).delete(any(), any(), anyLong(), any());
     }
 
-    @Test void rejectsNegativeVersionsBeforeLocking() {
+    @Test
+    void rejectsNegativeVersionsBeforeLocking() {
         assertCode(() -> service.delete(owner, id, -1), "VALIDATION_ERROR");
         verifyNoInteractions(rows);
     }

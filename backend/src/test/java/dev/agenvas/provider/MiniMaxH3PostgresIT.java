@@ -53,7 +53,8 @@ import tools.jackson.databind.node.ObjectNode;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = {AgenvasApplication.class, MiniMaxH3PostgresIT.FakeClient.class})
 class MiniMaxH3PostgresIT {
-    @org.junit.jupiter.api.io.TempDir static java.nio.file.Path assetsRoot;
+    @org.junit.jupiter.api.io.TempDir
+    static java.nio.file.Path assetsRoot;
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     private static final String TASK_ID = "synthetic-minimax-h3-task";
@@ -75,21 +76,37 @@ class MiniMaxH3PostgresIT {
                 () -> Base64.getEncoder().encodeToString(new byte[32]));
     }
 
-    @AfterAll static void stopServer() { SERVER.stop(0); }
+    @AfterAll
+    static void stopServer() {
+        SERVER.stop(0);
+    }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private ArtifactService artifacts;
-    @Autowired private AssetService assets;
-    @Autowired private MediaDraftService drafts;
-    @Autowired private CanvasService canvas;
-    @Autowired private DirectMediaTaskService directMedia;
-    @Autowired private MediaCapabilityService catalog;
-    @Autowired private MediaExecutionWorker worker;
-    @Autowired private TaskService tasks;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private ObjectMapper mapper;
-    @Autowired private dev.agenvas.asset.infrastructure.MediaToolRunner mediaTools;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private ArtifactService artifacts;
+    @Autowired
+    private AssetService assets;
+    @Autowired
+    private MediaDraftService drafts;
+    @Autowired
+    private CanvasService canvas;
+    @Autowired
+    private DirectMediaTaskService directMedia;
+    @Autowired
+    private MediaCapabilityService catalog;
+    @Autowired
+    private MediaExecutionWorker worker;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private ObjectMapper mapper;
+    @Autowired
+    private dev.agenvas.asset.infrastructure.MediaToolRunner mediaTools;
 
     @Test
     void acceptedTaskPollsOnlyOriginalIdAndLostCreateResponseStaysUnknown() {
@@ -140,7 +157,8 @@ class MiniMaxH3PostgresIT {
                 text.canvasItemId(), textDraft.version(), "frozen-text-ratio");
         assertThat(textTask.input().at("/mediaInput/providerParameters/ratio").asText()).isEqualTo("16:9");
         var currentProject = projects.get(owner.userId(), text.project().id());
-        projects.update(owner.userId(), text.project().id(), currentProject.version(), null, Project.AspectRatio.PORTRAIT_9_16);
+        projects.update(owner.userId(), text.project().id(), currentProject.version(), null,
+                Project.AspectRatio.PORTRAIT_9_16);
         assertThat(worker.submitOnce("minimax-text-worker")).isEqualTo(1);
         assertThat(LAST_BODY.get().path("ratio").asText()).isEqualTo("16:9");
         assertThat(LAST_BODY.get().path("content").size()).isEqualTo(1);
@@ -153,7 +171,8 @@ class MiniMaxH3PostgresIT {
         var soundDraft = drafts.save(owner.userId(), sound.project().id(), sound.canvasItemId(), sound.draftVersion(),
                 "Follow the sound", mapper.createObjectNode(), CLIP_SECONDS, capability.id(),
                 MediaDraft.VideoInputMode.GENERAL_REFERENCE,
-                List.of(new MediaDraftService.SaveMediaInput(audio.resourceDefaultVersion().id(), MediaDraft.InputRole.AUDIO_REFERENCE, "#7C3AED")),
+                List.of(new MediaDraftService.SaveMediaInput(audio.resourceDefaultVersion().id(),
+                        MediaDraft.InputRole.AUDIO_REFERENCE, "#7C3AED")),
                 List.of(), null);
         directMedia.run(owner.userId(), sound.project().id(), sound.card().artifact().id(), sound.canvasItemId(),
                 soundDraft.version(), "h3-audio-only");
@@ -192,7 +211,9 @@ class MiniMaxH3PostgresIT {
             var bytes = new java.io.ByteArrayOutputStream();
             javax.imageio.ImageIO.write(image, "png", bytes);
             return assets.archiveImage(ownerId, projectId, new java.io.ByteArrayInputStream(bytes.toByteArray())).id();
-        } catch (IOException failure) { throw new IllegalStateException(failure); }
+        } catch (IOException failure) {
+            throw new IllegalStateException(failure);
+        }
     }
 
     private UUID archiveH3Audio(UUID ownerId, UUID projectId) {
@@ -201,9 +222,15 @@ class MiniMaxH3PostgresIT {
             try {
                 mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i",
                         "anullsrc=r=8000:cl=mono", "-t", "2", "-c:a", "pcm_s16le", "-y", path.toString()));
-                try (var input = java.nio.file.Files.newInputStream(path)) { return assets.archiveAudio(ownerId, projectId, input).id(); }
-            } finally { java.nio.file.Files.deleteIfExists(path); }
-        } catch (IOException failure) { throw new IllegalStateException(failure); }
+                try (var input = java.nio.file.Files.newInputStream(path)) {
+                    return assets.archiveAudio(ownerId, projectId, input).id();
+                }
+            } finally {
+                java.nio.file.Files.deleteIfExists(path);
+            }
+        } catch (IOException failure) {
+            throw new IllegalStateException(failure);
+        }
     }
 
     private Task approve(UUID ownerId, Fixture fixture) {
@@ -226,7 +253,10 @@ class MiniMaxH3PostgresIT {
                     assertThat(body.path("resolution").asText()).isEqualTo("768P");
                     LAST_BODY.set(body);
                     CREATES.incrementAndGet();
-                    if (DROP_NEXT_CREATE.getAndSet(false)) { exchange.close(); return; }
+                    if (DROP_NEXT_CREATE.getAndSet(false)) {
+                        exchange.close();
+                        return;
+                    }
                     respond(exchange, "{\"task_id\":\"" + TASK_ID + "\"}");
                 } else {
                     assertThat(exchange.getRequestURI().getPath())
@@ -249,12 +279,15 @@ class MiniMaxH3PostgresIT {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json");
         exchange.sendResponseHeaders(200, bytes.length);
-        try (var output = exchange.getResponseBody()) { output.write(bytes); }
+        try (var output = exchange.getResponseBody()) {
+            output.write(bytes);
+        }
     }
 
     @TestConfiguration
     static class FakeClient {
-        @Bean @Primary
+        @Bean
+        @Primary
         MiniMaxH3Client fakeMiniMaxH3Client(ObjectMapper mapper) {
             return new MiniMaxH3Client(mapper,
                     URI.create("http://127.0.0.1:" + SERVER.getAddress().getPort()));
@@ -263,5 +296,6 @@ class MiniMaxH3PostgresIT {
 
     /** 直连视频任务的固定输入：视频卡片、作为关键帧的图片产物和已保存的草稿版本。 */
     private record Fixture(Project project, ArtifactService.ArtifactView card,
-            ArtifactService.ArtifactView keyframe, UUID canvasItemId, long draftVersion) {}
+            ArtifactService.ArtifactView keyframe, UUID canvasItemId, long draftVersion) {
+    }
 }

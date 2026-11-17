@@ -147,6 +147,9 @@ public interface TaskRepository {
     List<Task> claimDueTextGenerations(String workerId, int limit, Instant now,
             Instant leaseUntil);
 
+    /** Dedicated local ASR worker; recovery can repeat local inference without external side effects. */
+    List<Task> claimDueSubtitleTranscriptions(String workerId, int limit, Instant now, Instant leaseUntil);
+
     /** 在产物写入前保存完整模型响应；重启后相同任务不得再次调用模型。 */
     boolean checkpointTextResponse(UUID taskId, String workerId, long leaseEpoch,
             JsonNode response, Instant now);
@@ -166,6 +169,9 @@ public interface TaskRepository {
             long leaseEpoch,
             Instant now,
             Instant leaseUntil);
+
+    /** Media-only renewal: accepted/canceled submission and original-ID polling may still archive late results. */
+    boolean heartbeatMediaLease(UUID taskId, String workerId, long leaseEpoch, Instant now, Instant leaseUntil);
 
     /** Fenced model-only backoff; releases the lease without allowing any media resubmission. */
     boolean deferAgentTurnRetry(Task lease, String workerId, JsonNode output,
@@ -258,10 +264,12 @@ public interface TaskRepository {
      */
     record ArtifactTarget(UUID taskId, UUID projectId, UUID artifactId,
             UUID expectedCurrentVersionId, long expectedArtifactVersion,
-            UUID canvasItemId) {}
+            UUID canvasItemId) {
+    }
 
     /** Queue position is advisory; a different capability or cancellation can change it. */
-    record QueueStatus(long waitingAhead, String reason) {}
+    record QueueStatus(long waitingAhead, String reason) {
+    }
 
     /** 用户明确接受一次重复费用风险后形成的不可变原任务与替代任务关联。
      * @param projectId 关系所在项目
@@ -274,12 +282,14 @@ public interface TaskRepository {
      */
     record ManualReplacement(UUID projectId, UUID originalTaskId, UUID replacementTaskId,
             UUID approvedByUserId, long originalTaskVersion, String idempotencyKey,
-            Instant createdAt) {}
+            Instant createdAt) {
+    }
 
     /** 过期提交恢复所需的任务、项目和所有者作用域。
      * @param taskId 提交检查点过期的任务
      * @param projectId 任务所属项目
      * @param ownerId 项目所有者，用于恢复事件的归属与授权边界
      */
-    record ExpiredSubmission(UUID taskId, UUID projectId, UUID ownerId) {}
+    record ExpiredSubmission(UUID taskId, UUID projectId, UUID ownerId) {
+    }
 }

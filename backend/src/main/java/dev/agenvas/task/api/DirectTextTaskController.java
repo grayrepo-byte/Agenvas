@@ -49,5 +49,6 @@ public class DirectTextTaskController {
     public record RunRequest(
             @NotBlank @Size(max = 20_000) String prompt,
             @PositiveOrZero long expectedArtifactVersion,
-            @NotNull UUID expectedCurrentVersionId) {}
+            @NotNull UUID expectedCurrentVersionId) {
+    }
 }

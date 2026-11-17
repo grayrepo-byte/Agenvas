@@ -59,14 +59,22 @@ class AgentTurnWorkerPostgresIT {
         properties.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private AgentInstanceService agents;
-    @Autowired private AgentRunService runs;
-    @Autowired private TaskService tasks;
-    @Autowired private AgentTurnWorker worker;
-    @Autowired private FakeGateway gateway;
-    @Autowired private JdbcClient jdbc;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private AgentInstanceService agents;
+    @Autowired
+    private AgentRunService runs;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private AgentTurnWorker worker;
+    @Autowired
+    private FakeGateway gateway;
+    @Autowired
+    private JdbcClient jdbc;
 
     @Test
     void modelToolResultSchedulesASecondDurableTurnThenReleasesTheRunSlot() {
@@ -108,9 +116,9 @@ class AgentTurnWorkerPostgresIT {
         assertThat(runs.get(owner.userId(), project.id(), unavailable.id()).status())
                 .isEqualTo(AgentRun.Status.FAILED);
         assertThat(tasks.listByRun(owner.userId(), project.id(), unavailable.id()))
-                .singleElement().satisfies(task ->
-                        assertThat(task.status()).isEqualTo(Task.Status.FAILED));
-        assertThat(jdbc.sql("select active_run_id is null from project where id=:id").param("id", project.id()).query(Boolean.class).single()).isTrue();
+                .singleElement().satisfies(task -> assertThat(task.status()).isEqualTo(Task.Status.FAILED));
+        assertThat(jdbc.sql("select active_run_id is null from project where id=:id").param("id", project.id())
+                .query(Boolean.class).single()).isTrue();
         AgentRun next = runs.create(owner.userId(), project.id(), agent.id(),
                 "A new instruction can be sent immediately", "after-failure-run").run();
         runs.cancel(owner.userId(), project.id(), next.id());
@@ -138,7 +146,8 @@ class AgentTurnWorkerPostgresIT {
         }
         assertThat(runs.get(owner.userId(), failedContinuation.id(), rollbackRun.id()).status())
                 .isEqualTo(AgentRun.Status.FAILED);
-        assertThat(jdbc.sql("select active_run_id is null from project where id=:id").param("id", failedContinuation.id()).query(Boolean.class).single()).isTrue();
+        assertThat(jdbc.sql("select active_run_id is null from project where id=:id")
+                .param("id", failedContinuation.id()).query(Boolean.class).single()).isTrue();
         assertThat(jdbc.sql("select count(*) from artifact where project_id = :projectId")
                 .param("projectId", failedContinuation.id()).query(Long.class).single()).isEqualTo(1);
         assertThat(runs.get(owner.userId(), failedContinuation.id(), rollbackRun.id()).nextStepIndex())
@@ -146,7 +155,7 @@ class AgentTurnWorkerPostgresIT {
         assertThat(tasks.listByRun(owner.userId(), failedContinuation.id(), rollbackRun.id()))
                 .extracting(Task::status).containsExactly(Task.Status.SUCCEEDED, Task.Status.FAILED);
         assertThat(jdbc.sql("select count(*) from project_event where project_id = :projectId "
-                        + "and type = 'task.status.changed' and payload_json->>'status' = 'SUCCEEDED'")
+                + "and type = 'task.status.changed' and payload_json->>'status' = 'SUCCEEDED'")
                 .param("projectId", failedContinuation.id()).query(Long.class).single()).isEqualTo(completedBefore);
     }
 
@@ -177,7 +186,8 @@ class AgentTurnWorkerPostgresIT {
         @Override
         public Exchange call(List<Message> messages, List<ToolCallback> tools,
                 Map<String, Object> toolContext) {
-            if (onlyLoader(tools)) return load("TEXT");
+            if (onlyLoader(tools))
+                return load("TEXT");
             assertThat(tools.stream().map(tool -> tool.getToolDefinition().name())).contains("create_text");
             int count = calls.incrementAndGet();
             if (count == 1) {

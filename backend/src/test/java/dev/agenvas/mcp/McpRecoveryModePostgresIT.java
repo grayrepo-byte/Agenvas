@@ -42,12 +42,14 @@ import tools.jackson.databind.ObjectMapper;
 /** Real HTTP POST reads stay available in recovery while semantic writes commit no business state. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {"agenvas.recovery-mode=true", "agenvas.mcp.enabled=true",
-                "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
+@SpringBootTest(classes = AgenvasApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
+        "agenvas.recovery-mode=true", "agenvas.mcp.enabled=true",
+        "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class McpRecoveryModePostgresIT {
-    @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
-    @TempDir static Path assets;
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
+    @TempDir
+    static Path assets;
     private static boolean backedUpSchemaPrepared;
 
     @DynamicPropertySource
@@ -64,15 +66,24 @@ class McpRecoveryModePostgresIT {
         properties.add("agenvas.storage.root", () -> assets.toString());
     }
 
-    @LocalServerPort int port;
-    @Autowired IdentityService identities;
-    @Autowired ProjectService projects;
-    @Autowired ArtifactService artifacts;
-    @Autowired CanvasService canvas;
-    @Autowired MediaDraftService drafts;
-    @Autowired McpTokenService tokens;
-    @Autowired JdbcClient jdbc;
-    @Autowired ObjectMapper mapper;
+    @LocalServerPort
+    int port;
+    @Autowired
+    IdentityService identities;
+    @Autowired
+    ProjectService projects;
+    @Autowired
+    ArtifactService artifacts;
+    @Autowired
+    CanvasService canvas;
+    @Autowired
+    MediaDraftService drafts;
+    @Autowired
+    McpTokenService tokens;
+    @Autowired
+    JdbcClient jdbc;
+    @Autowired
+    ObjectMapper mapper;
 
     @Test
     void postReadsWorkButContentAndMediaWritesRemainReadOnlyWithoutLedgerTasksOrEvents() throws Exception {
@@ -108,7 +119,8 @@ class McpRecoveryModePostgresIT {
             assertThat(listed.at("/result/isError").asBoolean()).isFalse();
             assertThat(listed.at("/result/structuredContent/items/0/projectId").asText())
                     .isEqualTo(project.id().toString());
-            JsonNode read = tool(client, credential.token(), "read_canvas", Map.of("projectId", project.id().toString()));
+            JsonNode read = tool(client, credential.token(), "read_canvas",
+                    Map.of("projectId", project.id().toString()));
             assertThat(read.at("/result/isError").asBoolean()).isFalse();
             assertThat(read.at("/result/structuredContent/items/0/canvasItemId").asText())
                     .isEqualTo(canvasItemId.toString());
@@ -138,11 +150,13 @@ class McpRecoveryModePostgresIT {
         assertThat(response.at("/result/structuredContent/status").asInt()).isEqualTo(503);
     }
 
-    private JsonNode tool(HttpClient client, String token, String name, Map<String, Object> arguments) throws Exception {
+    private JsonNode tool(HttpClient client, String token, String name, Map<String, Object> arguments)
+            throws Exception {
         return request(client, token, "tools/call", Map.of("name", name, "arguments", arguments));
     }
 
-    private JsonNode request(HttpClient client, String token, String method, Map<String, Object> params) throws Exception {
+    private JsonNode request(HttpClient client, String token, String method, Map<String, Object> params)
+            throws Exception {
         String body = mapper.writeValueAsString(Map.of("jsonrpc", "2.0", "id", 1, "method", method, "params", params));
         var response = send(client, token, "/mcp", body);
         assertThat(response.statusCode()).as("MCP %s HTTP status", method).isEqualTo(200);

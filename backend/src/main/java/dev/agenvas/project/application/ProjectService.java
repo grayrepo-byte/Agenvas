@@ -60,7 +60,8 @@ public class ProjectService {
     @Transactional(readOnly = true)
     public Project get(UUID ownerId, UUID projectId) {
         Project project = getRetainedProject(ownerId, projectId);
-        if (project.status() == Project.Status.DELETED) throw notFound();
+        if (project.status() == Project.Status.DELETED)
+            throw notFound();
         return project;
     }
 
@@ -86,7 +87,9 @@ public class ProjectService {
                 .orElseThrow(this::notFound);
         if (snapshot.activeRunId() != null) {
             throw new ApiProblemException(HttpStatus.CONFLICT, "ACTIVE_RUN_EXISTS",
-                    ApiMessage.of("api.project-service.the-project-already-has-activities-running"), ApiMessage.of("api.project-service.please-complete-or-cancel-the-current-run-before-starting-a"), false);
+                    ApiMessage.of("api.project-service.the-project-already-has-activities-running"),
+                    ApiMessage.of("api.project-service.please-complete-or-cancel-the-current-run-before-starting-a"),
+                    false);
         }
     }
 
@@ -95,7 +98,8 @@ public class ProjectService {
     public void requireAvailableRunSlot(UUID ownerId, UUID projectId) {
         ProjectRepository.RunSlot slot = projects.lockRunSlot(ownerId, projectId)
                 .orElseThrow(this::notFound);
-        if (slot.projectStatus() == Project.Status.DELETED) throw notFound();
+        if (slot.projectStatus() == Project.Status.DELETED)
+            throw notFound();
         if (slot.projectStatus() == Project.Status.ARCHIVED) {
             throw new ApiProblemException(
                     HttpStatus.CONFLICT,
@@ -212,11 +216,14 @@ public class ProjectService {
     /** 仅删除归档且无活动 Agent Run 的项目；项目锁串行化删除、槽位和重复命令。 */
     @Transactional
     public void delete(UUID ownerId, UUID projectId, long expectedVersion) {
-        if (expectedVersion < 0) throw validation(ApiMessage.of("api.project-service.invalid-expected-version"));
+        if (expectedVersion < 0)
+            throw validation(ApiMessage.of("api.project-service.invalid-expected-version"));
         ProjectRepository.RunSlot slot = projects.lockRunSlot(ownerId, projectId).orElseThrow(this::notFound);
         Project current = getRetainedProject(ownerId, projectId);
-        if (current.status() == Project.Status.DELETED && current.version() == expectedVersion + 1) return;
-        if (current.version() != expectedVersion || current.status() == Project.Status.DELETED) throw versionConflict();
+        if (current.status() == Project.Status.DELETED && current.version() == expectedVersion + 1)
+            return;
+        if (current.version() != expectedVersion || current.status() == Project.Status.DELETED)
+            throw versionConflict();
         if (current.status() != Project.Status.ARCHIVED) {
             throw new ApiProblemException(HttpStatus.CONFLICT, "PROJECT_NOT_ARCHIVED",
                     ApiMessage.of("api.project-service.delete-rejected"),
@@ -227,7 +234,8 @@ public class ProjectService {
                     ApiMessage.of("api.project-service.delete-rejected"),
                     ApiMessage.of("api.project-service.finish-run-before-delete"), false);
         }
-        if (!projects.delete(ownerId, projectId, expectedVersion, clock.instant())) throw versionConflict();
+        if (!projects.delete(ownerId, projectId, expectedVersion, clock.instant()))
+            throw versionConflict();
     }
 
     /** 归档项目仍可读取，但不能修改设置或启动新 Run。 */
@@ -319,11 +327,13 @@ public class ProjectService {
      * @param items 当前页项目，最多为请求 limit 条
      * @param nextCursor 有后续记录时提供的游标，否则为空
      */
-    public record ProjectPage(List<Project> items, String nextCursor) {}
+    public record ProjectPage(List<Project> items, String nextCursor) {
+    }
 
     /** 键集游标边界；时间相同时以 UUID 稳定排序并继续分页。
      * @param createdAt 上一页最后项目的创建时间
      * @param id 上一页最后项目 UUID
      */
-    private record ProjectCursor(Instant createdAt, UUID id) {}
+    private record ProjectCursor(Instant createdAt, UUID id) {
+    }
 }

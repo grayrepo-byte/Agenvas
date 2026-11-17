@@ -22,7 +22,10 @@ public interface ConversationMemoryReader {
     }
 
     /** Public text only: no provider metadata, tool arguments, tool-call IDs or protocol continuation state. */
-    record Entry(Role role, String content) {}
+    record Entry(Role role, String content) {
+    }
 
-    enum Role { USER, ASSISTANT }
+    enum Role {
+        USER, ASSISTANT
+    }
 }

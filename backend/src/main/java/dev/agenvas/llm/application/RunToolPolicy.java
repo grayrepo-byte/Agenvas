@@ -15,7 +15,8 @@ public final class RunToolPolicy {
             "manage_canvas_node", "update_media_draft", "compose_video", "extract_audio", "trim_audio",
             "read_storyboard", "write_storyboard_shots");
 
-    private RunToolPolicy() {}
+    private RunToolPolicy() {
+    }
 
     /** Main instructions are available even for Skills without any resource attachments. */
     public static List<String> current(boolean hasSkills, boolean hasSkillResources) {

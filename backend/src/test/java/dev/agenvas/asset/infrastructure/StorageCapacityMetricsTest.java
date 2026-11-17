@@ -14,7 +14,8 @@ import org.junit.jupiter.api.io.TempDir;
 /** Disk alerts must not mistake an unavailable volume for the last healthy sample. */
 class StorageCapacityMetricsTest {
 
-    @TempDir Path archiveParent;
+    @TempDir
+    Path archiveParent;
 
     @Test
     void realFilesystemSampleUsesTheNearestExistingArchiveParent() {
@@ -40,7 +41,8 @@ class StorageCapacityMetricsTest {
                     new StorageCapacityMetrics.Space(1_000, 250));
             AtomicBoolean fail = new AtomicBoolean();
             StorageCapacityMetrics metrics = new StorageCapacityMetrics(() -> {
-                if (fail.get()) throw new IOException("Injected volume outage");
+                if (fail.get())
+                    throw new IOException("Injected volume outage");
                 return value.get();
             }, meters);
 
@@ -62,8 +64,7 @@ class StorageCapacityMetricsTest {
             assertThat(total(meters)).isEqualTo(2_000);
             assertThat(usable(meters)).isEqualTo(1_000);
             assertThat(ratio(meters)).isEqualTo(0.5);
-            assertThat(meters.getMeters()).allSatisfy(meter ->
-                    assertThat(meter.getId().getTags()).isEmpty());
+            assertThat(meters.getMeters()).allSatisfy(meter -> assertThat(meter.getId().getTags()).isEmpty());
         } finally {
             meters.close();
         }

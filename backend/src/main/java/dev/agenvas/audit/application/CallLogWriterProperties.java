@@ -10,4 +10,5 @@ import org.springframework.validation.annotation.Validated;
 @ConfigurationProperties("agenvas.audit.stream-writer")
 public record CallLogWriterProperties(@DefaultValue("1") @Min(1) @Max(4) int threads,
         @DefaultValue("16") @Min(1) @Max(128) int queueCapacity,
-        @DefaultValue("10") @Min(1) @Max(60) int shutdownSeconds) {}
+        @DefaultValue("10") @Min(1) @Max(60) int shutdownSeconds) {
+}

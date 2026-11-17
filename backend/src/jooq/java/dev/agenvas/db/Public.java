@@ -48,9 +48,11 @@ import dev.agenvas.db.tables.LibraryCommand;
 import dev.agenvas.db.tables.LibraryEntry;
 import dev.agenvas.db.tables.LibraryFile;
 import dev.agenvas.db.tables.LibraryImport;
+import dev.agenvas.db.tables.LlmConnection;
 import dev.agenvas.db.tables.LlmProviderConfig;
 import dev.agenvas.db.tables.LlmProviderConfigCounter;
 import dev.agenvas.db.tables.LlmTurn;
+import dev.agenvas.db.tables.LocalAsrInstallation;
 import dev.agenvas.db.tables.McpAccessToken;
 import dev.agenvas.db.tables.McpOperation;
 import dev.agenvas.db.tables.McpOperationTask;
@@ -98,6 +100,7 @@ import dev.agenvas.db.tables.StorageProfile;
 import dev.agenvas.db.tables.StorageSettings;
 import dev.agenvas.db.tables.Storyboard;
 import dev.agenvas.db.tables.StoryboardRevision;
+import dev.agenvas.db.tables.SubtitleDraft;
 import dev.agenvas.db.tables.Task;
 import dev.agenvas.db.tables.TaskArtifactTarget;
 import dev.agenvas.db.tables.TaskLateResult;
@@ -359,6 +362,12 @@ public class Public extends SchemaImpl {
     public final LibraryImport LIBRARY_IMPORT = LibraryImport.LIBRARY_IMPORT;
 
     /**
+     * Stable named LLM connections pointing to their latest immutable runtime
+     * snapshot
+     */
+    public final LlmConnection LLM_CONNECTION = LlmConnection.LLM_CONNECTION;
+
+    /**
      * 不可变 LLM 连接版本与加密凭据；激活标记选择当前配置
      */
     public final LlmProviderConfig LLM_PROVIDER_CONFIG = LlmProviderConfig.LLM_PROVIDER_CONFIG;
@@ -372,6 +381,12 @@ public class Public extends SchemaImpl {
      * 固定模型配置版本的持久模型回合，保存完整响应后才执行工具
      */
     public final LlmTurn LLM_TURN = LlmTurn.LLM_TURN;
+
+    /**
+     * Explicit administrator consent and durable bounded local speech model
+     * download state
+     */
+    public final LocalAsrInstallation LOCAL_ASR_INSTALLATION = LocalAsrInstallation.LOCAL_ASR_INSTALLATION;
 
     /**
      * User-owned revocable MCP credentials; only the secret hash is stored,
@@ -622,6 +637,11 @@ public class Public extends SchemaImpl {
     public final StoryboardRevision STORYBOARD_REVISION = StoryboardRevision.STORYBOARD_REVISION;
 
     /**
+     * 固定媒体版本的可校正字幕草稿；识别原始结果保存在不可变的任务终态输出中
+     */
+    public final SubtitleDraft SUBTITLE_DRAFT = SubtitleDraft.SUBTITLE_DRAFT;
+
+    /**
      * 持久执行单元；短事务认领、租约及 fencing epoch 保护所有状态写入
      */
     public final Task TASK = Task.TASK;
@@ -736,9 +756,11 @@ public class Public extends SchemaImpl {
             LibraryEntry.LIBRARY_ENTRY,
             LibraryFile.LIBRARY_FILE,
             LibraryImport.LIBRARY_IMPORT,
+            LlmConnection.LLM_CONNECTION,
             LlmProviderConfig.LLM_PROVIDER_CONFIG,
             LlmProviderConfigCounter.LLM_PROVIDER_CONFIG_COUNTER,
             LlmTurn.LLM_TURN,
+            LocalAsrInstallation.LOCAL_ASR_INSTALLATION,
             McpAccessToken.MCP_ACCESS_TOKEN,
             McpOperation.MCP_OPERATION,
             McpOperationTask.MCP_OPERATION_TASK,
@@ -786,6 +808,7 @@ public class Public extends SchemaImpl {
             StorageSettings.STORAGE_SETTINGS,
             Storyboard.STORYBOARD,
             StoryboardRevision.STORYBOARD_REVISION,
+            SubtitleDraft.SUBTITLE_DRAFT,
             Task.TASK,
             TaskArtifactTarget.TASK_ARTIFACT_TARGET,
             TaskLateResult.TASK_LATE_RESULT,

@@ -1,42 +1,80 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent,render,screen,waitFor,within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http,HttpResponse } from "msw";
+import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
-import { describe,expect,it,vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { Artifact,CanvasItem } from "../../shared/api/client";
-import { clickControl,selectValue } from "../../test/controls";
+import type { Artifact, CanvasItem } from "../../shared/api/client";
+import { clickControl, selectValue } from "../../test/controls";
 import { server } from "../../test/server";
 import { ContentCanvasCard } from "./ContentCanvasCard";
 
-vi.mock("@xyflow/react", () => ({ Position: { Top: "top" },
+vi.mock("@xyflow/react", () => ({
+  Position: { Top: "top" },
   NodeToolbar: ({ children, isVisible }: { children: ReactNode; isVisible?: boolean }) =>
-    isVisible !== false ? children : null }));
+    isVisible !== false ? children : null,
+}));
 
 const CREATED_AT = "2026-09-26T00:00:00Z";
 
-function artifact(kind: Artifact["kind"], content: NonNullable<Artifact["resourceDefaultVersion"]>["content"]): Artifact {
-  return { id: "artifact-hidden-id", projectId: "project-hidden-id", kind, title: "创作内容",
-    resourceDefaultVersionId: "version-hidden-id", version: 3, createdAt: CREATED_AT, updatedAt: CREATED_AT,
-    resourceDefaultVersion: { id: "version-hidden-id", versionNo: 2, schemaVersion: 2,
-      content, createdByKind: "USER", createdAt: CREATED_AT, inputReferences: [] } };
+function artifact(
+  kind: Artifact["kind"],
+  content: NonNullable<Artifact["resourceDefaultVersion"]>["content"],
+): Artifact {
+  return {
+    id: "artifact-hidden-id",
+    projectId: "project-hidden-id",
+    kind,
+    title: "创作内容",
+    resourceDefaultVersionId: "version-hidden-id",
+    version: 3,
+    createdAt: CREATED_AT,
+    updatedAt: CREATED_AT,
+    resourceDefaultVersion: {
+      id: "version-hidden-id",
+      versionNo: 2,
+      schemaVersion: 2,
+      content,
+      createdByKind: "USER",
+      createdAt: CREATED_AT,
+      inputReferences: [],
+    },
+  };
 }
 
 function itemFor(value: Artifact): CanvasItem {
-  return { id: "item-hidden-id", subjectType: "ARTIFACT", subjectId: value.id,
-    title: value.title, x: 20, y: 40, width: 280, height: 180, zIndex: 1,
-    groupId: null, locked: false, selectedVersionId: null, selectedVersion: null, version: 0, artifact: value };
+  return {
+    id: "item-hidden-id",
+    subjectType: "ARTIFACT",
+    subjectId: value.id,
+    title: value.title,
+    x: 20,
+    y: 40,
+    width: 280,
+    height: 180,
+    zIndex: 1,
+    groupId: null,
+    locked: false,
+    selectedVersionId: null,
+    selectedVersion: null,
+    version: 0,
+    artifact: value,
+  };
 }
 
 function showCard(value: Artifact, selected = true, locked = false) {
   const onCanvasDoubleClick = vi.fn();
   const client = createQueryClient();
-  const card = (next: Artifact) => <QueryClientProvider client={client}>
-    <div onDoubleClick={onCanvasDoubleClick}>
-      <ContentCanvasCard artifact={next} item={itemFor(next)} selected={selected} locked={locked}><span data-testid="resize-control" /></ContentCanvasCard>
-    </div>
-  </QueryClientProvider>;
+  const card = (next: Artifact) => (
+    <QueryClientProvider client={client}>
+      <div onDoubleClick={onCanvasDoubleClick}>
+        <ContentCanvasCard artifact={next} item={itemFor(next)} selected={selected} locked={locked}>
+          <span data-testid="resize-control" />
+        </ContentCanvasCard>
+      </div>
+    </QueryClientProvider>
+  );
   const result = render(card(value));
   return { ...result, onCanvasDoubleClick, rerenderArtifact: (next: Artifact) => result.rerender(card(next)) };
 }
@@ -80,7 +118,11 @@ describe("ContentCanvasCard", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "编辑内容" }));
     await user.type(screen.getByRole("textbox", { name: "内容" }), "，未保存输入");
-    await user.click(within(screen.getByRole("textbox", { name: "内容" }).closest("form")!).getByRole("button", { name: "退出内容编辑" }));
+    await user.click(
+      within(screen.getByRole("textbox", { name: "内容" }).closest("form")!).getByRole("button", {
+        name: "退出内容编辑",
+      }),
+    );
     expect(await screen.findByRole("dialog", { name: "有未保存的修改" })).toBeVisible();
     await user.click(screen.getByRole("button", { name: "继续编辑" }));
     expect(screen.getByRole("textbox", { name: "内容" })).toHaveValue("已有正文，未保存输入");
@@ -92,9 +134,20 @@ describe("ContentCanvasCard", () => {
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
       http.post("/api/v1/projects/:projectId/artifacts/:artifactId/revisions", async ({ request }) => {
         revision = await request.json();
-        return HttpResponse.json({ ...value, version: 4, resourceDefaultVersionId: "version-3",
-          resourceDefaultVersion: { ...value.resourceDefaultVersion!, id: "version-3", versionNo: 3,
-            content: { format: "PLAIN_TEXT", text: "保存后的正文" } } }, { status: 201 });
+        return HttpResponse.json(
+          {
+            ...value,
+            version: 4,
+            resourceDefaultVersionId: "version-3",
+            resourceDefaultVersion: {
+              ...value.resourceDefaultVersion!,
+              id: "version-3",
+              versionNo: 3,
+              content: { format: "PLAIN_TEXT", text: "保存后的正文" },
+            },
+          },
+          { status: 201 },
+        );
       }),
     );
     showCard(value);
@@ -107,8 +160,11 @@ describe("ContentCanvasCard", () => {
     await user.click(screen.getByRole("button", { name: "保存并退出" }));
     await waitFor(() => expect(screen.queryByRole("textbox", { name: "内容" })).not.toBeInTheDocument());
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(revision).toEqual({ expectedVersion: 3, title: "创作内容",
-      content: { format: "PLAIN_TEXT", text: "保存后的正文" } });
+    expect(revision).toEqual({
+      expectedVersion: 3,
+      title: "创作内容",
+      content: { format: "PLAIN_TEXT", text: "保存后的正文" },
+    });
   });
 
   it("retains the text and pinned CAS version when save-and-exit conflicts", async () => {
@@ -125,13 +181,20 @@ describe("ContentCanvasCard", () => {
     await user.click(screen.getByRole("button", { name: "编辑内容" }));
     await user.type(screen.getByRole("textbox", { name: "内容" }), "，保留草稿");
     expect(screen.getByRole("status")).toHaveTextContent("有未保存的修改");
-    await user.click(within(screen.getByRole("textbox", { name: "内容" }).closest("form")!).getByRole("button", { name: "退出内容编辑" }));
+    await user.click(
+      within(screen.getByRole("textbox", { name: "内容" }).closest("form")!).getByRole("button", {
+        name: "退出内容编辑",
+      }),
+    );
     await user.click(screen.getByRole("button", { name: "保存并退出" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("内容有冲突，修改未保存");
     expect(screen.getByRole("textbox", { name: "内容" })).toHaveValue("原正文，保留草稿");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(revision).toEqual({ expectedVersion: 3, title: "创作内容",
-      content: { format: "PLAIN_TEXT", text: "原正文，保留草稿" } });
+    expect(revision).toEqual({
+      expectedVersion: 3,
+      title: "创作内容",
+      content: { format: "PLAIN_TEXT", text: "原正文，保留草稿" },
+    });
   });
 
   it("keeps the version in the toolbar and shows an exit action during editing", async () => {
@@ -155,9 +218,17 @@ describe("ContentCanvasCard", () => {
 
   it("keeps the toolbar version pinned to an unsaved draft until explicit reload", async () => {
     const value = artifact("TEXT", { format: "PLAIN_TEXT", text: "第二版" });
-    const latest: Artifact = { ...value, version: 4, resourceDefaultVersionId: "version-3",
-      resourceDefaultVersion: { ...value.resourceDefaultVersion!, id: "version-3", versionNo: 3,
-        content: { format: "PLAIN_TEXT", text: "远端第三版" } } };
+    const latest: Artifact = {
+      ...value,
+      version: 4,
+      resourceDefaultVersionId: "version-3",
+      resourceDefaultVersion: {
+        ...value.resourceDefaultVersion!,
+        id: "version-3",
+        versionNo: 3,
+        content: { format: "PLAIN_TEXT", text: "远端第三版" },
+      },
+    };
     server.use(http.get("/api/v1/projects/:projectId/artifacts/:artifactId", () => HttpResponse.json(latest)));
     const card = showCard(value);
     const user = userEvent.setup();
@@ -186,22 +257,32 @@ describe("ContentCanvasCard", () => {
     expect(screen.queryByText(/artifact-hidden-id|version-hidden-id|project-hidden-id/)).not.toBeInTheDocument();
   });
 
-  it.each([true, false])("edits on content double-click when selected=%s and focuses the existing text", async (selected) => {
-    const { onCanvasDoubleClick } = showCard(artifact("TEXT", { format: "PLAIN_TEXT", text: "双击编辑正文" }), selected);
-    const user = userEvent.setup();
-    await user.click(screen.getByText("双击编辑正文"));
-    expect(screen.queryByRole("textbox", { name: "内容" })).not.toBeInTheDocument();
-    await user.dblClick(screen.getByText("双击编辑正文"));
-    const editor = screen.getByRole("textbox", { name: "内容" });
-    expect(editor).toHaveValue("双击编辑正文");
-    expect(editor).toHaveFocus();
-    expect(onCanvasDoubleClick).not.toHaveBeenCalled();
-    await user.type(editor, "，未保存");
-    await user.dblClick(editor);
-    expect(editor).toHaveValue("双击编辑正文，未保存");
-    await user.click(within(screen.getByRole("textbox", { name: "内容" }).closest("form")!).getByRole("button", { name: "退出内容编辑" }));
-    expect(await screen.findByRole("dialog", { name: "有未保存的修改" })).toBeVisible();
-  });
+  it.each([true, false])(
+    "edits on content double-click when selected=%s and focuses the existing text",
+    async selected => {
+      const { onCanvasDoubleClick } = showCard(
+        artifact("TEXT", { format: "PLAIN_TEXT", text: "双击编辑正文" }),
+        selected,
+      );
+      const user = userEvent.setup();
+      await user.click(screen.getByText("双击编辑正文"));
+      expect(screen.queryByRole("textbox", { name: "内容" })).not.toBeInTheDocument();
+      await user.dblClick(screen.getByText("双击编辑正文"));
+      const editor = screen.getByRole("textbox", { name: "内容" });
+      expect(editor).toHaveValue("双击编辑正文");
+      expect(editor).toHaveFocus();
+      expect(onCanvasDoubleClick).not.toHaveBeenCalled();
+      await user.type(editor, "，未保存");
+      await user.dblClick(editor);
+      expect(editor).toHaveValue("双击编辑正文，未保存");
+      await user.click(
+        within(screen.getByRole("textbox", { name: "内容" }).closest("form")!).getByRole("button", {
+          name: "退出内容编辑",
+        }),
+      );
+      expect(await screen.findByRole("dialog", { name: "有未保存的修改" })).toBeVisible();
+    },
+  );
 
   it("enters editing from an empty text card on double-click", async () => {
     showCard(artifact("TEXT", { format: "PLAIN_TEXT", text: "" }), false);
@@ -212,7 +293,9 @@ describe("ContentCanvasCard", () => {
   });
 
   it("renders Markdown as safe source text without executing markup", async () => {
-    const { container } = showCard(artifact("TEXT", { format: "MARKDOWN", text: "# 标题\n<script>private()</script>" }));
+    const { container } = showCard(
+      artifact("TEXT", { format: "MARKDOWN", text: "# 标题\n<script>private()</script>" }),
+    );
     expect(screen.getByText(/# 标题/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "编辑内容" }));
     expect(screen.getByRole("textbox", { name: "内容" })).toHaveValue("# 标题\n<script>private()</script>");
@@ -221,8 +304,11 @@ describe("ContentCanvasCard", () => {
   });
 
   it("does not offer a detached editor for an invalid text artifact without a version", () => {
-    const empty = { ...artifact("TEXT", { format: "PLAIN_TEXT", text: "" }),
-      resourceDefaultVersion: null, resourceDefaultVersionId: null };
+    const empty = {
+      ...artifact("TEXT", { format: "PLAIN_TEXT", text: "" }),
+      resourceDefaultVersion: null,
+      resourceDefaultVersionId: null,
+    };
     showCard(empty);
     expect(screen.getByText("写下想法，让创作开始")).toBeInTheDocument();
     expect(screen.getByText("暂无版本")).toBeInTheDocument();
@@ -252,14 +338,28 @@ describe("ContentCanvasCard", () => {
     let revision: unknown;
     const value = artifact("TEXT", { format: "PLAIN_TEXT", text: "旧正文" });
     server.use(
-      http.get("/api/v1/auth/csrf", () => HttpResponse.json({
-        headerName: "X-XSRF-TOKEN", token: "test-token",
-      })),
+      http.get("/api/v1/auth/csrf", () =>
+        HttpResponse.json({
+          headerName: "X-XSRF-TOKEN",
+          token: "test-token",
+        }),
+      ),
       http.post("/api/v1/projects/:projectId/artifacts/:artifactId/revisions", async ({ request }) => {
         revision = await request.json();
-        return HttpResponse.json({ ...value, version: 4, resourceDefaultVersionId: "version-3",
-          resourceDefaultVersion: { ...value.resourceDefaultVersion!, id: "version-3", versionNo: 3,
-            content: { format: "MARKDOWN", text: "节点内新正文" } } }, { status: 201 });
+        return HttpResponse.json(
+          {
+            ...value,
+            version: 4,
+            resourceDefaultVersionId: "version-3",
+            resourceDefaultVersion: {
+              ...value.resourceDefaultVersion!,
+              id: "version-3",
+              versionNo: 3,
+              content: { format: "MARKDOWN", text: "节点内新正文" },
+            },
+          },
+          { status: 201 },
+        );
       }),
     );
     showCard(value);
@@ -270,8 +370,13 @@ describe("ContentCanvasCard", () => {
     await user.type(editor, "节点内新正文");
     await selectValue(screen.getByRole("combobox", { name: "文字格式" }), "MARKDOWN");
     await user.click(screen.getByRole("button", { name: "保存新版本" }));
-    await waitFor(() => expect(revision).toEqual({ expectedVersion: 3, title: "创作内容",
-      content: { format: "MARKDOWN", text: "节点内新正文" } }));
+    await waitFor(() =>
+      expect(revision).toEqual({
+        expectedVersion: 3,
+        title: "创作内容",
+        content: { format: "MARKDOWN", text: "节点内新正文" },
+      }),
+    );
     expect(await screen.findByText("新版本已保存")).toBeVisible();
     expect(within(screen.getByLabelText("文字卡片操作")).getByRole("button", { name: /v3/ })).toBeVisible();
   });
@@ -283,13 +388,27 @@ describe("ContentCanvasCard", () => {
     server.use(
       http.get("/api/v1/projects/:projectId/artifacts/:artifactId/versions", () => {
         reads++;
-        return HttpResponse.json({ items: [value.resourceDefaultVersion,
-          { ...value.resourceDefaultVersion!, id: "version-1", versionNo: 1, content: {
-            format: "PLAIN_TEXT", text: "第一版" } }] });
+        return HttpResponse.json({
+          items: [
+            value.resourceDefaultVersion,
+            {
+              ...value.resourceDefaultVersion!,
+              id: "version-1",
+              versionNo: 1,
+              content: {
+                format: "PLAIN_TEXT",
+                text: "第一版",
+              },
+            },
+          ],
+        });
       }),
-      http.get("/api/v1/auth/csrf", () => HttpResponse.json({
-        headerName: "X-XSRF-TOKEN", token: "test-token",
-      })),
+      http.get("/api/v1/auth/csrf", () =>
+        HttpResponse.json({
+          headerName: "X-XSRF-TOKEN",
+          token: "test-token",
+        }),
+      ),
       http.post("/api/v1/projects/:projectId/artifacts/:artifactId/set-default-version", async ({ request }) => {
         selection = await request.json();
         return HttpResponse.json(value);
@@ -308,9 +427,13 @@ describe("ContentCanvasCard", () => {
 
   it("keeps a dirty inline draft and blocks version switching", async () => {
     const value = artifact("TEXT", { format: "PLAIN_TEXT", text: "第二版" });
-    server.use(http.get("/api/v1/projects/:projectId/artifacts/:artifactId/versions", () =>
-      HttpResponse.json({ items: [value.resourceDefaultVersion,
-        { ...value.resourceDefaultVersion!, id: "version-1", versionNo: 1 }] })));
+    server.use(
+      http.get("/api/v1/projects/:projectId/artifacts/:artifactId/versions", () =>
+        HttpResponse.json({
+          items: [value.resourceDefaultVersion, { ...value.resourceDefaultVersion!, id: "version-1", versionNo: 1 }],
+        }),
+      ),
+    );
     showCard(value);
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "编辑内容" }));

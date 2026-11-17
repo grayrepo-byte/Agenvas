@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { VIDEO_CAMERA_MOTIONS, sampleVideoCameraMotion, type VideoCameraMotionProfile, type VideoCameraMotionState } from "./videoCameraMotion";
+import {
+  VIDEO_CAMERA_MOTIONS,
+  sampleVideoCameraMotion,
+  type VideoCameraMotionProfile,
+  type VideoCameraMotionState,
+} from "./videoCameraMotion";
 import { VIDEO_PROMPT_PRESETS } from "./videoPromptPresets";
 
 function profile(id: string): VideoCameraMotionProfile {
@@ -14,7 +19,7 @@ function distance(a: readonly number[], b: readonly number[]): number {
   return Math.hypot(...a.map((value, index) => value - b[index]!));
 }
 function framingScale(state: VideoCameraMotionState): number {
-  return distance(state.position, state.subject) * Math.tan(state.fov * Math.PI / 360);
+  return distance(state.position, state.subject) * Math.tan((state.fov * Math.PI) / 360);
 }
 function viewDirection(state: VideoCameraMotionState): readonly number[] {
   return state.target.map((value, axis) => value - state.position[axis]!);
@@ -42,8 +47,17 @@ describe("authored video camera motion", () => {
         const progress = step / 40;
         const state = sampleVideoCameraMotion(motion, progress);
         expect(sampleVideoCameraMotion(motion, progress)).toEqual(state);
-        const values = [...state.position, ...state.target, ...state.subject, state.fov, state.roll,
-          state.focus, state.occluder, state.light, state.blur];
+        const values = [
+          ...state.position,
+          ...state.target,
+          ...state.subject,
+          state.fov,
+          state.roll,
+          state.focus,
+          state.occluder,
+          state.light,
+          state.blur,
+        ];
         expect(values.every(Number.isFinite), `${motion.id} at ${progress}`).toBe(true);
         expect(distance(state.position, state.target)).toBeGreaterThan(0.1);
         expect(state.position[1]).toBeGreaterThan(0.1);
@@ -62,8 +76,18 @@ describe("authored video camera motion", () => {
   });
 
   it("holds fixed framing still while an existing subject can move inside it", () => {
-    const framing = ["locked-off-wide", "over-the-shoulder", "expressive-close-up", "extreme-detail-close-up",
-      "medium-shot", "balanced-two-shot", "low-angle-framing", "high-angle-framing", "dutch-angle-framing", "deep-focus-wide"];
+    const framing = [
+      "locked-off-wide",
+      "over-the-shoulder",
+      "expressive-close-up",
+      "extreme-detail-close-up",
+      "medium-shot",
+      "balanced-two-shot",
+      "low-angle-framing",
+      "high-angle-framing",
+      "dutch-angle-framing",
+      "deep-focus-wide",
+    ];
     for (const id of framing) {
       expect(profile(id).motion).toBe("locked");
       const start = sample(id, 0);
@@ -106,8 +130,15 @@ describe("authored video camera motion", () => {
   });
 
   it("transfers focus and reveals light or occlusion without inventing camera travel", () => {
-    for (const id of ["rack-focus-near-to-far", "rack-focus-far-to-near", "macro-focus-travel",
-      "moving-occluder-reveal", "defocus-to-sharp-reveal", "shadow-exposure-reveal", "motivated-light-reveal"]) {
+    for (const id of [
+      "rack-focus-near-to-far",
+      "rack-focus-far-to-near",
+      "macro-focus-travel",
+      "moving-occluder-reveal",
+      "defocus-to-sharp-reveal",
+      "shadow-exposure-reveal",
+      "motivated-light-reveal",
+    ]) {
       const start = sample(id, 0);
       for (const progress of [0.2, 0.5, 0.8, 1]) {
         const state = sample(id, progress);
@@ -140,7 +171,8 @@ describe("authored video camera motion", () => {
     expect(sample("full-orbit-shot", 0.5).position[2]).toBeLessThan(0);
     expect(sample("full-orbit-shot", 0.75).position[0]).toBeGreaterThan(0);
     expect(distance(sample("full-orbit-shot", 0).position, sample("full-orbit-shot", 1).position)).toBeLessThan(1e-10);
-    const horizontalRadius = (id: string, at: number) => Math.hypot(sample(id, at).position[0], sample(id, at).position[2]);
+    const horizontalRadius = (id: string, at: number) =>
+      Math.hypot(sample(id, at).position[0], sample(id, at).position[2]);
     expect(horizontalRadius("spiral-in-orbit", 1)).toBeLessThan(horizontalRadius("spiral-in-orbit", 0));
     expect(horizontalRadius("spiral-out-orbit", 1)).toBeGreaterThan(horizontalRadius("spiral-out-orbit", 0));
     expect(sample("rising-orbit", 1).position[1]).toBeGreaterThan(sample("rising-orbit", 0).position[1]);
@@ -162,7 +194,13 @@ describe("authored video camera motion", () => {
   });
 
   it("keeps tracking distance and distinguishes pedestal translation from camera tilt", () => {
-    for (const id of ["front-leading-tracking", "parallel-profile-tracking", "ground-level-follow", "three-quarter-front-tracking", "vertical-subject-follow"]) {
+    for (const id of [
+      "front-leading-tracking",
+      "parallel-profile-tracking",
+      "ground-level-follow",
+      "three-quarter-front-tracking",
+      "vertical-subject-follow",
+    ]) {
       const initialDistance = distance(sample(id, 0).position, sample(id, 0).subject);
       expect(distance(sample(id, 0.5).position, sample(id, 0.5).subject)).toBeCloseTo(initialDistance, 9);
       expect(distance(sample(id, 1).position, sample(id, 1).subject)).toBeCloseTo(initialDistance, 9);
@@ -172,7 +210,9 @@ describe("authored video camera motion", () => {
       expect(sample(id, 1).position[1]).not.toBe(sample(id, 0).position[1]);
     }
     expect(sample("detail-to-subject-tilt", 1).position).toEqual(sample("detail-to-subject-tilt", 0).position);
-    expect(sample("detail-to-subject-tilt", 1).target[1]).toBeGreaterThan(sample("detail-to-subject-tilt", 0).target[1]);
+    expect(sample("detail-to-subject-tilt", 1).target[1]).toBeGreaterThan(
+      sample("detail-to-subject-tilt", 0).target[1],
+    );
   });
 
   it("rotates a fixed camera for pan, tilt, and optical-axis roll without adding dolly travel", () => {
@@ -235,7 +275,10 @@ describe("authored video camera motion", () => {
     const radius = Math.hypot(start.position[0] - start.subject[0], start.position[2] - start.subject[2]);
     for (let step = 0; step <= 80; step += 1) {
       const state = sample("moving-subject-orbit", step / 80);
-      expect(Math.hypot(state.position[0] - state.subject[0], state.position[2] - state.subject[2])).toBeCloseTo(radius, 10);
+      expect(Math.hypot(state.position[0] - state.subject[0], state.position[2] - state.subject[2])).toBeCloseTo(
+        radius,
+        10,
+      );
       expect(state.target).toEqual(state.subject);
       expect(state.position[1]).toBe(start.position[1]);
     }
@@ -305,7 +348,9 @@ describe("authored video camera motion", () => {
     for (let step = 0; step <= 80; step += 1) {
       const state = sample("push-past-subject", step / 80);
       expect(state.position[0]).toBe(1.8);
-      expect(Math.hypot(state.position[0] - state.subject[0], state.position[2] - state.subject[2])).toBeGreaterThanOrEqual(1.8);
+      expect(
+        Math.hypot(state.position[0] - state.subject[0], state.position[2] - state.subject[2]),
+      ).toBeGreaterThanOrEqual(1.8);
       for (let axis = 0; axis < 3; axis += 1) {
         expect(viewDirection(state)[axis]).toBeCloseTo(viewDirection(passStart)[axis]!, 10);
       }
@@ -316,7 +361,9 @@ describe("authored video camera motion", () => {
     expect(viewDirection(sample("aerial-flyover-lookback", 0.5))[2]).toBeLessThan(0);
     expect(viewDirection(sample("aerial-flyover-lookback", 1))[2]).toBeGreaterThan(0);
     for (const progress of [0.5, 0.65, 0.82, 0.95, 1]) {
-      expect(sample("aerial-flyover-lookback", progress).position).toEqual(sample("aerial-flyover-lookback", 1).position);
+      expect(sample("aerial-flyover-lookback", progress).position).toEqual(
+        sample("aerial-flyover-lookback", 1).position,
+      );
     }
     expect(sample("aerial-flyover-lookback", 0.95)).toEqual(sample("aerial-flyover-lookback", 1));
     const corkStart = sample("corkscrew-flythrough", 0);

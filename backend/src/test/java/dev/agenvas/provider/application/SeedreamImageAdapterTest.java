@@ -47,7 +47,8 @@ class SeedreamImageAdapterTest {
     private final SeedreamImageAdapter adapter = new SeedreamImageAdapter(catalog, cipher, client, references, mapper);
     private final UUID owner = UUID.randomUUID(), connection = UUID.randomUUID(), capability = UUID.randomUUID();
 
-    @Test void capturesIdentityAndAllResultsTogetherUsingOnlyFrozenConnectionVersion() throws Exception {
+    @Test
+    void capturesIdentityAndAllResultsTogetherUsingOnlyFrozenConnectionVersion() throws Exception {
         var context = context();
         var result = manifest();
         doReturn(new SeedreamClient.Created("remote-identity", result)).when(client).create(any(), any(),
@@ -55,21 +56,25 @@ class SeedreamImageAdapterTest {
         assertThat(adapter.preflightFailure(context)).isNull();
         assertThat(adapter.submit(context)).isEqualTo(new Submission.AcceptedResults("remote-identity", result));
         verify(catalog, org.mockito.Mockito.atLeastOnce()).snapshotAt(capability, 7, connection, 4);
-        verify(cipher, org.mockito.Mockito.atLeastOnce()).decryptMedia(eq(connection), eq(4), any(CredentialCipher.Encrypted.class));
+        verify(cipher, org.mockito.Mockito.atLeastOnce()).decryptMedia(eq(connection), eq(4),
+                any(CredentialCipher.Encrypted.class));
         verify(references).load(eq(context), any(), any(), eq(false));
         verify(references).load(eq(context), any(), any(), eq(true));
     }
 
-    @Test void failedPreparationAndUnknownSubmissionRemainSeparate() {
+    @Test
+    void failedPreparationAndUnknownSubmissionRemainSeparate() {
         var context = context();
         doThrow(new SeedreamClient.Uncertain(SeedreamClient.CREATE_UNCERTAIN)).when(client)
                 .create(any(), any(), anyString(), anyString(), any(), anyString());
         assertThat(adapter.submit(context)).isEqualTo(new Submission.Unknown(SeedreamClient.CREATE_UNCERTAIN));
-        when(references.load(eq(context), any(), any(), eq(true))).thenThrow(new IllegalArgumentException("synthetic invalid ref"));
+        when(references.load(eq(context), any(), any(), eq(true)))
+                .thenThrow(new IllegalArgumentException("synthetic invalid ref"));
         assertThat(adapter.submit(context)).isEqualTo(new Submission.Rejected("MEDIA_REFERENCE_PREPARATION_FAILED"));
     }
 
-    @Test void recoveryReadsInternalInlineResultWithoutCredentialsOrAnotherPaidRequest() throws Exception {
+    @Test
+    void recoveryReadsInternalInlineResultWithoutCredentialsOrAnotherPaidRequest() throws Exception {
         var context = context();
         var result = manifest().results().getFirst();
         try (var payload = adapter.downloadResult(context, result)) {
@@ -79,13 +84,16 @@ class SeedreamImageAdapterTest {
         assertThat(adapter.reconcile(context)).isEqualTo(new Submission.Blocked("SEEDREAM_HAS_NO_STATUS_ENDPOINT"));
         verify(cipher, never()).decryptMedia(any(), org.mockito.ArgumentMatchers.anyInt(), any());
         verify(client, never()).create(any(), any(), anyString(), anyString(), any(), anyString());
-        var external = new ProviderResultManifest.Result(0, result.nodeId(), RunningHubDefinition.OutputKind.IMAGE, true, "https://example.org/image.jpg");
+        var external = new ProviderResultManifest.Result(0, result.nodeId(), RunningHubDefinition.OutputKind.IMAGE,
+                true, "https://example.org/image.jpg");
         assertThatThrownBy(() -> adapter.downloadResult(context, external)).isInstanceOf(NativeMediaFailure.class);
     }
 
-    @Test void rejectsProfileOrParameterMutationBeforeSendingAnything() {
+    @Test
+    void rejectsProfileOrParameterMutationBeforeSendingAnything() {
         var context = context();
-        ((ObjectNode) context.lease().input().at("/mediaInput/providerParameters/native")).put("model", SeedreamModels.FLASH);
+        ((ObjectNode) context.lease().input().at("/mediaInput/providerParameters/native")).put("model",
+                SeedreamModels.FLASH);
         assertThat(adapter.preflightFailure(context)).isEqualTo("PROVIDER_PROTOCOL_INVALID");
         assertThat(adapter.submit(context)).isEqualTo(new Submission.Rejected("PROVIDER_PROTOCOL_INVALID"));
         verify(client, never()).create(any(), any(), anyString(), anyString(), any(), anyString());
@@ -100,26 +108,34 @@ class SeedreamImageAdapterTest {
     }
 
     private AttemptContext context() {
-        var binding = new MediaCapabilityBinding(connection, 4, capability, 7, SeedreamModels.ADAPTER_ID, "a".repeat(64));
+        var binding = new MediaCapabilityBinding(connection, 4, capability, 7, SeedreamModels.ADAPTER_ID,
+                "a".repeat(64));
         var version = new JooqMediaCapabilityRepository.ConnectionVersion(connection, 4, SeedreamClient.ORIGIN, null,
                 new byte[]{1}, new byte[]{2}, 1, "masked");
-        ObjectNode settings = mapper.createObjectNode().put("model", SeedreamModels.PRO).put("operation", SeedreamModels.GENERATE);
+        ObjectNode settings = mapper.createObjectNode().put("model", SeedreamModels.PRO).put("operation",
+                SeedreamModels.GENERATE);
         var snapshot = new JooqMediaCapabilityRepository.Snapshot(null, null, version, SeedreamModels.ADAPTER_ID,
                 binding.mappingSha256(), mapper.createObjectNode().set("settings", settings).toString());
         when(catalog.snapshotAt(capability, 7, connection, 4)).thenReturn(Optional.of(snapshot));
-        when(cipher.decryptMedia(eq(connection), eq(4), any(CredentialCipher.Encrypted.class))).thenReturn("synthetic-key");
+        when(cipher.decryptMedia(eq(connection), eq(4), any(CredentialCipher.Encrypted.class)))
+                .thenReturn("synthetic-key");
         var selection = NativeMediaProfiles.resolve(SeedreamModels.ADAPTER_ID, settings);
-        var values = NativeMediaProfiles.effectiveValues(selection, mapper.createObjectNode(), "Synthetic landscape", null, mapper);
+        var values = NativeMediaProfiles.effectiveValues(selection, mapper.createObjectNode(), "Synthetic landscape",
+                null, mapper);
         ObjectNode input = mapper.createObjectNode();
         var mediaInput = input.putObject("mediaInput");
         mediaInput.putObject("parameters").set("dynamicValues", values.deepCopy());
         mediaInput.putObject("providerParameters").putObject("native").put("adapterId", SeedreamModels.ADAPTER_ID)
                 .put("model", SeedreamModels.PRO).put("operation", SeedreamModels.GENERATE).set("values", values);
-        mediaInput.putArray("images"); mediaInput.putArray("videos"); mediaInput.putArray("audios");
+        mediaInput.putArray("images");
+        mediaInput.putArray("videos");
+        mediaInput.putArray("audios");
         Task task = mock(Task.class);
-        when(task.kind()).thenReturn(Task.Kind.IMAGE_GENERATION); when(task.input()).thenReturn(input);
+        when(task.kind()).thenReturn(Task.Kind.IMAGE_GENERATION);
+        when(task.input()).thenReturn(input);
         var context = new AttemptContext(task, binding, owner, "local-request", "remote-original");
-        when(references.load(eq(context), any(), any(), org.mockito.ArgumentMatchers.anyBoolean())).thenReturn(Map.of());
+        when(references.load(eq(context), any(), any(), org.mockito.ArgumentMatchers.anyBoolean()))
+                .thenReturn(Map.of());
         return context;
     }
 }

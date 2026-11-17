@@ -92,7 +92,8 @@ public interface ArtifactRepository {
             Instant beforeCreatedAt, UUID beforeId, int limit);
 
     record ResourceResult(UUID versionId, UUID artifactId, UUID projectId, String projectName,
-            String title, Artifact.Kind kind, int versionNo, JsonNode content, Instant createdAt) {}
+            String title, Artifact.Kind kind, int versionNo, JsonNode content, Instant createdAt) {
+    }
 
     /** 一次读取项目全部不可变版本，避免逐版本查询引用产生 N+1。 */
     List<ArtifactVersion> listProjectVersions(UUID projectId);
@@ -105,7 +106,8 @@ public interface ArtifactRepository {
      * @param artifactId 该版本归属的产物
      * @param kind 产物类型，用于检查调用方允许引用的媒体类别
      */
-    record VersionTarget(UUID versionId, UUID artifactId, Artifact.Kind kind) {}
+    record VersionTarget(UUID versionId, UUID artifactId, Artifact.Kind kind) {
+    }
 
     /** 手工创建产物的幂等重放记录。
      * @param requestHash 原请求规范化后的摘要
@@ -114,5 +116,6 @@ public interface ArtifactRepository {
      * @param responseJson 首次创建时持久化的响应，保证重放结果一致
      */
     record CreateKey(String requestHash, IdempotencyState state, UUID artifactId,
-            String responseJson) {}
+            String responseJson) {
+    }
 }
