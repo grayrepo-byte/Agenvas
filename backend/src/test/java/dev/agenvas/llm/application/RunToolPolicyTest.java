@@ -83,7 +83,8 @@ class RunToolPolicyTest {
         var schema = mapper.readTree(definition.inputSchema());
         assertThat(schema.path("additionalProperties").asBoolean()).isFalse();
         assertThat(schema.at("/properties/title/maxLength").asInt()).isEqualTo(160);
-        assertThat(schema.at("/properties/shots/maxItems").asInt()).isEqualTo(12);
+        // Schemas expose the absolute ceiling; acceptance applies the deployment budget (ADR 0084).
+        assertThat(schema.at("/properties/shots/maxItems").asInt()).isEqualTo(120);
         assertThat(schema.at("/properties/shots/items/properties/lines/items/required").toString())
                 .contains("audioVersionId").doesNotContain("startMs");
         assertThat(definition.inputSchema()).contains("videoVersionId", "audioVersionId", "rationale", "BACKGROUND")
