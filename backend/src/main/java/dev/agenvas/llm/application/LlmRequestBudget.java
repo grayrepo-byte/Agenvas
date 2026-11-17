@@ -32,10 +32,14 @@ public record LlmRequestBudget(int schemaVersion, int contextWindowTokens, int r
             input = Math.min(input, policy.inputLimitTokens());
         if (input < 4)
             throw new Failure("AGENT_CONTEXT_BUDGET_EXCEEDED");
-        return new LlmRequestBudget(1, window, output, input, Math.min(input, (int) ((long) window * settings.compactionThresholdPercent() / 100)), policy.outputParameter(), settings.version());
+        return new LlmRequestBudget(1, window, output, input,
+                Math.min(input, (int) ((long) window * settings.compactionThresholdPercent() / 100)),
+                policy.outputParameter(), settings.version());
     }
     static LlmRequestBudget application(DirectorSettings settings) {
-        return new LlmRequestBudget(1, settings.contextWindowTokens(), settings.responseReserveTokens(), settings.inputBudget(), settings.compactionTriggerTokens(), LlmModelPolicy.OutputParameter.MAX_TOKENS, settings.version());
+        return new LlmRequestBudget(1, settings.contextWindowTokens(), settings.responseReserveTokens(),
+                settings.inputBudget(), settings.compactionTriggerTokens(), LlmModelPolicy.OutputParameter.MAX_TOKENS,
+                settings.version());
     }
     public void requireInput(List<Message> messages, List<ToolCallback> tools) {
         if (messages.size() > LlmProtocolCodec.MAX_MESSAGES

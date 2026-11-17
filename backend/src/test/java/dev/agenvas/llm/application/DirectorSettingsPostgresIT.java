@@ -180,7 +180,9 @@ class DirectorSettingsPostgresIT {
                 """)))));
         var expected = context.afterCompaction(frozen, response);
         var current = DirectorSettings.defaults();
-        settings.update(new DirectorSettings(current.contextWindowTokens(), current.compactionThresholdPercent(), current.responseReserveTokens(), current.recoveryWindowMinutes(), current.maxModelRetries(), current.retryMaxDelaySeconds(), current.maxRepairAttempts(), 2));
+        settings.update(new DirectorSettings(current.contextWindowTokens(), current.compactionThresholdPercent(),
+                current.responseReserveTokens(), current.recoveryWindowMinutes(), current.maxModelRetries(),
+                current.retryMaxDelaySeconds(), current.maxRepairAttempts(), 2));
         assertThat(context.afterCompaction(frozen, response)).isEqualTo(expected);
         assertThat(AgentContextService.isCompaction(context.prepare(history, List.of()))).isFalse();
         assertThat(jdbc.sql("select count(*) from llm_turn").query(Long.class).single()).isZero();

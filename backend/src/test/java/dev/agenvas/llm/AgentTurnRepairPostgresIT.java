@@ -284,7 +284,8 @@ class AgentTurnRepairPostgresIT {
                     assertThat(messages.getLast().getText()).contains("ARTIFACT_VERSION_CONFLICT")
                             .contains("first read the current canvas")
                             .contains("Earlier committed rounds remain applied");
-                calls = List.of(new AssistantMessage.ToolCall("read-current-" + count, "function", "read_canvas", "{}"));
+                calls = List
+                        .of(new AssistantMessage.ToolCall("read-current-" + count, "function", "read_canvas", "{}"));
             } else if (count == 3 || count == 5) {
                 var reply = ((ToolResponseMessage) messages.getLast()).getResponses().getFirst();
                 JsonNode current = mapper.readTree(reply.responseData()).path("data").get(0);

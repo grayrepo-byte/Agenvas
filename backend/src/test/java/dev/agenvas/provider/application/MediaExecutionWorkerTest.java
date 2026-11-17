@@ -97,7 +97,8 @@ class MediaExecutionWorkerTest {
                     return new MediaPayload(new TrackingInputStream(false), "image/png");
                 });
                 assertThat(worker.pollOnce(WORKER)).isEqualTo(1);
-                verify(fixture.tasks).succeedWithArtifacts(eq(fixture.task), eq(WORKER), anyList(), eq(manifest.usage()));
+                verify(fixture.tasks).succeedWithArtifacts(eq(fixture.task), eq(WORKER), anyList(),
+                        eq(manifest.usage()));
             }
             verify(fixture.tasks, never()).heartbeat(any(), anyString(), org.mockito.ArgumentMatchers.anyLong());
         }

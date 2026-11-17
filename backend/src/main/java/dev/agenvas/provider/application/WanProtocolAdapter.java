@@ -219,7 +219,8 @@ abstract class WanProtocolAdapter implements MediaAdapter {
     }
     /** Read only the immutable capability version selected when this task was accepted. */
     private HttpTimeouts httpTimeouts(Snapshot snapshot) {
-        return snapshot.specJson() == null ? null
+        return snapshot.specJson() == null
+                ? null
                 : MediaHttpTimeouts.configured(mapper.readTree(snapshot.specJson()).path("settings"));
     }
 
@@ -251,7 +252,8 @@ abstract class WanProtocolAdapter implements MediaAdapter {
         return key;
     }
     private WanClient.State query(AttemptContext context, Snapshot snapshot, Frozen frozen) {
-        return api(snapshot).query(frozen.selected().profile(), snapshot.connectionVersion().origin(), credential(snapshot),
+        return api(snapshot).query(frozen.selected().profile(), snapshot.connectionVersion().origin(),
+                credential(snapshot),
                 context.originalRequestId());
     }
     private ProviderResultManifest manifest(Frozen frozen, WanClient.State state) {

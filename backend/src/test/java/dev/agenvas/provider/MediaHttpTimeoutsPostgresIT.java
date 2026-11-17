@@ -60,17 +60,28 @@ class MediaHttpTimeoutsPostgresIT {
         registry.add("agenvas.credentials.master-key-base64", () -> Base64.getEncoder().encodeToString(new byte[32]));
     }
 
-    @Autowired private MediaCapabilityService catalog;
-    @Autowired private TaskService tasks;
-    @Autowired private DirectMediaTaskService direct;
-    @Autowired private IdentityService identities;
-    @Autowired private ProjectService projects;
-    @Autowired private ArtifactService artifacts;
-    @Autowired private CanvasService canvas;
-    @Autowired private MediaDraftService drafts;
-    @Autowired private ObjectMapper mapper;
-    @Autowired private JdbcClient jdbc;
-    @Autowired private WebApplicationContext context;
+    @Autowired
+    private MediaCapabilityService catalog;
+    @Autowired
+    private TaskService tasks;
+    @Autowired
+    private DirectMediaTaskService direct;
+    @Autowired
+    private IdentityService identities;
+    @Autowired
+    private ProjectService projects;
+    @Autowired
+    private ArtifactService artifacts;
+    @Autowired
+    private CanvasService canvas;
+    @Autowired
+    private MediaDraftService drafts;
+    @Autowired
+    private ObjectMapper mapper;
+    @Autowired
+    private JdbcClient jdbc;
+    @Autowired
+    private WebApplicationContext context;
 
     @Test
     void explicitPoliciesPublishNewHistoryWhileExistingTaskBindingsAndLegacyMetadataRemainUnchanged() throws Exception {

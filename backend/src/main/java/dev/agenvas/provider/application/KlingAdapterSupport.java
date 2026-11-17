@@ -144,7 +144,8 @@ abstract class KlingAdapterSupport implements MediaAdapter {
         try {
             String mime;
             try (OutputStream output = Files.newOutputStream(file)) {
-                mime = downloads(snapshot).download(url, output, video(), video() ? 500L * 1024 * 1024 : 50L * 1024 * 1024);
+                mime = downloads(snapshot).download(url, output, video(),
+                        video() ? 500L * 1024 * 1024 : 50L * 1024 * 1024);
             }
             validateResult(context, file);
             return new MediaPayload(new FilterInputStream(Files.newInputStream(file)) {
@@ -186,7 +187,8 @@ abstract class KlingAdapterSupport implements MediaAdapter {
 
     /** Read only the immutable capability version selected when this task was accepted. */
     private HttpTimeouts httpTimeouts(Snapshot snapshot) {
-        return snapshot.specJson() == null ? null
+        return snapshot.specJson() == null
+                ? null
                 : MediaHttpTimeouts.configured(mapper.readTree(snapshot.specJson()).path("settings"));
     }
 

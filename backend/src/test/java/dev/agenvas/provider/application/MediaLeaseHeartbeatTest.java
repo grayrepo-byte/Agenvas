@@ -61,7 +61,8 @@ class MediaLeaseHeartbeatTest {
                 var scope = leases.open(task(), "media-worker")) {
             assertThat(attempted.await(2, TimeUnit.SECONDS)).isTrue();
             // A scheduler barrier ensures the failed renewal has installed its local fence.
-            timers.submit(() -> { }).get(2, TimeUnit.SECONDS);
+            timers.submit(() -> {
+            }).get(2, TimeUnit.SECONDS);
             assertThatThrownBy(scope::checkActive).isInstanceOf(MediaLeaseHeartbeat.LeaseLost.class);
             assertThat(timers.getQueue()).isEmpty();
         }

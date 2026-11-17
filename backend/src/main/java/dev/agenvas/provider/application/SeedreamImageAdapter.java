@@ -156,7 +156,8 @@ public class SeedreamImageAdapter implements MediaAdapter {
     }
     /** Read only the immutable capability version selected when this task was accepted. */
     private HttpTimeouts httpTimeouts(Snapshot snapshot) {
-        return snapshot.specJson() == null ? null
+        return snapshot.specJson() == null
+                ? null
                 : MediaHttpTimeouts.configured(mapper.readTree(snapshot.specJson()).path("settings"));
     }
 

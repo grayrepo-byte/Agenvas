@@ -151,20 +151,23 @@ class AgentContextServiceTest {
     void repairsOldCompactionsWithinTheOriginalResponseReserveWithoutChangingTheCheckpoint() {
         var budget = LlmRequestBudget.resolve(properties, null);
         var request = context.prepare(history(80, "Public fact"), List.of(), budget);
-        codec.withBudget(request, new LlmRequestBudget(1, budget.contextWindowTokens(), 512, budget.inputBudget(), budget.compactionTriggerTokens(), budget.outputParameter(), budget.directorVersion()));
+        codec.withBudget(request, new LlmRequestBudget(1, budget.contextWindowTokens(), 512, budget.inputBudget(),
+                budget.compactionTriggerTokens(), budget.outputParameter(), budget.directorVersion()));
         ((tools.jackson.databind.node.ObjectNode) request.path("requestBudget")).put("summaryTokens", 512)
                 .put("recentToolRounds", 2);
         JsonNode original = request.deepCopy();
         JsonNode repaired = context.repair(request);
         assertThat(codec.requestBudget(repaired)).isEqualTo(budget);
         assertThat(request).isEqualTo(original);
-        assertThat(repaired.path(AgentContextService.COMPACTION)).isEqualTo(original.path(AgentContextService.COMPACTION));
+        assertThat(repaired.path(AgentContextService.COMPACTION))
+                .isEqualTo(original.path(AgentContextService.COMPACTION));
         assertThat(context.repair(repaired)).isEqualTo(repaired);
     }
 
     @Test
     void repairsSummariesThatFitTheWindowButMakeNoCompactionProgress() {
-        var early = new AgentContextService(source(new DirectorSettings(8192, 1, 1024, 1440, 288, 300, 4, 1)), mapper, codec);
+        var early = new AgentContextService(source(new DirectorSettings(8192, 1, 1024, 1440, 288, 300, 4, 1)), mapper,
+                codec);
         JsonNode request = early.prepare(history(4, "Public fact"), List.of());
         assertThat(AgentContextService.isCompaction(request)).isTrue();
         assertThatThrownBy(() -> early.summary(request,

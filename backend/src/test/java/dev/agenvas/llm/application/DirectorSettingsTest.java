@@ -27,7 +27,8 @@ class DirectorSettingsTest {
     @ParameterizedTest
     @ValueSource(ints = {0, 101})
     void invalidPercentagesAreRejected(int percent) {
-        assertThatThrownBy(() -> new DirectorSettings(1_000_000, percent, 8192, 1440, 288, 300, 4, 1)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new DirectorSettings(1_000_000, percent, 8192, 1440, 288, 300, 4, 1))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

@@ -210,7 +210,8 @@ class RunningHubPostgresIT {
                 assertThat(tasks.get(owner, fixture.project.id(), task.id()).status())
                         .isEqualTo(Task.Status.WAITING_PROVIDER);
                 due(task.id());
-                new MediaExecutionWorker(tasks, catalog, adapters, assets, mapper, callLogs, videoProcessor, mediaLeases)
+                new MediaExecutionWorker(tasks, catalog, adapters, assets, mapper, callLogs, videoProcessor,
+                        mediaLeases)
                         .pollOnce("cloud-split-recovery");
                 var completed = tasks.get(owner, fixture.project.id(), task.id());
                 assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);

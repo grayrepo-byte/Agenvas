@@ -74,8 +74,9 @@ public final class SeedAudioAdapter implements MediaAdapter {
             var asset = assets.archiveTaskAudio(context.ownerId(), task.projectId(), task.id(),
                     () -> {
                         Snapshot snapshot = snapshot(context);
-                        return new ByteArrayInputStream(api(snapshot).synthesize(credential(snapshot), context.requestKey(),
-                                task.input().path("prompt").asText(), parameters, references(context)));
+                        return new ByteArrayInputStream(
+                                api(snapshot).synthesize(credential(snapshot), context.requestKey(),
+                                        task.input().path("prompt").asText(), parameters, references(context)));
                     });
             return completed(task, asset.id().toString(), false);
         } catch (SeedAudioClient.Rejected rejected) {
@@ -128,7 +129,8 @@ public final class SeedAudioAdapter implements MediaAdapter {
 
     /** Read only the immutable capability version selected when this task was accepted. */
     private HttpTimeouts httpTimeouts(Snapshot snapshot) {
-        return snapshot.specJson() == null ? null
+        return snapshot.specJson() == null
+                ? null
                 : MediaHttpTimeouts.configured(mapper.readTree(snapshot.specJson()).path("settings"));
     }
 

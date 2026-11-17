@@ -26,8 +26,12 @@ import tools.jackson.databind.ObjectMapper;
 
 /** Real loopback requests exercise the protocol entry points, never a billable Provider. */
 class PublishedHttpTimeoutsTest {
-    private enum Provider { OPENAI, GOOGLE_IMAGE, COMFYUI, AUTODL, RUNNINGHUB }
-    private enum Download { COMFYUI, AUTODL, RUNNINGHUB }
+    private enum Provider {
+        OPENAI, GOOGLE_IMAGE, COMFYUI, AUTODL, RUNNINGHUB
+    }
+    private enum Download {
+        COMFYUI, AUTODL, RUNNINGHUB
+    }
     private static final HttpTimeouts SHORT = new HttpTimeouts(1, 1, 1, 3);
     private static final HttpTimeouts LONG = new HttpTimeouts(1, 2, 2, 3);
     private static final long SLOW_HEADERS_MS = 1_250;

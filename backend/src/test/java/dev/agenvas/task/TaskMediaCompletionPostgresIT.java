@@ -80,7 +80,8 @@ class TaskMediaCompletionPostgresIT {
         jdbc.sql("update task set cancel_requested=true where id=:id").param("id", fixture.lease().id()).update();
         // Cancellation after submission must not disable renewal while an acceptance/response is still in flight.
         tasks.heartbeatMediaLease(fixture.lease().id(), fixture.workerId(), fixture.lease().leaseEpoch());
-        tasks.waitForProvider(fixture.lease(), fixture.workerId(), "same-original-provider-id", Instant.now().plusSeconds(1));
+        tasks.waitForProvider(fixture.lease(), fixture.workerId(), "same-original-provider-id",
+                Instant.now().plusSeconds(1));
         jdbc.sql("update task set next_action_at=now() - interval '1 second' where id=:id")
                 .param("id", fixture.lease().id()).update();
         Task poll = tasks.claimBoundMediaPolls("canceled-media-poller", 1).getFirst();
@@ -106,7 +107,8 @@ class TaskMediaCompletionPostgresIT {
     @Test
     void mediaRenewalPreservesOriginalRequestAndEpochFencesAnExpiredArchiver() {
         Fixture fixture = submitting("media-heartbeat-fencing");
-        tasks.waitForProvider(fixture.lease(), fixture.workerId(), "retained-provider-id", Instant.now().plusSeconds(1));
+        tasks.waitForProvider(fixture.lease(), fixture.workerId(), "retained-provider-id",
+                Instant.now().plusSeconds(1));
         jdbc.sql("update task set next_action_at=now() - interval '1 second' where id=:id")
                 .param("id", fixture.lease().id()).update();
         Task first = tasks.claimBoundMediaPolls("first-media-archiver", 1).getFirst();

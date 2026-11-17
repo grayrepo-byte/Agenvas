@@ -74,7 +74,8 @@ abstract class GoogleVideoAdapter implements MediaAdapter {
             var body = client.build(frozen.selection().profile(), frozen.values(),
                     references.load(context, frozen.selection(), frozen.values(), true));
             return new Submission.Accepted(
-                    api(snapshot).create(frozen.selection().profile(), snapshot.connectionVersion().origin(), key, body));
+                    api(snapshot).create(frozen.selection().profile(), snapshot.connectionVersion().origin(), key,
+                            body));
         } catch (GoogleVideoClient.Unknown unknown) {
             return new Submission.Unknown(unknown.code());
         } catch (NativeMediaFailure rejected) {
@@ -226,7 +227,8 @@ abstract class GoogleVideoAdapter implements MediaAdapter {
     }
     /** Read only the immutable capability version selected when this task was accepted. */
     private HttpTimeouts httpTimeouts(Snapshot snapshot) {
-        return snapshot.specJson() == null ? null
+        return snapshot.specJson() == null
+                ? null
                 : MediaHttpTimeouts.configured(mapper.readTree(snapshot.specJson()).path("settings"));
     }
 

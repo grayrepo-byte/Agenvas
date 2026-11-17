@@ -344,7 +344,8 @@ class OpenAiImage2PostgresIT {
         Fixture second = fixture(owner, "Synthetic new longer timeout", 0);
         RESPONSE_ACTION.set(OpenAiImage2PostgresIT::pauseForConfiguredReadLimit);
         assertThat(worker.submitOnce("configured-long-timeout-worker")).isEqualTo(1);
-        assertThat(tasks.get(owner, second.project().id(), second.task().id()).status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(tasks.get(owner, second.project().id(), second.task().id()).status())
+                .isEqualTo(Task.Status.SUCCEEDED);
         assertThat(tasks.get(owner, first.project().id(), first.task().id()).status()).isEqualTo(Task.Status.UNKNOWN);
         assertThat(GENERATIONS).hasValue(before + 2);
         assertThat(worker.submitOnce("configured-timeout-no-retry-worker")).isZero();

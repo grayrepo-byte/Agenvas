@@ -257,7 +257,8 @@ class AgentLongTaskPostgresIT {
         Task lease = tasks.claimAgentTurns("invalid-summary", 1).getFirst();
         AgentRun started = commits.start(lease, "invalid-summary");
         var budget = LlmRequestBudget.resolve(directorSettings.get(), null);
-        JsonNode compact = context.prepare(syntheticHistory(), registry.modelDefinitions(started.policySnapshot()), budget);
+        JsonNode compact = context.prepare(syntheticHistory(), registry.modelDefinitions(started.policySnapshot()),
+                budget);
         rounds.callLeased(owner.userId(), project.id(), run.id(), 0, compact, List.of(), Map.of(), lease,
                 "invalid-summary");
         clock.now = clock.now.plus(Duration.ofMinutes(31));
@@ -368,7 +369,8 @@ class AgentLongTaskPostgresIT {
                 if (truncatedSummary) {
                     truncatedSummary = false;
                     return new Exchange(1, new ChatResponse(List.of(new Generation(
-                            new AssistantMessage(""), ChatGenerationMetadata.builder().finishReason("LENGTH").build()))));
+                            new AssistantMessage(""),
+                            ChatGenerationMetadata.builder().finishReason("LENGTH").build()))));
                 }
             } else if (tools.size() == 1 && "load_toolset".equals(tools.getFirst().getToolDefinition().name())) {
                 assistant = AssistantMessage.builder().content("").toolCalls(List.of(

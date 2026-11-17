@@ -73,11 +73,13 @@ class NativeMediaAdapterHttpTimeoutsTest {
                 }
                 if (completed ? object : !path.startsWith("/object."))
                     pause(delay.get());
-                byte[] bytes = object ? (protocol.image() ? PNG : MP4)
+                byte[] bytes = object
+                        ? (protocol.image() ? PNG : MP4)
                         : response(protocol, origin, completed, path).getBytes(StandardCharsets.UTF_8);
                 try {
                     exchange.getResponseHeaders().set("Content-Type", object
-                            ? protocol.image() ? "image/png" : "video/mp4" : "application/json");
+                            ? protocol.image() ? "image/png" : "video/mp4"
+                            : "application/json");
                     exchange.sendResponseHeaders(200, bytes.length);
                     exchange.getResponseBody().write(bytes);
                 } catch (IOException timedOutPeer) {
@@ -213,19 +215,23 @@ class NativeMediaAdapterHttpTimeoutsTest {
                     + url + "\"}]}}]}}";
             case GOOGLE -> path.startsWith("/v1beta/files/")
                     ? "{\"name\":\"files/original\",\"mimeType\":\"video/mp4\",\"state\":\"ACTIVE\"}"
-                    : completed ? "{\"name\":\"operations/original\",\"done\":true,\"response\":{\"generateVideoResponse\":{"
-                            + "\"generatedSamples\":[{\"video\":{\"uri\":\"https://generativelanguage.googleapis.com/v1beta/files/original\"}}]}}}"
+                    : completed
+                            ? "{\"name\":\"operations/original\",\"done\":true,\"response\":{\"generateVideoResponse\":{"
+                                    + "\"generatedSamples\":[{\"video\":{\"uri\":\"https://generativelanguage.googleapis.com/v1beta/files/original\"}}]}}}"
                             : "{\"name\":\"operations/original\"}";
         };
     }
 
     private static Class<? extends RuntimeException> failure(Protocol protocol, boolean completed) {
         return switch (protocol) {
-            case SEEDANCE -> completed ? ArkMediaDownloadPolicy.TechnicalFailure.class
+            case SEEDANCE -> completed
+                    ? ArkMediaDownloadPolicy.TechnicalFailure.class
                     : ArkSeedanceClient.TechnicalFailure.class;
-            case MINIMAX -> completed ? MiniMaxMediaDownloadPolicy.TechnicalFailure.class
+            case MINIMAX -> completed
+                    ? MiniMaxMediaDownloadPolicy.TechnicalFailure.class
                     : MiniMaxH3Client.TechnicalFailure.class;
-            case KLING_LEGACY, KLING_NATIVE -> completed ? KlingMediaDownloadPolicy.TechnicalFailure.class
+            case KLING_LEGACY, KLING_NATIVE -> completed
+                    ? KlingMediaDownloadPolicy.TechnicalFailure.class
                     : KlingClient.TechnicalFailure.class;
             case WAN -> completed ? WanMediaDownloadPolicy.TechnicalFailure.class : WanClient.TechnicalFailure.class;
             case GOOGLE -> GoogleVideoClient.TechnicalFailure.class;

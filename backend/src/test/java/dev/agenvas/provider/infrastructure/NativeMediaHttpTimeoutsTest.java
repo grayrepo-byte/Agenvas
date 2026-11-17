@@ -121,21 +121,24 @@ class NativeMediaHttpTimeoutsTest {
                     return timeouts -> () -> assertThat((timeouts == null ? base : base.withTimeouts(timeouts))
                             .create(profile, "https://synthetic.example", "synthetic-key", body)).isEqualTo("original");
                 }, WanClient.Uncertain.class),
-                new ApiCase("Kling legacy", "{\"code\":0,\"data\":{\"task_id\":\"original\",\"task_status\":\"submitted\"}}", origin -> {
-                    var base = new KlingClient(MAPPER, origin);
-                    var body = base.prepareImage("Synthetic timeout test", "1:1", "1K", List.of());
-                    return timeouts -> () -> assertThat((timeouts == null ? base : base.withTimeouts(timeouts))
-                            .createImage(null, "synthetic-key", body)).isEqualTo("original");
-                }, KlingClient.Uncertain.class),
-                new ApiCase("Kling native", "{\"code\":0,\"data\":{\"task_id\":\"original\",\"task_status\":\"submitted\"}}", origin -> {
-                    var base = new KlingClient(MAPPER, origin);
-                    var profile = KlingModels.resolve("kling-v3", "GENERATE", Task.Kind.IMAGE_GENERATION);
-                    var values = KlingModels.effectiveValues(profile, MAPPER.createObjectNode(), "Synthetic", null,
-                            MAPPER);
-                    var body = base.build(profile, values, Map.of(), "local-request");
-                    return timeouts -> () -> assertThat((timeouts == null ? base : base.withTimeouts(timeouts))
-                            .create(profile, null, "synthetic-key", body)).isEqualTo("original");
-                }, KlingClient.Uncertain.class),
+                new ApiCase("Kling legacy",
+                        "{\"code\":0,\"data\":{\"task_id\":\"original\",\"task_status\":\"submitted\"}}", origin -> {
+                            var base = new KlingClient(MAPPER, origin);
+                            var body = base.prepareImage("Synthetic timeout test", "1:1", "1K", List.of());
+                            return timeouts -> () -> assertThat((timeouts == null ? base : base.withTimeouts(timeouts))
+                                    .createImage(null, "synthetic-key", body)).isEqualTo("original");
+                        }, KlingClient.Uncertain.class),
+                new ApiCase("Kling native",
+                        "{\"code\":0,\"data\":{\"task_id\":\"original\",\"task_status\":\"submitted\"}}", origin -> {
+                            var base = new KlingClient(MAPPER, origin);
+                            var profile = KlingModels.resolve("kling-v3", "GENERATE", Task.Kind.IMAGE_GENERATION);
+                            var values = KlingModels.effectiveValues(profile, MAPPER.createObjectNode(), "Synthetic",
+                                    null,
+                                    MAPPER);
+                            var body = base.build(profile, values, Map.of(), "local-request");
+                            return timeouts -> () -> assertThat((timeouts == null ? base : base.withTimeouts(timeouts))
+                                    .create(profile, null, "synthetic-key", body)).isEqualTo("original");
+                        }, KlingClient.Uncertain.class),
                 new ApiCase("MiniMax", "{\"task_id\":\"original\"}", origin -> {
                     var base = new MiniMaxH3Client(MAPPER, origin);
                     var body = base.prepare("Synthetic timeout test", List.of(), 5, "16:9", "768p");
@@ -146,14 +149,14 @@ class NativeMediaHttpTimeoutsTest {
                     var base = new ArkSeedanceClient(MAPPER, origin);
                     return timeouts -> () -> assertThat((timeouts == null ? base : base.withTimeouts(timeouts))
                             .create("synthetic-key", "Synthetic timeout test", new byte[]{1, 2, 3}, 5, "16:9"))
-                                    .isEqualTo("original");
+                            .isEqualTo("original");
                 }, ArkSeedanceClient.Uncertain.class),
                 new ApiCase("Seed Audio", "{\"audio\":\"AQID\"}", origin -> {
                     var base = new SeedAudioClient(MAPPER, origin);
                     return timeouts -> () -> assertThat((timeouts == null ? base : base.withTimeouts(timeouts))
                             .synthesize("synthetic-key", "local-request", "Synthetic timeout test",
                                     AudioGenerationParameters.parse(null), List.of()))
-                                            .isEqualTo(new byte[]{1, 2, 3});
+                            .isEqualTo(new byte[]{1, 2, 3});
                 }, SeedAudioClient.Uncertain.class));
     }
 
@@ -214,25 +217,25 @@ class NativeMediaHttpTimeoutsTest {
                     var base = new ArkMediaDownloadPolicy();
                     return timeouts -> () -> assertThat((timeouts == null ? base : base.withTimeouts(timeouts))
                             .download(origin.resolve("/object.mp4"), new ByteArrayOutputStream(), 1024))
-                                    .isEqualTo(MP4.length);
+                            .isEqualTo(MP4.length);
                 }, ArkMediaDownloadPolicy.TechnicalFailure.class),
                 new DownloadCase("Kling result", origin -> {
                     var base = new KlingMediaDownloadPolicy();
                     return timeouts -> () -> assertThat((timeouts == null ? base : base.withTimeouts(timeouts))
                             .download(origin.resolve("/object.mp4"), new ByteArrayOutputStream(), true, 1024))
-                                    .isEqualTo("video/mp4");
+                            .isEqualTo("video/mp4");
                 }, KlingMediaDownloadPolicy.TechnicalFailure.class),
                 new DownloadCase("MiniMax result", origin -> {
                     var base = new MiniMaxMediaDownloadPolicy();
                     return timeouts -> () -> assertThat((timeouts == null ? base : base.withTimeouts(timeouts))
                             .download(origin.resolve("/object.mp4"), new ByteArrayOutputStream(), 1024))
-                                    .isEqualTo(MP4.length);
+                            .isEqualTo(MP4.length);
                 }, MiniMaxMediaDownloadPolicy.TechnicalFailure.class),
                 new DownloadCase("Wan result", origin -> {
                     var base = new WanMediaDownloadPolicy();
                     return timeouts -> () -> assertThat((timeouts == null ? base : base.withTimeouts(timeouts))
                             .download(origin.resolve("/object.mp4"), new ByteArrayOutputStream(), true))
-                                    .isEqualTo("video/mp4");
+                            .isEqualTo("video/mp4");
                 }, WanMediaDownloadPolicy.TechnicalFailure.class),
                 new DownloadCase("Google Files redirect", origin -> {
                     var base = new GoogleVideoClient(MAPPER, origin);

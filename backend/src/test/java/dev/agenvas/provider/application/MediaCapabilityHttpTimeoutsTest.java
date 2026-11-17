@@ -102,7 +102,8 @@ class MediaCapabilityHttpTimeoutsTest {
         catalog.updateCapability(CONNECTION, CAPABILITY, 7, "Renamed legacy", true, "OPENAI_GPT_IMAGE_2", null);
 
         verify(repository).updateCapability(CAPABILITY, 7, "Renamed legacy", true, 3, NOW);
-        verify(repository, never()).insertCapabilityVersion(any(), anyInt(), anyString(), anyString(), anyString(), any());
+        verify(repository, never()).insertCapabilityVersion(any(), anyInt(), anyString(), anyString(), anyString(),
+                any());
         assertThat(mapper.readTree(snapshot.specJson()).at("/settings/httpTimeouts").isMissingNode()).isTrue();
     }
 

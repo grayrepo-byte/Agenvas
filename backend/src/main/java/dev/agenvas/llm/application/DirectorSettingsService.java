@@ -46,6 +46,8 @@ public class DirectorSettingsService {
     }
 
     private DirectorSettings from(DirectorSettingsRecord row) {
-        return new DirectorSettings(row.getContextWindowTokens(), row.getCompactionThresholdPercent(), row.getResponseReserveTokens(), row.getRecoveryWindowMinutes(), row.getMaxModelRetries(), row.getRetryMaxDelaySeconds(), row.getMaxRepairAttempts(), row.getVersion());
+        return new DirectorSettings(row.getContextWindowTokens(), row.getCompactionThresholdPercent(),
+                row.getResponseReserveTokens(), row.getRecoveryWindowMinutes(), row.getMaxModelRetries(),
+                row.getRetryMaxDelaySeconds(), row.getMaxRepairAttempts(), row.getVersion());
     }
 }

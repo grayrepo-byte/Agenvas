@@ -30,7 +30,9 @@ public class DirectorSettingsController {
     public ResponseEntity<DirectorSettings> update(@Valid @RequestBody Request request) {
         DirectorSettings value;
         try {
-            value = new DirectorSettings(request.contextWindowTokens(), request.compactionThresholdPercent(), request.responseReserveTokens(), request.recoveryWindowMinutes(), request.maxModelRetries(), request.retryMaxDelaySeconds(), request.maxRepairAttempts(), request.expectedVersion());
+            value = new DirectorSettings(request.contextWindowTokens(), request.compactionThresholdPercent(),
+                    request.responseReserveTokens(), request.recoveryWindowMinutes(), request.maxModelRetries(),
+                    request.retryMaxDelaySeconds(), request.maxRepairAttempts(), request.expectedVersion());
         } catch (IllegalArgumentException invalid) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
                     ApiMessage.of("api.director-settings.title"), ApiMessage.of("api.director-settings.invalid"),
