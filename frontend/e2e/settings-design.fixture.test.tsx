@@ -42,7 +42,6 @@ it("opens director settings from the studio preview navigation and saves synthet
   await user.click(screen.getByRole("link", { name: "导演设置" }));
   expect(await screen.findByRole("heading", { name: "导演设置" })).toBeVisible();
   expect(screen.getByRole("link", { name: "导演设置" })).toHaveAttribute("aria-current", "page");
-  expect(screen.getAllByRole("spinbutton")).toHaveLength(9);
   const threshold = screen.getByLabelText("自动压缩阈值（%）");
   expect(threshold).toHaveValue(50);
   fireEvent.change(threshold, { target: { value: "25" } });

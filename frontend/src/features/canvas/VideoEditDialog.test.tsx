@@ -17,6 +17,8 @@ vi.mock("./subtitles/subtitleExchange", async original => ({
 }));
 let subtitleDrafts: SubtitleDraft[] = [];
 let subtitleSaveFailure = false;
+// Bulk caption scenarios render whole pages and need headroom on shared CI runners.
+const BULK_CAPTION_TEST_TIMEOUT_MS = 15_000;
 
 function item(id: string, kind: "VIDEO" | "AUDIO" = "VIDEO"): CanvasItem {
   return {
@@ -178,18 +180,22 @@ describe("VideoEditDialog", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "导出 MP4" })).toBeEnabled());
     expect(screen.getByRole("textbox", { name: "成片名称" })).toHaveValue("保留长片草稿");
   });
-  it("keeps a bounded caption editor and retains edits across caption pages", async () => {
-    setup();
-    await waitFor(() => expect(screen.getByRole("button", { name: "导出 MP4" })).toBeEnabled());
-    await userEvent.setup().click(screen.getByRole("tab", { name: "字幕" }));
-    fireEvent.click(screen.getByRole("button", { name: "添加字幕" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "字幕正文" }), { target: { value: "保留的第一句" } });
-    for (let i = 0; i < 50; i++) fireEvent.click(screen.getByRole("button", { name: "添加字幕" }));
-    expect(screen.getAllByRole("textbox", { name: "字幕正文" })).toHaveLength(1);
-    fireEvent.click(screen.getByRole("button", { name: "上一页字幕" }));
-    expect(screen.getAllByRole("textbox", { name: "字幕正文" })).toHaveLength(50);
-    expect(screen.getByDisplayValue("保留的第一句")).toBeVisible();
-  });
+  it(
+    "keeps a bounded caption editor and retains edits across caption pages",
+    async () => {
+      setup();
+      await waitFor(() => expect(screen.getByRole("button", { name: "导出 MP4" })).toBeEnabled());
+      await userEvent.setup().click(screen.getByRole("tab", { name: "字幕" }));
+      fireEvent.click(screen.getByRole("button", { name: "添加字幕" }));
+      fireEvent.change(screen.getByRole("textbox", { name: "字幕正文" }), { target: { value: "保留的第一句" } });
+      for (let i = 0; i < 50; i++) fireEvent.click(screen.getByRole("button", { name: "添加字幕" }));
+      expect(screen.getAllByRole("textbox", { name: "字幕正文" })).toHaveLength(1);
+      fireEvent.click(screen.getByRole("button", { name: "上一页字幕" }));
+      expect(screen.getAllByRole("textbox", { name: "字幕正文" })).toHaveLength(50);
+      expect(screen.getByDisplayValue("保留的第一句")).toBeVisible();
+    },
+    BULK_CAPTION_TEST_TIMEOUT_MS,
+  );
   it("moves initial keyboard focus into the editor and keeps Tab navigation inside it", async () => {
     setup();
     const user = userEvent.setup();
@@ -543,47 +549,51 @@ describe("persistent source subtitles in the composition editor", () => {
     expect(accepted[1]?.subtitles).toEqual([{ text: "Corrected 中文", startMs: 750, endMs: 1750 }]);
   });
 
-  it("blocks 2001 projected captions without discarding corrections and submits all 2000 at the budget", async () => {
-    subtitleDrafts = [
-      {
-        ...sourceSubtitle("version-video-1", 6000),
-        cues: Array.from({ length: 2000 }, (_, index) => ({
-          text: `Caption ${index + 1}`,
-          startMs: 1000,
-          endMs: 3000,
-        })),
-      },
-    ];
-    const accepted: VideoCompositionRequest[] = [];
-    server.use(
-      http.post("/api/v1/projects/project-1/video-compositions", async ({ request }) => {
-        accepted.push((await request.json()) as VideoCompositionRequest);
-        return HttpResponse.json({ id: "fixture-task", status: "READY" });
-      }),
-    );
-    setup();
-    const user = userEvent.setup();
-    await waitFor(() => expect(screen.getByRole("button", { name: t("video.edit.submit") })).toBeEnabled());
-    await user.click(screen.getByRole("tab", { name: t("video.edit.captionsTab") }));
-    fireEvent.change(screen.getByRole("textbox", { name: t("subtitle.ctext", { index: 1 }) }), {
-      target: { value: "Keep corrected boundary" },
-    });
-    await user.click(screen.getByRole("button", { name: t("subtitle.add") }));
-    fireEvent.change(screen.getByRole("textbox", { name: t("subtitle.ctext", { index: 2001 }) }), {
-      target: { value: "One beyond the budget" },
-    });
-    const submit = screen.getByRole("button", { name: t("video.edit.submit") });
-    expect(submit).toBeDisabled();
-    expect(screen.getByDisplayValue("One beyond the budget")).toBeVisible();
-    expect(accepted).toEqual([]);
-    await user.click(screen.getByRole("button", { name: t("subtitle.remove", { index: 2001 }) }));
-    expect(submit).toBeEnabled();
-    await user.click(submit);
-    await waitFor(() => expect(accepted).toHaveLength(1));
-    expect(accepted[0]?.subtitles).toHaveLength(2000);
-    expect(accepted[0]?.subtitles?.[0]).toEqual({ text: "Keep corrected boundary", startMs: 1000, endMs: 3000 });
-    expect(accepted[0]?.subtitles?.[1999]).toEqual({ text: "Caption 2000", startMs: 1000, endMs: 3000 });
-  });
+  it(
+    "blocks 2001 projected captions without discarding corrections and submits all 2000 at the budget",
+    async () => {
+      subtitleDrafts = [
+        {
+          ...sourceSubtitle("version-video-1", 6000),
+          cues: Array.from({ length: 2000 }, (_, index) => ({
+            text: `Caption ${index + 1}`,
+            startMs: 1000,
+            endMs: 3000,
+          })),
+        },
+      ];
+      const accepted: VideoCompositionRequest[] = [];
+      server.use(
+        http.post("/api/v1/projects/project-1/video-compositions", async ({ request }) => {
+          accepted.push((await request.json()) as VideoCompositionRequest);
+          return HttpResponse.json({ id: "fixture-task", status: "READY" });
+        }),
+      );
+      setup();
+      const user = userEvent.setup();
+      await waitFor(() => expect(screen.getByRole("button", { name: t("video.edit.submit") })).toBeEnabled());
+      await user.click(screen.getByRole("tab", { name: t("video.edit.captionsTab") }));
+      fireEvent.change(screen.getByRole("textbox", { name: t("subtitle.ctext", { index: 1 }) }), {
+        target: { value: "Keep corrected boundary" },
+      });
+      await user.click(screen.getByRole("button", { name: t("subtitle.add") }));
+      fireEvent.change(screen.getByRole("textbox", { name: t("subtitle.ctext", { index: 2001 }) }), {
+        target: { value: "One beyond the budget" },
+      });
+      const submit = screen.getByRole("button", { name: t("video.edit.submit") });
+      expect(submit).toBeDisabled();
+      expect(screen.getByDisplayValue("One beyond the budget")).toBeVisible();
+      expect(accepted).toEqual([]);
+      await user.click(screen.getByRole("button", { name: t("subtitle.remove", { index: 2001 }) }));
+      expect(submit).toBeEnabled();
+      await user.click(submit);
+      await waitFor(() => expect(accepted).toHaveLength(1));
+      expect(accepted[0]?.subtitles).toHaveLength(2000);
+      expect(accepted[0]?.subtitles?.[0]).toEqual({ text: "Keep corrected boundary", startMs: 1000, endMs: 3000 });
+      expect(accepted[0]?.subtitles?.[1999]).toEqual({ text: "Caption 2000", startMs: 1000, endMs: 3000 });
+    },
+    BULK_CAPTION_TEST_TIMEOUT_MS,
+  );
 
   it("keeps manual blank-line captions editable but blocks every export until the exchange text is valid", async () => {
     setup();
