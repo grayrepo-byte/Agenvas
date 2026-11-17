@@ -125,13 +125,15 @@ public class SkillRepository {
                 .fetch(CREATIVE_SKILL.BUILTIN_KEY);
     }
     public void registerBuiltin(SkillContent.Catalogue value, SkillContent.Version version) {
+        // Concurrent first reads share both the deterministic ID and owner/key. Either unique
+        // index can detect the race; only the transaction that inserts the row publishes it.
         int inserted = db.insertInto(CREATIVE_SKILL).set(CREATIVE_SKILL.ID, value.id())
                 .set(CREATIVE_SKILL.OWNER_ID, value.ownerId())
                 .set(CREATIVE_SKILL.TITLE, value.title()).set(CREATIVE_SKILL.DESCRIPTION, value.description())
                 .set(CREATIVE_SKILL.BUILTIN_KEY, value.builtinKey())
                 .set(CREATIVE_SKILL.CREATED_AT, time(value.createdAt()))
                 .set(CREATIVE_SKILL.UPDATED_AT, time(value.updatedAt()))
-                .onConflict(CREATIVE_SKILL.OWNER_ID, CREATIVE_SKILL.BUILTIN_KEY).doNothing().execute();
+                .onConflictDoNothing().execute();
         if (inserted == 1)
             publish(version, 0);
     }

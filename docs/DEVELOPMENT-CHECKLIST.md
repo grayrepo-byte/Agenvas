@@ -4191,3 +4191,9 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] `node e2e/canvas-editing-browser.mjs --insecure-http --text-node-drag-only` 通过原生平移、文字／空白文字／图片／视频节点拖动及单次布局保存，文字选择与编辑保持独立。浏览器使用 Mock API 和合成内容，没有操作用户项目。
 - [x] 已单独更新本地 web 容器并恢复健康，后端与数据库容器保持运行；实际 HTTP 返回的 CSS 已核对悬浮定位、磨砂面板、中央指针穿透及旧渐变遮罩移除。
 - [ ] 未运行全量、后端或真实 Provider 测试；Firefox、Safari 与实际移动设备未验证。
+
+## 内置 Skill 并发首次注册修复（2026-11-17）
+
+- [x] 真实 PostgreSQL 复现并发首次浏览时的 `creative_skill_pkey` 冲突。内置条目同时具有确定性主键与账号内 key 唯一约束，注册改为同时处理这两类重复；仍由成功插入的一方在原事务内发布唯一不可变版本，保留个人 Skill、历史发行与账号隔离。无 API、迁移、生成代码或依赖变化。
+- [x] 既有并发用例修复前失败；修复后 `./mvnw --batch-mode --no-transfer-progress -Pci-integration -Dit.test=SkillPostgresIT verify` 共 16 项通过，并发首次读取方法额外独立运行三次均通过。`SkillSelectionQueryTest`、`BuiltinSkillSearchTest`、`BuiltinSkillCatalogueTest`、`SkillFormatTest` 共 31 项单元测试通过；Spotless 与差异空白检查通过。
+- [ ] 本机未运行全量测试、真实 Provider 调用或升级后的部署冒烟；上述回归使用隔离 PostgreSQL 和合成账号，不操作用户数据。
