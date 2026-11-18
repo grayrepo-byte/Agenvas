@@ -4,8 +4,8 @@ import dev.agenvas.mcp.domain.McpScope;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.i18n.ApiMessage;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.UUID;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -24,22 +24,33 @@ public class McpToolPolicy {
         } catch (IOException failure) {
             throw new IllegalStateException("MCP tool contract is missing", failure);
         }
+        for (JsonNode definition : definitions) {
+            String name = definition.path("name").asText();
+            McpSchemaValidator.requireSupported(definition.path("inputSchema"), name + "/inputSchema");
+            McpSchemaValidator.requireSupported(definition.path("outputSchema"), name + "/outputSchema");
+        }
     }
     public List<JsonNode> definitions() {
         return definitions.stream().map(JsonNode::deepCopy).toList();
     }
     public JsonNode definition(String name) {
+        return registeredDefinition(name).deepCopy();
+    }
+    private JsonNode registeredDefinition(String name) {
         return definitions.stream().filter(d -> name != null && name.equals(d.path("name").asText())).findFirst()
                 .orElseThrow(McpToolPolicy::invalid);
     }
     public McpScope requiredScope(String name) {
-        return McpScope.valueOf(definition(name).path("requiredScope").asText());
+        return McpScope.valueOf(registeredDefinition(name).path("requiredScope").asText());
     }
     public void validate(String name, JsonNode arguments) {
         if (arguments == null
-                || arguments.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length > MAX_ARGUMENT_BYTES
-                || !matches(definition(name).path("inputSchema"), arguments, 0))
+                || arguments.toString().getBytes(StandardCharsets.UTF_8).length > MAX_ARGUMENT_BYTES
+                || !McpSchemaValidator.matches(registeredDefinition(name).path("inputSchema"), arguments))
             throw invalid();
+        validateToolRules(name, arguments);
+    }
+    private void validateToolRules(String name, JsonNode arguments) {
         if (arguments.has("commandId") && arguments.path("commandId").asText().isBlank())
             throw invalid();
         if ("prepare_media_upload".equals(name) && arguments.path("title").asText().isBlank())
@@ -68,75 +79,10 @@ public class McpToolPolicy {
     }
     /** Contract checks can exercise the same safe projection returned to an actual client. */
     public void validateOutput(String name, JsonNode output) {
-        if (output == null || !matches(definition(name).path("outputSchema"), output, 0))
+        if (output == null || !McpSchemaValidator.matches(registeredDefinition(name).path("outputSchema"), output))
             throw new IllegalStateException("MCP tool response does not match its public contract: " + name);
     }
 
-    /** Validates the deliberately small JSON Schema vocabulary used by our static contract. */
-    private boolean matches(JsonNode schema, JsonNode value, int depth) {
-        if (depth > 32)
-            return false;
-        if (schema.has("anyOf"))
-            return schema.path("anyOf").valueStream().anyMatch(s -> matches(s, value, depth + 1));
-        String type = schema.path("type").asText();
-        boolean typed = switch (type) {
-            case "object" -> value.isObject();
-            case "array" -> value.isArray();
-            case "string" -> value.isString();
-            case "integer" -> value.isIntegralNumber() && value.canConvertToLong();
-            case "number" -> value.isNumber();
-            case "boolean" -> value.isBoolean();
-            case "null" -> value.isNull();
-            default -> false;
-        };
-        if (!typed)
-            return false;
-        if (schema.has("enum") && schema.path("enum").valueStream().noneMatch(value::equals))
-            return false;
-        if (value.isObject()) {
-            for (JsonNode required : schema.path("required"))
-                if (!value.has(required.asText()))
-                    return false;
-            JsonNode props = schema.path("properties");
-            for (String key : value.propertyNames()) {
-                if (props.has(key)) {
-                    if (!matches(props.path(key), value.path(key), depth + 1))
-                        return false;
-                } else if (schema.has("additionalProperties") && !schema.path("additionalProperties").asBoolean())
-                    return false;
-            }
-        } else if (value.isArray()) {
-            if (value.size() < schema.path("minItems").asInt(0)
-                    || value.size() > schema.path("maxItems").asInt(Integer.MAX_VALUE))
-                return false;
-            if (schema.path("uniqueItems").asBoolean() && value.valueStream().distinct().count() != value.size())
-                return false;
-            for (JsonNode item : value)
-                if (!matches(schema.path("items"), item, depth + 1))
-                    return false;
-        } else if (value.isString()) {
-            String text = value.asText();
-            if (text.length() < schema.path("minLength").asInt(0)
-                    || text.length() > schema.path("maxLength").asInt(Integer.MAX_VALUE))
-                return false;
-            if (schema.has("pattern") && !text.matches(schema.path("pattern").asText()))
-                return false;
-            if ("uuid".equals(schema.path("format").asText())) {
-                try {
-                    if (!UUID.fromString(text).toString().equalsIgnoreCase(text))
-                        return false;
-                } catch (IllegalArgumentException invalid) {
-                    return false;
-                }
-            }
-        } else if (value.isNumber()) {
-            if (schema.has("minimum") && value.decimalValue().compareTo(schema.path("minimum").decimalValue()) < 0)
-                return false;
-            if (schema.has("maximum") && value.decimalValue().compareTo(schema.path("maximum").decimalValue()) > 0)
-                return false;
-        }
-        return true;
-    }
     static ApiProblemException invalid() {
         return new ApiProblemException(HttpStatus.BAD_REQUEST, "TOOL_ARGUMENT_INVALID",
                 ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"),

@@ -2,17 +2,105 @@ package dev.agenvas.mcp.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import dev.agenvas.mcp.domain.McpScope;
 import dev.agenvas.shared.error.ApiProblemException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 class McpToolPolicyTest {
     private final ObjectMapper mapper = new ObjectMapper();
     private final McpToolPolicy policy = new McpToolPolicy(mapper);
     private final String project = UUID.randomUUID().toString();
+
+    @Test
+    void registrationRejectsUnsupportedNestedInputAndOutputConstraints() {
+        for (String schema : List.of("inputSchema", "outputSchema")) {
+            var catalog = mapper.createObjectNode();
+            var tool = catalog.putArray("tools").addObject().put("name", "new_tool");
+            tool.putObject("inputSchema").put("type", "object");
+            tool.putObject("outputSchema").put("type", "object");
+            tool.putObject(schema).put("type", "object").putObject("properties").putObject("values")
+                    .put("type", "array").putObject("items").put("type", "string").put("oneOf", true);
+            assertThatThrownBy(() -> loadCatalog(catalog))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("new_tool/" + schema + "/properties/values/items")
+                    .hasMessageContaining("oneOf");
+        }
+    }
+
+    @Test
+    void registrationRejectsConstraintsTheMatcherWouldSkip() {
+        for (String schema : List.of(
+                """
+                {"anyOf":[{"type":"string"}],"maxLength":1}
+                """,
+                """
+                {"type":"string","format":"date-time"}
+                """,
+                """
+                {"type":"boolean","maximum":2}
+                """)) {
+            var catalog = mapper.createObjectNode();
+            var tool = catalog.putArray("tools").addObject().put("name", "new_tool");
+            tool.set("inputSchema", mapper.readTree(schema));
+            tool.putObject("outputSchema").put("type", "object");
+            assertThatThrownBy(() -> loadCatalog(catalog))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("new_tool/inputSchema");
+        }
+    }
+
+    @Test
+    void discoveryDoesNotAllowChangingTheRegisteredSchema() {
+        var projection = (ObjectNode) policy.definition("list_projects").path("inputSchema");
+        projection.put("additionalProperties", true);
+        invalid("list_projects", "{\"unknown\":true}");
+    }
+
+    @Test
+    void preservesTheSerializedUtf8ArgumentBudget() {
+        var request = mapper.createObjectNode().put("projectId", project).put("commandId", "update")
+                .put("canvasItemId", project).put("expectedDraftVersion", 0);
+        var parameters = request.putObject("patch").putObject("parameters").put("value", "");
+        int remainingBytes = 262_144 - request.toString().getBytes(StandardCharsets.UTF_8).length;
+        String payload = "界".repeat(remainingBytes / 3) + "x".repeat(remainingBytes % 3);
+        parameters.put("value", payload);
+        policy.validate("update_media_draft", request);
+        parameters.put("value", payload + "x");
+        assertThatThrownBy(() -> policy.validate("update_media_draft", request))
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        problem -> assertThat(problem.code()).isEqualTo("TOOL_ARGUMENT_INVALID"));
+    }
+
+    @Test
+    void schemaTraversalKeepsItsDepthBudgetAcrossAlternatives() {
+        var catalog = mapper.createObjectNode();
+        var tool = catalog.putArray("tools").addObject().put("name", "new_tool");
+        tool.putObject("outputSchema").put("type", "object");
+        var schema = tool.putObject("inputSchema");
+        var request = mapper.createObjectNode();
+        var parent = request;
+        for (int depth = 0; depth < 31; depth++) {
+            schema = schema.put("type", "object").putObject("properties").putObject("child");
+            parent = parent.putObject("child");
+        }
+        var properties = schema.put("type", "object").putObject("properties");
+        properties.putObject("atLimit").put("type", "boolean");
+        properties.putObject("tooDeep").putArray("anyOf").addObject().put("type", "boolean");
+        McpToolPolicy loaded = loadCatalog(catalog);
+        parent.put("atLimit", true);
+        loaded.validate("new_tool", request);
+        parent.put("tooDeep", true);
+        assertThatThrownBy(() -> loaded.validate("new_tool", request)).isInstanceOf(ApiProblemException.class);
+    }
 
     @Test
     void compiledHandlersMustMatchEachDiscoveryContractAndGrant() {
@@ -74,6 +162,7 @@ class McpToolPolicyTest {
         String request = "{\"projectId\":\"" + project + "\",\"commandId\":\"compose\",\"composition\":" + composition
                 + "}";
         policy.validate("compose_video", mapper.readTree(request));
+        invalid("compose_video", request.replace(project, "1-1-1-1-1"));
         invalid("compose_video", request.replace("\"title\":\"Scene\"", "\"title\":\"" + "x".repeat(161) + "\""));
         invalid("compose_video", request.replace("\"lines\":", "\"url\":\"file:///private/input\",\"lines\":"));
     }
@@ -138,6 +227,12 @@ class McpToolPolicyTest {
             mentions.addObject().put("versionId", project).put("role", "REFERENCE");
         policy.validate("update_media_draft", request);
     }
+    private McpToolPolicy loadCatalog(ObjectNode catalog) {
+        var contractMapper = mock(ObjectMapper.class);
+        when(contractMapper.readTree(any(InputStream.class))).thenReturn(catalog);
+        return new McpToolPolicy(contractMapper);
+    }
+
     private void invalid(String name, String json) {
         assertThatThrownBy(() -> policy.validate(name, mapper.readTree(json))).isInstanceOf(ApiProblemException.class);
     }
