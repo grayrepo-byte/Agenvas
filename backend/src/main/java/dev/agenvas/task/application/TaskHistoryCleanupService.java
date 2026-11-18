@@ -30,11 +30,7 @@ public class TaskHistoryCleanupService {
     public void stopFor(List<UUID> taskIds, Instant now) {
         for (var task : tasks.stopForHistoryCleanup(taskIds, now)) {
             UUID owner = tasks.ownerId(task.id()).orElseThrow();
-            var payload = mapper.createObjectNode().put("taskId", task.id().toString())
-                    .put("status", task.status().name()).put("cancelRequested", true)
-                    .put("possibleExternalCost", true);
-            events.append(owner, task.projectId(), new ProjectEventService.EventDraft(
-                    "task.status.changed", 1, task.id(), task.version(), payload));
+            events.append(owner, task.projectId(), TaskStatusEvents.statusChanged(mapper, task, true));
         }
     }
 }

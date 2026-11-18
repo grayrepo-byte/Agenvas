@@ -737,6 +737,36 @@ class CallLogPostgresIT {
     }
 
     @Test
+    void cleanupPersistsTheSubtitleDraftIdentityWithoutTheTaskInput() {
+        Instant now = Instant.parse("2026-10-01T00:00:00Z"), old = now.minus(Duration.ofDays(31));
+        Project project = newProject("Expired subtitle recognition");
+        UUID taskId = UUID.randomUUID(), subtitleId = UUID.randomUUID();
+        var subtitleInput = mapper.createObjectNode().put("subtitleId", subtitleId.toString())
+                .set("privateInput", privatePayload());
+        taskRepository.create(new Task(taskId, project.id(), null, "expired-subtitle", Task.Kind.SUBTITLE_TRANSCRIPTION,
+                Task.Status.READY, false, subtitleInput, dev.agenvas.shared.crypto.Sha256.hex(subtitleInput.toString()),
+                null, null, 1, old,
+                null, null, 0L, 0L, null, old, old, null));
+        retention.update(30, retention.settings().version());
+
+        assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
+
+        Task stopped = tasks.get(owner.userId(), project.id(), taskId);
+        assertThat(stopped.status()).isEqualTo(Task.Status.CANCELED);
+        assertThat(stopped.version()).isEqualTo(1L);
+        String payload = jdbc.sql("""
+                select payload_json::text from project_event
+                where project_id=:project and type='task.status.changed' and aggregate_id=:task
+                  and aggregate_version=:version
+                """).param("project", project.id()).param("task", taskId).param("version", stopped.version())
+                .query(String.class).single();
+        assertThat(mapper.readTree(payload)).isEqualTo(mapper.createObjectNode()
+                .put("taskId", taskId.toString()).put("status", "CANCELED")
+                .put("subtitleId", subtitleId.toString())
+                .put("cancelRequested", true).put("possibleExternalCost", true));
+    }
+
+    @Test
     void stoppingAndHistoryDeletionRollBackTogetherOnFailure() {
         Instant now = Instant.parse("2026-10-01T00:00:00Z"), old = now.minus(Duration.ofDays(31));
         Project project = newProject("Abandon rollback");

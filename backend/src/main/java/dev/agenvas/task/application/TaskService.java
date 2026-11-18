@@ -875,7 +875,8 @@ public class TaskService {
                 } else
                     usage.settleMediaTask(ownerId, lease, null, null, providerUsage);
             }
-            appendMediaOutcomeEvent(ownerId, lease, updated, artifactId, result);
+            events.append(ownerId, updated.projectId(), TaskStatusEvents.mediaOutcome(objectMapper, updated,
+                    possibleExternalCost(updated, true), artifactId, result.versionId(), result.selected()));
             return ProjectEventService.Change.unchanged(result);
         }).value();
     }
@@ -1000,16 +1001,6 @@ public class TaskService {
         return objectMapper.createObjectNode().put("ordinal", extra.ordinal()).put("artifactId", artifactId.toString())
                 .put("canvasItemId", itemId.toString()).put("artifactVersionId", version.versionId().toString())
                 .put("selected", selected);
-    }
-
-    private void appendMediaOutcomeEvent(UUID ownerId, Task lease, Task updated, UUID artifactId,
-            ArtifactService.TaskVersionResult result) {
-        ObjectNode payload = (ObjectNode) taskEvent(updated, true).payload();
-        payload.put("artifactId", artifactId.toString());
-        payload.put("artifactVersionId", result.versionId().toString());
-        payload.put("selected", result.selected());
-        events.append(ownerId, lease.projectId(), new ProjectEventService.EventDraft("task.status.changed", 1,
-                lease.id(), updated.version(), payload));
     }
 
     /** Persist model failure feedback and fence the old stream before waiting or abandoning. */
@@ -1421,21 +1412,12 @@ public class TaskService {
         }
     }
 
-    /**
-     * 生成任务状态事件。只暴露任务 ID、状态、取消标记及潜在外部费用提示，不包含任务输入或密钥。
-     *
-     * @param task 状态已变化的持久化任务
-     * @param possibleExternalCost 调用方已知可能发生外部费用时强制标记
-     * @return 可与任务状态同事务写入的事件草稿
-     */
-    private ProjectEventService.EventDraft taskEvent(Task task, boolean possibleExternalCost) {
-        ObjectNode payload = objectMapper.createObjectNode();
-        payload.put("taskId", task.id().toString());
-        payload.put("status", task.status().name());
-        if (task.kind() == Task.Kind.SUBTITLE_TRANSCRIPTION)
-            payload.put("subtitleId", task.input().path("subtitleId").asText());
-        payload.put("cancelRequested", task.cancelRequested());
-        boolean costPossible = possibleExternalCost
+    private ProjectEventService.EventDraft taskEvent(Task task, boolean costHint) {
+        return TaskStatusEvents.statusChanged(objectMapper, task, possibleExternalCost(task, costHint));
+    }
+
+    private boolean possibleExternalCost(Task task, boolean costHint) {
+        boolean costPossible = costHint
                 || task.providerRequestId() != null
                 || ((task.kind() == Task.Kind.IMAGE_GENERATION
                         || task.kind() == Task.Kind.VIDEO_GENERATION
@@ -1444,10 +1426,7 @@ public class TaskService {
                                 || task.status() == Task.Status.WAITING_PROVIDER
                                 || task.status() == Task.Status.UNKNOWN
                                 || task.status() == Task.Status.CANCELED));
-        payload.put("possibleExternalCost", costPossible && !tasks.mediaBinding(task.id())
-                .map(publications::isLocal).orElse(false));
-        return new ProjectEventService.EventDraft("task.status.changed", 1,
-                task.id(), task.version(), payload);
+        return costPossible && !tasks.mediaBinding(task.id()).map(publications::isLocal).orElse(false);
     }
 
     /**
