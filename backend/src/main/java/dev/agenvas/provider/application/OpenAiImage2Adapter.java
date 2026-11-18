@@ -11,13 +11,12 @@ import dev.agenvas.shared.error.ProviderFailureCodes;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.provider.domain.AttemptContext;
+import dev.agenvas.provider.domain.OpenAiImageOptions;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.Submission;
-import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
-import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapshot;
+import dev.agenvas.provider.application.PinnedMediaExecution.Configuration;
 import dev.agenvas.provider.infrastructure.OpenAiImage2Client;
-import dev.agenvas.settings.application.CredentialCipher;
 import dev.agenvas.task.domain.Task;
 import java.awt.Color;
 import java.awt.Graphics2D;
@@ -30,13 +29,13 @@ import java.util.List;
 import java.util.UUID;
 import javax.imageio.ImageIO;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /** Generates or edits one image with the approved ordered image versions. */
 @Component
 public class OpenAiImage2Adapter implements MediaAdapter {
-    private final JooqMediaCapabilityRepository catalog;
-    private final CredentialCipher cipher;
+    private final PinnedMediaExecution execution;
     private final ArtifactService artifacts;
     private final AssetService assets;
     private final ProjectService projects;
@@ -44,11 +43,10 @@ public class OpenAiImage2Adapter implements MediaAdapter {
     private final ObjectMapper mapper;
     private final MediaRelayService relay;
 
-    public OpenAiImage2Adapter(JooqMediaCapabilityRepository catalog, CredentialCipher cipher,
+    public OpenAiImage2Adapter(PinnedMediaExecution execution,
             ArtifactService artifacts, AssetService assets, ProjectService projects,
             OpenAiImage2Client client, ObjectMapper mapper, MediaRelayService relay) {
-        this.catalog = catalog;
-        this.cipher = cipher;
+        this.execution = execution;
         this.artifacts = artifacts;
         this.assets = assets;
         this.projects = projects;
@@ -69,25 +67,26 @@ public class OpenAiImage2Adapter implements MediaAdapter {
 
     @Override
     public String preflightFailure(AttemptContext context) {
+        Configuration snapshot;
         try {
-            credential(snapshot(context));
+            snapshot = configuration(context);
         } catch (RuntimeException unavailable) {
             return "MEDIA_CREDENTIAL_UNAVAILABLE";
         }
         try {
-            var options = options(context);
-            var configured = mapper.readTree(snapshot(context).specJson()).path("settings");
+            var configured = mapper.readTree(snapshot.specJson()).path("settings");
+            var options = OpenAiImageOptions.parse(configured);
             parameters(context).requireSupported(
                     options.animated() ? java.util.Set.of("AUTO") : ImageGenerationParameters.ASPECT_RATIOS,
                     options.animated() ? java.util.Set.of("1K") : ImageGenerationParameters.RESOLUTIONS,
-                    dev.agenvas.provider.domain.OpenAiImageOptions.qualities(configured.path("model").asText("")),
+                    OpenAiImageOptions.qualities(configured.path("model").asText("")),
                     !options.animated());
             if (options.animated() && !FrozenMediaInputs.images(context.lease()).isEmpty())
                 throw new IllegalArgumentException("GIF output does not support image edits");
-            size(context);
+            String outputSize = size(context, options.animated());
             if (!FrozenMediaInputs.images(context.lease()).isEmpty()) {
-                referencePngs(context, markupPair(context));
-                maskPng(context);
+                referencePngs(context, markupPair(context, configured), outputSize);
+                maskPng(context, outputSize);
             }
         } catch (RuntimeException invalid) {
             return "PROVIDER_UNSUPPORTED_INPUT";
@@ -107,8 +106,8 @@ public class OpenAiImage2Adapter implements MediaAdapter {
 
     @Override
     public Submission submit(AttemptContext context) {
-        Snapshot snapshot = snapshot(context);
-        String key = credential(snapshot);
+        Configuration snapshot = configuration(context);
+        String key = snapshot.credential();
         var settings = mapper.readTree(snapshot.specJson()).path("settings");
         var timeouts = dev.agenvas.provider.domain.MediaHttpTimeouts.configured(settings);
         OpenAiImage2Client invocation = timeouts == null ? client : client.withTimeouts(timeouts);
@@ -118,36 +117,37 @@ public class OpenAiImage2Adapter implements MediaAdapter {
         String model = configuredModel.isEmpty()
                 ? OpenAiImage2Client.DEFAULT_MODEL
                 : configuredModel;
-        var options = dev.agenvas.provider.domain.OpenAiImageOptions.parse(settings);
+        var options = OpenAiImageOptions.parse(settings);
         String prompt = context.lease().input().path("prompt").asText();
         String negative = context.lease().input().path("negativePrompt").asText("");
         if (!negative.isBlank())
             prompt += "\nAvoid: " + negative;
         try {
-            String origin = snapshot.connectionVersion().origin();
+            String origin = snapshot.origin();
+            String outputSize = size(context, options.animated());
             if (FrozenMediaInputs.images(context.lease()).isEmpty()) {
                 return new Submission.Completed(
                         options.animated() || options.complexity() != null || options.moderation() != null
-                                ? invocation.generate(key, model, prompt, quality, size(context),
+                                ? invocation.generate(key, model, prompt, quality, outputSize,
                                         parameters.transparentBackground(), origin, options)
-                                : invocation.generate(key, model, prompt, quality, size(context),
+                                : invocation.generate(key, model, prompt, quality, outputSize,
                                         parameters.transparentBackground(), origin));
             }
             if (options.animated())
                 return new Submission.Rejected("PROVIDER_UNSUPPORTED_INPUT");
-            var markup = markupPair(context);
-            List<byte[]> references = referencePngs(context, markup);
-            byte[] mask = maskPng(context);
+            var markup = markupPair(context, settings);
+            List<byte[]> references = referencePngs(context, markup, outputSize);
+            byte[] mask = maskPng(context, outputSize);
             UUID profile = relayProfile(context);
             if (profile == null && markup != null)
                 return new Submission.Completed(invocation.edit(key, model, prompt, quality,
-                        size(context), references, null, parameters.transparentBackground(), origin,
+                        outputSize, references, null, parameters.transparentBackground(), origin,
                         options.complexity(), options.moderation(), markup.markup()));
             if (profile == null)
                 return new Submission.Completed(options.complexity() == null && options.moderation() == null
-                        ? invocation.edit(key, model, prompt, quality, size(context), references, mask,
+                        ? invocation.edit(key, model, prompt, quality, outputSize, references, mask,
                                 parameters.transparentBackground(), origin)
-                        : invocation.edit(key, model, prompt, quality, size(context), references, mask,
+                        : invocation.edit(key, model, prompt, quality, outputSize, references, mask,
                                 parameters.transparentBackground(), origin, options.complexity(),
                                 options.moderation()));
             List<String> urls;
@@ -166,12 +166,12 @@ public class OpenAiImage2Adapter implements MediaAdapter {
             }
             if (markupUrl != null)
                 return new Submission.Completed(invocation.editUrls(key, model, prompt, quality,
-                        size(context), urls, null, parameters.transparentBackground(), origin, options.complexity(),
+                        outputSize, urls, null, parameters.transparentBackground(), origin, options.complexity(),
                         options.moderation(), markupUrl));
             return new Submission.Completed(options.complexity() == null && options.moderation() == null
-                    ? invocation.editUrls(key, model, prompt, quality, size(context), urls, maskUrl,
+                    ? invocation.editUrls(key, model, prompt, quality, outputSize, urls, maskUrl,
                             parameters.transparentBackground(), origin)
-                    : invocation.editUrls(key, model, prompt, quality, size(context), urls, maskUrl,
+                    : invocation.editUrls(key, model, prompt, quality, outputSize, urls, maskUrl,
                             parameters.transparentBackground(), origin, options.complexity(), options.moderation()));
         } catch (OpenAiImage2Client.Rejected rejected) {
             return new Submission.Rejected(rejected.code(), rejected.providerFailure());
@@ -192,37 +192,12 @@ public class OpenAiImage2Adapter implements MediaAdapter {
         return id.isBlank() ? null : UUID.fromString(id);
     }
 
-    private Snapshot snapshot(AttemptContext context) {
-        var binding = context.binding();
-        Snapshot snapshot = catalog.snapshotAt(binding.capabilityId(),
-                binding.capabilityVersion(), binding.connectionId(),
-                binding.connectionVersion())
-                .orElseThrow(() -> new IllegalStateException("Pinned media capability version is missing"));
-        if (!adapterId().equals(snapshot.adapterId())
-                || !binding.mappingSha256().equals(snapshot.mappingSha256())) {
-            throw new IllegalStateException("Pinned GPT Image 2 mapping differs");
-        }
-        return snapshot;
+    private Configuration configuration(AttemptContext context) {
+        return execution.open(context.binding(), adapterId(), "Pinned GPT Image 2 credential is missing");
     }
 
-    private String credential(Snapshot snapshot) {
-        var version = snapshot.connectionVersion();
-        if (version.credentialCiphertext() == null || version.credentialNonce() == null
-                || version.credentialKeyVersion() == null) {
-            throw new IllegalStateException("Pinned GPT Image 2 credential is missing");
-        }
-        return cipher.decryptMedia(version.connectionId(), version.version(),
-                new CredentialCipher.Encrypted(version.credentialCiphertext(),
-                        version.credentialNonce(), version.credentialKeyVersion()));
-    }
-
-    private dev.agenvas.provider.domain.OpenAiImageOptions options(AttemptContext context) {
-        return dev.agenvas.provider.domain.OpenAiImageOptions
-                .parse(mapper.readTree(snapshot(context).specJson()).path("settings"));
-    }
-
-    private String size(AttemptContext context) {
-        if (options(context).animated())
+    private String size(AttemptContext context, boolean animated) {
+        if (animated)
             return "auto";
         ImageGenerationParameters parameters = parameters(context);
         String ratio = parameters.aspectRatio();
@@ -274,14 +249,13 @@ public class OpenAiImage2Adapter implements MediaAdapter {
 
     /** Resolve every exact same-project version in the task's frozen order. */
     private List<byte[]> referencePngs(AttemptContext context,
-            dev.agenvas.provider.domain.OpenAiMarkupInput.Pair markup) {
+            dev.agenvas.provider.domain.OpenAiMarkupInput.Pair markup, String outputSize) {
         Task task = context.lease();
         List<FrozenMediaInputs.Image> inputs = FrozenMediaInputs.images(task);
         if (inputs.isEmpty()
                 || inputs.size() > MediaAdapterRegistry.OPENAI_MAX_REFERENCE_IMAGES) {
             throw new IllegalArgumentException("Pinned reference image count is unsupported");
         }
-        String outputSize = size(context);
         String[] dimensions = outputSize.split("x", 2);
         int width = Integer.parseInt(dimensions[0]);
         int height = Integer.parseInt(dimensions[1]);
@@ -352,14 +326,13 @@ public class OpenAiImage2Adapter implements MediaAdapter {
     }
 
     /** The first frozen image owns native markup; never resize its grid to output dimensions. */
-    private dev.agenvas.provider.domain.OpenAiMarkupInput.Pair markupPair(AttemptContext context) {
+    private dev.agenvas.provider.domain.OpenAiMarkupInput.Pair markupPair(AttemptContext context, JsonNode settings) {
         var operation = context.lease().input().path("imageOperation");
         String id = operation.path("markupAssetId").asText("");
         if (id.isBlank())
             return null;
         if (!operation.path("maskAssetId").asText("").isBlank()
-                || !dev.agenvas.provider.domain.OpenAiImageOptions
-                        .supportsMarkup(mapper.readTree(snapshot(context).specJson()).path("settings")))
+                || !OpenAiImageOptions.supportsMarkup(settings))
             throw new IllegalArgumentException("Pinned markup mode is unsupported");
         var first = FrozenMediaInputs.images(context.lease()).getFirst();
         var version = artifacts.requireImageVersionForTask(context.ownerId(), context.lease().projectId(),
@@ -380,7 +353,7 @@ public class OpenAiImage2Adapter implements MediaAdapter {
     }
 
     /** Resizes the immutable alpha mask with the same contain transform as the first input image. */
-    private byte[] maskPng(AttemptContext context) {
+    private byte[] maskPng(AttemptContext context, String outputSize) {
         String maskAssetId = context.lease().input().path("imageOperation")
                 .path("maskAssetId").asText("");
         if (maskAssetId.isBlank())
@@ -393,7 +366,7 @@ public class OpenAiImage2Adapter implements MediaAdapter {
                 || mask.byteSize() < 1 || mask.byteSize() > OpenAiImage2Client.MAX_MASK_BYTES) {
             throw new IllegalArgumentException("Pinned image edit mask is unsupported");
         }
-        String[] dimensions = size(context).split("x", 2);
+        String[] dimensions = outputSize.split("x", 2);
         int width = Integer.parseInt(dimensions[0]);
         int height = Integer.parseInt(dimensions[1]);
         try {
