@@ -2,8 +2,6 @@ package dev.agenvas.mcp.application;
 
 import java.util.Set;
 import java.util.UUID;
-import java.util.regex.Pattern;
-import java.util.regex.PatternSyntaxException;
 import tools.jackson.databind.JsonNode;
 
 /** The closed JSON Schema subset shared by MCP input and output contracts. */
@@ -11,6 +9,8 @@ final class McpSchemaValidator {
     private static final int MAX_DEPTH = 32;
     private static final Set<String> TYPES = Set.of("object", "array", "string", "integer", "number", "boolean",
             "null");
+    // Preserve whole-string matching for the published color and digest contracts.
+    private static final Set<String> PATTERNS = Set.of("^#[0-9A-F]{6}$", "^#[0-9a-fA-F]{6}$", "^[0-9a-f]{64}$");
     // Documentation and client hints. They never constrain or supply values at runtime.
     private static final Set<String> ANNOTATIONS = Set.of("description", "default");
 
@@ -52,7 +52,7 @@ final class McpSchemaValidator {
                 case "uniqueItems" -> "array".equals(type) && constraint.isBoolean();
                 case "minItems", "maxItems" -> "array".equals(type) && isSize(constraint);
                 case "minLength", "maxLength" -> "string".equals(type) && isSize(constraint);
-                case "pattern" -> "string".equals(type) && isPattern(constraint);
+                case "pattern" -> "string".equals(type) && constraint.isString() && PATTERNS.contains(constraint.asText());
                 case "format" -> "string".equals(type) && "uuid".equals(constraint.asText());
                 case "minimum", "maximum" -> ("integer".equals(type) || "number".equals(type))
                         && constraint.isNumber();
@@ -70,17 +70,6 @@ final class McpSchemaValidator {
 
     private static boolean isSize(JsonNode value) {
         return value.isIntegralNumber() && value.canConvertToInt() && value.asInt() >= 0;
-    }
-
-    private static boolean isPattern(JsonNode value) {
-        if (!value.isString())
-            return false;
-        try {
-            Pattern.compile(value.asText());
-            return true;
-        } catch (PatternSyntaxException invalid) {
-            return false;
-        }
     }
 
     private static IllegalStateException unsupported(String path, String reason) {

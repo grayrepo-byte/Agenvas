@@ -59,6 +59,37 @@ class McpToolPolicyTest {
     }
 
     @Test
+    void registrationRejectsUnpublishedPatternsInInputAndOutputContracts() {
+        for (String schema : List.of("inputSchema", "outputSchema")) {
+            for (String pattern : List.of("blue", "^blue$")) {
+                var catalog = mapper.createObjectNode();
+                var tool = catalog.putArray("tools").addObject().put("name", "new_tool");
+                tool.putObject("inputSchema").put("type", "object");
+                tool.putObject("outputSchema").put("type", "object");
+                tool.putObject(schema).put("type", "object").putObject("properties").putObject("value")
+                        .put("type", "string").put("pattern", pattern);
+                assertThatThrownBy(() -> loadCatalog(catalog))
+                        .isInstanceOf(IllegalStateException.class)
+                        .hasMessageContaining("new_tool/" + schema + "/properties/value/pattern");
+            }
+        }
+    }
+
+    @Test
+    void publishedPatternsKeepWholeStringValidation() {
+        var request = mapper.createObjectNode().put("projectId", project).put("commandId", "update")
+                .put("canvasItemId", project).put("expectedDraftVersion", 0);
+        var reference = request.putObject("patch").putArray("mediaInputs").addObject()
+                .put("versionId", project).put("role", "REFERENCE").put("color", "#aBc123");
+        policy.validate("update_media_draft", request);
+
+        reference.put("color", "#aBc123\n");
+        assertThatThrownBy(() -> policy.validate("update_media_draft", request))
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        problem -> assertThat(problem.code()).isEqualTo("TOOL_ARGUMENT_INVALID"));
+    }
+
+    @Test
     void discoveryDoesNotAllowChangingTheRegisteredSchema() {
         var projection = (ObjectNode) policy.definition("list_projects").path("inputSchema");
         projection.put("additionalProperties", true);
