@@ -21,11 +21,13 @@ import java.io.ByteArrayOutputStream;
 import java.awt.image.BufferedImage;
 import java.math.BigDecimal;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.imageio.ImageIO;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -92,47 +94,108 @@ class MediaAdapterExtensionPostgresIT {
     @Autowired
     JdbcClient jdbc;
 
-    @Test
-    void aNewCompiledAdapterPublishesExecutesAndRefreshesThroughTheExistingTaskKernel() {
-        var owner = identities.setup("extension-admin", "synthetic-password-123").userId();
+    @Autowired
+    MediaAdapterRegistry registry;
+    static UUID owner;
+
+    @BeforeEach
+    void initializeOwner() {
+        if (owner == null)
+            owner = identities.setup("extension-admin", "synthetic-password-123").userId();
+    }
+
+    private record Published(UUID project, UUID artifact, UUID card, long draftVersion) {
+    }
+
+    private Published publish(String connectionName) {
         var project = projects.create(owner, "Synthetic extension", Project.AspectRatio.SQUARE_1_1);
         var artifact = artifacts.create(owner, project.id(), Artifact.Kind.IMAGE, "Synthetic result", null).artifact();
         UUID card = UUID.randomUUID();
         canvas.apply(owner, project.id(), List.of(new CanvasService.PlaceArtifact(card, artifact.id(), BigDecimal.ZERO,
                 BigDecimal.ZERO, new BigDecimal("280"), new BigDecimal("240"), 0, null, false)));
-        var connection = capabilities.createConnection("synthetic-connection", "Synthetic", "MOCK", null, null);
+        var connection = capabilities.createConnection(connectionName, "Synthetic", "MOCK", null, null);
         var capability = capabilities.publishCapability(connection.id(), "Synthetic image", "SYNTHETIC_IMAGE",
                 mapper.createObjectNode());
         var draft = drafts.save(owner, project.id(), card, 0, "A synthetic tree", mapper.createObjectNode(), null,
                 capability.id(), null, List.of(), List.of(), null);
+        return new Published(project.id(), artifact.id(), card, draft.version());
+    }
+
+    private Task run(Published fixture, String key) {
+        return direct.run(owner, fixture.project(), fixture.artifact(), fixture.card(), fixture.draftVersion(), key);
+    }
+
+    private void due(UUID taskId) {
+        jdbc.sql("update task set next_action_at=now()-interval '1 second' where id=:id").param("id", taskId)
+                .update();
+    }
+
+    @Test
+    void aNewCompiledAdapterPublishesExecutesAndRefreshesThroughTheExistingTaskKernel() {
+        var fixture = publish("synthetic-connection");
+        int initialSubmits = adapter.submits.get();
         adapter.preflightFailure = "SYNTHETIC_RESOURCE_UNAVAILABLE";
-        var blocked = direct.run(owner, project.id(), artifact.id(), card, draft.version(), "synthetic-preflight");
+        var blocked = run(fixture, "synthetic-preflight");
         assertThat(worker.submitOnce("extension-preflight")).isOne();
-        var outcome = tasks.get(owner, project.id(), blocked.id());
+        var outcome = tasks.get(owner, fixture.project(), blocked.id());
         assertThat(outcome.status()).isEqualTo(Task.Status.BLOCKED);
         assertThat(outcome.errorCode()).isEqualTo("SYNTHETIC_RESOURCE_UNAVAILABLE");
-        assertThat(adapter.submits).hasValue(0);
+        assertThat(adapter.submits).hasValue(initialSubmits);
         assertThat(jdbc.sql(
                 "select count(*) from usage_ledger where task_id=? and entry_type='RELEASE' and actual_cost is null")
                 .param(blocked.id()).query(Integer.class).single()).isOne();
 
         adapter.preflightFailure = null;
-        var task = direct.run(owner, project.id(), artifact.id(), card, draft.version(), "synthetic-request");
+        var task = run(fixture, "synthetic-request");
         assertThat(worker.submitOnce("extension-submit")).isEqualTo(1);
-        assertThat(tasks.get(owner, project.id(), task.id()).status()).isEqualTo(Task.Status.WAITING_PROVIDER);
-        jdbc.sql("update task set next_action_at=now()-interval '1 second' where id=:id").param("id", task.id())
-                .update();
+        assertThat(tasks.get(owner, fixture.project(), task.id()).status()).isEqualTo(Task.Status.WAITING_PROVIDER);
+        due(task.id());
         assertThat(worker.pollOnce("extension-poll")).isEqualTo(1);
-        assertThat(tasks.get(owner, project.id(), task.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(tasks.get(owner, fixture.project(), task.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
         assertThat(tasks.providerResultManifest(task).orElseThrow().results().getFirst().url())
                 .isEqualTo("http://synthetic.example.test/fresh");
-        assertThat(adapter.submits).hasValue(1);
+        assertThat(adapter.submits).hasValue(initialSubmits + 1);
         assertThat(adapter.polls).hasValue(1);
         assertThat(adapter.refreshes).hasValue(1);
         assertThat(adapter.downloads).hasValue(2);
     }
 
+    @Test
+    void installedAdapterPersistsOnlyItsPublicDiagnosticAndFencesThePreviousPollEpoch() {
+        var fixture = publish("synthetic-diagnostics");
+        var task = run(fixture, "synthetic-failure");
+        adapter.failingTask = task.id();
+        String workerId = "extension-diagnostics";
+        assertThat(worker.submitOnce(workerId)).isOne();
+        due(task.id());
+        var previous = tasks.claimBoundMediaPolls(workerId, 1).getFirst();
+        tasks.deferProviderPoll(previous, workerId, Instant.now().plusSeconds(60));
+        due(task.id());
+        var current = tasks.claimBoundMediaPolls(workerId, 1).getFirst();
+        assertThat(current.id()).isEqualTo(previous.id()).isEqualTo(task.id());
+        assertThat(current.leaseEpoch()).isGreaterThan(previous.leaseEpoch());
+        var publication = registry.publicDiagnostic(adapter.adapterId(), SyntheticAdapter.DIAGNOSTIC).orElseThrow();
+        assertThat(tasks.recordProviderFailure(previous, workerId, publication)).isFalse();
+        var before = tasks.get(owner, fixture.project(), task.id()).output();
+        assertThat(before == null || !before.has("providerFailure")).isTrue();
+
+        tasks.deferProviderPoll(current, workerId, Instant.now().plusSeconds(60));
+        due(task.id());
+        assertThat(worker.pollOnce(workerId)).isOne();
+        var visible = tasks.get(owner, fixture.project(), task.id());
+        assertThat(visible.status()).isEqualTo(Task.Status.BLOCKED);
+        assertThat(visible.errorCode()).isEqualTo("SYNTHETIC_PARAMETER_INVALID");
+        assertThat(visible.output().path("providerFailure")).isEqualTo(mapper.valueToTree(SyntheticAdapter.DIAGNOSTIC));
+        assertThat(visible.output().toString()).doesNotContain("synthetic-private-upstream-message");
+    }
+
     static class SyntheticAdapter implements MediaAdapter {
+        static final ProviderFailure DIAGNOSTIC = new ProviderFailure(ProviderFailure.Stage.POLL,
+                ProviderFailure.Category.PARAMETER, 422, null, null, null);
+        UUID failingTask;
+        public boolean permitsPublicDiagnostic(ProviderFailure failure) {
+            return DIAGNOSTIC.equals(failure);
+        }
         final AtomicInteger submits = new AtomicInteger(), polls = new AtomicInteger(), refreshes = new AtomicInteger(),
                 downloads = new AtomicInteger();
         String preflightFailure;
@@ -151,10 +214,14 @@ class MediaAdapterExtensionPostgresIT {
         }
         public Submission reconcile(AttemptContext context) {
             assertThat(context.originalRequestId()).isEqualTo("synthetic-original-id");
+            if (context.lease().id().equals(failingTask))
+                throw new IllegalArgumentException("synthetic-private-upstream-message");
             polls.incrementAndGet();
             return new Submission.CompletedResults(manifest("expired"));
         }
         public PollFailure classifyPollFailure(RuntimeException failure) {
+            if (failure instanceof IllegalArgumentException)
+                return new PollFailure("SYNTHETIC_PARAMETER_INVALID", DIAGNOSTIC, false);
             return failure instanceof Expired
                     ? new PollFailure("SYNTHETIC_RESULT_EXPIRED", null, true)
                     : MediaAdapter.super.classifyPollFailure(failure);
