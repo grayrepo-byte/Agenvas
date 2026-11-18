@@ -146,6 +146,8 @@ class TaskProviderRecoveryTest {
         Task lease = task(8, null);
         var frozen = manifest("https://media.example.test/result.png?signature=old");
         var refreshed = manifest("https://media.example.test/result.png?signature=new");
+        when(repository.mediaBinding(taskId)).thenReturn(Optional.of(new MediaCapabilityBinding(
+                UUID.randomUUID(), 1, UUID.randomUUID(), 1, "SYNTHETIC_IMAGE", "synthetic-hash")));
         when(repository.refreshProviderResultUrls(lease, WORKER, frozen, refreshed, NOW)).thenReturn(true);
         service.refreshProviderResultUrls(lease, WORKER, frozen, refreshed);
         verify(repository).refreshProviderResultUrls(lease, WORKER, frozen, refreshed, NOW);

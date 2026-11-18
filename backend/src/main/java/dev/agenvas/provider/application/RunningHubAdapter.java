@@ -72,6 +72,17 @@ public final class RunningHubAdapter implements MediaAdapter {
     }
 
     @Override
+    public PollFailure classifyPollFailure(RuntimeException failure) {
+        if (!(failure instanceof RunningHubClient.Failure upstream))
+            return MediaAdapter.super.classifyPollFailure(failure);
+        String permanent = switch (upstream.diagnostic().category()) {
+            case AUTHENTICATION, BALANCE, PARAMETER, GENERATION, DOWNLOAD_EXPIRED, PROTOCOL, MODERATION -> upstream.code();
+            case RATE_LIMIT, UPLOAD, UNAVAILABLE -> null;
+        };
+        return new PollFailure(permanent, upstream.diagnostic(), failure instanceof RunningHubClient.DownloadExpired);
+    }
+
+    @Override
     public String preflightFailure(AttemptContext context) {
         try {
             var snapshot = snapshot(context);

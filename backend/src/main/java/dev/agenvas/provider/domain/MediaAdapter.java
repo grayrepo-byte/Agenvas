@@ -15,6 +15,18 @@ public interface MediaAdapter {
     default String preflightFailure(AttemptContext context) {
         return null;
     }
+    /** Classify failures from querying or archiving an already accepted request; never resubmit from this path. */
+    default PollFailure classifyPollFailure(RuntimeException failure) {
+        return new PollFailure(failure instanceof NativeMediaFailure nativeFailure ? nativeFailure.code() : null,
+                null, false);
+    }
+    /** Null permanentCode requests a technical retry; refreshLocations permits one original-request query per pass. */
+    record PollFailure(String permanentCode, ProviderFailure diagnostic, boolean refreshLocations) {
+        public PollFailure {
+            if (permanentCode != null && !permanentCode.matches("[A-Z][A-Z0-9_]{0,119}"))
+                throw new IllegalArgumentException("Invalid public provider failure code");
+        }
+    }
     Submission submit(AttemptContext context);
     Submission reconcile(AttemptContext context);
     default MediaPayload downloadResult(AttemptContext context, ProviderResultManifest.Result result) {

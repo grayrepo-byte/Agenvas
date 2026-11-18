@@ -73,7 +73,7 @@ class MediaExecutionWorkerTest {
         try (var leases = new MediaLeaseHeartbeat(fixture.tasks, new TaskProperties(Duration.ofMillis(90), 4))) {
             var worker = new MediaExecutionWorker(fixture.tasks, fixture.catalog,
                     new MediaAdapterRegistry(List.of(fixture.adapter)), fixture.assets, fixture.mapper,
-                    fixture.callLogs, fixture.videoProcessor, leases);
+                    fixture.callLogs, fixture.videoProcessor, leases, java.time.Clock.systemUTC());
             if ("SUBMIT".equals(stage)) {
                 when(fixture.adapter.submit(any())).thenAnswer(call -> {
                     assertThat(renewed.await(2, TimeUnit.SECONDS)).isTrue();
@@ -133,6 +133,51 @@ class MediaExecutionWorkerTest {
         verify(fixture.tasks, never()).retryProviderPoll(any(), anyString(), anyString());
         verify(fixture.assets, never()).archiveTaskImage(any(), any(), any(), any());
         verify(scope).close();
+    }
+
+    @Test
+    void acceptedRequestPollTimeUsesTheInjectedClock() {
+        Fixture fixture = new Fixture(true);
+        var now = Instant.parse("2026-11-18T00:00:00Z");
+        var worker = new MediaExecutionWorker(fixture.tasks, fixture.catalog,
+                new MediaAdapterRegistry(List.of(fixture.adapter)), fixture.assets, fixture.mapper,
+                fixture.callLogs, fixture.videoProcessor, fixture.leases,
+                java.time.Clock.fixed(now, java.time.ZoneOffset.UTC));
+        when(fixture.adapter.reconcile(any())).thenReturn(new Submission.Accepted("original-request"));
+        worker.pollOnce(WORKER);
+        verify(fixture.tasks).deferProviderPoll(fixture.task, WORKER, now.plusSeconds(5));
+    }
+
+    @Test
+    void installedAdapterOwnsItsPermanentPollFailureClassification() {
+        Fixture fixture = new Fixture(true);
+        var failure = new IllegalStateException("synthetic private response");
+        when(fixture.adapter.reconcile(any())).thenThrow(failure);
+        when(fixture.adapter.classifyPollFailure(failure))
+                .thenReturn(new MediaAdapter.PollFailure("SYNTHETIC_PERMANENT", null, false));
+        fixture.worker.pollOnce(WORKER);
+        verify(fixture.tasks).blockProviderPoll(fixture.task, WORKER, "SYNTHETIC_PERMANENT");
+        verify(fixture.tasks, never()).retryProviderPoll(any(), anyString(), anyString());
+        verify(fixture.adapter, never()).submit(any());
+    }
+
+    @Test
+    void anotherAdapterCanRefreshExpiredResultLocationsWithoutProviderSpecificWorkerCode() {
+        Fixture fixture = new Fixture(true);
+        var manifest = fixture.manifest(List.of(result(0, OutputKind.IMAGE, true)));
+        var expired = new IllegalStateException("synthetic expired result location");
+        when(fixture.tasks.providerResultManifest(fixture.task)).thenReturn(Optional.of(manifest));
+        fixture.downloads(manifest);
+        when(fixture.downloads.download(any())).thenThrow(expired)
+                .thenReturn(new MediaPayload(new TrackingInputStream(false), "image/png"));
+        when(fixture.adapter.classifyPollFailure(expired))
+                .thenReturn(new MediaAdapter.PollFailure("SYNTHETIC_EXPIRED", null, true));
+        when(fixture.adapter.refreshResults(any(), eq(manifest))).thenReturn(manifest);
+        fixture.worker.pollOnce(WORKER);
+        verify(fixture.adapter, times(1)).refreshResults(any(), eq(manifest));
+        verify(fixture.tasks).succeedWithArtifacts(eq(fixture.task), eq(WORKER), anyList(), any());
+        verify(fixture.adapter, never()).submit(any());
+        verify(fixture.adapter, never()).reconcile(any());
     }
 
     @Test
@@ -493,9 +538,18 @@ class MediaExecutionWorkerTest {
                     1, now, WORKER, now.plusSeconds(60), 2, 3, null, now, now, null);
             when(adapter.adapterId()).thenReturn(binding.adapterId());
             when(adapter.declaration()).thenCallRealMethod();
+            if (binding.adapterId().startsWith("RUNNINGHUB_")) {
+                var classifier = new RunningHubAdapter(binding.adapterId(), kind, null, null, null, null, null, null, null);
+                when(adapter.classifyPollFailure(any())).thenAnswer(call -> classifier.classifyPollFailure(call.getArgument(0)));
+            } else if (dev.agenvas.provider.domain.KlingModels.adapter(binding.adapterId())) {
+                var classifier = new KlingVideo3Adapter(null, null, null, null, null, null, null);
+                when(adapter.classifyPollFailure(any())).thenAnswer(call -> classifier.classifyPollFailure(call.getArgument(0)));
+            } else {
+                when(adapter.classifyPollFailure(any())).thenCallRealMethod();
+            }
             when(leases.open(any(), anyString())).thenReturn(mock(MediaLeaseHeartbeat.Scope.class));
             worker = new MediaExecutionWorker(tasks, catalog, new MediaAdapterRegistry(List.of(adapter)),
-                    assets, mapper, callLogs, videoProcessor, leases);
+                    assets, mapper, callLogs, videoProcessor, leases, java.time.Clock.systemUTC());
             when(tasks.claimBoundMedia(WORKER, 1)).thenReturn(List.of(task));
             when(tasks.claimBoundMediaPolls(WORKER, 1)).thenReturn(List.of(task));
             when(tasks.mediaBinding(task)).thenReturn(Optional.of(binding));

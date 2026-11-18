@@ -754,8 +754,8 @@ public class TaskService {
         }
         if (refreshed.results().stream().mapToLong(result -> result.url().length()).sum() > 96L * 1024 * 1024)
             throw validation(ApiMessage.of("api.task-service.the-resulting-list-is-invalid"));
-        if (tasks.mediaBinding(lease.id())
-                .filter(binding -> MediaAdapterRegistry.RUNNINGHUB_ADAPTERS.contains(binding.adapterId())).isEmpty())
+        // The compiled adapter owns refresh support. Persistence validates binding, immutable identity and fencing.
+        if (tasks.mediaBinding(lease.id()).isEmpty())
             throw validation(ApiMessage.of("api.task-service.the-resulting-list-is-invalid"));
         if (!tasks.refreshProviderResultUrls(lease, validateWorkerId(workerId), frozen, refreshed, clock.instant()))
             throw leaseLost();

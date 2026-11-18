@@ -211,7 +211,7 @@ class RunningHubPostgresIT {
                         .isEqualTo(Task.Status.WAITING_PROVIDER);
                 due(task.id());
                 new MediaExecutionWorker(tasks, catalog, adapters, assets, mapper, callLogs, videoProcessor,
-                        mediaLeases)
+                        mediaLeases, java.time.Clock.systemUTC())
                         .pollOnce("cloud-split-recovery");
                 var completed = tasks.get(owner, fixture.project.id(), task.id());
                 assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
@@ -265,7 +265,7 @@ class RunningHubPostgresIT {
                     fixture.capability, null, List.of(), List.of(), null);
             // A fresh worker has no in-memory result state, and must not re-query/re-submit or re-download the ready first asset.
             var restarted = new MediaExecutionWorker(tasks, catalog, adapters, assets, mapper, callLogs,
-                    videoProcessor, mediaLeases);
+                    videoProcessor, mediaLeases, java.time.Clock.systemUTC());
             due(task.id());
             restarted.pollOnce("rh-restarted");
             var completed = tasks.get(owner, fixture.project.id(), task.id());
@@ -351,7 +351,7 @@ class RunningHubPostgresIT {
             var first = assets.archiveTaskImage(owner, fixture.project.id(), archiveId,
                     () -> new ByteArrayInputStream(provider.imageBytes));
             var restarted = new MediaExecutionWorker(tasks, catalog, adapters, assets, mapper, callLogs,
-                    videoProcessor, mediaLeases);
+                    videoProcessor, mediaLeases, java.time.Clock.systemUTC());
             due(task.id());
             restarted.pollOnce("rh-zip-resumed");
             var completed = tasks.get(owner, fixture.project.id(), task.id());
