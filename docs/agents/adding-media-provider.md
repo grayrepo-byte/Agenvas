@@ -1,5 +1,7 @@
 # 媒体 Provider 接入与能力切换
 
+可核对的新增协议前后改动和行为证据见[供应商接入对照](../backend-extension-provider-example.md)。新平台与特殊参数仍需下文列出的显式触点。
+
 新增媒体 Provider、扩展适配器协议或修改节点能力切换时，按本指南确定改动范围与验收场景。项目代码使用 `Provider`；接入完成包括管理员配置、画布创作、与既有能力双向切换、任务执行和恢复。
 
 功能规则以 [MVP-SPEC](../MVP-SPEC.md)、[OpenAPI 合约](../../contracts/openapi.yaml)和现行 ADR 为准，本文件提供实施与检查入口。先读规格 §13、[ADR 0002](../adr/0002-fixed-media-adapters-before-workflow-platforms.md)和 [ADR 0019](../adr/0019-media-capability-defaults-limits-and-pricing.md)，再按输入类型与执行方式阅读 AGENTS.md 中对应资料。
