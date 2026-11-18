@@ -23,6 +23,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.context.annotation.Lazy;
@@ -80,10 +81,23 @@ public class MediaDraftService {
     public MediaDraft get(UUID ownerId, UUID projectId, UUID canvasItemId) {
         requireMediaCanvas(ownerId, projectId, canvasItemId);
         return artifacts.findMediaDraft(projectId, canvasItemId)
-                .orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND,
-                        "RESOURCE_NOT_FOUND", ApiMessage.of("api.media-draft-service.draft-does-not-exist"),
-                        ApiMessage.of("api.media-draft-service.this-media-product-does-not-have-a-working-draft"),
-                        false));
+                .orElseThrow(this::missingDraft);
+    }
+
+    /** Reads the requested card-owned drafts inside the authorized project snapshot. */
+    @Transactional(readOnly = true)
+    public Map<UUID, MediaDraft> readDrafts(UUID ownerId, UUID projectId, Set<UUID> cardIds) {
+        projects.get(ownerId, projectId);
+        var drafts = artifacts.findMediaDrafts(projectId, cardIds);
+        if (drafts.size() != cardIds.size())
+            throw missingDraft();
+        return drafts;
+    }
+
+    private ApiProblemException missingDraft() {
+        return new ApiProblemException(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND",
+                ApiMessage.of("api.media-draft-service.draft-does-not-exist"),
+                ApiMessage.of("api.media-draft-service.this-media-product-does-not-have-a-working-draft"), false);
     }
 
     @Transactional

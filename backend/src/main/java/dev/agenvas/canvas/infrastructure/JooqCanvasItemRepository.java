@@ -12,6 +12,7 @@ import dev.agenvas.db.tables.records.CanvasItemRecord;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Map;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -176,6 +177,15 @@ public class JooqCanvasItemRepository implements CanvasItemRepository {
                 .orderBy(CANVAS_ITEM_MEDIA_VERSION.CREATED_AT.desc(),
                         CANVAS_ITEM_MEDIA_VERSION.ARTIFACT_VERSION_ID)
                 .fetch(CANVAS_ITEM_MEDIA_VERSION.ARTIFACT_VERSION_ID);
+    }
+
+    @Override
+    public Map<UUID, List<UUID>> mediaVersionIdsByCard(UUID ownerId, UUID projectId) {
+        var result = CANVAS_ITEM_MEDIA_VERSION;
+        return dsl.select(result.CANVAS_ITEM_ID, result.ARTIFACT_VERSION_ID).from(result)
+                .join(PROJECT).on(PROJECT.ID.eq(result.PROJECT_ID))
+                .where(result.PROJECT_ID.eq(projectId)).and(PROJECT.OWNER_ID.eq(ownerId))
+                .fetchGroups(result.CANVAS_ITEM_ID, result.ARTIFACT_VERSION_ID);
     }
 
     /** 以预期画布项版本更新标题、坐标、尺寸、分组或锁定状态。 */

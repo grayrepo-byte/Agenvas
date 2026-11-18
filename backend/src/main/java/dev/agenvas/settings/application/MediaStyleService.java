@@ -12,6 +12,8 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.jooq.DSLContext;
 import org.jooq.Record;
@@ -114,14 +116,15 @@ public class MediaStyleService {
     }
 
     @Transactional(readOnly = true)
-    public Snapshot snapshotForExport(UUID id) {
-        if (id == null)
-            return null;
-        var row = dsl.select(SNAPSHOT_FIELDS).from(MEDIA_STYLE).where(MEDIA_STYLE.ID.eq(id)).fetchOne();
-        if (row == null)
+    public Map<UUID, Snapshot> snapshotsForExport(Set<UUID> ids) {
+        if (ids.isEmpty())
+            return Map.of();
+        var snapshots = dsl.select(SNAPSHOT_FIELDS).from(MEDIA_STYLE).where(MEDIA_STYLE.ID.in(ids))
+                .fetchMap(MEDIA_STYLE.ID, row -> new Snapshot(row.get(MEDIA_STYLE.ID), row.get(MEDIA_STYLE.VERSION),
+                        row.get(MEDIA_STYLE.NAME), row.get(MEDIA_STYLE.PROMPT_SUFFIX)));
+        if (snapshots.size() != ids.size())
             throw new IllegalStateException("Draft style violates its foreign key");
-        return new Snapshot(id, row.get(MEDIA_STYLE.VERSION), row.get(MEDIA_STYLE.NAME),
-                row.get(MEDIA_STYLE.PROMPT_SUFFIX));
+        return snapshots;
     }
 
     @Transactional

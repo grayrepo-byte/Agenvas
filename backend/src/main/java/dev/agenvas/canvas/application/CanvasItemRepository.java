@@ -2,6 +2,7 @@ package dev.agenvas.canvas.application;
 
 import dev.agenvas.canvas.domain.CanvasItem;
 import java.time.Instant;
+import java.util.Map;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -41,6 +42,8 @@ public interface CanvasItemRepository {
 
     /** Only this card's results; sibling and derived card results are deliberately excluded. */
     List<UUID> mediaVersionIds(UUID ownerId, UUID projectId, UUID itemId);
+
+    Map<UUID, List<UUID>> mediaVersionIdsByCard(UUID ownerId, UUID projectId);
 
     /** 仅删除画布展示关系，不删除其引用的业务对象。 */
     boolean delete(UUID ownerId, UUID projectId, UUID itemId, long expectedVersion);

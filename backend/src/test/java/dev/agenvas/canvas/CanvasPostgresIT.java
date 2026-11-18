@@ -1,5 +1,7 @@
 package dev.agenvas.canvas;
 
+import static dev.agenvas.testing.QueryCounts.countQueries;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.agenvas.artifact.application.ArtifactService;
@@ -21,11 +23,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.assertj.core.api.SoftAssertions;
 import org.jooq.DSLContext;
-import org.jooq.ExecuteContext;
-import org.jooq.ExecuteListener;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
@@ -264,8 +263,8 @@ class CanvasPostgresIT {
         var first = artifactService.create(owner.userId(), projectId, Artifact.Kind.IMAGE, "First", image);
         canvasService.apply(owner.userId(), projectId,
                 List.of(place(UUID.randomUUID(), first.artifact().id(), "0", "0")));
-        int smallCanvas = countQueries(() -> assertThat(canvasService.list(owner.userId(), projectId)).hasSize(1));
-        int smallResources = countQueries(
+        int smallCanvas = countQueries(db, () -> assertThat(canvasService.list(owner.userId(), projectId)).hasSize(1));
+        int smallResources = countQueries(db,
                 () -> assertThat(artifactService.listProject(owner.userId(), projectId)).hasSize(1));
         var placements = new ArrayList<CanvasService.PlaceArtifact>();
         for (int i = 1; i < 16; i++) {
@@ -273,8 +272,8 @@ class CanvasPostgresIT {
             placements.add(place(UUID.randomUUID(), added.artifact().id(), "0", "0"));
         }
         canvasService.apply(owner.userId(), projectId, placements);
-        int largeCanvas = countQueries(() -> assertThat(canvasService.list(owner.userId(), projectId)).hasSize(16));
-        int largeResources = countQueries(
+        int largeCanvas = countQueries(db, () -> assertThat(canvasService.list(owner.userId(), projectId)).hasSize(16));
+        int largeResources = countQueries(db,
                 () -> assertThat(artifactService.listProject(owner.userId(), projectId)).hasSize(16));
         LoggerFactory.getLogger(getClass()).info(
                 "Projection query counts for 1 and 16 rows: canvas {}/{}, resources {}/{}",
@@ -352,27 +351,6 @@ class CanvasPostgresIT {
         assertThat(after.snapshotSeq()).isEqualTo(beforeCommit.snapshotSeq() + 1);
         assertThat(after.canvas().getFirst().artifact().resourceDefaultVersion().content().path("text").asText())
                 .isEqualTo("Second");
-    }
-
-    private int countQueries(Runnable read) {
-        var config = db.configuration();
-        var original = config.executeListenerProviders();
-        var calls = new AtomicInteger();
-        var reader = Thread.currentThread();
-        try {
-            config.setAppending(new ExecuteListener() {
-                @Override
-                public void executeEnd(ExecuteContext ctx) {
-                    if (Thread.currentThread() == reader)
-                        calls.incrementAndGet();
-                }
-            });
-            read.run();
-            assertThat(calls.get()).isPositive();
-            return calls.get();
-        } finally {
-            config.set(original);
-        }
     }
 
     private ArtifactService.ArtifactView createText(UUID ownerId, UUID projectId, String text) {

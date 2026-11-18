@@ -58,6 +58,9 @@ import tools.jackson.databind.node.ObjectNode;
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class CanvasMediaVersionsPostgresIT {
+    @Autowired
+    private dev.agenvas.export.application.ProjectExportManifestService manifests;
+
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     @DynamicPropertySource
@@ -322,6 +325,11 @@ class CanvasMediaVersionsPostgresIT {
         assertThat(card(originalId).item().selectedVersionId()).isEqualTo(second);
         assertThat(artifacts.get(owner.userId(), project.id(), artifactId).artifact().resourceDefaultVersionId())
                 .isEqualTo(defaultBefore);
+        var exported = manifests.build(owner.userId(), project.id()).canvasItems();
+        assertThat(exported).filteredOn(card -> card.id().equals(originalId)).singleElement()
+                .satisfies(card -> assertThat(card.mediaVersionIds()).containsExactly(second, first));
+        assertThat(exported).filteredOn(card -> card.id().equals(reference.id())).singleElement()
+                .satisfies(card -> assertThat(card.mediaVersionIds()).containsExactly(first));
         var reused = template.execute(status -> canvas.ensureMediaReferenceWithinChange(owner.userId(), project.id(),
                 artifactId, first, null));
         assertThat(reused.id()).isEqualTo(reference.id());

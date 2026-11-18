@@ -18,6 +18,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -188,6 +189,12 @@ public class CanvasService {
 
     public record DuplicateResult(CanvasEntry item,
             dev.agenvas.artifact.domain.MediaDraft draft) {
+    }
+
+    /** Card-owned result membership for export. Version order is defined by the artifact catalog. */
+    @Transactional(readOnly = true)
+    public Map<UUID, List<UUID>> mediaVersionIdsByCard(UUID ownerId, UUID projectId) {
+        return canvasItems.mediaVersionIdsByCard(ownerId, projectId);
     }
 
     /** Lists this node's immutable results, excluding results owned by other work branches. */

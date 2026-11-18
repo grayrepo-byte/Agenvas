@@ -33,6 +33,9 @@ public interface ArtifactRepository {
     void createMediaDraft(UUID projectId, UUID canvasItemId, String prompt,
             MediaDraft.DisplayMode displayMode, Instant now);
 
+    /** Read card-owned working drafts with their ordered inputs and sources. */
+    Map<UUID, MediaDraft> findMediaDrafts(UUID projectId, Set<UUID> cardIds);
+
     /** Read one CanvasItem-owned media working draft. */
     Optional<MediaDraft> findMediaDraft(UUID projectId, UUID canvasItemId);
 

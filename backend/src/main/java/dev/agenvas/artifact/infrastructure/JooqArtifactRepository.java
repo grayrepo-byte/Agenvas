@@ -134,10 +134,23 @@ public class JooqArtifactRepository implements ArtifactRepository {
 
     @Override
     public Optional<MediaDraft> findMediaDraft(UUID projectId, UUID canvasItemId) {
-        return dsl.selectFrom(MEDIA_DRAFT)
-                .where(MEDIA_DRAFT.PROJECT_ID.eq(projectId))
-                .and(MEDIA_DRAFT.CANVAS_ITEM_ID.eq(canvasItemId))
-                .fetchOptional(this::mapMediaDraft);
+        return Optional.ofNullable(findMediaDrafts(projectId, Set.of(canvasItemId)).get(canvasItemId));
+    }
+
+    @Override
+    public Map<UUID, MediaDraft> findMediaDrafts(UUID projectId, Set<UUID> cardIds) {
+        if (cardIds.isEmpty())
+            return Map.of();
+        var rows = dsl.selectFrom(MEDIA_DRAFT).where(MEDIA_DRAFT.PROJECT_ID.eq(projectId))
+                .and(MEDIA_DRAFT.CANVAS_ITEM_ID.in(cardIds)).fetch();
+        if (rows.isEmpty())
+            return Map.of();
+        var inputs = readMediaInputs(projectId, cardIds);
+        Map<UUID, MediaDraft> drafts = new LinkedHashMap<>();
+        for (var row : rows)
+            drafts.put(row.getCanvasItemId(),
+                    mapMediaDraft(row, inputs.getOrDefault(row.getCanvasItemId(), List.of())));
+        return drafts;
     }
 
     /** 草稿编辑不改变卡片展示；只有运行受理或结果选用流程切换展示模式。 */
@@ -585,46 +598,47 @@ public class JooqArtifactRepository implements ArtifactRepository {
                 row.getUpdatedAt().toInstant());
     }
 
+    private record CardInput(UUID cardId, UUID versionId) {
+    }
+
+    private Map<UUID, List<MediaDraft.MediaInput>> readMediaInputs(UUID projectId, Set<UUID> cardIds) {
+        var source = CANVAS_ITEM_MEDIA_INPUT_SOURCE;
+        var input = CANVAS_ITEM_MEDIA_INPUT;
+        Map<CardInput, List<MediaDraft.InputSource>> sources = new LinkedHashMap<>();
+        dsl.select(source.CANVAS_ITEM_ID, source.ARTIFACT_VERSION_ID, source.ID, source.SOURCE_TYPE,
+                source.CONNECTION_ID).from(source)
+                .where(source.PROJECT_ID.eq(projectId)).and(source.CANVAS_ITEM_ID.in(cardIds))
+                .orderBy(source.CREATED_AT, source.ID)
+                .forEach(row -> {
+                    var key = new CardInput(row.get(source.CANVAS_ITEM_ID), row.get(source.ARTIFACT_VERSION_ID));
+                    sources.computeIfAbsent(key, ignored -> new java.util.ArrayList<>()).add(
+                            new MediaDraft.InputSource(row.get(source.ID),
+                                    MediaDraft.SourceType.valueOf(row.get(source.SOURCE_TYPE)),
+                                    row.get(source.CONNECTION_ID)));
+                });
+        return dsl.select(input.CANVAS_ITEM_ID, input.ARTIFACT_VERSION_ID, ARTIFACT_VERSION.ARTIFACT_ID,
+                input.INPUT_ROLE, input.INPUT_ORDER, input.COLOR)
+                .from(input)
+                .join(ARTIFACT_VERSION).on(ARTIFACT_VERSION.PROJECT_ID.eq(input.PROJECT_ID)
+                        .and(ARTIFACT_VERSION.ID.eq(input.ARTIFACT_VERSION_ID)))
+                .where(input.PROJECT_ID.eq(projectId)).and(input.CANVAS_ITEM_ID.in(cardIds))
+                .orderBy(input.INPUT_ORDER)
+                .fetchGroups(row -> row.get(input.CANVAS_ITEM_ID), row -> {
+                    var key = new CardInput(row.get(input.CANVAS_ITEM_ID), row.get(input.ARTIFACT_VERSION_ID));
+                    return new MediaDraft.MediaInput(key.versionId(), row.get(ARTIFACT_VERSION.ARTIFACT_ID),
+                            MediaDraft.InputRole.valueOf(row.get(input.INPUT_ROLE)), row.get(input.INPUT_ORDER),
+                            row.get(input.COLOR), List.copyOf(sources.getOrDefault(key, List.of())));
+                });
+    }
+
     /** 映射草稿正文、可空生成参数及独立乐观版本。 */
-    private MediaDraft mapMediaDraft(MediaDraftRecord row) {
+    private MediaDraft mapMediaDraft(MediaDraftRecord row, List<MediaDraft.MediaInput> inputs) {
         List<MediaDraft.PromptMention> mentions = new java.util.ArrayList<>();
         for (JsonNode mention : objectMapper.readTree(row.getMentionsJson().data())) {
             mentions.add(new MediaDraft.PromptMention(
                     UUID.fromString(mention.path("versionId").asText()),
                     MediaDraft.InputRole.valueOf(mention.path("role").asText())));
         }
-        Map<UUID, List<MediaDraft.InputSource>> sources = new LinkedHashMap<>();
-        dsl.select(CANVAS_ITEM_MEDIA_INPUT_SOURCE.ARTIFACT_VERSION_ID,
-                CANVAS_ITEM_MEDIA_INPUT_SOURCE.ID,
-                CANVAS_ITEM_MEDIA_INPUT_SOURCE.SOURCE_TYPE,
-                CANVAS_ITEM_MEDIA_INPUT_SOURCE.CONNECTION_ID)
-                .from(CANVAS_ITEM_MEDIA_INPUT_SOURCE)
-                .where(CANVAS_ITEM_MEDIA_INPUT_SOURCE.PROJECT_ID.eq(row.getProjectId()))
-                .and(CANVAS_ITEM_MEDIA_INPUT_SOURCE.CANVAS_ITEM_ID.eq(row.getCanvasItemId()))
-                .orderBy(CANVAS_ITEM_MEDIA_INPUT_SOURCE.CREATED_AT,
-                        CANVAS_ITEM_MEDIA_INPUT_SOURCE.ID)
-                .forEach(source -> sources.computeIfAbsent(source.value1(), ignored -> new java.util.ArrayList<>())
-                        .add(new MediaDraft.InputSource(source.value2(),
-                                MediaDraft.SourceType.valueOf(source.value3()),
-                                source.value4())));
-        List<MediaDraft.MediaInput> inputs = dsl
-                .select(CANVAS_ITEM_MEDIA_INPUT.ARTIFACT_VERSION_ID,
-                        ARTIFACT_VERSION.ARTIFACT_ID,
-                        CANVAS_ITEM_MEDIA_INPUT.INPUT_ROLE,
-                        CANVAS_ITEM_MEDIA_INPUT.INPUT_ORDER,
-                        CANVAS_ITEM_MEDIA_INPUT.COLOR)
-                .from(CANVAS_ITEM_MEDIA_INPUT)
-                .join(ARTIFACT_VERSION).on(ARTIFACT_VERSION.PROJECT_ID.eq(
-                        CANVAS_ITEM_MEDIA_INPUT.PROJECT_ID)
-                        .and(ARTIFACT_VERSION.ID.eq(
-                                CANVAS_ITEM_MEDIA_INPUT.ARTIFACT_VERSION_ID)))
-                .where(CANVAS_ITEM_MEDIA_INPUT.PROJECT_ID.eq(row.getProjectId()))
-                .and(CANVAS_ITEM_MEDIA_INPUT.CANVAS_ITEM_ID.eq(row.getCanvasItemId()))
-                .orderBy(CANVAS_ITEM_MEDIA_INPUT.INPUT_ORDER)
-                .fetch(input -> new MediaDraft.MediaInput(input.value1(), input.value2(),
-                        MediaDraft.InputRole.valueOf(input.value3()), input.value4(),
-                        input.value5(), List.copyOf(sources.getOrDefault(input.value1(),
-                                List.of()))));
         return new MediaDraft(
                 row.getProjectId(),
                 row.getCanvasItemId(),
@@ -636,7 +650,7 @@ public class JooqArtifactRepository implements ArtifactRepository {
                 row.getVideoInputMode() == null
                         ? null
                         : MediaDraft.VideoInputMode.valueOf(row.getVideoInputMode()),
-                inputs,
+                List.copyOf(inputs),
                 List.copyOf(mentions),
                 MediaDraft.DisplayMode.valueOf(row.getDisplayMode()),
                 row.getVersion(),
