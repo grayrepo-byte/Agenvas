@@ -20,6 +20,7 @@ import dev.agenvas.asset.infrastructure.MediaToolRunner;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
+import dev.agenvas.task.domain.VideoOperation;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.CancellationException;
@@ -34,11 +35,15 @@ class LocalVideoProcessorTest {
     private final TaskService tasks = mock(TaskService.class);
     private final ObjectMapper mapper = new ObjectMapper();
     private final LocalVideoProcessor processor = new LocalVideoProcessor(artifacts, assets, tools,
-            mock(LocalImageProcessorAdapter.class), tasks, mapper);
+            new LocalDepthInference(new LocalImageProperties("")), tasks, mapper);
     @TempDir
     Path temp;
 
     private AttemptContext context() {
+        return context(mock(Asset.class));
+    }
+
+    private AttemptContext context(Asset source) {
         var owner = java.util.UUID.randomUUID();
         var project = java.util.UUID.randomUUID();
         var sourceVersion = java.util.UUID.randomUUID();
@@ -55,8 +60,20 @@ class LocalVideoProcessorTest {
         when(artifacts.requireMediaVersionForTask(owner, project, sourceVersion, Artifact.Kind.VIDEO))
                 .thenReturn(version);
         when(assets.get(owner, project, assetId))
-                .thenReturn(new AssetService.AssetFile(mock(Asset.class), temp.resolve("source.mp4")));
+                .thenReturn(new AssetService.AssetFile(source, temp.resolve("source.mp4")));
         return new AttemptContext(task, null, owner, "synthetic-request", null);
+    }
+
+    @Test
+    void missingDepthModelBlocksVideoFramesBeforeSubmission() {
+        var source = mock(Asset.class);
+        when(source.mediaKind()).thenReturn(Asset.MediaKind.VIDEO);
+        when(source.durationMs()).thenReturn(1000);
+        when(source.width()).thenReturn(16);
+        when(source.height()).thenReturn(16);
+        when(source.byteSize()).thenReturn(100L);
+        assertThat(processor.preflight(context(source), VideoOperation.DEPTH_MAP))
+                .isEqualTo("LOCAL_DEPTH_MODEL_UNAVAILABLE");
     }
 
     @Test

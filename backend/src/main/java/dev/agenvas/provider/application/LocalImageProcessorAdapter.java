@@ -1,11 +1,5 @@
 package dev.agenvas.provider.application;
 
-import ai.onnxruntime.NodeInfo;
-import ai.onnxruntime.OnnxTensor;
-import ai.onnxruntime.OrtEnvironment;
-import ai.onnxruntime.OrtException;
-import ai.onnxruntime.OrtSession;
-import ai.onnxruntime.TensorInfo;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.asset.application.AssetService;
@@ -16,7 +10,6 @@ import dev.agenvas.provider.domain.MediaPayload;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.task.domain.ImageResizeSpec;
-import jakarta.annotation.PreDestroy;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.geom.AffineTransform;
@@ -24,10 +17,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.nio.FloatBuffer;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Map;
 import java.util.UUID;
 import javax.imageio.ImageIO;
 import org.springframework.stereotype.Component;
@@ -36,21 +26,15 @@ import tools.jackson.databind.JsonNode;
 /** Runs deterministic image transforms and optional Depth Anything V2 inference without network I/O. */
 @Component
 public final class LocalImageProcessorAdapter implements MediaAdapter {
-    private static final int DEFAULT_DEPTH_EDGE = 518;
-    private static final long MAX_OUTPUT_PIXELS = 40_000_000L;
-    private static final float[] IMAGENET_MEAN = {0.485f, 0.456f, 0.406f};
-    private static final float[] IMAGENET_STD = {0.229f, 0.224f, 0.225f};
-
     private final ArtifactService artifacts;
     private final AssetService assets;
-    private final LocalImageProperties properties;
-    private OrtSession depthSession;
+    private final LocalDepthInference depth;
 
     public LocalImageProcessorAdapter(ArtifactService artifacts, AssetService assets,
-            LocalImageProperties properties) {
+            LocalDepthInference depth) {
         this.artifacts = artifacts;
         this.assets = assets;
-        this.properties = properties;
+        this.depth = depth;
     }
 
     @Override
@@ -67,12 +51,8 @@ public final class LocalImageProcessorAdapter implements MediaAdapter {
             if ("RESIZE".equals(name))
                 ImageResizeSpec.parse(operation.path("parameters"))
                         .dimensions(image.getWidth(), image.getHeight());
-            if ("DEPTH_MAP".equals(name)) {
-                Path model = properties.depthModelPath();
-                if (model == null || !Files.isRegularFile(model)) {
-                    return "LOCAL_DEPTH_MODEL_UNAVAILABLE";
-                }
-            }
+            if ("DEPTH_MAP".equals(name) && !depth.available())
+                return "LOCAL_DEPTH_MODEL_UNAVAILABLE";
             validateParameters(name, operation.path("parameters"));
             return null;
         } catch (RuntimeException invalid) {
@@ -130,11 +110,11 @@ public final class LocalImageProcessorAdapter implements MediaAdapter {
     private BufferedImage process(BufferedImage source, String name, JsonNode parameters) {
         validateParameters(name, parameters);
         return switch (name) {
-            case "DEPTH_MAP" -> depth(source);
+            case "DEPTH_MAP" -> depth.depth(source);
             case "UPSCALE" -> upscale(source, parameters.path("scale").asInt());
             case "RESIZE" -> {
                 var dimensions = ImageResizeSpec.parse(parameters).dimensions(source.getWidth(), source.getHeight());
-                yield upscaleTo(source, dimensions.width(), dimensions.height());
+                yield LocalRaster.upscaleTo(source, dimensions.width(), dimensions.height());
             }
             case "CROP" -> crop(source, parameters);
             case "ROTATE" -> rotate(source, parameters.path("quarterTurns").asInt());
@@ -176,8 +156,7 @@ public final class LocalImageProcessorAdapter implements MediaAdapter {
     private BufferedImage upscale(BufferedImage source, int scale) {
         int width = Math.multiplyExact(source.getWidth(), scale);
         int height = Math.multiplyExact(source.getHeight(), scale);
-        requirePixelLimit(width, height);
-        BufferedImage output = compatible(source, width, height);
+        BufferedImage output = LocalRaster.compatible(source, width, height);
         Graphics2D graphics = output.createGraphics();
         try {
             graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
@@ -200,7 +179,7 @@ public final class LocalImageProcessorAdapter implements MediaAdapter {
                 * source.getHeight()));
         width = Math.min(width, source.getWidth() - x);
         height = Math.min(height, source.getHeight() - y);
-        BufferedImage output = compatible(source, width, height);
+        BufferedImage output = LocalRaster.compatible(source, width, height);
         Graphics2D graphics = output.createGraphics();
         try {
             graphics.drawImage(source, 0, 0, width, height, x, y, x + width, y + height, null);
@@ -214,7 +193,7 @@ public final class LocalImageProcessorAdapter implements MediaAdapter {
         boolean swap = quarterTurns % 2 == 1;
         int width = swap ? source.getHeight() : source.getWidth();
         int height = swap ? source.getWidth() : source.getHeight();
-        BufferedImage output = compatible(source, width, height);
+        BufferedImage output = LocalRaster.compatible(source, width, height);
         Graphics2D graphics = output.createGraphics();
         try {
             AffineTransform transform = new AffineTransform();
@@ -241,7 +220,7 @@ public final class LocalImageProcessorAdapter implements MediaAdapter {
     }
 
     private BufferedImage flip(BufferedImage source, boolean horizontal) {
-        BufferedImage output = compatible(source, source.getWidth(), source.getHeight());
+        BufferedImage output = LocalRaster.compatible(source, source.getWidth(), source.getHeight());
         Graphics2D graphics = output.createGraphics();
         try {
             if (horizontal) {
@@ -255,139 +234,5 @@ public final class LocalImageProcessorAdapter implements MediaAdapter {
             graphics.dispose();
         }
         return output;
-    }
-
-    /** Shared genuine depth inference for archived image and video-frame processing. */
-    BufferedImage depth(BufferedImage source) {
-        OrtSession session = depthSession();
-        String inputName = session.getInputNames().iterator().next();
-        NodeInfo node;
-        try {
-            node = session.getInputInfo().get(inputName);
-        } catch (OrtException failure) {
-            throw new IllegalStateException("Cannot inspect depth model input", failure);
-        }
-        if (!(node.getInfo() instanceof TensorInfo info) || info.getShape().length != 4) {
-            throw new IllegalStateException("Depth model input must be NCHW");
-        }
-        long[] shape = info.getShape();
-        int height = shape[2] > 0 ? Math.toIntExact(shape[2]) : DEFAULT_DEPTH_EDGE;
-        int width = shape[3] > 0 ? Math.toIntExact(shape[3]) : DEFAULT_DEPTH_EDGE;
-        BufferedImage resized = upscaleTo(source, width, height);
-        FloatBuffer values = FloatBuffer.allocate(3 * width * height);
-        for (int channel = 0; channel < 3; channel++) {
-            for (int y = 0; y < height; y++) {
-                for (int x = 0; x < width; x++) {
-                    int rgb = resized.getRGB(x, y);
-                    int component = switch (channel) {
-                        case 0 -> rgb >> 16 & 0xff;
-                        case 1 -> rgb >> 8 & 0xff;
-                        default -> rgb & 0xff;
-                    };
-                    values.put(((component / 255f) - IMAGENET_MEAN[channel])
-                            / IMAGENET_STD[channel]);
-                }
-            }
-        }
-        values.flip();
-        try (OnnxTensor tensor = OnnxTensor.createTensor(OrtEnvironment.getEnvironment(),
-                values, new long[]{1, 3, height, width});
-                OrtSession.Result result = session.run(Map.of(inputName, tensor))) {
-            float[][] depth = flattenDepth(result.get(0).getValue());
-            BufferedImage map = normalizeDepth(depth, width, height);
-            return upscaleTo(map, source.getWidth(), source.getHeight());
-        } catch (OrtException failure) {
-            throw new IllegalStateException("Depth model inference failed", failure);
-        }
-    }
-
-    boolean depthModelAvailable() {
-        Path model = properties.depthModelPath();
-        return model != null && Files.isRegularFile(model) && Files.isReadable(model);
-    }
-
-    private synchronized OrtSession depthSession() {
-        if (depthSession != null)
-            return depthSession;
-        Path model = properties.depthModelPath();
-        if (model == null || !Files.isRegularFile(model)) {
-            throw new IllegalStateException("Depth model is not configured");
-        }
-        try {
-            depthSession = OrtEnvironment.getEnvironment().createSession(model.toString(),
-                    new OrtSession.SessionOptions());
-            if (depthSession.getInputNames().size() != 1 || depthSession.getOutputNames().isEmpty()) {
-                throw new IllegalStateException("Depth model must expose one input and an output");
-            }
-            return depthSession;
-        } catch (OrtException failure) {
-            throw new IllegalStateException("Cannot load depth model", failure);
-        }
-    }
-
-    private float[][] flattenDepth(Object value) {
-        if (value instanceof float[][][] batch && batch.length == 1)
-            return batch[0];
-        if (value instanceof float[][][][] batch && batch.length == 1
-                && batch[0].length == 1)
-            return batch[0][0];
-        if (value instanceof float[][] plane)
-            return plane;
-        throw new IllegalStateException("Unsupported depth model output");
-    }
-
-    private BufferedImage normalizeDepth(float[][] values, int width, int height) {
-        float minimum = Float.POSITIVE_INFINITY;
-        float maximum = Float.NEGATIVE_INFINITY;
-        for (float[] row : values)
-            for (float value : row) {
-                if (Float.isFinite(value)) {
-                    minimum = Math.min(minimum, value);
-                    maximum = Math.max(maximum, value);
-                }
-            }
-        if (!Float.isFinite(minimum) || maximum <= minimum) {
-            throw new IllegalStateException("Depth model produced no usable range");
-        }
-        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
-        float range = maximum - minimum;
-        for (int y = 0; y < height; y++)
-            for (int x = 0; x < width; x++) {
-                int gray = Math.clamp(Math.round((values[y][x] - minimum) / range * 255f), 0, 255);
-                image.getRaster().setSample(x, y, 0, gray);
-            }
-        return image;
-    }
-
-    private BufferedImage upscaleTo(BufferedImage source, int width, int height) {
-        BufferedImage output = compatible(source, width, height);
-        Graphics2D graphics = output.createGraphics();
-        try {
-            graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
-                    RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-            graphics.drawImage(source, 0, 0, width, height, null);
-        } finally {
-            graphics.dispose();
-        }
-        return output;
-    }
-
-    private BufferedImage compatible(BufferedImage source, int width, int height) {
-        requirePixelLimit(width, height);
-        return new BufferedImage(width, height, source.getColorModel().hasAlpha()
-                ? BufferedImage.TYPE_INT_ARGB
-                : BufferedImage.TYPE_INT_RGB);
-    }
-
-    private void requirePixelLimit(int width, int height) {
-        if (width < 1 || height < 1 || (long) width * height > MAX_OUTPUT_PIXELS) {
-            throw new IllegalArgumentException("Processed image exceeds the pixel limit");
-        }
-    }
-
-    @PreDestroy
-    public void close() throws OrtException {
-        if (depthSession != null)
-            depthSession.close();
     }
 }

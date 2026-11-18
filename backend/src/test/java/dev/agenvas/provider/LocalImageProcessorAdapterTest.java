@@ -8,6 +8,7 @@ import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.domain.Asset;
+import dev.agenvas.provider.application.LocalDepthInference;
 import dev.agenvas.provider.application.LocalImageProcessorAdapter;
 import dev.agenvas.provider.application.LocalImageProperties;
 import dev.agenvas.provider.domain.AttemptContext;
@@ -129,24 +130,24 @@ class LocalImageProcessorAdapterTest {
     void runsConfiguredDepthAnythingModel() throws Exception {
         String model = System.getProperty("agenvas.test.depth-model", "");
         Assumptions.assumeTrue(!model.isBlank(), "No local depth model supplied");
-        LocalImageProcessorAdapter adapter = adapter(model);
+        try (var depth = new LocalDepthInference(new LocalImageProperties(model))) {
+            LocalImageProcessorAdapter adapter = new LocalImageProcessorAdapter(artifacts, assets, depth);
 
-        assertThat(adapter.preflightFailure(context("DEPTH_MAP", parameters()))).isNull();
-        Submission.Completed completed = (Submission.Completed) adapter.submit(
-                context("DEPTH_MAP", parameters()));
-        try (var payload = completed.payload()) {
-            BufferedImage output = ImageIO.read(payload.stream());
-            assertThat(output.getWidth()).isEqualTo(4);
-            assertThat(output.getHeight()).isEqualTo(3);
-            assertThat(output.getRaster().getNumBands()).isGreaterThanOrEqualTo(1);
-        } finally {
-            adapter.close();
+            assertThat(adapter.preflightFailure(context("DEPTH_MAP", parameters()))).isNull();
+            Submission.Completed completed = (Submission.Completed) adapter.submit(
+                    context("DEPTH_MAP", parameters()));
+            try (var payload = completed.payload()) {
+                BufferedImage output = ImageIO.read(payload.stream());
+                assertThat(output.getWidth()).isEqualTo(4);
+                assertThat(output.getHeight()).isEqualTo(3);
+                assertThat(output.getRaster().getNumBands()).isGreaterThanOrEqualTo(1);
+            }
         }
     }
 
     private LocalImageProcessorAdapter adapter(String depthModel) {
         return new LocalImageProcessorAdapter(artifacts, assets,
-                new LocalImageProperties(depthModel));
+                new LocalDepthInference(new LocalImageProperties(depthModel)));
     }
 
     private ObjectNode parameters() {

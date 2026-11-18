@@ -36,12 +36,12 @@ public class LocalVideoProcessor {
     private final ArtifactService artifacts;
     private final AssetService assets;
     private final MediaToolRunner tools;
-    private final LocalImageProcessorAdapter depth;
+    private final LocalDepthInference depth;
     private final TaskService tasks;
     private final ObjectMapper mapper;
 
     public LocalVideoProcessor(ArtifactService artifacts, AssetService assets, MediaToolRunner tools,
-            LocalImageProcessorAdapter depth, TaskService tasks, ObjectMapper mapper) {
+            LocalDepthInference depth, TaskService tasks, ObjectMapper mapper) {
         this.artifacts = artifacts;
         this.assets = assets;
         this.tools = tools;
@@ -54,7 +54,7 @@ public class LocalVideoProcessor {
         try {
             var file = source(context);
             LocalVideoOperationBounds.require(file.asset(), operation);
-            if (operation == VideoOperation.DEPTH_MAP && !depth.depthModelAvailable())
+            if (operation == VideoOperation.DEPTH_MAP && !depth.available())
                 return "LOCAL_DEPTH_MODEL_UNAVAILABLE";
             if (operation == VideoOperation.EXTRACT_AUDIO) {
                 var audio = audioParameters(context);
