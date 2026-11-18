@@ -637,7 +637,7 @@ public class DirectMediaTaskService {
         if (!selected.equals(binding))
             throw conflict(ApiMessage.of(
                     "api.direct-media-task-service.the-media-configuration-has-changed-please-refresh-and-try-again"));
-        if (MediaAdapterRegistry.localProcessor(binding.adapterId())) {
+        if (capabilities.isLocal(binding)) {
             throw invalid(ApiMessage
                     .of("api.direct-media-task-service.local-image-processing-capabilities-can-only-be-used-from-the"));
         }
@@ -1332,7 +1332,7 @@ public class DirectMediaTaskService {
             tasks.createArtifactTarget(new TaskRepository.ArtifactTarget(task.id(), projectId,
                     artifactId, sourceVersionId, target.version(), outputCard.id()));
             usage.reserveMediaTask(ownerId, task,
-                    MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(binding.adapterId())
+                    capabilities.isLocal(binding)
                             ? LOCAL_COST_SOURCE
                             : COST_SOURCE,
                     binding.connectionVersion());

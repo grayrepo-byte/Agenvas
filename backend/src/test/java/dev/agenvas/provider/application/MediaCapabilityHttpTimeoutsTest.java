@@ -43,7 +43,8 @@ class MediaCapabilityHttpTimeoutsTest {
     private final ObjectMapper mapper = new ObjectMapper();
     private final JooqMediaCapabilityRepository repository = mock(JooqMediaCapabilityRepository.class);
     private final MediaAdapterRegistry registry = new MediaAdapterRegistry(List.of());
-    private final MediaCapabilityService catalog = new MediaCapabilityService(repository, registry,
+    private final MediaCapabilityService catalog = new MediaCapabilityService(repository,
+            new PinnedMediaPublications(repository), registry,
             mock(CredentialCipher.class), Clock.fixed(NOW, ZoneOffset.UTC), mapper,
             new ProviderModeProperties(ProviderModeProperties.Mode.CONFIGURED));
 

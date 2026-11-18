@@ -216,7 +216,7 @@ public class VideoOperationService {
     /** Validates operation-specific parameters before any output node is created. */
     private PreparedOperation prepareOperation(MediaCapabilityBinding binding, Asset asset,
             UUID sourceVersionId, String instruction, JsonNode parameters, VideoOperation operation) {
-        boolean local = MediaAdapterRegistry.localProcessor(binding.adapterId());
+        boolean local = catalog.isLocal(binding);
         ObjectNode frozenParameters = mapper.createObjectNode();
         RunningHubDefinition definition = catalog.runningHubDefinition(binding);
         if (local) {

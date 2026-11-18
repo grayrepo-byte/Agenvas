@@ -36,6 +36,46 @@ class MediaCapabilityModeTest {
     private final MediaCapabilityService configured = service(ProviderModeProperties.Mode.CONFIGURED);
 
     @Test
+    void newlyRegisteredLocalAdapterStaysOutsideGenerationCatalogAndDefaults() {
+        String id = "SYNTHETIC_LOCAL";
+        var adapter = mock(dev.agenvas.provider.domain.MediaAdapter.class);
+        when(adapter.adapterId()).thenReturn(id);
+        when(adapter.declaration()).thenReturn(registry.declaration(MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR));
+        var catalog = new MediaCapabilityService(repository, new PinnedMediaPublications(repository),
+                new MediaAdapterRegistry(List.of(adapter)), cipher,
+                Clock.systemUTC(), new ObjectMapper(), new ProviderModeProperties(ProviderModeProperties.Mode.MOCK));
+        Snapshot local = snapshot(MediaPlatform.LOCAL, id);
+        stub(local);
+        when(repository.connections()).thenReturn(List.of(local.connection()));
+        when(repository.defaultCapabilityId(Task.Kind.IMAGE_GENERATION.name())).thenReturn(local.capability().id());
+        assertThat(catalog.defaultCapabilityId(Task.Kind.IMAGE_GENERATION)).isNull();
+        assertThatThrownBy(() -> catalog.defaultFor(Task.Kind.IMAGE_GENERATION))
+                .isInstanceOf(ApiProblemException.class);
+        assertThat(catalog.publishedCandidates()).isEmpty();
+        assertThat(catalog.candidates(Task.Kind.IMAGE_GENERATION, 0)).isEmpty();
+        assertThatThrownBy(() -> catalog.setDefault(Task.Kind.IMAGE_GENERATION, 0, local.capability().id()))
+                .isInstanceOf(ApiProblemException.class);
+    }
+
+    @Test
+    void historicalLocalPricingRequiresExactPublishedIdentityEvenWithoutTheAdapter() {
+        Snapshot retired = snapshot(MediaPlatform.LOCAL, "RETIRED_LOCAL");
+        var binding = binding(retired);
+        when(repository.snapshotAt(binding.capabilityId(), 1, binding.connectionId(), 1))
+                .thenReturn(Optional.of(retired));
+        assertThat(configured.isLocal(binding)).isTrue();
+        var forged = new MediaCapabilityBinding(binding.connectionId(), 1, binding.capabilityId(), 1,
+                MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR, binding.mappingSha256());
+        assertThatThrownBy(() -> configured.isLocal(forged)).isInstanceOf(IllegalStateException.class);
+        var stale = new MediaCapabilityBinding(binding.connectionId(), 1, binding.capabilityId(), 1,
+                binding.adapterId(), "different-mapping");
+        assertThatThrownBy(() -> configured.isLocal(stale)).isInstanceOf(IllegalStateException.class);
+        stub(retired);
+        assertThatThrownBy(() -> configured.resolve(binding.capabilityId(), Task.Kind.IMAGE_GENERATION, 0))
+                .isInstanceOf(ApiProblemException.class);
+    }
+
+    @Test
     void clearedDefaultsAreProjectedWithoutLookingUpAnAbsentCapability() {
         when(repository.defaultCapabilityId(Task.Kind.IMAGE_GENERATION.name())).thenReturn(null);
         assertThat(configured.defaultCapabilityId(Task.Kind.IMAGE_GENERATION)).isNull();
@@ -159,7 +199,8 @@ class MediaCapabilityModeTest {
     }
 
     private MediaCapabilityService service(ProviderModeProperties.Mode mode) {
-        return new MediaCapabilityService(repository, registry, cipher, Clock.systemUTC(),
+        return new MediaCapabilityService(repository, new PinnedMediaPublications(repository), registry, cipher,
+                Clock.systemUTC(),
                 new ObjectMapper(), new ProviderModeProperties(mode));
     }
 

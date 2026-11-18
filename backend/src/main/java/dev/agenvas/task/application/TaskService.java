@@ -16,6 +16,7 @@ import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.task.domain.VideoOperation;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
+import dev.agenvas.provider.application.PinnedMediaPublications;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.ProviderResultManifest;
 import dev.agenvas.provider.domain.ProviderFailure;
@@ -80,6 +81,7 @@ public class TaskService {
     private final Clock clock;
     /** 停机开始后阻止新的后台任务进入执行阶段。 */
     private final ShutdownGate shutdownGate;
+    private final PinnedMediaPublications publications;
 
     /** 组装任务权限、输入快照、依赖调度、租约、账本及项目事件边界。
      * @param runs 校验所属 Run 并推进编排状态
@@ -105,7 +107,7 @@ public class TaskService {
             UsageService usage,
             ObjectMapper objectMapper,
             Clock clock,
-            ShutdownGate shutdownGate) {
+            ShutdownGate shutdownGate, PinnedMediaPublications publications) {
         this.runs = runs;
         this.projects = projects;
         this.artifacts = artifacts;
@@ -118,6 +120,7 @@ public class TaskService {
         this.objectMapper = objectMapper;
         this.clock = clock;
         this.shutdownGate = shutdownGate;
+        this.publications = publications;
     }
 
     /**
@@ -1438,9 +1441,7 @@ public class TaskService {
         if (task.kind() == Task.Kind.SUBTITLE_TRANSCRIPTION)
             payload.put("subtitleId", task.input().path("subtitleId").asText());
         payload.put("cancelRequested", task.cancelRequested());
-        boolean localProcessing = tasks.mediaBinding(task.id())
-                .map(binding -> MediaAdapterRegistry.localProcessor(binding.adapterId())).orElse(false);
-        payload.put("possibleExternalCost", !localProcessing && (possibleExternalCost
+        boolean costPossible = possibleExternalCost
                 || task.providerRequestId() != null
                 || ((task.kind() == Task.Kind.IMAGE_GENERATION
                         || task.kind() == Task.Kind.VIDEO_GENERATION
@@ -1448,7 +1449,9 @@ public class TaskService {
                         && (task.status() == Task.Status.SUBMITTING
                                 || task.status() == Task.Status.WAITING_PROVIDER
                                 || task.status() == Task.Status.UNKNOWN
-                                || task.status() == Task.Status.CANCELED))));
+                                || task.status() == Task.Status.CANCELED));
+        payload.put("possibleExternalCost", costPossible && !tasks.mediaBinding(task.id())
+                .map(publications::isLocal).orElse(false));
         return new ProjectEventService.EventDraft("task.status.changed", 1,
                 task.id(), task.version(), payload);
     }

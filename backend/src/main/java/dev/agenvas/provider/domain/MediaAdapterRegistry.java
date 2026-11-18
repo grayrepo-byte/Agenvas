@@ -35,11 +35,7 @@ public final class MediaAdapterRegistry {
     public static final String LOCAL_VIDEO_AUDIO_EXTRACTOR = "LOCAL_VIDEO_AUDIO_EXTRACTOR";
     public static final String LOCAL_VIDEO_COMPOSITOR = "LOCAL_VIDEO_COMPOSITOR";
     public static final String LOCAL_AUDIO_TRIMMER = "LOCAL_AUDIO_TRIMMER";
-    public static boolean localProcessor(String adapterId) {
-        return LOCAL_IMAGE_PROCESSOR.equals(adapterId) || LOCAL_VIDEO_PROCESSOR.equals(adapterId)
-                || LOCAL_VIDEO_AUDIO_EXTRACTOR.equals(adapterId) || LOCAL_VIDEO_COMPOSITOR.equals(adapterId)
-                || LOCAL_AUDIO_TRIMMER.equals(adapterId);
-    }
+
     public static final String OPENAI_GPT_IMAGE_2 = "OPENAI_GPT_IMAGE_2";
     public static final String GOOGLE_NANO_BANANA_2 = "GOOGLE_NANO_BANANA_2";
     public static final String COMFY_IMAGE_V1 = "COMFY_IMAGE_V1";

@@ -59,6 +59,7 @@ class MediaCapabilityNormalizationTest {
     private final ObjectMapper mapper = new ObjectMapper();
     private final JooqMediaCapabilityRepository repository = mock(JooqMediaCapabilityRepository.class);
     private final MediaCapabilityService service = new MediaCapabilityService(repository,
+            new PinnedMediaPublications(repository),
             new MediaAdapterRegistry(List.of()), mock(CredentialCipher.class),
             Clock.fixed(NOW, ZoneOffset.UTC), mapper,
             new ProviderModeProperties(ProviderModeProperties.Mode.CONFIGURED));

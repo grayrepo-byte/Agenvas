@@ -15,6 +15,7 @@ import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.lifecycle.ShutdownGate;
+import dev.agenvas.provider.application.PinnedMediaPublications;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.usage.application.UsageService;
 import java.time.Clock;
@@ -108,7 +109,7 @@ class TaskClaimTest {
         return new TaskService(mock(AgentRunService.class), mock(ProjectService.class),
                 mock(ArtifactService.class), mock(MediaDraftService.class), mock(CanvasService.class),
                 repository, new TaskProperties(LEASE, BATCH_LIMIT), mock(ProjectEventService.class),
-                mock(UsageService.class), new ObjectMapper(), clock, gate);
+                mock(UsageService.class), new ObjectMapper(), clock, gate, mock(PinnedMediaPublications.class));
     }
 
     private List<Task> claim(Route route, String worker, int limit) {

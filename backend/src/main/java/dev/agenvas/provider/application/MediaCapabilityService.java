@@ -49,16 +49,18 @@ public class MediaCapabilityService {
 
     private final JooqMediaCapabilityRepository repository;
     private final MediaAdapterRegistry registry;
+    private final PinnedMediaPublications publications;
     private final CredentialCipher cipher;
     private final Clock clock;
     private final ObjectMapper mapper;
     private final ProviderModeProperties mode;
 
     public MediaCapabilityService(JooqMediaCapabilityRepository repository,
-            MediaAdapterRegistry registry, CredentialCipher cipher, Clock clock,
+            PinnedMediaPublications publications, MediaAdapterRegistry registry, CredentialCipher cipher, Clock clock,
             ObjectMapper mapper, ProviderModeProperties mode) {
         this.repository = repository;
         this.registry = registry;
+        this.publications = publications;
         this.cipher = cipher;
         this.clock = clock;
         this.mapper = mapper;
@@ -384,17 +386,13 @@ public class MediaCapabilityService {
         return repository.connectionVersion(connectionId, version);
     }
 
+    public boolean isLocal(MediaCapabilityBinding binding) {
+        return publications.isLocal(binding);
+    }
+
     /** Internal historical snapshot; never serialize this record into API or model output. */
     public Snapshot pinnedSnapshot(MediaCapabilityBinding binding) {
-        Snapshot snapshot = repository.snapshotAt(binding.capabilityId(),
-                binding.capabilityVersion(), binding.connectionId(),
-                binding.connectionVersion())
-                .orElseThrow(() -> new IllegalStateException("Pinned media capability version is missing"));
-        if (!binding.adapterId().equals(snapshot.adapterId())
-                || !binding.mappingSha256().equals(snapshot.mappingSha256())) {
-            throw new IllegalStateException("Pinned media adapter identity differs from history");
-        }
-        return snapshot;
+        return publications.snapshot(binding);
     }
 
     /** Validate a candidate import without persisting it or contacting the inference server. */
@@ -605,9 +603,8 @@ public class MediaCapabilityService {
         UUID capabilityId = repository.defaultCapabilityId(requireMediaKind(kind).name());
         if (capabilityId == null)
             return null;
-        if (mode.mode() != ProviderModeProperties.Mode.CONFIGURED)
-            return capabilityId;
-        return availablePlatform(capabilitySnapshot(capabilityId).connection().platform())
+        var platform = capabilitySnapshot(capabilityId).connection().platform();
+        return platform != MediaPlatform.LOCAL && availablePlatform(platform)
                 ? capabilityId
                 : null;
     }
@@ -731,11 +728,9 @@ public class MediaCapabilityService {
         Task.Kind mediaKind = requireMediaKind(kind);
         repository.lockCapability(capabilityId);
         Snapshot snapshot = enabledSnapshot(capabilityId);
-        if (MediaAdapterRegistry.localProcessor(snapshot.adapterId())) {
-            throw invalid(ApiMessage.of(
-                    "api.media-capability-service.local-image-processing-capabilities-cannot-be-set-as-the-default"));
-        }
-        if (registry.declaration(snapshot.adapterId()).kind() != mediaKind) {
+        var declaration = registry.declaration(snapshot.adapterId());
+        requireGenerationDefault(declaration.platform());
+        if (declaration.kind() != mediaKind) {
             throw invalid(ApiMessage.of("api.media-capability-service.default-capabilities-do-not-match-media-type"));
         }
         if (!repository.updateDefault(mediaKind.name(), expectedVersion, capabilityId)) {
@@ -747,8 +742,17 @@ public class MediaCapabilityService {
 
     public MediaCapabilityBinding defaultFor(Task.Kind kind) {
         Task.Kind mediaKind = requireMediaKind(kind);
-        return resolve(repository.defaultCapabilityId(mediaKind.name()), mediaKind,
+        var binding = resolve(repository.defaultCapabilityId(mediaKind.name()), mediaKind,
                 mediaKind == Task.Kind.VIDEO_GENERATION ? -1 : 0, true);
+        requireGenerationDefault(registry.declaration(binding.adapterId()).platform());
+        return binding;
+    }
+
+    private static void requireGenerationDefault(MediaPlatform platform) {
+        if (platform == MediaPlatform.LOCAL) {
+            throw invalid(ApiMessage.of(
+                    "api.media-capability-service.local-image-processing-capabilities-cannot-be-set-as-the-default"));
+        }
     }
 
     public MediaCapabilityBinding forDraft(UUID capabilityId, Task.Kind kind) {
@@ -832,7 +836,7 @@ public class MediaCapabilityService {
                 .flatMap(connection -> repository.capabilities(connection.id()).stream())
                 .filter(Capability::enabled)
                 .map(capability -> repository.snapshot(capability.id()).orElseThrow())
-                .filter(snapshot -> !MediaAdapterRegistry.localProcessor(snapshot.adapterId()));
+                .filter(snapshot -> registry.declaration(snapshot.adapterId()).platform() != MediaPlatform.LOCAL);
     }
 
     private Candidate candidate(Snapshot snapshot, MediaAdapterRegistry.Declaration policy) {
