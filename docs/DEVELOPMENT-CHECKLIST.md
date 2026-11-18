@@ -4197,3 +4197,13 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 真实 PostgreSQL 复现并发首次浏览时的 `creative_skill_pkey` 冲突。内置条目同时具有确定性主键与账号内 key 唯一约束，注册改为同时处理这两类重复；仍由成功插入的一方在原事务内发布唯一不可变版本，保留个人 Skill、历史发行与账号隔离。无 API、迁移、生成代码或依赖变化。
 - [x] 既有并发用例修复前失败；修复后 `./mvnw --batch-mode --no-transfer-progress -Pci-integration -Dit.test=SkillPostgresIT verify` 共 16 项通过，并发首次读取方法额外独立运行三次均通过。`SkillSelectionQueryTest`、`BuiltinSkillSearchTest`、`BuiltinSkillCatalogueTest`、`SkillFormatTest` 共 31 项单元测试通过；Spotless 与差异空白检查通过。
 - [ ] 本机未运行全量测试、真实 Provider 调用或升级后的部署冒烟；上述回归使用隔离 PostgreSQL 和合成账号，不操作用户数据。
+
+
+## 2026-11-18 后端可插拔性与扩展性 30 轮
++
++- [x] 基于 0.0.12 后当前 main/develop 相同代码，核对既有优化并在隔离分支实施。[逐轮记录](backend-extensibility-iterations.md)列出 30 个目标、实际实现/保留结论、证据和范围，不将环境准备计为架构成果。
++- [x] 媒体实现自行声明契约与发布超时；注册冲突、范围和不可变性校验；删除无调用的 supports/PortInput；显式原生协议目录与稳定索引。供应商失败分类归适配器，结果地址刷新复用原请求与通用 Task 身份/CAS/fencing 校验。
++- [x] 永久归档按 backend 声明发现五种 Provider；缺失/重叠拒绝，保留历史路由与中继签名边界。提示词解析依赖有界下载接口，格式注册冲突/缺失明确分类且不访问远端。
++- [x] 新合成适配器在真实 PostgreSQL 全应用装配中完成发布、草稿、Task、单次提交/原 ID 查询/单次刷新及归档。最终 48 类定向单元 419 项、12 类 PostgreSQL 专项 59 项全部通过，零失败/错误/跳过。格式幂等、Spotless check、差异空白检查通过；两轴独立静态审查均无须修复项。
++- [x] [ADR 0089](adr/0089-compiled-backend-extension-contracts.md)、规格 §20 和接入指南同步；修正与 ADR 0079 冲突的公网 DNS/fake-IP 说明，保留按需工具权限、固定批次审批、幂等和 UNKNOWN 不重投。无新增依赖、API/schema、迁移、生成源码或前端变更。
++- [ ] 全量测试、真实供应商/云存储/NAS、付费调用、浏览器端到端、部署及真实进程重启未运行；合成响应不能证明真实 Provider 兼容。未推送、合并、发布或部署。

@@ -38,8 +38,8 @@
 | 26 | 审查自托管与 Mock 的独立运行能力 | 无外部账户、无动态脚本依赖 | 已审查 |
 | 27 | 审查出站地址策略与接入指南是否保留已撤回规则 | ADR 0079、HTTP/私网不回退 | 已审查 |
 | 28 | 建立扩展接入文档与架构决策 | 实际接口、失败语义、兼容性限制 | 已实现 |
-| 29 | 审查整个差异并处理发现 | Standards 与用户目标两轴审查 | 待执行 |
-| 30 | 执行最终定向回归并据实交付 | 编译、定向单元/集成、格式、差异 | 待执行 |
+| 29 | 审查整个差异并处理发现 | Standards 与用户目标两轴审查 | 已审查 |
+| 30 | 执行最终定向回归并据实交付 | 编译、定向单元/集成、格式、差异 | 已验证 |
 
 ## 验证记录
 
@@ -103,7 +103,7 @@
 +- 28：ADR 0089、规格 §20.1 与 Provider 接入指南同步实际契约和限制；旧 ADR 0046 的地址部分显式标为被替代。没有新增运行依赖、API/schema、Flyway 或生成文件变更。
 +- 复核追加：声明不能把 AGENT_TURN/TEXT_GENERATION 注册成媒体；profile 输出种类必须与声明相同且同 adapter 一致。两项测试先失败后修正，相关 7 类 **38 项通过**。28 项内置声明与基点忽略空白逐项相同。
 +
-+### 最终定向单元回归（第 30 轮证据，集成结果待补）
++### 最终定向单元回归（第 30 轮证据）
 +
 +使用 Java 21 和仓库 Maven 3.9.12，通过环境现有 Maven settings/cache 执行 `./mvnw -Dtest=<下列 48 类> test`；**419 项通过，0 失败/错误/跳过**。该命令编译全部手写与生成生产源码、全部测试源码，但只运行选定测试，没有执行全量套件。
 +
@@ -125,3 +125,27 @@
 +```
 +
 +Spotless `apply` 后再次 `apply + check` 通过，全部 Java 文件内容哈希不变，证实格式化幂等。保留既有 Spring AI varargs、测试 deprecated/unchecked 和 Mockito 动态 agent 警告；没有以关闭检查消除它们。
+
+### 29：双轴独立审查
++
++审查基点 `104483fd`，实施提交截至 `bd92233e`。Standards 轴读取 AGENTS、CONTRIBUTING、规格 §20 和相关 ADR，检查装配、职责、状态、线程/事务及常见代码问题：**0 项硬违反、0 项须修复的 smell**。Spec 轴对照本次目标、ADR 0025、媒体审批设计和 ADR 0089：**0 项须修复的缺失、越界或实现错误**。两位审查者均只读，不把其审查当作测试运行；最终测试由主执行过程单独完成。
++
++### 30：真实 PostgreSQL、最终检查与交付范围
++
++同一工具链显式选定 `./mvnw -Dtest=<以下选择器> test`，12 个测试类共 **59 项通过，0 失败/错误/跳过**。使用真实 PostgreSQL 17.11、实际 Spring 装配及合成 HTTP/媒体；覆盖按需权限和同批回滚、提示词租约/同步开关、能力版本、原 ID 恢复与 CAS/fencing、混合结果、晚到结果、音轨、独立中继和历史存储位置。不是 H2、真实付费 Provider 或部署验收。
++
++```text
++MediaAdapterExtensionPostgresIT, RunningHubPostgresIT, RemoteFileStoragePostgresIT,
++ObjectStoragePostgresIT, SeedanceVideoReferencePostgresIT, ThirdPartyPromptPostgresIT,
++ThirdPartyPromptSyncSettingsPostgresIT, MediaHttpTimeoutsPostgresIT, OnDemandAgentPostgresIT,
++ArkSeedanceArchivePostgresIT, MiniMaxH3ArchivePostgresIT,
++NativeMediaPostgresIT#seventeenLayerResultsAndMetadataCommitTogetherAndCancellationKeepsHistoryUnselected
++  +copiedGoogleFilesMetadataCannotTurnAUserUploadIntoAnExtendableVeoResult
++```
++
++- 最终定向验证合计 **478 项**（419 单元 + 59 PostgreSQL），不叠加早期重复执行的计数。未运行的其他单元/集成测试不能据此视为通过。
++- 编译全部生产/测试源码；Spotless 幂等及 check、`git diff --check` 通过。差异中 OpenAPI、Flyway、jOOQ、生成 TypeScript、POM 和前端均为空；28 个内置声明与基点一致。
++- 已复核新增文本与差异中的凭据模式，未发现真实凭据；新增输入全部为明确合成值。原始运行日志留在仓库外，不提交。
++- 仍保留的演进边界：原生协议显式装配、特殊参数/公开元数据/诊断仍需受控扩展；部分同模块历史配置查询继续使用现有 Repository；调度的 3+1 slots 与四个 heartbeat scope 仍须同步维护。没有为本轮再加入容量配置或动态加载。
++- **未运行**：全量测试、真实供应商/真实云/NAS 兼容性或付费生成、浏览器端到端、部署与真实进程重启。保留现有编译/Mockito 警告，未关闭检查。
++- 当前无阻塞。工作在隔离分支完成并提交；没有推送远端、合并、打标签、发布或部署。原工作区改动未被覆盖。
