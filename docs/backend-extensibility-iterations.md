@@ -108,56 +108,73 @@
 - 13：`MediaAdapterExtensionPostgresIT` 在实际 Spring 应用和 PostgreSQL 17 中安装一个合成 Java 适配器。无需修改生产中央表即可发布能力、创建草稿与 Task、提交一次、查询一次、刷新一次并归档成功；实际下载两次，没有第二次提交。**1 项通过，0 失败/错误/跳过**。此为合成协议和真实数据库，不代表真实 Provider 或进程重启验收。
 
 ### 10–11、13、28：格式扩展与明确的接入边界
-+
-+- 10：默认、Markdown 附加 manifest 和 Gallery 分页都依赖 `ThirdPartyPromptFeed`。真实 HTTP 实现保留每次有界下载，分页仍累计检查 32 MiB、条数及页数，不增加 HTTP 客户端继承要求。
-+- 11：格式注册拒绝重复；缺失格式的同步先复现旧 NPE/通用失败分类，再以明确错误结束租约且不调用远端。解析、分页、HTTP、调度及同步故障七个测试类 **36 项通过**。
-+- 13：合成新适配器通过 Spring 全应用装配与真实 PostgreSQL 完整链路，不仅测试手动构造的注册表；内置 Bean 同样完成启动验证。
-+- 28：ADR 0089、规格 §20.1 与 Provider 接入指南同步实际契约和限制；旧 ADR 0046 的地址部分显式标为被替代。没有新增运行依赖、API/schema、Flyway 或生成文件变更。
-+- 复核追加：声明不能把 AGENT_TURN/TEXT_GENERATION 注册成媒体；profile 输出种类必须与声明相同且同 adapter 一致。两项测试先失败后修正，相关 7 类 **38 项通过**。28 项内置声明与基点忽略空白逐项相同。
-+
-+### 最终定向单元回归（回归证据）
-+
-+使用 Java 21 和仓库 Maven 3.9.12，通过环境现有 Maven settings/cache 执行 `./mvnw -Dtest=<下列 48 类> test`；**419 项通过，0 失败/错误/跳过**。该命令编译全部手写与生成生产源码、全部测试源码，但只运行选定测试，没有执行全量套件。
-+
-+```text
-+MediaAdapterRegistrationTest, MediaDeclarationContractTest, NativeMediaCatalogTest,
-+NativeMediaProfilesTest, MediaAdapterRegistryVideoModesTest, MediaCapabilityConfigurationTest,
-+MediaCapabilityHttpTimeoutsTest, MediaHttpTimeoutsTest, MediaCapabilityNormalizationTest,
-+MediaCapabilityModeTest, OpenAiImageOptionsTest, ComfyUiPinnedConfigurationTest,
-+MediaExecutionWorkerTest, RunningHubAdapterTest, KlingVideo3AdapterTest, WanProtocolAdapterTest,
-+GoogleVideoAdapterTest, OpenAiImage2AdapterTest, ArchiveStorageClientTest, ObjectStorageClientTest,
-+SmbStorageClientTest, WebDavStorageClientTest, ConfiguredAssetStorageTest, StorageSettingsServiceTest,
-+MediaRelayServiceTest, HttpStoragePolicyTest, ThirdPartyPromptExtensionTest, ThirdPartyPromptAdapterTest,
-+VideoPromptAdapterTest, ImagePromptGalleryAdapterTest, ThirdPartyPromptHttpClientTest,
-+ThirdPartyPromptSyncFailureTest, ThirdPartyPromptSchedulingTest, TaskProviderRecoveryTest,
-+OnDemandToolsetsTest, RunToolPolicyTest, SpringAiChatGatewayTest, TaskClaimTest,
-+ServiceEndpointPolicyTest, LlmEndpointPolicyTest, DownloadAddressCompatibilityTest, MediaResultTest,
-+MockChatGatewayTest, MockGenerationGatewayTest, WanModelsTest, SeedreamModelsTest,
-+GoogleVideoModelsTest, MediaLeaseHeartbeatTest
-+```
-+
-+Spotless `apply` 后再次 `apply + check` 通过，全部 Java 文件内容哈希不变，证实格式化幂等。保留既有 Spring AI varargs、测试 deprecated/unchecked 和 Mockito 动态 agent 警告；没有以关闭检查消除它们。
+
+- 10：默认、Markdown 附加 manifest 和 Gallery 分页都依赖 `ThirdPartyPromptFeed`。真实 HTTP 实现保留每次有界下载，分页仍累计检查 32 MiB、条数及页数，不增加 HTTP 客户端继承要求。
+- 11：格式注册拒绝重复；缺失格式的同步先复现旧 NPE/通用失败分类，再以明确错误结束租约且不调用远端。解析、分页、HTTP、调度及同步故障七个测试类 **36 项通过**。
+- 13：合成新适配器通过 Spring 全应用装配与真实 PostgreSQL 完整链路，不仅测试手动构造的注册表；内置 Bean 同样完成启动验证。
+- 28：ADR 0089、规格 §20.1 与 Provider 接入指南同步实际契约和限制；旧 ADR 0046 的地址部分显式标为被替代。没有新增运行依赖、API/schema、Flyway 或生成文件变更。
+- 复核追加：声明不能把 AGENT_TURN/TEXT_GENERATION 注册成媒体；profile 输出种类必须与声明相同且同 adapter 一致。两项测试先失败后修正，相关 7 类 **38 项通过**。28 项内置声明与基点忽略空白逐项相同。
+
+### 最终定向单元回归（回归证据）
+
+使用 Java 21 和仓库 Maven 3.9.12，通过环境现有 Maven settings/cache 执行 `./mvnw -Dtest=<下列 48 类> test`；**419 项通过，0 失败/错误/跳过**。该命令编译全部手写与生成生产源码、全部测试源码，但只运行选定测试，没有执行全量套件。
+
+```text
+MediaAdapterRegistrationTest, MediaDeclarationContractTest, NativeMediaCatalogTest,
+NativeMediaProfilesTest, MediaAdapterRegistryVideoModesTest, MediaCapabilityConfigurationTest,
+MediaCapabilityHttpTimeoutsTest, MediaHttpTimeoutsTest, MediaCapabilityNormalizationTest,
+MediaCapabilityModeTest, OpenAiImageOptionsTest, ComfyUiPinnedConfigurationTest,
+MediaExecutionWorkerTest, RunningHubAdapterTest, KlingVideo3AdapterTest, WanProtocolAdapterTest,
+GoogleVideoAdapterTest, OpenAiImage2AdapterTest, ArchiveStorageClientTest, ObjectStorageClientTest,
+SmbStorageClientTest, WebDavStorageClientTest, ConfiguredAssetStorageTest, StorageSettingsServiceTest,
+MediaRelayServiceTest, HttpStoragePolicyTest, ThirdPartyPromptExtensionTest, ThirdPartyPromptAdapterTest,
+VideoPromptAdapterTest, ImagePromptGalleryAdapterTest, ThirdPartyPromptHttpClientTest,
+ThirdPartyPromptSyncFailureTest, ThirdPartyPromptSchedulingTest, TaskProviderRecoveryTest,
+OnDemandToolsetsTest, RunToolPolicyTest, SpringAiChatGatewayTest, TaskClaimTest,
+ServiceEndpointPolicyTest, LlmEndpointPolicyTest, DownloadAddressCompatibilityTest, MediaResultTest,
+MockChatGatewayTest, MockGenerationGatewayTest, WanModelsTest, SeedreamModelsTest,
+GoogleVideoModelsTest, MediaLeaseHeartbeatTest
+```
+
+Spotless `apply` 后再次 `apply + check` 通过，全部 Java 文件内容哈希不变，证实格式化幂等。保留既有 Spring AI varargs、测试 deprecated/unchecked 和 Mockito 动态 agent 警告；没有以关闭检查消除它们。
 
 ### 29：双轴独立审查
-+
-+审查基点 `104483fd`，实施提交截至 `bd92233e`。Standards 轴读取 AGENTS、CONTRIBUTING、规格 §20 和相关 ADR，检查装配、职责、状态、线程/事务及常见代码问题：**0 项硬违反、0 项须修复的 smell**。Spec 轴对照本次目标、ADR 0025、媒体审批设计和 ADR 0089：**0 项须修复的缺失、越界或实现错误**。两位审查者均只读，不把其审查当作测试运行；最终测试由主执行过程单独完成。
-+
-+### 30：真实 PostgreSQL、最终检查与交付范围
-+
-+同一工具链显式选定 `./mvnw -Dtest=<以下选择器> test`，12 个测试类共 **59 项通过，0 失败/错误/跳过**。使用真实 PostgreSQL 17.11、实际 Spring 装配及合成 HTTP/媒体；覆盖按需权限和同批回滚、提示词租约/同步开关、能力版本、原 ID 恢复与 CAS/fencing、混合结果、晚到结果、音轨、独立中继和历史存储位置。不是 H2、真实付费 Provider 或部署验收。
-+
-+```text
-+MediaAdapterExtensionPostgresIT, RunningHubPostgresIT, RemoteFileStoragePostgresIT,
-+ObjectStoragePostgresIT, SeedanceVideoReferencePostgresIT, ThirdPartyPromptPostgresIT,
-+ThirdPartyPromptSyncSettingsPostgresIT, MediaHttpTimeoutsPostgresIT, OnDemandAgentPostgresIT,
-+ArkSeedanceArchivePostgresIT, MiniMaxH3ArchivePostgresIT,
-+NativeMediaPostgresIT#seventeenLayerResultsAndMetadataCommitTogetherAndCancellationKeepsHistoryUnselected
-+  +copiedGoogleFilesMetadataCannotTurnAUserUploadIntoAnExtendableVeoResult
-+```
-+
-+- 最终定向验证合计 **478 项**（419 单元 + 59 PostgreSQL），不叠加早期重复执行的计数。未运行的其他单元/集成测试不能据此视为通过。
-+- 编译全部生产/测试源码；Spotless 幂等及 check、`git diff --check` 通过。差异中 OpenAPI、Flyway、jOOQ、生成 TypeScript、POM 和前端均为空；28 个内置声明与基点一致。
-+- 已复核新增文本与差异中的凭据模式，未发现真实凭据；新增输入全部为明确合成值。原始运行日志留在仓库外，不提交。
-+- 仍保留的演进边界：原生协议显式装配、特殊参数/公开元数据/诊断仍需受控扩展；部分同模块历史配置查询继续使用现有 Repository；调度的 3+1 slots 与四个 heartbeat scope 仍须同步维护。没有为本轮再加入容量配置或动态加载。
-+- **未运行**：全量测试、真实供应商/真实云/NAS 兼容性或付费生成、浏览器端到端、部署与真实进程重启。保留现有编译/Mockito 警告，未关闭检查。
-+- 当前无阻塞。原首批改造在隔离分支提交；当时未推送远端、合并、打标签、发布或部署。后续全量验证及草稿 PR 交付另行记录。原工作区改动未被覆盖。
+
+审查基点 `104483fd`，实施提交截至 `bd92233e`。Standards 轴读取 AGENTS、CONTRIBUTING、规格 §20 和相关 ADR，检查装配、职责、状态、线程/事务及常见代码问题：**0 项硬违反、0 项须修复的 smell**。Spec 轴对照本次目标、ADR 0025、媒体审批设计和 ADR 0089：**0 项须修复的缺失、越界或实现错误**。两位审查者均只读，不把其审查当作测试运行；最终测试由主执行过程单独完成。
+
+### 30：真实 PostgreSQL、最终检查与交付范围
+
+同一工具链显式选定 `./mvnw -Dtest=<以下选择器> test`，12 个测试类共 **59 项通过，0 失败/错误/跳过**。使用真实 PostgreSQL 17.11、实际 Spring 装配及合成 HTTP/媒体；覆盖按需权限和同批回滚、提示词租约/同步开关、能力版本、原 ID 恢复与 CAS/fencing、混合结果、晚到结果、音轨、独立中继和历史存储位置。不是 H2、真实付费 Provider 或部署验收。
+
+```text
+MediaAdapterExtensionPostgresIT, RunningHubPostgresIT, RemoteFileStoragePostgresIT,
+ObjectStoragePostgresIT, SeedanceVideoReferencePostgresIT, ThirdPartyPromptPostgresIT,
+ThirdPartyPromptSyncSettingsPostgresIT, MediaHttpTimeoutsPostgresIT, OnDemandAgentPostgresIT,
+ArkSeedanceArchivePostgresIT, MiniMaxH3ArchivePostgresIT,
+NativeMediaPostgresIT#seventeenLayerResultsAndMetadataCommitTogetherAndCancellationKeepsHistoryUnselected
+  +copiedGoogleFilesMetadataCannotTurnAUserUploadIntoAnExtendableVeoResult
+```
+
+- 最终定向验证合计 **478 项**（419 单元 + 59 PostgreSQL），不叠加早期重复执行的计数。未运行的其他单元/集成测试不能据此视为通过。
+- 编译全部生产/测试源码；Spotless 幂等及 check、`git diff --check` 通过。差异中 OpenAPI、Flyway、jOOQ、生成 TypeScript、POM 和前端均为空；28 个内置声明与基点一致。
+- 已复核新增文本与差异中的凭据模式，未发现真实凭据；新增输入全部为明确合成值。原始运行日志留在仓库外，不提交。
+- 仍保留的演进边界：原生协议显式装配、特殊参数/公开元数据/诊断仍需受控扩展；部分同模块历史配置查询继续使用现有 Repository；调度的 3+1 slots 与四个 heartbeat scope 仍须同步维护。没有为本轮再加入容量配置或动态加载。
+- **未运行**：全量测试、真实供应商/真实云/NAS 兼容性或付费生成、浏览器端到端、部署与真实进程重启。保留现有编译/Mockito 警告，未关闭检查。
+- 当前无阻塞。原首批改造在隔离分支提交；当时未推送远端、合并、打标签、发布或部署。后续全量验证及草稿 PR 交付另行记录。原工作区改动未被覆盖。
+
+
+## 首批全量验证与草稿交付（2026-11-18）
+
+本节覆盖首批五类架构改造及验证期间发现的修复，不增加独立架构轮次数。
+
+- 首次完整单元验证发现 5 个既有 FFmpeg 7.1.5 成片错误：中间文件声明 31 帧但只解码 30 帧。通过合成样本复现后，在逐镜编码显式设置输出帧率；不放宽成片完整帧数、音轨或时长检查。相关 33 项回归及后续全量单元通过（提交 `2092bbbc`）。
+- 全量集成及托管 CI 同时暴露 `OpenAiImage2PostgresIT` 的替身装配遗漏：默认 Mockito 返回空 Provider 集合，注册器在启动时拒绝。替身改为 TestBean 工厂，在装配前只为 `providers()` 保留真实纯声明；其余传输仍为 Mock。单用例及受影响完整分片重跑通过，生产注册校验未放宽（提交 `8ce5605d`）。独立审查确认没有新增真实网络或跨用例状态。
+- 完整单元：`./mvnw ... -DargLine=-Xmx1536m test`，**2423 项，0 失败、0 错误、2 跳过**。跳过项需要显式深度模型及浏览器导演 WebM 样本。
+- 完整集成：按 `.github/scripts/ci.py shard N 4` 的仓库 CI 方式，四个独立 checkout 执行 `./mvnw ... -Pci-integration -Dit.test=<shard> verify`。185 个 Failsafe 类与发现清单逐项比对，缺失/重复为零。四组分别为 **166/148/179/212 项**，共 **705 项，0 失败、0 错误、8 跳过**；受影响第3组以修复后的完整重跑结果为准，不把先前失败或重复运行叠加为通过项。
+- 两类合计 **3128 项，0 失败、0 错误、10 跳过**。集成使用真实 PostgreSQL 17.11；外部协议及媒体为合成夹具。另8个跳过项分别需要 RunningHub真实调用/结果归档、真实MCP、AutoDL、参考站点/GitHub缓存、真实成片的显式开关或私有样本。
+- 项目检查：Spotless、差异空白、jOOQ真实数据库重新生成无漂移、CI规划37项、Compose回归3项及四份入口配置、安装密钥8项均通过；没有修改生成源码或迁移。
+- 已推送隔离分支并建立[草稿 PR #54](https://github.com/grayrepo-byte/Agenvas/pull/54)。重新 fetch 后，main/develop 均为当前分支祖先；GitHub确认可合并。没有合并、发布或部署。
+- 托管CI仍单独跟进：首次服务端amd64构建因Maven Central HTTP429失败，新提交重跑该构建已通过；另一次集成分组在Maven wrapper下载阶段失败，尚未启动测试，保留外部下载失败证据并进行有界重试。不能将本机通过等同托管CI全绿。
+- 未验证：真实付费Provider、真实云存储/NAS、真实浏览器端到端、部署、跨进程重启及长时压力。保留既有编译/Mockito/Testcontainers提示，不通过关闭检查隐藏。
+
+实际架构进度仍为首批五类；后续针对已确认扩展阻断独立实施并记录。原30项工作表保留为历史证据，不作为30轮完成声明。
