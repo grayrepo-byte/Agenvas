@@ -22,22 +22,22 @@
 | 10 | 提示词解析扩展面移除具体 HTTP 客户端依赖 | 默认获取、多页获取、下载上限 | 已实现 |
 | 11 | 提示词格式注册显式拒绝冲突与缺失 | 不执行 HTTP、错误分类、现有解析器 | 已实现 |
 | 12 | Worker 时间来源符合可注入时钟约定 | 固定时钟下轮询时间 | 已实现 |
-| 13 | 复核 Spring 实际装配及扩展 Bean 的启动验证 | 独立上下文，无远端调用 | 待执行 |
-| 14 | 审查媒体能力规范化与模型选择的可扩展边界 | 发布、输入校验、固定协议特例 | 待执行 |
-| 15 | 审查冻结能力与恢复是否依赖当前扩展状态 | 固定版本、原请求、未安装适配器 | 待执行 |
-| 16 | 审查归档元数据扩展是否可安全开放 | 允许公开的字段、凭据与私有推理 | 待执行 |
-| 17 | 审查存储中继与永久归档的契约差异 | SMB/WebDAV 不具备对象签名能力 | 待执行 |
-| 18 | 审查存储位置与默认切换的兼容性 | 固定 profile、历史资源定位 | 待执行 |
-| 19 | 审查 Agent 工具发现、定义与执行权限的一致性 | 按需加载、冻结白名单、禁止自动执行 | 待执行 |
-| 20 | 审查工具恢复与副作用 handler 是否适合自动发现 | 持久账本、幂等、同批权限 | 待执行 |
-| 21 | 审查 LLM 连接与模型构造扩展面 | Spring AI、命名连接、固定 Run 配置 | 待执行 |
-| 22 | 审查调度器、执行器与租约对扩展的约束 | 有界线程、心跳、关闭与 fencing | 待执行 |
-| 23 | 审查扩展是否改变事务与跨模块依赖 | 网络在事务外、应用接口协作 | 待执行 |
-| 24 | 审查结果数量与多媒体类型的契约兼容 | 有序 manifest、刷新身份、音轨 | 待执行 |
-| 25 | 审查配置扩展是否需要 API/schema 迁移 | OpenAPI、闭合平台枚举、Flyway | 待执行 |
-| 26 | 审查自托管与 Mock 的独立运行能力 | 无外部账户、无动态脚本依赖 | 待执行 |
-| 27 | 审查出站地址策略与接入指南是否保留已撤回规则 | ADR 0079、HTTP/私网不回退 | 待执行 |
-| 28 | 建立扩展接入文档与架构决策 | 实际接口、失败语义、兼容性限制 | 待执行 |
+| 13 | 复核 Spring 实际装配及扩展 Bean 的启动验证 | 独立上下文，无远端调用 | 已实现 |
+| 14 | 审查媒体能力规范化与模型选择的可扩展边界 | 发布、输入校验、固定协议特例 | 已审查 |
+| 15 | 审查冻结能力与恢复是否依赖当前扩展状态 | 固定版本、原请求、未安装适配器 | 已审查 |
+| 16 | 审查归档元数据扩展是否可安全开放 | 允许公开的字段、凭据与私有推理 | 已审查 |
+| 17 | 审查存储中继与永久归档的契约差异 | SMB/WebDAV 不具备对象签名能力 | 已审查 |
+| 18 | 审查存储位置与默认切换的兼容性 | 固定 profile、历史资源定位 | 已审查 |
+| 19 | 审查 Agent 工具发现、定义与执行权限的一致性 | 按需加载、冻结白名单、禁止自动执行 | 已审查 |
+| 20 | 审查工具恢复与副作用 handler 是否适合自动发现 | 持久账本、幂等、同批权限 | 已审查 |
+| 21 | 审查 LLM 连接与模型构造扩展面 | Spring AI、命名连接、固定 Run 配置 | 已审查 |
+| 22 | 审查调度器、执行器与租约对扩展的约束 | 有界线程、心跳、关闭与 fencing | 已审查 |
+| 23 | 审查扩展是否改变事务与跨模块依赖 | 网络在事务外、应用接口协作 | 已审查 |
+| 24 | 审查结果数量与多媒体类型的契约兼容 | 有序 manifest、刷新身份、音轨 | 已审查 |
+| 25 | 审查配置扩展是否需要 API/schema 迁移 | OpenAPI、闭合平台枚举、Flyway | 已审查 |
+| 26 | 审查自托管与 Mock 的独立运行能力 | 无外部账户、无动态脚本依赖 | 已审查 |
+| 27 | 审查出站地址策略与接入指南是否保留已撤回规则 | ADR 0079、HTTP/私网不回退 | 已审查 |
+| 28 | 建立扩展接入文档与架构决策 | 实际接口、失败语义、兼容性限制 | 已实现 |
 | 29 | 审查整个差异并处理发现 | Standards 与用户目标两轴审查 | 待执行 |
 | 30 | 执行最终定向回归并据实交付 | 编译、定向单元/集成、格式、差异 | 待执行 |
 
@@ -94,3 +94,34 @@
 - 10：`ThirdPartyPromptFeed` 承载有界文字下载；默认格式、Markdown 附加清单和 Gallery 多页均改为此接口，保持累计字节、条数及页数限制，生产下载仍由既有 HTTP 客户端实现。初次编译发现 Markdown 的专用 fetch 覆盖也需要同步，已修正。
 - 11：提示词格式从应用编排中独立为 `ThirdPartyPromptRegistry`，明确拒绝重复与缺失。缺失格式测试先复现 NullPointerException 被误记为 `THIRD_PARTY_SYNC_FAILED`，修复后记录 `THIRD_PARTY_SOURCE_UNSUPPORTED_FORMAT`，并确认没有 HTTP 调用。提示词相关 **36 项通过**。
 - 13：`MediaAdapterExtensionPostgresIT` 在实际 Spring 应用和 PostgreSQL 17 中安装一个合成 Java 适配器。无需修改生产中央表即可发布能力、创建草稿与 Task、提交一次、查询一次、刷新一次并归档成功；实际下载两次，没有第二次提交。**1 项通过，0 失败/错误/跳过**。此为合成协议和真实数据库，不代表真实 Provider 或进程重启验收。
+
+### 10–11、13、28：格式扩展与明确的接入边界
++
++- 10：默认、Markdown 附加 manifest 和 Gallery 分页都依赖 `ThirdPartyPromptFeed`。真实 HTTP 实现保留每次有界下载，分页仍累计检查 32 MiB、条数及页数，不增加 HTTP 客户端继承要求。
++- 11：格式注册拒绝重复；缺失格式的同步先复现旧 NPE/通用失败分类，再以明确错误结束租约且不调用远端。解析、分页、HTTP、调度及同步故障七个测试类 **36 项通过**。
++- 13：合成新适配器通过 Spring 全应用装配与真实 PostgreSQL 完整链路，不仅测试手动构造的注册表；内置 Bean 同样完成启动验证。
++- 28：ADR 0089、规格 §20.1 与 Provider 接入指南同步实际契约和限制；旧 ADR 0046 的地址部分显式标为被替代。没有新增运行依赖、API/schema、Flyway 或生成文件变更。
++- 复核追加：声明不能把 AGENT_TURN/TEXT_GENERATION 注册成媒体；profile 输出种类必须与声明相同且同 adapter 一致。两项测试先失败后修正，相关 7 类 **38 项通过**。28 项内置声明与基点忽略空白逐项相同。
++
++### 最终定向单元回归（第 30 轮证据，集成结果待补）
++
++使用 Java 21 和仓库 Maven 3.9.12，通过环境现有 Maven settings/cache 执行 `./mvnw -Dtest=<下列 48 类> test`；**419 项通过，0 失败/错误/跳过**。该命令编译全部手写与生成生产源码、全部测试源码，但只运行选定测试，没有执行全量套件。
++
++```text
++MediaAdapterRegistrationTest, MediaDeclarationContractTest, NativeMediaCatalogTest,
++NativeMediaProfilesTest, MediaAdapterRegistryVideoModesTest, MediaCapabilityConfigurationTest,
++MediaCapabilityHttpTimeoutsTest, MediaHttpTimeoutsTest, MediaCapabilityNormalizationTest,
++MediaCapabilityModeTest, OpenAiImageOptionsTest, ComfyUiPinnedConfigurationTest,
++MediaExecutionWorkerTest, RunningHubAdapterTest, KlingVideo3AdapterTest, WanProtocolAdapterTest,
++GoogleVideoAdapterTest, OpenAiImage2AdapterTest, ArchiveStorageClientTest, ObjectStorageClientTest,
++SmbStorageClientTest, WebDavStorageClientTest, ConfiguredAssetStorageTest, StorageSettingsServiceTest,
++MediaRelayServiceTest, HttpStoragePolicyTest, ThirdPartyPromptExtensionTest, ThirdPartyPromptAdapterTest,
++VideoPromptAdapterTest, ImagePromptGalleryAdapterTest, ThirdPartyPromptHttpClientTest,
++ThirdPartyPromptSyncFailureTest, ThirdPartyPromptSchedulingTest, TaskProviderRecoveryTest,
++OnDemandToolsetsTest, RunToolPolicyTest, SpringAiChatGatewayTest, TaskClaimTest,
++ServiceEndpointPolicyTest, LlmEndpointPolicyTest, DownloadAddressCompatibilityTest, MediaResultTest,
++MockChatGatewayTest, MockGenerationGatewayTest, WanModelsTest, SeedreamModelsTest,
++GoogleVideoModelsTest, MediaLeaseHeartbeatTest
++```
++
++Spotless `apply` 后再次 `apply + check` 通过，全部 Java 文件内容哈希不变，证实格式化幂等。保留既有 Spring AI varargs、测试 deprecated/unchecked 和 Mockito 动态 agent 警告；没有以关闭检查消除它们。

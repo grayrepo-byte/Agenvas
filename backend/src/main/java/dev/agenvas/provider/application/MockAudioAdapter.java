@@ -4,7 +4,6 @@ import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.Submission;
-import dev.agenvas.task.domain.Task;
 import java.io.ByteArrayInputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;

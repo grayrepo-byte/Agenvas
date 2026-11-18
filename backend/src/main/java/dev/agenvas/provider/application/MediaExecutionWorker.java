@@ -18,7 +18,6 @@ import dev.agenvas.task.domain.Task;
 import dev.agenvas.task.domain.VideoOperation;
 import java.io.IOException;
 import java.io.InputStream;
-import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -177,7 +176,8 @@ public class MediaExecutionWorker {
         }
     }
 
-    private void finishPolledPayload(AttemptContext attempt, String workerId, MediaAdapter adapter, MediaPayload payload) {
+    private void finishPolledPayload(AttemptContext attempt, String workerId, MediaAdapter adapter,
+            MediaPayload payload) {
         ObjectNode content;
         try {
             content = archive(attempt, payload);
@@ -200,7 +200,8 @@ public class MediaExecutionWorker {
             try {
                 results = archiveResults(attempt, adapter, manifest);
             } catch (RuntimeException downloadFailure) {
-                if (!adapter.classifyPollFailure(downloadFailure).refreshLocations()) throw downloadFailure;
+                if (!adapter.classifyPollFailure(downloadFailure).refreshLocations())
+                    throw downloadFailure;
                 // Refresh the original task once per archive attempt. No path here can submit a new generation.
                 var refreshed = adapter.refreshResults(attempt, manifest);
                 tasks.refreshProviderResultUrls(task, workerId, manifest, refreshed);

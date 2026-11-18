@@ -4,7 +4,6 @@ import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.Submission;
-import dev.agenvas.task.domain.Task;
 import dev.agenvas.task.domain.VideoOperation;
 import org.springframework.stereotype.Component;
 

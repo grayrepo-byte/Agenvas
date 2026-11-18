@@ -3,7 +3,6 @@ package dev.agenvas.provider.application;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.Submission;
-import dev.agenvas.task.domain.Task;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 
@@ -20,7 +19,6 @@ public class MockImageAdapter implements MediaAdapter {
     public String adapterId() {
         return "MOCK_IMAGE";
     }
-
 
     @Override
     public Submission submit(AttemptContext context) {

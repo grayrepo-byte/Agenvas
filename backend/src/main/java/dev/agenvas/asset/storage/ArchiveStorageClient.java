@@ -9,17 +9,20 @@ import org.springframework.stereotype.Component;
 public class ArchiveStorageClient implements RemoteStorageClient {
     private final java.util.Map<StorageProfile.Provider, ArchiveStorageBackend> backends;
     public ArchiveStorageClient(java.util.List<ArchiveStorageBackend> installed) {
-        var indexed = new java.util.EnumMap<StorageProfile.Provider, ArchiveStorageBackend>(StorageProfile.Provider.class);
+        var indexed = new java.util.EnumMap<StorageProfile.Provider, ArchiveStorageBackend>(
+                StorageProfile.Provider.class);
         for (var backend : java.util.List.copyOf(installed)) {
             var providers = java.util.Set.copyOf(backend.providers());
-            if (providers.isEmpty()) throw new IllegalStateException("Archive backend declares no providers");
+            if (providers.isEmpty())
+                throw new IllegalStateException("Archive backend declares no providers");
             for (var provider : providers)
                 if (indexed.putIfAbsent(provider, backend) != null)
                     throw new IllegalStateException("Duplicate archive backend for " + provider);
         }
         var missing = java.util.EnumSet.allOf(StorageProfile.Provider.class);
         missing.removeAll(indexed.keySet());
-        if (!missing.isEmpty()) throw new IllegalStateException("Missing archive backends: " + missing);
+        if (!missing.isEmpty())
+            throw new IllegalStateException("Missing archive backends: " + missing);
         backends = java.util.Map.copyOf(indexed);
     }
     private RemoteStorageClient client(StorageProfile profile) {

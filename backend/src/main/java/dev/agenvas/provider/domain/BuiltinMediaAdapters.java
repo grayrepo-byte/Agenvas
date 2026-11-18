@@ -9,11 +9,15 @@ import java.util.Set;
 
 /** Built-in declarations remain readable even when an execution adapter is not installed. */
 final class BuiltinMediaAdapters {
-    private BuiltinMediaAdapters() {}
-    static Map<String, Declaration> declarations() { return DECLARATIONS; }
+    private BuiltinMediaAdapters() {
+    }
+    static Map<String, Declaration> declarations() {
+        return DECLARATIONS;
+    }
     static Declaration require(String id) {
         Declaration value = DECLARATIONS.get(id);
-        if (value == null) throw new IllegalStateException("Media adapter must declare its capabilities: " + id);
+        if (value == null)
+            throw new IllegalStateException("Media adapter must declare its capabilities: " + id);
         return value;
     }
 

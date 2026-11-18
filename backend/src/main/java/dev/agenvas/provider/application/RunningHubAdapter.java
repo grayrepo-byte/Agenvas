@@ -76,7 +76,8 @@ public final class RunningHubAdapter implements MediaAdapter {
         if (!(failure instanceof RunningHubClient.Failure upstream))
             return MediaAdapter.super.classifyPollFailure(failure);
         String permanent = switch (upstream.diagnostic().category()) {
-            case AUTHENTICATION, BALANCE, PARAMETER, GENERATION, DOWNLOAD_EXPIRED, PROTOCOL, MODERATION -> upstream.code();
+            case AUTHENTICATION, BALANCE, PARAMETER, GENERATION, DOWNLOAD_EXPIRED, PROTOCOL, MODERATION ->
+                upstream.code();
             case RATE_LIMIT, UPLOAD, UNAVAILABLE -> null;
         };
         return new PollFailure(permanent, upstream.diagnostic(), failure instanceof RunningHubClient.DownloadExpired);

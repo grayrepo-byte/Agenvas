@@ -4,7 +4,6 @@ import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.Submission;
-import dev.agenvas.task.domain.Task;
 import org.springframework.stereotype.Component;
 
 /** Local deterministic editing; no video generation or mouth replacement provider is involved. */

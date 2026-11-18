@@ -53,7 +53,6 @@ public class GoogleNanoBananaAdapter implements MediaAdapter {
         return "GOOGLE_NANO_BANANA_2";
     }
 
-
     @Override
     public String preflightFailure(AttemptContext context) {
         try {

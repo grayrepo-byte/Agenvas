@@ -58,7 +58,6 @@ public class ComfyUiVideoAdapter implements MediaAdapter {
         return "COMFY_VIDEO_V1";
     }
 
-
     @Override
     public String preflightFailure(AttemptContext context) {
         var settings = mapper.readTree(catalog.pinnedSnapshot(context.binding()).specJson()).path("settings");

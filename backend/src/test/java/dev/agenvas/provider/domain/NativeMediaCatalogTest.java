@@ -17,7 +17,8 @@ class NativeMediaCatalogTest {
         var protocols = new ArrayList<NativeMediaProtocol>(List.of(new WanModels(), new SeedreamModels()));
         var catalog = new NativeMediaCatalog(protocols);
         protocols.clear();
-        assertThat(catalog.profiles()).hasSize(new WanModels().profiles().size() + new SeedreamModels().profiles().size());
+        assertThat(catalog.profiles())
+                .hasSize(new WanModels().profiles().size() + new SeedreamModels().profiles().size());
         assertThat(catalog.resolve("WAN_IMAGE", mapper.createObjectNode()).profile())
                 .isEqualTo(new WanModels().profiles().getFirst());
         assertThat(catalog.supports("GOOGLE_VEO")).isFalse();
@@ -37,24 +38,45 @@ class NativeMediaCatalogTest {
         assertThatThrownBy(() -> new NativeMediaCatalog(List.of(new WanModels(), new WanModels())))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("WAN_");
         assertThatThrownBy(() -> new NativeMediaCatalog(List.of(new Synthetic() {
-            public Set<String> adapterIds() { return Set.of("OTHER_IMAGE"); }
+            public Set<String> adapterIds() {
+                return Set.of("OTHER_IMAGE");
+            }
         }))).isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> new NativeMediaCatalog(List.of(new Synthetic() {
-            public List<Profile> profiles() { return List.of(super.profiles().getFirst(), super.profiles().getFirst()); }
+            public List<Profile> profiles() {
+                return List.of(super.profiles().getFirst(), super.profiles().getFirst());
+            }
+        }))).isInstanceOf(IllegalStateException.class);
+    }
+    @Test
+    void profileKindMustMatchItsCompiledDeclaration() {
+        assertThatThrownBy(() -> new NativeMediaCatalog(List.of(new Synthetic() {
+            public List<Profile> profiles() {
+                return List
+                        .of(new Profile("SYNTHETIC_IMAGE", "synthetic-model", "GENERATE", Task.Kind.VIDEO_GENERATION));
+            }
         }))).isInstanceOf(IllegalStateException.class);
     }
     private static class Synthetic implements NativeMediaProtocol {
-        public Set<String> adapterIds() { return Set.of("SYNTHETIC_IMAGE"); }
+        public Set<String> adapterIds() {
+            return Set.of("SYNTHETIC_IMAGE");
+        }
         public List<Profile> profiles() {
             return List.of(new Profile("SYNTHETIC_IMAGE", "synthetic-model", "GENERATE", Task.Kind.IMAGE_GENERATION));
         }
-        public List<CreatorInputField> inputs(Profile profile) { return List.of(); }
+        public List<CreatorInputField> inputs(Profile profile) {
+            return List.of();
+        }
         public MediaAdapterRegistry.Declaration declaration(Profile profile) {
             return new MediaAdapterRegistry.Declaration(MediaPlatform.MOCK, Task.Kind.IMAGE_GENERATION, 0, 0,
                     false, 0, Set.of(), null, false, Set.of(), Set.of(), Set.of(), false, false, 0, 0);
         }
-        public void validate(Profile profile, JsonNode values, boolean complete) {}
-        public void validateMetadata(Profile profile, String slot, Asset asset, JsonNode values) {}
-        public Integer resultCount(Profile profile, JsonNode values) { return 1; }
+        public void validate(Profile profile, JsonNode values, boolean complete) {
+        }
+        public void validateMetadata(Profile profile, String slot, Asset asset, JsonNode values) {
+        }
+        public Integer resultCount(Profile profile, JsonNode values) {
+            return 1;
+        }
     }
 }

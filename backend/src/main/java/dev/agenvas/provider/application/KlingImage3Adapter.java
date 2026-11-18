@@ -7,7 +7,6 @@ import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
 import dev.agenvas.provider.infrastructure.KlingClient;
 import dev.agenvas.provider.infrastructure.KlingMediaDownloadPolicy;
 import dev.agenvas.settings.application.CredentialCipher;
-import dev.agenvas.task.domain.Task;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;

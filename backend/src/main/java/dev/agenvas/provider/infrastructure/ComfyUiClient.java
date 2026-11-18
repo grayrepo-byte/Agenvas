@@ -17,7 +17,6 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.HexFormat;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -60,13 +59,13 @@ public class ComfyUiClient {
     private static final int PERMANENT_REDIRECT = 308;
     private static final Set<Integer> REDIRECT_STATUSES = Set.of(
             MOVED_PERMANENTLY, FOUND, SEE_OTHER, TEMPORARY_REDIRECT, PERMANENT_REDIRECT);
-    /** 启动时校验并固定的 HTTP(S) origin；跳转回此源时保留自托管地址规则。 */
+    /** 启动时校验并固定的 HTTP(S) origin；跳转回此源时保留原地址的凭据作用域。 */
     private final URI origin;
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(5);
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(20);
     /** 禁止代理、重定向和隐式重试的客户端。 */
     private final OkHttpClient client;
-    /** 跨域跳转使用更严格的 DNS；仍禁止自动跳转、隐式重试与代理。 */
+    /** 跨域跳转沿用配置 DNS，并隔离原地址凭据；仍禁止自动跳转、隐式重试与代理。 */
     private final OkHttpClient redirectClient;
     /** 解析有字节上限的 JSON 协议响应。 */
     private final ObjectMapper mapper;

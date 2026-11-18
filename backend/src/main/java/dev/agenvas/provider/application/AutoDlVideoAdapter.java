@@ -13,7 +13,6 @@ import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapsho
 import tools.jackson.databind.JsonNode;
 import dev.agenvas.settings.application.CredentialCipher;
 import dev.agenvas.shared.error.ApiProblemException;
-import dev.agenvas.task.domain.Task;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.time.Clock;

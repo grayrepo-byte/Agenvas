@@ -539,11 +539,14 @@ class MediaExecutionWorkerTest {
             when(adapter.adapterId()).thenReturn(binding.adapterId());
             when(adapter.declaration()).thenCallRealMethod();
             if (binding.adapterId().startsWith("RUNNINGHUB_")) {
-                var classifier = new RunningHubAdapter(binding.adapterId(), kind, null, null, null, null, null, null, null);
-                when(adapter.classifyPollFailure(any())).thenAnswer(call -> classifier.classifyPollFailure(call.getArgument(0)));
+                var classifier = new RunningHubAdapter(binding.adapterId(), kind, null, null, null, null, null, null,
+                        null);
+                when(adapter.classifyPollFailure(any()))
+                        .thenAnswer(call -> classifier.classifyPollFailure(call.getArgument(0)));
             } else if (dev.agenvas.provider.domain.KlingModels.adapter(binding.adapterId())) {
                 var classifier = new KlingVideo3Adapter(null, null, null, null, null, null, null);
-                when(adapter.classifyPollFailure(any())).thenAnswer(call -> classifier.classifyPollFailure(call.getArgument(0)));
+                when(adapter.classifyPollFailure(any()))
+                        .thenAnswer(call -> classifier.classifyPollFailure(call.getArgument(0)));
             } else {
                 when(adapter.classifyPollFailure(any())).thenCallRealMethod();
             }

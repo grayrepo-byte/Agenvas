@@ -21,7 +21,7 @@ public class StoredChatModelFactory {
 
     /** 仅在构造客户端时解密指定配置版本的密钥。 */
     private final CredentialCipher cipher;
-    /** 限制端点及 DNS 解析地址，供正常调用和诊断共用。 */
+    /** 校验端点 URL 结构及凭据作用域，供正常调用和诊断共用；不分类或限制 DNS 地址。 */
     private final LlmEndpointPolicy endpoints;
     private final LlmImageRelay imageRelay;
     private final DirectorSettingsService settings;
@@ -29,7 +29,7 @@ public class StoredChatModelFactory {
 
     /** 注入服务端密钥解密器和端点出站策略。
      * @param cipher 加密凭据的版本化解密器
-     * @param endpoints 校验 Provider 地址及解析 IP 的策略
+     * @param endpoints 校验 Provider URL 结构及凭据作用域的策略
      */
     public StoredChatModelFactory(CredentialCipher cipher, LlmEndpointPolicy endpoints) {
         this(cipher, endpoints, null);

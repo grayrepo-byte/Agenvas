@@ -18,7 +18,8 @@ public final class NativeMediaCatalog {
         var ordered = new ArrayList<Selection>();
         for (var protocol : List.copyOf(protocols)) {
             var ids = java.util.Set.copyOf(protocol.adapterIds());
-            if (ids.isEmpty()) throw new IllegalStateException("Native protocol has no adapter IDs");
+            if (ids.isEmpty())
+                throw new IllegalStateException("Native protocol has no adapter IDs");
             for (String id : ids) {
                 if (!id.matches("[A-Z][A-Z0-9_]{0,119}") || indexed.putIfAbsent(id, new ArrayList<>()) != null)
                     throw new IllegalStateException("Invalid or duplicate native adapter: " + id);
@@ -29,7 +30,13 @@ public final class NativeMediaCatalog {
                 if (!ids.contains(profile.adapterId()) || profile.model() == null || profile.model().isBlank()
                         || profile.operation() == null || profile.operation().isBlank() || !identities.add(profile))
                     throw new IllegalStateException("Invalid or duplicate native profile: " + profile.adapterId());
+                if (protocol.declaration(profile).kind() != profile.kind())
+                    throw new IllegalStateException(
+                            "Native profile kind conflicts with its declaration: " + profile.adapterId());
                 var entries = indexed.get(profile.adapterId());
+                if (!entries.isEmpty() && entries.getFirst().profile().kind() != profile.kind())
+                    throw new IllegalStateException(
+                            "Native adapter has conflicting output kinds: " + profile.adapterId());
                 if (entries.stream().anyMatch(previous -> previous.profile().model().equals(profile.model())
                         && previous.profile().operation().equals(profile.operation())))
                     throw new IllegalStateException("Ambiguous native profile: " + profile.adapterId());
@@ -57,9 +64,11 @@ public final class NativeMediaCatalog {
     }
 
     public Selection resolve(String adapterId, JsonNode settings) {
-        if (settings == null || !settings.isObject()) throw NativeMediaProfiles.invalid();
+        if (settings == null || !settings.isObject())
+            throw NativeMediaProfiles.invalid();
         for (String key : List.of("model", "operation"))
-            if (settings.hasNonNull(key) && !settings.path(key).isTextual()) throw NativeMediaProfiles.invalid();
+            if (settings.hasNonNull(key) && !settings.path(key).isTextual())
+                throw NativeMediaProfiles.invalid();
         String operation = settings.path("operation").asText("GENERATE");
         String model = settings.path("model").asText("").trim();
         var candidates = adapterId == null ? List.<Selection>of() : byAdapter.getOrDefault(adapterId, List.of());

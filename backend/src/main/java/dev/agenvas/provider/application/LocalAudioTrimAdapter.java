@@ -12,7 +12,6 @@ import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.AudioExtractionParameters;
 import dev.agenvas.task.domain.AudioTrimParameters;
-import dev.agenvas.task.domain.Task;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

@@ -14,6 +14,13 @@ class MediaDeclarationContractTest {
                 modes, defaultMode, false, Set.of(), Set.of(), Set.of(), false, false, 0, 0);
     }
     @Test
+    void textAndAgentTasksCannotBeRegisteredAsMediaProtocols() {
+        for (var kind : java.util.List.of(Task.Kind.AGENT_TURN, Task.Kind.TEXT_GENERATION))
+            assertThatThrownBy(() -> new Declaration(MediaPlatform.MOCK, kind, 0, 0, false, 0,
+                    Set.of(), null, false, Set.of(), Set.of(), Set.of(), false, false, 0, 0))
+                    .isInstanceOf(IllegalArgumentException.class);
+    }
+    @Test
     void callerCannotChangePublishedInputModesAfterRegistration() {
         var modes = new HashSet<>(Set.of("TEXT"));
         var declaration = video(1, 30, modes, "TEXT");

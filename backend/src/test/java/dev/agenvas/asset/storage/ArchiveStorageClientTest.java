@@ -17,14 +17,17 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 class ArchiveStorageClientTest {
-    @TempDir Path temporary;
+    @TempDir
+    Path temporary;
     private final MemoryBackend objects = new MemoryBackend(Set.of(StorageProfile.Provider.S3,
             StorageProfile.Provider.ALIYUN_OSS, StorageProfile.Provider.TENCENT_COS));
-    private final MemoryBackend files = new MemoryBackend(Set.of(StorageProfile.Provider.SMB, StorageProfile.Provider.WEBDAV));
+    private final MemoryBackend files = new MemoryBackend(
+            Set.of(StorageProfile.Provider.SMB, StorageProfile.Provider.WEBDAV));
 
     @ParameterizedTest
     @EnumSource(StorageProfile.Provider.class)
-    void everyArchiveOperationUsesTheBackendDeclaredForThePinnedProfile(StorageProfile.Provider provider) throws Exception {
+    void everyArchiveOperationUsesTheBackendDeclaredForThePinnedProfile(StorageProfile.Provider provider)
+            throws Exception {
         var router = new ArchiveStorageClient(List.of(objects, files));
         var profile = profile(provider);
         Path original = temporary.resolve("input.txt");
@@ -65,10 +68,19 @@ class ArchiveStorageClientTest {
         private final Set<StorageProfile.Provider> providers;
         byte[] bytes;
         String hash;
-        MemoryBackend(Set<StorageProfile.Provider> providers) { this.providers = providers; }
-        public Set<StorageProfile.Provider> providers() { return providers; }
+        MemoryBackend(Set<StorageProfile.Provider> providers) {
+            this.providers = providers;
+        }
+        public Set<StorageProfile.Provider> providers() {
+            return providers;
+        }
         public void put(StorageProfile profile, String key, Path file, String mime, long size, String hash) {
-            try { bytes = Files.readAllBytes(file); this.hash = hash; } catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
+            try {
+                bytes = Files.readAllBytes(file);
+                this.hash = hash;
+            } catch (java.io.IOException failure) {
+                throw new java.io.UncheckedIOException(failure);
+            }
         }
         public boolean matches(StorageProfile profile, String key, long size, String hash) {
             return bytes != null && bytes.length == size && this.hash.equals(hash);
@@ -77,6 +89,8 @@ class ArchiveStorageClientTest {
             assertThat(total).isEqualTo(bytes.length);
             return new ByteArrayInputStream(Arrays.copyOfRange(bytes, (int) start, (int) (start + length)));
         }
-        public void delete(StorageProfile profile, String key) { bytes = null; }
+        public void delete(StorageProfile profile, String key) {
+            bytes = null;
+        }
     }
 }

@@ -53,7 +53,6 @@ abstract class KlingProtocolAdapter implements MediaAdapter {
         this.media = media;
     }
 
-
     @Override
     public String preflightFailure(AttemptContext context) {
         Snapshot snapshot;

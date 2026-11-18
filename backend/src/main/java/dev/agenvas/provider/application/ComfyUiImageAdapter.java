@@ -57,7 +57,6 @@ public class ComfyUiImageAdapter implements MediaAdapter {
         return "COMFY_IMAGE_V1";
     }
 
-
     @Override
     public String preflightFailure(AttemptContext context) {
         var settings = mapper.readTree(catalog.pinnedSnapshot(context.binding()).specJson()).path("settings");

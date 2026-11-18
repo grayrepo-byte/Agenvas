@@ -64,7 +64,9 @@ public final class MediaAdapterRegistry {
             int maxReferenceVideos) {
         public Declaration {
             java.util.Objects.requireNonNull(platform, "Media platform");
-            java.util.Objects.requireNonNull(kind, "Media kind");
+            if (!Set.of(Task.Kind.IMAGE_GENERATION, Task.Kind.VIDEO_GENERATION, Task.Kind.AUDIO_GENERATION)
+                    .contains(kind))
+                throw new IllegalArgumentException("Declaration must describe a media task");
             supportedVideoInputModes = Set.copyOf(supportedVideoInputModes);
             supportedImageAspectRatios = Set.copyOf(supportedImageAspectRatios);
             supportedImageResolutions = Set.copyOf(supportedImageResolutions);

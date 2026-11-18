@@ -42,7 +42,8 @@ import tools.jackson.databind.ObjectMapper;
 /** Real PostgreSQL and synthetic WebDAV HTTP; SMB management is covered without a real NAS. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = {AgenvasApplication.class, RemoteFileStoragePostgresIT.Transport.class}, properties = {"spring.main.allow-bean-definition-overriding=true",
+@SpringBootTest(classes = {AgenvasApplication.class, RemoteFileStoragePostgresIT.Transport.class}, properties = {
+        "spring.main.allow-bean-definition-overriding=true",
         "agenvas.library.worker-enabled=false", "agenvas.llm.scheduler-enabled=false"})
 class RemoteFileStoragePostgresIT {
     @Container

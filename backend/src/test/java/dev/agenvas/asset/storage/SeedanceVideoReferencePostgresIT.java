@@ -53,7 +53,8 @@ import tools.jackson.databind.ObjectMapper;
 /** Real PostgreSQL/FFmpeg and explicitly fake HTTP providers, using only synthetic media and credentials. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = {AgenvasApplication.class, SeedanceVideoReferencePostgresIT.Transport.class}, properties = {"spring.main.allow-bean-definition-overriding=true",
+@SpringBootTest(classes = {AgenvasApplication.class, SeedanceVideoReferencePostgresIT.Transport.class}, properties = {
+        "spring.main.allow-bean-definition-overriding=true",
         "agenvas.library.worker-enabled=false"})
 class SeedanceVideoReferencePostgresIT {
     @Container

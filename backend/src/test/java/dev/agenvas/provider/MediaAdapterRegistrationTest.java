@@ -9,12 +9,18 @@ import org.junit.jupiter.api.Test;
 
 class MediaAdapterRegistrationTest {
     private static class Extension implements MediaAdapter {
-        public String adapterId() { return "SYNTHETIC_IMAGE"; }
+        public String adapterId() {
+            return "SYNTHETIC_IMAGE";
+        }
         public MediaAdapterRegistry.Declaration declaration() {
             return new MediaAdapterRegistry(List.of()).declaration("OPENAI_GPT_IMAGE_2");
         }
-            public Submission submit(AttemptContext context) { return new Submission.Rejected("SYNTHETIC"); }
-        public Submission reconcile(AttemptContext context) { return new Submission.Blocked("SYNTHETIC"); }
+        public Submission submit(AttemptContext context) {
+            return new Submission.Rejected("SYNTHETIC");
+        }
+        public Submission reconcile(AttemptContext context) {
+            return new Submission.Blocked("SYNTHETIC");
+        }
     }
 
     @Test
@@ -29,7 +35,9 @@ class MediaAdapterRegistrationTest {
     void extensionTimeoutDefaultsArePublishedWithoutChangingHistoricalFallbacks() {
         var timeouts = new dev.agenvas.shared.http.HttpTimeouts(5, 60, 60, 60);
         var extension = new Extension() {
-            public dev.agenvas.shared.http.HttpTimeouts publicationHttpTimeouts() { return timeouts; }
+            public dev.agenvas.shared.http.HttpTimeouts publicationHttpTimeouts() {
+                return timeouts;
+            }
         };
         var registry = new MediaAdapterRegistry(List.of(extension));
         assertThat(registry.httpTimeoutDefaults()).containsEntry("SYNTHETIC_IMAGE", timeouts);

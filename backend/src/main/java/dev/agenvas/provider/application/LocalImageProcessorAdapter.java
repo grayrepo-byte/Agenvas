@@ -58,7 +58,6 @@ public final class LocalImageProcessorAdapter implements MediaAdapter {
         return MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR;
     }
 
-
     @Override
     public String preflightFailure(AttemptContext context) {
         try {

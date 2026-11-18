@@ -36,7 +36,8 @@ public class MarkdownPromptAdapter implements ThirdPartyPromptAdapter {
         return Format.GITHUB_MARKDOWN;
     }
     @Override
-    public List<ThirdPartyPrompt> fetch(ThirdPartyPromptSource source, dev.agenvas.mediatemplate.application.ThirdPartyPromptFeed http) {
+    public List<ThirdPartyPrompt> fetch(ThirdPartyPromptSource source,
+            dev.agenvas.mediatemplate.application.ThirdPartyPromptFeed http) {
         String body = http.feed(source.url());
         var prompts = parse(source, body);
         var uri = URI.create(source.url());

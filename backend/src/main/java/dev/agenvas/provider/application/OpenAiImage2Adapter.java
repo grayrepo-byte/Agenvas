@@ -61,7 +61,6 @@ public class OpenAiImage2Adapter implements MediaAdapter {
         return "OPENAI_GPT_IMAGE_2";
     }
 
-
     @Override
     public String preflightFailure(AttemptContext context) {
         try {

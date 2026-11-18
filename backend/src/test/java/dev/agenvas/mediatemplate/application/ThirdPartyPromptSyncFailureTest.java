@@ -63,13 +63,16 @@ class ThirdPartyPromptSyncFailureTest {
     void missingCompiledFormatFinishesTheLeaseWithoutCallingTheRemoteFeed() {
         when(repository.source(source.id(), now)).thenReturn(Optional.of(source));
         when(repository.claim(eq(source.id()), any(), eq(now))).thenReturn(Optional.of(source));
-        var service = new ThirdPartyPromptService(repository, http, new ThirdPartyPromptRegistry(List.of()), Clock.fixed(now, ZoneOffset.UTC),
+        var service = new ThirdPartyPromptService(repository, http, new ThirdPartyPromptRegistry(List.of()),
+                Clock.fixed(now, ZoneOffset.UTC),
                 mock(PlatformTransactionManager.class), settings, false, false);
         try {
             assertThat(service.sync(source.id()).state()).isEqualTo(ThirdPartyPromptService.SyncState.FAILED);
             verify(repository).finish(eq(source.id()), any(), eq(now), eq("THIRD_PARTY_SOURCE_UNSUPPORTED_FORMAT"));
             verifyNoInteractions(http);
-        } finally { service.close(); }
+        } finally {
+            service.close();
+        }
     }
 
     private void verifyFailure(RuntimeException failure, String code) {
@@ -77,7 +80,8 @@ class ThirdPartyPromptSyncFailureTest {
         when(repository.claim(eq(source.id()), any(), eq(now))).thenReturn(Optional.of(source));
         when(adapter.format()).thenReturn(Format.NATIVE_JSON);
         doThrow(failure).when(adapter).fetch(source, http);
-        var service = new ThirdPartyPromptService(repository, http, new ThirdPartyPromptRegistry(List.of(adapter)), Clock.fixed(now, ZoneOffset.UTC),
+        var service = new ThirdPartyPromptService(repository, http, new ThirdPartyPromptRegistry(List.of(adapter)),
+                Clock.fixed(now, ZoneOffset.UTC),
                 mock(PlatformTransactionManager.class), settings, true, false);
         try {
             assertThat(service.sync(source.id()).state()).isEqualTo(ThirdPartyPromptService.SyncState.FAILED);

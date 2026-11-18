@@ -22,10 +22,13 @@ public final class ThirdPartyPromptRegistry {
     }
     public ThirdPartyPromptAdapter require(Format format) {
         var adapter = format == null ? null : adapters.get(format);
-        if (adapter == null) throw new UnsupportedFormat();
+        if (adapter == null)
+            throw new UnsupportedFormat();
         return adapter;
     }
     public static final class UnsupportedFormat extends IllegalStateException {
-        private UnsupportedFormat() { super("Prompt format is not installed"); }
+        private UnsupportedFormat() {
+            super("Prompt format is not installed");
+        }
     }
 }

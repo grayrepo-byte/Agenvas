@@ -35,7 +35,8 @@ public class ImagePromptGalleryAdapter implements ThirdPartyPromptAdapter {
     }
     /** Follow explicit continuation metadata, keeping every request on the configured endpoint. */
     @Override
-    public List<ThirdPartyPrompt> fetch(ThirdPartyPromptSource source, dev.agenvas.mediatemplate.application.ThirdPartyPromptFeed http) {
+    public List<ThirdPartyPrompt> fetch(ThirdPartyPromptSource source,
+            dev.agenvas.mediatemplate.application.ThirdPartyPromptFeed http) {
         var prompts = new LinkedHashMap<String, ThirdPartyPrompt>();
         var visited = new HashSet<String>();
         var receivedIds = new HashSet<String>();

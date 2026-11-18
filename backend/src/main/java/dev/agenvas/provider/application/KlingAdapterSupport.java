@@ -30,11 +30,16 @@ abstract class KlingAdapterSupport implements MediaAdapter {
     @Override
     public PollFailure classifyPollFailure(RuntimeException failure) {
         String code = null;
-        if (failure instanceof KlingClient.CredentialUnavailable) code = "MEDIA_CREDENTIAL_UNAVAILABLE";
-        else if (failure instanceof KlingClient.TaskExpired) code = "KLING_TASK_EXPIRED";
-        else if (failure instanceof KlingClient.ProtocolFailure) code = "PROTOCOL_INVALID";
-        else if (failure instanceof KlingMediaDownloadPolicy.Expired) code = "KLING_RESULT_EXPIRED";
-        else if (failure instanceof KlingMediaDownloadPolicy.Rejected) code = failure.getMessage();
+        if (failure instanceof KlingClient.CredentialUnavailable)
+            code = "MEDIA_CREDENTIAL_UNAVAILABLE";
+        else if (failure instanceof KlingClient.TaskExpired)
+            code = "KLING_TASK_EXPIRED";
+        else if (failure instanceof KlingClient.ProtocolFailure)
+            code = "PROTOCOL_INVALID";
+        else if (failure instanceof KlingMediaDownloadPolicy.Expired)
+            code = "KLING_RESULT_EXPIRED";
+        else if (failure instanceof KlingMediaDownloadPolicy.Rejected)
+            code = failure.getMessage();
         return code == null ? MediaAdapter.super.classifyPollFailure(failure) : new PollFailure(code, null, false);
     }
 

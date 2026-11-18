@@ -24,7 +24,8 @@ import org.springframework.stereotype.Component;
 public class ObjectStorageClient implements ArchiveStorageBackend {
     @Override
     public java.util.Set<StorageProfile.Provider> providers() {
-        return java.util.Set.of(StorageProfile.Provider.S3, StorageProfile.Provider.ALIYUN_OSS, StorageProfile.Provider.TENCENT_COS);
+        return java.util.Set.of(StorageProfile.Provider.S3, StorageProfile.Provider.ALIYUN_OSS,
+                StorageProfile.Provider.TENCENT_COS);
     }
     private static final int CHECKSUM_BUFFER_BYTES = 8192;
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);

@@ -8,7 +8,6 @@ import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
 import dev.agenvas.provider.infrastructure.KlingClient;
 import dev.agenvas.provider.infrastructure.KlingMediaDownloadPolicy;
 import dev.agenvas.settings.application.CredentialCipher;
-import dev.agenvas.task.domain.Task;
 import java.nio.file.Path;
 import java.util.List;
 import org.springframework.stereotype.Component;

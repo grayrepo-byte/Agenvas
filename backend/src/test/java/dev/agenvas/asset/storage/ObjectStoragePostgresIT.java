@@ -55,7 +55,8 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 /** Real PostgreSQL and a labelled fake object server; no real cloud account/provider is contacted. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = {AgenvasApplication.class, ObjectStoragePostgresIT.Transport.class}, properties = {"spring.main.allow-bean-definition-overriding=true",
+@SpringBootTest(classes = {AgenvasApplication.class, ObjectStoragePostgresIT.Transport.class}, properties = {
+        "spring.main.allow-bean-definition-overriding=true",
         "agenvas.library.worker-enabled=false"})
 class ObjectStoragePostgresIT {
     @Container

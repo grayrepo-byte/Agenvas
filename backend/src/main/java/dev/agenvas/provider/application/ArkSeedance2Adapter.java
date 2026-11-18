@@ -78,7 +78,6 @@ public class ArkSeedance2Adapter implements MediaAdapter {
         return "ARK_SEEDANCE_2_I2V";
     }
 
-
     @Override
     public String preflightFailure(AttemptContext context) {
         try {

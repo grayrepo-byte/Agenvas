@@ -11,7 +11,6 @@ import dev.agenvas.event.application.ProjectEventRecorded;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
-import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.artifact.domain.MediaDraft;
 import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.task.domain.Task;
