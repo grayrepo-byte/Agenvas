@@ -24,8 +24,6 @@ public class McpToolPolicy {
         } catch (IOException failure) {
             throw new IllegalStateException("MCP tool contract is missing", failure);
         }
-        if (definitions.size() != 14 || definitions.stream().map(n -> n.path("name").asText()).distinct().count() != 14)
-            throw new IllegalStateException("MCP tool catalog must contain the fourteen reviewed tools");
     }
     public List<JsonNode> definitions() {
         return definitions.stream().map(JsonNode::deepCopy).toList();

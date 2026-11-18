@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import dev.agenvas.mcp.domain.McpScope;
 import dev.agenvas.shared.error.ApiProblemException;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
@@ -13,6 +14,33 @@ class McpToolPolicyTest {
     private final McpToolPolicy policy = new McpToolPolicy(mapper);
     private final String project = UUID.randomUUID().toString();
 
+    @Test
+    void compiledHandlersMustMatchEachDiscoveryContractAndGrant() {
+        var definition = policy.definition("list_projects");
+        var definitions = List.of(definition);
+        var read = new McpHandlers.Read("list_projects", (principal, input) -> null);
+        var extra = new McpHandlers.Read("extra", (principal, input) -> null);
+        assertThat(new McpHandlers(definitions, List.of(read)).require("list_projects")).isSameAs(read);
+        assertThatThrownBy(() -> new McpHandlers(definitions, List.of()))
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> new McpHandlers(definitions, List.of(read, read)))
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> new McpHandlers(definitions, List.of(read, extra)))
+                .isInstanceOf(IllegalStateException.class);
+        var command = new McpHandlers.Command("list_projects", McpScope.READ,
+                (principal, project, operation, input) -> null);
+        assertThatThrownBy(() -> new McpHandlers(definitions, List.of(command)))
+                .isInstanceOf(IllegalStateException.class);
+        var ledgerForPreparation = new McpHandlers.Command("prepare_media_upload", McpScope.CONTENT_WRITE,
+                command.action());
+        assertThatThrownBy(() -> new McpHandlers(List.of(policy.definition("prepare_media_upload")),
+                List.of(ledgerForPreparation)))
+                .isInstanceOf(IllegalStateException.class);
+        var wrongGrant = new McpHandlers.Command("run_media", McpScope.CONTENT_WRITE, command.action());
+        assertThatThrownBy(
+                () -> new McpHandlers(List.of(policy.definition("run_media")), List.of(wrongGrant)))
+                .isInstanceOf(IllegalStateException.class);
+    }
     @Test
     void catalogKeepsWriteAndGenerationGrantsIndependent() {
         assertThat(policy.definitions()).hasSize(14);
@@ -90,7 +118,7 @@ class McpToolPolicyTest {
         var request = mapper.createObjectNode().put("projectId", project);
         request.putArray("versionIds").add(project);
         policy.validate("read_artifacts", request.deepCopy().put("textOffset", 0).put("textLimit", 4000));
-        for (var invalid : java.util.List.of(request.deepCopy().put("textOffset", -1),
+        for (var invalid : List.of(request.deepCopy().put("textOffset", -1),
                 request.deepCopy().put("textOffset", 2147483648L), request.deepCopy().put("textOffset", 1.5),
                 request.deepCopy().put("textLimit", 0), request.deepCopy().put("textLimit", 4001))) {
             assertThatThrownBy(() -> policy.validate("read_artifacts", invalid))
