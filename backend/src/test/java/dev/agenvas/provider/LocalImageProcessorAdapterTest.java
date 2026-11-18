@@ -17,6 +17,7 @@ import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.task.domain.Task;
 import java.awt.Color;
 import java.awt.image.BufferedImage;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
@@ -26,6 +27,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -124,6 +127,54 @@ class LocalImageProcessorAdapterTest {
 
         assertThat(adapter.preflightFailure(context("DEPTH_MAP", parameters())))
                 .isEqualTo("LOCAL_DEPTH_MODEL_UNAVAILABLE");
+    }
+
+    @Test
+    void depthPreflightChecksAvailabilityWithoutOpeningTheModel() throws Exception {
+        // A readable file passes availability but cannot be opened as an ONNX session.
+        Path model = Files.writeString(temporary.resolve("invalid.onnx"), "not an ONNX model");
+
+        assertThat(adapter(model.toString()).preflightFailure(context("DEPTH_MAP", parameters())))
+                .isNull();
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "ROTATE, 1, 3, 4, 0, 120, 120, 0",
+            "ROTATE, 2, 4, 3, 120, 120, 0, 0",
+            "ROTATE, 3, 3, 4, 120, 0, 0, 120",
+            "FLIP_HORIZONTAL, 0, 4, 3, 120, 0, 0, 120",
+            "FLIP_VERTICAL, 0, 4, 3, 0, 120, 120, 0"
+    })
+    void preflightsAndTransformsAsymmetricSource(String operation, int quarterTurns, int width, int height,
+            int firstRed, int firstGreen, int lastRed, int lastGreen) throws Exception {
+        var adapter = adapter("");
+        var context = context(operation, quarterTurns == 0
+                ? parameters()
+                : parameters().put("quarterTurns", quarterTurns));
+
+        assertThat(adapter.preflightFailure(context)).isNull();
+        var completed = (Submission.Completed) adapter.submit(context);
+        try (var payload = completed.payload()) {
+            BufferedImage output = ImageIO.read(payload.stream());
+            assertThat(output.getWidth()).isEqualTo(width);
+            assertThat(output.getHeight()).isEqualTo(height);
+            assertThat(output.getRGB(0, 0)).isEqualTo(new Color(firstRed, firstGreen, 100).getRGB());
+            assertThat(output.getRGB(width - 1, height - 1)).isEqualTo(new Color(lastRed, lastGreen, 100).getRGB());
+        }
+    }
+
+    @Test
+    void rejectsInvalidFrozenParametersAndNonLocalOperations() {
+        var adapter = adapter("");
+        for (var context : List.of(
+                context("UPSCALE", parameters().put("scale", 3)),
+                context("ROTATE", parameters().put("quarterTurns", 4)),
+                context("CROP", parameters().put("x", 0.5).put("y", 0).put("width", 0.6).put("height", 1)),
+                context("SMART_EDIT", parameters()))) {
+            assertThat(adapter.preflightFailure(context)).isEqualTo("PROVIDER_UNSUPPORTED_INPUT");
+            assertThat(adapter.submit(context)).isEqualTo(new Submission.Rejected("LOCAL_IMAGE_PROCESSING_FAILED"));
+        }
     }
 
     @Test
