@@ -66,10 +66,11 @@ class VideoOperationServiceTest {
     private final MediaDraftService drafts = mock(MediaDraftService.class);
     private final MediaFunctionService functions = mock(MediaFunctionService.class);
     private final MediaCapabilityService catalog = mock(MediaCapabilityService.class);
+    private final UsageService usage = mock(UsageService.class);
     private final ProjectEventService events = mock(ProjectEventService.class);
     private final ObjectMapper mapper = new ObjectMapper();
     private final VideoOperationService service = new VideoOperationService(tasks, artifacts, assets,
-            items, canvas, drafts, functions, catalog, events, mock(UsageService.class), mapper,
+            items, canvas, drafts, functions, catalog, events, usage, mapper,
             Clock.fixed(NOW, ZoneOffset.UTC), dev.agenvas.testing.CreationMessagesTestSupport.messages());
 
     @BeforeEach
@@ -111,6 +112,7 @@ class VideoOperationServiceTest {
 
         Task task = run(parameters);
 
+        verify(usage).reserveMediaTask(owner, task, "PROVIDER_UNPRICED", 1);
         assertThat(task.input().path("durationSeconds").asInt()).isEqualTo(expectedSeconds);
         assertThat(task.input().at("/mediaInput/parameters/dynamicValues/seconds").asInt()).isEqualTo(expectedSeconds);
         assertThat(task.input().at("/mediaInput/parameters/dynamicValues/clip").asText())
@@ -167,6 +169,7 @@ class VideoOperationServiceTest {
     @Test
     void localOperationsRejectProviderParametersBeforeCreatingAnOutput() {
         MediaCapabilityBinding binding = binding(MediaAdapterRegistry.LOCAL_VIDEO_PROCESSOR);
+        when(catalog.isLocal(binding)).thenReturn(true);
         when(functions.resolve(MediaFunction.VIDEO_DEPTH_MAP, 0)).thenReturn(binding);
 
         assertThatThrownBy(() -> service.run(owner, project, artifactId, itemId, sourceVersionId,
@@ -188,6 +191,7 @@ class VideoOperationServiceTest {
         assertThat(task.input().at("/mediaInput/parameters")).isEqualTo(requested);
         assertThat(task.input().path("silentVideoTarget").isObject()).isTrue();
         verify(tasks).create(task);
+        verify(usage).reserveMediaTask(owner, task, "LOCAL_NO_COST", 1);
     }
 
     @Test
@@ -262,8 +266,9 @@ class VideoOperationServiceTest {
     }
 
     private void localAudio(int durationMs) {
-        when(functions.resolve(MediaFunction.VIDEO_EXTRACT_AUDIO, 0))
-                .thenReturn(binding(MediaAdapterRegistry.LOCAL_VIDEO_AUDIO_EXTRACTOR));
+        var binding = binding(MediaAdapterRegistry.LOCAL_VIDEO_AUDIO_EXTRACTOR);
+        when(catalog.isLocal(binding)).thenReturn(true);
+        when(functions.resolve(MediaFunction.VIDEO_EXTRACT_AUDIO, 0)).thenReturn(binding);
         when(assets.metadata(owner, project, assetId)).thenReturn(new Asset(assetId, project,
                 Asset.MediaKind.VIDEO, "private/test.mp4", "video/mp4", 1024, "test",
                 640, 480, durationMs, null, null, null, NOW));
