@@ -1,0 +1,30 @@
+# 后端扩展性独立迭代记录
+
+用户目标为30次有实质收益、改动与验证证据的独立迭代。本文件按实际问题计数；测试、审查、文档和环境修复不另计。原首批30项工作表已更正，不代表30次迭代。下表前5项归并原首批实际架构问题，后续只有完成实施、定向验证及独立审查后追加。
+
+约束：保持公开API/数据库及历史发布兼容；固定审批、幂等、fencing、UNKNOWN不重投；同协议配置扩展优先；无第三方代码加载，无HTTP/私网限制回退。完整计划及候选可能因实际依赖合并，不能为数量拆分。
+
+|迭代|真实问题与结果|实施提交|验证证据|剩余风险|
+|---|---|---|---|---|
+|1|媒体协议声明依赖中央表；声明/发布超时归编译适配器，注册时拒绝冲突，去除无调用方supports|515a9377|新声明及目录/超时定向110项通过；首批全量另见下节|特殊参数仍需协议专用规范化|
+|2|原生协议每次扫描且profile归属未校验；明确组合与不可变索引|3213f6fd|Native目录/模型30项通过，28内置声明保持一致|新协议仍显式装配|
+|3|Worker解释供应商异常且Task仅允许RH刷新；协议拥有失败/刷新策略，原ID单次刷新+CAS/fencing，注入Clock|58bc3ef7|Worker/Task恢复40项及全应用合成扩展PG链路|公开诊断旧白名单是后续真实断点|
+|4|归档路由器依赖具体传输；实现声明Provider集合，完整唯一覆盖校验|231e1815|存储40项及真实PG归档/历史位置专项|真实云/NAS未验证；中继签名仍单独契约|
+|5|提示词格式依赖HTTP具体类且缺失格式分类错误；有界feed接口与唯一格式注册|f8c18122|提示词7类36项及同步PG专项|真实来源站点未验证|
+
+首批PR：[草稿#54](https://github.com/grayrepo-byte/Agenvas/pull/54)。首批完整验证为2423单元+705集成、0失败/错误、10配置跳过，185个IT类覆盖无缺失；Spotless、jOOQ漂移、Compose/安装/CI规划通过。完整命令、初次失败修复及独立审查见[首批记录](backend-extensibility-iterations.md)。原首批7提交跨度27分01秒，其后验证/交付提交不增加架构计数。没有合并、发布或部署。
+
+## 后续独立迭代
+
+当前完成 **6 / 30**。候选不是已完成结果，后续逐项推进。
+
+### 6：确认未提交的失败契约
+
+- 问题：Task与Usage重复错误码白名单封死新adapter；迟到预检的取消分支还可能在SUBMITTING/UNKNOWN时释放不确定请求的预留。
+- 改动：稳定码格式校验；同一SQL核对media种类、RUNNING、worker/epoch/有效期、无远端ID/结果manifest/ProviderAttempt，再依持久取消标志终结。Task模块签发同事务消费的结果凭证，账本不从新错误码猜测是否提交；旧BLOCKED兼容保持。
+- 提交：`36062974`。先红（新码被拒绝），后绿：LocalProcessingAccountingTest、ApprovedMediaCancellationTest、UsageMediaPricingTest、TaskProviderRecoveryTest共85单元；ComfyUiOriginPreflightPostgresIT、MediaAdapterExtensionPostgresIT共12真实PostgreSQL用例，0失败/错误/跳过。Spotless通过。
+- 独立审查：规格符合、质量批准；检查项目锁/Task行与beginSubmission序列化、租约到期、旧epoch、已受理/未知状态和账本事务，0严重/重要问题。轻微ADR段落位置已整理。
+- 风险/未验证：编译适配器负责返回公开常量，格式无法识别恰似标识符的秘密；测试为确定状态交错，不是并发压力。未运行真实付费服务。
+
+
+后续范围见[独立迭代计划](backend-extension-next-plan.md)；只有实施和验证审查完成才追加结果。首批托管[CI149](https://github.com/grayrepo-byte/Agenvas/actions/runs/44341460754)包括汇总门禁全部通过，发布任务按草稿PR策略跳过。

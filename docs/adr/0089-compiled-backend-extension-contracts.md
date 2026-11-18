@@ -20,6 +20,8 @@
 
 `NativeMediaCatalog` 显式接收已编译的 `NativeMediaProtocol`，固定 adapter/profile 归属和索引，拒绝重复身份。选择默认模型依赖明确的协议/模型顺序，不能依赖 Map 顺序。`NativeMediaProfiles` 保留一个内置装配点；新增原生协议仍需加入该显式组合，不引入全局可变注册或自动加载。
 
+媒体适配器可返回自身定义的公开预检错误码。任务在一个条件更新中核对活动租约、RUNNING、空远端身份、空结果清单及不存在 ProviderAttempt，再按持久取消标志写入 BLOCKED 或 CANCELED。用量模块在同一事务中消费任务模块签发的结果；旧 BLOCKED 记录仍只认既有错误码。
+
 ### 已受理请求的恢复
 
 `MediaAdapter.classifyPollFailure()` 返回受限永久码、既有公开诊断和是否可刷新地址。供应商异常解释放回适配器；Worker 统一编排阻断或技术重试，不依赖具体供应商异常类型。`NativeMediaFailure` 是协议无关的永久失败信号；普通未识别异常继续技术重试。
@@ -38,7 +40,6 @@
 
 解析/分页适配器依赖 `ThirdPartyPromptFeed` 的有界文本下载接口，HTTP 实现拥有 URL 结构、传输上限和超时；多页解析器继续检查累计字节、条数和页数。`ThirdPartyPromptRegistry` 注册已编译格式并拒绝冲突。缺失格式在租约失败记录中明确为 `THIRD_PARTY_SOURCE_UNSUPPORTED_FORMAT`，不访问远端，不把本地安装缺失误报成网络故障。
 
-媒体适配器可返回自身定义的公开预检错误码。任务在一个条件更新中核对活动租约、RUNNING、空远端身份、空结果清单及不存在 ProviderAttempt，再按持久取消标志写入 BLOCKED 或 CANCELED。用量模块在同一事务中消费任务模块签发的结果；旧 BLOCKED 记录仍只认既有错误码。
 
 ## 保留的边界与代价
 
