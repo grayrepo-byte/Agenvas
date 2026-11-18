@@ -15,10 +15,8 @@ import dev.agenvas.task.domain.AudioTrimParameters;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
@@ -66,34 +64,35 @@ public class LocalAudioTrimAdapter implements MediaAdapter {
 
     @Override
     public Submission submit(AttemptContext context) {
-        Path scratch = null;
         try {
             var source = source(context);
             var parameters = parameters(context);
-            scratch = Files.createTempDirectory("agenvas-audio-trim-",
-                    PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
-            var rendered = render(source.path(), source.asset().durationMs(), parameters, scratch, context);
-            Path output = rendered.path();
-            tick(context);
-            var task = context.lease();
-            var asset = assets.archiveTaskAudio(context.ownerId(), task.projectId(), task.id(), () -> {
-                try {
-                    return Files.newInputStream(output);
-                } catch (IOException failure) {
-                    throw new IllegalStateException("Cannot read trimmed audio", failure);
-                }
-            });
-            var content = MediaResult.content(mapper, task, asset.id(), task.input().path("prompt").asText());
-            var result = MediaResult.copyFrozenParameters(content, task);
-            result.put("operation", "AUDIO_TRIM").put("local", true)
-                    .put("sourceVersionId", task.input().path("audioTrim").path("sourceVersionId").asText())
-                    .put("startMs", parameters.startMs()).put("endMs", rendered.endMs())
-                    .put("requestedEndMs", parameters.endMs())
-                    .put("format", parameters.format().name()).put("sampleRate", AudioExtractionParameters.SAMPLE_RATE)
-                    .put("channels", AudioExtractionParameters.CHANNELS);
-            if (parameters.format() == AudioExtractionParameters.Format.MP3)
-                result.put("bitrateKbps", AudioExtractionParameters.MP3_BITRATE_KBPS);
-            return new Submission.CompletedArtifact(content);
+            try (var workspace = PrivateMediaWorkspace.create("agenvas-audio-trim-")) {
+                Path scratch = workspace.path();
+                var rendered = render(source.path(), source.asset().durationMs(), parameters, scratch, context);
+                Path output = rendered.path();
+                tick(context);
+                var task = context.lease();
+                var asset = assets.archiveTaskAudio(context.ownerId(), task.projectId(), task.id(), () -> {
+                    try {
+                        return Files.newInputStream(output);
+                    } catch (IOException failure) {
+                        throw new IllegalStateException("Cannot read trimmed audio", failure);
+                    }
+                });
+                var content = MediaResult.content(mapper, task, asset.id(), task.input().path("prompt").asText());
+                var result = MediaResult.copyFrozenParameters(content, task);
+                result.put("operation", "AUDIO_TRIM").put("local", true)
+                        .put("sourceVersionId", task.input().path("audioTrim").path("sourceVersionId").asText())
+                        .put("startMs", parameters.startMs()).put("endMs", rendered.endMs())
+                        .put("requestedEndMs", parameters.endMs())
+                        .put("format", parameters.format().name())
+                        .put("sampleRate", AudioExtractionParameters.SAMPLE_RATE)
+                        .put("channels", AudioExtractionParameters.CHANNELS);
+                if (parameters.format() == AudioExtractionParameters.Format.MP3)
+                    result.put("bitrateKbps", AudioExtractionParameters.MP3_BITRATE_KBPS);
+                return new Submission.CompletedArtifact(content);
+            }
         } catch (ApiProblemException invalid) {
             return new Submission.Rejected(invalid.code());
         } catch (ProcessingTimeout timeout) {
@@ -102,16 +101,6 @@ public class LocalAudioTrimAdapter implements MediaAdapter {
             return new Submission.Rejected("LOCAL_AUDIO_TRIM_CANCELED");
         } catch (RuntimeException | IOException failure) {
             return new Submission.Rejected("LOCAL_AUDIO_TRIM_FAILED");
-        } finally {
-            if (scratch != null) {
-                try (var paths = Files.walk(scratch)) {
-                    for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
-                        Files.deleteIfExists(path);
-                } catch (IOException failure) {
-                    org.slf4j.LoggerFactory.getLogger(LocalAudioTrimAdapter.class)
-                            .warn("Audio trim scratch cleanup failed");
-                }
-            }
         }
     }
 

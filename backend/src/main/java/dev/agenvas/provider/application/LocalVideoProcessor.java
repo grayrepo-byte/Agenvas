@@ -14,10 +14,8 @@ import dev.agenvas.shared.error.ApiProblemException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
@@ -71,90 +69,96 @@ public class LocalVideoProcessor {
     }
 
     Submission submit(AttemptContext context, VideoOperation operation) {
-        Path scratch = null;
         try {
             var source = source(context);
             LocalVideoOperationBounds.require(source.asset(), operation);
-            scratch = Files.createTempDirectory("agenvas-video-tool-",
-                    PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
-            var audio = operation == VideoOperation.EXTRACT_AUDIO ? audioParameters(context) : null;
-            Path output = scratch.resolve(audio == null
-                    ? "depth.mp4"
-                    : audio.format() == AudioExtractionParameters.Format.WAV ? "audio.wav" : "audio.mp3");
-            long deadline = System.nanoTime() + TIMEOUT.toNanos();
-            if (operation == VideoOperation.EXTRACT_AUDIO) {
-                LocalVideoOperationBounds.requireAudioOutput(source.asset(), audio);
-                if (!hasAudio(source.path(), audio.trackIndex()))
-                    return new Submission.Rejected("VIDEO_AUDIO_TRACK_MISSING");
-                var command = inputArguments(source.path(), operation);
-                command.addAll(List.of("-map", "0:a:" + audio.trackIndex(), "-vn", "-map_metadata", "-1",
-                        "-map_chapters", "-1",
-                        "-ac", Integer.toString(AudioExtractionParameters.CHANNELS), "-ar",
-                        Integer.toString(AudioExtractionParameters.SAMPLE_RATE)));
-                if (audio.format() == AudioExtractionParameters.Format.WAV)
-                    command.addAll(List.of("-c:a", "pcm_s16le"));
-                else
-                    command.addAll(
-                            List.of("-c:a", "libmp3lame", "-b:a", AudioExtractionParameters.MP3_BITRATE_KBPS + "k"));
-                command.addAll(List.of("-y", output.toString()));
-                // Do not use -fs: truncating speech to meet a byte budget is not a valid extraction.
-                run(context, command, scratch, deadline, LocalVideoOperationBounds.MAX_AUDIO_OUTPUT_BYTES);
-            } else {
-                int edge = LocalVideoOperationBounds.DEPTH_EDGE;
-                var command = inputArguments(source.path(), operation);
-                command.addAll(List.of("-map", "0:v:0", "-an", "-vf", "fps=" + LocalVideoOperationBounds.DEPTH_FPS
-                        + ",scale=" + edge + ":" + edge + ":force_original_aspect_ratio=decrease:force_divisible_by=2",
-                        "-frames:v",
-                        Integer.toString(
-                                LocalVideoOperationBounds.MAX_DURATION_MS / 1000 * LocalVideoOperationBounds.DEPTH_FPS),
-                        "-y", scratch.resolve(FRAME_PATTERN).toString()));
-                run(context, command, scratch, deadline);
-                List<Path> frames;
-                try (var paths = Files.list(scratch)) {
-                    frames = paths.filter(path -> path.getFileName().toString().startsWith("frame-")).sorted().toList();
-                }
-                if (frames.isEmpty())
-                    return new Submission.Rejected("LOCAL_VIDEO_PROCESSING_FAILED");
-                long scratchBytes = 0;
-                for (Path frame : frames) {
-                    tick(context);
-                    if (System.nanoTime() >= deadline)
-                        return new Submission.Rejected("LOCAL_VIDEO_PROCESSING_TIMEOUT");
-                    scratchBytes += Files.size(frame);
-                    if (scratchBytes > MAX_SCRATCH_BYTES)
-                        return new Submission.Rejected("LOCAL_VIDEO_LIMIT_EXCEEDED");
-                    var image = ImageIO.read(frame.toFile());
-                    if (image == null || !ImageIO.write(depth.depth(image), "png", frame.toFile())) {
-                        return new Submission.Rejected("LOCAL_VIDEO_PROCESSING_FAILED");
+            try (var workspace = PrivateMediaWorkspace.create("agenvas-video-tool-")) {
+                Path scratch = workspace.path();
+                var audio = operation == VideoOperation.EXTRACT_AUDIO ? audioParameters(context) : null;
+                Path output = scratch.resolve(audio == null
+                        ? "depth.mp4"
+                        : audio.format() == AudioExtractionParameters.Format.WAV ? "audio.wav" : "audio.mp3");
+                long deadline = System.nanoTime() + TIMEOUT.toNanos();
+                if (operation == VideoOperation.EXTRACT_AUDIO) {
+                    LocalVideoOperationBounds.requireAudioOutput(source.asset(), audio);
+                    if (!hasAudio(source.path(), audio.trackIndex()))
+                        return new Submission.Rejected("VIDEO_AUDIO_TRACK_MISSING");
+                    var command = inputArguments(source.path(), operation);
+                    command.addAll(List.of("-map", "0:a:" + audio.trackIndex(), "-vn", "-map_metadata", "-1",
+                            "-map_chapters", "-1",
+                            "-ac", Integer.toString(AudioExtractionParameters.CHANNELS), "-ar",
+                            Integer.toString(AudioExtractionParameters.SAMPLE_RATE)));
+                    if (audio.format() == AudioExtractionParameters.Format.WAV)
+                        command.addAll(List.of("-c:a", "pcm_s16le"));
+                    else
+                        command.addAll(
+                                List.of("-c:a", "libmp3lame", "-b:a",
+                                        AudioExtractionParameters.MP3_BITRATE_KBPS + "k"));
+                    command.addAll(List.of("-y", output.toString()));
+                    // Do not use -fs: truncating speech to meet a byte budget is not a valid extraction.
+                    run(context, command, scratch, deadline, LocalVideoOperationBounds.MAX_AUDIO_OUTPUT_BYTES);
+                } else {
+                    int edge = LocalVideoOperationBounds.DEPTH_EDGE;
+                    var command = inputArguments(source.path(), operation);
+                    command.addAll(List.of("-map", "0:v:0", "-an", "-vf", "fps=" + LocalVideoOperationBounds.DEPTH_FPS
+                            + ",scale=" + edge + ":" + edge
+                            + ":force_original_aspect_ratio=decrease:force_divisible_by=2",
+                            "-frames:v",
+                            Integer.toString(
+                                    LocalVideoOperationBounds.MAX_DURATION_MS / 1000
+                                            * LocalVideoOperationBounds.DEPTH_FPS),
+                            "-y", scratch.resolve(FRAME_PATTERN).toString()));
+                    run(context, command, scratch, deadline);
+                    List<Path> frames;
+                    try (var paths = Files.list(scratch)) {
+                        frames = paths.filter(path -> path.getFileName().toString().startsWith("frame-")).sorted()
+                                .toList();
                     }
+                    if (frames.isEmpty())
+                        return new Submission.Rejected("LOCAL_VIDEO_PROCESSING_FAILED");
+                    long scratchBytes = 0;
+                    for (Path frame : frames) {
+                        tick(context);
+                        if (System.nanoTime() >= deadline)
+                            return new Submission.Rejected("LOCAL_VIDEO_PROCESSING_TIMEOUT");
+                        scratchBytes += Files.size(frame);
+                        if (scratchBytes > MAX_SCRATCH_BYTES)
+                            return new Submission.Rejected("LOCAL_VIDEO_LIMIT_EXCEEDED");
+                        var image = ImageIO.read(frame.toFile());
+                        if (image == null || !ImageIO.write(depth.depth(image), "png", frame.toFile())) {
+                            return new Submission.Rejected("LOCAL_VIDEO_PROCESSING_FAILED");
+                        }
+                    }
+                    command = new ArrayList<>(List.of("-hide_banner", "-loglevel", "error", "-nostdin",
+                            "-protocol_whitelist", "file,pipe", "-framerate",
+                            Integer.toString(LocalVideoOperationBounds.DEPTH_FPS),
+                            "-i", scratch.resolve(FRAME_PATTERN).toString(), "-an", "-map_metadata", "-1", "-threads",
+                            "2",
+                            "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
+                            "-movflags", "+faststart", "-fs", Long.toString(MAX_SCRATCH_BYTES), "-y",
+                            output.toString()));
+                    run(context, command, scratch, deadline);
                 }
-                command = new ArrayList<>(List.of("-hide_banner", "-loglevel", "error", "-nostdin",
-                        "-protocol_whitelist", "file,pipe", "-framerate",
-                        Integer.toString(LocalVideoOperationBounds.DEPTH_FPS),
-                        "-i", scratch.resolve(FRAME_PATTERN).toString(), "-an", "-map_metadata", "-1", "-threads", "2",
-                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
-                        "-movflags", "+faststart", "-fs", Long.toString(MAX_SCRATCH_BYTES), "-y", output.toString()));
-                run(context, command, scratch, deadline);
+                tick(context);
+                UUID owner = context.ownerId();
+                var task = context.lease();
+                var asset = operation == VideoOperation.EXTRACT_AUDIO
+                        ? assets.archiveTaskAudio(owner, task.projectId(), task.id(), () -> open(output))
+                        : assets.archiveTaskVideo(owner, task.projectId(), task.id(), () -> open(output));
+                var content = MediaResult.content(mapper, task, asset.id(), task.input().path("prompt").asText());
+                var parameters = MediaResult.copyFrozenParameters(content, task);
+                parameters.put("operation", operation.name()).put("local", true);
+                if (audio != null) {
+                    parameters.put("format", audio.format().name()).put("trackIndex", audio.trackIndex())
+                            .put("sampleRate", AudioExtractionParameters.SAMPLE_RATE)
+                            .put("channels", AudioExtractionParameters.CHANNELS);
+                    if (audio.format() == AudioExtractionParameters.Format.MP3)
+                        parameters.put("bitrateKbps", AudioExtractionParameters.MP3_BITRATE_KBPS);
+                }
+                if (operation == VideoOperation.DEPTH_MAP)
+                    parameters.put("frameRate", LocalVideoOperationBounds.DEPTH_FPS);
+                return new Submission.CompletedArtifact(content);
             }
-            tick(context);
-            UUID owner = context.ownerId();
-            var task = context.lease();
-            var asset = operation == VideoOperation.EXTRACT_AUDIO
-                    ? assets.archiveTaskAudio(owner, task.projectId(), task.id(), () -> open(output))
-                    : assets.archiveTaskVideo(owner, task.projectId(), task.id(), () -> open(output));
-            var content = MediaResult.content(mapper, task, asset.id(), task.input().path("prompt").asText());
-            var parameters = MediaResult.copyFrozenParameters(content, task);
-            parameters.put("operation", operation.name()).put("local", true);
-            if (audio != null) {
-                parameters.put("format", audio.format().name()).put("trackIndex", audio.trackIndex())
-                        .put("sampleRate", AudioExtractionParameters.SAMPLE_RATE)
-                        .put("channels", AudioExtractionParameters.CHANNELS);
-                if (audio.format() == AudioExtractionParameters.Format.MP3)
-                    parameters.put("bitrateKbps", AudioExtractionParameters.MP3_BITRATE_KBPS);
-            }
-            if (operation == VideoOperation.DEPTH_MAP)
-                parameters.put("frameRate", LocalVideoOperationBounds.DEPTH_FPS);
-            return new Submission.CompletedArtifact(content);
         } catch (ApiProblemException invalid) {
             return new Submission.Rejected(invalid.code());
         } catch (ProcessingTimeout timedOut) {
@@ -165,17 +169,6 @@ public class LocalVideoProcessor {
             return new Submission.Rejected("LOCAL_VIDEO_PROCESSING_CANCELED");
         } catch (RuntimeException | IOException failure) {
             return new Submission.Rejected("LOCAL_VIDEO_PROCESSING_FAILED");
-        } finally {
-            if (scratch != null) {
-                try (var paths = Files.walk(scratch)) {
-                    for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
-                        Files.deleteIfExists(path);
-                } catch (IOException failure) {
-                    // This private scratch directory is never part of the durable Asset archive.
-                    org.slf4j.LoggerFactory.getLogger(LocalVideoProcessor.class)
-                            .warn("Video tool scratch cleanup failed");
-                }
-            }
         }
     }
 
@@ -189,40 +182,30 @@ public class LocalVideoProcessor {
 
     /** Copies the pinned source video stream without audio or re-encoding; never calls the media provider. */
     ObjectNode silentVideoResult(AttemptContext context) {
-        Path scratch = null;
         try {
             var source = source(context);
-            scratch = Files.createTempDirectory("agenvas-silent-video-",
-                    PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
-            Path output = scratch.resolve("silent.mp4");
-            var command = new ArrayList<>(List.of("-hide_banner", "-loglevel", "error", "-nostdin",
-                    "-protocol_whitelist", "file,pipe", "-i", source.path().toString(),
-                    "-map", "0:v:0", "-an", "-c:v", "copy", "-map_metadata", "-1", "-map_chapters", "-1",
-                    "-movflags", "+faststart", "-y", output.toString()));
-            run(context, command, scratch, System.nanoTime() + TIMEOUT.toNanos(), MAX_SILENT_VIDEO_BYTES);
-            tick(context);
-            var task = context.lease();
-            // Audio and silent video need separate immutable archive identities within the same Task.
-            UUID archiveId = UUID.nameUUIDFromBytes(("agenvas:silent-video:v1:" + task.id())
-                    .getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            var asset = assets.archiveTaskVideo(context.ownerId(), task.projectId(), archiveId, () -> open(output));
-            ObjectNode content = MediaResult.content(mapper, task, asset.id(),
-                    task.input().path(VideoOperation.SILENT_VIDEO_TARGET).path("prompt").asText("Silent video"));
-            content.withObject("parameters").put("operation", VideoOperation.EXTRACT_AUDIO.name())
-                    .put("videoOperationOutput", VideoOperation.SILENT_VIDEO_RESULT).put("local", true);
-            return content;
+            try (var workspace = PrivateMediaWorkspace.create("agenvas-silent-video-")) {
+                Path scratch = workspace.path();
+                Path output = scratch.resolve("silent.mp4");
+                var command = new ArrayList<>(List.of("-hide_banner", "-loglevel", "error", "-nostdin",
+                        "-protocol_whitelist", "file,pipe", "-i", source.path().toString(),
+                        "-map", "0:v:0", "-an", "-c:v", "copy", "-map_metadata", "-1", "-map_chapters", "-1",
+                        "-movflags", "+faststart", "-y", output.toString()));
+                run(context, command, scratch, System.nanoTime() + TIMEOUT.toNanos(), MAX_SILENT_VIDEO_BYTES);
+                tick(context);
+                var task = context.lease();
+                // Audio and silent video need separate immutable archive identities within the same Task.
+                UUID archiveId = UUID.nameUUIDFromBytes(("agenvas:silent-video:v1:" + task.id())
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                var asset = assets.archiveTaskVideo(context.ownerId(), task.projectId(), archiveId, () -> open(output));
+                ObjectNode content = MediaResult.content(mapper, task, asset.id(),
+                        task.input().path(VideoOperation.SILENT_VIDEO_TARGET).path("prompt").asText("Silent video"));
+                content.withObject("parameters").put("operation", VideoOperation.EXTRACT_AUDIO.name())
+                        .put("videoOperationOutput", VideoOperation.SILENT_VIDEO_RESULT).put("local", true);
+                return content;
+            }
         } catch (IOException failure) {
             throw new IllegalStateException("Cannot separate silent video", failure);
-        } finally {
-            if (scratch != null) {
-                try (var paths = Files.walk(scratch)) {
-                    for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
-                        Files.deleteIfExists(path);
-                } catch (IOException failure) {
-                    org.slf4j.LoggerFactory.getLogger(LocalVideoProcessor.class)
-                            .warn("Silent video scratch cleanup failed");
-                }
-            }
         }
     }
 
