@@ -52,7 +52,8 @@ final class McpSchemaValidator {
                 case "uniqueItems" -> "array".equals(type) && constraint.isBoolean();
                 case "minItems", "maxItems" -> "array".equals(type) && isSize(constraint);
                 case "minLength", "maxLength" -> "string".equals(type) && isSize(constraint);
-                case "pattern" -> "string".equals(type) && constraint.isString() && PATTERNS.contains(constraint.asText());
+                case "pattern" ->
+                    "string".equals(type) && constraint.isString() && PATTERNS.contains(constraint.asText());
                 case "format" -> "string".equals(type) && "uuid".equals(constraint.asText());
                 case "minimum", "maximum" -> ("integer".equals(type) || "number".equals(type))
                         && constraint.isNumber();
