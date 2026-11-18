@@ -411,6 +411,15 @@ class ObjectStoragePostgresIT {
                                 exchange.sendResponseHeaders(503, -1);
                                 return;
                             }
+                            var headers = exchange.getRequestHeaders();
+                            boolean protectedPut = oss
+                                    ? "true".equals(headers.getFirst("x-oss-forbid-overwrite"))
+                                            && "private".equals(headers.getFirst("x-oss-object-acl"))
+                                    : "*".equals(headers.getFirst("If-None-Match"));
+                            if (!protectedPut) {
+                                exchange.sendResponseHeaders(400, -1);
+                                return;
+                            }
                             byte[] bytes = exchange.getRequestBody().readAllBytes();
                             String hash = exchange.getRequestHeaders()
                                     .getFirst(oss ? "x-oss-meta-sha256" : "x-amz-meta-sha256");

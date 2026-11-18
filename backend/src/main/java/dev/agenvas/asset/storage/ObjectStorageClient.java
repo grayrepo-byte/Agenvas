@@ -84,13 +84,10 @@ public class ObjectStorageClient implements ArchiveStorageBackend {
             throw unavailable();
         }
         var request = new Request.Builder().url(url(p, key)).put(body).header("Content-Type", mime)
-                .header("Content-MD5", md5)
-                .header(p.provider() == StorageProfile.Provider.ALIYUN_OSS ? "x-oss-meta-sha256" : "x-amz-meta-sha256",
-                        hash);
-        if (p.provider() == StorageProfile.Provider.ALIYUN_OSS)
-            request.header("x-oss-forbid-overwrite", "true").header("x-oss-object-acl", "private");
-        else
-            request.header("If-None-Match", "*");
+                .header("Content-MD5", md5);
+        var signer = ObjectStorageSigner.forProvider(p.provider());
+        request.header(signer.metadataHeader(), hash);
+        signer.protectPut(request);
         try (Response response = execute(p, key, request.build(), hash)) {
             if (!response.isSuccessful())
                 throw unavailable();
@@ -107,9 +104,7 @@ public class ObjectStorageClient implements ArchiveStorageBackend {
                 return false;
             if (!response.isSuccessful())
                 throw unavailable();
-            String meta = response.header(p.provider() == StorageProfile.Provider.ALIYUN_OSS
-                    ? "x-oss-meta-sha256"
-                    : "x-amz-meta-sha256");
+            String meta = response.header(ObjectStorageSigner.forProvider(p.provider()).metadataHeader());
             if (!Long.toString(size).equals(response.header("Content-Length")) || !hash.equals(meta))
                 throw new ApiProblemException(HttpStatus.CONFLICT, "STORAGE_OBJECT_CONFLICT",
                         ApiMessage.of("api.object-storage-client.archive-object-conflict"),
