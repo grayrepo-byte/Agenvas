@@ -14,8 +14,9 @@ import tools.jackson.databind.node.ObjectNode;
 
 /** One fixed catalog and draft interface for independent native media protocols. */
 public final class NativeMediaProfiles {
-    private static final List<NativeMediaProtocol> PROTOCOLS = List.of(new WanModels(), new SeedreamModels(),
-            new GoogleVideoModels());
+    // One explicit composition root; protocols remain compiled, reviewed Java rather than loaded user code.
+    private static final NativeMediaCatalog CATALOG = new NativeMediaCatalog(List.of(new WanModels(),
+            new SeedreamModels(), new GoogleVideoModels()));
     private NativeMediaProfiles() {
     }
     public record Selection(NativeMediaProtocol protocol, NativeMediaProtocol.Profile profile) {
@@ -30,24 +31,13 @@ public final class NativeMediaProfiles {
         }
     }
     public static boolean supports(String adapterId) {
-        return PROTOCOLS.stream().anyMatch(p -> p.adapterIds().contains(adapterId));
+        return CATALOG.supports(adapterId);
     }
     public static List<Selection> profiles() {
-        return PROTOCOLS.stream()
-                .flatMap(protocol -> protocol.profiles().stream().map(profile -> new Selection(protocol, profile)))
-                .toList();
+        return CATALOG.profiles();
     }
     public static Selection resolve(String adapterId, JsonNode settings) {
-        if (settings == null || !settings.isObject())
-            throw invalid();
-        for (String key : List.of("model", "operation"))
-            if (settings.hasNonNull(key) && !settings.path(key).isTextual())
-                throw invalid();
-        String operation = settings.path("operation").asText("GENERATE");
-        String model = settings.path("model").asText("").trim();
-        return profiles().stream().filter(p -> p.profile().adapterId().equals(adapterId)
-                && p.profile().operation().equals(operation) && (model.isEmpty() || p.profile().model().equals(model)))
-                .findFirst().orElseThrow(NativeMediaProfiles::invalid);
+        return CATALOG.resolve(adapterId, settings);
     }
     public static ObjectNode normalizeSettings(String adapterId, JsonNode source, ObjectMapper mapper) {
         Selection selected = resolve(adapterId, source);

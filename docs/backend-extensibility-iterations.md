@@ -15,7 +15,7 @@
 | 03 | 声明保持不可变并拒绝自相矛盾的能力契约 | 集合别名、范围、默认输入模式 | 已实现 |
 | 04 | 删除未被调用的 supports/PortInput 扩展负担 | 全仓引用、生产与测试源码编译 | 已实现 |
 | 05 | 新媒体实现可声明发布超时默认值 | 旧默认值、新实现、历史缺省不回填 | 已实现 |
-| 06 | 原生协议目录支持编译型发现及稳定索引 | 三个既有协议、新协议、冲突与隔离 | 待执行 |
+| 06 | 原生协议目录支持显式装配及稳定索引 | 三个既有协议、新协议、冲突与隔离 | 已实现 |
 | 07 | 失败分类归适配器所有，Worker 不依赖供应商异常类型 | 既有永久/可重试失败、诊断、UNKNOWN | 待执行 |
 | 08 | 结果地址刷新使用协议无关信号 | 单次刷新、只查询原请求、不重新提交 | 待执行 |
 | 09 | 存储传输按声明发现，移除中央具体实现分派 | 五个 Provider、所有操作、重复映射 | 待执行 |
@@ -53,3 +53,9 @@
 - 04：全仓引用审查后删除 `supports(PortInput)`、注册器同名方法与 `PortInput`。约 25 个实现不再被迫维护无调用方的第二套能力检查；目录、草稿和受理校验继续执行。
 - 05：`publicationHttpTimeouts()` 扩展新发布默认值；目录服务通过注册器返回合并默认值。内置值不变；LOCAL/Mock 不能声明 HTTP 超时，历史缺省 `configured({})` 仍为 null，不回填冻结版本。
 - 红绿证据：新适配器最初被旧中央表拒绝；声明集合可被外部修改及无效范围被接受的测试先失败；超时目录扩展先因缺少接口编译失败。实现后定向 `MediaAdapterRegistrationTest,MediaDeclarationContractTest,MediaAdapterRegistryVideoModesTest,MediaCapabilityConfigurationTest,MediaExecutionWorkerTest,MediaHttpTimeoutsTest,MediaCapabilityHttpTimeoutsTest` 共 **110 项通过，0 失败/错误/跳过**。另初始定向基线 41 项通过。编译包含全部生产与测试源码，未执行全量测试。
+
+### 06：显式装配的原生协议目录
+
+`NativeMediaCatalog` 接受编译型协议列表，固定 profile 顺序并建立 adapter 索引；拒绝重复适配器、重复模型/操作身份、无 profile 和错误归属。`NativeMediaProfiles` 保留静态调用兼容性，生产仅有一个明确的内置装配点，不扫描 classpath、不加载第三方代码；新增内置协议仍须显式加入装配点。每次 resolve 不再重建全协议列表，也不依赖 Map 迭代顺序选默认模型。新增目录可独立装配用于验证，不改变全局状态。
+
+新接口测试先因目录不存在失败。`NativeMediaCatalogTest,NativeMediaProfilesTest,WanModelsTest,SeedreamModelsTest,GoogleVideoModelsTest` **30 项通过**。同协议工作流仍由发布配置扩展，未引入新协议加载机制。
