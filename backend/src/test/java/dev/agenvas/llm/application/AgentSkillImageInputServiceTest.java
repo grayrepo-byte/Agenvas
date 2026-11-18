@@ -14,9 +14,9 @@ import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.asset.application.AssetService;
+import dev.agenvas.asset.application.MediaFile;
 import dev.agenvas.asset.application.PrivateMediaArchive;
 import dev.agenvas.asset.domain.Asset;
-import dev.agenvas.library.application.LibraryService;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.skill.application.SkillService;
 import dev.agenvas.skill.domain.SkillContent;
@@ -81,7 +81,7 @@ class AgentSkillImageInputServiceTest {
         Path preview = directory.resolve("preview.png");
         Files.write(preview, PNG);
         when(skills.file(owner, skill, version, "style", true))
-                .thenReturn(new LibraryService.MediaFile(preview, "image/png", size));
+                .thenReturn(new MediaFile(preview, "image/png", size));
         when(ledger.skillReads(project, run)).thenReturn(List.of(mapper.createObjectNode()
                 .put("skillVersionId", version.toString()).put("path", "SKILL.md"), assetRead()));
     }
@@ -183,7 +183,7 @@ class AgentSkillImageInputServiceTest {
         assertThatThrownBy(() -> service.hydrate(owner, project, run, snapshot(), List.of(checkpointMessage())))
                 .isInstanceOf(ApiProblemException.class);
         when(skills.file(owner, skill, version, "style", true))
-                .thenReturn(new LibraryService.MediaFile(directory.resolve("missing.png"), "image/png", PNG.length));
+                .thenReturn(new MediaFile(directory.resolve("missing.png"), "image/png", PNG.length));
         assertThatThrownBy(() -> service.hydrate(owner, project, run, snapshot(), List.of(checkpointMessage())))
                 .isInstanceOf(IllegalStateException.class).hasMessage("Agent image preview could not be read");
     }

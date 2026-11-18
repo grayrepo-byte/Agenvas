@@ -1,6 +1,7 @@
 package dev.agenvas.skill.api;
 
 import dev.agenvas.artifact.domain.Artifact;
+import dev.agenvas.asset.application.MediaFile;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.shared.i18n.ApiMessages;
 import dev.agenvas.skill.application.SkillFormat;
@@ -125,7 +126,7 @@ public final class SkillController {
         return stream(skills.file(principal.userId(), skillId, versionId, alias, true));
     }
     private ResponseEntity<org.springframework.core.io.Resource> stream(
-            dev.agenvas.library.application.LibraryService.MediaFile file) {
+            MediaFile file) {
         var resource = new FileSystemResource(file.path()) {
             @Override
             public java.io.InputStream getInputStream() throws java.io.IOException {

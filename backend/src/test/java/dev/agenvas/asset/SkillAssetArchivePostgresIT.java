@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppC
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.asset.application.AssetService;
+import dev.agenvas.asset.application.PinnedSkillAsset;
 import dev.agenvas.asset.application.SkillAssetArchiveService;
 import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.bootstrap.AgenvasApplication;
@@ -19,7 +20,6 @@ import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.library.application.LibraryService;
-import dev.agenvas.library.application.LibraryService.PinnedSkillAsset;
 import dev.agenvas.library.domain.LibraryCommand;
 import dev.agenvas.library.domain.LibraryEntry;
 import dev.agenvas.project.application.ProjectService;
@@ -45,6 +45,7 @@ import org.springframework.web.context.WebApplicationContext;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /** Verified files and real PostgreSQL exercise only owned application/HTTP boundaries. */
@@ -97,8 +98,13 @@ class SkillAssetArchivePostgresIT {
         var source = library.skillAssetSource(owner.userId(), fixture.entryId(), 0);
         UUID pinId = UUID.randomUUID();
         var pinned = library.pinForSkill(owner.userId(), fixture.entryId(), 0, pinId);
-        // Publication operations persist this internal snapshot; restart must not need the entry.
-        var recovered = mapper.readValue(mapper.writeValueAsString(pinned), PinnedSkillAsset.class);
+        // Model a committed checkpoint written before the Java type moved packages.
+        JsonNode historicalPin = mapper.valueToTree(Map.of(
+                "entryId", fixture.entryId(), "entryVersion", 0L, "title", "Surviving reference",
+                "kind", "IMAGE", "contentHash", source.contentHash(), "pinKey", pinned.pinKey(),
+                "media", pinned.media()));
+        assertThat(mapper.<JsonNode>valueToTree(pinned)).isEqualTo(historicalPin);
+        var recovered = mapper.treeToValue(historicalPin, PinnedSkillAsset.class);
         var trashed = library.trash(owner.userId(), fixture.entryId(), 0, false);
         library.delete(owner.userId(), fixture.entryId(), trashed.version());
         assertThatThrownBy(() -> library.get(owner.userId(), fixture.entryId()))

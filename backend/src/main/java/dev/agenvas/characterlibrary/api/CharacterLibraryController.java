@@ -1,10 +1,10 @@
 package dev.agenvas.characterlibrary.api;
 
 import static dev.agenvas.characterlibrary.application.CharacterLibraryModels.*;
+import dev.agenvas.asset.application.MediaFile;
 import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.characterlibrary.application.CharacterLibraryService;
 import dev.agenvas.identity.application.AdminPrincipal;
-import dev.agenvas.library.application.LibraryService;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -91,7 +91,7 @@ public class CharacterLibraryController {
         return service.links(principal.userId(), projectId);
     }
     private org.springframework.http.ResponseEntity<org.springframework.core.io.Resource> stream(
-            LibraryService.MediaFile file) {
+            MediaFile file) {
         var resource = new org.springframework.core.io.FileSystemResource(file.path()) {
             @Override
             public java.io.InputStream getInputStream() throws java.io.IOException {

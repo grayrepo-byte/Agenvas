@@ -5,6 +5,7 @@ import static dev.agenvas.characterlibrary.application.CharacterLibraryModels.*;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.asset.application.AssetService;
+import dev.agenvas.asset.application.MediaFile;
 import dev.agenvas.asset.application.PrivateMediaArchive;
 import dev.agenvas.asset.application.PrivateMediaArchive.Media;
 import dev.agenvas.asset.domain.Asset;
@@ -352,9 +353,9 @@ public class CharacterLibraryService {
             return command(owner, id);
         });
     }
-    public LibraryService.MediaFile file(UUID owner, UUID id, boolean thumbnail) {
+    public MediaFile file(UUID owner, UUID id, boolean thumbnail) {
         Media media = media(owner, id);
-        return new LibraryService.MediaFile(archive.file(owner, media, thumbnail),
+        return new MediaFile(archive.file(owner, media, thumbnail),
                 thumbnail ? "image/png" : media.contentType(),
                 thumbnail ? media.thumbnailByteSize() : media.byteSize());
     }
