@@ -67,6 +67,11 @@ public final class RunningHubAdapter implements MediaAdapter {
         this.clock = clock;
     }
     @Override
+    public boolean permitsPublicDiagnostic(ProviderFailure failure) {
+        return true;
+    }
+
+    @Override
     public String adapterId() {
         return id;
     }

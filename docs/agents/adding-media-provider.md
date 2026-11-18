@@ -47,7 +47,7 @@ LLM Provider 走独立入口：规格 §13.3、`settings/application/LlmProvider
 | [OpenAPI](../../contracts/openapi.yaml) | 独立平台同步连接响应、创建请求的 platform 枚举；新参数、输入语义或响应字段同步 Java 与合约测试 |
 | `backend/src/main/resources/db/migration/` | 独立平台需要扩展 `ck_media_connection_platform`；新增 Flyway 迁移并保护现有连接与任务。schema 变化按 [ADR 0012](../adr/0012-jooq-persistence.md)重新生成 jOOQ |
 
-新增编译型适配器遵守 [ADR 0089](../adr/0089-compiled-backend-extension-contracts.md)。查询/归档失败通过 `classifyPollFailure()` 返回受限永久码或技术重试；需要刷新结果地址时显式声明刷新许可并实现 `refreshResults()`，只查询原受理请求。不要在 Worker 中增加供应商异常分支。新原生模型族在 `NativeMediaProfiles` 的显式装配点加入 `NativeMediaProtocol`，目录会检查 profile 归属、重复身份及输出种类；这不替代协议专用字段、请求实现或前端接入。
+新增编译型适配器遵守 [ADR 0089](../adr/0089-compiled-backend-extension-contracts.md)。查询/归档失败通过 `classifyPollFailure()` 返回受限永久码或技术重试；需要刷新结果地址时显式声明刷新许可并实现 `refreshResults()`，只查询原受理请求。适配器可通过 `permitsPublicDiagnostic()` 准许公开已归一化的 `ProviderFailure`。只传入协议确认的公开字段，保留独立的任务错误码，默认省略诊断。不要在 Worker 中增加供应商异常分支。新原生模型族在 `NativeMediaProfiles` 的显式装配点加入 `NativeMediaProtocol`，目录会检查 profile 归属、重复身份及输出种类；这不替代协议专用字段、请求实现或前端接入。
 
 适配器返回执行结果，由应用服务写业务状态。网络请求在数据库事务外执行；远程受理不确定时保留 UNKNOWN。查询、下载和归档恢复只操作原请求，重新生成由用户显式创建新尝试。详细边界见规格 §11–12 及 [ADR 0006](../adr/0006-direct-media-task-boundary.md)。
 

@@ -16,6 +16,10 @@ public interface MediaAdapter {
     default String preflightFailure(AttemptContext context) {
         return null;
     }
+    /** Opt in only to bounded diagnostics that this compiled protocol can publish. */
+    default boolean permitsPublicDiagnostic(ProviderFailure failure) {
+        return false;
+    }
     /** Classify failures from querying or archiving an already accepted request; never resubmit from this path. */
     default PollFailure classifyPollFailure(RuntimeException failure) {
         return new PollFailure(failure instanceof NativeMediaFailure nativeFailure ? nativeFailure.code() : null,

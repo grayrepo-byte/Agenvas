@@ -454,7 +454,8 @@ class RunningHubPostgresIT {
             Task lease = tasks.claimBoundMediaPolls("rh-checkpoint-worker", 1).getFirst();
             var failure = new ProviderFailure(ProviderFailure.Stage.DOWNLOAD, ProviderFailure.Category.DOWNLOAD_EXPIRED,
                     403, null, null, null);
-            assertThat(tasks.recordProviderFailure(lease, "rh-checkpoint-worker", failure)).isTrue();
+            var publication = adapters.publicDiagnostic(MediaAdapterRegistry.RUNNINGHUB_IMAGE, failure).orElseThrow();
+            assertThat(tasks.recordProviderFailure(lease, "rh-checkpoint-worker", publication)).isTrue();
             var visible = tasks.get(owner, fixture.project.id(), task.id());
             assertThat(visible.output().path("providerFailure").path("httpStatus").asInt()).isEqualTo(403);
             assertThat(visible.errorCode()).isEqualTo(lease.errorCode());
@@ -476,7 +477,7 @@ class RunningHubPostgresIT {
                     () -> tasks.refreshProviderResultUrls(lease, "rh-checkpoint-worker", refreshed, changedHash))
                     .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
             jdbc.sql("update task set lease_epoch=lease_epoch+1 where id=:id").param("id", task.id()).update();
-            assertThat(tasks.recordProviderFailure(lease, "rh-checkpoint-worker", failure)).isFalse();
+            assertThat(tasks.recordProviderFailure(lease, "rh-checkpoint-worker", publication)).isFalse();
             assertThatThrownBy(
                     () -> tasks.refreshProviderResultUrls(lease, "rh-checkpoint-worker", refreshed, original))
                     .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);

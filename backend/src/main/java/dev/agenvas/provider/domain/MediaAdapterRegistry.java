@@ -130,6 +130,30 @@ public final class MediaAdapterRegistry {
         return adapter;
     }
 
+    /** Only an installed adapter can authorize publication for its own persisted binding. */
+    public java.util.Optional<PublicDiagnostic> publicDiagnostic(String adapterId, ProviderFailure failure) {
+        MediaAdapter adapter = adapterId == null ? null : implementations.get(adapterId);
+        return adapter != null && failure != null && adapter.permitsPublicDiagnostic(failure)
+                ? java.util.Optional.of(new PublicDiagnostic(adapterId, failure))
+                : java.util.Optional.empty();
+    }
+
+    public static final class PublicDiagnostic {
+        private final String adapterId;
+        private final ProviderFailure failure;
+
+        private PublicDiagnostic(String adapterId, ProviderFailure failure) {
+            this.adapterId = adapterId;
+            this.failure = failure;
+        }
+        public String adapterId() {
+            return adapterId;
+        }
+        public ProviderFailure failure() {
+            return failure;
+        }
+    }
+
     private static ApiProblemException unsupported() {
         return new ApiProblemException(HttpStatus.UNPROCESSABLE_ENTITY,
                 "PROVIDER_UNSUPPORTED_CAPABILITY",

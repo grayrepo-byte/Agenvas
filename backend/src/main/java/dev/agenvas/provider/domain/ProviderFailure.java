@@ -28,6 +28,7 @@ public record ProviderFailure(Stage stage, Category category, Integer httpStatus
             throw new IllegalArgumentException("Invalid public provider diagnostic");
     }
 
+    /** Legacy RunningHub and OpenAI transport mapping. Other protocols supply their own stable code. */
     public String code() {
         return switch (category) {
             case AUTHENTICATION -> ProviderFailureCodes.RUNNINGHUB_AUTHENTICATION_FAILED;

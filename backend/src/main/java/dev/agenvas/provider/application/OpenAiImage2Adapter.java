@@ -6,6 +6,7 @@ import dev.agenvas.artifact.domain.ImageGenerationParameters;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.asset.storage.MediaRelayService;
+import dev.agenvas.provider.domain.ProviderFailure;
 import dev.agenvas.shared.error.ProviderFailureCodes;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.project.application.ProjectService;
@@ -54,6 +55,11 @@ public class OpenAiImage2Adapter implements MediaAdapter {
         this.client = client;
         this.mapper = mapper;
         this.relay = relay;
+    }
+
+    @Override
+    public boolean permitsPublicDiagnostic(ProviderFailure failure) {
+        return failure.category() == ProviderFailure.Category.MODERATION && failure.moderation() != null;
     }
 
     @Override

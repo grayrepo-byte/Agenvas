@@ -11,6 +11,9 @@ import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
+import dev.agenvas.provider.domain.MediaAdapter;
+import dev.agenvas.provider.application.OpenAiImage2Adapter;
+import dev.agenvas.provider.application.RunningHubAdapter;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.provider.domain.ProviderFailure;
 import dev.agenvas.provider.domain.ProviderModeration;
@@ -54,6 +57,19 @@ class TaskProviderRecoveryTest {
             new TaskProperties(Duration.ofMinutes(30), 1), events, mock(UsageService.class), mapper,
             Clock.fixed(NOW, ZoneOffset.UTC), new ShutdownGate(), mock(PinnedMediaPublications.class));
 
+    private final MediaAdapterRegistry adapters = diagnosticAdapters();
+
+    private static MediaAdapterRegistry diagnosticAdapters() {
+        var runningHub = new RunningHubAdapter(MediaAdapterRegistry.RUNNINGHUB_IMAGE, Task.Kind.IMAGE_GENERATION,
+                null, null, null, null, null, null, null);
+        var synthetic = mock(MediaAdapter.class);
+        when(synthetic.adapterId()).thenReturn("SYNTHETIC_IMAGE");
+        when(synthetic.declaration()).thenReturn(runningHub.declaration());
+        when(synthetic.permitsPublicDiagnostic(any())).thenReturn(true);
+        return new MediaAdapterRegistry(List.of(runningHub, mock(OpenAiImage2Adapter.class, CALLS_REAL_METHODS),
+                synthetic));
+    }
+
     @BeforeEach
     void setup() {
         when(repository.ownerId(taskId)).thenReturn(Optional.of(ownerId));
@@ -66,15 +82,19 @@ class TaskProviderRecoveryTest {
         });
     }
 
-    @Test
-    void aPublicDiagnosticPreservesExistingProgressAndDoesNotChangeTaskState() {
+    @ParameterizedTest
+    @ValueSource(strings = {MediaAdapterRegistry.RUNNINGHUB_IMAGE, "SYNTHETIC_IMAGE"})
+    void aPublicDiagnosticPreservesExistingProgressAndDoesNotChangeTaskState(String adapterId) {
+        when(repository.mediaBinding(taskId)).thenReturn(Optional.of(new MediaCapabilityBinding(
+                UUID.randomUUID(), 1, UUID.randomUUID(), 1, adapterId, "synthetic-hash")));
         Task current = task(8, mapper.createObjectNode().put("archivedCount", 1));
         when(repository.findById(taskId)).thenReturn(Optional.of(current));
         when(repository.recordProviderFailure(eq(current), eq(WORKER), any(), eq(NOW))).thenReturn(true);
         ProviderFailure failure = new ProviderFailure(ProviderFailure.Stage.POLL,
                 ProviderFailure.Category.PARAMETER, 400, 301L, "14", "value");
 
-        assertThat(service.recordProviderFailure(current, WORKER, failure)).isTrue();
+        assertThat(service.recordProviderFailure(current, WORKER,
+                adapters.publicDiagnostic(adapterId, failure).orElseThrow())).isTrue();
 
         ArgumentCaptor<JsonNode> output = ArgumentCaptor.forClass(JsonNode.class);
         verify(repository).recordProviderFailure(eq(current), eq(WORKER), output.capture(), eq(NOW));
@@ -85,7 +105,8 @@ class TaskProviderRecoveryTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {MediaAdapterRegistry.RUNNINGHUB_IMAGE, MediaAdapterRegistry.OPENAI_GPT_IMAGE_2})
+    @ValueSource(strings = {MediaAdapterRegistry.RUNNINGHUB_IMAGE, MediaAdapterRegistry.OPENAI_GPT_IMAGE_2,
+            "SYNTHETIC_IMAGE"})
     void anOldEpochCannotOverwriteDiagnosticsAndDoesNotPreventUnknownRecovery(String adapterId) {
         when(repository.mediaBinding(taskId)).thenReturn(Optional.of(new MediaCapabilityBinding(
                 UUID.randomUUID(), 1, UUID.randomUUID(), 1, adapterId, "synthetic-hash")));
@@ -94,7 +115,8 @@ class TaskProviderRecoveryTest {
                 ? moderationFailure()
                 : new ProviderFailure(ProviderFailure.Stage.SUBMIT, ProviderFailure.Category.UNAVAILABLE,
                         503, null, null, null);
-        assertThat(service.recordProviderFailure(task(8, null), WORKER, failure)).isFalse();
+        assertThat(service.recordProviderFailure(task(8, null), WORKER,
+                adapters.publicDiagnostic(adapterId, failure).orElseThrow())).isFalse();
         verify(repository, never()).recordProviderFailure(any(), any(), any(), any());
         verify(events, never()).append(any(), any(), any());
     }
@@ -109,7 +131,8 @@ class TaskProviderRecoveryTest {
         when(repository.recordProviderFailure(eq(current), eq(WORKER), any(), eq(NOW))).thenReturn(true);
         ProviderFailure failure = moderationFailure();
 
-        assertThat(service.recordProviderFailure(current, WORKER, failure)).isTrue();
+        assertThat(service.recordProviderFailure(current, WORKER,
+                adapters.publicDiagnostic(MediaAdapterRegistry.OPENAI_GPT_IMAGE_2, failure).orElseThrow())).isTrue();
 
         ArgumentCaptor<JsonNode> output = ArgumentCaptor.forClass(JsonNode.class);
         verify(repository).recordProviderFailure(eq(current), eq(WORKER), output.capture(), eq(NOW));
@@ -127,12 +150,15 @@ class TaskProviderRecoveryTest {
         when(repository.mediaBinding(taskId)).thenReturn(Optional.of(new MediaCapabilityBinding(
                 UUID.randomUUID(), 1, UUID.randomUUID(), 1, MediaAdapterRegistry.OPENAI_GPT_IMAGE_2,
                 "synthetic-hash")));
-        assertThat(service.recordProviderFailure(task(8, null), WORKER, ordinary)).isFalse();
-        assertThat(service.recordProviderFailure(task(8, null), WORKER, missingDetails)).isFalse();
+        assertThat(adapters.publicDiagnostic(MediaAdapterRegistry.OPENAI_GPT_IMAGE_2, ordinary)).isEmpty();
+        assertThat(adapters.publicDiagnostic(MediaAdapterRegistry.OPENAI_GPT_IMAGE_2, missingDetails)).isEmpty();
         when(repository.mediaBinding(taskId)).thenReturn(Optional.of(new MediaCapabilityBinding(
                 UUID.randomUUID(), 1, UUID.randomUUID(), 1, MediaAdapterRegistry.GOOGLE_NANO_BANANA_2,
                 "synthetic-hash")));
-        assertThat(service.recordProviderFailure(task(8, null), WORKER, moderationFailure())).isFalse();
+        assertThat(adapters.publicDiagnostic("UNINSTALLED", ordinary)).isEmpty();
+        assertThat(service.recordProviderFailure(task(8, null), WORKER,
+                adapters.publicDiagnostic(MediaAdapterRegistry.OPENAI_GPT_IMAGE_2, moderationFailure()).orElseThrow()))
+                .isFalse();
         verify(repository, never()).recordProviderFailure(any(), any(), any(), any());
         verify(events, never()).append(any(), any(), any());
     }

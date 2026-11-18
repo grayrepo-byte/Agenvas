@@ -7,6 +7,7 @@ import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
+import dev.agenvas.provider.domain.ProviderFailure;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.provider.domain.MediaPayload;
 import dev.agenvas.provider.domain.MediaPlatform;
@@ -128,7 +129,7 @@ public class MediaExecutionWorker {
                                     resultValue -> callOutcome(resultValue, task.providerRequestId()));
                 } catch (RuntimeException transientFailure) {
                     renewal.checkActive();
-                    finishPollFailure(task, workerId, adapter, transientFailure);
+                    finishPollFailure(attempt, workerId, adapter, transientFailure);
                     continue;
                 }
                 requireActive(renewal, result);
@@ -142,8 +143,7 @@ public class MediaExecutionWorker {
                     case Submission.CompletedResults completed ->
                         finishPolledManifest(attempt, workerId, adapter, completed.manifest());
                     case Submission.Rejected rejected -> {
-                        if (rejected.providerFailure() != null)
-                            tasks.recordProviderFailure(task, workerId, rejected.providerFailure());
+                        recordDiagnostic(attempt, workerId, rejected.providerFailure());
                         tasks.fail(task, workerId, rejected.code());
                     }
                     case Submission.Blocked blocked -> tasks.blockProviderPoll(task, workerId,
@@ -182,7 +182,7 @@ public class MediaExecutionWorker {
         try {
             content = archive(attempt, payload);
         } catch (RuntimeException archiveFailure) {
-            finishPollFailure(attempt.lease(), workerId, adapter, archiveFailure);
+            finishPollFailure(attempt, workerId, adapter, archiveFailure);
             return;
         }
         // Payload polling retries byte archival, but final Task write failures still propagate.
@@ -210,18 +210,24 @@ public class MediaExecutionWorker {
             }
             tasks.succeedWithArtifacts(task, workerId, withSilentVideo(attempt, results), manifest.usage());
         } catch (RuntimeException archiveFailure) {
-            finishPollFailure(task, workerId, adapter, archiveFailure);
+            finishPollFailure(attempt, workerId, adapter, archiveFailure);
         }
     }
 
-    private void finishPollFailure(Task task, String workerId, MediaAdapter adapter, RuntimeException failure) {
+    private void finishPollFailure(AttemptContext attempt, String workerId, MediaAdapter adapter,
+            RuntimeException failure) {
+        Task task = attempt.lease();
         var classified = adapter.classifyPollFailure(failure);
-        if (classified.diagnostic() != null)
-            tasks.recordProviderFailure(task, workerId, classified.diagnostic());
+        recordDiagnostic(attempt, workerId, classified.diagnostic());
         if (classified.permanentCode() != null)
             tasks.blockProviderPoll(task, workerId, classified.permanentCode());
         else
             tasks.retryProviderPoll(task, workerId, "PROVIDER_POLL_TECHNICAL_FAILURE");
+    }
+
+    private void recordDiagnostic(AttemptContext attempt, String workerId, ProviderFailure failure) {
+        adapters.publicDiagnostic(attempt.binding().adapterId(), failure)
+                .ifPresent(diagnostic -> tasks.recordProviderFailure(attempt.lease(), workerId, diagnostic));
     }
 
     private CallLogService.CallDescriptor descriptor(Task task, MediaCapabilityBinding binding,
@@ -271,13 +277,11 @@ public class MediaExecutionWorker {
             case Submission.CompletedArtifact completed ->
                 completeArtifact(attempt, workerId, completed.content());
             case Submission.Rejected rejected -> {
-                if (rejected.providerFailure() != null)
-                    tasks.recordProviderFailure(task, workerId, rejected.providerFailure());
+                recordDiagnostic(attempt, workerId, rejected.providerFailure());
                 tasks.rejectSubmission(task, workerId, rejected.code());
             }
             case Submission.Unknown unknown -> {
-                if (unknown.providerFailure() != null)
-                    tasks.recordProviderFailure(task, workerId, unknown.providerFailure());
+                recordDiagnostic(attempt, workerId, unknown.providerFailure());
                 // 拿到「无法确认外部是否完成」的确定结论时就立即按原因码判定，不再让用户
                 // 盯着「正在提交」空等整个租约。租约若已在调用期间过期（例如租约被配得
                 // 短于客户端超时），兜底扫描会接手同一条记录，这里不把它当成错误抛出。

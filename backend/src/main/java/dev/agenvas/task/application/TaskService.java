@@ -17,9 +17,8 @@ import dev.agenvas.task.domain.Task;
 import dev.agenvas.task.domain.VideoOperation;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.provider.application.PinnedMediaPublications;
-import dev.agenvas.provider.domain.MediaAdapterRegistry;
+import dev.agenvas.provider.domain.MediaAdapterRegistry.PublicDiagnostic;
 import dev.agenvas.provider.domain.ProviderResultManifest;
-import dev.agenvas.provider.domain.ProviderFailure;
 import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.task.domain.ProviderAttempt;
 import dev.agenvas.shared.error.ApiProblemException;
@@ -695,17 +694,12 @@ public class TaskService {
     /** A diagnostic never changes task state or grants permission to retry a billable request.
      * Losing a lease is a best-effort miss here so UNKNOWN recovery can still classify the request. */
     @Transactional
-    public boolean recordProviderFailure(Task lease, String workerId, ProviderFailure failure) {
-        if (failure == null)
+    public boolean recordProviderFailure(Task lease, String workerId, PublicDiagnostic diagnostic) {
+        if (diagnostic == null)
             return false;
         String worker = validateWorkerId(workerId);
-        // Only adapters with a bounded diagnostic protocol may publish details. OpenAI currently
-        // exposes recognized moderation failures; ordinary upstream error bodies remain private.
         if (tasks.mediaBinding(lease.id())
-                .filter(binding -> MediaAdapterRegistry.RUNNINGHUB_ADAPTERS.contains(binding.adapterId())
-                        || (MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(binding.adapterId())
-                                && failure.category() == ProviderFailure.Category.MODERATION
-                                && failure.moderation() != null))
+                .filter(binding -> binding.adapterId().equals(diagnostic.adapterId()))
                 .isEmpty())
             return false;
         UUID ownerId = tasks.ownerId(lease.id()).orElseThrow(this::notFound);
@@ -716,7 +710,7 @@ public class TaskService {
             ObjectNode output = current.output() != null && current.output().isObject()
                     ? (ObjectNode) current.output().deepCopy()
                     : objectMapper.createObjectNode();
-            output.set("providerFailure", objectMapper.valueToTree(failure));
+            output.set("providerFailure", objectMapper.valueToTree(diagnostic.failure()));
             if (!tasks.recordProviderFailure(current, worker, output, clock.instant()))
                 return ProjectEventService.Change.unchanged(false);
             Task updated = tasks.findById(lease.id()).orElseThrow(this::notFound);
