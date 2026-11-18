@@ -108,6 +108,8 @@ class CallLogPostgresIT {
     @Autowired
     private dev.agenvas.audit.application.CallLogRepository auditRepository;
     @Autowired
+    private dev.agenvas.audit.application.CallLogRetentionBatchService batches;
+    @Autowired
     private dev.agenvas.audit.application.CallLogRetentionService retention;
     @Autowired
     private JdbcClient jdbc;
@@ -611,9 +613,9 @@ class CallLogPostgresIT {
         terminalHistory(project, task, now.minus(Duration.ofDays(31)));
         jdbc.sql("insert into call_log_debug(call_id,exchanges_json) values(:id,'[]'::jsonb)").param("id", call)
                 .update();
-        assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isZero();
+        assertThat(batches.purgeExpired(now, 1, retention.settings().version())).isZero();
         retention.update(30, retention.settings().version());
-        assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
+        assertThat(batches.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
         assertThat(count("call_log", "id", call)).isZero();
         assertThat(count("call_log_debug", "call_id", call)).isZero();
         assertThat(count("provider_attempt", "task_id", task)).isZero();
@@ -645,17 +647,17 @@ class CallLogPostgresIT {
         UUID unknownCall = insertCall(unknown, CallLog.Kind.IMAGE, CallLog.Status.UNKNOWN, cutoff.minusSeconds(1),
                 null);
         jdbc.sql("update task set status='UNKNOWN' where id=:id").param("id", taskForCall(unknownCall)).update();
-        assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
+        assertThat(batches.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
         assertThat(eligible.stream().mapToInt(id -> count("call_log", "id", id)).sum()).isEqualTo(1);
-        assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
-        assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isZero();
+        assertThat(batches.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
+        assertThat(batches.purgeExpired(now, 1, retention.settings().version())).isZero();
         assertThat(count("call_log", "id", boundaryCall)).isEqualTo(1);
         assertThat(count("call_log", "id", unknownCall)).isEqualTo(1);
         jdbc.sql("update call_log set responded_at=:time where id=:id").param("time", Timestamp.from(now))
                 .param("id", boundaryCall).update();
         jdbc.sql("update agent_run set completed_at=:time,updated_at=:time where id=:id")
                 .param("time", Timestamp.from(cutoff.minusSeconds(1))).param("id", fixtureRun(boundary).id()).update();
-        assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isZero();
+        assertThat(batches.purgeExpired(now, 1, retention.settings().version())).isZero();
         assertThat(count("llm_turn", "run_id", fixtureRun(boundary).id())).isEqualTo(1);
     }
 
@@ -673,7 +675,7 @@ class CallLogPostgresIT {
         Task staleLease = tasks.get(owner.userId(), project.id(), taskId);
         long runVersion = runs.get(owner.userId(), project.id(), fixtureRun(project).id()).version();
         retention.update(30, retention.settings().version());
-        assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
+        assertThat(batches.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
         Task stopped = tasks.get(owner.userId(), project.id(), taskId);
         assertThat(stopped.status()).isEqualTo(Task.Status.CANCELED);
         assertThat(stopped.cancelRequested()).isTrue();
@@ -707,7 +709,7 @@ class CallLogPostgresIT {
         assertThat(taskRepository.recordLateResult(staleLease, mapper.createObjectNode(), now)).isFalse();
         assertThat(taskRepository.claimDueProviderPolls("cleanup-proof", 100, now, now.plusSeconds(60)))
                 .extracting(Task::id).doesNotContain(taskId);
-        assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isZero();
+        assertThat(batches.purgeExpired(now, 1, retention.settings().version())).isZero();
         assertThat(list(owner, Map.of("projectId", project.id().toString())).path("items").size()).isZero();
     }
 
@@ -728,7 +730,7 @@ class CallLogPostgresIT {
         jdbc.sql("update agent_run set updated_at=:time where id=:id").param("time", Timestamp.from(now))
                 .param("id", fixtureRun(project).id()).update();
         retention.update(30, retention.settings().version());
-        assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
+        assertThat(batches.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
         assertThat(tasks.get(owner.userId(), project.id(), task).status()).isEqualTo(Task.Status.CANCELED);
         assertThat(count("call_log", "id", call)).isZero();
         assertThat(count("provider_attempt", "task_id", task)).isZero();
@@ -749,7 +751,7 @@ class CallLogPostgresIT {
                 null, null, 0L, 0L, null, old, old, null));
         retention.update(30, retention.settings().version());
 
-        assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
+        assertThat(batches.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
 
         Task stopped = tasks.get(owner.userId(), project.id(), taskId);
         assertThat(stopped.status()).isEqualTo(Task.Status.CANCELED);
@@ -784,7 +786,7 @@ class CallLogPostgresIT {
                 "CREATE TRIGGER retention_stop_failure BEFORE DELETE ON provider_attempt FOR EACH ROW EXECUTE FUNCTION retention_stop_failure()")
                 .update();
         try {
-            assertThatThrownBy(() -> auditRepository.purgeExpired(now, 1, retention.settings().version()))
+            assertThatThrownBy(() -> batches.purgeExpired(now, 1, retention.settings().version()))
                     .isInstanceOf(RuntimeException.class);
             assertThat(tasks.get(owner.userId(), project.id(), taskId)).isEqualTo(before);
             assertThat(runs.get(owner.userId(), project.id(), fixtureRun(project).id()).status())
@@ -814,7 +816,7 @@ class CallLogPostgresIT {
                 .param("status", state.name()).param("time", Timestamp.from(old))
                 .param("id", fixtureRun(project).id()).update();
         retention.update(30, retention.settings().version());
-        assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
+        assertThat(batches.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
         assertThat(runs.get(owner.userId(), project.id(), fixtureRun(project).id()).status())
                 .isEqualTo(AgentRun.Status.CANCELED);
         assertThat(count("call_log", "id", call)).isZero();
@@ -839,7 +841,7 @@ class CallLogPostgresIT {
             default -> throw new IllegalArgumentException("Unknown fixture ledger");
         }
         retention.update(30, retention.settings().version());
-        assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isZero();
+        assertThat(batches.purgeExpired(now, 1, retention.settings().version())).isZero();
         assertThat(tasks.get(owner.userId(), project.id(), task).status()).isEqualTo(Task.Status.UNKNOWN);
         assertThat(count("call_log", "id", call)).isEqualTo(1);
         assertThat(count("llm_turn", "run_id", fixtureRun(project).id())).isEqualTo(1);
@@ -874,7 +876,7 @@ class CallLogPostgresIT {
                 "CREATE TRIGGER retention_test_failure BEFORE DELETE ON provider_attempt FOR EACH ROW EXECUTE FUNCTION retention_test_failure()")
                 .update();
         try {
-            assertThatThrownBy(() -> auditRepository.purgeExpired(now, 1, retention.settings().version()))
+            assertThatThrownBy(() -> batches.purgeExpired(now, 1, retention.settings().version()))
                     .isInstanceOf(RuntimeException.class);
             assertThat(count("call_log", "id", call)).isEqualTo(1);
             assertThat(count("llm_turn", "run_id", fixtureRun(project).id())).isEqualTo(1);
@@ -903,7 +905,7 @@ class CallLogPostgresIT {
         jdbc.sql("update task set run_id=null,status='SUCCEEDED',completed_at=:time,updated_at=:time where id=:id")
                 .param("time", Timestamp.from(old)).param("id", directTask).update();
         retention.update(30, retention.settings().version());
-        assertThat(auditRepository.purgeExpired(now, 2, retention.settings().version())).isEqualTo(2);
+        assertThat(batches.purgeExpired(now, 2, retention.settings().version())).isEqualTo(2);
         assertThat(count("call_log", "id", directCall)).isZero();
         assertThat(count("task", "id", directTask)).isEqualTo(1);
         assertThat(list(owner, Map.of("projectId", legacy.id().toString())).path("items").size()).isZero();
@@ -944,7 +946,7 @@ class CallLogPostgresIT {
                             }));
             try {
                 assertThat(locked.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
-                var cleanup = pool.submit(() -> auditRepository.purgeExpired(now, 1, retention.settings().version()));
+                var cleanup = pool.submit(() -> batches.purgeExpired(now, 1, retention.settings().version()));
                 assertThat(cleanup.get(3, java.util.concurrent.TimeUnit.SECONDS)).isZero();
                 assertThat(count("call_log", "id", call)).isEqualTo(1);
                 assertThat(count("llm_turn", "run_id", fixtureRun(project).id())).isEqualTo(1);
@@ -954,8 +956,37 @@ class CallLogPostgresIT {
             }
             checkpoint.get(5, java.util.concurrent.TimeUnit.SECONDS);
         }
-        assertThat(auditRepository.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
+        assertThat(batches.purgeExpired(now, 1, retention.settings().version())).isEqualTo(1);
         assertThat(count("call_log", "id", call)).isZero();
+    }
+
+    @Test
+    void laterBatchFailureLeavesEarlierBatchCommittedAndCanResume() {
+        var policy = retention.update(30, retention.settings().version());
+        int size = dev.agenvas.audit.application.CallLogRetentionService.BATCH_SIZE;
+        // The last diagnostic sorts into batch two, where a restrictive FK rejects deletion.
+        jdbc.sql("""
+                insert into call_log(id,kind,operation,status,trace_id,started_at,mock)
+                select gen_random_uuid(),'LLM','DIAGNOSTIC','RUNNING',md5('batch-test-' || n),
+                       timestamptz '2000-01-01' + n * interval '1 second',false
+                from generate_series(1,:total) as n
+                """).param("total", size + 1).update();
+        jdbc.sql("create table retention_test_hold (call_id uuid references call_log(id))").update();
+        try {
+            jdbc.sql("""
+                    insert into retention_test_hold select id from call_log
+                    where trace_id=md5('batch-test-' || cast(:last as text))
+                    """).param("last", size + 1).update();
+            assertThatThrownBy(() -> retention.cleanExpired(policy.version()))
+                    .hasRootCauseInstanceOf(org.postgresql.util.PSQLException.class);
+            assertThat(jdbc.sql("""
+                    select count(*) from call_log where trace_id in
+                    (select md5('batch-test-' || n) from generate_series(1,:total) as n)
+                    """).param("total", size + 1).query(Integer.class).single()).isOne();
+        } finally {
+            jdbc.sql("drop table retention_test_hold").update();
+        }
+        assertThat(retention.cleanExpired(policy.version()).cleanedExecutions()).isOne();
     }
 
     @Test
