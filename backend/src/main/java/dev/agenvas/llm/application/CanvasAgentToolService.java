@@ -47,6 +47,7 @@ public class CanvasAgentToolService {
     private final MediaDraftRestoreService draftWrites;
     private final DirectMediaTaskService mediaTasks;
     private final ObjectMapper mapper;
+    private final ToolArguments toolArguments = new ToolArguments(ToolArguments.UuidSyntax.JAVA, this::invalid);
     private final CharacterService characters;
 
     public CanvasAgentToolService(CanvasService canvas, ArtifactService artifacts, MediaDraftService drafts,
@@ -67,10 +68,14 @@ public class CanvasAgentToolService {
         ObjectNode input = parse(arguments, Set.of("offset", "limit", "includeDrafts", "characterOffset",
                 "characterLimit", "characterId", "characterTextOffset", "characterTextLimit",
                 "expectedCharacterVersion"));
-        int offset = input.has("offset") ? integer(input, "offset") : 0;
-        int limit = input.has("limit") ? integer(input, "limit") : 20;
-        int characterOffset = input.has("characterOffset") ? integer(input, "characterOffset") : 0;
-        int characterLimit = input.has("characterLimit") ? integer(input, "characterLimit") : DEFAULT_CHARACTER_LIMIT;
+        int offset = input.has("offset") ? toolArguments.nonnegativeInt(input.path("offset")) : 0;
+        int limit = input.has("limit") ? toolArguments.nonnegativeInt(input.path("limit")) : 20;
+        int characterOffset = input.has("characterOffset")
+                ? toolArguments.nonnegativeInt(input.path("characterOffset"))
+                : 0;
+        int characterLimit = input.has("characterLimit")
+                ? toolArguments.nonnegativeInt(input.path("characterLimit"))
+                : DEFAULT_CHARACTER_LIMIT;
         if (characterLimit < 1 || characterLimit > MAX_CHARACTER_LIMIT)
             throw invalid();
         if (!input.has("characterId") && (input.has("characterTextOffset") || input.has("characterTextLimit")
@@ -128,9 +133,9 @@ public class CanvasAgentToolService {
         } catch (IllegalArgumentException malformed) {
             throw invalid();
         }
-        CanvasService.CanvasEntry entry = requireItem(context, run, uuid(input, "itemId"));
+        CanvasService.CanvasEntry entry = requireItem(context, run, toolArguments.uuid(input.path("itemId")));
         CanvasItem item = entry.item();
-        long expected = version(input, "expectedVersion");
+        long expected = toolArguments.nonnegativeLong(input.path("expectedVersion"), Long.MAX_VALUE);
         if (item.version() != expected)
             throw problem(HttpStatus.CONFLICT, "CANVAS_VERSION_CONFLICT",
                     ApiMessage.of("api.canvas-service.the-canvas-card-has-been-modified-by-other-requests-please"));
@@ -139,7 +144,7 @@ public class CanvasAgentToolService {
         CanvasService.CanvasEntry updated;
         switch (action) {
             case RENAME -> {
-                String title = text(input, "title", 160);
+                String title = toolArguments.text(input.path("title"), 160);
                 updated = canvas
                         .apply(context.ownerId(), context.projectId(),
                                 List.of(new CanvasService.UpdateTitle(item.id(), expected, title)))
@@ -188,7 +193,8 @@ public class CanvasAgentToolService {
                         artifacts.requireCanvasVersion(context.ownerId(),
                                 context.projectId(), item.selectedVersionId());
                     updated = canvas.duplicate(context.ownerId(), context.projectId(), item.id(), targetId, expected,
-                            version(input, "expectedDraftVersion"), x, y, item.width(), item.height(), item.zIndex())
+                            toolArguments.nonnegativeLong(input.path("expectedDraftVersion"), Long.MAX_VALUE), x, y,
+                            item.width(), item.height(), item.zIndex())
                             .item();
                 }
                 result.putArray("createdIds").add(updated.item().id().toString());
@@ -205,7 +211,7 @@ public class CanvasAgentToolService {
     public JsonNode updateMediaDraft(TrustedToolContext context, AgentRun run, UUID operationId, String arguments) {
         ObjectNode input = parse(arguments, Set.of("itemId", "expectedVersion", "prompt", "parameters",
                 "durationSeconds", "capabilityId", "videoInputMode", "mediaInputs", "mentions"));
-        CanvasService.CanvasEntry entry = requireItem(context, run, uuid(input, "itemId"));
+        CanvasService.CanvasEntry entry = requireItem(context, run, toolArguments.uuid(input.path("itemId")));
         requireUnlocked(entry.item());
         requireIdle(context, entry);
         if (entry.artifact().artifact().kind() == Artifact.Kind.TEXT)
@@ -222,7 +228,7 @@ public class CanvasAgentToolService {
             for (JsonNode value : supplied) {
                 if (!value.isObject() || value.size() != 2)
                     throw invalid();
-                UUID versionId = uuid(value, "versionId");
+                UUID versionId = toolArguments.uuid(value.path("versionId"));
                 artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), run.contextSnapshot(),
                         context.runId(), versionId);
                 MediaDraft.InputRole role;
@@ -247,7 +253,7 @@ public class CanvasAgentToolService {
         if (!parameters.isObject())
             throw invalid();
         Integer duration = input.has("durationSeconds")
-                ? Integer.valueOf(integer(input, "durationSeconds"))
+                ? Integer.valueOf(toolArguments.nonnegativeInt(input.path("durationSeconds")))
                 : before.durationSeconds();
         List<MediaDraft.PromptMention> mentions = input.has("prompt") ? List.of() : before.mentions();
         if (input.has("mentions")) {
@@ -258,7 +264,7 @@ public class CanvasAgentToolService {
             for (JsonNode value : supplied) {
                 if (!value.isObject() || value.size() != 2)
                     throw invalid();
-                UUID versionId = uuid(value, "versionId");
+                UUID versionId = toolArguments.uuid(value.path("versionId"));
                 artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), run.contextSnapshot(),
                         context.runId(), versionId);
                 MediaDraft.InputRole role;
@@ -271,7 +277,7 @@ public class CanvasAgentToolService {
             }
             mentions = List.copyOf(parsed);
         }
-        String prompt = input.has("prompt") ? text(input, "prompt", 20_000) : before.prompt();
+        String prompt = input.has("prompt") ? toolArguments.text(input.path("prompt"), 20_000) : before.prompt();
         if (input.has("mediaInputs") && !input.has("mentions")) {
             var retained = mediaInputs;
             mentions = mentions.stream()
@@ -281,13 +287,15 @@ public class CanvasAgentToolService {
             if (!input.has("prompt"))
                 prompt = drafts.pruneRemovedMentions(before.prompt(), before.mentions(), mentions);
         }
-        UUID capabilityId = input.has("capabilityId") ? uuid(input, "capabilityId") : before.capabilityId();
+        UUID capabilityId = input.has("capabilityId")
+                ? toolArguments.uuid(input.path("capabilityId"))
+                : before.capabilityId();
         MediaDraft saved = input.has("mediaInputs")
                 ? draftWrites.replaceInputs(context.ownerId(), context.projectId(), entry.item().id(),
-                        version(input, "expectedVersion"),
+                        toolArguments.nonnegativeLong(input.path("expectedVersion"), Long.MAX_VALUE),
                         prompt, parameters, duration, capabilityId, mode, mediaInputs, mentions, before.styleId())
                 : draftWrites.save(context.ownerId(), context.projectId(), entry.item().id(),
-                        version(input, "expectedVersion"),
+                        toolArguments.nonnegativeLong(input.path("expectedVersion"), Long.MAX_VALUE),
                         prompt, parameters, duration, capabilityId, mode, mediaInputs, mentions, before.styleId());
         ObjectNode result = result(operationId, "已保存媒体草稿，尚未生成");
         result.putArray("updatedIds").add(entry.item().id().toString());
@@ -376,15 +384,20 @@ public class CanvasAgentToolService {
     /** Each page reauthorizes the current project profile. Continuations pin its version, so
      * a concurrent edit cannot silently splice two different revisions into one document. */
     private void appendCharacterTextPage(ObjectNode result, CharacterIndex index, ObjectNode input) {
-        UUID characterId = uuid(input, "characterId");
-        int offset = input.has("characterTextOffset") ? integer(input, "characterTextOffset") : 0;
-        int limit = input.has("characterTextLimit") ? integer(input, "characterTextLimit") : MAX_CHARACTER_TEXT_PAGE;
+        UUID characterId = toolArguments.uuid(input.path("characterId"));
+        int offset = input.has("characterTextOffset")
+                ? toolArguments.nonnegativeInt(input.path("characterTextOffset"))
+                : 0;
+        int limit = input.has("characterTextLimit")
+                ? toolArguments.nonnegativeInt(input.path("characterTextLimit"))
+                : MAX_CHARACTER_TEXT_PAGE;
         if (limit < 1 || limit > MAX_CHARACTER_TEXT_PAGE || offset > 0 && !input.has("expectedCharacterVersion"))
             throw invalid();
         CharacterProfile character = index.characters().stream().filter(profile -> profile.id().equals(characterId))
                 .findFirst().orElseThrow(() -> problem(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND",
                         ApiMessage.of("api.project-service.the-project-does-not-exist-or-the-current-user-does")));
-        if (input.has("expectedCharacterVersion") && version(input, "expectedCharacterVersion") != character.version())
+        if (input.has("expectedCharacterVersion") && toolArguments
+                .nonnegativeLong(input.path("expectedCharacterVersion"), Long.MAX_VALUE) != character.version())
             throw problem(HttpStatus.CONFLICT, "CHARACTER_VERSION_CONFLICT", ApiMessage.of("api.character.conflict"));
         String text = characterSafeText(character).toString();
         int total = text.codePointCount(0, text.length());
@@ -462,47 +475,13 @@ public class CanvasAgentToolService {
         return result;
     }
     private ObjectNode parse(String arguments, Set<String> fields) {
-        JsonNode parsed;
-        try {
-            parsed = mapper.readTree(arguments);
-        } catch (RuntimeException malformed) {
-            throw invalid();
-        }
-        if (!(parsed instanceof ObjectNode object)
-                || object.propertyNames().stream().anyMatch(key -> !fields.contains(key)))
-            throw invalid();
-        return object;
+        return toolArguments.object(arguments, fields, mapper::readTree);
     }
-    private UUID uuid(JsonNode input, String field) {
-        if (!input.path(field).isTextual())
-            throw invalid();
-        try {
-            return UUID.fromString(input.path(field).asText());
-        } catch (IllegalArgumentException malformed) {
-            throw invalid();
-        }
-    }
-    private long version(JsonNode input, String field) {
-        JsonNode value = input.path(field);
-        if (!value.isIntegralNumber() || !value.canConvertToLong() || value.longValue() < 0)
-            throw invalid();
-        return value.longValue();
-    }
-    private int integer(JsonNode input, String field) {
-        long value = version(input, field);
-        if (value > Integer.MAX_VALUE)
-            throw invalid();
-        return (int) value;
-    }
+
     private BigDecimal decimal(JsonNode input, String field) {
         if (!input.path(field).isNumber())
             throw invalid();
         return input.path(field).decimalValue();
-    }
-    private String text(JsonNode input, String field, int max) {
-        if (!input.path(field).isTextual() || input.path(field).asText().length() > max)
-            throw invalid();
-        return input.path(field).asText();
     }
     private ApiProblemException invalid() {
         return problem(HttpStatus.BAD_REQUEST, "TOOL_ARGUMENT_INVALID",

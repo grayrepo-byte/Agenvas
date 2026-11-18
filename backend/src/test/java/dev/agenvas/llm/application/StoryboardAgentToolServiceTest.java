@@ -203,12 +203,14 @@ class StoryboardAgentToolServiceTest {
     void readRejectsUnknownScopeFieldsMixedModesMalformedPagesAndMultipleFullBodies() {
         for (String arguments : List.of("null", "[]", "{} {}", "{\"offset\":0,\"offset\":1}",
                 "{\"projectId\":\"" + project + "\"}", "{\"limit\":0}", "{\"limit\":41}",
-                "{\"offset\":-1}", "{\"offset\":1.5}", "{\"offset\":2147483648}",
-                "{\"shotIds\":[]}", "{\"shotIds\":[\"bad\"]}",
+                "{\"offset\":-1}", "{\"offset\":1.5}", "{\"offset\":2147483648}", "{\"offset\":null}",
+                "{\"offset\":\"0\"}",
+                "{\"shotIds\":[]}", "{\"shotIds\":[\"bad\"]}", "{\"shotIds\":[\"1-1-1-1-1\"]}",
                 "{\"shotIds\":[\"" + first.id() + "\"],\"offset\":0}",
                 "{\"shotIds\":[\"" + first.id() + "\",\"" + second.id() + "\"]}")) {
             assertInvalid(() -> read(arguments));
         }
+        verify(boards, never()).get(any(), any());
         assertInvalid(() -> read("{\"offset\":3}"));
         assertInvalid(() -> read("{\"shotIds\":[\"" + UUID.randomUUID() + "\"]}"));
         assertInvalid(() -> read("{}" + " ".repeat(1024 * 1024)));
@@ -224,7 +226,8 @@ class StoryboardAgentToolServiceTest {
         }
         for (ObjectNode value : List.of(patch(first), patch(first).put("code", " "),
                 patch(first).put("code", " SHOT-001"),
-                patch(first).put("code", "x".repeat(81)), patch(first).put("title", "x".repeat(201)),
+                patch(first).put("code", "x".repeat(81)), patch(first).put("title", "😀".repeat(101)),
+                patch(first).put("title", "x".repeat(201)),
                 patch(first).put("description", "x".repeat(20_001)), patch(first).putNull("dialogue"),
                 patch(first).put("durationSeconds", new BigDecimal("0.099")),
                 patch(first).put("durationSeconds", new BigDecimal("3600.001")),
