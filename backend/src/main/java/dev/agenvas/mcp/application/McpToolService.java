@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
+import dev.agenvas.task.application.ArchivedTaskResults;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -603,13 +604,19 @@ public class McpToolService {
                     references.add(reference.path("versionId").asText());
         }
         ArrayNode extra = output.putArray("additionalResults");
-        if (task.output() != null)
-            for (JsonNode result : task.output().path("additionalResults")) {
-                ObjectNode safe = extra.addObject();
-                for (String field : List.of("artifactId", "artifactVersionId", "canvasItemId", "selected", "ordinal"))
-                    if (result.has(field))
-                        safe.set(field, result.path(field).deepCopy());
-            }
+        for (var identity : ArchivedTaskResults.read(task.output()).additional()) {
+            var safe = extra.addObject();
+            if (identity.artifactId() != null)
+                safe.put("artifactId", identity.artifactId());
+            if (identity.artifactVersionId() != null)
+                safe.put("artifactVersionId", identity.artifactVersionId());
+            if (identity.hasCanvasItemId())
+                safe.put("canvasItemId", identity.canvasItemId());
+            if (identity.ordinal() != null)
+                safe.put("ordinal", identity.ordinal().intValue());
+            if (identity.selected() != null)
+                safe.put("selected", identity.selected().booleanValue());
+        }
         return output;
     }
     private ObjectNode readCapabilities(JsonNode input) {

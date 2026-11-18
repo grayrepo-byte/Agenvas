@@ -31,11 +31,12 @@ public class TaskOutputReadAccessService {
                 || !task.approvedMedia()
                 || !task.input().path(Task.REQUIRE_EXPLICIT_SELECTION_PROPERTY).asBoolean(false))
             return false;
-        return archivedOutputs(ownerId, projectId, task).stream().anyMatch(output -> matches(ownerId, projectId,
-                output, task.input().path("canvasItemId").asText(), artifactId, versionId)
-                || java.util.stream.StreamSupport.stream(output.path("additionalResults").spliterator(), false)
-                        .anyMatch(extra -> matches(ownerId, projectId, extra, extra.path("canvasItemId").asText(),
-                                artifactId, versionId)));
+        return archivedOutputs(ownerId, projectId, task).stream().map(ArchivedTaskResults::read)
+                .anyMatch(results -> matches(ownerId, projectId, results.primary(),
+                        task.input().path("canvasItemId").asText(), artifactId, versionId)
+                        || results.additional().stream().anyMatch(extra -> extra.canvasItemId() != null
+                                && matches(ownerId, projectId, extra, extra.canvasItemId(),
+                                        artifactId, versionId)));
     }
 
     /** Late archives are separate immutable rows; reading them must never rewrite the frozen approval outcome. */
@@ -53,10 +54,10 @@ public class TaskOutputReadAccessService {
         return List.copyOf(outputs);
     }
 
-    private boolean matches(UUID ownerId, UUID projectId, JsonNode output, String canvasItemId,
+    private boolean matches(UUID ownerId, UUID projectId, ArchivedTaskResults.Identity output, String canvasItemId,
             UUID artifactId, UUID versionId) {
-        return artifactId.toString().equals(output.path("artifactId").asText())
-                && versionId.toString().equals(output.path("artifactVersionId").asText())
+        return output != null && artifactId.toString().equals(output.artifactId())
+                && versionId.toString().equals(output.artifactVersionId())
                 && items.artifactItems(ownerId, projectId, artifactId).stream()
                         .anyMatch(item -> item.id().toString().equals(canvasItemId));
     }
