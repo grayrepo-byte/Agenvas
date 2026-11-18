@@ -4,22 +4,39 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.Artifact;
+import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.project.application.ProjectService;
+import dev.agenvas.project.application.ProjectSnapshotService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.shared.error.ApiProblemException;
+import dev.agenvas.testing.ImageAssetFixture;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.assertj.core.api.SoftAssertions;
+import org.jooq.DSLContext;
+import org.jooq.ExecuteContext;
+import org.jooq.ExecuteListener;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -59,9 +76,30 @@ class CanvasPostgresIT {
     @Autowired
     private org.springframework.web.context.WebApplicationContext webContext;
 
+    @Autowired
+    private DSLContext db;
+
+    @Autowired
+    private AssetService assets;
+
+    @Autowired
+    private ProjectSnapshotService snapshots;
+
+    @Autowired
+    private PlatformTransactionManager transactions;
+
+    private AdminPrincipal owner;
+
+    @BeforeEach
+    void setupOwner() {
+        owner = db.select(dev.agenvas.db.Tables.APP_USER.ID).from(dev.agenvas.db.Tables.APP_USER)
+                .where(dev.agenvas.db.Tables.APP_USER.LOGIN_NAME.eq("canvas-admin"))
+                .fetchOptional(id -> new AdminPrincipal(id.value1(), "canvas-admin"))
+                .orElseGet(() -> identityService.setup("canvas-admin", "canvas-password-123"));
+    }
+
     @Test
     void layoutPersistsFailedBatchRollsBackAndRemovingCardKeepsArtifact() throws Exception {
-        AdminPrincipal owner = identityService.setup("canvas-admin", "canvas-password-123");
         Project project = projectService.create(
                 owner.userId(), "Canvas project", Project.AspectRatio.LANDSCAPE_16_9);
         ArtifactService.ArtifactView firstArtifact = createText(owner.userId(), project.id(), "One");
@@ -216,6 +254,125 @@ class CanvasPostgresIT {
                 .andReturn().getResponse().getContentAsString();
         assertThat(visible).doesNotContain("\"agent\"", "\"AGENT\"");
         assertThat(canvasService.list(owner.userId(), project.id())).hasSize(2);
+    }
+
+    @Test
+    void artifactAndCanvasListsHaveBoundedQueryGrowth() {
+        UUID projectId = projectService.create(owner.userId(), "Query growth", Project.AspectRatio.LANDSCAPE_16_9).id();
+        UUID asset = ImageAssetFixture.archive(assets, owner.userId(), projectId);
+        var image = objectMapper.createObjectNode().put("sourceType", "UPLOAD").put("assetId", asset.toString());
+        var first = artifactService.create(owner.userId(), projectId, Artifact.Kind.IMAGE, "First", image);
+        canvasService.apply(owner.userId(), projectId,
+                List.of(place(UUID.randomUUID(), first.artifact().id(), "0", "0")));
+        int smallCanvas = countQueries(() -> assertThat(canvasService.list(owner.userId(), projectId)).hasSize(1));
+        int smallResources = countQueries(
+                () -> assertThat(artifactService.listProject(owner.userId(), projectId)).hasSize(1));
+        var placements = new ArrayList<CanvasService.PlaceArtifact>();
+        for (int i = 1; i < 16; i++) {
+            var added = artifactService.create(owner.userId(), projectId, Artifact.Kind.IMAGE, "Image " + i, image);
+            placements.add(place(UUID.randomUUID(), added.artifact().id(), "0", "0"));
+        }
+        canvasService.apply(owner.userId(), projectId, placements);
+        int largeCanvas = countQueries(() -> assertThat(canvasService.list(owner.userId(), projectId)).hasSize(16));
+        int largeResources = countQueries(
+                () -> assertThat(artifactService.listProject(owner.userId(), projectId)).hasSize(16));
+        LoggerFactory.getLogger(getClass()).info(
+                "Projection query counts for 1 and 16 rows: canvas {}/{}, resources {}/{}",
+                smallCanvas, largeCanvas, smallResources, largeResources);
+        SoftAssertions.assertSoftly(checks -> {
+            checks.assertThat(largeCanvas).as("canvas, single node used %s statements", smallCanvas)
+                    .isLessThanOrEqualTo(smallCanvas + 2);
+            checks.assertThat(largeResources).as("resources, single identity used %s statements", smallResources)
+                    .isLessThanOrEqualTo(smallResources + 2);
+        });
+    }
+
+    @Test
+    void resourceListRestoresOrderedHistoricalReferencesOnTheCorrectVersion() {
+        UUID projectId = projectService
+                .create(owner.userId(), "Historical references", Project.AspectRatio.LANDSCAPE_16_9).id();
+        var first = createText(owner.userId(), projectId, "A").resourceDefaultVersion();
+        var second = createText(owner.userId(), projectId, "B").resourceDefaultVersion();
+        var source = createText(owner.userId(), projectId, "Source").resourceDefaultVersion();
+        // Older published content retains normalized input rows even when its current editor no longer writes them.
+        var refs = dev.agenvas.db.Tables.ARTIFACT_VERSION_REFERENCE;
+        db.insertInto(refs, refs.PROJECT_ID, refs.SOURCE_VERSION_ID, refs.TARGET_VERSION_ID,
+                refs.REFERENCE_ROLE, refs.REFERENCE_ORDER)
+                .values(projectId, source.id(), first.id(), "input", 1)
+                .values(projectId, source.id(), second.id(), "input", 0)
+                .execute();
+        var resources = artifactService.listProject(owner.userId(), projectId);
+        assertThat(resources).extracting(value -> value.artifact().id())
+                .containsExactly(first.artifactId(), second.artifactId(), source.artifactId());
+        assertThat(resources.getFirst().resourceDefaultVersion().inputReferences()).isEmpty();
+        assertThat(resources.getLast().resourceDefaultVersion().inputReferences())
+                .extracting(ref -> ref.versionId()).containsExactly(second.id(), first.id());
+    }
+
+    @Test
+    void batchedSelectionsRejectAnotherIdentityAndAnotherProject() {
+        UUID projectId = projectService.create(owner.userId(), "Scope", Project.AspectRatio.LANDSCAPE_16_9).id();
+        UUID otherProject = projectService.create(owner.userId(), "Other", Project.AspectRatio.LANDSCAPE_16_9).id();
+        var image = artifactService.create(owner.userId(), projectId, Artifact.Kind.IMAGE, "Empty", null);
+        var sameProjectText = createText(owner.userId(), projectId, "Sibling");
+        var otherProjectText = createText(owner.userId(), otherProject, "Other");
+        for (var unrelated : List.of(sameProjectText, otherProjectText)) {
+            var selection = new ArtifactService.Selection(image.artifact().id(),
+                    unrelated.resourceDefaultVersion().id());
+            assertThatThrownByCode("RESOURCE_NOT_FOUND",
+                    () -> artifactService.readSelections(owner.userId(), projectId, Set.of(selection)));
+        }
+        var foreignIdentity = new ArtifactService.Selection(otherProjectText.artifact().id(), null);
+        assertThatThrownByCode("RESOURCE_NOT_FOUND",
+                () -> artifactService.readSelections(owner.userId(), projectId, Set.of(foreignIdentity)));
+        assertThatThrownByCode("RESOURCE_NOT_FOUND", () -> artifactService.listProject(UUID.randomUUID(), projectId));
+    }
+
+    @Test
+    void concurrentRevisionChangesSnapshotWatermarkAndCanvasContentTogether() {
+        UUID projectId = projectService.create(owner.userId(), "Snapshot", Project.AspectRatio.LANDSCAPE_16_9).id();
+        var first = createText(owner.userId(), projectId, "First");
+        var identity = first.artifact();
+        canvasService.apply(owner.userId(), projectId, List.of(place(UUID.randomUUID(), identity.id(), "0", "0")));
+        var reader = new TransactionTemplate(transactions);
+        reader.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
+        var beforeCommit = reader.execute(status -> {
+            var before = snapshots.snapshot(owner.userId(), projectId);
+            CompletableFuture.runAsync(() -> artifactService.revise(owner.userId(), projectId,
+                    identity.id(), identity.version(), null, objectMapper.createObjectNode()
+                            .put("format", "PLAIN_TEXT").put("text", "Second")))
+                    .orTimeout(10, TimeUnit.SECONDS).join();
+            var during = snapshots.snapshot(owner.userId(), projectId);
+            assertThat(during.snapshotSeq()).isEqualTo(before.snapshotSeq());
+            assertThat(during.canvas().getFirst().artifact().resourceDefaultVersion().id())
+                    .isEqualTo(first.resourceDefaultVersion().id());
+            return during;
+        });
+        var after = snapshots.snapshot(owner.userId(), projectId);
+        assertThat(after.snapshotSeq()).isEqualTo(beforeCommit.snapshotSeq() + 1);
+        assertThat(after.canvas().getFirst().artifact().resourceDefaultVersion().content().path("text").asText())
+                .isEqualTo("Second");
+    }
+
+    private int countQueries(Runnable read) {
+        var config = db.configuration();
+        var original = config.executeListenerProviders();
+        var calls = new AtomicInteger();
+        var reader = Thread.currentThread();
+        try {
+            config.setAppending(new ExecuteListener() {
+                @Override
+                public void executeEnd(ExecuteContext ctx) {
+                    if (Thread.currentThread() == reader)
+                        calls.incrementAndGet();
+                }
+            });
+            read.run();
+            assertThat(calls.get()).isPositive();
+            return calls.get();
+        } finally {
+            config.set(original);
+        }
     }
 
     private ArtifactService.ArtifactView createText(UUID ownerId, UUID projectId, String text) {

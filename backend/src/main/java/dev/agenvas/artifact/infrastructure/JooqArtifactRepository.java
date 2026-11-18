@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import org.jooq.Condition;
 import org.jooq.DSLContext;
 import org.jooq.JSONB;
 import org.jooq.impl.DSL;
@@ -404,13 +405,43 @@ public class JooqArtifactRepository implements ArtifactRepository {
     /** 在项目所有者范围内按创建顺序列出稳定产物身份。 */
     @Override
     public List<Artifact> listProjectArtifacts(UUID ownerId, UUID projectId) {
+        return readArtifacts(ownerId, projectId, DSL.noCondition());
+    }
+
+    @Override
+    public List<Artifact> findArtifacts(UUID ownerId, UUID projectId, Set<UUID> ids) {
+        return readArtifacts(ownerId, projectId, ARTIFACT.ID.in(ids));
+    }
+
+    private List<Artifact> readArtifacts(UUID ownerId, UUID projectId, Condition filter) {
         return dsl.select(ARTIFACT.fields())
                 .from(ARTIFACT)
                 .join(PROJECT).on(PROJECT.ID.eq(ARTIFACT.PROJECT_ID))
                 .where(ARTIFACT.PROJECT_ID.eq(projectId))
                 .and(PROJECT.OWNER_ID.eq(ownerId))
+                .and(filter)
                 .orderBy(ARTIFACT.CREATED_AT, ARTIFACT.ID)
                 .fetch(row -> mapArtifact(row.into(ARTIFACT)));
+    }
+
+    @Override
+    public Map<UUID, ArtifactVersion> findVersions(UUID ownerId, UUID projectId, Set<UUID> ids) {
+        if (ids.isEmpty())
+            return Map.of();
+        var versions = dsl.select(ARTIFACT_VERSION.fields())
+                .from(ARTIFACT_VERSION)
+                .join(PROJECT).on(PROJECT.ID.eq(ARTIFACT_VERSION.PROJECT_ID))
+                .where(ARTIFACT_VERSION.PROJECT_ID.eq(projectId))
+                .and(PROJECT.OWNER_ID.eq(ownerId))
+                .and(ARTIFACT_VERSION.ID.in(ids))
+                .fetch(row -> mapBaseVersion(row.into(ARTIFACT_VERSION)));
+        var references = readReferences(projectId, ARTIFACT_VERSION_REFERENCE.SOURCE_VERSION_ID.in(ids)
+                .and(PROJECT.OWNER_ID.eq(ownerId)));
+        Map<UUID, ArtifactVersion> result = new LinkedHashMap<>();
+        for (var version : versions) {
+            result.put(version.id(), withReferences(version, references.getOrDefault(version.id(), List.of())));
+        }
+        return result;
     }
 
     /** One owner-scoped query exposes historical results without loading each project's canvas. */
@@ -496,8 +527,14 @@ public class JooqArtifactRepository implements ArtifactRepository {
 
     /** 加载来源版本的语义引用并按原顺序组装不可变版本对象。 */
     private ArtifactVersion withReferences(ArtifactVersion version) {
-        List<ArtifactVersion.InputReference> references = dsl
-                .select(ARTIFACT_VERSION_REFERENCE.TARGET_VERSION_ID,
+        var references = readReferences(version.projectId(),
+                ARTIFACT_VERSION_REFERENCE.SOURCE_VERSION_ID.eq(version.id()));
+        return withReferences(version, references.getOrDefault(version.id(), List.of()));
+    }
+
+    private Map<UUID, List<ArtifactVersion.InputReference>> readReferences(UUID projectId, Condition filter) {
+        return dsl
+                .select(ARTIFACT_VERSION_REFERENCE.SOURCE_VERSION_ID, ARTIFACT_VERSION_REFERENCE.TARGET_VERSION_ID,
                         ARTIFACT_VERSION_REFERENCE.REFERENCE_ROLE,
                         ARTIFACT_VERSION_REFERENCE.REFERENCE_ORDER,
                         ARTIFACT.KIND)
@@ -508,13 +545,17 @@ public class JooqArtifactRepository implements ArtifactRepository {
                                 ARTIFACT_VERSION_REFERENCE.PROJECT_ID)))
                 .join(ARTIFACT).on(ARTIFACT.ID.eq(ARTIFACT_VERSION.ARTIFACT_ID)
                         .and(ARTIFACT.PROJECT_ID.eq(ARTIFACT_VERSION.PROJECT_ID)))
-                .where(ARTIFACT_VERSION_REFERENCE.SOURCE_VERSION_ID.eq(version.id()))
+                .join(PROJECT).on(PROJECT.ID.eq(ARTIFACT_VERSION_REFERENCE.PROJECT_ID))
+                .where(ARTIFACT_VERSION_REFERENCE.PROJECT_ID.eq(projectId)).and(filter)
                 .orderBy(ARTIFACT_VERSION_REFERENCE.REFERENCE_ORDER)
-                .fetch(row -> new ArtifactVersion.InputReference(
-                        row.value1(),
+                .fetchGroups(row -> row.value1(), row -> new ArtifactVersion.InputReference(
                         row.value2(),
                         row.value3(),
-                        Artifact.Kind.valueOf(row.value4())));
+                        row.value4(),
+                        Artifact.Kind.valueOf(row.value5())));
+    }
+
+    private ArtifactVersion withReferences(ArtifactVersion version, List<ArtifactVersion.InputReference> references) {
         return new ArtifactVersion(
                 version.id(),
                 version.projectId(),

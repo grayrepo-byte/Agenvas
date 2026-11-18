@@ -175,6 +175,8 @@ class CanvasMediaVersionsPostgresIT {
         assertThat(sharedDefault.version()).isPositive();
         assertThat(sharedDefault.resourceDefaultVersionId()).isEqualTo(siblingVersion);
         assertThat(card(emptyNode).item().selectedVersionId()).isNull();
+        assertThat(card(emptyNode).selectedVersion()).isNull();
+        assertThat(card(emptyNode).artifact().resourceDefaultVersion().id()).isEqualTo(siblingVersion);
         assertThat(canvas.listMediaVersions(owner.userId(), project.id(), emptyNode)).isEmpty();
 
         Task accepted = run(emptyNode);
@@ -195,6 +197,10 @@ class CanvasMediaVersionsPostgresIT {
         assertThat(completed.output().path("selected").asBoolean()).isTrue();
         assertThat(card(emptyNode).item().selectedVersionId()).isNotNull();
         assertThat(card(sibling).item().selectedVersionId()).isEqualTo(siblingVersion);
+        var completedNode = card(emptyNode);
+        assertThat(completedNode.selectedVersion().id()).isEqualTo(completedNode.item().selectedVersionId())
+                .isNotEqualTo(siblingVersion);
+        assertThat(card(sibling).selectedVersion().id()).isEqualTo(siblingVersion);
     }
 
     @Test

@@ -87,6 +87,11 @@ public interface ArtifactRepository {
     /** 列出所有者授权项目的产物身份，供一致性清单构建使用。 */
     List<Artifact> listProjectArtifacts(UUID ownerId, UUID projectId);
 
+    List<Artifact> findArtifacts(UUID ownerId, UUID projectId, Set<UUID> ids);
+
+    /** Loads only requested immutable versions and their ordered input references. */
+    Map<UUID, ArtifactVersion> findVersions(UUID ownerId, UUID projectId, Set<UUID> ids);
+
     /** Browse immutable results; a project scope additionally includes nonblank text revisions. */
     List<ResourceResult> listResources(UUID ownerId, UUID projectId, Artifact.Kind kind, String query,
             Instant beforeCreatedAt, UUID beforeId, int limit);
