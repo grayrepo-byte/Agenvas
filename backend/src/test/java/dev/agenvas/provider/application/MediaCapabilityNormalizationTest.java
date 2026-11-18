@@ -66,7 +66,6 @@ class MediaCapabilityNormalizationTest {
 
     @Test
     void planningCatalogMarksDefaultsAndExposesOnlyPublishedInputsAndGenerationDefaults() {
-        var catalog = org.mockito.Mockito.spy(service);
         var binding = new MediaCapabilityBinding(CONNECTION_ID, 1, CAPABILITY_ID, 1, "MINIMAX_H3", "synthetic-hash");
         var settings = mapper.readTree("""
                 {"defaultParameters":{"videoResolution":"1440p"},"defaultDurationSeconds":7,
@@ -74,16 +73,10 @@ class MediaCapabilityNormalizationTest {
                  "pricing":{"amount":"2","currency":"CNY","unit":"SECOND"},
                  "origin":"PRIVATE_ORIGIN","apiKey":"PRIVATE_KEY","workflowGraph":"PRIVATE_GRAPH"}
                 """);
-        org.mockito.Mockito
-                .doReturn(List.of(new MediaCapabilityService.Candidate(binding, "My video connection", "My video model",
-                        Task.Kind.VIDEO_GENERATION, 4, 15, false, settings)))
-                .when(catalog).publishedCandidates();
-        org.mockito.Mockito.doReturn(null).when(catalog).defaultCapabilityId(any());
-        org.mockito.Mockito.doReturn(CAPABILITY_ID).when(catalog).defaultCapabilityId(Task.Kind.VIDEO_GENERATION);
-        org.mockito.Mockito.doReturn(new MediaAdapterRegistry(List.of()).declaration("MINIMAX_H3")).when(catalog)
-                .inputPolicy(binding);
-        org.mockito.Mockito.doReturn(null).when(catalog).runningHubDefinition(binding);
-        JsonNode result = catalog.planningCatalog();
+        when(repository.catalogPublications(false)).thenReturn(List.of(
+                new JooqMediaCapabilityRepository.CatalogPublication(binding, "My video connection", "My video model",
+                        mapper.createObjectNode().set("settings", settings).toString(), true)));
+        JsonNode result = service.planningCatalog();
         assertThat(result.size()).isEqualTo(1);
         assertThat(result.at("/0/isDefault").asBoolean()).isTrue();
         assertThat(result.at("/0/defaultParameters/videoResolution").asText()).isEqualTo("1440p");
@@ -94,25 +87,19 @@ class MediaCapabilityNormalizationTest {
 
     @Test
     void completePlanningCatalogKeepsEveryCapabilityWithStableDefaultFirstOrdering() {
-        var catalog = org.mockito.Mockito.spy(service);
         var candidates = java.util.stream.IntStream.rangeClosed(1, 41).mapToObj(index -> {
-            var binding = new MediaCapabilityBinding(CONNECTION_ID, 1, new UUID(0, index), 1, "MOCK_IMAGE",
+            var binding = new MediaCapabilityBinding(CONNECTION_ID, 1, new UUID(0, index), 1, ADAPTER,
                     "synthetic-hash");
-            return new MediaCapabilityService.Candidate(binding, "Synthetic connection", "Capability " + index,
-                    Task.Kind.IMAGE_GENERATION, 0, 0, false, mapper.createObjectNode());
+            return new JooqMediaCapabilityRepository.CatalogPublication(binding, "Synthetic connection",
+                    "Capability " + index, "{\"settings\":{}}", index == 41);
         }).toList();
-        org.mockito.Mockito.doReturn(candidates.reversed()).when(catalog).publishedCandidates();
-        org.mockito.Mockito.doReturn(null).when(catalog).defaultCapabilityId(any());
-        org.mockito.Mockito.doReturn(new UUID(0, 41)).when(catalog).defaultCapabilityId(Task.Kind.IMAGE_GENERATION);
-        org.mockito.Mockito.doReturn(new MediaAdapterRegistry(List.of()).declaration("MOCK_IMAGE"))
-                .when(catalog).inputPolicy(any(MediaCapabilityBinding.class));
-        org.mockito.Mockito.doReturn(null).when(catalog).runningHubDefinition(any(MediaCapabilityBinding.class));
-        JsonNode result = catalog.planningCatalog();
+        when(repository.catalogPublications(false)).thenReturn(candidates.reversed());
+        JsonNode result = service.planningCatalog();
         assertThat(result).hasSize(41);
         assertThat(result.get(0).path("isDefault").asBoolean()).isTrue();
         assertThat(result.get(1).path("capabilityId").asText()).isEqualTo(new UUID(0, 1).toString());
         assertThat(result.get(40).path("capabilityId").asText()).isEqualTo(new UUID(0, 40).toString());
-        assertThat(catalog.planningSummary()).hasSize(40);
+        assertThat(service.planningSummary()).hasSize(40);
     }
 
     @ParameterizedTest

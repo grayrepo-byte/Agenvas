@@ -19,6 +19,7 @@ import dev.agenvas.provider.infrastructure.SeedAudioClient;
 import dev.agenvas.provider.infrastructure.ArkSeedanceClient;
 import dev.agenvas.artifact.domain.ImageGenerationParameters;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Capability;
+import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.CatalogPublication;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Connection;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.ConnectionVersion;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapshot;
@@ -549,19 +550,13 @@ public class MediaCapabilityService {
             dev.agenvas.provider.domain.OpenAiImageOptions.normalize(source, settings);
     }
 
-    private MediaAdapterRegistry.Declaration declaration(String adapterId, JsonNode settings) {
+    private MediaAdapterRegistry.Declaration declaration(String adapterId, JsonNode settings, ObjectNode metadata) {
         var compiled = registry.declaration(adapterId);
         if (MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(adapterId))
             return dev.agenvas.provider.domain.OpenAiImageOptions.declaration(compiled, settings);
-        if (dev.agenvas.provider.domain.NativeMediaProfiles.supports(adapterId))
-            return dev.agenvas.provider.domain.NativeMediaProfiles.resolve(adapterId, settings).declaration();
-        if (dev.agenvas.provider.domain.KlingModels.adapter(adapterId))
-            return dev.agenvas.provider.domain.KlingModels
-                    .declaration(dev.agenvas.provider.domain.KlingModels.resolve(settings, compiled.kind()));
-        if (compiled.platform() == MediaPlatform.COMFYUI && ComfyUiWorkflowDefinition.configured(settings))
-            return ComfyUiWorkflowDefinition
-                    .parse(mapper, settings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY), compiled.kind())
-                    .declaration(compiled.kind());
+        var profile = profileDeclaration(adapterId, settings, metadata);
+        if (profile != null)
+            return profile;
         return AutoDlWorkflows.ADAPTER_ID.equals(adapterId)
                 ? AutoDlWorkflows.require(settings).declaration()
                 : compiled;
@@ -616,7 +611,7 @@ public class MediaCapabilityService {
 
     public MediaAdapterRegistry.Declaration inputPolicy(Snapshot snapshot) {
         JsonNode settings = mapper.readTree(snapshot.specJson()).path("settings");
-        var declaration = declaration(snapshot.adapterId(), settings);
+        var declaration = declaration(snapshot.adapterId(), settings, null);
         return MediaCapabilityConfiguration.policy(declaration, settings);
     }
 
@@ -691,7 +686,11 @@ public class MediaCapabilityService {
     }
 
     private JsonNode settings(Snapshot snapshot) {
-        JsonNode settings = mapper.readTree(snapshot.specJson()).path("settings");
+        return settings(snapshot.specJson());
+    }
+
+    private JsonNode settings(String specJson) {
+        JsonNode settings = mapper.readTree(specJson).path("settings");
         return settings.isMissingNode() ? mapper.createObjectNode() : settings;
     }
 
@@ -769,35 +768,33 @@ public class MediaCapabilityService {
     /** Candidate metadata is server-selected and contains no endpoint or credential. */
     public List<Candidate> candidates(Task.Kind kind, int durationSeconds) {
         Task.Kind mediaKind = requireMediaKind(kind);
-        return publishedSnapshots()
-                .filter(snapshot -> supports(snapshot, mediaKind, durationSeconds))
-                .map(snapshot -> candidate(snapshot, inputPolicy(snapshot))).toList();
+        return publicationsForCatalog().map(this::catalogEntry)
+                .filter(entry -> supports(entry.publication().binding().adapterId(),
+                        entry.policy(), mediaKind, durationSeconds))
+                .map(this::candidate).toList();
     }
 
     /** Safe published catalog for model planning; duration suitability is checked per step. */
     public List<Candidate> publishedCandidates() {
-        return publishedSnapshots().map(snapshot -> candidate(snapshot, inputPolicy(snapshot)))
-                .toList();
+        return publicationsForCatalog().map(this::catalogEntry).map(this::candidate).toList();
     }
 
     /** Complete safe catalog; callers bound the page sent to a model instead of hiding later capabilities. */
     public JsonNode planningCatalog() {
-        var defaults = java.util.Arrays.stream(new Task.Kind[]{Task.Kind.IMAGE_GENERATION,
-                Task.Kind.VIDEO_GENERATION, Task.Kind.AUDIO_GENERATION})
-                .map(this::defaultCapabilityId).filter(java.util.Objects::nonNull)
-                .collect(java.util.stream.Collectors.toSet());
         var result = mapper.createArrayNode();
         // Defaults lead every fresh traversal; the stable ID tie-breaker keeps page boundaries deterministic.
-        publishedCandidates().stream().sorted(java.util.Comparator.comparing(
-                (Candidate candidate) -> !defaults.contains(candidate.binding().capabilityId()))
-                .thenComparing(candidate -> candidate.binding().capabilityId().toString())).forEach(candidate -> {
+        publicationsForCatalog().sorted(java.util.Comparator.comparing(
+                (CatalogPublication row) -> !row.isDefault())
+                .thenComparing(row -> row.binding().capabilityId().toString())).map(this::catalogEntry)
+                .forEach(item -> {
+                    var candidate = candidate(item);
                     var entry = result.addObject().put("capabilityId", candidate.binding().capabilityId().toString())
                             .put("name", candidate.capabilityName()).put("connectionName", candidate.connectionName())
                             .put("kind", candidate.kind().name())
-                            .put("isDefault", defaults.contains(candidate.binding().capabilityId()))
+                            .put("isDefault", item.publication().isDefault())
                             .put("minimumSeconds", candidate.minimumSeconds())
                             .put("maximumSeconds", candidate.maximumSeconds());
-                    entry.set("inputPolicy", mapper.valueToTree(inputPolicy(candidate.binding())));
+                    entry.set("inputPolicy", mapper.valueToTree(item.policy()));
                     JsonNode settings = candidate.settings();
                     for (String key : List.of("defaultParameters", "defaultDurationSeconds", "videoResolution",
                             "videoResolutions", "pricing", "pricingByResolution", "outputFormat", "frameCount",
@@ -805,10 +802,11 @@ public class MediaCapabilityService {
                         if (settings.has(key))
                             entry.set(key, settings.get(key).deepCopy());
                     }
-                    var definition = runningHubDefinition(candidate.binding());
-                    if (definition != null)
+                    if (MediaAdapterRegistry.RUNNINGHUB_ADAPTERS.contains(candidate.binding().adapterId())) {
+                        var definition = RunningHubDefinition.parse(mapper, item.settings().path("runningHub"),
+                                item.policy().kind());
                         entry.set("fields", mapper.valueToTree(definition.fields()));
-                    else
+                    } else
                         for (String key : List.of("nativeInputs", "klingInputs",
                                 ComfyUiWorkflowDefinition.PUBLIC_INPUTS_KEY)) {
                             if (settings.has(key)) {
@@ -831,56 +829,77 @@ public class MediaCapabilityService {
         return result;
     }
 
-    private Stream<Snapshot> publishedSnapshots() {
-        return connections().stream().filter(Connection::enabled)
-                .flatMap(connection -> repository.capabilities(connection.id()).stream())
-                .filter(Capability::enabled)
-                .map(capability -> repository.snapshot(capability.id()).orElseThrow())
-                .filter(snapshot -> registry.declaration(snapshot.adapterId()).platform() != MediaPlatform.LOCAL);
+    private record CatalogEntry(CatalogPublication publication, ObjectNode settings,
+            MediaAdapterRegistry.Declaration policy) {
     }
 
-    private Candidate candidate(Snapshot snapshot, MediaAdapterRegistry.Declaration policy) {
-        return new Candidate(binding(snapshot), snapshot.connection().name(),
-                snapshot.capability().name(), policy.kind(), policy.minimumSeconds(),
-                policy.maximumSeconds(), false,
-                publicSettings(snapshot));
+    private Stream<CatalogPublication> publicationsForCatalog() {
+        return repository.catalogPublications(availablePlatform(MediaPlatform.MOCK)).stream()
+                .filter(row -> registry.declaration(row.binding().adapterId()).platform() != MediaPlatform.LOCAL);
     }
 
-    private JsonNode publicSettings(Snapshot snapshot) {
-        ObjectNode settings = (ObjectNode) administratorSettings(snapshot);
+    private CatalogEntry catalogEntry(CatalogPublication row) {
+        ObjectNode settings = (ObjectNode) settings(row.specJson());
+        var policy = MediaCapabilityConfiguration.policy(declaration(row.binding().adapterId(), settings, settings),
+                settings);
+        return new CatalogEntry(row, settings, policy);
+    }
+
+    private Candidate candidate(CatalogEntry entry) {
+        var row = entry.publication();
+        var policy = entry.policy();
+        ObjectNode settings = entry.settings().deepCopy();
         settings.remove(ComfyUiWorkflowDefinition.SETTINGS_KEY);
         if (settings.get("runningHub") instanceof ObjectNode runningHub) {
             runningHub.remove("importSource");
             runningHub.remove("nodeOptions");
         }
-        return settings;
+        return new Candidate(row.binding(), row.connectionName(), row.capabilityName(), policy.kind(),
+                policy.minimumSeconds(),
+                policy.maximumSeconds(), false, settings);
     }
 
     /** Derived read-only input metadata is regenerated, never accepted as an executable mapping. */
     public JsonNode administratorSettings(Snapshot snapshot) {
-        ObjectNode settings = (ObjectNode) settings(snapshot).deepCopy();
-        if (dev.agenvas.provider.domain.NativeMediaProfiles.supports(snapshot.adapterId())) {
-            var selected = dev.agenvas.provider.domain.NativeMediaProfiles.resolve(snapshot.adapterId(), settings);
-            settings.set("nativeInputs", mapper.valueToTree(selected.inputs()));
-            settings.set("nativeReusableSlots", mapper
-                    .valueToTree(selected.protocol().reusableSlots(selected.profile()).stream().sorted().toList()));
-            if (selected.profile().kind() == Task.Kind.VIDEO_GENERATION
-                    && settings.get("pricingByResolution") instanceof ObjectNode prices)
-                settings.set("pricingByResolution",
-                        MediaCapabilityConfiguration.canonicalNativeResolutionPrices(prices));
-        }
-        if (dev.agenvas.provider.domain.KlingModels.adapter(snapshot.adapterId())) {
-            var profile = dev.agenvas.provider.domain.KlingModels.resolve(settings,
-                    registry.declaration(snapshot.adapterId()).kind());
-            settings.set("klingInputs", mapper.valueToTree(dev.agenvas.provider.domain.KlingModels.inputs(profile)));
-        }
-        if (ComfyUiWorkflowDefinition.configured(settings)) {
-            var definition = ComfyUiWorkflowDefinition.parse(mapper,
-                    settings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY),
-                    registry.declaration(snapshot.adapterId()).kind());
-            settings.set(ComfyUiWorkflowDefinition.PUBLIC_INPUTS_KEY, mapper.valueToTree(definition.inputs()));
-        }
+        ObjectNode settings = (ObjectNode) settings(snapshot);
+        profileDeclaration(snapshot.adapterId(), settings, settings);
         return settings;
+    }
+
+    /** Use the same published profile for its admission limits and derived creator fields. */
+    private MediaAdapterRegistry.Declaration profileDeclaration(String adapterId, JsonNode settings,
+            ObjectNode metadata) {
+        if (dev.agenvas.provider.domain.NativeMediaProfiles.supports(adapterId)) {
+            var selected = dev.agenvas.provider.domain.NativeMediaProfiles.resolve(adapterId, settings);
+            if (metadata != null) {
+                metadata.set("nativeInputs", mapper.valueToTree(selected.inputs()));
+                metadata.set("nativeReusableSlots", mapper.valueToTree(
+                        selected.protocol().reusableSlots(selected.profile()).stream().sorted().toList()));
+                if (selected.profile().kind() == Task.Kind.VIDEO_GENERATION
+                        && settings.get("pricingByResolution") instanceof ObjectNode prices)
+                    metadata.set("pricingByResolution",
+                            MediaCapabilityConfiguration.canonicalNativeResolutionPrices(prices));
+            }
+            return selected.declaration();
+        }
+        if (dev.agenvas.provider.domain.KlingModels.adapter(adapterId)) {
+            var profile = dev.agenvas.provider.domain.KlingModels.resolve(settings,
+                    registry.declaration(adapterId).kind());
+            if (metadata != null)
+                metadata.set("klingInputs",
+                        mapper.valueToTree(dev.agenvas.provider.domain.KlingModels.inputs(profile)));
+            return dev.agenvas.provider.domain.KlingModels.declaration(profile);
+        }
+        if (ComfyUiWorkflowDefinition.configured(settings)
+                && registry.declaration(adapterId).platform() == MediaPlatform.COMFYUI) {
+            var kind = registry.declaration(adapterId).kind();
+            var definition = ComfyUiWorkflowDefinition.parse(mapper,
+                    settings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY), kind);
+            if (metadata != null)
+                metadata.set(ComfyUiWorkflowDefinition.PUBLIC_INPUTS_KEY, mapper.valueToTree(definition.inputs()));
+            return definition.declaration(kind);
+        }
+        return null;
     }
 
     /** Approval only accepts the exact still-published versions frozen in the step. */
@@ -913,10 +932,14 @@ public class MediaCapabilityService {
     }
 
     private boolean supports(Snapshot snapshot, Task.Kind kind, int durationSeconds) {
-        var policy = inputPolicy(snapshot);
-        if (MediaAdapterRegistry.RUNNINGHUB_ADAPTERS.contains(snapshot.adapterId())
-                || dev.agenvas.provider.domain.KlingModels.adapter(snapshot.adapterId())
-                || dev.agenvas.provider.domain.NativeMediaProfiles.supports(snapshot.adapterId()))
+        return supports(snapshot.adapterId(), inputPolicy(snapshot), kind, durationSeconds);
+    }
+
+    private boolean supports(String adapterId, MediaAdapterRegistry.Declaration policy, Task.Kind kind,
+            int durationSeconds) {
+        if (MediaAdapterRegistry.RUNNINGHUB_ADAPTERS.contains(adapterId)
+                || dev.agenvas.provider.domain.KlingModels.adapter(adapterId)
+                || dev.agenvas.provider.domain.NativeMediaProfiles.supports(adapterId))
             return policy.kind() == kind;
         return policy.kind() == kind && (kind == Task.Kind.IMAGE_GENERATION
                 || durationSeconds >= policy.minimumSeconds()

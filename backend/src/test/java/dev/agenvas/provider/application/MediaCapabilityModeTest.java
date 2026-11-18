@@ -47,6 +47,7 @@ class MediaCapabilityModeTest {
         Snapshot local = snapshot(MediaPlatform.LOCAL, id);
         stub(local);
         when(repository.connections()).thenReturn(List.of(local.connection()));
+        when(repository.catalogPublications(true)).thenReturn(List.of(publication(local)));
         when(repository.defaultCapabilityId(Task.Kind.IMAGE_GENERATION.name())).thenReturn(local.capability().id());
         assertThat(catalog.defaultCapabilityId(Task.Kind.IMAGE_GENERATION)).isNull();
         assertThatThrownBy(() -> catalog.defaultFor(Task.Kind.IMAGE_GENERATION))
@@ -89,6 +90,7 @@ class MediaCapabilityModeTest {
         stub(mockImage);
         stub(realImage);
         when(repository.connections()).thenReturn(List.of(mockImage.connection(), realImage.connection()));
+        when(repository.catalogPublications(false)).thenReturn(List.of(publication(realImage)));
 
         assertThat(configured.connections()).containsExactly(realImage.connection());
         assertThat(configured.capabilities(mockImage.connection().id())).isEmpty();
@@ -153,6 +155,7 @@ class MediaCapabilityModeTest {
         Snapshot snapshot = snapshot(MediaPlatform.MOCK, "MOCK_IMAGE");
         stub(snapshot);
         when(repository.connections()).thenReturn(List.of(snapshot.connection()));
+        when(repository.catalogPublications(true)).thenReturn(List.of(publication(snapshot)));
         when(repository.defaultCapabilityId(Task.Kind.IMAGE_GENERATION.name()))
                 .thenReturn(snapshot.capability().id());
         for (var mode : List.of(ProviderModeProperties.Mode.MOCK)) {
@@ -209,6 +212,11 @@ class MediaCapabilityModeTest {
         var capability = new Capability(UUID.randomUUID(), connection.id(), "Synthetic capability", true, 0, 1, false);
         var version = new ConnectionVersion(connection.id(), 1, null, null, null, null, null, null);
         return new Snapshot(connection, capability, version, adapterId, "synthetic-mapping", "{\"settings\":{}}");
+    }
+
+    private JooqMediaCapabilityRepository.CatalogPublication publication(Snapshot snapshot) {
+        return new JooqMediaCapabilityRepository.CatalogPublication(binding(snapshot), snapshot.connection().name(),
+                snapshot.capability().name(), snapshot.specJson(), false);
     }
 
     private void stub(Snapshot snapshot) {

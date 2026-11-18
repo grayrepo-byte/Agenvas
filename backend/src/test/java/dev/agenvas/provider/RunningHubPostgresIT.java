@@ -900,6 +900,10 @@ class RunningHubPostgresIT {
             catalog.updateCapability(original.connection().id(), fixture.capability, original.capability().version(),
                     "Saved import", true, "RUNNINGHUB_IMAGE", settings);
             var updated = catalog.capabilitySnapshot(fixture.capability);
+            var planned = catalog.planningCatalog().valueStream().filter(entry -> fixture.capability.toString()
+                    .equals(entry.path("capabilityId").asText())).findFirst().orElseThrow();
+            assertThat(planned.at("/fields/0/key").asText()).isEqualTo("strength");
+            assertThat(planned.toString()).doesNotContain("importSource", "private-import-literal", "SyntheticInput");
             assertThat(catalog.administratorSettings(updated).path("runningHub").path("importSource"))
                     .isEqualTo(source);
             assertThat(catalog.administratorSettings(updated).path("runningHub").path("fields").get(0).path("group")

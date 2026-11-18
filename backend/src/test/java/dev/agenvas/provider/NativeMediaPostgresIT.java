@@ -218,8 +218,15 @@ class NativeMediaPostgresIT {
                 .isEqualTo(4);
         worker.submitOnce("native-google-submit");
         var connection = catalog.getConnection(f.connection());
-        catalog.updateConnection(connection.id(), connection.version(), connection.name(), true, null,
+        var updated = catalog.updateConnection(connection.id(), connection.version(), connection.name(), true, null,
                 "new-synthetic-key");
+        assertThat(catalog.publishedCandidates())
+                .filteredOn(candidate -> candidate.binding().connectionId().equals(connection.id()))
+                .singleElement().satisfies(candidate -> {
+                    assertThat(candidate.binding().connectionVersion()).isEqualTo(updated.currentVersion())
+                            .isGreaterThan(connection.currentVersion());
+                    assertThat(candidate.settings().path("nativeInputs")).isNotEmpty();
+                });
         due(accepted.id());
         worker.pollOnce("native-google-poll");
         assertThat(task(f, accepted.id()).status()).isEqualTo(Task.Status.SUCCEEDED);

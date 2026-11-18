@@ -1,5 +1,6 @@
 package dev.agenvas.llm.application;
 
+import static dev.agenvas.testing.QueryCounts.countQueries;
 import static dev.agenvas.testing.AgentFixture.configureDirector;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -23,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
+import org.jooq.DSLContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -105,6 +107,8 @@ class OnDemandAgentPostgresIT {
     ScriptedGateway gateway;
     @Autowired
     MediaCapabilityService capabilities;
+    @Autowired
+    DSLContext db;
     private AdminPrincipal owner;
     private Project project;
     private AgentRun run;
@@ -143,11 +147,21 @@ class OnDemandAgentPostgresIT {
     @Test
     void mediaDiscoveryPagesThroughEveryPublishedCapabilityBeyondForty() {
         var connection = capabilities.createConnection("Synthetic paged catalog", null);
+        var initialImage = capabilities.publishCapability(connection.id(), "Synthetic initial image", "MOCK_IMAGE");
+        int small = countQueries(db, capabilities::planningCatalog);
+        var second = capabilities.createConnection("Synthetic second catalog", null);
         for (int index = 0; index < 41; index++)
-            capabilities.publishCapability(connection.id(), "Synthetic image " + index, "MOCK_IMAGE");
+            capabilities.publishCapability((index % 2 == 0 ? connection : second).id(), "Synthetic image " + index,
+                    "MOCK_IMAGE");
+        int large = countQueries(db, capabilities::planningCatalog);
+        System.out.printf("Published catalog queries before and after 41 additional capabilities: %d -> %d%n", small,
+                large);
+        assertThat(large).as("catalog queries before and after adding 41 capabilities").isEqualTo(small);
+        capabilities.deleteCapability(connection.id(), initialImage.id(), initialImage.version());
         var expected = capabilities.publishedCandidates().stream()
                 .map(candidate -> candidate.binding().capabilityId().toString())
                 .collect(java.util.stream.Collectors.toSet());
+        assertThat(expected).hasSizeGreaterThanOrEqualTo(41).doesNotContain(initialImage.id().toString());
         var observed = new ArrayList<String>();
         java.util.function.Consumer<JsonNode> collect = result -> {
             assertThat(result.path("offset").asInt()).isEqualTo(observed.size());
