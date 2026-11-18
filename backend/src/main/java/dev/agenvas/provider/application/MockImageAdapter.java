@@ -2,7 +2,6 @@ package dev.agenvas.provider.application;
 
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaAdapter;
-import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.task.domain.Task;
 import java.util.UUID;
@@ -22,10 +21,6 @@ public class MockImageAdapter implements MediaAdapter {
         return "MOCK_IMAGE";
     }
 
-    @Override
-    public boolean supports(PortInput input) {
-        return input.kind() == Task.Kind.IMAGE_GENERATION;
-    }
 
     @Override
     public Submission submit(AttemptContext context) {

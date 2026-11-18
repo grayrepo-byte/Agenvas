@@ -630,7 +630,7 @@ public class MediaCapabilityService {
 
     /** New configuration drafts use one server-owned table, independent from historical absence. */
     public Map<String, HttpTimeouts> httpTimeoutDefaults() {
-        return MediaHttpTimeouts.defaults();
+        return registry.httpTimeoutDefaults();
     }
 
     public RunningHubDefinition runningHubDefinition(MediaCapabilityBinding binding) {

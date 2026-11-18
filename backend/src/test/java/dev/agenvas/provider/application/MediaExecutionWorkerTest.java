@@ -492,6 +492,7 @@ class MediaExecutionWorkerTest {
                     false, input, "frozen-input", null, polling ? "original-request" : null,
                     1, now, WORKER, now.plusSeconds(60), 2, 3, null, now, now, null);
             when(adapter.adapterId()).thenReturn(binding.adapterId());
+            when(adapter.declaration()).thenCallRealMethod();
             when(leases.open(any(), anyString())).thenReturn(mock(MediaLeaseHeartbeat.Scope.class));
             worker = new MediaExecutionWorker(tasks, catalog, new MediaAdapterRegistry(List.of(adapter)),
                     assets, mapper, callLogs, videoProcessor, leases);

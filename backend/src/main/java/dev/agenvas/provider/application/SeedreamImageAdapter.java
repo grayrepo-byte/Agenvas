@@ -6,7 +6,6 @@ import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaPayload;
 import dev.agenvas.provider.domain.NativeMediaFailure;
 import dev.agenvas.provider.domain.NativeMediaProfiles;
-import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.ProviderResultManifest;
 import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.provider.domain.SeedreamModels;
@@ -46,10 +45,6 @@ public class SeedreamImageAdapter implements MediaAdapter {
     @Override
     public String adapterId() {
         return SeedreamModels.ADAPTER_ID;
-    }
-    @Override
-    public boolean supports(PortInput input) {
-        return input.kind() == Task.Kind.IMAGE_GENERATION;
     }
 
     @Override

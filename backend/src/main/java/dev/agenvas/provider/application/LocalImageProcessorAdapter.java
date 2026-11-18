@@ -13,7 +13,6 @@ import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.MediaPayload;
-import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.task.domain.ImageResizeSpec;
@@ -59,10 +58,6 @@ public final class LocalImageProcessorAdapter implements MediaAdapter {
         return MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR;
     }
 
-    @Override
-    public boolean supports(PortInput input) {
-        return input.kind() == Task.Kind.IMAGE_GENERATION;
-    }
 
     @Override
     public String preflightFailure(AttemptContext context) {

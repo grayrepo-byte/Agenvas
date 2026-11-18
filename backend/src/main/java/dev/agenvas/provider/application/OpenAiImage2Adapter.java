@@ -12,7 +12,6 @@ import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
-import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapshot;
@@ -62,10 +61,6 @@ public class OpenAiImage2Adapter implements MediaAdapter {
         return "OPENAI_GPT_IMAGE_2";
     }
 
-    @Override
-    public boolean supports(PortInput input) {
-        return input.kind() == Task.Kind.IMAGE_GENERATION;
-    }
 
     @Override
     public String preflightFailure(AttemptContext context) {

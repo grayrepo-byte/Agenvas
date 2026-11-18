@@ -7,7 +7,6 @@ import dev.agenvas.asset.infrastructure.MediaToolRunner;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
-import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.application.TaskService;
@@ -49,10 +48,6 @@ public class LocalAudioTrimAdapter implements MediaAdapter {
     @Override
     public String adapterId() {
         return MediaAdapterRegistry.LOCAL_AUDIO_TRIMMER;
-    }
-    @Override
-    public boolean supports(PortInput input) {
-        return input.kind() == Task.Kind.AUDIO_GENERATION;
     }
     @Override
     public String preflightFailure(AttemptContext context) {

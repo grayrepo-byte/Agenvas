@@ -7,7 +7,6 @@ import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaPayload;
-import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.ProviderResultManifest;
 import dev.agenvas.provider.domain.ProviderFailure;
 import dev.agenvas.provider.domain.RunningHubDefinition;
@@ -70,10 +69,6 @@ public final class RunningHubAdapter implements MediaAdapter {
     @Override
     public String adapterId() {
         return id;
-    }
-    @Override
-    public boolean supports(PortInput input) {
-        return kind == input.kind();
     }
 
     @Override

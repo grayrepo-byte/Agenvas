@@ -6,7 +6,6 @@ import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.AutoDlWorkflows;
 import dev.agenvas.provider.domain.MediaAdapter;
-import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.provider.infrastructure.AutoDlClient;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
@@ -50,10 +49,6 @@ public final class AutoDlVideoAdapter implements MediaAdapter {
     @Override
     public String adapterId() {
         return AutoDlWorkflows.ADAPTER_ID;
-    }
-    @Override
-    public boolean supports(PortInput input) {
-        return input.kind() == Task.Kind.VIDEO_GENERATION;
     }
     @Override
     public String preflightFailure(AttemptContext context) {

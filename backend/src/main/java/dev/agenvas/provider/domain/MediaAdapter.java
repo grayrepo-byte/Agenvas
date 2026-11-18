@@ -3,7 +3,14 @@ package dev.agenvas.provider.domain;
 /** A compiled provider protocol. Implementations may not write business tables. */
 public interface MediaAdapter {
     String adapterId();
-    boolean supports(PortInput input);
+    /** Compiled extensions declare their contract here; built-ins retain their historical catalog values. */
+    default MediaAdapterRegistry.Declaration declaration() {
+        return BuiltinMediaAdapters.require(adapterId());
+    }
+    /** Defaults for newly published capabilities only; null preserves protocol-owned historical fallbacks. */
+    default dev.agenvas.shared.http.HttpTimeouts publicationHttpTimeouts() {
+        return MediaHttpTimeouts.defaults().get(adapterId());
+    }
     /** Validate pinned credentials and media before creating a billable submission checkpoint. */
     default String preflightFailure(AttemptContext context) {
         return null;

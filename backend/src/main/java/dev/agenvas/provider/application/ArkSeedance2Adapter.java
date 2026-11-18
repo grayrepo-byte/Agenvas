@@ -12,7 +12,6 @@ import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaHttpTimeouts;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaPayload;
-import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.provider.infrastructure.ArkSeedanceClient;
 import dev.agenvas.provider.infrastructure.ArkMediaDownloadPolicy;
@@ -79,11 +78,6 @@ public class ArkSeedance2Adapter implements MediaAdapter {
         return "ARK_SEEDANCE_2_I2V";
     }
 
-    @Override
-    public boolean supports(PortInput input) {
-        return input.kind() == Task.Kind.VIDEO_GENERATION
-                && input.durationSeconds() >= 4 && input.durationSeconds() <= 15;
-    }
 
     @Override
     public String preflightFailure(AttemptContext context) {

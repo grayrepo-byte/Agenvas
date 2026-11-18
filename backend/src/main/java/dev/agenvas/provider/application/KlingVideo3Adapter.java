@@ -4,7 +4,6 @@ import dev.agenvas.artifact.domain.VideoGenerationParameters;
 import dev.agenvas.asset.infrastructure.MediaToolRunner;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.KlingProtocol;
-import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
 import dev.agenvas.provider.infrastructure.KlingClient;
 import dev.agenvas.provider.infrastructure.KlingMediaDownloadPolicy;
@@ -34,11 +33,6 @@ public class KlingVideo3Adapter extends KlingAdapterSupport {
     @Override
     protected boolean video() {
         return true;
-    }
-    @Override
-    public boolean supports(PortInput input) {
-        return input.kind() == Task.Kind.VIDEO_GENERATION && input.durationSeconds() >= KlingProtocol.MINIMUM_SECONDS
-                && input.durationSeconds() <= KlingProtocol.MAXIMUM_SECONDS;
     }
 
     @Override
