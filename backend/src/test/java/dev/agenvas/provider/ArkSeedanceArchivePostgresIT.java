@@ -139,24 +139,13 @@ class ArkSeedanceArchivePostgresIT {
         assertThat(done.providerRequestId()).isEqualTo(TASK_ID);
         UUID completedVersionId = UUID.fromString(done.output()
                 .path("artifactVersionId").asText());
-        UUID assetId = UUID.fromString(artifacts.requireVersion(owner.userId(),
-                accepted.project().id(), accepted.card().artifact().id(), completedVersionId)
-                .content().path("assetId").asText());
         assertThat(artifacts.get(owner.userId(), accepted.project().id(),
                 accepted.card().artifact().id()).resourceDefaultVersion()).isNull();
         assertThat(canvas.list(owner.userId(), accepted.project().id()).stream()
                 .filter(entry -> entry.item().id().equals(accepted.canvasItemId()))
                 .findFirst().orElseThrow().item().selectedVersionId())
                 .isEqualTo(completedVersionId);
-        Path archived = assets.get(owner.userId(), accepted.project().id(), assetId).path();
-        var probe = mapper.readTree(mediaTools.ffprobe(List.of("-v", "error",
-                "-show_entries", "stream=codec_type:format=format_name,duration",
-                "-of", "json", archived.toString())));
-        assertThat(probe.path("streams"))
-                .extracting(stream -> stream.path("codec_type").asText())
-                .containsExactly("video", "audio", "audio");
-        assertThat(Files.readAllBytes(archived)).isEqualTo(VIDEO_BYTES);
-        assertThat(probe.path("format").path("duration").asDouble()).isBetween(3.0, 5.5);
+        assertArchivedProviderVideo(owner.userId(), accepted, completedVersionId);
         assertThat(jdbc.sql("select count(*) from project_event where project_id=:id")
                 .param("id", accepted.project().id()).query(Integer.class).single())
                 .isGreaterThan(0);
@@ -188,15 +177,35 @@ class ArkSeedanceArchivePostgresIT {
         Fixture retry = fixture(owner.userId(), "Retry original result download");
         Task retryTask = approve(owner.userId(), retry);
         assertThat(worker.submitOnce("ark-retry-submit")).isEqualTo(1);
+        assertThat(CREATES).hasValue(4);
         due(retryTask.id());
         assertThat(worker.pollOnce("ark-retry-poll-1")).isEqualTo(1);
         assertThat(tasks.get(owner.userId(), retry.project().id(), retryTask.id())
                 .status()).isEqualTo(Task.Status.WAITING_PROVIDER);
         due(retryTask.id());
         assertThat(worker.pollOnce("ark-retry-poll-2")).isEqualTo(1);
-        assertThat(tasks.get(owner.userId(), retry.project().id(), retryTask.id())
-                .status()).isEqualTo(Task.Status.SUCCEEDED);
+        Task retried = tasks.get(owner.userId(), retry.project().id(), retryTask.id());
+        assertThat(retried.status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(retried.providerRequestId()).isEqualTo(TASK_ID);
         assertThat(CREATES).hasValue(4);
+        assertArchivedProviderVideo(owner.userId(), retry,
+                UUID.fromString(retried.output().path("artifactVersionId").asText()));
+    }
+
+    private void assertArchivedProviderVideo(UUID ownerId, Fixture fixture, UUID versionId) throws Exception {
+        UUID projectId = fixture.project().id();
+        UUID assetId = UUID.fromString(artifacts.requireVersion(ownerId,
+                projectId, fixture.card().artifact().id(), versionId)
+                .content().path("assetId").asText());
+        Path archived = assets.get(ownerId, projectId, assetId).path();
+        var probe = mapper.readTree(mediaTools.ffprobe(List.of("-v", "error",
+                "-show_entries", "stream=codec_type:format=format_name,duration",
+                "-of", "json", archived.toString())));
+        assertThat(probe.path("streams"))
+                .extracting(stream -> stream.path("codec_type").asText())
+                .containsExactly("video", "audio", "audio");
+        assertThat(Files.readAllBytes(archived)).isEqualTo(VIDEO_BYTES);
+        assertThat(probe.path("format").path("duration").asDouble()).isBetween(3.0, 5.5);
     }
 
     /** 直连入口只需要一张真实归档图片当关键帧，不再经过规划、审批和关键帧选择。 */
