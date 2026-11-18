@@ -24,9 +24,13 @@ import java.util.concurrent.TimeUnit;
 import okhttp3.Dns;
 import org.springframework.stereotype.Component;
 
-/** Signed SMB2/3, pinned checked address, no DFS referrals, and non-overwriting final rename. */
+/** Signed SMB2/3, configured DNS, no DFS referrals, and non-overwriting final rename. */
 @Component
-public class SmbStorageClient implements RemoteStorageClient {
+public class SmbStorageClient implements ArchiveStorageBackend {
+    @Override
+    public java.util.Set<StorageProfile.Provider> providers() {
+        return java.util.Set.of(StorageProfile.Provider.SMB);
+    }
     private static final org.slf4j.Logger LOGGER = org.slf4j.LoggerFactory.getLogger(SmbStorageClient.class);
     private static final int COPY_BUFFER_BYTES = 64 * 1024;
     private final StorageSettingsService settings;

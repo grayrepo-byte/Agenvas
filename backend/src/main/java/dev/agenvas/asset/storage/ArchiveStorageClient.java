@@ -7,20 +7,23 @@ import org.springframework.stereotype.Component;
 /** Dispatches permanent archives without extending object-store signing to file protocols. */
 @Component
 public class ArchiveStorageClient implements RemoteStorageClient {
-    private final ObjectStorageClient objects;
-    private final SmbStorageClient smb;
-    private final WebDavStorageClient webdav;
-    public ArchiveStorageClient(ObjectStorageClient objects, SmbStorageClient smb, WebDavStorageClient webdav) {
-        this.objects = objects;
-        this.smb = smb;
-        this.webdav = webdav;
+    private final java.util.Map<StorageProfile.Provider, ArchiveStorageBackend> backends;
+    public ArchiveStorageClient(java.util.List<ArchiveStorageBackend> installed) {
+        var indexed = new java.util.EnumMap<StorageProfile.Provider, ArchiveStorageBackend>(StorageProfile.Provider.class);
+        for (var backend : java.util.List.copyOf(installed)) {
+            var providers = java.util.Set.copyOf(backend.providers());
+            if (providers.isEmpty()) throw new IllegalStateException("Archive backend declares no providers");
+            for (var provider : providers)
+                if (indexed.putIfAbsent(provider, backend) != null)
+                    throw new IllegalStateException("Duplicate archive backend for " + provider);
+        }
+        var missing = java.util.EnumSet.allOf(StorageProfile.Provider.class);
+        missing.removeAll(indexed.keySet());
+        if (!missing.isEmpty()) throw new IllegalStateException("Missing archive backends: " + missing);
+        backends = java.util.Map.copyOf(indexed);
     }
     private RemoteStorageClient client(StorageProfile profile) {
-        return switch (profile.provider()) {
-            case SMB -> smb;
-            case WEBDAV -> webdav;
-            case ALIYUN_OSS, TENCENT_COS, S3 -> objects;
-        };
+        return backends.get(java.util.Objects.requireNonNull(profile.provider(), "Storage provider"));
     }
     @Override
     public void put(StorageProfile p, String key, Path file, String mime, long size, String hash) {

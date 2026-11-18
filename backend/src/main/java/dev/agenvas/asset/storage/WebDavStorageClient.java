@@ -18,9 +18,13 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 import org.springframework.stereotype.Component;
 
-/** HTTPS Basic authentication, checked DNS, bounded reads and non-overwriting WebDAV publication. */
+/** HTTP(S) Basic authentication, configured DNS, bounded reads and non-overwriting WebDAV publication. */
 @Component
-public class WebDavStorageClient implements RemoteStorageClient {
+public class WebDavStorageClient implements ArchiveStorageBackend {
+    @Override
+    public java.util.Set<StorageProfile.Provider> providers() {
+        return java.util.Set.of(StorageProfile.Provider.WEBDAV);
+    }
     private static final org.slf4j.Logger LOGGER = org.slf4j.LoggerFactory.getLogger(WebDavStorageClient.class);
     private final StorageSettingsService settings;
     private final OkHttpClient client;

@@ -53,7 +53,7 @@ import tools.jackson.databind.ObjectMapper;
 /** Real PostgreSQL/FFmpeg and explicitly fake HTTP providers, using only synthetic media and credentials. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = {AgenvasApplication.class, SeedanceVideoReferencePostgresIT.Transport.class}, properties = {
+@SpringBootTest(classes = {AgenvasApplication.class, SeedanceVideoReferencePostgresIT.Transport.class}, properties = {"spring.main.allow-bean-definition-overriding=true",
         "agenvas.library.worker-enabled=false"})
 class SeedanceVideoReferencePostgresIT {
     @Container
@@ -125,7 +125,7 @@ class SeedanceVideoReferencePostgresIT {
         ArkSeedanceClient fakeArk(ObjectMapper mapper) {
             return new ArkSeedanceClient(mapper, URI.create("http://127.0.0.1:" + ARK.getAddress().getPort()));
         }
-        @Bean
+        @Bean(name = "objectStorageClient")
         @Primary
         ObjectStorageClient fakeObjects(StorageSettingsService settings, Clock clock) {
             var client = new OkHttpClient.Builder().followRedirects(false).retryOnConnectionFailure(false)
