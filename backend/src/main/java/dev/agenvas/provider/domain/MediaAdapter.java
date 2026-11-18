@@ -11,7 +11,8 @@ public interface MediaAdapter {
     default dev.agenvas.shared.http.HttpTimeouts publicationHttpTimeouts() {
         return MediaHttpTimeouts.defaults().get(adapterId());
     }
-    /** Validate pinned credentials and media before creating a billable submission checkpoint. */
+    /** Return a public, stable code (1–120 uppercase ASCII letters, digits or underscores, starting with a letter)
+     * or null before submission. Never return request data, provider messages or credentials. */
     default String preflightFailure(AttemptContext context) {
         return null;
     }

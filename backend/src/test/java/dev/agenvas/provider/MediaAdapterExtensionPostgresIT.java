@@ -105,6 +105,18 @@ class MediaAdapterExtensionPostgresIT {
                 mapper.createObjectNode());
         var draft = drafts.save(owner, project.id(), card, 0, "A synthetic tree", mapper.createObjectNode(), null,
                 capability.id(), null, List.of(), List.of(), null);
+        adapter.preflightFailure = "SYNTHETIC_RESOURCE_UNAVAILABLE";
+        var blocked = direct.run(owner, project.id(), artifact.id(), card, draft.version(), "synthetic-preflight");
+        assertThat(worker.submitOnce("extension-preflight")).isOne();
+        var outcome = tasks.get(owner, project.id(), blocked.id());
+        assertThat(outcome.status()).isEqualTo(Task.Status.BLOCKED);
+        assertThat(outcome.errorCode()).isEqualTo("SYNTHETIC_RESOURCE_UNAVAILABLE");
+        assertThat(adapter.submits).hasValue(0);
+        assertThat(jdbc.sql(
+                "select count(*) from usage_ledger where task_id=? and entry_type='RELEASE' and actual_cost is null")
+                .param(blocked.id()).query(Integer.class).single()).isOne();
+
+        adapter.preflightFailure = null;
         var task = direct.run(owner, project.id(), artifact.id(), card, draft.version(), "synthetic-request");
         assertThat(worker.submitOnce("extension-submit")).isEqualTo(1);
         assertThat(tasks.get(owner, project.id(), task.id()).status()).isEqualTo(Task.Status.WAITING_PROVIDER);
@@ -123,6 +135,10 @@ class MediaAdapterExtensionPostgresIT {
     static class SyntheticAdapter implements MediaAdapter {
         final AtomicInteger submits = new AtomicInteger(), polls = new AtomicInteger(), refreshes = new AtomicInteger(),
                 downloads = new AtomicInteger();
+        String preflightFailure;
+        public String preflightFailure(AttemptContext context) {
+            return preflightFailure;
+        }
         public String adapterId() {
             return "SYNTHETIC_IMAGE";
         }

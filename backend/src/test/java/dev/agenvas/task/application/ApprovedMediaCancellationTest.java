@@ -3,6 +3,7 @@ package dev.agenvas.task.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -113,15 +114,15 @@ class ApprovedMediaCancellationTest {
         Task running = task(Task.Status.RUNNING, false, null);
         Task blocked = task(Task.Status.BLOCKED, false, null);
         when(repository.ownerId(TASK)).thenReturn(Optional.of(OWNER));
-        when(repository.findById(TASK)).thenReturn(Optional.of(running), Optional.of(blocked));
-        when(repository.blockStaleInput(TASK, "worker", 1,
+        when(repository.findById(TASK)).thenReturn(Optional.of(blocked));
+        when(repository.finishMediaPreflight(TASK, "worker", 1,
                 ProviderFailureCodes.MEDIA_RELAY_PREPARATION_FAILED, NOW)).thenReturn(true);
 
         service.blockPreSubmission(running, "worker", ProviderFailureCodes.MEDIA_RELAY_PREPARATION_FAILED);
 
-        verify(repository).blockStaleInput(TASK, "worker", 1,
+        verify(repository).finishMediaPreflight(TASK, "worker", 1,
                 ProviderFailureCodes.MEDIA_RELAY_PREPARATION_FAILED, NOW);
-        verify(usage).releaseUnsubmittedMediaTask(OWNER, blocked);
+        verify(usage).releaseMediaPreflight(eq(OWNER), argThat(outcome -> outcome.task().equals(blocked)));
         verify(events).append(eq(OWNER), eq(PROJECT), any());
         verifyNoInteractions(runs);
     }

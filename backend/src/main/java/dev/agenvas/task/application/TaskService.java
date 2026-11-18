@@ -22,13 +22,12 @@ import dev.agenvas.provider.domain.ProviderFailure;
 import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.task.domain.ProviderAttempt;
 import dev.agenvas.shared.error.ApiProblemException;
-import dev.agenvas.shared.error.ProviderFailureCodes;
 import dev.agenvas.shared.lifecycle.ShutdownGate;
 import dev.agenvas.usage.application.UsageService;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
-import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -46,14 +45,8 @@ import tools.jackson.databind.node.ObjectNode;
 @Service
 public class TaskService {
 
+    private static final Pattern PREFLIGHT_CODE = Pattern.compile("[A-Z][A-Z0-9_]{0,119}");
     public static final String AGENT_STREAM_PROPERTY = "assistantStream";
-    private static final Set<String> PRE_SUBMISSION_BLOCKING_CODES = Set.of(
-            "TASK_INPUT_STALE", "TASK_PROJECT_ARCHIVED", "MEDIA_CAPABILITY_CHANGED",
-            "PROVIDER_UNSUPPORTED_CAPABILITY", "PROVIDER_UNSUPPORTED_INPUT", "MEDIA_CREDENTIAL_UNAVAILABLE",
-            "RUNNINGHUB_INPUT_UNAVAILABLE", "LOCAL_DEPTH_MODEL_UNAVAILABLE", "VIDEO_AUDIO_TRACK_MISSING",
-            "AUDIO_TRIM_INVALID", "AUDIO_TRIM_OUTPUT_TOO_LARGE", "SEEDANCE_VIDEO_REFERENCE_INVALID",
-            "MEDIA_RELAY_REQUIRED", ProviderFailureCodes.MEDIA_RELAY_PREPARATION_FAILED,
-            "MEDIA_RELAY_PUBLIC_ENDPOINT_REQUIRED");
     /** 公开回答投影允许 8 MiB 文本，配合模型响应预算；JSON 协议封装另由 LLM 模块校验。 */
     private static final int MAX_AGENT_STREAM_BYTES = 8 * 1024 * 1024;
     private static final long FIRST_STREAM_CHUNK = 0;
@@ -1112,27 +1105,18 @@ public class TaskService {
     /** 在保存外部提交检查点前阻断配置或输入无效的任务，避免形成无法核对的半提交。 */
     @Transactional
     public void blockPreSubmission(Task lease, String workerId, String errorCode) {
-        if (errorCode == null || !PRE_SUBMISSION_BLOCKING_CODES.contains(errorCode)) {
+        if (errorCode == null || !PREFLIGHT_CODE.matcher(errorCode).matches()) {
             throw validation(ApiMessage.of("api.task-service.unsupported-pre-commit-blocking-reason"));
         }
-        Instant now = clock.instant();
         UUID ownerId = tasks.ownerId(lease.id()).orElseThrow(this::notFound);
         events.recordChange(ownerId, lease.projectId(), () -> {
-            Task before = tasks.findById(lease.id()).orElseThrow(this::notFound);
-            if (before.cancelRequested()) {
-                if (!tasks.finishCanceled(lease, validateWorkerId(workerId), now)) {
-                    throw leaseLost();
-                }
-            } else if (!tasks.blockStaleInput(lease.id(), validateWorkerId(workerId),
-                    lease.leaseEpoch(), errorCode, now)) {
-                if (tasks.findById(lease.id()).filter(Task::cancelRequested).isEmpty()
-                        || !tasks.finishCanceled(lease, validateWorkerId(workerId), now)) {
-                    throw leaseLost();
-                }
+            if (!tasks.finishMediaPreflight(lease.id(), validateWorkerId(workerId), lease.leaseEpoch(), errorCode,
+                    clock.instant())) {
+                throw leaseLost();
             }
             Task updated = tasks.findById(lease.id()).orElseThrow(this::notFound);
             if (updated.runId() == null || updated.approvedMedia()) {
-                usage.releaseUnsubmittedMediaTask(ownerId, updated);
+                usage.releaseMediaPreflight(ownerId, new ConfirmedMediaPreflight(updated));
             }
             events.append(ownerId, lease.projectId(), taskEvent(updated, false));
             blockWaitingRunForMedia(ownerId, updated);

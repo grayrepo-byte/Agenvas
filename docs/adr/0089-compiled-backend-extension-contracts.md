@@ -38,6 +38,8 @@
 
 解析/分页适配器依赖 `ThirdPartyPromptFeed` 的有界文本下载接口，HTTP 实现拥有 URL 结构、传输上限和超时；多页解析器继续检查累计字节、条数和页数。`ThirdPartyPromptRegistry` 注册已编译格式并拒绝冲突。缺失格式在租约失败记录中明确为 `THIRD_PARTY_SOURCE_UNSUPPORTED_FORMAT`，不访问远端，不把本地安装缺失误报成网络故障。
 
+媒体适配器可返回自身定义的公开预检错误码。任务在一个条件更新中核对活动租约、RUNNING、空远端身份、空结果清单及不存在 ProviderAttempt，再按持久取消标志写入 BLOCKED 或 CANCELED。用量模块在同一事务中消费任务模块签发的结果；旧 BLOCKED 记录仍只认既有错误码。
+
 ## 保留的边界与代价
 
 - Agent 工具仍由明确组、冻结白名单和持久请求控制；副作用执行 switch 保留，不把 Bean 自动暴露给模型。
