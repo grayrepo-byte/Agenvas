@@ -126,20 +126,45 @@ class KlingPreparedMediaTest {
     }
 
     @Test
-    void enforcesOmniFpsButDoesNotInventTheSameMotionControlRestriction() throws Exception {
+    void keepsOmniAt24FpsAndAllowsMotionControlWithoutFps() throws Exception {
         var omni = KlingModels.resolve("kling-o1", "GENERATE", Task.Kind.VIDEO_GENERATION);
         var context = context(omni);
         var values = values(omni);
         var video = reference("videos", "VIDEO_REFERENCE", Asset.MediaKind.VIDEO, "video/mp4", new byte[128], 700, 700,
                 5000);
         values.put("feature_video", video.version().toString());
-        probe(5, 700, 700, "12/1");
+        probe(5, 700, 700, "24000/1001");
         assertThatThrownBy(() -> loader.load(context, omni, values, false)).isInstanceOf(ApiProblemException.class);
         var motion = KlingModels.resolve("kling-3.0", "MOTION_CONTROL", Task.Kind.VIDEO_GENERATION);
         var motionValues = values(motion).put("motion_video", video.version().toString());
         var image = reference("images", "REFERENCE", Asset.MediaKind.IMAGE, "image/png", png(300, 300), 300, 300, null);
         motionValues.put("image_1", image.version().toString());
+        probe(5, 700, 700, null);
         assertThat(loader.load(context, motion, motionValues, false)).containsKey("motion_video");
+    }
+
+    @Test
+    void rejectsMultipleVideoStreamsButIgnoresAudioStreamMeasurements() throws Exception {
+        var profile = KlingModels.resolve("kling-o1", "GENERATE", Task.Kind.VIDEO_GENERATION);
+        var context = context(profile);
+        var values = values(profile);
+        var video = reference("videos", "VIDEO_REFERENCE", Asset.MediaKind.VIDEO, "video/mp4", new byte[128], 700, 700,
+                5000);
+        values.put("feature_video", video.version().toString());
+        var probe = mapper.createObjectNode();
+        probe.putObject("format").put("format_name", "mov,mp4").put("duration", "5");
+        var streams = probe.putArray("streams");
+        streams.addObject().put("codec_type", "audio").put("avg_frame_rate", "0/0");
+        var measured = streams.addObject().put("codec_type", "video").put("width", 700).put("height", 700)
+                .put("avg_frame_rate", "24/1");
+        when(tools.ffprobe(anyList())).thenReturn(mapper.writeValueAsString(probe));
+        assertThat(loader.load(context, profile, values, false)).containsKey("feature_video");
+
+        streams.add(measured.deepCopy());
+        when(tools.ffprobe(anyList())).thenReturn(mapper.writeValueAsString(probe));
+        assertThatThrownBy(() -> loader.load(context, profile, values, true)).isInstanceOfSatisfying(
+                ApiProblemException.class, error -> assertThat(error.code()).isEqualTo("PROVIDER_UNSUPPORTED_INPUT"));
+        verify(relay, never()).signedVideo(any(), any(), any(), any());
     }
 
     @Test
@@ -193,8 +218,10 @@ class KlingPreparedMediaTest {
     private void probe(double duration, int width, int height, String fps) {
         var probe = mapper.createObjectNode();
         probe.putObject("format").put("format_name", "mov,mp4").put("duration", Double.toString(duration));
-        probe.putArray("streams").addObject().put("codec_type", "video").put("width", width).put("height", height)
-                .put("avg_frame_rate", fps);
+        var stream = probe.putArray("streams").addObject().put("codec_type", "video").put("width", width)
+                .put("height", height);
+        if (fps != null)
+            stream.put("avg_frame_rate", fps);
         when(tools.ffprobe(anyList())).thenReturn(mapper.writeValueAsString(probe));
     }
 
