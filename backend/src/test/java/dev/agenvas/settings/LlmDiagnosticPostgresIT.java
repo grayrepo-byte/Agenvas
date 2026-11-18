@@ -144,10 +144,28 @@ class LlmDiagnosticPostgresIT {
         var verified = diagnostics.diagnoseConnection(id, edited.version(), true);
         assertThat(verified.toolCallingVerified()).isTrue();
         assertThat(CALLS).hasValue(4);
+        assertThat(diagnostics.diagnoseConnection(id, verified.version(), true)).isEqualTo(verified);
+        assertThat(configs.connections().activeConnectionId()).isNull();
+        assertThat(CALLS).hasValue(4);
         var active = configs.activate(id, verified.version(), 0);
         assertThat(active.activeVersion()).isGreaterThan(verified.version());
         assertThat(configs.status().toolCallingVerified()).isTrue();
         assertThat(CALLS).hasValue(4);
+    }
+
+    @Test
+    void activeDiagnosisCannotVerifyTheActiveConfigurationAfterItIsReplacedDuringTheProbe() {
+        String endpoint = "http://127.0.0.1:" + SERVER.getAddress().getPort() + "/v1";
+        var previous = configs.replace(0, endpoint, "diagnostic-model", "synthetic-active-key", capacity());
+        NEXT_REQUEST.set(() -> configs.replace(previous.version(), endpoint, "replacement-model", null, null));
+
+        assertThatThrownBy(() -> diagnostics.diagnose(previous.version(), true))
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        problem -> assertThat(problem.code()).isEqualTo("PROVIDER_CONFIG_VERSION_CONFLICT"));
+        assertThat(CALLS).hasValue(2);
+        assertThat(configsRepository.findVersion(previous.version()).orElseThrow().toolCallingVerified()).isFalse();
+        assertThat(configs.status().version()).isGreaterThan(previous.version());
+        assertThat(configs.status().toolCallingVerified()).isFalse();
     }
 
     @Test

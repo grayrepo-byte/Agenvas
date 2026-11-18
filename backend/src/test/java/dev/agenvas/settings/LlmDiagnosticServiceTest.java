@@ -17,7 +17,11 @@ import dev.agenvas.shared.error.ApiProblemException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -40,12 +44,13 @@ class LlmDiagnosticServiceTest {
     private final ChatGateway gateway = mock(ChatGateway.class);
     private final LlmDiagnosticService service = new LlmDiagnosticService(configs, settings, factory, mapper, callLogs);
 
-    private void configure() {
+    private LlmProviderConfig configure() {
         var value = new LlmProviderConfig(UUID.randomUUID(), 1, "https://synthetic.invalid/v1", "probe-model",
                 new byte[0], new byte[0], 1, "masked", false, true, Instant.EPOCH);
-        when(configs.active()).thenReturn(java.util.Optional.of(value));
+        when(configs.active()).thenReturn(Optional.of(value));
         when(configs.markToolCallingVerified(1)).thenReturn(true);
         when(factory.open(value)).thenReturn(gateway);
+        return value;
     }
 
     @ParameterizedTest
@@ -170,6 +175,52 @@ class LlmDiagnosticServiceTest {
         assertLogOutcomes(CallLog.Status.FAILED);
         verify(gateway).call(any(), any(), any());
         verify(configs, never()).markToolCallingVerified(anyInt());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void bothEntrypointsShareTheGateAndReleaseItAfterAFailedProbe(boolean activeFirst) throws Exception {
+        var config = configure();
+        UUID id = UUID.randomUUID();
+        when(configs.findConnection(id)).thenReturn(Optional.of(
+                new LlmConnection(id, "Saved", 1, Instant.EPOCH, Instant.EPOCH)));
+        when(configs.findVersion(1)).thenReturn(Optional.of(config));
+        when(configs.markConnectionToolCallingVerified(id, 1)).thenReturn(true);
+        var status = mock(LlmProviderConfigService.ConnectionStatus.class);
+        when(status.version()).thenReturn(1);
+        when(settings.connection(id)).thenReturn(status);
+
+        Runnable active = () -> service.diagnose(1, true);
+        Runnable saved = () -> service.diagnoseConnection(id, 1, true);
+        Runnable first = activeFirst ? active : saved;
+        Runnable second = activeFirst ? saved : active;
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        when(gateway.call(any(), any(), any())).thenAnswer(invocation -> {
+            entered.countDown();
+            assertThat(release.await(5, TimeUnit.SECONDS)).isTrue();
+            return response(new AssistantMessage("No tool requested"));
+        });
+
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            var attempt = executor.submit(() -> assertThatThrownBy(first::run)
+                    .isInstanceOfSatisfying(ApiProblemException.class,
+                            problem -> assertThat(problem.code()).isEqualTo("PROVIDER_TOOL_PROTOCOL_UNVERIFIED")));
+            try {
+                assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+                assertThatThrownBy(second::run).isInstanceOfSatisfying(ApiProblemException.class,
+                        problem -> assertThat(problem.code()).isEqualTo("PROVIDER_DIAGNOSTIC_IN_PROGRESS"));
+                verify(gateway, times(1)).call(any(), any(), any());
+            } finally {
+                release.countDown();
+            }
+            attempt.get(5, TimeUnit.SECONDS);
+        }
+
+        answerProbe(false);
+        second.run();
+        verify(gateway, times(3)).call(any(), any(), any());
+        assertLogOutcomes(CallLog.Status.FAILED, CallLog.Status.SUCCEEDED, CallLog.Status.SUCCEEDED);
     }
 
     private void answerProbe(boolean extraText) {
