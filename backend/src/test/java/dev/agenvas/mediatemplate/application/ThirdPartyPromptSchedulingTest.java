@@ -17,7 +17,7 @@ class ThirdPartyPromptSchedulingTest {
     private final ThirdPartyPromptRepository repository = mock(ThirdPartyPromptRepository.class);
     private final ThirdPartyPromptSyncSettingsService settings = mock(ThirdPartyPromptSyncSettingsService.class);
     private ThirdPartyPromptService service(boolean deploymentEnabled) {
-        return spy(new ThirdPartyPromptService(repository, mock(ThirdPartyPromptHttpClient.class), List.of(),
+        return spy(new ThirdPartyPromptService(repository, mock(ThirdPartyPromptHttpClient.class), new ThirdPartyPromptRegistry(List.of()),
                 Clock.fixed(Instant.parse("2026-11-04T00:00:00Z"), ZoneOffset.UTC),
                 mock(PlatformTransactionManager.class), settings, deploymentEnabled, false));
     }

@@ -35,7 +35,7 @@ public class ImagePromptGalleryAdapter implements ThirdPartyPromptAdapter {
     }
     /** Follow explicit continuation metadata, keeping every request on the configured endpoint. */
     @Override
-    public List<ThirdPartyPrompt> fetch(ThirdPartyPromptSource source, ThirdPartyPromptHttpClient http) {
+    public List<ThirdPartyPrompt> fetch(ThirdPartyPromptSource source, dev.agenvas.mediatemplate.application.ThirdPartyPromptFeed http) {
         var prompts = new LinkedHashMap<String, ThirdPartyPrompt>();
         var visited = new HashSet<String>();
         var receivedIds = new HashSet<String>();
@@ -47,7 +47,7 @@ public class ImagePromptGalleryAdapter implements ThirdPartyPromptAdapter {
                 throw ThirdPartyPromptValidation.invalid();
             String body = http.feed(url);
             bytes += body.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
-            if (bytes > ThirdPartyPromptHttpClient.MAX_FEED_BYTES)
+            if (bytes > dev.agenvas.mediatemplate.application.ThirdPartyPromptFeed.MAX_FEED_BYTES)
                 throw ThirdPartyPromptValidation.invalid();
             var root = mapper.readTree(body);
             var batch = items(root);
