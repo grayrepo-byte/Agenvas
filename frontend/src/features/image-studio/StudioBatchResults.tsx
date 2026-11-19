@@ -1,6 +1,6 @@
-import { DownloadSimple, ImageSquare } from "@/shared/ui/icons";
+import { ArrowsOutSimple, ClockCounterClockwise, DownloadSimple, ImageSquare } from "@/shared/ui/icons";
 import type { CSSProperties } from "react";
-import { assetContentUrl } from "../../shared/api/client";
+import { assetContentUrl, assetThumbnailUrl } from "../../shared/api/client";
 import type { ImageStudioBatch, ImageStudioResult, ImageStudioTask } from "../../shared/api/imageStudio";
 import { t, type MessageKey } from "../../shared/i18n";
 import { Notice, StatusBadge } from "../../shared/ui/PagePrimitives";
@@ -48,47 +48,63 @@ function downloadFilename(index: number, contentType: string) {
 
 export type StudioPreview = { result: ImageStudioResult; projectId: string; index: number };
 
+/** All outputs are private, immutable asset versions, including native multi-output tasks. */
+export function studioGallery(batch: ImageStudioBatch, preferredVersion?: string) {
+  const results = batch.tasks.flatMap(task => task.results);
+  const result = results.find(item => item.artifactVersionId === preferredVersion) ?? results[0];
+  return { results, active: result && { result, projectId: batch.projectId, index: results.indexOf(result) + 1 } };
+}
+
 export function StudioBatchResults({
   batch,
+  gallery,
+  onChoose,
   onPreview,
+  onRestore,
+  locked,
 }: {
   batch: ImageStudioBatch;
+  gallery: ReturnType<typeof studioGallery>;
+  onChoose: (version: string) => void;
   onPreview: (preview: StudioPreview) => void;
+  onRestore: () => void;
+  locked: boolean;
 }) {
-  const slotCount = batch.tasks.reduce((count, task) => count + Math.max(1, task.results.length), 0);
-  let resultNumber = 0;
+  const { results, active } = gallery;
+  const status = batchStatus(batch);
+  const attention = batch.tasks.some(task => task.status !== "SUCCEEDED" || !task.results.length);
   return (
     <>
-      {batch.tasks.some(task => task.status === "UNKNOWN") ? (
-        <Notice tone="warning" title={t("imageStudio.status.unknown")}>
-          <p>{t("imageStudio.unknownHint")}</p>
-        </Notice>
-      ) : null}
-      {batch.tasks.some(task => task.errorCode === ARCHIVE_RETRY_CODE) ? (
-        <Notice title={t("imageStudio.archiveRetryTitle")}>
-          <p>{t("imageStudio.archiveRetryHint")}</p>
-        </Notice>
-      ) : null}
-      {batch.tasks.some(task => task.errorCode === ARCHIVE_MISSING_CODE) ? (
-        <Notice tone="warning" title={t("imageStudio.archiveMissingTitle")}>
-          <p>{t("imageStudio.archiveMissingHint")}</p>
-        </Notice>
-      ) : batch.tasks.some(task => task.status === "BLOCKED") ? (
-        <Notice tone="warning" title={t("imageStudio.status.blocked")}>
-          <p>{t("imageStudio.blockedHint")}</p>
-        </Notice>
-      ) : null}
-
-      <div className="image-studio-result-grid" data-single={slotCount === 1}>
-        {batch.tasks.map((task, taskIndex) => {
-          if (!task.results.length) {
-            return (
+      {attention ? (
+        <div className="image-studio-task-feedback" role="region" aria-label={t("imageStudio.results")}>
+          {status === "imageStudio.status.partial" ? <strong>{t(status)}</strong> : null}
+          {batch.tasks.some(task => task.status === "UNKNOWN") ? (
+            <Notice tone="warning" title={t("imageStudio.status.unknown")}>
+              <p>{t("imageStudio.unknownHint")}</p>
+            </Notice>
+          ) : null}
+          {batch.tasks.some(task => task.errorCode === ARCHIVE_RETRY_CODE) ? (
+            <Notice title={t("imageStudio.archiveRetryTitle")}>
+              <p>{t("imageStudio.archiveRetryHint")}</p>
+            </Notice>
+          ) : null}
+          {batch.tasks.some(task => task.errorCode === ARCHIVE_MISSING_CODE) ? (
+            <Notice tone="warning" title={t("imageStudio.archiveMissingTitle")}>
+              <p>{t("imageStudio.archiveMissingHint")}</p>
+            </Notice>
+          ) : batch.tasks.some(task => task.status === "BLOCKED") ? (
+            <Notice tone="warning" title={t("imageStudio.status.blocked")}>
+              <p>{t("imageStudio.blockedHint")}</p>
+            </Notice>
+          ) : null}
+          {batch.tasks.map((task, index) =>
+            task.status === "SUCCEEDED" && task.results.length ? null : (
               <article
-                className="image-studio-task-card"
                 key={task.id}
-                aria-label={t("imageStudio.taskLabel", { "0": taskIndex + 1 })}
+                className="image-studio-task"
+                aria-label={t("imageStudio.taskLabel", { "0": index + 1 })}
               >
-                <ImageSquare size={32} aria-hidden="true" />
+                <span>{t("imageStudio.taskLabel", { "0": index + 1 })}</span>
                 <StatusBadge
                   tone={
                     task.status === "FAILED"
@@ -100,51 +116,98 @@ export function StudioBatchResults({
                 >
                   {t(taskStatus(task))}
                 </StatusBadge>
-                {task.errorCode ? <p>{task.errorCode}</p> : null}
+                {task.errorCode ? <span>{task.errorCode}</span> : null}
               </article>
-            );
-          }
-          return task.results.map(result => {
-            const index = ++resultNumber;
-            return (
-              <div className="image-studio-result-cell" key={result.artifactVersionId}>
-                <article
-                  className="image-studio-result-card"
-                  style={{ "--studio-result-ratio": result.width / result.height } as CSSProperties}
+            ),
+          )}
+        </div>
+      ) : null}
+      <div
+        className="image-studio-hero"
+        style={
+          active
+            ? ({ "--studio-result-ratio": active.result.width / active.result.height } as CSSProperties)
+            : undefined
+        }
+      >
+        {active ? (
+          <Button
+            className="image-studio-image-button"
+            variant="ghost"
+            type="button"
+            data-version-id={active.result.artifactVersionId}
+            aria-label={t("imageStudio.previewImage", { "0": active.index })}
+            onClick={() => onPreview(active)}
+          >
+            <img
+              src={assetContentUrl(batch.projectId, active.result.assetId)}
+              width={active.result.width}
+              height={active.result.height}
+              alt={t("imageStudio.resultImage", { "0": active.index })}
+            />
+          </Button>
+        ) : (
+          <ImageSquare className="image-studio-awaiting-image" size={40} aria-hidden="true" />
+        )}
+      </div>
+      <div className="image-studio-result-tools">
+        {results.length > 0 ? (
+          <div className="image-studio-filmstrip" role="group" aria-label={t("imageStudio.variants")}>
+            {results.map((item, i) => (
+              <Button
+                key={item.artifactVersionId}
+                type="button"
+                variant="ghost"
+                className="image-studio-variant"
+                data-version-id={item.artifactVersionId}
+                aria-pressed={item.artifactVersionId === active?.result.artifactVersionId}
+                aria-label={t("imageStudio.chooseVariant", { "0": i + 1 })}
+                title={t("imageStudio.chooseVariant", { "0": i + 1 })}
+                onClick={() => onChoose(item.artifactVersionId)}
+              >
+                <img src={assetThumbnailUrl(batch.projectId, item.assetId)} alt="" />
+              </Button>
+            ))}
+          </div>
+        ) : null}
+        <div className="image-studio-result-actions">
+          <Button
+            className="image-studio-restore"
+            variant="ghost"
+            size="icon-sm"
+            type="button"
+            disabled={locked}
+            aria-label={t("imageStudio.restore")}
+            title={t("imageStudio.restore")}
+            onClick={onRestore}
+          >
+            <ClockCounterClockwise aria-hidden="true" />
+          </Button>
+          {active ? (
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t("imageStudio.expandImage")}
+                title={t("imageStudio.expandImage")}
+                onClick={() => onPreview(active)}
+              >
+                <ArrowsOutSimple aria-hidden="true" />
+              </Button>
+              <Button asChild variant="ghost" size="icon-sm">
+                <a
+                  href={assetContentUrl(batch.projectId, active.result.assetId)}
+                  download={downloadFilename(active.index, active.result.contentType)}
+                  title={t("imageStudio.downloadImage", { "0": active.index })}
+                  aria-label={t("imageStudio.downloadImage", { "0": active.index })}
                 >
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="image-studio-image-button"
-                    aria-label={t("imageStudio.previewImage", { "0": index })}
-                    onClick={() => onPreview({ result, projectId: batch.projectId, index })}
-                  >
-                    <img
-                      src={assetContentUrl(batch.projectId, result.assetId)}
-                      width={result.width}
-                      height={result.height}
-                      alt={t("imageStudio.resultImage", { "0": index })}
-                    />
-                  </Button>
-                  <footer>
-                    <span>
-                      {result.width} × {result.height}
-                    </span>
-                    <Button asChild variant="ghost" size="icon-sm">
-                      <a
-                        href={assetContentUrl(batch.projectId, result.assetId)}
-                        download={downloadFilename(index, result.contentType)}
-                        aria-label={t("imageStudio.downloadImage", { "0": index })}
-                      >
-                        <DownloadSimple aria-hidden="true" />
-                      </a>
-                    </Button>
-                  </footer>
-                </article>
-              </div>
-            );
-          });
-        })}
+                  <DownloadSimple aria-hidden="true" />
+                </a>
+              </Button>
+            </>
+          ) : null}
+        </div>
       </div>
     </>
   );

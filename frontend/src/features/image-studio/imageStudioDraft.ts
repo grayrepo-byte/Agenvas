@@ -11,6 +11,8 @@ export type StudioDraft = {
   parameters: ImageStudioParameters;
   references: StudioReference[];
   selectedBatchId: string | null;
+  selectedVersions: Record<string, string>;
+  awaitingHistory: string[];
   command: StudioCommand | null;
 };
 const emptyDraft = (): StudioDraft => ({
@@ -20,6 +22,8 @@ const emptyDraft = (): StudioDraft => ({
   parameters: {},
   references: [],
   selectedBatchId: null,
+  selectedVersions: {},
+  awaitingHistory: [],
   command: null,
 });
 const EMPTY_DRAFT = emptyDraft();

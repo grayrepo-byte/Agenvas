@@ -2,7 +2,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { Link, MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import { changeControl, clickControl } from "../../test/controls";
@@ -51,6 +51,14 @@ function showShell(path = "/projects") {
               </PageShell>
             }
           />
+          <Route
+            path="/image-studio"
+            element={
+              <PageShell title="生图工作台">
+                <Link to="/projects">返回项目</Link>
+              </PageShell>
+            }
+          />
           <Route path="/login" element={<h1>登录页</h1>} />
         </Routes>
       </MemoryRouter>
@@ -64,6 +72,20 @@ describe("PageShell", () => {
     useNavigationStore.setState({ collapsed: false });
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "创作者", role: "ADMIN" })),
+    );
+  });
+
+  it.each([false, true])("isolates Studio from the collapsed navigation preference %s", async collapsed => {
+    useNavigationStore.setState({ collapsed });
+    showShell();
+    await clickControl(await screen.findByRole("link", { name: "生图工作台" }));
+    await screen.findByRole("link", { name: "返回项目" });
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
+    expect(useNavigationStore.getState().collapsed).toBe(collapsed);
+    await clickControl(screen.getByRole("link", { name: "返回项目" }));
+    expect(await screen.findByRole("button", { name: collapsed ? "展开导航" : "收起导航" })).toHaveAttribute(
+      "aria-expanded",
+      String(!collapsed),
     );
   });
 

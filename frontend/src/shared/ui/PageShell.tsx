@@ -206,6 +206,20 @@ export function PageShell({
   // A failed background refresh must not unmount forms and discard their drafts.
   if (!session.data) return <main className="app-page app-page-loading">{sessionError}</main>;
 
+  if (isImageStudio) {
+    return (
+      <div className="app-page app-shell app-shell--image-studio">
+        <a className="app-skip-link" href="#page-content">
+          {t("ui.pageShell.skipToContent")}
+        </a>
+        <main className="app-page-main" id="page-content" tabIndex={-1}>
+          {session.isError ? sessionError : null}
+          {children}
+        </main>
+      </div>
+    );
+  }
+
   const activeItem = NAVIGATION.find(item => item.to === activePath);
   const PageIcon = activeItem?.icon ?? GearSix;
   const navigationItem = ({ to, label, icon: Icon }: (typeof NAVIGATION)[number]) => (
@@ -229,7 +243,6 @@ export function PageShell({
         collapsed && "app-shell--collapsed",
         isSettings && "app-shell--settings",
         isStudio && "app-shell--studio",
-        isImageStudio && "app-shell--image-studio",
       )}
     >
       <a className="app-skip-link" href="#page-content">
@@ -290,29 +303,25 @@ export function PageShell({
         </div>
       </aside>
       <main className="app-page-main" id="page-content" tabIndex={-1}>
-        {isImageStudio ? (
-          <h1 className="sr-only">{title}</h1>
-        ) : (
-          <header className="app-page-header">
-            {isStudio ? (
-              <div className="settings-page-heading">
-                <div className="settings-page-icon">
-                  <PageIcon size={27} weight="duotone" aria-hidden />
-                </div>
-                <div>
-                  <h1>{title}</h1>
-                  {description ? <p className="app-page-description">{description}</p> : null}
-                </div>
+        <header className="app-page-header">
+          {isStudio ? (
+            <div className="settings-page-heading">
+              <div className="settings-page-icon">
+                <PageIcon size={27} weight="duotone" aria-hidden />
               </div>
-            ) : (
               <div>
                 <h1>{title}</h1>
                 {description ? <p className="app-page-description">{description}</p> : null}
               </div>
-            )}
-            {actions ? <div className="ui-form-actions">{actions}</div> : null}
-          </header>
-        )}
+            </div>
+          ) : (
+            <div>
+              <h1>{title}</h1>
+              {description ? <p className="app-page-description">{description}</p> : null}
+            </div>
+          )}
+          {actions ? <div className="ui-form-actions">{actions}</div> : null}
+        </header>
         {session.isError ? sessionError : null}
         {signOut.error ? <Notice tone="danger">{t("ui.pageShell.signOutFailed")}</Notice> : null}
         <div className="app-page-content">{children}</div>

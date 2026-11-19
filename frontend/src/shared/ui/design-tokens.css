@@ -9,6 +9,11 @@
   --ui-video-output-background: #000;
   --ui-video-subtitle-foreground: #fff;
   --ui-video-subtitle-outline: #000;
+  /* Immersive still-image workspace surfaces. */
+  --ui-photo-backdrop: #0e1014;
+  --ui-photo-composer: #191c22;
+  --ui-photo-action: #64b4f4;
+  --ui-photo-rule: #ffffff16;
   --ui-bg: #11151c;
   --ui-surface: #1a202b;
   --ui-surface-raised: #222b38;

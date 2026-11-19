@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, expect, it, vi } from "vitest";
@@ -93,8 +93,8 @@ function show(path = "/image-studio") {
 it("opens from main navigation without reading or choosing a canvas", async () => {
   show();
   expect(await screen.findByRole("heading", { name: "生图工作台" })).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "生图工作台" })).toHaveAttribute("aria-current", "page");
-  expect(await screen.findByRole("textbox", { name: "提示词" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Agenvas 项目首页" })).toHaveAttribute("href", "/projects");
+  expect(await screen.findByRole("textbox", { name: "提示词" })).toHaveAttribute("rows", "3");
   expect(screen.getByRole("combobox", { name: "模型" })).toHaveTextContent(capability.name);
   expect(screen.queryByText("复杂度")).not.toBeInTheDocument();
   expect(screen.queryByRole("combobox", { name: "画布" })).not.toBeInTheDocument();
@@ -146,6 +146,8 @@ it("uploads an exact reference and submits the whole batch without any canvas id
   await waitFor(() => expect(screen.getByRole("button", { name: "生成图片" })).toBeEnabled());
   await user.click(screen.getByRole("button", { name: "生成图片" }));
   await screen.findByRole("link", { name: "下载图片 1" });
+  // A newly accepted batch is available before the separately paged history refetch catches up.
+  expect(screen.getByRole("button", { name: /新的提示词/ })).toHaveAttribute("aria-pressed", "true");
   expect(accepted).toHaveLength(1);
   expect(accepted[0]?.key).toMatch(/^[a-f0-9]{32}$/);
   expect(accepted[0]?.body).toEqual({
@@ -457,8 +459,8 @@ it.each(["/image-studio/", "/IMAGE-STUDIO"])(
     show(path);
     await screen.findByRole("heading", { name: "生图工作台" });
     expect(screen.getByRole("main").closest(".app-shell")).toHaveClass("app-shell--image-studio");
-    expect(screen.getByRole("link", { name: "生图工作台" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("heading", { name: "生图工作台" })).toHaveClass("sr-only");
+    expect(screen.getByRole("link", { name: "Agenvas 项目首页" })).toHaveAttribute("href", "/projects");
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
   },
 );
 
@@ -509,3 +511,128 @@ it.each([
     vi.unstubAllGlobals();
   }
 });
+
+it("keeps the active version after a reordered detail read and across history browsing", async () => {
+  const second = { ...result, assetId: "second", artifactVersionId: "version-2" };
+  const third = { ...result, assetId: "third", artifactVersionId: "version-3" };
+  const withResults = (results: (typeof result)[]) => ({
+    ...history,
+    tasks: [{ ...history.tasks[0], results }, history.tasks[1]],
+  });
+  const other = { ...history, id: "other", prompt: "另一批" };
+  let detail = withResults([result, second]);
+  let latestFirst = false;
+  let writes = 0;
+  server.use(
+    http.get("/api/v1/image-studio/batches", () =>
+      HttpResponse.json({
+        items: latestFirst ? [other, withResults([result, second])] : [withResults([result, second]), other],
+        nextCursor: null,
+      }),
+    ),
+    http.get("/api/v1/image-studio/batches/historic-batch", () => HttpResponse.json(detail)),
+    http.post("/api/v1/image-studio/batches", () => {
+      writes++;
+      return HttpResponse.json(history);
+    }),
+  );
+  show();
+  const user = userEvent.setup();
+  const select = () => screen.getByRole("button", { name: "选择变体 2" });
+  const hero = () => screen.getByRole("img", { name: /生成图片/ });
+  const historyItem = () => screen.getByRole("button", { name: /清晨的海边小屋/ });
+  const prompt = await screen.findByRole("textbox", { name: "提示词" });
+  await user.type(prompt, "未提交的新描述");
+  await user.click(select());
+  expect(select()).toHaveAttribute("aria-pressed", "true");
+  expect(hero()).toHaveAttribute("src", expect.stringContaining("/second/content"));
+  expect(historyItem().querySelector("img")).toHaveAttribute("src", expect.stringContaining("/second/thumbnail"));
+  latestFirst = true;
+  detail = withResults([third, result, second]);
+  await user.click(screen.getByRole("button", { name: "刷新工作台" }));
+  expect(await screen.findByRole("button", { name: "选择变体 3" })).toHaveAttribute("aria-pressed", "true");
+  expect(hero()).toHaveAttribute("src", expect.stringContaining("/second/content"));
+  expect(historyItem().querySelector("img")).toHaveAttribute("src", expect.stringContaining("/second/thumbnail"));
+  await user.click(screen.getByRole("button", { name: /另一批/ }));
+  await user.click(historyItem());
+  expect(screen.getByRole("button", { name: "选择变体 3" })).toHaveAttribute("aria-pressed", "true");
+  expect(prompt).toHaveValue("未提交的新描述");
+  expect(screen.getByText("PROVIDER_REJECTED")).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "回填参数" }));
+  expect(prompt).toHaveValue(history.prompt);
+  expect(writes).toBe(0);
+  // A corrected archive projection may no longer contain the chosen version.
+  detail = withResults([third]);
+  await user.click(screen.getByRole("button", { name: "刷新工作台" }));
+  await waitFor(() => expect(hero()).toHaveAttribute("src", expect.stringContaining("/third/content")));
+  expect(historyItem().querySelector("img")).toHaveAttribute("src", expect.stringContaining("/third/thumbnail"));
+});
+
+it("limits the workspace to the visible keyboard viewport while retaining the editable prompt", async () => {
+  const visible = Object.assign(new EventTarget(), { height: 844, scale: 1 });
+  vi.stubGlobal("visualViewport", visible);
+  try {
+    show();
+    const prompt = await screen.findByRole("textbox", { name: "提示词" });
+    const workspace = prompt.closest(".image-studio");
+    fireEvent.change(prompt, { target: { value: "尚在输入" } });
+    visible.height = 390;
+    act(() => visible.dispatchEvent(new Event("resize")));
+    expect(workspace).toHaveStyle({ maxHeight: "390px" });
+    expect(prompt).toHaveValue("尚在输入");
+    visible.height = 844;
+    act(() => visible.dispatchEvent(new Event("resize")));
+    expect(workspace).toHaveStyle({ maxHeight: "844px" });
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+it("keeps an accepted batch selectable and refreshing while browsing older terminal history", async () => {
+  let detailReads = 0;
+  let submissions = 0;
+  let listed = false;
+  const accepted = {
+    ...history,
+    id: "new-queued",
+    prompt: "刚受理的批次",
+    tasks: [{ id: "new-task", status: "READY", version: 1, results: [] }],
+  };
+  const finished = { ...accepted, tasks: [{ ...history.tasks[0], results: [{ ...result, assetId: "new-output" }] }] };
+  server.use(
+    http.get("/api/v1/image-studio/batches", () =>
+      HttpResponse.json({ items: listed ? [finished, history] : [history], nextCursor: null }),
+    ),
+    http.post("/api/v1/image-studio/batches", () => {
+      submissions++;
+      return HttpResponse.json(accepted);
+    }),
+    http.get("/api/v1/image-studio/batches/new-queued", () => {
+      detailReads++;
+      return HttpResponse.json(finished);
+    }),
+  );
+  show();
+  const user = userEvent.setup();
+  const prompt = await screen.findByRole("textbox", { name: "提示词" });
+  await user.type(prompt, accepted.prompt);
+  await user.click(screen.getByRole("button", { name: "生成图片" }));
+  expect(await screen.findByRole("button", { name: /刚受理的批次/ })).toHaveAttribute("aria-pressed", "true");
+  await user.click(screen.getByRole("button", { name: /清晨的海边小屋/ }));
+  const pendingRow = screen.getByRole("button", { name: /刚受理的批次/ });
+  expect(pendingRow).toHaveAttribute("aria-pressed", "false");
+  await waitFor(() => expect(pendingRow).toHaveTextContent("已完成"), { timeout: 4500 });
+  await user.click(pendingRow);
+  expect(screen.getByRole("link", { name: "下载图片 1" })).toHaveAttribute(
+    "href",
+    "/api/v1/projects/studio-scope/assets/new-output/content",
+  );
+  expect(prompt).toHaveValue(accepted.prompt);
+  expect(detailReads).toBeGreaterThan(0);
+  expect(submissions).toBe(1);
+  listed = true;
+  await waitFor(() => expect(useImageStudioDraftStore.getState().owners["studio-owner"]?.awaitingHistory).toEqual([]), {
+    timeout: 4500,
+  });
+  expect(screen.getAllByRole("button", { name: /刚受理的批次/ })).toHaveLength(1);
+}, 10000);
