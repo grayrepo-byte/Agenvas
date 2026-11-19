@@ -42,22 +42,17 @@ public class SeedanceVideoReferenceLoader {
             total += asset.durationMs();
             relay.preflight(asset, profile(context, video));
             var file = assets.get(context.ownerId(), context.lease().projectId(), asset.id());
-            var probe = mapper.readTree(mediaTools.ffprobe(List.of("-v", "error", "-show_entries",
-                    "stream=codec_type,codec_name,avg_frame_rate", "-of", "json", file.path().toString())));
+            var probe = VideoProbeMeasurements
+                    .read(mapper.readTree(mediaTools.ffprobe(List.of("-v", "error", "-show_entries",
+                            "stream=codec_type,codec_name,avg_frame_rate", "-of", "json", file.path().toString()))));
             boolean found = false;
-            for (var stream : probe.path("streams")) {
-                String type = stream.path("codec_type").asText();
-                String codec = stream.path("codec_name").asText();
+            for (var stream : probe.streams()) {
+                String type = stream.codecType();
+                String codec = stream.codecName();
                 if ("video".equals(type)) {
                     found = true;
-                    String[] rate = stream.path("avg_frame_rate").asText().split("/");
-                    double fps;
-                    try {
-                        fps = Double.parseDouble(rate[0]) / (rate.length == 2 ? Double.parseDouble(rate[1]) : 1);
-                    } catch (NumberFormatException invalid) {
-                        throw SeedanceVideoReferences.invalid();
-                    }
-                    if (!Set.of("h264", "hevc").contains(codec) || !Double.isFinite(fps)
+                    double fps = stream.averageFrameRate().orElseThrow(SeedanceVideoReferences::invalid);
+                    if (!Set.of("h264", "hevc").contains(codec)
                             || fps < SEEDANCE_MIN_VIDEO_FPS || fps > SEEDANCE_MAX_VIDEO_FPS)
                         throw SeedanceVideoReferences.invalid();
                 } else if ("audio".equals(type) && !Set.of("aac", "mp3").contains(codec))

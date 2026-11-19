@@ -1,6 +1,8 @@
 package dev.agenvas.skill.application;
 
 import dev.agenvas.artifact.domain.Artifact;
+import dev.agenvas.asset.application.MediaFile;
+import dev.agenvas.asset.application.PinnedSkillAsset;
 import dev.agenvas.asset.application.PrivateMediaArchive;
 import dev.agenvas.asset.application.SkillAssetArchiveService;
 import dev.agenvas.library.application.LibraryService;
@@ -263,7 +265,7 @@ public final class SkillService {
         tx.executeWithoutResult(status -> repository.saveBindings(owner, project, agent, bindings, clock.instant()));
     }
 
-    public LibraryService.MediaFile file(UUID owner, UUID skillId, UUID versionId, String alias, boolean thumbnail) {
+    public MediaFile file(UUID owner, UUID skillId, UUID versionId, String alias, boolean thumbnail) {
         var value = getBundle(owner, skillId, versionId);
         var asset = value.bundle().assets().stream().filter(item -> item.alias().equals(alias)).findFirst()
                 .orElseThrow(this::notFound);
@@ -315,12 +317,12 @@ public final class SkillService {
         return assets;
     }
 
-    private LibraryService.PinnedSkillAsset restorePin(SkillContent.PublishOperation operation,
+    private PinnedSkillAsset restorePin(SkillContent.PublishOperation operation,
             SkillContent.DraftAsset binding, ObjectNode progress) {
-        LibraryService.PinnedSkillAsset pinned;
+        PinnedSkillAsset pinned;
         var pins = progress.withObject("pins");
         if (pins.has(binding.alias()))
-            pinned = mapper.treeToValue(pins.get(binding.alias()), LibraryService.PinnedSkillAsset.class);
+            pinned = mapper.treeToValue(pins.get(binding.alias()), PinnedSkillAsset.class);
         else {
             pinned = tx.execute(status -> {
                 // Fence and lock the operation before creating its temporary hard link.
@@ -342,7 +344,7 @@ public final class SkillService {
     }
 
     private PrivateMediaArchive.Media restoreArchive(SkillContent.PublishOperation operation,
-            SkillContent.DraftAsset binding, LibraryService.PinnedSkillAsset pinned, ObjectNode progress) {
+            SkillContent.DraftAsset binding, PinnedSkillAsset pinned, ObjectNode progress) {
         var archived = progress.withObject("archived");
         if (archived.has(binding.alias()))
             return mapper.treeToValue(archived.get(binding.alias()), PrivateMediaArchive.Media.class);

@@ -134,12 +134,15 @@ class ArkSeedancePostgresIT {
         assertThat(waiting.status()).isEqualTo(Task.Status.WAITING_PROVIDER);
         assertThat(waiting.providerRequestId()).isEqualTo(TASK_ID);
         assertThat(CREATES).hasValue(1);
+        var rotated = catalog.updateConnection(connection.id(), connection.version(), connection.name(),
+                false, null, "fake-rotated-ark-key");
         jdbc.sql("update task set next_action_at=now() - interval '1 second' where id=:id")
                 .param("id", acceptedTask.id()).update();
         assertThat(worker.pollOnce("ark-poll-worker")).isEqualTo(1);
         assertThat(QUERIES).hasValue(1);
         assertThat(CREATES).hasValue(1);
 
+        catalog.updateConnection(rotated.id(), rotated.version(), rotated.name(), true, null, null);
         Fixture uncertain = fixture(owner.userId(), "Uncertain Seedance");
         Task uncertainTask = approve(owner.userId(), uncertain);
         DROP_NEXT_CREATE.set(true);
@@ -188,7 +191,7 @@ class ArkSeedancePostgresIT {
             HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.createContext("/api/v3/contents/generations/tasks", exchange -> {
                 assertThat(exchange.getRequestHeaders().getFirst("Authorization"))
-                        .isEqualTo("Bearer fake-ark-key");
+                        .isEqualTo(DROP_NEXT_CREATE.get() ? "Bearer fake-rotated-ark-key" : "Bearer fake-ark-key");
                 if (exchange.getRequestMethod().equals("POST")) {
                     var body = new ObjectMapper().readTree(exchange.getRequestBody().readAllBytes());
                     assertThat(body.path("model").asText())

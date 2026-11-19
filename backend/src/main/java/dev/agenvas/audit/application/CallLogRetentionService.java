@@ -13,10 +13,12 @@ public class CallLogRetentionService {
     public static final int BATCH_SIZE = 1000;
     public static final int MAX_BATCHES = 10;
     private final CallLogRepository repository;
+    private final CallLogRetentionBatchService batches;
     private final Clock clock;
 
-    public CallLogRetentionService(CallLogRepository repository, Clock clock) {
+    public CallLogRetentionService(CallLogRepository repository, CallLogRetentionBatchService batches, Clock clock) {
         this.repository = repository;
+        this.batches = batches;
         this.clock = clock;
     }
     public CallLogRetentionSettings settings() {
@@ -31,9 +33,13 @@ public class CallLogRetentionService {
                     ApiMessage.of("api.audit-retention.invalid-detail"), false);
         }
         return repository.updateRetentionSettings(days, expectedVersion)
-                .orElseThrow(() -> new ApiProblemException(HttpStatus.CONFLICT, "VERSION_CONFLICT",
-                        ApiMessage.of("api.audit-retention.conflict-title"),
-                        ApiMessage.of("api.audit-retention.conflict-detail"), false));
+                .orElseThrow(CallLogRetentionService::policyConflict);
+    }
+
+    static ApiProblemException policyConflict() {
+        return new ApiProblemException(HttpStatus.CONFLICT, "VERSION_CONFLICT",
+                ApiMessage.of("api.audit-retention.conflict-title"),
+                ApiMessage.of("api.audit-retention.conflict-detail"), false);
     }
 
     /** Only called by an explicit administrator request. Each batch is a separate short
@@ -48,7 +54,7 @@ public class CallLogRetentionService {
         }
         int total = 0;
         for (int batch = 0; batch < MAX_BATCHES; batch++) {
-            int deleted = repository.purgeExpired(clock.instant(), BATCH_SIZE, expectedVersion);
+            int deleted = batches.purgeExpired(clock.instant(), BATCH_SIZE, expectedVersion);
             total += deleted;
             if (deleted < BATCH_SIZE)
                 return new CallLogCleanupResult(total, false);

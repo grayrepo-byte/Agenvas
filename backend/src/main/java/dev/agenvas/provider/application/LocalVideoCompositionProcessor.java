@@ -11,8 +11,6 @@ import dev.agenvas.task.application.TaskService;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermissions;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -55,7 +53,6 @@ public class LocalVideoCompositionProcessor {
     }
 
     Submission submit(AttemptContext context) {
-        Path scratch = null;
         boolean acquired = false;
         try {
             long deadline = System.nanoTime() + limits.timeout().toNanos();
@@ -67,32 +64,34 @@ public class LocalVideoCompositionProcessor {
                     return new Submission.Rejected("LOCAL_VIDEO_COMPOSITION_TIMEOUT");
             }
             var sources = resolve(context);
-            scratch = Files.createTempDirectory(scratchRoot(), "agenvas-video-composition-",
-                    PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
-            var rendered = renderer.render(context.lease().input().path("videoComposition"), sources, scratch,
-                    () -> tasks.get(context.ownerId(), context.lease().projectId(), context.lease().id())
-                            .cancelRequested(),
-                    () -> {
-                        if (System.nanoTime() >= deadline)
-                            throw new MediaToolRunner.MediaToolException("Composition timed out", false, null);
-                        tasks.heartbeat(context.lease().id(), context.lease().leaseOwner(),
-                                context.lease().leaseEpoch());
-                    });
-            if (tasks.get(context.ownerId(), context.lease().projectId(), context.lease().id()).cancelRequested())
-                throw new CancellationException();
-            var asset = assets.archiveTaskVideo(context.ownerId(), context.lease().projectId(), context.lease().id(),
-                    () -> {
-                        try {
-                            return Files.newInputStream(rendered.path());
-                        } catch (IOException failure) {
-                            throw new IllegalStateException("Cannot read composition output", failure);
-                        }
-                    });
-            var content = MediaResult.content(mapper, context.lease(), asset.id(),
-                    context.lease().input().path("videoComposition").path("title").asText());
-            content.withObject("parameters").put("local", true).put("operation", "VIDEO_COMPOSITION")
-                    .set("videoComposition", rendered.schedule());
-            return new Submission.CompletedArtifact(content);
+            try (var workspace = PrivateMediaWorkspace.create(scratchRoot(), "agenvas-video-composition-")) {
+                Path scratch = workspace.path();
+                var rendered = renderer.render(context.lease().input().path("videoComposition"), sources, scratch,
+                        () -> tasks.get(context.ownerId(), context.lease().projectId(), context.lease().id())
+                                .cancelRequested(),
+                        () -> {
+                            if (System.nanoTime() >= deadline)
+                                throw new MediaToolRunner.MediaToolException("Composition timed out", false, null);
+                            tasks.heartbeat(context.lease().id(), context.lease().leaseOwner(),
+                                    context.lease().leaseEpoch());
+                        });
+                if (tasks.get(context.ownerId(), context.lease().projectId(), context.lease().id()).cancelRequested())
+                    throw new CancellationException();
+                var asset = assets.archiveTaskVideo(context.ownerId(), context.lease().projectId(),
+                        context.lease().id(),
+                        () -> {
+                            try {
+                                return Files.newInputStream(rendered.path());
+                            } catch (IOException failure) {
+                                throw new IllegalStateException("Cannot read composition output", failure);
+                            }
+                        });
+                var content = MediaResult.content(mapper, context.lease(), asset.id(),
+                        context.lease().input().path("videoComposition").path("title").asText());
+                content.withObject("parameters").put("local", true).put("operation", "VIDEO_COMPOSITION")
+                        .set("videoComposition", rendered.schedule());
+                return new Submission.CompletedArtifact(content);
+            }
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             return new Submission.Rejected("LOCAL_VIDEO_COMPOSITION_CANCELED");
@@ -109,15 +108,6 @@ public class LocalVideoCompositionProcessor {
         } catch (IOException | RuntimeException failure) {
             return new Submission.Rejected("LOCAL_VIDEO_COMPOSITION_FAILED");
         } finally {
-            if (scratch != null) {
-                try (var paths = Files.walk(scratch)) {
-                    for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
-                        Files.deleteIfExists(path);
-                } catch (IOException failure) {
-                    org.slf4j.LoggerFactory.getLogger(LocalVideoCompositionProcessor.class)
-                            .warn("Video composition scratch cleanup failed");
-                }
-            }
             if (acquired)
                 renders.release();
         }
@@ -130,12 +120,12 @@ public class LocalVideoCompositionProcessor {
         if (!previews.tryAcquire())
             throw previewProblem(org.springframework.http.HttpStatus.TOO_MANY_REQUESTS,
                     "VIDEO_PREVIEW_BUSY", "api.video-preview.busy");
-        Path scratch = null;
         try {
             var sources = resolve(owner, project, composition, mediaInput);
-            scratch = Files.createTempDirectory(scratchRoot(), "agenvas-video-preview-",
-                    PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
-            return renderer.preview(composition, sources, scratch);
+            try (var workspace = PrivateMediaWorkspace.create(scratchRoot(), "agenvas-video-preview-")) {
+                Path scratch = workspace.path();
+                return renderer.preview(composition, sources, scratch);
+            }
         } catch (VideoCompositionPlanner.DoesNotFit overflow) {
             throw previewProblem(org.springframework.http.HttpStatus.UNPROCESSABLE_CONTENT,
                     "VIDEO_COMPOSITION_AUDIO_OVERFLOW", "api.video-preview.overflow");
@@ -146,15 +136,6 @@ public class LocalVideoCompositionProcessor {
             throw previewProblem(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, "VIDEO_PREVIEW_FAILED",
                     "api.video-preview.failed");
         } finally {
-            if (scratch != null) {
-                try (var paths = Files.walk(scratch)) {
-                    for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
-                        Files.deleteIfExists(path);
-                } catch (IOException failure) {
-                    org.slf4j.LoggerFactory.getLogger(LocalVideoCompositionProcessor.class)
-                            .warn("Video preview scratch cleanup failed");
-                }
-            }
             previews.release();
         }
     }

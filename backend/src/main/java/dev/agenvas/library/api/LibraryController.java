@@ -1,6 +1,7 @@
 package dev.agenvas.library.api;
 
 import dev.agenvas.artifact.domain.Artifact;
+import dev.agenvas.asset.application.MediaFile;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.library.application.LibraryService;
 import dev.agenvas.library.domain.LibraryCommand;
@@ -115,7 +116,7 @@ public class LibraryController {
         return stream(library.file(principal.userId(), entryId, true));
     }
     private org.springframework.http.ResponseEntity<org.springframework.core.io.Resource> stream(
-            LibraryService.MediaFile file) {
+            MediaFile file) {
         var resource = new org.springframework.core.io.FileSystemResource(file.path()) {
             @Override
             public java.io.InputStream getInputStream() throws java.io.IOException {

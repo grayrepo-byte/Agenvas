@@ -10,7 +10,6 @@ import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.ComfyUiWorkflowDefinition;
 import dev.agenvas.provider.domain.MediaAdapter;
-import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.provider.infrastructure.ComfyUiClient;
 import dev.agenvas.provider.infrastructure.ComfyUiInputImage;
@@ -56,11 +55,6 @@ public class ComfyUiImageAdapter implements MediaAdapter {
     @Override
     public String adapterId() {
         return "COMFY_IMAGE_V1";
-    }
-
-    @Override
-    public boolean supports(PortInput input) {
-        return input.kind() == Task.Kind.IMAGE_GENERATION;
     }
 
     @Override

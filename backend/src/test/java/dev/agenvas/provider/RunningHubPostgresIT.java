@@ -211,7 +211,7 @@ class RunningHubPostgresIT {
                         .isEqualTo(Task.Status.WAITING_PROVIDER);
                 due(task.id());
                 new MediaExecutionWorker(tasks, catalog, adapters, assets, mapper, callLogs, videoProcessor,
-                        mediaLeases)
+                        mediaLeases, java.time.Clock.systemUTC())
                         .pollOnce("cloud-split-recovery");
                 var completed = tasks.get(owner, fixture.project.id(), task.id());
                 assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
@@ -265,7 +265,7 @@ class RunningHubPostgresIT {
                     fixture.capability, null, List.of(), List.of(), null);
             // A fresh worker has no in-memory result state, and must not re-query/re-submit or re-download the ready first asset.
             var restarted = new MediaExecutionWorker(tasks, catalog, adapters, assets, mapper, callLogs,
-                    videoProcessor, mediaLeases);
+                    videoProcessor, mediaLeases, java.time.Clock.systemUTC());
             due(task.id());
             restarted.pollOnce("rh-restarted");
             var completed = tasks.get(owner, fixture.project.id(), task.id());
@@ -351,7 +351,7 @@ class RunningHubPostgresIT {
             var first = assets.archiveTaskImage(owner, fixture.project.id(), archiveId,
                     () -> new ByteArrayInputStream(provider.imageBytes));
             var restarted = new MediaExecutionWorker(tasks, catalog, adapters, assets, mapper, callLogs,
-                    videoProcessor, mediaLeases);
+                    videoProcessor, mediaLeases, java.time.Clock.systemUTC());
             due(task.id());
             restarted.pollOnce("rh-zip-resumed");
             var completed = tasks.get(owner, fixture.project.id(), task.id());
@@ -454,7 +454,8 @@ class RunningHubPostgresIT {
             Task lease = tasks.claimBoundMediaPolls("rh-checkpoint-worker", 1).getFirst();
             var failure = new ProviderFailure(ProviderFailure.Stage.DOWNLOAD, ProviderFailure.Category.DOWNLOAD_EXPIRED,
                     403, null, null, null);
-            assertThat(tasks.recordProviderFailure(lease, "rh-checkpoint-worker", failure)).isTrue();
+            var publication = adapters.publicDiagnostic(MediaAdapterRegistry.RUNNINGHUB_IMAGE, failure).orElseThrow();
+            assertThat(tasks.recordProviderFailure(lease, "rh-checkpoint-worker", publication)).isTrue();
             var visible = tasks.get(owner, fixture.project.id(), task.id());
             assertThat(visible.output().path("providerFailure").path("httpStatus").asInt()).isEqualTo(403);
             assertThat(visible.errorCode()).isEqualTo(lease.errorCode());
@@ -476,7 +477,7 @@ class RunningHubPostgresIT {
                     () -> tasks.refreshProviderResultUrls(lease, "rh-checkpoint-worker", refreshed, changedHash))
                     .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
             jdbc.sql("update task set lease_epoch=lease_epoch+1 where id=:id").param("id", task.id()).update();
-            assertThat(tasks.recordProviderFailure(lease, "rh-checkpoint-worker", failure)).isFalse();
+            assertThat(tasks.recordProviderFailure(lease, "rh-checkpoint-worker", publication)).isFalse();
             assertThatThrownBy(
                     () -> tasks.refreshProviderResultUrls(lease, "rh-checkpoint-worker", refreshed, original))
                     .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
@@ -899,6 +900,10 @@ class RunningHubPostgresIT {
             catalog.updateCapability(original.connection().id(), fixture.capability, original.capability().version(),
                     "Saved import", true, "RUNNINGHUB_IMAGE", settings);
             var updated = catalog.capabilitySnapshot(fixture.capability);
+            var planned = catalog.planningCatalog().valueStream().filter(entry -> fixture.capability.toString()
+                    .equals(entry.path("capabilityId").asText())).findFirst().orElseThrow();
+            assertThat(planned.at("/fields/0/key").asText()).isEqualTo("strength");
+            assertThat(planned.toString()).doesNotContain("importSource", "private-import-literal", "SyntheticInput");
             assertThat(catalog.administratorSettings(updated).path("runningHub").path("importSource"))
                     .isEqualTo(source);
             assertThat(catalog.administratorSettings(updated).path("runningHub").path("fields").get(0).path("group")

@@ -12,6 +12,7 @@ import static dev.agenvas.db.Tables.MEDIA_PROVIDER_CONNECTION_VERSION;
 import dev.agenvas.db.tables.records.MediaCapabilityRecord;
 import dev.agenvas.db.tables.records.MediaProviderConnectionRecord;
 import dev.agenvas.provider.domain.MediaPlatform;
+import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -20,6 +21,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.jooq.DSLContext;
 import org.jooq.JSONB;
+import org.jooq.impl.DSL;
 import org.springframework.stereotype.Repository;
 
 /** Database catalog; published version rows are inserted once and never updated. */
@@ -255,6 +257,36 @@ public class JooqMediaCapabilityRepository {
                 .set(MEDIA_CAPABILITY_VERSION.SPEC_JSON, JSONB.valueOf(specJson))
                 .set(MEDIA_CAPABILITY_VERSION.CREATED_AT, atUtc(now))
                 .execute();
+    }
+
+    public record CatalogPublication(MediaCapabilityBinding binding, String connectionName, String capabilityName,
+            String specJson, boolean isDefault) {
+    }
+
+    /** Read current versions for discovery. Catalog assembly never needs credential or origin columns. */
+    public List<CatalogPublication> catalogPublications(boolean includeMock) {
+        var connection = MEDIA_PROVIDER_CONNECTION;
+        var connectionVersion = MEDIA_PROVIDER_CONNECTION_VERSION;
+        var capability = MEDIA_CAPABILITY;
+        var version = MEDIA_CAPABILITY_VERSION;
+        var isDefault = DSL.exists(DSL.selectOne().from(MEDIA_DEFAULT)
+                .where(MEDIA_DEFAULT.CAPABILITY_ID.eq(capability.ID)));
+        return dsl.select(connection.ID, connection.CURRENT_VERSION, capability.ID, capability.CURRENT_VERSION,
+                version.ADAPTER_ID, version.MAPPING_SHA256, connection.NAME, capability.NAME, version.SPEC_JSON,
+                isDefault)
+                .from(connection)
+                .join(connectionVersion).on(connectionVersion.CONNECTION_ID.eq(connection.ID)
+                        .and(connectionVersion.VERSION.eq(connection.CURRENT_VERSION)))
+                .join(capability).on(capability.CONNECTION_ID.eq(connection.ID))
+                .join(version).on(version.CAPABILITY_ID.eq(capability.ID)
+                        .and(version.VERSION.eq(capability.CURRENT_VERSION)))
+                .where(connection.ENABLED.isTrue().and(capability.ENABLED.isTrue()).and(capability.DELETED_AT.isNull()))
+                .and(includeMock ? DSL.noCondition() : connection.PLATFORM.ne(MediaPlatform.MOCK.name()))
+                .orderBy(connection.CREATED_AT, connection.ID, capability.CREATED_AT, capability.ID)
+                .fetch(row -> new CatalogPublication(
+                        new MediaCapabilityBinding(row.value1(), row.value2(), row.value3(),
+                                row.value4(), row.value5(), row.value6()),
+                        row.value7(), row.value8(), row.value9().data(), row.value10()));
     }
 
     /** 读取能力当前发布的连接、凭据与协议快照；连接和能力的行版本一并返回给调用方校验。 */

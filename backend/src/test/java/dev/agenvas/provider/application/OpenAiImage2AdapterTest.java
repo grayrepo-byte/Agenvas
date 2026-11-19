@@ -235,7 +235,8 @@ class OpenAiImage2AdapterTest {
             when(assets.get(owner, project, (UUID) pair[0]))
                     .thenReturn(new AssetService.AssetFile(asset, (Path) pair[1]));
         }
-        var adapter = new OpenAiImage2Adapter(catalog, cipher, artifacts, assets, mock(ProjectService.class), client,
+        var adapter = new OpenAiImage2Adapter(new PinnedMediaExecution(new PinnedMediaPublications(catalog), cipher),
+                artifacts, assets, mock(ProjectService.class), client,
                 mapper, relay);
         return new EditFixture(adapter, client, new AttemptContext(task, binding, owner, null, null), relay, assets,
                 artifacts, sourcePath, layerPath);
@@ -269,7 +270,8 @@ class OpenAiImage2AdapterTest {
         Task task = mock(Task.class);
         when(task.input()).thenReturn(input);
         var context = new AttemptContext(task, binding, UUID.randomUUID(), null, null);
-        var adapter = new OpenAiImage2Adapter(catalog, cipher, mock(ArtifactService.class), mock(AssetService.class),
+        var adapter = new OpenAiImage2Adapter(new PinnedMediaExecution(new PinnedMediaPublications(catalog), cipher),
+                mock(ArtifactService.class), mock(AssetService.class),
                 mock(ProjectService.class), client, mapper, mock(MediaRelayService.class));
         return new GenerationFixture(adapter, client, context);
     }
@@ -325,7 +327,8 @@ class OpenAiImage2AdapterTest {
                         ApiMessage.of("api.media-relay.unavailable"),
                         ApiMessage.of("api.media-relay.public-endpoint-required"), false);
         doThrow(failure).when(relay).preflightImage(profile);
-        var adapter = new OpenAiImage2Adapter(catalog, cipher, artifacts, assets,
+        var adapter = new OpenAiImage2Adapter(new PinnedMediaExecution(new PinnedMediaPublications(catalog), cipher),
+                artifacts, assets,
                 mock(ProjectService.class), client, mapper, relay);
 
         assertThat(adapter.preflightFailure(new AttemptContext(task, binding, owner, null, null))).isEqualTo(expected);

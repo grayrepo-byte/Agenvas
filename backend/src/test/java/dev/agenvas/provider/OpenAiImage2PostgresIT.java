@@ -87,8 +87,15 @@ class OpenAiImage2PostgresIT {
         SERVER.stop(0);
     }
 
-    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    @org.springframework.test.context.bean.override.convention.TestBean(methodName = "objectStorageStub")
     private dev.agenvas.asset.storage.ObjectStorageClient objectStorage;
+
+    static dev.agenvas.asset.storage.ObjectStorageClient objectStorageStub() {
+        var stub = org.mockito.Mockito.mock(dev.agenvas.asset.storage.ObjectStorageClient.class);
+        // Registration reads the declaration before test-method stubbing can run.
+        org.mockito.Mockito.when(stub.providers()).thenCallRealMethod();
+        return stub;
+    }
     @Autowired
     private dev.agenvas.asset.storage.StorageSettingsService storageSettings;
     @Autowired

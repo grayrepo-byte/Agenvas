@@ -96,7 +96,8 @@ class LocalVideoAudioRealMediaTest {
     }
 
     private LocalVideoProcessor processor() {
-        return new LocalVideoProcessor(artifacts, assets, tools, mock(LocalImageProcessorAdapter.class), tasks, mapper);
+        return new LocalVideoProcessor(artifacts, assets, tools, new LocalDepthInference(new LocalImageProperties("")),
+                tasks, mapper);
     }
 
     private AttemptContext context(Path source, int durationMs, String format, int trackIndex) {

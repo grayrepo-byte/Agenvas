@@ -63,7 +63,8 @@ class ArkSeedance2AdapterTest {
     private final Task task = mock(Task.class);
     private final AttemptContext context = new AttemptContext(task, binding, UUID.randomUUID(),
             "synthetic-request-key", REQUEST_ID);
-    private final ArkSeedance2Adapter adapter = new ArkSeedance2Adapter(catalog, cipher, null, null,
+    private final ArkSeedance2Adapter adapter = new ArkSeedance2Adapter(
+            new PinnedMediaExecution(new PinnedMediaPublications(catalog), cipher), null, null,
             null, client, downloads, mediaTools, mapper, audioReferences, videoReferences);
 
     ArkSeedance2AdapterTest() {
@@ -81,6 +82,29 @@ class ArkSeedance2AdapterTest {
                 .thenReturn(Optional.of(new JooqMediaCapabilityRepository.Snapshot(null, null, version,
                         binding.adapterId(), binding.mappingSha256(), null)));
         when(cipher.decryptMedia(eq(binding.connectionId()), eq(1), any())).thenReturn(KEY);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "OPENAI_GPT_IMAGE_2,synthetic-mapping-hash,1,1",
+            "ARK_SEEDANCE_2_I2V,unexpected-hash,1,1",
+            "ARK_SEEDANCE_2_I2V,synthetic-mapping-hash,2,1",
+            "ARK_SEEDANCE_2_I2V,synthetic-mapping-hash,1,2"
+    })
+    void rejectsMismatchedHistoryBeforeAccessingCredentials(String adapterId, String hash,
+            int connectionVersion, int capabilityVersion) {
+        var requested = new MediaCapabilityBinding(binding.connectionId(), connectionVersion,
+                binding.capabilityId(), capabilityVersion, adapterId, hash);
+        var attempt = new AttemptContext(task, requested, context.ownerId(), "synthetic-request-key", REQUEST_ID);
+
+        assertThat(adapter.preflightFailure(attempt)).isEqualTo("MEDIA_CREDENTIAL_UNAVAILABLE");
+        verifyNoMoreInteractions(cipher, client);
+    }
+
+    @Test
+    void privateExecutionConfigurationOmitsSettingsOriginAndCredentialFromDiagnostics() {
+        var configuration = new PinnedMediaExecution.Configuration("private-settings", "private-origin", KEY);
+        assertThat(configuration.toString()).doesNotContain("private-settings", "private-origin", KEY);
     }
 
     @TempDir
@@ -141,7 +165,8 @@ class ArkSeedance2AdapterTest {
         when(assets.get(context.ownerId(), projectId, assetId)).thenReturn(new AssetService.AssetFile(asset, image));
         when(audioReferences.load(context.ownerId(), task, false)).thenReturn(List.of());
         when(videoReferences.load(context)).thenReturn(List.of());
-        return new ArkSeedance2Adapter(catalog, cipher, artifacts, assets, projects,
+        return new ArkSeedance2Adapter(new PinnedMediaExecution(new PinnedMediaPublications(catalog), cipher),
+                artifacts, assets, projects,
                 client, downloads, mediaTools, mapper, audioReferences, videoReferences);
     }
 

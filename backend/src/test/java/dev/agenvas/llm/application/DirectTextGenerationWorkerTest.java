@@ -134,6 +134,22 @@ class DirectTextGenerationWorkerTest {
     }
 
     @Test
+    void imageDispatchUsesHydratedInputButCheckpointsOnlyTheFrozenMessages() {
+        input.put("schemaVersion", 3).put("purpose", Task.IMAGE_PROMPT_PURPOSE);
+        List<Message> frozen = List.of(new org.springframework.ai.chat.messages.UserMessage("Frozen image reference"));
+        List<Message> dispatch = List.of(new org.springframework.ai.chat.messages.UserMessage("Dispatch-only input"));
+        when(images.messages(lease)).thenReturn(frozen);
+        when(images.hydrate(lease, frozen)).thenReturn(dispatch);
+
+        worker.runOnce(WORKER);
+
+        verify(gateway).call(eq(dispatch), eq(List.of()), eq(java.util.Map.of()), eq(pinned));
+        ArgumentCaptor<JsonNode> checkpoint = ArgumentCaptor.forClass(JsonNode.class);
+        verify(tasks).checkpointTextResponse(eq(lease), eq(WORKER), checkpoint.capture());
+        assertThat(checkpoint.getValue().path("request")).isEqualTo(codec.request(frozen, List.of()));
+    }
+
+    @Test
     void oversizedFrozenInputFailsBeforeCallingTheModelOrWritingAnArtifact() {
         var budget = LlmRequestBudget.resolve(DirectorSettings.defaults(),
                 dev.agenvas.settings.application.LlmModelPolicy.manual(

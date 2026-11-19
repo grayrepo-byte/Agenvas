@@ -1,5 +1,6 @@
 # ADR 0046：SMB 与 WebDAV 远程归档
 
+> 地址/IP 准入限制已由 [ADR 0079](0079-remove-outbound-address-checks.md) 替代；HTTP(S) 和配置 DNS 以现行代码及该决定为准。以下地址检查说明仅保留历史背景。
 状态：接受。用户要求在本地和 OSS 等对象存储之外增加 SMB 与 WebDAV。沿用 ADR 0023 的固定归档位置和 ADR 0040 的连接管理规则。
 
 后台存储页增加 SMB、WebDAV 类型，并支持创建、编辑、默认切换、凭据轮换及未引用连接删除。SMB 地址为 `smb://host[:port]/share[/directory]`，默认端口 445；WebDAV 为现有目录的 HTTPS URL。用户名和密码分别复用 API 的 `accessKeyId`、`secretAccessKey` 写入字段及已有 AES-GCM 加密载荷，不新增明文用户名或密码列。SMB 域账户使用 `DOMAIN\username`。`region`、`bucket` 传空字符串，`pathStyle` 固定为 false；前端隐藏这些对象存储字段。切换协议须填写两项新凭据。

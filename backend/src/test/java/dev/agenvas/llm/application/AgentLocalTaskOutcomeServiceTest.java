@@ -112,6 +112,26 @@ class AgentLocalTaskOutcomeServiceTest {
     }
 
     @Test
+    void replayFiltersAdditionalResultsInBothModelViewsWithoutRewritingTheFrozenReceipt() {
+        when(task.status()).thenReturn(Task.Status.SUCCEEDED);
+        service.reconcileLocalTasks(owner, project, runId);
+        ObjectNode receipt = (ObjectNode) saved.get().result();
+        ObjectNode frozen = (ObjectNode) receipt.at("/localTaskOutcome/tasks/0");
+        frozen.putArray("additionalResults").addObject().put("artifactVersionId", version.toString())
+                .putNull("canvasItemId").put("rawJson", "PRIVATE_EXTRA");
+
+        JsonNode reply = service.finalToolResult(project, runId, 0, "call-local", receipt);
+
+        for (String path : List.of("/data/additionalResults/0", "/localTaskOutcome/tasks/0/additionalResults/0")) {
+            assertThat(reply.at(path).path("artifactVersionId").asText()).isEqualTo(version.toString());
+            assertThat(reply.at(path).path("canvasItemId").isNull()).isTrue();
+            assertThat(reply.at(path).has("selected")).isFalse();
+        }
+        assertThat(reply.toString()).doesNotContain("PRIVATE_EXTRA", "rawJson");
+        assertThat(frozen.at("/additionalResults/0/rawJson").asText()).isEqualTo("PRIVATE_EXTRA");
+    }
+
+    @Test
     void unknownLateSuccessCannotRewriteTheDeliveredReply() {
         when(task.status()).thenReturn(Task.Status.UNKNOWN);
         when(task.output()).thenReturn(null);

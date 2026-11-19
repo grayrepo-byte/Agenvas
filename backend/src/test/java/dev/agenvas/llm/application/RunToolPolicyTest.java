@@ -12,6 +12,17 @@ class RunToolPolicyTest {
     private final JsonMapper mapper = JsonMapper.builder().build();
     private final ToolRegistry registry = new ToolRegistry();
     @Test
+    void publishedToolOrderAndModelDefinitionsCoverTheSameProtocol() {
+        assertThat(RunToolPolicy.CURRENT).containsExactly("load_toolset", "read_project_summary", "read_selection",
+                "read_artifacts", "read_media_sample", "read_task_status", "create_text", "revise_artifact",
+                "arrange_items", "list_media_capabilities", "propose_media_generation", "read_skill_resource",
+                "read_skill", "read_skill_asset", "read_canvas", "manage_canvas_node", "update_media_draft",
+                "compose_video", "extract_audio", "trim_audio", "read_storyboard", "write_storyboard_shots");
+        var policy = policy();
+        policy.set("allowedTools", mapper.valueToTree(RunToolPolicy.CURRENT));
+        assertThat(names(policy)).containsExactlyInAnyOrderElementsOf(RunToolPolicy.CURRENT);
+    }
+    @Test
     void ordinaryReadToolsStayAvailableWithoutSkillResources() {
         assertThat(RunToolPolicy.current(false, false))
                 .contains("read_project_summary", "read_selection", "read_artifacts")

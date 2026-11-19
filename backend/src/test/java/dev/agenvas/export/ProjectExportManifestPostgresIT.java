@@ -1,5 +1,6 @@
 package dev.agenvas.export;
 
+import static dev.agenvas.testing.QueryCounts.countQueries;
 import static dev.agenvas.testing.AgentFixture.configureDirector;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -45,6 +46,7 @@ import java.util.List;
 import java.util.Base64;
 import java.util.UUID;
 import java.math.BigDecimal;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.YamlMapFactoryBean;
@@ -72,6 +74,11 @@ import tools.jackson.databind.node.ObjectNode;
         "agenvas.skill.worker-enabled=false"})
 class ProjectExportManifestPostgresIT {
 
+    @Autowired
+    private org.jooq.DSLContext db;
+    @Autowired
+    private dev.agenvas.export.application.ProjectExportManifestService manifests;
+
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
 
@@ -84,8 +91,7 @@ class ProjectExportManifestPostgresIT {
                 () -> Base64.getEncoder().encodeToString(new byte[32]));
     }
 
-    @Autowired
-    private IdentityService identities;
+    private static AdminPrincipal admin;
     @Autowired
     private ProjectService projects;
     @Autowired
@@ -123,10 +129,15 @@ class ProjectExportManifestPostgresIT {
     @Autowired
     private WebApplicationContext context;
 
+    @BeforeAll
+    static void createOwner(@Autowired IdentityService identities) {
+        admin = identities.setup("manifest-admin", "manifest-password-123");
+    }
+
     @Test
     void ownerDownloadsAllVersionsAndMediaMetadataWithoutConfigurationOrSignedLinks()
             throws Exception {
-        AdminPrincipal owner = identities.setup("manifest-admin", "manifest-password-123");
+        AdminPrincipal owner = admin;
         String actualKey = "manifest-private-provider-key-123";
         llmConfigs.replace(0, "http://127.0.0.1:18080/v1",
                 "manifest-private-model", actualKey);
@@ -263,6 +274,7 @@ class ProjectExportManifestPostgresIT {
         MockHttpSession session = new MockHttpSession(null,
                 "manifest-private-session-id-789");
         session.setAttribute("privateSessionMarker", "manifest-session-secret-456");
+        long snapshotSeq = projects.get(owner.userId(), project.id()).eventSeq();
         String json = mvc.perform(get(path).session(session)
                 .with(authentication(asUser(owner))))
                 .andExpect(status().isOk())
@@ -270,6 +282,7 @@ class ProjectExportManifestPostgresIT {
                         "attachment; filename=\"agenvas-project-" + project.id() + ".json\""))
                 .andReturn().getResponse().getContentAsString();
         JsonNode manifest = mapper.readTree(json);
+        assertThat(manifest.path("snapshotSeq").asLong()).isEqualTo(snapshotSeq);
         assertThat(manifest.path("schemaVersion").asInt()).isEqualTo(declaredManifestSchemaVersion());
         var exportedGroup = java.util.stream.StreamSupport.stream(manifest.path("canvasGroups").spliterator(), false)
                 .filter(group -> group.path("id").asText().equals(groupId.toString())).findFirst().orElseThrow();
@@ -308,6 +321,7 @@ class ProjectExportManifestPostgresIT {
                 .isEqualTo(versionHistory.get(0).path("id").asText());
         assertThat(manifest.path("canvasItems").size()).isEqualTo(2);
         JsonNode sourceCard = findById(manifest.path("canvasItems"), sourceItemId);
+        assertThat(sourceCard.path("mediaDraft").path("style").isNull()).isTrue();
         assertThat(sourceCard.path("mediaVersionIds").size()).isEqualTo(1);
         assertThat(sourceCard.path("mediaVersionIds").get(0).asText())
                 .isEqualTo(revisedImage.resourceDefaultVersion().id().toString());
@@ -375,6 +389,51 @@ class ProjectExportManifestPostgresIT {
         assertThat(directMedia.preflightApproved(owner.userId(), project.id(), video.artifact().id(),
                 targetItemId, draftVersion, changedSource).frozenInputHash())
                 .isNotEqualTo(changedStyle.frozenInputHash());
+    }
+
+    @Test
+    void exportingMoreBranchesWithSharedAndDisabledStylesHasBoundedQueryGrowth() {
+        UUID owner = admin.userId();
+        UUID style = styles.create("Pencil", "Synthetic", "Graphite", true).id();
+        var project = projects.create(owner, "Export growth", Project.AspectRatio.LANDSCAPE_16_9);
+        var artifact = artifacts.create(owner, project.id(), Artifact.Kind.IMAGE, "Shared", null);
+        var other = styles.create("Ink", "Synthetic", "Black ink", false);
+        UUID inputAsset = ImageAssetFixture.archive(assets, owner, project.id());
+        UUID inputVersion = artifacts.create(owner, project.id(), Artifact.Kind.IMAGE, "Input",
+                mediaContent(inputAsset, "Reference")).resourceDefaultVersion().id();
+        var sourceByCard = new java.util.HashMap<UUID, UUID>();
+        int small = 0;
+        for (int i = 0; i < 12; i++) {
+            UUID card = UUID.randomUUID();
+            canvas.apply(owner, project.id(), List.of(new CanvasService.PlaceArtifact(card, artifact.artifact().id(),
+                    BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("320"), new BigDecimal("240"), i, null, false)));
+            UUID selectedStyle = i == 11 ? other.id() : style;
+            var saved = mediaDrafts.save(owner, project.id(), card, 0, "Card " + i, mapper.createObjectNode(), null,
+                    null,
+                    null, List.of(new MediaDraftService.SaveMediaInput(inputVersion,
+                            MediaDraft.InputRole.REFERENCE, "#7C3AED")),
+                    List.of(), selectedStyle);
+            sourceByCard.put(card, saved.mediaInputs().getFirst().sources().getFirst().id());
+            if (i == 0)
+                small = countQueries(db,
+                        () -> assertThat(manifests.build(owner, project.id()).canvasItems()).hasSize(1));
+        }
+        int large = countQueries(db, () -> {
+            var cards = manifests.build(owner, project.id()).canvasItems();
+            assertThat(cards).hasSize(12);
+            for (var card : cards) {
+                assertThat(card.mediaDraft().prompt()).isEqualTo("Card " + card.zIndex());
+                assertThat(card.mediaDraft().style().id()).isEqualTo(card.zIndex() == 11 ? other.id() : style);
+                assertThat(card.mediaVersionIds()).isEmpty();
+                assertThat(card.mediaDraft().mediaInputs()).singleElement().satisfies(input -> {
+                    assertThat(input.versionId()).isEqualTo(inputVersion);
+                    assertThat(input.sources()).extracting(MediaDraft.InputSource::id)
+                            .containsExactly(sourceByCard.get(card.id()));
+                });
+            }
+        });
+        System.out.printf("Media card export queries (1 -> 12): %d -> %d%n", small, large);
+        assertThat(large).isLessThanOrEqualTo(small + 1);
     }
 
     /** OpenAPI owns the public version; feature tests exercise the exported content below. */

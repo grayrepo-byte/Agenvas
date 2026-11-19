@@ -7,7 +7,6 @@ import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaPayload;
-import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.ProviderResultManifest;
 import dev.agenvas.provider.domain.ProviderFailure;
 import dev.agenvas.provider.domain.RunningHubDefinition;
@@ -68,12 +67,25 @@ public final class RunningHubAdapter implements MediaAdapter {
         this.clock = clock;
     }
     @Override
+    public boolean permitsPublicDiagnostic(ProviderFailure failure) {
+        return true;
+    }
+
+    @Override
     public String adapterId() {
         return id;
     }
+
     @Override
-    public boolean supports(PortInput input) {
-        return kind == input.kind();
+    public PollFailure classifyPollFailure(RuntimeException failure) {
+        if (!(failure instanceof RunningHubClient.Failure upstream))
+            return MediaAdapter.super.classifyPollFailure(failure);
+        String permanent = switch (upstream.diagnostic().category()) {
+            case AUTHENTICATION, BALANCE, PARAMETER, GENERATION, DOWNLOAD_EXPIRED, PROTOCOL, MODERATION ->
+                upstream.code();
+            case RATE_LIMIT, UPLOAD, UNAVAILABLE -> null;
+        };
+        return new PollFailure(permanent, upstream.diagnostic(), failure instanceof RunningHubClient.DownloadExpired);
     }
 
     @Override

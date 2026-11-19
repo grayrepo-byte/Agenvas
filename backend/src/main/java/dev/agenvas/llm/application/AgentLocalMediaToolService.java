@@ -32,6 +32,8 @@ public class AgentLocalMediaToolService {
     private final VideoOperationService videoOperations;
     private final AudioTrimService trims;
     private final ObjectMapper mapper;
+    private final ToolArguments toolArguments = new ToolArguments(ToolArguments.UuidSyntax.CANONICAL,
+            AgentLocalMediaToolService::invalid);
 
     public AgentLocalMediaToolService(CanvasItemQueryService items, ArtifactService artifacts,
             VideoOperationService videoOperations, AudioTrimService trims, ObjectMapper mapper) {
@@ -44,8 +46,8 @@ public class AgentLocalMediaToolService {
 
     public JsonNode extract(TrustedToolContext context, AgentRun run, UUID operationId, String arguments) {
         ObjectNode input = parse(arguments, EXTRACT_FIELDS);
-        UUID versionId = uuid(input, "sourceVersionId");
-        long expected = integer(input, "expectedCanvasItemVersion", Long.MAX_VALUE);
+        UUID versionId = toolArguments.uuid(input.path("sourceVersionId"));
+        long expected = toolArguments.nonnegativeLong(input.path("expectedCanvasItemVersion"), Long.MAX_VALUE);
         ObjectNode parameters = mapper.createObjectNode();
         if (input.has("format"))
             parameters.set("format", input.get("format"));
@@ -61,13 +63,14 @@ public class AgentLocalMediaToolService {
 
     public JsonNode trim(TrustedToolContext context, AgentRun run, UUID operationId, String arguments) {
         ObjectNode input = parse(arguments, TRIM_FIELDS);
-        UUID versionId = uuid(input, "sourceVersionId");
-        long expected = integer(input, "expectedCanvasItemVersion", Long.MAX_VALUE);
+        UUID versionId = toolArguments.uuid(input.path("sourceVersionId"));
+        long expected = toolArguments.nonnegativeLong(input.path("expectedCanvasItemVersion"), Long.MAX_VALUE);
         ObjectNode format = mapper.createObjectNode();
         if (input.has("format"))
             format.set("format", input.get("format"));
-        var parameters = new AudioTrimParameters((int) integer(input, "startMs", 599_900),
-                (int) integer(input, "endMs", 600_000), AudioExtractionParameters.parse(format).format());
+        var parameters = new AudioTrimParameters((int) toolArguments.nonnegativeLong(input.path("startMs"), 599_900),
+                (int) toolArguments.nonnegativeLong(input.path("endMs"), 600_000),
+                AudioExtractionParameters.parse(format).format());
         CanvasItem source = requireSource(context, run, input, versionId, expected, Artifact.Kind.AUDIO);
         Task task = trims.runFromAgent(context.ownerId(), context.projectId(), source.subjectId(), source.id(),
                 versionId, expected, parameters, "agent-audio-trim:" + operationId, context.runId(), operationId);
@@ -77,7 +80,7 @@ public class AgentLocalMediaToolService {
     private CanvasItem requireSource(TrustedToolContext context, AgentRun run, JsonNode input, UUID versionId,
             long expected, Artifact.Kind kind) {
         CanvasItem item = items.requireArtifactItem(context.ownerId(), context.projectId(),
-                uuid(input, "canvasItemId"));
+                toolArguments.uuid(input.path("canvasItemId")));
         if (item.locked())
             throw problem(HttpStatus.CONFLICT, "CANVAS_ITEM_LOCKED",
                     ApiMessage.of("api.creative-artifact-tool-service.locked-cards-cannot-be-arranged-by-the-agent"));
@@ -109,38 +112,8 @@ public class AgentLocalMediaToolService {
         return result;
     }
 
-    private ObjectNode parse(String arguments, Set<String> allowed) {
-        JsonNode parsed;
-        try {
-            parsed = mapper.readTree(arguments);
-        } catch (RuntimeException malformed) {
-            throw invalid();
-        }
-        if (!(parsed instanceof ObjectNode object) || !allowed.containsAll(object.propertyNames()))
-            throw invalid();
-        return object;
-    }
-
-    private UUID uuid(JsonNode input, String field) {
-        JsonNode value = input.path(field);
-        if (!value.isTextual())
-            throw invalid();
-        try {
-            UUID parsed = UUID.fromString(value.asText());
-            if (!parsed.toString().equalsIgnoreCase(value.asText()))
-                throw invalid();
-            return parsed;
-        } catch (IllegalArgumentException malformed) {
-            throw invalid();
-        }
-    }
-
-    private long integer(JsonNode input, String field, long maximum) {
-        JsonNode value = input.path(field);
-        if (!value.isIntegralNumber() || !value.canConvertToLong() || value.longValue() < 0
-                || value.longValue() > maximum)
-            throw invalid();
-        return value.longValue();
+    private ObjectNode parse(String arguments, Set<String> fields) {
+        return toolArguments.object(arguments, fields, mapper::readTree);
     }
 
     private static ApiProblemException invalid() {

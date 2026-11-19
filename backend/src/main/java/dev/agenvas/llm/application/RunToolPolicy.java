@@ -8,12 +8,7 @@ import tools.jackson.databind.JsonNode;
 public final class RunToolPolicy {
     public static final int CURRENT_SCHEMA_VERSION = 7;
     public static final int CURRENT_VERSION = 6;
-    public static final List<String> CURRENT = List.of(AgentToolset.LOADER, "read_project_summary", "read_selection",
-            "read_artifacts", "read_media_sample", "read_task_status", "create_text", "revise_artifact",
-            "arrange_items", "list_media_capabilities", "propose_media_generation",
-            "read_skill_resource", "read_skill", "read_skill_asset", "read_canvas",
-            "manage_canvas_node", "update_media_draft", "compose_video", "extract_audio", "trim_audio",
-            "read_storyboard", "write_storyboard_shots");
+    public static final List<String> CURRENT = AgentTool.CURRENT_NAMES;
 
     private RunToolPolicy() {
     }
@@ -25,9 +20,9 @@ public final class RunToolPolicy {
 
     /** Fixed Skill images are model context and are requested independently of text attachments. */
     public static List<String> current(boolean hasSkills, boolean hasSkillResources, boolean hasSkillAssets) {
-        return CURRENT.stream().filter(name -> !"read_skill".equals(name) || hasSkills)
-                .filter(name -> !"read_skill_resource".equals(name) || hasSkillResources)
-                .filter(name -> !"read_skill_asset".equals(name) || hasSkillAssets).toList();
+        return CURRENT.stream().filter(name -> !AgentTool.READ_SKILL.wireName().equals(name) || hasSkills)
+                .filter(name -> !AgentTool.READ_SKILL_RESOURCE.wireName().equals(name) || hasSkillResources)
+                .filter(name -> !AgentTool.READ_SKILL_ASSET.wireName().equals(name) || hasSkillAssets).toList();
     }
 
     public static List<String> allowed(JsonNode policy) {

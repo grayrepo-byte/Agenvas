@@ -139,7 +139,8 @@ class NativeMediaAdapterHttpTimeoutsTest {
         when(tools.ffprobe(any())).thenReturn("{\"format\":{\"format_name\":\"mp4\",\"duration\":\"8\"},"
                 + "\"streams\":[{\"codec_type\":\"video\",\"width\":1280,\"height\":720},{\"codec_type\":\"audio\"}]}");
         MediaAdapter adapter = switch (protocol) {
-            case SEEDANCE -> new ArkSeedance2Adapter(catalog, cipher, null, null, null,
+            case SEEDANCE -> new ArkSeedance2Adapter(
+                    new PinnedMediaExecution(new PinnedMediaPublications(catalog), cipher), null, null, null,
                     new ArkSeedanceClient(MAPPER, origin), new ArkMediaDownloadPolicy(), tools, MAPPER, null, null);
             case MINIMAX -> new MiniMaxH3Adapter(catalog, cipher, new MiniMaxH3Client(MAPPER, origin),
                     new MiniMaxMediaDownloadPolicy(), tools, MAPPER, null);

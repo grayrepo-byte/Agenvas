@@ -301,7 +301,9 @@ public class LocalVideoCompositionRenderer {
                             + ":force_original_aspect_ratio=decrease:force_divisible_by=2,pad=" + output.width() + ":"
                             + output.height()
                             + ":(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p" + fade,
-                    "-frames:v", Integer.toString(shot.frames()), "-c:v", "libx264", "-preset", "veryfast", "-crf",
+                    // Declare the packet rate too: a filter's fps alone can leave the MP4 edit duration one frame short.
+                    "-frames:v", Integer.toString(shot.frames()), "-r", Integer.toString(VideoCompositionPlanner.FPS),
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf",
                     "18",
                     "-threads", "2", "-bf", "0", "-map_metadata", "-1", "-y", segment.toString()));
             budget.run(args);

@@ -7,6 +7,8 @@ import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.MediaDraft;
 import dev.agenvas.asset.application.AssetService;
+import dev.agenvas.asset.application.MediaFile;
+import dev.agenvas.asset.application.PinnedSkillAsset;
 import dev.agenvas.asset.application.PrivateMediaArchive;
 import dev.agenvas.asset.application.PrivateMediaArchive.Media;
 import dev.agenvas.canvas.application.CanvasItemQueryService;
@@ -311,17 +313,10 @@ public class LibraryService {
             throw problem(HttpStatus.CONFLICT, "LIBRARY_ENTRY_TRASHED",
                     ApiMessage.of("api.library-service.please-restore-assets-from-recycle-bin-first"));
     }
-    public record MediaFile(java.nio.file.Path path, String contentType, long size) {
-    }
 
     /** Safe selection metadata; this is deliberately independent of private storage keys. */
     public record SkillAssetSource(UUID entryId, long entryVersion, String title,
             Artifact.Kind kind, String contentHash) {
-    }
-
-    /** Internal frozen source for a durable Skill publication operation, never a public DTO. */
-    public record PinnedSkillAsset(UUID entryId, long entryVersion, String title,
-            Artifact.Kind kind, String contentHash, String pinKey, Media media) {
     }
 
     /** Resolves the current owned, active image without trusting a client supplied digest. */

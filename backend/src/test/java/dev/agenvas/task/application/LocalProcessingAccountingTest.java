@@ -3,6 +3,7 @@ package dev.agenvas.task.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -16,6 +17,7 @@ import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.shared.lifecycle.ShutdownGate;
+import dev.agenvas.provider.application.PinnedMediaPublications;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.usage.application.UsageService;
@@ -43,7 +45,8 @@ class LocalProcessingAccountingTest {
     private final UsageService usage = mock(UsageService.class);
     private final TaskService service = new TaskService(mock(AgentRunService.class), mock(ProjectService.class),
             mock(ArtifactService.class), mock(MediaDraftService.class), mock(CanvasService.class), repository,
-            new TaskProperties(null, 0), events, usage, mapper, Clock.fixed(NOW, ZoneOffset.UTC), new ShutdownGate());
+            new TaskProperties(null, 0), events, usage, mapper, Clock.fixed(NOW, ZoneOffset.UTC), new ShutdownGate(),
+            mock(PinnedMediaPublications.class));
 
     @BeforeEach
     void setup() {
@@ -58,7 +61,7 @@ class LocalProcessingAccountingTest {
     @ParameterizedTest
     @NullSource
     @EmptySource
-    @ValueSource(strings = {"UNKNOWN_FAILURE", "task_input_stale", " TASK_INPUT_STALE", "TASK_INPUT_STALE "})
+    @ValueSource(strings = {"private provider response", "task_input_stale", " TASK_INPUT_STALE", "TASK_INPUT_STALE "})
     void unsupportedPreSubmissionReasonsFailBeforeAnyStateOrAccountingRead(String code) {
         assertThatThrownBy(() -> service.blockPreSubmission(task("audioTrim", Task.Status.READY, null), "worker", code))
                 .isInstanceOfSatisfying(ApiProblemException.class,
@@ -67,14 +70,14 @@ class LocalProcessingAccountingTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"AUDIO_TRIM_INVALID", "AUDIO_TRIM_OUTPUT_TOO_LARGE"})
+    @ValueSource(strings = {"AUDIO_TRIM_INVALID", "AUDIO_TRIM_OUTPUT_TOO_LARGE", "CUSTOM_MEDIA_MODEL_UNAVAILABLE"})
     void preflightFailureCanBlockAndReleaseBeforeAnySubmission(String code) {
         Task lease = task("audioTrim", Task.Status.RUNNING, null);
         Task blocked = task("audioTrim", Task.Status.BLOCKED, code);
-        when(repository.findById(id)).thenReturn(Optional.of(lease), Optional.of(blocked));
-        when(repository.blockStaleInput(id, "worker", 1, code, NOW)).thenReturn(true);
+        when(repository.findById(id)).thenReturn(Optional.of(blocked));
+        when(repository.finishMediaPreflight(id, "worker", 1, code, NOW)).thenReturn(true);
         service.blockPreSubmission(lease, "worker", code);
-        verify(usage).releaseUnsubmittedMediaTask(owner, blocked);
+        verify(usage).releaseMediaPreflight(eq(owner), argThat(outcome -> outcome.task().equals(blocked)));
     }
 
     @ParameterizedTest

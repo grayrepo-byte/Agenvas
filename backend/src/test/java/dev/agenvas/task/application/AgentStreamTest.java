@@ -16,6 +16,7 @@ import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.lifecycle.ShutdownGate;
+import dev.agenvas.provider.application.PinnedMediaPublications;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.usage.application.UsageService;
 import java.time.Clock;
@@ -50,7 +51,7 @@ class AgentStreamTest {
     private final TaskService service = new TaskService(runs, mock(ProjectService.class), mock(ArtifactService.class),
             mock(MediaDraftService.class), mock(CanvasService.class), repository,
             new TaskProperties(Duration.ofSeconds(45), 3), events, mock(UsageService.class), mapper,
-            Clock.fixed(NOW, ZoneOffset.UTC), new ShutdownGate());
+            Clock.fixed(NOW, ZoneOffset.UTC), new ShutdownGate(), mock(PinnedMediaPublications.class));
 
     @BeforeEach
     void setup() {

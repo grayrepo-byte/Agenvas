@@ -33,6 +33,20 @@ class OnDemandToolsetsTest {
     private final LlmProtocolCodec codec = new LlmProtocolCodec(mapper);
 
     @Test
+    void sharedTaskStatusIsDiscoverableFromEitherGroupAndAppearsOnceWhenBothLoad() {
+        for (String group : List.of("MEDIA", "COMPOSITION")) {
+            var result = AgentToolset.load(policy(), UUID.randomUUID(), "{\"toolsets\":[\"" + group + "\"]}", mapper);
+            assertThat(result.at("/data/toolNames").valueStream().map(JsonNode::asText).toList())
+                    .endsWith("read_task_status");
+        }
+        var result = AgentToolset.load(policy(), UUID.randomUUID(), "{\"toolsets\":[\"MEDIA\",\"COMPOSITION\"]}",
+                mapper);
+        assertThat(result.at("/data/toolNames").valueStream().map(JsonNode::asText).toList()).containsExactly(
+                "list_media_capabilities", "update_media_draft", "propose_media_generation", "read_task_status",
+                "compose_video", "extract_audio", "trim_audio");
+    }
+
+    @Test
     void firstRequestKeepsCustomInstructionsAndSkillDirectoryWithoutLoadingProfessionalRulesOrMediaCatalog() {
         AgentRun run = mock(AgentRun.class);
         AgentRunService runs = mock(AgentRunService.class);

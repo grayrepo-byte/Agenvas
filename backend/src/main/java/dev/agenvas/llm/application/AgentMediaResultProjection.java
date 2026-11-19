@@ -3,7 +3,7 @@ package dev.agenvas.llm.application;
 import dev.agenvas.llm.domain.AgentMediaApproval;
 import dev.agenvas.provider.domain.ProviderFailure;
 import dev.agenvas.task.domain.Task;
-import java.util.List;
+import dev.agenvas.task.application.ArchivedTaskResults;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
@@ -12,9 +12,6 @@ import tools.jackson.databind.node.ObjectNode;
 
 /** Safe exact-output mapping shared by immutable model outcomes and the live archive projection. */
 final class AgentMediaResultProjection {
-    private static final List<String> OUTPUT_FIELDS = List.of("artifactId", "artifactVersionId", "selected",
-            "additionalResults");
-
     private AgentMediaResultProjection() {
     }
 
@@ -47,13 +44,37 @@ final class AgentMediaResultProjection {
             }
         }
         // Provider receipts, credentials, URLs and billing payloads are never exposed here.
-        if (archivedOutput != null) {
-            for (String field : OUTPUT_FIELDS)
-                if (archivedOutput.has(field))
-                    item.set(field, archivedOutput.get(field).deepCopy());
-        }
+        putArchiveIdentity(item, archivedOutput);
         item.put("possibleExternalCost", task.status() == Task.Status.UNKNOWN
                 || task.providerRequestId() != null || task.status() == Task.Status.SUBMITTING);
         return item;
+    }
+
+    static void putArchiveIdentity(ObjectNode item, JsonNode output) {
+        var results = ArchivedTaskResults.read(output);
+        if (results.primary() == null)
+            return;
+        putVersion(item, results.primary());
+        if (results.hasAdditionalResults()) {
+            var extras = item.putArray("additionalResults");
+            for (var identity : results.additional()) {
+                var extra = extras.addObject();
+                putVersion(extra, identity);
+                if (identity.hasCanvasItemId())
+                    extra.put("canvasItemId",
+                            identity.canvasItemId());
+                if (identity.ordinal() != null)
+                    extra.put("ordinal", identity.ordinal().intValue());
+            }
+        }
+    }
+
+    private static void putVersion(ObjectNode output, ArchivedTaskResults.Identity identity) {
+        if (identity.artifactId() != null)
+            output.put("artifactId", identity.artifactId());
+        if (identity.artifactVersionId() != null)
+            output.put("artifactVersionId", identity.artifactVersionId());
+        if (identity.selected() != null)
+            output.put("selected", identity.selected().booleanValue());
     }
 }

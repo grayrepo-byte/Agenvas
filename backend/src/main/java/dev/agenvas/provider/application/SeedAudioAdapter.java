@@ -5,7 +5,6 @@ import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaHttpTimeouts;
 import dev.agenvas.provider.domain.MediaAdapter;
-import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.artifact.application.ArtifactService;
 import java.nio.file.Files;
@@ -47,10 +46,6 @@ public final class SeedAudioAdapter implements MediaAdapter {
     @Override
     public String adapterId() {
         return "VOLC_SEED_AUDIO_1";
-    }
-    @Override
-    public boolean supports(PortInput input) {
-        return input.kind() == Task.Kind.AUDIO_GENERATION;
     }
     @Override
     public String preflightFailure(AttemptContext context) {

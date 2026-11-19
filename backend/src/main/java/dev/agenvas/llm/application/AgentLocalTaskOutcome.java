@@ -45,10 +45,7 @@ final class AgentLocalTaskOutcome {
                 .put("kind", task.kind().name()).put("status", task.status().name()).put("possibleExternalCost", false);
         if (task.errorCode() != null)
             item.put("errorCode", task.errorCode());
-        if (task.output() != null)
-            for (String field : OUTPUT_FIELDS)
-                if (task.output().has(field))
-                    item.set(field, task.output().get(field).deepCopy());
+        AgentMediaResultProjection.putArchiveIdentity(item, task.output());
         return outcome;
     }
 
@@ -67,9 +64,12 @@ final class AgentLocalTaskOutcome {
         ObjectNode data = result.withObject("data");
         data.put("status", item.path("status").asText()).put("queued", false)
                 .put("completed", success).put("resolved", true).put("localProcessing", true);
+        // Previously frozen receipts may contain unfiltered provider fields in additional results.
+        ObjectNode publicItem = (ObjectNode) result.path(FIELD).path("tasks").path(0);
         for (String field : OUTPUT_FIELDS)
-            if (item.has(field))
-                data.set(field, item.get(field).deepCopy());
+            publicItem.remove(field);
+        AgentMediaResultProjection.putArchiveIdentity(publicItem, item);
+        AgentMediaResultProjection.putArchiveIdentity(data, item);
         if (item.has("errorCode")) {
             result.set("errorCode", item.get("errorCode").deepCopy());
             data.set("errorCode", item.get("errorCode").deepCopy());

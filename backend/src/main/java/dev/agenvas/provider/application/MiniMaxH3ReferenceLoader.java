@@ -115,21 +115,16 @@ public class MiniMaxH3ReferenceLoader {
 
     private void probeVideo(AttemptContext context, Asset asset) {
         var file = assets.get(context.ownerId(), context.lease().projectId(), asset.id());
-        var probe = mapper.readTree(mediaTools.ffprobe(List.of("-v", "error", "-show_entries",
-                "stream=codec_type,codec_name,avg_frame_rate", "-of", "json", file.path().toString())));
+        var probe = VideoProbeMeasurements
+                .read(mapper.readTree(mediaTools.ffprobe(List.of("-v", "error", "-show_entries",
+                        "stream=codec_type,codec_name,avg_frame_rate", "-of", "json", file.path().toString()))));
         boolean found = false;
-        for (var stream : probe.path("streams")) {
-            String type = stream.path("codec_type").asText(), codec = stream.path("codec_name").asText();
+        for (var stream : probe.streams()) {
+            String type = stream.codecType(), codec = stream.codecName();
             if ("video".equals(type)) {
                 found = true;
-                String[] rate = stream.path("avg_frame_rate").asText().split("/");
-                double fps;
-                try {
-                    fps = Double.parseDouble(rate[0]) / (rate.length == 2 ? Double.parseDouble(rate[1]) : 1);
-                } catch (NumberFormatException invalid) {
-                    throw MiniMaxH3Protocol.invalid();
-                }
-                if (!Set.of("h264", "hevc").contains(codec) || !Double.isFinite(fps) || fps < 23.976 || fps > 60)
+                double fps = stream.averageFrameRate().orElseThrow(MiniMaxH3Protocol::invalid);
+                if (!Set.of("h264", "hevc").contains(codec) || fps < 23.976 || fps > 60)
                     throw MiniMaxH3Protocol.invalid();
             } else if ("audio".equals(type) && !Set.of("aac", "mp3").contains(codec))
                 throw MiniMaxH3Protocol.invalid();

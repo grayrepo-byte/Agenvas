@@ -74,8 +74,6 @@ public class DirectMediaTaskService {
     private static final int BATCH_KEY_DIGEST_LENGTH = 32;
     private static final String LOCAL_COST_SOURCE = "LOCAL_NO_COST";
     private static final String COST_SOURCE = "PROVIDER_UNPRICED";
-    // The saved prompt stays structural; only the immutable Task input sent to providers is rendered.
-    private static final char MENTION_MARKER = '\uFFFC';
     public static final UUID LOCAL_IMAGE_CAPABILITY_ID = UUID.fromString(
             "00000000-0000-4000-8000-000000000202");
 
@@ -637,7 +635,7 @@ public class DirectMediaTaskService {
         if (!selected.equals(binding))
             throw conflict(ApiMessage.of(
                     "api.direct-media-task-service.the-media-configuration-has-changed-please-refresh-and-try-again"));
-        if (MediaAdapterRegistry.localProcessor(binding.adapterId())) {
+        if (capabilities.isLocal(binding)) {
             throw invalid(ApiMessage
                     .of("api.direct-media-task-service.local-image-processing-capabilities-can-only-be-used-from-the"));
         }
@@ -1332,7 +1330,7 @@ public class DirectMediaTaskService {
             tasks.createArtifactTarget(new TaskRepository.ArtifactTarget(task.id(), projectId,
                     artifactId, sourceVersionId, target.version(), outputCard.id()));
             usage.reserveMediaTask(ownerId, task,
-                    MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(binding.adapterId())
+                    capabilities.isLocal(binding)
                             ? LOCAL_COST_SOURCE
                             : COST_SOURCE,
                     binding.connectionVersion());
@@ -1521,41 +1519,18 @@ public class DirectMediaTaskService {
     /** Provider aliases follow named slots, never canvas order or a later reference edit. */
     private String renderNativePrompt(MediaDraft draft, NativeMediaProfiles.Selection selected) {
         JsonNode values = draft.parameters().path(NativeMediaProtocol.VALUES_PROPERTY);
-        StringBuilder result = new StringBuilder();
-        int mentionIndex = 0;
-        for (int i = 0; i < draft.prompt().length(); i++) {
-            char c = draft.prompt().charAt(i);
-            if (c != '\uFFFC') {
-                result.append(c);
-                continue;
-            }
-            if (mentionIndex >= draft.mentions().size())
-                throw NativeMediaProfiles.invalid();
-            var mention = draft.mentions().get(mentionIndex++);
+        return DirectMediaPrompt.render(draft.prompt(), draft.mentions(), mention -> {
             String slot = selected.inputs().stream()
                     .filter(f -> f.media() && mention.versionId().toString().equals(values.path(f.key()).asText()))
                     .map(dev.agenvas.provider.domain.CreatorInputField::key).findFirst()
                     .orElseThrow(NativeMediaProfiles::invalid);
-            result.append(selected.protocol().renderMention(selected.profile(), values, slot));
-        }
-        if (mentionIndex != draft.mentions().size())
-            throw NativeMediaProfiles.invalid();
-        return result.toString();
+            return selected.protocol().renderMention(selected.profile(), values, slot);
+        }, NativeMediaProfiles::invalid);
     }
 
     private String renderKlingPrompt(MediaDraft draft, KlingModels.Profile profile) {
         JsonNode values = draft.parameters().path(KlingModels.VALUES_PROPERTY);
-        StringBuilder rendered = new StringBuilder();
-        int mentionIndex = 0;
-        for (int index = 0; index < draft.prompt().length(); index++) {
-            char character = draft.prompt().charAt(index);
-            if (character != MENTION_MARKER) {
-                rendered.append(character);
-                continue;
-            }
-            if (mentionIndex >= draft.mentions().size())
-                throw KlingProtocol.invalid();
-            var mention = draft.mentions().get(mentionIndex++);
+        return DirectMediaPrompt.render(draft.prompt(), draft.mentions(), mention -> {
             String key = KlingModels.inputs(profile).stream().filter(field -> field.media()
                     && mention.versionId().toString().equals(values.path(field.key()).asText()))
                     .map(KlingModels.Field::key).findFirst().orElseThrow(KlingProtocol::invalid);
@@ -1567,43 +1542,22 @@ public class DirectMediaTaskService {
                         if (key.equals("image_" + slot))
                             break;
                     }
-                rendered.append("<<<image_").append(ordinal).append(">>>");
-            } else
-                rendered.append('@').append(key);
-        }
-        if (mentionIndex != draft.mentions().size())
-            throw KlingProtocol.invalid();
-        return rendered.toString();
+                return "<<<image_" + ordinal + ">>>";
+            }
+            return "@" + key;
+        }, KlingProtocol::invalid);
     }
 
     private String renderPrompt(MediaDraft draft) {
-        StringBuilder rendered = new StringBuilder(draft.prompt().length());
-        int mentionIndex = 0;
-        for (int index = 0; index < draft.prompt().length(); index++) {
-            char character = draft.prompt().charAt(index);
-            if (character != MENTION_MARKER) {
-                rendered.append(character);
-                continue;
-            }
-            if (mentionIndex >= draft.mentions().size()) {
-                throw invalid(ApiMessage
-                        .of("api.direct-media-task-service.the-word-picture-label-is-damaged-please-save-the-draft"));
-            }
-            MediaDraft.PromptMention mention = draft.mentions().get(mentionIndex++);
-            rendered.append('@').append(switch (mention.role()) {
-                case START_FRAME -> "Start Frame";
-                case END_FRAME -> "End Frame";
-                case REFERENCE -> "Image " + referenceNumber(draft, mention);
-                case VIDEO_REFERENCE -> "Video " + referenceNumber(draft, mention);
-                case AUDIO_REFERENCE ->
-                    (draft.videoInputMode() == null ? "音频" : "Audio ") + referenceNumber(draft, mention);
-            });
-        }
-        if (mentionIndex != draft.mentions().size()) {
-            throw invalid(ApiMessage
-                    .of("api.direct-media-task-service.the-word-picture-label-is-damaged-please-save-the-draft"));
-        }
-        return rendered.toString();
+        return DirectMediaPrompt.render(draft.prompt(), draft.mentions(), mention -> "@" + switch (mention.role()) {
+            case START_FRAME -> "Start Frame";
+            case END_FRAME -> "End Frame";
+            case REFERENCE -> "Image " + referenceNumber(draft, mention);
+            case VIDEO_REFERENCE -> "Video " + referenceNumber(draft, mention);
+            case AUDIO_REFERENCE ->
+                (draft.videoInputMode() == null ? "音频" : "Audio ") + referenceNumber(draft, mention);
+        }, () -> invalid(ApiMessage
+                .of("api.direct-media-task-service.the-word-picture-label-is-damaged-please-save-the-draft")));
     }
 
     private int referenceNumber(MediaDraft draft, MediaDraft.PromptMention mention) {

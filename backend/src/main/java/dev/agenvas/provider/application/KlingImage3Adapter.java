@@ -3,12 +3,10 @@ package dev.agenvas.provider.application;
 import dev.agenvas.artifact.domain.ImageGenerationParameters;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.KlingProtocol;
-import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
 import dev.agenvas.provider.infrastructure.KlingClient;
 import dev.agenvas.provider.infrastructure.KlingMediaDownloadPolicy;
 import dev.agenvas.settings.application.CredentialCipher;
-import dev.agenvas.task.domain.Task;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
@@ -28,10 +26,6 @@ public class KlingImage3Adapter extends KlingAdapterSupport {
     @Override
     protected boolean video() {
         return false;
-    }
-    @Override
-    public boolean supports(PortInput input) {
-        return input.kind() == Task.Kind.IMAGE_GENERATION;
     }
 
     @Override

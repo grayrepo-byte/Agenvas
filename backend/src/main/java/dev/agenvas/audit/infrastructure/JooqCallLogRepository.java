@@ -6,7 +6,6 @@ import static dev.agenvas.db.Tables.AUDIT_DEBUG_SETTINGS;
 import static dev.agenvas.db.Tables.AUDIT_LOG_RETENTION_SETTINGS;
 import dev.agenvas.audit.domain.CallLogRetentionSettings;
 import org.springframework.transaction.annotation.Transactional;
-import java.time.temporal.ChronoUnit;
 import static dev.agenvas.db.Tables.PROJECT;
 import static dev.agenvas.db.Tables.APP_USER;
 import dev.agenvas.audit.domain.DebugSettings;
@@ -42,22 +41,9 @@ public class JooqCallLogRepository implements CallLogRepository {
             .toSeconds();
     private final DSLContext dsl;
     private final ObjectMapper mapper;
-    private final dev.agenvas.llm.application.ExecutionLedgerRetention turns;
-    private final dev.agenvas.task.application.ProviderAttemptRetention attempts;
-    private final dev.agenvas.run.application.RunHistoryCleanupService runs;
-    private final dev.agenvas.task.application.TaskHistoryCleanupService tasks;
-
-    public JooqCallLogRepository(DSLContext dsl, ObjectMapper mapper,
-            dev.agenvas.llm.application.ExecutionLedgerRetention turns,
-            dev.agenvas.task.application.ProviderAttemptRetention attempts,
-            dev.agenvas.run.application.RunHistoryCleanupService runs,
-            dev.agenvas.task.application.TaskHistoryCleanupService tasks) {
+    public JooqCallLogRepository(DSLContext dsl, ObjectMapper mapper) {
         this.dsl = dsl;
         this.mapper = mapper;
-        this.turns = turns;
-        this.attempts = attempts;
-        this.runs = runs;
-        this.tasks = tasks;
     }
 
     @Override
@@ -112,24 +98,15 @@ public class JooqCallLogRepository implements CallLogRepository {
                   UNION ALL SELECT 1 FROM call_log c WHERE c.task_id=t.id))
             """;
 
-    /** Lock policy then projects then runs/tasks, matching ordinary project state changes.
-     * Stop expired nonterminal units and fence old workers before removing their ledgers.
-     * State changes, project events and history deletion commit or roll back together.
-     */
     @Override
-    @Transactional
-    public int purgeExpired(Instant now, int batchSize, int expectedVersion) {
-        var policy = dsl.selectFrom(AUDIT_LOG_RETENTION_SETTINGS)
-                .where(AUDIT_LOG_RETENTION_SETTINGS.ID.eq(SETTINGS_ID)).forUpdate().fetchSingle();
-        if (policy.getVersion() != expectedVersion) {
-            throw new dev.agenvas.shared.error.ApiProblemException(org.springframework.http.HttpStatus.CONFLICT,
-                    "VERSION_CONFLICT",
-                    dev.agenvas.shared.i18n.ApiMessage.of("api.audit-retention.conflict-title"),
-                    dev.agenvas.shared.i18n.ApiMessage.of("api.audit-retention.conflict-detail"), false);
-        }
-        if (policy.getRetentionDays() == null)
-            return 0;
-        Instant cutoff = now.minus(policy.getRetentionDays(), ChronoUnit.DAYS);
+    public CallLogRetentionSettings lockRetentionSettings() {
+        return dsl.selectFrom(AUDIT_LOG_RETENTION_SETTINGS)
+                .where(AUDIT_LOG_RETENTION_SETTINGS.ID.eq(SETTINGS_ID)).forUpdate()
+                .fetchSingle(row -> new CallLogRetentionSettings(row.getRetentionDays(), row.getVersion()));
+    }
+
+    @Override
+    public LockedExecutions lockExpiredExecutions(Instant cutoff, int batchSize) {
         var candidates = dsl.fetch(EXPIRED_RUNS + " ORDER BY coalesce(r.completed_at,r.created_at),r.id LIMIT ?",
                 utc(cutoff), batchSize);
         var directCandidates = dsl.fetch(
@@ -167,24 +144,26 @@ public class JooqCallLogRepository implements CallLogRepository {
                         projects.toArray(UUID[]::new), batchSize - runIds.size())
                 .getValues("id", UUID.class);
         taskIds.addAll(standalone);
-        runs.stopFor(runIds, now);
-        tasks.stopFor(taskIds, now);
-        dsl.deleteFrom(CALL_LOG).where(CALL_LOG.KIND.eq("LLM").and(CALL_LOG.RUN_ID.in(runIds))).execute();
-        dsl.deleteFrom(CALL_LOG).where(CALL_LOG.TASK_ID.in(taskIds)).execute();
-        turns.deleteFor(runIds);
-        attempts.deleteFor(taskIds);
-        // Diagnostic rounds are standalone audit units and share the administrator's explicit retention policy.
-        int remaining = batchSize - runIds.size() - standalone.size();
+        return new LockedExecutions(runIds, taskIds, standalone.size());
+    }
+
+    @Override
+    public void deleteExecutionLogs(LockedExecutions executions) {
+        dsl.deleteFrom(CALL_LOG).where(CALL_LOG.KIND.eq("LLM").and(CALL_LOG.RUN_ID.in(executions.runIds()))).execute();
+        dsl.deleteFrom(CALL_LOG).where(CALL_LOG.TASK_ID.in(executions.taskIds())).execute();
+    }
+
+    @Override
+    public int deleteExpiredDiagnostics(Instant cutoff, int remaining) {
         var diagnosticIds = dsl.select(CALL_LOG.ID).from(CALL_LOG)
                 .where(CALL_LOG.OPERATION.eq("DIAGNOSTIC")).and(CALL_LOG.PROJECT_ID.isNull())
                 .and(CALL_LOG.STARTED_AT.lt(utc(cutoff)))
                 .and(CALL_LOG.RESPONDED_AT.isNull().or(CALL_LOG.RESPONDED_AT.lt(utc(cutoff))))
                 .orderBy(CALL_LOG.STARTED_AT, CALL_LOG.ID).limit(remaining).forUpdate().skipLocked()
                 .fetch(CALL_LOG.ID);
-        int diagnosticCount = diagnosticIds.isEmpty()
+        return diagnosticIds.isEmpty()
                 ? 0
                 : dsl.deleteFrom(CALL_LOG).where(CALL_LOG.ID.in(diagnosticIds)).execute();
-        return runIds.size() + standalone.size() + diagnosticCount;
     }
 
     @Override

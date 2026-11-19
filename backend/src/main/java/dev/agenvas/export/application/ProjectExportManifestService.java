@@ -24,6 +24,8 @@ import dev.agenvas.storyboard.application.StoryboardService;
 import dev.agenvas.storyboard.domain.Storyboard;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Comparator;
+import java.util.Objects;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -94,9 +96,7 @@ public class ProjectExportManifestService {
                 .collect(Collectors.groupingBy(ArtifactVersion::artifactId,
                         Collectors.mapping(version -> versionEntry(version,
                                 kinds.get(version.artifactId())), Collectors.toList())));
-        List<CanvasItemEntry> canvasItems = canvas.list(ownerId, projectId).stream()
-                .map(entry -> canvasItemEntry(ownerId, projectId, entry))
-                .toList();
+        List<CanvasItemEntry> canvasItems = canvasItems(ownerId, projectId, catalog);
         List<ConnectionEntry> connectionEntries = connections.list(ownerId, projectId).stream()
                 .map(this::connectionEntry).toList();
         return new Manifest(MANIFEST_SCHEMA_VERSION, clock.instant(), project.eventSeq(),
@@ -135,17 +135,39 @@ public class ProjectExportManifestService {
         return value == null ? null : value.deepCopy();
     }
 
-    /** Exports the exact card layout, selected result and card-owned media working branch. */
-    private CanvasItemEntry canvasItemEntry(UUID ownerId, UUID projectId,
-            CanvasService.CanvasEntry entry) {
-        CanvasItem item = entry.item();
-        MediaDraftEntry draft = null;
-        List<UUID> mediaVersionIds = List.of();
-        if (entry.artifact() != null && entry.artifact().artifact().kind() != Artifact.Kind.TEXT) {
-            draft = mediaDraftEntry(mediaDrafts.get(ownerId, projectId, item.id()));
-            mediaVersionIds = canvas.listMediaVersions(ownerId, projectId, item.id()).stream()
+    private List<CanvasItemEntry> canvasItems(UUID ownerId, UUID projectId,
+            ArtifactService.ProjectExportVersions catalog) {
+        var entries = canvas.list(ownerId, projectId);
+        var mediaCards = entries.stream()
+                .filter(entry -> entry.artifact() != null && entry.artifact().artifact().kind() != Artifact.Kind.TEXT)
+                .map(entry -> entry.item().id()).collect(Collectors.toSet());
+        if (mediaCards.isEmpty())
+            return entries.stream().map(entry -> canvasItemEntry(entry, null, List.of())).toList();
+
+        var drafts = mediaDrafts.readDrafts(ownerId, projectId, mediaCards);
+        var snapshots = styles.snapshotsForExport(drafts.values().stream().map(MediaDraft::styleId)
+                .filter(Objects::nonNull).collect(Collectors.toSet()));
+        var resultIds = canvas.mediaVersionIdsByCard(ownerId, projectId);
+        var versions = catalog.versions().stream()
+                .collect(Collectors.toMap(ArtifactVersion::id, version -> version));
+        return entries.stream().map(entry -> {
+            var item = entry.item();
+            var draft = drafts.get(item.id());
+            if (draft == null)
+                return canvasItemEntry(entry, null, List.of());
+            // Per-card history is newest first, while the exported resource history is oldest first.
+            var ids = resultIds.getOrDefault(item.id(), List.of()).stream().map(versions::get)
+                    .filter(version -> version != null && version.artifactId().equals(item.subjectId()))
+                    .sorted(Comparator.comparingInt(ArtifactVersion::versionNo).reversed())
                     .map(ArtifactVersion::id).toList();
-        }
+            var style = draft.styleId() == null ? null : snapshots.get(draft.styleId());
+            return canvasItemEntry(entry, mediaDraftEntry(draft, style), ids);
+        }).toList();
+    }
+
+    private CanvasItemEntry canvasItemEntry(CanvasService.CanvasEntry entry, MediaDraftEntry draft,
+            List<UUID> mediaVersionIds) {
+        CanvasItem item = entry.item();
         return new CanvasItemEntry(item.id(), item.subjectType(), item.subjectId(),
                 item.selectedVersionId(), item.title(), item.x(), item.y(), item.width(),
                 item.height(), item.zIndex(), item.groupId(), item.locked(), item.version(),
@@ -153,10 +175,10 @@ public class ProjectExportManifestService {
                 entry.characterNode());
     }
 
-    private MediaDraftEntry mediaDraftEntry(MediaDraft draft) {
+    private MediaDraftEntry mediaDraftEntry(MediaDraft draft, MediaStyleService.Snapshot style) {
         return new MediaDraftEntry(draft.prompt(), copy(draft.parameters()),
                 draft.durationSeconds(), draft.capabilityId(), draft.styleId(),
-                styles.snapshotForExport(draft.styleId()), draft.videoInputMode(),
+                style, draft.videoInputMode(),
                 draft.mediaInputs(), draft.mentions(), draft.displayMode(), draft.version());
     }
 

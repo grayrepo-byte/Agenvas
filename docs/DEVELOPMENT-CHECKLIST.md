@@ -4197,3 +4197,15 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 真实 PostgreSQL 复现并发首次浏览时的 `creative_skill_pkey` 冲突。内置条目同时具有确定性主键与账号内 key 唯一约束，注册改为同时处理这两类重复；仍由成功插入的一方在原事务内发布唯一不可变版本，保留个人 Skill、历史发行与账号隔离。无 API、迁移、生成代码或依赖变化。
 - [x] 既有并发用例修复前失败；修复后 `./mvnw --batch-mode --no-transfer-progress -Pci-integration -Dit.test=SkillPostgresIT verify` 共 16 项通过，并发首次读取方法额外独立运行三次均通过。`SkillSelectionQueryTest`、`BuiltinSkillSearchTest`、`BuiltinSkillCatalogueTest`、`SkillFormatTest` 共 31 项单元测试通过；Spotless 与差异空白检查通过。
 - [ ] 本机未运行全量测试、真实 Provider 调用或升级后的部署冒烟；上述回归使用隔离 PostgreSQL 和合成账号，不操作用户数据。
+
+
+## 2026-11-18 首批后端可插拔性与扩展性改造
+
+- [x] 基于 0.0.12 后当前 main/develop 相同代码，在隔离分支完成媒体契约、原生协议目录、Worker 恢复策略、归档发现和提示词适配五类实质改造。[工作项记录](backend-extensibility-iterations.md)保留实际实现、审查与验证证据。
+- [x] 更正此前“30 轮完成”的表述：原表是 11 项代码改动、16 项审查、2 项验证和 1 项文档，共 30 个工作项，不能视为 30 轮独立架构迭代。原首批 7 个提交跨度 27 分 01 秒。
+- [x] 新合成适配器在真实 PostgreSQL 全应用装配中完成发布、草稿、Task、单次提交/原 ID 查询/单次刷新及归档。原定向单元 419 项、PostgreSQL 专项 59 项通过；格式幂等、Spotless check、差异空白及双轴静态审查通过。
+- [x] [ADR 0089](adr/0089-compiled-backend-extension-contracts.md)、规格 §20 和接入指南同步。保留按需权限、固定审批、幂等、UNKNOWN 不重投、历史配置与 ADR 0079 地址策略；无新增运行依赖、API/schema、迁移、生成源码或前端变更。
+- [ ] 用户要求的 30 轮独立架构迭代尚未完成；本次交付范围是上述五类改造，后续不能将审查项或测试项再次计作独立代码迭代。
+- [x] 后端完整单元2423项（2跳过）、完整185类集成705项（8跳过）通过，0失败/错误。全量验证发现并修复FFmpeg7.1逐镜帧数及OpenAI测试替身声明问题，受影响分片完整重跑通过；详见工作项记录。jOOQ漂移、Compose/安装密钥、CI规划、格式检查通过。
+- [x] 隔离分支已推送并创建[草稿PR #54](https://github.com/grayrepo-byte/Agenvas/pull/54)，main/develop祖先及GitHub可合并性已确认；托管CI外部下载失败仍单独跟进，不宣称全绿。
+- [ ] 真实供应商/云存储/NAS、付费调用、浏览器端到端、部署及真实进程重启未运行；后续独立架构迭代继续推进。

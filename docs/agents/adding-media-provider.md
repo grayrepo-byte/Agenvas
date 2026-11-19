@@ -1,5 +1,7 @@
 # 媒体 Provider 接入与能力切换
 
+可核对的新增协议前后改动和行为证据见[供应商接入对照](../backend-extension-provider-example.md)。新平台与特殊参数仍需下文列出的显式触点。
+
 新增媒体 Provider、扩展适配器协议或修改节点能力切换时，按本指南确定改动范围与验收场景。项目代码使用 `Provider`；接入完成包括管理员配置、画布创作、与既有能力双向切换、任务执行和恢复。
 
 功能规则以 [MVP-SPEC](../MVP-SPEC.md)、[OpenAPI 合约](../../contracts/openapi.yaml)和现行 ADR 为准，本文件提供实施与检查入口。先读规格 §13、[ADR 0002](../adr/0002-fixed-media-adapters-before-workflow-platforms.md)和 [ADR 0019](../adr/0019-media-capability-defaults-limits-and-pricing.md)，再按输入类型与执行方式阅读 AGENTS.md 中对应资料。
@@ -33,9 +35,9 @@ LLM Provider 走独立入口：规格 §13.3、`settings/application/LlmProvider
 | 入口 | 检查与实施内容 |
 | --- | --- |
 | [MediaPlatform.java](../../backend/src/main/java/dev/agenvas/provider/domain/MediaPlatform.java) | 独立平台增加枚举；既有平台的新适配器沿用原平台身份 |
-| [MediaAdapterRegistry.java](../../backend/src/main/java/dev/agenvas/provider/domain/MediaAdapterRegistry.java) | 增加稳定 adapterId、平台归属与实际输入能力声明 |
+| [MediaAdapter.java](../../backend/src/main/java/dev/agenvas/provider/domain/MediaAdapter.java) / [MediaAdapterRegistry.java](../../backend/src/main/java/dev/agenvas/provider/domain/MediaAdapterRegistry.java) | 新编译实现通过 `declaration()` 声明稳定 adapterId 对应的平台、输出与输入契约；注册器拒绝重复 ID、缺失声明和内置契约冲突 |
 | `provider/application/XxxAdapter.java` | 实现 [MediaAdapter](../../backend/src/main/java/dev/agenvas/provider/domain/MediaAdapter.java)，作为 Spring Bean 注册；加载固定能力、连接版本及已授权素材，提供预检、提交、查询和结果下载 |
-| `provider/infrastructure/XxxClient.java` | 实现固定 HTTP 协议、认证、超时和错误分类；验证出站地址、DNS、重定向、下载来源、媒体类型和大小；凭据只用于授权请求 |
+| `provider/infrastructure/XxxClient.java` | 实现固定 HTTP 协议、认证、超时和错误分类；验证 URL 语法、固定协议路径、凭据作用域、重定向次数、媒体类型和大小；使用配置的 DNS，不按目标 IP/主机名过滤（ADR 0079） |
 | [MediaCapabilityService.java](../../backend/src/main/java/dev/agenvas/provider/application/MediaCapabilityService.java) | 平台地址和凭据校验、适配器归属、配置字段白名单、归一化和模型元数据；发布与更新使用不可变版本、摘要、幂等及 CAS |
 | [MediaCapabilityConfiguration.java](../../backend/src/main/java/dev/agenvas/provider/domain/MediaCapabilityConfiguration.java) | 默认值、可收紧限制与价格；新参数超出现有配置语义时同步扩展 |
 | [MediaDraftService.java](../../backend/src/main/java/dev/agenvas/artifact/application/MediaDraftService.java) | 草稿参数、输入角色、精确版本授权与结构化标签校验；允许保存尚未满足运行条件的草稿 |
@@ -47,9 +49,11 @@ LLM Provider 走独立入口：规格 §13.3、`settings/application/LlmProvider
 | [OpenAPI](../../contracts/openapi.yaml) | 独立平台同步连接响应、创建请求的 platform 枚举；新参数、输入语义或响应字段同步 Java 与合约测试 |
 | `backend/src/main/resources/db/migration/` | 独立平台需要扩展 `ck_media_connection_platform`；新增 Flyway 迁移并保护现有连接与任务。schema 变化按 [ADR 0012](../adr/0012-jooq-persistence.md)重新生成 jOOQ |
 
+新增编译型适配器遵守 [ADR 0089](../adr/0089-compiled-backend-extension-contracts.md)。查询/归档失败通过 `classifyPollFailure()` 返回受限永久码或技术重试；需要刷新结果地址时显式声明刷新许可并实现 `refreshResults()`，只查询原受理请求。适配器可通过 `permitsPublicDiagnostic()` 准许公开已归一化的 `ProviderFailure`。只传入协议确认的公开字段，保留独立的任务错误码，默认省略诊断。不要在 Worker 中增加供应商异常分支。新原生模型族在 `NativeMediaProfiles` 的显式装配点加入 `NativeMediaProtocol`，目录会检查 profile 归属、重复身份及输出种类；这不替代协议专用字段、请求实现或前端接入。
+
 适配器返回执行结果，由应用服务写业务状态。网络请求在数据库事务外执行；远程受理不确定时保留 UNKNOWN。查询、下载和归档恢复只操作原请求，重新生成由用户显式创建新尝试。详细边界见规格 §11–12 及 [ADR 0006](../adr/0006-direct-media-task-boundary.md)。
 
-新增网络协议须接入能力版本的 `settings.httpTimeouts`：在 `MediaHttpTimeouts` 登记供发布表单读取的默认值，从任务固定的 settings 解析显式配置，使用 `HttpTimeouts` 构造单次调用的不可变客户端副本。API、输入上传、原 ID 查询、结果下载及重定向传输都必须生效，不能在请求封装中再覆盖为固定上限；没有配置的历史版本保留原 API/下载默认。发布与编辑的所有参数白名单须接受此完整对象，本地和 Mock 拒绝。验证实际慢传输、总期限、版本隔离和禁止重发，不能只检查字段回显。默认值、范围、续租和升级规则见 [ADR 0088](../adr/0088-media-capability-http-timeouts.md)。
+新增网络协议须接入能力版本的 `settings.httpTimeouts`：通过 `MediaAdapter.publicationHttpTimeouts()` 声明供发布表单读取的默认值（既有内置值保存在 `MediaHttpTimeouts`），从任务固定的 settings 解析显式配置，使用 `HttpTimeouts` 构造单次调用的不可变客户端副本。API、输入上传、原 ID 查询、结果下载及重定向传输都必须生效，不能在请求封装中再覆盖为固定上限；没有配置的历史版本保留原 API/下载默认。发布与编辑的所有参数白名单须接受此完整对象，本地和 Mock 拒绝。验证实际慢传输、总期限、版本隔离和禁止重发，不能只检查字段回显。默认值、范围、续租和升级规则见 [ADR 0088](../adr/0088-media-capability-http-timeouts.md)。
 
 视频生成结果必须保留 Provider 返回的音轨，单结果、多结果、归档重试和取消晚到结果一致；不能根据是否有音频参考自动去音。Seedance 所有输入模式均不发送 `generate_audio`，由供应商按原生行为处理音频。新增适配器和归档改动须用合成带音轨视频验证保留行为；用户去音使用既有“音频分离”，深度提取与用户选定的视频合成音频模式按各自功能处理。见 [ADR 0066](../adr/0066-preserve-provider-video-audio.md)。
 
@@ -123,6 +127,6 @@ MiniMax 官方 H3 使用 `MINIMAX_H3`，AutoDL 的 H3 工作流使用 `AUTODL_CO
 | 类型与合约检查 | 重新生成 TypeScript，运行相关类型、lint/i18n 与契约检查；schema 变化重新生成并核对 jOOQ |
 | 真实 Provider 验证 | 与 Mock/假 HTTP 验证分开记录；真实素材、凭据及证据按 [开发资料与公开内容](private-materials.md)处理 |
 
-OpenAI 兼容中转站的图片输入协议必须按实际连接验证：支持 multipart 图片文件不代表支持同步 Images Edits 的 JSON `images[].image_url`。有些服务把 URL 输入放在独立异步接口，不能只换路径而沿用同步响应解析。媒体中继还需要部署侧 DNS 返回公网地址；代理 fake-IP 会被公网预检拒绝，应在代理 DNS 中排除对象存储域名后再测。准备失败在提交检查点前阻断任务并释放预留，不发生成请求；提交后的拒绝或受理不确定不自动换成文件协议重提。
+OpenAI 兼容中转站的图片输入协议必须按实际连接验证：支持 multipart 图片文件不代表支持同步 Images Edits 的 JSON `images[].image_url`。有些服务把 URL 输入放在独立异步接口，不能只换路径而沿用同步响应解析。媒体中继需要生成服务实际能访问所选地址；按 [ADR 0079](../adr/0079-remove-outbound-address-checks.md)，应用不再执行公网 DNS/IP 预检或地址白名单，私网、HTTP 与代理 fake-IP 不因地址分类被拒绝。准备失败在提交检查点前阻断任务并释放预留，不发生成请求；提交后的拒绝或受理不确定不自动换成文件协议重提。
 
 完成条件：配置、创作、双向切换、执行和恢复都有与本次差异匹配的验证结果；产品语义、接口或验收状态变化同步规格与开发清单，有决策变更时同步 ADR。交付列出实际修改的前后端文件、合约/迁移、检查结果和未验证范围；未完成的验收保留未勾选。

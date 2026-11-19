@@ -3,8 +3,6 @@ package dev.agenvas.asset.application;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.asset.application.PrivateMediaArchive.Media;
 import dev.agenvas.asset.domain.Asset;
-import dev.agenvas.library.application.LibraryService;
-import dev.agenvas.library.application.LibraryService.PinnedSkillAsset;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.i18n.ApiMessage;
 import java.util.UUID;
@@ -38,9 +36,9 @@ public class SkillAssetArchiveService {
     }
 
     /** Internal streaming seam after the calling Skill service has authorized its version. */
-    public LibraryService.MediaFile file(UUID owner, Media media, boolean thumbnail) {
+    public MediaFile file(UUID owner, Media media, boolean thumbnail) {
         requireOwnedImage(owner, media);
-        return new LibraryService.MediaFile(archive.file(owner, media, thumbnail),
+        return new MediaFile(archive.file(owner, media, thumbnail),
                 thumbnail ? "image/png" : media.contentType(),
                 thumbnail ? media.thumbnailByteSize() : media.byteSize());
     }

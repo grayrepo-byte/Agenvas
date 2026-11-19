@@ -7,7 +7,6 @@ import dev.agenvas.provider.domain.MediaPayload;
 import dev.agenvas.provider.domain.NativeMediaFailure;
 import dev.agenvas.provider.domain.NativeMediaProfiles;
 import dev.agenvas.provider.domain.NativeMediaProtocol;
-import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.ProviderResultManifest;
 import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.provider.domain.Submission;
@@ -57,10 +56,6 @@ abstract class WanProtocolAdapter implements MediaAdapter {
         this.downloads = downloads;
         this.mapper = mapper;
         this.references = references;
-    }
-    @Override
-    public boolean supports(PortInput input) {
-        return kind == input.kind();
     }
     @Override
     public String preflightFailure(AttemptContext context) {

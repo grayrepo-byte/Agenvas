@@ -410,6 +410,70 @@ class ModelMetadataClientTest {
             server.stop(0);
         }
     }
+    @Test
+    void anthropicStopsAtRepeatedCursorAndPreservesPartialResult() throws Exception {
+        var paths = new ArrayList<String>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            paths.add(exchange.getRequestURI().toString());
+            String page = """
+                    {"data":[{"id":"page-%d","max_tokens":4096}],"has_more":true,"last_id":"same"}
+                    """.formatted(paths.size());
+            byte[] bytes = page.getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, bytes.length);
+            exchange.getResponseBody().write(bytes);
+            exchange.close();
+        });
+        server.start();
+        try (var client = new ModelMetadataClient(policy, Dns.SYSTEM, Duration.ofSeconds(3))) {
+            var result = client.fetch(Provider.ANTHROPIC, endpoint(server) + "/tenant", "synthetic-key", null);
+            assertThat(paths).containsExactly("/tenant/models?limit=100", "/tenant/models?limit=100&after_id=same");
+            assertThat(result.models()).extracting(ModelCatalog.Model::id).containsExactly("page-1", "page-2");
+            assertThat(result.partial()).isTrue();
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void ollamaUsesTenantScopedTagsAndRuntimeAndPostsOnlyTheSelectedModel() throws Exception {
+        var requests = new ArrayList<String>();
+        var keys = new ArrayList<String>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            String path = exchange.getRequestURI().toString();
+            keys.add(exchange.getRequestHeaders().getFirst("Authorization"));
+            requests.add(exchange.getRequestMethod() + " " + path + " "
+                    + new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            String body = switch (path) {
+                case "/tenant/api/tags" -> """
+                        {"models":[{"name":"local","digest":"one"}]}
+                        """;
+                case "/tenant/api/ps" -> """
+                        {"models":[{"model":"local","digest":"one","context_length":4096}]}
+                        """;
+                default -> """
+                        {"model_info":{"general.architecture":"x","x.context_length":16384}}
+                        """;
+            };
+            byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, bytes.length);
+            exchange.getResponseBody().write(bytes);
+            exchange.close();
+        });
+        server.start();
+        try (var client = new ModelMetadataClient(policy, Dns.SYSTEM, Duration.ofSeconds(3))) {
+            var result = client.fetch(Provider.OLLAMA, endpoint(server) + "/tenant/v1", "synthetic-key", "local");
+            assertThat(result.models())
+                    .containsExactly(new ModelCatalog.Model("local", 16384, null, null, 4096, "one", null));
+            assertThat(requests).containsExactly("GET /tenant/api/tags ", "GET /tenant/api/ps ",
+                    "POST /tenant/api/show {\"model\":\"local\",\"verbose\":false}");
+            assertThat(keys).containsExactly("Bearer synthetic-key", "Bearer synthetic-key", "Bearer synthetic-key");
+        } finally {
+            server.stop(0);
+        }
+    }
+
     private static String endpoint(HttpServer server) {
         return "http://127.0.0.1:" + server.getAddress().getPort();
     }

@@ -11,8 +11,8 @@ import org.springframework.stereotype.Component;
 
 /** Bounded credential-free GETs; HTTP(S), no redirects or implicit retries. */
 @Component
-public class ThirdPartyPromptHttpClient {
-    public static final int MAX_FEED_BYTES = 32 * 1024 * 1024;
+public class ThirdPartyPromptHttpClient implements dev.agenvas.mediatemplate.application.ThirdPartyPromptFeed {
+    public static final int MAX_FEED_BYTES = dev.agenvas.mediatemplate.application.ThirdPartyPromptFeed.MAX_FEED_BYTES;
     public static final int MAX_MEDIA_BYTES = 100 * 1024 * 1024;
     public enum FailureReason {
         HTTP_ERROR, TOO_LARGE, DOWNLOAD_FAILED, INVALID_REQUEST, DNS_FAILED, PROXY_UNREACHABLE, PROXY_AUTH_REQUIRED, PROXY_ERROR, TLS_FAILED, REMOTE_RATE_LIMITED

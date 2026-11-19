@@ -16,6 +16,7 @@ import dev.agenvas.task.application.TaskOutputReadAccessService;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -400,10 +401,70 @@ public class ArtifactService {
     @Transactional(readOnly = true)
     public List<ArtifactView> listProject(UUID ownerId, UUID projectId) {
         projects.get(ownerId, projectId);
-        return artifacts.listProjectArtifacts(ownerId, projectId).stream()
-                .filter(artifact -> artifact.archivedAt() == null)
-                .map(artifact -> get(ownerId, projectId, artifact.id()))
-                .toList();
+        var identities = artifacts.listProjectArtifacts(ownerId, projectId).stream()
+                .filter(artifact -> artifact.archivedAt() == null).toList();
+        var versions = loadVersions(ownerId, projectId, identities, Set.of());
+        return identities.stream().map(artifact -> view(artifact, versions)).toList();
+    }
+
+    /** A node's exact selection is independent of the shared resource default. */
+    public record Selection(UUID artifactId, UUID selectedVersionId) {
+    }
+    public record SelectedArtifact(ArtifactView resource, ArtifactVersion selectedVersion) {
+    }
+
+    /** Resolves all requested resource defaults and node selections in the same project transaction. */
+    @Transactional(readOnly = true)
+    public Map<Selection, SelectedArtifact> readSelections(UUID ownerId, UUID projectId, Set<Selection> selections) {
+        if (selections.isEmpty())
+            return Map.of();
+        projects.get(ownerId, projectId);
+        Set<UUID> artifactIds = new LinkedHashSet<>();
+        Set<UUID> selectedIds = new LinkedHashSet<>();
+        for (var selection : selections) {
+            artifactIds.add(selection.artifactId());
+            if (selection.selectedVersionId() != null)
+                selectedIds.add(selection.selectedVersionId());
+        }
+        var identities = artifacts.findArtifacts(ownerId, projectId, artifactIds);
+        var versions = loadVersions(ownerId, projectId, identities, selectedIds);
+        Map<UUID, ArtifactView> resources = new HashMap<>();
+        for (var artifact : identities)
+            resources.put(artifact.id(), view(artifact, versions));
+        Map<Selection, SelectedArtifact> result = new HashMap<>();
+        for (var selection : selections) {
+            var resource = resources.get(selection.artifactId());
+            if (resource == null)
+                throw notFound();
+            ArtifactVersion selected = null;
+            if (resource.artifact().kind() != Artifact.Kind.TEXT && selection.selectedVersionId() != null) {
+                selected = versions.get(selection.selectedVersionId());
+                if (selected == null || !selected.artifactId().equals(selection.artifactId()))
+                    throw notFound();
+            }
+            result.put(selection, new SelectedArtifact(resource, selected));
+        }
+        return result;
+    }
+
+    private Map<UUID, ArtifactVersion> loadVersions(UUID ownerId, UUID projectId, List<Artifact> identities,
+            Set<UUID> selectedIds) {
+        Set<UUID> ids = new LinkedHashSet<>(selectedIds);
+        for (var artifact : identities) {
+            if (artifact.resourceDefaultVersionId() != null)
+                ids.add(artifact.resourceDefaultVersionId());
+        }
+        return artifacts.findVersions(ownerId, projectId, ids);
+    }
+
+    private ArtifactView view(Artifact artifact, Map<UUID, ArtifactVersion> versions) {
+        UUID id = artifact.resourceDefaultVersionId();
+        if (id == null && isMediaKind(artifact.kind()))
+            return new ArtifactView(artifact, null);
+        var current = id == null ? null : versions.get(id);
+        if (current == null || !current.artifactId().equals(artifact.id()))
+            throw new IllegalStateException("Artifact resource default is missing");
+        return new ArtifactView(artifact, current);
     }
 
     /**

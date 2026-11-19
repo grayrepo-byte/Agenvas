@@ -14,28 +14,42 @@ import tools.jackson.databind.ObjectMapper;
 /** Explicit schema discovery; a group never extends the Run's frozen permission ceiling. */
 enum AgentToolset {
     CANVAS("Discover current nodes, selected intent, exact content and project metadata",
-            "read_canvas", "read_selection", "read_artifacts",
-            "read_project_summary"), TEXT("Create or revise saved text", "create_text", "revise_artifact"), LAYOUT(
-                    "Rename, move, resize, remove, duplicate or arrange canvas nodes", "manage_canvas_node",
-                    "arrange_items"), STORYBOARD("Read and save formal storyboard shots", "read_storyboard",
-                            "write_storyboard_shots"), MEDIA(
-                                    "Discover generation capabilities, edit drafts and propose approved image/video/audio generation",
-                                    "list_media_capabilities", "update_media_draft", "propose_media_generation",
-                                    "read_task_status"), INSPECTION("Inspect actual video frames or audio samples",
-                                            "read_media_sample"), COMPOSITION(
-                                                    "Local video assembly, audio extraction and trimming",
-                                                    "compose_video", "extract_audio", "trim_audio",
-                                                    "read_task_status"), SKILLS(
-                                                            "Activate a creative Skill and read its registered text/image attachments",
-                                                            "read_skill", "read_skill_resource", "read_skill_asset");
+            AgentTool.READ_CANVAS, AgentTool.READ_SELECTION, AgentTool.READ_ARTIFACTS,
+            AgentTool.READ_PROJECT_SUMMARY),
+
+    TEXT("Create or revise saved text", AgentTool.CREATE_TEXT, AgentTool.REVISE_ARTIFACT),
+
+    LAYOUT(
+            "Rename, move, resize, remove, duplicate or arrange canvas nodes", AgentTool.MANAGE_CANVAS_NODE,
+            AgentTool.ARRANGE_ITEMS),
+
+    STORYBOARD("Read and save formal storyboard shots", AgentTool.READ_STORYBOARD,
+            AgentTool.WRITE_STORYBOARD_SHOTS),
+
+    MEDIA(
+            "Discover generation capabilities, edit drafts and propose approved image/video/audio generation",
+            AgentTool.LIST_MEDIA_CAPABILITIES, AgentTool.UPDATE_MEDIA_DRAFT, AgentTool.PROPOSE_MEDIA_GENERATION,
+            AgentTool.READ_TASK_STATUS),
+
+    INSPECTION("Inspect actual video frames or audio samples",
+            AgentTool.READ_MEDIA_SAMPLE),
+
+    COMPOSITION(
+            "Local video assembly, audio extraction and trimming",
+            AgentTool.COMPOSE_VIDEO, AgentTool.EXTRACT_AUDIO, AgentTool.TRIM_AUDIO,
+            AgentTool.READ_TASK_STATUS),
+
+    SKILLS(
+            "Activate a creative Skill and read its registered text/image attachments",
+            AgentTool.READ_SKILL, AgentTool.READ_SKILL_RESOURCE, AgentTool.READ_SKILL_ASSET);
 
     static final String LOADER = "load_toolset";
     private final String description;
     private final List<String> tools;
 
-    AgentToolset(String description, String... tools) {
+    AgentToolset(String description, AgentTool... tools) {
         this.description = description;
-        this.tools = List.of(tools);
+        this.tools = Arrays.stream(tools).map(AgentTool::wireName).toList();
     }
 
     static boolean onDemand(JsonNode policy) {

@@ -57,6 +57,17 @@ class MediaFunctionServiceTest {
     }
 
     @Test
+    void localPlatformAloneCannotAuthorizeTheBuiltInAudioExtractor() {
+        UUID id = UUID.randomUUID();
+        var binding = new MediaCapabilityBinding(UUID.randomUUID(), 1, id, 1, "SYNTHETIC_LOCAL", "a".repeat(64));
+        when(catalog.resolve(id, Task.Kind.AUDIO_GENERATION, 0)).thenReturn(binding);
+        when(catalog.isLocal(binding)).thenReturn(true);
+        assertThatThrownBy(() -> service.update(MediaFunction.VIDEO_EXTRACT_AUDIO, 0, id))
+                .isInstanceOf(ApiProblemException.class).extracting("code").isEqualTo("MEDIA_FUNCTION_INCOMPATIBLE");
+        verify(repository, never()).update(any(), anyLong(), any(), any());
+    }
+
+    @Test
     void allowsLocalAudioOnlyForExtraction() {
         UUID id = MediaFunctionService.LOCAL_AUDIO_CAPABILITY;
         var binding = new MediaCapabilityBinding(UUID.randomUUID(), 1, id, 1,

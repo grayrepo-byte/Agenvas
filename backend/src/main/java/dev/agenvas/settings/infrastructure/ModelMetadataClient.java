@@ -149,52 +149,9 @@ public class ModelMetadataClient implements AutoCloseable {
                 return answers;
             }, Duration.ofSeconds(2), Duration.ofSeconds(3), deadline);
             String prefix = base.encodedPath().replaceAll("/+$", "");
-            // These sibling mappings require an explicitly chosen native metadata profile.
-            String metadataPrefix = provider == ModelCatalog.Provider.GEMINI && prefix.endsWith("/openai")
-                    ? prefix.substring(0, prefix.length() - 7)
-                    : prefix;
-            String ollamaPrefix = prefix.endsWith("/v1") ? prefix.substring(0, prefix.length() - 3) : prefix;
-            String path = provider == ModelCatalog.Provider.OLLAMA
-                    ? ollamaPrefix + "/api/tags"
-                    : metadataPrefix + "/models";
-            JsonNode listed = request(client, base, path, provider, key, null, active);
-            if (provider == ModelCatalog.Provider.GEMINI || provider == ModelCatalog.Provider.ANTHROPIC) {
-                if (!listed.isObject())
-                    throw failure("INVALID");
-                var combined = ((tools.jackson.databind.node.ObjectNode) listed).deepCopy();
-                String field = provider == ModelCatalog.Provider.GEMINI ? "models" : "data";
-                if (!combined.path(field).isArray())
-                    throw failure("INVALID");
-                var entries = (tools.jackson.databind.node.ArrayNode) combined.path(field);
-                String cursor = cursor(provider, listed);
-                var seen = new java.util.HashSet<String>();
-                // Cursors are untrusted, too: an echoed key must never enter a URL.
-                for (int page = 1; page < 4 && !cursor.isEmpty() && !cursor.contains(key)
-                        && entries.size() < ModelCatalog.MAX_MODELS && seen.add(cursor); page++) {
-                    var next = request(client, base, path, provider, key, null, active, cursor);
-                    if (!next.path(field).isArray())
-                        throw failure("INVALID");
-                    for (var entry : next.path(field))
-                        entries.add(entry);
-                    cursor = cursor(provider, next);
-                    if (provider == ModelCatalog.Provider.GEMINI) {
-                        if (cursor.isEmpty())
-                            combined.remove("nextPageToken");
-                        else
-                            combined.put("nextPageToken", cursor);
-                    } else
-                        combined.put("has_more", next.path("has_more").asBoolean(false));
-                }
-                listed = combined;
-            }
-            JsonNode show = null, running = null;
-            if (provider == ModelCatalog.Provider.OLLAMA) {
-                running = request(client, base, ollamaPrefix + "/api/ps", provider, key, null, active);
-                if (modelId != null && !modelId.isEmpty())
-                    show = request(client, base, ollamaPrefix + "/api/show", provider, key,
-                            json.createObjectNode().put("model", modelId).put("verbose", false), active);
-            }
-            var catalog = ModelCatalog.parse(provider, listed, show, running, modelId);
+            var protocol = ModelMetadataProtocol.forProvider(provider);
+            var catalog = protocol.fetch(prefix, modelId, key,
+                    (path, cursor, body) -> request(client, base, path, protocol, key, body, active, cursor));
             var safe = new java.util.ArrayList<ModelCatalog.Model>();
             boolean partial = catalog.partial();
             // Even an authenticated service's strings are untrusted: do not turn a
@@ -223,32 +180,14 @@ public class ModelMetadataClient implements AutoCloseable {
         }
     }
 
-    private JsonNode request(okhttp3.OkHttpClient client, HttpUrl base, String path, ModelCatalog.Provider provider,
-            String key, JsonNode body, AtomicReference<Call> active) throws java.io.IOException {
-        return request(client, base, path, provider, key, body, active, "");
-    }
-    private JsonNode request(okhttp3.OkHttpClient client, HttpUrl base, String path, ModelCatalog.Provider provider,
+    private JsonNode request(okhttp3.OkHttpClient client, HttpUrl base, String path, ModelMetadataProtocol protocol,
             String key, JsonNode body, AtomicReference<Call> active, String cursor) throws java.io.IOException {
         if (Thread.currentThread().isInterrupted())
             throw failure("CANCELED");
         var urlBuilder = base.newBuilder().encodedPath(path).query(null).fragment(null);
-        if (path.endsWith("/models") && provider == ModelCatalog.Provider.GEMINI) {
-            urlBuilder.addQueryParameter("pageSize", "1000");
-            if (!cursor.isEmpty())
-                urlBuilder.addQueryParameter("pageToken", cursor);
-        } else if (path.endsWith("/models") && provider == ModelCatalog.Provider.ANTHROPIC) {
-            urlBuilder.addQueryParameter("limit", "100");
-            if (!cursor.isEmpty())
-                urlBuilder.addQueryParameter("after_id", cursor);
-        }
-        HttpUrl url = urlBuilder.build();
-        var request = new Request.Builder().url(url).header("Accept", "application/json");
-        if (provider == ModelCatalog.Provider.GEMINI)
-            request.header("x-goog-api-key", key);
-        else if (provider == ModelCatalog.Provider.ANTHROPIC)
-            request.header("x-api-key", key).header("anthropic-version", "2023-06-01");
-        else
-            request.header("Authorization", "Bearer " + key);
+        protocol.query(urlBuilder, cursor);
+        var request = new Request.Builder().url(urlBuilder.build()).header("Accept", "application/json");
+        protocol.authenticate(request, key);
         if (body != null)
             request.post(RequestBody.create(json.writeValueAsBytes(body), MediaType.get("application/json")));
         Call call = client.newCall(request.build());
@@ -279,18 +218,12 @@ public class ModelMetadataClient implements AutoCloseable {
             active.compareAndSet(call, null);
         }
     }
-    private static String cursor(ModelCatalog.Provider provider, JsonNode value) {
-        if (provider == ModelCatalog.Provider.ANTHROPIC && !value.path("has_more").asBoolean(false))
-            return "";
-        JsonNode raw = value.path(provider == ModelCatalog.Provider.GEMINI ? "nextPageToken" : "last_id");
-        return raw.isString() && raw.asText().length() <= 512 ? raw.asText() : "";
-    }
     private static void cancel(AtomicReference<Call> active) {
         var call = active.get();
         if (call != null)
             call.cancel();
     }
-    private static MetadataFailure failure(String reason) {
+    static MetadataFailure failure(String reason) {
         return new MetadataFailure("MODEL_METADATA_" + reason);
     }
     public static final class MetadataFailure extends RuntimeException {

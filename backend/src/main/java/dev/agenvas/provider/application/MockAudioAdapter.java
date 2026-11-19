@@ -3,9 +3,7 @@ package dev.agenvas.provider.application;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaAdapter;
-import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.Submission;
-import dev.agenvas.task.domain.Task;
 import java.io.ByteArrayInputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -28,10 +26,6 @@ public final class MockAudioAdapter implements MediaAdapter {
     @Override
     public String adapterId() {
         return "MOCK_AUDIO";
-    }
-    @Override
-    public boolean supports(PortInput input) {
-        return input.kind() == Task.Kind.AUDIO_GENERATION;
     }
     @Override
     public Submission submit(AttemptContext context) {

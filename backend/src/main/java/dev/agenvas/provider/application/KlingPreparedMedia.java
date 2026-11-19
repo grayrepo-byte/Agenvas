@@ -148,31 +148,26 @@ public class KlingPreparedMedia {
         } catch (IOException unavailable) {
             throw KlingProtocol.invalid();
         }
-        var probe = mapper.readTree(tools.ffprobe(List.of("-v", "error", "-show_entries",
+        var probe = VideoProbeMeasurements.read(mapper.readTree(tools.ffprobe(List.of("-v", "error", "-show_entries",
                 "stream=codec_type,width,height,avg_frame_rate:format=format_name,duration", "-of", "json",
-                file.path().toString())));
-        double seconds = probe.path("format").path("duration").asDouble(-1);
-        String format = probe.path("format").path("format_name").asText();
-        if (!format.contains("mov") && !format.contains("mp4") || !Double.isFinite(seconds)
+                file.path().toString()))));
+        double seconds = probe.durationSeconds().orElseThrow(KlingProtocol::invalid);
+        String format = probe.formatName();
+        if (!format.contains("mov") && !format.contains("mp4")
                 || seconds <= 0 || Math.abs(seconds * 1000 - asset.durationMs()) > 100)
             throw KlingProtocol.invalid();
         boolean found = false;
-        for (var stream : probe.path("streams"))
-            if ("video".equals(stream.path("codec_type").asText())) {
-                if (found || stream.path("width").asInt(-1) != asset.width()
-                        || stream.path("height").asInt(-1) != asset.height())
+        for (var stream : probe.streams())
+            if ("video".equals(stream.codecType())) {
+                int width = stream.width().orElseThrow(KlingProtocol::invalid);
+                int height = stream.height().orElseThrow(KlingProtocol::invalid);
+                if (found || width != asset.width() || height != asset.height())
                     throw KlingProtocol.invalid();
                 found = true;
                 // Motion-control documents impose no fps range. Omni/O1 explicitly require 24–60 fps.
                 if (!KlingModels.motion(profile)) {
-                    String[] rate = stream.path("avg_frame_rate").asText().split("/");
-                    double fps;
-                    try {
-                        fps = Double.parseDouble(rate[0]) / (rate.length == 2 ? Double.parseDouble(rate[1]) : 1);
-                    } catch (NumberFormatException invalid) {
-                        throw KlingProtocol.invalid();
-                    }
-                    if (!Double.isFinite(fps) || fps < 24 || fps > 60)
+                    double fps = stream.averageFrameRate().orElseThrow(KlingProtocol::invalid);
+                    if (fps < 24 || fps > 60)
                         throw KlingProtocol.invalid();
                 }
             }
