@@ -323,6 +323,48 @@ it.each([
   expect(download).toHaveAttribute("download", extension ? `image-1.${extension}` : "image-1");
 });
 
+it("keeps Chinese composition confirmation and a newline without submitting until Generate is clicked", async () => {
+  const submissions: unknown[] = [];
+  server.use(
+    http.post("/api/v1/image-studio/batches", async ({ request }) => {
+      submissions.push(await request.json());
+      return HttpResponse.json({ ...history, id: "ime-batch" });
+    }),
+    http.get("/api/v1/image-studio/batches/ime-batch", () => HttpResponse.json({ ...history, id: "ime-batch" })),
+  );
+  show();
+  const user = userEvent.setup();
+  const prompt = await screen.findByRole<HTMLTextAreaElement>("textbox", { name: "提示词" });
+  await user.click(prompt);
+  // jsdom cannot run a system IME. These composition/input events model candidate confirmation.
+  fireEvent.compositionStart(prompt);
+  fireEvent.input(prompt, {
+    target: { value: "晨光下的海边小屋" },
+    data: "晨光下的海边小屋",
+    inputType: "insertCompositionText",
+    isComposing: true,
+  });
+  fireEvent.keyDown(prompt, { key: "Enter", code: "Enter", keyCode: 229, isComposing: true });
+  fireEvent.keyUp(prompt, { key: "Enter", code: "Enter", keyCode: 229, isComposing: true });
+  fireEvent.compositionEnd(prompt, { data: "晨光下的海边小屋" });
+  fireEvent.input(prompt, {
+    target: { value: "晨光下的海边小屋" },
+    data: "晨光下的海边小屋",
+    inputType: "insertFromComposition",
+    isComposing: false,
+  });
+  expect(prompt).toHaveValue("晨光下的海边小屋");
+  expect(submissions).toHaveLength(0);
+  prompt.setSelectionRange(prompt.value.length, prompt.value.length);
+  await user.keyboard("{Enter}柔和自然光");
+  expect(prompt).toHaveValue("晨光下的海边小屋\n柔和自然光");
+  expect(submissions).toHaveLength(0);
+  await waitFor(() => expect(screen.getByRole("button", { name: "生成图片" })).toBeEnabled());
+  await user.click(screen.getByRole("button", { name: "生成图片" }));
+  await waitFor(() => expect(submissions).toHaveLength(1));
+  expect(submissions[0]).toMatchObject({ prompt: "晨光下的海边小屋\n柔和自然光" });
+});
+
 it.each([
   ["WAITING_PROVIDER", "STUDIO_IMAGE_ARCHIVE_RETRY", "图片已生成，正在归档"],
   ["BLOCKED", "STUDIO_IMAGE_ARCHIVE_MISSING", "结果归档不完整"],
