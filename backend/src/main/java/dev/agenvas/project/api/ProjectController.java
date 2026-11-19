@@ -79,7 +79,7 @@ public class ProjectController {
     public ProjectResponse get(
             @AuthenticationPrincipal AdminPrincipal principal,
             @PathVariable UUID projectId) {
-        return ProjectResponse.from(projects.get(principal.userId(), projectId));
+        return ProjectResponse.from(projects.requireCanvasProject(principal.userId(), projectId));
     }
 
     /** 更新项目设置；expectedVersion 不匹配时由服务拒绝覆盖并发修改。

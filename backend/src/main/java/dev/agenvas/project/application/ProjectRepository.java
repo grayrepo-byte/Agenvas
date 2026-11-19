@@ -13,6 +13,12 @@ public interface ProjectRepository {
     /** 插入一个活动项目。 */
     void create(Project project);
 
+    /** Atomically insert or return the one private Studio storage scope belonging to this owner. */
+    Project ensureImageStudioScope(Project candidate);
+
+    /** Public canvas management must not expose an internal media storage scope. */
+    boolean isCanvasScope(UUID ownerId, UUID projectId);
+
     /** 在指定所有者范围内读取项目。 */
     Optional<Project> findById(UUID ownerId, UUID projectId);
 
