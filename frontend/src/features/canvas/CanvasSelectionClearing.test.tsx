@@ -734,7 +734,7 @@ describe("video hover controls", () => {
     expect(screen.queryByLabelText("参考图 的视频")).not.toBeInTheDocument();
     expect(play).not.toHaveBeenCalled();
     const video = (await screen.findByLabelText("参考图 的视频", {}, { timeout: 2000 })) as HTMLVideoElement;
-    expect(play).toHaveBeenCalledOnce();
+    await waitFor(() => expect(play).toHaveBeenCalledOnce());
     expect(video.muted).toBe(true);
     Object.defineProperty(video, "duration", { configurable: true, value: 10 });
     fireEvent.loadedMetadata(video);
