@@ -19,7 +19,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, type ReactNode } from "react";
 import { useImageStudioDraftStore } from "../../features/image-studio/imageStudioDraft";
 import { useCanvasStore } from "../../features/canvas/canvasStore";
-import { Link, Navigate, useLocation, useNavigate } from "react-router";
+import { Link, Navigate, useLocation, useMatch, useNavigate } from "react-router";
 import { HTTP_STATUS, ApiError, getCurrentUser, logout } from "../api/client";
 import { t, useLocale } from "../i18n";
 import { LanguageSelect } from "../i18n/LanguageSelect";
@@ -147,14 +147,15 @@ export function PageShell({
   const toggleNavigation = useNavigationStore(state => state.toggle);
   const location = useLocation();
   const navigation = useRef<HTMLElement>(null);
-  const activePath = location.pathname === "/settings/llm" ? "/settings/providers" : location.pathname;
+  const isImageStudio = !!useMatch("/image-studio");
+  const activePath = isImageStudio
+    ? "/image-studio"
+    : location.pathname === "/settings/llm"
+      ? "/settings/providers"
+      : location.pathname;
   const isSettings = activePath.startsWith("/settings/");
   const isStudio =
-    isSettings ||
-    activePath === "/projects" ||
-    activePath === "/image-studio" ||
-    activePath === "/library" ||
-    activePath === "/skills";
+    isSettings || activePath === "/projects" || isImageStudio || activePath === "/library" || activePath === "/skills";
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const session = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser, retry: false });
@@ -228,6 +229,7 @@ export function PageShell({
         collapsed && "app-shell--collapsed",
         isSettings && "app-shell--settings",
         isStudio && "app-shell--studio",
+        isImageStudio && "app-shell--image-studio",
       )}
     >
       <a className="app-skip-link" href="#page-content">
@@ -288,25 +290,29 @@ export function PageShell({
         </div>
       </aside>
       <main className="app-page-main" id="page-content" tabIndex={-1}>
-        <header className="app-page-header">
-          {isStudio ? (
-            <div className="settings-page-heading">
-              <div className="settings-page-icon">
-                <PageIcon size={27} weight="duotone" aria-hidden />
+        {isImageStudio ? (
+          <h1 className="sr-only">{title}</h1>
+        ) : (
+          <header className="app-page-header">
+            {isStudio ? (
+              <div className="settings-page-heading">
+                <div className="settings-page-icon">
+                  <PageIcon size={27} weight="duotone" aria-hidden />
+                </div>
+                <div>
+                  <h1>{title}</h1>
+                  {description ? <p className="app-page-description">{description}</p> : null}
+                </div>
               </div>
+            ) : (
               <div>
                 <h1>{title}</h1>
                 {description ? <p className="app-page-description">{description}</p> : null}
               </div>
-            </div>
-          ) : (
-            <div>
-              <h1>{title}</h1>
-              {description ? <p className="app-page-description">{description}</p> : null}
-            </div>
-          )}
-          {actions ? <div className="ui-form-actions">{actions}</div> : null}
-        </header>
+            )}
+            {actions ? <div className="ui-form-actions">{actions}</div> : null}
+          </header>
+        )}
         {session.isError ? sessionError : null}
         {signOut.error ? <Notice tone="danger">{t("ui.pageShell.signOutFailed")}</Notice> : null}
         <div className="app-page-content">{children}</div>

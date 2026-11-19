@@ -1,14 +1,19 @@
 import {
   ArrowClockwise,
   ClockCounterClockwise,
-  DownloadSimple,
   ImageSquare,
   Plus,
+  SidebarSimple,
+  SlidersHorizontal,
+  Stack,
+  Rectangle,
+  ArrowsOutSimple,
+  Cube,
   Sparkle,
   X,
 } from "@/shared/ui/icons";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import { Link } from "react-router";
 import { ApiError, assetContentUrl, assetThumbnailUrl, getCurrentUser } from "../../shared/api/client";
 import {
@@ -23,18 +28,18 @@ import {
   type ImageStudioBatch,
   type ImageStudioCapability,
   type ImageStudioParameters,
-  type ImageStudioResult,
-  type ImageStudioTask,
 } from "../../shared/api/imageStudio";
 import { formatDate, t, useLocale, type MessageKey } from "../../shared/i18n";
 import { createCommandKey } from "../../shared/lib/clientId";
 import { LoadingState } from "../../shared/ui/LoadingState";
-import { EmptyState, Notice, StatusBadge } from "../../shared/ui/PagePrimitives";
+import { EmptyState, Notice } from "../../shared/ui/PagePrimitives";
 import { PageShell } from "../../shared/ui/PageShell";
 import { Select } from "../../shared/ui/Select";
 import { Button } from "../../shared/ui/primitives/button";
 import { Checkbox } from "../../shared/ui/primitives/checkbox";
 import { Field, FieldLabel } from "../../shared/ui/primitives/field";
+import { Dialog, DialogClose, DialogContent, DialogTitle, DialogTrigger } from "../../shared/ui/primitives/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "../../shared/ui/primitives/popover";
 import { Textarea } from "../../shared/ui/primitives/textarea";
 import { MediaPreviewDialog } from "../canvas/MediaPreviewDialog";
 import {
@@ -43,37 +48,26 @@ import {
   type StudioCommand,
   type StudioDraft,
 } from "./imageStudioDraft";
+import { batchStatus, StudioBatchResults, type StudioPreview } from "./StudioBatchResults";
 import "./ImageStudioPage.css";
 
-const ARCHIVE_RETRY_CODE = "STUDIO_IMAGE_ARCHIVE_RETRY";
-const ARCHIVE_MISSING_CODE = "STUDIO_IMAGE_ARCHIVE_MISSING";
 const QUALITY_LABELS: Record<string, MessageKey> = {
   low: "imageStudio.quality.low",
   medium: "imageStudio.quality.medium",
   high: "imageStudio.quality.high",
 };
-const STATUS_LABELS: Record<ImageStudioTask["status"], MessageKey> = {
-  READY: "imageStudio.status.ready",
-  RUNNING: "imageStudio.status.running",
-  SUBMITTING: "imageStudio.status.submitting",
-  WAITING_PROVIDER: "imageStudio.status.waiting",
-  UNKNOWN: "imageStudio.status.unknown",
-  BLOCKED: "imageStudio.status.blocked",
-  SUCCEEDED: "imageStudio.status.succeeded",
-  FAILED: "imageStudio.status.failed",
-  CANCELED: "imageStudio.status.canceled",
-};
 const historyKey = (ownerId: string) => ["image-studio", ownerId, "history"] as const;
 const batchKey = (ownerId: string, batchId?: string) => ["image-studio", ownerId, "batch", batchId] as const;
-const DOWNLOAD_EXTENSIONS: Readonly<Record<string, string>> = {
-  "image/png": "png",
-  "image/jpeg": "jpg",
-  "image/webp": "webp",
-};
-function downloadFilename(index: number, contentType: string) {
-  const extension = DOWNLOAD_EXTENSIONS[contentType];
-  return extension ? `image-${index}.${extension}` : `image-${index}`;
+const COMPACT_LAYOUT = "(max-width: 900px)";
+function subscribeLayout(listener: () => void) {
+  const media = window.matchMedia?.(COMPACT_LAYOUT);
+  media?.addEventListener("change", listener);
+  return () => media?.removeEventListener("change", listener);
 }
+function compactLayout() {
+  return window.matchMedia?.(COMPACT_LAYOUT).matches ?? false;
+}
+
 function errorText(error: unknown) {
   return error instanceof Error ? error.message : t("imageStudio.loadFailed");
 }
@@ -90,7 +84,7 @@ export function ImageStudioPage() {
   useLocale();
   const session = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser, retry: false });
   return (
-    <PageShell title={t("imageStudio.title")} description={t("imageStudio.description")}>
+    <PageShell title={t("imageStudio.title")}>
       {session.data ? <ImageStudioWorkspace key={session.data.id} ownerId={session.data.id} /> : null}
     </PageShell>
   );
@@ -101,9 +95,12 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
   const queryClient = useQueryClient();
   const draft = useImageStudioDraft(ownerId);
   const update = (patch: Partial<StudioDraft>) => useImageStudioDraftStore.getState().update(ownerId, patch);
-  const [preview, setPreview] = useState<{ result: ImageStudioResult; projectId: string; index: number } | null>(null);
+  const [preview, setPreview] = useState<StudioPreview | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const promptId = useId();
+  const historyId = useId();
+  const narrow = useSyncExternalStore(subscribeLayout, compactLayout);
+  const [railOpen, setRailOpen] = useState(true);
   const context = useQuery({
     queryKey: ["image-studio", ownerId, "context"],
     queryFn: getImageStudioContext,
@@ -232,261 +229,173 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
   }
   const locked = accept.isPending || !!draft.command;
   const batch = selected.data;
-  return (
-    <div className="image-studio" data-locale={locale}>
-      <header className="image-studio-history">
-        <div className="image-studio-history-title">
-          <ClockCounterClockwise size={17} aria-hidden="true" />
-          <h2>{t("imageStudio.history")}</h2>
-        </div>
-        <div className="image-studio-history-list" aria-label={t("imageStudio.history")}>
-          {historyRows.map(row => (
-            <Button
-              type="button"
-              variant="ghost"
-              className="image-studio-history-item"
-              key={row.id}
-              aria-pressed={selectedId === row.id}
-              onClick={() => chooseBatch(row)}
-              title={row.prompt}
-            >
-              <span>{row.prompt}</span>
+  const resultCount = batch?.tasks.reduce((count, task) => count + task.results.length, 0) ?? 0;
+  const status = batch && batchStatus(batch);
+  const contextFailure = context.error ? (
+    <Notice tone="danger" title={t("imageStudio.loadFailed")}>
+      {errorText(context.error) !== t("imageStudio.loadFailed") ? <p>{errorText(context.error)}</p> : null}
+      <Button variant="outline" type="button" disabled={context.isFetching} onClick={() => void context.refetch()}>
+        {t("imageStudio.retryModels")}
+      </Button>
+    </Notice>
+  ) : null;
+  const historyDetail = history.error && errorText(history.error);
+  const historyFeedback = history.error ? (
+    <Notice tone="danger" title={t("imageStudio.historyFailed")}>
+      {historyDetail !== t("imageStudio.historyFailed") ? <p>{historyDetail}</p> : null}
+      <Button variant="outline" type="button" disabled={history.isFetching} onClick={() => void history.refetch()}>
+        {t("common.retryRead")}
+      </Button>
+    </Notice>
+  ) : history.isLoading || context.isPending ? (
+    <LoadingState compact label={t("imageStudio.loadingHistory")} />
+  ) : null;
+  const historyList = (onChoose?: () => void) => (
+    <div className="image-studio-history-list">
+      {narrow && !history.data && contextFailure ? contextFailure : historyFeedback}
+      {historyRows.map(row => {
+        const result = row.tasks.flatMap(task => task.results)[0];
+        const status = batchStatus(row);
+        return (
+          <Button
+            type="button"
+            variant="ghost"
+            className="image-studio-history-item"
+            key={row.id}
+            aria-pressed={selectedId === row.id}
+            onClick={() => {
+              chooseBatch(row);
+              onChoose?.();
+            }}
+            title={row.prompt}
+          >
+            <span className="image-studio-history-thumb">
+              {result ? (
+                <img src={assetThumbnailUrl(row.projectId, result.assetId)} alt="" loading="lazy" />
+              ) : (
+                <ClockCounterClockwise size={24} aria-hidden="true" />
+              )}
+            </span>
+            <span className="image-studio-history-caption">
+              <strong>{row.prompt}</strong>
               <small>
-                {formatDate(row.createdAt, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                <time dateTime={row.createdAt}>
+                  {formatDate(row.createdAt, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                </time>
+                {status ? <span>{t(status)}</span> : null}
               </small>
-            </Button>
-          ))}
-          {history.isSuccess && historyRows.length === 0 ? (
-            <span className="image-studio-muted">{t("imageStudio.noHistory")}</span>
-          ) : null}
-          {history.hasNextPage ? (
-            <Button
-              variant="ghost"
-              type="button"
-              disabled={history.isFetchingNextPage}
-              onClick={() => void history.fetchNextPage()}
-            >
-              {t("imageStudio.moreHistory")}
-            </Button>
-          ) : null}
-        </div>
+            </span>
+          </Button>
+        );
+      })}
+      {history.isSuccess && historyRows.length === 0 ? (
+        <p className="image-studio-hint">{t("imageStudio.noHistory")}</p>
+      ) : null}
+      {history.hasNextPage ? (
         <Button
           variant="ghost"
-          size="icon"
           type="button"
-          aria-label={t("imageStudio.refresh")}
-          disabled={context.isFetching || history.isFetching || selected.isFetching}
-          onClick={() => void refresh()}
+          disabled={history.isFetchingNextPage}
+          onClick={() => void history.fetchNextPage()}
         >
-          <ArrowClockwise aria-hidden="true" />
+          {t("imageStudio.moreHistory")}
         </Button>
-      </header>
-      {history.error ? (
-        <Notice tone="danger" title={t("imageStudio.historyFailed")}>
-          <p>{errorText(history.error)}</p>
-          <Button variant="outline" type="button" onClick={() => void history.refetch()}>
-            {t("common.retryRead")}
-          </Button>
-        </Notice>
       ) : null}
-      <div className="image-studio-layout">
-        <form className="image-studio-controls" onSubmit={submit} aria-label={t("imageStudio.parameters")}>
-          <div className="image-studio-section-heading">
-            <span className="image-studio-step">01</span>
-            <h2>{t("imageStudio.create")}</h2>
-          </div>
-          <fieldset className="image-studio-fieldset" disabled={locked}>
-            <Field className="image-studio-prompt-field">
-              <FieldLabel htmlFor={promptId}>{t("imageStudio.prompt")}</FieldLabel>
-              <Textarea
-                id={promptId}
-                value={draft.prompt}
-                onChange={event => update({ prompt: event.target.value })}
-                placeholder={t("imageStudio.promptPlaceholder")}
-                maxLength={8000}
-                rows={8}
-              />
-            </Field>
-            <section className="image-studio-references" aria-label={t("imageStudio.references")}>
-              <div className="image-studio-field-heading">
-                <h3>{t("imageStudio.references")}</h3>
-                <span>
-                  {draft.references.length}
-                  {capability ? ` / ${capability.maxReferenceImages}` : ""}
-                </span>
-              </div>
-              <div className="image-studio-reference-list">
-                {draft.references.map((reference, index) => (
-                  <div className="image-studio-reference" key={reference.versionId}>
-                    {reference.assetId && reference.projectId ? (
-                      <img
-                        alt={t("imageStudio.referenceLabel", { "0": index + 1 })}
-                        src={assetThumbnailUrl(reference.projectId, reference.assetId)}
-                      />
-                    ) : (
-                      <ImageSquare size={22} aria-hidden="true" />
-                    )}
-                    <span>{t("imageStudio.referenceLabel", { "0": index + 1 })}</span>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      type="button"
-                      aria-label={t("imageStudio.removeReference", { "0": index + 1 })}
-                      onClick={() =>
-                        update({ references: draft.references.filter(item => item.versionId !== reference.versionId) })
-                      }
-                    >
-                      <X aria-hidden="true" />
-                    </Button>
-                  </div>
-                ))}
+    </div>
+  );
+  return (
+    <div className="image-studio" data-locale={locale}>
+      <div className="image-studio-main">
+        <section className="image-studio-results" aria-label={t("imageStudio.results")}>
+          <div className="image-studio-results-header">
+            <div className="image-studio-workspace-title">
+              <ImageSquare weight="duotone" aria-hidden="true" />
+              <h2>{t("imageStudio.results")}</h2>
+            </div>
+            <div className="image-studio-toolbar-actions">
+              {batch ? (
                 <Button
-                  className="image-studio-upload"
+                  className="image-studio-restore"
+                  aria-label={t("imageStudio.restore")}
+                  title={t("imageStudio.restore")}
                   type="button"
-                  variant="outline"
-                  disabled={!capability || upload.isPending || draft.references.length >= capability.maxReferenceImages}
-                  onClick={() => inputRef.current?.click()}
+                  variant="ghost"
+                  size="sm"
+                  disabled={locked}
+                  onClick={() => restoreBatch(batch)}
                 >
-                  <Plus aria-hidden="true" />
-                  {upload.isPending ? t("imageStudio.uploading") : t("imageStudio.addReference")}
+                  <ClockCounterClockwise aria-hidden="true" />
+                  <span>{t("imageStudio.restore")}</span>
                 </Button>
-                <input
-                  ref={inputRef}
-                  type="file"
-                  className="sr-only"
-                  aria-label={t("imageStudio.uploadReference")}
-                  accept="image/png,image/jpeg,image/webp"
-                  disabled={
-                    locked ||
-                    upload.isPending ||
-                    !capability ||
-                    draft.references.length >= capability.maxReferenceImages
-                  }
-                  onChange={event => {
-                    const file = event.target.files?.[0];
-                    if (file) upload.mutate(file);
-                    event.target.value = "";
-                  }}
+              ) : null}
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                type="button"
+                aria-label={t("imageStudio.refresh")}
+                title={t("imageStudio.refresh")}
+                disabled={context.isFetching || history.isFetching || selected.isFetching}
+                onClick={() => void refresh()}
+              >
+                <ArrowClockwise aria-hidden="true" />
+              </Button>
+              {narrow ? (
+                <MobileHistory>{historyList}</MobileHistory>
+              ) : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="image-studio-history-toggle"
+                  aria-controls={historyId}
+                  aria-expanded={railOpen}
+                  aria-label={railOpen ? t("imageStudio.collapseHistory") : t("imageStudio.expandHistory")}
+                  title={railOpen ? t("imageStudio.collapseHistory") : t("imageStudio.expandHistory")}
+                  onClick={() => setRailOpen(!railOpen)}
+                >
+                  <SidebarSimple aria-hidden="true" />
+                </Button>
+              )}
+            </div>
+          </div>
+          <div className="image-studio-stage">
+            {narrow || !railOpen ? historyFeedback : null}
+            {batch ? (
+              <div className="image-studio-stage-meta">
+                <time dateTime={batch.createdAt}>
+                  {formatDate(batch.createdAt, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                </time>
+                {status ? <span>{t(status)}</span> : null}
+                {resultCount ? <span>{t("imageStudio.resultCount", { "0": resultCount })}</span> : null}
+              </div>
+            ) : null}
+            {selected.error ? (
+              <Notice tone="danger" title={t("imageStudio.statusFailed")}>
+                <p>{errorText(selected.error)}</p>
+                <Button type="button" variant="outline" onClick={() => void selected.refetch()}>
+                  {t("common.retryRead")}
+                </Button>
+              </Notice>
+            ) : null}
+            {!batch && selected.isFetching && !history.isLoading ? (
+              <LoadingState label={t("imageStudio.loadingHistory")} />
+            ) : null}
+            {!batch && !selected.error && !selected.isFetching && history.isSuccess ? (
+              <div className="image-studio-empty">
+                <EmptyState
+                  icon={<ImageSquare size={38} aria-hidden="true" />}
+                  title={t("imageStudio.emptyTitle")}
+                  description={t("imageStudio.emptyHint")}
                 />
               </div>
-              <p className="image-studio-hint">{t("imageStudio.referenceHint")}</p>
-              {upload.error ? (
-                <p className="image-studio-error" role="alert">
-                  {errorText(upload.error)}
-                </p>
-              ) : null}
-              {tooManyReferences ? (
-                <p className="image-studio-error" role="alert">
-                  {t("imageStudio.tooManyReferences", { "0": capability?.maxReferenceImages })}
-                </p>
-              ) : null}
-            </section>
-            <Field>
-              <FieldLabel htmlFor={`${promptId}-model`}>{t("imageStudio.model")}</FieldLabel>
-              <Select
-                id={`${promptId}-model`}
-                aria-label={t("imageStudio.model")}
-                value={draft.capabilityId ?? ""}
-                disabled={!context.data?.capabilities.length}
-                onChange={event => {
-                  const next = context.data?.capabilities.find(item => item.capabilityId === event.target.value);
-                  if (next)
-                    update({
-                      capabilityId: next.capabilityId,
-                      capabilityVersion: next.capabilityVersion,
-                      parameters: defaults(next),
-                    });
-                }}
-              >
-                {!capability ? (
-                  <option value={draft.capabilityId ?? ""}>
-                    {draft.capabilityId ? t("imageStudio.unavailableModel") : t("imageStudio.chooseModel")}
-                  </option>
-                ) : null}
-                {context.data?.capabilities.map(item => (
-                  <option value={item.capabilityId} key={item.capabilityId}>
-                    {item.name}
-                  </option>
-                ))}
-              </Select>
-              {capability ? <p className="image-studio-hint">{capability.connectionName}</p> : null}
-            </Field>
-            {capability ? (
-              <>
-                <div className="image-studio-parameter-grid">
-                  {capability.aspectRatios.length ? (
-                    <ParameterSelect
-                      id={`${promptId}-ratio`}
-                      label={t("imageStudio.ratio")}
-                      value={parameters.aspectRatio}
-                      options={capability.aspectRatios}
-                      onChange={value =>
-                        updateParameters({ aspectRatio: value as ImageStudioParameters["aspectRatio"] })
-                      }
-                    />
-                  ) : null}
-                  {capability.resolutions.length ? (
-                    <ParameterSelect
-                      id={`${promptId}-resolution`}
-                      label={t("imageStudio.resolution")}
-                      value={parameters.resolution}
-                      options={capability.resolutions}
-                      onChange={value => updateParameters({ resolution: value as ImageStudioParameters["resolution"] })}
-                    />
-                  ) : null}
-                  {capability.qualities.length ? (
-                    <ParameterSelect
-                      id={`${promptId}-quality`}
-                      label={t("imageStudio.quality")}
-                      value={parameters.quality}
-                      options={capability.qualities}
-                      labels={Object.fromEntries(Object.entries(QUALITY_LABELS).map(([key, label]) => [key, t(label)]))}
-                      onChange={value => updateParameters({ quality: value as ImageStudioParameters["quality"] })}
-                    />
-                  ) : null}
-                </div>
-                {capability.complexity ? (
-                  <p className="image-studio-hint">{t("imageStudio.complexity", { "0": capability.complexity })}</p>
-                ) : null}
-                {capability.supportsTransparentBackground ? (
-                  <label className="image-studio-checkbox">
-                    <Checkbox
-                      checked={parameters.transparentBackground ?? false}
-                      onCheckedChange={checked => updateParameters({ transparentBackground: checked === true })}
-                    />
-                    {t("imageStudio.transparent")}
-                  </label>
-                ) : null}
-              </>
             ) : null}
-            <Field>
-              <FieldLabel asChild>
-                <span>{t("imageStudio.count")}</span>
-              </FieldLabel>
-              <div className="image-studio-count" role="group" aria-label={t("imageStudio.count")}>
-                {IMAGE_STUDIO_COUNTS.map(count => (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    key={count}
-                    aria-pressed={(parameters.generationCount ?? 1) === count}
-                    onClick={() => updateParameters({ generationCount: count })}
-                  >
-                    {t("imageStudio.countLabel", { "0": count })}
-                  </Button>
-                ))}
-              </div>
-            </Field>
-          </fieldset>
+            {batch ? <StudioBatchResults batch={batch} onPreview={setPreview} /> : null}
+          </div>
+        </section>
+
+        <form className="image-studio-controls" onSubmit={submit} aria-label={t("imageStudio.parameters")}>
           {context.isPending ? <LoadingState label={t("imageStudio.loadingModels")} /> : null}
-          {context.error ? (
-            <Notice tone="danger" title={t("imageStudio.loadFailed")}>
-              <p>{errorText(context.error)}</p>
-              <Button variant="outline" type="button" onClick={() => void context.refetch()}>
-                {t("imageStudio.retryModels")}
-              </Button>
-            </Notice>
-          ) : null}
+          {contextFailure}
           {context.isSuccess && context.data.capabilities.length === 0 ? (
             <Notice tone="warning" title={t("imageStudio.noModels")}>
               <Button variant="link" asChild>
@@ -522,163 +431,264 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
           ) : null}
           {draft.command && !accept.isPending ? (
             <Notice tone="warning" title={t("imageStudio.acceptanceUncertain")}>
-              <p>{accept.error ? errorText(accept.error) : t("imageStudio.acceptanceUncertainHint")}</p>
+              {accept.error ? <p>{errorText(accept.error)}</p> : null}
               <p>{t("imageStudio.acceptanceUncertainHint")}</p>
               <Button type="button" variant="outline" onClick={() => draft.command && accept.mutate(draft.command)}>
                 {t("imageStudio.retryAcceptance")}
               </Button>
             </Notice>
           ) : null}
-          <div className="image-studio-submit">
-            <Button type="submit" disabled={!canGenerate} size="lg">
-              <Sparkle aria-hidden="true" />
-              {accept.isPending ? t("imageStudio.submitting") : t("imageStudio.generate")}
-            </Button>
-            <p>{t("imageStudio.executionHint")}</p>
-          </div>
-        </form>
-        <section className="image-studio-results" aria-label={t("imageStudio.results")}>
-          <div className="image-studio-results-header">
-            <div className="image-studio-section-heading">
-              <span className="image-studio-step">02</span>
-              <h2>{t("imageStudio.results")}</h2>
-              {batch ? (
-                <span className="image-studio-muted">
-                  {t("imageStudio.resultCount", { "0": batch.tasks.flatMap(task => task.results).length })}
-                </span>
+          {upload.error ? (
+            <p className="image-studio-error" role="alert">
+              {errorText(upload.error)}
+            </p>
+          ) : null}
+          {tooManyReferences ? (
+            <p className="image-studio-error" role="alert">
+              {t("imageStudio.tooManyReferences", { "0": capability?.maxReferenceImages })}
+            </p>
+          ) : null}
+
+          <fieldset className="image-studio-fieldset" disabled={locked}>
+            <div className="image-studio-prompt-row">
+              {draft.references.length > 0 ? (
+                <div className="image-studio-reference-list">
+                  {draft.references.map((reference, index) => (
+                    <div className="image-studio-reference" key={reference.versionId}>
+                      {reference.assetId && reference.projectId ? (
+                        <img
+                          alt={t("imageStudio.referenceLabel", { "0": index + 1 })}
+                          src={assetThumbnailUrl(reference.projectId, reference.assetId)}
+                        />
+                      ) : (
+                        <ImageSquare size={22} aria-hidden="true" />
+                      )}
+
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        type="button"
+                        aria-label={t("imageStudio.removeReference", { "0": index + 1 })}
+                        onClick={() =>
+                          update({
+                            references: draft.references.filter(item => item.versionId !== reference.versionId),
+                          })
+                        }
+                      >
+                        <X aria-hidden="true" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
               ) : null}
+              <Field className="image-studio-prompt-field">
+                <FieldLabel className="sr-only" htmlFor={promptId}>
+                  {t("imageStudio.prompt")}
+                </FieldLabel>
+                <Textarea
+                  id={promptId}
+                  value={draft.prompt}
+                  onChange={event => update({ prompt: event.target.value })}
+                  placeholder={t("imageStudio.promptPlaceholder")}
+                  maxLength={8000}
+                  rows={2}
+                />
+              </Field>
             </div>
-            {batch ? (
-              <Button type="button" variant="ghost" disabled={locked} onClick={() => restoreBatch(batch)}>
-                <ClockCounterClockwise aria-hidden="true" />
-                {t("imageStudio.restore")}
-              </Button>
-            ) : null}
-          </div>
-          {selected.error ? (
-            <Notice tone="danger" title={t("imageStudio.statusFailed")}>
-              <p>{errorText(selected.error)}</p>
-              <Button type="button" variant="outline" onClick={() => void selected.refetch()}>
-                {t("common.retryRead")}
-              </Button>
-            </Notice>
-          ) : null}
-          {!batch && (history.isPending || selected.isFetching) ? (
-            <LoadingState label={t("imageStudio.loadingHistory")} />
-          ) : null}
-          {!batch && history.isSuccess ? (
-            <div className="image-studio-empty">
-              <EmptyState
-                icon={<ImageSquare size={38} aria-hidden="true" />}
-                title={t("imageStudio.emptyTitle")}
-                description={t("imageStudio.emptyHint")}
-              />
-              <div className="image-studio-empty-slots" aria-hidden="true">
-                <span />
-                <span />
-                <span />
-                <span />
-              </div>
-            </div>
-          ) : null}
-          {batch ? (
-            <>
-              <div className="image-studio-batch-summary">
-                <p>{batch.prompt}</p>
-                <span>
-                  {formatDate(batch.createdAt, { dateStyle: "medium", timeStyle: "short" })} ·{" "}
-                  {batch.parameters.aspectRatio} {batch.parameters.resolution}
-                </span>
-              </div>
-              {batch.tasks.some(task => task.status === "UNKNOWN") ? (
-                <Notice tone="warning" title={t("imageStudio.status.unknown")}>
-                  <p>{t("imageStudio.unknownHint")}</p>
-                </Notice>
-              ) : null}
-              {batch.tasks.some(task => task.errorCode === ARCHIVE_RETRY_CODE) ? (
-                <Notice title={t("imageStudio.archiveRetryTitle")}>
-                  <p>{t("imageStudio.archiveRetryHint")}</p>
-                </Notice>
-              ) : null}
-              {batch.tasks.some(task => task.errorCode === ARCHIVE_MISSING_CODE) ? (
-                <Notice tone="warning" title={t("imageStudio.archiveMissingTitle")}>
-                  <p>{t("imageStudio.archiveMissingHint")}</p>
-                </Notice>
-              ) : batch.tasks.some(task => task.status === "BLOCKED") ? (
-                <Notice tone="warning" title={t("imageStudio.status.blocked")}>
-                  <p>{t("imageStudio.blockedHint")}</p>
-                </Notice>
-              ) : null}
-              <div className="image-studio-result-grid">
-                {batch.tasks.flatMap((task, taskIndex) =>
-                  task.results.length
-                    ? task.results.map((result, resultIndex) => {
-                        const index =
-                          batch.tasks.slice(0, taskIndex).reduce((count, row) => count + row.results.length, 0) +
-                          resultIndex +
-                          1;
-                        return (
-                          <article className="image-studio-result-card" key={result.artifactVersionId}>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              className="image-studio-image-button"
-                              aria-label={t("imageStudio.previewImage", { "0": index })}
-                              onClick={() => setPreview({ result, projectId: batch.projectId, index })}
-                            >
-                              <img
-                                src={assetThumbnailUrl(batch.projectId, result.assetId)}
-                                alt={t("imageStudio.resultImage", { "0": index })}
-                              />
-                            </Button>
-                            <footer>
-                              <span>
-                                {result.width} × {result.height}
-                              </span>
-                              <Button asChild variant="ghost" size="icon-sm">
-                                <a
-                                  href={assetContentUrl(batch.projectId, result.assetId)}
-                                  download={downloadFilename(index, result.contentType)}
-                                  aria-label={t("imageStudio.downloadImage", { "0": index })}
-                                >
-                                  <DownloadSimple aria-hidden="true" />
-                                </a>
-                              </Button>
-                            </footer>
-                          </article>
-                        );
-                      })
-                    : [
-                        <article
-                          className="image-studio-task-card"
-                          key={task.id}
-                          aria-label={t("imageStudio.taskLabel", { "0": taskIndex + 1 })}
-                        >
-                          <ImageSquare size={32} aria-hidden="true" />
-                          <StatusBadge
-                            tone={
-                              task.status === "FAILED"
-                                ? "danger"
-                                : task.status === "UNKNOWN" || task.status === "BLOCKED"
-                                  ? "warning"
-                                  : "neutral"
-                            }
+            <div className="image-studio-composer-toolbar">
+              <div className="image-studio-settings">
+                <div className="image-studio-attachment">
+                  <Button
+                    className="image-studio-upload"
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    title={
+                      capability
+                        ? `${t("imageStudio.referenceHint")} · ${draft.references.length}/${capability.maxReferenceImages}`
+                        : t("imageStudio.referenceHint")
+                    }
+                    disabled={
+                      !capability || upload.isPending || draft.references.length >= capability.maxReferenceImages
+                    }
+                    onClick={() => inputRef.current?.click()}
+                  >
+                    <Plus aria-hidden="true" />
+                    {upload.isPending ? t("imageStudio.uploading") : t("imageStudio.addReference")}
+                  </Button>
+                  <input
+                    ref={inputRef}
+                    type="file"
+                    hidden
+                    aria-label={t("imageStudio.uploadReference")}
+                    accept="image/png,image/jpeg,image/webp"
+                    disabled={
+                      locked ||
+                      upload.isPending ||
+                      !capability ||
+                      draft.references.length >= capability.maxReferenceImages
+                    }
+                    onChange={event => {
+                      const file = event.target.files?.[0];
+                      if (file) upload.mutate(file);
+                      event.target.value = "";
+                    }}
+                  />
+                </div>
+                <Field className="image-studio-model">
+                  <FieldLabel className="sr-only" htmlFor={`${promptId}-model`}>
+                    {t("imageStudio.model")}
+                  </FieldLabel>
+                  <Select
+                    id={`${promptId}-model`}
+                    density="compact"
+                    icon={<Cube aria-hidden="true" />}
+                    optionDetails={Object.fromEntries(
+                      (context.data?.capabilities ?? []).map(item => [
+                        item.capabilityId,
+                        { description: item.connectionName, icon: <ImageSquare aria-hidden="true" /> },
+                      ]),
+                    )}
+                    aria-label={t("imageStudio.model")}
+                    value={draft.capabilityId ?? ""}
+                    disabled={!context.data?.capabilities.length}
+                    onChange={event => {
+                      const next = context.data?.capabilities.find(item => item.capabilityId === event.target.value);
+                      if (next)
+                        update({
+                          capabilityId: next.capabilityId,
+                          capabilityVersion: next.capabilityVersion,
+                          parameters: defaults(next),
+                        });
+                    }}
+                  >
+                    {!capability ? (
+                      <option value={draft.capabilityId ?? ""}>
+                        {draft.capabilityId ? t("imageStudio.unavailableModel") : t("imageStudio.chooseModel")}
+                      </option>
+                    ) : null}
+                    {context.data?.capabilities.map(item => (
+                      <option value={item.capabilityId} key={item.capabilityId}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                {capability ? (
+                  <>
+                    {capability.aspectRatios.length ? (
+                      <ParameterSelect
+                        id={`${promptId}-ratio`}
+                        label={t("imageStudio.ratio")}
+                        icon={<Rectangle aria-hidden="true" />}
+                        value={parameters.aspectRatio}
+                        options={capability.aspectRatios}
+                        onChange={value =>
+                          updateParameters({ aspectRatio: value as ImageStudioParameters["aspectRatio"] })
+                        }
+                      />
+                    ) : null}
+                    {capability.resolutions.length ? (
+                      <ParameterSelect
+                        id={`${promptId}-resolution`}
+                        label={t("imageStudio.resolution")}
+                        icon={<ArrowsOutSimple aria-hidden="true" />}
+                        value={parameters.resolution}
+                        options={capability.resolutions}
+                        onChange={value =>
+                          updateParameters({ resolution: value as ImageStudioParameters["resolution"] })
+                        }
+                      />
+                    ) : null}
+                    {capability.qualities.length ? (
+                      <ParameterSelect
+                        id={`${promptId}-quality`}
+                        label={t("imageStudio.quality")}
+                        icon={<Sparkle aria-hidden="true" />}
+                        value={parameters.quality}
+                        options={capability.qualities}
+                        labels={Object.fromEntries(
+                          Object.entries(QUALITY_LABELS).map(([key, label]) => [key, t(label)]),
+                        )}
+                        onChange={value => updateParameters({ quality: value as ImageStudioParameters["quality"] })}
+                      />
+                    ) : null}
+
+                    <ParameterSelect
+                      id={`${promptId}-count`}
+                      label={t("imageStudio.count")}
+                      icon={<Stack aria-hidden="true" />}
+                      value={String(parameters.generationCount ?? 1)}
+                      options={IMAGE_STUDIO_COUNTS.map(String)}
+                      labels={Object.fromEntries(
+                        IMAGE_STUDIO_COUNTS.map(count => [count, t("imageStudio.countLabel", { "0": count })]),
+                      )}
+                      onChange={value => {
+                        const count = IMAGE_STUDIO_COUNTS.find(option => String(option) === value);
+                        if (count) updateParameters({ generationCount: count });
+                      }}
+                    />
+                    {capability.supportsTransparentBackground || capability.complexity ? (
+                      <Popover key={capability.capabilityId}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            className="image-studio-advanced-toggle"
+                            type="button"
+                            size="icon-sm"
+                            variant="ghost"
+                            title={t("imageStudio.advanced")}
+                            aria-label={t("imageStudio.advanced")}
                           >
-                            {task.errorCode === ARCHIVE_RETRY_CODE
-                              ? t("imageStudio.status.archiving")
-                              : task.errorCode === ARCHIVE_MISSING_CODE
-                                ? t("imageStudio.status.archiveMissing")
-                                : t(STATUS_LABELS[task.status])}
-                          </StatusBadge>
-                          {task.errorCode ? <p>{task.errorCode}</p> : null}
-                        </article>,
-                      ],
-                )}
+                            <SlidersHorizontal aria-hidden="true" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          align="end"
+                          side="top"
+                          className="image-studio-advanced"
+                          aria-label={t("imageStudio.advanced")}
+                        >
+                          <h3>{t("imageStudio.advanced")}</h3>
+                          {capability.complexity ? (
+                            <p className="image-studio-hint">
+                              {t("imageStudio.complexity", { "0": capability.complexity })}
+                            </p>
+                          ) : null}
+                          {capability.supportsTransparentBackground ? (
+                            <label className="image-studio-checkbox">
+                              <Checkbox
+                                disabled={locked}
+                                checked={parameters.transparentBackground ?? false}
+                                onCheckedChange={checked =>
+                                  updateParameters({ transparentBackground: checked === true })
+                                }
+                              />
+                              {t("imageStudio.transparent")}
+                            </label>
+                          ) : null}
+                        </PopoverContent>
+                      </Popover>
+                    ) : null}
+                  </>
+                ) : null}
               </div>
-            </>
-          ) : null}
-        </section>
+              <Button className="image-studio-generate" type="submit" disabled={!canGenerate}>
+                <Sparkle weight="fill" aria-hidden="true" />
+                {accept.isPending ? t("imageStudio.submitting") : t("imageStudio.generate")}
+              </Button>
+            </div>
+          </fieldset>
+        </form>
       </div>
+      {!narrow && railOpen ? (
+        <aside id={historyId} className="image-studio-history" aria-label={t("imageStudio.history")}>
+          <h2>
+            <ClockCounterClockwise aria-hidden="true" />
+            {t("imageStudio.history")}
+          </h2>
+          {historyList()}
+        </aside>
+      ) : null}
       {preview ? (
         <MediaPreviewDialog
           kind="image"
@@ -697,6 +707,7 @@ function ImageStudioWorkspace({ ownerId }: { ownerId: string }) {
 function ParameterSelect({
   id,
   label,
+  icon,
   value,
   options,
   labels,
@@ -704,15 +715,26 @@ function ParameterSelect({
 }: {
   id: string;
   label: string;
+  icon: ReactNode;
   value?: string;
   options: string[];
   labels?: Record<string, string>;
   onChange: (value: string) => void;
 }) {
   return (
-    <Field>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <Select id={id} aria-label={label} value={value ?? ""} onChange={event => onChange(event.target.value)}>
+    <Field className="image-studio-parameter" title={label}>
+      <FieldLabel className="sr-only" htmlFor={id}>
+        {label}
+      </FieldLabel>
+      <Select
+        density="compact"
+        variant="ghost"
+        icon={icon}
+        id={id}
+        aria-label={label}
+        value={value ?? ""}
+        onChange={event => onChange(event.target.value)}
+      >
         {value && !options.includes(value) ? <option value={value}>{value}</option> : null}
         {options.map(option => (
           <option value={option} key={option}>
@@ -721,5 +743,35 @@ function ParameterSelect({
         ))}
       </Select>
     </Field>
+  );
+}
+
+function MobileHistory({ children }: { children: (onChoose: () => void) => ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="image-studio-history-toggle"
+          aria-label={t("imageStudio.expandHistory")}
+        >
+          <ClockCounterClockwise aria-hidden="true" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="image-studio-history-drawer" showCloseButton={false} aria-describedby={undefined}>
+        <header>
+          <DialogTitle>{t("imageStudio.history")}</DialogTitle>
+          <DialogClose asChild>
+            <Button type="button" variant="ghost" size="icon-sm" aria-label={t("imageStudio.collapseHistory")}>
+              <X aria-hidden="true" />
+            </Button>
+          </DialogClose>
+        </header>
+        {children(() => setOpen(false))}
+      </DialogContent>
+    </Dialog>
   );
 }

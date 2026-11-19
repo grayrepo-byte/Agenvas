@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, expect, it, vi } from "vitest";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, Routes, Route } from "react-router";
 import { createQueryClient } from "../../app/queryClient";
 import { server } from "../../test/server";
 import { ImageStudioPage } from "./ImageStudioPage";
@@ -78,11 +78,13 @@ beforeEach(() => {
     http.get("/api/v1/image-studio/batches", () => HttpResponse.json({ items: [], nextCursor: null })),
   );
 });
-function show() {
+function show(path = "/image-studio") {
   return render(
     <QueryClientProvider client={createQueryClient()}>
-      <MemoryRouter initialEntries={["/image-studio"]}>
-        <ImageStudioPage />
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/image-studio" element={<ImageStudioPage />} />
+        </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -139,7 +141,8 @@ it("uploads an exact reference and submits the whole batch without any canvas id
     new File(["synthetic"], "reference.png", { type: "image/png" }),
   );
   await screen.findByRole("button", { name: "移除参考图 1" });
-  await user.click(screen.getByRole("button", { name: "4 张" }));
+  await user.click(screen.getByRole("combobox", { name: "数量" }));
+  await user.click(screen.getByRole("option", { name: "4 张" }));
   await waitFor(() => expect(screen.getByRole("button", { name: "生成图片" })).toBeEnabled());
   await user.click(screen.getByRole("button", { name: "生成图片" }));
   await screen.findByRole("link", { name: "下载图片 1" });
@@ -191,7 +194,7 @@ it("restores historical exact parameters and preserves partial failures after re
   expect(screen.getByRole("combobox", { name: "比例" })).toHaveTextContent("16:9");
   expect(screen.getByRole("combobox", { name: "分辨率" })).toHaveTextContent("2K");
   expect(screen.getByRole("combobox", { name: "质量" })).toHaveTextContent("高");
-  expect(screen.getByRole("button", { name: "2 张" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("combobox", { name: "数量" })).toHaveTextContent("2 张");
   expect(screen.getByRole("button", { name: "移除参考图 1" })).toBeInTheDocument();
   expect(screen.getByRole("img", { name: "参考图 1" })).toHaveAttribute(
     "src",
@@ -335,4 +338,132 @@ it.each([
   show();
   expect(await screen.findByText(title)).toBeInTheDocument();
   expect(screen.getByText(errorCode)).toBeInTheDocument();
+});
+
+it("browses thumbnail history independently of the prompt draft and restores only on request", async () => {
+  const unknown = {
+    ...history,
+    id: "other",
+    prompt: "第二批",
+    tasks: [{ id: "unresolved", status: "UNKNOWN", version: 1, results: [], errorCode: null }],
+  };
+  server.use(
+    http.get("/api/v1/image-studio/batches", () => HttpResponse.json({ items: [history, unknown], nextCursor: null })),
+  );
+  show();
+  const user = userEvent.setup();
+  const prompt = await screen.findByRole("textbox", { name: "提示词" });
+  await user.type(prompt, "尚未提交的草稿");
+  const rail = await screen.findByRole("complementary", { name: "历史记录" });
+  const first = within(rail).getByRole("button", { name: /清晨的海边小屋/ });
+  expect(first.querySelector("img")).toHaveAttribute(
+    "src",
+    "/api/v1/projects/studio-scope/assets/result-asset/thumbnail",
+  );
+  expect(first).toHaveTextContent("部分完成");
+  const second = within(rail).getByRole("button", { name: /第二批/ });
+  expect(second).toHaveTextContent("受理状态未知");
+  await user.click(second);
+  expect(await screen.findByText(/供应商是否受理尚不确定/)).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "收起历史记录" }));
+  expect(screen.queryByRole("complementary", { name: "历史记录" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "展开历史记录" }));
+  expect(screen.getByRole("button", { name: /第二批/ })).toHaveAttribute("aria-pressed", "true");
+  expect(prompt).toHaveValue("尚未提交的草稿");
+  await user.click(screen.getByRole("button", { name: "回填参数" }));
+  expect(prompt).toHaveValue("第二批");
+});
+
+it("changes capability-specific advanced parameters on demand and retains the draft when dismissed", async () => {
+  show();
+  const user = userEvent.setup();
+  expect(screen.queryByRole("checkbox", { name: "透明背景" })).not.toBeInTheDocument();
+  await user.click(await screen.findByRole("button", { name: "高级设置" }));
+  const checkbox = screen.getByRole("checkbox", { name: "透明背景" });
+  await user.click(checkbox);
+  await user.keyboard("{Escape}");
+  expect(screen.queryByRole("checkbox", { name: "透明背景" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "高级设置" }));
+  expect(screen.getByRole("checkbox", { name: "透明背景" })).toBeChecked();
+});
+
+it("closes the narrow history drawer after selection and returns focus without replacing the draft", async () => {
+  vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener() {}, removeEventListener() {} }));
+  try {
+    server.use(
+      http.get("/api/v1/image-studio/batches", () => HttpResponse.json({ items: [history], nextCursor: null })),
+    );
+    show();
+    const user = userEvent.setup();
+    const prompt = await screen.findByRole("textbox", { name: "提示词" });
+    await user.type(prompt, "手机草稿");
+    const toggle = screen.getByRole("button", { name: "展开历史记录" });
+    await user.click(toggle);
+    const drawer = screen.getByRole("dialog", { name: "历史记录" });
+    await user.click(within(drawer).getByRole("button", { name: /清晨的海边小屋/ }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "历史记录" })).not.toBeInTheDocument());
+    expect(prompt).toHaveValue("手机草稿");
+    expect(toggle).toHaveFocus();
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+it.each(["/image-studio/", "/IMAGE-STUDIO"])(
+  "opens the same immersive workspace when directly entering %s",
+  async path => {
+    show(path);
+    await screen.findByRole("heading", { name: "生图工作台" });
+    expect(screen.getByRole("main").closest(".app-shell")).toHaveClass("app-shell--image-studio");
+    expect(screen.getByRole("link", { name: "生图工作台" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("heading", { name: "生图工作台" })).toHaveClass("sr-only");
+  },
+);
+
+it.each([
+  ["batches", "无法读取历史记录", "重试读取"],
+  ["context", "无法读取生图模型", "重试读取模型"],
+])("reports loading and retries a failed %s read inside the mobile drawer", async (endpoint, title, retry) => {
+  vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener() {}, removeEventListener() {} }));
+  let finishFirstRead!: () => void;
+  const firstRead = new Promise<void>(resolve => {
+    finishFirstRead = resolve;
+  });
+  let reads = 0;
+  server.use(
+    http.get(`/api/v1/image-studio/${endpoint}`, async () => {
+      reads++;
+      if (reads === 1) {
+        await firstRead;
+        return HttpResponse.json(
+          { detail: "暂时无法读取批次" },
+          { status: 503, headers: { "Content-Type": "application/problem+json" } },
+        );
+      }
+      return endpoint === "batches"
+        ? HttpResponse.json({ items: [history], nextCursor: null })
+        : HttpResponse.json({
+            projectId: "studio-scope",
+            defaultCapabilityId: capability.capabilityId,
+            capabilities: [capability],
+          });
+    }),
+    http.get("/api/v1/image-studio/batches", () => HttpResponse.json({ items: [history], nextCursor: null })),
+  );
+  try {
+    show();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "展开历史记录" }));
+    const drawer = within(screen.getByRole("dialog", { name: "历史记录" }));
+    expect(await drawer.findByText("读取生成记录…")).toBeInTheDocument();
+    finishFirstRead();
+    expect(await drawer.findByRole("alert")).toHaveTextContent(title);
+    expect(drawer.getByText("暂时无法读取批次")).toBeInTheDocument();
+    await user.click(drawer.getByRole("button", { name: retry }));
+    expect(await drawer.findByRole("button", { name: /清晨的海边小屋/ })).toBeInTheDocument();
+    expect(reads).toBe(2);
+  } finally {
+    finishFirstRead();
+    vi.unstubAllGlobals();
+  }
 });
