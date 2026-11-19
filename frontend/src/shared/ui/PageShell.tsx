@@ -5,6 +5,7 @@ import {
   FolderSimple,
   GearSix,
   HardDrives,
+  ImageSquare,
   ListMagnifyingGlass,
   PlugsConnected,
   Robot,
@@ -16,6 +17,7 @@ import {
 } from "@/shared/ui/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, type ReactNode } from "react";
+import { useImageStudioDraftStore } from "../../features/image-studio/imageStudioDraft";
 import { useCanvasStore } from "../../features/canvas/canvasStore";
 import { Link, Navigate, useLocation, useNavigate } from "react-router";
 import { HTTP_STATUS, ApiError, getCurrentUser, logout } from "../api/client";
@@ -37,6 +39,13 @@ const NAVIGATION = [
       return t("common.project");
     },
     icon: FolderSimple,
+  },
+  {
+    to: "/image-studio",
+    get label() {
+      return t("imageStudio.title");
+    },
+    icon: ImageSquare,
   },
   {
     to: "/library",
@@ -112,7 +121,7 @@ const NAVIGATION = [
 
 /** Settings retain the same destinations and collapse state as the workspace. */
 const SETTINGS_GROUPS = [
-  { label: "ui.pageShell.workspace", paths: ["/projects", "/library", "/skills"] },
+  { label: "ui.pageShell.workspace", paths: ["/projects", "/image-studio", "/library", "/skills"] },
   {
     label: "settings.workspace.configuration",
     paths: ["/settings/director", "/settings/providers", "/settings/media", "/settings/functions", "/settings/storage"],
@@ -140,7 +149,12 @@ export function PageShell({
   const navigation = useRef<HTMLElement>(null);
   const activePath = location.pathname === "/settings/llm" ? "/settings/providers" : location.pathname;
   const isSettings = activePath.startsWith("/settings/");
-  const isStudio = isSettings || activePath === "/projects" || activePath === "/library" || activePath === "/skills";
+  const isStudio =
+    isSettings ||
+    activePath === "/projects" ||
+    activePath === "/image-studio" ||
+    activePath === "/library" ||
+    activePath === "/skills";
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const session = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser, retry: false });
@@ -148,6 +162,7 @@ export function PageShell({
     mutationFn: logout,
     onSuccess: () => {
       useCanvasStore.getState().clearTextGenerationDrafts();
+      useImageStudioDraftStore.getState().clear();
       queryClient.clear();
       navigate("/login", { replace: true });
     },
