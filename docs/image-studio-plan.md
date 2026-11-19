@@ -33,19 +33,19 @@
 
 **Interfaces:** `ProjectService.ensureImageStudioScope(UUID ownerId): Project`; `requireCanvasProject(ownerId,projectId)` for public project management. Task input `executionSurface=IMAGE_STUDIO` routes result archival without node projection.
 
-- [ ] Write PostgreSQL tests for concurrent scope creation, hidden list, owner checks and Studio native multi-output with zero nodes; run and observe missing behavior.
-- [ ] Add purpose/partial unique constraint and jOOQ repository logic. Separate Studio result archival from canvas placement, rejecting contradictory node identity.
-- [ ] Run focused scope/archive tests and existing canvas multi-output regression; commit verified slice.
+- [x] Write PostgreSQL tests for concurrent scope creation, hidden list, owner checks and Studio native multi-output with zero nodes; run and observe missing behavior.
+- [x] Add purpose/partial unique constraint and jOOQ repository logic. Separate Studio result archival from canvas placement, rejecting contradictory node identity.
+- [x] Run focused scope/archive tests and existing canvas multi-output regression; commit verified slice.
 
 ### Task 2: Persistent Studio API and execution
 
 **Files:** new image-studio application/domain/infrastructure/api; V66 batch migration; shared image preparation extraction; focused tests; contracts/openapi.yaml.
 
-**Interfaces:** `/api/v1/image-studio` catalog/context; `/batches` POST/list; `/batches/{id}` detail; `/references` multipart upload. Request has prompt, capabilityId, imageParameters and frozen reference identities, never nodes. Responses contain complete batch request/tasks/results with private asset identities.
+**Interfaces:** `/api/v1/image-studio/context` catalog/context; `/batches` POST/list; `/batches/{id}` detail; `/references` multipart upload. Request has prompt, capabilityId, imageParameters and frozen reference identities, never nodes. Responses contain complete batch request/tasks/results with private asset identities.
 
-- [ ] Write and run failing acceptance tests: full batch, idempotency conflict/race, reference authorization, capability validation/defaults, partial failure/history, provider native n.
-- [ ] Implement independent request preparation, frozen binding/price/reference input and atomic batch/task/usage persistence using existing Worker.
-- [ ] Test submit→archive→private download, UNKNOWN/restart and archival retry with isolated fake provider; ensure zero CanvasItem writes. Run canvas generation regressions and commit.
+- [x] Write and run failing acceptance tests: full batch, idempotency conflict/race, reference authorization, capability validation/defaults, partial failure/history, provider native n.
+- [x] Implement independent request preparation, frozen binding/price/reference input and atomic batch/task/usage persistence using existing Worker.
+- [x] Test submit→archive→private download, UNKNOWN/restart and archival retry with isolated fake provider; ensure zero CanvasItem writes. Run canvas generation regressions and commit.
 
 ### Task 3: Workspace UI
 
@@ -53,16 +53,16 @@
 
 **Interfaces:** consumes Task 2 Studio DTOs/generated TS; existing CSRF multipart and private Asset helpers. TanStack Query owns history/status; Zustand owns draft and unresolved command.
 
-- [ ] Write and run failing component tests for route/nav, capability parameters, submit/upload, full outputs, error/UNKNOWN, history restoration and retry identity.
-- [ ] Implement responsive two-column workflow with existing shadcn controls, private previews/downloads, status polling and bounded history.
-- [ ] Run feature tests, typecheck, lint and build. Run isolated browser flow at desktop/mobile sizes; preserve screenshot evidence outside Git; commit.
+- [x] Write and run failing component tests for route/nav, capability parameters, submit/upload, full outputs, error/UNKNOWN, history restoration and retry identity.
+- [x] Implement responsive two-column workflow with existing shadcn controls, private previews/downloads, status polling and bounded history.
+- [x] Run feature tests, typecheck, lint and build. Run isolated browser flow at desktop/mobile sizes; preserve screenshot evidence outside Git; commit.
 
 ### Task 4: Integration, review and delivery
 
 **Files:** generated schema/jOOQ, focused contract/migration tests, current spec/checklist/ADR, delivery evidence outside Git.
 
-- [ ] Generate jOOQ against fresh PostgreSQL and TS from OpenAPI; test migration upgrade from V64.
-- [ ] Run targeted PostgreSQL execution/recovery/owner/idempotency tests and frontend checks with fresh evidence.
-- [ ] Dispatch independent whole-branch review, address material findings with regression tests, rerun relevant checks.
-- [ ] Scan changed files for sensitive data, verify grayrepo-byte author/committer and actual push identity; push feature branch and open draft PR to develop if identity is verified.
-- [ ] Return precise pass/fail counts, commits/PR, synthetic screenshot artifact and remaining unverified scope; do not merge/release/deploy.
+- [x] Generate jOOQ against fresh PostgreSQL and TS from OpenAPI; test migration upgrade from V64.
+- [x] Run targeted PostgreSQL execution/recovery/owner/idempotency tests and frontend checks with fresh evidence.
+- [x] Dispatch independent whole-branch review, address material findings with regression tests, rerun relevant checks.
+- [ ] Actual shell push identity could not be verified: GitHub connector is grayrepo-byte and local author/committer are grayrepo-byte, but terminal identity lookup is network-blocked. No real push or draft PR. Changed-file scan and local identity checks passed; a portable commit patch accompanies delivery.
+- [x] Return precise pass/fail counts, commits/PR, synthetic screenshot artifact and remaining unverified scope; do not merge/release/deploy.
