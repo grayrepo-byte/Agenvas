@@ -1,4 +1,6 @@
 import type { Plugin } from "vite";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { sendMedia } from "./settings-design-media";
 
 /** Exact, serve-only test namespace; these independent shapes never enter the client build. */
@@ -8,6 +10,41 @@ export function imageStudioMediaPreview(): Plugin {
     apply: "serve",
     configureServer(server) {
       server.middlewares.use((request, response, next) => {
+        const photo =
+          /^\/api\/v1\/projects\/synthetic-image-studio\/assets\/synthetic-photo-(lake|rocket|coffee|eagle)-\d+\/(content|thumbnail)$/.exec(
+            request.url?.split("?")[0] ?? "",
+          );
+        if (photo) {
+          const root = process.env.AGENVAS_STUDIO_PHOTO_ROOT;
+          const files: Record<string, string> = {
+            lake: "lake-landscape.jpg",
+            rocket: "rocket.jpg",
+            coffee: "coffee.png",
+            eagle: "eagle.png",
+          };
+          if ((request.method !== "GET" && request.method !== "HEAD") || !root) {
+            response.statusCode = root ? 405 : 404;
+            response.end();
+            return;
+          }
+          try {
+            const file = files[photo[1]!]!;
+            response.setHeader("Cache-Control", "no-store");
+            response.setHeader("X-Agenvas-Synthetic-Preview", "licensed-photo-fixture");
+            response.setHeader("X-Content-Type-Options", "nosniff");
+            response.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
+            sendMedia(
+              request,
+              response,
+              readFileSync(join(root, file)),
+              file.endsWith(".png") ? "image/png" : "image/jpeg",
+            );
+          } catch {
+            response.statusCode = 404;
+            response.end();
+          }
+          return;
+        }
         const match =
           /^\/api\/v1\/projects\/synthetic-image-studio\/assets\/synthetic-studio-(square|portrait|landscape)-(\d+)\/(content|thumbnail)$/.exec(
             request.url?.split("?")[0] ?? "",
