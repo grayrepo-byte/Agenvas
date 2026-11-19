@@ -1,0 +1,12 @@
+package dev.agenvas.task.domain;
+
+/** Accepted media explicitly chooses whether results may be projected onto a canvas. */
+public enum MediaExecutionSurface {
+    CANVAS, IMAGE_STUDIO;
+
+    public static final String PROPERTY = "executionSurface";
+
+    public static boolean isImageStudio(Task task) {
+        return IMAGE_STUDIO.name().equals(task.input().path(PROPERTY).asText());
+    }
+}

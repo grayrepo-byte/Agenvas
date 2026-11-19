@@ -14,9 +14,12 @@ import dev.agenvas.provider.domain.MediaPlatform;
 import dev.agenvas.provider.domain.ProviderResultManifest;
 import dev.agenvas.provider.domain.RunningHubDefinition.OutputKind;
 import dev.agenvas.provider.domain.Submission;
+import dev.agenvas.shared.error.ProviderFailureCodes;
 import dev.agenvas.task.application.TaskService;
+import dev.agenvas.task.domain.MediaExecutionSurface;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.task.domain.VideoOperation;
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
@@ -109,12 +112,20 @@ public class MediaExecutionWorker {
         return claimed.size();
     }
 
-    /** Accepted requests can only be queried by their persisted original request ID. */
+    /** Query accepted original IDs or resume confirmed local archives; neither path can submit generation. */
     public int pollOnce(String workerId) {
         List<Task> claimed = tasks.claimBoundMediaPolls(workerId, 1);
         for (Task task : claimed) {
             try (var renewal = leases.open(task, workerId)) {
                 MediaCapabilityBinding binding = tasks.mediaBinding(task).orElseThrow();
+                if (task.hasStudioImageResult()) {
+                    renewal.checkActive();
+                    String requestKey = task.output().path(Task.STUDIO_IMAGE_RESULT_PROPERTY).path("requestKey")
+                            .asText();
+                    finishStudioImageArchive(new AttemptContext(task, binding, tasks.ownerForWorker(task), requestKey,
+                            null), workerId);
+                    continue;
+                }
                 MediaAdapter adapter = adapters.require(binding.adapterId());
                 AttemptContext attempt = new AttemptContext(task, binding,
                         tasks.ownerForWorker(task), null, task.providerRequestId());
@@ -272,8 +283,12 @@ public class MediaExecutionWorker {
                 tasks.waitForProviderWithResults(task, workerId, accepted.requestId(), accepted.manifest());
             case Submission.Accepted accepted -> tasks.waitForProvider(task, workerId,
                     accepted.requestId(), clock.instant().plusSeconds(5));
-            case Submission.Completed completed -> completeArtifact(attempt, workerId,
-                    archive(attempt, completed.payload()));
+            case Submission.Completed completed -> {
+                if (task.kind() == Task.Kind.IMAGE_GENERATION && MediaExecutionSurface.isImageStudio(task))
+                    finishStudioImagePayload(attempt, workerId, completed.payload());
+                else
+                    completeArtifact(attempt, workerId, archive(attempt, completed.payload()));
+            }
             case Submission.CompletedArtifact completed ->
                 completeArtifact(attempt, workerId, completed.content());
             case Submission.Rejected rejected -> {
@@ -296,6 +311,56 @@ public class MediaExecutionWorker {
             case Submission.Blocked ignored -> throw new IllegalStateException(
                     "Submission cannot be blocked after external submission");
         }
+    }
+
+    /** A confirmed one-shot image response is owned here, including if its checkpoint or deferral fails. */
+    private void finishStudioImagePayload(AttemptContext attempt, String workerId, MediaPayload payload) {
+        ObjectNode content;
+        try (payload) {
+            tasks.checkpointStudioImageResult(attempt.lease(), workerId, attempt.requestKey(),
+                    payload.providerMetadata());
+            try {
+                // Asset storage owns its supplier stream. Lend it a close-shield so this outer scope remains
+                // the sole owner of the original response, including checkpoint and deferral failures.
+                InputStream borrowed = new FilterInputStream(payload.stream()) {
+                    @Override
+                    public void close() {
+                        // The enclosing MediaPayload owns the original response.
+                    }
+                };
+                Asset asset = assets.archiveTaskImage(attempt.ownerId(), attempt.lease().projectId(),
+                        attempt.lease().id(), () -> borrowed);
+                content = completedContent(attempt, asset, payload.providerMetadata());
+            } catch (RuntimeException archiveFailure) {
+                tasks.waitForStudioImageArchive(attempt.lease(), workerId);
+                return;
+            }
+        } catch (IOException failure) {
+            throw new IllegalStateException("Cannot close media response", failure);
+        }
+        // A failed final transaction leaves both the confirmed checkpoint and deterministic files recoverable.
+        completeArtifact(attempt, workerId, content);
+    }
+
+    /** No adapter is resolved or invoked here. Only private bytes already saved for this Task can resume. */
+    private void finishStudioImageArchive(AttemptContext attempt, String workerId) {
+        ObjectNode content;
+        try {
+            var saved = assets.recoverTaskImage(attempt.ownerId(), attempt.lease().projectId(), attempt.lease().id());
+            content = saved.isEmpty()
+                    ? null
+                    : completedContent(attempt, saved.get(), attempt.lease().output()
+                            .path(Task.STUDIO_IMAGE_RESULT_PROPERTY).path("providerMetadata"));
+        } catch (RuntimeException archiveFailure) {
+            tasks.retryProviderPoll(attempt.lease(), workerId, ProviderFailureCodes.STUDIO_IMAGE_ARCHIVE_RETRY);
+            return;
+        }
+        // Keep Task state writes outside the storage catch: a lost lease is not an archive retry.
+        if (content == null) {
+            tasks.blockProviderPoll(attempt.lease(), workerId, ProviderFailureCodes.STUDIO_IMAGE_ARCHIVE_MISSING);
+            return;
+        }
+        completeArtifact(attempt, workerId, content);
     }
 
     private void completeArtifact(AttemptContext attempt, String workerId, tools.jackson.databind.JsonNode content) {
@@ -424,23 +489,28 @@ public class MediaExecutionWorker {
 
     /** Archive bytes by task identity before committing the immutable artifact version. */
     private ObjectNode archive(AttemptContext attempt, MediaPayload payload) {
-        Task task = attempt.lease();
         try (payload) {
-            OutputKind kind = task.kind() == Task.Kind.IMAGE_GENERATION
-                    ? OutputKind.IMAGE
-                    : task.kind() == Task.Kind.AUDIO_GENERATION ? OutputKind.AUDIO : OutputKind.VIDEO;
-            Asset asset = archiveAsset(attempt, task.id(), kind, payload::stream);
-            ObjectNode content = resultContent(attempt, asset);
-            addNativeMetadata(attempt, content, payload.providerMetadata());
-            if (dev.agenvas.provider.domain.MediaAdapterRegistry.OPENAI_GPT_IMAGE_2
-                    .equals(attempt.binding().adapterId())
-                    && payload.providerMetadata() != null
-                    && payload.providerMetadata().path("imageTokenUsage").isObject())
-                content.withObject("parameters").set("providerUsage",
-                        payload.providerMetadata().path("imageTokenUsage").deepCopy());
-            return content;
+            return archiveOpenPayload(attempt, payload);
         } catch (IOException failure) {
             throw new IllegalStateException("Cannot close media response", failure);
         }
+    }
+
+    private ObjectNode archiveOpenPayload(AttemptContext attempt, MediaPayload payload) {
+        Task task = attempt.lease();
+        OutputKind kind = task.kind() == Task.Kind.IMAGE_GENERATION
+                ? OutputKind.IMAGE
+                : task.kind() == Task.Kind.AUDIO_GENERATION ? OutputKind.AUDIO : OutputKind.VIDEO;
+        Asset asset = archiveAsset(attempt, task.id(), kind, payload::stream);
+        return completedContent(attempt, asset, payload.providerMetadata());
+    }
+
+    private ObjectNode completedContent(AttemptContext attempt, Asset asset, tools.jackson.databind.JsonNode metadata) {
+        ObjectNode content = resultContent(attempt, asset);
+        addNativeMetadata(attempt, content, metadata);
+        if (MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(attempt.binding().adapterId())
+                && metadata != null && metadata.path("imageTokenUsage").isObject())
+            content.withObject("parameters").set("providerUsage", metadata.path("imageTokenUsage").deepCopy());
+        return content;
     }
 }

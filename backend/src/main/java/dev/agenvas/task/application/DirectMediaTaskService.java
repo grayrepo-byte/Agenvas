@@ -733,17 +733,11 @@ public class DirectMediaTaskService {
                 ? draft.parameters()
                 : ComfyUiWorkflowDefinition.standardParameters(draft.parameters()));
         ImageGenerationParameters imageParameters = !fullyDeclared && kind == Task.Kind.IMAGE_GENERATION
-                ? ImageGenerationParameters.parse(parametersForControls)
+                ? ImageGenerationPreparation.parameters(parametersForControls, capabilities.inputPolicy(binding))
                 : null;
         VideoGenerationParameters videoParameters = !fullyDeclared && kind == Task.Kind.VIDEO_GENERATION
                 ? VideoGenerationParameters.parse(parametersForControls)
                 : null;
-        if (imageParameters != null) {
-            var policy = capabilities.inputPolicy(binding);
-            imageParameters.requireSupported(policy.supportedImageAspectRatios(),
-                    policy.supportedImageResolutions(), policy.supportedImageQualities(),
-                    policy.supportsTransparentBackground());
-        }
         if (KlingProtocol.IMAGE_ADAPTER_ID.equals(binding.adapterId())
                 || KlingProtocol.VIDEO_ADAPTER_ID.equals(binding.adapterId())) {
             KlingProtocol.validatePrompt(renderedPrompt, kind == Task.Kind.VIDEO_GENERATION);
@@ -1742,8 +1736,7 @@ public class DirectMediaTaskService {
     private void requireStaticImage(UUID ownerId, UUID projectId, ArtifactVersion version) {
         var asset = assets.requireReadyMedia(ownerId, projectId,
                 UUID.fromString(version.content().path("assetId").asText()), Asset.MediaKind.IMAGE);
-        if ("image/gif".equals(asset.contentType()))
-            throw invalid(ApiMessage.of("api.asset.gif-static-operation"));
+        ImageGenerationPreparation.requireStaticImage(asset);
     }
 
     /** Reject known protocol limits before creating a task or reserving usage. */

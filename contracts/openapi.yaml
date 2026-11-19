@@ -7108,6 +7108,123 @@ paths:
 
   "/api/v1/projects/{projectId}/canvas-items/{targetId}/character-node-bindings/receipts/{commandId}": {"get": {"operationId": "getCharacterNodeApplicationReceipt", "tags": ["Canvas"], "summary": "Read the retained success receipt without changing project or canvas state", "description": "Owner-authorized read remains available after project archival and node lock/deletion. Returns the original successful result only; command hashes are private. Missing receipt or an application receipt for a different target returns 404.", "parameters": [{"in": "path", "name": "projectId", "required": true, "schema": {"type": "string", "format": "uuid"}}, {"in": "path", "name": "targetId", "required": true, "schema": {"type": "string", "format": "uuid"}}, {"in": "path", "name": "commandId", "required": true, "schema": {"type": "string", "format": "uuid"}}], "responses": {"200": {"description": "Original successful command receipt", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CharacterBindingApplied"}}}}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "404": {"$ref": "#/components/responses/NotFound"}}}}
 
+  /api/v1/image-studio/context:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+    get:
+      operationId: getImageStudioContext
+      summary: 独立生图工作台的内部存储作用域与可用静态图片能力
+      description: 不要求画布或节点。为当前所有者原子取得唯一技术作用域，该作用域不出现在项目列表。只开放已验证的 Mock、GPT Image 2、Nano Banana 2 静态图片路径；所有默认比例显式冻结，AUTO 不继承画布。
+      tags: [ImageStudio]
+      responses:
+        "200":
+          description: 工作台上下文；无可用能力时返回空目录
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ImageStudioContext"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /api/v1/image-studio/references:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+    post:
+      operationId: uploadImageStudioReference
+      summary: 上传并冻结工作台静态参考图版本，不创建画布节点
+      description: 沿用实际解码、20 MiB/40 MP 限制和私有资产归档；拒绝动画 GIF。只接受文件字节，不接收任意 URL。
+      tags: [ImageStudio]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        "201":
+          description: 归档资产与不可变参考版本
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ImageStudioReference"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "413":
+          description: 文件过大
+        "422": {$ref: "#/components/responses/ValidationError"}
+  /api/v1/image-studio/batches:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+    post:
+      operationId: createImageStudioBatch
+      summary: 原子受理不含节点身份的独立生图完整批次
+      description: 固定能力及连接版本、参数、参考版本和价格；同键同请求返回完整原批次，同键不同请求冲突。数量为 1/2/4，所有结果独立保留；UNKNOWN 只查询不自动重发。归档恢复不重新调用供应商。
+      tags: [ImageStudio]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 160}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateImageStudioBatch"}
+      responses:
+        "201":
+          description: 完整已受理或重放批次
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ImageStudioBatch"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "422": {$ref: "#/components/responses/ValidationError"}
+    get:
+      operationId: listImageStudioBatches
+      summary: 当前所有者工作台的持久化批次历史
+      tags: [ImageStudio]
+      parameters:
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+        - name: before
+          in: query
+          description: 上一页返回的不透明批次游标
+          schema: {type: string}
+      responses:
+        "200":
+          description: 最新优先的完整批次及下页游标
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ImageStudioBatchPage"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /api/v1/image-studio/batches/{batchId}:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - name: batchId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: getImageStudioBatch
+      summary: 读取本人批次的固定参数、独立状态及私有归档结果
+      tags: [ImageStudio]
+      responses:
+        "200":
+          description: 完整批次，刷新和轮询不会触发生成
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ImageStudioBatch"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
 components:
   securitySchemes:
     McpBearer:
@@ -7115,6 +7232,109 @@ components:
       scheme: bearer
       description: 用户级 MCP 访问令牌，仅用于明确列出的 MCP 接口。
   schemas:
+    ImageStudioParameters:
+      type: object
+      additionalProperties: false
+      description: 工作台静态图片参数；缺省由能力补全并冻结，AUTO 显式转换为 1:1，不使用画布设置。
+      properties:
+        aspectRatio: {type: string, enum: [AUTO, "1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"]}
+        resolution: {type: string, enum: [1K, 2K, 4K]}
+        quality: {type: string, enum: [low, medium, high, xhigh, max]}
+        transparentBackground: {type: boolean}
+        generationCount: {type: integer, enum: [1, 2, 4]}
+    ImageStudioCapability:
+      type: object
+      additionalProperties: false
+      required: [capabilityId, capabilityVersion, name, connectionName, adapterId, defaultParameters, aspectRatios, resolutions, qualities, maxReferenceImages, supportsTransparentBackground, complexity]
+      properties:
+        capabilityId: {type: string, format: uuid}
+        capabilityVersion: {type: integer, minimum: 1}
+        name: {type: string}
+        connectionName: {type: string}
+        adapterId: {type: string, enum: [MOCK_IMAGE, OPENAI_GPT_IMAGE_2, GOOGLE_NANO_BANANA_2]}
+        defaultParameters: {$ref: "#/components/schemas/ImageStudioParameters"}
+        aspectRatios: {type: array, items: {type: string}}
+        resolutions: {type: array, items: {type: string}}
+        qualities: {type: array, items: {type: string}}
+        maxReferenceImages: {type: integer, minimum: 0, maximum: 14}
+        supportsTransparentBackground: {type: boolean}
+        complexity: {type: [string, "null"]}
+    ImageStudioContext:
+      type: object
+      additionalProperties: false
+      required: [projectId, defaultCapabilityId, capabilities]
+      properties:
+        projectId: {type: string, format: uuid, description: "仅用于复用私有归档读取，不要求用户选择或管理画布"}
+        defaultCapabilityId: {type: [string, "null"], format: uuid}
+        capabilities: {type: array, items: {$ref: "#/components/schemas/ImageStudioCapability"}}
+    ImageStudioReference:
+      type: object
+      additionalProperties: false
+      required: [artifactId, versionId, assetId, projectId, width, height]
+      properties:
+        artifactId: {type: string, format: uuid}
+        versionId: {type: string, format: uuid}
+        assetId: {type: string, format: uuid}
+        projectId: {type: string, format: uuid}
+        width: {type: integer, minimum: 1}
+        height: {type: integer, minimum: 1}
+    CreateImageStudioBatch:
+      type: object
+      additionalProperties: false
+      required: [capabilityId, expectedCapabilityVersion, prompt, parameters, referenceVersionIds]
+      properties:
+        capabilityId: {type: string, format: uuid}
+        expectedCapabilityVersion: {type: integer, minimum: 1}
+        prompt: {type: string, minLength: 1, maxLength: 8000}
+        parameters: {$ref: "#/components/schemas/ImageStudioParameters"}
+        referenceVersionIds:
+          type: array
+          maxItems: 14
+          uniqueItems: true
+          items: {type: string, format: uuid}
+    ImageStudioResult:
+      type: object
+      additionalProperties: false
+      required: [artifactId, artifactVersionId, assetId, width, height, contentType]
+      properties:
+        artifactId: {type: string, format: uuid}
+        artifactVersionId: {type: string, format: uuid}
+        assetId: {type: string, format: uuid}
+        width: {type: integer, minimum: 1}
+        height: {type: integer, minimum: 1}
+        contentType: {type: string}
+    ImageStudioTask:
+      type: object
+      additionalProperties: false
+      required: [id, status, version, errorCode, results]
+      properties:
+        id: {type: string, format: uuid}
+        status: {$ref: "#/components/schemas/TaskStatus"}
+        version: {type: integer, format: int64, minimum: 0}
+        errorCode: {type: [string, "null"]}
+        results: {type: array, items: {$ref: "#/components/schemas/ImageStudioResult"}}
+    ImageStudioBatch:
+      type: object
+      additionalProperties: false
+      required: [id, projectId, capabilityId, capabilityVersion, prompt, parameters, referenceVersionIds, references, createdAt, tasks]
+      properties:
+        id: {type: string, format: uuid}
+        projectId: {type: string, format: uuid}
+        capabilityId: {type: string, format: uuid}
+        capabilityVersion: {type: integer, minimum: 1}
+        prompt: {type: string}
+        parameters: {$ref: "#/components/schemas/ImageStudioParameters"}
+        referenceVersionIds: {type: array, items: {type: string, format: uuid}}
+        references: {type: array, items: {$ref: "#/components/schemas/ImageStudioReference"}}
+        createdAt: {type: string, format: date-time}
+        tasks: {type: array, minItems: 1, items: {$ref: "#/components/schemas/ImageStudioTask"}}
+    ImageStudioBatchPage:
+      type: object
+      additionalProperties: false
+      required: [items, nextCursor]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/ImageStudioBatch"}}
+        nextCursor: {type: [string, "null"]}
     CharacterNodeSelection: {"type": "object", "additionalProperties": false, "required": ["characterId", "characterVersion", "lookId", "viewVersionIds", "useAppearance", "useVoice"], "properties": {"characterId": {"type": "string", "format": "uuid"}, "characterVersion": {"type": "integer", "format": "int64", "minimum": 1}, "lookId": {"type": ["string", "null"], "format": "uuid"}, "viewVersionIds": {"type": "array", "maxItems": 14, "uniqueItems": true, "items": {"type": "string", "format": "uuid"}}, "useAppearance": {"type": "boolean"}, "useVoice": {"type": "boolean"}}}
     CharacterNodeConnection: {"type": "object", "additionalProperties": false, "required": ["id", "sourceCanvasItemId", "targetCanvasItemId", "version"], "properties": {"id": {"type": "string", "format": "uuid"}, "sourceCanvasItemId": {"type": "string", "format": "uuid"}, "targetCanvasItemId": {"type": "string", "format": "uuid"}, "version": {"type": "integer", "format": "int64", "minimum": 0}}}
     CharacterNode: {"type": "object", "additionalProperties": false, "required": ["canvasItemId", "selection", "snapshot", "version", "newerVersionAvailable", "connections"], "properties": {"canvasItemId": {"type": "string", "format": "uuid"}, "selection": {"$ref": "#/components/schemas/CharacterNodeSelection"}, "snapshot": {"$ref": "#/components/schemas/CharacterSnapshot"}, "version": {"type": "integer", "format": "int64", "minimum": 0}, "newerVersionAvailable": {"type": "boolean"}, "connections": {"type": "array", "items": {"$ref": "#/components/schemas/CharacterNodeConnection"}}}}

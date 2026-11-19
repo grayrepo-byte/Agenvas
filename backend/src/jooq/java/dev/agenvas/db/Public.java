@@ -42,6 +42,8 @@ import dev.agenvas.db.tables.CustomCostumeReference;
 import dev.agenvas.db.tables.CustomCostumeSaveCommand;
 import dev.agenvas.db.tables.DirectorSettings;
 import dev.agenvas.db.tables.IdempotencyRecord;
+import dev.agenvas.db.tables.ImageStudioBatch;
+import dev.agenvas.db.tables.ImageStudioBatchTask;
 import dev.agenvas.db.tables.InstallationLock;
 import dev.agenvas.db.tables.LibraryCleanup;
 import dev.agenvas.db.tables.LibraryCommand;
@@ -330,6 +332,18 @@ public class Public extends SchemaImpl {
      * 按可信身份和作用域记录命令摘要与响应，拒绝同键不同载荷
      */
     public final IdempotencyRecord IDEMPOTENCY_RECORD = IdempotencyRecord.IDEMPOTENCY_RECORD;
+
+    /**
+     * Owned immutable image Studio command and parameter snapshot, independent
+     * of canvas nodes
+     */
+    public final ImageStudioBatch IMAGE_STUDIO_BATCH = ImageStudioBatch.IMAGE_STUDIO_BATCH;
+
+    /**
+     * Ordered independent task membership committed atomically with Studio
+     * acceptance
+     */
+    public final ImageStudioBatchTask IMAGE_STUDIO_BATCH_TASK = ImageStudioBatchTask.IMAGE_STUDIO_BATCH_TASK;
 
     /**
      * 管理员初始化的单例事务锁行
@@ -750,6 +764,8 @@ public class Public extends SchemaImpl {
             CustomCostumeSaveCommand.CUSTOM_COSTUME_SAVE_COMMAND,
             DirectorSettings.DIRECTOR_SETTINGS,
             IdempotencyRecord.IDEMPOTENCY_RECORD,
+            ImageStudioBatch.IMAGE_STUDIO_BATCH,
+            ImageStudioBatchTask.IMAGE_STUDIO_BATCH_TASK,
             InstallationLock.INSTALLATION_LOCK,
             LibraryCleanup.LIBRARY_CLEANUP,
             LibraryCommand.LIBRARY_COMMAND,

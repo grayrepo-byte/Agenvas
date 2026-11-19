@@ -8,6 +8,7 @@ import dev.agenvas.db.Indexes;
 import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.AgentRun.AgentRunPath;
+import dev.agenvas.db.tables.ImageStudioBatchTask.ImageStudioBatchTaskPath;
 import dev.agenvas.db.tables.McpOperation.McpOperationPath;
 import dev.agenvas.db.tables.McpOperationTask.McpOperationTaskPath;
 import dev.agenvas.db.tables.MediaCapability.MediaCapabilityPath;
@@ -358,6 +359,19 @@ public class Task extends TableImpl<TaskRecord> {
             _agentRun = new AgentRunPath(this, Keys.TASK__FK_TASK_RUN, null);
 
         return _agentRun;
+    }
+
+    private transient ImageStudioBatchTaskPath _imageStudioBatchTask;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.image_studio_batch_task</code> table
+     */
+    public ImageStudioBatchTaskPath imageStudioBatchTask() {
+        if (_imageStudioBatchTask == null)
+            _imageStudioBatchTask = new ImageStudioBatchTaskPath(this, null, Keys.IMAGE_STUDIO_BATCH_TASK__FK_IMAGE_STUDIO_BATCH_TASK_TASK.getInverseKey());
+
+        return _imageStudioBatchTask;
     }
 
     private transient TaskManualReplacementPath _fkManualReplacementNew;

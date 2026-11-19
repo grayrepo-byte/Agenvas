@@ -130,6 +130,48 @@ public class JooqTaskRepository
     }
 
     @Override
+    public boolean checkpointStudioImageResult(Task lease, String workerId, JsonNode output, Instant now) {
+        return dsl.update(TASK)
+                .set(TASK.OUTPUT_JSON, JSONB.valueOf(output.toString()))
+                .set(TASK.UPDATED_AT, utc(now)).set(TASK.VERSION, TASK.VERSION.plus(1))
+                .where(currentWorkerLease(lease.id(), workerId, lease.leaseEpoch(), now))
+                .and(TASK.PROJECT_ID.eq(lease.projectId())).and(TASK.KIND.eq(Task.Kind.IMAGE_GENERATION.name()))
+                .and(DSL.condition("{0}->>'executionSurface' = 'IMAGE_STUDIO'", TASK.INPUT_JSON))
+                .and(TASK.STATUS.eq(Task.Status.SUBMITTING.name())).and(TASK.PROVIDER_REQUEST_ID.isNull())
+                .andNot(studioImageResult()).execute() == 1;
+    }
+
+    @Override
+    public boolean deferStudioImageArchive(Task lease, String workerId, Instant nextActionAt, Instant now) {
+        int changed = dsl.update(TASK)
+                .set(TASK.STATUS, Task.Status.WAITING_PROVIDER.name())
+                .set(TASK.NEXT_ACTION_AT, utc(nextActionAt))
+                .set(TASK.ERROR_CODE, ProviderFailureCodes.STUDIO_IMAGE_ARCHIVE_RETRY)
+                .setNull(TASK.LEASE_OWNER).setNull(TASK.LEASE_UNTIL)
+                .set(TASK.UPDATED_AT, utc(now)).set(TASK.VERSION, TASK.VERSION.plus(1))
+                .where(currentWorkerLease(lease.id(), workerId, lease.leaseEpoch(), now))
+                .and(TASK.PROJECT_ID.eq(lease.projectId())).and(TASK.STATUS.eq(Task.Status.SUBMITTING.name()))
+                .and(TASK.PROVIDER_REQUEST_ID.isNull()).and(studioImageResult()).execute();
+        if (changed != 1)
+            return false;
+        int attemptChanged = dsl.update(PROVIDER_ATTEMPT)
+                .set(PROVIDER_ATTEMPT.STATUS, ProviderAttempt.Status.ACCEPTED.name())
+                .set(PROVIDER_ATTEMPT.UPDATED_AT, utc(now))
+                .where(PROVIDER_ATTEMPT.TASK_ID.eq(lease.id())).and(PROVIDER_ATTEMPT.LEASE_EPOCH.eq(lease.leaseEpoch()))
+                .and(PROVIDER_ATTEMPT.STATUS.eq(ProviderAttempt.Status.SUBMITTING.name())).execute();
+        if (attemptChanged != 1)
+            throw new IllegalStateException("Missing provider attempt for completed Studio response");
+        return true;
+    }
+
+    /** Only server-written Studio completion progress authorizes local archival without an upstream ID. */
+    private static Condition studioImageResult() {
+        return TASK.KIND.eq(Task.Kind.IMAGE_GENERATION.name())
+                .and(DSL.condition("coalesce({0}->>'executionSurface', '') = 'IMAGE_STUDIO'", TASK.INPUT_JSON))
+                .and(DSL.condition("coalesce({0}->'studioImageResult'->>'schemaVersion', '') = '1'", TASK.OUTPUT_JSON));
+    }
+
+    @Override
     public boolean recordProviderFailure(Task current, String workerId, JsonNode output, Instant now) {
         return dsl.update(TASK).set(TASK.OUTPUT_JSON, JSONB.valueOf(output.toString()))
                 .set(TASK.UPDATED_AT, utc(now)).set(TASK.VERSION, TASK.VERSION.plus(1))
@@ -720,7 +762,7 @@ public class JooqTaskRepository
                 .where(TASK.KIND.in(Task.Kind.AUDIO_GENERATION.name(), Task.Kind.IMAGE_GENERATION.name(),
                         Task.Kind.VIDEO_GENERATION.name()))
                 .and(bindingClause)
-                .and(TASK.PROVIDER_REQUEST_ID.isNotNull())
+                .and(TASK.PROVIDER_REQUEST_ID.isNotNull().or(studioImageResult()))
                 .and(due)
                 .orderBy(TASK.NEXT_ACTION_AT, TASK.CREATED_AT, TASK.ID)
                 .limit(limit)
@@ -816,6 +858,7 @@ public class JooqTaskRepository
         var candidates = DSL.select(TASK.ID)
                 .from(TASK)
                 .where(TASK.CANCEL_REQUESTED.isFalse())
+                .andNot(studioImageResult())
                 .and(kindCondition)
                 .and(bindingClause)
                 .and(eligibility)
@@ -874,7 +917,7 @@ public class JooqTaskRepository
                 .and(TASK.STATUS.in(Task.Status.RUNNING.name(), Task.Status.SUBMITTING.name(),
                         Task.Status.WAITING_PROVIDER.name()))
                 .and(TASK.CANCEL_REQUESTED.isFalse().or(TASK.STATUS.eq(Task.Status.SUBMITTING.name()))
-                        .or(TASK.PROVIDER_REQUEST_ID.isNotNull()))
+                        .or(TASK.PROVIDER_REQUEST_ID.isNotNull()).or(studioImageResult()))
                 .execute() == 1;
     }
 
@@ -1073,7 +1116,7 @@ public class JooqTaskRepository
                 .set(TASK.VERSION, TASK.VERSION.plus(1))
                 .where(currentWorkerLease(taskId, workerId, leaseEpoch, now))
                 .and(TASK.STATUS.eq(Task.Status.RUNNING.name()))
-                .and(TASK.PROVIDER_REQUEST_ID.isNotNull())
+                .and(TASK.PROVIDER_REQUEST_ID.isNotNull().or(studioImageResult()))
                 .execute() == 1;
     }
 
@@ -1129,7 +1172,7 @@ public class JooqTaskRepository
                 .set(TASK.VERSION, TASK.VERSION.plus(1))
                 .where(currentWorkerLease(taskId, workerId, leaseEpoch, now))
                 .and(TASK.STATUS.eq(Task.Status.RUNNING.name()))
-                .and(TASK.PROVIDER_REQUEST_ID.isNotNull())
+                .and(TASK.PROVIDER_REQUEST_ID.isNotNull().or(studioImageResult()))
                 .execute() == 1;
     }
 
@@ -1149,25 +1192,30 @@ public class JooqTaskRepository
                         record.get(PROJECT.OWNER_ID)));
     }
 
-    /** 仅当提交租约仍已过期且状态仍为 SUBMITTING 时转成 UNKNOWN。 */
+    /** A confirmed Studio response resumes local archival; an uncertain external submission stays UNKNOWN. */
     @Override
     public boolean recoverExpiredSubmission(UUID taskId, Instant now) {
-        int changed = dsl.update(TASK)
-                .set(TASK.STATUS, Task.Status.UNKNOWN.name())
+        var changed = dsl.update(TASK)
+                .set(TASK.STATUS, DSL.when(studioImageResult(), Task.Status.WAITING_PROVIDER.name())
+                        .otherwise(Task.Status.UNKNOWN.name()))
                 .set(TASK.LEASE_OWNER, (String) null)
                 .set(TASK.LEASE_UNTIL, (OffsetDateTime) null)
-                .set(TASK.ERROR_CODE, ProviderFailureCodes.SUBMISSION_UNKNOWN)
+                .set(TASK.ERROR_CODE, DSL.when(studioImageResult(), ProviderFailureCodes.STUDIO_IMAGE_ARCHIVE_RETRY)
+                        .otherwise(ProviderFailureCodes.SUBMISSION_UNKNOWN))
+                .set(TASK.NEXT_ACTION_AT, utc(now))
                 .set(TASK.UPDATED_AT, utc(now))
                 .set(TASK.VERSION, TASK.VERSION.plus(1))
                 .where(TASK.ID.eq(taskId))
                 .and(TASK.STATUS.eq(Task.Status.SUBMITTING.name()))
                 .and(TASK.LEASE_UNTIL.le(utc(now)))
-                .execute();
-        if (changed == 0) {
+                .returning(TASK.STATUS).fetchOptional();
+        if (changed.isEmpty()) {
             return false;
         }
         int attemptChanged = dsl.update(PROVIDER_ATTEMPT)
-                .set(PROVIDER_ATTEMPT.STATUS, ProviderAttempt.Status.UNKNOWN.name())
+                .set(PROVIDER_ATTEMPT.STATUS, Task.Status.WAITING_PROVIDER.name().equals(changed.get().getStatus())
+                        ? ProviderAttempt.Status.ACCEPTED.name()
+                        : ProviderAttempt.Status.UNKNOWN.name())
                 .set(PROVIDER_ATTEMPT.UPDATED_AT, utc(now))
                 .where(PROVIDER_ATTEMPT.TASK_ID.eq(taskId))
                 .and(PROVIDER_ATTEMPT.STATUS.eq(ProviderAttempt.Status.SUBMITTING.name()))
@@ -1215,6 +1263,7 @@ public class JooqTaskRepository
                 .and(TASK.PROVIDER_REQUEST_ID.isNull());
         // Confirmed external requests keep their poll/archive path even after cancellation.
         return TASK.STATUS.eq(Task.Status.RUNNING.name()).and(TASK.PROVIDER_REQUEST_ID.isNull())
+                .andNot(studioImageResult())
                 .and(TASK.LEASE_UNTIL.le(utc(now)))
                 .or(localProcessing.and(TASK.STATUS.eq(Task.Status.SUBMITTING.name()))
                         .and(TASK.LEASE_UNTIL.le(utc(now))))
@@ -1270,6 +1319,13 @@ public class JooqTaskRepository
         return dsl.update(TASK)
                 .set(TASK.STATUS, Task.Status.CANCELED.name())
                 .set(TASK.OUTPUT_JSON, interruptedAgentOutput())
+                // Clear Studio retry progress only after this exact lease archived its canceled result.
+                .set(TASK.ERROR_CODE, DSL.when(studioImageResult()
+                        .and(TASK.ERROR_CODE.eq(ProviderFailureCodes.STUDIO_IMAGE_ARCHIVE_RETRY))
+                        .and(DSL.exists(DSL.selectOne().from(TASK_LATE_RESULT)
+                                .where(TASK_LATE_RESULT.TASK_ID.eq(TASK.ID))
+                                .and(TASK_LATE_RESULT.LEASE_EPOCH.eq(lease.leaseEpoch())))),
+                        (String) null).otherwise(TASK.ERROR_CODE))
                 .set(TASK.LEASE_OWNER, (String) null)
                 .set(TASK.LEASE_UNTIL, (OffsetDateTime) null)
                 .set(TASK.COMPLETED_AT, utc(now))
@@ -1322,6 +1378,10 @@ public class JooqTaskRepository
         return dsl.update(TASK)
                 .set(TASK.STATUS, Task.Status.SUCCEEDED.name())
                 .set(TASK.OUTPUT_JSON, JSONB.valueOf(output.toString()))
+                // Completed Studio archives must stop projecting transient retry progress to history/UI.
+                .set(TASK.ERROR_CODE, DSL.when(studioImageResult()
+                        .and(TASK.ERROR_CODE.eq(ProviderFailureCodes.STUDIO_IMAGE_ARCHIVE_RETRY)),
+                        (String) null).otherwise(TASK.ERROR_CODE))
                 .set(TASK.LEASE_OWNER, (String) null)
                 .set(TASK.LEASE_UNTIL, (OffsetDateTime) null)
                 .set(TASK.COMPLETED_AT, utc(now))
@@ -1329,7 +1389,8 @@ public class JooqTaskRepository
                 .set(TASK.VERSION, TASK.VERSION.plus(1))
                 .where(currentWorkerLease(lease.id(), workerId, lease.leaseEpoch(), now))
                 .and(TASK.STATUS.eq(Task.Status.RUNNING.name()))
-                .and(TASK.PROVIDER_REQUEST_ID.eq(lease.providerRequestId()))
+                .and(TASK.PROVIDER_REQUEST_ID.isNotDistinctFrom(lease.providerRequestId()))
+                .and(TASK.PROVIDER_REQUEST_ID.isNotNull().or(studioImageResult()))
                 .and(TASK.CANCEL_REQUESTED.isFalse())
                 .execute() == 1;
     }

@@ -57,6 +57,15 @@ public record Task(
     public static final String REQUIRE_EXPLICIT_SELECTION_PROPERTY = "requireExplicitResultSelection";
     public static final String VIDEO_PROMPT_PURPOSE = "VIDEO_PROMPT_OPTIMIZATION";
     public static final String IMAGE_PROMPT_PURPOSE = "IMAGE_REVERSE_PROMPT";
+    public static final String STUDIO_IMAGE_RESULT_PROPERTY = "studioImageResult";
+    public static final int STUDIO_IMAGE_RESULT_SCHEMA_VERSION = 1;
+
+    /** A confirmed one-shot Studio response can only resume its private archive, never generation. */
+    public boolean hasStudioImageResult() {
+        return kind == Kind.IMAGE_GENERATION && MediaExecutionSurface.isImageStudio(this)
+                && output != null && output.path(STUDIO_IMAGE_RESULT_PROPERTY).path("schemaVersion")
+                        .asInt() == STUDIO_IMAGE_RESULT_SCHEMA_VERSION;
+    }
 
     public boolean isVideoComposition() {
         return kind == Kind.VIDEO_GENERATION && input.path("videoComposition").isObject();
@@ -186,7 +195,7 @@ public record Task(
         RUNNING,
         /** 外部请求提交前检查点已持久化，结果可能需要核对。 */
         SUBMITTING,
-        /** 外部请求 ID 已保存，等待查询原请求。 */
+        /** 原请求或同步结果已确认，等待查询原请求或完成私有归档。 */
         WAITING_PROVIDER,
         /** 无法确认外部是否受理或完成，不能盲目重新提交。 */
         UNKNOWN,

@@ -224,7 +224,92 @@ class TaskMediaCompletionPostgresIT {
         assertThat(attemptStatus(fixture)).isEqualTo("ACCEPTED");
     }
 
+    @Test
+    void studioNativeOutputsArchiveAllVersionsWithoutAnyCanvasProjection() {
+        Fixture fixture = studioSubmitting("studio-native-outputs");
+        var results = List.of(result(0, false, content(fixture, "first")),
+                result(1, true, content(fixture, "primary")), result(2, false, content(fixture, "last")));
+        tasks.succeedWithArtifacts(fixture.lease(), fixture.workerId(), results, null);
+        Task complete = current(fixture);
+        assertThat(complete.status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(complete.output().path("additionalResults")).hasSize(2);
+        assertThat(count("canvas_item", fixture.project().id())).isZero();
+        assertThat(count("canvas_item_media_version", fixture.project().id())).isZero();
+        assertThat(artifacts.listVersions(fixture.owner().userId(), fixture.project().id(), fixture.artifactId()))
+                .hasSize(3);
+        for (var additional : complete.output().path("additionalResults")) {
+            assertThat(additional.has("canvasItemId")).isFalse();
+            assertThat(additional.path("artifactId").asText()).isEqualTo(fixture.artifactId().toString());
+        }
+        ArchiveCounts beforeReplay = counts(fixture);
+        assertThatThrownBy(() -> tasks.succeedWithArtifacts(fixture.lease(), fixture.workerId(), results, null))
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        failure -> assertThat(failure.code()).isEqualTo("TASK_LEASE_LOST"));
+        assertThat(counts(fixture)).isEqualTo(beforeReplay);
+        assertThat(settlements(fixture)).isEqualTo(1);
+    }
+
+    @Test
+    void studioSurfaceRejectsAContradictoryCanvasTargetBeforeArchivingAnything() {
+        Fixture fixture = submitting("studio-contradictory-target");
+        jdbc.sql(
+                "update task set input_json=jsonb_set(input_json, '{executionSurface}', '\"IMAGE_STUDIO\"'::jsonb) where id=:id")
+                .param("id", fixture.lease().id()).update();
+        Fixture studio = new Fixture(fixture.owner(), fixture.project(), fixture.artifactId(), fixture.cardId(),
+                current(fixture), fixture.workerId());
+        ArchiveCounts before = counts(studio);
+        assertThatThrownBy(() -> tasks.succeedWithArtifacts(studio.lease(), studio.workerId(),
+                List.of(result(0, true, content(studio, "should reject"))), null))
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        failure -> assertThat(failure.code()).isEqualTo("VALIDATION_ERROR"));
+        // The fixture PNG is already archived before completion; only result versions and canvas mutations are forbidden.
+        assertThat(count("artifact_version", studio.project().id())).isEqualTo(before.versions());
+        assertThat(count("canvas_item", studio.project().id())).isEqualTo(before.cards());
+    }
+
+    private Fixture studioSubmitting(String workerId) {
+        return studioTask(submitting(workerId));
+    }
+
+    private Fixture studioTask(Fixture fixture) {
+        // Test only the completion boundary with a trusted accepted no-node task. The Studio API
+        // acceptance tests independently verify that this shape is created without a node at all.
+        jdbc.sql("delete from canvas_item where project_id=:project").param("project", fixture.project().id()).update();
+        jdbc.sql(
+                "update task set input_json=(input_json - 'canvasItemId' - 'sourceCanvasItemId') || '{\"executionSurface\":\"IMAGE_STUDIO\"}'::jsonb where id=:id")
+                .param("id", fixture.lease().id()).update();
+        return new Fixture(fixture.owner(), fixture.project(), fixture.artifactId(), null,
+                current(fixture), fixture.workerId());
+    }
+
+    @Test
+    void studioSubmissionRechecksTheFrozenVersionArtifactAndAssetIdentity() {
+        Fixture fixture = studioTask(claimed("studio-forged-reference"));
+        UUID asset = ImageAssetFixture.archive(assets, fixture.owner().userId(), fixture.project().id());
+        var reference = artifacts.create(fixture.owner().userId(), fixture.project().id(), Artifact.Kind.IMAGE,
+                "Frozen input", mapper.createObjectNode().put("sourceType", "UPLOAD").put("assetId", asset.toString()));
+        ObjectNode input = (ObjectNode) fixture.lease().input().deepCopy();
+        ((ObjectNode) input.path("mediaInput")).putArray("images").addObject()
+                .put("artifactId", reference.artifact().id().toString())
+                .put("versionId", reference.resourceDefaultVersion().id().toString())
+                .put("assetId", UUID.randomUUID().toString()).put("role", "REFERENCE").put("order", 0);
+        jdbc.sql("update task set input_json=:input::jsonb where id=:id")
+                .param("input", input.toString()).param("id", fixture.lease().id()).update();
+        Task forged = current(fixture);
+        assertThatThrownBy(() -> tasks.beginSubmission(forged, fixture.workerId()))
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        failure -> assertThat(failure.code()).isEqualTo("TASK_INPUT_STALE"));
+        assertThat(jdbc.sql("select count(*) from provider_attempt where task_id=:id")
+                .param("id", forged.id()).query(Integer.class).single()).isZero();
+    }
+
     private Fixture submitting(String workerId) {
+        Fixture fixture = claimed(workerId);
+        tasks.beginSubmission(fixture.lease(), workerId);
+        return fixture;
+    }
+
+    private Fixture claimed(String workerId) {
         AdminPrincipal owner = jdbc.sql("select id from app_user where login_name='completion-admin'")
                 .query(UUID.class).optional().map(id -> new AdminPrincipal(id, "completion-admin"))
                 .orElseGet(() -> identities.setup("completion-admin", "completion-password-123"));
@@ -237,7 +322,6 @@ class TaskMediaCompletionPostgresIT {
         Task task = direct.run(owner.userId(), project.id(), artifactId, cardId, draft.version(), workerId);
         Task lease = tasks.claimBoundMedia(workerId, 1).getFirst();
         assertThat(lease.id()).isEqualTo(task.id());
-        tasks.beginSubmission(lease, workerId);
         return new Fixture(owner, project, artifactId, cardId, lease, workerId);
     }
 
