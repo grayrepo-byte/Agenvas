@@ -7,6 +7,11 @@ import "../src/styles.css";
 const parameters = new URL(location.href).searchParams;
 setLocale(resolveLocale(parameters.get("locale")) ?? "zh");
 const projectId = "synthetic-image-studio";
+const scenario = parameters.get("scenario") ?? "grid";
+const shape = scenario === "portrait" ? "portrait" : scenario === "landscape" ? "landscape" : "square";
+const [width, height] = shape === "portrait" ? [900, 1600] : shape === "landscape" ? [1600, 900] : [1024, 1024];
+const initialCount = scenario === "portrait" || scenario === "landscape" ? 1 : 4;
+const referenceAssetId = "synthetic-studio-square-0";
 const capability: ImageStudioCapability = {
   capabilityId: "synthetic-image-capability",
   capabilityVersion: 2,
@@ -27,11 +32,16 @@ const saved: ImageStudioBatch = {
   capabilityId: capability.capabilityId,
   capabilityVersion: 2,
   prompt: "清晨海边的小屋，柔和自然光与手绘质感 · A seaside cabin in soft morning light",
-  parameters: { aspectRatio: "1:1", resolution: "2K", quality: "high", generationCount: 4 },
+  parameters: {
+    aspectRatio: shape === "portrait" ? "9:16" : shape === "landscape" ? "16:9" : "1:1",
+    resolution: "2K",
+    quality: "high",
+    generationCount: initialCount,
+  },
   referenceVersionIds: [],
   references: [],
   createdAt: "2026-11-19T08:00:00Z",
-  tasks: Array.from({ length: 4 }, (_, index) => ({
+  tasks: Array.from({ length: initialCount }, (_, index) => ({
     id: `synthetic-saved-${index}`,
     status: "SUCCEEDED",
     version: 4,
@@ -40,13 +50,36 @@ const saved: ImageStudioBatch = {
       {
         artifactId: `synthetic-artifact-${index}`,
         artifactVersionId: `synthetic-version-${index}`,
-        assetId: `synthetic-library-${index}`,
-        width: 1024,
-        height: 1024,
-        contentType: "image/png",
+        assetId: `synthetic-studio-${shape}-${index}`,
+        width,
+        height,
+        contentType: "image/svg+xml",
       },
     ],
   })),
+};
+const pendingBatch: ImageStudioBatch = {
+  ...saved,
+  id: "synthetic-pending-batch",
+  prompt: "Uncertain acceptance · synthetic test",
+  createdAt: "2026-11-18T08:00:00Z",
+  tasks: [{ id: "synthetic-pending-task", status: "UNKNOWN", version: 2, errorCode: null, results: [] }],
+};
+const partialBatch: ImageStudioBatch = {
+  ...saved,
+  id: "synthetic-partial-batch",
+  prompt: "Partial success · synthetic test",
+  createdAt: "2026-11-17T08:00:00Z",
+  tasks: [
+    saved.tasks[0]!,
+    {
+      id: "synthetic-failed-task",
+      status: "FAILED",
+      version: 3,
+      errorCode: "SYNTHETIC_PROVIDER_REJECTED",
+      results: [],
+    },
+  ],
 };
 const writes: { key: string | null; request: unknown }[] = [];
 const unexpected: string[] = [];
@@ -69,7 +102,7 @@ window.fetch = async (input, init) => {
     return Response.json({
       artifactId: "synthetic-reference",
       versionId: "synthetic-reference-version",
-      assetId: "synthetic-library-0",
+      assetId: referenceAssetId,
       projectId,
       width: 1024,
       height: 1024,
@@ -94,7 +127,7 @@ window.fetch = async (input, init) => {
       references: request.referenceVersionIds.map((versionId: string) => ({
         artifactId: "synthetic-reference",
         versionId,
-        assetId: "synthetic-library-0",
+        assetId: referenceAssetId,
         projectId,
         width: 1024,
         height: 1024,
@@ -103,9 +136,14 @@ window.fetch = async (input, init) => {
     return Response.json(batch);
   }
   if (url.pathname === "/api/v1/image-studio/batches")
-    return Response.json({ items: batch ? [batch, saved] : [saved], nextCursor: null });
+    return Response.json({
+      items: batch ? [batch, saved, pendingBatch, partialBatch] : [saved, pendingBatch, partialBatch],
+      nextCursor: null,
+    });
   if (url.pathname === "/api/v1/image-studio/batches/synthetic-new-batch" && batch) return Response.json(batch);
   if (url.pathname === "/api/v1/image-studio/batches/synthetic-saved-batch") return Response.json(saved);
+  if (url.pathname === "/api/v1/image-studio/batches/synthetic-pending-batch") return Response.json(pendingBatch);
+  if (url.pathname === "/api/v1/image-studio/batches/synthetic-partial-batch") return Response.json(partialBatch);
   unexpected.push(`${method} ${url.pathname}`);
   return new Response(null, { status: 404 });
 };
