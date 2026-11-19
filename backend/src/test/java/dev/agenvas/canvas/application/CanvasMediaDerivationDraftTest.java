@@ -1,5 +1,6 @@
 package dev.agenvas.canvas.application;
 
+import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -28,6 +29,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
@@ -58,7 +60,7 @@ class CanvasMediaDerivationDraftTest {
     private final CanvasService canvas = new CanvasService(projects, artifacts,
             drafts, items, connections,
             events, new ObjectMapper(), Clock.systemUTC(),
-            new org.springframework.beans.factory.support.StaticListableBeanFactory(java.util.Map.of("characters",
+            new org.springframework.beans.factory.support.StaticListableBeanFactory(Map.of("characters",
                     characters))
                     .getBeanProvider(dev.agenvas.character.application.CharacterService.class),
             dev.agenvas.testing.CreationMessagesTestSupport.messages());
@@ -152,6 +154,10 @@ class CanvasMediaDerivationDraftTest {
     @CsvSource({"en, Upload", "zh, 上传", "ru, Загрузка", "ja, アップロード"})
     void uploadCreatesItsOwnLocalizedDefaultTitle(String language, String suffix) {
         var inserted = new AtomicReference<CanvasItem>();
+        var selection = new ArtifactService.Selection(artifactId, parent);
+        var projection = new ArtifactService.SelectedArtifact(artifacts.get(owner, project, artifactId), null);
+        when(artifacts.readSelections(owner, project, Set.of(selection)))
+                .thenReturn(Map.of(selection, projection));
         when(items.create(any())).thenAnswer(call -> {
             inserted.set(call.getArgument(0));
             return true;

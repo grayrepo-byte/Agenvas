@@ -1,5 +1,6 @@
 package dev.agenvas.canvas.application;
 
+import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -24,6 +25,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,7 +50,7 @@ class CanvasOutputPlacementTest {
     private final CanvasService canvas = new CanvasService(projects, artifacts,
             drafts, items, mock(CanvasConnectionService.class),
             events, mapper, Clock.fixed(NOW, java.time.ZoneOffset.UTC),
-            new org.springframework.beans.factory.support.StaticListableBeanFactory(java.util.Map.of("characters",
+            new org.springframework.beans.factory.support.StaticListableBeanFactory(Map.of("characters",
                     mock(dev.agenvas.character.application.CharacterService.class)))
                     .getBeanProvider(dev.agenvas.character.application.CharacterService.class),
             dev.agenvas.testing.CreationMessagesTestSupport.messages());
@@ -81,6 +83,10 @@ class CanvasOutputPlacementTest {
         List<CanvasItem> full = new ArrayList<>(java.util.stream.IntStream.range(0, 99)
                 .mapToObj(index -> groupedCard(UUID.randomUUID())).toList());
         full.add(existing);
+        var selection = new ArtifactService.Selection(artifactId, null);
+        var projection = new ArtifactService.SelectedArtifact(artifactView(artifactId, Artifact.Kind.IMAGE), null);
+        when(artifacts.readSelections(owner, project, Set.of(selection)))
+                .thenReturn(Map.of(selection, projection));
         when(items.groupExists(owner, project, groupId)).thenReturn(true);
         when(items.list(owner, project)).thenReturn(full);
         when(items.create(any())).thenReturn(false);

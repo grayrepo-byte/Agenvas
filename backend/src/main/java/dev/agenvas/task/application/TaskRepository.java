@@ -187,8 +187,8 @@ public interface TaskRepository {
             String errorCode,
             Instant now);
 
-    /** 对尚未提交的过期媒体输入记 BLOCKED，而非误记为 Provider 执行失败。 */
-    boolean blockStaleInput(UUID taskId, String workerId, long leaseEpoch,
+    /** 仅在无提交证据的活动媒体租约下将预检失败写成 BLOCKED，取消已请求时写 CANCELED。 */
+    boolean finishMediaPreflight(UUID taskId, String workerId, long leaseEpoch,
             String errorCode, Instant now);
 
     /** 仅当前未取消租约可在网络调用前保存 SUBMITTING 和请求键。 */

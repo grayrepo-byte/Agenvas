@@ -27,6 +27,7 @@ import dev.agenvas.provider.domain.NativeMediaProtocol;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.lifecycle.ShutdownGate;
+import dev.agenvas.provider.application.PinnedMediaPublications;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.usage.application.UsageService;
 import java.math.BigDecimal;
@@ -63,9 +64,10 @@ class TaskMediaCompletionTest {
     private final CanvasService canvas = mock(CanvasService.class);
     private final UsageService usage = mock(UsageService.class);
     private final AgentRunService runs = mock(AgentRunService.class);
+    private final PinnedMediaPublications publications = mock(PinnedMediaPublications.class);
     private final TaskService service = new TaskService(runs, projects, artifacts,
             mock(MediaDraftService.class), canvas, repository, new TaskProperties(null, 0),
-            events, usage, mapper, Clock.fixed(NOW, ZoneOffset.UTC), new ShutdownGate());
+            events, usage, mapper, Clock.fixed(NOW, ZoneOffset.UTC), new ShutdownGate(), publications);
 
     @ParameterizedTest
     @EnumSource(InvalidResults.class)
@@ -122,9 +124,10 @@ class TaskMediaCompletionTest {
                 ? Optional.empty()
                 : Optional.of(new MediaCapabilityBinding(UUID.randomUUID(), 1, UUID.randomUUID(), 1,
                         source == CostSource.LOCAL
-                                ? MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR
+                                ? "SYNTHETIC_RETIRED_LOCAL"
                                 : MediaAdapterRegistry.RUNNINGHUB_IMAGE,
                         "synthetic-mapping"));
+        binding.ifPresent(value -> when(publications.isLocal(value)).thenReturn(source == CostSource.LOCAL));
         when(repository.mediaBinding(TASK)).thenReturn(binding);
 
         assertThat(service.succeedWithArtifacts(lease, WORKER, List.of(

@@ -4,8 +4,6 @@ import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.Submission;
-import dev.agenvas.provider.domain.PortInput;
-import dev.agenvas.task.domain.Task;
 import dev.agenvas.task.domain.VideoOperation;
 import org.springframework.stereotype.Component;
 
@@ -17,9 +15,6 @@ public class LocalVideoDepthAdapter implements MediaAdapter {
     }
     public String adapterId() {
         return MediaAdapterRegistry.LOCAL_VIDEO_PROCESSOR;
-    }
-    public boolean supports(PortInput input) {
-        return input.kind() == Task.Kind.VIDEO_GENERATION;
     }
     public String preflightFailure(AttemptContext context) {
         return processor.preflight(context, VideoOperation.DEPTH_MAP);

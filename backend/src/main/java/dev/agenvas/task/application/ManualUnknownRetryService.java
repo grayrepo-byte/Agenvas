@@ -7,7 +7,6 @@ import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
-import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.usage.application.UsageService;
@@ -187,7 +186,7 @@ public class ManualUnknownRetryService {
         repository.createArtifactTarget(new TaskRepository.ArtifactTarget(replacement.id(),
                 projectId, target.artifactId(), target.expectedCurrentVersionId(),
                 target.expectedArtifactVersion(), target.canvasItemId()));
-        boolean localProcessing = MediaAdapterRegistry.localProcessor(binding.adapterId());
+        boolean localProcessing = mediaCapabilities.isLocal(binding);
         usage.reserveMediaTask(ownerId, replacement, localProcessing
                 ? "LOCAL_NO_COST"
                 : "PROVIDER_UNPRICED", binding.connectionVersion());

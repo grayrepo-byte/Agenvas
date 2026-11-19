@@ -6,12 +6,14 @@ import dev.agenvas.llm.application.LlmProtocolCodec;
 import dev.agenvas.llm.application.LlmStreamIncompleteException;
 import dev.agenvas.audit.application.CallLogService;
 import dev.agenvas.audit.domain.CallLog;
-import java.util.function.Consumer;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
@@ -52,8 +54,35 @@ public class LlmDiagnosticService {
         this.callLogs = callLogs;
     }
 
-    /** 网络诊断不占用数据库事务；结束时按配置版本条件更新能力状态。 */
+    /** 网络诊断不占用数据库事务；结束时按活动配置版本条件更新能力状态。 */
     public LlmProviderConfigService.Status diagnose(int expectedVersion, boolean acknowledgeCost) {
+        return executeDiagnostic(expectedVersion, acknowledgeCost, () -> {
+            var config = repository.active().orElseThrow(this::changed);
+            if (config.version() != expectedVersion)
+                throw changed();
+            return config;
+        }, () -> repository.markToolCallingVerified(expectedVersion), configs::status);
+    }
+
+    /** Diagnose a selected saved connection without switching the service used by new work. */
+    public LlmProviderConfigService.ConnectionStatus diagnoseConnection(UUID id, int expectedVersion,
+            boolean acknowledgeCost) {
+        return executeDiagnostic(expectedVersion, acknowledgeCost, () -> {
+            var head = repository.findConnection(id).orElseThrow(this::changed);
+            if (head.currentConfigVersion() != expectedVersion)
+                throw changed();
+            return repository.findVersion(expectedVersion).orElseThrow(this::changed);
+        }, () -> repository.markConnectionToolCallingVerified(id, expectedVersion), () -> {
+            var result = configs.connection(id);
+            if (result.version() != expectedVersion)
+                throw changed();
+            return result;
+        });
+    }
+
+    /** Keep target lookup, probing, conditional verification and projection under one process-wide gate. */
+    private <T> T executeDiagnostic(int expectedVersion, boolean acknowledgeCost,
+            Supplier<LlmProviderConfig> loadTarget, BooleanSupplier markVerified, Supplier<T> projectResult) {
         if (!acknowledgeCost || expectedVersion < 1) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST,
                     "PROVIDER_DIAGNOSTIC_CONFIRMATION_REQUIRED",
@@ -71,51 +100,13 @@ public class LlmDiagnosticService {
                     true);
         }
         try {
-            LlmProviderConfig config = repository.active().orElseThrow(this::changed);
-            if (config.version() != expectedVersion)
-                throw changed();
-            if (config.toolCallingVerified())
-                return configs.status();
-            probe(config);
-            if (!repository.markToolCallingVerified(expectedVersion))
-                throw changed();
-            return configs.status();
-        } finally {
-            inFlight.set(false);
-        }
-    }
-
-    /** Diagnose a selected saved connection without switching the service used by new work. */
-    public LlmProviderConfigService.ConnectionStatus diagnoseConnection(UUID id, int expectedVersion,
-            boolean acknowledgeCost) {
-        if (!acknowledgeCost || expectedVersion < 1) {
-            throw new ApiProblemException(HttpStatus.BAD_REQUEST, "PROVIDER_DIAGNOSTIC_CONFIRMATION_REQUIRED",
-                    ApiMessage.of("api.llm-diagnostic-service.need-to-confirm-diagnostic-call"),
-                    ApiMessage.of(
-                            "api.llm-diagnostic-service.please-confirm-that-this-diagnostic-makes-up-to-two-potentially"),
-                    false);
-        }
-        if (!inFlight.compareAndSet(false, true)) {
-            throw new ApiProblemException(HttpStatus.CONFLICT, "PROVIDER_DIAGNOSTIC_IN_PROGRESS",
-                    ApiMessage.of("api.llm-diagnostic-service.model-diagnostics-running"),
-                    ApiMessage.of(
-                            "api.llm-diagnostic-service.please-wait-until-the-current-diagnosis-is-complete-and-try"),
-                    true);
-        }
-        try {
-            var head = repository.findConnection(id).orElseThrow(this::changed);
-            if (head.currentConfigVersion() != expectedVersion)
-                throw changed();
-            var config = repository.findVersion(expectedVersion).orElseThrow(this::changed);
+            var config = loadTarget.get();
             if (!config.toolCallingVerified()) {
                 probe(config);
-                if (!repository.markConnectionToolCallingVerified(id, expectedVersion))
+                if (!markVerified.getAsBoolean())
                     throw changed();
             }
-            var result = configs.connection(id);
-            if (result.version() != expectedVersion)
-                throw changed();
-            return result;
+            return projectResult.get();
         } finally {
             inFlight.set(false);
         }

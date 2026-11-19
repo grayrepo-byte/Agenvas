@@ -11,7 +11,6 @@ import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.ComfyUiWorkflowDefinition;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaPayload;
-import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.provider.infrastructure.ComfyUiClient;
 import dev.agenvas.provider.infrastructure.ComfyUiInputImage;
@@ -57,13 +56,6 @@ public class ComfyUiVideoAdapter implements MediaAdapter {
     @Override
     public String adapterId() {
         return "COMFY_VIDEO_V1";
-    }
-
-    @Override
-    public boolean supports(PortInput input) {
-        // This is the protocol envelope; acceptance applies the pinned capability's narrower range.
-        return input.kind() == Task.Kind.VIDEO_GENERATION
-                && input.durationSeconds() >= 1 && input.durationSeconds() <= ComfyUiWorkflowDefinition.MAX_SECONDS;
     }
 
     @Override

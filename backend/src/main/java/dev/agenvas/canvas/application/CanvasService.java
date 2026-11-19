@@ -18,6 +18,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -125,9 +126,7 @@ public class CanvasService {
     @Transactional(readOnly = true)
     public List<CanvasEntry> list(UUID ownerId, UUID projectId) {
         projects.get(ownerId, projectId);
-        return canvasItems.list(ownerId, projectId).stream()
-                .map(item -> toEntry(ownerId, item))
-                .toList();
+        return entries(ownerId, projectId, canvasItems.list(ownerId, projectId));
     }
 
     /** Creates an independent media work branch from one fully persisted source card. */
@@ -190,6 +189,12 @@ public class CanvasService {
 
     public record DuplicateResult(CanvasEntry item,
             dev.agenvas.artifact.domain.MediaDraft draft) {
+    }
+
+    /** Card-owned result membership for export. Version order is defined by the artifact catalog. */
+    @Transactional(readOnly = true)
+    public Map<UUID, List<UUID>> mediaVersionIdsByCard(UUID ownerId, UUID projectId) {
+        return canvasItems.mediaVersionIdsByCard(ownerId, projectId);
     }
 
     /** Lists this node's immutable results, excluding results owned by other work branches. */
@@ -848,9 +853,7 @@ public class CanvasService {
                 case Remove remove -> remove(ownerId, projectId, remove);
             }
         }
-        return canvasItems.list(ownerId, projectId).stream()
-                .map(item -> toEntry(ownerId, item))
-                .toList();
+        return entries(ownerId, projectId, canvasItems.list(ownerId, projectId));
     }
 
     /** 核验产物权限和坐标后创建卡片；客户端 ID 只允许完全相同的布局重放。 */
@@ -1055,24 +1058,28 @@ public class CanvasService {
         }
     }
 
-    /** Layout rows refer only to artifacts; the database remains the source of immutable content. */
+    /** Single-item mutation responses use the same projection as the ordered canvas list. */
     CanvasEntry toEntry(UUID ownerId, CanvasItem item) {
-        if (item.subjectType() == CanvasItem.SubjectType.CHARACTER)
-            return new CanvasEntry(
-                    item, null, null, characterNodes.getObject().view(ownerId, item));
-        ArtifactService.ArtifactView artifact = artifacts.get(ownerId, item.projectId(), item.subjectId());
-        return new CanvasEntry(item, artifact, selectedVersion(ownerId, item, artifact));
+        return entries(ownerId, item.projectId(), List.of(item)).getFirst();
     }
 
-    private ArtifactVersion selectedVersion(UUID ownerId, CanvasItem item,
-            ArtifactService.ArtifactView artifact) {
-        if (artifact.artifact().kind() == Artifact.Kind.TEXT) {
-            return null;
+    private List<CanvasEntry> entries(UUID ownerId, UUID projectId, List<CanvasItem> items) {
+        Set<ArtifactService.Selection> selections = new HashSet<>();
+        for (var item : items) {
+            if (item.subjectType() != CanvasItem.SubjectType.CHARACTER)
+                selections.add(selection(item));
         }
-        if (item.selectedVersionId() == null)
-            return null;
-        return artifacts.requireVersion(ownerId, item.projectId(), item.subjectId(),
-                item.selectedVersionId());
+        var resources = artifacts.readSelections(ownerId, projectId, selections);
+        return items.stream().map(item -> {
+            if (item.subjectType() == CanvasItem.SubjectType.CHARACTER)
+                return new CanvasEntry(item, null, null, characterNodes.getObject().view(ownerId, item));
+            var resource = resources.get(selection(item));
+            return new CanvasEntry(item, resource.resource(), resource.selectedVersion());
+        }).toList();
+    }
+
+    private ArtifactService.Selection selection(CanvasItem item) {
+        return new ArtifactService.Selection(item.subjectId(), item.selectedVersionId());
     }
 
     private UUID mediaSelection(ArtifactService.ArtifactView artifact) {

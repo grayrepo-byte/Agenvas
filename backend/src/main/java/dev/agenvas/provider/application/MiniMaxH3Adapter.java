@@ -7,7 +7,6 @@ import dev.agenvas.provider.domain.MediaHttpTimeouts;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaPayload;
 import dev.agenvas.provider.domain.MiniMaxH3Protocol;
-import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapshot;
@@ -56,11 +55,6 @@ public class MiniMaxH3Adapter implements MediaAdapter {
     @Override
     public String adapterId() {
         return MiniMaxH3Protocol.ADAPTER_ID;
-    }
-    @Override
-    public boolean supports(PortInput input) {
-        return input.kind() == Task.Kind.VIDEO_GENERATION && input.durationSeconds() >= 4
-                && input.durationSeconds() <= 15;
     }
     @Override
     public String preflightFailure(AttemptContext context) {

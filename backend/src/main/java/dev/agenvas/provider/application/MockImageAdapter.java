@@ -2,9 +2,7 @@ package dev.agenvas.provider.application;
 
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaAdapter;
-import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.Submission;
-import dev.agenvas.task.domain.Task;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 
@@ -20,11 +18,6 @@ public class MockImageAdapter implements MediaAdapter {
     @Override
     public String adapterId() {
         return "MOCK_IMAGE";
-    }
-
-    @Override
-    public boolean supports(PortInput input) {
-        return input.kind() == Task.Kind.IMAGE_GENERATION;
     }
 
     @Override

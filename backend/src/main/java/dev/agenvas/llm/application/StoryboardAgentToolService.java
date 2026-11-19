@@ -45,6 +45,8 @@ public class StoryboardAgentToolService {
     private final StoryboardService boards;
     private final ArtifactService artifacts;
     private final ObjectMapper mapper;
+    private final ToolArguments toolArguments = new ToolArguments(ToolArguments.UuidSyntax.THIRTY_SIX_CHARACTERS,
+            this::invalid);
 
     public StoryboardAgentToolService(StoryboardService boards, ArtifactService artifacts, ObjectMapper mapper) {
         this.boards = boards;
@@ -66,8 +68,8 @@ public class StoryboardAgentToolService {
             if (requestedIds.isEmpty())
                 throw invalid();
         } else {
-            offset = input.has("offset") ? integer(input, "offset") : 0;
-            limit = input.has("limit") ? integer(input, "limit") : 20;
+            offset = input.has("offset") ? toolArguments.nonnegativeInt(input.path("offset")) : 0;
+            limit = input.has("limit") ? toolArguments.nonnegativeInt(input.path("limit")) : 20;
             if (limit < 1 || limit > 40)
                 throw invalid();
         }
@@ -100,7 +102,7 @@ public class StoryboardAgentToolService {
     @Transactional
     public JsonNode writeShots(TrustedToolContext context, AgentRun run, UUID operationId, String arguments) {
         ObjectNode input = parse(arguments, WRITE_FIELDS);
-        long expectedVersion = version(input, "expectedVersion");
+        long expectedVersion = toolArguments.nonnegativeLong(input.path("expectedVersion"), Long.MAX_VALUE);
         JsonNode requestedShots = input.path("shots");
         if (!requestedShots.isArray() || requestedShots.isEmpty() || requestedShots.size() > MAX_WRITE_SHOTS)
             throw invalid();
@@ -124,7 +126,7 @@ public class StoryboardAgentToolService {
             Shot old = null;
             UUID id;
             if (patch.has("shotId")) {
-                id = uuid(patch.path("shotId"));
+                id = toolArguments.uuid(patch.path("shotId"));
                 old = oldShots.get(id);
                 if (old == null || !patchedIds.add(id))
                     throw invalid();
@@ -177,43 +179,45 @@ public class StoryboardAgentToolService {
     private void validatePatch(JsonNode patch) {
         if (!(patch instanceof ObjectNode object))
             throw invalid();
-        requireFields(object, SHOT_FIELDS);
+        toolArguments.requireAllowedFields(object, SHOT_FIELDS);
         boolean existing = patch.has("shotId");
         if (existing) {
-            uuid(patch.path("shotId"));
+            toolArguments.uuid(patch.path("shotId"));
             if (patch.size() < 2)
                 throw invalid();
         } else if (APPEND_REQUIRED_FIELDS.stream().anyMatch(field -> !patch.has(field)))
             throw invalid();
         if (patch.has("code")) {
-            String code = text(patch, "code", 80);
+            String code = toolArguments.text(patch.path("code"), 80);
             if (code.isBlank() || !code.equals(code.trim()))
                 throw invalid();
         }
         for (String field : List.of("scene", "title"))
             if (patch.has(field))
-                text(patch, field, 200);
+                toolArguments.text(patch.path(field), 200);
         for (String field : List.of("description", "dialogue"))
             if (patch.has(field))
-                text(patch, field, 20_000);
+                toolArguments.text(patch.path(field), 20_000);
         if (patch.has("durationSeconds"))
             duration(patch.path("durationSeconds"));
         if (patch.has("sourceVersionId") && !patch.path("sourceVersionId").isNull())
-            uuid(patch.path("sourceVersionId"));
+            toolArguments.uuid(patch.path("sourceVersionId"));
         if (patch.has("referenceVersionIds"))
             ids(patch.path("referenceVersionIds"), MAX_REFERENCES);
     }
 
     private ShotInput merge(UUID id, Shot old, JsonNode patch) {
         return new ShotInput(id,
-                patch.has("code") ? text(patch, "code", 80) : old.code(),
-                patch.has("scene") ? text(patch, "scene", 200) : old == null ? "" : old.scene(),
-                patch.has("title") ? text(patch, "title", 200) : old == null ? "" : old.title(),
-                patch.has("description") ? text(patch, "description", 20_000) : old.description(),
-                patch.has("dialogue") ? text(patch, "dialogue", 20_000) : old.dialogue(),
+                patch.has("code") ? toolArguments.text(patch.path("code"), 80) : old.code(),
+                patch.has("scene") ? toolArguments.text(patch.path("scene"), 200) : old == null ? "" : old.scene(),
+                patch.has("title") ? toolArguments.text(patch.path("title"), 200) : old == null ? "" : old.title(),
+                patch.has("description") ? toolArguments.text(patch.path("description"), 20_000) : old.description(),
+                patch.has("dialogue") ? toolArguments.text(patch.path("dialogue"), 20_000) : old.dialogue(),
                 patch.has("durationSeconds") ? duration(patch.path("durationSeconds")) : old.durationSeconds(),
                 patch.has("sourceVersionId")
-                        ? patch.path("sourceVersionId").isNull() ? null : uuid(patch.path("sourceVersionId"))
+                        ? patch.path("sourceVersionId").isNull()
+                                ? null
+                                : toolArguments.uuid(patch.path("sourceVersionId"))
                         : old == null ? null : old.sourceVersionId(),
                 patch.has("referenceVersionIds")
                         ? ids(patch.path("referenceVersionIds"), MAX_REFERENCES)
@@ -306,22 +310,9 @@ public class StoryboardAgentToolService {
         if (arguments == null || arguments.length() > MAX_ARGUMENT_BYTES
                 || arguments.getBytes(StandardCharsets.UTF_8).length > MAX_ARGUMENT_BYTES)
             throw invalid();
-        JsonNode input;
-        try {
-            input = mapper.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
-                    .with(DeserializationFeature.FAIL_ON_READING_DUP_TREE_KEY).readTree(arguments);
-        } catch (RuntimeException malformed) {
-            throw invalid();
-        }
-        if (!(input instanceof ObjectNode object))
-            throw invalid();
-        requireFields(object, fields);
-        return object;
-    }
-
-    private void requireFields(ObjectNode input, Set<String> fields) {
-        if (input.propertyNames().stream().anyMatch(field -> !fields.contains(field)))
-            throw invalid();
+        return toolArguments.object(arguments, fields,
+                raw -> mapper.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                        .with(DeserializationFeature.FAIL_ON_READING_DUP_TREE_KEY).readTree(raw));
     }
 
     private List<UUID> ids(JsonNode values, int max) {
@@ -330,36 +321,12 @@ public class StoryboardAgentToolService {
         List<UUID> ids = new ArrayList<>();
         Set<UUID> unique = new HashSet<>();
         for (JsonNode value : values) {
-            UUID id = uuid(value);
+            UUID id = toolArguments.uuid(value);
             if (!unique.add(id))
                 throw invalid();
             ids.add(id);
         }
         return List.copyOf(ids);
-    }
-
-    private UUID uuid(JsonNode input) {
-        if (!input.isTextual() || input.asText().length() != 36)
-            throw invalid();
-        try {
-            return UUID.fromString(input.asText());
-        } catch (IllegalArgumentException malformed) {
-            throw invalid();
-        }
-    }
-
-    private long version(JsonNode input, String field) {
-        JsonNode value = input.path(field);
-        if (!value.isIntegralNumber() || !value.canConvertToLong() || value.longValue() < 0)
-            throw invalid();
-        return value.longValue();
-    }
-
-    private int integer(JsonNode input, String field) {
-        long value = version(input, field);
-        if (value > Integer.MAX_VALUE)
-            throw invalid();
-        return (int) value;
     }
 
     private BigDecimal duration(JsonNode value) {
@@ -370,13 +337,6 @@ public class StoryboardAgentToolService {
                 || duration.stripTrailingZeros().scale() > 3)
             throw invalid();
         return duration;
-    }
-
-    private String text(JsonNode input, String field, int max) {
-        JsonNode value = input.path(field);
-        if (!value.isTextual() || value.asText().length() > max)
-            throw invalid();
-        return value.asText();
     }
 
     private ApiProblemException invalid() {

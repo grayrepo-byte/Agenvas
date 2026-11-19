@@ -937,21 +937,26 @@ public class JooqTaskRepository
                 .and(TASK.CANCEL_REQUESTED.isFalse()).execute() == 1;
     }
 
-    /** 只阻断尚无外部请求 ID 的过期输入任务，避免把已提交任务当成本地失败。 */
+    /** 提交记录与任务行在同一事务写入；仅活动媒体租约且无任何提交证据时可释放预留。 */
     @Override
-    public boolean blockStaleInput(UUID taskId, String workerId, long leaseEpoch,
+    public boolean finishMediaPreflight(UUID taskId, String workerId, long leaseEpoch,
             String errorCode, Instant now) {
         return dsl.update(TASK)
-                .set(TASK.STATUS, Task.Status.BLOCKED.name())
-                .set(TASK.ERROR_CODE, errorCode)
+                .set(TASK.STATUS, DSL.when(TASK.CANCEL_REQUESTED, Task.Status.CANCELED.name())
+                        .otherwise(Task.Status.BLOCKED.name()))
+                .set(TASK.ERROR_CODE, DSL.when(TASK.CANCEL_REQUESTED, TASK.ERROR_CODE).otherwise(errorCode))
+                .set(TASK.COMPLETED_AT, DSL.when(TASK.CANCEL_REQUESTED, utc(now)).otherwise(TASK.COMPLETED_AT))
                 .set(TASK.LEASE_OWNER, (String) null)
                 .set(TASK.LEASE_UNTIL, (OffsetDateTime) null)
                 .set(TASK.UPDATED_AT, utc(now))
                 .set(TASK.VERSION, TASK.VERSION.plus(1))
                 .where(currentWorkerLease(taskId, workerId, leaseEpoch, now))
+                .and(TASK.KIND.in(Task.Kind.IMAGE_GENERATION.name(), Task.Kind.VIDEO_GENERATION.name(),
+                        Task.Kind.AUDIO_GENERATION.name()))
                 .and(TASK.STATUS.eq(Task.Status.RUNNING.name()))
                 .and(TASK.PROVIDER_REQUEST_ID.isNull())
-                .and(TASK.CANCEL_REQUESTED.isFalse())
+                .and(TASK.PROVIDER_RESULT_MANIFEST.isNull())
+                .andNotExists(DSL.selectOne().from(PROVIDER_ATTEMPT).where(PROVIDER_ATTEMPT.TASK_ID.eq(TASK.ID)))
                 .execute() == 1;
     }
 

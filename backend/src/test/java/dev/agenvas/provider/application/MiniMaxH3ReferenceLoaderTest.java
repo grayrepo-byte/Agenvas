@@ -71,6 +71,23 @@ class MiniMaxH3ReferenceLoaderTest {
     }
 
     @Test
+    void keepsFractionalRatesAndValidatesEveryVideoStreamBeforeSigning() throws Exception {
+        var context = context();
+        reference(Asset.MediaKind.VIDEO, "video/mp4", 2_000, 3, "VIDEO_REFERENCE");
+        when(tools.ffprobe(anyList())).thenReturn(probe("h264", "24000/1001", "aac"));
+        assertThat(loader.load(context, false)).hasSize(1);
+
+        when(tools.ffprobe(anyList())).thenReturn("""
+                {"streams":[
+                  {"codec_type":"video","codec_name":"h264","avg_frame_rate":"24000/1001"},
+                  {"codec_type":"video","codec_name":"hevc","avg_frame_rate":"24/1/2"}
+                ]}
+                """);
+        assertThatThrownBy(() -> loader.load(context, true)).isInstanceOfSatisfying(
+                ApiProblemException.class, error -> assertThat(error.code()).isEqualTo("PROVIDER_UNSUPPORTED_INPUT"));
+    }
+
+    @Test
     void sendsExactMp3BytesWithTheOfficialInlineMimeWithoutRequiringVisualInput() throws Exception {
         var context = context();
         reference(Asset.MediaKind.AUDIO, "audio/mpeg", 2_000, 3, "AUDIO_REFERENCE");

@@ -2,26 +2,17 @@ package dev.agenvas.settings.application;
 
 import static org.assertj.core.api.Assertions.*;
 import org.junit.jupiter.api.Test;
-import tools.jackson.databind.ObjectMapper;
 
 class LlmModelPolicyTest {
-    private final ObjectMapper json = new ObjectMapper();
     @Test
     void ollamaCannotAutomaticallyUseArchitecturalMaximumWhenUnloaded() {
-        var metadata = ModelCatalog.parse(ModelCatalog.Provider.OLLAMA,
-                json.readTree("{\"models\":[{\"name\":\"model\"}]}"),
-                json.readTree("{\"model_info\":{\"general.architecture\":\"x\",\"x.context_length\":131072}}"),
-                json.readTree("{\"models\":[]}"), "model").models().getFirst();
+        var metadata = new ModelCatalog.Model("model", 131072, null, null, null, null, null);
         assertThatThrownBy(() -> LlmModelPolicy.automatic(ModelCatalog.Provider.OLLAMA, metadata, 1024,
                 LlmModelPolicy.OutputParameter.MAX_TOKENS)).hasMessage("MODEL_CAPACITY_UNKNOWN");
     }
     @Test
     void automaticLoadedContextIsConservativeAndPreservesTheory() {
-        var metadata = ModelCatalog.parse(ModelCatalog.Provider.OLLAMA,
-                json.readTree("{\"models\":[{\"name\":\"model\"}]}"),
-                json.readTree("{\"model_info\":{\"general.architecture\":\"x\",\"x.context_length\":131072}}"),
-                json.readTree("{\"models\":[{\"name\":\"model\",\"context_length\":4096}]}"), "model").models()
-                .getFirst();
+        var metadata = new ModelCatalog.Model("model", 131072, null, null, 4096, null, null);
         var policy = LlmModelPolicy.automatic(ModelCatalog.Provider.OLLAMA, metadata, 1024,
                 LlmModelPolicy.OutputParameter.MAX_TOKENS);
         assertThat(policy.contextWindowTokens()).isEqualTo(4096);
@@ -31,10 +22,7 @@ class LlmModelPolicyTest {
     }
     @Test
     void separateInputAndOutputLimitsRemainSeparate() {
-        var metadata = ModelCatalog.parse(ModelCatalog.Provider.GEMINI,
-                json.readTree(
-                        "{\"models\":[{\"name\":\"models/model\",\"inputTokenLimit\":32000,\"outputTokenLimit\":2048}]}"),
-                null, null, null).models().getFirst();
+        var metadata = new ModelCatalog.Model("model", null, 32000, 2048, null, null, null);
         var policy = LlmModelPolicy.automatic(ModelCatalog.Provider.GEMINI, metadata, 1024,
                 LlmModelPolicy.OutputParameter.MAX_TOKENS);
         assertThat(policy.contextWindowTokens()).isNull();

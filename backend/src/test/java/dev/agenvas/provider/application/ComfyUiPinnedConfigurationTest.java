@@ -108,7 +108,8 @@ class ComfyUiPinnedConfigurationTest {
     private Fixture fixture(AdapterKind kind) {
         var repository = mock(JooqMediaCapabilityRepository.class);
         var cipher = mock(CredentialCipher.class);
-        var catalog = new MediaCapabilityService(repository, new MediaAdapterRegistry(List.of()), cipher,
+        var catalog = new MediaCapabilityService(repository, new PinnedMediaPublications(repository),
+                new MediaAdapterRegistry(List.of()), cipher,
                 Clock.systemUTC(), mapper, new ProviderModeProperties(ProviderModeProperties.Mode.CONFIGURED));
         var clients = mock(ComfyUiClientFactory.class);
         var published = mock(ComfyUiPublishedWorkflow.class);

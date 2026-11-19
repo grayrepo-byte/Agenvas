@@ -7,11 +7,11 @@ import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
+import dev.agenvas.provider.domain.ProviderFailure;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.provider.domain.MediaPayload;
 import dev.agenvas.provider.domain.MediaPlatform;
 import dev.agenvas.provider.domain.ProviderResultManifest;
-import dev.agenvas.provider.infrastructure.RunningHubClient;
 import dev.agenvas.provider.domain.RunningHubDefinition.OutputKind;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.task.application.TaskService;
@@ -19,7 +19,6 @@ import dev.agenvas.task.domain.Task;
 import dev.agenvas.task.domain.VideoOperation;
 import java.io.IOException;
 import java.io.InputStream;
-import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -42,10 +41,11 @@ public class MediaExecutionWorker {
     private final ObjectMapper mapper;
     private final LocalVideoProcessor videoProcessor;
     private final MediaLeaseHeartbeat leases;
+    private final java.time.Clock clock;
 
     public MediaExecutionWorker(TaskService tasks, MediaCapabilityService catalog,
             MediaAdapterRegistry adapters, AssetService assets, ObjectMapper mapper, CallLogService callLogs,
-            LocalVideoProcessor videoProcessor, MediaLeaseHeartbeat leases) {
+            LocalVideoProcessor videoProcessor, MediaLeaseHeartbeat leases, java.time.Clock clock) {
         this.callLogs = callLogs;
         this.tasks = tasks;
         this.catalog = catalog;
@@ -54,6 +54,7 @@ public class MediaExecutionWorker {
         this.mapper = mapper;
         this.videoProcessor = videoProcessor;
         this.leases = leases;
+        this.clock = clock;
     }
 
     /** The claim and checkpoint are short transactions; provider traffic happens afterward. */
@@ -128,18 +129,7 @@ public class MediaExecutionWorker {
                                     resultValue -> callOutcome(resultValue, task.providerRequestId()));
                 } catch (RuntimeException transientFailure) {
                     renewal.checkActive();
-                    recordProviderFailure(task, workerId, transientFailure);
-                    String runningHub = runningHubPermanentFailure(transientFailure);
-                    if (runningHub != null) {
-                        tasks.blockProviderPoll(task, workerId, runningHub);
-                        continue;
-                    }
-                    String permanent = klingArchiveFailure(binding, transientFailure);
-                    if (permanent != null) {
-                        tasks.blockProviderPoll(task, workerId, permanent);
-                        continue;
-                    }
-                    tasks.retryProviderPoll(task, workerId, "PROVIDER_POLL_TECHNICAL_FAILURE");
+                    finishPollFailure(attempt, workerId, adapter, transientFailure);
                     continue;
                 }
                 requireActive(renewal, result);
@@ -147,14 +137,13 @@ public class MediaExecutionWorker {
                     case Submission.Pending pending ->
                         tasks.deferProviderPoll(task, workerId, pending.nextActionAt());
                     case Submission.Completed completed ->
-                        finishPolledPayload(attempt, workerId, completed.payload());
+                        finishPolledPayload(attempt, workerId, adapter, completed.payload());
                     case Submission.CompletedArtifact completed ->
                         completeArtifact(attempt, workerId, completed.content());
                     case Submission.CompletedResults completed ->
                         finishPolledManifest(attempt, workerId, adapter, completed.manifest());
                     case Submission.Rejected rejected -> {
-                        if (rejected.providerFailure() != null)
-                            tasks.recordProviderFailure(task, workerId, rejected.providerFailure());
+                        recordDiagnostic(attempt, workerId, rejected.providerFailure());
                         tasks.fail(task, workerId, rejected.code());
                     }
                     case Submission.Blocked blocked -> tasks.blockProviderPoll(task, workerId,
@@ -164,7 +153,7 @@ public class MediaExecutionWorker {
                     case Submission.AcceptedResults ignored ->
                         tasks.retryProviderPoll(task, workerId, "PROVIDER_PROTOCOL_INVALID");
                     case Submission.Accepted ignored ->
-                        tasks.deferProviderPoll(task, workerId, Instant.now().plusSeconds(5));
+                        tasks.deferProviderPoll(task, workerId, clock.instant().plusSeconds(5));
                 }
             }
         }
@@ -187,35 +176,13 @@ public class MediaExecutionWorker {
         }
     }
 
-    private String klingArchiveFailure(MediaCapabilityBinding binding, RuntimeException failure) {
-        if (dev.agenvas.provider.domain.NativeMediaProfiles.supports(binding.adapterId())
-                && failure instanceof dev.agenvas.provider.domain.NativeMediaFailure nativeFailure)
-            return nativeFailure.code();
-        if (!dev.agenvas.provider.domain.KlingModels.adapter(binding.adapterId()))
-            return null;
-        if (failure instanceof dev.agenvas.provider.infrastructure.KlingClient.CredentialUnavailable)
-            return "MEDIA_CREDENTIAL_UNAVAILABLE";
-        if (failure instanceof dev.agenvas.provider.infrastructure.KlingClient.TaskExpired)
-            return "KLING_TASK_EXPIRED";
-        if (failure instanceof dev.agenvas.provider.infrastructure.KlingClient.ProtocolFailure)
-            return "PROTOCOL_INVALID";
-        if (failure instanceof dev.agenvas.provider.infrastructure.KlingMediaDownloadPolicy.Expired)
-            return "KLING_RESULT_EXPIRED";
-        if (failure instanceof dev.agenvas.provider.infrastructure.KlingMediaDownloadPolicy.Rejected)
-            return failure.getMessage();
-        return null;
-    }
-
-    private void finishPolledPayload(AttemptContext attempt, String workerId, MediaPayload payload) {
+    private void finishPolledPayload(AttemptContext attempt, String workerId, MediaAdapter adapter,
+            MediaPayload payload) {
         ObjectNode content;
         try {
             content = archive(attempt, payload);
         } catch (RuntimeException archiveFailure) {
-            String permanent = klingArchiveFailure(attempt.binding(), archiveFailure);
-            if (permanent != null)
-                tasks.blockProviderPoll(attempt.lease(), workerId, permanent);
-            else
-                tasks.retryProviderPoll(attempt.lease(), workerId, "PROVIDER_POLL_TECHNICAL_FAILURE");
+            finishPollFailure(attempt, workerId, adapter, archiveFailure);
             return;
         }
         // Payload polling retries byte archival, but final Task write failures still propagate.
@@ -232,7 +199,9 @@ public class MediaExecutionWorker {
             List<TaskService.ArchivedProviderResult> results;
             try {
                 results = archiveResults(attempt, adapter, manifest);
-            } catch (RunningHubClient.DownloadExpired expired) {
+            } catch (RuntimeException downloadFailure) {
+                if (!adapter.classifyPollFailure(downloadFailure).refreshLocations())
+                    throw downloadFailure;
                 // Refresh the original task once per archive attempt. No path here can submit a new generation.
                 var refreshed = adapter.refreshResults(attempt, manifest);
                 tasks.refreshProviderResultUrls(task, workerId, manifest, refreshed);
@@ -241,33 +210,24 @@ public class MediaExecutionWorker {
             }
             tasks.succeedWithArtifacts(task, workerId, withSilentVideo(attempt, results), manifest.usage());
         } catch (RuntimeException archiveFailure) {
-            recordProviderFailure(task, workerId, archiveFailure);
-            String runningHub = runningHubPermanentFailure(archiveFailure);
-            if (runningHub != null) {
-                tasks.blockProviderPoll(task, workerId, runningHub);
-                return;
-            }
-            String permanent = klingArchiveFailure(attempt.binding(), archiveFailure);
-            if (permanent != null)
-                tasks.blockProviderPoll(task, workerId, permanent);
-            else
-                tasks.retryProviderPoll(task, workerId, "PROVIDER_POLL_TECHNICAL_FAILURE");
+            finishPollFailure(attempt, workerId, adapter, archiveFailure);
         }
     }
 
-    private void recordProviderFailure(Task task, String workerId, RuntimeException failure) {
-        if (failure instanceof RunningHubClient.Failure runningHub)
-            tasks.recordProviderFailure(task, workerId, runningHub.diagnostic());
+    private void finishPollFailure(AttemptContext attempt, String workerId, MediaAdapter adapter,
+            RuntimeException failure) {
+        Task task = attempt.lease();
+        var classified = adapter.classifyPollFailure(failure);
+        recordDiagnostic(attempt, workerId, classified.diagnostic());
+        if (classified.permanentCode() != null)
+            tasks.blockProviderPoll(task, workerId, classified.permanentCode());
+        else
+            tasks.retryProviderPoll(task, workerId, "PROVIDER_POLL_TECHNICAL_FAILURE");
     }
 
-    private String runningHubPermanentFailure(RuntimeException failure) {
-        if (!(failure instanceof RunningHubClient.Failure runningHub))
-            return null;
-        return switch (runningHub.diagnostic().category()) {
-            case AUTHENTICATION, BALANCE, PARAMETER, GENERATION, DOWNLOAD_EXPIRED, PROTOCOL, MODERATION ->
-                runningHub.code();
-            case RATE_LIMIT, UPLOAD, UNAVAILABLE -> null;
-        };
+    private void recordDiagnostic(AttemptContext attempt, String workerId, ProviderFailure failure) {
+        adapters.publicDiagnostic(attempt.binding().adapterId(), failure)
+                .ifPresent(diagnostic -> tasks.recordProviderFailure(attempt.lease(), workerId, diagnostic));
     }
 
     private CallLogService.CallDescriptor descriptor(Task task, MediaCapabilityBinding binding,
@@ -311,19 +271,17 @@ public class MediaExecutionWorker {
             case Submission.AcceptedResults accepted ->
                 tasks.waitForProviderWithResults(task, workerId, accepted.requestId(), accepted.manifest());
             case Submission.Accepted accepted -> tasks.waitForProvider(task, workerId,
-                    accepted.requestId(), Instant.now().plusSeconds(5));
+                    accepted.requestId(), clock.instant().plusSeconds(5));
             case Submission.Completed completed -> completeArtifact(attempt, workerId,
                     archive(attempt, completed.payload()));
             case Submission.CompletedArtifact completed ->
                 completeArtifact(attempt, workerId, completed.content());
             case Submission.Rejected rejected -> {
-                if (rejected.providerFailure() != null)
-                    tasks.recordProviderFailure(task, workerId, rejected.providerFailure());
+                recordDiagnostic(attempt, workerId, rejected.providerFailure());
                 tasks.rejectSubmission(task, workerId, rejected.code());
             }
             case Submission.Unknown unknown -> {
-                if (unknown.providerFailure() != null)
-                    tasks.recordProviderFailure(task, workerId, unknown.providerFailure());
+                recordDiagnostic(attempt, workerId, unknown.providerFailure());
                 // 拿到「无法确认外部是否完成」的确定结论时就立即按原因码判定，不再让用户
                 // 盯着「正在提交」空等整个租约。租约若已在调用期间过期（例如租约被配得
                 // 短于客户端超时），兜底扫描会接手同一条记录，这里不把它当成错误抛出。

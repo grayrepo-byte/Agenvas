@@ -3,9 +3,7 @@ package dev.agenvas.provider.application;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
-import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.Submission;
-import dev.agenvas.task.domain.Task;
 import org.springframework.stereotype.Component;
 
 /** Local deterministic editing; no video generation or mouth replacement provider is involved. */
@@ -18,10 +16,6 @@ public class LocalVideoCompositionAdapter implements MediaAdapter {
     @Override
     public String adapterId() {
         return MediaAdapterRegistry.LOCAL_VIDEO_COMPOSITOR;
-    }
-    @Override
-    public boolean supports(PortInput input) {
-        return input.kind() == Task.Kind.VIDEO_GENERATION;
     }
     @Override
     public String preflightFailure(AttemptContext context) {

@@ -9,7 +9,6 @@ import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
-import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.provider.infrastructure.GoogleNanoBananaClient;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
@@ -52,11 +51,6 @@ public class GoogleNanoBananaAdapter implements MediaAdapter {
     @Override
     public String adapterId() {
         return "GOOGLE_NANO_BANANA_2";
-    }
-
-    @Override
-    public boolean supports(PortInput input) {
-        return input.kind() == Task.Kind.IMAGE_GENERATION;
     }
 
     @Override

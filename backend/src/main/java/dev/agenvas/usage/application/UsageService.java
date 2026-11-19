@@ -5,6 +5,7 @@ import dev.agenvas.llm.application.LlmTurn;
 import dev.agenvas.llm.application.LlmModeProperties;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.shared.error.ProviderFailureCodes;
+import dev.agenvas.task.application.ConfirmedMediaPreflight;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.usage.domain.UsageEntry;
 import java.math.BigDecimal;
@@ -23,8 +24,8 @@ import tools.jackson.databind.node.ObjectNode;
 /** 记录模型和媒体任务的预留与结算；缺少真实价格时保持 UNKNOWN，不伪造金额。 */
 @Service
 public class UsageService {
-    // Only failures known to occur before submission may release an external reservation.
-    private static final Set<String> UNSUBMITTED_MEDIA_BLOCKS = Set.of(
+    // Historical BLOCKED rows lack a live preflight proof. Only their original codes imply no submission.
+    private static final Set<String> HISTORICAL_UNSUBMITTED_MEDIA_BLOCKS = Set.of(
             "TASK_INPUT_STALE", "TASK_PROJECT_ARCHIVED", "MEDIA_CAPABILITY_CHANGED",
             "PROVIDER_UNSUPPORTED_CAPABILITY", "PROVIDER_UNSUPPORTED_INPUT", "MEDIA_CREDENTIAL_UNAVAILABLE",
             "RUNNINGHUB_INPUT_UNAVAILABLE", "LOCAL_DEPTH_MODEL_UNAVAILABLE", "VIDEO_AUDIO_TRACK_MISSING",
@@ -240,6 +241,18 @@ public class UsageService {
         if (!isMediaTask(task) || task.providerRequestId() != null || !confirmedUnsubmittedOutcome(task)) {
             throw new IllegalArgumentException("Media release requires unsubmitted terminal work");
         }
+        releaseMediaReservation(ownerId, task);
+    }
+
+    /** The task module issues this outcome inside the same fenced transaction. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void releaseMediaPreflight(UUID ownerId, ConfirmedMediaPreflight outcome) {
+        if (!isMediaTask(outcome.task()))
+            throw new IllegalArgumentException("Media release requires a media task");
+        releaseMediaReservation(ownerId, outcome.task());
+    }
+
+    private void releaseMediaReservation(UUID ownerId, Task task) {
         String prefix = "media:" + task.id();
         UsageEntry reservation = ledger.findByOperationKey(prefix + ":reserve")
                 .orElseThrow(() -> new IllegalStateException(
@@ -259,7 +272,7 @@ public class UsageService {
     private boolean confirmedUnsubmittedOutcome(Task task) {
         return switch (task.status()) {
             case CANCELED, FAILED -> true;
-            case BLOCKED -> task.errorCode() != null && UNSUBMITTED_MEDIA_BLOCKS.contains(task.errorCode());
+            case BLOCKED -> task.errorCode() != null && HISTORICAL_UNSUBMITTED_MEDIA_BLOCKS.contains(task.errorCode());
             default -> false;
         };
     }

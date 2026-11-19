@@ -37,6 +37,24 @@ class TaskOutputReadAccessServiceTest {
     }
 
     @Test
+    void primaryArchiveCannotOverrideTheFrozenCanvasAndExtrasCannotBorrowIt() {
+        Task task = task(run, true);
+        when(task.input()).thenReturn(mapper.createObjectNode().put("canvasItemId", UUID.randomUUID().toString())
+                .put(Task.REQUIRE_EXPLICIT_SELECTION_PROPERTY, true));
+        when(task.output()).thenReturn(output().put("canvasItemId", node.toString()));
+        assertThat(allows(run)).isFalse();
+
+        task = task(run, true);
+        var archive = mapper.createObjectNode().put("artifactId", "malformed");
+        var extra = output();
+        archive.putArray("additionalResults").add(extra);
+        when(task.output()).thenReturn(archive);
+        assertThat(allows(run)).isFalse();
+        extra.put("canvasItemId", node.toString());
+        assertThat(allows(run)).isTrue();
+    }
+
+    @Test
     void sameRunAndTrustedLinkedApprovalFlagAreMandatory() {
         Task task = task(run, true);
         when(task.output()).thenReturn(output());

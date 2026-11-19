@@ -58,6 +58,9 @@ import tools.jackson.databind.node.ObjectNode;
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class CanvasMediaVersionsPostgresIT {
+    @Autowired
+    private dev.agenvas.export.application.ProjectExportManifestService manifests;
+
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     @DynamicPropertySource
@@ -175,6 +178,8 @@ class CanvasMediaVersionsPostgresIT {
         assertThat(sharedDefault.version()).isPositive();
         assertThat(sharedDefault.resourceDefaultVersionId()).isEqualTo(siblingVersion);
         assertThat(card(emptyNode).item().selectedVersionId()).isNull();
+        assertThat(card(emptyNode).selectedVersion()).isNull();
+        assertThat(card(emptyNode).artifact().resourceDefaultVersion().id()).isEqualTo(siblingVersion);
         assertThat(canvas.listMediaVersions(owner.userId(), project.id(), emptyNode)).isEmpty();
 
         Task accepted = run(emptyNode);
@@ -195,6 +200,10 @@ class CanvasMediaVersionsPostgresIT {
         assertThat(completed.output().path("selected").asBoolean()).isTrue();
         assertThat(card(emptyNode).item().selectedVersionId()).isNotNull();
         assertThat(card(sibling).item().selectedVersionId()).isEqualTo(siblingVersion);
+        var completedNode = card(emptyNode);
+        assertThat(completedNode.selectedVersion().id()).isEqualTo(completedNode.item().selectedVersionId())
+                .isNotEqualTo(siblingVersion);
+        assertThat(card(sibling).selectedVersion().id()).isEqualTo(siblingVersion);
     }
 
     @Test
@@ -316,6 +325,11 @@ class CanvasMediaVersionsPostgresIT {
         assertThat(card(originalId).item().selectedVersionId()).isEqualTo(second);
         assertThat(artifacts.get(owner.userId(), project.id(), artifactId).artifact().resourceDefaultVersionId())
                 .isEqualTo(defaultBefore);
+        var exported = manifests.build(owner.userId(), project.id()).canvasItems();
+        assertThat(exported).filteredOn(card -> card.id().equals(originalId)).singleElement()
+                .satisfies(card -> assertThat(card.mediaVersionIds()).containsExactly(second, first));
+        assertThat(exported).filteredOn(card -> card.id().equals(reference.id())).singleElement()
+                .satisfies(card -> assertThat(card.mediaVersionIds()).containsExactly(first));
         var reused = template.execute(status -> canvas.ensureMediaReferenceWithinChange(owner.userId(), project.id(),
                 artifactId, first, null));
         assertThat(reused.id()).isEqualTo(reference.id());

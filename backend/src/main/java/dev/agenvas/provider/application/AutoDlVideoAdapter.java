@@ -6,7 +6,6 @@ import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.AutoDlWorkflows;
 import dev.agenvas.provider.domain.MediaAdapter;
-import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.provider.infrastructure.AutoDlClient;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
@@ -14,7 +13,6 @@ import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapsho
 import tools.jackson.databind.JsonNode;
 import dev.agenvas.settings.application.CredentialCipher;
 import dev.agenvas.shared.error.ApiProblemException;
-import dev.agenvas.task.domain.Task;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.time.Clock;
@@ -50,10 +48,6 @@ public final class AutoDlVideoAdapter implements MediaAdapter {
     @Override
     public String adapterId() {
         return AutoDlWorkflows.ADAPTER_ID;
-    }
-    @Override
-    public boolean supports(PortInput input) {
-        return input.kind() == Task.Kind.VIDEO_GENERATION;
     }
     @Override
     public String preflightFailure(AttemptContext context) {

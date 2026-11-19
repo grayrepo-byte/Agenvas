@@ -2,12 +2,12 @@ package dev.agenvas.llm.application;
 
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.asset.application.AssetService;
+import dev.agenvas.asset.application.MediaFile;
 import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.skill.application.SkillService;
 import dev.agenvas.skill.domain.SkillContent;
-import dev.agenvas.library.application.LibraryService;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.io.IOException;
@@ -194,9 +194,9 @@ public class AgentImageInputService {
             projectAssets.put(input, asset);
         }
         List<JsonNode> skillReads = requestedSkills.isEmpty() ? List.of() : ledger.skillReads(project, run);
-        Map<SkillInput, LibraryService.MediaFile> skillFiles = new LinkedHashMap<>();
+        Map<SkillInput, MediaFile> skillFiles = new LinkedHashMap<>();
         for (SkillInput input : requestedSkills) {
-            LibraryService.MediaFile file = skillImage(owner, snapshot, input, skillReads);
+            MediaFile file = skillImage(owner, snapshot, input, skillReads);
             if (file.size() <= 0 || file.size() > MAX_IMAGE_BYTES)
                 throw invalid();
             total += file.size();
@@ -219,7 +219,7 @@ public class AgentImageInputService {
         }
         Map<SkillInput, Media> skillMedia = new LinkedHashMap<>();
         for (var entry : skillFiles.entrySet()) {
-            LibraryService.MediaFile file = entry.getValue();
+            MediaFile file = entry.getValue();
             try (InputStream stream = Files.newInputStream(file.path(), LinkOption.NOFOLLOW_LINKS)) {
                 skillMedia.put(entry.getKey(), readMedia(stream, file.size(), file.contentType()));
             } catch (IOException failed) {
@@ -279,7 +279,7 @@ public class AgentImageInputService {
     }
 
     /** Check frozen selection, committed activation/read, and the account-owned immutable publication. */
-    private LibraryService.MediaFile skillImage(UUID owner, JsonNode snapshot, SkillInput input, List<JsonNode> reads) {
+    private MediaFile skillImage(UUID owner, JsonNode snapshot, SkillInput input, List<JsonNode> reads) {
         JsonNode selected = null;
         for (JsonNode skill : snapshot.path("creativeSkills"))
             if (input.skillId().toString().equals(skill.path("skillId").asText())

@@ -56,6 +56,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = {AgenvasApplication.class, ObjectStoragePostgresIT.Transport.class}, properties = {
+        "spring.main.allow-bean-definition-overriding=true",
         "agenvas.library.worker-enabled=false"})
 class ObjectStoragePostgresIT {
     @Container
@@ -105,7 +106,7 @@ class ObjectStoragePostgresIT {
     }
     @TestConfiguration
     static class Transport {
-        @Bean
+        @Bean(name = "objectStorageClient")
         @Primary
         ObjectStorageClient fakeTransport(StorageSettingsService settings, Clock clock) {
             var client = new OkHttpClient.Builder().followRedirects(false).retryOnConnectionFailure(false)
@@ -408,6 +409,15 @@ class ObjectStoragePostgresIT {
                             puts.incrementAndGet();
                             if (key.endsWith(".thumb.png") && failThumbnail.compareAndSet(true, false)) {
                                 exchange.sendResponseHeaders(503, -1);
+                                return;
+                            }
+                            var headers = exchange.getRequestHeaders();
+                            boolean protectedPut = oss
+                                    ? "true".equals(headers.getFirst("x-oss-forbid-overwrite"))
+                                            && "private".equals(headers.getFirst("x-oss-object-acl"))
+                                    : "*".equals(headers.getFirst("If-None-Match"));
+                            if (!protectedPut) {
+                                exchange.sendResponseHeaders(400, -1);
                                 return;
                             }
                             byte[] bytes = exchange.getRequestBody().readAllBytes();

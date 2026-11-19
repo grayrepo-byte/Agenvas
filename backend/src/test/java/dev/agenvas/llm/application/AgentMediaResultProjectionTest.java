@@ -58,12 +58,18 @@ class AgentMediaResultProjectionTest {
                 """));
         UUID archivedVersion = UUID.randomUUID();
         var archived = mapper.createObjectNode().put("artifactVersionId", archivedVersion.toString());
+        archived.put("ordinal", 1);
+        archived.putArray("additionalResults").addObject().put("ordinal", 0)
+                .put("artifactVersionId", archivedVersion.toString()).put("providerReceipt", "synthetic-private-extra");
         archived.put("providerFailure", "synthetic-private-archive-value");
 
         var projected = AgentMediaResultProjection.task(mapper, approval(), task(output), archived);
 
         assertThat(projected.at("/providerFailure/moderation/stage").asText()).isEqualTo("output");
         assertThat(projected.at("/providerFailure/moderation/categories/0").asText()).isEqualTo("sexual");
+        assertThat(projected.at("/additionalResults/0/ordinal").intValue()).isZero();
+        assertThat(projected.has("ordinal")).isFalse();
+        assertThat(projected.at("/additionalResults/0").has("selected")).isFalse();
         assertThat(projected.path("artifactVersionId").asText()).isEqualTo(archivedVersion.toString());
         assertThat(projected.toString()).doesNotContain("synthetic-private");
     }

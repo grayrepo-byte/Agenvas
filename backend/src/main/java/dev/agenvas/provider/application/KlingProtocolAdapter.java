@@ -5,7 +5,6 @@ import dev.agenvas.provider.domain.MediaHttpTimeouts;
 import dev.agenvas.provider.domain.KlingModels;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaPayload;
-import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.ProviderResultManifest;
 import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.provider.domain.Submission;
@@ -52,11 +51,6 @@ abstract class KlingProtocolAdapter implements MediaAdapter {
         this.downloads = downloads;
         this.mapper = mapper;
         this.media = media;
-    }
-
-    @Override
-    public boolean supports(PortInput input) {
-        return kind == input.kind();
     }
 
     @Override

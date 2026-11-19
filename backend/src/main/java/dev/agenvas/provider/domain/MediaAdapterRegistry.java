@@ -2,13 +2,10 @@ package dev.agenvas.provider.domain;
 
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.shared.error.ApiProblemException;
-import dev.agenvas.artifact.domain.ImageGenerationParameters;
 import dev.agenvas.task.domain.Task;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
@@ -38,11 +35,7 @@ public final class MediaAdapterRegistry {
     public static final String LOCAL_VIDEO_AUDIO_EXTRACTOR = "LOCAL_VIDEO_AUDIO_EXTRACTOR";
     public static final String LOCAL_VIDEO_COMPOSITOR = "LOCAL_VIDEO_COMPOSITOR";
     public static final String LOCAL_AUDIO_TRIMMER = "LOCAL_AUDIO_TRIMMER";
-    public static boolean localProcessor(String adapterId) {
-        return LOCAL_IMAGE_PROCESSOR.equals(adapterId) || LOCAL_VIDEO_PROCESSOR.equals(adapterId)
-                || LOCAL_VIDEO_AUDIO_EXTRACTOR.equals(adapterId) || LOCAL_VIDEO_COMPOSITOR.equals(adapterId)
-                || LOCAL_AUDIO_TRIMMER.equals(adapterId);
-    }
+
     public static final String OPENAI_GPT_IMAGE_2 = "OPENAI_GPT_IMAGE_2";
     public static final String GOOGLE_NANO_BANANA_2 = "GOOGLE_NANO_BANANA_2";
     public static final String COMFY_IMAGE_V1 = "COMFY_IMAGE_V1";
@@ -65,130 +58,67 @@ public final class MediaAdapterRegistry {
             Set<String> supportedImageResolutions, Set<String> supportedImageQualities,
             boolean supportsTransparentBackground, boolean supportsImageMask, int maxReferenceAudios,
             int maxReferenceVideos) {
-    }
-
-    private static final Map<String, Declaration> DECLARATIONS = Map.ofEntries(
-            Map.entry("WAN_IMAGE", new WanModels().declaration(new WanModels().profiles().getFirst())),
-            Map.entry("WAN_VIDEO",
-                    new WanModels().declaration(new WanModels().profiles().stream()
-                            .filter(p -> "WAN_VIDEO".equals(p.adapterId())).findFirst().orElseThrow())),
-            Map.entry("ARK_SEEDREAM_IMAGE",
-                    new SeedreamModels().declaration(new SeedreamModels().profiles().getFirst())),
-            Map.entry("GOOGLE_VEO", new GoogleVideoModels().declaration(new GoogleVideoModels().profiles().getFirst())),
-            Map.entry("GOOGLE_OMNI_VIDEO",
-                    new GoogleVideoModels().declaration(new GoogleVideoModels().profiles().stream()
-                            .filter(p -> "GOOGLE_OMNI_VIDEO".equals(p.adapterId())).findFirst().orElseThrow())),
-            Map.entry(KlingModels.IMAGE_ADAPTER_ID, image(MediaPlatform.KLING, true, 10,
-                    Set.of(), Set.of(), Set.of(), false, false)),
-            Map.entry(KlingModels.VIDEO_ADAPTER_ID, new Declaration(MediaPlatform.KLING, Task.Kind.VIDEO_GENERATION,
-                    0, 30, true, 10, Set.of("TEXT", "GENERAL_REFERENCE"), "TEXT", false,
-                    Set.of(), Set.of(), Set.of(), false, false, 0, 1)),
-            Map.entry(KlingProtocol.IMAGE_ADAPTER_ID, image(MediaPlatform.KLING, true, 1,
-                    Set.of("AUTO", "16:9", "9:16", "1:1", "4:3", "3:4", "3:2", "2:3", "21:9"),
-                    Set.of("1K", "2K"), Set.of(), false, false)),
-            Map.entry(KlingProtocol.VIDEO_ADAPTER_ID, video(MediaPlatform.KLING, 3, 15, true, 2,
-                    Set.of("TEXT", "START_END"), "TEXT", true)),
-            Map.entry(MiniMaxH3Protocol.ADAPTER_ID, video(MediaPlatform.MINIMAX, 4, 15, true, 9,
-                    Set.of("TEXT", "START_END", "GENERAL_REFERENCE"), "TEXT", true)),
-            Map.entry(LOCAL_VIDEO_PROCESSOR, video(MediaPlatform.LOCAL, 0, 30, false, 0,
-                    Set.of("GENERAL_REFERENCE"), "GENERAL_REFERENCE", false)),
-            Map.entry(LOCAL_VIDEO_AUDIO_EXTRACTOR, audio(MediaPlatform.LOCAL)),
-            Map.entry(LOCAL_AUDIO_TRIMMER, audio(MediaPlatform.LOCAL)),
-            Map.entry(LOCAL_VIDEO_COMPOSITOR, video(MediaPlatform.LOCAL, 1, 600, false, 0,
-                    Set.of("GENERAL_REFERENCE"), "GENERAL_REFERENCE", false)),
-            Map.entry(RUNNINGHUB_IMAGE, runningHub(Task.Kind.IMAGE_GENERATION)),
-            Map.entry(RUNNINGHUB_VIDEO, runningHub(Task.Kind.VIDEO_GENERATION)),
-            Map.entry(RUNNINGHUB_AUDIO, runningHub(Task.Kind.AUDIO_GENERATION)),
-            Map.entry(LOCAL_IMAGE_PROCESSOR, image(MediaPlatform.LOCAL, false, 1,
-                    ImageGenerationParameters.ASPECT_RATIOS,
-                    ImageGenerationParameters.RESOLUTIONS,
-                    ImageGenerationParameters.QUALITIES, true, false)),
-            Map.entry("MOCK_IMAGE", image(MediaPlatform.MOCK, false, 4,
-                    ImageGenerationParameters.ASPECT_RATIOS,
-                    ImageGenerationParameters.RESOLUTIONS,
-                    ImageGenerationParameters.QUALITIES, true, false)),
-            Map.entry("MOCK_AUDIO", audio(MediaPlatform.MOCK)),
-            Map.entry("VOLC_SEED_AUDIO_1", audio(MediaPlatform.VOLCENGINE)),
-            Map.entry("MOCK_VIDEO", video(MediaPlatform.MOCK, 1, 30, false, 4,
-                    Set.of("TEXT", "START_END", "GENERAL_REFERENCE"), "TEXT", true)),
-            Map.entry(COMFY_IMAGE_V1, image(MediaPlatform.COMFYUI, true, 1,
-                    Set.of("AUTO", "1:1", "9:16", "16:9"), Set.of("1K"), Set.of(), false,
-                    false)),
-            Map.entry("COMFY_VIDEO_V1", video(MediaPlatform.COMFYUI, 1, 5, true, 1,
-                    Set.of("START_END"), "START_END", false)),
-            Map.entry(OPENAI_GPT_IMAGE_2, image(MediaPlatform.OPENAI, false,
-                    OPENAI_MAX_REFERENCE_IMAGES, ImageGenerationParameters.ASPECT_RATIOS,
-                    ImageGenerationParameters.RESOLUTIONS,
-                    ImageGenerationParameters.QUALITIES, true, true)),
-            Map.entry(GOOGLE_NANO_BANANA_2, image(MediaPlatform.GOOGLE, false,
-                    GOOGLE_MAX_REFERENCE_IMAGES, ImageGenerationParameters.ASPECT_RATIOS,
-                    ImageGenerationParameters.RESOLUTIONS, Set.of(), false, false)),
-            Map.entry("ARK_SEEDANCE_2_I2V", video(MediaPlatform.ARK, 4, 15, false, 9,
-                    Set.of("TEXT", "START_END", "GENERAL_REFERENCE"), "START_END", true)),
-            Map.entry(AutoDlWorkflows.ADAPTER_ID,
-                    AutoDlWorkflows.require(AutoDlWorkflows.DEFAULT_WORKFLOW).declaration()));
-
-    private static Declaration runningHub(Task.Kind kind) {
-        return new Declaration(MediaPlatform.RUNNINGHUB, kind, 0,
-                kind == Task.Kind.VIDEO_GENERATION ? RUNNINGHUB_MAX_VIDEO_SECONDS : 0,
-                true, RUNNINGHUB_MAX_INPUTS, kind == Task.Kind.VIDEO_GENERATION
-                        ? Set.of("TEXT", "GENERAL_REFERENCE")
-                        : Set.of(),
-                kind == Task.Kind.VIDEO_GENERATION ? "TEXT" : null,
-                false, Set.of(), Set.of(), Set.of(), false, false, RUNNINGHUB_MAX_INPUTS, RUNNINGHUB_MAX_INPUTS);
-    }
-
-    private static Declaration image(MediaPlatform platform, boolean originRequired,
-            int maxReferenceImages, Set<String> aspectRatios, Set<String> resolutions,
-            Set<String> qualities, boolean transparentBackground, boolean imageMask) {
-        return new Declaration(platform, Task.Kind.IMAGE_GENERATION, 0, 0, originRequired,
-                maxReferenceImages, Set.of(), null, false, aspectRatios, resolutions,
-                qualities, transparentBackground, imageMask, 0, 0);
-    }
-
-    private static Declaration video(MediaPlatform platform, int minimumSeconds,
-            int maximumSeconds, boolean originRequired, int maxReferenceImages,
-            Set<String> inputModes, String defaultInputMode, boolean supportsEndFrame) {
-        return new Declaration(platform, Task.Kind.VIDEO_GENERATION, minimumSeconds,
-                maximumSeconds, originRequired, maxReferenceImages, inputModes, defaultInputMode,
-                supportsEndFrame, Set.of(), Set.of(), Set.of(), false, false,
-                platform == MediaPlatform.MOCK || platform == MediaPlatform.ARK || platform == MediaPlatform.MINIMAX
-                        ? 3
-                        : 0,
-                platform == MediaPlatform.ARK || platform == MediaPlatform.MINIMAX ? 3 : 0);
-    }
-
-    private static Declaration audio(MediaPlatform platform) {
-        return new Declaration(platform, Task.Kind.AUDIO_GENERATION, 0, 0, false, 1,
-                Set.of(), null, false, Set.of(), Set.of(), Set.of(), false, false, 3, 0);
-    }
-
-    private final Map<String, MediaAdapter> implementations;
-
-    public MediaAdapterRegistry(List<MediaAdapter> adapters) {
-        this.implementations = adapters.stream().collect(Collectors.toUnmodifiableMap(
-                MediaAdapter::adapterId, Function.identity()));
-        for (String id : implementations.keySet()) {
-            declaration(id);
+        public Declaration {
+            java.util.Objects.requireNonNull(platform, "Media platform");
+            if (!Set.of(Task.Kind.IMAGE_GENERATION, Task.Kind.VIDEO_GENERATION, Task.Kind.AUDIO_GENERATION)
+                    .contains(kind))
+                throw new IllegalArgumentException("Declaration must describe a media task");
+            supportedVideoInputModes = Set.copyOf(supportedVideoInputModes);
+            supportedImageAspectRatios = Set.copyOf(supportedImageAspectRatios);
+            supportedImageResolutions = Set.copyOf(supportedImageResolutions);
+            supportedImageQualities = Set.copyOf(supportedImageQualities);
+            if (minimumSeconds < 0 || maximumSeconds < minimumSeconds
+                    || maxReferenceImages < 0 || maxReferenceAudios < 0 || maxReferenceVideos < 0)
+                throw new IllegalArgumentException("Invalid media declaration bounds");
+            if (defaultVideoInputMode != null && !supportedVideoInputModes.contains(defaultVideoInputMode))
+                throw new IllegalArgumentException("Default video mode is not supported");
         }
     }
 
+    private final Map<String, MediaAdapter> implementations;
+    private final Map<String, Declaration> declarations;
+    private final Map<String, dev.agenvas.shared.http.HttpTimeouts> httpTimeoutDefaults;
+
+    public MediaAdapterRegistry(List<MediaAdapter> adapters) {
+        var installed = new java.util.LinkedHashMap<String, MediaAdapter>();
+        var declared = new java.util.LinkedHashMap<>(BuiltinMediaAdapters.declarations());
+        var timeouts = new java.util.LinkedHashMap<>(MediaHttpTimeouts.defaults());
+        for (MediaAdapter adapter : adapters) {
+            java.util.Objects.requireNonNull(adapter, "Media adapter");
+            String id = adapter.adapterId();
+            if (id == null || !id.matches("[A-Z][A-Z0-9_]{0,119}"))
+                throw new IllegalStateException("Invalid media adapter ID");
+            if (installed.putIfAbsent(id, adapter) != null)
+                throw new IllegalStateException("Duplicate media adapter: " + id);
+            Declaration value = java.util.Objects.requireNonNull(adapter.declaration(), "Media declaration: " + id);
+            var defaults = adapter.publicationHttpTimeouts();
+            if (defaults != null) {
+                if (value.platform() == MediaPlatform.LOCAL || value.platform() == MediaPlatform.MOCK)
+                    throw new IllegalStateException("Local media adapter cannot declare HTTP timeouts: " + id);
+                var previous = timeouts.putIfAbsent(id, defaults);
+                if (previous != null && !previous.equals(defaults))
+                    throw new IllegalStateException("Conflicting media HTTP defaults: " + id);
+            }
+            Declaration builtin = declared.putIfAbsent(id, value);
+            if (builtin != null && !builtin.equals(value))
+                throw new IllegalStateException("Conflicting media declaration: " + id);
+        }
+        this.implementations = Map.copyOf(installed);
+        this.declarations = Map.copyOf(declared);
+        this.httpTimeoutDefaults = Map.copyOf(timeouts);
+    }
+
+    /** Publication defaults never mutate pinned settings or historical adapter fallbacks. */
+    public Map<String, dev.agenvas.shared.http.HttpTimeouts> httpTimeoutDefaults() {
+        return httpTimeoutDefaults;
+    }
+
     public Declaration declaration(String adapterId) {
-        Declaration result = DECLARATIONS.get(adapterId);
+        Declaration result = adapterId == null ? null : declarations.get(adapterId);
         if (result == null) {
             throw unsupported();
         }
         return result;
-    }
-
-    public boolean supports(String adapterId, PortInput input) {
-        Declaration declaration = declaration(adapterId);
-        if (declaration.kind() != input.kind()) {
-            return false;
-        }
-        return input.kind() == Task.Kind.IMAGE_GENERATION
-                || input.durationSeconds() >= declaration.minimumSeconds()
-                        && input.durationSeconds() <= declaration.maximumSeconds();
     }
 
     public MediaAdapter require(String adapterId) {
@@ -198,6 +128,30 @@ public final class MediaAdapterRegistry {
             throw unsupported();
         }
         return adapter;
+    }
+
+    /** Only an installed adapter can authorize publication for its own persisted binding. */
+    public java.util.Optional<PublicDiagnostic> publicDiagnostic(String adapterId, ProviderFailure failure) {
+        MediaAdapter adapter = adapterId == null ? null : implementations.get(adapterId);
+        return adapter != null && failure != null && adapter.permitsPublicDiagnostic(failure)
+                ? java.util.Optional.of(new PublicDiagnostic(adapterId, failure))
+                : java.util.Optional.empty();
+    }
+
+    public static final class PublicDiagnostic {
+        private final String adapterId;
+        private final ProviderFailure failure;
+
+        private PublicDiagnostic(String adapterId, ProviderFailure failure) {
+            this.adapterId = adapterId;
+            this.failure = failure;
+        }
+        public String adapterId() {
+            return adapterId;
+        }
+        public ProviderFailure failure() {
+            return failure;
+        }
     }
 
     private static ApiProblemException unsupported() {

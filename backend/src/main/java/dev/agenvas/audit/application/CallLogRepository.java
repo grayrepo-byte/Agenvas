@@ -20,8 +20,24 @@ public interface CallLogRepository {
             LlmStreamLog log, List<Exchange> exchanges, boolean captured);
     CallLogRetentionSettings retentionSettings();
     Optional<CallLogRetentionSettings> updateRetentionSettings(Integer days, int expectedVersion);
-    /** Atomically cleans at most batchSize expired execution units and returns their count. */
-    int purgeExpired(Instant now, int batchSize, int expectedVersion);
+    CallLogRetentionSettings lockRetentionSettings();
+    /** The caller must hold the policy lock and keep the transaction open until cleanup completes. */
+    LockedExecutions lockExpiredExecutions(Instant cutoff, int batchSize);
+    void deleteExecutionLogs(LockedExecutions executions);
+    int deleteExpiredDiagnostics(Instant cutoff, int limit);
+
+    /** Tasks belonging to a run are locked with it and do not consume additional batch slots. */
+    record LockedExecutions(List<UUID> runIds, List<UUID> taskIds, int standaloneTaskCount) {
+        public LockedExecutions {
+            runIds = List.copyOf(runIds);
+            taskIds = List.copyOf(taskIds);
+        }
+
+        public int unitCount() {
+            return runIds.size() + standaloneTaskCount;
+        }
+    }
+
     boolean isDebugEnabled();
     DebugSettings settings();
     Optional<DebugSettings> updateSettings(boolean enabled, int expectedVersion);

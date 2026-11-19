@@ -4,12 +4,10 @@ import dev.agenvas.artifact.domain.VideoGenerationParameters;
 import dev.agenvas.asset.infrastructure.MediaToolRunner;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.KlingProtocol;
-import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
 import dev.agenvas.provider.infrastructure.KlingClient;
 import dev.agenvas.provider.infrastructure.KlingMediaDownloadPolicy;
 import dev.agenvas.settings.application.CredentialCipher;
-import dev.agenvas.task.domain.Task;
 import java.nio.file.Path;
 import java.util.List;
 import org.springframework.stereotype.Component;
@@ -34,11 +32,6 @@ public class KlingVideo3Adapter extends KlingAdapterSupport {
     @Override
     protected boolean video() {
         return true;
-    }
-    @Override
-    public boolean supports(PortInput input) {
-        return input.kind() == Task.Kind.VIDEO_GENERATION && input.durationSeconds() >= KlingProtocol.MINIMUM_SECONDS
-                && input.durationSeconds() <= KlingProtocol.MAXIMUM_SECONDS;
     }
 
     @Override

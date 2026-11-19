@@ -112,7 +112,9 @@ class AgentLocalMediaToolServiceTest {
     void rejectsUnknownIdentityCommandsFractionalTimesAndMalformedUuidBeforeWrites() {
         for (ObjectNode request : java.util.List.of(request().put("runId", UUID.randomUUID().toString()),
                 request().put("ffmpeg", "unsafe"), request().put("expectedCanvasItemVersion", 4.5),
-                request().put("sourceVersionId", "1-1-1-1-1"), request().put("trackIndex", 32))) {
+                request().put("sourceVersionId", "1-1-1-1-1"), request().put("trackIndex", 32),
+                request().putNull("expectedCanvasItemVersion"), request().put("expectedCanvasItemVersion", "4"),
+                request().put("expectedCanvasItemVersion", new java.math.BigInteger("9223372036854775808")))) {
             assertThatThrownBy(() -> tools.extract(context, run, operationId, request.toString()))
                     .isInstanceOf(ApiProblemException.class);
         }

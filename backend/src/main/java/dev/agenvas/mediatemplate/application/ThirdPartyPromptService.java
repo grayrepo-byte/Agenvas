@@ -10,15 +10,12 @@ import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.i18n.ApiMessage;
 import java.time.Clock;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
-import java.util.function.Function;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import jakarta.annotation.PreDestroy;
-import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,7 +31,7 @@ public class ThirdPartyPromptService {
     private static final Logger LOG = LoggerFactory.getLogger(ThirdPartyPromptService.class);
     private final ThirdPartyPromptRepository repository;
     private final ThirdPartyPromptHttpClient http;
-    private final Map<Format, ThirdPartyPromptAdapter> adapters;
+    private final ThirdPartyPromptRegistry adapters;
     private final Clock clock;
     private final TransactionTemplate tx;
     private final boolean scheduled;
@@ -45,7 +42,7 @@ public class ThirdPartyPromptService {
             new SynchronousQueue<>(), Thread.ofPlatform().name("prompt-repository-sync").factory());
     private final AtomicBoolean scanning = new AtomicBoolean();
     public ThirdPartyPromptService(ThirdPartyPromptRepository repository, ThirdPartyPromptHttpClient http,
-            List<ThirdPartyPromptAdapter> adapters, Clock clock, PlatformTransactionManager transactions,
+            ThirdPartyPromptRegistry adapters, Clock clock, PlatformTransactionManager transactions,
             ThirdPartyPromptSyncSettingsService syncSettings,
             @Value("${agenvas.media-templates.sync-enabled:true}") boolean scheduled,
             @Value("${agenvas.recovery-mode:false}") boolean recovery) {
@@ -55,8 +52,7 @@ public class ThirdPartyPromptService {
         this.scheduled = scheduled;
         this.recovery = recovery;
         this.syncSettings = syncSettings;
-        this.adapters = adapters.stream()
-                .collect(Collectors.toUnmodifiableMap(ThirdPartyPromptAdapter::format, Function.identity()));
+        this.adapters = adapters;
         tx = new TransactionTemplate(transactions);
     }
     public enum SyncState {
@@ -126,7 +122,7 @@ public class ThirdPartyPromptService {
             return new SyncResult(id, source(id).enabled() ? SyncState.RUNNING : SyncState.DISABLED, 0, 0, 0);
         ThirdPartyPromptSource source = claimed.get();
         try {
-            var prompts = validate(source, adapters.get(source.format()).fetch(source, http));
+            var prompts = validate(source, adapters.require(source.format()).fetch(source, http));
             return tx.execute(ignored -> {
                 if (!repository.ownsLease(id, token, clock.instant()))
                     return new SyncResult(id, SyncState.SUPERSEDED, 0, 0, prompts.size());
@@ -143,6 +139,8 @@ public class ThirdPartyPromptService {
         }
     }
     private static String failureCode(RuntimeException failure) {
+        if (failure instanceof ThirdPartyPromptRegistry.UnsupportedFormat)
+            return "THIRD_PARTY_SOURCE_UNSUPPORTED_FORMAT";
         if (failure instanceof ThirdPartyPromptHttpClient.DownloadFailure download)
             return "THIRD_PARTY_SOURCE_" + download.reason().name();
         if (failure instanceof JacksonException || (failure instanceof ApiProblemException problem

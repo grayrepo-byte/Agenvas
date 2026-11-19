@@ -14,8 +14,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.ai.chat.messages.Message;
-import org.springframework.ai.chat.messages.SystemMessage;
-import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -33,7 +31,7 @@ public class DirectTextGenerationWorker {
     private final CallLogService callLogs;
     private final ObjectMapper mapper;
     private final LeasedModelExecutor modelExecutor;
-    private final ImagePromptInputService images;
+    private final DirectTextPurpose.ImagePrompt imagePrompt;
 
     @Autowired
     public DirectTextGenerationWorker(TaskService tasks, TaskProperties taskProperties,
@@ -52,7 +50,7 @@ public class DirectTextGenerationWorker {
         this.callLogs = callLogs;
         this.mapper = mapper;
         this.modelExecutor = modelExecutor;
-        this.images = images;
+        this.imagePrompt = new DirectTextPurpose.ImagePrompt(images);
     }
 
     public synchronized int runOnce(String workerId) {
@@ -75,41 +73,19 @@ public class DirectTextGenerationWorker {
 
     private void completeText(Task lease, String workerId, LeasedModelExecutor.Execution execution)
             throws InterruptedException {
+        DirectTextPurpose purpose = DirectTextPurpose.forTask(lease, imagePrompt);
         try {
             JsonNode checkpoint = lease.output();
             if (checkpoint == null)
-                checkpoint = invokeAndCheckpoint(lease, workerId, execution);
+                checkpoint = invokeAndCheckpoint(lease, workerId, execution, purpose);
             ObjectNode content = textContent(lease, checkpoint);
             execution.checkActive();
-            if (lease.isPromptAssistance()) {
-                ObjectNode output = (ObjectNode) checkpoint.deepCopy();
-                String prompt = content.path("text").asText();
-                if (lease.isVideoPromptOptimization())
-                    VideoPromptOptimization.validate(lease, prompt);
-                ObjectNode result = mapper.createObjectNode().put("prompt", prompt)
-                        .put("mock", "mock".equals(lease.input().path("modelConfigSource").asText()));
-                if (lease.isImagePrompt())
-                    result.put("sourceVersionId", lease.input().path("sourceVersionId").asText());
-                output.set("result", result);
-                if (lease.isImagePromptCard()) {
-                    try {
-                        tasks.succeedWithImagePromptCard(lease, workerId, output, content);
-                    } catch (RuntimeException publicationFailure) {
-                        // The durable response is already settled. Leave the lease recoverable so
-                        // a transaction/placement failure retries publication, never the model call.
-                        LOGGER.warn(
-                                "Image-prompt task {} could not publish its text card; checkpoint retained for lease recovery",
-                                lease.id());
-                    }
-                } else
-                    tasks.succeed(lease, workerId, output);
-            } else
-                tasks.succeedWithTextArtifact(lease, workerId, content);
+            purpose.publish(tasks, lease, workerId, checkpoint, content);
         } catch (LeasedModelExecutor.Stopped stopped) {
             throw stopped;
         } catch (ExecutionException | TimeoutException | RuntimeException failure) {
             execution.checkActive();
-            tasks.fail(lease, workerId, errorCode(lease, failure));
+            tasks.fail(lease, workerId, errorCode(purpose, failure));
         }
     }
 
@@ -127,30 +103,10 @@ public class DirectTextGenerationWorker {
         return content;
     }
 
-    private static final int LEGACY_INPUT_SCHEMA_VERSION = 1;
-    private static final int FROZEN_PROMPT_INPUT_SCHEMA_VERSION = 2;
-
-    /** Legacy schema 1 tasks retain the original prompt; new tasks never read live settings. */
-    private String frozenSystemPrompt(Task lease) {
-        if (lease.input().path("schemaVersion").asInt() == LEGACY_INPUT_SCHEMA_VERSION)
-            return "You write the finished content of one text card. Follow the user instruction using the current card content as context. Return only the finished card text, without commentary, tool calls, XML wrappers, or Markdown code fences. Keep the response under 20000 characters.";
-        String content = lease.input().path("systemPrompt").asText("");
-        if (lease.input().path("schemaVersion").asInt() != FROZEN_PROMPT_INPUT_SCHEMA_VERSION || content.isBlank())
-            throw new IllegalArgumentException("Text Task lacks its frozen system prompt");
-        return content;
-    }
-
-    private JsonNode invokeAndCheckpoint(Task lease, String workerId, LeasedModelExecutor.Execution execution)
+    private JsonNode invokeAndCheckpoint(Task lease, String workerId, LeasedModelExecutor.Execution execution,
+            DirectTextPurpose purpose)
             throws InterruptedException, ExecutionException, TimeoutException {
-        List<Message> messages = lease.isImagePrompt()
-                ? images.messages(lease)
-                : lease.isVideoPromptOptimization()
-                        ? VideoPromptOptimization.messages(lease)
-                        : List.of(
-                                new SystemMessage(frozenSystemPrompt(lease)),
-                                new UserMessage("Instruction:\n" + lease.input().path("prompt").asText()
-                                        + "\n\nCurrent card content:\n"
-                                        + lease.input().path("currentText").asText("")));
+        List<Message> messages = purpose.messages(lease);
         ChatGateway.ConfigIdentity pinned = new ChatGateway.ConfigIdentity(
                 lease.input().path("modelConfigSource").asText(""),
                 lease.input().path("modelConfigVersion").asInt(-1));
@@ -165,11 +121,12 @@ public class DirectTextGenerationWorker {
                         CallLog.Kind.LLM, CallLog.Operation.CHAT,
                         "mock".equals(pinned.source()) ? "mock" : model.providerAdapter(),
                         model.modelId(), "mock".equals(pinned.source())),
-                () -> budget == null
-                        ? gateway.call(lease.isImagePrompt() ? images.hydrate(lease, messages) : messages,
-                                List.of(), Map.of(), pinned)
-                        : gateway.call(lease.isImagePrompt() ? images.hydrate(lease, messages) : messages,
-                                List.of(), Map.of(), pinned, budget),
+                () -> {
+                    List<Message> dispatch = purpose.hydrate(lease, messages);
+                    return budget == null
+                            ? gateway.call(dispatch, List.of(), Map.of(), pinned)
+                            : gateway.call(dispatch, List.of(), Map.of(), pinned, budget);
+                },
                 ignored -> CallLogService.CallOutcome.succeeded(null)), LlmCallTimeouts.REQUEST);
         execution.checkActive();
         if (exchange.configVersion() != pinned.version()) {
@@ -183,17 +140,15 @@ public class DirectTextGenerationWorker {
         return tasks.checkpointTextResponse(lease, workerId, checkpoint);
     }
 
-    private String errorCode(Task lease, Throwable failure) {
+    private String errorCode(DirectTextPurpose purpose, Throwable failure) {
         if (LlmStreamIncompleteException.matches(failure))
             return LlmStreamIncompleteException.ERROR_CODE;
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
             if (cause instanceof ImagePromptInputService.Failure input)
                 return input.getMessage();
-            // Compatible gateways have different image/URL/size limits. Report explicit rejections
-            // without publishing the vendor response or retrying with a downscaled image.
-            if (lease.isImagePrompt() && cause instanceof com.openai.errors.OpenAIServiceException service
-                    && java.util.Set.of(400, 413, 415, 422).contains(service.statusCode()))
-                return ImagePromptInputService.MODEL_REJECTED;
+            String specific = purpose.rejectionCode(cause);
+            if (specific != null)
+                return specific;
             if (cause instanceof java.io.UncheckedIOException)
                 return "LLM_CONNECTION_FAILED";
             if (cause instanceof LlmRequestBudget.Failure budget)

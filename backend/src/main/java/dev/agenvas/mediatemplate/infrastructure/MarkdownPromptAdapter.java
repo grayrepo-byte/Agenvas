@@ -36,7 +36,8 @@ public class MarkdownPromptAdapter implements ThirdPartyPromptAdapter {
         return Format.GITHUB_MARKDOWN;
     }
     @Override
-    public List<ThirdPartyPrompt> fetch(ThirdPartyPromptSource source, ThirdPartyPromptHttpClient http) {
+    public List<ThirdPartyPrompt> fetch(ThirdPartyPromptSource source,
+            dev.agenvas.mediatemplate.application.ThirdPartyPromptFeed http) {
         String body = http.feed(source.url());
         var prompts = parse(source, body);
         var uri = URI.create(source.url());
@@ -49,7 +50,7 @@ public class MarkdownPromptAdapter implements ThirdPartyPromptAdapter {
         String manifest = http.feed(uri.resolve("video-urls.json").toString());
         if ((long) body.getBytes(java.nio.charset.StandardCharsets.UTF_8).length
                 + manifest.getBytes(
-                        java.nio.charset.StandardCharsets.UTF_8).length > ThirdPartyPromptHttpClient.MAX_FEED_BYTES)
+                        java.nio.charset.StandardCharsets.UTF_8).length > dev.agenvas.mediatemplate.application.ThirdPartyPromptFeed.MAX_FEED_BYTES)
             throw ThirdPartyPromptValidation.invalid();
         var root = new tools.jackson.databind.ObjectMapper().readTree(manifest);
         var videos = root.has("prompts") ? root.path("prompts") : root;

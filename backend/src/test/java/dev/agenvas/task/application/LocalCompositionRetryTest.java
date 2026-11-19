@@ -13,7 +13,6 @@ import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.provider.application.MediaCapabilityService;
-import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.shared.crypto.Sha256;
 import dev.agenvas.task.domain.Task;
@@ -33,9 +32,18 @@ class LocalCompositionRetryTest {
     private static final Instant NOW = Instant.parse("2026-10-22T00:00:00Z");
     private final ObjectMapper mapper = new ObjectMapper();
 
+    @org.junit.jupiter.api.Test
+    void frozenLocalOperationFieldsDoNotGiveAnExternalBindingFreePricing() {
+        verifyRetry(Task.Initiator.USER_DIRECT, false);
+    }
+
     @ParameterizedTest
     @EnumSource(Task.Initiator.class)
     void explicitRetryKeepsExactInputsButBecomesAZeroCostUserDelegation(Task.Initiator initiator) {
+        verifyRetry(initiator, true);
+    }
+
+    private void verifyRetry(Task.Initiator initiator, boolean local) {
         UUID owner = UUID.randomUUID(), project = UUID.randomUUID(), taskId = UUID.randomUUID(),
                 artifactId = UUID.randomUUID();
         var repository = mock(TaskRepository.class);
@@ -62,7 +70,8 @@ class LocalCompositionRetryTest {
         var original = new Task(taskId, project, null, "original", Task.Kind.VIDEO_GENERATION, Task.Status.UNKNOWN,
                 false, input, Sha256.hex(input.toString()), null, null, 1, NOW, null, null, 1, 2, null, NOW, NOW, null);
         var binding = new MediaCapabilityBinding(UUID.randomUUID(), 1, UUID.randomUUID(), 1,
-                MediaAdapterRegistry.LOCAL_VIDEO_COMPOSITOR, "a".repeat(64));
+                local ? "SYNTHETIC_LOCAL" : "SYNTHETIC_EXTERNAL", "a".repeat(64));
+        when(catalog.isLocal(binding)).thenReturn(local);
         when(tasks.get(owner, project, taskId)).thenReturn(original);
         when(repository.mediaBinding(taskId)).thenReturn(Optional.of(binding));
         when(catalog.isCurrentBinding(binding, Task.Kind.VIDEO_GENERATION, 3)).thenReturn(true);
@@ -86,12 +95,13 @@ class LocalCompositionRetryTest {
         assertThat(replacement.input().at("/compositionOrigin/runId").isNull()).isTrue();
         assertThat(replacement.input().path("videoComposition")).isEqualTo(input.path("videoComposition"));
         assertThat(replacement.inputHash()).isEqualTo(Sha256.hex(replacement.input().toString()));
-        verify(usage).reserveMediaTask(owner, replacement, "LOCAL_NO_COST", 1);
+        verify(usage).reserveMediaTask(owner, replacement, local ? "LOCAL_NO_COST" : "PROVIDER_UNPRICED", 1);
         verify(repository).createManualReplacement(new TaskRepository.ManualReplacement(project, taskId,
                 replacement.id(), owner, original.version(), "explicit-retry", NOW));
         var published = ArgumentCaptor.forClass(ProjectEventService.EventDraft.class);
         verify(events, times(2)).append(eq(owner), eq(project), published.capture());
         assertThat(published.getAllValues())
-                .allSatisfy(event -> assertThat(event.payload().path("possibleExternalCost").asBoolean()).isFalse());
+                .extracting(event -> event.payload().path("possibleExternalCost").asBoolean())
+                .containsExactly(!local, false);
     }
 }

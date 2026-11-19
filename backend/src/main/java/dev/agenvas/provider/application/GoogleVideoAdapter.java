@@ -8,7 +8,6 @@ import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaPayload;
 import dev.agenvas.provider.domain.NativeMediaFailure;
 import dev.agenvas.provider.domain.NativeMediaProfiles;
-import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.provider.infrastructure.GoogleVideoClient;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
@@ -44,10 +43,6 @@ abstract class GoogleVideoAdapter implements MediaAdapter {
         this.references = references;
         this.tools = tools;
         this.mapper = mapper;
-    }
-    @Override
-    public boolean supports(PortInput input) {
-        return input.kind() == Task.Kind.VIDEO_GENERATION;
     }
     @Override
     public String preflightFailure(AttemptContext context) {

@@ -36,6 +36,47 @@ class MediaCapabilityModeTest {
     private final MediaCapabilityService configured = service(ProviderModeProperties.Mode.CONFIGURED);
 
     @Test
+    void newlyRegisteredLocalAdapterStaysOutsideGenerationCatalogAndDefaults() {
+        String id = "SYNTHETIC_LOCAL";
+        var adapter = mock(dev.agenvas.provider.domain.MediaAdapter.class);
+        when(adapter.adapterId()).thenReturn(id);
+        when(adapter.declaration()).thenReturn(registry.declaration(MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR));
+        var catalog = new MediaCapabilityService(repository, new PinnedMediaPublications(repository),
+                new MediaAdapterRegistry(List.of(adapter)), cipher,
+                Clock.systemUTC(), new ObjectMapper(), new ProviderModeProperties(ProviderModeProperties.Mode.MOCK));
+        Snapshot local = snapshot(MediaPlatform.LOCAL, id);
+        stub(local);
+        when(repository.connections()).thenReturn(List.of(local.connection()));
+        when(repository.catalogPublications(true)).thenReturn(List.of(publication(local)));
+        when(repository.defaultCapabilityId(Task.Kind.IMAGE_GENERATION.name())).thenReturn(local.capability().id());
+        assertThat(catalog.defaultCapabilityId(Task.Kind.IMAGE_GENERATION)).isNull();
+        assertThatThrownBy(() -> catalog.defaultFor(Task.Kind.IMAGE_GENERATION))
+                .isInstanceOf(ApiProblemException.class);
+        assertThat(catalog.publishedCandidates()).isEmpty();
+        assertThat(catalog.candidates(Task.Kind.IMAGE_GENERATION, 0)).isEmpty();
+        assertThatThrownBy(() -> catalog.setDefault(Task.Kind.IMAGE_GENERATION, 0, local.capability().id()))
+                .isInstanceOf(ApiProblemException.class);
+    }
+
+    @Test
+    void historicalLocalPricingRequiresExactPublishedIdentityEvenWithoutTheAdapter() {
+        Snapshot retired = snapshot(MediaPlatform.LOCAL, "RETIRED_LOCAL");
+        var binding = binding(retired);
+        when(repository.snapshotAt(binding.capabilityId(), 1, binding.connectionId(), 1))
+                .thenReturn(Optional.of(retired));
+        assertThat(configured.isLocal(binding)).isTrue();
+        var forged = new MediaCapabilityBinding(binding.connectionId(), 1, binding.capabilityId(), 1,
+                MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR, binding.mappingSha256());
+        assertThatThrownBy(() -> configured.isLocal(forged)).isInstanceOf(IllegalStateException.class);
+        var stale = new MediaCapabilityBinding(binding.connectionId(), 1, binding.capabilityId(), 1,
+                binding.adapterId(), "different-mapping");
+        assertThatThrownBy(() -> configured.isLocal(stale)).isInstanceOf(IllegalStateException.class);
+        stub(retired);
+        assertThatThrownBy(() -> configured.resolve(binding.capabilityId(), Task.Kind.IMAGE_GENERATION, 0))
+                .isInstanceOf(ApiProblemException.class);
+    }
+
+    @Test
     void clearedDefaultsAreProjectedWithoutLookingUpAnAbsentCapability() {
         when(repository.defaultCapabilityId(Task.Kind.IMAGE_GENERATION.name())).thenReturn(null);
         assertThat(configured.defaultCapabilityId(Task.Kind.IMAGE_GENERATION)).isNull();
@@ -49,6 +90,7 @@ class MediaCapabilityModeTest {
         stub(mockImage);
         stub(realImage);
         when(repository.connections()).thenReturn(List.of(mockImage.connection(), realImage.connection()));
+        when(repository.catalogPublications(false)).thenReturn(List.of(publication(realImage)));
 
         assertThat(configured.connections()).containsExactly(realImage.connection());
         assertThat(configured.capabilities(mockImage.connection().id())).isEmpty();
@@ -113,6 +155,7 @@ class MediaCapabilityModeTest {
         Snapshot snapshot = snapshot(MediaPlatform.MOCK, "MOCK_IMAGE");
         stub(snapshot);
         when(repository.connections()).thenReturn(List.of(snapshot.connection()));
+        when(repository.catalogPublications(true)).thenReturn(List.of(publication(snapshot)));
         when(repository.defaultCapabilityId(Task.Kind.IMAGE_GENERATION.name()))
                 .thenReturn(snapshot.capability().id());
         for (var mode : List.of(ProviderModeProperties.Mode.MOCK)) {
@@ -159,7 +202,8 @@ class MediaCapabilityModeTest {
     }
 
     private MediaCapabilityService service(ProviderModeProperties.Mode mode) {
-        return new MediaCapabilityService(repository, registry, cipher, Clock.systemUTC(),
+        return new MediaCapabilityService(repository, new PinnedMediaPublications(repository), registry, cipher,
+                Clock.systemUTC(),
                 new ObjectMapper(), new ProviderModeProperties(mode));
     }
 
@@ -168,6 +212,11 @@ class MediaCapabilityModeTest {
         var capability = new Capability(UUID.randomUUID(), connection.id(), "Synthetic capability", true, 0, 1, false);
         var version = new ConnectionVersion(connection.id(), 1, null, null, null, null, null, null);
         return new Snapshot(connection, capability, version, adapterId, "synthetic-mapping", "{\"settings\":{}}");
+    }
+
+    private JooqMediaCapabilityRepository.CatalogPublication publication(Snapshot snapshot) {
+        return new JooqMediaCapabilityRepository.CatalogPublication(binding(snapshot), snapshot.connection().name(),
+                snapshot.capability().name(), snapshot.specJson(), false);
     }
 
     private void stub(Snapshot snapshot) {

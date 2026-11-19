@@ -12,13 +12,10 @@ import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaHttpTimeouts;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaPayload;
-import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.provider.infrastructure.ArkSeedanceClient;
 import dev.agenvas.provider.infrastructure.ArkMediaDownloadPolicy;
-import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
-import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapshot;
-import dev.agenvas.settings.application.CredentialCipher;
+import dev.agenvas.provider.application.PinnedMediaExecution.Configuration;
 import dev.agenvas.shared.http.HttpTimeouts;
 import dev.agenvas.task.domain.Task;
 import java.awt.Color;
@@ -44,8 +41,7 @@ import tools.jackson.databind.ObjectMapper;
 /** Fixed Seedance 2.0 task with exact image/audio bytes and signed video references. */
 @Component
 public class ArkSeedance2Adapter implements MediaAdapter {
-    private final JooqMediaCapabilityRepository catalog;
-    private final CredentialCipher cipher;
+    private final PinnedMediaExecution execution;
     private final ArtifactService artifacts;
     private final AssetService assets;
     private final ProjectService projects;
@@ -56,13 +52,12 @@ public class ArkSeedance2Adapter implements MediaAdapter {
     private final AudioReferenceLoader audioReferences;
     private final SeedanceVideoReferenceLoader videoReferences;
 
-    public ArkSeedance2Adapter(JooqMediaCapabilityRepository catalog, CredentialCipher cipher,
+    public ArkSeedance2Adapter(PinnedMediaExecution execution,
             ArtifactService artifacts, AssetService assets, ProjectService projects,
             ArkSeedanceClient client, ArkMediaDownloadPolicy downloads,
             MediaToolRunner mediaTools, ObjectMapper mapper, AudioReferenceLoader audioReferences,
             SeedanceVideoReferenceLoader videoReferences) {
-        this.catalog = catalog;
-        this.cipher = cipher;
+        this.execution = execution;
         this.artifacts = artifacts;
         this.assets = assets;
         this.projects = projects;
@@ -80,15 +75,9 @@ public class ArkSeedance2Adapter implements MediaAdapter {
     }
 
     @Override
-    public boolean supports(PortInput input) {
-        return input.kind() == Task.Kind.VIDEO_GENERATION
-                && input.durationSeconds() >= 4 && input.durationSeconds() <= 15;
-    }
-
-    @Override
     public String preflightFailure(AttemptContext context) {
         try {
-            credential(snapshot(context));
+            configuration(context);
         } catch (RuntimeException unavailable) {
             return "MEDIA_CREDENTIAL_UNAVAILABLE";
         }
@@ -111,8 +100,8 @@ public class ArkSeedance2Adapter implements MediaAdapter {
 
     @Override
     public Submission submit(AttemptContext context) {
-        Snapshot snapshot = snapshot(context);
-        String key = credential(snapshot);
+        Configuration snapshot = configuration(context);
+        String key = snapshot.credential();
         Task task = context.lease();
         String prompt = task.input().path("prompt").asText();
         String negative = task.input().path("negativePrompt").asText("");
@@ -139,9 +128,9 @@ public class ArkSeedance2Adapter implements MediaAdapter {
     @Override
     public Submission reconcile(AttemptContext context) {
         try {
-            Snapshot snapshot = snapshot(context);
+            Configuration snapshot = configuration(context);
             ArkSeedanceClient.TaskState state = api(snapshot).query(
-                    credential(snapshot), context.originalRequestId());
+                    snapshot.credential(), context.originalRequestId());
             return switch (state.status()) {
                 case "queued", "running" -> new Submission.Pending(Instant.now().plusSeconds(5));
                 case "failed", "cancelled" -> new Submission.Rejected("ARK_TASK_FAILED");
@@ -159,7 +148,7 @@ public class ArkSeedance2Adapter implements MediaAdapter {
     }
 
     /** An expired TOS URL can only be refreshed by querying the same persisted task ID. */
-    private Submission completed(AttemptContext context, Snapshot snapshot, ArkSeedanceClient.TaskState state) {
+    private Submission completed(AttemptContext context, Configuration snapshot, ArkSeedanceClient.TaskState state) {
         if (state.videoUrl() == null || state.videoUrl().isBlank()) {
             return new Submission.Blocked("ARK_RESULT_MISSING_URL");
         }
@@ -174,7 +163,7 @@ public class ArkSeedance2Adapter implements MediaAdapter {
                     context.lease().input().path("durationSeconds").asInt(-1)));
         } catch (ArkMediaDownloadPolicy.Expired expired) {
             ArkSeedanceClient.TaskState refreshed = api(snapshot).query(
-                    credential(snapshot), context.originalRequestId());
+                    snapshot.credential(), context.originalRequestId());
             if (!"succeeded".equals(refreshed.status()) || refreshed.videoUrl() == null
                     || refreshed.videoUrl().equals(state.videoUrl())) {
                 return new Submission.Blocked("ARK_MEDIA_URL_EXPIRED");
@@ -189,7 +178,7 @@ public class ArkSeedance2Adapter implements MediaAdapter {
     }
 
     /** Archive the provider's original bytes, including every audio track, regardless of input references. */
-    private MediaPayload downloadVideo(Snapshot snapshot, URI url, int expectedSeconds) {
+    private MediaPayload downloadVideo(Configuration snapshot, URI url, int expectedSeconds) {
         downloads.validate(url);
         Path directory;
         try {
@@ -257,45 +246,25 @@ public class ArkSeedance2Adapter implements MediaAdapter {
     private static final class InvalidMedia extends RuntimeException {
     }
 
-    private Snapshot snapshot(AttemptContext context) {
-        var binding = context.binding();
-        Snapshot snapshot = catalog.snapshotAt(binding.capabilityId(),
-                binding.capabilityVersion(), binding.connectionId(),
-                binding.connectionVersion())
-                .orElseThrow(() -> new IllegalStateException("Pinned media capability version is missing"));
-        if (!adapterId().equals(snapshot.adapterId())
-                || !binding.mappingSha256().equals(snapshot.mappingSha256())) {
-            throw new IllegalStateException("Pinned Seedance mapping differs");
-        }
-        return snapshot;
+    private Configuration configuration(AttemptContext context) {
+        return execution.open(context.binding(), adapterId(), "Pinned Ark credential is missing");
     }
 
     /** Read only the immutable capability version selected when this task was accepted. */
-    private HttpTimeouts httpTimeouts(Snapshot snapshot) {
+    private HttpTimeouts httpTimeouts(Configuration snapshot) {
         return snapshot.specJson() == null
                 ? null
                 : MediaHttpTimeouts.configured(mapper.readTree(snapshot.specJson()).path("settings"));
     }
 
-    private ArkSeedanceClient api(Snapshot snapshot) {
+    private ArkSeedanceClient api(Configuration snapshot) {
         var timeouts = httpTimeouts(snapshot);
         return timeouts == null ? client : client.withTimeouts(timeouts);
     }
 
-    private ArkMediaDownloadPolicy downloads(Snapshot snapshot) {
+    private ArkMediaDownloadPolicy downloads(Configuration snapshot) {
         var timeouts = httpTimeouts(snapshot);
         return timeouts == null ? downloads : downloads.withTimeouts(timeouts);
-    }
-
-    private String credential(Snapshot snapshot) {
-        var version = snapshot.connectionVersion();
-        if (version.credentialCiphertext() == null || version.credentialNonce() == null
-                || version.credentialKeyVersion() == null) {
-            throw new IllegalStateException("Pinned Ark credential is missing");
-        }
-        return cipher.decryptMedia(version.connectionId(), version.version(),
-                new CredentialCipher.Encrypted(version.credentialCiphertext(),
-                        version.credentialNonce(), version.credentialKeyVersion()));
     }
 
     private Project.AspectRatio aspect(AttemptContext context) {
