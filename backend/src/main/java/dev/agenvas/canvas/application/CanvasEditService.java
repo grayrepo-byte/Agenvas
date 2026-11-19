@@ -67,14 +67,14 @@ public class CanvasEditService {
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public Editor get(UUID owner, UUID project) {
-        projects.get(owner, project);
+        projects.requireCanvasProject(owner, project);
         return editor(owner, project, null);
     }
 
     /** Metadata-only application boundary for safe exports and other project projections. */
     @Transactional(readOnly = true)
     public List<Group> groups(UUID owner, UUID project) {
-        projects.get(owner, project);
+        projects.requireCanvasProject(owner, project);
         return activeGroups(project);
     }
 
@@ -83,6 +83,7 @@ public class CanvasEditService {
         validateRequest(request);
         String hash = hash(request);
         return events.recordChange(owner, project, () -> {
+            projects.requireCanvasProject(owner, project);
             projects.requireActiveProject(owner, project);
             var prior = repository.command(project, request.commandId());
             if (prior.isPresent())
@@ -219,6 +220,7 @@ public class CanvasEditService {
             throw invalid();
         String hash = hash(List.of(receiptId, request));
         return events.recordChange(owner, project, () -> {
+            projects.requireCanvasProject(owner, project);
             projects.requireActiveProject(owner, project);
             var prior = repository.command(project, request.commandId());
             if (prior.isPresent())
