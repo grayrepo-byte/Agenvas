@@ -5192,10 +5192,212 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/image-studio/context": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 独立生图工作台的内部存储作用域与可用静态图片能力
+         * @description 不要求画布或节点。为当前所有者原子取得唯一技术作用域，该作用域不出现在项目列表。只开放已验证的 Mock、GPT Image 2、Nano Banana 2 静态图片路径；所有默认比例显式冻结，AUTO 不继承画布。
+         */
+        get: operations["getImageStudioContext"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/image-studio/references": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 上传并冻结工作台静态参考图版本，不创建画布节点
+         * @description 沿用实际解码、20 MiB/40 MP 限制和私有资产归档；拒绝动画 GIF。只接受文件字节，不接收任意 URL。
+         */
+        post: operations["uploadImageStudioReference"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/image-studio/batches": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        /** 当前所有者工作台的持久化批次历史 */
+        get: operations["listImageStudioBatches"];
+        put?: never;
+        /**
+         * 原子受理不含节点身份的独立生图完整批次
+         * @description 固定能力及连接版本、参数、参考版本和价格；同键同请求返回完整原批次，同键不同请求冲突。数量为 1/2/4，所有结果独立保留；UNKNOWN 只查询不自动重发。归档恢复不重新调用供应商。
+         */
+        post: operations["createImageStudioBatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/image-studio/batches/{batchId}": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                batchId: string;
+            };
+            cookie?: never;
+        };
+        /** 读取本人批次的固定参数、独立状态及私有归档结果 */
+        get: operations["getImageStudioBatch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description 工作台静态图片参数；缺省由能力补全并冻结，AUTO 显式转换为 1:1，不使用画布设置。 */
+        ImageStudioParameters: {
+            /** @enum {string} */
+            aspectRatio?: "AUTO" | "1:1" | "2:3" | "3:2" | "9:16" | "16:9" | "3:4" | "4:3" | "21:9";
+            /** @enum {string} */
+            resolution?: "1K" | "2K" | "4K";
+            /** @enum {string} */
+            quality?: "low" | "medium" | "high" | "xhigh" | "max";
+            transparentBackground?: boolean;
+            /** @enum {integer} */
+            generationCount?: 1 | 2 | 4;
+        };
+        ImageStudioCapability: {
+            /** Format: uuid */
+            capabilityId: string;
+            capabilityVersion: number;
+            name: string;
+            connectionName: string;
+            /** @enum {string} */
+            adapterId: "MOCK_IMAGE" | "OPENAI_GPT_IMAGE_2" | "GOOGLE_NANO_BANANA_2";
+            defaultParameters: components["schemas"]["ImageStudioParameters"];
+            aspectRatios: string[];
+            resolutions: string[];
+            qualities: string[];
+            maxReferenceImages: number;
+            supportsTransparentBackground: boolean;
+            complexity: string | null;
+        };
+        ImageStudioContext: {
+            /**
+             * Format: uuid
+             * @description 仅用于复用私有归档读取，不要求用户选择或管理画布
+             */
+            projectId: string;
+            /** Format: uuid */
+            defaultCapabilityId: string | null;
+            capabilities: components["schemas"]["ImageStudioCapability"][];
+        };
+        ImageStudioReference: {
+            /** Format: uuid */
+            artifactId: string;
+            /** Format: uuid */
+            versionId: string;
+            /** Format: uuid */
+            assetId: string;
+            /** Format: uuid */
+            projectId: string;
+            width: number;
+            height: number;
+        };
+        CreateImageStudioBatch: {
+            /** Format: uuid */
+            capabilityId: string;
+            expectedCapabilityVersion: number;
+            prompt: string;
+            parameters: components["schemas"]["ImageStudioParameters"];
+            referenceVersionIds: string[];
+        };
+        ImageStudioResult: {
+            /** Format: uuid */
+            artifactId: string;
+            /** Format: uuid */
+            artifactVersionId: string;
+            /** Format: uuid */
+            assetId: string;
+            width: number;
+            height: number;
+            contentType: string;
+        };
+        ImageStudioTask: {
+            /** Format: uuid */
+            id: string;
+            status: components["schemas"]["TaskStatus"];
+            /** Format: int64 */
+            version: number;
+            errorCode: string | null;
+            results: components["schemas"]["ImageStudioResult"][];
+        };
+        ImageStudioBatch: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            projectId: string;
+            /** Format: uuid */
+            capabilityId: string;
+            capabilityVersion: number;
+            prompt: string;
+            parameters: components["schemas"]["ImageStudioParameters"];
+            referenceVersionIds: string[];
+            references: components["schemas"]["ImageStudioReference"][];
+            /** Format: date-time */
+            createdAt: string;
+            tasks: components["schemas"]["ImageStudioTask"][];
+        };
+        ImageStudioBatchPage: {
+            items: components["schemas"]["ImageStudioBatch"][];
+            nextCursor: string | null;
+        };
         CharacterNodeSelection: {
             /** Format: uuid */
             characterId: string;
@@ -19867,6 +20069,179 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getImageStudioContext: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 工作台上下文；无可用能力时返回空目录 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageStudioContext"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    uploadImageStudioReference: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 归档资产与不可变参考版本 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageStudioReference"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description 文件过大 */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            422: components["responses"]["ValidationError"];
+        };
+    };
+    listImageStudioBatches: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description 上一页返回的不透明批次游标 */
+                before?: string;
+            };
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 最新优先的完整批次及下页游标 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageStudioBatchPage"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createImageStudioBatch: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateImageStudioBatch"];
+            };
+        };
+        responses: {
+            /** @description 完整已受理或重放批次 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageStudioBatch"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationError"];
+        };
+    };
+    getImageStudioBatch: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                batchId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 完整批次，刷新和轮询不会触发生成 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageStudioBatch"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };

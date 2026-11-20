@@ -75,6 +75,7 @@ public class CanvasCharacterNodeService {
                 owner,
                 project,
                 () -> {
+                    projects.requireCanvasProject(owner, project);
                     projects.requireActiveProject(owner, project);
                     if (request == null || itemId == null)
                         throw invalid();
@@ -132,6 +133,7 @@ public class CanvasCharacterNodeService {
                 owner,
                 project,
                 () -> {
+                    projects.requireCanvasProject(owner, project);
                     projects.requireActiveProject(owner, project);
                     if (request == null
                             || request.expectedItemVersion() < 0
@@ -161,7 +163,7 @@ public class CanvasCharacterNodeService {
 
     @Transactional(readOnly = true)
     public CharacterNode view(UUID owner, CanvasItem item) {
-        projects.get(owner, item.projectId());
+        projects.requireCanvasProject(owner, item.projectId());
         if (item.subjectType() != CanvasItem.SubjectType.CHARACTER)
             throw invalid();
         NodeRow row = row(item.projectId(), item.id());
@@ -181,14 +183,14 @@ public class CanvasCharacterNodeService {
 
     @Transactional(readOnly = true)
     public List<CharacterConnection> connections(UUID owner, UUID project) {
-        projects.get(owner, project);
+        projects.requireCanvasProject(owner, project);
         return repository.connections(project);
     }
 
     /** Read-only reconciliation survives archived projects, locked nodes and deleted edges. */
     @Transactional(readOnly = true)
     public CharacterConnection connectionReceipt(UUID owner, UUID project, UUID connectionId) {
-        projects.get(owner, project);
+        projects.requireCanvasProject(owner, project);
         var receipt = repository
                 .receipt(project, topologyCommand("connect", connectionId))
                 .orElseThrow(this::notFound);
@@ -201,7 +203,7 @@ public class CanvasCharacterNodeService {
     @Transactional(readOnly = true)
     public CharacterBindingApplied applicationReceipt(
             UUID owner, UUID project, UUID target, UUID commandId) {
-        projects.get(owner, project);
+        projects.requireCanvasProject(owner, project);
         var receipt = repository.receipt(project, commandId).orElseThrow(this::notFound);
         if (!target.toString()
                 .equals(receipt.result().path("binding").path("canvasItemId").asText())) {
@@ -216,6 +218,7 @@ public class CanvasCharacterNodeService {
                 owner,
                 project,
                 () -> {
+                    projects.requireCanvasProject(owner, project);
                     projects.requireActiveProject(owner, project);
                     if (request == null
                             || request.connectionId() == null
@@ -292,6 +295,7 @@ public class CanvasCharacterNodeService {
                 owner,
                 project,
                 () -> {
+                    projects.requireCanvasProject(owner, project);
                     projects.requireActiveProject(owner, project);
                     if (request == null || id == null || request.expectedVersion() < 0)
                         throw invalid();
@@ -322,6 +326,7 @@ public class CanvasCharacterNodeService {
 
     @Transactional(readOnly = true)
     public NodeBindingPreview preview(UUID owner, UUID project, UUID target, Preview request) {
+        projects.requireCanvasProject(owner, project);
         projects.requireActiveProject(owner, project);
         return prepare(owner, project, target, request).preview();
     }
@@ -338,6 +343,7 @@ public class CanvasCharacterNodeService {
                 owner,
                 project,
                 () -> {
+                    projects.requireCanvasProject(owner, project);
                     projects.requireActiveProject(owner, project);
                     var prior = repository.receipt(project, request.commandId()).orElse(null);
                     if (prior != null) {
@@ -416,12 +422,14 @@ public class CanvasCharacterNodeService {
     @Transactional(propagation = Propagation.MANDATORY)
     public void installCopy(
             UUID owner, UUID project, UUID target, Selection selection, long version) {
+        projects.requireCanvasProject(owner, project);
         snapshot(owner, project, selection, true);
         repository.insert(project, target, selection, version);
     }
 
     @Transactional(readOnly = true)
     public JsonNode copyGuard(UUID owner, UUID project, CanvasItem item) {
+        projects.requireCanvasProject(owner, project);
         var guard = mapper.createObjectNode();
         guard.set("node", mapper.valueToTree(row(project, item.id())));
         guard.put("topologyEpoch", repository.topologyEpoch(project, item.id()));

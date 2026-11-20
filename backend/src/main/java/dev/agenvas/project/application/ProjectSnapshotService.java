@@ -73,7 +73,7 @@ public class ProjectSnapshotService {
      */
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public ProjectSnapshot snapshot(UUID ownerId, UUID projectId) {
-        Project project = projects.get(ownerId, projectId);
+        Project project = projects.requireCanvasProject(ownerId, projectId);
         ProjectRepository.SnapshotAnchor anchor = projectRepository
                 .findSnapshotAnchor(ownerId, projectId)
                 .orElseThrow(this::notFound);

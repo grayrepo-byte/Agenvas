@@ -14,6 +14,7 @@ import dev.agenvas.db.tables.CharacterLibraryMedia.CharacterLibraryMediaPath;
 import dev.agenvas.db.tables.CharacterLibraryProfile.CharacterLibraryProfilePath;
 import dev.agenvas.db.tables.CreativeSkill.CreativeSkillPath;
 import dev.agenvas.db.tables.IdempotencyRecord.IdempotencyRecordPath;
+import dev.agenvas.db.tables.ImageStudioBatch.ImageStudioBatchPath;
 import dev.agenvas.db.tables.LibraryCleanup.LibraryCleanupPath;
 import dev.agenvas.db.tables.LibraryCommand.LibraryCommandPath;
 import dev.agenvas.db.tables.LibraryEntry.LibraryEntryPath;
@@ -296,6 +297,19 @@ public class AppUser extends TableImpl<AppUserRecord> {
             _idempotencyRecord = new IdempotencyRecordPath(this, null, Keys.IDEMPOTENCY_RECORD__FK_IDEMPOTENCY_PRINCIPAL.getInverseKey());
 
         return _idempotencyRecord;
+    }
+
+    private transient ImageStudioBatchPath _imageStudioBatch;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.image_studio_batch</code> table
+     */
+    public ImageStudioBatchPath imageStudioBatch() {
+        if (_imageStudioBatch == null)
+            _imageStudioBatch = new ImageStudioBatchPath(this, null, Keys.IMAGE_STUDIO_BATCH__FK_IMAGE_STUDIO_BATCH_OWNER.getInverseKey());
+
+        return _imageStudioBatch;
     }
 
     private transient McpAccessTokenPath _mcpAccessToken;

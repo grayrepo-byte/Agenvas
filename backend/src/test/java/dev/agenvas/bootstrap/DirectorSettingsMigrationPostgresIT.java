@@ -94,9 +94,10 @@ class DirectorSettingsMigrationPostgresIT {
                     max_repair_attempts=8,version=7
                     """);
         }
+        // Isolate the V63-to-V64 settings upgrade from unrelated later migrations.
         var upgraded = Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
-                .locations("classpath:db/migration").load();
+                .locations("classpath:db/migration").target("64").load();
         assertThat(upgraded.migrate().migrationsExecuted).isEqualTo(1);
         try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(),
                 POSTGRES.getPassword()); var statement = connection.createStatement()) {

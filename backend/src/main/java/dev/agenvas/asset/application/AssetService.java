@@ -345,6 +345,22 @@ public class AssetService {
                 () -> archiveTaskImageLocked(ownerId, projectId, assetId, download));
     }
 
+    /** Recover only the deterministic private result already installed by this Task; never fetch a provider. */
+    public java.util.Optional<Asset> recoverTaskImage(UUID ownerId, UUID projectId, UUID taskId) {
+        projects.getRetainedProject(ownerId, projectId);
+        UUID assetId = taskImageAssetId(taskId);
+        return storage.withTaskImageLock(projectId, assetId, () -> {
+            var stored = storage.recoverImage(projectId, assetId);
+            if (stored.isEmpty())
+                return java.util.Optional.empty();
+            // Reuse the ordinary archive's metadata/hash checks and publication without a download fallback.
+            return java.util.Optional.of(archiveTaskImageLocked(ownerId, projectId, assetId,
+                    () -> {
+                        throw new IllegalStateException("Saved task image disappeared during recovery");
+                    }));
+        });
+    }
+
     /** 锁内先核对已有元数据和文件，再下载、安装或恢复文件并发布 READY。 */
     private Asset archiveTaskImageLocked(UUID ownerId, UUID projectId, UUID assetId,
             Supplier<InputStream> download) {

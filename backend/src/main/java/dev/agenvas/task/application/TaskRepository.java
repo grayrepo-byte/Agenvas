@@ -23,6 +23,12 @@ public interface TaskRepository {
     boolean checkpointProviderResults(Task lease, String workerId,
             dev.agenvas.provider.domain.ProviderResultManifest manifest, Instant now);
 
+    /** Preserve a confirmed one-shot Studio result before its private archive can fail. */
+    boolean checkpointStudioImageResult(Task lease, String workerId, JsonNode output, Instant now);
+
+    /** A synchronous response has no provider request ID; resume only its installed archive bytes. */
+    boolean deferStudioImageArchive(Task lease, String workerId, Instant nextActionAt, Instant now);
+
     /** Safe diagnostics are public progress; protect concurrent updates with both version and worker epoch. */
     boolean recordProviderFailure(Task current, String workerId, JsonNode output, Instant now);
 
